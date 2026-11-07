@@ -26,6 +26,8 @@ export const TENANT_MODELS = [
   'Account',
   'AccountMapping',
   'DocumentSequence',
+  'JournalEntry',
+  'JournalLine',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);

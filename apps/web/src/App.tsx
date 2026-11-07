@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { Button, Card, Layout, Menu, Select, Spin, Typography } from 'antd';
 import {
   AccountBookOutlined,
+  BankOutlined,
   CalendarOutlined,
   DashboardOutlined,
   LogoutOutlined,
+  ProfileOutlined,
   SettingOutlined,
   ShopOutlined,
   TeamOutlined,
@@ -18,12 +20,23 @@ import { BranchesPage } from './pages/BranchesPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { FiscalPage } from './pages/FiscalPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { JournalPage } from './pages/JournalPage';
+import { ReportsPage } from './pages/ReportsPage';
 import { HealthPage } from './pages/HealthPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 
 const { Header, Content, Sider } = Layout;
 
-type View = 'dashboard' | 'users' | 'branches' | 'accounts' | 'fiscal' | 'settings' | 'health';
+type View =
+  | 'dashboard'
+  | 'users'
+  | 'branches'
+  | 'accounts'
+  | 'journal'
+  | 'reports'
+  | 'fiscal'
+  | 'settings'
+  | 'health';
 
 export function App() {
   const { t } = useTranslation();
@@ -55,6 +68,8 @@ export function App() {
     { key: 'users', icon: <TeamOutlined />, label: t('nav.users') },
     { key: 'branches', icon: <ShopOutlined />, label: t('nav.branches') },
     { key: 'accounts', icon: <AccountBookOutlined />, label: t('nav.accounts') },
+    { key: 'journal', icon: <BankOutlined />, label: t('nav.journal') },
+    { key: 'reports', icon: <ProfileOutlined />, label: t('nav.reports') },
     { key: 'fiscal', icon: <CalendarOutlined />, label: t('nav.fiscal') },
     { key: 'settings', icon: <SettingOutlined />, label: t('nav.settings') },
     { key: 'health', icon: <DashboardOutlined />, label: t('nav.health') },
@@ -136,6 +151,8 @@ export function App() {
           {view === 'users' && <UsersPage />}
           {view === 'branches' && <BranchesPage />}
           {view === 'accounts' && <AccountsPage />}
+          {view === 'journal' && <JournalPage />}
+          {view === 'reports' && <ReportsPage />}
           {view === 'fiscal' && <FiscalPage />}
           {view === 'settings' && <SettingsPage />}
           {view === 'health' && <HealthPage />}

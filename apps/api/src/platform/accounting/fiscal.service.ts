@@ -79,7 +79,12 @@ export class FiscalService {
         const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0));
         const pStart = cursor < start ? start : cursor;
         const pEnd = monthEnd > end ? end : monthEnd;
-        periods.push({ periodNo: no++, startDate: pStart, endDate: pEnd });
+        // Clone — cursor is mutated each iteration and must not be shared.
+        periods.push({
+          periodNo: no++,
+          startDate: new Date(pStart),
+          endDate: new Date(pEnd),
+        });
         cursor.setUTCMonth(cursor.getUTCMonth() + 1);
       }
       await tx.fiscalPeriod.createMany({

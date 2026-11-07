@@ -13,6 +13,8 @@ const config: Config = {
   },
   extensionsToTreatAsEsm: ['.ts'],
   testEnvironment: 'node',
+  // e2e suites each spawn a full API process + DB pool; run serially.
+  maxWorkers: 1,
 };
 
 export default config;

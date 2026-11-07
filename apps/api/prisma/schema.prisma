@@ -71,6 +71,21 @@ enum FiscalStatus {
   CLOSED
 }
 
+enum JournalPostingKind {
+  POST
+  REVERSAL
+}
+
+enum JournalEntryStatus {
+  DRAFT
+  POSTED
+}
+
+enum JournalPartyType {
+  CUSTOMER
+  SUPPLIER
+}
+
 // ---------------------------------------------------------------------------
 // Platform (non-tenant) tables
 // ---------------------------------------------------------------------------
@@ -154,40 +169,40 @@ model Country {
 }
 
 model User {
-  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  email        String    @unique @db.VarChar(191)
-  passwordHash String    @map("password_hash") @db.VarChar(255)
-  fullName     String    @map("full_name") @db.VarChar(191)
-  locale       String    @default("ar") @db.VarChar(10)
-  isActive     Boolean   @default(true) @map("is_active")
-  isPlatformAdmin Boolean @default(false) @map("is_platform_admin")
-  lastLoginAt  DateTime? @map("last_login_at") @db.DateTime(3)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  id              BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  email           String    @unique @db.VarChar(191)
+  passwordHash    String    @map("password_hash") @db.VarChar(255)
+  fullName        String    @map("full_name") @db.VarChar(191)
+  locale          String    @default("ar") @db.VarChar(10)
+  isActive        Boolean   @default(true) @map("is_active")
+  isPlatformAdmin Boolean   @default(false) @map("is_platform_admin")
+  lastLoginAt     DateTime? @map("last_login_at") @db.DateTime(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
 
-  memberships    TenantMembership[]
-  refreshTokens  RefreshToken[]
-  auditLogs      AuditLog[]
+  memberships   TenantMembership[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
 
   @@map("users")
 }
 
 model RefreshToken {
-  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  userId      BigInt    @map("user_id") @db.UnsignedBigInt
-  tokenHash   String    @unique @map("token_hash") @db.VarChar(255)
-  familyId    String    @map("family_id") @db.VarChar(64)
-  expiresAt   DateTime  @map("expires_at") @db.DateTime(3)
-  revokedAt   DateTime? @map("revoked_at") @db.DateTime(3)
-  replacedById BigInt?  @map("replaced_by_id") @db.UnsignedBigInt
-  tenantId    BigInt?   @map("tenant_id") @db.UnsignedBigInt
-  userAgent   String?   @map("user_agent") @db.VarChar(512)
-  ip          String?   @db.VarChar(64)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  userId       BigInt    @map("user_id") @db.UnsignedBigInt
+  tokenHash    String    @unique @map("token_hash") @db.VarChar(255)
+  familyId     String    @map("family_id") @db.VarChar(64)
+  expiresAt    DateTime  @map("expires_at") @db.DateTime(3)
+  revokedAt    DateTime? @map("revoked_at") @db.DateTime(3)
+  replacedById BigInt?   @map("replaced_by_id") @db.UnsignedBigInt
+  tenantId     BigInt?   @map("tenant_id") @db.UnsignedBigInt
+  userAgent    String?   @map("user_agent") @db.VarChar(512)
+  ip           String?   @db.VarChar(64)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
 
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  replacedBy  RefreshToken?  @relation("TokenRotation", fields: [replacedById], references: [id])
-  replaces    RefreshToken[] @relation("TokenRotation")
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken?  @relation("TokenRotation", fields: [replacedById], references: [id])
+  replaces   RefreshToken[] @relation("TokenRotation")
 
   @@index([userId])
   @@index([familyId])
@@ -207,20 +222,22 @@ model Tenant {
   createdAt   DateTime     @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt   DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
 
-  plan         Plan?                    @relation(fields: [planId], references: [id])
-  subscriptions Subscription[]
-  companies    Company[]
-  branches     Branch[]
-  memberships  TenantMembership[]
-  auditLogs    AuditLog[]
-  attachments  Attachment[]
-  idempotencyKeys IdempotencyKey[]
-  units        Unit[]
-  taxCategories TaxCategory[]
-  paymentMethods PaymentMethod[]
-  fiscalYears  FiscalYear[]
-  accounts     Account[]
+  plan              Plan?              @relation(fields: [planId], references: [id])
+  subscriptions     Subscription[]
+  companies         Company[]
+  branches          Branch[]
+  memberships       TenantMembership[]
+  auditLogs         AuditLog[]
+  attachments       Attachment[]
+  idempotencyKeys   IdempotencyKey[]
+  units             Unit[]
+  taxCategories     TaxCategory[]
+  paymentMethods    PaymentMethod[]
+  fiscalYears       FiscalYear[]
+  accounts          Account[]
   documentSequences DocumentSequence[]
+  journalEntries    JournalEntry[]
+  journalLines      JournalLine[]
 
   @@map("tenants")
 }
@@ -246,34 +263,35 @@ model Subscription {
 }
 
 model Company {
-  id                   BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId             BigInt        @map("tenant_id") @db.UnsignedBigInt
-  legalNameAr          String        @map("legal_name_ar") @db.VarChar(191)
-  legalNameEn          String?       @map("legal_name_en") @db.VarChar(191)
-  taxNumber            String?       @map("tax_number") @db.VarChar(50)
-  commercialRegistration String?     @map("commercial_registration") @db.VarChar(100)
-  address              String?       @db.VarChar(512)
-  phone                String?       @db.VarChar(50)
-  logoAttachmentId     BigInt?       @map("logo_attachment_id") @db.UnsignedBigInt
-  baseCurrencyId       BigInt?       @map("base_currency_id") @db.UnsignedBigInt
-  timezone             String        @default("Asia/Amman") @db.VarChar(64)
-  costingMethod        CostingMethod @default(WEIGHTED_AVERAGE) @map("costing_method")
-  allowNegativeStock   Boolean       @default(false) @map("allow_negative_stock")
-  pricesIncludeTax     Boolean       @default(false) @map("prices_include_tax")
-  isActive             Boolean       @default(true) @map("is_active")
-  createdAt            DateTime      @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt            DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy            BigInt?       @map("created_by") @db.UnsignedBigInt
-  updatedBy            BigInt?       @map("updated_by") @db.UnsignedBigInt
+  id                     BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId               BigInt        @map("tenant_id") @db.UnsignedBigInt
+  legalNameAr            String        @map("legal_name_ar") @db.VarChar(191)
+  legalNameEn            String?       @map("legal_name_en") @db.VarChar(191)
+  taxNumber              String?       @map("tax_number") @db.VarChar(50)
+  commercialRegistration String?       @map("commercial_registration") @db.VarChar(100)
+  address                String?       @db.VarChar(512)
+  phone                  String?       @db.VarChar(50)
+  logoAttachmentId       BigInt?       @map("logo_attachment_id") @db.UnsignedBigInt
+  baseCurrencyId         BigInt?       @map("base_currency_id") @db.UnsignedBigInt
+  timezone               String        @default("Asia/Amman") @db.VarChar(64)
+  costingMethod          CostingMethod @default(WEIGHTED_AVERAGE) @map("costing_method")
+  allowNegativeStock     Boolean       @default(false) @map("allow_negative_stock")
+  pricesIncludeTax       Boolean       @default(false) @map("prices_include_tax")
+  isActive               Boolean       @default(true) @map("is_active")
+  createdAt              DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt              DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy              BigInt?       @map("created_by") @db.UnsignedBigInt
+  updatedBy              BigInt?       @map("updated_by") @db.UnsignedBigInt
 
-  tenant         Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  baseCurrency   Currency?  @relation("CompanyBaseCurrency", fields: [baseCurrencyId], references: [id])
-  logoAttachment  Attachment? @relation("CompanyLogo", fields: [tenantId, logoAttachmentId], references: [tenantId, id])
-  branches       Branch[]
-  fiscalYears    FiscalYear[]
-  accounts       Account[]
-  accountMappings AccountMapping[]
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  baseCurrency      Currency?          @relation("CompanyBaseCurrency", fields: [baseCurrencyId], references: [id])
+  logoAttachment    Attachment?        @relation("CompanyLogo", fields: [tenantId, logoAttachmentId], references: [tenantId, id])
+  branches          Branch[]
+  fiscalYears       FiscalYear[]
+  accounts          Account[]
+  accountMappings   AccountMapping[]
   documentSequences DocumentSequence[]
+  journalEntries    JournalEntry[]
 
   @@unique([tenantId, id])
   @@map("companies")
@@ -293,10 +311,11 @@ model Branch {
   createdBy BigInt?  @map("created_by") @db.UnsignedBigInt
   updatedBy BigInt?  @map("updated_by") @db.UnsignedBigInt
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company  Company  @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  memberships TenantMembership[] @relation("MembershipDefaultBranch")
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company            Company            @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  memberships        TenantMembership[] @relation("MembershipDefaultBranch")
   membershipBranches MembershipBranch[]
+  journalEntries     JournalEntry[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -304,20 +323,20 @@ model Branch {
 }
 
 model TenantMembership {
-  id             BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId       BigInt           @map("tenant_id") @db.UnsignedBigInt
-  userId         BigInt           @map("user_id") @db.UnsignedBigInt
-  roleId         BigInt           @map("role_id") @db.UnsignedBigInt
-  status         MembershipStatus @default(INVITED)
-  defaultBranchId BigInt?         @map("default_branch_id") @db.UnsignedBigInt
-  invitedBy      BigInt?          @map("invited_by") @db.UnsignedBigInt
-  createdAt      DateTime         @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt      DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+  id              BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt           @map("tenant_id") @db.UnsignedBigInt
+  userId          BigInt           @map("user_id") @db.UnsignedBigInt
+  roleId          BigInt           @map("role_id") @db.UnsignedBigInt
+  status          MembershipStatus @default(INVITED)
+  defaultBranchId BigInt?          @map("default_branch_id") @db.UnsignedBigInt
+  invitedBy       BigInt?          @map("invited_by") @db.UnsignedBigInt
+  createdAt       DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role    Role    @relation(fields: [roleId], references: [id])
-  defaultBranch Branch? @relation("MembershipDefaultBranch", fields: [tenantId, defaultBranchId], references: [tenantId, id])
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            Role               @relation(fields: [roleId], references: [id])
+  defaultBranch   Branch?            @relation("MembershipDefaultBranch", fields: [tenantId, defaultBranchId], references: [tenantId, id])
   allowedBranches MembershipBranch[]
 
   @@unique([tenantId, id])
@@ -361,16 +380,16 @@ model AuditLog {
 }
 
 model Attachment {
-  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId    BigInt   @map("tenant_id") @db.UnsignedBigInt
-  storageKey  String   @map("storage_key") @db.VarChar(512)
-  fileName    String   @map("file_name") @db.VarChar(255)
-  mimeType    String   @map("mime_type") @db.VarChar(127)
-  sizeBytes   BigInt?  @map("size_bytes") @db.UnsignedBigInt
-  uploadedBy  BigInt?  @map("uploaded_by") @db.UnsignedBigInt
-  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId   BigInt   @map("tenant_id") @db.UnsignedBigInt
+  storageKey String   @map("storage_key") @db.VarChar(512)
+  fileName   String   @map("file_name") @db.VarChar(255)
+  mimeType   String   @map("mime_type") @db.VarChar(127)
+  sizeBytes  BigInt?  @map("size_bytes") @db.UnsignedBigInt
+  uploadedBy BigInt?  @map("uploaded_by") @db.UnsignedBigInt
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   companiesLogo Company[] @relation("CompanyLogo")
 
   @@unique([tenantId, id])
@@ -465,9 +484,9 @@ model FiscalYear {
   updatedAt DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
   createdBy BigInt?      @map("created_by") @db.UnsignedBigInt
 
-  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company  Company         @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  periods  FiscalPeriod[]
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company   Company            @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  periods   FiscalPeriod[]
   sequences DocumentSequence[]
 
   @@unique([tenantId, id])
@@ -488,7 +507,8 @@ model FiscalPeriod {
   createdAt    DateTime     @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
 
-  fiscalYear FiscalYear @relation(fields: [tenantId, fiscalYearId], references: [tenantId, id], onDelete: Cascade)
+  fiscalYear     FiscalYear     @relation(fields: [tenantId, fiscalYearId], references: [tenantId, id], onDelete: Cascade)
+  journalEntries JournalEntry[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, fiscalYearId, periodNo])
@@ -496,30 +516,31 @@ model FiscalPeriod {
 }
 
 model Account {
-  id            BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId      BigInt       @map("tenant_id") @db.UnsignedBigInt
-  companyId     BigInt       @map("company_id") @db.UnsignedBigInt
-  code          String       @db.VarChar(50)
-  nameAr        String       @map("name_ar") @db.VarChar(191)
-  nameEn        String?      @map("name_en") @db.VarChar(191)
-  parentId      BigInt?      @map("parent_id") @db.UnsignedBigInt
+  id            BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId      BigInt        @map("tenant_id") @db.UnsignedBigInt
+  companyId     BigInt        @map("company_id") @db.UnsignedBigInt
+  code          String        @db.VarChar(50)
+  nameAr        String        @map("name_ar") @db.VarChar(191)
+  nameEn        String?       @map("name_en") @db.VarChar(191)
+  parentId      BigInt?       @map("parent_id") @db.UnsignedBigInt
   level         Int
-  accountType   AccountType  @map("account_type")
+  accountType   AccountType   @map("account_type")
   normalBalance NormalBalance @map("normal_balance")
-  isPostable    Boolean      @default(true) @map("is_postable")
-  isControl     Boolean      @default(false) @map("is_control")
-  controlType   ControlType? @map("control_type")
-  isActive      Boolean      @default(true) @map("is_active")
-  createdAt     DateTime     @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt     DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy     BigInt?      @map("created_by") @db.UnsignedBigInt
-  updatedBy     BigInt?      @map("updated_by") @db.UnsignedBigInt
+  isPostable    Boolean       @default(true) @map("is_postable")
+  isControl     Boolean       @default(false) @map("is_control")
+  controlType   ControlType?  @map("control_type")
+  isActive      Boolean       @default(true) @map("is_active")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy     BigInt?       @map("created_by") @db.UnsignedBigInt
+  updatedBy     BigInt?       @map("updated_by") @db.UnsignedBigInt
 
-  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company Company  @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  parent  Account? @relation("AccountTree", fields: [tenantId, companyId, parentId], references: [tenantId, companyId, id])
-  children Account[] @relation("AccountTree")
-  mappings AccountMapping[]
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company      Company          @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  parent       Account?         @relation("AccountTree", fields: [tenantId, companyId, parentId], references: [tenantId, companyId, id])
+  children     Account[]        @relation("AccountTree")
+  mappings     AccountMapping[]
+  journalLines JournalLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
@@ -528,13 +549,13 @@ model Account {
 }
 
 model AccountMapping {
-  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId    BigInt   @map("tenant_id") @db.UnsignedBigInt
-  companyId   BigInt   @map("company_id") @db.UnsignedBigInt
-  mappingKey  String   @map("mapping_key") @db.VarChar(100)
-  accountId   BigInt   @map("account_id") @db.UnsignedBigInt
-  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId   BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId  BigInt   @map("company_id") @db.UnsignedBigInt
+  mappingKey String   @map("mapping_key") @db.VarChar(100)
+  accountId  BigInt   @map("account_id") @db.UnsignedBigInt
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   company Company @relation(fields: [tenantId, companyId], references: [tenantId, id])
   account Account @relation(fields: [tenantId, companyId, accountId], references: [tenantId, companyId, id])
@@ -544,16 +565,16 @@ model AccountMapping {
 }
 
 model DocumentSequence {
-  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId      BigInt   @map("tenant_id") @db.UnsignedBigInt
-  companyId     BigInt   @map("company_id") @db.UnsignedBigInt
-  documentType  String   @map("document_type") @db.VarChar(50)
-  fiscalYearId  BigInt   @map("fiscal_year_id") @db.UnsignedBigInt
-  prefix        String   @db.VarChar(20)
-  nextNumber    Int      @default(1) @map("next_number")
-  padding       Int      @default(6)
-  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId    BigInt   @map("company_id") @db.UnsignedBigInt
+  documentType String   @map("document_type") @db.VarChar(50)
+  fiscalYearId BigInt   @map("fiscal_year_id") @db.UnsignedBigInt
+  prefix       String   @db.VarChar(20)
+  nextNumber   Int      @default(1) @map("next_number")
+  padding      Int      @default(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   company    Company    @relation(fields: [tenantId, companyId], references: [tenantId, id])
@@ -562,4 +583,71 @@ model DocumentSequence {
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, documentType, fiscalYearId])
   @@map("document_sequences")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — Journal (double-entry)
+// ---------------------------------------------------------------------------
+
+model JournalEntry {
+  id             BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt             @map("tenant_id") @db.UnsignedBigInt
+  companyId      BigInt             @map("company_id") @db.UnsignedBigInt
+  branchId       BigInt?            @map("branch_id") @db.UnsignedBigInt
+  entryNo        String?            @map("entry_no") @db.VarChar(50)
+  entryDate      DateTime           @map("entry_date") @db.Date
+  fiscalPeriodId BigInt?            @map("fiscal_period_id") @db.UnsignedBigInt
+  sourceType     String             @map("source_type") @db.VarChar(50)
+  sourceId       BigInt?            @map("source_id") @db.UnsignedBigInt
+  postingKind    JournalPostingKind @default(POST) @map("posting_kind")
+  status         JournalEntryStatus @default(DRAFT)
+  description    String?            @db.VarChar(500)
+  totalDebit     Decimal            @default(0) @map("total_debit") @db.Decimal(18, 3)
+  totalCredit    Decimal            @default(0) @map("total_credit") @db.Decimal(18, 3)
+  reversalOfId   BigInt?            @map("reversal_of_id") @db.UnsignedBigInt
+  postedAt       DateTime?          @map("posted_at") @db.DateTime(3)
+  postedBy       BigInt?            @map("posted_by") @db.UnsignedBigInt
+  createdAt      DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company      Company        @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch       Branch?        @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  fiscalPeriod FiscalPeriod?  @relation(fields: [tenantId, fiscalPeriodId], references: [tenantId, id])
+  reversalOf   JournalEntry?  @relation("EntryReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
+  reversals    JournalEntry[] @relation("EntryReversal")
+  lines        JournalLine[]
+
+  @@unique([tenantId, id])
+  // One POST + one REVERSAL per source document (docs/BUILD_PLAN.md §10.3).
+  // MySQL treats NULL source_id as distinct — drafts set source_id = own id.
+  @@unique([tenantId, sourceType, sourceId, postingKind])
+  @@index([tenantId, companyId, entryDate])
+  @@index([tenantId, status])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id             BigInt            @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt            @map("tenant_id") @db.UnsignedBigInt
+  journalEntryId BigInt            @map("journal_entry_id") @db.UnsignedBigInt
+  lineNo         Int               @map("line_no")
+  accountId      BigInt            @map("account_id") @db.UnsignedBigInt
+  debit          Decimal           @default(0) @db.Decimal(18, 3)
+  credit         Decimal           @default(0) @db.Decimal(18, 3)
+  partyType      JournalPartyType? @map("party_type")
+  partyId        BigInt?           @map("party_id") @db.UnsignedBigInt
+  description    String?           @db.VarChar(500)
+  branchId       BigInt?           @map("branch_id") @db.UnsignedBigInt
+  createdAt      DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+
+  entry   JournalEntry @relation(fields: [tenantId, journalEntryId], references: [tenantId, id], onDelete: Cascade)
+  account Account      @relation(fields: [tenantId, accountId], references: [tenantId, id])
+  tenant  Tenant       @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, journalEntryId, lineNo])
+  @@index([tenantId, accountId])
+  @@index([tenantId, partyType, partyId])
+  @@map("journal_lines")
 }

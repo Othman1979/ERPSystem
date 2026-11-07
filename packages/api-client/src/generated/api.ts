@@ -38,6 +38,12 @@ export interface CreateBranchDto { [key: string]: unknown }
 
 export interface UpdateBranchDto { [key: string]: unknown }
 
+export interface CreateJournalEntryDto { [key: string]: unknown }
+
+export interface ReverseJournalEntryDto { [key: string]: unknown }
+
+export interface CreateOpeningEntryDto { [key: string]: unknown }
+
 export interface UpdateTenantStatusDto { [key: string]: unknown }
 
 export interface ExtendTrialDto { [key: string]: unknown }
@@ -46,6 +52,10 @@ export interface CreateSubscriptionDto { [key: string]: unknown }
 
 export type FiscalControllerListSequencesParams = {
   fiscalYearId: string;
+};
+
+export type JournalControllerListParams = {
+  status: string;
 };
 
 export type AdminControllerListParams = {
@@ -1603,6 +1613,386 @@ export const branchesControllerDeactivate = async (id: string, options?: Paramet
   {
     ...options,
     method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type journalControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type journalControllerListResponseSuccess = (journalControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type journalControllerListResponse = (journalControllerListResponseSuccess)
+
+export const getJournalControllerListUrl = (params: JournalControllerListParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/journal-entries?${stringifiedParams}` : `/api/v1/journal-entries`
+}
+
+export const journalControllerList = async (params: JournalControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerListResponse> => {
+
+  return apiFetch<journalControllerListResponse>(getJournalControllerListUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type journalControllerCreateDraftResponse201 = {
+  data: void
+  status: 201
+}
+
+export type journalControllerCreateDraftResponseSuccess = (journalControllerCreateDraftResponse201) & {
+  headers: Headers;
+};
+;
+
+export type journalControllerCreateDraftResponse = (journalControllerCreateDraftResponseSuccess)
+
+export const getJournalControllerCreateDraftUrl = () => {
+
+
+
+
+  return `/api/v1/journal-entries`
+}
+
+export const journalControllerCreateDraft = async (createJournalEntryDto: CreateJournalEntryDto, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerCreateDraftResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<journalControllerCreateDraftResponse>(getJournalControllerCreateDraftUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createJournalEntryDto)
+  }
+);}
+
+
+
+export type journalControllerGetResponse200 = {
+  data: void
+  status: 200
+}
+
+export type journalControllerGetResponseSuccess = (journalControllerGetResponse200) & {
+  headers: Headers;
+};
+;
+
+export type journalControllerGetResponse = (journalControllerGetResponseSuccess)
+
+export const getJournalControllerGetUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/journal-entries/${id}`
+}
+
+export const journalControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerGetResponse> => {
+
+  return apiFetch<journalControllerGetResponse>(getJournalControllerGetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type journalControllerDeleteDraftResponse200 = {
+  data: void
+  status: 200
+}
+
+export type journalControllerDeleteDraftResponseSuccess = (journalControllerDeleteDraftResponse200) & {
+  headers: Headers;
+};
+;
+
+export type journalControllerDeleteDraftResponse = (journalControllerDeleteDraftResponseSuccess)
+
+export const getJournalControllerDeleteDraftUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/journal-entries/${id}`
+}
+
+export const journalControllerDeleteDraft = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerDeleteDraftResponse> => {
+
+  return apiFetch<journalControllerDeleteDraftResponse>(getJournalControllerDeleteDraftUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type journalControllerPostResponse201 = {
+  data: void
+  status: 201
+}
+
+export type journalControllerPostResponseSuccess = (journalControllerPostResponse201) & {
+  headers: Headers;
+};
+;
+
+export type journalControllerPostResponse = (journalControllerPostResponseSuccess)
+
+export const getJournalControllerPostUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/journal-entries/${id}/post`
+}
+
+export const journalControllerPost = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerPostResponse> => {
+
+  return apiFetch<journalControllerPostResponse>(getJournalControllerPostUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type journalControllerReverseResponse201 = {
+  data: void
+  status: 201
+}
+
+export type journalControllerReverseResponseSuccess = (journalControllerReverseResponse201) & {
+  headers: Headers;
+};
+;
+
+export type journalControllerReverseResponse = (journalControllerReverseResponseSuccess)
+
+export const getJournalControllerReverseUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/journal-entries/${id}/reverse`
+}
+
+export const journalControllerReverse = async (id: string,
+    reverseJournalEntryDto: ReverseJournalEntryDto, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerReverseResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<journalControllerReverseResponse>(getJournalControllerReverseUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reverseJournalEntryDto)
+  }
+);}
+
+
+
+export type journalControllerOpeningResponse201 = {
+  data: void
+  status: 201
+}
+
+export type journalControllerOpeningResponseSuccess = (journalControllerOpeningResponse201) & {
+  headers: Headers;
+};
+;
+
+export type journalControllerOpeningResponse = (journalControllerOpeningResponseSuccess)
+
+export const getJournalControllerOpeningUrl = () => {
+
+
+
+
+  return `/api/v1/journal-entries/opening`
+}
+
+export const journalControllerOpening = async (createOpeningEntryDto: CreateOpeningEntryDto, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerOpeningResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<journalControllerOpeningResponse>(getJournalControllerOpeningUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createOpeningEntryDto)
+  }
+);}
+
+
+
+export type journalControllerTrialBalanceResponse200 = {
+  data: void
+  status: 200
+}
+
+export type journalControllerTrialBalanceResponseSuccess = (journalControllerTrialBalanceResponse200) & {
+  headers: Headers;
+};
+;
+
+export type journalControllerTrialBalanceResponse = (journalControllerTrialBalanceResponseSuccess)
+
+export const getJournalControllerTrialBalanceUrl = () => {
+
+
+
+
+  return `/api/v1/reports/trial-balance`
+}
+
+export const journalControllerTrialBalance = async ( options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerTrialBalanceResponse> => {
+
+  return apiFetch<journalControllerTrialBalanceResponse>(getJournalControllerTrialBalanceUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type journalControllerGeneralLedgerResponse200 = {
+  data: void
+  status: 200
+}
+
+export type journalControllerGeneralLedgerResponseSuccess = (journalControllerGeneralLedgerResponse200) & {
+  headers: Headers;
+};
+;
+
+export type journalControllerGeneralLedgerResponse = (journalControllerGeneralLedgerResponseSuccess)
+
+export const getJournalControllerGeneralLedgerUrl = () => {
+
+
+
+
+  return `/api/v1/reports/general-ledger`
+}
+
+export const journalControllerGeneralLedger = async ( options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerGeneralLedgerResponse> => {
+
+  return apiFetch<journalControllerGeneralLedgerResponse>(getJournalControllerGeneralLedgerUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type journalControllerPartyStatementResponse200 = {
+  data: void
+  status: 200
+}
+
+export type journalControllerPartyStatementResponseSuccess = (journalControllerPartyStatementResponse200) & {
+  headers: Headers;
+};
+;
+
+export type journalControllerPartyStatementResponse = (journalControllerPartyStatementResponseSuccess)
+
+export const getJournalControllerPartyStatementUrl = () => {
+
+
+
+
+  return `/api/v1/reports/party-statement`
+}
+
+export const journalControllerPartyStatement = async ( options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerPartyStatementResponse> => {
+
+  return apiFetch<journalControllerPartyStatementResponse>(getJournalControllerPartyStatementUrl(),
+  {
+    ...options,
+    method: 'GET'
 
 
   }
