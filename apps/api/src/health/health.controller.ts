@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Public } from '../common/decorators/auth.decorators.js';
 import { DomainError } from '../common/errors/domain.error.js';
 import { ErrorCode } from '../common/errors/error-codes.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -9,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
+  @Public()
   @Get('health')
   @ApiOperation({ summary: 'Liveness + database connectivity check' })
   async health(): Promise<{ status: string; db: string; timestamp: string }> {

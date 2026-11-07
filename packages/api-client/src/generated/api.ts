@@ -6,6 +6,33 @@
  * OpenAPI spec version: 0.1.0
  */
 import { apiFetch } from '../runtime';
+export interface RegisterDto { [key: string]: unknown }
+
+export interface LoginDto { [key: string]: unknown }
+
+export interface SwitchTenantDto { [key: string]: unknown }
+
+export interface InviteUserDto { [key: string]: unknown }
+
+export interface UpdateMembershipDto { [key: string]: unknown }
+
+export interface CreateBranchDto { [key: string]: unknown }
+
+export interface UpdateBranchDto { [key: string]: unknown }
+
+export interface UpdateTenantStatusDto { [key: string]: unknown }
+
+export interface ExtendTrialDto { [key: string]: unknown }
+
+export interface CreateSubscriptionDto { [key: string]: unknown }
+
+export type AdminControllerListParams = {
+  status: string;
+  search: string;
+  page: string;
+  pageSize: string;
+};
+
 export type healthControllerHealthResponse200 = {
   data: void
   status: 200
@@ -37,5 +64,850 @@ export const healthControllerHealth = async ( options?: Parameters<typeof apiFet
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export type authControllerRegisterResponse201 = {
+  data: void
+  status: 201
+}
+
+export type authControllerRegisterResponseSuccess = (authControllerRegisterResponse201) & {
+  headers: Headers;
+};
+;
+
+export type authControllerRegisterResponse = (authControllerRegisterResponseSuccess)
+
+export const getAuthControllerRegisterUrl = () => {
+
+
+
+
+  return `/api/v1/auth/register`
+}
+
+export const authControllerRegister = async (registerDto: RegisterDto, options?: Parameters<typeof apiFetch>[1]): Promise<authControllerRegisterResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<authControllerRegisterResponse>(getAuthControllerRegisterUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(registerDto)
+  }
+);}
+
+
+
+export type authControllerLoginResponse200 = {
+  data: void
+  status: 200
+}
+
+export type authControllerLoginResponseSuccess = (authControllerLoginResponse200) & {
+  headers: Headers;
+};
+;
+
+export type authControllerLoginResponse = (authControllerLoginResponseSuccess)
+
+export const getAuthControllerLoginUrl = () => {
+
+
+
+
+  return `/api/v1/auth/login`
+}
+
+export const authControllerLogin = async (loginDto: LoginDto, options?: Parameters<typeof apiFetch>[1]): Promise<authControllerLoginResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<authControllerLoginResponse>(getAuthControllerLoginUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(loginDto)
+  }
+);}
+
+
+
+export type authControllerRefreshResponse200 = {
+  data: void
+  status: 200
+}
+
+export type authControllerRefreshResponseSuccess = (authControllerRefreshResponse200) & {
+  headers: Headers;
+};
+;
+
+export type authControllerRefreshResponse = (authControllerRefreshResponseSuccess)
+
+export const getAuthControllerRefreshUrl = () => {
+
+
+
+
+  return `/api/v1/auth/refresh`
+}
+
+export const authControllerRefresh = async ( options?: Parameters<typeof apiFetch>[1]): Promise<authControllerRefreshResponse> => {
+
+  return apiFetch<authControllerRefreshResponse>(getAuthControllerRefreshUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type authControllerLogoutResponse204 = {
+  data: void
+  status: 204
+}
+
+export type authControllerLogoutResponseSuccess = (authControllerLogoutResponse204) & {
+  headers: Headers;
+};
+;
+
+export type authControllerLogoutResponse = (authControllerLogoutResponseSuccess)
+
+export const getAuthControllerLogoutUrl = () => {
+
+
+
+
+  return `/api/v1/auth/logout`
+}
+
+export const authControllerLogout = async ( options?: Parameters<typeof apiFetch>[1]): Promise<authControllerLogoutResponse> => {
+
+  return apiFetch<authControllerLogoutResponse>(getAuthControllerLogoutUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type meControllerMeResponse200 = {
+  data: void
+  status: 200
+}
+
+export type meControllerMeResponseSuccess = (meControllerMeResponse200) & {
+  headers: Headers;
+};
+;
+
+export type meControllerMeResponse = (meControllerMeResponseSuccess)
+
+export const getMeControllerMeUrl = () => {
+
+
+
+
+  return `/api/v1/me`
+}
+
+export const meControllerMe = async ( options?: Parameters<typeof apiFetch>[1]): Promise<meControllerMeResponse> => {
+
+  return apiFetch<meControllerMeResponse>(getMeControllerMeUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type meControllerTenantsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type meControllerTenantsResponseSuccess = (meControllerTenantsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type meControllerTenantsResponse = (meControllerTenantsResponseSuccess)
+
+export const getMeControllerTenantsUrl = () => {
+
+
+
+
+  return `/api/v1/me/tenants`
+}
+
+export const meControllerTenants = async ( options?: Parameters<typeof apiFetch>[1]): Promise<meControllerTenantsResponse> => {
+
+  return apiFetch<meControllerTenantsResponse>(getMeControllerTenantsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type meControllerSwitchTenantResponse200 = {
+  data: void
+  status: 200
+}
+
+export type meControllerSwitchTenantResponseSuccess = (meControllerSwitchTenantResponse200) & {
+  headers: Headers;
+};
+;
+
+export type meControllerSwitchTenantResponse = (meControllerSwitchTenantResponseSuccess)
+
+export const getMeControllerSwitchTenantUrl = () => {
+
+
+
+
+  return `/api/v1/me/switch-tenant`
+}
+
+export const meControllerSwitchTenant = async (switchTenantDto: SwitchTenantDto, options?: Parameters<typeof apiFetch>[1]): Promise<meControllerSwitchTenantResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<meControllerSwitchTenantResponse>(getMeControllerSwitchTenantUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(switchTenantDto)
+  }
+);}
+
+
+
+export type usersControllerRolesResponse200 = {
+  data: void
+  status: 200
+}
+
+export type usersControllerRolesResponseSuccess = (usersControllerRolesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type usersControllerRolesResponse = (usersControllerRolesResponseSuccess)
+
+export const getUsersControllerRolesUrl = () => {
+
+
+
+
+  return `/api/v1/users/roles`
+}
+
+export const usersControllerRoles = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerRolesResponse> => {
+
+  return apiFetch<usersControllerRolesResponse>(getUsersControllerRolesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type usersControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type usersControllerListResponseSuccess = (usersControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type usersControllerListResponse = (usersControllerListResponseSuccess)
+
+export const getUsersControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/users`
+}
+
+export const usersControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerListResponse> => {
+
+  return apiFetch<usersControllerListResponse>(getUsersControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type usersControllerInviteResponse201 = {
+  data: void
+  status: 201
+}
+
+export type usersControllerInviteResponseSuccess = (usersControllerInviteResponse201) & {
+  headers: Headers;
+};
+;
+
+export type usersControllerInviteResponse = (usersControllerInviteResponseSuccess)
+
+export const getUsersControllerInviteUrl = () => {
+
+
+
+
+  return `/api/v1/users/invite`
+}
+
+export const usersControllerInvite = async (inviteUserDto: InviteUserDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerInviteResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<usersControllerInviteResponse>(getUsersControllerInviteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(inviteUserDto)
+  }
+);}
+
+
+
+export type usersControllerUpdateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type usersControllerUpdateResponseSuccess = (usersControllerUpdateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type usersControllerUpdateResponse = (usersControllerUpdateResponseSuccess)
+
+export const getUsersControllerUpdateUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/users/${membershipId}`
+}
+
+export const usersControllerUpdate = async (membershipId: string,
+    updateMembershipDto: UpdateMembershipDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerUpdateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<usersControllerUpdateResponse>(getUsersControllerUpdateUrl(membershipId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateMembershipDto)
+  }
+);}
+
+
+
+export type usersControllerSuspendResponse200 = {
+  data: void
+  status: 200
+}
+
+export type usersControllerSuspendResponseSuccess = (usersControllerSuspendResponse200) & {
+  headers: Headers;
+};
+;
+
+export type usersControllerSuspendResponse = (usersControllerSuspendResponseSuccess)
+
+export const getUsersControllerSuspendUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/users/${membershipId}`
+}
+
+export const usersControllerSuspend = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerSuspendResponse> => {
+
+  return apiFetch<usersControllerSuspendResponse>(getUsersControllerSuspendUrl(membershipId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type branchesControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type branchesControllerListResponseSuccess = (branchesControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type branchesControllerListResponse = (branchesControllerListResponseSuccess)
+
+export const getBranchesControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/branches`
+}
+
+export const branchesControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerListResponse> => {
+
+  return apiFetch<branchesControllerListResponse>(getBranchesControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type branchesControllerCreateResponse201 = {
+  data: void
+  status: 201
+}
+
+export type branchesControllerCreateResponseSuccess = (branchesControllerCreateResponse201) & {
+  headers: Headers;
+};
+;
+
+export type branchesControllerCreateResponse = (branchesControllerCreateResponseSuccess)
+
+export const getBranchesControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/branches`
+}
+
+export const branchesControllerCreate = async (createBranchDto: CreateBranchDto, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerCreateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<branchesControllerCreateResponse>(getBranchesControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createBranchDto)
+  }
+);}
+
+
+
+export type branchesControllerUpdateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type branchesControllerUpdateResponseSuccess = (branchesControllerUpdateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type branchesControllerUpdateResponse = (branchesControllerUpdateResponseSuccess)
+
+export const getBranchesControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/branches/${id}`
+}
+
+export const branchesControllerUpdate = async (id: string,
+    updateBranchDto: UpdateBranchDto, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerUpdateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<branchesControllerUpdateResponse>(getBranchesControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateBranchDto)
+  }
+);}
+
+
+
+export type branchesControllerDeactivateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type branchesControllerDeactivateResponseSuccess = (branchesControllerDeactivateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type branchesControllerDeactivateResponse = (branchesControllerDeactivateResponseSuccess)
+
+export const getBranchesControllerDeactivateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/branches/${id}`
+}
+
+export const branchesControllerDeactivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerDeactivateResponse> => {
+
+  return apiFetch<branchesControllerDeactivateResponse>(getBranchesControllerDeactivateUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type adminControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type adminControllerListResponseSuccess = (adminControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type adminControllerListResponse = (adminControllerListResponseSuccess)
+
+export const getAdminControllerListUrl = (params: AdminControllerListParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/admin/tenants?${stringifiedParams}` : `/api/v1/admin/tenants`
+}
+
+export const adminControllerList = async (params: AdminControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerListResponse> => {
+
+  return apiFetch<adminControllerListResponse>(getAdminControllerListUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type adminControllerGetResponse200 = {
+  data: void
+  status: 200
+}
+
+export type adminControllerGetResponseSuccess = (adminControllerGetResponse200) & {
+  headers: Headers;
+};
+;
+
+export type adminControllerGetResponse = (adminControllerGetResponseSuccess)
+
+export const getAdminControllerGetUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/admin/tenants/${id}`
+}
+
+export const adminControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerGetResponse> => {
+
+  return apiFetch<adminControllerGetResponse>(getAdminControllerGetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type adminControllerUpdateStatusResponse200 = {
+  data: void
+  status: 200
+}
+
+export type adminControllerUpdateStatusResponseSuccess = (adminControllerUpdateStatusResponse200) & {
+  headers: Headers;
+};
+;
+
+export type adminControllerUpdateStatusResponse = (adminControllerUpdateStatusResponseSuccess)
+
+export const getAdminControllerUpdateStatusUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/admin/tenants/${id}/status`
+}
+
+export const adminControllerUpdateStatus = async (id: string,
+    updateTenantStatusDto: UpdateTenantStatusDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerUpdateStatusResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<adminControllerUpdateStatusResponse>(getAdminControllerUpdateStatusUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateTenantStatusDto)
+  }
+);}
+
+
+
+export type adminControllerExtendTrialResponse201 = {
+  data: void
+  status: 201
+}
+
+export type adminControllerExtendTrialResponseSuccess = (adminControllerExtendTrialResponse201) & {
+  headers: Headers;
+};
+;
+
+export type adminControllerExtendTrialResponse = (adminControllerExtendTrialResponseSuccess)
+
+export const getAdminControllerExtendTrialUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/admin/tenants/${id}/extend-trial`
+}
+
+export const adminControllerExtendTrial = async (id: string,
+    extendTrialDto: ExtendTrialDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerExtendTrialResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<adminControllerExtendTrialResponse>(getAdminControllerExtendTrialUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(extendTrialDto)
+  }
+);}
+
+
+
+export type adminControllerCreateSubscriptionResponse201 = {
+  data: void
+  status: 201
+}
+
+export type adminControllerCreateSubscriptionResponseSuccess = (adminControllerCreateSubscriptionResponse201) & {
+  headers: Headers;
+};
+;
+
+export type adminControllerCreateSubscriptionResponse = (adminControllerCreateSubscriptionResponseSuccess)
+
+export const getAdminControllerCreateSubscriptionUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/admin/tenants/${id}/subscriptions`
+}
+
+export const adminControllerCreateSubscription = async (id: string,
+    createSubscriptionDto: CreateSubscriptionDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerCreateSubscriptionResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<adminControllerCreateSubscriptionResponse>(getAdminControllerCreateSubscriptionUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createSubscriptionDto)
   }
 );}

@@ -4,6 +4,7 @@ import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '../generated/prisma/client.js';
 import mariadb, { type PoolConfig } from 'mariadb';
 import type { Env } from '../common/config/env.validation.js';
+import { tenantScopedPrisma } from './tenant-prisma.js';
 
 function parseDatabaseUrl(url: string): PoolConfig {
   const parsed = new URL(url);
@@ -20,8 +21,11 @@ function parseDatabaseUrl(url: string): PoolConfig {
 /**
  * Prisma 7's generated client uses a generic constructor signature, so
  * `class X extends PrismaClient` loses the instance type under NodeNext.
- * Composition keeps full type safety; tenant/system scoped clients will be
- * built on top of `client` in Phase 1 (docs/BUILD_PLAN.md 5.3).
+ * Composition keeps full type safety.
+ *
+ * `client` is the UNRESTRICTED (system) client. Business modules must use
+ * `forTenant()`; direct `client` usage is reserved for the platform module
+ * and scheduled jobs and must carry a justification comment (BUILD_PLAN §5.3).
  */
 @Injectable()
 export class PrismaService implements OnModuleDestroy {
@@ -31,6 +35,11 @@ export class PrismaService implements OnModuleDestroy {
     const databaseUrl = config.get('DATABASE_URL', { infer: true });
     const pool = mariadb.createPool(parseDatabaseUrl(databaseUrl));
     this.client = new PrismaClient({ adapter: new PrismaMariaDb(pool) });
+  }
+
+  /** Tenant-scoped client: auto-injects tenant_id from arg or CLS context. */
+  forTenant(tenantId?: bigint): PrismaClient {
+    return tenantScopedPrisma(this.client, tenantId);
   }
 
   async onModuleDestroy(): Promise<void> {

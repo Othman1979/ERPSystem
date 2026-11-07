@@ -10,6 +10,7 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.PLAN_LIMIT_EXCEEDED]: HttpStatus.PAYMENT_REQUIRED,
   [ErrorCode.DB_UNAVAILABLE]: HttpStatus.SERVICE_UNAVAILABLE,
   [ErrorCode.IDEMPOTENCY_KEY_REUSED]: HttpStatus.CONFLICT,
+  [ErrorCode.TENANT_READ_ONLY]: HttpStatus.FORBIDDEN,
   [ErrorCode.UNBALANCED_ENTRY]: HttpStatus.BAD_REQUEST,
   [ErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_INSUFFICIENT]: HttpStatus.CONFLICT,

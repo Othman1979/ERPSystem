@@ -6,10 +6,10 @@
  * runtime helpers plus the few hand-written endpoints needed by Phase 0.
  * After generation, re-export the generated modules here.
  */
-import { apiFetch } from './runtime';
+import { apiFetchData } from './runtime';
 
-export { ApiError, apiFetch } from './runtime';
-export type { ApiErrorBody } from './runtime';
+export { ApiError, apiFetch, apiFetchData, getAccessToken, setAccessToken } from './runtime';
+export type { ApiErrorBody, ApiResponse } from './runtime';
 
 // orval-generated client (do not edit src/generated/* by hand)
 export * from './generated/api';
@@ -21,5 +21,5 @@ export interface HealthStatus {
 }
 
 export function getHealth(): Promise<HealthStatus> {
-  return apiFetch<HealthStatus>('/health');
+  return apiFetchData<HealthStatus>('/health');
 }

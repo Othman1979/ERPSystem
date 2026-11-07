@@ -6,9 +6,9 @@ import arEG from 'antd/locale/ar_EG';
 import enUS from 'antd/locale/en_US';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ar';
-import './i18n';
-import { App } from './App';
 import i18n from './i18n';
+import { App } from './App';
+import { AuthProvider } from './auth/AuthContext';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -25,7 +25,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         direction={i18n.language === 'ar' ? 'rtl' : 'ltr'}
       >
         <AntApp>
-          <App />
+          <AuthProvider>
+            <App />
+          </AuthProvider>
         </AntApp>
       </ConfigProvider>
     </QueryClientProvider>

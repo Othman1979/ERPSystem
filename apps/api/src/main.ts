@@ -1,4 +1,5 @@
 import { ValidationPipe } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -20,6 +21,7 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
+  app.use(cookieParser());
   app.use(
     (req: { headers: Record<string, unknown>; requestId?: string }, _res: unknown, next: () => void) => {
       const incoming = req.headers['x-request-id'];

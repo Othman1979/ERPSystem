@@ -1,11 +1,348 @@
-// Phase 0: connection only. Business models arrive in Phases 1-2 per docs/BUILD_PLAN.md.
-// Note (Prisma 7): the connection URL lives in prisma.config.ts, not here.
+// ERP Cloud — Phase 1 schema (platform + tenant isolation).
+// Conventions (docs/BUILD_PLAN.md §6):
+//  - DB columns snake_case via @map/@@map; TS fields camelCase/PascalCase.
+//  - Money DECIMAL(18,3), qty DECIMAL(18,6), ids BIGINT UNSIGNED.
+//  - Tenant tables carry tenant_id + @@unique([tenantId, id]); cross-table
+//    relations inside a tenant use composite FKs [tenantId, xId] -> [tenantId, id].
+//  - Connection URL lives in prisma.config.ts (Prisma 7).
+
 generator client {
-  provider             = "prisma-client"
-  output               = "../src/generated/prisma"
-  importFileExtension  = "js"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  importFileExtension = "js"
 }
 
 datasource db {
   provider = "mysql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+enum CostingMethod {
+  WEIGHTED_AVERAGE
+}
+
+// ---------------------------------------------------------------------------
+// Platform (non-tenant) tables
+// ---------------------------------------------------------------------------
+
+model Plan {
+  id                  BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  code                String   @unique @db.VarChar(50)
+  nameAr              String   @map("name_ar") @db.VarChar(191)
+  nameEn              String?  @map("name_en") @db.VarChar(191)
+  maxUsers            Int      @map("max_users")
+  maxBranches         Int      @map("max_branches")
+  maxWarehouses       Int      @map("max_warehouses")
+  maxInvoicesPerMonth Int      @map("max_invoices_per_month")
+  priceMonthly        Decimal? @map("price_monthly") @db.Decimal(18, 3)
+  priceYearly         Decimal? @map("price_yearly") @db.Decimal(18, 3)
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenants       Tenant[]
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Currency {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  code          String   @unique @db.VarChar(10)
+  nameAr        String   @map("name_ar") @db.VarChar(191)
+  nameEn        String?  @map("name_en") @db.VarChar(191)
+  symbol        String?  @db.VarChar(10)
+  decimalPlaces Int      @default(3) @map("decimal_places")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  companiesAsBase Company[] @relation("CompanyBaseCurrency")
+
+  @@map("currencies")
+}
+
+model Role {
+  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  code        String   @unique @db.VarChar(50)
+  nameAr      String   @map("name_ar") @db.VarChar(191)
+  nameEn      String?  @map("name_en") @db.VarChar(191)
+  description String?  @db.Text
+  isSystem    Boolean  @default(true) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  permissions RolePermission[]
+  memberships TenantMembership[]
+
+  @@map("roles")
+}
+
+model RolePermission {
+  id             BigInt @id @default(autoincrement()) @db.UnsignedBigInt
+  roleId         BigInt @map("role_id") @db.UnsignedBigInt
+  permissionCode String @map("permission_code") @db.VarChar(100)
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionCode])
+  @@index([permissionCode])
+  @@map("role_permissions")
+}
+
+model User {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  email        String    @unique @db.VarChar(191)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  fullName     String    @map("full_name") @db.VarChar(191)
+  locale       String    @default("ar") @db.VarChar(10)
+  isActive     Boolean   @default(true) @map("is_active")
+  isPlatformAdmin Boolean @default(false) @map("is_platform_admin")
+  lastLoginAt  DateTime? @map("last_login_at") @db.DateTime(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  memberships    TenantMembership[]
+  refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  userId      BigInt    @map("user_id") @db.UnsignedBigInt
+  tokenHash   String    @unique @map("token_hash") @db.VarChar(255)
+  familyId    String    @map("family_id") @db.VarChar(64)
+  expiresAt   DateTime  @map("expires_at") @db.DateTime(3)
+  revokedAt   DateTime? @map("revoked_at") @db.DateTime(3)
+  replacedById BigInt?  @map("replaced_by_id") @db.UnsignedBigInt
+  tenantId    BigInt?   @map("tenant_id") @db.UnsignedBigInt
+  userAgent   String?   @map("user_agent") @db.VarChar(512)
+  ip          String?   @db.VarChar(64)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy  RefreshToken?  @relation("TokenRotation", fields: [replacedById], references: [id])
+  replaces    RefreshToken[] @relation("TokenRotation")
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Tenant-scoped tables
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id          BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  name        String       @db.VarChar(191)
+  status      TenantStatus @default(TRIAL)
+  planId      BigInt?      @map("plan_id") @db.UnsignedBigInt
+  trialEndsAt DateTime?    @map("trial_ends_at") @db.DateTime(3)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+
+  plan         Plan?                    @relation(fields: [planId], references: [id])
+  subscriptions Subscription[]
+  companies    Company[]
+  branches     Branch[]
+  memberships  TenantMembership[]
+  auditLogs    AuditLog[]
+  attachments  Attachment[]
+  idempotencyKeys IdempotencyKey[]
+
+  @@map("tenants")
+}
+
+model Subscription {
+  id          BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId    BigInt             @map("tenant_id") @db.UnsignedBigInt
+  planId      BigInt             @map("plan_id") @db.UnsignedBigInt
+  periodStart DateTime           @map("period_start") @db.Date
+  periodEnd   DateTime           @map("period_end") @db.Date
+  status      SubscriptionStatus @default(ACTIVE)
+  amount      Decimal?           @db.Decimal(18, 3)
+  notes       String?            @db.Text
+  createdAt   DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  @@unique([tenantId, id])
+  @@index([tenantId, status])
+  @@map("subscriptions")
+}
+
+model Company {
+  id                   BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId             BigInt        @map("tenant_id") @db.UnsignedBigInt
+  legalNameAr          String        @map("legal_name_ar") @db.VarChar(191)
+  legalNameEn          String?       @map("legal_name_en") @db.VarChar(191)
+  taxNumber            String?       @map("tax_number") @db.VarChar(50)
+  commercialRegistration String?     @map("commercial_registration") @db.VarChar(100)
+  address              String?       @db.VarChar(512)
+  phone                String?       @db.VarChar(50)
+  logoAttachmentId     BigInt?       @map("logo_attachment_id") @db.UnsignedBigInt
+  baseCurrencyId       BigInt?       @map("base_currency_id") @db.UnsignedBigInt
+  timezone             String        @default("Asia/Amman") @db.VarChar(64)
+  costingMethod        CostingMethod @default(WEIGHTED_AVERAGE) @map("costing_method")
+  allowNegativeStock   Boolean       @default(false) @map("allow_negative_stock")
+  pricesIncludeTax     Boolean       @default(false) @map("prices_include_tax")
+  isActive             Boolean       @default(true) @map("is_active")
+  createdAt            DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy            BigInt?       @map("created_by") @db.UnsignedBigInt
+  updatedBy            BigInt?       @map("updated_by") @db.UnsignedBigInt
+
+  tenant         Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  baseCurrency   Currency?  @relation("CompanyBaseCurrency", fields: [baseCurrencyId], references: [id])
+  logoAttachment  Attachment? @relation("CompanyLogo", fields: [tenantId, logoAttachmentId], references: [tenantId, id])
+  branches       Branch[]
+
+  @@unique([tenantId, id])
+  @@map("companies")
+}
+
+model Branch {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId  BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId BigInt   @map("company_id") @db.UnsignedBigInt
+  code      String   @db.VarChar(50)
+  nameAr    String   @map("name_ar") @db.VarChar(191)
+  nameEn    String?  @map("name_en") @db.VarChar(191)
+  address   String?  @db.VarChar(512)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy BigInt?  @map("created_by") @db.UnsignedBigInt
+  updatedBy BigInt?  @map("updated_by") @db.UnsignedBigInt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  memberships TenantMembership[] @relation("MembershipDefaultBranch")
+  membershipBranches MembershipBranch[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@map("branches")
+}
+
+model TenantMembership {
+  id             BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt           @map("tenant_id") @db.UnsignedBigInt
+  userId         BigInt           @map("user_id") @db.UnsignedBigInt
+  roleId         BigInt           @map("role_id") @db.UnsignedBigInt
+  status         MembershipStatus @default(INVITED)
+  defaultBranchId BigInt?         @map("default_branch_id") @db.UnsignedBigInt
+  invitedBy      BigInt?          @map("invited_by") @db.UnsignedBigInt
+  createdAt      DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id])
+  defaultBranch Branch? @relation("MembershipDefaultBranch", fields: [tenantId, defaultBranchId], references: [tenantId, id])
+  allowedBranches MembershipBranch[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, userId])
+  @@map("tenant_memberships")
+}
+
+model MembershipBranch {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt   @map("tenant_id") @db.UnsignedBigInt
+  membershipId BigInt   @map("membership_id") @db.UnsignedBigInt
+  branchId     BigInt   @map("branch_id") @db.UnsignedBigInt
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  membership TenantMembership @relation(fields: [tenantId, membershipId], references: [tenantId, id], onDelete: Cascade)
+  branch     Branch           @relation(fields: [tenantId, branchId], references: [tenantId, id])
+
+  @@unique([tenantId, membershipId, branchId])
+  @@map("membership_branches")
+}
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId   BigInt?  @map("tenant_id") @db.UnsignedBigInt
+  userId     BigInt?  @map("user_id") @db.UnsignedBigInt
+  action     String   @db.VarChar(100)
+  entityType String?  @map("entity_type") @db.VarChar(100)
+  entityId   String?  @map("entity_id") @db.VarChar(64)
+  beforeJson Json?    @map("before_json")
+  afterJson  Json?    @map("after_json")
+  ip         String?  @db.VarChar(64)
+  userAgent  String?  @map("user_agent") @db.VarChar(512)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model Attachment {
+  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId    BigInt   @map("tenant_id") @db.UnsignedBigInt
+  storageKey  String   @map("storage_key") @db.VarChar(512)
+  fileName    String   @map("file_name") @db.VarChar(255)
+  mimeType    String   @map("mime_type") @db.VarChar(127)
+  sizeBytes   BigInt?  @map("size_bytes") @db.UnsignedBigInt
+  uploadedBy  BigInt?  @map("uploaded_by") @db.UnsignedBigInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  companiesLogo Company[] @relation("CompanyLogo")
+
+  @@unique([tenantId, id])
+  @@map("attachments")
+}
+
+model IdempotencyKey {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt   @map("tenant_id") @db.UnsignedBigInt
+  key          String   @db.VarChar(255)
+  endpoint     String   @db.VarChar(255)
+  requestHash  String   @map("request_hash") @db.VarChar(64)
+  status       String   @db.VarChar(20) // IN_PROGRESS | COMPLETED
+  responseJson Json?    @map("response_json")
+  httpStatus   Int?     @map("http_status")
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  expiresAt    DateTime @map("expires_at") @db.DateTime(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@map("idempotency_keys")
 }
