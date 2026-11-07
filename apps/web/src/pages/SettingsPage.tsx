@@ -1,0 +1,266 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Button,
+  Card,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Space,
+  Table,
+  Tabs,
+  Tag,
+  message,
+} from 'antd';
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  ApiError,
+  settingsControllerCreatePaymentMethod,
+  settingsControllerCreateTaxCategory,
+  settingsControllerCreateUnit,
+  settingsControllerListPaymentMethods,
+  settingsControllerListTaxCategories,
+  settingsControllerListUnits,
+  settingsControllerUpdatePaymentMethod,
+  settingsControllerUpdateTaxCategory,
+  settingsControllerUpdateUnit,
+} from '@erp/api-client';
+
+type LookupKind = 'unit' | 'taxCategory' | 'paymentMethod';
+
+interface LookupRow {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn: string | null;
+  isActive: boolean;
+  rate?: string;
+  isDefault?: boolean;
+  einvoiceCode?: string | null;
+}
+
+const LIST_FN = {
+  unit: settingsControllerListUnits,
+  taxCategory: settingsControllerListTaxCategories,
+  paymentMethod: settingsControllerListPaymentMethods,
+} as const;
+const CREATE_FN = {
+  unit: settingsControllerCreateUnit,
+  taxCategory: settingsControllerCreateTaxCategory,
+  paymentMethod: settingsControllerCreatePaymentMethod,
+} as const;
+const UPDATE_FN = {
+  unit: settingsControllerUpdateUnit,
+  taxCategory: settingsControllerUpdateTaxCategory,
+  paymentMethod: settingsControllerUpdatePaymentMethod,
+} as const;
+
+function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<LookupRow | null>(null);
+  const [form] = Form.useForm();
+  const [apiMessage, contextHolder] = message.useMessage();
+  const queryKey = ['settings', kind];
+
+  const { data, isLoading } = useQuery({
+    queryKey,
+    queryFn: () => LIST_FN[kind]().then((r) => r.data as unknown as LookupRow[]),
+  });
+
+  const showError = (err: unknown) =>
+    apiMessage.error(
+      err instanceof ApiError
+        ? t(`errors.${err.code}`, { defaultValue: err.message })
+        : t('errors.INTERNAL'),
+    );
+
+  const save = useMutation({
+    mutationFn: async (v: {
+      code?: string;
+      nameAr: string;
+      nameEn?: string;
+      rate?: number;
+      isDefault?: boolean;
+      einvoiceCode?: string;
+    }) => {
+      const base = {
+        nameAr: v.nameAr,
+        nameEn: v.nameEn || null,
+      };
+      if (editing) {
+        const upd =
+          kind === 'taxCategory'
+            ? { ...base, rate: v.rate?.toString(), isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || null }
+            : base;
+        return UPDATE_FN[kind](editing.id, upd as never);
+      }
+      const create =
+        kind === 'taxCategory'
+          ? { code: v.code!, ...base, rate: v.rate?.toString() ?? '0', isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || undefined }
+          : { code: v.code!, ...base };
+      return CREATE_FN[kind](create as never);
+    },
+    onSuccess: () => {
+      apiMessage.success(t('common.saved'));
+      setModalOpen(false);
+      setEditing(null);
+      form.resetFields();
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onError: showError,
+  });
+
+  const deactivate = useMutation({
+    mutationFn: (id: string) => UPDATE_FN[kind](id, { isActive: false } as never),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey }),
+    onError: showError,
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    form.resetFields();
+    setModalOpen(true);
+  };
+  const openEdit = (row: LookupRow) => {
+    setEditing(row);
+    form.setFieldsValue({
+      nameAr: row.nameAr,
+      nameEn: row.nameEn,
+      rate: row.rate ? Number(row.rate) : undefined,
+      isDefault: row.isDefault,
+      einvoiceCode: row.einvoiceCode,
+    });
+    setModalOpen(true);
+  };
+
+  const isTax = kind === 'taxCategory';
+
+  return (
+    <Card
+      size="small"
+      title={title}
+      extra={
+        <Button size="small" type="primary" onClick={openCreate}>
+          {t('settings.add')}
+        </Button>
+      }
+    >
+      {contextHolder}
+      <Table
+        rowKey="id"
+        size="small"
+        loading={isLoading}
+        dataSource={data ?? []}
+        pagination={false}
+        columns={[
+          { title: t('settings.code'), dataIndex: 'code', width: 110 },
+          { title: t('settings.nameAr'), dataIndex: 'nameAr' },
+          { title: t('settings.nameEn'), dataIndex: 'nameEn' },
+          ...(isTax
+            ? [
+                {
+                  title: t('settings.rate'),
+                  dataIndex: 'rate',
+                  width: 100,
+                  render: (v: string) => v ?? '—',
+                },
+                {
+                  title: t('settings.isDefault'),
+                  dataIndex: 'isDefault',
+                  width: 90,
+                  render: (v: boolean) => (v ? <Tag color="blue">✓</Tag> : '—'),
+                },
+              ]
+            : []),
+          {
+            title: t('common.status'),
+            dataIndex: 'isActive',
+            width: 90,
+            render: (v: boolean) =>
+              v ? (
+                <Tag color="green">{t('common.active')}</Tag>
+              ) : (
+                <Tag>{t('common.inactive')}</Tag>
+              ),
+          },
+          {
+            title: t('common.actions'),
+            width: 150,
+            render: (_: unknown, row: LookupRow) => (
+              <Space>
+                <Button size="small" onClick={() => openEdit(row)}>
+                  {t('common.edit')}
+                </Button>
+                {row.isActive && (
+                  <Button size="small" danger onClick={() => deactivate.mutate(row.id)}>
+                    {t('common.deactivate')}
+                  </Button>
+                )}
+              </Space>
+            ),
+          },
+        ]}
+      />
+      <Modal
+        title={editing ? t('settings.edit') : `${t('settings.add')} — ${title}`}
+        open={modalOpen}
+        onCancel={() => setModalOpen(false)}
+        onOk={() => form.submit()}
+        confirmLoading={save.isPending}
+      >
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
+          {!editing && (
+            <Form.Item name="code" label={t('settings.code')} rules={[{ required: true }]}>
+              <Input maxLength={50} />
+            </Form.Item>
+          )}
+          <Form.Item name="nameAr" label={t('settings.nameAr')} rules={[{ required: true }]}>
+            <Input maxLength={191} />
+          </Form.Item>
+          <Form.Item name="nameEn" label={t('settings.nameEn')}>
+            <Input maxLength={191} />
+          </Form.Item>
+          {isTax && (
+            <>
+              <Form.Item name="rate" label={t('settings.rate')} rules={[{ required: true }]}>
+                <InputNumber min={0} max={100} step={0.0001} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="isDefault" label={t('settings.isDefault')} valuePropName="checked">
+                <input type="checkbox" />
+              </Form.Item>
+              <Form.Item name="einvoiceCode" label={t('settings.einvoiceCode')}>
+                <Input maxLength={50} />
+              </Form.Item>
+            </>
+          )}
+        </Form>
+      </Modal>
+    </Card>
+  );
+}
+
+export function SettingsPage() {
+  const { t } = useTranslation();
+  return (
+    <Card title={t('settings.title')}>
+      <Tabs
+        items={[
+          { key: 'units', label: t('settings.units'), children: <LookupTable kind="unit" title={t('settings.units')} /> },
+          {
+            key: 'tax',
+            label: t('settings.taxCategories'),
+            children: <LookupTable kind="taxCategory" title={t('settings.taxCategories')} />,
+          },
+          {
+            key: 'payments',
+            label: t('settings.paymentMethods'),
+            children: <LookupTable kind="paymentMethod" title={t('settings.paymentMethods')} />,
+          },
+        ]}
+      />
+    </Card>
+  );
+}

@@ -18,6 +18,7 @@ import { AuthModule } from './platform/auth/auth.module.js';
 import { AdminModule } from './platform/admin/admin.module.js';
 import { BranchesModule } from './platform/branches/branches.module.js';
 import { UsersModule } from './platform/users/users.module.js';
+import { AccountingModule } from './platform/accounting/accounting.module.js';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { UsersModule } from './platform/users/users.module.js';
     AuthModule,
     UsersModule,
     BranchesModule,
+    AccountingModule,
     AdminModule,
   ],
   providers: [

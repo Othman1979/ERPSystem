@@ -18,6 +18,14 @@ export const TENANT_MODELS = [
   'AuditLog',
   'Attachment',
   'IdempotencyKey',
+  'Unit',
+  'TaxCategory',
+  'PaymentMethod',
+  'FiscalYear',
+  'FiscalPeriod',
+  'Account',
+  'AccountMapping',
+  'DocumentSequence',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);

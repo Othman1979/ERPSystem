@@ -5,6 +5,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { ChartProvisioningService } from '../accounting/chart-provisioning.service.js';
 import { LoginDto, RegisterDto, SwitchTenantDto } from './dto/auth.dto.js';
 import { PasswordService } from './password.service.js';
 import { TokenService } from './token.service.js';
@@ -23,6 +24,7 @@ export class AuthService {
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
+    private readonly provisioning: ChartProvisioningService,
   ) {}
 
   /**
@@ -101,6 +103,9 @@ export class AuthService {
           notes: 'Trial period',
         },
       });
+
+      // Phase 2: default chart of accounts + mappings + lookup defaults.
+      await this.provisioning.provision(tx, tenant.id, company.id, user.id);
 
       return { user, tenant, company, branch };
     });

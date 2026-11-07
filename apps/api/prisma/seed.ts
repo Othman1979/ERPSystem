@@ -62,6 +62,15 @@ const CURRENCIES = [
   { code: 'EUR', nameAr: 'يورو', nameEn: 'Euro', symbol: '€', decimalPlaces: 2 },
 ];
 
+const COUNTRIES = [
+  { code: 'JO', nameAr: 'الأردن', nameEn: 'Jordan', phoneCode: '+962' },
+  { code: 'SA', nameAr: 'السعودية', nameEn: 'Saudi Arabia', phoneCode: '+966' },
+  { code: 'AE', nameAr: 'الإمارات', nameEn: 'United Arab Emirates', phoneCode: '+971' },
+  { code: 'IQ', nameAr: 'العراق', nameEn: 'Iraq', phoneCode: '+964' },
+  { code: 'EG', nameAr: 'مصر', nameEn: 'Egypt', phoneCode: '+20' },
+  { code: 'US', nameAr: 'الولايات المتحدة', nameEn: 'United States', phoneCode: '+1' },
+];
+
 async function main(): Promise<void> {
   for (const plan of PLANS) {
     await prisma.plan.upsert({
@@ -73,6 +82,14 @@ async function main(): Promise<void> {
 
   for (const c of CURRENCIES) {
     await prisma.currency.upsert({
+      where: { code: c.code },
+      update: c,
+      create: c,
+    });
+  }
+
+  for (const c of COUNTRIES) {
+    await prisma.country.upsert({
       where: { code: c.code },
       update: c,
       create: c,

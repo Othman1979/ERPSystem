@@ -2,8 +2,11 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Card, Layout, Menu, Select, Spin, Typography } from 'antd';
 import {
+  AccountBookOutlined,
+  CalendarOutlined,
   DashboardOutlined,
   LogoutOutlined,
+  SettingOutlined,
   ShopOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
@@ -12,12 +15,15 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { UsersPage } from './pages/UsersPage';
 import { BranchesPage } from './pages/BranchesPage';
+import { AccountsPage } from './pages/AccountsPage';
+import { FiscalPage } from './pages/FiscalPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { HealthPage } from './pages/HealthPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 
 const { Header, Content, Sider } = Layout;
 
-type View = 'dashboard' | 'users' | 'branches' | 'health';
+type View = 'dashboard' | 'users' | 'branches' | 'accounts' | 'fiscal' | 'settings' | 'health';
 
 export function App() {
   const { t } = useTranslation();
@@ -48,6 +54,9 @@ export function App() {
     { key: 'dashboard', icon: <DashboardOutlined />, label: t('nav.dashboard') },
     { key: 'users', icon: <TeamOutlined />, label: t('nav.users') },
     { key: 'branches', icon: <ShopOutlined />, label: t('nav.branches') },
+    { key: 'accounts', icon: <AccountBookOutlined />, label: t('nav.accounts') },
+    { key: 'fiscal', icon: <CalendarOutlined />, label: t('nav.fiscal') },
+    { key: 'settings', icon: <SettingOutlined />, label: t('nav.settings') },
     { key: 'health', icon: <DashboardOutlined />, label: t('nav.health') },
   ];
 
@@ -126,6 +135,9 @@ export function App() {
           )}
           {view === 'users' && <UsersPage />}
           {view === 'branches' && <BranchesPage />}
+          {view === 'accounts' && <AccountsPage />}
+          {view === 'fiscal' && <FiscalPage />}
+          {view === 'settings' && <SettingsPage />}
           {view === 'health' && <HealthPage />}
         </Content>
       </Layout>

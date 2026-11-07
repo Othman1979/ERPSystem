@@ -46,6 +46,31 @@ enum CostingMethod {
   WEIGHTED_AVERAGE
 }
 
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum ControlType {
+  CUSTOMERS
+  SUPPLIERS
+  CASH
+  BANK
+}
+
+enum FiscalStatus {
+  OPEN
+  CLOSED
+}
+
 // ---------------------------------------------------------------------------
 // Platform (non-tenant) tables
 // ---------------------------------------------------------------------------
@@ -115,6 +140,19 @@ model RolePermission {
   @@map("role_permissions")
 }
 
+model Country {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  code      String   @unique @db.VarChar(10)
+  nameAr    String   @map("name_ar") @db.VarChar(191)
+  nameEn    String?  @map("name_en") @db.VarChar(191)
+  phoneCode String?  @map("phone_code") @db.VarChar(10)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("countries")
+}
+
 model User {
   id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
   email        String    @unique @db.VarChar(191)
@@ -177,6 +215,12 @@ model Tenant {
   auditLogs    AuditLog[]
   attachments  Attachment[]
   idempotencyKeys IdempotencyKey[]
+  units        Unit[]
+  taxCategories TaxCategory[]
+  paymentMethods PaymentMethod[]
+  fiscalYears  FiscalYear[]
+  accounts     Account[]
+  documentSequences DocumentSequence[]
 
   @@map("tenants")
 }
@@ -226,6 +270,10 @@ model Company {
   baseCurrency   Currency?  @relation("CompanyBaseCurrency", fields: [baseCurrencyId], references: [id])
   logoAttachment  Attachment? @relation("CompanyLogo", fields: [tenantId, logoAttachmentId], references: [tenantId, id])
   branches       Branch[]
+  fiscalYears    FiscalYear[]
+  accounts       Account[]
+  accountMappings AccountMapping[]
+  documentSequences DocumentSequence[]
 
   @@unique([tenantId, id])
   @@map("companies")
@@ -345,4 +393,173 @@ model IdempotencyKey {
 
   @@unique([tenantId, key])
   @@map("idempotency_keys")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — financial setup & chart of accounts
+// ---------------------------------------------------------------------------
+
+model Unit {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId  BigInt   @map("tenant_id") @db.UnsignedBigInt
+  code      String   @db.VarChar(50)
+  nameAr    String   @map("name_ar") @db.VarChar(191)
+  nameEn    String?  @map("name_en") @db.VarChar(191)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+  @@map("units")
+}
+
+model TaxCategory {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt   @map("tenant_id") @db.UnsignedBigInt
+  code         String   @db.VarChar(50)
+  nameAr       String   @map("name_ar") @db.VarChar(191)
+  nameEn       String?  @map("name_en") @db.VarChar(191)
+  rate         Decimal  @db.Decimal(9, 4)
+  einvoiceCode String?  @map("einvoice_code") @db.VarChar(50)
+  isDefault    Boolean  @default(false) @map("is_default")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+  @@map("tax_categories")
+}
+
+model PaymentMethod {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId  BigInt   @map("tenant_id") @db.UnsignedBigInt
+  code      String   @db.VarChar(50)
+  nameAr    String   @map("name_ar") @db.VarChar(191)
+  nameEn    String?  @map("name_en") @db.VarChar(191)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+  @@map("payment_methods")
+}
+
+model FiscalYear {
+  id        BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId  BigInt       @map("tenant_id") @db.UnsignedBigInt
+  companyId BigInt       @map("company_id") @db.UnsignedBigInt
+  code      String       @db.VarChar(20)
+  startDate DateTime     @map("start_date") @db.Date
+  endDate   DateTime     @map("end_date") @db.Date
+  status    FiscalStatus @default(OPEN)
+  createdAt DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy BigInt?      @map("created_by") @db.UnsignedBigInt
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company  Company         @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  periods  FiscalPeriod[]
+  sequences DocumentSequence[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@map("fiscal_years")
+}
+
+model FiscalPeriod {
+  id           BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt       @map("tenant_id") @db.UnsignedBigInt
+  fiscalYearId BigInt       @map("fiscal_year_id") @db.UnsignedBigInt
+  periodNo     Int          @map("period_no")
+  startDate    DateTime     @map("start_date") @db.Date
+  endDate      DateTime     @map("end_date") @db.Date
+  status       FiscalStatus @default(OPEN)
+  closedAt     DateTime?    @map("closed_at") @db.DateTime(3)
+  closedBy     BigInt?      @map("closed_by") @db.UnsignedBigInt
+  createdAt    DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+
+  fiscalYear FiscalYear @relation(fields: [tenantId, fiscalYearId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, fiscalYearId, periodNo])
+  @@map("fiscal_periods")
+}
+
+model Account {
+  id            BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId      BigInt       @map("tenant_id") @db.UnsignedBigInt
+  companyId     BigInt       @map("company_id") @db.UnsignedBigInt
+  code          String       @db.VarChar(50)
+  nameAr        String       @map("name_ar") @db.VarChar(191)
+  nameEn        String?      @map("name_en") @db.VarChar(191)
+  parentId      BigInt?      @map("parent_id") @db.UnsignedBigInt
+  level         Int
+  accountType   AccountType  @map("account_type")
+  normalBalance NormalBalance @map("normal_balance")
+  isPostable    Boolean      @default(true) @map("is_postable")
+  isControl     Boolean      @default(false) @map("is_control")
+  controlType   ControlType? @map("control_type")
+  isActive      Boolean      @default(true) @map("is_active")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy     BigInt?      @map("created_by") @db.UnsignedBigInt
+  updatedBy     BigInt?      @map("updated_by") @db.UnsignedBigInt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company Company  @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  parent  Account? @relation("AccountTree", fields: [tenantId, companyId, parentId], references: [tenantId, companyId, id])
+  children Account[] @relation("AccountTree")
+  mappings AccountMapping[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, code])
+  @@map("accounts")
+}
+
+model AccountMapping {
+  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId    BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId   BigInt   @map("company_id") @db.UnsignedBigInt
+  mappingKey  String   @map("mapping_key") @db.VarChar(100)
+  accountId   BigInt   @map("account_id") @db.UnsignedBigInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  account Account @relation(fields: [tenantId, companyId, accountId], references: [tenantId, companyId, id])
+
+  @@unique([tenantId, companyId, mappingKey])
+  @@map("account_mappings")
+}
+
+model DocumentSequence {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId      BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId     BigInt   @map("company_id") @db.UnsignedBigInt
+  documentType  String   @map("document_type") @db.VarChar(50)
+  fiscalYearId  BigInt   @map("fiscal_year_id") @db.UnsignedBigInt
+  prefix        String   @db.VarChar(20)
+  nextNumber    Int      @default(1) @map("next_number")
+  padding       Int      @default(6)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company    Company    @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  fiscalYear FiscalYear @relation(fields: [tenantId, fiscalYearId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, documentType, fiscalYearId])
+  @@map("document_sequences")
 }

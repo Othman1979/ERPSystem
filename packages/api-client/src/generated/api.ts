@@ -12,6 +12,24 @@ export interface LoginDto { [key: string]: unknown }
 
 export interface SwitchTenantDto { [key: string]: unknown }
 
+export interface CreateAccountDto { [key: string]: unknown }
+
+export interface UpdateAccountDto { [key: string]: unknown }
+
+export interface UpsertMappingDto { [key: string]: unknown }
+
+export interface BulkMappingsDto { [key: string]: unknown }
+
+export interface CreateFiscalYearDto { [key: string]: unknown }
+
+export interface CreateUnitDto { [key: string]: unknown }
+
+export interface UpdateLookupDto { [key: string]: unknown }
+
+export interface CreateTaxCategoryDto { [key: string]: unknown }
+
+export interface UpdateTaxCategoryDto { [key: string]: unknown }
+
 export interface InviteUserDto { [key: string]: unknown }
 
 export interface UpdateMembershipDto { [key: string]: unknown }
@@ -25,6 +43,10 @@ export interface UpdateTenantStatusDto { [key: string]: unknown }
 export interface ExtendTrialDto { [key: string]: unknown }
 
 export interface CreateSubscriptionDto { [key: string]: unknown }
+
+export type FiscalControllerListSequencesParams = {
+  fiscalYearId: string;
+};
 
 export type AdminControllerListParams = {
   status: string;
@@ -337,6 +359,897 @@ return apiFetch<meControllerSwitchTenantResponse>(getMeControllerSwitchTenantUrl
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(switchTenantDto)
+  }
+);}
+
+
+
+export type accountingControllerListAccountsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type accountingControllerListAccountsResponseSuccess = (accountingControllerListAccountsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type accountingControllerListAccountsResponse = (accountingControllerListAccountsResponseSuccess)
+
+export const getAccountingControllerListAccountsUrl = () => {
+
+
+
+
+  return `/api/v1/accounts`
+}
+
+export const accountingControllerListAccounts = async ( options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerListAccountsResponse> => {
+
+  return apiFetch<accountingControllerListAccountsResponse>(getAccountingControllerListAccountsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type accountingControllerCreateAccountResponse201 = {
+  data: void
+  status: 201
+}
+
+export type accountingControllerCreateAccountResponseSuccess = (accountingControllerCreateAccountResponse201) & {
+  headers: Headers;
+};
+;
+
+export type accountingControllerCreateAccountResponse = (accountingControllerCreateAccountResponseSuccess)
+
+export const getAccountingControllerCreateAccountUrl = () => {
+
+
+
+
+  return `/api/v1/accounts`
+}
+
+export const accountingControllerCreateAccount = async (createAccountDto: CreateAccountDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerCreateAccountResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<accountingControllerCreateAccountResponse>(getAccountingControllerCreateAccountUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createAccountDto)
+  }
+);}
+
+
+
+export type accountingControllerUpdateAccountResponse200 = {
+  data: void
+  status: 200
+}
+
+export type accountingControllerUpdateAccountResponseSuccess = (accountingControllerUpdateAccountResponse200) & {
+  headers: Headers;
+};
+;
+
+export type accountingControllerUpdateAccountResponse = (accountingControllerUpdateAccountResponseSuccess)
+
+export const getAccountingControllerUpdateAccountUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/accounts/${id}`
+}
+
+export const accountingControllerUpdateAccount = async (id: string,
+    updateAccountDto: UpdateAccountDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerUpdateAccountResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<accountingControllerUpdateAccountResponse>(getAccountingControllerUpdateAccountUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateAccountDto)
+  }
+);}
+
+
+
+export type accountingControllerListMappingsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type accountingControllerListMappingsResponseSuccess = (accountingControllerListMappingsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type accountingControllerListMappingsResponse = (accountingControllerListMappingsResponseSuccess)
+
+export const getAccountingControllerListMappingsUrl = () => {
+
+
+
+
+  return `/api/v1/account-mappings`
+}
+
+export const accountingControllerListMappings = async ( options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerListMappingsResponse> => {
+
+  return apiFetch<accountingControllerListMappingsResponse>(getAccountingControllerListMappingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type accountingControllerUpsertMappingResponse201 = {
+  data: void
+  status: 201
+}
+
+export type accountingControllerUpsertMappingResponseSuccess = (accountingControllerUpsertMappingResponse201) & {
+  headers: Headers;
+};
+;
+
+export type accountingControllerUpsertMappingResponse = (accountingControllerUpsertMappingResponseSuccess)
+
+export const getAccountingControllerUpsertMappingUrl = () => {
+
+
+
+
+  return `/api/v1/account-mappings`
+}
+
+export const accountingControllerUpsertMapping = async (upsertMappingDto: UpsertMappingDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerUpsertMappingResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<accountingControllerUpsertMappingResponse>(getAccountingControllerUpsertMappingUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(upsertMappingDto)
+  }
+);}
+
+
+
+export type accountingControllerBulkMappingsResponse201 = {
+  data: void
+  status: 201
+}
+
+export type accountingControllerBulkMappingsResponseSuccess = (accountingControllerBulkMappingsResponse201) & {
+  headers: Headers;
+};
+;
+
+export type accountingControllerBulkMappingsResponse = (accountingControllerBulkMappingsResponseSuccess)
+
+export const getAccountingControllerBulkMappingsUrl = () => {
+
+
+
+
+  return `/api/v1/account-mappings/bulk`
+}
+
+export const accountingControllerBulkMappings = async (bulkMappingsDto: BulkMappingsDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerBulkMappingsResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<accountingControllerBulkMappingsResponse>(getAccountingControllerBulkMappingsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(bulkMappingsDto)
+  }
+);}
+
+
+
+export type accountingControllerProvisionResponse201 = {
+  data: void
+  status: 201
+}
+
+export type accountingControllerProvisionResponseSuccess = (accountingControllerProvisionResponse201) & {
+  headers: Headers;
+};
+;
+
+export type accountingControllerProvisionResponse = (accountingControllerProvisionResponseSuccess)
+
+export const getAccountingControllerProvisionUrl = () => {
+
+
+
+
+  return `/api/v1/accounting/setup/provision`
+}
+
+export const accountingControllerProvision = async ( options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerProvisionResponse> => {
+
+  return apiFetch<accountingControllerProvisionResponse>(getAccountingControllerProvisionUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type fiscalControllerListYearsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type fiscalControllerListYearsResponseSuccess = (fiscalControllerListYearsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type fiscalControllerListYearsResponse = (fiscalControllerListYearsResponseSuccess)
+
+export const getFiscalControllerListYearsUrl = () => {
+
+
+
+
+  return `/api/v1/fiscal-years`
+}
+
+export const fiscalControllerListYears = async ( options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerListYearsResponse> => {
+
+  return apiFetch<fiscalControllerListYearsResponse>(getFiscalControllerListYearsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type fiscalControllerCreateYearResponse201 = {
+  data: void
+  status: 201
+}
+
+export type fiscalControllerCreateYearResponseSuccess = (fiscalControllerCreateYearResponse201) & {
+  headers: Headers;
+};
+;
+
+export type fiscalControllerCreateYearResponse = (fiscalControllerCreateYearResponseSuccess)
+
+export const getFiscalControllerCreateYearUrl = () => {
+
+
+
+
+  return `/api/v1/fiscal-years`
+}
+
+export const fiscalControllerCreateYear = async (createFiscalYearDto: CreateFiscalYearDto, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerCreateYearResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<fiscalControllerCreateYearResponse>(getFiscalControllerCreateYearUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createFiscalYearDto)
+  }
+);}
+
+
+
+export type fiscalControllerGetYearResponse200 = {
+  data: void
+  status: 200
+}
+
+export type fiscalControllerGetYearResponseSuccess = (fiscalControllerGetYearResponse200) & {
+  headers: Headers;
+};
+;
+
+export type fiscalControllerGetYearResponse = (fiscalControllerGetYearResponseSuccess)
+
+export const getFiscalControllerGetYearUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/fiscal-years/${id}`
+}
+
+export const fiscalControllerGetYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerGetYearResponse> => {
+
+  return apiFetch<fiscalControllerGetYearResponse>(getFiscalControllerGetYearUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type fiscalControllerClosePeriodResponse201 = {
+  data: void
+  status: 201
+}
+
+export type fiscalControllerClosePeriodResponseSuccess = (fiscalControllerClosePeriodResponse201) & {
+  headers: Headers;
+};
+;
+
+export type fiscalControllerClosePeriodResponse = (fiscalControllerClosePeriodResponseSuccess)
+
+export const getFiscalControllerClosePeriodUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/fiscal-periods/${id}/close`
+}
+
+export const fiscalControllerClosePeriod = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerClosePeriodResponse> => {
+
+  return apiFetch<fiscalControllerClosePeriodResponse>(getFiscalControllerClosePeriodUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type fiscalControllerOpenPeriodResponse201 = {
+  data: void
+  status: 201
+}
+
+export type fiscalControllerOpenPeriodResponseSuccess = (fiscalControllerOpenPeriodResponse201) & {
+  headers: Headers;
+};
+;
+
+export type fiscalControllerOpenPeriodResponse = (fiscalControllerOpenPeriodResponseSuccess)
+
+export const getFiscalControllerOpenPeriodUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/fiscal-periods/${id}/open`
+}
+
+export const fiscalControllerOpenPeriod = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerOpenPeriodResponse> => {
+
+  return apiFetch<fiscalControllerOpenPeriodResponse>(getFiscalControllerOpenPeriodUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type fiscalControllerListSequencesResponse200 = {
+  data: void
+  status: 200
+}
+
+export type fiscalControllerListSequencesResponseSuccess = (fiscalControllerListSequencesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type fiscalControllerListSequencesResponse = (fiscalControllerListSequencesResponseSuccess)
+
+export const getFiscalControllerListSequencesUrl = (params: FiscalControllerListSequencesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/document-sequences?${stringifiedParams}` : `/api/v1/document-sequences`
+}
+
+export const fiscalControllerListSequences = async (params: FiscalControllerListSequencesParams, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerListSequencesResponse> => {
+
+  return apiFetch<fiscalControllerListSequencesResponse>(getFiscalControllerListSequencesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type settingsControllerListUnitsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type settingsControllerListUnitsResponseSuccess = (settingsControllerListUnitsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type settingsControllerListUnitsResponse = (settingsControllerListUnitsResponseSuccess)
+
+export const getSettingsControllerListUnitsUrl = () => {
+
+
+
+
+  return `/api/v1/units`
+}
+
+export const settingsControllerListUnits = async ( options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerListUnitsResponse> => {
+
+  return apiFetch<settingsControllerListUnitsResponse>(getSettingsControllerListUnitsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type settingsControllerCreateUnitResponse201 = {
+  data: void
+  status: 201
+}
+
+export type settingsControllerCreateUnitResponseSuccess = (settingsControllerCreateUnitResponse201) & {
+  headers: Headers;
+};
+;
+
+export type settingsControllerCreateUnitResponse = (settingsControllerCreateUnitResponseSuccess)
+
+export const getSettingsControllerCreateUnitUrl = () => {
+
+
+
+
+  return `/api/v1/units`
+}
+
+export const settingsControllerCreateUnit = async (createUnitDto: CreateUnitDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerCreateUnitResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<settingsControllerCreateUnitResponse>(getSettingsControllerCreateUnitUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createUnitDto)
+  }
+);}
+
+
+
+export type settingsControllerUpdateUnitResponse200 = {
+  data: void
+  status: 200
+}
+
+export type settingsControllerUpdateUnitResponseSuccess = (settingsControllerUpdateUnitResponse200) & {
+  headers: Headers;
+};
+;
+
+export type settingsControllerUpdateUnitResponse = (settingsControllerUpdateUnitResponseSuccess)
+
+export const getSettingsControllerUpdateUnitUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/units/${id}`
+}
+
+export const settingsControllerUpdateUnit = async (id: string,
+    updateLookupDto: UpdateLookupDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerUpdateUnitResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<settingsControllerUpdateUnitResponse>(getSettingsControllerUpdateUnitUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateLookupDto)
+  }
+);}
+
+
+
+export type settingsControllerListTaxCategoriesResponse200 = {
+  data: void
+  status: 200
+}
+
+export type settingsControllerListTaxCategoriesResponseSuccess = (settingsControllerListTaxCategoriesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type settingsControllerListTaxCategoriesResponse = (settingsControllerListTaxCategoriesResponseSuccess)
+
+export const getSettingsControllerListTaxCategoriesUrl = () => {
+
+
+
+
+  return `/api/v1/tax-categories`
+}
+
+export const settingsControllerListTaxCategories = async ( options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerListTaxCategoriesResponse> => {
+
+  return apiFetch<settingsControllerListTaxCategoriesResponse>(getSettingsControllerListTaxCategoriesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type settingsControllerCreateTaxCategoryResponse201 = {
+  data: void
+  status: 201
+}
+
+export type settingsControllerCreateTaxCategoryResponseSuccess = (settingsControllerCreateTaxCategoryResponse201) & {
+  headers: Headers;
+};
+;
+
+export type settingsControllerCreateTaxCategoryResponse = (settingsControllerCreateTaxCategoryResponseSuccess)
+
+export const getSettingsControllerCreateTaxCategoryUrl = () => {
+
+
+
+
+  return `/api/v1/tax-categories`
+}
+
+export const settingsControllerCreateTaxCategory = async (createTaxCategoryDto: CreateTaxCategoryDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerCreateTaxCategoryResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<settingsControllerCreateTaxCategoryResponse>(getSettingsControllerCreateTaxCategoryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createTaxCategoryDto)
+  }
+);}
+
+
+
+export type settingsControllerUpdateTaxCategoryResponse200 = {
+  data: void
+  status: 200
+}
+
+export type settingsControllerUpdateTaxCategoryResponseSuccess = (settingsControllerUpdateTaxCategoryResponse200) & {
+  headers: Headers;
+};
+;
+
+export type settingsControllerUpdateTaxCategoryResponse = (settingsControllerUpdateTaxCategoryResponseSuccess)
+
+export const getSettingsControllerUpdateTaxCategoryUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/tax-categories/${id}`
+}
+
+export const settingsControllerUpdateTaxCategory = async (id: string,
+    updateTaxCategoryDto: UpdateTaxCategoryDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerUpdateTaxCategoryResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<settingsControllerUpdateTaxCategoryResponse>(getSettingsControllerUpdateTaxCategoryUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateTaxCategoryDto)
+  }
+);}
+
+
+
+export type settingsControllerListPaymentMethodsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type settingsControllerListPaymentMethodsResponseSuccess = (settingsControllerListPaymentMethodsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type settingsControllerListPaymentMethodsResponse = (settingsControllerListPaymentMethodsResponseSuccess)
+
+export const getSettingsControllerListPaymentMethodsUrl = () => {
+
+
+
+
+  return `/api/v1/payment-methods`
+}
+
+export const settingsControllerListPaymentMethods = async ( options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerListPaymentMethodsResponse> => {
+
+  return apiFetch<settingsControllerListPaymentMethodsResponse>(getSettingsControllerListPaymentMethodsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type settingsControllerCreatePaymentMethodResponse201 = {
+  data: void
+  status: 201
+}
+
+export type settingsControllerCreatePaymentMethodResponseSuccess = (settingsControllerCreatePaymentMethodResponse201) & {
+  headers: Headers;
+};
+;
+
+export type settingsControllerCreatePaymentMethodResponse = (settingsControllerCreatePaymentMethodResponseSuccess)
+
+export const getSettingsControllerCreatePaymentMethodUrl = () => {
+
+
+
+
+  return `/api/v1/payment-methods`
+}
+
+export const settingsControllerCreatePaymentMethod = async (createUnitDto: CreateUnitDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerCreatePaymentMethodResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<settingsControllerCreatePaymentMethodResponse>(getSettingsControllerCreatePaymentMethodUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createUnitDto)
+  }
+);}
+
+
+
+export type settingsControllerUpdatePaymentMethodResponse200 = {
+  data: void
+  status: 200
+}
+
+export type settingsControllerUpdatePaymentMethodResponseSuccess = (settingsControllerUpdatePaymentMethodResponse200) & {
+  headers: Headers;
+};
+;
+
+export type settingsControllerUpdatePaymentMethodResponse = (settingsControllerUpdatePaymentMethodResponseSuccess)
+
+export const getSettingsControllerUpdatePaymentMethodUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payment-methods/${id}`
+}
+
+export const settingsControllerUpdatePaymentMethod = async (id: string,
+    updateLookupDto: UpdateLookupDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerUpdatePaymentMethodResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<settingsControllerUpdatePaymentMethodResponse>(getSettingsControllerUpdatePaymentMethodUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateLookupDto)
   }
 );}
 
