@@ -1,0 +1,20 @@
+{
+  "name": "erp-system",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.18.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "pnpm -r run lint",
+    "api-client:generate": "pnpm --filter @erp/api-client generate"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2"
+  }
+}

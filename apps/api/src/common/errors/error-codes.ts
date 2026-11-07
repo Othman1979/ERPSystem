@@ -1,0 +1,20 @@
+/**
+ * Canonical API error codes. Add new codes here and translate them in the web app
+ * (ar + en) per docs/BUILD_PLAN.md section 15.
+ */
+export enum ErrorCode {
+  VALIDATION = 'VALIDATION',
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  FORBIDDEN = 'FORBIDDEN',
+  NOT_FOUND = 'NOT_FOUND',
+  CONFLICT = 'CONFLICT',
+  PLAN_LIMIT_EXCEEDED = 'PLAN_LIMIT_EXCEEDED',
+  DB_UNAVAILABLE = 'DB_UNAVAILABLE',
+  IDEMPOTENCY_KEY_REUSED = 'IDEMPOTENCY_KEY_REUSED',
+  // Accounting & inventory codes (used from Phase 3+)
+  UNBALANCED_ENTRY = 'UNBALANCED_ENTRY',
+  PERIOD_CLOSED = 'PERIOD_CLOSED',
+  STOCK_INSUFFICIENT = 'STOCK_INSUFFICIENT',
+  BACKDATED_STOCK_POSTING = 'BACKDATED_STOCK_POSTING',
+  INTERNAL = 'INTERNAL',
+}

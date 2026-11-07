@@ -1,0 +1,11 @@
+// Phase 0: connection only. Business models arrive in Phases 1-2 per docs/BUILD_PLAN.md.
+// Note (Prisma 7): the connection URL lives in prisma.config.ts, not here.
+generator client {
+  provider             = "prisma-client"
+  output               = "../src/generated/prisma"
+  importFileExtension  = "js"
+}
+
+datasource db {
+  provider = "mysql"
+}
