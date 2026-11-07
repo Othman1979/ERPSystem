@@ -12,6 +12,7 @@
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
     "prisma": "prisma",
     "seed": "tsx prisma/seed.ts",
+    "demo:seed": "tsx scripts/demo-seed.mts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
