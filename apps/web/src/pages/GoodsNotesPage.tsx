@@ -221,7 +221,7 @@ export function GoodsNotesSection({
       } as never);
       const id = (res as { data?: { id: string } }).data?.id;
       if (andPost && id) {
-        await goodsNotesControllerPost(id, idemHeaders());
+        await goodsNotesControllerPost(id, { headers: idemHeaders() });
       }
       return id;
     },
@@ -238,7 +238,7 @@ export function GoodsNotesSection({
   });
 
   const post = useMutation({
-    mutationFn: (id: string) => goodsNotesControllerPost(id, idemHeaders()),
+    mutationFn: (id: string) => goodsNotesControllerPost(id, { headers: idemHeaders() }),
     onSuccess: () => {
       apiMessage.success(t('common.done'));
       invalidate();

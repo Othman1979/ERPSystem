@@ -289,7 +289,7 @@ function PurchaseInvoicesTab() {
     );
 
   const post = useMutation({
-    mutationFn: (id: string) => purchasesControllerPostInvoice(id, idemHeaders()),
+    mutationFn: (id: string) => purchasesControllerPostInvoice(id, { headers: idemHeaders() }),
     onSuccess: () => {
       apiMessage.success(t('common.done'));
       invalidate();
@@ -820,7 +820,7 @@ function PurchaseReturnsTab() {
     );
 
   const post = useMutation({
-    mutationFn: (id: string) => purchasesControllerPostReturn(id, idemHeaders()),
+    mutationFn: (id: string) => purchasesControllerPostReturn(id, { headers: idemHeaders() }),
     onSuccess: () => {
       apiMessage.success(t('common.done'));
       invalidate();
@@ -1039,7 +1039,7 @@ function PurchaseReturnModal({
       const created = await create.mutateAsync();
       const id = (created as { data?: { id: string } }).data?.id;
       if (!id) throw new Error('no id');
-      await purchasesControllerPostReturn(id, idemHeaders());
+      await purchasesControllerPostReturn(id, { headers: idemHeaders() });
     },
     onSuccess: () => {
       apiMessage.success(t('common.done'));
