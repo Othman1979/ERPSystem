@@ -14,7 +14,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   emptyItemLine,
@@ -67,12 +67,26 @@ export function GoodsNotesPage() {
   return <GoodsNotesSection />;
 }
 
-export function GoodsNotesSection() {
+export function GoodsNotesSection({
+  requestVoucher,
+  onVoucherHandled,
+}: {
+  requestVoucher?: 'GRN' | 'GIN' | null;
+  onVoucherHandled?: () => void;
+} = {}) {
   const { t } = useTranslation();
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
   const [modalOpen, setModalOpen] = useState(false);
   const [defaultType, setDefaultType] = useState<'GRN' | 'GIN'>('GRN');
   const [viewId, setViewId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (requestVoucher) {
+      setDefaultType(requestVoucher);
+      setModalOpen(true);
+      onVoucherHandled?.();
+    }
+  }, [requestVoucher, onVoucherHandled]);
   const [apiMessage, contextHolder] = message.useMessage();
   const queryClient = useQueryClient();
 

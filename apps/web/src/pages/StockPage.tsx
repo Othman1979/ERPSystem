@@ -996,15 +996,44 @@ function ValuationTab() {
 
 export function StockPage() {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState('balances');
+  const [voucherRequest, setVoucherRequest] = useState<'GRN' | 'GIN' | null>(null);
+
+  const openVoucher = (type: 'GRN' | 'GIN') => {
+    setActiveTab('vouchers');
+    setVoucherRequest(type);
+  };
+
   return (
-    <Card title={t('stock.title')}>
+    <Card
+      title={t('stock.title')}
+      extra={
+        <Space>
+          <Button onClick={() => openVoucher('GIN')}>{t('goods.exitVoucher')}</Button>
+          <Button type="primary" onClick={() => openVoucher('GRN')}>
+            {t('goods.entryVoucher')}
+          </Button>
+        </Space>
+      }
+    >
       <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
         items={[
           { key: 'balances', label: t('stock.balances'), children: <BalancesTab /> },
           { key: 'adjustments', label: t('stock.adjustments'), children: <AdjustmentsTab /> },
           { key: 'transfers', label: t('stock.transfers'), children: <TransfersTab /> },
           { key: 'counts', label: t('stock.counts'), children: <CountsTab /> },
-          { key: 'vouchers', label: t('stock.vouchers'), children: <GoodsNotesSection /> },
+          {
+            key: 'vouchers',
+            label: t('stock.vouchers'),
+            children: (
+              <GoodsNotesSection
+                requestVoucher={voucherRequest}
+                onVoucherHandled={() => setVoucherRequest(null)}
+              />
+            ),
+          },
           { key: 'movements', label: t('stock.movements'), children: <MovementsTab /> },
           { key: 'valuation', label: t('stock.valuation'), children: <ValuationTab /> },
         ]}
