@@ -83,11 +83,17 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
   const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     if (isSelectDropdownOpen()) {
-      // Enter inside an open dropdown picks the highlighted option and closes
-      // it; once closed, continue to the next cell.
-      setTimeout(() => {
-        if (!isSelectDropdownOpen()) advance(row, col);
-      }, 80);
+      // Enter inside an open dropdown picks the highlighted option; antd keeps
+      // the dropdown visible during its close animation, so poll until it is
+      // really gone, then continue to the next cell.
+      const tryAdvance = (attemptsLeft: number) => {
+        if (!isSelectDropdownOpen()) {
+          advance(row, col);
+        } else if (attemptsLeft > 0) {
+          setTimeout(() => tryAdvance(attemptsLeft - 1), 60);
+        }
+      };
+      tryAdvance(8);
       return;
     }
     e.preventDefault();
