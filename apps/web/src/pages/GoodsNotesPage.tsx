@@ -1,11 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusOutlined } from '@ant-design/icons';
+import {
+  ArrowLeftOutlined,
+  ArrowRightOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  SaveOutlined,
+} from '@ant-design/icons';
 import {
   Button,
   DatePicker,
-  Descriptions,
+  Dropdown,
   Input,
-  Modal,
+  Popconfirm,
   Select,
   Space,
   Table,
@@ -31,6 +37,7 @@ import {
   goodsNotesControllerPost,
   warehousesControllerList,
 } from '@erp/api-client';
+import i18n from '../i18n';
 import { idemHeaders } from '../idempotency';
 
 interface GoodsNote {
@@ -40,13 +47,13 @@ interface GoodsNote {
   noteType: 'GRN' | 'GIN';
   status: 'DRAFT' | 'POSTED';
   description?: string | null;
-  warehouse?: { code: string; nameAr: string };
+  warehouse?: { code: string; nameAr: string } | null;
   lines?: {
     id: string;
     lineNo: number;
     qty: string;
     unitCost?: string | null;
-    item?: { code: string; nameAr: string };
+    item?: { code: string; nameAr: string } | null;
   }[];
   journalEntry?: { entryNo: string | null } | null;
 }
@@ -63,6 +70,20 @@ interface Warehouse {
   nameAr: string;
 }
 
+const NOTE_TYPES = ['GRN', 'GIN'] as const;
+type NoteType = (typeof NOTE_TYPES)[number];
+
+const TYPE_LABEL: Record<NoteType, string> = {
+  GRN: 'goods.entryVoucher',
+  GIN: 'goods.exitVoucher',
+};
+const TYPE_TAG_COLOR: Record<NoteType, string> = { GRN: 'blue', GIN: 'orange' };
+
+function TypeTag({ type }: { type: NoteType }) {
+  const { t } = useTranslation();
+  return <Tag color={TYPE_TAG_COLOR[type]}>{t(TYPE_LABEL[type])}</Tag>;
+}
+
 export function GoodsNotesPage() {
   return <GoodsNotesSection />;
 }
@@ -71,24 +92,22 @@ export function GoodsNotesSection({
   requestVoucher,
   onVoucherHandled,
 }: {
-  requestVoucher?: 'GRN' | 'GIN' | null;
+  requestVoucher?: NoteType | null;
   onVoucherHandled?: () => void;
 } = {}) {
   const { t } = useTranslation();
-  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [defaultType, setDefaultType] = useState<'GRN' | 'GIN'>('GRN');
-  const [viewId, setViewId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (requestVoucher) {
-      setDefaultType(requestVoucher);
-      setModalOpen(true);
-      onVoucherHandled?.();
-    }
-  }, [requestVoucher, onVoucherHandled]);
-  const [apiMessage, contextHolder] = message.useMessage();
   const queryClient = useQueryClient();
+  const [apiMessage, contextHolder] = message.useMessage();
+  const [screen, setScreen] = useState<'list' | 'entry'>('list');
+  const [entryId, setEntryId] = useState<string | null>(null); // null → new voucher
+  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+
+  // ---- new-voucher form state ----
+  const [newType, setNewType] = useState<NoteType>('GRN');
+  const [newDate, setNewDate] = useState<Dayjs>(dayjs());
+  const [newWarehouseId, setNewWarehouseId] = useState<string | undefined>();
+  const [newDescription, setNewDescription] = useState('');
+  const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1), emptyItemLine(2)]);
 
   const { data: notes, isLoading } = useQuery({
     queryKey: ['goods-notes', typeFilter],
@@ -96,233 +115,26 @@ export function GoodsNotesSection({
       goodsNotesControllerList({ status: '', noteType: typeFilter ?? '' }).then(
         (r) => r.data as unknown as GoodsNote[],
       ),
+    enabled: screen === 'list',
   });
-  const { data: view } = useQuery({
-    queryKey: ['goods-note', viewId],
-    queryFn: () => goodsNotesControllerGet(viewId!).then((r) => r.data as unknown as GoodsNote),
-    enabled: !!viewId,
+  const { data: detail, isLoading: detailLoading } = useQuery({
+    queryKey: ['goods-note', entryId],
+    queryFn: () => goodsNotesControllerGet(entryId!).then((r) => r.data as unknown as GoodsNote),
+    enabled: screen === 'entry' && !!entryId,
   });
-
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ['goods-notes'] });
-    void queryClient.invalidateQueries({ queryKey: ['stock'] });
-  };
-  const onError = (err: unknown) =>
-    apiMessage.error(
-      err instanceof ApiError
-        ? t(`errors.${err.code}`, { defaultValue: err.message })
-        : t('errors.INTERNAL'),
-    );
-
-  const post = useMutation({
-    mutationFn: (id: string) => goodsNotesControllerPost(id, idemHeaders()),
-    onSuccess: () => {
-      apiMessage.success(t('common.done'));
-      invalidate();
-    },
-    onError,
-  });
-  const del = useMutation({
-    mutationFn: (id: string) => goodsNotesControllerDelete(id),
-    onSuccess: () => {
-      apiMessage.success(t('common.deleted'));
-      invalidate();
-    },
-    onError,
-  });
-
-  const columns = [
-    {
-      title: t('goods.docNo'),
-      dataIndex: 'docNo',
-      width: 150,
-      render: (v: string | null, r: GoodsNote) => v ?? `#${r.id}`,
-    },
-    {
-      title: t('goods.noteType'),
-      dataIndex: 'noteType',
-      width: 140,
-      render: (v: string) => (
-        <Tag color={v === 'GRN' ? 'blue' : 'orange'}>{t(`goods.${v}`)}</Tag>
-      ),
-    },
-    {
-      title: t('goods.date'),
-      dataIndex: 'noteDate',
-      width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
-    },
-    {
-      title: t('stock.warehouse'),
-      dataIndex: 'warehouse',
-      render: (_: unknown, r: GoodsNote) =>
-        r.warehouse ? `${r.warehouse.code} — ${r.warehouse.nameAr}` : '—',
-    },
-    { title: t('common.description'), dataIndex: 'description', ellipsis: true },
-    {
-      title: t('common.status'),
-      dataIndex: 'status',
-      width: 100,
-      render: (v: string) => (
-        <Tag color={v === 'POSTED' ? 'green' : 'default'}>
-          {v === 'POSTED' ? t('common.posted') : t('common.draft')}
-        </Tag>
-      ),
-    },
-    {
-      title: '',
-      width: 220,
-      render: (_: unknown, r: GoodsNote) => (
-        <Space>
-          <Button size="small" onClick={() => setViewId(r.id)}>{t('common.view')}</Button>
-          {r.status === 'DRAFT' && (
-            <>
-              <Button size="small" type="primary" onClick={() => post.mutate(r.id)}>
-                {t('common.post')}
-              </Button>
-              <Button size="small" danger onClick={() => del.mutate(r.id)}>
-                {t('common.delete')}
-              </Button>
-            </>
-          )}
-        </Space>
-      ),
-    },
-  ];
-
-  return (
-    <div>
-      {contextHolder}
-      <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
-        <Select
-          allowClear
-          placeholder={t('goods.noteType')}
-          style={{ width: 180 }}
-          value={typeFilter}
-          onChange={setTypeFilter}
-          options={[
-            { value: 'GRN', label: t('goods.GRN') },
-            { value: 'GIN', label: t('goods.GIN') },
-          ]}
-        />
-        <Space>
-          <Button onClick={() => { setDefaultType('GIN'); setModalOpen(true); }}>
-            {t('goods.exitVoucher')}
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setDefaultType('GRN'); setModalOpen(true); }}>
-            {t('goods.entryVoucher')}
-          </Button>
-        </Space>
-      </Space>
-      <Table
-        rowKey="id"
-        loading={isLoading}
-        dataSource={notes ?? []}
-        columns={columns}
-        size="small"
-        pagination={{ pageSize: 20 }}
-      />
-      <NoteModal
-        open={modalOpen}
-        defaultType={defaultType}
-        onClose={() => setModalOpen(false)}
-        onCreated={(id) => {
-          setModalOpen(false);
-          invalidate();
-          if (id) setViewId(id);
-        }}
-      />
-      <Modal
-        open={!!viewId}
-        title={view?.docNo ?? `#${viewId}`}
-        onCancel={() => setViewId(null)}
-        footer={null}
-        width={720}
-      >
-        {view && (
-          <>
-            <Descriptions size="small" column={3} style={{ marginBottom: 12 }}>
-              <Descriptions.Item label={t('goods.noteType')}>
-                <Tag color={view.noteType === 'GRN' ? 'blue' : 'orange'}>
-                  {t(`goods.${view.noteType}`)}
-                </Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label={t('goods.date')}>
-                {dayjs(view.noteDate).format('YYYY-MM-DD')}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('stock.warehouse')}>
-                {view.warehouse ? `${view.warehouse.code} — ${view.warehouse.nameAr}` : '—'}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('common.status')}>
-                {view.status === 'POSTED' ? t('common.posted') : t('common.draft')}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('common.description')}>
-                {view.description ?? '—'}
-              </Descriptions.Item>
-            </Descriptions>
-            <Table
-              rowKey="id"
-              size="small"
-              pagination={false}
-              dataSource={view.lines ?? []}
-              columns={[
-                { title: '#', dataIndex: 'lineNo', width: 50 },
-                {
-                  title: t('items.title'),
-                  render: (_: unknown, l: NonNullable<GoodsNote['lines']>[number]) =>
-                    l.item ? `${l.item.code} — ${l.item.nameAr}` : '—',
-                },
-                {
-                  title: t('stock.qty'),
-                  dataIndex: 'qty',
-                  width: 110,
-                  align: 'end' as const,
-                  render: (v: string) => Number(v).toFixed(3),
-                },
-                {
-                  title: t('stock.unitCost'),
-                  dataIndex: 'unitCost',
-                  width: 110,
-                  align: 'end' as const,
-                  render: (v?: string | null) => (v != null ? Number(v).toFixed(2) : '—'),
-                },
-              ]}
-            />
-          </>
-        )}
-      </Modal>
-    </div>
-  );
-}
-
-function NoteModal({
-  open,
-  defaultType,
-  onClose,
-  onCreated,
-}: {
-  open: boolean;
-  defaultType: 'GRN' | 'GIN';
-  onClose: () => void;
-  onCreated: (id?: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [apiMessage, contextHolder] = message.useMessage();
-  const [noteType, setNoteType] = useState<'GRN' | 'GIN'>(defaultType);
-  const [noteDate, setNoteDate] = useState<Dayjs>(dayjs());
-  const [warehouseId, setWarehouseId] = useState<string | undefined>();
-  const [description, setDescription] = useState('');
-  const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1), emptyItemLine(2)]);
 
   const { data: items } = useQuery({
     queryKey: ['items'],
-    queryFn: () => catalogControllerListItems({ search: '', itemKind: '', isActive: '' }).then((r) => r.data as unknown as Item[]),
-    enabled: open,
+    queryFn: () =>
+      catalogControllerListItems({ search: '', itemKind: '', isActive: '' }).then(
+        (r) => r.data as unknown as Item[],
+      ),
+    enabled: screen === 'entry' && !entryId,
   });
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
     queryFn: () => warehousesControllerList().then((r) => r.data as unknown as Warehouse[]),
-    enabled: open,
+    enabled: screen === 'entry' && !entryId,
   });
 
   const itemOptions = useMemo(
@@ -337,19 +149,58 @@ function NoteModal({
     label: `${w.code} — ${w.nameAr}`,
   }));
 
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['goods-notes'] });
+    void queryClient.invalidateQueries({ queryKey: ['stock'] });
+  };
+  const onError = (err: unknown) =>
+    apiMessage.error(
+      err instanceof ApiError
+        ? t(`errors.${err.code}`, { defaultValue: err.message })
+        : t('errors.INTERNAL'),
+    );
+
+  const openNew = (type: NoteType) => {
+    setEntryId(null);
+    setNewType(type);
+    setNewDate(dayjs());
+    setNewWarehouseId(undefined);
+    setNewDescription('');
+    setLines([emptyItemLine(1), emptyItemLine(2)]);
+    setScreen('entry');
+  };
+
+  const openEntry = (id: string) => {
+    setEntryId(id);
+    setScreen('entry');
+  };
+
+  const backToList = () => {
+    setScreen('list');
+    setEntryId(null);
+  };
+
+  useEffect(() => {
+    if (requestVoucher) {
+      openNew(requestVoucher);
+      onVoucherHandled?.();
+    }
+  }, [requestVoucher]);
+
   const create = useMutation({
     mutationFn: async (andPost: boolean) => {
       const res = await goodsNotesControllerCreate({
-        noteDate: noteDate.format('YYYY-MM-DD'),
-        warehouseId,
-        noteType,
-        description: description || undefined,
+        noteDate: newDate.format('YYYY-MM-DD'),
+        warehouseId: newWarehouseId,
+        noteType: newType,
+        description: newDescription || undefined,
         lines: lines
           .filter((l) => l.itemId && l.qty)
           .map((l) => ({
             itemId: l.itemId,
             qty: String(l.qty),
-            unitCost: noteType === 'GRN' && l.unitCost != null ? String(l.unitCost) : undefined,
+            unitCost:
+              newType === 'GRN' && l.unitCost != null ? String(l.unitCost) : undefined,
           })),
       } as never);
       const id = (res as { data?: { id: string } }).data?.id;
@@ -360,74 +211,366 @@ function NoteModal({
     },
     onSuccess: (id) => {
       apiMessage.success(t('common.saved'));
-      onCreated(id);
+      invalidate();
+      if (id) {
+        setEntryId(id);
+      } else {
+        backToList();
+      }
     },
-    onError: (err) =>
-      apiMessage.error(
-        err instanceof ApiError
-          ? t(`errors.${err.code}`, { defaultValue: err.message })
-          : t('errors.INTERNAL'),
-      ),
+    onError,
   });
 
-  const canSave = !!warehouseId && lines.some((l) => l.itemId && l.qty) &&
-    (noteType === 'GIN' || lines.every((l) => !l.itemId || (l.qty && l.unitCost != null)));
+  const post = useMutation({
+    mutationFn: (id: string) => goodsNotesControllerPost(id, idemHeaders()),
+    onSuccess: () => {
+      apiMessage.success(t('common.done'));
+      invalidate();
+    },
+    onError,
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => goodsNotesControllerDelete(id),
+    onSuccess: () => {
+      apiMessage.success(t('common.deleted'));
+      invalidate();
+      backToList();
+    },
+    onError,
+  });
+
+  const canSave =
+    !!newWarehouseId &&
+    lines.some((l) => l.itemId && l.qty) &&
+    (newType === 'GIN' ||
+      lines.every((l) => !l.itemId || (l.qty && l.unitCost != null)));
+
+  const saveNew = (andPost: boolean) => {
+    if (!canSave) {
+      apiMessage.error(t('errors.VALIDATION'));
+      return;
+    }
+    create.mutate(andPost);
+  };
+
+  // ============================ LIST VIEW ============================
+  if (screen === 'list') {
+    return (
+      <div>
+        {contextHolder}
+        <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
+          <Select
+            allowClear
+            placeholder={t('goods.noteType')}
+            style={{ width: 180 }}
+            value={typeFilter}
+            onChange={setTypeFilter}
+            options={NOTE_TYPES.map((vt) => ({ value: vt, label: t(TYPE_LABEL[vt]) }))}
+          />
+          <Dropdown.Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => openNew('GRN')}
+            menu={{
+              items: NOTE_TYPES.map((vt) => ({
+                key: vt,
+                label: t(TYPE_LABEL[vt]),
+              })),
+              onClick: ({ key }) => openNew(key as NoteType),
+            }}
+          >
+            {t('goods.entryVoucher')}
+          </Dropdown.Button>
+        </Space>
+        <Table
+          rowKey="id"
+          loading={isLoading}
+          dataSource={notes ?? []}
+          size="small"
+          pagination={{ pageSize: 20 }}
+          onRow={(r) => ({ onClick: () => openEntry(r.id), style: { cursor: 'pointer' } })}
+          columns={[
+            {
+              title: t('goods.docNo'),
+              dataIndex: 'docNo',
+              width: 150,
+              render: (v: string | null, r: GoodsNote) => v ?? `#${r.id}`,
+            },
+            {
+              title: t('goods.noteType'),
+              dataIndex: 'noteType',
+              width: 130,
+              render: (v: NoteType) => <TypeTag type={v} />,
+            },
+            {
+              title: t('goods.date'),
+              dataIndex: 'noteDate',
+              width: 110,
+              render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+            },
+            {
+              title: t('stock.warehouse'),
+              render: (_: unknown, r: GoodsNote) =>
+                r.warehouse ? `${r.warehouse.code} — ${r.warehouse.nameAr}` : '—',
+            },
+            {
+              title: t('common.description'),
+              dataIndex: 'description',
+              ellipsis: true,
+              render: (v: string | null) => v ?? '—',
+            },
+            {
+              title: t('common.status'),
+              dataIndex: 'status',
+              width: 100,
+              render: (v: string) =>
+                v === 'POSTED' ? (
+                  <Tag color="green">{t('common.posted')}</Tag>
+                ) : (
+                  <Tag>{t('common.draft')}</Tag>
+                ),
+            },
+            {
+              title: '',
+              width: 200,
+              render: (_: unknown, r: GoodsNote) => (
+                <Space onClick={(ev) => ev.stopPropagation()}>
+                  {r.status === 'DRAFT' && (
+                    <>
+                      <Popconfirm
+                        title={t('journal.confirmPost')}
+                        onConfirm={() => post.mutate(r.id)}
+                      >
+                        <Button size="small" type="primary">
+                          {t('common.post')}
+                        </Button>
+                      </Popconfirm>
+                      <Popconfirm
+                        title={t('common.confirmDelete')}
+                        onConfirm={() => del.mutate(r.id)}
+                      >
+                        <Button size="small" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    </>
+                  )}
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </div>
+    );
+  }
+
+  // ============================ ENTRY VIEW ============================
+  const isNew = !entryId;
+  const entry = detail ?? null;
 
   return (
-    <Modal
-      open={open}
-      title={noteType === 'GRN' ? t('goods.entryVoucher') : t('goods.exitVoucher')}
-      onCancel={onClose}
-      width={860}
-      footer={[
-        <Button key="cancel" onClick={onClose}>{t('common.cancel')}</Button>,
-        <Button key="draft" disabled={!canSave} loading={create.isPending && !create.variables} onClick={() => create.mutate(false)}>
-          {t('common.saveDraft')}
-        </Button>,
-        <Button key="post" type="primary" disabled={!canSave} loading={create.isPending && !!create.variables} onClick={() => create.mutate(true)}>
-          {t('goods.createAndPost')}
-        </Button>,
-      ]}
-      destroyOnHidden
-    >
+    <div>
       {contextHolder}
-      <Space wrap style={{ marginBottom: 12 }}>
-        <div>
-          <Typography.Text type="secondary">{t('goods.noteType')}</Typography.Text>
-          <Select
-            style={{ width: 160, display: 'block' }}
-            value={noteType}
-            onChange={setNoteType}
-            options={[
-              { value: 'GRN', label: t('goods.GRN') },
-              { value: 'GIN', label: t('goods.GIN') },
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          marginBottom: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Button
+          icon={i18n.language === 'ar' ? <ArrowRightOutlined /> : <ArrowLeftOutlined />}
+          onClick={backToList}
+        >
+          {t('nav.goodsNotes')}
+        </Button>
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          {isNew
+            ? t(TYPE_LABEL[newType])
+            : `${entry?.docNo ?? '…'} — ${entry ? t(TYPE_LABEL[entry.noteType]) : ''}`}
+        </Typography.Title>
+        {entry && (
+          <Space size={4}>
+            <TypeTag type={entry.noteType} />
+            {entry.status === 'POSTED' ? (
+              <Tag color="green">{t('common.posted')}</Tag>
+            ) : (
+              <Tag>{t('common.draft')}</Tag>
+            )}
+          </Space>
+        )}
+        <div style={{ flex: 1 }} />
+        <Space>
+          {isNew ? (
+            <>
+              <Button
+                disabled={!canSave}
+                loading={create.isPending}
+                onClick={() => saveNew(false)}
+              >
+                {t('journal.saveDraft')}
+              </Button>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                disabled={!canSave}
+                loading={create.isPending}
+                onClick={() => saveNew(true)}
+              >
+                {t('goods.createAndPost')}
+              </Button>
+            </>
+          ) : (
+            entry?.status === 'DRAFT' && (
+              <>
+                <Popconfirm
+                  title={t('journal.confirmPost')}
+                  onConfirm={() => post.mutate(entry.id)}
+                >
+                  <Button type="primary" loading={post.isPending}>
+                    {t('common.post')}
+                  </Button>
+                </Popconfirm>
+                <Popconfirm
+                  title={t('common.confirmDelete')}
+                  onConfirm={() => del.mutate(entry.id)}
+                >
+                  <Button danger icon={<DeleteOutlined />}>
+                    {t('common.delete')}
+                  </Button>
+                </Popconfirm>
+              </>
+            )
+          )}
+        </Space>
+      </div>
+
+      {/* Header fields */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 16,
+          flexWrap: 'wrap',
+          marginBottom: 16,
+          alignItems: 'flex-end',
+        }}
+      >
+        {isNew ? (
+          <>
+            <div>
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                {t('goods.noteType')}
+              </Typography.Text>
+              <Select
+                value={newType}
+                onChange={setNewType}
+                options={NOTE_TYPES.map((vt) => ({
+                  value: vt,
+                  label: t(TYPE_LABEL[vt]),
+                }))}
+                style={{ width: 180 }}
+              />
+            </div>
+            <div>
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                {t('goods.date')}
+              </Typography.Text>
+              <DatePicker value={newDate} onChange={(d) => d && setNewDate(d)} />
+            </div>
+            <div>
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                {t('stock.warehouse')} *
+              </Typography.Text>
+              <Select
+                options={warehouseOptions}
+                value={newWarehouseId}
+                onChange={setNewWarehouseId}
+                style={{ width: 220 }}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                {t('common.description')}
+              </Typography.Text>
+              <Input
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                maxLength={500}
+              />
+            </div>
+          </>
+        ) : (
+          entry && (
+            <Space size={24} wrap>
+              <span>
+                <Typography.Text type="secondary">{t('goods.date')}: </Typography.Text>
+                {dayjs(entry.noteDate).format('YYYY-MM-DD')}
+              </span>
+              <span>
+                <Typography.Text type="secondary">{t('stock.warehouse')}: </Typography.Text>
+                {entry.warehouse ? `${entry.warehouse.code} — ${entry.warehouse.nameAr}` : '—'}
+              </span>
+              <span>
+                <Typography.Text type="secondary">{t('common.description')}: </Typography.Text>
+                {entry.description ?? '—'}
+              </span>
+            </Space>
+          )
+        )}
+      </div>
+
+      {/* Lines */}
+      <div
+        style={{
+          background: '#fff',
+          border: '1px solid #f0f0f0',
+          borderRadius: 8,
+          padding: '12px 16px',
+        }}
+      >
+        <Typography.Title level={5} style={{ marginTop: 0 }}>
+          {t('journal.linesTitle')}
+        </Typography.Title>
+        {isNew ? (
+          <ItemLinesGrid
+            lines={lines}
+            onChange={setLines}
+            itemOptions={itemOptions}
+            showCost={newType === 'GRN'}
+            showDescription
+          />
+        ) : (
+          <Table
+            rowKey="id"
+            size="small"
+            loading={detailLoading}
+            pagination={false}
+            dataSource={entry?.lines ?? []}
+            columns={[
+              { title: '#', dataIndex: 'lineNo', width: 50 },
+              {
+                title: t('items.title'),
+                render: (_: unknown, l: NonNullable<GoodsNote['lines']>[number]) =>
+                  l.item ? `${l.item.code} — ${l.item.nameAr}` : '—',
+              },
+              {
+                title: t('stock.qty'),
+                dataIndex: 'qty',
+                width: 110,
+                align: 'right' as const,
+                render: (v: string) => Number(v).toFixed(3),
+              },
+              {
+                title: t('stock.unitCost'),
+                dataIndex: 'unitCost',
+                width: 110,
+                align: 'right' as const,
+                render: (v?: string | null) => (v != null ? Number(v).toFixed(2) : '—'),
+              },
             ]}
           />
-        </div>
-        <div>
-          <Typography.Text type="secondary">{t('goods.date')}</Typography.Text>
-          <DatePicker style={{ display: 'block' }} value={noteDate} onChange={(d) => d && setNoteDate(d)} />
-        </div>
-        <div>
-          <Typography.Text type="secondary">{t('stock.warehouse')} *</Typography.Text>
-          <Select
-            style={{ width: 220, display: 'block' }}
-            options={warehouseOptions}
-            value={warehouseId}
-            onChange={setWarehouseId}
-          />
-        </div>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <Typography.Text type="secondary">{t('common.description')}</Typography.Text>
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
-        </div>
-      </Space>
-      <ItemLinesGrid
-        lines={lines}
-        onChange={setLines}
-        itemOptions={itemOptions}
-        showCost={noteType === 'GRN'}
-      />
-    </Modal>
+        )}
+      </div>
+    </div>
   );
 }
