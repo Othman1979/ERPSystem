@@ -123,24 +123,23 @@ export function ItemLinesGrid({
 
   return (
     <table
-      ref={gridRef}
-      style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}
+      ref={gridRef} className="entry-grid entry-grid--stock"
     >
       <thead>
-        <tr style={{ background: '#fafafa' }}>
-          <th style={thStyle}>#</th>
-          <th style={thStyle}>{t('items.title')}</th>
-          <th style={{ ...thStyle, width: 110 }}>{t('stock.qty')}</th>
-          {showCost && <th style={{ ...thStyle, width: 120 }}>{t('stock.unitCost')}</th>}
-          {showDescription && <th style={thStyle}>{t('common.description')}</th>}
-          <th style={{ ...thStyle, width: 40 }} />
+        <tr>
+          <th>#</th>
+          <th>{t('items.title')}</th>
+          <th style={{ width: 110 }}>{t('stock.qty')}</th>
+          {showCost && <th style={{ width: 120 }}>{t('stock.unitCost')}</th>}
+          {showDescription && <th>{t('common.description')}</th>}
+          <th style={{ width: 40 }} />
         </tr>
       </thead>
       <tbody>
         {lines.map((l, row) => (
           <tr key={l.key}>
-            <td style={tdStyle}>{row + 1}</td>
-            <td style={tdStyle} {...cellProps(row, COL_ITEM)}>
+            <td>{row + 1}</td>
+            <td {...cellProps(row, COL_ITEM)}>
               <GridSelect
                 placeholder={t('items.title')}
                 options={itemOptions}
@@ -150,7 +149,7 @@ export function ItemLinesGrid({
                 size="small"
               />
             </td>
-            <td style={tdStyle} {...cellProps(row, COL_QTY)}>
+            <td {...cellProps(row, COL_QTY)}>
               <InputNumber
                 min={0.000001}
                 placeholder={t('stock.qty')}
@@ -162,7 +161,7 @@ export function ItemLinesGrid({
               />
             </td>
             {showCost && (
-              <td style={tdStyle} {...cellProps(row, COL_COST)}>
+              <td {...cellProps(row, COL_COST)}>
                 <InputNumber
                   min={0}
                   placeholder={t('stock.unitCost')}
@@ -175,7 +174,7 @@ export function ItemLinesGrid({
               </td>
             )}
             {showDescription && (
-              <td style={tdStyle} {...cellProps(row, COL_DESC)}>
+              <td {...cellProps(row, COL_DESC)}>
                 <Input
                   placeholder={t('common.description')}
                   maxLength={500}
@@ -185,7 +184,7 @@ export function ItemLinesGrid({
                 />
               </td>
             )}
-            <td style={{ ...tdStyle, textAlign: 'center' }}>
+            <td style={{ textAlign: 'center' }}>
               {lines.length > 1 && (
                 <Button
                   type="text"
@@ -203,15 +202,3 @@ export function ItemLinesGrid({
   );
 }
 
-const thStyle: React.CSSProperties = {
-  textAlign: 'start',
-  padding: '6px 8px',
-  borderBottom: '1px solid #f0f0f0',
-  fontWeight: 600,
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '4px 8px',
-  borderBottom: '1px solid #f5f5f5',
-  verticalAlign: 'middle',
-};

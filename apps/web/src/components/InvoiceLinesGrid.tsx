@@ -140,18 +140,18 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
   const fmt = (v: number) => v.toFixed(2);
 
   return (
-    <table ref={gridRef} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+    <table ref={gridRef} className="entry-grid">
       <thead>
-        <tr style={{ background: '#fafafa' }}>
-          <th style={thStyle}>#</th>
-          <th style={thStyle}>{t('items.title')}</th>
-          <th style={{ ...thStyle, width: 90 }}>{t('stock.qty')}</th>
-          <th style={{ ...thStyle, width: 110 }}>{priceLabel ?? t('sales.unitPrice')}</th>
-          <th style={{ ...thStyle, width: 90 }}>{t('sales.discountPct')}</th>
-          <th style={{ ...thStyle, width: 100 }}>{t('sales.net')}</th>
-          <th style={{ ...thStyle, width: 90 }}>{t('sales.tax')}</th>
-          <th style={{ ...thStyle, width: 110 }}>{t('sales.total')}</th>
-          <th style={{ ...thStyle, width: 40 }} />
+        <tr>
+          <th>#</th>
+          <th>{t('items.title')}</th>
+          <th style={{ width: 90 }}>{t('stock.qty')}</th>
+          <th style={{ width: 110 }}>{priceLabel ?? t('sales.unitPrice')}</th>
+          <th style={{ width: 90 }}>{t('sales.discountPct')}</th>
+          <th style={{ width: 100 }}>{t('sales.net')}</th>
+          <th style={{ width: 90 }}>{t('sales.tax')}</th>
+          <th style={{ width: 110 }}>{t('sales.total')}</th>
+          <th style={{ width: 40 }} />
         </tr>
       </thead>
       <tbody>
@@ -159,8 +159,8 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
           const a = lineAmounts(l, itemOptions);
           return (
             <tr key={l.key}>
-              <td style={tdStyle}>{row + 1}</td>
-              <td style={tdStyle} {...cellProps(row, 1)}>
+              <td>{row + 1}</td>
+              <td {...cellProps(row, 1)}>
                 <GridSelect
                   placeholder={t('items.title')}
                   options={itemOptions.map((o) => ({
@@ -179,7 +179,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                   size="small"
                 />
               </td>
-              <td style={tdStyle} {...cellProps(row, 2)}>
+              <td {...cellProps(row, 2)}>
                 <InputNumber
                   min={0.000001}
                   value={l.qty}
@@ -189,7 +189,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                   controls={false}
                 />
               </td>
-              <td style={tdStyle} {...cellProps(row, 3)}>
+              <td {...cellProps(row, 3)}>
                 <InputNumber
                   min={0}
                   value={l.price}
@@ -199,7 +199,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                   controls={false}
                 />
               </td>
-              <td style={tdStyle} {...cellProps(row, 4)}>
+              <td {...cellProps(row, 4)}>
                 <InputNumber
                   min={0}
                   max={100}
@@ -210,10 +210,10 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                   controls={false}
                 />
               </td>
-              <td style={{ ...tdStyle, textAlign: 'end' }}>{fmt(a.net)}</td>
-              <td style={{ ...tdStyle, textAlign: 'end' }}>{fmt(a.tax)}</td>
-              <td style={{ ...tdStyle, textAlign: 'end', fontWeight: 600 }}>{fmt(a.total)}</td>
-              <td style={{ ...tdStyle, textAlign: 'center' }}>
+              <td style={{ textAlign: 'end' }}>{fmt(a.net)}</td>
+              <td style={{ textAlign: 'end' }}>{fmt(a.tax)}</td>
+              <td style={{ textAlign: 'end', fontWeight: 600 }}>{fmt(a.total)}</td>
+              <td style={{ textAlign: 'center' }}>
                 {lines.length > 1 && (
                   <Button
                     type="text"
@@ -229,13 +229,13 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
         })}
       </tbody>
       <tfoot>
-        <tr style={{ background: '#fafafa' }}>
-          <td colSpan={5} style={{ ...tdStyle, textAlign: 'end', fontWeight: 600 }}>
+        <tr>
+          <td colSpan={5} style={{ textAlign: 'end', fontWeight: 600 }}>
             {t('sales.totals')}
           </td>
-          <td style={{ ...tdStyle, textAlign: 'end', fontWeight: 600 }}>{fmt(totals.net)}</td>
-          <td style={{ ...tdStyle, textAlign: 'end', fontWeight: 600 }}>{fmt(totals.tax)}</td>
-          <td style={{ ...tdStyle, textAlign: 'end', fontWeight: 700 }}>{fmt(totals.total)}</td>
+          <td style={{ textAlign: 'end', fontWeight: 600 }}>{fmt(totals.net)}</td>
+          <td style={{ textAlign: 'end', fontWeight: 600 }}>{fmt(totals.tax)}</td>
+          <td style={{ textAlign: 'end', fontWeight: 700 }}>{fmt(totals.total)}</td>
           <td />
         </tr>
       </tfoot>
@@ -243,15 +243,4 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
   );
 }
 
-const thStyle: React.CSSProperties = {
-  textAlign: 'start',
-  padding: '6px 8px',
-  borderBottom: '1px solid #f0f0f0',
-  fontWeight: 600,
-};
 
-const tdStyle: React.CSSProperties = {
-  padding: '4px 8px',
-  borderBottom: '1px solid #f5f5f5',
-  verticalAlign: 'middle',
-};

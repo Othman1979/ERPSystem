@@ -19,6 +19,80 @@ body {
   background: #fafafa !important;
 }
 
+/* Data-entry grids (invoice / stock / journal lines).
+   Each grid kind gets its own accent via CSS variables. */
+.entry-grid {
+  --eg-header: #f3e9f1;
+  --eg-header-text: #4a3044;
+  --eg-line: #dcc9d6;
+  --eg-row-line: #f0e9ee;
+  --eg-zebra: #fcf9fb;
+  --eg-hover: #f7eef5;
+  --eg-focus: #714b67;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+/* Journal vouchers — cool blue accent */
+.entry-grid--journal {
+  --eg-header: #e8f0fb;
+  --eg-header-text: #274b73;
+  --eg-line: #c3d5ec;
+  --eg-row-line: #e9eff7;
+  --eg-zebra: #f7fafd;
+  --eg-hover: #eaf1fa;
+  --eg-focus: #2f6db5;
+}
+
+/* Stock vouchers — green accent */
+.entry-grid--stock {
+  --eg-header: #e9f6ec;
+  --eg-header-text: #2c5c3d;
+  --eg-line: #c2dfc9;
+  --eg-row-line: #ecf4ee;
+  --eg-zebra: #f8fcf9;
+  --eg-hover: #eef8f1;
+  --eg-focus: #3d8a57;
+}
+
+.entry-grid thead th {
+  background: var(--eg-header);
+  color: var(--eg-header-text);
+  font-weight: 600;
+  padding: 8px;
+  border-bottom: 2px solid var(--eg-line);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.entry-grid td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--eg-row-line);
+  vertical-align: middle;
+}
+
+.entry-grid tbody tr:nth-child(even) td {
+  background: var(--eg-zebra);
+}
+
+.entry-grid tbody tr:hover td {
+  background: var(--eg-hover);
+}
+
+/* Highlight the cell that currently owns keyboard focus */
+.entry-grid td:focus-within {
+  outline: 2px solid var(--eg-focus);
+  outline-offset: -2px;
+}
+
+.entry-grid tfoot td {
+  background: var(--eg-header);
+  color: var(--eg-header-text);
+  font-weight: 600;
+  border-top: 2px solid var(--eg-line);
+}
+
 /* Don't break a row across printed pages */
 @media print {
   .app-topbar {
@@ -33,10 +107,15 @@ body {
     background: #fff;
   }
 
-  .ant-table-thead > tr > th {
+  .ant-table-thead > tr > th,
+  .entry-grid thead th {
     background: #fff !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  .entry-grid tfoot td {
+    background: #fff !important;
   }
 
   .ant-table-tbody > tr {

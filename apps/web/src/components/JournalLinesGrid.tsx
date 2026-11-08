@@ -105,29 +105,22 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
 
   return (
     <div>
-      <table
-        ref={gridRef}
-        style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          fontSize: 13,
-        }}
-      >
+      <table ref={gridRef} className="entry-grid entry-grid--journal">
         <thead>
-          <tr style={{ background: '#fafafa' }}>
-            <th style={thStyle}>#</th>
-            <th style={thStyle}>{t('journal.account')}</th>
-            <th style={{ ...thStyle, width: 120 }}>{t('journal.debit')}</th>
-            <th style={{ ...thStyle, width: 120 }}>{t('journal.credit')}</th>
-            <th style={thStyle}>{t('common.description')}</th>
-            <th style={{ ...thStyle, width: 40 }} />
+          <tr>
+            <th>#</th>
+            <th>{t('journal.account')}</th>
+            <th style={{ width: 120 }}>{t('journal.debit')}</th>
+            <th style={{ width: 120 }}>{t('journal.credit')}</th>
+            <th>{t('common.description')}</th>
+            <th style={{ width: 40 }} />
           </tr>
         </thead>
         <tbody>
           {lines.map((l, row) => (
             <tr key={l.key}>
-              <td style={tdStyle}>{row + 1}</td>
-              <td style={tdStyle} {...cellProps(row, 1)}>
+              <td>{row + 1}</td>
+              <td {...cellProps(row, 1)}>
                 <GridSelect
                   placeholder={t('journal.account')}
                   options={accountOptions}
@@ -137,7 +130,7 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                   size="small"
                 />
               </td>
-              <td style={tdStyle} {...cellProps(row, 2)}>
+              <td {...cellProps(row, 2)}>
                 <InputNumber
                   placeholder={t('journal.debit')}
                   min={0}
@@ -148,7 +141,7 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                   controls={false}
                 />
               </td>
-              <td style={tdStyle} {...cellProps(row, 3)}>
+              <td {...cellProps(row, 3)}>
                 <InputNumber
                   placeholder={t('journal.credit')}
                   min={0}
@@ -159,7 +152,7 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                   controls={false}
                 />
               </td>
-              <td style={tdStyle} {...cellProps(row, 4)}>
+              <td {...cellProps(row, 4)}>
                 <Input
                   placeholder={t('common.description')}
                   maxLength={500}
@@ -168,7 +161,7 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                   size="small"
                 />
               </td>
-              <td style={{ ...tdStyle, textAlign: 'center' }}>
+              <td style={{ textAlign: 'center' }}>
                 {lines.length > 2 && (
                   <Button
                     type="text"
@@ -183,17 +176,17 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
           ))}
         </tbody>
         <tfoot>
-          <tr style={{ background: '#f6f6f6', fontWeight: 600 }}>
-            <td style={tdStyle} colSpan={2}>
+          <tr>
+            <td colSpan={2}>
               {t('journal.total')}
             </td>
-            <td style={{ ...tdStyle, textAlign: 'right' }}>
+            <td style={{ textAlign: 'right' }}>
               {totalDebit.toFixed(3)}
             </td>
-            <td style={{ ...tdStyle, textAlign: 'right' }}>
+            <td style={{ textAlign: 'right' }}>
               {totalCredit.toFixed(3)}
             </td>
-            <td style={tdStyle} colSpan={2}>
+            <td colSpan={2}>
               {diff > 0.0005 && (
                 <Typography.Text type="danger">
                   {t('journal.unbalanced', { amount: diff.toFixed(3) })}
@@ -207,15 +200,3 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
   );
 }
 
-const thStyle: React.CSSProperties = {
-  textAlign: 'start',
-  padding: '6px 8px',
-  borderBottom: '1px solid #f0f0f0',
-  fontWeight: 600,
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '4px 8px',
-  borderBottom: '1px solid #f5f5f5',
-  verticalAlign: 'middle',
-};
