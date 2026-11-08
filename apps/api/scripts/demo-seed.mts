@@ -66,15 +66,24 @@ async function main() {
     console.log('fiscal year FY2026 exists');
   }
 
-  // Chart of accounts → code map
+  // Chart of accounts → code map. acct() resolves a postable leaf: if the
+  // exact code is a non-postable parent, the first postable child is used.
   const accounts = (await req('/accounts', H.token, undefined, 'GET')) as {
     id: string;
     code: string;
+    isPostable?: boolean;
   }[];
   const acct = (code: string) => {
-    const a = accounts.find((x) => x.code === code);
-    if (!a) throw new Error(`account ${code} not found`);
-    return a.id;
+    const exact = accounts.find((x) => x.code === code);
+    if (exact?.isPostable !== false) {
+      if (!exact) throw new Error(`account ${code} not found`);
+      return exact.id;
+    }
+    const child = accounts.find(
+      (x) => x.isPostable !== false && x.code.startsWith(`${code}-`),
+    );
+    if (!child) throw new Error(`no postable account under ${code}`);
+    return child.id;
   };
 
   // ---- inventory demo data (Arabic) ----
@@ -85,10 +94,6 @@ async function main() {
     description?: string | null;
     status?: string;
   }[];
-  if (existing.some((e) => e.description === 'سداد جزئي للمورد' && e.status === 'POSTED')) {
-    console.log(`demo entries already exist (${existing.length}) — nothing to do`);
-    return;
-  }
   if (existing.length > 0) {
     console.log('opening entry exists — skipping opening, adding sample entries');
   }
@@ -120,12 +125,18 @@ async function main() {
     entryDate: string,
     description: string,
     lines: Record<string, unknown>[],
+    voucherType?: 'JOURNAL' | 'RECEIPT_VOUCHER' | 'PAYMENT_VOUCHER',
   ) => {
     if (done.has(description)) {
       console.log('skip (exists):', description);
       return;
     }
-    const draft = await req('/journal-entries', H.token, { entryDate, description, lines });
+    const draft = await req('/journal-entries', H.token, {
+      entryDate,
+      description,
+      lines,
+      ...(voucherType ? { voucherType } : {}),
+    });
     await req(`/journal-entries/${draft.id}/post`, H.token, {});
     console.log('posted:', description);
   };
@@ -155,6 +166,114 @@ async function main() {
   await post('2026-02-12', 'سداد جزئي للمورد', [
     { accountId: acct('2101'), debit: '500', partyType: 'SUPPLIER', partyId: '1' },
     { accountId: acct('1102'), credit: '500' },
+  ]);
+
+  // ---- سندات القبض (receipt vouchers) ----
+  await post(
+    '2026-02-15',
+    'سند قبض — تحصيل من العميل أحمد',
+    [
+      { accountId: acct('1101'), debit: '1160' },
+      {
+        accountId: acct('1103'),
+        credit: '1160',
+        partyType: 'CUSTOMER',
+        partyId: '1',
+      },
+    ],
+    'RECEIPT_VOUCHER',
+  );
+
+  await post(
+    '2026-02-20',
+    'سند قبض — إيرادات متنوعة نقداً',
+    [
+      { accountId: acct('1102'), debit: '350' },
+      { accountId: acct('4201'), credit: '350' },
+    ],
+    'RECEIPT_VOUCHER',
+  );
+
+  // ---- سندات الصرف (payment vouchers) ----
+  await post(
+    '2026-02-18',
+    'سند صرف — رواتب شهر فبراير',
+    [
+      { accountId: acct('5201'), debit: '1500' },
+      { accountId: acct('1101'), credit: '1500' },
+    ],
+    'PAYMENT_VOUCHER',
+  );
+
+  await post(
+    '2026-02-22',
+    'سند صرف — فاتورة كهرباء وماء',
+    [
+      { accountId: acct('5203'), debit: '180' },
+      { accountId: acct('1101'), credit: '180' },
+    ],
+    'PAYMENT_VOUCHER',
+  );
+
+  await post(
+    '2026-02-25',
+    'سند صرف — سداد للمورد (جزئي)',
+    [
+      {
+        accountId: acct('2101'),
+        debit: '800',
+        partyType: 'SUPPLIER',
+        partyId: '1',
+      },
+      { accountId: acct('1102'), credit: '800' },
+    ],
+    'PAYMENT_VOUCHER',
+  );
+
+  // ---- قيود يومية إضافية ----
+  await post('2026-03-01', 'مصروفات مستحقة — خدمات قانونية', [
+    { accountId: acct('5204'), debit: '300' },
+    { accountId: acct('2103'), credit: '300' },
+  ]);
+
+  await post('2026-03-31', 'إهلاك الأثاث عن شهر مارس', [
+    { accountId: acct('5204'), debit: '200' },
+    { accountId: acct('1202'), credit: '200' },
+  ]);
+
+  await post('2026-03-31', 'تسوية حساب بنكي — رسوم بنكية', [
+    { accountId: acct('5204'), debit: '25' },
+    { accountId: acct('1102'), credit: '25' },
+  ]);
+
+  await post(
+    '2026-04-05',
+    'سند قبض — تحصيل كامل من العميل',
+    [
+      { accountId: acct('1101'), debit: '1160' },
+      {
+        accountId: acct('1103'),
+        credit: '1160',
+        partyType: 'CUSTOMER',
+        partyId: '2',
+      },
+    ],
+    'RECEIPT_VOUCHER',
+  );
+
+  await post(
+    '2026-04-10',
+    'سند صرف — صيانة المحل',
+    [
+      { accountId: acct('5204'), debit: '150' },
+      { accountId: acct('1101'), credit: '150' },
+    ],
+    'PAYMENT_VOUCHER',
+  );
+
+  await post('2026-04-15', 'مردودات مبيعات — بضاعة تالفة', [
+    { accountId: acct('4102'), debit: '92' },
+    { accountId: acct('1103'), credit: '92', partyType: 'CUSTOMER', partyId: '1' },
   ]);
 
   // Leave one draft for the user to post from the UI
