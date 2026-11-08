@@ -202,6 +202,7 @@ export const ar = {
     countLines: 'أسطر الجرد',
     approve: 'اعتماد',
     confirmApprove: 'اعتماد الجرد وإنشاء التسوية؟',
+    minLines: 'أضف صنفاً واحداً على الأقل مع كمية',
     confirmPost: 'ترحيل هذا المستند؟',
     lowStockOnly: 'تحت حد الطلب فقط',
     types: {
@@ -510,6 +511,7 @@ export const en: typeof ar = {
     countLines: 'Count lines',
     approve: 'Approve',
     confirmApprove: 'Approve count and create adjustment?',
+    minLines: 'Add at least one item with a quantity',
     confirmPost: 'Post this document?',
     lowStockOnly: 'Below min stock only',
     types: {

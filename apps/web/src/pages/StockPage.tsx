@@ -17,7 +17,6 @@ import {
   Typography,
   message,
 } from 'antd';
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -46,6 +45,11 @@ import {
   warehousesControllerList,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
+import {
+  emptyItemLine,
+  ItemLinesGrid,
+  type ItemLineDraft,
+} from '../components/ItemLinesGrid';
 
 interface Warehouse {
   id: string;
@@ -201,10 +205,11 @@ function BalancesTab() {
 function AdjustmentsTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { contextHolder, show, ok } = useApiMessage();
+  const { contextHolder, show, ok, apiMessage } = useApiMessage();
   const [modalOpen, setModalOpen] = useState(false);
   const [reverseTarget, setReverseTarget] = useState<DocRow | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
+  const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
   const [form] = Form.useForm();
   const { whOptions, itemOptions } = useLookups();
 
@@ -224,24 +229,26 @@ function AdjustmentsTab() {
       adjustmentType: string;
       warehouseId: string;
       description?: string;
-      lines: { itemId: string; qty: number; unitCost?: number; description?: string }[];
     }) =>
       stockDocumentsControllerCreateAdjustment({
         adjustmentDate: v.adjustmentDate.format('YYYY-MM-DD'),
         adjustmentType: v.adjustmentType,
         warehouseId: v.warehouseId,
         description: v.description || undefined,
-        lines: v.lines.map((l) => ({
-          itemId: l.itemId,
-          qty: String(l.qty),
-          unitCost: l.unitCost != null ? String(l.unitCost) : undefined,
-          description: l.description || undefined,
-        })),
+        lines: lines
+          .filter((l) => l.itemId && l.qty != null)
+          .map((l) => ({
+            itemId: l.itemId,
+            qty: String(l.qty),
+            unitCost: l.unitCost != null ? String(l.unitCost) : undefined,
+            description: l.description || undefined,
+          })),
       } as never),
     onSuccess: () => {
       ok('common.saved');
       setModalOpen(false);
       form.resetFields();
+      setLines([emptyItemLine(1)]);
       invalidate();
     },
     onError: show,
@@ -283,7 +290,13 @@ function AdjustmentsTab() {
     <>
       {contextHolder}
       <Space style={{ marginBottom: 12 }}>
-        <Button type="primary" onClick={() => setModalOpen(true)}>
+        <Button
+          type="primary"
+          onClick={() => {
+            setLines([emptyItemLine(1)]);
+            setModalOpen(true);
+          }}
+        >
           {t('stock.newAdjustment')}
         </Button>
       </Space>
@@ -361,17 +374,27 @@ function AdjustmentsTab() {
       <Modal
         title={t('stock.newAdjustment')}
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
+        onCancel={() => {
+          setModalOpen(false);
+          setLines([emptyItemLine(1)]);
+        }}
+        onOk={() => {
+          const filled = lines.filter((l) => l.itemId && l.qty != null);
+          if (filled.length === 0) {
+            apiMessage.error(t('stock.minLines'));
+            return;
+          }
+          form.submit();
+        }}
         confirmLoading={create.isPending}
-        width={720}
+        width={820}
       >
         <Form
           form={form}
           layout="vertical"
           onFinish={(v) => create.mutate(v)}
           requiredMark={false}
-          initialValues={{ adjustmentType: 'IN', adjustmentDate: dayjs(), lines: [{}] }}
+          initialValues={{ adjustmentType: 'IN', adjustmentDate: dayjs() }}
         >
           <Space style={{ display: 'flex' }}>
             <Form.Item name="adjustmentDate" label={t('stock.date')} rules={[{ required: true }]} style={{ flex: 1 }}>
@@ -392,40 +415,13 @@ function AdjustmentsTab() {
           <Form.Item name="description" label={t('common.description')}>
             <Input maxLength={500} />
           </Form.Item>
-          <Form.List name="lines">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map((f) => (
-                  <Space key={f.key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                    <Form.Item name={[f.name, 'itemId']} rules={[{ required: true }]} style={{ width: 260 }}>
-                      <Select
-                        showSearch
-                        optionFilterProp="label"
-                        placeholder={t('items.title')}
-                        options={itemOptions}
-                      />
-                    </Form.Item>
-                    <Form.Item name={[f.name, 'qty']} rules={[{ required: true }]} style={{ width: 110 }}>
-                      <InputNumber min={0.000001} placeholder={t('stock.qty')} style={{ width: '100%' }} />
-                    </Form.Item>
-                    {needsCost && (
-                      <Form.Item
-                        name={[f.name, 'unitCost']}
-                        rules={[{ required: true }]}
-                        style={{ width: 120 }}
-                      >
-                        <InputNumber min={0} placeholder={t('stock.unitCost')} style={{ width: '100%' }} />
-                      </Form.Item>
-                    )}
-                    <MinusCircleOutlined onClick={() => remove(f.name)} />
-                  </Space>
-                ))}
-                <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block>
-                  {t('journal.addLine')}
-                </Button>
-              </>
-            )}
-          </Form.List>
+          <ItemLinesGrid
+            lines={lines}
+            onChange={setLines}
+            itemOptions={itemOptions}
+            showCost={needsCost}
+            showDescription
+          />
         </Form>
       </Modal>
       <Modal
@@ -448,10 +444,11 @@ function AdjustmentsTab() {
 function TransfersTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { contextHolder, show, ok } = useApiMessage();
+  const { contextHolder, show, ok, apiMessage } = useApiMessage();
   const [modalOpen, setModalOpen] = useState(false);
   const [reverseTarget, setReverseTarget] = useState<DocRow | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
+  const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
   const [form] = Form.useForm();
   const { whOptions, itemOptions } = useLookups();
 
@@ -470,19 +467,21 @@ function TransfersTab() {
       fromWarehouseId: string;
       toWarehouseId: string;
       description?: string;
-      lines: { itemId: string; qty: number }[];
     }) =>
       stockDocumentsControllerCreateTransfer({
         transferDate: v.transferDate.format('YYYY-MM-DD'),
         fromWarehouseId: v.fromWarehouseId,
         toWarehouseId: v.toWarehouseId,
         description: v.description || undefined,
-        lines: v.lines.map((l) => ({ itemId: l.itemId, qty: String(l.qty) })),
+        lines: lines
+          .filter((l) => l.itemId && l.qty != null)
+          .map((l) => ({ itemId: l.itemId, qty: String(l.qty) })),
       } as never),
     onSuccess: () => {
       ok('common.saved');
       setModalOpen(false);
       form.resetFields();
+      setLines([emptyItemLine(1)]);
       invalidate();
     },
     onError: show,
@@ -520,7 +519,13 @@ function TransfersTab() {
     <>
       {contextHolder}
       <Space style={{ marginBottom: 12 }}>
-        <Button type="primary" onClick={() => setModalOpen(true)}>
+        <Button
+          type="primary"
+          onClick={() => {
+            setLines([emptyItemLine(1)]);
+            setModalOpen(true);
+          }}
+        >
           {t('stock.newTransfer')}
         </Button>
       </Space>
@@ -597,17 +602,27 @@ function TransfersTab() {
       <Modal
         title={t('stock.newTransfer')}
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
+        onCancel={() => {
+          setModalOpen(false);
+          setLines([emptyItemLine(1)]);
+        }}
+        onOk={() => {
+          const filled = lines.filter((l) => l.itemId && l.qty != null);
+          if (filled.length === 0) {
+            apiMessage.error(t('stock.minLines'));
+            return;
+          }
+          form.submit();
+        }}
         confirmLoading={create.isPending}
-        width={680}
+        width={820}
       >
         <Form
           form={form}
           layout="vertical"
           onFinish={(v) => create.mutate(v)}
           requiredMark={false}
-          initialValues={{ transferDate: dayjs(), lines: [{}] }}
+          initialValues={{ transferDate: dayjs() }}
         >
           <Space style={{ display: 'flex' }}>
             <Form.Item name="transferDate" label={t('stock.date')} rules={[{ required: true }]} style={{ flex: 1 }}>
@@ -623,31 +638,7 @@ function TransfersTab() {
           <Form.Item name="description" label={t('common.description')}>
             <Input maxLength={500} />
           </Form.Item>
-          <Form.List name="lines">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map((f) => (
-                  <Space key={f.key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                    <Form.Item name={[f.name, 'itemId']} rules={[{ required: true }]} style={{ width: 280 }}>
-                      <Select
-                        showSearch
-                        optionFilterProp="label"
-                        placeholder={t('items.title')}
-                        options={itemOptions}
-                      />
-                    </Form.Item>
-                    <Form.Item name={[f.name, 'qty']} rules={[{ required: true }]} style={{ width: 120 }}>
-                      <InputNumber min={0.000001} placeholder={t('stock.qty')} style={{ width: '100%' }} />
-                    </Form.Item>
-                    <MinusCircleOutlined onClick={() => remove(f.name)} />
-                  </Space>
-                ))}
-                <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block>
-                  {t('journal.addLine')}
-                </Button>
-              </>
-            )}
-          </Form.List>
+          <ItemLinesGrid lines={lines} onChange={setLines} itemOptions={itemOptions} />
         </Form>
       </Modal>
       <Modal
@@ -720,6 +711,18 @@ function CountsTab() {
       } as never),
     onError: show,
   });
+
+  // Enter in a counted-qty cell moves to the next row's input.
+  const onCountGridKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    const inputs = Array.from(
+      e.currentTarget.querySelectorAll<HTMLInputElement>('.ant-table-tbody input'),
+    );
+    const idx = inputs.indexOf(e.target as HTMLInputElement);
+    if (idx === -1) return;
+    e.preventDefault();
+    inputs[idx + 1]?.focus();
+  };
 
   const approve = useMutation({
     mutationFn: (id: string) => stockDocumentsControllerApproveCount(id),
@@ -836,6 +839,7 @@ function CountsTab() {
         }
       >
         {detail && (
+          <div onKeyDown={onCountGridKeyDown}>
           <Table
             rowKey="id"
             size="small"
@@ -878,6 +882,7 @@ function CountsTab() {
               },
             ]}
           />
+          </div>
         )}
       </Modal>
     </>
