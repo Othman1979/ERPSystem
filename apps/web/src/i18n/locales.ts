@@ -237,6 +237,9 @@ export const ar = {
     total: 'الإجمالي',
     unbalanced: 'فرق غير متوازن: {{amount}}',
     minLines: 'أدخل سطرين على الأقل بحساب',
+    saveDraft: 'حفظ المسودة',
+    linesTitle: 'السطور',
+    reversalOf: 'عكس للقيد',
   },
   reports: {
     title: 'التقارير',
@@ -542,6 +545,9 @@ export const en: typeof ar = {
     total: 'Total',
     unbalanced: 'Unbalanced difference: {{amount}}',
     minLines: 'Enter at least two lines with an account',
+    saveDraft: 'Save draft',
+    linesTitle: 'Lines',
+    reversalOf: 'Reversal of',
   },
   reports: {
     title: 'Reports',

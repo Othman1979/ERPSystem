@@ -1,11 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ArrowLeftOutlined,
+  ArrowRightOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  SaveOutlined,
+  SwapOutlined,
+} from '@ant-design/icons';
+import {
   Button,
   Card,
   DatePicker,
-  Descriptions,
-  Drawer,
-  Form,
   Input,
   Modal,
   Popconfirm,
@@ -13,6 +18,7 @@ import {
   Space,
   Table,
   Tag,
+  Typography,
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -33,6 +39,7 @@ import {
   journalControllerPost,
   journalControllerReverse,
 } from '@erp/api-client';
+import i18n from '../i18n';
 import { idemHeaders } from '../idempotency';
 
 interface Account {
@@ -54,7 +61,7 @@ interface JournalLine {
 
 interface JournalEntry {
   id: string;
-  entryNo: string;
+  entryNo: string | null;
   entryDate: string;
   description: string | null;
   status: 'DRAFT' | 'POSTED';
@@ -62,8 +69,8 @@ interface JournalEntry {
   totalDebit: string;
   totalCredit: string;
   lines?: JournalLine[];
-  reversalOf?: { entryNo: string } | null;
-  reversals?: { entryNo: string; status: string }[];
+  reversalOf?: { entryNo: string | null } | null;
+  reversals?: { entryNo: string | null; status: string }[];
 }
 
 const VOUCHER_TYPES = ['JOURNAL', 'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER'] as const;
@@ -75,17 +82,33 @@ const VOUCHER_TYPE_LABEL: Record<VoucherType, string> = {
   PAYMENT_VOUCHER: 'journal.typePayment',
 };
 
+const VOUCHER_TAG_COLOR: Record<VoucherType, string> = {
+  JOURNAL: 'default',
+  RECEIPT_VOUCHER: 'blue',
+  PAYMENT_VOUCHER: 'orange',
+};
+
+function VoucherTag({ type }: { type?: VoucherType }) {
+  const { t } = useTranslation();
+  const vt = type ?? 'JOURNAL';
+  return <Tag color={VOUCHER_TAG_COLOR[vt]}>{t(VOUCHER_TYPE_LABEL[vt])}</Tag>;
+}
+
 export function JournalPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [screen, setScreen] = useState<'list' | 'entry'>('list');
+  const [entryId, setEntryId] = useState<string | null>(null); // null → new entry
   const [reverseTarget, setReverseTarget] = useState<JournalEntry | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
-  const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
-  const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
+
+  // ---- new-entry form state ----
+  const [newDate, setNewDate] = useState<Dayjs>(dayjs());
+  const [newVoucherType, setNewVoucherType] = useState<VoucherType>('JOURNAL');
+  const [newDescription, setNewDescription] = useState('');
+  const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
 
   const { data: entries, isLoading } = useQuery({
     queryKey: ['journal-entries', statusFilter],
@@ -93,6 +116,7 @@ export function JournalPage() {
       journalControllerList(statusFilter ? { status: statusFilter } : { status: '' }).then(
         (r) => r.data as unknown as JournalEntry[],
       ),
+    enabled: screen === 'list',
   });
 
   const { data: accounts } = useQuery({
@@ -104,13 +128,16 @@ export function JournalPage() {
     .filter((a) => a.isActive && a.isPostable)
     .map((a) => ({ value: a.id, label: `${a.code} — ${a.nameAr}` }));
 
-  const { data: detail } = useQuery({
-    queryKey: ['journal-entry', detailId],
-    queryFn: () => journalControllerGet(detailId!).then((r) => r.data as unknown as JournalEntry),
-    enabled: !!detailId,
+  const { data: detail, isLoading: detailLoading } = useQuery({
+    queryKey: ['journal-entry', entryId],
+    queryFn: () => journalControllerGet(entryId!).then((r) => r.data as unknown as JournalEntry),
+    enabled: screen === 'entry' && !!entryId,
   });
 
-  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+    void queryClient.invalidateQueries({ queryKey: ['journal-entry'] });
+  };
   const onError = (err: unknown) =>
     apiMessage.error(
       err instanceof ApiError
@@ -118,18 +145,32 @@ export function JournalPage() {
         : t('errors.INTERNAL'),
     );
 
+  const openNew = () => {
+    setEntryId(null);
+    setNewDate(dayjs());
+    setNewVoucherType('JOURNAL');
+    setNewDescription('');
+    setLines([emptyLine(1), emptyLine(2)]);
+    setScreen('entry');
+  };
+
+  const openEntry = (id: string) => {
+    setEntryId(id);
+    setScreen('entry');
+  };
+
+  const backToList = () => {
+    setScreen('list');
+    setEntryId(null);
+  };
+
   const createDraft = useMutation({
-    mutationFn: (v: {
-      entryDate: Dayjs;
-      description?: string;
-      voucherType: VoucherType;
-      lines: JournalLineDraft[];
-    }) =>
+    mutationFn: () =>
       journalControllerCreateDraft({
-        entryDate: v.entryDate.format('YYYY-MM-DD'),
-        description: v.description || undefined,
-        voucherType: v.voucherType,
-        lines: v.lines
+        entryDate: newDate.format('YYYY-MM-DD'),
+        description: newDescription || undefined,
+        voucherType: newVoucherType,
+        lines: lines
           .filter((l) => l.accountId)
           .map((l) => ({
             accountId: l.accountId,
@@ -138,15 +179,27 @@ export function JournalPage() {
             description: l.description || undefined,
           })),
       } as never),
-    onSuccess: () => {
+    onSuccess: (res) => {
       apiMessage.success(t('common.saved'));
-      setModalOpen(false);
-      form.resetFields();
-      setLines([emptyLine(1), emptyLine(2)]);
       invalidate();
+      const created = (res as { data?: JournalEntry }).data;
+      if (created?.id) {
+        setEntryId(created.id);
+      } else {
+        backToList();
+      }
     },
     onError,
   });
+
+  const saveNew = () => {
+    const filled = lines.filter((l) => l.accountId);
+    if (filled.length < 2) {
+      apiMessage.error(t('journal.minLines'));
+      return;
+    }
+    createDraft.mutate();
+  };
 
   const postEntry = useMutation({
     mutationFn: (id: string) => journalControllerPost(id, { headers: idemHeaders() }),
@@ -161,9 +214,7 @@ export function JournalPage() {
     mutationFn: (v: { id: string; date: Dayjs }) =>
       journalControllerReverse(
         v.id,
-        {
-          reversalDate: v.date.format('YYYY-MM-DD'),
-        } as never,
+        { reversalDate: v.date.format('YYYY-MM-DD') } as never,
         { headers: idemHeaders() },
       ),
     onSuccess: () => {
@@ -179,251 +230,321 @@ export function JournalPage() {
     onSuccess: () => {
       apiMessage.success(t('common.deleted'));
       invalidate();
+      backToList();
     },
     onError,
   });
 
-  return (
-    <Card
-      title={t('journal.title')}
-      extra={
-        <Space>
-          <Select
-            allowClear
-            placeholder={t('journal.allStatuses')}
-            style={{ width: 140 }}
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v)}
-            options={[
-              { value: 'DRAFT', label: t('journal.draft') },
-              { value: 'POSTED', label: t('journal.postedStatus') },
-            ]}
-          />
-          <Button type="primary" onClick={() => setModalOpen(true)}>
-            {t('journal.newEntry')}
-          </Button>
-        </Space>
-      }
-    >
-      {contextHolder}
-      <Table
-        rowKey="id"
-        loading={isLoading}
-        dataSource={entries ?? []}
-        pagination={{ pageSize: 20 }}
-        onRow={(e) => ({ onClick: () => setDetailId(e.id), style: { cursor: 'pointer' } })}
-        columns={[
-          {
-            title: t('journal.entryNo'),
-            dataIndex: 'entryNo',
-            width: 110,
-            render: (v: string | null) => v ?? '—',
-          },
-          {
-            title: t('journal.date'),
-            dataIndex: 'entryDate',
-            width: 110,
-            render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
-          },
-          {
-            title: t('journal.voucherType'),
-            dataIndex: 'voucherType',
-            width: 110,
-            render: (v: VoucherType | undefined) => {
-              if (v === 'RECEIPT_VOUCHER')
-                return <Tag color="blue">{t('journal.typeReceipt')}</Tag>;
-              if (v === 'PAYMENT_VOUCHER')
-                return <Tag color="orange">{t('journal.typePayment')}</Tag>;
-              return <Tag>{t('journal.typeJournal')}</Tag>;
+  // ============================ LIST VIEW ============================
+  if (screen === 'list') {
+    return (
+      <Card
+        title={t('journal.title')}
+        extra={
+          <Space>
+            <Select
+              allowClear
+              placeholder={t('journal.allStatuses')}
+              style={{ width: 140 }}
+              value={statusFilter}
+              onChange={(v) => setStatusFilter(v)}
+              options={[
+                { value: 'DRAFT', label: t('journal.draft') },
+                { value: 'POSTED', label: t('journal.postedStatus') },
+              ]}
+            />
+            <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>
+              {t('journal.newEntry')}
+            </Button>
+          </Space>
+        }
+      >
+        {contextHolder}
+        <Table
+          rowKey="id"
+          loading={isLoading}
+          dataSource={entries ?? []}
+          pagination={{ pageSize: 20 }}
+          onRow={(e) => ({ onClick: () => openEntry(e.id), style: { cursor: 'pointer' } })}
+          columns={[
+            {
+              title: t('journal.entryNo'),
+              dataIndex: 'entryNo',
+              width: 110,
+              render: (v: string | null) => v ?? '—',
             },
-          },
-          {
-            title: t('common.description'),
-            dataIndex: 'description',
-            render: (v: string | null) => v ?? '—',
-          },
-          {
-            title: t('common.status'),
-            dataIndex: 'status',
-            width: 100,
-            render: (v: string) =>
-              v === 'POSTED' ? (
-                <Tag color="green">{t('journal.postedStatus')}</Tag>
-              ) : (
-                <Tag>{t('journal.draft')}</Tag>
+            {
+              title: t('journal.voucherType'),
+              dataIndex: 'voucherType',
+              width: 110,
+              render: (v: VoucherType | undefined) => <VoucherTag type={v} />,
+            },
+            {
+              title: t('journal.date'),
+              dataIndex: 'entryDate',
+              width: 110,
+              render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+            },
+            {
+              title: t('common.description'),
+              dataIndex: 'description',
+              render: (v: string | null) => v ?? '—',
+            },
+            {
+              title: t('common.status'),
+              dataIndex: 'status',
+              width: 100,
+              render: (v: string) =>
+                v === 'POSTED' ? (
+                  <Tag color="green">{t('journal.postedStatus')}</Tag>
+                ) : (
+                  <Tag>{t('journal.draft')}</Tag>
+                ),
+            },
+            {
+              title: t('journal.debit'),
+              dataIndex: 'totalDebit',
+              width: 110,
+              align: 'right',
+              render: (v: string) => Number(v).toFixed(3),
+            },
+            {
+              title: t('common.actions'),
+              width: 200,
+              render: (_: unknown, e: JournalEntry) => (
+                <Space onClick={(ev) => ev.stopPropagation()}>
+                  {e.status === 'DRAFT' && (
+                    <>
+                      <Popconfirm
+                        title={t('journal.confirmPost')}
+                        onConfirm={() => postEntry.mutate(e.id)}
+                      >
+                        <Button size="small" type="primary">
+                          {t('journal.post')}
+                        </Button>
+                      </Popconfirm>
+                      <Popconfirm
+                        title={t('common.confirmDelete')}
+                        onConfirm={() => deleteDraft.mutate(e.id)}
+                      >
+                        <Button size="small" danger>
+                          {t('common.delete')}
+                        </Button>
+                      </Popconfirm>
+                    </>
+                  )}
+                  {e.status === 'POSTED' && !e.reversals?.length && (
+                    <Button size="small" onClick={() => setReverseTarget(e)}>
+                      {t('journal.reverse')}
+                    </Button>
+                  )}
+                </Space>
               ),
-          },
-          {
-            title: t('journal.debit'),
-            dataIndex: 'totalDebit',
-            width: 110,
-            align: 'right',
-            render: (v: string) => Number(v).toFixed(3),
-          },
-          {
-            title: t('common.actions'),
-            width: 220,
-            render: (_: unknown, e: JournalEntry) => (
-              <Space onClick={(ev) => ev.stopPropagation()}>
-                {e.status === 'DRAFT' && (
+            },
+          ]}
+        />
+      </Card>
+    );
+  }
+
+  // ============================ ENTRY VIEW ============================
+  const isNew = !entryId;
+  const entry = detail ?? null;
+
+  return (
+    <div>
+      {contextHolder}
+      {/* Odoo-style control panel */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          marginBottom: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Button
+          icon={i18n.language === 'ar' ? <ArrowRightOutlined /> : <ArrowLeftOutlined />}
+          onClick={backToList}
+        >
+          {t('journal.title')}
+        </Button>
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          {isNew
+            ? t('journal.newEntry')
+            : `${entry?.entryNo ?? '…'} — ${t(VOUCHER_TYPE_LABEL[entry?.voucherType ?? 'JOURNAL'])}`}
+        </Typography.Title>
+        {entry && (
+          <Space size={4}>
+            <VoucherTag type={entry.voucherType} />
+            {entry.status === 'POSTED' ? (
+              <Tag color="green">{t('journal.postedStatus')}</Tag>
+            ) : (
+              <Tag>{t('journal.draft')}</Tag>
+            )}
+          </Space>
+        )}
+        <div style={{ flex: 1 }} />
+        <Space>
+          {isNew ? (
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              loading={createDraft.isPending}
+              onClick={saveNew}
+            >
+              {t('journal.saveDraft')}
+            </Button>
+          ) : (
+            entry && (
+              <>
+                {entry.status === 'DRAFT' && (
                   <>
                     <Popconfirm
                       title={t('journal.confirmPost')}
-                      onConfirm={() => postEntry.mutate(e.id)}
+                      onConfirm={() => postEntry.mutate(entry.id)}
                     >
-                      <Button size="small" type="primary">
+                      <Button type="primary" loading={postEntry.isPending}>
                         {t('journal.post')}
                       </Button>
                     </Popconfirm>
                     <Popconfirm
                       title={t('common.confirmDelete')}
-                      onConfirm={() => deleteDraft.mutate(e.id)}
+                      onConfirm={() => deleteDraft.mutate(entry.id)}
                     >
-                      <Button size="small" danger>
+                      <Button danger icon={<DeleteOutlined />}>
                         {t('common.delete')}
                       </Button>
                     </Popconfirm>
                   </>
                 )}
-                {e.status === 'POSTED' && !e.reversals?.length && (
-                  <Button size="small" onClick={() => setReverseTarget(e)}>
+                {entry.status === 'POSTED' && !entry.reversals?.length && (
+                  <Button icon={<SwapOutlined />} onClick={() => setReverseTarget(entry)}>
                     {t('journal.reverse')}
                   </Button>
                 )}
-              </Space>
-            ),
-          },
-        ]}
-      />
+              </>
+            )
+          )}
+        </Space>
+      </div>
 
-      <Modal
-        title={t('journal.newEntry')}
-        open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          setLines([emptyLine(1), emptyLine(2)]);
-        }}
-        onOk={() => form.submit()}
-        confirmLoading={createDraft.isPending}
-        width={900}
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(v) => {
-            const filled = lines.filter((l) => l.accountId);
-            if (filled.length < 2) {
-              apiMessage.error(t('journal.minLines'));
-              return;
-            }
-            createDraft.mutate({
-              entryDate: v.entryDate,
-              description: v.description,
-              voucherType: v.voucherType ?? 'JOURNAL',
-              lines,
-            });
-          }}
-          initialValues={{ entryDate: dayjs(), voucherType: 'JOURNAL' }}
-          requiredMark={false}
-        >
-          <Space style={{ display: 'flex' }} align="start" wrap>
-            <Form.Item
-              name="entryDate"
-              label={t('journal.date')}
-              rules={[{ required: true }]}
-              style={{ width: 160 }}
-            >
-              <DatePicker />
-            </Form.Item>
-            <Form.Item
-              name="voucherType"
-              label={t('journal.voucherType')}
-              rules={[{ required: true }]}
-              style={{ width: 160 }}
-            >
+      {/* Header fields */}
+      <Card size="small" style={{ marginBottom: 16 }}>
+        {isNew ? (
+          <Space size={16} wrap>
+            <div>
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                {t('journal.voucherType')}
+              </Typography.Text>
               <Select
+                value={newVoucherType}
+                onChange={setNewVoucherType}
                 options={VOUCHER_TYPES.map((vt) => ({
                   value: vt,
                   label: t(VOUCHER_TYPE_LABEL[vt]),
                 }))}
+                style={{ width: 180 }}
               />
-            </Form.Item>
-            <Form.Item name="description" label={t('common.description')} style={{ flex: 1 }}>
-              <Input maxLength={500} />
-            </Form.Item>
+            </div>
+            <div>
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                {t('journal.date')}
+              </Typography.Text>
+              <DatePicker value={newDate} onChange={(d) => d && setNewDate(d)} />
+            </div>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
+                {t('common.description')}
+              </Typography.Text>
+              <Input
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                maxLength={500}
+                placeholder={t('common.description')}
+              />
+            </div>
           </Space>
-          <Form.Item style={{ marginBottom: 8 }}>
-            <JournalLinesGrid
-              lines={lines}
-              onChange={setLines}
-              accountOptions={accountOptions}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <Drawer
-        title={detail ? `${t('journal.title')} ${detail.entryNo}` : ''}
-        open={!!detailId}
-        onClose={() => setDetailId(null)}
-        width={640}
-      >
-        {detail && (
-          <>
-            <Descriptions column={2} size="small" bordered>
-              <Descriptions.Item label={t('journal.entryNo')}>{detail.entryNo}</Descriptions.Item>
-              <Descriptions.Item label={t('common.status')}>
-                {detail.status === 'POSTED'
-                  ? t('journal.postedStatus')
-                  : t('journal.draft')}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('journal.date')}>
-                {dayjs(detail.entryDate).format('YYYY-MM-DD')}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('journal.voucherType')}>
-                {detail.voucherType && detail.voucherType !== 'JOURNAL'
-                  ? t(VOUCHER_TYPE_LABEL[detail.voucherType])
-                  : t('journal.typeJournal')}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('common.description')}>
-                {detail.description ?? '—'}
-              </Descriptions.Item>
-            </Descriptions>
-            <Table
-              rowKey={(r) => r.id ?? `${r.account?.code}-${r.debit}-${r.credit}`}
-              size="small"
-              pagination={false}
-              style={{ marginTop: 16 }}
-              dataSource={detail.lines ?? []}
-              columns={[
-                {
-                  title: t('journal.account'),
-                  render: (_: unknown, l: JournalLine) =>
-                    l.account ? `${l.account.code} — ${l.account.nameAr}` : '—',
-                },
-                {
-                  title: t('common.description'),
-                  dataIndex: 'description',
-                  render: (v: string | null) => v ?? '—',
-                },
-                {
-                  title: t('journal.debit'),
-                  dataIndex: 'debit',
-                  align: 'right',
-                  render: (v: string | null) => (v ? Number(v).toFixed(3) : ''),
-                },
-                {
-                  title: t('journal.credit'),
-                  dataIndex: 'credit',
-                  align: 'right',
-                  render: (v: string | null) => (v ? Number(v).toFixed(3) : ''),
-                },
-              ]}
-            />
-          </>
+        ) : (
+          <Space size={24} wrap>
+            <span>
+              <Typography.Text type="secondary">{t('journal.date')}: </Typography.Text>
+              {entry ? dayjs(entry.entryDate).format('YYYY-MM-DD') : '—'}
+            </span>
+            <span>
+              <Typography.Text type="secondary">{t('common.description')}: </Typography.Text>
+              {entry?.description ?? '—'}
+            </span>
+            {entry?.reversalOf && (
+              <span>
+                <Typography.Text type="secondary">{t('journal.reversalOf')}: </Typography.Text>
+                {entry.reversalOf.entryNo ?? '—'}
+              </span>
+            )}
+          </Space>
         )}
-      </Drawer>
+      </Card>
 
+      {/* Lines */}
+      <Card size="small" loading={detailLoading && !isNew} title={t('journal.linesTitle')}>
+        {isNew ? (
+          <JournalLinesGrid lines={lines} onChange={setLines} accountOptions={accountOptions} />
+        ) : (
+          <Table
+            rowKey={(r) => r.id ?? `${r.account?.code}-${r.debit}-${r.credit}`}
+            size="small"
+            pagination={false}
+            dataSource={entry?.lines ?? []}
+            columns={[
+              {
+                title: '#',
+                width: 50,
+                render: (_: unknown, __: JournalLine, i: number) => i + 1,
+              },
+              {
+                title: t('journal.account'),
+                render: (_: unknown, l: JournalLine) =>
+                  l.account ? `${l.account.code} — ${l.account.nameAr}` : '—',
+              },
+              {
+                title: t('common.description'),
+                dataIndex: 'description',
+                render: (v: string | null) => v ?? '—',
+              },
+              {
+                title: t('journal.debit'),
+                dataIndex: 'debit',
+                width: 130,
+                align: 'right',
+                render: (v: string | null) => (v ? Number(v).toFixed(3) : ''),
+              },
+              {
+                title: t('journal.credit'),
+                dataIndex: 'credit',
+                width: 130,
+                align: 'right',
+                render: (v: string | null) => (v ? Number(v).toFixed(3) : ''),
+              },
+            ]}
+            summary={() => (
+              <Table.Summary.Row style={{ fontWeight: 600 }}>
+                <Table.Summary.Cell index={0} colSpan={3}>
+                  {t('journal.total')}
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={1} align="right">
+                  {entry ? Number(entry.totalDebit).toFixed(3) : ''}
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={2} align="right">
+                  {entry ? Number(entry.totalCredit).toFixed(3) : ''}
+                </Table.Summary.Cell>
+              </Table.Summary.Row>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Reverse modal */}
       <Modal
         title={t('journal.reverseTitle')}
         open={!!reverseTarget}
@@ -435,12 +556,22 @@ export function JournalPage() {
         }
         confirmLoading={reverseEntry.isPending}
       >
-        <Form layout="vertical" requiredMark={false}>
-          <Form.Item label={t('journal.reversalDate')} required>
-            <DatePicker value={reverseDate} onChange={setReverseDate} style={{ width: '100%' }} />
-          </Form.Item>
-        </Form>
+        <div style={{ marginBottom: 12 }}>
+          <Typography.Text type="secondary">
+            {reverseTarget?.entryNo} — {reverseTarget?.description}
+          </Typography.Text>
+        </div>
+        <div>
+          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+            {t('journal.reversalDate')}
+          </Typography.Text>
+          <DatePicker
+            value={reverseDate}
+            onChange={setReverseDate}
+            style={{ width: '100%' }}
+          />
+        </div>
       </Modal>
-    </Card>
+    </div>
   );
 }
