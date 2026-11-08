@@ -29,6 +29,9 @@ export function GridSelect({
   return (
     <Select
       {...props}
+      className={[props.className, open ? 'grid-select-open' : '']
+        .filter(Boolean)
+        .join(' ') || undefined}
       open={open}
       showSearch
       optionFilterProp="label"
@@ -81,10 +84,14 @@ export function GridSelect({
   );
 }
 
-/** True while any antd select or date-picker dropdown is open (portals). */
+/**
+ * True while a GridSelect dropdown or a date-picker panel is open.
+ * GridSelect marks its root with .grid-select-open — exact, unlike the
+ * dropdown DOM node which stays "visible" during the close animation.
+ */
 export function isSelectDropdownOpen(): boolean {
   return !!document.querySelector(
-    '.ant-select-dropdown:not(.ant-select-dropdown-hidden), .ant-picker-dropdown:not(.ant-picker-dropdown-hidden)',
+    '.grid-select-open, .ant-picker-dropdown:not(.ant-picker-dropdown-hidden)',
   );
 }
 
@@ -98,6 +105,7 @@ export function focusCellEl(el: HTMLElement | null | undefined): void {
     // when closed, so nudge it only if nothing opened after the mousedown.
     requestAnimationFrame(() => {
       if (
+        !el.querySelector('.grid-select-open') &&
         !document.querySelector(
           '.ant-select-dropdown:not(.ant-select-dropdown-hidden)',
         )
