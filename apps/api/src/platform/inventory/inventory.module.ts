@@ -29,5 +29,6 @@ import { WarehousesService } from './warehouses.service.js';
     CountsService,
     StockReportsService,
   ],
+  exports: [StockLedgerService],
 })
 export class InventoryModule {}

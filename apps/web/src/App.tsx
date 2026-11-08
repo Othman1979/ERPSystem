@@ -4,15 +4,19 @@ import {
   AppstoreOutlined,
   BankOutlined,
   CalendarOutlined,
+  CarOutlined,
   DashboardOutlined,
   DatabaseOutlined,
+  FileDoneOutlined,
   InboxOutlined,
   LogoutOutlined,
   ProfileOutlined,
   SettingOutlined,
   ShopOutlined,
+  ShoppingCartOutlined,
   TeamOutlined,
   UserOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
 import { Avatar, Button, Card, Col, Drawer, Grid, Row, Select, Space, Spin, Typography } from 'antd';
 import { useAuth } from './auth/AuthContext';
@@ -28,6 +32,11 @@ import { ReportsPage } from './pages/ReportsPage';
 import { ItemsPage } from './pages/ItemsPage';
 import { WarehousesPage } from './pages/WarehousesPage';
 import { StockPage } from './pages/StockPage';
+import { PartiesPage } from './pages/PartiesPage';
+import { SalesPage } from './pages/SalesPage';
+import { PurchasesPage } from './pages/PurchasesPage';
+import { GoodsNotesPage } from './pages/GoodsNotesPage';
+import { TreasuryPage } from './pages/TreasuryPage';
 import { HealthPage } from './pages/HealthPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 
@@ -40,6 +49,11 @@ type View =
   | 'items'
   | 'warehouses'
   | 'stock'
+  | 'sales'
+  | 'purchases'
+  | 'goodsNotes'
+  | 'parties'
+  | 'treasury'
   | 'reports'
   | 'fiscal'
   | 'settings'
@@ -62,8 +76,18 @@ const APP_GROUPS: AppGroup[] = [
     tiles: [
       { key: 'accounts', icon: <BankOutlined />, color: '#017e84' },
       { key: 'journal', icon: <ProfileOutlined />, color: '#017e84' },
+      { key: 'treasury', icon: <WalletOutlined />, color: '#017e84' },
       { key: 'reports', icon: <DashboardOutlined />, color: '#017e84' },
       { key: 'fiscal', icon: <CalendarOutlined />, color: '#017e84' },
+    ],
+  },
+  {
+    label: 'nav.groupSales',
+    tiles: [
+      { key: 'sales', icon: <ShoppingCartOutlined />, color: '#875a7b' },
+      { key: 'purchases', icon: <CarOutlined />, color: '#875a7b' },
+      { key: 'goodsNotes', icon: <FileDoneOutlined />, color: '#875a7b' },
+      { key: 'parties', icon: <TeamOutlined />, color: '#875a7b' },
     ],
   },
   {
@@ -94,6 +118,11 @@ const VIEWS: Record<View, ReactNode> = {
   items: <ItemsPage />,
   warehouses: <WarehousesPage />,
   stock: <StockPage />,
+  sales: <SalesPage />,
+  purchases: <PurchasesPage />,
+  goodsNotes: <GoodsNotesPage />,
+  parties: <PartiesPage />,
+  treasury: <TreasuryPage />,
   reports: <ReportsPage />,
   fiscal: <FiscalPage />,
   settings: <SettingsPage />,
@@ -109,6 +138,11 @@ const NAV_LABEL: Record<View, string> = {
   items: 'nav.items',
   warehouses: 'nav.warehouses',
   stock: 'nav.stock',
+  sales: 'nav.sales',
+  purchases: 'nav.purchases',
+  goodsNotes: 'nav.goodsNotes',
+  parties: 'nav.parties',
+  treasury: 'nav.treasury',
   reports: 'nav.reports',
   fiscal: 'nav.fiscal',
   settings: 'nav.settings',

@@ -18,6 +18,8 @@ export const ACCOUNT_MAPPING_KEYS = [
   'ROUNDING',
   'OPENING_BALANCE_EQUITY',
   'RETAINED_EARNINGS',
+  'PURCHASES',
+  'GOODS_RECEIVED_NOT_INVOICED',
 ] as const;
 
 export type AccountMappingKey = (typeof ACCOUNT_MAPPING_KEYS)[number];
@@ -77,6 +79,7 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('2101', 'الموردون', 'LIABILITY', { parentCode: '21', isControl: true, controlType: 'SUPPLIERS' }),
   acct('2102', 'ضريبة المبيعات', 'LIABILITY', { parentCode: '21' }),
   acct('2103', 'مصاريف مستحقة', 'LIABILITY', { parentCode: '21' }),
+  acct('2104', 'بضاعة مستلمة غير مفوترة', 'LIABILITY', { parentCode: '21' }),
   acct('3101', 'رأس المال', 'EQUITY', { parentCode: '31' }),
   acct('3102', 'الأرباح المدورة', 'EQUITY', { parentCode: '31' }),
   acct('3103', 'أرصدة افتتاحية', 'EQUITY', { parentCode: '31' }),
@@ -86,6 +89,7 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('4201', 'إيرادات أخرى', 'REVENUE', { parentCode: '42' }),
   acct('5101', 'تكلفة البضاعة المباعة', 'EXPENSE', { parentCode: '5' }),
   acct('5102', 'فروقات الجرد والتسويات', 'EXPENSE', { parentCode: '5' }),
+  acct('5103', 'مشتريات', 'EXPENSE', { parentCode: '5' }),
   acct('5201', 'الرواتب', 'EXPENSE', { parentCode: '52' }),
   acct('5202', 'الإيجار', 'EXPENSE', { parentCode: '52' }),
   acct('5203', 'الكهرباء والمياه والاتصالات', 'EXPENSE', { parentCode: '52' }),
@@ -108,6 +112,8 @@ export const TEMPLATE_MAPPINGS: Record<AccountMappingKey, string> = {
   ROUNDING: '5205',
   OPENING_BALANCE_EQUITY: '3103',
   RETAINED_EARNINGS: '3102',
+  PURCHASES: '5103',
+  GOODS_RECEIVED_NOT_INVOICED: '2104',
 };
 
 export const DEFAULT_UNITS = [
@@ -145,4 +151,8 @@ export const DOCUMENT_TYPE_PREFIXES: Record<string, string> = {
   STOCK_TRANSFER: 'ST',
   STOCK_ADJUSTMENT: 'SA',
   OPENING_ENTRY: 'OP',
+  GOODS_RECEIPT: 'GRN',
+  GOODS_ISSUE: 'GIN',
+  RECEIPT: 'RC',
+  PAYMENT: 'PY',
 };

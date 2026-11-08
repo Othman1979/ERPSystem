@@ -70,6 +70,28 @@ export interface CreateStockCountDto { [key: string]: unknown }
 
 export interface UpdateCountLineDto { [key: string]: unknown }
 
+export interface CreatePartyDto { [key: string]: unknown }
+
+export interface UpdatePartyDto { [key: string]: unknown }
+
+export interface CreateSalesInvoiceDto { [key: string]: unknown }
+
+export interface CreateSalesReturnDto { [key: string]: unknown }
+
+export interface CreatePurchaseInvoiceDto { [key: string]: unknown }
+
+export interface CreatePurchaseReturnDto { [key: string]: unknown }
+
+export interface CreateGoodsNoteDto { [key: string]: unknown }
+
+export interface CreateCashBoxDto { [key: string]: unknown }
+
+export interface CreateBankAccountDto { [key: string]: unknown }
+
+export interface CreateReceiptDto { [key: string]: unknown }
+
+export interface CreatePaymentDto { [key: string]: unknown }
+
 export interface UpdateTenantStatusDto { [key: string]: unknown }
 
 export interface ExtendTrialDto { [key: string]: unknown }
@@ -121,6 +143,36 @@ export type StockReportsControllerMovementsParams = {
 
 export type StockReportsControllerValuationParams = {
   warehouseId: string;
+};
+
+export type PartiesControllerListParams = {
+  partyType: string;
+  isActive: string;
+};
+
+export type SalesControllerListInvoicesParams = {
+  status: string;
+  paymentType: string;
+  customerId: string;
+};
+
+export type SalesControllerListReturnsParams = {
+  status: string;
+};
+
+export type PurchasesControllerListInvoicesParams = {
+  status: string;
+  paymentType: string;
+  supplierId: string;
+};
+
+export type PurchasesControllerListReturnsParams = {
+  status: string;
+};
+
+export type GoodsNotesControllerListParams = {
+  status: string;
+  noteType: string;
 };
 
 export type AdminControllerListParams = {
@@ -3531,6 +3583,1799 @@ export const getStockReportsControllerVerifyUrl = () => {
 export const stockReportsControllerVerify = async ( options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerVerifyResponse> => {
 
   return apiFetch<stockReportsControllerVerifyResponse>(getStockReportsControllerVerifyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type partiesControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type partiesControllerListResponseSuccess = (partiesControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type partiesControllerListResponse = (partiesControllerListResponseSuccess)
+
+export const getPartiesControllerListUrl = (params: PartiesControllerListParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/parties?${stringifiedParams}` : `/api/v1/parties`
+}
+
+export const partiesControllerList = async (params: PartiesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerListResponse> => {
+
+  return apiFetch<partiesControllerListResponse>(getPartiesControllerListUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type partiesControllerCreateResponse201 = {
+  data: void
+  status: 201
+}
+
+export type partiesControllerCreateResponseSuccess = (partiesControllerCreateResponse201) & {
+  headers: Headers;
+};
+;
+
+export type partiesControllerCreateResponse = (partiesControllerCreateResponseSuccess)
+
+export const getPartiesControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/parties`
+}
+
+export const partiesControllerCreate = async (createPartyDto: CreatePartyDto, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerCreateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<partiesControllerCreateResponse>(getPartiesControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPartyDto)
+  }
+);}
+
+
+
+export type partiesControllerGetResponse200 = {
+  data: void
+  status: 200
+}
+
+export type partiesControllerGetResponseSuccess = (partiesControllerGetResponse200) & {
+  headers: Headers;
+};
+;
+
+export type partiesControllerGetResponse = (partiesControllerGetResponseSuccess)
+
+export const getPartiesControllerGetUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/parties/${id}`
+}
+
+export const partiesControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerGetResponse> => {
+
+  return apiFetch<partiesControllerGetResponse>(getPartiesControllerGetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type partiesControllerUpdateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type partiesControllerUpdateResponseSuccess = (partiesControllerUpdateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type partiesControllerUpdateResponse = (partiesControllerUpdateResponseSuccess)
+
+export const getPartiesControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/parties/${id}`
+}
+
+export const partiesControllerUpdate = async (id: string,
+    updatePartyDto: UpdatePartyDto, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerUpdateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<partiesControllerUpdateResponse>(getPartiesControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updatePartyDto)
+  }
+);}
+
+
+
+export type partiesControllerDeactivateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type partiesControllerDeactivateResponseSuccess = (partiesControllerDeactivateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type partiesControllerDeactivateResponse = (partiesControllerDeactivateResponseSuccess)
+
+export const getPartiesControllerDeactivateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/parties/${id}/deactivate`
+}
+
+export const partiesControllerDeactivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerDeactivateResponse> => {
+
+  return apiFetch<partiesControllerDeactivateResponse>(getPartiesControllerDeactivateUrl(id),
+  {
+    ...options,
+    method: 'PATCH'
+
+
+  }
+);}
+
+
+
+export type salesControllerListInvoicesResponse200 = {
+  data: void
+  status: 200
+}
+
+export type salesControllerListInvoicesResponseSuccess = (salesControllerListInvoicesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerListInvoicesResponse = (salesControllerListInvoicesResponseSuccess)
+
+export const getSalesControllerListInvoicesUrl = (params: SalesControllerListInvoicesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/sales-invoices?${stringifiedParams}` : `/api/v1/sales-invoices`
+}
+
+export const salesControllerListInvoices = async (params: SalesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListInvoicesResponse> => {
+
+  return apiFetch<salesControllerListInvoicesResponse>(getSalesControllerListInvoicesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesControllerCreateInvoiceResponse201 = {
+  data: void
+  status: 201
+}
+
+export type salesControllerCreateInvoiceResponseSuccess = (salesControllerCreateInvoiceResponse201) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerCreateInvoiceResponse = (salesControllerCreateInvoiceResponseSuccess)
+
+export const getSalesControllerCreateInvoiceUrl = () => {
+
+
+
+
+  return `/api/v1/sales-invoices`
+}
+
+export const salesControllerCreateInvoice = async (createSalesInvoiceDto: CreateSalesInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerCreateInvoiceResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesControllerCreateInvoiceResponse>(getSalesControllerCreateInvoiceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createSalesInvoiceDto)
+  }
+);}
+
+
+
+export type salesControllerGetInvoiceResponse200 = {
+  data: void
+  status: 200
+}
+
+export type salesControllerGetInvoiceResponseSuccess = (salesControllerGetInvoiceResponse200) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerGetInvoiceResponse = (salesControllerGetInvoiceResponseSuccess)
+
+export const getSalesControllerGetInvoiceUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-invoices/${id}`
+}
+
+export const salesControllerGetInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerGetInvoiceResponse> => {
+
+  return apiFetch<salesControllerGetInvoiceResponse>(getSalesControllerGetInvoiceUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesControllerUpdateInvoiceResponse200 = {
+  data: void
+  status: 200
+}
+
+export type salesControllerUpdateInvoiceResponseSuccess = (salesControllerUpdateInvoiceResponse200) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerUpdateInvoiceResponse = (salesControllerUpdateInvoiceResponseSuccess)
+
+export const getSalesControllerUpdateInvoiceUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-invoices/${id}`
+}
+
+export const salesControllerUpdateInvoice = async (id: string,
+    createSalesInvoiceDto: CreateSalesInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerUpdateInvoiceResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesControllerUpdateInvoiceResponse>(getSalesControllerUpdateInvoiceUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createSalesInvoiceDto)
+  }
+);}
+
+
+
+export type salesControllerDeleteInvoiceResponse200 = {
+  data: void
+  status: 200
+}
+
+export type salesControllerDeleteInvoiceResponseSuccess = (salesControllerDeleteInvoiceResponse200) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerDeleteInvoiceResponse = (salesControllerDeleteInvoiceResponseSuccess)
+
+export const getSalesControllerDeleteInvoiceUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-invoices/${id}`
+}
+
+export const salesControllerDeleteInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerDeleteInvoiceResponse> => {
+
+  return apiFetch<salesControllerDeleteInvoiceResponse>(getSalesControllerDeleteInvoiceUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type salesControllerPostInvoiceResponse201 = {
+  data: void
+  status: 201
+}
+
+export type salesControllerPostInvoiceResponseSuccess = (salesControllerPostInvoiceResponse201) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerPostInvoiceResponse = (salesControllerPostInvoiceResponseSuccess)
+
+export const getSalesControllerPostInvoiceUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-invoices/${id}/post`
+}
+
+export const salesControllerPostInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerPostInvoiceResponse> => {
+
+  return apiFetch<salesControllerPostInvoiceResponse>(getSalesControllerPostInvoiceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type salesControllerListReturnsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type salesControllerListReturnsResponseSuccess = (salesControllerListReturnsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerListReturnsResponse = (salesControllerListReturnsResponseSuccess)
+
+export const getSalesControllerListReturnsUrl = (params: SalesControllerListReturnsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/sales-returns?${stringifiedParams}` : `/api/v1/sales-returns`
+}
+
+export const salesControllerListReturns = async (params: SalesControllerListReturnsParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListReturnsResponse> => {
+
+  return apiFetch<salesControllerListReturnsResponse>(getSalesControllerListReturnsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesControllerCreateReturnResponse201 = {
+  data: void
+  status: 201
+}
+
+export type salesControllerCreateReturnResponseSuccess = (salesControllerCreateReturnResponse201) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerCreateReturnResponse = (salesControllerCreateReturnResponseSuccess)
+
+export const getSalesControllerCreateReturnUrl = () => {
+
+
+
+
+  return `/api/v1/sales-returns`
+}
+
+export const salesControllerCreateReturn = async (createSalesReturnDto: CreateSalesReturnDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerCreateReturnResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesControllerCreateReturnResponse>(getSalesControllerCreateReturnUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createSalesReturnDto)
+  }
+);}
+
+
+
+export type salesControllerGetReturnResponse200 = {
+  data: void
+  status: 200
+}
+
+export type salesControllerGetReturnResponseSuccess = (salesControllerGetReturnResponse200) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerGetReturnResponse = (salesControllerGetReturnResponseSuccess)
+
+export const getSalesControllerGetReturnUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-returns/${id}`
+}
+
+export const salesControllerGetReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerGetReturnResponse> => {
+
+  return apiFetch<salesControllerGetReturnResponse>(getSalesControllerGetReturnUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesControllerDeleteReturnResponse200 = {
+  data: void
+  status: 200
+}
+
+export type salesControllerDeleteReturnResponseSuccess = (salesControllerDeleteReturnResponse200) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerDeleteReturnResponse = (salesControllerDeleteReturnResponseSuccess)
+
+export const getSalesControllerDeleteReturnUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-returns/${id}`
+}
+
+export const salesControllerDeleteReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerDeleteReturnResponse> => {
+
+  return apiFetch<salesControllerDeleteReturnResponse>(getSalesControllerDeleteReturnUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type salesControllerPostReturnResponse201 = {
+  data: void
+  status: 201
+}
+
+export type salesControllerPostReturnResponseSuccess = (salesControllerPostReturnResponse201) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerPostReturnResponse = (salesControllerPostReturnResponseSuccess)
+
+export const getSalesControllerPostReturnUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-returns/${id}/post`
+}
+
+export const salesControllerPostReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerPostReturnResponse> => {
+
+  return apiFetch<salesControllerPostReturnResponse>(getSalesControllerPostReturnUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type purchasesControllerListInvoicesResponse200 = {
+  data: void
+  status: 200
+}
+
+export type purchasesControllerListInvoicesResponseSuccess = (purchasesControllerListInvoicesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerListInvoicesResponse = (purchasesControllerListInvoicesResponseSuccess)
+
+export const getPurchasesControllerListInvoicesUrl = (params: PurchasesControllerListInvoicesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/purchase-invoices?${stringifiedParams}` : `/api/v1/purchase-invoices`
+}
+
+export const purchasesControllerListInvoices = async (params: PurchasesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerListInvoicesResponse> => {
+
+  return apiFetch<purchasesControllerListInvoicesResponse>(getPurchasesControllerListInvoicesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type purchasesControllerCreateInvoiceResponse201 = {
+  data: void
+  status: 201
+}
+
+export type purchasesControllerCreateInvoiceResponseSuccess = (purchasesControllerCreateInvoiceResponse201) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerCreateInvoiceResponse = (purchasesControllerCreateInvoiceResponseSuccess)
+
+export const getPurchasesControllerCreateInvoiceUrl = () => {
+
+
+
+
+  return `/api/v1/purchase-invoices`
+}
+
+export const purchasesControllerCreateInvoice = async (createPurchaseInvoiceDto: CreatePurchaseInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerCreateInvoiceResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<purchasesControllerCreateInvoiceResponse>(getPurchasesControllerCreateInvoiceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPurchaseInvoiceDto)
+  }
+);}
+
+
+
+export type purchasesControllerGetInvoiceResponse200 = {
+  data: void
+  status: 200
+}
+
+export type purchasesControllerGetInvoiceResponseSuccess = (purchasesControllerGetInvoiceResponse200) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerGetInvoiceResponse = (purchasesControllerGetInvoiceResponseSuccess)
+
+export const getPurchasesControllerGetInvoiceUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-invoices/${id}`
+}
+
+export const purchasesControllerGetInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerGetInvoiceResponse> => {
+
+  return apiFetch<purchasesControllerGetInvoiceResponse>(getPurchasesControllerGetInvoiceUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type purchasesControllerUpdateInvoiceResponse200 = {
+  data: void
+  status: 200
+}
+
+export type purchasesControllerUpdateInvoiceResponseSuccess = (purchasesControllerUpdateInvoiceResponse200) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerUpdateInvoiceResponse = (purchasesControllerUpdateInvoiceResponseSuccess)
+
+export const getPurchasesControllerUpdateInvoiceUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-invoices/${id}`
+}
+
+export const purchasesControllerUpdateInvoice = async (id: string,
+    createPurchaseInvoiceDto: CreatePurchaseInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerUpdateInvoiceResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<purchasesControllerUpdateInvoiceResponse>(getPurchasesControllerUpdateInvoiceUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPurchaseInvoiceDto)
+  }
+);}
+
+
+
+export type purchasesControllerDeleteInvoiceResponse200 = {
+  data: void
+  status: 200
+}
+
+export type purchasesControllerDeleteInvoiceResponseSuccess = (purchasesControllerDeleteInvoiceResponse200) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerDeleteInvoiceResponse = (purchasesControllerDeleteInvoiceResponseSuccess)
+
+export const getPurchasesControllerDeleteInvoiceUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-invoices/${id}`
+}
+
+export const purchasesControllerDeleteInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerDeleteInvoiceResponse> => {
+
+  return apiFetch<purchasesControllerDeleteInvoiceResponse>(getPurchasesControllerDeleteInvoiceUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type purchasesControllerPostInvoiceResponse201 = {
+  data: void
+  status: 201
+}
+
+export type purchasesControllerPostInvoiceResponseSuccess = (purchasesControllerPostInvoiceResponse201) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerPostInvoiceResponse = (purchasesControllerPostInvoiceResponseSuccess)
+
+export const getPurchasesControllerPostInvoiceUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-invoices/${id}/post`
+}
+
+export const purchasesControllerPostInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerPostInvoiceResponse> => {
+
+  return apiFetch<purchasesControllerPostInvoiceResponse>(getPurchasesControllerPostInvoiceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type purchasesControllerListReturnsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type purchasesControllerListReturnsResponseSuccess = (purchasesControllerListReturnsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerListReturnsResponse = (purchasesControllerListReturnsResponseSuccess)
+
+export const getPurchasesControllerListReturnsUrl = (params: PurchasesControllerListReturnsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/purchase-returns?${stringifiedParams}` : `/api/v1/purchase-returns`
+}
+
+export const purchasesControllerListReturns = async (params: PurchasesControllerListReturnsParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerListReturnsResponse> => {
+
+  return apiFetch<purchasesControllerListReturnsResponse>(getPurchasesControllerListReturnsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type purchasesControllerCreateReturnResponse201 = {
+  data: void
+  status: 201
+}
+
+export type purchasesControllerCreateReturnResponseSuccess = (purchasesControllerCreateReturnResponse201) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerCreateReturnResponse = (purchasesControllerCreateReturnResponseSuccess)
+
+export const getPurchasesControllerCreateReturnUrl = () => {
+
+
+
+
+  return `/api/v1/purchase-returns`
+}
+
+export const purchasesControllerCreateReturn = async (createPurchaseReturnDto: CreatePurchaseReturnDto, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerCreateReturnResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<purchasesControllerCreateReturnResponse>(getPurchasesControllerCreateReturnUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPurchaseReturnDto)
+  }
+);}
+
+
+
+export type purchasesControllerGetReturnResponse200 = {
+  data: void
+  status: 200
+}
+
+export type purchasesControllerGetReturnResponseSuccess = (purchasesControllerGetReturnResponse200) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerGetReturnResponse = (purchasesControllerGetReturnResponseSuccess)
+
+export const getPurchasesControllerGetReturnUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-returns/${id}`
+}
+
+export const purchasesControllerGetReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerGetReturnResponse> => {
+
+  return apiFetch<purchasesControllerGetReturnResponse>(getPurchasesControllerGetReturnUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type purchasesControllerDeleteReturnResponse200 = {
+  data: void
+  status: 200
+}
+
+export type purchasesControllerDeleteReturnResponseSuccess = (purchasesControllerDeleteReturnResponse200) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerDeleteReturnResponse = (purchasesControllerDeleteReturnResponseSuccess)
+
+export const getPurchasesControllerDeleteReturnUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-returns/${id}`
+}
+
+export const purchasesControllerDeleteReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerDeleteReturnResponse> => {
+
+  return apiFetch<purchasesControllerDeleteReturnResponse>(getPurchasesControllerDeleteReturnUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type purchasesControllerPostReturnResponse201 = {
+  data: void
+  status: 201
+}
+
+export type purchasesControllerPostReturnResponseSuccess = (purchasesControllerPostReturnResponse201) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerPostReturnResponse = (purchasesControllerPostReturnResponseSuccess)
+
+export const getPurchasesControllerPostReturnUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-returns/${id}/post`
+}
+
+export const purchasesControllerPostReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerPostReturnResponse> => {
+
+  return apiFetch<purchasesControllerPostReturnResponse>(getPurchasesControllerPostReturnUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type goodsNotesControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type goodsNotesControllerListResponseSuccess = (goodsNotesControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type goodsNotesControllerListResponse = (goodsNotesControllerListResponseSuccess)
+
+export const getGoodsNotesControllerListUrl = (params: GoodsNotesControllerListParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/goods-notes?${stringifiedParams}` : `/api/v1/goods-notes`
+}
+
+export const goodsNotesControllerList = async (params: GoodsNotesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerListResponse> => {
+
+  return apiFetch<goodsNotesControllerListResponse>(getGoodsNotesControllerListUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type goodsNotesControllerCreateResponse201 = {
+  data: void
+  status: 201
+}
+
+export type goodsNotesControllerCreateResponseSuccess = (goodsNotesControllerCreateResponse201) & {
+  headers: Headers;
+};
+;
+
+export type goodsNotesControllerCreateResponse = (goodsNotesControllerCreateResponseSuccess)
+
+export const getGoodsNotesControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/goods-notes`
+}
+
+export const goodsNotesControllerCreate = async (createGoodsNoteDto: CreateGoodsNoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerCreateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<goodsNotesControllerCreateResponse>(getGoodsNotesControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createGoodsNoteDto)
+  }
+);}
+
+
+
+export type goodsNotesControllerGetResponse200 = {
+  data: void
+  status: 200
+}
+
+export type goodsNotesControllerGetResponseSuccess = (goodsNotesControllerGetResponse200) & {
+  headers: Headers;
+};
+;
+
+export type goodsNotesControllerGetResponse = (goodsNotesControllerGetResponseSuccess)
+
+export const getGoodsNotesControllerGetUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/goods-notes/${id}`
+}
+
+export const goodsNotesControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerGetResponse> => {
+
+  return apiFetch<goodsNotesControllerGetResponse>(getGoodsNotesControllerGetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type goodsNotesControllerUpdateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type goodsNotesControllerUpdateResponseSuccess = (goodsNotesControllerUpdateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type goodsNotesControllerUpdateResponse = (goodsNotesControllerUpdateResponseSuccess)
+
+export const getGoodsNotesControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/goods-notes/${id}`
+}
+
+export const goodsNotesControllerUpdate = async (id: string,
+    createGoodsNoteDto: CreateGoodsNoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerUpdateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<goodsNotesControllerUpdateResponse>(getGoodsNotesControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createGoodsNoteDto)
+  }
+);}
+
+
+
+export type goodsNotesControllerDeleteResponse200 = {
+  data: void
+  status: 200
+}
+
+export type goodsNotesControllerDeleteResponseSuccess = (goodsNotesControllerDeleteResponse200) & {
+  headers: Headers;
+};
+;
+
+export type goodsNotesControllerDeleteResponse = (goodsNotesControllerDeleteResponseSuccess)
+
+export const getGoodsNotesControllerDeleteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/goods-notes/${id}`
+}
+
+export const goodsNotesControllerDelete = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerDeleteResponse> => {
+
+  return apiFetch<goodsNotesControllerDeleteResponse>(getGoodsNotesControllerDeleteUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type goodsNotesControllerPostResponse201 = {
+  data: void
+  status: 201
+}
+
+export type goodsNotesControllerPostResponseSuccess = (goodsNotesControllerPostResponse201) & {
+  headers: Headers;
+};
+;
+
+export type goodsNotesControllerPostResponse = (goodsNotesControllerPostResponseSuccess)
+
+export const getGoodsNotesControllerPostUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/goods-notes/${id}/post`
+}
+
+export const goodsNotesControllerPost = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerPostResponse> => {
+
+  return apiFetch<goodsNotesControllerPostResponse>(getGoodsNotesControllerPostUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerListCashBoxesResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerListCashBoxesResponseSuccess = (treasuryControllerListCashBoxesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerListCashBoxesResponse = (treasuryControllerListCashBoxesResponseSuccess)
+
+export const getTreasuryControllerListCashBoxesUrl = () => {
+
+
+
+
+  return `/api/v1/cash-boxes`
+}
+
+export const treasuryControllerListCashBoxes = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListCashBoxesResponse> => {
+
+  return apiFetch<treasuryControllerListCashBoxesResponse>(getTreasuryControllerListCashBoxesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerCreateCashBoxResponse201 = {
+  data: void
+  status: 201
+}
+
+export type treasuryControllerCreateCashBoxResponseSuccess = (treasuryControllerCreateCashBoxResponse201) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerCreateCashBoxResponse = (treasuryControllerCreateCashBoxResponseSuccess)
+
+export const getTreasuryControllerCreateCashBoxUrl = () => {
+
+
+
+
+  return `/api/v1/cash-boxes`
+}
+
+export const treasuryControllerCreateCashBox = async (createCashBoxDto: CreateCashBoxDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateCashBoxResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerCreateCashBoxResponse>(getTreasuryControllerCreateCashBoxUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createCashBoxDto)
+  }
+);}
+
+
+
+export type treasuryControllerUpdateCashBoxResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerUpdateCashBoxResponseSuccess = (treasuryControllerUpdateCashBoxResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerUpdateCashBoxResponse = (treasuryControllerUpdateCashBoxResponseSuccess)
+
+export const getTreasuryControllerUpdateCashBoxUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cash-boxes/${id}`
+}
+
+export const treasuryControllerUpdateCashBox = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerUpdateCashBoxResponse> => {
+
+  return apiFetch<treasuryControllerUpdateCashBoxResponse>(getTreasuryControllerUpdateCashBoxUrl(id),
+  {
+    ...options,
+    method: 'PUT'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerDeleteCashBoxResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerDeleteCashBoxResponseSuccess = (treasuryControllerDeleteCashBoxResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerDeleteCashBoxResponse = (treasuryControllerDeleteCashBoxResponseSuccess)
+
+export const getTreasuryControllerDeleteCashBoxUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cash-boxes/${id}`
+}
+
+export const treasuryControllerDeleteCashBox = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerDeleteCashBoxResponse> => {
+
+  return apiFetch<treasuryControllerDeleteCashBoxResponse>(getTreasuryControllerDeleteCashBoxUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerListBankAccountsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerListBankAccountsResponseSuccess = (treasuryControllerListBankAccountsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerListBankAccountsResponse = (treasuryControllerListBankAccountsResponseSuccess)
+
+export const getTreasuryControllerListBankAccountsUrl = () => {
+
+
+
+
+  return `/api/v1/bank-accounts`
+}
+
+export const treasuryControllerListBankAccounts = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListBankAccountsResponse> => {
+
+  return apiFetch<treasuryControllerListBankAccountsResponse>(getTreasuryControllerListBankAccountsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerCreateBankAccountResponse201 = {
+  data: void
+  status: 201
+}
+
+export type treasuryControllerCreateBankAccountResponseSuccess = (treasuryControllerCreateBankAccountResponse201) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerCreateBankAccountResponse = (treasuryControllerCreateBankAccountResponseSuccess)
+
+export const getTreasuryControllerCreateBankAccountUrl = () => {
+
+
+
+
+  return `/api/v1/bank-accounts`
+}
+
+export const treasuryControllerCreateBankAccount = async (createBankAccountDto: CreateBankAccountDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateBankAccountResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerCreateBankAccountResponse>(getTreasuryControllerCreateBankAccountUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createBankAccountDto)
+  }
+);}
+
+
+
+export type treasuryControllerUpdateBankAccountResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerUpdateBankAccountResponseSuccess = (treasuryControllerUpdateBankAccountResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerUpdateBankAccountResponse = (treasuryControllerUpdateBankAccountResponseSuccess)
+
+export const getTreasuryControllerUpdateBankAccountUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-accounts/${id}`
+}
+
+export const treasuryControllerUpdateBankAccount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerUpdateBankAccountResponse> => {
+
+  return apiFetch<treasuryControllerUpdateBankAccountResponse>(getTreasuryControllerUpdateBankAccountUrl(id),
+  {
+    ...options,
+    method: 'PUT'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerDeleteBankAccountResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerDeleteBankAccountResponseSuccess = (treasuryControllerDeleteBankAccountResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerDeleteBankAccountResponse = (treasuryControllerDeleteBankAccountResponseSuccess)
+
+export const getTreasuryControllerDeleteBankAccountUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-accounts/${id}`
+}
+
+export const treasuryControllerDeleteBankAccount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerDeleteBankAccountResponse> => {
+
+  return apiFetch<treasuryControllerDeleteBankAccountResponse>(getTreasuryControllerDeleteBankAccountUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerListReceiptsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerListReceiptsResponseSuccess = (treasuryControllerListReceiptsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerListReceiptsResponse = (treasuryControllerListReceiptsResponseSuccess)
+
+export const getTreasuryControllerListReceiptsUrl = () => {
+
+
+
+
+  return `/api/v1/receipts`
+}
+
+export const treasuryControllerListReceipts = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListReceiptsResponse> => {
+
+  return apiFetch<treasuryControllerListReceiptsResponse>(getTreasuryControllerListReceiptsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerCreateReceiptResponse201 = {
+  data: void
+  status: 201
+}
+
+export type treasuryControllerCreateReceiptResponseSuccess = (treasuryControllerCreateReceiptResponse201) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerCreateReceiptResponse = (treasuryControllerCreateReceiptResponseSuccess)
+
+export const getTreasuryControllerCreateReceiptUrl = () => {
+
+
+
+
+  return `/api/v1/receipts`
+}
+
+export const treasuryControllerCreateReceipt = async (createReceiptDto: CreateReceiptDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateReceiptResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerCreateReceiptResponse>(getTreasuryControllerCreateReceiptUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createReceiptDto)
+  }
+);}
+
+
+
+export type treasuryControllerGetReceiptResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerGetReceiptResponseSuccess = (treasuryControllerGetReceiptResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerGetReceiptResponse = (treasuryControllerGetReceiptResponseSuccess)
+
+export const getTreasuryControllerGetReceiptUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/receipts/${id}`
+}
+
+export const treasuryControllerGetReceipt = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerGetReceiptResponse> => {
+
+  return apiFetch<treasuryControllerGetReceiptResponse>(getTreasuryControllerGetReceiptUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerListPaymentsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerListPaymentsResponseSuccess = (treasuryControllerListPaymentsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerListPaymentsResponse = (treasuryControllerListPaymentsResponseSuccess)
+
+export const getTreasuryControllerListPaymentsUrl = () => {
+
+
+
+
+  return `/api/v1/payments`
+}
+
+export const treasuryControllerListPayments = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListPaymentsResponse> => {
+
+  return apiFetch<treasuryControllerListPaymentsResponse>(getTreasuryControllerListPaymentsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerCreatePaymentResponse201 = {
+  data: void
+  status: 201
+}
+
+export type treasuryControllerCreatePaymentResponseSuccess = (treasuryControllerCreatePaymentResponse201) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerCreatePaymentResponse = (treasuryControllerCreatePaymentResponseSuccess)
+
+export const getTreasuryControllerCreatePaymentUrl = () => {
+
+
+
+
+  return `/api/v1/payments`
+}
+
+export const treasuryControllerCreatePayment = async (createPaymentDto: CreatePaymentDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreatePaymentResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerCreatePaymentResponse>(getTreasuryControllerCreatePaymentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPaymentDto)
+  }
+);}
+
+
+
+export type treasuryControllerGetPaymentResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerGetPaymentResponseSuccess = (treasuryControllerGetPaymentResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerGetPaymentResponse = (treasuryControllerGetPaymentResponseSuccess)
+
+export const getTreasuryControllerGetPaymentUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payments/${id}`
+}
+
+export const treasuryControllerGetPayment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerGetPaymentResponse> => {
+
+  return apiFetch<treasuryControllerGetPaymentResponse>(getTreasuryControllerGetPaymentUrl(id),
   {
     ...options,
     method: 'GET'

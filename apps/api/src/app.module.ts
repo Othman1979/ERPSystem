@@ -21,6 +21,11 @@ import { UsersModule } from './platform/users/users.module.js';
 import { AccountingModule } from './platform/accounting/accounting.module.js';
 import { JournalModule } from './platform/journal/journal.module.js';
 import { InventoryModule } from './platform/inventory/inventory.module.js';
+import { PartiesModule } from './platform/parties/parties.module.js';
+import { SalesModule } from './platform/sales/sales.module.js';
+import { PurchasesModule } from './platform/purchases/purchases.module.js';
+import { GoodsNotesModule } from './platform/goods-notes/goods-notes.module.js';
+import { TreasuryModule } from './platform/treasury/treasury.module.js';
 
 @Module({
   imports: [
@@ -42,6 +47,11 @@ import { InventoryModule } from './platform/inventory/inventory.module.js';
     AccountingModule,
     JournalModule,
     InventoryModule,
+    PartiesModule,
+    SalesModule,
+    PurchasesModule,
+    GoodsNotesModule,
+    TreasuryModule,
     AdminModule,
   ],
   providers: [
