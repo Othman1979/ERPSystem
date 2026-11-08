@@ -45,6 +45,7 @@ import {
   warehousesControllerList,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
+import { GoodsNotesSection } from './GoodsNotesPage';
 import {
   emptyItemLine,
   ItemLinesGrid,
@@ -1003,6 +1004,7 @@ export function StockPage() {
           { key: 'adjustments', label: t('stock.adjustments'), children: <AdjustmentsTab /> },
           { key: 'transfers', label: t('stock.transfers'), children: <TransfersTab /> },
           { key: 'counts', label: t('stock.counts'), children: <CountsTab /> },
+          { key: 'vouchers', label: t('stock.vouchers'), children: <GoodsNotesSection /> },
           { key: 'movements', label: t('stock.movements'), children: <MovementsTab /> },
           { key: 'valuation', label: t('stock.valuation'), children: <ValuationTab /> },
         ]}

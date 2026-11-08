@@ -64,6 +64,10 @@ interface Warehouse {
 }
 
 export function GoodsNotesPage() {
+  return <GoodsNotesSection />;
+}
+
+export function GoodsNotesSection() {
   const { t } = useTranslation();
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
   const [modalOpen, setModalOpen] = useState(false);
@@ -189,10 +193,10 @@ export function GoodsNotesPage() {
         />
         <Space>
           <Button onClick={() => { setDefaultType('GIN'); setModalOpen(true); }}>
-            {t('goods.newGIN')}
+            {t('goods.exitVoucher')}
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setDefaultType('GRN'); setModalOpen(true); }}>
-            {t('goods.newGRN')}
+            {t('goods.entryVoucher')}
           </Button>
         </Space>
       </Space>
@@ -358,7 +362,7 @@ function NoteModal({
   return (
     <Modal
       open={open}
-      title={noteType === 'GRN' ? t('goods.newGRN') : t('goods.newGIN')}
+      title={noteType === 'GRN' ? t('goods.entryVoucher') : t('goods.exitVoucher')}
       onCancel={onClose}
       width={860}
       footer={[

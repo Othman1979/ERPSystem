@@ -203,6 +203,7 @@ export const ar = {
     adjustments: 'تسويات المخزون',
     transfers: 'تحويلات المخزون',
     counts: 'الجرد',
+    vouchers: 'سندات الإدخال والإخراج',
     movements: 'حركات المخزون',
     valuation: 'تقييم المخزون',
     warehouse: 'المستودع',
@@ -381,6 +382,8 @@ export const ar = {
     date: 'التاريخ',
     newGRN: 'إشعار استلام جديد',
     newGIN: 'إشعار صرف جديد',
+    entryVoucher: 'سند إدخال',
+    exitVoucher: 'سند إخراج',
     createAndPost: 'إنشاء وترحيل',
   },
   treasury: {
@@ -674,6 +677,7 @@ export const en: typeof ar = {
     adjustments: 'Stock adjustments',
     transfers: 'Stock transfers',
     counts: 'Stock counts',
+    vouchers: 'Entry & Exit vouchers',
     movements: 'Stock movements',
     valuation: 'Valuation',
     warehouse: 'Warehouse',
@@ -852,6 +856,8 @@ export const en: typeof ar = {
     date: 'Date',
     newGRN: 'New GRN',
     newGIN: 'New GIN',
+    entryVoucher: 'Entry Voucher',
+    exitVoucher: 'Exit Voucher',
     createAndPost: 'Create & Post',
   },
   treasury: {
