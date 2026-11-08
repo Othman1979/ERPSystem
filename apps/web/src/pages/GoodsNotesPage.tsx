@@ -45,6 +45,8 @@ import {
   focusNamedField,
   GridSelect,
 } from '../components/GridSelect';
+import { StatusBar } from '../components/StatusBar';
+import { PageHeader } from '../components/PageHeader';
 
 interface GoodsNote {
   id: string;
@@ -91,7 +93,13 @@ function TypeTag({ type }: { type: NoteType }) {
 }
 
 export function GoodsNotesPage() {
-  return <GoodsNotesSection />;
+  const { t } = useTranslation();
+  return (
+    <div>
+      <PageHeader title={t('nav.goodsNotes')} />
+      <GoodsNotesSection />
+    </div>
+  );
 }
 
 export function GoodsNotesSection({
@@ -398,13 +406,9 @@ export function GoodsNotesSection({
             : `${entry?.docNo ?? '…'} — ${entry ? t(TYPE_LABEL[entry.noteType]) : ''}`}
         </Typography.Title>
         {entry && (
-          <Space size={4}>
+          <Space size={8}>
             <TypeTag type={entry.noteType} />
-            {entry.status === 'POSTED' ? (
-              <Tag color="green">{t('common.posted')}</Tag>
-            ) : (
-              <Tag>{t('common.draft')}</Tag>
-            )}
+            <StatusBar status={entry.status} />
           </Space>
         )}
         <div style={{ flex: 1 }} />

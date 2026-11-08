@@ -23,6 +23,7 @@ import {
   partiesControllerList,
   partiesControllerUpdate,
 } from '@erp/api-client';
+import { PageHeader } from '../components/PageHeader';
 
 interface Party {
   id: string;
@@ -173,6 +174,7 @@ export function PartiesPage() {
   return (
     <div>
       {contextHolder}
+      <PageHeader title={t('nav.parties')} />
       <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
         <Select
           allowClear

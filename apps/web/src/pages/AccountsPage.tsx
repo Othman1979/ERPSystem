@@ -20,6 +20,7 @@ import {
   accountingControllerListAccounts,
   accountingControllerUpdateAccount,
 } from '@erp/api-client';
+import { PageHeader } from '../components/PageHeader';
 
 interface Account {
   id: string;
@@ -165,14 +166,16 @@ export function AccountsPage() {
     .map((a) => ({ value: a.id, label: `${a.code} — ${a.nameAr}` }));
 
   return (
-    <Card
-      title={t('accounts.title')}
-      extra={
-        <Button type="primary" onClick={openCreate}>
-          {t('accounts.add')}
-        </Button>
-      }
-    >
+    <div>
+      <PageHeader
+        title={t('accounts.title')}
+        actions={
+          <Button type="primary" onClick={openCreate}>
+            {t('accounts.add')}
+          </Button>
+        }
+      />
+      <Card>
       {contextHolder}
       <Table
         rowKey="id"
@@ -305,6 +308,7 @@ export function AccountsPage() {
           </Form.Item>
         </Form>
       </Modal>
-    </Card>
+      </Card>
+    </div>
   );
 }

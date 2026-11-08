@@ -44,6 +44,7 @@ import {
   stockReportsControllerItemLedger,
   warehousesControllerList,
 } from '@erp/api-client';
+import { PageHeader } from '../components/PageHeader';
 
 interface Unit {
   id: string;
@@ -320,41 +321,42 @@ function ItemsTab() {
   ];
 
   return (
-    <Card
-      size="small"
-      title={t('items.title')}
-      extra={
-        <Space wrap>
-          <Input.Search
-            allowClear
-            placeholder={t('items.search')}
-            style={{ width: 200 }}
-            onSearch={setSearch}
-          />
-          <Select
-            allowClear
-            placeholder={t('items.kind')}
-            style={{ width: 130 }}
-            onChange={setKindFilter}
-            options={[
-              { value: 'STOCK', label: t('items.stock') },
-              { value: 'SERVICE', label: t('items.service') },
-            ]}
-          />
-          <Segmented
-            value={view}
-            onChange={(v) => setView(v as 'table' | 'cards')}
-            options={[
-              { value: 'table', icon: <UnorderedListOutlined /> },
-              { value: 'cards', icon: <AppstoreOutlined /> },
-            ]}
-          />
-          <Button type="primary" onClick={openCreate}>
-            {t('items.add')}
-          </Button>
-        </Space>
-      }
-    >
+    <div>
+      <PageHeader
+        title={t('items.title')}
+        actions={
+          <Space wrap>
+            <Input.Search
+              allowClear
+              placeholder={t('items.search')}
+              style={{ width: 200 }}
+              onSearch={setSearch}
+            />
+            <Select
+              allowClear
+              placeholder={t('items.kind')}
+              style={{ width: 130 }}
+              onChange={setKindFilter}
+              options={[
+                { value: 'STOCK', label: t('items.stock') },
+                { value: 'SERVICE', label: t('items.service') },
+              ]}
+            />
+            <Segmented
+              value={view}
+              onChange={(v) => setView(v as 'table' | 'cards')}
+              options={[
+                { value: 'table', icon: <UnorderedListOutlined /> },
+                { value: 'cards', icon: <AppstoreOutlined /> },
+              ]}
+            />
+            <Button type="primary" onClick={openCreate}>
+              {t('items.add')}
+            </Button>
+          </Space>
+        }
+      />
+      <Card size="small">
       {contextHolder}
       {view === 'table' ? (
         <Table
@@ -530,7 +532,8 @@ function ItemsTab() {
 
       <LedgerModal item={ledgerItem} onClose={() => setLedgerItem(null)} warehouses={warehouses ?? []} />
       <BarcodeModal item={barcodeItem} onClose={() => setBarcodeItem(null)} />
-    </Card>
+      </Card>
+    </div>
   );
 }
 

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { getHealth } from '@erp/api-client';
+import { PageHeader } from '../components/PageHeader';
 import { useTranslation } from 'react-i18next';
 import { Alert, Card, Descriptions, Skeleton } from 'antd';
 
@@ -25,7 +26,9 @@ export function HealthPage() {
   }
 
   return (
-    <Card title={t('health.title')}>
+    <div>
+      <PageHeader title={t('health.title')} />
+      <Card>
       <Descriptions column={1} size="small">
         <Descriptions.Item label={t('health.apiOk')}>{data.status}</Descriptions.Item>
         <Descriptions.Item label={t('health.dbOk')}>
@@ -35,6 +38,7 @@ export function HealthPage() {
           {new Date(dataUpdatedAt).toLocaleString()}
         </Descriptions.Item>
       </Descriptions>
-    </Card>
+      </Card>
+    </div>
   );
 }

@@ -22,6 +22,7 @@ import {
   usersControllerSuspend,
   usersControllerUpdate,
 } from '@erp/api-client';
+import { PageHeader } from '../components/PageHeader';
 
 interface Membership {
   membershipId: string;
@@ -111,14 +112,16 @@ export function UsersPage() {
     i18n.language === 'ar' ? ar : (en ?? ar);
 
   return (
-    <Card
-      title={t('users.title')}
-      extra={
-        <Button type="primary" onClick={() => setInviteOpen(true)}>
-          {t('users.invite')}
-        </Button>
-      }
-    >
+    <div>
+      <PageHeader
+        title={t('users.title')}
+        actions={
+          <Button type="primary" onClick={() => setInviteOpen(true)}>
+            {t('users.invite')}
+          </Button>
+        }
+      />
+      <Card>
       {contextHolder}
       <Table
         rowKey="membershipId"
@@ -226,6 +229,7 @@ export function UsersPage() {
           {tempPassword}
         </Typography.Text>
       </Modal>
-    </Card>
+      </Card>
+    </div>
   );
 }

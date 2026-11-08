@@ -40,6 +40,7 @@ import {
   treasuryControllerListPayments,
   treasuryControllerListReceipts,
 } from '@erp/api-client';
+import { PageHeader } from '../components/PageHeader';
 
 // ------------------------------------------------------------- types
 
@@ -134,7 +135,9 @@ export function TreasuryPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useState('boxes');
   return (
-    <Tabs
+    <div>
+      <PageHeader title={t('nav.treasury')} />
+      <Tabs
       activeKey={tab}
       onChange={setTab}
       items={[
@@ -143,7 +146,8 @@ export function TreasuryPage() {
         { key: 'receipts', label: t('treasury.receipts'), children: <ReceiptsTab /> },
         { key: 'payments', label: t('treasury.payments'), children: <PaymentsTab /> },
       ]}
-    />
+      />
+    </div>
   );
 }
 

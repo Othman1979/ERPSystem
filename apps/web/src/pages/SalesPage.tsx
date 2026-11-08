@@ -38,6 +38,8 @@ import {
   focusNamedField,
   GridSelect,
 } from '../components/GridSelect';
+import { StatusBar } from '../components/StatusBar';
+import { PageHeader } from '../components/PageHeader';
 import {
   ApiError,
   accountingControllerListAccounts,
@@ -155,14 +157,17 @@ export function SalesPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useState('invoices');
   return (
-    <Tabs
+    <div>
+      <PageHeader title={t('nav.sales')} />
+      <Tabs
       activeKey={tab}
       onChange={setTab}
       items={[
         { key: 'invoices', label: t('sales.invoices'), children: <InvoicesTab /> },
         { key: 'returns', label: t('sales.returns'), children: <ReturnsTab /> },
       ]}
-    />
+      />
+    </div>
   );
 }
 
@@ -670,9 +675,7 @@ function InvoiceView({
           <Tag color={invoice.paymentType === 'CASH' ? 'green' : 'blue'}>
             {t(`sales.${invoice.paymentType}`)}
           </Tag>
-          <Tag color={isDraft ? 'default' : 'green'}>
-            {isDraft ? t('common.draft') : t('common.posted')}
-          </Tag>
+          <StatusBar status={invoice.status} />
         </Space>
       }
       extra={

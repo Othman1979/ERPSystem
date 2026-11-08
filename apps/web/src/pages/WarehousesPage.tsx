@@ -9,6 +9,7 @@ import {
   warehousesControllerList,
   warehousesControllerUpdate,
 } from '@erp/api-client';
+import { PageHeader } from '../components/PageHeader';
 
 interface Warehouse {
   id: string;
@@ -101,14 +102,16 @@ export function WarehousesPage() {
   };
 
   return (
-    <Card
-      title={t('warehouses.title')}
-      extra={
-        <Button type="primary" onClick={openCreate}>
-          {t('warehouses.add')}
-        </Button>
-      }
-    >
+    <div>
+      <PageHeader
+        title={t('warehouses.title')}
+        actions={
+          <Button type="primary" onClick={openCreate}>
+            {t('warehouses.add')}
+          </Button>
+        }
+      />
+      <Card>
       {contextHolder}
       <Table
         rowKey="id"
@@ -180,6 +183,7 @@ export function WarehousesPage() {
           </Form.Item>
         </Form>
       </Modal>
-    </Card>
+      </Card>
+    </div>
   );
 }

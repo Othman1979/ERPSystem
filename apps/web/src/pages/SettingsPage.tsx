@@ -26,6 +26,7 @@ import {
   settingsControllerUpdateTaxCategory,
   settingsControllerUpdateUnit,
 } from '@erp/api-client';
+import { PageHeader } from '../components/PageHeader';
 
 type LookupKind = 'unit' | 'taxCategory' | 'paymentMethod';
 
@@ -256,7 +257,9 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
 export function SettingsPage() {
   const { t } = useTranslation();
   return (
-    <Card title={t('settings.title')}>
+    <div>
+      <PageHeader title={t('settings.title')} />
+      <Card>
       <Tabs
         items={[
           { key: 'units', label: t('settings.units'), children: <LookupTable kind="unit" title={t('settings.units')} /> },
@@ -272,6 +275,7 @@ export function SettingsPage() {
           },
         ]}
       />
-    </Card>
+      </Card>
+    </div>
   );
 }

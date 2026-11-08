@@ -443,6 +443,7 @@ export const ar = {
     add: 'إضافة',
     close: 'إغلاق',
     open: 'فتح',
+    back: 'رجوع',
   },
   language: {
     switchTo: 'English',
@@ -917,6 +918,7 @@ export const en: typeof ar = {
     add: 'Add',
     close: 'Close',
     open: 'Open',
+    back: 'Back',
   },
   language: {
     switchTo: 'العربية',

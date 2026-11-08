@@ -8,6 +8,7 @@ import {
   apiFetchData,
   journalControllerTrialBalance,
 } from '@erp/api-client';
+import { PageHeader } from '../components/PageHeader';
 
 interface Account {
   id: string;
@@ -126,7 +127,9 @@ export function ReportsPage() {
   });
 
   return (
-    <Card title={t('reports.title')}>
+    <div>
+      <PageHeader title={t('reports.title')} />
+      <Card>
       <Space style={{ marginBottom: 16 }} wrap>
         <DatePicker placeholder={t('reports.from')} value={from} onChange={setFrom} />
         <DatePicker placeholder={t('reports.to')} value={to} onChange={setTo} />
@@ -341,6 +344,7 @@ export function ReportsPage() {
           },
         ]}
       />
-    </Card>
+      </Card>
+    </div>
   );
 }

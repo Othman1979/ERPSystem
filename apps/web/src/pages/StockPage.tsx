@@ -46,6 +46,7 @@ import {
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import { GoodsNotesSection } from './GoodsNotesPage';
+import { PageHeader } from '../components/PageHeader';
 import {
   emptyItemLine,
   ItemLinesGrid,
@@ -1005,17 +1006,19 @@ export function StockPage() {
   };
 
   return (
-    <Card
-      title={t('stock.title')}
-      extra={
-        <Space>
-          <Button onClick={() => openVoucher('GIN')}>{t('goods.exitVoucher')}</Button>
-          <Button type="primary" onClick={() => openVoucher('GRN')}>
-            {t('goods.entryVoucher')}
-          </Button>
-        </Space>
-      }
-    >
+    <div>
+      <PageHeader
+        title={t('stock.title')}
+        actions={
+          <Space>
+            <Button onClick={() => openVoucher('GIN')}>{t('goods.exitVoucher')}</Button>
+            <Button type="primary" onClick={() => openVoucher('GRN')}>
+              {t('goods.entryVoucher')}
+            </Button>
+          </Space>
+        }
+      />
+      <Card>
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
@@ -1038,6 +1041,7 @@ export function StockPage() {
           { key: 'valuation', label: t('stock.valuation'), children: <ValuationTab /> },
         ]}
       />
-    </Card>
+      </Card>
+    </div>
   );
 }

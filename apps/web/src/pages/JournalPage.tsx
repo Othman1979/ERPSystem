@@ -48,6 +48,8 @@ import {
   focusNamedField,
   GridSelect,
 } from '../components/GridSelect';
+import { StatusBar } from '../components/StatusBar';
+import { PageHeader } from '../components/PageHeader';
 
 interface Account {
   id: string;
@@ -249,49 +251,51 @@ export function JournalPage() {
   // ============================ LIST VIEW ============================
   if (screen === 'list') {
     return (
-      <Card
-        title={t('journal.title')}
-        extra={
-          <Space>
-            <Select
-              allowClear
-              placeholder={t('journal.allStatuses')}
-              style={{ width: 130 }}
-              value={statusFilter}
-              onChange={(v) => setStatusFilter(v)}
-              options={[
-                { value: 'DRAFT', label: t('journal.draft') },
-                { value: 'POSTED', label: t('journal.postedStatus') },
-              ]}
-            />
-            <Select
-              allowClear
-              placeholder={t('journal.voucherType')}
-              style={{ width: 150 }}
-              value={typeFilter}
-              onChange={(v) => setTypeFilter(v)}
-              options={VOUCHER_TYPES.map((vt) => ({
-                value: vt,
-                label: t(VOUCHER_TYPE_LABEL[vt]),
-              }))}
-            />
-            <Dropdown.Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => openNew()}
-              menu={{
-                items: VOUCHER_TYPES.map((vt) => ({
-                  key: vt,
+      <div>
+        <PageHeader
+          title={t('journal.title')}
+          actions={
+            <Space>
+              <Select
+                allowClear
+                placeholder={t('journal.allStatuses')}
+                style={{ width: 130 }}
+                value={statusFilter}
+                onChange={(v) => setStatusFilter(v)}
+                options={[
+                  { value: 'DRAFT', label: t('journal.draft') },
+                  { value: 'POSTED', label: t('journal.postedStatus') },
+                ]}
+              />
+              <Select
+                allowClear
+                placeholder={t('journal.voucherType')}
+                style={{ width: 150 }}
+                value={typeFilter}
+                onChange={(v) => setTypeFilter(v)}
+                options={VOUCHER_TYPES.map((vt) => ({
+                  value: vt,
                   label: t(VOUCHER_TYPE_LABEL[vt]),
-                })),
-                onClick: ({ key }) => openNew(key as VoucherType),
-              }}
-            >
-              {t('journal.newEntry')}
-            </Dropdown.Button>
-          </Space>
-        }
-      >
+                }))}
+              />
+              <Dropdown.Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => openNew()}
+                menu={{
+                  items: VOUCHER_TYPES.map((vt) => ({
+                    key: vt,
+                    label: t(VOUCHER_TYPE_LABEL[vt]),
+                  })),
+                  onClick: ({ key }) => openNew(key as VoucherType),
+                }}
+              >
+                {t('journal.newEntry')}
+              </Dropdown.Button>
+            </Space>
+          }
+        />
+        <Card>
         {contextHolder}
         <Table
           rowKey="id"
@@ -376,7 +380,8 @@ export function JournalPage() {
             },
           ]}
         />
-      </Card>
+        </Card>
+      </div>
     );
   }
 
@@ -409,13 +414,9 @@ export function JournalPage() {
             : `${entry?.entryNo ?? '…'} — ${t(VOUCHER_TYPE_LABEL[entry?.voucherType ?? 'JOURNAL'])}`}
         </Typography.Title>
         {entry && (
-          <Space size={4}>
+          <Space size={8}>
             <VoucherTag type={entry.voucherType} />
-            {entry.status === 'POSTED' ? (
-              <Tag color="green">{t('journal.postedStatus')}</Tag>
-            ) : (
-              <Tag>{t('journal.draft')}</Tag>
-            )}
+            <StatusBar status={entry.status} />
           </Space>
         )}
         <div style={{ flex: 1 }} />

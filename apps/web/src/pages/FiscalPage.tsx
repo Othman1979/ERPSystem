@@ -23,6 +23,7 @@ import {
   fiscalControllerListYears,
   fiscalControllerOpenPeriod,
 } from '@erp/api-client';
+import { PageHeader } from '../components/PageHeader';
 
 interface FiscalPeriod {
   id: string;
@@ -113,14 +114,16 @@ export function FiscalPage() {
   );
 
   return (
-    <Card
-      title={t('fiscal.title')}
-      extra={
-        <Button type="primary" onClick={() => setModalOpen(true)}>
-          {t('fiscal.add')}
-        </Button>
-      }
-    >
+    <div>
+      <PageHeader
+        title={t('fiscal.title')}
+        actions={
+          <Button type="primary" onClick={() => setModalOpen(true)}>
+            {t('fiscal.add')}
+          </Button>
+        }
+      />
+      <Card>
       {contextHolder}
       <Table
         rowKey="id"
@@ -184,7 +187,8 @@ export function FiscalPage() {
           </Form.Item>
         </Form>
       </Modal>
-    </Card>
+      </Card>
+    </div>
   );
 }
 

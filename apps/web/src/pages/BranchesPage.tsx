@@ -20,6 +20,7 @@ import {
   branchesControllerList,
   branchesControllerUpdate,
 } from '@erp/api-client';
+import { PageHeader } from '../components/PageHeader';
 
 interface Branch {
   id: string;
@@ -92,14 +93,16 @@ export function BranchesPage() {
   };
 
   return (
-    <Card
-      title={t('branches.title')}
-      extra={
-        <Button type="primary" onClick={openCreate}>
-          {t('branches.add')}
-        </Button>
-      }
-    >
+    <div>
+      <PageHeader
+        title={t('branches.title')}
+        actions={
+          <Button type="primary" onClick={openCreate}>
+            {t('branches.add')}
+          </Button>
+        }
+      />
+      <Card>
       {contextHolder}
       <Table
         rowKey="id"
@@ -158,6 +161,7 @@ export function BranchesPage() {
         </Form>
       </Modal>
       <Typography.Text type="secondary">{t('branches.planHint')}</Typography.Text>
-    </Card>
+      </Card>
+    </div>
   );
 }
