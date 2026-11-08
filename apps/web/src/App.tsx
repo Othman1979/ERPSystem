@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { Component, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AppstoreOutlined,
@@ -128,6 +128,39 @@ const VIEWS: Record<View, ReactNode> = {
   settings: <SettingsPage />,
   health: <HealthPage />,
 };
+
+interface ErrorBoundaryState {
+  error: Error | null;
+}
+
+class ViewErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <Card style={{ maxWidth: 560, margin: '40px auto' }}>
+          <Typography.Title level={4} type="danger">
+            Something went wrong
+          </Typography.Title>
+          <Typography.Paragraph>
+            <Typography.Text code style={{ whiteSpace: 'pre-wrap', display: 'block' }}>
+              {this.state.error.message}
+            </Typography.Text>
+          </Typography.Paragraph>
+          <Button type="primary" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        </Card>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const NAV_LABEL: Record<View, string> = {
   home: 'nav.home',
@@ -323,7 +356,7 @@ export function App() {
             ))}
           </>
         ) : (
-          VIEWS[view]
+          <ViewErrorBoundary key={view}>{VIEWS[view]}</ViewErrorBoundary>
         )}
       </div>
 
