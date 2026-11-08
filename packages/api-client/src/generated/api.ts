@@ -82,6 +82,7 @@ export type FiscalControllerListSequencesParams = {
 
 export type JournalControllerListParams = {
   status: string;
+  voucherType: string;
 };
 
 export type CatalogControllerListItemsParams = {

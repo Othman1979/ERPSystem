@@ -11,6 +11,7 @@ import {
   Button,
   Card,
   DatePicker,
+  Dropdown,
   Input,
   Modal,
   Popconfirm,
@@ -98,6 +99,7 @@ export function JournalPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new entry
   const [reverseTarget, setReverseTarget] = useState<JournalEntry | null>(null);
@@ -111,11 +113,12 @@ export function JournalPage() {
   const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
 
   const { data: entries, isLoading } = useQuery({
-    queryKey: ['journal-entries', statusFilter],
+    queryKey: ['journal-entries', statusFilter, typeFilter],
     queryFn: () =>
-      journalControllerList(statusFilter ? { status: statusFilter } : { status: '' }).then(
-        (r) => r.data as unknown as JournalEntry[],
-      ),
+      journalControllerList({
+        status: statusFilter ?? '',
+        voucherType: typeFilter ?? '',
+      }).then((r) => r.data as unknown as JournalEntry[]),
     enabled: screen === 'list',
   });
 
@@ -145,10 +148,10 @@ export function JournalPage() {
         : t('errors.INTERNAL'),
     );
 
-  const openNew = () => {
+  const openNew = (voucherType: VoucherType = 'JOURNAL') => {
     setEntryId(null);
     setNewDate(dayjs());
-    setNewVoucherType('JOURNAL');
+    setNewVoucherType(voucherType);
     setNewDescription('');
     setLines([emptyLine(1), emptyLine(2)]);
     setScreen('entry');
@@ -245,7 +248,7 @@ export function JournalPage() {
             <Select
               allowClear
               placeholder={t('journal.allStatuses')}
-              style={{ width: 140 }}
+              style={{ width: 130 }}
               value={statusFilter}
               onChange={(v) => setStatusFilter(v)}
               options={[
@@ -253,9 +256,31 @@ export function JournalPage() {
                 { value: 'POSTED', label: t('journal.postedStatus') },
               ]}
             />
-            <Button type="primary" icon={<PlusOutlined />} onClick={openNew}>
+            <Select
+              allowClear
+              placeholder={t('journal.voucherType')}
+              style={{ width: 150 }}
+              value={typeFilter}
+              onChange={(v) => setTypeFilter(v)}
+              options={VOUCHER_TYPES.map((vt) => ({
+                value: vt,
+                label: t(VOUCHER_TYPE_LABEL[vt]),
+              }))}
+            />
+            <Dropdown.Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => openNew()}
+              menu={{
+                items: VOUCHER_TYPES.map((vt) => ({
+                  key: vt,
+                  label: t(VOUCHER_TYPE_LABEL[vt]),
+                })),
+                onClick: ({ key }) => openNew(key as VoucherType),
+              }}
+            >
               {t('journal.newEntry')}
-            </Button>
+            </Dropdown.Button>
           </Space>
         }
       >

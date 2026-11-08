@@ -466,6 +466,25 @@ describe('Phase 3 — journal engine (erp_test)', () => {
     expect((await post(payWrong.body.id)).status).toBe(400);
   });
 
+  it('filters journal list by voucher type', async () => {
+    const receipts = await api()
+      .get('/api/v1/journal-entries')
+      .query({ voucherType: 'RECEIPT_VOUCHER' })
+      .set(auth(token));
+    expect(receipts.status).toBe(200);
+    expect(receipts.body.length).toBeGreaterThan(0);
+    for (const e of receipts.body) {
+      expect(e.voucherType).toBe('RECEIPT_VOUCHER');
+    }
+    const payments = await api()
+      .get('/api/v1/journal-entries')
+      .query({ voucherType: 'PAYMENT_VOUCHER' })
+      .set(auth(token));
+    for (const e of payments.body) {
+      expect(e.voucherType).toBe('PAYMENT_VOUCHER');
+    }
+  });
+
   it('isolates journal data between tenants', async () => {
     const regB = await api()
       .post('/api/v1/auth/register')

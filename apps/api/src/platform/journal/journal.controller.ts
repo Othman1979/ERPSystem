@@ -21,8 +21,8 @@ export class JournalController {
 
   @Get('journal-entries')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  list(@Query('status') status?: string) {
-    return this.journal.list(status);
+  list(@Query('status') status?: string, @Query('voucherType') voucherType?: string) {
+    return this.journal.list(status, voucherType);
   }
 
   @Post('journal-entries')

@@ -59,13 +59,14 @@ export class JournalService {
     return ClsServiceManager.getClsService<RequestContext>().get('userId');
   }
 
-  async list(status?: string) {
+  async list(status?: string, voucherType?: string) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
     return db.journalEntry.findMany({
       where: {
         companyId,
         ...(status ? { status: status as 'DRAFT' | 'POSTED' } : {}),
+        ...(voucherType ? { voucherType: voucherType as 'JOURNAL' | 'RECEIPT_VOUCHER' | 'PAYMENT_VOUCHER' } : {}),
       },
       orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
       include: { _count: { select: { lines: true } } },
