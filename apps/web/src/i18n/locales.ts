@@ -77,6 +77,10 @@ export const ar = {
     postable: 'قابل للترحيل',
     control: 'حساب رقابي',
     noParent: '— بدون —',
+    childUnder: 'حساب فرعي تحت {{code}}',
+    autoCodePreview: 'سيُعيَّن الرقم تلقائياً: {{code}}',
+    parentNonPostableWarning:
+      'تنبيه: إضافة حساب فرعي تجعل الحساب الأب غير قابل للترحيل.',
     types: {
       ASSET: 'أصل',
       LIABILITY: 'التزام',
@@ -282,6 +286,10 @@ export const en: typeof ar = {
     postable: 'Postable',
     control: 'Control account',
     noParent: '— None —',
+    childUnder: 'Child account under {{code}}',
+    autoCodePreview: 'Code will be assigned automatically: {{code}}',
+    parentNonPostableWarning:
+      'Warning: adding a child account makes the parent non-postable.',
     types: {
       ASSET: 'Asset',
       LIABILITY: 'Liability',

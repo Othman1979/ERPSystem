@@ -5,6 +5,7 @@ import type { RequestContext } from '../../common/cls/cls.types.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { CreateAccountDto, UpdateAccountDto } from './dto/accounting.dto.js';
 
 function levelOfCode(code: string): number {
@@ -51,63 +52,94 @@ export class AccountsService {
     const companyId = await this.companyId(db);
     const cls = ClsServiceManager.getClsService<RequestContext>();
 
-    let parentId: bigint | null = null;
-    let parentLevel = 0;
+    let parent: { id: bigint; code: string; level: number } | null = null;
     if (dto.parentId) {
-      const parent = await db.account.findFirst({
+      const found = await db.account.findFirst({
         where: { id: BigInt(dto.parentId), companyId },
+        select: { id: true, code: true, level: true },
       });
-      if (!parent) throw DomainError.notFound('Account', dto.parentId);
-      parentId = parent.id;
-      parentLevel = parent.level;
+      if (!found) throw DomainError.notFound('Account', dto.parentId);
+      parent = found;
+    }
+
+    if (!dto.code && !parent) {
+      throw new DomainError(ErrorCode.VALIDATION, 'code is required for a root account');
     }
 
     const normalBalance =
       dto.normalBalance ??
       (dto.accountType === 'ASSET' || dto.accountType === 'EXPENSE' ? 'DEBIT' : 'CREDIT');
 
-    try {
-      const account = await db.$transaction(async (tx) => {
-        const created = await tx.account.create({
-          data: {
-            tenantId,
-            companyId,
-            code: dto.code,
-            nameAr: dto.nameAr,
-            nameEn: dto.nameEn ?? null,
-            parentId,
-            level: parentId ? parentLevel + 1 : levelOfCode(dto.code),
-            accountType: dto.accountType,
-            normalBalance,
-            isPostable: dto.isPostable ?? true,
-            isControl: dto.isControl ?? false,
-            controlType: dto.controlType ?? null,
-            createdBy: cls.get('userId') ?? null,
-          },
-        });
-        // A parent that gains a child can no longer be posted to (§8 rule:
-        // الحساب الأب غير قابل للحركة).
-        if (parentId) {
-          await tx.account.updateMany({
-            where: { id: parentId, isPostable: true },
-            data: { isPostable: false },
+    // Auto-generated child codes (`parent-NN`) are recomputed inside the
+    // transaction; a unique-collision retries with the next sequence.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const account = await db.$transaction(async (tx) => {
+          const code =
+            dto.code ??
+            (await this.nextChildCode(tx, companyId, parent!.code));
+          const created = await tx.account.create({
+            data: {
+              tenantId,
+              companyId,
+              code,
+              nameAr: dto.nameAr,
+              nameEn: dto.nameEn ?? null,
+              parentId: parent?.id ?? null,
+              level: parent ? parent.level + 1 : levelOfCode(code),
+              accountType: dto.accountType,
+              normalBalance,
+              isPostable: dto.isPostable ?? true,
+              isControl: dto.isControl ?? false,
+              controlType: dto.controlType ?? null,
+              createdBy: cls.get('userId') ?? null,
+            },
           });
+          // A parent that gains a child can no longer be posted to (§8 rule:
+          // الحساب الأب غير قابل للحركة).
+          if (parent) {
+            await tx.account.updateMany({
+              where: { id: parent.id, isPostable: true },
+              data: { isPostable: false },
+            });
+          }
+          return created;
+        });
+        await this.audit.log({
+          action: 'account.create',
+          entityType: 'account',
+          entityId: account.id,
+          after: { code: account.code, nameAr: dto.nameAr },
+        });
+        return account;
+      } catch (err) {
+        if ((err as { code?: string }).code === 'P2002' && !dto.code) continue;
+        if ((err as { code?: string }).code === 'P2002') {
+          throw new DomainError(ErrorCode.CONFLICT, 'Account code already exists');
         }
-        return created;
-      });
-      await this.audit.log({
-        action: 'account.create',
-        entityType: 'account',
-        entityId: account.id,
-        after: { code: dto.code, nameAr: dto.nameAr },
-      });
-      return account;
-    } catch (err) {
-      if ((err as { code?: string }).code === 'P2002') {
-        throw new DomainError(ErrorCode.CONFLICT, 'Account code already exists');
+        throw err;
       }
-      throw err;
     }
+    throw new DomainError(ErrorCode.CONFLICT, 'Could not allocate account code');
+  }
+
+  /** Next free `parent-NN` code (NN = 01, 02, …) among the parent's children. */
+  private async nextChildCode(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    parentCode: string,
+  ): Promise<string> {
+    const prefix = `${parentCode}-`;
+    const siblings = await tx.account.findMany({
+      where: { companyId, code: { startsWith: prefix } },
+      select: { code: true },
+    });
+    let max = 0;
+    for (const s of siblings) {
+      const suffix = s.code.slice(prefix.length);
+      if (/^\d+$/.test(suffix)) max = Math.max(max, Number(suffix));
+    }
+    return `${prefix}${String(max + 1).padStart(2, '0')}`;
   }
 
   async update(id: bigint, dto: UpdateAccountDto) {

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Button,
   Card,
   Form,
@@ -74,6 +75,25 @@ export function AccountsPage() {
 
   const tree = useMemo(() => buildTree(data ?? []), [data]);
 
+  const watchedParentId = Form.useWatch('parentId', form) as string | undefined;
+  const isCreate = !editing;
+  const selectedParent = useMemo(
+    () => (data ?? []).find((a) => a.id === watchedParentId) ?? null,
+    [data, watchedParentId],
+  );
+  const autoCode = useMemo(() => {
+    if (!selectedParent) return null;
+    const prefix = `${selectedParent.code}-`;
+    let max = 0;
+    for (const a of data ?? []) {
+      if (a.code.startsWith(prefix)) {
+        const suffix = a.code.slice(prefix.length);
+        if (/^\d+$/.test(suffix)) max = Math.max(max, Number(suffix));
+      }
+    }
+    return `${prefix}${String(max + 1).padStart(2, '0')}`;
+  }, [data, selectedParent]);
+
   const save = useMutation({
     mutationFn: async (values: {
       code?: string;
@@ -91,7 +111,7 @@ export function AccountsPage() {
         });
       }
       return accountingControllerCreateAccount({
-        code: values.code!,
+        code: values.parentId ? undefined : values.code!,
         nameAr: values.nameAr,
         nameEn: values.nameEn || undefined,
         parentId: values.parentId || undefined,
@@ -223,9 +243,30 @@ export function AccountsPage() {
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
           {!editing && (
             <>
-              <Form.Item name="code" label={t('accounts.code')} rules={[{ required: true }]}>
-                <Input maxLength={50} />
-              </Form.Item>
+              {isCreate && selectedParent && autoCode && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message={t('accounts.childUnder', { code: selectedParent.code })}
+                  description={
+                    <>
+                      {t('accounts.autoCodePreview', { code: autoCode })}
+                      <br />
+                      {t('accounts.parentNonPostableWarning')}
+                    </>
+                  }
+                />
+              )}
+              {!(isCreate && watchedParentId) && (
+                <Form.Item
+                  name="code"
+                  label={t('accounts.code')}
+                  rules={[{ required: !(isCreate && watchedParentId) }]}
+                >
+                  <Input maxLength={50} />
+                </Form.Item>
+              )}
               <Form.Item name="parentId" label={t('accounts.parent')}>
                 <Select
                   allowClear

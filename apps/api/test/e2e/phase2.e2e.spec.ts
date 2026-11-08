@@ -176,6 +176,37 @@ describe('Phase 2 — financial setup (erp_test)', () => {
     expect(bad.status).toBe(409);
   });
 
+  it('auto-generates child codes as parent-NN', async () => {
+    // root account without a code is rejected
+    const noCode = await api()
+      .post('/api/v1/accounts')
+      .set(auth(tokenA))
+      .send({ nameAr: 'بدون رمز', accountType: 'EXPENSE' });
+    expect(noCode.status).toBe(400);
+
+    // children of group '61' get sequential dash codes
+    const c1 = await api()
+      .post('/api/v1/accounts')
+      .set(auth(tokenA))
+      .send({ nameAr: 'حساب فرعي أول', accountType: 'EXPENSE', parentId: parentAccountId });
+    expect(c1.status).toBe(201);
+    expect(c1.body.code).toBe('61-01');
+
+    const c2 = await api()
+      .post('/api/v1/accounts')
+      .set(auth(tokenA))
+      .send({ nameAr: 'حساب فرعي ثان', accountType: 'EXPENSE', parentId: parentAccountId });
+    expect(c2.body.code).toBe('61-02');
+
+    // nested: child of 61-01 continues the pattern
+    const c3 = await api()
+      .post('/api/v1/accounts')
+      .set(auth(tokenA))
+      .send({ nameAr: 'حساب فرعي ثالث', accountType: 'EXPENSE', parentId: c1.body.id });
+    expect(c3.body.code).toBe('61-01-01');
+    expect(c3.body.level).toBe(4);
+  });
+
   it('blocks deactivating an account used in a mapping', async () => {
     const res = await api()
       .patch(`/api/v1/accounts/${salesAccountId}`)

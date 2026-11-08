@@ -16,10 +16,12 @@ const NORMAL_BALANCES = ['DEBIT', 'CREDIT'] as const;
 const CONTROL_TYPES = ['CUSTOMERS', 'SUPPLIERS', 'CASH', 'BANK'] as const;
 
 export class CreateAccountDto {
+  /** Optional when parentId is set — the server auto-generates `parent-NN`. */
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(50)
-  code!: string;
+  code?: string;
 
   @IsString()
   @MinLength(1)
