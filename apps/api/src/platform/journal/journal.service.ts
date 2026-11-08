@@ -6,12 +6,17 @@ import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import {
   CreateJournalEntryDto,
   CreateOpeningEntryDto,
   ReverseJournalEntryDto,
 } from './dto/journal.dto.js';
-import { PostingService, type JournalLineInput } from './posting.service.js';
+import {
+  PostingService,
+  type JournalLineInput,
+  type NormalizedLine,
+} from './posting.service.js';
 
 const MANUAL_SOURCE = 'MANUAL_JOURNAL';
 const OPENING_SOURCE = 'OPENING_ENTRY';
@@ -100,6 +105,7 @@ export class JournalService {
           branchId: dto.branchId ? BigInt(dto.branchId) : null,
           entryDate: new Date(dto.entryDate),
           sourceType: MANUAL_SOURCE,
+          voucherType: dto.voucherType ?? 'JOURNAL',
           status: 'DRAFT',
           description: dto.description ?? null,
         },
@@ -170,7 +176,7 @@ export class JournalService {
       db.$transaction(async (tx) => {
         // Lock the draft row.
         const rows = (await tx.$queryRaw`
-          SELECT id, status, entry_date, description, branch_id
+          SELECT id, status, entry_date, description, branch_id, voucher_type
           FROM journal_entries
           WHERE tenant_id = ${tenantId} AND id = ${id}
           FOR UPDATE
@@ -180,6 +186,7 @@ export class JournalService {
           entry_date: Date;
           description: string | null;
           branch_id: bigint | null;
+          voucher_type: 'JOURNAL' | 'RECEIPT_VOUCHER' | 'PAYMENT_VOUCHER';
         }[];
         const draft = rows[0];
         if (!draft) throw DomainError.notFound('JournalEntry', id.toString());
@@ -224,6 +231,10 @@ export class JournalService {
             ErrorCode.UNBALANCED_ENTRY,
             `Entry is unbalanced: debit ${totalDebit.toString()} != credit ${totalCredit.toString()}`,
           );
+        }
+
+        if (draft.voucher_type !== 'JOURNAL') {
+          await this.assertVoucherRules(tx, tenantId, companyId, draft.voucher_type, normalized);
         }
 
         await tx.journalEntry.update({
@@ -312,6 +323,7 @@ export class JournalService {
           sourceType: original.sourceType,
           sourceId: original.sourceId,
           postingKind: 'REVERSAL',
+          voucherType: original.voucherType,
           reversalOfId: original.id,
           description: dto.description ?? `Reversal of ${original.entryNo ?? original.id}`,
           lines: swapped,
@@ -403,6 +415,51 @@ export class JournalService {
       after: { entryNo: result.entryNo },
     });
     return this.get(result.id);
+  }
+
+  /**
+   * Cash/bank voucher rules (سند قبض / سند صرف): a RECEIPT voucher must
+   * debit a cash/bank account and must not credit one; a PAYMENT voucher
+   * mirrors this. "Cash/bank" = account.controlType CASH or BANK.
+   */
+  private async assertVoucherRules(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    voucherType: 'RECEIPT_VOUCHER' | 'PAYMENT_VOUCHER',
+    normalized: NormalizedLine[],
+  ): Promise<void> {
+    const ids = [...new Set(normalized.map((n) => n.line.accountId))];
+    const accounts = await tx.account.findMany({
+      where: { tenantId, companyId, id: { in: ids } },
+      select: { id: true, controlType: true },
+    });
+    const controlById = new Map(accounts.map((a) => [a.id, a.controlType]));
+    const isCashBank = (id: bigint) => {
+      const ct = controlById.get(id);
+      return ct === 'CASH' || ct === 'BANK';
+    };
+
+    const isReceipt = voucherType === 'RECEIPT_VOUCHER';
+    const cashDebit = normalized.some((n) => n.debit.gt(0) && isCashBank(n.line.accountId));
+    const cashCredit = normalized.some((n) => n.credit.gt(0) && isCashBank(n.line.accountId));
+
+    if (isReceipt ? !cashDebit : !cashCredit) {
+      throw new DomainError(
+        ErrorCode.VALIDATION,
+        isReceipt
+          ? 'Receipt voucher requires a debit line on a cash/bank account'
+          : 'Payment voucher requires a credit line on a cash/bank account',
+      );
+    }
+    if (isReceipt ? cashCredit : cashDebit) {
+      throw new DomainError(
+        ErrorCode.VALIDATION,
+        isReceipt
+          ? 'Receipt voucher cannot credit a cash/bank account'
+          : 'Payment voucher cannot debit a cash/bank account',
+      );
+    }
   }
 
   private async withRetry<T>(fn: () => Promise<T>): Promise<T> {

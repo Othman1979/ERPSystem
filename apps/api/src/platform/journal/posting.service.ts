@@ -30,6 +30,7 @@ export interface PostEntryParams {
   sourceType: string;
   sourceId?: bigint | null;
   postingKind?: 'POST' | 'REVERSAL';
+  voucherType?: 'JOURNAL' | 'RECEIPT_VOUCHER' | 'PAYMENT_VOUCHER';
   reversalOfId?: bigint | null;
   description?: string | null;
   lines: JournalLineInput[];
@@ -164,6 +165,7 @@ export class PostingService {
           sourceType: params.sourceType,
           sourceId: params.sourceId ?? null,
           postingKind: params.postingKind ?? 'POST',
+          voucherType: params.voucherType ?? 'JOURNAL',
           status: 'POSTED',
           description: params.description ?? null,
           totalDebit,

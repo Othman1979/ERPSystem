@@ -358,6 +358,114 @@ describe('Phase 3 — journal engine (erp_test)', () => {
     expect(Number(ps.body.rows[0].debit)).toBe(500);
   });
 
+  it('receipt voucher posts with a cash debit and keeps its type on reversal', async () => {
+    const draft = await api()
+      .post('/api/v1/journal-entries')
+      .set(auth(token))
+      .send({
+        entryDate: '2025-05-10',
+        description: 'cash receipt',
+        voucherType: 'RECEIPT_VOUCHER',
+        lines: [
+          { accountId: acct('1101'), debit: '75.000' },
+          { accountId: acct('4101'), credit: '75.000' },
+        ],
+      });
+    expect(draft.status).toBe(201);
+    expect(draft.body.voucherType).toBe('RECEIPT_VOUCHER');
+
+    const post = await api()
+      .post(`/api/v1/journal-entries/${draft.body.id}/post`)
+      .set(auth(token))
+      .set(idem());
+    expect(post.status).toBe(201);
+
+    const rev = await api()
+      .post(`/api/v1/journal-entries/${draft.body.id}/reverse`)
+      .set(auth(token))
+      .set(idem())
+      .send({ reversalDate: '2025-05-11' });
+    expect(rev.status).toBe(201);
+    expect(rev.body.voucherType).toBe('RECEIPT_VOUCHER');
+  });
+
+  it('payment voucher posts with a bank credit', async () => {
+    const draft = await api()
+      .post('/api/v1/journal-entries')
+      .set(auth(token))
+      .send({
+        entryDate: '2025-05-12',
+        description: 'bank payment',
+        voucherType: 'PAYMENT_VOUCHER',
+        lines: [
+          { accountId: acct('5204'), debit: '40.000' },
+          { accountId: acct('1102'), credit: '40.000' },
+        ],
+      });
+    expect(draft.status).toBe(201);
+    const post = await api()
+      .post(`/api/v1/journal-entries/${draft.body.id}/post`)
+      .set(auth(token))
+      .set(idem());
+    expect(post.status).toBe(201);
+  });
+
+  it('vouchers enforce the cash/bank side rules', async () => {
+    const post = (id: string) =>
+      api()
+        .post(`/api/v1/journal-entries/${id}/post`)
+        .set(auth(token))
+        .set(idem());
+
+    // receipt without any cash/bank debit
+    const noCash = await api()
+      .post('/api/v1/journal-entries')
+      .set(auth(token))
+      .send({
+        entryDate: '2025-05-13',
+        voucherType: 'RECEIPT_VOUCHER',
+        lines: [
+          {
+            accountId: acct('1103'),
+            debit: '10.000',
+            partyType: 'CUSTOMER',
+            partyId: '7',
+          },
+          { accountId: acct('4101'), credit: '10.000' },
+        ],
+      });
+    expect((await post(noCash.body.id)).status).toBe(400);
+
+    // receipt that also credits a cash account (wrong side)
+    const wrongSide = await api()
+      .post('/api/v1/journal-entries')
+      .set(auth(token))
+      .send({
+        entryDate: '2025-05-13',
+        voucherType: 'RECEIPT_VOUCHER',
+        lines: [
+          { accountId: acct('1101'), debit: '10.000' },
+          { accountId: acct('1101'), credit: '4.000' },
+          { accountId: acct('4101'), credit: '6.000' },
+        ],
+      });
+    expect((await post(wrongSide.body.id)).status).toBe(400);
+
+    // payment debiting cash instead of crediting it
+    const payWrong = await api()
+      .post('/api/v1/journal-entries')
+      .set(auth(token))
+      .send({
+        entryDate: '2025-05-13',
+        voucherType: 'PAYMENT_VOUCHER',
+        lines: [
+          { accountId: acct('1101'), debit: '10.000' },
+          { accountId: acct('5204'), credit: '10.000' },
+        ],
+      });
+    expect((await post(payWrong.body.id)).status).toBe(400);
+  });
+
   it('isolates journal data between tenants', async () => {
     const regB = await api()
       .post('/api/v1/auth/register')

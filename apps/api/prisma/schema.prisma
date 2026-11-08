@@ -86,6 +86,12 @@ enum JournalPartyType {
   SUPPLIER
 }
 
+enum JournalVoucherType {
+  JOURNAL
+  RECEIPT_VOUCHER
+  PAYMENT_VOUCHER
+}
+
 enum ItemKind {
   STOCK
   SERVICE
@@ -649,6 +655,7 @@ model JournalEntry {
   sourceType     String             @map("source_type") @db.VarChar(50)
   sourceId       BigInt?            @map("source_id") @db.UnsignedBigInt
   postingKind    JournalPostingKind @default(POST) @map("posting_kind")
+  voucherType    JournalVoucherType @default(JOURNAL) @map("voucher_type")
   status         JournalEntryStatus @default(DRAFT)
   description    String?            @db.VarChar(500)
   totalDebit     Decimal            @default(0) @map("total_debit") @db.Decimal(18, 3)

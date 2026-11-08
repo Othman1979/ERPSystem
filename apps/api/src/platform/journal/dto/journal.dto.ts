@@ -12,6 +12,7 @@ import {
 } from 'class-validator';
 
 const PARTY_TYPES = ['CUSTOMER', 'SUPPLIER'] as const;
+const VOUCHER_TYPES = ['JOURNAL', 'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER'] as const;
 
 export class JournalLineDto {
   @IsString()
@@ -47,6 +48,11 @@ export class JournalLineDto {
 export class CreateJournalEntryDto {
   @IsDateString()
   entryDate!: string;
+
+  /** JOURNAL = plain journal; RECEIPT/PAYMENT = cash-bank vouchers (سند قبض/صرف). */
+  @IsOptional()
+  @IsIn(VOUCHER_TYPES)
+  voucherType?: (typeof VOUCHER_TYPES)[number];
 
   @IsOptional()
   @IsString()

@@ -7,7 +7,6 @@ import {
   Drawer,
   Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Select,
@@ -16,10 +15,14 @@ import {
   Tag,
   message,
 } from 'antd';
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  emptyLine,
+  JournalLinesGrid,
+  type JournalLineDraft,
+} from '../components/JournalLinesGrid';
 import {
   ApiError,
   accountingControllerListAccounts,
@@ -55,6 +58,7 @@ interface JournalEntry {
   entryDate: string;
   description: string | null;
   status: 'DRAFT' | 'POSTED';
+  voucherType?: 'JOURNAL' | 'RECEIPT_VOUCHER' | 'PAYMENT_VOUCHER';
   totalDebit: string;
   totalCredit: string;
   lines?: JournalLine[];
@@ -62,12 +66,14 @@ interface JournalEntry {
   reversals?: { entryNo: string; status: string }[];
 }
 
-interface LineFormValue {
-  accountId?: string;
-  debit?: number | null;
-  credit?: number | null;
-  description?: string;
-}
+const VOUCHER_TYPES = ['JOURNAL', 'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER'] as const;
+type VoucherType = (typeof VOUCHER_TYPES)[number];
+
+const VOUCHER_TYPE_LABEL: Record<VoucherType, string> = {
+  JOURNAL: 'journal.typeJournal',
+  RECEIPT_VOUCHER: 'journal.typeReceipt',
+  PAYMENT_VOUCHER: 'journal.typePayment',
+};
 
 export function JournalPage() {
   const { t } = useTranslation();
@@ -77,6 +83,7 @@ export function JournalPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [reverseTarget, setReverseTarget] = useState<JournalEntry | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
+  const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
@@ -112,10 +119,16 @@ export function JournalPage() {
     );
 
   const createDraft = useMutation({
-    mutationFn: (v: { entryDate: Dayjs; description?: string; lines: LineFormValue[] }) =>
+    mutationFn: (v: {
+      entryDate: Dayjs;
+      description?: string;
+      voucherType: VoucherType;
+      lines: JournalLineDraft[];
+    }) =>
       journalControllerCreateDraft({
         entryDate: v.entryDate.format('YYYY-MM-DD'),
         description: v.description || undefined,
+        voucherType: v.voucherType,
         lines: v.lines
           .filter((l) => l.accountId)
           .map((l) => ({
@@ -129,6 +142,7 @@ export function JournalPage() {
       apiMessage.success(t('common.saved'));
       setModalOpen(false);
       form.resetFields();
+      setLines([emptyLine(1), emptyLine(2)]);
       invalidate();
     },
     onError,
@@ -212,6 +226,18 @@ export function JournalPage() {
             render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
           },
           {
+            title: t('journal.voucherType'),
+            dataIndex: 'voucherType',
+            width: 110,
+            render: (v: VoucherType | undefined) => {
+              if (v === 'RECEIPT_VOUCHER')
+                return <Tag color="blue">{t('journal.typeReceipt')}</Tag>;
+              if (v === 'PAYMENT_VOUCHER')
+                return <Tag color="orange">{t('journal.typePayment')}</Tag>;
+              return <Tag>{t('journal.typeJournal')}</Tag>;
+            },
+          },
+          {
             title: t('common.description'),
             dataIndex: 'description',
             render: (v: string | null) => v ?? '—',
@@ -273,84 +299,66 @@ export function JournalPage() {
       <Modal
         title={t('journal.newEntry')}
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
+        onCancel={() => {
+          setModalOpen(false);
+          setLines([emptyLine(1), emptyLine(2)]);
+        }}
         onOk={() => form.submit()}
         confirmLoading={createDraft.isPending}
-        width={820}
+        width={900}
       >
         <Form
           form={form}
           layout="vertical"
-          onFinish={(v) =>
+          onFinish={(v) => {
+            const filled = lines.filter((l) => l.accountId);
+            if (filled.length < 2) {
+              apiMessage.error(t('journal.minLines'));
+              return;
+            }
             createDraft.mutate({
               entryDate: v.entryDate,
               description: v.description,
-              lines: v.lines ?? [],
-            })
-          }
-          initialValues={{ entryDate: dayjs(), lines: [{}, {}] }}
+              voucherType: v.voucherType ?? 'JOURNAL',
+              lines,
+            });
+          }}
+          initialValues={{ entryDate: dayjs(), voucherType: 'JOURNAL' }}
           requiredMark={false}
         >
-          <Space style={{ display: 'flex' }} align="start">
+          <Space style={{ display: 'flex' }} align="start" wrap>
             <Form.Item
               name="entryDate"
               label={t('journal.date')}
               rules={[{ required: true }]}
-              style={{ width: 180 }}
+              style={{ width: 160 }}
             >
               <DatePicker />
+            </Form.Item>
+            <Form.Item
+              name="voucherType"
+              label={t('journal.voucherType')}
+              rules={[{ required: true }]}
+              style={{ width: 160 }}
+            >
+              <Select
+                options={VOUCHER_TYPES.map((vt) => ({
+                  value: vt,
+                  label: t(VOUCHER_TYPE_LABEL[vt]),
+                }))}
+              />
             </Form.Item>
             <Form.Item name="description" label={t('common.description')} style={{ flex: 1 }}>
               <Input maxLength={500} />
             </Form.Item>
           </Space>
-          <Form.List name="lines">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map((field) => (
-                  <Space
-                    key={field.key}
-                    align="baseline"
-                    style={{ display: 'flex', marginBottom: 8 }}
-                    wrap
-                  >
-                    <Form.Item
-                      name={[field.name, 'accountId']}
-                      rules={[{ required: true }]}
-                      style={{ minWidth: 260 }}
-                    >
-                      <Select
-                        showSearch
-                        optionFilterProp="label"
-                        placeholder={t('journal.account')}
-                        options={accountOptions}
-                        style={{ width: 280 }}
-                      />
-                    </Form.Item>
-                    <Form.Item name={[field.name, 'debit']} style={{ width: 120 }}>
-                      <InputNumber placeholder={t('journal.debit')} min={0} style={{ width: 110 }} />
-                    </Form.Item>
-                    <Form.Item name={[field.name, 'credit']} style={{ width: 120 }}>
-                      <InputNumber
-                        placeholder={t('journal.credit')}
-                        min={0}
-                        style={{ width: 110 }}
-                      />
-                    </Form.Item>
-                    <Form.Item name={[field.name, 'description']} style={{ minWidth: 160 }}>
-                      <Input placeholder={t('common.description')} maxLength={500} />
-                    </Form.Item>
-                    {fields.length > 2 && (
-                      <MinusCircleOutlined onClick={() => remove(field.name)} />
-                    )}
-                  </Space>
-                ))}
-                <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block>
-                  {t('journal.addLine')}
-                </Button>
-              </>
-            )}
-          </Form.List>
+          <Form.Item style={{ marginBottom: 8 }}>
+            <JournalLinesGrid
+              lines={lines}
+              onChange={setLines}
+              accountOptions={accountOptions}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -371,6 +379,11 @@ export function JournalPage() {
               </Descriptions.Item>
               <Descriptions.Item label={t('journal.date')}>
                 {dayjs(detail.entryDate).format('YYYY-MM-DD')}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('journal.voucherType')}>
+                {detail.voucherType && detail.voucherType !== 'JOURNAL'
+                  ? t(VOUCHER_TYPE_LABEL[detail.voucherType])
+                  : t('journal.typeJournal')}
               </Descriptions.Item>
               <Descriptions.Item label={t('common.description')}>
                 {detail.description ?? '—'}

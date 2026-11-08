@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `journal_entries` ADD COLUMN `voucher_type` ENUM('JOURNAL', 'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER') NOT NULL DEFAULT 'JOURNAL';

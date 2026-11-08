@@ -23,6 +23,20 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <ConfigProvider
         locale={antdLocale}
         direction={i18n.language === 'ar' ? 'rtl' : 'ltr'}
+        theme={{
+          token: {
+            colorPrimary: '#714B67',
+            colorInfo: '#714B67',
+            borderRadius: 4,
+            fontFamily:
+              "'Segoe UI', Tahoma, 'Noto Kufi Arabic', Arial, sans-serif",
+          },
+          components: {
+            Layout: { headerBg: '#714B67', headerHeight: 48, headerPadding: '0 16px' },
+            Menu: { darkItemBg: '#5C3A57', darkSubMenuItemBg: '#4E3049' },
+            Card: { headerBg: 'transparent' },
+          },
+        }}
       >
         <AntApp>
           <AuthProvider>
