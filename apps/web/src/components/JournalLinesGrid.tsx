@@ -126,7 +126,7 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
 
   return (
     <div>
-      <table ref={gridRef} className="entry-grid entry-grid--journal">
+      <table ref={gridRef} className="entry-grid">
         <thead>
           <tr>
             <th>#</th>

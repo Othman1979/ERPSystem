@@ -18,15 +18,17 @@ const queryClient = new QueryClient({
 
 const theme = {
   token: {
-    colorPrimary: '#714B67',
-    colorInfo: '#714B67',
+    colorPrimary: '#0078d4',
+    colorInfo: '#0078d4',
+    colorBorder: '#e1e1e1',
     borderRadius: 4,
-    fontFamily: "'Segoe UI', Tahoma, 'Noto Kufi Arabic', Arial, sans-serif",
+    fontFamily: "'Segoe UI', Tahoma, Arial, sans-serif",
   },
   components: {
-    Layout: { headerBg: '#714B67', headerHeight: 48, headerPadding: '0 16px' },
-    Menu: { darkItemBg: '#5C3A57', darkSubMenuItemBg: '#4E3049' },
+    Layout: { headerBg: '#0078d4', headerHeight: 40, headerPadding: '0 16px' },
+    Menu: { darkItemBg: '#005a9e', darkSubMenuItemBg: '#004c8c' },
     Card: { headerBg: 'transparent' },
+    Table: { headerBg: '#f5f5f5', headerColor: '#323130' },
   },
 };
 

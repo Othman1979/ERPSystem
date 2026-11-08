@@ -144,7 +144,7 @@ export function ItemLinesGrid({
 
   return (
     <table
-      ref={gridRef} className="entry-grid entry-grid--stock"
+      ref={gridRef} className="entry-grid"
     >
       <thead>
         <tr>

@@ -74,37 +74,37 @@ const APP_GROUPS: AppGroup[] = [
   {
     label: 'nav.groupFinance',
     tiles: [
-      { key: 'accounts', icon: <BankOutlined />, color: '#017e84' },
-      { key: 'journal', icon: <ProfileOutlined />, color: '#017e84' },
-      { key: 'treasury', icon: <WalletOutlined />, color: '#017e84' },
-      { key: 'reports', icon: <DashboardOutlined />, color: '#017e84' },
-      { key: 'fiscal', icon: <CalendarOutlined />, color: '#017e84' },
+      { key: 'accounts', icon: <BankOutlined />, color: '#106ebe' },
+      { key: 'journal', icon: <ProfileOutlined />, color: '#106ebe' },
+      { key: 'treasury', icon: <WalletOutlined />, color: '#106ebe' },
+      { key: 'reports', icon: <DashboardOutlined />, color: '#106ebe' },
+      { key: 'fiscal', icon: <CalendarOutlined />, color: '#106ebe' },
     ],
   },
   {
     label: 'nav.groupSales',
     tiles: [
-      { key: 'sales', icon: <ShoppingCartOutlined />, color: '#875a7b' },
-      { key: 'purchases', icon: <CarOutlined />, color: '#875a7b' },
-      { key: 'goodsNotes', icon: <FileDoneOutlined />, color: '#875a7b' },
-      { key: 'parties', icon: <TeamOutlined />, color: '#875a7b' },
+      { key: 'sales', icon: <ShoppingCartOutlined />, color: '#0078d4' },
+      { key: 'purchases', icon: <CarOutlined />, color: '#0078d4' },
+      { key: 'goodsNotes', icon: <FileDoneOutlined />, color: '#0078d4' },
+      { key: 'parties', icon: <TeamOutlined />, color: '#0078d4' },
     ],
   },
   {
     label: 'nav.groupInventory',
     tiles: [
-      { key: 'items', icon: <InboxOutlined />, color: '#875a7b' },
-      { key: 'warehouses', icon: <DatabaseOutlined />, color: '#875a7b' },
-      { key: 'stock', icon: <DatabaseOutlined />, color: '#875a7b' },
+      { key: 'items', icon: <InboxOutlined />, color: '#0078d4' },
+      { key: 'warehouses', icon: <DatabaseOutlined />, color: '#0078d4' },
+      { key: 'stock', icon: <DatabaseOutlined />, color: '#0078d4' },
     ],
   },
   {
     label: 'nav.groupAdmin',
     tiles: [
-      { key: 'users', icon: <TeamOutlined />, color: '#6b7785' },
-      { key: 'branches', icon: <ShopOutlined />, color: '#6b7785' },
-      { key: 'settings', icon: <SettingOutlined />, color: '#6b7785' },
-      { key: 'health', icon: <DashboardOutlined />, color: '#6b7785' },
+      { key: 'users', icon: <TeamOutlined />, color: '#5b6b7a' },
+      { key: 'branches', icon: <ShopOutlined />, color: '#5b6b7a' },
+      { key: 'settings', icon: <SettingOutlined />, color: '#5b6b7a' },
+      { key: 'health', icon: <DashboardOutlined />, color: '#5b6b7a' },
     ],
   },
 ];
@@ -252,13 +252,13 @@ export function App() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f4f5f7' }}>
+    <div style={{ minHeight: '100vh', background: '#f3f3f3' }}>
       {/* Odoo-style top bar */}
       <div
         className="app-topbar"
         style={{
-          height: 48,
-          background: '#714B67',
+          height: 40,
+          background: '#0078d4',
           color: '#fff',
           display: 'flex',
           alignItems: 'center',
