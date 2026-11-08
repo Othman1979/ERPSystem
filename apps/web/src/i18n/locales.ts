@@ -95,6 +95,9 @@ export const ar = {
     autoCodePreview: 'سيُعيَّن الرقم تلقائياً: {{code}}',
     parentNonPostableWarning:
       'تنبيه: إضافة حساب فرعي تجعل الحساب الأب غير قابل للترحيل.',
+    debit: 'إجمالي المدين',
+    credit: 'إجمالي الدائن',
+    balance: 'الرصيد',
     types: {
       ASSET: 'أصل',
       LIABILITY: 'التزام',
@@ -570,6 +573,9 @@ export const en: typeof ar = {
     autoCodePreview: 'Code will be assigned automatically: {{code}}',
     parentNonPostableWarning:
       'Warning: adding a child account makes the parent non-postable.',
+    debit: 'Total Debit',
+    credit: 'Total Credit',
+    balance: 'Balance',
     types: {
       ASSET: 'Asset',
       LIABILITY: 'Liability',

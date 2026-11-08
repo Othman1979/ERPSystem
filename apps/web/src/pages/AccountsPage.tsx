@@ -19,6 +19,7 @@ import {
   accountingControllerCreateAccount,
   accountingControllerListAccounts,
   accountingControllerUpdateAccount,
+  journalControllerTrialBalance,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 
@@ -39,11 +40,22 @@ interface Account {
 
 interface TreeNode extends Account {
   children?: TreeNode[];
+  /** Rolled-up totals over POSTED journal lines (own + descendants). */
+  balDebit: number;
+  balCredit: number;
+  balBalance: number;
+}
+
+interface TrialRow {
+  accountId: string;
+  totalDebit: string;
+  totalCredit: string;
 }
 
 function buildTree(accounts: Account[]): TreeNode[] {
   const byId = new Map<string, TreeNode>();
-  for (const a of accounts) byId.set(a.id, { ...a });
+  for (const a of accounts)
+    byId.set(a.id, { ...a, balDebit: 0, balCredit: 0, balBalance: 0 });
   const roots: TreeNode[] = [];
   for (const node of byId.values()) {
     const parent = node.parentId ? byId.get(node.parentId) : undefined;
@@ -61,6 +73,25 @@ function buildTree(accounts: Account[]): TreeNode[] {
   return roots;
 }
 
+const ZERO = { debit: 0, credit: 0 };
+
+/** Attach rolled-up posted totals to every node (own + descendants). */
+function applyBalances(nodes: TreeNode[], balMap: Map<string, { debit: number; credit: number }>) {
+  let debit = 0;
+  let credit = 0;
+  for (const n of nodes) {
+    const own = balMap.get(n.id) ?? ZERO;
+    const child = n.children?.length ? applyBalances(n.children, balMap) : ZERO;
+    n.balDebit = own.debit + child.debit;
+    n.balCredit = own.credit + child.credit;
+    n.balBalance =
+      n.normalBalance === 'DEBIT' ? n.balDebit - n.balCredit : n.balCredit - n.balDebit;
+    debit += n.balDebit;
+    credit += n.balCredit;
+  }
+  return { debit, credit };
+}
+
 export function AccountsPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -74,7 +105,31 @@ export function AccountsPage() {
     queryFn: () => accountingControllerListAccounts().then((r) => r.data as unknown as Account[]),
   });
 
-  const tree = useMemo(() => buildTree(data ?? []), [data]);
+  const { data: trial, isError: trialError } = useQuery({
+    queryKey: ['trial-balance'],
+    queryFn: () =>
+      journalControllerTrialBalance().then(
+        (r) => r.data as unknown as { rows: TrialRow[] },
+      ),
+    retry: false,
+  });
+
+  const tree = useMemo(() => {
+    const nodes = buildTree(data ?? []);
+    if (trial?.rows) {
+      const balMap = new Map(
+        trial.rows.map((r) => [
+          r.accountId,
+          { debit: Number(r.totalDebit), credit: Number(r.totalCredit) },
+        ]),
+      );
+      applyBalances(nodes, balMap);
+    }
+    return nodes;
+  }, [data, trial]);
+
+  const fmt = (v: number) =>
+    v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const watchedParentId = Form.useWatch('parentId', form) as string | undefined;
   const isCreate = !editing;
@@ -206,6 +261,34 @@ export function AccountsPage() {
             dataIndex: 'isPostable',
             width: 100,
             render: (v: boolean) => (v ? t('common.active') : '—'),
+          },
+          {
+            title: t('accounts.debit'),
+            width: 110,
+            align: 'end',
+            render: (_: unknown, a: Account) =>
+              trialError ? '—' : fmt((a as TreeNode).balDebit),
+          },
+          {
+            title: t('accounts.credit'),
+            width: 110,
+            align: 'end',
+            render: (_: unknown, a: Account) =>
+              trialError ? '—' : fmt((a as TreeNode).balCredit),
+          },
+          {
+            title: t('accounts.balance'),
+            width: 120,
+            align: 'end',
+            render: (_: unknown, a: Account) => {
+              if (trialError) return '—';
+              const bal = (a as TreeNode).balBalance;
+              return (
+                <span style={{ color: bal < 0 ? '#c42b1c' : undefined }}>
+                  {fmt(bal)}
+                </span>
+              );
+            },
           },
           {
             title: t('common.status'),
