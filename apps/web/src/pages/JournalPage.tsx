@@ -42,6 +42,12 @@ import {
 } from '@erp/api-client';
 import i18n from '../i18n';
 import { idemHeaders } from '../idempotency';
+import {
+  enterTo,
+  focusFirstGridCell,
+  focusNamedField,
+  GridSelect,
+} from '../components/GridSelect';
 
 interface Account {
   id: string;
@@ -111,6 +117,7 @@ export function JournalPage() {
   const [newVoucherType, setNewVoucherType] = useState<VoucherType>('JOURNAL');
   const [newDescription, setNewDescription] = useState('');
   const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
+  const [gridFocus, setGridFocus] = useState(0);
 
   const { data: entries, isLoading } = useQuery({
     queryKey: ['journal-entries', statusFilter, typeFilter],
@@ -154,6 +161,7 @@ export function JournalPage() {
     setNewVoucherType(voucherType);
     setNewDescription('');
     setLines([emptyLine(1), emptyLine(2)]);
+    setGridFocus((g) => g + 1);
     setScreen('entry');
   };
 
@@ -459,11 +467,12 @@ export function JournalPage() {
       <Card size="small" style={{ marginBottom: 16 }}>
         {isNew ? (
           <Space size={16} wrap>
-            <div>
+            <div data-field="voucherType" onKeyDown={enterTo(() => focusNamedField('date'))}>
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
                 {t('journal.voucherType')}
               </Typography.Text>
-              <Select
+              <GridSelect
+                enterOpens
                 value={newVoucherType}
                 onChange={setNewVoucherType}
                 options={VOUCHER_TYPES.map((vt) => ({
@@ -473,13 +482,17 @@ export function JournalPage() {
                 style={{ width: 180 }}
               />
             </div>
-            <div>
+            <div data-field="date" onKeyDown={enterTo(() => focusNamedField('description'))}>
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
                 {t('journal.date')}
               </Typography.Text>
               <DatePicker value={newDate} onChange={(d) => d && setNewDate(d)} />
             </div>
-            <div style={{ flex: 1, minWidth: 220 }}>
+            <div
+              data-field="description"
+              style={{ flex: 1, minWidth: 220 }}
+              onKeyDown={enterTo(focusFirstGridCell)}
+            >
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
                 {t('common.description')}
               </Typography.Text>
@@ -514,7 +527,12 @@ export function JournalPage() {
       {/* Lines */}
       <Card size="small" loading={detailLoading && !isNew} title={t('journal.linesTitle')}>
         {isNew ? (
-          <JournalLinesGrid lines={lines} onChange={setLines} accountOptions={accountOptions} />
+          <JournalLinesGrid
+            lines={lines}
+            onChange={setLines}
+            accountOptions={accountOptions}
+            focusSignal={gridFocus}
+          />
         ) : (
           <Table
             rowKey={(r) => r.id ?? `${r.account?.code}-${r.debit}-${r.credit}`}

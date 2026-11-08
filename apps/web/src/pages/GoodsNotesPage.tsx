@@ -39,6 +39,12 @@ import {
 } from '@erp/api-client';
 import i18n from '../i18n';
 import { idemHeaders } from '../idempotency';
+import {
+  enterTo,
+  focusFirstGridCell,
+  focusNamedField,
+  GridSelect,
+} from '../components/GridSelect';
 
 interface GoodsNote {
   id: string;
@@ -108,6 +114,7 @@ export function GoodsNotesSection({
   const [newWarehouseId, setNewWarehouseId] = useState<string | undefined>();
   const [newDescription, setNewDescription] = useState('');
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1), emptyItemLine(2)]);
+  const [gridFocus, setGridFocus] = useState(0);
 
   const { data: notes, isLoading } = useQuery({
     queryKey: ['goods-notes', typeFilter],
@@ -167,6 +174,7 @@ export function GoodsNotesSection({
     setNewWarehouseId(undefined);
     setNewDescription('');
     setLines([emptyItemLine(1), emptyItemLine(2)]);
+    setGridFocus((g) => g + 1);
     setScreen('entry');
   };
 
@@ -457,11 +465,12 @@ export function GoodsNotesSection({
       >
         {isNew ? (
           <>
-            <div>
+            <div data-field="noteType" onKeyDown={enterTo(() => focusNamedField('date'))}>
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
                 {t('goods.noteType')}
               </Typography.Text>
-              <Select
+              <GridSelect
+                enterOpens
                 value={newType}
                 onChange={setNewType}
                 options={NOTE_TYPES.map((vt) => ({
@@ -471,24 +480,29 @@ export function GoodsNotesSection({
                 style={{ width: 180 }}
               />
             </div>
-            <div>
+            <div data-field="date" onKeyDown={enterTo(() => focusNamedField('warehouse'))}>
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
                 {t('goods.date')}
               </Typography.Text>
               <DatePicker value={newDate} onChange={(d) => d && setNewDate(d)} />
             </div>
-            <div>
+            <div data-field="warehouse" onKeyDown={enterTo(() => focusNamedField('description'))}>
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
                 {t('stock.warehouse')} *
               </Typography.Text>
-              <Select
+              <GridSelect
+                enterOpens
                 options={warehouseOptions}
                 value={newWarehouseId}
                 onChange={setNewWarehouseId}
                 style={{ width: 220 }}
               />
             </div>
-            <div style={{ flex: 1, minWidth: 220 }}>
+            <div
+              data-field="description"
+              style={{ flex: 1, minWidth: 220 }}
+              onKeyDown={enterTo(focusFirstGridCell)}
+            >
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
                 {t('common.description')}
               </Typography.Text>
@@ -538,6 +552,7 @@ export function GoodsNotesSection({
             itemOptions={itemOptions}
             showCost={newType === 'GRN'}
             showDescription
+            focusSignal={gridFocus}
           />
         ) : (
           <Table

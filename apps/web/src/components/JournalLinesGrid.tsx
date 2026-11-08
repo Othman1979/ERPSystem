@@ -1,6 +1,6 @@
 import { DeleteOutlined } from '@ant-design/icons';
 import { Button, Input, InputNumber, Typography } from 'antd';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GridSelect, isSelectDropdownOpen } from './GridSelect';
 
@@ -18,13 +18,15 @@ interface Props {
   lines: JournalLineDraft[];
   onChange: (lines: JournalLineDraft[]) => void;
   accountOptions: { value: string; label: string }[];
+  /** Increment to auto-focus the first cell (e.g. when a form opens). */
+  focusSignal?: number;
 }
 
 /**
  * Excel-like journal lines grid: Enter on the last row appends a new line,
  * Enter elsewhere moves focus to the same column on the next row.
  */
-export function JournalLinesGrid({ lines, onChange, accountOptions }: Props) {
+export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal }: Props) {
   const { t } = useTranslation();
   const gridRef = useRef<HTMLTableElement>(null);
   const nextKey = useRef(lines.length);
@@ -58,6 +60,17 @@ export function JournalLinesGrid({ lines, onChange, accountOptions }: Props) {
   // Ordered editable columns for row-major Enter navigation.
   const NAV_COLS = [1, 2, 3, 4]; // account, debit, credit, description
 
+  const focusSoon = (row: number, col: number) => {
+    requestAnimationFrame(() => {
+      focusCell(row, col);
+      setTimeout(() => focusCell(row, col), 60); // retry if row not yet rendered
+    });
+  };
+
+  useEffect(() => {
+    if (focusSignal) focusSoon(0, NAV_COLS[0]);
+  }, [focusSignal]);
+
   const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     // Let an open account dropdown handle Enter (selects the option);
@@ -74,7 +87,7 @@ export function JournalLinesGrid({ lines, onChange, accountOptions }: Props) {
     }
     if (nextRow >= lines.length) {
       addRow();
-      requestAnimationFrame(() => focusCell(nextRow, NAV_COLS[0]));
+      focusSoon(nextRow, NAV_COLS[0]);
     } else {
       focusCell(nextRow, NAV_COLS[nextColPos]);
     }

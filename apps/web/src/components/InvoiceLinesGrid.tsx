@@ -1,6 +1,6 @@
 import { DeleteOutlined } from '@ant-design/icons';
 import { Button, InputNumber } from 'antd';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GridSelect, isSelectDropdownOpen } from './GridSelect';
 
@@ -30,6 +30,8 @@ interface Props {
   itemOptions: InvoiceItemOption[];
   /** Column header for the price field (unit price vs unit cost). */
   priceLabel?: string;
+  /** Increment to auto-focus the first cell (e.g. when a form opens). */
+  focusSignal?: number;
 }
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -56,7 +58,7 @@ function lineAmounts(l: InvoiceLineDraft, items: InvoiceItemOption[]): Amounts {
  * net/tax/total computed live (estimate — server computes authoritative
  * totals). Enter moves row-major; last cell of last row appends a line.
  */
-export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel }: Props) {
+export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, focusSignal }: Props) {
   const { t } = useTranslation();
   const gridRef = useRef<HTMLTableElement>(null);
   const nextKey = useRef(lines.length);
@@ -88,6 +90,17 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel }: P
   // 0=# 1=item 2=qty 3=price 4=discount 5=net 6=tax 7=total 8=del
   const NAV_COLS = [1, 2, 3, 4];
 
+  const focusSoon = (row: number, col: number) => {
+    requestAnimationFrame(() => {
+      focusCell(row, col);
+      setTimeout(() => focusCell(row, col), 60); // retry if row not yet rendered
+    });
+  };
+
+  useEffect(() => {
+    if (focusSignal) focusSoon(0, NAV_COLS[0]);
+  }, [focusSignal]);
+
   const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     // Let an open select dropdown handle Enter (selects the option);
@@ -104,7 +117,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel }: P
     }
     if (nextRow >= lines.length) {
       addRow();
-      requestAnimationFrame(() => focusCell(nextRow, NAV_COLS[0]));
+      focusSoon(nextRow, NAV_COLS[0]);
     } else {
       focusCell(nextRow, NAV_COLS[nextColPos]);
     }

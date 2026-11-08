@@ -33,6 +33,12 @@ import {
   type InvoiceLineDraft,
 } from '../components/InvoiceLinesGrid';
 import {
+  enterTo,
+  focusFirstGridCell,
+  focusNamedField,
+  GridSelect,
+} from '../components/GridSelect';
+import {
   ApiError,
   accountingControllerListAccounts,
   catalogControllerListItems,
@@ -530,27 +536,27 @@ function InvoiceForm({
     >
       {contextHolder}
       <Space wrap style={{ marginBottom: 16 }}>
-        <div>
+        <div data-field="customer" onKeyDown={enterTo(() => focusNamedField('warehouse'))}>
           <Typography.Text type="secondary">{t('sales.customer')} *</Typography.Text>
-          <Select
-            showSearch
-            optionFilterProp="label"
+          <GridSelect
+            enterOpens
             style={{ width: 260, display: 'block' }}
             options={customerOptions}
             value={customerId}
             onChange={setCustomerId}
           />
         </div>
-        <div>
+        <div data-field="warehouse" onKeyDown={enterTo(() => focusNamedField('invoiceDate'))}>
           <Typography.Text type="secondary">{t('sales.warehouse')} *</Typography.Text>
-          <Select
+          <GridSelect
+            enterOpens
             style={{ width: 200, display: 'block' }}
             options={warehouseOptions}
             value={warehouseId}
             onChange={setWarehouseId}
           />
         </div>
-        <div>
+        <div data-field="invoiceDate" onKeyDown={enterTo(() => focusNamedField('dueDate'))}>
           <Typography.Text type="secondary">{t('sales.invoiceDate')}</Typography.Text>
           <DatePicker
             style={{ display: 'block' }}
@@ -558,7 +564,7 @@ function InvoiceForm({
             onChange={(d) => d && setInvoiceDate(d)}
           />
         </div>
-        <div>
+        <div data-field="dueDate" onKeyDown={enterTo(() => focusNamedField('paymentType'))}>
           <Typography.Text type="secondary">{t('sales.dueDate')}</Typography.Text>
           <DatePicker
             style={{ display: 'block' }}
@@ -567,12 +573,18 @@ function InvoiceForm({
             allowClear
           />
         </div>
-        <div>
+        <div
+          data-field="paymentType"
+          onKeyDown={enterTo(() =>
+            paymentType === 'CASH' ? focusNamedField('cashAccount') : focusFirstGridCell(),
+          )}
+        >
           <Typography.Text type="secondary">{t('sales.paymentType')}</Typography.Text>
-          <Select
+          <GridSelect
+            enterOpens
             style={{ width: 140, display: 'block' }}
             value={paymentType}
-            onChange={(v) => setPaymentType(v)}
+            onChange={setPaymentType}
             options={[
               { value: 'CASH', label: t('sales.CASH') },
               { value: 'CREDIT', label: t('sales.CREDIT') },
@@ -580,11 +592,13 @@ function InvoiceForm({
           />
         </div>
         {paymentType === 'CASH' && (
-          <div>
+          <div
+            data-field="cashAccount"
+            onKeyDown={enterTo(focusFirstGridCell)}
+          >
             <Typography.Text type="secondary">{t('sales.cashAccount')}</Typography.Text>
-            <Select
-              showSearch
-              optionFilterProp="label"
+            <GridSelect
+              enterOpens
               style={{ width: 220, display: 'block' }}
               options={lookups.cashAccountOptions}
               value={cashAccountId}
@@ -598,6 +612,7 @@ function InvoiceForm({
         lines={lines}
         onChange={setLines}
         itemOptions={lookups.itemOptions}
+        focusSignal={1}
       />
 
       <div style={{ marginTop: 16, textAlign: 'end' }}>

@@ -33,6 +33,12 @@ import {
   type InvoiceLineDraft,
 } from '../components/InvoiceLinesGrid';
 import {
+  enterTo,
+  focusFirstGridCell,
+  focusNamedField,
+  GridSelect,
+} from '../components/GridSelect';
+import {
   ApiError,
   accountingControllerListAccounts,
   catalogControllerListItems,
@@ -537,27 +543,30 @@ function PurchaseInvoiceForm({
     >
       {contextHolder}
       <Space wrap style={{ marginBottom: 16 }}>
-        <div>
+        <div data-field="supplier" onKeyDown={enterTo(() => focusNamedField('warehouse'))}>
           <Typography.Text type="secondary">{t('purchases.supplier')} *</Typography.Text>
-          <Select
-            showSearch
-            optionFilterProp="label"
+          <GridSelect
+            enterOpens
             style={{ width: 260, display: 'block' }}
             options={supplierOptions}
             value={supplierId}
             onChange={setSupplierId}
           />
         </div>
-        <div>
+        <div data-field="warehouse" onKeyDown={enterTo(() => focusNamedField('supplierInvoiceNo'))}>
           <Typography.Text type="secondary">{t('purchases.warehouse')} *</Typography.Text>
-          <Select
+          <GridSelect
+            enterOpens
             style={{ width: 200, display: 'block' }}
             options={warehouseOptions}
             value={warehouseId}
             onChange={setWarehouseId}
           />
         </div>
-        <div>
+        <div
+          data-field="supplierInvoiceNo"
+          onKeyDown={enterTo(() => focusNamedField('supplierInvoiceDate'))}
+        >
           <Typography.Text type="secondary">{t('purchases.supplierInvoiceNo')}</Typography.Text>
           <Input
             style={{ width: 160, display: 'block' }}
@@ -566,7 +575,10 @@ function PurchaseInvoiceForm({
             maxLength={100}
           />
         </div>
-        <div>
+        <div
+          data-field="supplierInvoiceDate"
+          onKeyDown={enterTo(() => focusNamedField('invoiceDate'))}
+        >
           <Typography.Text type="secondary">{t('purchases.supplierInvoiceDate')}</Typography.Text>
           <DatePicker
             style={{ display: 'block' }}
@@ -575,7 +587,7 @@ function PurchaseInvoiceForm({
             allowClear
           />
         </div>
-        <div>
+        <div data-field="invoiceDate" onKeyDown={enterTo(() => focusNamedField('dueDate'))}>
           <Typography.Text type="secondary">{t('purchases.invoiceDate')}</Typography.Text>
           <DatePicker
             style={{ display: 'block' }}
@@ -583,7 +595,7 @@ function PurchaseInvoiceForm({
             onChange={(d) => d && setInvoiceDate(d)}
           />
         </div>
-        <div>
+        <div data-field="dueDate" onKeyDown={enterTo(() => focusNamedField('paymentType'))}>
           <Typography.Text type="secondary">{t('purchases.dueDate')}</Typography.Text>
           <DatePicker
             style={{ display: 'block' }}
@@ -592,12 +604,18 @@ function PurchaseInvoiceForm({
             allowClear
           />
         </div>
-        <div>
+        <div
+          data-field="paymentType"
+          onKeyDown={enterTo(() =>
+            paymentType === 'CASH' ? focusNamedField('cashAccount') : focusFirstGridCell(),
+          )}
+        >
           <Typography.Text type="secondary">{t('purchases.paymentType')}</Typography.Text>
-          <Select
+          <GridSelect
+            enterOpens
             style={{ width: 140, display: 'block' }}
             value={paymentType}
-            onChange={(v) => setPaymentType(v)}
+            onChange={setPaymentType}
             options={[
               { value: 'CASH', label: t('purchases.CASH') },
               { value: 'CREDIT', label: t('purchases.CREDIT') },
@@ -605,11 +623,10 @@ function PurchaseInvoiceForm({
           />
         </div>
         {paymentType === 'CASH' && (
-          <div>
+          <div data-field="cashAccount" onKeyDown={enterTo(focusFirstGridCell)}>
             <Typography.Text type="secondary">{t('purchases.cashAccount')}</Typography.Text>
-            <Select
-              showSearch
-              optionFilterProp="label"
+            <GridSelect
+              enterOpens
               style={{ width: 220, display: 'block' }}
               options={lookups.cashAccountOptions}
               value={cashAccountId}
@@ -624,6 +641,7 @@ function PurchaseInvoiceForm({
         onChange={setLines}
         itemOptions={lookups.itemOptions}
         priceLabel={t('purchases.unitCost')}
+        focusSignal={1}
       />
 
       <div style={{ marginTop: 16, textAlign: 'end' }}>

@@ -1,6 +1,6 @@
 import { DeleteOutlined } from '@ant-design/icons';
 import { Button, Input, InputNumber } from 'antd';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GridSelect, isSelectDropdownOpen } from './GridSelect';
 
@@ -22,6 +22,8 @@ interface Props {
   showCost?: boolean;
   /** Show the per-line description column. */
   showDescription?: boolean;
+  /** Increment to auto-focus the first cell (e.g. when a form opens). */
+  focusSignal?: number;
 }
 
 /**
@@ -34,6 +36,7 @@ export function ItemLinesGrid({
   itemOptions,
   showCost = false,
   showDescription = false,
+  focusSignal,
 }: Props) {
   const { t } = useTranslation();
   const gridRef = useRef<HTMLTableElement>(null);
@@ -79,6 +82,17 @@ export function ItemLinesGrid({
     ...(COL_DESC !== -1 ? [COL_DESC] : []),
   ];
 
+  const focusSoon = (row: number, col: number) => {
+    requestAnimationFrame(() => {
+      focusCell(row, col);
+      setTimeout(() => focusCell(row, col), 60); // retry if row not yet rendered
+    });
+  };
+
+  useEffect(() => {
+    if (focusSignal) focusSoon(0, NAV_COLS[0]);
+  }, [focusSignal]);
+
   const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     // Let an open item dropdown handle Enter (selects the option);
@@ -95,7 +109,7 @@ export function ItemLinesGrid({
     }
     if (nextRow >= lines.length) {
       addRow();
-      requestAnimationFrame(() => focusCell(nextRow, NAV_COLS[0]));
+      focusSoon(nextRow, NAV_COLS[0]);
     } else {
       focusCell(nextRow, NAV_COLS[nextColPos]);
     }

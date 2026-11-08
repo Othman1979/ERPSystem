@@ -1,16 +1,20 @@
 import { Select, type SelectProps } from 'antd';
-import { useState } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 
 /**
  * Select tuned for data-entry grids:
  *  - ArrowDown/ArrowUp while closed opens the dropdown (keyboard navigation).
  *  - Typing a printable character while closed opens the dropdown pre-filled
  *    with that character (type-to-search, Excel-like).
- *  - While open, antd handles arrows/Enter; the search box filters options.
+ *  - `enterOpens`: Enter while closed opens the dropdown (header fields);
+ *    default false so grid cells let Enter bubble to row navigation.
  */
-export function GridSelect(props: SelectProps) {
+export function GridSelect({ enterOpens = false, ...props }: SelectProps & { enterOpens?: boolean }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  // After an option is picked, the next Enter should move to the next field
+  // (not reopen the dropdown).
+  const justSelected = useRef(false);
 
   return (
     <Select
@@ -24,11 +28,23 @@ export function GridSelect(props: SelectProps) {
         setOpen(v);
         if (!v) setSearch('');
       }}
+      onChange={(v, opt) => {
+        justSelected.current = true;
+        props.onChange?.(v, opt);
+      }}
       onKeyDown={(e) => {
         props.onKeyDown?.(e);
         if (e.defaultPrevented) return;
         if (open) return;
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(true);
+        } else if (e.key === 'Enter' && enterOpens) {
+          if (justSelected.current) {
+            justSelected.current = false;
+            return; // let Enter bubble → move to next field
+          }
           e.preventDefault();
           e.stopPropagation();
           setOpen(true);
@@ -43,9 +59,45 @@ export function GridSelect(props: SelectProps) {
   );
 }
 
-/** True while any antd select dropdown is open (dropdowns render in a portal). */
+/** True while any antd select or date-picker dropdown is open (portals). */
 export function isSelectDropdownOpen(): boolean {
   return !!document.querySelector(
-    '.ant-select-dropdown:not(.ant-select-dropdown-hidden)',
+    '.ant-select-dropdown:not(.ant-select-dropdown-hidden), .ant-picker-dropdown:not(.ant-picker-dropdown-hidden)',
   );
+}
+
+/** Focus the editable control inside a cell/field wrapper (select or input). */
+export function focusCellEl(el: HTMLElement | null | undefined): void {
+  if (!el) return;
+  const select = el.querySelector<HTMLElement>('.ant-select-selector');
+  if (select) {
+    select.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    return;
+  }
+  const input = el.querySelector<HTMLElement>('input, textarea');
+  if (input) {
+    input.focus();
+    (input as HTMLInputElement).select?.();
+    return;
+  }
+  el.focus();
+}
+
+/** Focus a header field marked with data-field="key". */
+export function focusNamedField(key: string): void {
+  focusCellEl(document.querySelector<HTMLElement>(`[data-field="${key}"]`));
+}
+
+/** Focus the first editable cell of a lines grid (row 0, first nav column). */
+export function focusFirstGridCell(): void {
+  focusCellEl(document.querySelector<HTMLElement>('[data-cell="0-1"]'));
+}
+
+/** Enter-key handler factory: moves focus to the next form field on Enter. */
+export function enterTo(go: () => void) {
+  return (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing || isSelectDropdownOpen()) return;
+    e.preventDefault();
+    go();
+  };
 }
