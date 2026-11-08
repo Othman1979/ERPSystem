@@ -119,8 +119,34 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
     advance(row, col);
   };
 
+  // Arrow-key navigation (capture phase so InputNumber's step-on-arrow and
+  // the select's dropdown-open don't swallow the keys). Select cells keep
+  // vertical arrows for their dropdown; horizontal arrows move columns.
+  const onCellKeyDownCapture = (e: React.KeyboardEvent, row: number, col: number) => {
+    if (e.nativeEvent.isComposing || isSelectDropdownOpen()) return;
+    const key = e.key;
+    if (!key.startsWith('Arrow')) return;
+    const colPos = NAV_COLS.indexOf(col);
+    if (colPos === -1) return;
+    const isSelectCell = !!e.currentTarget.querySelector('.ant-select');
+    if (isSelectCell && (key === 'ArrowUp' || key === 'ArrowDown')) return;
+
+    let nr = row;
+    let nc = colPos;
+    if (key === 'ArrowLeft') nc -= 1;
+    else if (key === 'ArrowRight') nc += 1;
+    else if (key === 'ArrowUp') nr -= 1;
+    else nr += 1;
+    if (nr < 0 || nr >= lines.length || nc < 0 || nc >= NAV_COLS.length) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    focusCell(nr, NAV_COLS[nc]);
+  };
+
   const cellProps = (row: number, col: number) => ({
     'data-cell': `${row}-${col}`,
+    onKeyDownCapture: (e: React.KeyboardEvent) => onCellKeyDownCapture(e, row, col),
     onKeyDown: (e: React.KeyboardEvent) => onCellKeyDown(e, row, col),
   });
 
