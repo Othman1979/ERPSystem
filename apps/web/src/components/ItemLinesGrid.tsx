@@ -2,7 +2,7 @@ import { DeleteOutlined } from '@ant-design/icons';
 import { Button, Input, InputNumber } from 'antd';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GridSelect, isSelectDropdownOpen } from './GridSelect';
+import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
 
 export interface ItemLineDraft {
   key: number;
@@ -56,16 +56,9 @@ export function ItemLinesGrid({
   };
 
   const focusCell = (row: number, col: number) => {
-    const cell = gridRef.current?.querySelector<HTMLElement>(
-      `[data-cell="${row}-${col}"]`,
+    focusCellEl(
+      gridRef.current?.querySelector<HTMLElement>(`[data-cell="${row}-${col}"]`),
     );
-    if (!cell) return;
-    const select = cell.querySelector<HTMLElement>('.ant-select-selector');
-    if (select) {
-      select.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      return;
-    }
-    cell.querySelector<HTMLElement>('input')?.focus();
   };
 
   // Column indexes for focus navigation (0 = row number, skipped).
@@ -93,13 +86,7 @@ export function ItemLinesGrid({
     if (focusSignal) focusSoon(0, NAV_COLS[0]);
   }, [focusSignal]);
 
-  const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
-    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-    // Let an open item dropdown handle Enter (selects the option);
-    // a closed select navigates like any other cell.
-    if (isSelectDropdownOpen()) return;
-    e.preventDefault();
-
+  const advance = (row: number, col: number) => {
     const colPos = NAV_COLS.indexOf(col);
     let nextRow = row;
     let nextColPos = colPos + 1;
@@ -113,6 +100,20 @@ export function ItemLinesGrid({
     } else {
       focusCell(nextRow, NAV_COLS[nextColPos]);
     }
+  };
+
+  const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    if (isSelectDropdownOpen()) {
+      // Enter inside an open dropdown picks the highlighted option and closes
+      // it; once closed, continue to the next cell.
+      setTimeout(() => {
+        if (!isSelectDropdownOpen()) advance(row, col);
+      }, 80);
+      return;
+    }
+    e.preventDefault();
+    advance(row, col);
   };
 
   const cellProps = (row: number, col: number) => ({
