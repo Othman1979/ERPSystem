@@ -9,12 +9,22 @@ import { useRef, useState, type KeyboardEvent } from 'react';
  *  - `enterOpens`: Enter while closed opens the dropdown (header fields);
  *    default false so grid cells let Enter bubble to row navigation.
  */
-export function GridSelect({ enterOpens = false, ...props }: SelectProps & { enterOpens?: boolean }) {
+export function GridSelect({
+  enterOpens = false,
+  onEnterSelect,
+  ...props
+}: SelectProps & {
+  enterOpens?: boolean;
+  /** Fired when Enter picks an option from the open dropdown (grid advance). */
+  onEnterSelect?: (value: unknown, option: unknown) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   // After an option is picked, the next Enter should move to the next field
   // (not reopen the dropdown).
   const justSelected = useRef(false);
+  // Set when Enter is pressed inside the open dropdown; consumed by onChange.
+  const enterPending = useRef(false);
 
   return (
     <Select
@@ -26,16 +36,23 @@ export function GridSelect({ enterOpens = false, ...props }: SelectProps & { ent
       onSearch={setSearch}
       onDropdownVisibleChange={(v) => {
         setOpen(v);
+        if (v) enterPending.current = false;
         if (!v) setSearch('');
       }}
       onChange={(v, opt) => {
         justSelected.current = true;
+        const viaEnter = enterPending.current;
+        enterPending.current = false;
         props.onChange?.(v, opt);
+        if (viaEnter) onEnterSelect?.(v, opt);
       }}
       onKeyDown={(e) => {
         props.onKeyDown?.(e);
         if (e.defaultPrevented) return;
-        if (open) return;
+        if (open) {
+          if (e.key === 'Enter') enterPending.current = true;
+          return;
+        }
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
           e.stopPropagation();

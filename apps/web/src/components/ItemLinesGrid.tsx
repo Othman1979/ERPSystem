@@ -104,20 +104,9 @@ export function ItemLinesGrid({
 
   const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-    if (isSelectDropdownOpen()) {
-      // Enter inside an open dropdown picks the highlighted option; antd keeps
-      // the dropdown visible during its close animation, so poll until it is
-      // really gone, then continue to the next cell.
-      const tryAdvance = (attemptsLeft: number) => {
-        if (!isSelectDropdownOpen()) {
-          advance(row, col);
-        } else if (attemptsLeft > 0) {
-          setTimeout(() => tryAdvance(attemptsLeft - 1), 60);
-        }
-      };
-      tryAdvance(8);
-      return;
-    }
+    // An open dropdown handles Enter itself: it selects the highlighted
+    // option and GridSelect's onEnterSelect advances to the next cell.
+    if (isSelectDropdownOpen()) return;
     e.preventDefault();
     advance(row, col);
   };
@@ -151,6 +140,7 @@ export function ItemLinesGrid({
                 options={itemOptions}
                 value={l.itemId}
                 onChange={(v) => update(l.key, { itemId: v })}
+                onEnterSelect={() => advance(row, COL_ITEM)}
                 style={{ width: '100%' }}
                 size="small"
               />
