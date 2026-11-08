@@ -44,7 +44,12 @@ export function GridSelect({
         const viaEnter = enterPending.current;
         enterPending.current = false;
         props.onChange?.(v, opt);
-        if (viaEnter) onEnterSelect?.(v, opt);
+        if (viaEnter) {
+          // antd refocuses the selector right after onChange; close the
+          // dropdown and defer the grid advance so it wins the focus race.
+          setOpen(false);
+          setTimeout(() => onEnterSelect?.(v, opt), 0);
+        }
       }}
       onKeyDown={(e) => {
         props.onKeyDown?.(e);
