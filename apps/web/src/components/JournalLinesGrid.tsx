@@ -54,16 +54,29 @@ export function JournalLinesGrid({ lines, onChange, accountOptions }: Props) {
     cell.querySelector<HTMLElement>('input')?.focus();
   };
 
+  // Ordered editable columns for row-major Enter navigation.
+  const NAV_COLS = [1, 2, 3, 4]; // account, debit, credit, description
+
   const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-    if ((e.target as HTMLElement).closest('.ant-select')) return;
+    const target = e.target as HTMLElement;
+    // Let an open account dropdown handle Enter (selects the option);
+    // a closed select navigates like any other cell.
+    if (target.closest('.ant-select-open')) return;
     e.preventDefault();
-    if (row + 1 >= lines.length) {
+
+    const colPos = NAV_COLS.indexOf(col);
+    let nextRow = row;
+    let nextColPos = colPos + 1;
+    if (nextColPos >= NAV_COLS.length) {
+      nextRow += 1;
+      nextColPos = 0;
+    }
+    if (nextRow >= lines.length) {
       addRow();
-      // Focus lands after React re-renders the new row.
-      requestAnimationFrame(() => focusCell(row + 1, col));
+      requestAnimationFrame(() => focusCell(nextRow, NAV_COLS[0]));
     } else {
-      focusCell(row + 1, col);
+      focusCell(nextRow, NAV_COLS[nextColPos]);
     }
   };
 

@@ -64,23 +64,42 @@ export function ItemLinesGrid({
     cell.querySelector<HTMLElement>('input')?.focus();
   };
 
-  const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
-    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-    if ((e.target as HTMLElement).closest('.ant-select')) return;
-    e.preventDefault();
-    if (row + 1 >= lines.length) {
-      addRow();
-      requestAnimationFrame(() => focusCell(row + 1, col));
-    } else {
-      focusCell(row + 1, col);
-    }
-  };
-
   // Column indexes for focus navigation (0 = row number, skipped).
   const COL_ITEM = 1;
   const COL_QTY = 2;
   const COL_COST = showCost ? 3 : -1;
   const COL_DESC = showDescription ? (showCost ? 4 : 3) : -1;
+
+  // Ordered editable columns for row-major Enter navigation.
+  const NAV_COLS = [
+    COL_ITEM,
+    COL_QTY,
+    ...(COL_COST !== -1 ? [COL_COST] : []),
+    ...(COL_DESC !== -1 ? [COL_DESC] : []),
+  ];
+
+  const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    const target = e.target as HTMLElement;
+    // Let an open item dropdown handle Enter (selects the option);
+    // a closed select navigates like any other cell.
+    if (target.closest('.ant-select-open')) return;
+    e.preventDefault();
+
+    const colPos = NAV_COLS.indexOf(col);
+    let nextRow = row;
+    let nextColPos = colPos + 1;
+    if (nextColPos >= NAV_COLS.length) {
+      nextRow += 1;
+      nextColPos = 0;
+    }
+    if (nextRow >= lines.length) {
+      addRow();
+      requestAnimationFrame(() => focusCell(nextRow, NAV_COLS[0]));
+    } else {
+      focusCell(nextRow, NAV_COLS[nextColPos]);
+    }
+  };
 
   const cellProps = (row: number, col: number) => ({
     'data-cell': `${row}-${col}`,
