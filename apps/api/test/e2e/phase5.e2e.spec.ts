@@ -62,6 +62,8 @@ afterAll(async () => {
   await once(server, 'exit').catch(() => undefined);
 });
 
+const g = globalThis as { __siId?: string; __siGrand?: number };
+
 describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => {
   let token = '';
   let tokenB = '';
@@ -246,12 +248,12 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
     const t = journalTotals(entry.body.lines);
     expect(t.debit).toBeCloseTo(t.credit);
     expect(t.debit).toBeCloseTo(185.6 + Number(posted.body.costTotal));
-    globalThis.__siId = created.body.id as string;
-    globalThis.__siGrand = Number(created.body.grandTotal);
+    g.__siId = created.body.id as string;
+    g.__siGrand = Number(created.body.grandTotal);
   });
 
   it('sales return (credit) restores stock at original cost', async () => {
-    const siId = (globalThis as { __siId: string }).__siId;
+    const siId = g.__siId as string;
     const inv = await api().get(`/api/v1/sales-invoices/${siId}`).set(auth(token));
     const lineId = (inv.body.lines as { id: string }[])[0].id;
 
@@ -275,7 +277,7 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
   });
 
   it('rejects over-returning an invoice line', async () => {
-    const siId = (globalThis as { __siId: string }).__siId;
+    const siId = g.__siId as string;
     const inv = await api().get(`/api/v1/sales-invoices/${siId}`).set(auth(token));
     const lineId = (inv.body.lines as { id: string }[])[0].id;
 
@@ -292,8 +294,8 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
   });
 
   it('receipt voucher allocates to the sales invoice and updates paid_amount', async () => {
-    const siId = (globalThis as { __siId: string }).__siId;
-    const grand = (globalThis as { __siGrand: number }).__siGrand;
+    const siId = g.__siId as string;
+    const grand = g.__siGrand as number;
     // Credit return of 5/20 units → outstanding = grand − 46.4 = 139.2.
     const outstanding = Math.round((grand - 46.4) * 1000) / 1000;
 
@@ -320,7 +322,7 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
   });
 
   it('rejects allocation exceeding invoice outstanding', async () => {
-    const siId = (globalThis as { __siId: string }).__siId;
+    const siId = g.__siId as string;
     const res = await api()
       .post('/api/v1/receipts')
       .set(auth(token))
@@ -426,7 +428,7 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
     expect(del.status).toBe(200);
 
     // Posted invoice cannot be updated.
-    const siId = (globalThis as { __siId: string }).__siId;
+    const siId = g.__siId as string;
     const bad = await api()
       .put(`/api/v1/sales-invoices/${siId}`)
       .set(auth(token))
@@ -463,7 +465,7 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
     expect((invoices.body as unknown[]).length).toBe(0);
 
     const other = await api()
-      .get(`/api/v1/sales-invoices/${(globalThis as { __siId: string }).__siId}`)
+      .get(`/api/v1/sales-invoices/${g.__siId as string}`)
       .set(auth(tokenB));
     expect(other.status).toBe(404);
   });

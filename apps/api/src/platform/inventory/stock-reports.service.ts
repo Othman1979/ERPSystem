@@ -127,10 +127,94 @@ export class StockReportsService {
         unitCost: m.unitCost.toString(),
         totalCost: m.totalCost.toString(),
         balanceQtyAfter: m.balanceQtyAfter.toString(),
+        avgCostAfter: m.avgCostAfter.toString(),
       })),
       total,
       page,
       pageSize,
+    };
+  }
+
+  /** Per-item movement ledger (Fawateer-style item card): ascending movements
+   *  with running balance & WAC, plus totals and current balances. */
+  async itemLedger(
+    itemId: string,
+    query?: { warehouseId?: string; sourceType?: string; from?: string; to?: string },
+  ) {
+    const { db } = this.tenant();
+    const item = await db.item.findFirst({
+      where: { id: BigInt(itemId) },
+      select: {
+        id: true,
+        code: true,
+        nameAr: true,
+        nameEn: true,
+        itemKind: true,
+        baseUnit: { select: { code: true, nameAr: true } },
+      },
+    });
+    if (!item) throw DomainError.notFound('Item', itemId);
+
+    const where = {
+      itemId: BigInt(itemId),
+      ...(query?.warehouseId ? { warehouseId: BigInt(query.warehouseId) } : {}),
+      ...(query?.sourceType ? { sourceType: query.sourceType } : {}),
+      ...(query?.from || query?.to
+        ? {
+            movementDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+    };
+    const [rows, balances] = await Promise.all([
+      db.stockMovement.findMany({
+        where,
+        include: {
+          warehouse: { select: { id: true, code: true, nameAr: true } },
+        },
+        orderBy: [{ movementDate: 'asc' }, { id: 'asc' }],
+        take: 2000,
+      }),
+      db.stockBalance.findMany({
+        where: { itemId: BigInt(itemId), qtyOnHand: { not: 0 } },
+        include: { warehouse: { select: { id: true, code: true, nameAr: true } } },
+      }),
+    ]);
+
+    let qtyIn = new Decimal(0);
+    let qtyOut = new Decimal(0);
+    const mapped = rows.map((m) => {
+      qtyIn = qtyIn.plus(m.qtyIn.toString());
+      qtyOut = qtyOut.plus(m.qtyOut.toString());
+      return {
+        id: m.id.toString(),
+        movementDate: m.movementDate,
+        warehouse: m.warehouse,
+        movementType: m.movementType,
+        sourceType: m.sourceType,
+        sourceId: m.sourceId?.toString() ?? null,
+        qtyIn: m.qtyIn.toString(),
+        qtyOut: m.qtyOut.toString(),
+        unitCost: m.unitCost.toString(),
+        totalCost: m.totalCost.toString(),
+        balanceQtyAfter: m.balanceQtyAfter.toString(),
+        avgCostAfter: m.avgCostAfter.toString(),
+      };
+    });
+
+    return {
+      item,
+      rows: mapped,
+      totals: {
+        qtyIn: qtyIn.toString(),
+        qtyOut: qtyOut.toString(),
+      },
+      balances: balances.map((b) => ({
+        warehouse: b.warehouse,
+        qtyOnHand: b.qtyOnHand.toString(),
+      })),
     };
   }
 

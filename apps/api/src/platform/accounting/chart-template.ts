@@ -117,13 +117,13 @@ export const TEMPLATE_MAPPINGS: Record<AccountMappingKey, string> = {
 };
 
 export const DEFAULT_UNITS = [
-  { code: 'PCS', nameAr: 'قطعة', nameEn: 'Piece' },
-  { code: 'BOX', nameAr: 'صندوق', nameEn: 'Box' },
-  { code: 'DOZEN', nameAr: 'دستة', nameEn: 'Dozen' },
-  { code: 'KG', nameAr: 'كيلوغرام', nameEn: 'Kilogram' },
-  { code: 'G', nameAr: 'غرام', nameEn: 'Gram' },
-  { code: 'L', nameAr: 'لتر', nameEn: 'Liter' },
-  { code: 'M', nameAr: 'متر', nameEn: 'Meter' },
+  { code: 'PCS', nameAr: 'قطعة', nameEn: 'Piece', unEceCode: 'PCE' },
+  { code: 'BOX', nameAr: 'صندوق', nameEn: 'Box', unEceCode: 'BX' },
+  { code: 'DOZEN', nameAr: 'دستة', nameEn: 'Dozen', unEceCode: 'DOZ' },
+  { code: 'KG', nameAr: 'كيلوغرام', nameEn: 'Kilogram', unEceCode: 'KGM' },
+  { code: 'G', nameAr: 'غرام', nameEn: 'Gram', unEceCode: 'GRM' },
+  { code: 'L', nameAr: 'لتر', nameEn: 'Liter', unEceCode: 'LTR' },
+  { code: 'M', nameAr: 'متر', nameEn: 'Meter', unEceCode: 'MTR' },
 ];
 
 export const DEFAULT_TAX_CATEGORIES = [

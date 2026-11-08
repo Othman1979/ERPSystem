@@ -119,6 +119,23 @@ export class CreateItemDto {
   minStock?: string;
 
   @IsOptional()
+  @Matches(/^[0-9]+(\.[0-9]+)?$/)
+  maxStock?: string;
+
+  @IsOptional()
+  @IsString()
+  defaultWarehouseId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  salePriceIncludesTax?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  imageUrl?: string;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ItemUnitInputDto)
@@ -160,6 +177,23 @@ export class UpdateItemDto {
   @IsOptional()
   @Matches(/^[0-9]+(\.[0-9]+)?$/)
   minStock?: string;
+
+  @IsOptional()
+  @Matches(/^[0-9]+(\.[0-9]+)?$/)
+  maxStock?: string | null;
+
+  @IsOptional()
+  @IsString()
+  defaultWarehouseId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  salePriceIncludesTax?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  imageUrl?: string | null;
 
   @IsOptional()
   @IsBoolean()

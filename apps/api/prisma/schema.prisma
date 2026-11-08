@@ -501,6 +501,7 @@ model Unit {
   code      String   @db.VarChar(50)
   nameAr    String   @map("name_ar") @db.VarChar(191)
   nameEn    String?  @map("name_en") @db.VarChar(191)
+  unEceCode String?  @map("un_ece_code") @db.VarChar(10)
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
@@ -799,6 +800,10 @@ model Item {
   salePrice     Decimal? @map("sale_price") @db.Decimal(18, 3)
   purchasePrice Decimal? @map("purchase_price") @db.Decimal(18, 3)
   minStock      Decimal  @default(0) @map("min_stock") @db.Decimal(18, 6)
+  maxStock      Decimal? @map("max_stock") @db.Decimal(18, 6)
+  defaultWarehouseId BigInt? @map("default_warehouse_id") @db.UnsignedBigInt
+  salePriceIncludesTax Boolean @default(false) @map("sale_price_includes_tax")
+  imageUrl      String?  @map("image_url") @db.VarChar(512)
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
@@ -810,6 +815,7 @@ model Item {
   itemGroup       ItemGroup?            @relation(fields: [tenantId, itemGroupId], references: [tenantId, id])
   baseUnit        Unit                  @relation("ItemBaseUnit", fields: [tenantId, baseUnitId], references: [tenantId, id])
   taxCategory     TaxCategory?          @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  defaultWarehouse Warehouse?           @relation("ItemDefaultWarehouse", fields: [tenantId, defaultWarehouseId], references: [tenantId, id])
   units           ItemUnit[]
   barcodes        ItemBarcode[]
   movements       StockMovement[]
@@ -901,6 +907,7 @@ model Warehouse {
   salesReturns      SalesReturn[]
   purchaseReturns   PurchaseReturn[]
   goodsNotes        GoodsNote[]
+  defaultItems      Item[]             @relation("ItemDefaultWarehouse")
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])

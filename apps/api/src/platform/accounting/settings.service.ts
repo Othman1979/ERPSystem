@@ -56,6 +56,9 @@ export class SettingsService {
       nameAr: dto.nameAr,
       nameEn: dto.nameEn ?? null,
     };
+    if (kind === 'unit') {
+      data.unEceCode = (dto as CreateUnitDto).unEceCode ?? null;
+    }
     if (kind === 'taxCategory') {
       const t = dto as CreateTaxCategoryDto;
       data.rate = t.rate;
@@ -82,6 +85,9 @@ export class SettingsService {
       nameEn: dto.nameEn,
       isActive: dto.isActive,
     };
+    if (kind === 'unit' && dto.unEceCode !== undefined) {
+      data.unEceCode = dto.unEceCode;
+    }
     if (kind === 'taxCategory') {
       const t = dto as UpdateTaxCategoryDto;
       if (t.rate !== undefined) data.rate = t.rate;

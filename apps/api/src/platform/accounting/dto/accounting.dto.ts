@@ -127,6 +127,12 @@ export class CreateUnitDto {
   @IsString()
   @MaxLength(191)
   nameEn?: string;
+
+  /** UN/ECE Rec.20 code used by JoFotara/ZATCA e-invoicing (e.g. PCE, KGM, LTR). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  unEceCode?: string;
 }
 
 export class UpdateLookupDto {
@@ -140,6 +146,11 @@ export class UpdateLookupDto {
   @IsString()
   @MaxLength(191)
   nameEn?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  unEceCode?: string | null;
 
   @IsOptional()
   @IsBoolean()

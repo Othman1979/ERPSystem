@@ -38,6 +38,7 @@ interface LookupRow {
   rate?: string;
   isDefault?: boolean;
   einvoiceCode?: string | null;
+  unEceCode?: string | null;
 }
 
 const LIST_FN = {
@@ -85,6 +86,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
       rate?: number;
       isDefault?: boolean;
       einvoiceCode?: string;
+      unEceCode?: string;
     }) => {
       const base = {
         nameAr: v.nameAr,
@@ -94,13 +96,13 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
         const upd =
           kind === 'taxCategory'
             ? { ...base, rate: v.rate?.toString(), isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || null }
-            : base;
+            : { ...base, unEceCode: v.unEceCode || null };
         return UPDATE_FN[kind](editing.id, upd as never);
       }
       const create =
         kind === 'taxCategory'
           ? { code: v.code!, ...base, rate: v.rate?.toString() ?? '0', isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || undefined }
-          : { code: v.code!, ...base };
+          : { code: v.code!, ...base, unEceCode: v.unEceCode || undefined };
       return CREATE_FN[kind](create as never);
     },
     onSuccess: () => {
@@ -132,6 +134,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
       rate: row.rate ? Number(row.rate) : undefined,
       isDefault: row.isDefault,
       einvoiceCode: row.einvoiceCode,
+      unEceCode: row.unEceCode,
     });
     setModalOpen(true);
   };
@@ -159,6 +162,9 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
           { title: t('settings.code'), dataIndex: 'code', width: 110 },
           { title: t('settings.nameAr'), dataIndex: 'nameAr' },
           { title: t('settings.nameEn'), dataIndex: 'nameEn' },
+          ...(kind === 'unit'
+            ? [{ title: t('settings.unEceCode'), dataIndex: 'unEceCode', width: 110, render: (v?: string | null) => v ?? '—' }]
+            : []),
           ...(isTax
             ? [
                 {
@@ -223,6 +229,11 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
           <Form.Item name="nameEn" label={t('settings.nameEn')}>
             <Input maxLength={191} />
           </Form.Item>
+          {kind === 'unit' && (
+            <Form.Item name="unEceCode" label={t('settings.unEceCode')}>
+              <Input maxLength={10} placeholder="PCE / KGM / LTR…" />
+            </Form.Item>
+          )}
           {isTax && (
             <>
               <Form.Item name="rate" label={t('settings.rate')} rules={[{ required: true }]}>

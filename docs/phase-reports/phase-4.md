@@ -64,3 +64,11 @@
 - `pnpm --filter web typecheck` + `lint` + `build` ✓
 - **51 اختبار API أخضر** (7 مجموعات) — منها 10 اختبارات phase4 جديدة على `erp_test`: OPENING+قيد، متوسط مرجّح (10@5 + 10@7 → 6، صادر 5 → تكلفة 30)، `STOCK_INSUFFICIENT`، رفض أصناف الخدمة، `BACKDATED_STOCK_POSTING`، تحويل بنفس التكلفة بدون قيد، عكس تحويل، جرد→COUNT_ADJUSTMENT، `stock:verify` نظيف، عزل مستأجرين.
 - api-client أُعيد توليده (69 مساراً).
+
+## إضافة لاحقة (2026-11-08) — مواءمة دليل فواتير للأصناف
+
+استناداً إلى دليل أصناف منصة فواتير (fawatear.com/guide/inventory/items.html):
+- `units.un_ece_code` — رموز UN/ECE Rec.20 (PCE/BX/DOZ/KGM/GRM/LTR/MTR) للوحدات الافتراضية، قابلة للتحرير من الإعدادات — مطلوبة لفوترة JoFotara.
+- حقول صنف جديدة: `max_stock`، `default_warehouse_id`، `sale_price_includes_tax`، `image_url`، وربط `tax_category_id` من الواجهة.
+- `GET /stock/items/:itemId/ledger` — كشف حركة الصنف: حركات تصاعدية مع الرصيد التراكمي ومتوسط التكلفة بعد كل حركة + إجماليات الأرصدة الحالية.
+- واجهة الأصناف: عرض بطاقات/جدول مع شارة مستوى المخزون (أخضر/برتقالي/أحمر)، نافذة كشف الحركة بفلاتر (مستودع/فترة)، وطباعة ملصقات باركود (JsBarcode + طباعة حرارية).

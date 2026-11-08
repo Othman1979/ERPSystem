@@ -120,6 +120,7 @@ export class CatalogService {
         baseUnit: { select: { id: true, code: true, nameAr: true } },
         itemGroup: { select: { id: true, code: true, nameAr: true } },
         taxCategory: { select: { id: true, code: true, nameAr: true } },
+        defaultWarehouse: { select: { id: true, code: true, nameAr: true } },
         _count: { select: { barcodes: true, units: true } },
       },
       orderBy: { code: 'asc' },
@@ -138,6 +139,7 @@ export class CatalogService {
         units: { include: { unit: true } },
         barcodes: { include: { itemUnit: { include: { unit: true } } } },
         costs: true,
+        defaultWarehouse: { select: { id: true, code: true, nameAr: true } },
       },
     });
     if (!item) throw DomainError.notFound('Item', id.toString());
@@ -150,6 +152,7 @@ export class CatalogService {
       itemGroupId?: string;
       baseUnitId: string;
       taxCategoryId?: string;
+      defaultWarehouseId?: string | null;
     },
   ) {
     const group = dto.itemGroupId
@@ -167,6 +170,12 @@ export class CatalogService {
         where: { id: BigInt(dto.taxCategoryId), isActive: true },
       });
       if (!tax) throw DomainError.notFound('TaxCategory', dto.taxCategoryId);
+    }
+    if (dto.defaultWarehouseId) {
+      const wh = await db.warehouse.findFirst({
+        where: { id: BigInt(dto.defaultWarehouseId), isActive: true },
+      });
+      if (!wh) throw DomainError.notFound('Warehouse', dto.defaultWarehouseId);
     }
     return { group, unit };
   }
@@ -194,6 +203,10 @@ export class CatalogService {
             salePrice: dto.salePrice ?? null,
             purchasePrice: dto.purchasePrice ?? null,
             minStock: dto.minStock ?? '0',
+            maxStock: dto.maxStock ?? null,
+            defaultWarehouseId: dto.defaultWarehouseId ? BigInt(dto.defaultWarehouseId) : null,
+            salePriceIncludesTax: dto.salePriceIncludesTax ?? false,
+            imageUrl: dto.imageUrl ?? null,
             createdBy: cls.get('userId') ?? null,
           },
         });
@@ -232,7 +245,13 @@ export class CatalogService {
       });
       if (!tax) throw DomainError.notFound('TaxCategory', dto.taxCategoryId);
     }
-    const { itemGroupId, taxCategoryId, ...rest } = dto;
+    if (dto.defaultWarehouseId) {
+      const wh = await db.warehouse.findFirst({
+        where: { id: BigInt(dto.defaultWarehouseId), isActive: true },
+      });
+      if (!wh) throw DomainError.notFound('Warehouse', dto.defaultWarehouseId);
+    }
+    const { itemGroupId, taxCategoryId, defaultWarehouseId, ...rest } = dto;
     return db.item.update({
       where: { id },
       data: {
@@ -242,6 +261,9 @@ export class CatalogService {
           : {}),
         ...(taxCategoryId !== undefined
           ? { taxCategoryId: taxCategoryId ? BigInt(taxCategoryId) : null }
+          : {}),
+        ...(defaultWarehouseId !== undefined
+          ? { defaultWarehouseId: defaultWarehouseId ? BigInt(defaultWarehouseId) : null }
           : {}),
         updatedBy: cls.get('userId') ?? null,
       },

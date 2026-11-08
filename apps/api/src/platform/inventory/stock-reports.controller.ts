@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
@@ -43,6 +43,19 @@ export class StockReportsController {
       page,
       pageSize,
     });
+  }
+
+  /** Per-item movement ledger with running balance and WAC. */
+  @Get('items/:itemId/ledger')
+  @RequirePermission(PERMISSIONS.TENANT_READ)
+  itemLedger(
+    @Param('itemId') itemId: string,
+    @Query('warehouseId') warehouseId?: string,
+    @Query('sourceType') sourceType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.reports.itemLedger(itemId, { warehouseId, sourceType, from, to });
   }
 
   @Get('valuation')

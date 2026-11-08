@@ -141,6 +141,13 @@ export type StockReportsControllerMovementsParams = {
   pageSize: string;
 };
 
+export type StockReportsControllerItemLedgerParams = {
+  warehouseId: string;
+  sourceType: string;
+  from: string;
+  to: string;
+};
+
 export type StockReportsControllerValuationParams = {
   warehouseId: string;
 };
@@ -3510,6 +3517,48 @@ export const getStockReportsControllerMovementsUrl = (params: StockReportsContro
 export const stockReportsControllerMovements = async (params: StockReportsControllerMovementsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerMovementsResponse> => {
 
   return apiFetch<stockReportsControllerMovementsResponse>(getStockReportsControllerMovementsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockReportsControllerItemLedgerResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockReportsControllerItemLedgerResponseSuccess = (stockReportsControllerItemLedgerResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockReportsControllerItemLedgerResponse = (stockReportsControllerItemLedgerResponseSuccess)
+
+export const getStockReportsControllerItemLedgerUrl = (itemId: string,
+    params: StockReportsControllerItemLedgerParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/stock/items/${itemId}/ledger?${stringifiedParams}` : `/api/v1/stock/items/${itemId}/ledger`
+}
+
+export const stockReportsControllerItemLedger = async (itemId: string,
+    params: StockReportsControllerItemLedgerParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerItemLedgerResponse> => {
+
+  return apiFetch<stockReportsControllerItemLedgerResponse>(getStockReportsControllerItemLedgerUrl(itemId,params),
   {
     ...options,
     method: 'GET'

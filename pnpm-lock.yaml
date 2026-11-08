@@ -150,6 +150,9 @@ importers:
       i18next:
         specifier: ^27.0.1
         version: 27.0.1(typescript@5.9.3)
+      jsbarcode:
+        specifier: 3.12.3
+        version: 3.12.3
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -163,6 +166,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.14.0(jiti@2.7.0))
+      '@types/jsbarcode':
+        specifier: ^3.11.4
+        version: 3.11.4
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -1769,6 +1775,9 @@ packages:
   '@types/jest@30.0.0':
     resolution: {integrity: sha512-XTYugzhuwqWjws0CVz8QpM36+T+Dz5mTEBKhNs/esGLnCIlGdRy+Dq78NRjd7ls7r8BC8ZRMOrKlkO1hU0JOwA==}
 
+  '@types/jsbarcode@3.11.4':
+    resolution: {integrity: sha512-VBcpTAnEMH0Gbh8JpV14CgOtJjCYjsvR2FoDRyoYPE0gUxtApf8N4c+HKEOyz/iiIZkMzqrzBA3XX7+KgKxxsA==}
+
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
@@ -3249,6 +3258,9 @@ packages:
   js-yaml@5.5.0:
     resolution: {integrity: sha512-paNr4LFIFPjeeSmwNYdrb8FafLLG/Cr2Af3GjbsHJ5CxIjH4r0c2emlmRdAtpPAieP1gRVzk6buBbVP5gBMGAg==}
     hasBin: true
+
+  jsbarcode@3.12.3:
+    resolution: {integrity: sha512-CuHU9hC6dPsHF5oVFMo8NW76uQVjH4L22CsP4hW+dNnGywJHC/B0ThA1CTDVLnxKLrrpYdicBLnd2xsgTfRnvg==}
 
   jsdom@31.0.0:
     resolution: {integrity: sha512-xAkhD9z1eyFC5+QUi9K24CaZJgdCQ2GOGLW1GdVDoQvkp/AxEH9TQ0pAplPOlIiV92hfcgnFOADZypbjgbBT6Q==}
@@ -6341,6 +6353,10 @@ snapshots:
       expect: 30.5.2
       pretty-format: 30.5.1
 
+  '@types/jsbarcode@3.11.4':
+    dependencies:
+      '@types/node': 24.19.2
+
   '@types/json-schema@7.0.15': {}
 
   '@types/jsonwebtoken@9.0.10':
@@ -8095,6 +8111,8 @@ snapshots:
   js-yaml@5.5.0:
     dependencies:
       argparse: 3.0.4
+
+  jsbarcode@3.12.3: {}
 
   jsdom@31.0.0(@noble/hashes@1.8.0):
     dependencies:
