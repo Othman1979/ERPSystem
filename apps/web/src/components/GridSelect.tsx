@@ -94,6 +94,19 @@ export function focusCellEl(el: HTMLElement | null | undefined): void {
   const select = el.querySelector<HTMLElement>('.ant-select-selector');
   if (select) {
     select.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    // Make sure the dropdown actually opens — GridSelect opens on ArrowDown
+    // when closed, so nudge it only if nothing opened after the mousedown.
+    requestAnimationFrame(() => {
+      if (
+        !document.querySelector(
+          '.ant-select-dropdown:not(.ant-select-dropdown-hidden)',
+        )
+      ) {
+        select.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }),
+        );
+      }
+    });
     return;
   }
   const input = el.querySelector<HTMLElement>('input, textarea');
