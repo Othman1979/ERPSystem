@@ -1,7 +1,8 @@
 import { DeleteOutlined } from '@ant-design/icons';
-import { Button, InputNumber, Select } from 'antd';
+import { Button, InputNumber } from 'antd';
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { GridSelect, isSelectDropdownOpen } from './GridSelect';
 
 export interface InvoiceItemOption {
   id: string;
@@ -89,8 +90,9 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel }: P
 
   const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-    const target = e.target as HTMLElement;
-    if (target.closest('.ant-select-open')) return;
+    // Let an open select dropdown handle Enter (selects the option);
+    // a closed select navigates like any other cell.
+    if (isSelectDropdownOpen()) return;
     e.preventDefault();
 
     const colPos = NAV_COLS.indexOf(col);
@@ -145,9 +147,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel }: P
             <tr key={l.key}>
               <td style={tdStyle}>{row + 1}</td>
               <td style={tdStyle} {...cellProps(row, 1)}>
-                <Select
-                  showSearch
-                  optionFilterProp="label"
+                <GridSelect
                   placeholder={t('items.title')}
                   options={itemOptions.map((o) => ({
                     value: o.id,

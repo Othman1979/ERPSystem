@@ -1,7 +1,8 @@
 import { DeleteOutlined } from '@ant-design/icons';
-import { Button, Input, InputNumber, Select } from 'antd';
+import { Button, Input, InputNumber } from 'antd';
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { GridSelect, isSelectDropdownOpen } from './GridSelect';
 
 export interface ItemLineDraft {
   key: number;
@@ -80,10 +81,9 @@ export function ItemLinesGrid({
 
   const onCellKeyDown = (e: React.KeyboardEvent, row: number, col: number) => {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-    const target = e.target as HTMLElement;
     // Let an open item dropdown handle Enter (selects the option);
     // a closed select navigates like any other cell.
-    if (target.closest('.ant-select-open')) return;
+    if (isSelectDropdownOpen()) return;
     e.preventDefault();
 
     const colPos = NAV_COLS.indexOf(col);
@@ -126,9 +126,7 @@ export function ItemLinesGrid({
           <tr key={l.key}>
             <td style={tdStyle}>{row + 1}</td>
             <td style={tdStyle} {...cellProps(row, COL_ITEM)}>
-              <Select
-                showSearch
-                optionFilterProp="label"
+              <GridSelect
                 placeholder={t('items.title')}
                 options={itemOptions}
                 value={l.itemId}
