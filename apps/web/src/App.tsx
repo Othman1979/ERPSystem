@@ -255,6 +255,7 @@ export function App() {
     <div style={{ minHeight: '100vh', background: '#f4f5f7' }}>
       {/* Odoo-style top bar */}
       <div
+        className="app-topbar"
         style={{
           height: 48,
           background: '#714B67',
@@ -322,7 +323,7 @@ export function App() {
       </div>
 
       {/* Content canvas */}
-      <div style={{ padding: screens.md ? 24 : 12 }}>
+      <div className="app-content" style={{ padding: screens.md ? 24 : 12 }}>
         {view === 'home' ? (
           <>
             <div style={{ marginBottom: 20 }}>

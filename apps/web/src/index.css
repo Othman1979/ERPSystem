@@ -1,0 +1,52 @@
+/* Global styles */
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+::selection {
+  background: rgba(113, 75, 103, 0.2);
+}
+
+/* Keep table headers readable on the gray canvas */
+.ant-table-thead > tr > th {
+  background: #fafafa !important;
+}
+
+/* Don't break a row across printed pages */
+@media print {
+  .app-topbar {
+    display: none !important;
+  }
+
+  .app-content {
+    padding: 0 !important;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .ant-table-thead > tr > th {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .ant-table-tbody > tr {
+    break-inside: avoid;
+  }
+
+  /* Hide interactive-only chrome inside cards/tables when printing */
+  .ant-btn,
+  .ant-pagination,
+  .ant-dropdown-trigger {
+    display: none !important;
+  }
+}
