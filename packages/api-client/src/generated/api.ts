@@ -44,6 +44,32 @@ export interface ReverseJournalEntryDto { [key: string]: unknown }
 
 export interface CreateOpeningEntryDto { [key: string]: unknown }
 
+export interface CreateItemGroupDto { [key: string]: unknown }
+
+export interface UpdateItemGroupDto { [key: string]: unknown }
+
+export interface CreateItemDto { [key: string]: unknown }
+
+export interface UpdateItemDto { [key: string]: unknown }
+
+export interface SetItemUnitsDto { [key: string]: unknown }
+
+export interface BarcodeDto { [key: string]: unknown }
+
+export interface CreateWarehouseDto { [key: string]: unknown }
+
+export interface UpdateWarehouseDto { [key: string]: unknown }
+
+export interface CreateStockAdjustmentDto { [key: string]: unknown }
+
+export interface ReverseStockDocumentDto { [key: string]: unknown }
+
+export interface CreateStockTransferDto { [key: string]: unknown }
+
+export interface CreateStockCountDto { [key: string]: unknown }
+
+export interface UpdateCountLineDto { [key: string]: unknown }
+
 export interface UpdateTenantStatusDto { [key: string]: unknown }
 
 export interface ExtendTrialDto { [key: string]: unknown }
@@ -56,6 +82,44 @@ export type FiscalControllerListSequencesParams = {
 
 export type JournalControllerListParams = {
   status: string;
+};
+
+export type CatalogControllerListItemsParams = {
+  search: string;
+  itemKind: string;
+  isActive: string;
+};
+
+export type StockDocumentsControllerListAdjustmentsParams = {
+  status: string;
+};
+
+export type StockDocumentsControllerListTransfersParams = {
+  status: string;
+};
+
+export type StockDocumentsControllerListCountsParams = {
+  status: string;
+};
+
+export type StockReportsControllerBalancesParams = {
+  warehouseId: string;
+  itemId: string;
+  lowStock: string;
+};
+
+export type StockReportsControllerMovementsParams = {
+  warehouseId: string;
+  itemId: string;
+  sourceType: string;
+  from: string;
+  to: string;
+  page: string;
+  pageSize: string;
+};
+
+export type StockReportsControllerValuationParams = {
+  warehouseId: string;
 };
 
 export type AdminControllerListParams = {
@@ -1990,6 +2054,1482 @@ export const getJournalControllerPartyStatementUrl = () => {
 export const journalControllerPartyStatement = async ( options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerPartyStatementResponse> => {
 
   return apiFetch<journalControllerPartyStatementResponse>(getJournalControllerPartyStatementUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type catalogControllerListGroupsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type catalogControllerListGroupsResponseSuccess = (catalogControllerListGroupsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type catalogControllerListGroupsResponse = (catalogControllerListGroupsResponseSuccess)
+
+export const getCatalogControllerListGroupsUrl = () => {
+
+
+
+
+  return `/api/v1/item-groups`
+}
+
+export const catalogControllerListGroups = async ( options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerListGroupsResponse> => {
+
+  return apiFetch<catalogControllerListGroupsResponse>(getCatalogControllerListGroupsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type catalogControllerCreateGroupResponse201 = {
+  data: void
+  status: 201
+}
+
+export type catalogControllerCreateGroupResponseSuccess = (catalogControllerCreateGroupResponse201) & {
+  headers: Headers;
+};
+;
+
+export type catalogControllerCreateGroupResponse = (catalogControllerCreateGroupResponseSuccess)
+
+export const getCatalogControllerCreateGroupUrl = () => {
+
+
+
+
+  return `/api/v1/item-groups`
+}
+
+export const catalogControllerCreateGroup = async (createItemGroupDto: CreateItemGroupDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerCreateGroupResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<catalogControllerCreateGroupResponse>(getCatalogControllerCreateGroupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createItemGroupDto)
+  }
+);}
+
+
+
+export type catalogControllerUpdateGroupResponse200 = {
+  data: void
+  status: 200
+}
+
+export type catalogControllerUpdateGroupResponseSuccess = (catalogControllerUpdateGroupResponse200) & {
+  headers: Headers;
+};
+;
+
+export type catalogControllerUpdateGroupResponse = (catalogControllerUpdateGroupResponseSuccess)
+
+export const getCatalogControllerUpdateGroupUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/item-groups/${id}`
+}
+
+export const catalogControllerUpdateGroup = async (id: string,
+    updateItemGroupDto: UpdateItemGroupDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerUpdateGroupResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<catalogControllerUpdateGroupResponse>(getCatalogControllerUpdateGroupUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateItemGroupDto)
+  }
+);}
+
+
+
+export type catalogControllerListItemsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type catalogControllerListItemsResponseSuccess = (catalogControllerListItemsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type catalogControllerListItemsResponse = (catalogControllerListItemsResponseSuccess)
+
+export const getCatalogControllerListItemsUrl = (params: CatalogControllerListItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/items?${stringifiedParams}` : `/api/v1/items`
+}
+
+export const catalogControllerListItems = async (params: CatalogControllerListItemsParams, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerListItemsResponse> => {
+
+  return apiFetch<catalogControllerListItemsResponse>(getCatalogControllerListItemsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type catalogControllerCreateItemResponse201 = {
+  data: void
+  status: 201
+}
+
+export type catalogControllerCreateItemResponseSuccess = (catalogControllerCreateItemResponse201) & {
+  headers: Headers;
+};
+;
+
+export type catalogControllerCreateItemResponse = (catalogControllerCreateItemResponseSuccess)
+
+export const getCatalogControllerCreateItemUrl = () => {
+
+
+
+
+  return `/api/v1/items`
+}
+
+export const catalogControllerCreateItem = async (createItemDto: CreateItemDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerCreateItemResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<catalogControllerCreateItemResponse>(getCatalogControllerCreateItemUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createItemDto)
+  }
+);}
+
+
+
+export type catalogControllerFindByBarcodeResponse200 = {
+  data: void
+  status: 200
+}
+
+export type catalogControllerFindByBarcodeResponseSuccess = (catalogControllerFindByBarcodeResponse200) & {
+  headers: Headers;
+};
+;
+
+export type catalogControllerFindByBarcodeResponse = (catalogControllerFindByBarcodeResponseSuccess)
+
+export const getCatalogControllerFindByBarcodeUrl = (code: string,) => {
+
+
+
+
+  return `/api/v1/items/barcode/${code}`
+}
+
+export const catalogControllerFindByBarcode = async (code: string, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerFindByBarcodeResponse> => {
+
+  return apiFetch<catalogControllerFindByBarcodeResponse>(getCatalogControllerFindByBarcodeUrl(code),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type catalogControllerGetItemResponse200 = {
+  data: void
+  status: 200
+}
+
+export type catalogControllerGetItemResponseSuccess = (catalogControllerGetItemResponse200) & {
+  headers: Headers;
+};
+;
+
+export type catalogControllerGetItemResponse = (catalogControllerGetItemResponseSuccess)
+
+export const getCatalogControllerGetItemUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/items/${id}`
+}
+
+export const catalogControllerGetItem = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerGetItemResponse> => {
+
+  return apiFetch<catalogControllerGetItemResponse>(getCatalogControllerGetItemUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type catalogControllerUpdateItemResponse200 = {
+  data: void
+  status: 200
+}
+
+export type catalogControllerUpdateItemResponseSuccess = (catalogControllerUpdateItemResponse200) & {
+  headers: Headers;
+};
+;
+
+export type catalogControllerUpdateItemResponse = (catalogControllerUpdateItemResponseSuccess)
+
+export const getCatalogControllerUpdateItemUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/items/${id}`
+}
+
+export const catalogControllerUpdateItem = async (id: string,
+    updateItemDto: UpdateItemDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerUpdateItemResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<catalogControllerUpdateItemResponse>(getCatalogControllerUpdateItemUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateItemDto)
+  }
+);}
+
+
+
+export type catalogControllerSetItemUnitsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type catalogControllerSetItemUnitsResponseSuccess = (catalogControllerSetItemUnitsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type catalogControllerSetItemUnitsResponse = (catalogControllerSetItemUnitsResponseSuccess)
+
+export const getCatalogControllerSetItemUnitsUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/items/${id}/units`
+}
+
+export const catalogControllerSetItemUnits = async (id: string,
+    setItemUnitsDto: SetItemUnitsDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerSetItemUnitsResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<catalogControllerSetItemUnitsResponse>(getCatalogControllerSetItemUnitsUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(setItemUnitsDto)
+  }
+);}
+
+
+
+export type catalogControllerAddBarcodeResponse201 = {
+  data: void
+  status: 201
+}
+
+export type catalogControllerAddBarcodeResponseSuccess = (catalogControllerAddBarcodeResponse201) & {
+  headers: Headers;
+};
+;
+
+export type catalogControllerAddBarcodeResponse = (catalogControllerAddBarcodeResponseSuccess)
+
+export const getCatalogControllerAddBarcodeUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/items/${id}/barcodes`
+}
+
+export const catalogControllerAddBarcode = async (id: string,
+    barcodeDto: BarcodeDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerAddBarcodeResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<catalogControllerAddBarcodeResponse>(getCatalogControllerAddBarcodeUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(barcodeDto)
+  }
+);}
+
+
+
+export type catalogControllerRemoveBarcodeResponse200 = {
+  data: void
+  status: 200
+}
+
+export type catalogControllerRemoveBarcodeResponseSuccess = (catalogControllerRemoveBarcodeResponse200) & {
+  headers: Headers;
+};
+;
+
+export type catalogControllerRemoveBarcodeResponse = (catalogControllerRemoveBarcodeResponseSuccess)
+
+export const getCatalogControllerRemoveBarcodeUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/item-barcodes/${id}`
+}
+
+export const catalogControllerRemoveBarcode = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerRemoveBarcodeResponse> => {
+
+  return apiFetch<catalogControllerRemoveBarcodeResponse>(getCatalogControllerRemoveBarcodeUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type warehousesControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type warehousesControllerListResponseSuccess = (warehousesControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type warehousesControllerListResponse = (warehousesControllerListResponseSuccess)
+
+export const getWarehousesControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/warehouses`
+}
+
+export const warehousesControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerListResponse> => {
+
+  return apiFetch<warehousesControllerListResponse>(getWarehousesControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type warehousesControllerCreateResponse201 = {
+  data: void
+  status: 201
+}
+
+export type warehousesControllerCreateResponseSuccess = (warehousesControllerCreateResponse201) & {
+  headers: Headers;
+};
+;
+
+export type warehousesControllerCreateResponse = (warehousesControllerCreateResponseSuccess)
+
+export const getWarehousesControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/warehouses`
+}
+
+export const warehousesControllerCreate = async (createWarehouseDto: CreateWarehouseDto, options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerCreateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<warehousesControllerCreateResponse>(getWarehousesControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createWarehouseDto)
+  }
+);}
+
+
+
+export type warehousesControllerGetResponse200 = {
+  data: void
+  status: 200
+}
+
+export type warehousesControllerGetResponseSuccess = (warehousesControllerGetResponse200) & {
+  headers: Headers;
+};
+;
+
+export type warehousesControllerGetResponse = (warehousesControllerGetResponseSuccess)
+
+export const getWarehousesControllerGetUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/warehouses/${id}`
+}
+
+export const warehousesControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerGetResponse> => {
+
+  return apiFetch<warehousesControllerGetResponse>(getWarehousesControllerGetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type warehousesControllerUpdateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type warehousesControllerUpdateResponseSuccess = (warehousesControllerUpdateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type warehousesControllerUpdateResponse = (warehousesControllerUpdateResponseSuccess)
+
+export const getWarehousesControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/warehouses/${id}`
+}
+
+export const warehousesControllerUpdate = async (id: string,
+    updateWarehouseDto: UpdateWarehouseDto, options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerUpdateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<warehousesControllerUpdateResponse>(getWarehousesControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateWarehouseDto)
+  }
+);}
+
+
+
+export type stockDocumentsControllerListAdjustmentsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockDocumentsControllerListAdjustmentsResponseSuccess = (stockDocumentsControllerListAdjustmentsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerListAdjustmentsResponse = (stockDocumentsControllerListAdjustmentsResponseSuccess)
+
+export const getStockDocumentsControllerListAdjustmentsUrl = (params: StockDocumentsControllerListAdjustmentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/stock-adjustments?${stringifiedParams}` : `/api/v1/stock-adjustments`
+}
+
+export const stockDocumentsControllerListAdjustments = async (params: StockDocumentsControllerListAdjustmentsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListAdjustmentsResponse> => {
+
+  return apiFetch<stockDocumentsControllerListAdjustmentsResponse>(getStockDocumentsControllerListAdjustmentsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerCreateAdjustmentResponse201 = {
+  data: void
+  status: 201
+}
+
+export type stockDocumentsControllerCreateAdjustmentResponseSuccess = (stockDocumentsControllerCreateAdjustmentResponse201) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerCreateAdjustmentResponse = (stockDocumentsControllerCreateAdjustmentResponseSuccess)
+
+export const getStockDocumentsControllerCreateAdjustmentUrl = () => {
+
+
+
+
+  return `/api/v1/stock-adjustments`
+}
+
+export const stockDocumentsControllerCreateAdjustment = async (createStockAdjustmentDto: CreateStockAdjustmentDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerCreateAdjustmentResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<stockDocumentsControllerCreateAdjustmentResponse>(getStockDocumentsControllerCreateAdjustmentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createStockAdjustmentDto)
+  }
+);}
+
+
+
+export type stockDocumentsControllerGetAdjustmentResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockDocumentsControllerGetAdjustmentResponseSuccess = (stockDocumentsControllerGetAdjustmentResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerGetAdjustmentResponse = (stockDocumentsControllerGetAdjustmentResponseSuccess)
+
+export const getStockDocumentsControllerGetAdjustmentUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-adjustments/${id}`
+}
+
+export const stockDocumentsControllerGetAdjustment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerGetAdjustmentResponse> => {
+
+  return apiFetch<stockDocumentsControllerGetAdjustmentResponse>(getStockDocumentsControllerGetAdjustmentUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerDeleteAdjustmentResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockDocumentsControllerDeleteAdjustmentResponseSuccess = (stockDocumentsControllerDeleteAdjustmentResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerDeleteAdjustmentResponse = (stockDocumentsControllerDeleteAdjustmentResponseSuccess)
+
+export const getStockDocumentsControllerDeleteAdjustmentUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-adjustments/${id}`
+}
+
+export const stockDocumentsControllerDeleteAdjustment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerDeleteAdjustmentResponse> => {
+
+  return apiFetch<stockDocumentsControllerDeleteAdjustmentResponse>(getStockDocumentsControllerDeleteAdjustmentUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerPostAdjustmentResponse201 = {
+  data: void
+  status: 201
+}
+
+export type stockDocumentsControllerPostAdjustmentResponseSuccess = (stockDocumentsControllerPostAdjustmentResponse201) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerPostAdjustmentResponse = (stockDocumentsControllerPostAdjustmentResponseSuccess)
+
+export const getStockDocumentsControllerPostAdjustmentUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-adjustments/${id}/post`
+}
+
+export const stockDocumentsControllerPostAdjustment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerPostAdjustmentResponse> => {
+
+  return apiFetch<stockDocumentsControllerPostAdjustmentResponse>(getStockDocumentsControllerPostAdjustmentUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerReverseAdjustmentResponse201 = {
+  data: void
+  status: 201
+}
+
+export type stockDocumentsControllerReverseAdjustmentResponseSuccess = (stockDocumentsControllerReverseAdjustmentResponse201) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerReverseAdjustmentResponse = (stockDocumentsControllerReverseAdjustmentResponseSuccess)
+
+export const getStockDocumentsControllerReverseAdjustmentUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-adjustments/${id}/reverse`
+}
+
+export const stockDocumentsControllerReverseAdjustment = async (id: string,
+    reverseStockDocumentDto: ReverseStockDocumentDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerReverseAdjustmentResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<stockDocumentsControllerReverseAdjustmentResponse>(getStockDocumentsControllerReverseAdjustmentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reverseStockDocumentDto)
+  }
+);}
+
+
+
+export type stockDocumentsControllerListTransfersResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockDocumentsControllerListTransfersResponseSuccess = (stockDocumentsControllerListTransfersResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerListTransfersResponse = (stockDocumentsControllerListTransfersResponseSuccess)
+
+export const getStockDocumentsControllerListTransfersUrl = (params: StockDocumentsControllerListTransfersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/stock-transfers?${stringifiedParams}` : `/api/v1/stock-transfers`
+}
+
+export const stockDocumentsControllerListTransfers = async (params: StockDocumentsControllerListTransfersParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListTransfersResponse> => {
+
+  return apiFetch<stockDocumentsControllerListTransfersResponse>(getStockDocumentsControllerListTransfersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerCreateTransferResponse201 = {
+  data: void
+  status: 201
+}
+
+export type stockDocumentsControllerCreateTransferResponseSuccess = (stockDocumentsControllerCreateTransferResponse201) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerCreateTransferResponse = (stockDocumentsControllerCreateTransferResponseSuccess)
+
+export const getStockDocumentsControllerCreateTransferUrl = () => {
+
+
+
+
+  return `/api/v1/stock-transfers`
+}
+
+export const stockDocumentsControllerCreateTransfer = async (createStockTransferDto: CreateStockTransferDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerCreateTransferResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<stockDocumentsControllerCreateTransferResponse>(getStockDocumentsControllerCreateTransferUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createStockTransferDto)
+  }
+);}
+
+
+
+export type stockDocumentsControllerGetTransferResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockDocumentsControllerGetTransferResponseSuccess = (stockDocumentsControllerGetTransferResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerGetTransferResponse = (stockDocumentsControllerGetTransferResponseSuccess)
+
+export const getStockDocumentsControllerGetTransferUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-transfers/${id}`
+}
+
+export const stockDocumentsControllerGetTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerGetTransferResponse> => {
+
+  return apiFetch<stockDocumentsControllerGetTransferResponse>(getStockDocumentsControllerGetTransferUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerDeleteTransferResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockDocumentsControllerDeleteTransferResponseSuccess = (stockDocumentsControllerDeleteTransferResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerDeleteTransferResponse = (stockDocumentsControllerDeleteTransferResponseSuccess)
+
+export const getStockDocumentsControllerDeleteTransferUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-transfers/${id}`
+}
+
+export const stockDocumentsControllerDeleteTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerDeleteTransferResponse> => {
+
+  return apiFetch<stockDocumentsControllerDeleteTransferResponse>(getStockDocumentsControllerDeleteTransferUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerPostTransferResponse201 = {
+  data: void
+  status: 201
+}
+
+export type stockDocumentsControllerPostTransferResponseSuccess = (stockDocumentsControllerPostTransferResponse201) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerPostTransferResponse = (stockDocumentsControllerPostTransferResponseSuccess)
+
+export const getStockDocumentsControllerPostTransferUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-transfers/${id}/post`
+}
+
+export const stockDocumentsControllerPostTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerPostTransferResponse> => {
+
+  return apiFetch<stockDocumentsControllerPostTransferResponse>(getStockDocumentsControllerPostTransferUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerReverseTransferResponse201 = {
+  data: void
+  status: 201
+}
+
+export type stockDocumentsControllerReverseTransferResponseSuccess = (stockDocumentsControllerReverseTransferResponse201) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerReverseTransferResponse = (stockDocumentsControllerReverseTransferResponseSuccess)
+
+export const getStockDocumentsControllerReverseTransferUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-transfers/${id}/reverse`
+}
+
+export const stockDocumentsControllerReverseTransfer = async (id: string,
+    reverseStockDocumentDto: ReverseStockDocumentDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerReverseTransferResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<stockDocumentsControllerReverseTransferResponse>(getStockDocumentsControllerReverseTransferUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reverseStockDocumentDto)
+  }
+);}
+
+
+
+export type stockDocumentsControllerListCountsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockDocumentsControllerListCountsResponseSuccess = (stockDocumentsControllerListCountsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerListCountsResponse = (stockDocumentsControllerListCountsResponseSuccess)
+
+export const getStockDocumentsControllerListCountsUrl = (params: StockDocumentsControllerListCountsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/stock-counts?${stringifiedParams}` : `/api/v1/stock-counts`
+}
+
+export const stockDocumentsControllerListCounts = async (params: StockDocumentsControllerListCountsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListCountsResponse> => {
+
+  return apiFetch<stockDocumentsControllerListCountsResponse>(getStockDocumentsControllerListCountsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerCreateCountResponse201 = {
+  data: void
+  status: 201
+}
+
+export type stockDocumentsControllerCreateCountResponseSuccess = (stockDocumentsControllerCreateCountResponse201) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerCreateCountResponse = (stockDocumentsControllerCreateCountResponseSuccess)
+
+export const getStockDocumentsControllerCreateCountUrl = () => {
+
+
+
+
+  return `/api/v1/stock-counts`
+}
+
+export const stockDocumentsControllerCreateCount = async (createStockCountDto: CreateStockCountDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerCreateCountResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<stockDocumentsControllerCreateCountResponse>(getStockDocumentsControllerCreateCountUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createStockCountDto)
+  }
+);}
+
+
+
+export type stockDocumentsControllerGetCountResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockDocumentsControllerGetCountResponseSuccess = (stockDocumentsControllerGetCountResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerGetCountResponse = (stockDocumentsControllerGetCountResponseSuccess)
+
+export const getStockDocumentsControllerGetCountUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-counts/${id}`
+}
+
+export const stockDocumentsControllerGetCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerGetCountResponse> => {
+
+  return apiFetch<stockDocumentsControllerGetCountResponse>(getStockDocumentsControllerGetCountUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerDeleteCountResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockDocumentsControllerDeleteCountResponseSuccess = (stockDocumentsControllerDeleteCountResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerDeleteCountResponse = (stockDocumentsControllerDeleteCountResponseSuccess)
+
+export const getStockDocumentsControllerDeleteCountUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-counts/${id}`
+}
+
+export const stockDocumentsControllerDeleteCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerDeleteCountResponse> => {
+
+  return apiFetch<stockDocumentsControllerDeleteCountResponse>(getStockDocumentsControllerDeleteCountUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerUpdateCountLineResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockDocumentsControllerUpdateCountLineResponseSuccess = (stockDocumentsControllerUpdateCountLineResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerUpdateCountLineResponse = (stockDocumentsControllerUpdateCountLineResponseSuccess)
+
+export const getStockDocumentsControllerUpdateCountLineUrl = (id: string,
+    lineId: string,) => {
+
+
+
+
+  return `/api/v1/stock-counts/${id}/lines/${lineId}`
+}
+
+export const stockDocumentsControllerUpdateCountLine = async (id: string,
+    lineId: string,
+    updateCountLineDto: UpdateCountLineDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerUpdateCountLineResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<stockDocumentsControllerUpdateCountLineResponse>(getStockDocumentsControllerUpdateCountLineUrl(id,lineId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateCountLineDto)
+  }
+);}
+
+
+
+export type stockDocumentsControllerApproveCountResponse201 = {
+  data: void
+  status: 201
+}
+
+export type stockDocumentsControllerApproveCountResponseSuccess = (stockDocumentsControllerApproveCountResponse201) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerApproveCountResponse = (stockDocumentsControllerApproveCountResponseSuccess)
+
+export const getStockDocumentsControllerApproveCountUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-counts/${id}/approve`
+}
+
+export const stockDocumentsControllerApproveCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerApproveCountResponse> => {
+
+  return apiFetch<stockDocumentsControllerApproveCountResponse>(getStockDocumentsControllerApproveCountUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type stockReportsControllerBalancesResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockReportsControllerBalancesResponseSuccess = (stockReportsControllerBalancesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockReportsControllerBalancesResponse = (stockReportsControllerBalancesResponseSuccess)
+
+export const getStockReportsControllerBalancesUrl = (params: StockReportsControllerBalancesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/stock/balances?${stringifiedParams}` : `/api/v1/stock/balances`
+}
+
+export const stockReportsControllerBalances = async (params: StockReportsControllerBalancesParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerBalancesResponse> => {
+
+  return apiFetch<stockReportsControllerBalancesResponse>(getStockReportsControllerBalancesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockReportsControllerMovementsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockReportsControllerMovementsResponseSuccess = (stockReportsControllerMovementsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockReportsControllerMovementsResponse = (stockReportsControllerMovementsResponseSuccess)
+
+export const getStockReportsControllerMovementsUrl = (params: StockReportsControllerMovementsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/stock/movements?${stringifiedParams}` : `/api/v1/stock/movements`
+}
+
+export const stockReportsControllerMovements = async (params: StockReportsControllerMovementsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerMovementsResponse> => {
+
+  return apiFetch<stockReportsControllerMovementsResponse>(getStockReportsControllerMovementsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockReportsControllerValuationResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockReportsControllerValuationResponseSuccess = (stockReportsControllerValuationResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockReportsControllerValuationResponse = (stockReportsControllerValuationResponseSuccess)
+
+export const getStockReportsControllerValuationUrl = (params: StockReportsControllerValuationParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/stock/valuation?${stringifiedParams}` : `/api/v1/stock/valuation`
+}
+
+export const stockReportsControllerValuation = async (params: StockReportsControllerValuationParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerValuationResponse> => {
+
+  return apiFetch<stockReportsControllerValuationResponse>(getStockReportsControllerValuationUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockReportsControllerVerifyResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockReportsControllerVerifyResponseSuccess = (stockReportsControllerVerifyResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockReportsControllerVerifyResponse = (stockReportsControllerVerifyResponseSuccess)
+
+export const getStockReportsControllerVerifyUrl = () => {
+
+
+
+
+  return `/api/v1/stock/verify`
+}
+
+export const stockReportsControllerVerify = async ( options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerVerifyResponse> => {
+
+  return apiFetch<stockReportsControllerVerifyResponse>(getStockReportsControllerVerifyUrl(),
   {
     ...options,
     method: 'GET'

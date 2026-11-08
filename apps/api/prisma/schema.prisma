@@ -86,6 +86,28 @@ enum JournalPartyType {
   SUPPLIER
 }
 
+enum ItemKind {
+  STOCK
+  SERVICE
+}
+
+enum StockMovementType {
+  IN
+  OUT
+}
+
+enum StockAdjustmentType {
+  OPENING
+  IN
+  OUT
+  COUNT_ADJUSTMENT
+}
+
+enum DocumentStatus {
+  DRAFT
+  POSTED
+}
+
 // ---------------------------------------------------------------------------
 // Platform (non-tenant) tables
 // ---------------------------------------------------------------------------
@@ -222,22 +244,36 @@ model Tenant {
   createdAt   DateTime     @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt   DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
 
-  plan              Plan?              @relation(fields: [planId], references: [id])
-  subscriptions     Subscription[]
-  companies         Company[]
-  branches          Branch[]
-  memberships       TenantMembership[]
-  auditLogs         AuditLog[]
-  attachments       Attachment[]
-  idempotencyKeys   IdempotencyKey[]
-  units             Unit[]
-  taxCategories     TaxCategory[]
-  paymentMethods    PaymentMethod[]
-  fiscalYears       FiscalYear[]
-  accounts          Account[]
-  documentSequences DocumentSequence[]
-  journalEntries    JournalEntry[]
-  journalLines      JournalLine[]
+  plan                 Plan?                 @relation(fields: [planId], references: [id])
+  subscriptions        Subscription[]
+  companies            Company[]
+  branches             Branch[]
+  memberships          TenantMembership[]
+  auditLogs            AuditLog[]
+  attachments          Attachment[]
+  idempotencyKeys      IdempotencyKey[]
+  units                Unit[]
+  taxCategories        TaxCategory[]
+  paymentMethods       PaymentMethod[]
+  fiscalYears          FiscalYear[]
+  accounts             Account[]
+  documentSequences    DocumentSequence[]
+  journalEntries       JournalEntry[]
+  journalLines         JournalLine[]
+  itemGroups           ItemGroup[]
+  items                Item[]
+  warehouses           Warehouse[]
+  stockMovements       StockMovement[]
+  stockBalances        StockBalance[]
+  itemCosts            ItemCost[]
+  stockAdjustments     StockAdjustment[]
+  stockTransfers       StockTransfer[]
+  stockCounts          StockCount[]
+  itemUnits            ItemUnit[]
+  itemBarcodes         ItemBarcode[]
+  stockAdjustmentLines StockAdjustmentLine[]
+  stockTransferLines   StockTransferLine[]
+  stockCountLines      StockCountLine[]
 
   @@map("tenants")
 }
@@ -292,6 +328,13 @@ model Company {
   accountMappings   AccountMapping[]
   documentSequences DocumentSequence[]
   journalEntries    JournalEntry[]
+  items             Item[]
+  warehouses        Warehouse[]
+  stockMovements    StockMovement[]
+  itemCosts         ItemCost[]
+  stockAdjustments  StockAdjustment[]
+  stockTransfers    StockTransfer[]
+  stockCounts       StockCount[]
 
   @@unique([tenantId, id])
   @@map("companies")
@@ -316,6 +359,7 @@ model Branch {
   memberships        TenantMembership[] @relation("MembershipDefaultBranch")
   membershipBranches MembershipBranch[]
   journalEntries     JournalEntry[]
+  warehouses         Warehouse[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -430,6 +474,9 @@ model Unit {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  itemsBase Item[]     @relation("ItemBaseUnit")
+  itemUnits ItemUnit[]
+
   @@unique([tenantId, id])
   @@unique([tenantId, code])
   @@map("units")
@@ -449,6 +496,8 @@ model TaxCategory {
   updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  items Item[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -610,13 +659,14 @@ model JournalEntry {
   createdAt      DateTime           @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt      DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company      Company        @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  branch       Branch?        @relation(fields: [tenantId, branchId], references: [tenantId, id])
-  fiscalPeriod FiscalPeriod?  @relation(fields: [tenantId, fiscalPeriodId], references: [tenantId, id])
-  reversalOf   JournalEntry?  @relation("EntryReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
-  reversals    JournalEntry[] @relation("EntryReversal")
-  lines        JournalLine[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company          Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch           Branch?           @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  fiscalPeriod     FiscalPeriod?     @relation(fields: [tenantId, fiscalPeriodId], references: [tenantId, id])
+  reversalOf       JournalEntry?     @relation("EntryReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
+  reversals        JournalEntry[]    @relation("EntryReversal")
+  lines            JournalLine[]
+  stockAdjustments StockAdjustment[]
 
   @@unique([tenantId, id])
   // One POST + one REVERSAL per source document (docs/BUILD_PLAN.md §10.3).
@@ -650,4 +700,357 @@ model JournalLine {
   @@index([tenantId, accountId])
   @@index([tenantId, partyType, partyId])
   @@map("journal_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — items, warehouses, stock ledger (docs/BUILD_PLAN.md §7.4, §9)
+// ---------------------------------------------------------------------------
+
+model ItemGroup {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId  BigInt   @map("tenant_id") @db.UnsignedBigInt
+  code      String   @db.VarChar(50)
+  nameAr    String   @map("name_ar") @db.VarChar(191)
+  nameEn    String?  @map("name_en") @db.VarChar(191)
+  parentId  BigInt?  @map("parent_id") @db.UnsignedBigInt
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent   ItemGroup?  @relation("ItemGroupTree", fields: [tenantId, parentId], references: [tenantId, id])
+  children ItemGroup[] @relation("ItemGroupTree")
+  items    Item[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+  @@map("item_groups")
+}
+
+model Item {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId      BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId     BigInt   @map("company_id") @db.UnsignedBigInt
+  code          String   @db.VarChar(50)
+  nameAr        String   @map("name_ar") @db.VarChar(191)
+  nameEn        String?  @map("name_en") @db.VarChar(191)
+  description   String?  @db.VarChar(500)
+  itemGroupId   BigInt?  @map("item_group_id") @db.UnsignedBigInt
+  itemKind      ItemKind @default(STOCK) @map("item_kind")
+  baseUnitId    BigInt   @map("base_unit_id") @db.UnsignedBigInt
+  taxCategoryId BigInt?  @map("tax_category_id") @db.UnsignedBigInt
+  salePrice     Decimal? @map("sale_price") @db.Decimal(18, 3)
+  purchasePrice Decimal? @map("purchase_price") @db.Decimal(18, 3)
+  minStock      Decimal  @default(0) @map("min_stock") @db.Decimal(18, 6)
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy     BigInt?  @map("created_by") @db.UnsignedBigInt
+  updatedBy     BigInt?  @map("updated_by") @db.UnsignedBigInt
+
+  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company         Company               @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  itemGroup       ItemGroup?            @relation(fields: [tenantId, itemGroupId], references: [tenantId, id])
+  baseUnit        Unit                  @relation("ItemBaseUnit", fields: [tenantId, baseUnitId], references: [tenantId, id])
+  taxCategory     TaxCategory?          @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  units           ItemUnit[]
+  barcodes        ItemBarcode[]
+  movements       StockMovement[]
+  balances        StockBalance[]
+  costs           ItemCost[]
+  adjustmentLines StockAdjustmentLine[]
+  transferLines   StockTransferLine[]
+  countLines      StockCountLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, itemKind])
+  @@map("items")
+}
+
+model ItemUnit {
+  id                BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId          BigInt   @map("tenant_id") @db.UnsignedBigInt
+  itemId            BigInt   @map("item_id") @db.UnsignedBigInt
+  unitId            BigInt   @map("unit_id") @db.UnsignedBigInt
+  factorToBase      Decimal  @map("factor_to_base") @db.Decimal(18, 6)
+  isDefaultSale     Boolean  @default(false) @map("is_default_sale")
+  isDefaultPurchase Boolean  @default(false) @map("is_default_purchase")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item     Item          @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Cascade)
+  unit     Unit          @relation(fields: [tenantId, unitId], references: [tenantId, id])
+  barcodes ItemBarcode[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, itemId, unitId])
+  @@map("item_units")
+}
+
+model ItemBarcode {
+  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId   BigInt   @map("tenant_id") @db.UnsignedBigInt
+  itemId     BigInt   @map("item_id") @db.UnsignedBigInt
+  itemUnitId BigInt?  @map("item_unit_id") @db.UnsignedBigInt
+  barcode    String   @db.VarChar(100)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item     Item      @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Cascade)
+  itemUnit ItemUnit? @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, barcode])
+  @@map("item_barcodes")
+}
+
+model Warehouse {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId  BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId BigInt   @map("company_id") @db.UnsignedBigInt
+  branchId  BigInt?  @map("branch_id") @db.UnsignedBigInt
+  code      String   @db.VarChar(50)
+  nameAr    String   @map("name_ar") @db.VarChar(191)
+  nameEn    String?  @map("name_en") @db.VarChar(191)
+  address   String?  @db.VarChar(512)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy BigInt?  @map("created_by") @db.UnsignedBigInt
+  updatedBy BigInt?  @map("updated_by") @db.UnsignedBigInt
+
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company       Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch        Branch?           @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  movements     StockMovement[]
+  balances      StockBalance[]
+  adjustments   StockAdjustment[]
+  transfersFrom StockTransfer[]   @relation("TransferFrom")
+  transfersTo   StockTransfer[]   @relation("TransferTo")
+  counts        StockCount[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, code])
+  @@map("warehouses")
+}
+
+model StockMovement {
+  id              BigInt            @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt            @map("tenant_id") @db.UnsignedBigInt
+  companyId       BigInt            @map("company_id") @db.UnsignedBigInt
+  warehouseId     BigInt            @map("warehouse_id") @db.UnsignedBigInt
+  itemId          BigInt            @map("item_id") @db.UnsignedBigInt
+  movementDate    DateTime          @map("movement_date") @db.Date
+  movementType    StockMovementType @map("movement_type")
+  sourceType      String            @map("source_type") @db.VarChar(50)
+  sourceId        BigInt?           @map("source_id") @db.UnsignedBigInt
+  sourceLineId    BigInt?           @map("source_line_id") @db.UnsignedBigInt
+  qtyIn           Decimal           @default(0) @map("qty_in") @db.Decimal(18, 6)
+  qtyOut          Decimal           @default(0) @map("qty_out") @db.Decimal(18, 6)
+  unitCost        Decimal           @map("unit_cost") @db.Decimal(18, 3)
+  totalCost       Decimal           @map("total_cost") @db.Decimal(18, 3)
+  balanceQtyAfter Decimal           @map("balance_qty_after") @db.Decimal(18, 6)
+  avgCostAfter    Decimal           @map("avg_cost_after") @db.Decimal(18, 6)
+  reversalOfId    BigInt?           @map("reversal_of_id") @db.UnsignedBigInt
+  createdAt       DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company    Company         @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  warehouse  Warehouse       @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  item       Item            @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  reversalOf StockMovement?  @relation("MovementReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
+  reversals  StockMovement[] @relation("MovementReversal")
+
+  @@unique([tenantId, id])
+  @@index([tenantId, warehouseId, itemId])
+  @@index([tenantId, itemId, movementDate])
+  @@index([tenantId, sourceType, sourceId])
+  @@map("stock_movements")
+}
+
+model StockBalance {
+  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt    @map("tenant_id") @db.UnsignedBigInt
+  warehouseId      BigInt    @map("warehouse_id") @db.UnsignedBigInt
+  itemId           BigInt    @map("item_id") @db.UnsignedBigInt
+  qtyOnHand        Decimal   @default(0) @map("qty_on_hand") @db.Decimal(18, 6)
+  lastMovementDate DateTime? @map("last_movement_date") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Cascade)
+  item      Item      @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, warehouseId, itemId])
+  @@map("stock_balances")
+}
+
+model ItemCost {
+  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt    @map("tenant_id") @db.UnsignedBigInt
+  companyId        BigInt    @map("company_id") @db.UnsignedBigInt
+  itemId           BigInt    @map("item_id") @db.UnsignedBigInt
+  totalQty         Decimal   @default(0) @map("total_qty") @db.Decimal(18, 6)
+  totalValue       Decimal   @default(0) @map("total_value") @db.Decimal(18, 3)
+  avgCost          Decimal   @default(0) @map("avg_cost") @db.Decimal(18, 6)
+  lastMovementDate DateTime? @map("last_movement_date") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  item    Item    @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, itemId])
+  @@map("item_costs")
+}
+
+model StockAdjustment {
+  id             BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt              @map("tenant_id") @db.UnsignedBigInt
+  companyId      BigInt              @map("company_id") @db.UnsignedBigInt
+  warehouseId    BigInt              @map("warehouse_id") @db.UnsignedBigInt
+  adjustmentDate DateTime            @map("adjustment_date") @db.Date
+  adjustmentType StockAdjustmentType @map("adjustment_type")
+  status         DocumentStatus      @default(DRAFT)
+  docNo          String?             @map("doc_no") @db.VarChar(50)
+  description    String?             @db.VarChar(500)
+  journalEntryId BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
+  reversalOfId   BigInt?             @map("reversal_of_id") @db.UnsignedBigInt
+  postedAt       DateTime?           @map("posted_at") @db.DateTime(3)
+  postedBy       BigInt?             @map("posted_by") @db.UnsignedBigInt
+  createdAt      DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company      Company               @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  warehouse    Warehouse             @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  journalEntry JournalEntry?         @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+  reversalOf   StockAdjustment?      @relation("AdjustmentReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
+  reversals    StockAdjustment[]     @relation("AdjustmentReversal")
+  lines        StockAdjustmentLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, docNo])
+  @@index([tenantId, status])
+  @@map("stock_adjustments")
+}
+
+model StockAdjustmentLine {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt   @map("tenant_id") @db.UnsignedBigInt
+  adjustmentId BigInt   @map("adjustment_id") @db.UnsignedBigInt
+  lineNo       Int      @map("line_no")
+  itemId       BigInt   @map("item_id") @db.UnsignedBigInt
+  qtyIn        Decimal  @default(0) @map("qty_in") @db.Decimal(18, 6)
+  qtyOut       Decimal  @default(0) @map("qty_out") @db.Decimal(18, 6)
+  unitCost     Decimal? @map("unit_cost") @db.Decimal(18, 3)
+  description  String?  @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  adjustment StockAdjustment @relation(fields: [tenantId, adjustmentId], references: [tenantId, id], onDelete: Cascade)
+  item       Item            @relation(fields: [tenantId, itemId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, adjustmentId, lineNo])
+  @@map("stock_adjustment_lines")
+}
+
+model StockTransfer {
+  id              BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt         @map("tenant_id") @db.UnsignedBigInt
+  companyId       BigInt         @map("company_id") @db.UnsignedBigInt
+  transferDate    DateTime       @map("transfer_date") @db.Date
+  fromWarehouseId BigInt         @map("from_warehouse_id") @db.UnsignedBigInt
+  toWarehouseId   BigInt         @map("to_warehouse_id") @db.UnsignedBigInt
+  status          DocumentStatus @default(DRAFT)
+  docNo           String?        @map("doc_no") @db.VarChar(50)
+  description     String?        @db.VarChar(500)
+  reversalOfId    BigInt?        @map("reversal_of_id") @db.UnsignedBigInt
+  postedAt        DateTime?      @map("posted_at") @db.DateTime(3)
+  postedBy        BigInt?        @map("posted_by") @db.UnsignedBigInt
+  createdAt       DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company       Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  fromWarehouse Warehouse           @relation("TransferFrom", fields: [tenantId, fromWarehouseId], references: [tenantId, id])
+  toWarehouse   Warehouse           @relation("TransferTo", fields: [tenantId, toWarehouseId], references: [tenantId, id])
+  reversalOf    StockTransfer?      @relation("TransferReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
+  reversals     StockTransfer[]     @relation("TransferReversal")
+  lines         StockTransferLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, docNo])
+  @@index([tenantId, status])
+  @@map("stock_transfers")
+}
+
+model StockTransferLine {
+  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId   BigInt   @map("tenant_id") @db.UnsignedBigInt
+  transferId BigInt   @map("transfer_id") @db.UnsignedBigInt
+  lineNo     Int      @map("line_no")
+  itemId     BigInt   @map("item_id") @db.UnsignedBigInt
+  qty        Decimal  @db.Decimal(18, 6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transfer StockTransfer @relation(fields: [tenantId, transferId], references: [tenantId, id], onDelete: Cascade)
+  item     Item          @relation(fields: [tenantId, itemId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, transferId, lineNo])
+  @@map("stock_transfer_lines")
+}
+
+model StockCount {
+  id           BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt         @map("tenant_id") @db.UnsignedBigInt
+  companyId    BigInt         @map("company_id") @db.UnsignedBigInt
+  warehouseId  BigInt         @map("warehouse_id") @db.UnsignedBigInt
+  countDate    DateTime       @map("count_date") @db.Date
+  status       DocumentStatus @default(DRAFT)
+  docNo        String?        @map("doc_no") @db.VarChar(50)
+  description  String?        @db.VarChar(500)
+  adjustmentId BigInt?        @map("adjustment_id") @db.UnsignedBigInt
+  postedAt     DateTime?      @map("posted_at") @db.DateTime(3)
+  postedBy     BigInt?        @map("posted_by") @db.UnsignedBigInt
+  createdAt    DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company   Company          @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  warehouse Warehouse        @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  lines     StockCountLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, docNo])
+  @@index([tenantId, status])
+  @@map("stock_counts")
+}
+
+model StockCountLine {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId      BigInt   @map("tenant_id") @db.UnsignedBigInt
+  countId       BigInt   @map("count_id") @db.UnsignedBigInt
+  itemId        BigInt   @map("item_id") @db.UnsignedBigInt
+  systemQty     Decimal  @map("system_qty") @db.Decimal(18, 6)
+  countedQty    Decimal? @map("counted_qty") @db.Decimal(18, 6)
+  differenceQty Decimal? @map("difference_qty") @db.Decimal(18, 6)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  count  StockCount @relation(fields: [tenantId, countId], references: [tenantId, id], onDelete: Cascade)
+  item   Item       @relation(fields: [tenantId, itemId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, countId, itemId])
+  @@map("stock_count_lines")
 }

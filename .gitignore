@@ -8,3 +8,6 @@ coverage/
 .DS_Store
 apps/api/prisma/migrations/dev.db*
 apps/api/src/generated/
+
+# local caches
+npm-cache/

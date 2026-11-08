@@ -30,6 +30,7 @@ import {
   journalControllerPost,
   journalControllerReverse,
 } from '@erp/api-client';
+import { idemHeaders } from '../idempotency';
 
 interface Account {
   id: string;
@@ -134,7 +135,7 @@ export function JournalPage() {
   });
 
   const postEntry = useMutation({
-    mutationFn: (id: string) => journalControllerPost(id),
+    mutationFn: (id: string) => journalControllerPost(id, { headers: idemHeaders() }),
     onSuccess: () => {
       apiMessage.success(t('journal.posted'));
       invalidate();
@@ -144,9 +145,13 @@ export function JournalPage() {
 
   const reverseEntry = useMutation({
     mutationFn: (v: { id: string; date: Dayjs }) =>
-      journalControllerReverse(v.id, {
-        reversalDate: v.date.format('YYYY-MM-DD'),
-      } as never),
+      journalControllerReverse(
+        v.id,
+        {
+          reversalDate: v.date.format('YYYY-MM-DD'),
+        } as never,
+        { headers: idemHeaders() },
+      ),
     onSuccess: () => {
       apiMessage.success(t('journal.reversed'));
       setReverseTarget(null);
@@ -194,7 +199,12 @@ export function JournalPage() {
         pagination={{ pageSize: 20 }}
         onRow={(e) => ({ onClick: () => setDetailId(e.id), style: { cursor: 'pointer' } })}
         columns={[
-          { title: t('journal.entryNo'), dataIndex: 'entryNo', width: 110 },
+          {
+            title: t('journal.entryNo'),
+            dataIndex: 'entryNo',
+            width: 110,
+            render: (v: string | null) => v ?? '—',
+          },
           {
             title: t('journal.date'),
             dataIndex: 'entryDate',

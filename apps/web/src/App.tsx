@@ -6,6 +6,8 @@ import {
   BankOutlined,
   CalendarOutlined,
   DashboardOutlined,
+  DatabaseOutlined,
+  InboxOutlined,
   LogoutOutlined,
   ProfileOutlined,
   SettingOutlined,
@@ -21,6 +23,9 @@ import { AccountsPage } from './pages/AccountsPage';
 import { FiscalPage } from './pages/FiscalPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { JournalPage } from './pages/JournalPage';
+import { ItemsPage } from './pages/ItemsPage';
+import { WarehousesPage } from './pages/WarehousesPage';
+import { StockPage } from './pages/StockPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { HealthPage } from './pages/HealthPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
@@ -33,6 +38,9 @@ type View =
   | 'branches'
   | 'accounts'
   | 'journal'
+  | 'items'
+  | 'warehouses'
+  | 'stock'
   | 'reports'
   | 'fiscal'
   | 'settings'
@@ -69,6 +77,9 @@ export function App() {
     { key: 'branches', icon: <ShopOutlined />, label: t('nav.branches') },
     { key: 'accounts', icon: <AccountBookOutlined />, label: t('nav.accounts') },
     { key: 'journal', icon: <BankOutlined />, label: t('nav.journal') },
+    { key: 'items', icon: <InboxOutlined />, label: t('nav.items') },
+    { key: 'warehouses', icon: <DatabaseOutlined />, label: t('nav.warehouses') },
+    { key: 'stock', icon: <DatabaseOutlined />, label: t('nav.stock') },
     { key: 'reports', icon: <ProfileOutlined />, label: t('nav.reports') },
     { key: 'fiscal', icon: <CalendarOutlined />, label: t('nav.fiscal') },
     { key: 'settings', icon: <SettingOutlined />, label: t('nav.settings') },
@@ -152,6 +163,9 @@ export function App() {
           {view === 'branches' && <BranchesPage />}
           {view === 'accounts' && <AccountsPage />}
           {view === 'journal' && <JournalPage />}
+          {view === 'items' && <ItemsPage />}
+          {view === 'warehouses' && <WarehousesPage />}
+          {view === 'stock' && <StockPage />}
           {view === 'reports' && <ReportsPage />}
           {view === 'fiscal' && <FiscalPage />}
           {view === 'settings' && <SettingsPage />}

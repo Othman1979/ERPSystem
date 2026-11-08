@@ -1,0 +1,343 @@
+import { Injectable } from '@nestjs/common';
+import { ClsServiceManager } from 'nestjs-cls';
+import { AuditService } from '../../common/audit/audit.service.js';
+import type { RequestContext } from '../../common/cls/cls.types.js';
+import { DomainError } from '../../common/errors/domain.error.js';
+import { ErrorCode } from '../../common/errors/error-codes.js';
+import { PrismaService } from '../../prisma/prisma.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
+import {
+  BarcodeDto,
+  CreateItemDto,
+  CreateItemGroupDto,
+  ItemUnitInputDto,
+  UpdateItemDto,
+  UpdateItemGroupDto,
+} from './dto/inventory.dto.js';
+
+/**
+ * Item catalog: groups, items, item units and barcodes (§7.4).
+ * All lookups are tenant-scoped via tenantScopedPrisma.
+ */
+@Injectable()
+export class CatalogService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
+
+  private tenant() {
+    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
+    if (!tenantId) throw new DomainError(ErrorCode.FORBIDDEN, 'No tenant selected');
+    return { tenantId, db: this.prisma.forTenant(tenantId) };
+  }
+
+  private async companyId(db: ReturnType<PrismaService['forTenant']>): Promise<bigint> {
+    const company = await db.company.findFirst({
+      where: { isActive: true },
+      orderBy: { id: 'asc' },
+      select: { id: true },
+    });
+    if (!company) throw new DomainError(ErrorCode.INTERNAL, 'Tenant has no active company');
+    return company.id;
+  }
+
+  // ------------------------------------------------------------------ groups
+
+  listGroups() {
+    const { db } = this.tenant();
+    return db.itemGroup.findMany({ orderBy: { code: 'asc' } });
+  }
+
+  async createGroup(dto: CreateItemGroupDto) {
+    const { tenantId, db } = this.tenant();
+    if (dto.parentId) {
+      const parent = await db.itemGroup.findFirst({ where: { id: BigInt(dto.parentId) } });
+      if (!parent) throw DomainError.notFound('ItemGroup', dto.parentId);
+    }
+    try {
+      const group = await db.itemGroup.create({
+        data: {
+          tenantId,
+          code: dto.code,
+          nameAr: dto.nameAr,
+          nameEn: dto.nameEn ?? null,
+          parentId: dto.parentId ? BigInt(dto.parentId) : null,
+        },
+      });
+      await this.audit.log({
+        action: 'item_group.create',
+        entityType: 'item_group',
+        entityId: group.id,
+        after: { code: dto.code },
+      });
+      return group;
+    } catch (err) {
+      if ((err as { code?: string }).code === 'P2002') {
+        throw new DomainError(ErrorCode.CONFLICT, 'Item group code already exists');
+      }
+      throw err;
+    }
+  }
+
+  async updateGroup(id: bigint, dto: UpdateItemGroupDto) {
+    const { db } = this.tenant();
+    const existing = await db.itemGroup.findFirst({ where: { id } });
+    if (!existing) throw DomainError.notFound('ItemGroup', id.toString());
+    if (dto.isActive === false) {
+      const items = await db.item.count({ where: { itemGroupId: id, isActive: true } });
+      if (items > 0) {
+        throw new DomainError(
+          ErrorCode.CONFLICT,
+          'Cannot deactivate a group that has active items',
+        );
+      }
+    }
+    return db.itemGroup.update({ where: { id }, data: dto });
+  }
+
+  // -------------------------------------------------------------------- items
+
+  async listItems(query?: { search?: string; itemKind?: string; isActive?: string }) {
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    return db.item.findMany({
+      where: {
+        companyId,
+        ...(query?.search
+          ? {
+              OR: [
+                { code: { contains: query.search } },
+                { nameAr: { contains: query.search } },
+                { nameEn: { contains: query.search } },
+              ],
+            }
+          : {}),
+        ...(query?.itemKind ? { itemKind: query.itemKind as 'STOCK' | 'SERVICE' } : {}),
+        ...(query?.isActive ? { isActive: query.isActive === 'true' } : {}),
+      },
+      include: {
+        baseUnit: { select: { id: true, code: true, nameAr: true } },
+        itemGroup: { select: { id: true, code: true, nameAr: true } },
+        taxCategory: { select: { id: true, code: true, nameAr: true } },
+        _count: { select: { barcodes: true, units: true } },
+      },
+      orderBy: { code: 'asc' },
+      take: 500,
+    });
+  }
+
+  async getItem(id: bigint) {
+    const { db } = this.tenant();
+    const item = await db.item.findFirst({
+      where: { id },
+      include: {
+        baseUnit: true,
+        itemGroup: true,
+        taxCategory: true,
+        units: { include: { unit: true } },
+        barcodes: { include: { itemUnit: { include: { unit: true } } } },
+        costs: true,
+      },
+    });
+    if (!item) throw DomainError.notFound('Item', id.toString());
+    return item;
+  }
+
+  private async validateItemRefs(
+    db: ReturnType<PrismaService['forTenant']>,
+    dto: {
+      itemGroupId?: string;
+      baseUnitId: string;
+      taxCategoryId?: string;
+    },
+  ) {
+    const group = dto.itemGroupId
+      ? await db.itemGroup.findFirst({ where: { id: BigInt(dto.itemGroupId) } })
+      : null;
+    if (dto.itemGroupId && !group) {
+      throw DomainError.notFound('ItemGroup', dto.itemGroupId);
+    }
+    const unit = await db.unit.findFirst({
+      where: { id: BigInt(dto.baseUnitId), isActive: true },
+    });
+    if (!unit) throw DomainError.notFound('Unit', dto.baseUnitId);
+    if (dto.taxCategoryId) {
+      const tax = await db.taxCategory.findFirst({
+        where: { id: BigInt(dto.taxCategoryId), isActive: true },
+      });
+      if (!tax) throw DomainError.notFound('TaxCategory', dto.taxCategoryId);
+    }
+    return { group, unit };
+  }
+
+  async createItem(dto: CreateItemDto) {
+    const { tenantId, db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const cls = ClsServiceManager.getClsService<RequestContext>();
+    await this.validateItemRefs(db, dto);
+
+    try {
+      const item = await db.$transaction(async (tx) => {
+        const created = await tx.item.create({
+          data: {
+            tenantId,
+            companyId,
+            code: dto.code,
+            nameAr: dto.nameAr,
+            nameEn: dto.nameEn ?? null,
+            description: dto.description ?? null,
+            itemGroupId: dto.itemGroupId ? BigInt(dto.itemGroupId) : null,
+            itemKind: dto.itemKind ?? 'STOCK',
+            baseUnitId: BigInt(dto.baseUnitId),
+            taxCategoryId: dto.taxCategoryId ? BigInt(dto.taxCategoryId) : null,
+            salePrice: dto.salePrice ?? null,
+            purchasePrice: dto.purchasePrice ?? null,
+            minStock: dto.minStock ?? '0',
+            createdBy: cls.get('userId') ?? null,
+          },
+        });
+        if (dto.units?.length) {
+          await this.replaceItemUnits(tx, tenantId, created.id, dto.units);
+        }
+        return created;
+      });
+      await this.audit.log({
+        action: 'item.create',
+        entityType: 'item',
+        entityId: item.id,
+        after: { code: dto.code, nameAr: dto.nameAr },
+      });
+      return this.getItem(item.id);
+    } catch (err) {
+      if ((err as { code?: string }).code === 'P2002') {
+        throw new DomainError(ErrorCode.CONFLICT, 'Item code already exists');
+      }
+      throw err;
+    }
+  }
+
+  async updateItem(id: bigint, dto: UpdateItemDto) {
+    const { db } = this.tenant();
+    const cls = ClsServiceManager.getClsService<RequestContext>();
+    const existing = await db.item.findFirst({ where: { id } });
+    if (!existing) throw DomainError.notFound('Item', id.toString());
+    if (dto.itemGroupId) {
+      const group = await db.itemGroup.findFirst({ where: { id: BigInt(dto.itemGroupId) } });
+      if (!group) throw DomainError.notFound('ItemGroup', dto.itemGroupId);
+    }
+    if (dto.taxCategoryId) {
+      const tax = await db.taxCategory.findFirst({
+        where: { id: BigInt(dto.taxCategoryId), isActive: true },
+      });
+      if (!tax) throw DomainError.notFound('TaxCategory', dto.taxCategoryId);
+    }
+    const { itemGroupId, taxCategoryId, ...rest } = dto;
+    return db.item.update({
+      where: { id },
+      data: {
+        ...rest,
+        ...(itemGroupId !== undefined
+          ? { itemGroupId: itemGroupId ? BigInt(itemGroupId) : null }
+          : {}),
+        ...(taxCategoryId !== undefined
+          ? { taxCategoryId: taxCategoryId ? BigInt(taxCategoryId) : null }
+          : {}),
+        updatedBy: cls.get('userId') ?? null,
+      },
+    });
+  }
+
+  // ------------------------------------------------------------ item units
+
+  async replaceItemUnits(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    itemId: bigint,
+    units: ItemUnitInputDto[],
+  ) {
+    await tx.itemUnit.deleteMany({ where: { tenantId, itemId } });
+    for (const u of units) {
+      const factor = Number(u.factorToBase);
+      if (!Number.isFinite(factor) || factor <= 0) {
+        throw new DomainError(ErrorCode.VALIDATION, 'factorToBase must be > 0');
+      }
+      const unit = await tx.unit.findFirst({
+        where: { tenantId, id: BigInt(u.unitId), isActive: true },
+      });
+      if (!unit) throw DomainError.notFound('Unit', u.unitId);
+      await tx.itemUnit.create({
+        data: {
+          tenantId,
+          itemId,
+          unitId: BigInt(u.unitId),
+          factorToBase: u.factorToBase,
+          isDefaultSale: u.isDefaultSale ?? false,
+          isDefaultPurchase: u.isDefaultPurchase ?? false,
+        },
+      });
+    }
+  }
+
+  async setItemUnits(itemId: bigint, units: ItemUnitInputDto[]) {
+    const { tenantId, db } = this.tenant();
+    const item = await db.item.findFirst({ where: { id: itemId } });
+    if (!item) throw DomainError.notFound('Item', itemId.toString());
+    await db.$transaction((tx) => this.replaceItemUnits(tx, tenantId, itemId, units));
+    return this.getItem(itemId);
+  }
+
+  // -------------------------------------------------------------- barcodes
+
+  async addBarcode(itemId: bigint, dto: BarcodeDto) {
+    const { tenantId, db } = this.tenant();
+    const item = await db.item.findFirst({ where: { id: itemId } });
+    if (!item) throw DomainError.notFound('Item', itemId.toString());
+    if (dto.itemUnitId) {
+      const iu = await db.itemUnit.findFirst({
+        where: { tenantId, id: BigInt(dto.itemUnitId), itemId },
+      });
+      if (!iu) throw DomainError.notFound('ItemUnit', dto.itemUnitId);
+    }
+    try {
+      return await db.itemBarcode.create({
+        data: {
+          tenantId,
+          itemId,
+          itemUnitId: dto.itemUnitId ? BigInt(dto.itemUnitId) : null,
+          barcode: dto.barcode,
+        },
+      });
+    } catch (err) {
+      if ((err as { code?: string }).code === 'P2002') {
+        throw new DomainError(ErrorCode.CONFLICT, 'Barcode already exists');
+      }
+      throw err;
+    }
+  }
+
+  async removeBarcode(barcodeId: bigint) {
+    const { db } = this.tenant();
+    const bc = await db.itemBarcode.findFirst({ where: { id: barcodeId } });
+    if (!bc) throw DomainError.notFound('ItemBarcode', barcodeId.toString());
+    await db.itemBarcode.delete({ where: { id: barcodeId } });
+    return { deleted: true };
+  }
+
+  async findByBarcode(barcode: string) {
+    const { db } = this.tenant();
+    const bc = await db.itemBarcode.findFirst({
+      where: { barcode },
+      include: {
+        item: {
+          include: {
+            baseUnit: { select: { code: true, nameAr: true } },
+            units: { include: { unit: { select: { code: true, nameAr: true } } } },
+          },
+        },
+      },
+    });
+    if (!bc) throw DomainError.notFound('ItemBarcode', barcode);
+    return bc.item;
+  }
+}

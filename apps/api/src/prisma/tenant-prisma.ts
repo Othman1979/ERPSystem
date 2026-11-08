@@ -28,6 +28,20 @@ export const TENANT_MODELS = [
   'DocumentSequence',
   'JournalEntry',
   'JournalLine',
+  'ItemGroup',
+  'Item',
+  'ItemUnit',
+  'ItemBarcode',
+  'Warehouse',
+  'StockMovement',
+  'StockBalance',
+  'ItemCost',
+  'StockAdjustment',
+  'StockAdjustmentLine',
+  'StockTransfer',
+  'StockTransferLine',
+  'StockCount',
+  'StockCountLine',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);

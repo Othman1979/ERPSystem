@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, DatePicker, Input, Select, Space, Table, Tabs } from 'antd';
+import { Card, DatePicker, Descriptions, Input, Select, Space, Table, Tabs, Tag } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,29 +16,56 @@ interface Account {
 }
 
 interface TbRow {
-  accountCode: string;
-  accountName: string;
-  debit: string;
-  credit: string;
+  accountId: string;
+  code: string;
+  nameAr: string;
+  nameEn: string | null;
+  totalDebit: string;
+  totalCredit: string;
   balance: string;
 }
 
-interface GlRow {
+interface TbResponse {
+  rows: TbRow[];
+  totals: { debit: string; credit: string };
+  balanced: boolean;
+}
+
+interface LedgerRow {
+  lineId: string;
   entryNo: string;
   entryDate: string;
   description: string | null;
   debit: string;
   credit: string;
-  runningBalance: string;
+  balance: string;
+}
+
+interface LedgerResponse {
+  account: { code: string; nameAr: string };
+  openingBalance: string;
+  closingBalance: string;
+  rows: LedgerRow[];
 }
 
 interface StatementRow {
+  lineId: string;
   entryNo: string;
   entryDate: string;
+  accountCode: string;
+  accountName: string;
   description: string | null;
   debit: string;
   credit: string;
   balance: string;
+}
+
+interface StatementResponse {
+  openingBalance: string;
+  closingBalance: string;
+  totalDebit: string;
+  totalCredit: string;
+  rows: StatementRow[];
 }
 
 function qs(params: Record<string, string | undefined>): string {
@@ -47,6 +74,10 @@ function qs(params: Record<string, string | undefined>): string {
   const s = p.toString();
   return s ? `?${s}` : '';
 }
+
+const num = (v: string | null | undefined) => (v == null ? '—' : Number(v).toFixed(3));
+
+const dateCol = { title: '', dataIndex: 'entryDate', width: 110, render: (v: string) => dayjs(v).format('YYYY-MM-DD') };
 
 export function ReportsPage() {
   const { t } = useTranslation();
@@ -72,28 +103,27 @@ export function ReportsPage() {
 
   const { data: tb, isLoading: tbLoading } = useQuery({
     queryKey: ['report-tb'],
-    queryFn: () => journalControllerTrialBalance().then((r) => r.data as unknown as TbRow[]),
+    queryFn: () =>
+      journalControllerTrialBalance().then((r) => r.data as unknown as TbResponse),
   });
 
   const { data: gl, isLoading: glLoading } = useQuery({
     queryKey: ['report-gl', accountId, range.from, range.to],
     queryFn: () =>
-      apiFetchData<{ rows: GlRow[] }>(
+      apiFetchData<LedgerResponse>(
         `/api/v1/reports/general-ledger${qs({ accountId, ...range })}`,
-      ).then((r) => r.rows),
+      ),
     enabled: !!accountId,
   });
 
   const { data: statement, isLoading: stLoading } = useQuery({
-    queryKey: ['report-statement', accountId, partyType, partyId, range.from, range.to],
+    queryKey: ['report-statement', partyType, partyId, range.from, range.to],
     queryFn: () =>
-      apiFetchData<{ rows: StatementRow[] }>(
-        `/api/v1/reports/party-statement${qs({ accountId, partyType, partyId, ...range })}`,
-      ).then((r) => r.rows),
-    enabled: !!accountId && !!partyType && !!partyId,
+      apiFetchData<StatementResponse>(
+        `/api/v1/reports/party-statement${qs({ partyType, partyId, ...range })}`,
+      ),
+    enabled: !!partyType && !!partyId,
   });
-
-  const num = (v: string | null | undefined) => (v == null ? '—' : Number(v).toFixed(3));
 
   return (
     <Card title={t('reports.title')}>
@@ -115,7 +145,10 @@ export function ReportsPage() {
           placeholder={t('reports.partyType')}
           style={{ width: 140 }}
           value={partyType}
-          onChange={setPartyType}
+          onChange={(v) => {
+            setPartyType(v);
+            setPartyId(undefined);
+          }}
           options={[
             { value: 'CUSTOMER', label: t('reports.customer') },
             { value: 'SUPPLIER', label: t('reports.supplier') },
@@ -125,7 +158,7 @@ export function ReportsPage() {
           allowClear
           disabled={!partyType}
           placeholder={t('reports.partyId')}
-          style={{ width: 240 }}
+          style={{ width: 140 }}
           value={partyId}
           onChange={(e) => setPartyId(e.target.value || undefined)}
         />
@@ -136,38 +169,55 @@ export function ReportsPage() {
             key: 'tb',
             label: t('reports.trialBalance'),
             children: (
-              <Table
-                rowKey="accountCode"
-                size="small"
-                loading={tbLoading}
-                dataSource={tb ?? []}
-                pagination={false}
-                columns={[
-                  { title: t('accounts.code'), dataIndex: 'accountCode', width: 100 },
-                  { title: t('accounts.nameAr'), dataIndex: 'accountName' },
-                  {
-                    title: t('journal.debit'),
-                    dataIndex: 'debit',
-                    align: 'right',
-                    width: 120,
-                    render: num,
-                  },
-                  {
-                    title: t('journal.credit'),
-                    dataIndex: 'credit',
-                    align: 'right',
-                    width: 120,
-                    render: num,
-                  },
-                  {
-                    title: t('reports.balance'),
-                    dataIndex: 'balance',
-                    align: 'right',
-                    width: 120,
-                    render: num,
-                  },
-                ]}
-              />
+              <>
+                {tb && (
+                  <Space style={{ marginBottom: 8 }}>
+                    <span>
+                      {t('journal.debit')}: {num(tb.totals.debit)} — {t('journal.credit')}:{' '}
+                      {num(tb.totals.credit)}
+                    </span>
+                    <Tag color={tb.balanced ? 'green' : 'red'}>
+                      {tb.balanced ? t('reports.balanced') : t('reports.unbalanced')}
+                    </Tag>
+                  </Space>
+                )}
+                <Table
+                  rowKey="accountId"
+                  size="small"
+                  loading={tbLoading}
+                  dataSource={tb?.rows ?? []}
+                  pagination={false}
+                  columns={[
+                    { title: t('accounts.code'), dataIndex: 'code', width: 100 },
+                    {
+                      title: t('accounts.nameAr'),
+                      dataIndex: 'nameAr',
+                      render: (v: string, r: TbRow) => (r.nameEn ? `${v} (${r.nameEn})` : v),
+                    },
+                    {
+                      title: t('journal.debit'),
+                      dataIndex: 'totalDebit',
+                      align: 'right',
+                      width: 120,
+                      render: num,
+                    },
+                    {
+                      title: t('journal.credit'),
+                      dataIndex: 'totalCredit',
+                      align: 'right',
+                      width: 120,
+                      render: num,
+                    },
+                    {
+                      title: t('reports.balance'),
+                      dataIndex: 'balance',
+                      align: 'right',
+                      width: 120,
+                      render: num,
+                    },
+                  ]}
+                />
+              </>
             ),
           },
           {
@@ -176,67 +226,29 @@ export function ReportsPage() {
             children: !accountId ? (
               <div>{t('reports.selectAccount')}</div>
             ) : (
-              <Table
-                rowKey={(r) => `${r.entryNo}-${r.entryDate}`}
-                size="small"
-                loading={glLoading}
-                dataSource={gl ?? []}
-                pagination={{ pageSize: 50 }}
-                columns={[
-                  { title: t('journal.entryNo'), dataIndex: 'entryNo', width: 100 },
-                  {
-                    title: t('journal.date'),
-                    dataIndex: 'entryDate',
-                    width: 110,
-                    render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
-                  },
-                  { title: t('common.description'), dataIndex: 'description' },
-                  {
-                    title: t('journal.debit'),
-                    dataIndex: 'debit',
-                    align: 'right',
-                    width: 110,
-                    render: num,
-                  },
-                  {
-                    title: t('journal.credit'),
-                    dataIndex: 'credit',
-                    align: 'right',
-                    width: 110,
-                    render: num,
-                  },
-                  {
-                    title: t('reports.balance'),
-                    dataIndex: 'runningBalance',
-                    align: 'right',
-                    width: 120,
-                    render: num,
-                  },
-                ]}
-              />
-            ),
-          },
-          {
-            key: 'statement',
-            label: t('reports.partyStatement'),
-            children:
-              !accountId || !partyType || !partyId ? (
-                <div>{t('reports.selectParty')}</div>
-              ) : (
+              <>
+                {gl && (
+                  <Descriptions size="small" column={3} style={{ marginBottom: 8 }}>
+                    <Descriptions.Item label={t('reports.account')}>
+                      {gl.account.code} — {gl.account.nameAr}
+                    </Descriptions.Item>
+                    <Descriptions.Item label={t('reports.openingBalance')}>
+                      {num(gl.openingBalance)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label={t('reports.closingBalance')}>
+                      {num(gl.closingBalance)}
+                    </Descriptions.Item>
+                  </Descriptions>
+                )}
                 <Table
-                  rowKey={(r) => `${r.entryNo}-${r.entryDate}`}
+                  rowKey="lineId"
                   size="small"
-                  loading={stLoading}
-                  dataSource={statement ?? []}
+                  loading={glLoading}
+                  dataSource={gl?.rows ?? []}
                   pagination={{ pageSize: 50 }}
                   columns={[
-                    { title: t('journal.entryNo'), dataIndex: 'entryNo', width: 100 },
-                    {
-                      title: t('journal.date'),
-                      dataIndex: 'entryDate',
-                      width: 110,
-                      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
-                    },
+                    { title: t('journal.entryNo'), dataIndex: 'entryNo', width: 110 },
+                    { ...dateCol, title: t('journal.date') },
                     { title: t('common.description'), dataIndex: 'description' },
                     {
                       title: t('journal.debit'),
@@ -261,6 +273,70 @@ export function ReportsPage() {
                     },
                   ]}
                 />
+              </>
+            ),
+          },
+          {
+            key: 'statement',
+            label: t('reports.partyStatement'),
+            children:
+              !partyType || !partyId ? (
+                <div>{t('reports.selectParty')}</div>
+              ) : (
+                <>
+                  {statement && (
+                    <Descriptions size="small" column={3} style={{ marginBottom: 8 }}>
+                      <Descriptions.Item label={t('reports.openingBalance')}>
+                        {num(statement.openingBalance)}
+                      </Descriptions.Item>
+                      <Descriptions.Item label={t('reports.closingBalance')}>
+                        {num(statement.closingBalance)}
+                      </Descriptions.Item>
+                      <Descriptions.Item label={t('reports.balance')}>
+                        {num(statement.closingBalance)}
+                      </Descriptions.Item>
+                    </Descriptions>
+                  )}
+                  <Table
+                    rowKey="lineId"
+                    size="small"
+                    loading={stLoading}
+                    dataSource={statement?.rows ?? []}
+                    pagination={{ pageSize: 50 }}
+                    columns={[
+                      { title: t('journal.entryNo'), dataIndex: 'entryNo', width: 110 },
+                      { ...dateCol, title: t('journal.date') },
+                      {
+                        title: t('accounts.code'),
+                        dataIndex: 'accountCode',
+                        width: 90,
+                      },
+                      { title: t('accounts.nameAr'), dataIndex: 'accountName' },
+                      { title: t('common.description'), dataIndex: 'description' },
+                      {
+                        title: t('journal.debit'),
+                        dataIndex: 'debit',
+                        align: 'right',
+                        width: 110,
+                        render: num,
+                      },
+                      {
+                        title: t('journal.credit'),
+                        dataIndex: 'credit',
+                        align: 'right',
+                        width: 110,
+                        render: num,
+                      },
+                      {
+                        title: t('reports.balance'),
+                        dataIndex: 'balance',
+                        align: 'right',
+                        width: 120,
+                        render: num,
+                      },
+                    ]}
+                  />
+                </>
               ),
           },
         ]}

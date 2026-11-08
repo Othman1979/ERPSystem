@@ -24,11 +24,17 @@ export class PlanLimitsService {
     });
   }
 
-  private async countTenantRows(model: 'tenantMembership' | 'branch', tenantId: bigint) {
+  private async countTenantRows(
+    model: 'tenantMembership' | 'branch' | 'warehouse',
+    tenantId: bigint,
+  ) {
     // systemPrisma + explicit tenantId: counts must include INVITED/SUSPENDED
     // memberships and disabled branches to enforce limits correctly.
     if (model === 'tenantMembership') {
       return this.prisma.client.tenantMembership.count({ where: { tenantId } });
+    }
+    if (model === 'warehouse') {
+      return this.prisma.client.warehouse.count({ where: { tenantId } });
     }
     return this.prisma.client.branch.count({ where: { tenantId } });
   }
@@ -59,6 +65,21 @@ export class PlanLimitsService {
         ErrorCode.PLAN_LIMIT_EXCEEDED,
         `Branch limit reached for plan ${plan.code} (${plan.maxBranches})`,
         { limit: plan.maxBranches, used },
+      );
+    }
+  }
+
+  async assertWarehouseSlotAvailable(): Promise<void> {
+    const tenant = await this.planForCurrentTenant();
+    const plan = tenant?.plan;
+    if (!plan) return;
+    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
+    const used = await this.countTenantRows('warehouse', tenantId);
+    if (used >= plan.maxWarehouses) {
+      throw new DomainError(
+        ErrorCode.PLAN_LIMIT_EXCEEDED,
+        `Warehouse limit reached for plan ${plan.code} (${plan.maxWarehouses})`,
+        { limit: plan.maxWarehouses, used },
       );
     }
   }
