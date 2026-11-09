@@ -42,6 +42,8 @@ import {
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { codeAndName, displayName } from '../i18n/displayName';
+import { amountCell } from '../format/cells';
+import { dec, formatAmount } from '../format/number';
 
 // ------------------------------------------------------------- types
 
@@ -96,7 +98,7 @@ interface OpenInvoice {
   supplierId?: string;
 }
 
-const money = (v?: string | null) => (v != null ? Number(v).toFixed(2) : '—');
+const money = (v?: string | null) => formatAmount(v);
 
 // ------------------------------------------------------------- lookups
 
@@ -460,7 +462,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
       title: t('treasury.cashAccount'),
       render: (_: unknown, v: Voucher) => (v.cashAccount ? codeAndName(v.cashAccount) : '—'),
     },
-    { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'end' as const, render: money },
+    { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'right' as const, render: amountCell },
     { title: t('common.description'), dataIndex: 'description', ellipsis: true },
     {
       title: '',
@@ -510,7 +512,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                 dataSource={view.allocations}
                 columns={[
                   { title: t('treasury.documentType'), dataIndex: 'documentType', width: 160 },
-                  { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'end' as const, render: money },
+                  { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'right' as const, render: amountCell },
                 ]}
               />
             )}
@@ -547,10 +549,10 @@ function VoucherModal({
   const [partyType, setPartyType] = useState<'CUSTOMER' | 'SUPPLIER'>('CUSTOMER');
   const [partyId, setPartyId] = useState<string | undefined>();
   const [cashAccountId, setCashAccountId] = useState<string | undefined>();
-  const [amount, setAmount] = useState<number | null>(null);
+  const [amount, setAmount] = useState<string | null>(null);
   const [referenceNo, setReferenceNo] = useState('');
   const [description, setDescription] = useState('');
-  const [allocations, setAllocations] = useState<{ documentId: string; amount: number | null }[]>([]);
+  const [allocations, setAllocations] = useState<{ documentId: string; amount: string | null }[]>([]);
 
   const lookups = useTreasuryLookups();
 
@@ -576,13 +578,13 @@ function VoucherModal({
     return src.filter((i) => {
       if (!partyId) return false;
       const pid = kind === 'receipt' ? i.customerId : i.supplierId;
-      return pid === partyId && Number(i.grandTotal) - Number(i.paidAmount) > 0.001;
+      return pid === partyId && dec(i.grandTotal).minus(dec(i.paidAmount)).gt(0);
     });
   }, [kind, salesInvoices, purchaseInvoices, partyId]);
 
   const invoiceOptions = openInvoices.map((i) => ({
     value: i.id,
-    label: `${i.invoiceNo ?? `#${i.id}`} — متبقي ${money(String(Number(i.grandTotal) - Number(i.paidAmount)))}`,
+    label: `${i.invoiceNo ?? `#${i.id}`} — ${t('treasury.remaining', { amount: formatAmount(dec(i.grandTotal).minus(dec(i.paidAmount))) })}`,
   }));
 
   const docType = kind === 'receipt' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
@@ -594,12 +596,12 @@ function VoucherModal({
         partyType,
         partyId,
         cashAccountId,
-        amount: String(amount),
+        amount: amount ?? undefined,
         referenceNo: referenceNo || undefined,
         description: description || undefined,
         allocations: allocations
-          .filter((a) => a.documentId && a.amount && a.amount > 0)
-          .map((a) => ({ documentType: docType, documentId: a.documentId, amount: String(a.amount) })),
+          .filter((a) => a.documentId && dec(a.amount).gt(0))
+          .map((a) => ({ documentType: docType, documentId: a.documentId, amount: a.amount as string })),
       };
       return kind === 'receipt'
         ? treasuryControllerCreateReceipt(base as never)
@@ -613,7 +615,7 @@ function VoucherModal({
       apiMessage.error(err instanceof ApiError ? t(`errors.${err.code}`, { defaultValue: err.message }) : t('errors.INTERNAL')),
   });
 
-  const canSave = !!partyId && !!cashAccountId && !!amount && amount > 0;
+  const canSave = !!partyId && !!cashAccountId && dec(amount).gt(0);
 
   return (
     <Modal
@@ -676,7 +678,13 @@ function VoucherModal({
         </div>
         <div>
           <Typography.Text type="secondary">{t('treasury.amount')} *</Typography.Text>
-          <InputNumber min={0} style={{ width: 140, display: 'block' }} value={amount} onChange={(v) => setAmount(v)} />
+          <InputNumber<string>
+            stringMode
+            min="0"
+            style={{ width: 140, display: 'block' }}
+            value={amount}
+            onChange={(v) => setAmount(v)}
+          />
         </div>
         <div>
           <Typography.Text type="secondary">{t('treasury.referenceNo')}</Typography.Text>
@@ -699,7 +707,7 @@ function VoucherModal({
             columns={[
               {
                 title: t('treasury.invoice'),
-                render: (_: unknown, _a: { documentId: string; amount: number | null }, idx: number) => (
+                render: (_: unknown, _a: { documentId: string; amount: string | null }, idx: number) => (
                   <Select
                     showSearch
                     optionFilterProp="label"
@@ -720,9 +728,10 @@ function VoucherModal({
               {
                 title: t('treasury.amount'),
                 width: 140,
-                render: (_: unknown, _a: { documentId: string; amount: number | null }, idx: number) => (
-                  <InputNumber
-                    min={0}
+                render: (_: unknown, _a: { documentId: string; amount: string | null }, idx: number) => (
+                  <InputNumber<string>
+                    stringMode
+                    min="0"
                     style={{ width: '100%' }}
                     value={allocations[idx]?.amount ?? null}
                     onChange={(v) =>

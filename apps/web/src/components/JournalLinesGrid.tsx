@@ -2,13 +2,16 @@ import { DeleteOutlined } from '@ant-design/icons';
 import { Button, Input, InputNumber, Typography } from 'antd';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { formatAmount, round3, sum } from '../format/number';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
+import { Num } from './Num';
 
 export interface JournalLineDraft {
   key: number;
   accountId?: string;
-  debit?: number | null;
-  credit?: number | null;
+  // Decimal strings (InputNumber stringMode), never JS floats.
+  debit?: string | null;
+  credit?: string | null;
   description?: string;
 }
 
@@ -89,9 +92,9 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
     advance(row, col);
   };
 
-  const totalDebit = lines.reduce((s, l) => s + (l.debit ?? 0), 0);
-  const totalCredit = lines.reduce((s, l) => s + (l.credit ?? 0), 0);
-  const diff = Math.abs(totalDebit - totalCredit);
+  const totalDebit = sum(lines.map((l) => l.debit));
+  const totalCredit = sum(lines.map((l) => l.credit));
+  const diff = round3(totalDebit.minus(totalCredit).abs());
 
   // Arrow-key navigation (capture phase so InputNumber's step-on-arrow and
   // the select's dropdown-open don't swallow the keys). Select cells keep
@@ -153,9 +156,10 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                 />
               </td>
               <td {...cellProps(row, 2)}>
-                <InputNumber
+                <InputNumber<string>
+                  stringMode
                   placeholder={t('journal.debit')}
-                  min={0}
+                  min="0"
                   value={l.debit}
                   onChange={(v) => update(l.key, { debit: v })}
                   style={{ width: '100%' }}
@@ -164,9 +168,10 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                 />
               </td>
               <td {...cellProps(row, 3)}>
-                <InputNumber
+                <InputNumber<string>
+                  stringMode
                   placeholder={t('journal.credit')}
-                  min={0}
+                  min="0"
                   value={l.credit}
                   onChange={(v) => update(l.key, { credit: v })}
                   style={{ width: '100%' }}
@@ -202,16 +207,16 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
             <td colSpan={2}>
               {t('journal.total')}
             </td>
-            <td style={{ textAlign: 'right' }}>
-              {totalDebit.toFixed(3)}
+            <td className="num-cell">
+              <Num>{formatAmount(totalDebit)}</Num>
             </td>
-            <td style={{ textAlign: 'right' }}>
-              {totalCredit.toFixed(3)}
+            <td className="num-cell">
+              <Num>{formatAmount(totalCredit)}</Num>
             </td>
             <td colSpan={2}>
-              {diff > 0.0005 && (
+              {!diff.isZero() && (
                 <Typography.Text type="danger">
-                  {t('journal.unbalanced', { amount: diff.toFixed(3) })}
+                  {t('journal.unbalanced', { amount: formatAmount(diff) })}
                 </Typography.Text>
               )}
             </td>

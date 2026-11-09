@@ -25,6 +25,7 @@ import {
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { displayName, type Named } from '../i18n/displayName';
+import { amountCell } from '../format/cells';
 
 interface Party {
   id: string;
@@ -86,7 +87,7 @@ export function PartiesPage() {
       partyType: p.partyType,
       taxNumber: p.taxNumber ?? undefined,
       phone: p.phone ?? undefined,
-      creditLimit: p.creditLimit != null ? Number(p.creditLimit) : undefined,
+      creditLimit: p.creditLimit ?? undefined,
       paymentTermsDays: p.paymentTermsDays ?? undefined,
       isCashCustomer: p.isCashCustomer,
       isActive: p.isActive,
@@ -102,7 +103,7 @@ export function PartiesPage() {
         partyType: values.partyType,
         taxNumber: values.taxNumber,
         phone: values.phone,
-        creditLimit: values.creditLimit != null ? String(values.creditLimit) : undefined,
+        creditLimit: values.creditLimit ?? undefined,
         paymentTermsDays: values.paymentTermsDays,
         isCashCustomer: values.isCashCustomer,
         isActive: values.isActive,
@@ -144,8 +145,8 @@ export function PartiesPage() {
       title: t('parties.creditLimit'),
       dataIndex: 'creditLimit',
       width: 120,
-      align: 'end' as const,
-      render: (v?: string | null) => (v != null ? Number(v).toFixed(2) : '—'),
+      align: 'right' as const,
+      render: amountCell,
     },
     {
       title: t('common.status'),
@@ -242,7 +243,7 @@ export function PartiesPage() {
           </Space>
           <Space size="middle" style={{ display: 'flex' }}>
             <Form.Item name="creditLimit" label={t('parties.creditLimit')} style={{ flex: 1 }}>
-              <InputNumber min={0} style={{ width: '100%' }} />
+              <InputNumber<string> stringMode min="0" style={{ width: '100%' }} />
             </Form.Item>
             <Form.Item name="paymentTermsDays" label={t('parties.paymentTerms')} style={{ flex: 1 }}>
               <InputNumber min={0} max={3650} style={{ width: '100%' }} />

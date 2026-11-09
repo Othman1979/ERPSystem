@@ -7,8 +7,9 @@ import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
 export interface ItemLineDraft {
   key: number;
   itemId?: string;
-  qty?: number | null;
-  unitCost?: number | null;
+  // Decimal strings (InputNumber stringMode), never JS floats.
+  qty?: string | null;
+  unitCost?: string | null;
   description?: string;
 }
 
@@ -172,8 +173,9 @@ export function ItemLinesGrid({
               />
             </td>
             <td {...cellProps(row, COL_QTY)}>
-              <InputNumber
-                min={0.000001}
+              <InputNumber<string>
+                stringMode
+                min="0.000001"
                 placeholder={t('stock.qty')}
                 value={l.qty}
                 onChange={(v) => update(l.key, { qty: v })}
@@ -184,8 +186,9 @@ export function ItemLinesGrid({
             </td>
             {showCost && (
               <td {...cellProps(row, COL_COST)}>
-                <InputNumber
-                  min={0}
+                <InputNumber<string>
+                  stringMode
+                  min="0"
                   placeholder={t('stock.unitCost')}
                   value={l.unitCost}
                   onChange={(v) => update(l.key, { unitCost: v })}

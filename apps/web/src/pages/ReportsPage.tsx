@@ -11,6 +11,8 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { bothNames, codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
+import { amountCell } from '../format/cells';
+import { formatAmount } from '../format/number';
 
 interface Account {
   id: string;
@@ -78,8 +80,6 @@ function qs(params: Record<string, string | undefined>): string {
   return s ? `?${s}` : '';
 }
 
-const num = (v: string | null | undefined) => (v == null ? '—' : Number(v).toFixed(3));
-const numCell = (v: string | null | undefined) => <Num>{num(v)}</Num>;
 
 const dateCol = { title: '', dataIndex: 'entryDate', width: 110, render: (v: string) => dayjs(v).format('YYYY-MM-DD') };
 
@@ -179,8 +179,8 @@ export function ReportsPage() {
                 {tb && (
                   <Space style={{ marginBottom: 8 }}>
                     <span>
-                      {t('journal.debit')}: {num(tb.totals.debit)} — {t('journal.credit')}:{' '}
-                      {num(tb.totals.credit)}
+                      {t('journal.debit')}: <Num>{formatAmount(tb.totals.debit)}</Num> — {t('journal.credit')}:{' '}
+                      <Num>{formatAmount(tb.totals.credit)}</Num>
                     </span>
                     <Tag color={tb.balanced ? 'green' : 'red'}>
                       {tb.balanced ? t('reports.balanced') : t('reports.unbalanced')}
@@ -205,21 +205,21 @@ export function ReportsPage() {
                       dataIndex: 'totalDebit',
                       align: 'right',
                       width: 120,
-                      render: numCell,
+                      render: amountCell,
                     },
                     {
                       title: t('journal.credit'),
                       dataIndex: 'totalCredit',
                       align: 'right',
                       width: 120,
-                      render: numCell,
+                      render: amountCell,
                     },
                     {
                       title: t('reports.balance'),
                       dataIndex: 'balance',
                       align: 'right',
                       width: 120,
-                      render: numCell,
+                      render: amountCell,
                     },
                   ]}
                 />
@@ -239,10 +239,10 @@ export function ReportsPage() {
                       {codeAndName(gl.account)}
                     </Descriptions.Item>
                     <Descriptions.Item label={t('reports.openingBalance')}>
-                      {num(gl.openingBalance)}
+                      <Num>{formatAmount(gl.openingBalance)}</Num>
                     </Descriptions.Item>
                     <Descriptions.Item label={t('reports.closingBalance')}>
-                      {num(gl.closingBalance)}
+                      <Num>{formatAmount(gl.closingBalance)}</Num>
                     </Descriptions.Item>
                   </Descriptions>
                 )}
@@ -261,21 +261,21 @@ export function ReportsPage() {
                       dataIndex: 'debit',
                       align: 'right',
                       width: 110,
-                      render: numCell,
+                      render: amountCell,
                     },
                     {
                       title: t('journal.credit'),
                       dataIndex: 'credit',
                       align: 'right',
                       width: 110,
-                      render: numCell,
+                      render: amountCell,
                     },
                     {
                       title: t('reports.balance'),
                       dataIndex: 'balance',
                       align: 'right',
                       width: 120,
-                      render: numCell,
+                      render: amountCell,
                     },
                   ]}
                 />
@@ -293,13 +293,13 @@ export function ReportsPage() {
                   {statement && (
                     <Descriptions size="small" column={3} style={{ marginBottom: 8 }}>
                       <Descriptions.Item label={t('reports.openingBalance')}>
-                        {num(statement.openingBalance)}
+                        <Num>{formatAmount(statement.openingBalance)}</Num>
                       </Descriptions.Item>
                       <Descriptions.Item label={t('reports.closingBalance')}>
-                        {num(statement.closingBalance)}
+                        <Num>{formatAmount(statement.closingBalance)}</Num>
                       </Descriptions.Item>
                       <Descriptions.Item label={t('reports.balance')}>
-                        {num(statement.closingBalance)}
+                        <Num>{formatAmount(statement.closingBalance)}</Num>
                       </Descriptions.Item>
                     </Descriptions>
                   )}
@@ -324,21 +324,21 @@ export function ReportsPage() {
                         dataIndex: 'debit',
                         align: 'right',
                         width: 110,
-                        render: numCell,
+                        render: amountCell,
                       },
                       {
                         title: t('journal.credit'),
                         dataIndex: 'credit',
                         align: 'right',
                         width: 110,
-                        render: numCell,
+                        render: amountCell,
                       },
                       {
                         title: t('reports.balance'),
                         dataIndex: 'balance',
                         align: 'right',
                         width: 120,
-                        render: numCell,
+                        render: amountCell,
                       },
                     ]}
                   />

@@ -51,6 +51,9 @@ import {
 import { StatusBar } from '../components/StatusBar';
 import { PageHeader } from '../components/PageHeader';
 import { codeAndName } from '../i18n/displayName';
+import { Num } from '../components/Num';
+import { amountCell, amountOrBlankCell } from '../format/cells';
+import { formatAmount } from '../format/number';
 
 interface Account {
   id: string;
@@ -345,7 +348,7 @@ export function JournalPage() {
               dataIndex: 'totalDebit',
               width: 110,
               align: 'right',
-              render: (v: string) => Number(v).toFixed(3),
+              render: amountCell,
             },
             {
               title: t('common.actions'),
@@ -563,14 +566,14 @@ export function JournalPage() {
                 dataIndex: 'debit',
                 width: 130,
                 align: 'right',
-                render: (v: string | null) => (v ? Number(v).toFixed(3) : ''),
+                render: amountOrBlankCell,
               },
               {
                 title: t('journal.credit'),
                 dataIndex: 'credit',
                 width: 130,
                 align: 'right',
-                render: (v: string | null) => (v ? Number(v).toFixed(3) : ''),
+                render: amountOrBlankCell,
               },
             ]}
             summary={() => (
@@ -579,10 +582,10 @@ export function JournalPage() {
                   {t('journal.total')}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">
-                  {entry ? Number(entry.totalDebit).toFixed(3) : ''}
+                  {entry ? <Num>{formatAmount(entry.totalDebit)}</Num> : ''}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={2} align="right">
-                  {entry ? Number(entry.totalCredit).toFixed(3) : ''}
+                  {entry ? <Num>{formatAmount(entry.totalCredit)}</Num> : ''}
                 </Table.Summary.Cell>
               </Table.Summary.Row>
             )}

@@ -2,24 +2,28 @@ import { DeleteOutlined } from '@ant-design/icons';
 import { Button, InputNumber } from 'antd';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { lineAmounts, type LineAmounts } from '../format/invoiceMath';
+import { formatAmount, sum } from '../format/number';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
+import { Num } from './Num';
 
 export interface InvoiceItemOption {
   id: string;
   label: string;
-  /** Default sale (or purchase) price per base unit. */
-  price?: number | null;
-  /** Tax rate percent (0–100). */
-  taxRate: number;
+  /** Default sale (or purchase) price per base unit, as a decimal string. */
+  price?: string | null;
+  /** Tax rate percent (0–100), as a decimal string. */
+  taxRate: string;
   itemKind: 'STOCK' | 'SERVICE';
 }
 
+/** Editable line; numeric fields are decimal strings (InputNumber stringMode). */
 export interface InvoiceLineDraft {
   key: number;
   itemId?: string;
-  qty?: number | null;
-  price?: number | null;
-  discountPct?: number | null;
+  qty?: string | null;
+  price?: string | null;
+  discountPct?: string | null;
 }
 
 export const emptyInvoiceLine = (key: number): InvoiceLineDraft => ({ key });
@@ -34,23 +38,14 @@ interface Props {
   focusSignal?: number;
 }
 
-const r2 = (v: number) => Math.round(v * 100) / 100;
-
-interface Amounts {
-  net: number;
-  tax: number;
-  total: number;
-}
-
-function lineAmounts(l: InvoiceLineDraft, items: InvoiceItemOption[]): Amounts {
+function amountsFor(l: InvoiceLineDraft, items: InvoiceItemOption[]): LineAmounts {
   const item = items.find((i) => i.id === l.itemId);
-  const qty = l.qty ?? 0;
-  const price = l.price ?? item?.price ?? 0;
-  const gross = qty * price;
-  const discount = r2((gross * (l.discountPct ?? 0)) / 100);
-  const net = r2(gross - discount);
-  const tax = r2((net * (item?.taxRate ?? 0)) / 100);
-  return { net, tax, total: r2(net + tax) };
+  return lineAmounts({
+    qty: l.qty,
+    price: l.price ?? item?.price,
+    discountPct: l.discountPct,
+    taxRate: item?.taxRate,
+  });
 }
 
 /**
@@ -150,15 +145,12 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
     onKeyDown: (e: React.KeyboardEvent) => onCellKeyDown(e, row, col),
   });
 
-  const totals = lines.reduce(
-    (acc, l) => {
-      const a = lineAmounts(l, itemOptions);
-      return { net: acc.net + a.net, tax: acc.tax + a.tax, total: acc.total + a.total };
-    },
-    { net: 0, tax: 0, total: 0 },
-  );
-
-  const fmt = (v: number) => v.toFixed(2);
+  const lineTotals = lines.map((l) => amountsFor(l, itemOptions));
+  const totals = {
+    net: sum(lineTotals.map((a) => a.net)),
+    tax: sum(lineTotals.map((a) => a.tax)),
+    total: sum(lineTotals.map((a) => a.total)),
+  };
 
   return (
     <table ref={gridRef} className="entry-grid">
@@ -177,7 +169,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
       </thead>
       <tbody>
         {lines.map((l, row) => {
-          const a = lineAmounts(l, itemOptions);
+          const a = lineTotals[row];
           return (
             <tr key={l.key}>
               <td>{row + 1}</td>
@@ -186,7 +178,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                   placeholder={t('items.title')}
                   options={itemOptions.map((o) => ({
                     value: o.id,
-                    label: `${o.label}${o.price != null ? ` — ${o.price}` : ''}`,
+                    label: `${o.label}${o.price != null ? ` — ${formatAmount(o.price)}` : ''}`,
                   }))}
                   value={l.itemId}
                   onChange={(v) => {
@@ -202,8 +194,9 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                 />
               </td>
               <td {...cellProps(row, 2)}>
-                <InputNumber
-                  min={0.000001}
+                <InputNumber<string>
+                  stringMode
+                  min="0.000001"
                   value={l.qty}
                   onChange={(v) => update(l.key, { qty: v })}
                   style={{ width: '100%' }}
@@ -212,8 +205,9 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                 />
               </td>
               <td {...cellProps(row, 3)}>
-                <InputNumber
-                  min={0}
+                <InputNumber<string>
+                  stringMode
+                  min="0"
                   value={l.price}
                   onChange={(v) => update(l.key, { price: v })}
                   style={{ width: '100%' }}
@@ -222,9 +216,10 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                 />
               </td>
               <td {...cellProps(row, 4)}>
-                <InputNumber
-                  min={0}
-                  max={100}
+                <InputNumber<string>
+                  stringMode
+                  min="0"
+                  max="100"
                   value={l.discountPct}
                   onChange={(v) => update(l.key, { discountPct: v })}
                   style={{ width: '100%' }}
@@ -232,9 +227,15 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                   controls={false}
                 />
               </td>
-              <td style={{ textAlign: 'end' }}>{fmt(a.net)}</td>
-              <td style={{ textAlign: 'end' }}>{fmt(a.tax)}</td>
-              <td style={{ textAlign: 'end', fontWeight: 600 }}>{fmt(a.total)}</td>
+              <td className="num-cell">
+                <Num>{formatAmount(a.net)}</Num>
+              </td>
+              <td className="num-cell">
+                <Num>{formatAmount(a.tax)}</Num>
+              </td>
+              <td className="num-cell" style={{ fontWeight: 600 }}>
+                <Num>{formatAmount(a.total)}</Num>
+              </td>
               <td style={{ textAlign: 'center' }}>
                 {lines.length > 1 && (
                   <Button
@@ -255,9 +256,15 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
           <td colSpan={5} style={{ textAlign: 'end', fontWeight: 600 }}>
             {t('sales.totals')}
           </td>
-          <td style={{ textAlign: 'end', fontWeight: 600 }}>{fmt(totals.net)}</td>
-          <td style={{ textAlign: 'end', fontWeight: 600 }}>{fmt(totals.tax)}</td>
-          <td style={{ textAlign: 'end', fontWeight: 700 }}>{fmt(totals.total)}</td>
+          <td className="num-cell" style={{ fontWeight: 600 }}>
+            <Num>{formatAmount(totals.net)}</Num>
+          </td>
+          <td className="num-cell" style={{ fontWeight: 600 }}>
+            <Num>{formatAmount(totals.tax)}</Num>
+          </td>
+          <td className="num-cell" style={{ fontWeight: 700 }}>
+            <Num>{formatAmount(totals.total)}</Num>
+          </td>
           <td />
         </tr>
       </tfoot>

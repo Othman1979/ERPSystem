@@ -393,6 +393,7 @@ export const ar = {
   },
   treasury: {
     cashBoxes: 'الصناديق',
+    remaining: 'متبقي {{amount}}',
     bankAccounts: 'الحسابات البنكية',
     receipts: 'سندات القبض',
     payments: 'سندات الصرف',
@@ -876,6 +877,7 @@ export const en: typeof ar = {
   },
   treasury: {
     cashBoxes: 'Cash Boxes',
+    remaining: '{{amount}} remaining',
     bankAccounts: 'Bank Accounts',
     receipts: 'Receipts',
     payments: 'Payments',

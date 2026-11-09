@@ -25,6 +25,12 @@ body {
   white-space: nowrap;
 }
 
+/* Numeric cells in plain (non-antd) tables: right-aligned in both directions so decimals line up */
+.num-cell {
+  text-align: right;
+  white-space: nowrap;
+}
+
 /* Keep table headers readable on the gray canvas */
 .ant-table-thead > tr > th {
   background: #f5f5f5 !important;

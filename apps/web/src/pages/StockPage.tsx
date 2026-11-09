@@ -54,6 +54,8 @@ import {
 } from '../components/ItemLinesGrid';
 import { codeAndName, displayName, type Named } from '../i18n/displayName';
 import { Num } from '../components/Num';
+import { amountCell, qtyCell, unitCostCell } from '../format/cells';
+import { formatAmount, formatQty } from '../format/number';
 
 interface Warehouse {
   id: string;
@@ -205,9 +207,9 @@ function BalancesTab() {
           },
           { title: t('items.code'), dataIndex: 'itemCode', width: 110 },
           { title: t('common.name'), dataIndex: 'itemName' },
-          { title: t('stock.qty'), dataIndex: 'qtyOnHand', width: 110 },
+          { title: t('stock.qty'), dataIndex: 'qtyOnHand', width: 110, align: 'right' as const, render: qtyCell },
           { title: t('items.unit'), dataIndex: 'unit', width: 80 },
-          { title: t('items.minStock'), dataIndex: 'minStock', width: 100 },
+          { title: t('items.minStock'), dataIndex: 'minStock', width: 100, align: 'right' as const, render: qtyCell },
         ]}
       />
     </>
@@ -676,7 +678,7 @@ function CountsTab() {
   const { contextHolder, show, ok } = useApiMessage();
   const [modalOpen, setModalOpen] = useState(false);
   const [detail, setDetail] = useState<CountDetail | null>(null);
-  const [counted, setCounted] = useState<Record<string, number | null>>({});
+  const [counted, setCounted] = useState<Record<string, string | null>>({});
   const [form] = Form.useForm();
   const { whOptions } = useLookups();
 
@@ -711,15 +713,15 @@ function CountsTab() {
     setDetail(d);
     setCounted(
       Object.fromEntries(
-        d.lines.map((l) => [l.id, l.countedQty != null ? Number(l.countedQty) : null]),
+        d.lines.map((l) => [l.id, l.countedQty ?? null]),
       ),
     );
   };
 
   const saveLine = useMutation({
-    mutationFn: (v: { lineId: string; qty: number }) =>
+    mutationFn: (v: { lineId: string; qty: string }) =>
       stockDocumentsControllerUpdateCountLine(detail!.id, v.lineId, {
-        countedQty: String(v.qty),
+        countedQty: v.qty,
       } as never),
     onError: show,
   });
@@ -867,15 +869,16 @@ function CountsTab() {
                 title: t('common.name'),
                 render: (_: unknown, l: CountLine) => displayName(l.item) ?? '—',
               },
-              { title: t('stock.systemQty'), dataIndex: 'systemQty', width: 110 },
+              { title: t('stock.systemQty'), dataIndex: 'systemQty', width: 110, align: 'right' as const, render: qtyCell },
               {
                 title: t('stock.countedQty'),
                 width: 130,
                 render: (_: unknown, l: CountLine) =>
                   detail.status === 'DRAFT' ? (
-                    <InputNumber
+                    <InputNumber<string>
+                      stringMode
                       size="small"
-                      min={0}
+                      min="0"
                       value={counted[l.id] ?? null}
                       onChange={(v) => {
                         setCounted((c) => ({ ...c, [l.id]: v }));
@@ -883,14 +886,14 @@ function CountsTab() {
                       }}
                     />
                   ) : (
-                    (l.countedQty ?? '—')
+                    <Num>{formatQty(l.countedQty)}</Num>
                   ),
               },
               {
                 title: t('stock.diff'),
                 dataIndex: 'differenceQty',
                 width: 90,
-                render: (v: string | null) => (v != null ? <Num>{Number(v)}</Num> : '—'),
+                render: (v: string | null) => <Num>{formatQty(v)}</Num>,
               },
             ]}
           />
@@ -967,11 +970,11 @@ function MovementsTab() {
             render: (v: string) =>
               v === 'IN' ? <Tag color="green">IN</Tag> : <Tag color="red">OUT</Tag>,
           },
-          { title: t('stock.qtyIn'), dataIndex: 'qtyIn', width: 90 },
-          { title: t('stock.qtyOut'), dataIndex: 'qtyOut', width: 90 },
-          { title: t('stock.unitCost'), dataIndex: 'unitCost', width: 100 },
-          { title: t('stock.totalCost'), dataIndex: 'totalCost', width: 110 },
-          { title: t('stock.balanceAfter'), dataIndex: 'balanceQtyAfter', width: 110 },
+          { title: t('stock.qtyIn'), dataIndex: 'qtyIn', width: 90, align: 'right' as const, render: qtyCell },
+          { title: t('stock.qtyOut'), dataIndex: 'qtyOut', width: 90, align: 'right' as const, render: qtyCell },
+          { title: t('stock.unitCost'), dataIndex: 'unitCost', width: 100, align: 'right' as const, render: unitCostCell },
+          { title: t('stock.totalCost'), dataIndex: 'totalCost', width: 110, align: 'right' as const, render: amountCell },
+          { title: t('stock.balanceAfter'), dataIndex: 'balanceQtyAfter', width: 110, align: 'right' as const, render: qtyCell },
         ]}
       />
     </>
@@ -990,7 +993,7 @@ function ValuationTab() {
   return (
     <>
       <Typography.Title level={5}>
-        {t('stock.totalValue')}: {data?.totalValue ?? '—'}
+        {t('stock.totalValue')}: <Num>{formatAmount(data?.totalValue)}</Num>
       </Typography.Title>
       <Table
         rowKey="itemId"
@@ -1001,9 +1004,9 @@ function ValuationTab() {
         columns={[
           { title: t('items.code'), dataIndex: 'code', width: 110 },
           { title: t('common.name'), key: 'name', render: (_: unknown, r: Named) => displayName(r) },
-          { title: t('stock.qty'), dataIndex: 'qty', width: 110 },
-          { title: t('stock.avgCost'), dataIndex: 'avgCost', width: 110 },
-          { title: t('stock.value'), dataIndex: 'value', width: 120 },
+          { title: t('stock.qty'), dataIndex: 'qty', width: 110, align: 'right' as const, render: qtyCell },
+          { title: t('stock.avgCost'), dataIndex: 'avgCost', width: 110, align: 'right' as const, render: unitCostCell },
+          { title: t('stock.value'), dataIndex: 'value', width: 120, align: 'right' as const, render: amountCell },
         ]}
       />
     </>

@@ -48,6 +48,7 @@ import {
 import { StatusBar } from '../components/StatusBar';
 import { PageHeader } from '../components/PageHeader';
 import { codeAndName } from '../i18n/displayName';
+import { qtyCell, unitCostCell } from '../format/cells';
 
 interface GoodsNote {
   id: string;
@@ -579,14 +580,14 @@ export function GoodsNotesSection({
                 dataIndex: 'qty',
                 width: 110,
                 align: 'right' as const,
-                render: (v: string) => Number(v).toFixed(3),
+                render: qtyCell,
               },
               {
                 title: t('stock.unitCost'),
                 dataIndex: 'unitCost',
                 width: 110,
                 align: 'right' as const,
-                render: (v?: string | null) => (v != null ? Number(v).toFixed(2) : '—'),
+                render: unitCostCell,
               },
             ]}
           />

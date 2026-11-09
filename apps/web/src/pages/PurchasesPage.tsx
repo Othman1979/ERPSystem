@@ -61,6 +61,8 @@ import {
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import { codeAndName, displayName } from '../i18n/displayName';
+import { amountCell, qtyCell, unitCostCell } from '../format/cells';
+import { dec, formatAmount } from '../format/number';
 
 // ------------------------------------------------------------------ types
 
@@ -152,7 +154,7 @@ interface PurchaseReturn {
   lines?: ReturnLine[];
 }
 
-const money = (v?: string | null) => (v != null ? Number(v).toFixed(2) : '—');
+const money = (v?: string | null) => formatAmount(v);
 
 // ------------------------------------------------------------------ page
 
@@ -206,8 +208,8 @@ function usePurchaseLookups() {
   });
 
   const taxRateById = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const tc of taxes.data ?? []) m.set(tc.id, Number(tc.rate));
+    const m = new Map<string, string>();
+    for (const tc of taxes.data ?? []) m.set(tc.id, tc.rate);
     return m;
   }, [taxes.data]);
   const defaultTaxId = useMemo(
@@ -222,8 +224,8 @@ function usePurchaseLookups() {
         .map((i) => ({
           id: i.id,
           label: codeAndName(i),
-          price: i.purchasePrice != null ? Number(i.purchasePrice) : null,
-          taxRate: taxRateById.get(i.taxCategoryId ?? '') ?? taxRateById.get(defaultTaxId ?? '') ?? 0,
+          price: i.purchasePrice ?? null,
+          taxRate: taxRateById.get(i.taxCategoryId ?? '') ?? taxRateById.get(defaultTaxId ?? '') ?? '0',
           itemKind: i.itemKind,
         })),
     [items.data, taxRateById, defaultTaxId],
@@ -339,15 +341,15 @@ function PurchaseInvoicesTab() {
       title: t('purchases.grandTotal'),
       dataIndex: 'grandTotal',
       width: 120,
-      align: 'end' as const,
-      render: money,
+      align: 'right' as const,
+      render: amountCell,
     },
     {
       title: t('purchases.paid'),
       dataIndex: 'paidAmount',
       width: 110,
-      align: 'end' as const,
-      render: money,
+      align: 'right' as const,
+      render: amountCell,
     },
     {
       title: t('common.status'),
@@ -477,9 +479,9 @@ function PurchaseInvoiceForm({
       return invoice.lines.map((l, i) => ({
         key: i + 1,
         itemId: l.itemId,
-        qty: Number(l.qtyBase),
-        price: Number(l.unitCost),
-        discountPct: Number(l.discountPct),
+        qty: l.qtyBase,
+        price: l.unitCost,
+        discountPct: l.discountPct,
       }));
     }
     return [emptyInvoiceLine(1), emptyInvoiceLine(2)];
@@ -508,8 +510,8 @@ function PurchaseInvoiceForm({
           .map((l) => ({
             itemId: l.itemId,
             qty: String(l.qty),
-            unitCost: String(l.price ?? 0),
-            discountPct: l.discountPct != null ? String(l.discountPct) : undefined,
+            unitCost: l.price ?? '0',
+            discountPct: l.discountPct ?? undefined,
           })),
       } as never;
       const res = isNew
@@ -756,7 +758,7 @@ function PurchaseInvoiceView({
           <Typography.Text strong>{money(invoice.grandTotal)}</Typography.Text>
         </Descriptions.Item>
         <Descriptions.Item label={t('purchases.paid')}>{money(invoice.paidAmount)}</Descriptions.Item>
-        {!!invoice.costTotal && Number(invoice.costTotal) > 0 && (
+        {dec(invoice.costTotal).gt(0) && (
           <Descriptions.Item label={t('purchases.costTotal')}>
             {money(invoice.costTotal)}
           </Descriptions.Item>
@@ -774,12 +776,12 @@ function PurchaseInvoiceView({
             render: (_: unknown, l: InvoiceLine) =>
               l.item ? codeAndName(l.item) : l.itemId,
           },
-          { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'end' as const, render: money },
-          { title: t('purchases.unitCost'), dataIndex: 'unitCost', width: 110, align: 'end' as const, render: money },
-          { title: t('purchases.discountPct'), dataIndex: 'discountPct', width: 90, align: 'end' as const },
-          { title: t('purchases.net'), dataIndex: 'netAmount', width: 110, align: 'end' as const, render: money },
-          { title: t('purchases.tax'), dataIndex: 'taxAmount', width: 100, align: 'end' as const, render: money },
-          { title: t('purchases.total'), dataIndex: 'lineTotal', width: 110, align: 'end' as const, render: money },
+          { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'right' as const, render: qtyCell },
+          { title: t('purchases.unitCost'), dataIndex: 'unitCost', width: 110, align: 'right' as const, render: unitCostCell },
+          { title: t('purchases.discountPct'), dataIndex: 'discountPct', width: 90, align: 'right' as const },
+          { title: t('purchases.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, render: amountCell },
+          { title: t('purchases.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
+          { title: t('purchases.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
         ]}
       />
     </Card>
@@ -869,7 +871,7 @@ function PurchaseReturnsTab() {
       width: 110,
       render: (v: string) => <Tag color={v === 'CASH' ? 'green' : 'blue'}>{t(`purchases.${v}`)}</Tag>,
     },
-    { title: t('purchases.grandTotal'), dataIndex: 'grandTotal', width: 120, align: 'end' as const, render: money },
+    { title: t('purchases.grandTotal'), dataIndex: 'grandTotal', width: 120, align: 'right' as const, render: amountCell },
     {
       title: t('common.status'),
       dataIndex: 'status',
@@ -969,8 +971,8 @@ function PurchaseReturnsTab() {
                   render: (_: unknown, l: ReturnLine) =>
                     l.item ? codeAndName(l.item) : l.itemId,
                 },
-                { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'end' as const, render: money },
-                { title: t('purchases.total'), dataIndex: 'lineTotal', width: 120, align: 'end' as const, render: money },
+                { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'right' as const, render: qtyCell },
+                { title: t('purchases.total'), dataIndex: 'lineTotal', width: 120, align: 'right' as const, render: amountCell },
               ]}
             />
           </>
@@ -996,7 +998,7 @@ function PurchaseReturnModal({
   const [refundType, setRefundType] = useState<'CASH' | 'CREDIT'>('CREDIT');
   const [cashAccountId, setCashAccountId] = useState<string | undefined>();
   const [reason, setReason] = useState('');
-  const [qtyByLine, setQtyByLine] = useState<Record<string, number>>({});
+  const [qtyByLine, setQtyByLine] = useState<Record<string, string>>({});
 
   const lookups = usePurchaseLookups();
   const { data: invoices } = useQuery({
@@ -1023,8 +1025,8 @@ function PurchaseReturnModal({
         cashAccountId: refundType === 'CASH' ? cashAccountId : undefined,
         reason: reason || undefined,
         lines: (invoice?.lines ?? [])
-          .filter((l) => (qtyByLine[l.id] ?? 0) > 0)
-          .map((l) => ({ originalLineId: l.id, qty: String(qtyByLine[l.id]) })),
+          .filter((l) => dec(qtyByLine[l.id]).gt(0))
+          .map((l) => ({ originalLineId: l.id, qty: qtyByLine[l.id] })),
       } as never),
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
@@ -1057,7 +1059,7 @@ function PurchaseReturnModal({
       ),
   });
 
-  const hasLines = Object.values(qtyByLine).some((q) => q > 0);
+  const hasLines = Object.values(qtyByLine).some((q) => dec(q).gt(0));
 
   return (
     <Modal
@@ -1162,18 +1164,19 @@ function PurchaseReturnModal({
               title: t('stock.qty'),
               dataIndex: 'qtyBase',
               width: 100,
-              align: 'end' as const,
-              render: (v: string) => Number(v).toFixed(3),
+              align: 'right' as const,
+              render: qtyCell,
             },
             {
               title: t('purchases.returnQty'),
               width: 130,
               render: (_: unknown, l: InvoiceLine) => (
-                <InputNumber
-                  min={0}
-                  max={Number(l.qtyBase)}
-                  value={qtyByLine[l.id] ?? 0}
-                  onChange={(v) => setQtyByLine((m) => ({ ...m, [l.id]: v ?? 0 }))}
+                <InputNumber<string>
+                  stringMode
+                  min="0"
+                  max={l.qtyBase}
+                  value={qtyByLine[l.id] ?? '0'}
+                  onChange={(v) => setQtyByLine((m) => ({ ...m, [l.id]: v ?? '0' }))}
                   style={{ width: '100%' }}
                   size="small"
                 />
@@ -1183,8 +1186,8 @@ function PurchaseReturnModal({
               title: t('purchases.total'),
               dataIndex: 'lineTotal',
               width: 110,
-              align: 'end' as const,
-              render: money,
+              align: 'right' as const,
+              render: amountCell,
             },
           ]}
         />

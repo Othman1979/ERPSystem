@@ -47,6 +47,9 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { codeAndName, displayName, type Named } from '../i18n/displayName';
 import { Num } from '../components/Num';
+import type Decimal from 'decimal.js';
+import { amountCell, unitCostCell } from '../format/cells';
+import { dec, formatAmount, formatQty } from '../format/number';
 
 interface Unit {
   id: string;
@@ -111,7 +114,8 @@ interface ItemDetail extends Item {
   barcodes?: { id: string; barcode: string; itemUnit?: { unit?: { code: string } } | null }[];
 }
 
-const num = (v?: string | null) => (v != null ? Number(v) : null);
+// API decimals stay strings in forms (InputNumber stringMode); blank becomes undefined.
+const num = (v?: string | null) => v ?? undefined;
 
 function useApiError() {
   const { t } = useTranslation();
@@ -176,9 +180,9 @@ function ItemsTab() {
       ),
   });
 
-  const qtyByItem = new Map<string, number>();
+  const qtyByItem = new Map<string, Decimal>();
   for (const b of balances ?? []) {
-    qtyByItem.set(b.itemId, (qtyByItem.get(b.itemId) ?? 0) + Number(b.qtyOnHand));
+    qtyByItem.set(b.itemId, dec(qtyByItem.get(b.itemId)).plus(dec(b.qtyOnHand)));
   }
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['items'] });
@@ -187,10 +191,10 @@ function ItemsTab() {
     mutationFn: async (v: Record<string, unknown>): Promise<unknown> => {
       const payload = {
         ...v,
-        salePrice: v.salePrice != null ? String(v.salePrice) : undefined,
-        purchasePrice: v.purchasePrice != null ? String(v.purchasePrice) : undefined,
-        minStock: v.minStock != null ? String(v.minStock) : undefined,
-        maxStock: v.maxStock != null ? String(v.maxStock) : undefined,
+        salePrice: v.salePrice ?? undefined,
+        purchasePrice: v.purchasePrice ?? undefined,
+        minStock: v.minStock ?? undefined,
+        maxStock: v.maxStock ?? undefined,
         itemGroupId: v.itemGroupId || undefined,
         defaultWarehouseId: v.defaultWarehouseId || undefined,
         imageUrl: v.imageUrl || undefined,
@@ -235,10 +239,10 @@ function ItemsTab() {
       itemGroupId: row.itemGroup?.id ?? undefined,
       taxCategoryId: row.taxCategory?.id ?? undefined,
       defaultWarehouseId: row.defaultWarehouse?.id ?? undefined,
-      salePrice: num(row.salePrice) ?? undefined,
-      purchasePrice: num(row.purchasePrice) ?? undefined,
-      minStock: num(row.minStock) ?? undefined,
-      maxStock: num(row.maxStock) ?? undefined,
+      salePrice: num(row.salePrice),
+      purchasePrice: num(row.purchasePrice),
+      minStock: num(row.minStock),
+      maxStock: num(row.maxStock),
       salePriceIncludesTax: row.salePriceIncludesTax,
       imageUrl: row.imageUrl ?? undefined,
     });
@@ -249,9 +253,13 @@ function ItemsTab() {
     if (r.itemKind !== 'STOCK') return <Tag>{t('items.service')}</Tag>;
     const qty = qtyByItem.get(r.id);
     if (qty === undefined) return <Tag color="default">0</Tag>;
-    const min = num(r.minStock) ?? 0;
-    const color = qty <= 0 ? 'red' : qty <= min ? 'orange' : 'green';
-    return <Tag color={color}>{qty.toFixed(3)}</Tag>;
+    const min = dec(r.minStock);
+    const color = qty.lte(0) ? 'red' : qty.lte(min) ? 'orange' : 'green';
+    return (
+      <Tag color={color}>
+        <Num>{formatQty(qty)}</Num>
+      </Tag>
+    );
   };
 
   const columns = [
@@ -272,22 +280,22 @@ function ItemsTab() {
     {
       title: t('items.onHand'),
       width: 100,
-      align: 'end' as const,
+      align: 'right' as const,
       render: (_: unknown, r: Item) => stockBadge(r),
     },
     {
       title: t('items.salePrice'),
       dataIndex: 'salePrice',
       width: 100,
-      align: 'end' as const,
-      render: (v: string | null) => (v != null ? Number(v).toFixed(2) : '—'),
+      align: 'right' as const,
+      render: amountCell,
     },
     {
       title: t('items.purchasePrice'),
       dataIndex: 'purchasePrice',
       width: 110,
-      align: 'end' as const,
-      render: (v: string | null) => (v != null ? Number(v).toFixed(2) : '—'),
+      align: 'right' as const,
+      render: amountCell,
     },
     {
       title: t('common.status'),
@@ -399,7 +407,7 @@ function ItemsTab() {
                   <Space style={{ justifyContent: 'space-between', width: '100%' }}>
                     <span>{t('items.onHand')}: {stockBadge(r)}</span>
                     <Typography.Text strong>
-                      {r.salePrice != null ? `${Number(r.salePrice).toFixed(2)}` : '—'}
+                      {formatAmount(r.salePrice)}
                     </Typography.Text>
                   </Space>
                   <Space size={4} wrap>
@@ -496,10 +504,10 @@ function ItemsTab() {
           <Typography.Title level={5}>{t('items.pricing')}</Typography.Title>
           <Space style={{ display: 'flex' }} wrap>
             <Form.Item name="salePrice" label={t('items.salePrice')} style={{ flex: 1, minWidth: 120 }}>
-              <InputNumber min={0} step={0.001} style={{ width: '100%' }} />
+              <InputNumber<string> stringMode min="0" step="0.001" style={{ width: '100%' }} />
             </Form.Item>
             <Form.Item name="purchasePrice" label={t('items.purchasePrice')} style={{ flex: 1, minWidth: 120 }}>
-              <InputNumber min={0} step={0.001} style={{ width: '100%' }} />
+              <InputNumber<string> stringMode min="0" step="0.001" style={{ width: '100%' }} />
             </Form.Item>
             <Form.Item name="salePriceIncludesTax" label={t('items.priceIncludesTax')} valuePropName="checked" style={{ minWidth: 140 }}>
               <Switch />
@@ -513,10 +521,10 @@ function ItemsTab() {
                 getFieldValue('itemKind') === 'STOCK' ? (
                   <>
                     <Form.Item name="minStock" label={t('items.minStock')} style={{ flex: 1, minWidth: 110 }}>
-                      <InputNumber min={0} step={0.000001} style={{ width: '100%' }} />
+                      <InputNumber<string> stringMode min="0" step="0.000001" style={{ width: '100%' }} />
                     </Form.Item>
                     <Form.Item name="maxStock" label={t('items.maxStock')} style={{ flex: 1, minWidth: 110 }}>
-                      <InputNumber min={0} step={0.000001} style={{ width: '100%' }} />
+                      <InputNumber<string> stringMode min="0" step="0.000001" style={{ width: '100%' }} />
                     </Form.Item>
                     <Form.Item name="defaultWarehouseId" label={t('items.defaultWarehouse')} style={{ flex: 1, minWidth: 160 }}>
                       <Select
@@ -592,7 +600,7 @@ function LedgerModal({
         {(data?.balances?.length ?? 0) > 0 && (
           <Typography.Text type="secondary">
             {t('items.onHand')}:{' '}
-            {data!.balances.map((b) => `${b.warehouse.code}: ${Number(b.qtyOnHand).toFixed(3)}`).join(' · ')}
+            {data!.balances.map((b) => `${b.warehouse.code}: ${formatQty(b.qtyOnHand)}`).join(' · ')}
           </Typography.Text>
         )}
       </Space>
@@ -624,36 +632,36 @@ function LedgerModal({
             title: t('items.qtyIn'),
             dataIndex: 'qtyIn',
             width: 100,
-            align: 'end' as const,
-            render: (v: string) => (Number(v) > 0 ? `${Number(v).toFixed(3)} ${unit}` : '—'),
+            align: 'right' as const,
+            render: (v: string) => (dec(v).gt(0) ? <Num>{`${formatQty(v)} ${unit}`}</Num> : '—'),
           },
           {
             title: t('items.qtyOut'),
             dataIndex: 'qtyOut',
             width: 100,
-            align: 'end' as const,
-            render: (v: string) => (Number(v) > 0 ? `${Number(v).toFixed(3)} ${unit}` : '—'),
+            align: 'right' as const,
+            render: (v: string) => (dec(v).gt(0) ? <Num>{`${formatQty(v)} ${unit}`}</Num> : '—'),
           },
           {
             title: t('items.balance'),
             dataIndex: 'balanceQtyAfter',
             width: 110,
-            align: 'end' as const,
-            render: (v: string) => <Num>{`${Number(v).toFixed(3)} ${unit}`}</Num>,
+            align: 'right' as const,
+            render: (v: string) => <Num>{`${formatQty(v)} ${unit}`}</Num>,
           },
           {
             title: t('items.unitCost'),
             dataIndex: 'unitCost',
             width: 100,
-            align: 'end' as const,
-            render: (v: string) => Number(v).toFixed(3),
+            align: 'right' as const,
+            render: unitCostCell,
           },
           {
             title: t('items.wac'),
             dataIndex: 'avgCostAfter',
             width: 100,
-            align: 'end' as const,
-            render: (v: string) => Number(v).toFixed(3),
+            align: 'right' as const,
+            render: unitCostCell,
           },
         ]}
         summary={() => (
@@ -661,10 +669,10 @@ function LedgerModal({
             <Table.Summary.Cell index={0} colSpan={4}>
               <Typography.Text strong>{t('items.totals')}</Typography.Text>
             </Table.Summary.Cell>
-            <Table.Summary.Cell index={1} align="end">
+            <Table.Summary.Cell index={1} align="right">
               <Typography.Text strong>
-                {Number(data?.totals?.qtyIn ?? 0).toFixed(3)} /{' '}
-                {Number(data?.totals?.qtyOut ?? 0).toFixed(3)}
+                <Num>{formatQty(data?.totals?.qtyIn ?? '0')}</Num> /{' '}
+                <Num>{formatQty(data?.totals?.qtyOut ?? '0')}</Num>
               </Typography.Text>
             </Table.Summary.Cell>
             <Table.Summary.Cell index={2} colSpan={3} />
@@ -709,7 +717,7 @@ function BarcodeModal({ item, onClose }: { item: Item | null; onClose: () => voi
               <div className="barcode-label-name">{data?.nameAr}</div>
               <svg ref={(el) => { if (el) JsBarcode(el, code, { format: 'CODE128', width: 1.4, height: 40, displayValue: true, fontSize: 12 }); }} />
               <div className="barcode-label-price">
-                {data?.salePrice != null ? `${Number(data.salePrice).toFixed(2)}` : ''}
+                {formatAmount(data?.salePrice, '')}
               </div>
             </div>
           ))}

@@ -24,8 +24,11 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { bothNames, codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
+import type Decimal from 'decimal.js';
+import { amountCell } from '../format/cells';
+import { dec, formatAmount } from '../format/number';
 
-interface Account {
+export interface Account {
   id: string;
   code: string;
   nameAr: string;
@@ -40,12 +43,12 @@ interface Account {
   isActive: boolean;
 }
 
-interface TreeNode extends Account {
+export interface TreeNode extends Account {
   children?: TreeNode[];
   /** Rolled-up totals over POSTED journal lines (own + descendants). */
-  balDebit: number;
-  balCredit: number;
-  balBalance: number;
+  balDebit: Decimal;
+  balCredit: Decimal;
+  balBalance: Decimal;
 }
 
 interface TrialRow {
@@ -54,10 +57,10 @@ interface TrialRow {
   totalCredit: string;
 }
 
-function buildTree(accounts: Account[]): TreeNode[] {
+export function buildTree(accounts: Account[]): TreeNode[] {
   const byId = new Map<string, TreeNode>();
   for (const a of accounts)
-    byId.set(a.id, { ...a, balDebit: 0, balCredit: 0, balBalance: 0 });
+    byId.set(a.id, { ...a, balDebit: dec(0), balCredit: dec(0), balBalance: dec(0) });
   const roots: TreeNode[] = [];
   for (const node of byId.values()) {
     const parent = node.parentId ? byId.get(node.parentId) : undefined;
@@ -75,21 +78,24 @@ function buildTree(accounts: Account[]): TreeNode[] {
   return roots;
 }
 
-const ZERO = { debit: 0, credit: 0 };
+const ZERO = { debit: dec(0), credit: dec(0) };
 
 /** Attach rolled-up posted totals to every node (own + descendants). */
-function applyBalances(nodes: TreeNode[], balMap: Map<string, { debit: number; credit: number }>) {
-  let debit = 0;
-  let credit = 0;
+export function applyBalances(
+  nodes: TreeNode[],
+  balMap: Map<string, { debit: Decimal; credit: Decimal }>,
+) {
+  let debit = dec(0);
+  let credit = dec(0);
   for (const n of nodes) {
     const own = balMap.get(n.id) ?? ZERO;
     const child = n.children?.length ? applyBalances(n.children, balMap) : ZERO;
-    n.balDebit = own.debit + child.debit;
-    n.balCredit = own.credit + child.credit;
+    n.balDebit = own.debit.plus(child.debit);
+    n.balCredit = own.credit.plus(child.credit);
     n.balBalance =
-      n.normalBalance === 'DEBIT' ? n.balDebit - n.balCredit : n.balCredit - n.balDebit;
-    debit += n.balDebit;
-    credit += n.balCredit;
+      n.normalBalance === 'DEBIT' ? n.balDebit.minus(n.balCredit) : n.balCredit.minus(n.balDebit);
+    debit = debit.plus(n.balDebit);
+    credit = credit.plus(n.balCredit);
   }
   return { debit, credit };
 }
@@ -122,16 +128,13 @@ export function AccountsPage() {
       const balMap = new Map(
         trial.rows.map((r) => [
           r.accountId,
-          { debit: Number(r.totalDebit), credit: Number(r.totalCredit) },
+          { debit: dec(r.totalDebit), credit: dec(r.totalCredit) },
         ]),
       );
       applyBalances(nodes, balMap);
     }
     return nodes;
   }, [data, trial]);
-
-  const fmt = (v: number) =>
-    v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const watchedParentId = Form.useWatch('parentId', form) as string | undefined;
   const isCreate = !editing;
@@ -262,27 +265,27 @@ export function AccountsPage() {
           {
             title: t('accounts.debit'),
             width: 110,
-            align: 'end',
+            align: 'right',
             render: (_: unknown, a: Account) =>
-              trialError ? '—' : fmt((a as TreeNode).balDebit),
+              trialError ? '—' : amountCell((a as TreeNode).balDebit),
           },
           {
             title: t('accounts.credit'),
             width: 110,
-            align: 'end',
+            align: 'right',
             render: (_: unknown, a: Account) =>
-              trialError ? '—' : fmt((a as TreeNode).balCredit),
+              trialError ? '—' : amountCell((a as TreeNode).balCredit),
           },
           {
             title: t('accounts.balance'),
             width: 120,
-            align: 'end',
+            align: 'right',
             render: (_: unknown, a: Account) => {
               if (trialError) return '—';
               const bal = (a as TreeNode).balBalance;
               return (
-                <Num style={{ color: bal < 0 ? '#c42b1c' : undefined }}>
-                  {fmt(bal)}
+                <Num style={{ color: bal.isNegative() ? '#c42b1c' : undefined }}>
+                  {formatAmount(bal)}
                 </Num>
               );
             },
