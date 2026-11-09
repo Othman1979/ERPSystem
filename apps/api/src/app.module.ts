@@ -12,6 +12,7 @@ import { AuthGuard } from './common/guards/auth.guard.js';
 import { PermissionsGuard } from './common/guards/permissions.guard.js';
 import { PlatformAdminGuard } from './common/guards/platform-admin.guard.js';
 import { TenantGuard } from './common/guards/tenant.guard.js';
+import { BranchGuard } from './common/guards/branch.guard.js';
 import { HealthModule } from './health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { AuthModule } from './platform/auth/auth.module.js';
@@ -63,6 +64,7 @@ import { TreasuryModule } from './platform/treasury/treasury.module.js';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: TenantGuard },
+    { provide: APP_GUARD, useClass: BranchGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_GUARD, useClass: PlatformAdminGuard },
   ],

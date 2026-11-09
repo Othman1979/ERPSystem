@@ -8,7 +8,15 @@
  */
 import { apiFetchData } from './runtime';
 
-export { ApiError, apiFetch, apiFetchData, getAccessToken, setAccessToken } from './runtime';
+export {
+  ApiError,
+  apiFetch,
+  apiFetchData,
+  getAccessToken,
+  getBranchId,
+  setAccessToken,
+  setBranchId,
+} from './runtime';
 export type { ApiErrorBody, ApiResponse } from './runtime';
 
 // orval-generated client (do not edit src/generated/* by hand)

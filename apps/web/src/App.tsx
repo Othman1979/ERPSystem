@@ -145,7 +145,8 @@ function HomeScreen() {
 
 function AppShell() {
   const { t } = useTranslation();
-  const { me, logout, switchTenant } = useAuth();
+  const { me, logout, switchTenant, branchId, setBranch } = useAuth();
+  const branches = me?.currentMembership?.branches ?? [];
   const location = useLocation();
   const navigate = useNavigate();
   const screens = Grid.useBreakpoint();
@@ -225,6 +226,19 @@ function AppShell() {
         {current && isMobile && <span className="topbar-title">{t(current.label)}</span>}
         <div style={{ flex: 1 }} />
         <Space size={isMobile ? 4 : 12}>
+          {branches.length > 1 && (
+            <Select
+              size="small"
+              className="topbar-branch"
+              style={{ minWidth: isMobile ? 110 : 150 }}
+              value={branchId ?? undefined}
+              onChange={setBranch}
+              options={branches.map((b) => ({ value: b.id, label: displayName(b) }))}
+              popupMatchSelectWidth={false}
+              aria-label={t('nav.branch')}
+              title={t('nav.branch')}
+            />
+          )}
           {me && me.tenants.length > 1 && !isMobile && (
             <Select
               size="small"

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
+import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -106,6 +107,8 @@ export class PurchaseInvoicesService {
         data: {
           tenantId,
           companyId,
+          // Branch from the request context (BranchGuard), never the body — ADR-003.
+          branchId: currentBranchId(),
           invoiceDate: new Date(dto.invoiceDate),
           dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
           supplierId: BigInt(dto.supplierId),
@@ -157,6 +160,7 @@ export class PurchaseInvoicesService {
     if (inv.status !== 'DRAFT') {
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
     }
+    assertBranchAllowed(inv.branchId);
     const lines = await this.resolveLines(db, tenantId, companyId, dto.lines);
     await this.assertHeader(db, companyId, dto, lines);
 
@@ -213,6 +217,7 @@ export class PurchaseInvoicesService {
     if (inv.status !== 'DRAFT') {
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be deleted');
     }
+    assertBranchAllowed(inv.branchId);
     await db.purchaseInvoice.delete({ where: { id } });
     return { deleted: true };
   }
@@ -233,6 +238,7 @@ export class PurchaseInvoicesService {
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Invoice is not a draft');
         }
+        assertBranchAllowed(draft.branchId);
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Invoice has no lines');
         }
@@ -329,6 +335,7 @@ export class PurchaseInvoicesService {
         const entry = await this.posting.postEntry(tx, {
           tenantId,
           companyId,
+          branchId: draft.branchId,
           entryDate: invoiceDate,
           fiscalPeriodId: period.id,
           entryNo,

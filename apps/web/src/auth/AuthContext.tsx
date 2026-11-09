@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ApiError,
   authControllerLogin,
@@ -7,6 +8,7 @@ import {
   meControllerMe,
   meControllerSwitchTenant,
   setAccessToken,
+  setBranchId,
   type RegisterDto,
 } from '@erp/api-client';
 
@@ -18,6 +20,13 @@ export interface TenantSummary {
   roleNameAr: string;
   roleNameEn: string | null;
   isCurrent: boolean;
+}
+
+export interface BranchSummary {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn: string | null;
 }
 
 export interface MeData {
@@ -39,6 +48,8 @@ export interface MeData {
     membershipId: string;
     roleCode: string;
     defaultBranchId: string | null;
+    /** Branches this member may switch to (all active ones when none are assigned). */
+    branches: BranchSummary[];
   } | null;
 }
 
@@ -49,19 +60,58 @@ interface AuthState {
   register: (dto: RegisterDto) => Promise<void>;
   logout: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
+  /** Branch of every request (X-Branch-Id), chosen in the top bar — ADR-003. */
+  branchId: string | null;
+  setBranch: (branchId: string) => void;
   refreshMe: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 
+const branchStorageKey = (tenantId: string) => `erp.branch.${tenantId}`;
+
+function readStoredBranch(tenantId: string): string | null {
+  try {
+    return window.localStorage.getItem(branchStorageKey(tenantId));
+  } catch {
+    return null;
+  }
+}
+
+function storeBranch(tenantId: string, branchId: string): void {
+  try {
+    window.localStorage.setItem(branchStorageKey(tenantId), branchId);
+  } catch {
+    // Not critical: the default branch is used next time.
+  }
+}
+
+/** Last branch picked on this browser if still allowed, else the default, else the first allowed. */
+function pickBranch(me: MeData): string | null {
+  const m = me.currentMembership;
+  const tenantId = me.currentTenant?.tenantId;
+  if (!m || !tenantId) return null;
+  const allowed = new Set(m.branches.map((b) => b.id));
+  const stored = readStoredBranch(tenantId);
+  if (stored && allowed.has(stored)) return stored;
+  if (m.defaultBranchId && allowed.has(m.defaultBranchId)) return m.defaultBranchId;
+  return m.branches[0]?.id ?? null;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<AuthState['status']>('loading');
   const [me, setMe] = useState<MeData | null>(null);
+  const [branchId, setBranchState] = useState<string | null>(null);
 
   const refreshMe = useCallback(async () => {
     try {
       const res = await meControllerMe();
-      setMe(res.data as unknown as MeData);
+      const data = res.data as unknown as MeData;
+      const branch = pickBranch(data);
+      setBranchId(branch);
+      setBranchState(branch);
+      setMe(data);
       setStatus('authed');
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -98,10 +148,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await authControllerLogout();
     } finally {
       setAccessToken(null);
+      setBranchId(null);
+      setBranchState(null);
       setMe(null);
       setStatus('guest');
     }
   }, []);
+
+  const setBranch = useCallback(
+    (id: string) => {
+      const tenantId = me?.currentTenant?.tenantId;
+      if (!tenantId || !me?.currentMembership?.branches.some((b) => b.id === id)) return;
+      storeBranch(tenantId, id);
+      setBranchId(id);
+      setBranchState(id);
+      // Every list and lookup is branch-scoped from now on: refetch them.
+      void queryClient.invalidateQueries();
+    },
+    [me, queryClient],
+  );
 
   const switchTenant = useCallback(async (tenantId: string) => {
     const res = await meControllerSwitchTenant({ tenantId });
@@ -111,7 +176,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshMe]);
 
   return (
-    <AuthContext.Provider value={{ status, me, login, register, logout, switchTenant, refreshMe }}>
+    <AuthContext.Provider
+      value={{ status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch }}
+    >
       {children}
     </AuthContext.Provider>
   );

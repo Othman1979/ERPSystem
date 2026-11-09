@@ -267,6 +267,24 @@ export class AuthService {
     if (!user) throw new DomainError(ErrorCode.UNAUTHORIZED, 'User not found');
 
     const current = memberships.find((m) => m.tenantId === tenantId) ?? null;
+    // Branches this member may switch between (ADR-003): assigned ones, or all
+    // active branches when none are assigned. Tenant-scoped client.
+    let branches: { id: string; code: string; nameAr: string; nameEn: string | null }[] = [];
+    if (current) {
+      const db = this.prisma.forTenant(current.tenantId);
+      const [assigned, active] = await Promise.all([
+        db.membershipBranch.findMany({ where: { membershipId: current.id }, select: { branchId: true } }),
+        db.branch.findMany({
+          where: { isActive: true },
+          select: { id: true, code: true, nameAr: true, nameEn: true },
+          orderBy: { code: 'asc' },
+        }),
+      ]);
+      const allowed = new Set(assigned.map((a) => a.branchId));
+      branches = active
+        .filter((b) => allowed.size === 0 || allowed.has(b.id))
+        .map((b) => ({ id: b.id.toString(), code: b.code, nameAr: b.nameAr, nameEn: b.nameEn }));
+    }
     return {
       user,
       tenants: memberships.map((m) => ({
@@ -291,6 +309,7 @@ export class AuthService {
             membershipId: current.id.toString(),
             roleCode: current.role.code,
             defaultBranchId: current.defaultBranchId?.toString() ?? null,
+            branches,
           }
         : null,
     };
