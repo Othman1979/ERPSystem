@@ -27,6 +27,7 @@ import {
   settingsControllerUpdateUnit,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { displayName } from '../i18n/displayName';
 
 type LookupKind = 'unit' | 'taxCategory' | 'paymentMethod';
 
@@ -161,7 +162,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
         pagination={false}
         columns={[
           { title: t('settings.code'), dataIndex: 'code', width: 110 },
-          { title: t('settings.nameAr'), dataIndex: 'nameAr' },
+          { title: t('common.name'), key: 'name', render: (_: unknown, r: LookupRow) => displayName(r) },
           { title: t('settings.nameEn'), dataIndex: 'nameEn' },
           ...(kind === 'unit'
             ? [{ title: t('settings.unEceCode'), dataIndex: 'unEceCode', width: 110, render: (v?: string | null) => v ?? '—' }]

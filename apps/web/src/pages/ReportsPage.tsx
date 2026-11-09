@@ -9,6 +9,8 @@ import {
   journalControllerTrialBalance,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { bothNames, codeAndName } from '../i18n/displayName';
+import { Num } from '../components/Num';
 
 interface Account {
   id: string;
@@ -77,6 +79,7 @@ function qs(params: Record<string, string | undefined>): string {
 }
 
 const num = (v: string | null | undefined) => (v == null ? '—' : Number(v).toFixed(3));
+const numCell = (v: string | null | undefined) => <Num>{num(v)}</Num>;
 
 const dateCol = { title: '', dataIndex: 'entryDate', width: 110, render: (v: string) => dayjs(v).format('YYYY-MM-DD') };
 
@@ -94,7 +97,7 @@ export function ReportsPage() {
   });
   const accountOptions = (accounts ?? []).map((a) => ({
     value: a.id,
-    label: `${a.code} — ${a.nameAr}`,
+    label: codeAndName(a),
   }));
 
   const range = {
@@ -193,30 +196,30 @@ export function ReportsPage() {
                   columns={[
                     { title: t('accounts.code'), dataIndex: 'code', width: 100 },
                     {
-                      title: t('accounts.nameAr'),
-                      dataIndex: 'nameAr',
-                      render: (v: string, r: TbRow) => (r.nameEn ? `${v} (${r.nameEn})` : v),
+                      title: t('common.name'),
+                      key: 'name',
+                      render: (_: unknown, r: TbRow) => bothNames(r),
                     },
                     {
                       title: t('journal.debit'),
                       dataIndex: 'totalDebit',
                       align: 'right',
                       width: 120,
-                      render: num,
+                      render: numCell,
                     },
                     {
                       title: t('journal.credit'),
                       dataIndex: 'totalCredit',
                       align: 'right',
                       width: 120,
-                      render: num,
+                      render: numCell,
                     },
                     {
                       title: t('reports.balance'),
                       dataIndex: 'balance',
                       align: 'right',
                       width: 120,
-                      render: num,
+                      render: numCell,
                     },
                   ]}
                 />
@@ -233,7 +236,7 @@ export function ReportsPage() {
                 {gl && (
                   <Descriptions size="small" column={3} style={{ marginBottom: 8 }}>
                     <Descriptions.Item label={t('reports.account')}>
-                      {gl.account.code} — {gl.account.nameAr}
+                      {codeAndName(gl.account)}
                     </Descriptions.Item>
                     <Descriptions.Item label={t('reports.openingBalance')}>
                       {num(gl.openingBalance)}
@@ -258,21 +261,21 @@ export function ReportsPage() {
                       dataIndex: 'debit',
                       align: 'right',
                       width: 110,
-                      render: num,
+                      render: numCell,
                     },
                     {
                       title: t('journal.credit'),
                       dataIndex: 'credit',
                       align: 'right',
                       width: 110,
-                      render: num,
+                      render: numCell,
                     },
                     {
                       title: t('reports.balance'),
                       dataIndex: 'balance',
                       align: 'right',
                       width: 120,
-                      render: num,
+                      render: numCell,
                     },
                   ]}
                 />
@@ -314,28 +317,28 @@ export function ReportsPage() {
                         dataIndex: 'accountCode',
                         width: 90,
                       },
-                      { title: t('accounts.nameAr'), dataIndex: 'accountName' },
+                      { title: t('common.name'), dataIndex: 'accountName' },
                       { title: t('common.description'), dataIndex: 'description' },
                       {
                         title: t('journal.debit'),
                         dataIndex: 'debit',
                         align: 'right',
                         width: 110,
-                        render: num,
+                        render: numCell,
                       },
                       {
                         title: t('journal.credit'),
                         dataIndex: 'credit',
                         align: 'right',
                         width: 110,
-                        render: num,
+                        render: numCell,
                       },
                       {
                         title: t('reports.balance'),
                         dataIndex: 'balance',
                         align: 'right',
                         width: 120,
-                        render: num,
+                        render: numCell,
                       },
                     ]}
                   />

@@ -52,6 +52,8 @@ import {
   ItemLinesGrid,
   type ItemLineDraft,
 } from '../components/ItemLinesGrid';
+import { codeAndName, displayName, type Named } from '../i18n/displayName';
+import { Num } from '../components/Num';
 
 interface Warehouse {
   id: string;
@@ -146,12 +148,15 @@ function useLookups() {
   });
   const whOptions = (warehouses.data ?? [])
     .filter((w) => w.isActive)
-    .map((w) => ({ value: w.id, label: `${w.code} — ${w.nameAr}` }));
+    .map((w) => ({ value: w.id, label: codeAndName(w) }));
   const itemOptions = (items.data ?? []).map((i) => ({
     value: i.id,
-    label: `${i.code} — ${i.nameAr}`,
+    label: codeAndName(i),
   }));
-  return { warehouses, items, whOptions, itemOptions };
+  // Report rows only carry the warehouse code; show "code — name" instead.
+  const warehouseLabel = (code: string) =>
+    codeAndName((warehouses.data ?? []).find((w) => w.code === code)) ?? code;
+  return { warehouses, items, whOptions, itemOptions, warehouseLabel };
 }
 
 const statusTag = (s: string, t: (k: string) => string) =>
@@ -161,7 +166,7 @@ function BalancesTab() {
   const { t } = useTranslation();
   const [warehouseId, setWarehouseId] = useState<string | undefined>();
   const [lowStock, setLowStock] = useState(false);
-  const { whOptions } = useLookups();
+  const { whOptions, warehouseLabel } = useLookups();
   const { data, isLoading } = useQuery({
     queryKey: ['stock-balances', warehouseId, lowStock],
     queryFn: () =>
@@ -192,9 +197,14 @@ function BalancesTab() {
         dataSource={data ?? []}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: t('stock.warehouse'), dataIndex: 'warehouseCode', width: 110 },
+          {
+            title: t('stock.warehouse'),
+            dataIndex: 'warehouseCode',
+            width: 180,
+            render: (code: string) => warehouseLabel(code),
+          },
           { title: t('items.code'), dataIndex: 'itemCode', width: 110 },
-          { title: t('items.nameAr'), dataIndex: 'itemName' },
+          { title: t('common.name'), dataIndex: 'itemName' },
           { title: t('stock.qty'), dataIndex: 'qtyOnHand', width: 110 },
           { title: t('items.unit'), dataIndex: 'unit', width: 80 },
           { title: t('items.minStock'), dataIndex: 'minStock', width: 100 },
@@ -309,7 +319,7 @@ function AdjustmentsTab() {
         dataSource={data ?? []}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: t('stock.docNo'), dataIndex: 'docNo', width: 140, render: (v: string | null) => v ?? '—' },
+          { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
           {
             title: t('stock.date'),
             dataIndex: 'adjustmentDate',
@@ -325,7 +335,7 @@ function AdjustmentsTab() {
           {
             title: t('stock.warehouse'),
             width: 140,
-            render: (_: unknown, r: DocRow) => r.warehouse?.nameAr ?? '—',
+            render: (_: unknown, r: DocRow) => displayName(r.warehouse) ?? '—',
           },
           { title: t('stock.lines'), width: 80, render: (_: unknown, r: DocRow) => r._count?.lines ?? '—' },
           {
@@ -538,7 +548,7 @@ function TransfersTab() {
         dataSource={data ?? []}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: t('stock.docNo'), dataIndex: 'docNo', width: 140, render: (v: string | null) => v ?? '—' },
+          { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
           {
             title: t('stock.date'),
             dataIndex: 'transferDate',
@@ -548,12 +558,12 @@ function TransfersTab() {
           {
             title: t('stock.from'),
             width: 140,
-            render: (_: unknown, r: DocRow) => r.fromWarehouse?.nameAr ?? '—',
+            render: (_: unknown, r: DocRow) => displayName(r.fromWarehouse) ?? '—',
           },
           {
             title: t('stock.to'),
             width: 140,
-            render: (_: unknown, r: DocRow) => r.toWarehouse?.nameAr ?? '—',
+            render: (_: unknown, r: DocRow) => displayName(r.toWarehouse) ?? '—',
           },
           { title: t('stock.lines'), width: 80, render: (_: unknown, r: DocRow) => r._count?.lines ?? '—' },
           {
@@ -758,7 +768,7 @@ function CountsTab() {
         dataSource={data ?? []}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: t('stock.docNo'), dataIndex: 'docNo', width: 140, render: (v: string | null) => v ?? '—' },
+          { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
           {
             title: t('stock.date'),
             dataIndex: 'countDate',
@@ -854,8 +864,8 @@ function CountsTab() {
                 render: (_: unknown, l: CountLine) => l.item?.code ?? l.itemId,
               },
               {
-                title: t('items.nameAr'),
-                render: (_: unknown, l: CountLine) => l.item?.nameAr ?? '—',
+                title: t('common.name'),
+                render: (_: unknown, l: CountLine) => displayName(l.item) ?? '—',
               },
               { title: t('stock.systemQty'), dataIndex: 'systemQty', width: 110 },
               {
@@ -880,7 +890,7 @@ function CountsTab() {
                 title: t('stock.diff'),
                 dataIndex: 'differenceQty',
                 width: 90,
-                render: (v: string | null) => (v != null ? Number(v) : '—'),
+                render: (v: string | null) => (v != null ? <Num>{Number(v)}</Num> : '—'),
               },
             ]}
           />
@@ -895,7 +905,7 @@ function MovementsTab() {
   const { t } = useTranslation();
   const [itemId, setItemId] = useState<string | undefined>();
   const [warehouseId, setWarehouseId] = useState<string | undefined>();
-  const { whOptions, itemOptions } = useLookups();
+  const { whOptions, itemOptions, warehouseLabel } = useLookups();
   const { data, isLoading } = useQuery({
     queryKey: ['stock-movements', itemId, warehouseId],
     queryFn: () =>
@@ -942,9 +952,14 @@ function MovementsTab() {
             width: 110,
             render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
           },
-          { title: t('stock.warehouse'), dataIndex: 'warehouseCode', width: 100 },
+          {
+            title: t('stock.warehouse'),
+            dataIndex: 'warehouseCode',
+            width: 160,
+            render: (code: string) => warehouseLabel(code),
+          },
           { title: t('items.code'), dataIndex: 'itemCode', width: 100 },
-          { title: t('items.nameAr'), dataIndex: 'itemName' },
+          { title: t('common.name'), dataIndex: 'itemName' },
           {
             title: t('stock.type'),
             dataIndex: 'movementType',
@@ -985,7 +1000,7 @@ function ValuationTab() {
         pagination={{ pageSize: 20 }}
         columns={[
           { title: t('items.code'), dataIndex: 'code', width: 110 },
-          { title: t('items.nameAr'), dataIndex: 'nameAr' },
+          { title: t('common.name'), key: 'name', render: (_: unknown, r: Named) => displayName(r) },
           { title: t('stock.qty'), dataIndex: 'qty', width: 110 },
           { title: t('stock.avgCost'), dataIndex: 'avgCost', width: 110 },
           { title: t('stock.value'), dataIndex: 'value', width: 120 },

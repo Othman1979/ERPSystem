@@ -45,6 +45,8 @@ import {
   warehousesControllerList,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { codeAndName, displayName, type Named } from '../i18n/displayName';
+import { Num } from '../components/Num';
 
 interface Unit {
   id: string;
@@ -254,7 +256,7 @@ function ItemsTab() {
 
   const columns = [
     { title: t('items.code'), dataIndex: 'code', width: 110 },
-    { title: t('items.nameAr'), dataIndex: 'nameAr' },
+    { title: t('common.name'), key: 'name', render: (_: unknown, r: Named) => displayName(r) },
     {
       title: t('items.kind'),
       dataIndex: 'itemKind',
@@ -377,13 +379,13 @@ function ItemsTab() {
                 styles={{ body: { padding: 12 } }}
                 cover={
                   r.imageUrl ? (
-                    <img src={r.imageUrl} alt={r.nameAr} style={{ height: 110, objectFit: 'cover' }} />
+                    <img src={r.imageUrl} alt={displayName(r)} style={{ height: 110, objectFit: 'cover' }} />
                   ) : undefined
                 }
               >
                 <Space direction="vertical" size={4} style={{ width: '100%' }}>
                   <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-                    <Typography.Text strong>{r.nameAr}</Typography.Text>
+                    <Typography.Text strong>{displayName(r)}</Typography.Text>
                     {r.itemKind === 'STOCK' ? (
                       <Tag color="blue">{t('items.stock')}</Tag>
                     ) : (
@@ -392,7 +394,7 @@ function ItemsTab() {
                   </Space>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {r.code} {r.baseUnit ? `· ${r.baseUnit.code}` : ''}
-                    {r.itemGroup ? ` · ${r.itemGroup.nameAr}` : ''}
+                    {r.itemGroup ? ` · ${displayName(r.itemGroup)}` : ''}
                   </Typography.Text>
                   <Space style={{ justifyContent: 'space-between', width: '100%' }}>
                     <span>{t('items.onHand')}: {stockBadge(r)}</span>
@@ -466,7 +468,7 @@ function ItemsTab() {
                   .filter((u) => u.id)
                   .map((u) => ({
                     value: u.id,
-                    label: `${u.code} — ${u.nameAr}${u.unEceCode ? ` (${u.unEceCode})` : ''}`,
+                    label: `${codeAndName(u)}${u.unEceCode ? ` (${u.unEceCode})` : ''}`,
                   }))}
               />
             </Form.Item>
@@ -477,7 +479,7 @@ function ItemsTab() {
                 optionFilterProp="label"
                 options={(groups ?? [])
                   .filter((g) => g.isActive)
-                  .map((g) => ({ value: g.id, label: `${g.code} — ${g.nameAr}` }))}
+                  .map((g) => ({ value: g.id, label: codeAndName(g) }))}
               />
             </Form.Item>
             <Form.Item name="taxCategoryId" label={t('items.taxCategory')} style={{ flex: 1, minWidth: 160 }}>
@@ -485,7 +487,7 @@ function ItemsTab() {
                 allowClear
                 options={(taxCategories ?? []).map((tc) => ({
                   value: tc.id,
-                  label: `${tc.code} — ${tc.nameAr} (${tc.rate}%)`,
+                  label: `${codeAndName(tc)} (${tc.rate}%)`,
                 }))}
               />
             </Form.Item>
@@ -519,7 +521,7 @@ function ItemsTab() {
                     <Form.Item name="defaultWarehouseId" label={t('items.defaultWarehouse')} style={{ flex: 1, minWidth: 160 }}>
                       <Select
                         allowClear
-                        options={(warehouses ?? []).map((w) => ({ value: w.id, label: `${w.code} — ${w.nameAr}` }))}
+                        options={(warehouses ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
                       />
                     </Form.Item>
                   </>
@@ -571,7 +573,7 @@ function LedgerModal({
   return (
     <Modal
       open={!!item}
-      title={item ? `${t('items.ledger')} — ${item.code} ${item.nameAr}` : ''}
+      title={item ? `${t('items.ledger')} — ${codeAndName(item)}` : ''}
       onCancel={onClose}
       footer={null}
       width={1100}
@@ -581,7 +583,7 @@ function LedgerModal({
           allowClear
           placeholder={t('stock.warehouse')}
           style={{ width: 200 }}
-          options={warehouses.map((w) => ({ value: w.id, label: `${w.code} — ${w.nameAr}` }))}
+          options={warehouses.map((w) => ({ value: w.id, label: codeAndName(w) }))}
           value={warehouseId}
           onChange={setWarehouseId}
         />
@@ -611,7 +613,7 @@ function LedgerModal({
           {
             title: t('stock.warehouse'),
             width: 130,
-            render: (_: unknown, r: LedgerRow) => `${r.warehouse.code} — ${r.warehouse.nameAr}`,
+            render: (_: unknown, r: LedgerRow) => codeAndName(r.warehouse),
           },
           {
             title: t('items.source'),
@@ -637,7 +639,7 @@ function LedgerModal({
             dataIndex: 'balanceQtyAfter',
             width: 110,
             align: 'end' as const,
-            render: (v: string) => `${Number(v).toFixed(3)} ${unit}`,
+            render: (v: string) => <Num>{`${Number(v).toFixed(3)} ${unit}`}</Num>,
           },
           {
             title: t('items.unitCost'),
@@ -689,7 +691,7 @@ function BarcodeModal({ item, onClose }: { item: Item | null; onClose: () => voi
   return (
     <Modal
       open={!!item}
-      title={item ? `${t('items.barcode')} — ${item.nameAr}` : ''}
+      title={item ? `${t('items.barcode')} — ${displayName(item)}` : ''}
       onCancel={onClose}
       footer={[
         <Button key="close" onClick={onClose}>{t('common.close')}</Button>,
@@ -779,7 +781,7 @@ function GroupsTab() {
   });
 
   const parentName = (id: string | null) =>
-    id ? (groups ?? []).find((g) => g.id === id)?.nameAr ?? id : '—';
+    id ? displayName((groups ?? []).find((g) => g.id === id)) ?? id : '—';
 
   return (
     <Card
@@ -808,7 +810,7 @@ function GroupsTab() {
         pagination={false}
         columns={[
           { title: t('items.code'), dataIndex: 'code', width: 110 },
-          { title: t('items.nameAr'), dataIndex: 'nameAr' },
+          { title: t('common.name'), key: 'name', render: (_: unknown, r: Group) => displayName(r) },
           { title: t('items.nameEn'), dataIndex: 'nameEn', render: (v: string | null) => v ?? '—' },
           {
             title: t('items.parent'),
@@ -877,7 +879,7 @@ function GroupsTab() {
                 allowClear
                 options={(groups ?? [])
                   .filter((g) => g.isActive)
-                  .map((g) => ({ value: g.id, label: `${g.code} — ${g.nameAr}` }))}
+                  .map((g) => ({ value: g.id, label: codeAndName(g) }))}
               />
             </Form.Item>
           )}

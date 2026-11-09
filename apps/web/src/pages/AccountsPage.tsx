@@ -22,6 +22,8 @@ import {
   journalControllerTrialBalance,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { bothNames, codeAndName } from '../i18n/displayName';
+import { Num } from '../components/Num';
 
 interface Account {
   id: string;
@@ -218,7 +220,7 @@ export function AccountsPage() {
 
   const parentOptions = (data ?? [])
     .filter((a) => a.isActive && a.id !== editing?.id)
-    .map((a) => ({ value: a.id, label: `${a.code} — ${a.nameAr}` }));
+    .map((a) => ({ value: a.id, label: codeAndName(a) }));
 
   return (
     <div>
@@ -241,14 +243,9 @@ export function AccountsPage() {
         columns={[
           { title: t('accounts.code'), dataIndex: 'code', width: 110 },
           {
-            title: t('accounts.nameAr'),
-            dataIndex: 'nameAr',
-            render: (v: string, a: Account) => (
-              <span>
-                {v}
-                {a.nameEn ? ` (${a.nameEn})` : ''}
-              </span>
-            ),
+            title: t('common.name'),
+            key: 'name',
+            render: (_: unknown, a: Account) => bothNames(a),
           },
           {
             title: t('accounts.type'),
@@ -284,9 +281,9 @@ export function AccountsPage() {
               if (trialError) return '—';
               const bal = (a as TreeNode).balBalance;
               return (
-                <span style={{ color: bal < 0 ? '#c42b1c' : undefined }}>
+                <Num style={{ color: bal < 0 ? '#c42b1c' : undefined }}>
                   {fmt(bal)}
-                </span>
+                </Num>
               );
             },
           },

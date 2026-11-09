@@ -50,6 +50,7 @@ import {
 } from '../components/GridSelect';
 import { StatusBar } from '../components/StatusBar';
 import { PageHeader } from '../components/PageHeader';
+import { codeAndName } from '../i18n/displayName';
 
 interface Account {
   id: string;
@@ -138,7 +139,7 @@ export function JournalPage() {
 
   const accountOptions = (accounts ?? [])
     .filter((a) => a.isActive && a.isPostable)
-    .map((a) => ({ value: a.id, label: `${a.code} — ${a.nameAr}` }));
+    .map((a) => ({ value: a.id, label: codeAndName(a) }));
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['journal-entry', entryId],
@@ -307,7 +308,8 @@ export function JournalPage() {
             {
               title: t('journal.entryNo'),
               dataIndex: 'entryNo',
-              width: 110,
+              className: 'nowrap',
+              width: 160,
               render: (v: string | null) => v ?? '—',
             },
             {
@@ -549,7 +551,7 @@ export function JournalPage() {
               {
                 title: t('journal.account'),
                 render: (_: unknown, l: JournalLine) =>
-                  l.account ? `${l.account.code} — ${l.account.nameAr}` : '—',
+                  l.account ? codeAndName(l.account) : '—',
               },
               {
                 title: t('common.description'),

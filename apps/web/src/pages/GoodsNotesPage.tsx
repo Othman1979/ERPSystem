@@ -47,6 +47,7 @@ import {
 } from '../components/GridSelect';
 import { StatusBar } from '../components/StatusBar';
 import { PageHeader } from '../components/PageHeader';
+import { codeAndName } from '../i18n/displayName';
 
 interface GoodsNote {
   id: string;
@@ -156,12 +157,12 @@ export function GoodsNotesSection({
     () =>
       (items ?? [])
         .filter((i) => i.itemKind === 'STOCK')
-        .map((i) => ({ value: i.id, label: `${i.code} — ${i.nameAr}` })),
+        .map((i) => ({ value: i.id, label: codeAndName(i) })),
     [items],
   );
   const warehouseOptions = (warehouses ?? []).map((w) => ({
     value: w.id,
-    label: `${w.code} — ${w.nameAr}`,
+    label: codeAndName(w),
   }));
 
   const invalidate = () => {
@@ -309,6 +310,7 @@ export function GoodsNotesSection({
             {
               title: t('goods.docNo'),
               dataIndex: 'docNo',
+              className: 'nowrap',
               width: 150,
               render: (v: string | null, r: GoodsNote) => v ?? `#${r.id}`,
             },
@@ -327,7 +329,7 @@ export function GoodsNotesSection({
             {
               title: t('stock.warehouse'),
               render: (_: unknown, r: GoodsNote) =>
-                r.warehouse ? `${r.warehouse.code} — ${r.warehouse.nameAr}` : '—',
+                r.warehouse ? codeAndName(r.warehouse) : '—',
             },
             {
               title: t('common.description'),
@@ -526,7 +528,7 @@ export function GoodsNotesSection({
               </span>
               <span>
                 <Typography.Text type="secondary">{t('stock.warehouse')}: </Typography.Text>
-                {entry.warehouse ? `${entry.warehouse.code} — ${entry.warehouse.nameAr}` : '—'}
+                {entry.warehouse ? codeAndName(entry.warehouse) : '—'}
               </span>
               <span>
                 <Typography.Text type="secondary">{t('common.description')}: </Typography.Text>
@@ -570,7 +572,7 @@ export function GoodsNotesSection({
               {
                 title: t('items.title'),
                 render: (_: unknown, l: NonNullable<GoodsNote['lines']>[number]) =>
-                  l.item ? `${l.item.code} — ${l.item.nameAr}` : '—',
+                  l.item ? codeAndName(l.item) : '—',
               },
               {
                 title: t('stock.qty'),

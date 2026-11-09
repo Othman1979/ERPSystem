@@ -60,6 +60,7 @@ import {
   settingsControllerListTaxCategories,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
+import { codeAndName, displayName } from '../i18n/displayName';
 
 // ------------------------------------------------------------------ types
 
@@ -92,6 +93,7 @@ interface AccountNode {
   id: string;
   code: string;
   nameAr: string;
+  nameEn?: string | null;
   controlType?: string | null;
   children?: AccountNode[];
 }
@@ -218,7 +220,7 @@ function useSalesLookups() {
         .filter((i) => i.itemKind !== undefined)
         .map((i) => ({
           id: i.id,
-          label: `${i.code} — ${i.nameAr}`,
+          label: codeAndName(i),
           price: i.salePrice != null ? Number(i.salePrice) : null,
           taxRate: taxRateById.get(i.taxCategoryId ?? '') ?? taxRateById.get(defaultTaxId ?? '') ?? 0,
           itemKind: i.itemKind,
@@ -227,17 +229,17 @@ function useSalesLookups() {
   );
 
   const cashAccountOptions = useMemo(() => {
-    const flat: { id: string; code: string; nameAr: string }[] = [];
+    const flat: { id: string; code: string; nameAr: string; nameEn?: string | null }[] = [];
     const walk = (ns: AccountNode[]) => {
       for (const n of ns) {
         if (n.controlType === 'CASH' || n.controlType === 'BANK') {
-          flat.push({ id: n.id, code: n.code, nameAr: n.nameAr });
+          flat.push({ id: n.id, code: n.code, nameAr: n.nameAr, nameEn: n.nameEn });
         }
         if (n.children) walk(n.children);
       }
     };
     walk(accounts.data ?? []);
-    return flat.map((a) => ({ value: a.id, label: `${a.code} — ${a.nameAr}` }));
+    return flat.map((a) => ({ value: a.id, label: codeAndName(a) }));
   }, [accounts.data]);
 
   return {
@@ -309,6 +311,7 @@ function InvoicesTab() {
     {
       title: t('sales.invoiceNo'),
       dataIndex: 'invoiceNo',
+      className: 'nowrap',
       width: 140,
       render: (v: string | null, r: SalesInvoice) => v ?? `#${r.id}`,
     },
@@ -321,7 +324,7 @@ function InvoicesTab() {
     {
       title: t('sales.customer'),
       dataIndex: 'customer',
-      render: (_: unknown, r: SalesInvoice) => r.customer?.nameAr ?? '—',
+      render: (_: unknown, r: SalesInvoice) => displayName(r.customer) ?? '—',
     },
     {
       title: t('sales.paymentType'),
@@ -477,11 +480,11 @@ function InvoiceForm({
 
   const customerOptions = lookups.parties.map((p) => ({
     value: p.id,
-    label: `${p.code} — ${p.nameAr}`,
+    label: codeAndName(p),
   }));
   const warehouseOptions = lookups.warehouses.map((w) => ({
     value: w.id,
-    label: `${w.code} — ${w.nameAr}`,
+    label: codeAndName(w),
   }));
 
   const save = useMutation({
@@ -707,7 +710,7 @@ function InvoiceView({
     >
       <Descriptions size="small" column={3} style={{ marginBottom: 16 }}>
         <Descriptions.Item label={t('sales.customer')}>
-          {invoice.customer?.nameAr}
+          {displayName(invoice.customer)}
         </Descriptions.Item>
         <Descriptions.Item label={t('sales.invoiceDate')}>
           {dayjs(invoice.invoiceDate).format('YYYY-MM-DD')}
@@ -737,7 +740,7 @@ function InvoiceView({
           {
             title: t('items.title'),
             render: (_: unknown, l: InvoiceLine) =>
-              l.item ? `${l.item.code} — ${l.item.nameAr}` : l.itemId,
+              l.item ? codeAndName(l.item) : l.itemId,
           },
           { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'end' as const, render: money },
           { title: t('sales.unitPrice'), dataIndex: 'unitPrice', width: 110, align: 'end' as const, render: money },
@@ -808,6 +811,7 @@ function ReturnsTab() {
     {
       title: t('sales.returnNo'),
       dataIndex: 'returnNo',
+      className: 'nowrap',
       width: 140,
       render: (v: string | null, r: SalesReturn) => v ?? `#${r.id}`,
     },
@@ -825,7 +829,7 @@ function ReturnsTab() {
     {
       title: t('sales.customer'),
       dataIndex: 'customer',
-      render: (_: unknown, r: SalesReturn) => r.customer?.nameAr ?? '—',
+      render: (_: unknown, r: SalesReturn) => displayName(r.customer) ?? '—',
     },
     {
       title: t('sales.refundType'),
@@ -912,7 +916,7 @@ function ReturnsTab() {
                 {view.originalInvoice?.invoiceNo}
               </Descriptions.Item>
               <Descriptions.Item label={t('sales.customer')}>
-                {view.customer?.nameAr}
+                {displayName(view.customer)}
               </Descriptions.Item>
               <Descriptions.Item label={t('sales.refundType')}>
                 {t(`sales.${view.refundType}`)}
@@ -931,7 +935,7 @@ function ReturnsTab() {
                 {
                   title: t('items.title'),
                   render: (_: unknown, l: ReturnLine) =>
-                    l.item ? `${l.item.code} — ${l.item.nameAr}` : l.itemId,
+                    l.item ? codeAndName(l.item) : l.itemId,
                 },
                 { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'end' as const, render: money },
                 { title: t('sales.total'), dataIndex: 'lineTotal', width: 120, align: 'end' as const, render: money },
@@ -1061,7 +1065,7 @@ function ReturnModal({
             style={{ width: 280, display: 'block' }}
             options={(invoices ?? []).map((i) => ({
               value: i.id,
-              label: `${i.invoiceNo ?? `#${i.id}`} — ${i.customer?.nameAr ?? ''} — ${money(i.grandTotal)}`,
+              label: `${i.invoiceNo ?? `#${i.id}`} — ${displayName(i.customer) ?? ''} — ${money(i.grandTotal)}`,
             }))}
             value={invoiceId}
             onChange={(v) => {
@@ -1120,7 +1124,7 @@ function ReturnModal({
             {
               title: t('items.title'),
               render: (_: unknown, l: InvoiceLine) =>
-                l.item ? `${l.item.code} — ${l.item.nameAr}` : l.itemId,
+                l.item ? codeAndName(l.item) : l.itemId,
             },
             {
               title: t('stock.qty'),

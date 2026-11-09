@@ -8,6 +8,7 @@ import {
   DashboardOutlined,
   DatabaseOutlined,
   FileDoneOutlined,
+  HomeOutlined,
   InboxOutlined,
   LogoutOutlined,
   ProfileOutlined,
@@ -39,6 +40,7 @@ import { GoodsNotesPage } from './pages/GoodsNotesPage';
 import { TreasuryPage } from './pages/TreasuryPage';
 import { HealthPage } from './pages/HealthPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
+import { displayName } from './i18n/displayName';
 
 type View =
   | 'home'
@@ -142,10 +144,11 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundary
 
   render() {
     if (this.state.error) {
+      // Class components can't use hooks, so read translations from the i18n instance.
       return (
         <Card style={{ maxWidth: 560, margin: '40px auto' }}>
           <Typography.Title level={4} type="danger">
-            Something went wrong
+            {i18n.t('common.viewCrashed')}
           </Typography.Title>
           <Typography.Paragraph>
             <Typography.Text code style={{ whiteSpace: 'pre-wrap', display: 'block' }}>
@@ -153,7 +156,7 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundary
             </Typography.Text>
           </Typography.Paragraph>
           <Button type="primary" onClick={() => window.location.reload()}>
-            Reload
+            {i18n.t('common.reload')}
           </Button>
         </Card>
       );
@@ -246,6 +249,7 @@ export function App() {
 
   const current = i18n.language as AppLanguage;
   const next = current === 'ar' ? 'en' : 'ar';
+  const isRtl = current !== 'en';
   const openApp = (v: View) => {
     setView(v);
     setAppsOpen(false);
@@ -274,7 +278,17 @@ export function App() {
           icon={<AppstoreOutlined style={{ color: '#fff', fontSize: 18 }} />}
           onClick={() => setAppsOpen(true)}
           aria-label={t('nav.apps')}
+          title={t('nav.apps')}
         />
+        {view !== 'home' && (
+          <Button
+            type="text"
+            icon={<HomeOutlined style={{ color: '#fff', fontSize: 16 }} />}
+            onClick={() => openApp('home')}
+            aria-label={t('nav.home')}
+            title={t('nav.home')}
+          />
+        )}
         <Typography.Text strong style={{ color: '#fff', fontSize: 15 }}>
           {view === 'home' ? t('app.title') : t(NAV_LABEL[view])}
         </Typography.Text>
@@ -332,9 +346,7 @@ export function App() {
               </Typography.Title>
               <Typography.Text type="secondary">
                 {me?.currentTenant?.name} —{' '}
-                {me?.currentTenant?.plan
-                  ? me.currentTenant.plan.nameAr
-                  : t('dashboard.noPlan')}
+                {displayName(me?.currentTenant?.plan) ?? t('dashboard.noPlan')}
               </Typography.Text>
             </div>
             {APP_GROUPS.map((g) => (
@@ -361,14 +373,23 @@ export function App() {
         )}
       </div>
 
-      {/* Odoo app drawer */}
+      {/* Odoo app drawer — slides in from the same side as the apps button */}
       <Drawer
         title={t('nav.apps')}
-        placement="left"
+        placement={isRtl ? 'right' : 'left'}
         open={appsOpen}
         onClose={() => setAppsOpen(false)}
         width={420}
       >
+        <Button
+          block
+          icon={<HomeOutlined />}
+          type={view === 'home' ? 'primary' : 'default'}
+          onClick={() => openApp('home')}
+          style={{ marginBottom: 20 }}
+        >
+          {t('nav.home')}
+        </Button>
         {APP_GROUPS.map((g) => (
           <div key={g.label} style={{ marginBottom: 20 }}>
             <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 10 }}>

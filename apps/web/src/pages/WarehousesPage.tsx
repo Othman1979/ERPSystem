@@ -10,6 +10,7 @@ import {
   warehousesControllerUpdate,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { codeAndName, displayName } from '../i18n/displayName';
 
 interface Warehouse {
   id: string;
@@ -121,12 +122,12 @@ export function WarehousesPage() {
         pagination={false}
         columns={[
           { title: t('warehouses.code'), dataIndex: 'code', width: 110 },
-          { title: t('warehouses.nameAr'), dataIndex: 'nameAr' },
+          { title: t('common.name'), key: 'name', render: (_: unknown, r: Warehouse) => displayName(r) },
           { title: t('warehouses.nameEn'), dataIndex: 'nameEn', render: (v: string | null) => v ?? '—' },
           {
             title: t('warehouses.branch'),
             width: 150,
-            render: (_: unknown, r: Warehouse) => r.branch?.nameAr ?? '—',
+            render: (_: unknown, r: Warehouse) => displayName(r.branch) ?? '—',
           },
           {
             title: t('common.status'),
@@ -175,7 +176,7 @@ export function WarehousesPage() {
           <Form.Item name="branchId" label={t('warehouses.branch')}>
             <Select
               allowClear
-              options={(branches ?? []).map((b) => ({ value: b.id, label: `${b.code} — ${b.nameAr}` }))}
+              options={(branches ?? []).map((b) => ({ value: b.id, label: codeAndName(b) }))}
             />
           </Form.Item>
           <Form.Item name="address" label={t('warehouses.address')}>

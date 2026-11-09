@@ -2,8 +2,10 @@ import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp, ConfigProvider } from 'antd';
-import arEG from 'antd/locale/ar_EG';
-import enUS from 'antd/locale/en_US';
+// Import the ES-module builds: the CJS 'antd/locale/*' entry reaches the app
+// wrapped as { default: locale }, so ConfigProvider silently fell back to English.
+import arEG from 'antd/es/locale/ar_EG';
+import enUS from 'antd/es/locale/en_US';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ar';
 import { useTranslation } from 'react-i18next';

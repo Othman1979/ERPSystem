@@ -41,6 +41,7 @@ import {
   treasuryControllerListReceipts,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { codeAndName, displayName } from '../i18n/displayName';
 
 // ------------------------------------------------------------- types
 
@@ -114,7 +115,7 @@ function useTreasuryLookups() {
     const walk = (ns: AccountNode[]) => {
       for (const n of ns) {
         if ((n.controlType === 'CASH' || n.controlType === 'BANK') && !n.children?.length) {
-          flat.push({ value: n.id, label: `${n.code} — ${n.nameAr}` });
+          flat.push({ value: n.id, label: codeAndName(n) });
         }
         if (n.children) walk(n.children);
       }
@@ -217,7 +218,7 @@ function CashBoxesTab() {
     {
       title: t('treasury.linkedAccount'),
       dataIndex: 'account',
-      render: (_: unknown, b: CashBox) => (b.account ? `${b.account.code} — ${b.account.nameAr}` : '—'),
+      render: (_: unknown, b: CashBox) => (b.account ? codeAndName(b.account) : '—'),
     },
     {
       title: t('common.status'),
@@ -356,7 +357,7 @@ function BankAccountsTab() {
     {
       title: t('treasury.linkedAccount'),
       dataIndex: 'account',
-      render: (_: unknown, b: BankAccount) => (b.account ? `${b.account.code} — ${b.account.nameAr}` : '—'),
+      render: (_: unknown, b: BankAccount) => (b.account ? codeAndName(b.account) : '—'),
     },
     {
       title: t('common.status'),
@@ -453,11 +454,11 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
     },
     {
       title: t('parties.name'),
-      render: (_: unknown, v: Voucher) => (v.party ? `${v.party.code} — ${v.party.nameAr}` : '—'),
+      render: (_: unknown, v: Voucher) => (v.party ? codeAndName(v.party) : '—'),
     },
     {
       title: t('treasury.cashAccount'),
-      render: (_: unknown, v: Voucher) => (v.cashAccount ? `${v.cashAccount.code} — ${v.cashAccount.nameAr}` : '—'),
+      render: (_: unknown, v: Voucher) => (v.cashAccount ? codeAndName(v.cashAccount) : '—'),
     },
     { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'end' as const, render: money },
     { title: t('common.description'), dataIndex: 'description', ellipsis: true },
@@ -497,8 +498,8 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
           <>
             <Typography.Paragraph>
               <strong>{t('treasury.amount')}:</strong> {money(view.amount)}
-              {view.party && <> — <strong>{t('parties.name')}:</strong> {view.party.nameAr}</>}
-              {view.cashAccount && <> — <strong>{t('treasury.cashAccount')}:</strong> {`${view.cashAccount.code} ${view.cashAccount.nameAr}`}</>}
+              {view.party && <> — <strong>{t('parties.name')}:</strong> {displayName(view.party)}</>}
+              {view.cashAccount && <> — <strong>{t('treasury.cashAccount')}:</strong> {codeAndName(view.cashAccount)}</>}
             </Typography.Paragraph>
             {view.description && <Typography.Paragraph type="secondary">{view.description}</Typography.Paragraph>}
             {(view.allocations?.length ?? 0) > 0 && (
@@ -556,7 +557,7 @@ function VoucherModal({
   const parties = lookups.parties.filter(
     (p) => p.partyType === partyType || p.partyType === 'BOTH',
   );
-  const partyOptions = parties.map((p) => ({ value: p.id, label: `${p.code} — ${p.nameAr}` }));
+  const partyOptions = parties.map((p) => ({ value: p.id, label: codeAndName(p) }));
 
   // Open invoices for allocations
   const { data: salesInvoices } = useQuery({

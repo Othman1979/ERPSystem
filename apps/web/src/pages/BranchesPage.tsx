@@ -21,6 +21,7 @@ import {
   branchesControllerUpdate,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { displayName } from '../i18n/displayName';
 
 interface Branch {
   id: string;
@@ -111,7 +112,7 @@ export function BranchesPage() {
         pagination={false}
         columns={[
           { title: t('branches.code'), dataIndex: 'code' },
-          { title: t('branches.nameAr'), dataIndex: 'nameAr' },
+          { title: t('common.name'), key: 'name', render: (_: unknown, r: Branch) => displayName(r) },
           { title: t('branches.nameEn'), dataIndex: 'nameEn' },
           {
             title: t('common.status'),

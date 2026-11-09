@@ -60,6 +60,7 @@ import {
   settingsControllerListTaxCategories,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
+import { codeAndName, displayName } from '../i18n/displayName';
 
 // ------------------------------------------------------------------ types
 
@@ -91,6 +92,7 @@ interface AccountNode {
   id: string;
   code: string;
   nameAr: string;
+  nameEn?: string | null;
   controlType?: string | null;
   children?: AccountNode[];
 }
@@ -219,7 +221,7 @@ function usePurchaseLookups() {
         .filter((i) => i.itemKind !== undefined)
         .map((i) => ({
           id: i.id,
-          label: `${i.code} — ${i.nameAr}`,
+          label: codeAndName(i),
           price: i.purchasePrice != null ? Number(i.purchasePrice) : null,
           taxRate: taxRateById.get(i.taxCategoryId ?? '') ?? taxRateById.get(defaultTaxId ?? '') ?? 0,
           itemKind: i.itemKind,
@@ -228,17 +230,17 @@ function usePurchaseLookups() {
   );
 
   const cashAccountOptions = useMemo(() => {
-    const flat: { id: string; code: string; nameAr: string }[] = [];
+    const flat: { id: string; code: string; nameAr: string; nameEn?: string | null }[] = [];
     const walk = (ns: AccountNode[]) => {
       for (const n of ns) {
         if (n.controlType === 'CASH' || n.controlType === 'BANK') {
-          flat.push({ id: n.id, code: n.code, nameAr: n.nameAr });
+          flat.push({ id: n.id, code: n.code, nameAr: n.nameAr, nameEn: n.nameEn });
         }
         if (n.children) walk(n.children);
       }
     };
     walk(accounts.data ?? []);
-    return flat.map((a) => ({ value: a.id, label: `${a.code} — ${a.nameAr}` }));
+    return flat.map((a) => ({ value: a.id, label: codeAndName(a) }));
   }, [accounts.data]);
 
   return {
@@ -310,6 +312,7 @@ function PurchaseInvoicesTab() {
     {
       title: t('purchases.invoiceNo'),
       dataIndex: 'invoiceNo',
+      className: 'nowrap',
       width: 140,
       render: (v: string | null, r: PurchaseInvoice) => v ?? `#${r.id}`,
     },
@@ -322,7 +325,7 @@ function PurchaseInvoicesTab() {
     {
       title: t('purchases.supplier'),
       dataIndex: 'supplier',
-      render: (_: unknown, r: PurchaseInvoice) => r.supplier?.nameAr ?? '—',
+      render: (_: unknown, r: PurchaseInvoice) => displayName(r.supplier) ?? '—',
     },
     {
       title: t('purchases.paymentType'),
@@ -484,11 +487,11 @@ function PurchaseInvoiceForm({
 
   const supplierOptions = lookups.parties.map((p) => ({
     value: p.id,
-    label: `${p.code} — ${p.nameAr}`,
+    label: codeAndName(p),
   }));
   const warehouseOptions = lookups.warehouses.map((w) => ({
     value: w.id,
-    label: `${w.code} — ${w.nameAr}`,
+    label: codeAndName(w),
   }));
 
   const save = useMutation({
@@ -736,7 +739,7 @@ function PurchaseInvoiceView({
     >
       <Descriptions size="small" column={3} style={{ marginBottom: 16 }}>
         <Descriptions.Item label={t('purchases.supplier')}>
-          {invoice.supplier?.nameAr}
+          {displayName(invoice.supplier)}
         </Descriptions.Item>
         <Descriptions.Item label={t('purchases.supplierInvoiceNo')}>
           {invoice.supplierInvoiceNo ?? '—'}
@@ -769,7 +772,7 @@ function PurchaseInvoiceView({
           {
             title: t('items.title'),
             render: (_: unknown, l: InvoiceLine) =>
-              l.item ? `${l.item.code} — ${l.item.nameAr}` : l.itemId,
+              l.item ? codeAndName(l.item) : l.itemId,
           },
           { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'end' as const, render: money },
           { title: t('purchases.unitCost'), dataIndex: 'unitCost', width: 110, align: 'end' as const, render: money },
@@ -840,6 +843,7 @@ function PurchaseReturnsTab() {
     {
       title: t('purchases.returnNo'),
       dataIndex: 'returnNo',
+      className: 'nowrap',
       width: 140,
       render: (v: string | null, r: PurchaseReturn) => v ?? `#${r.id}`,
     },
@@ -857,7 +861,7 @@ function PurchaseReturnsTab() {
     {
       title: t('purchases.supplier'),
       dataIndex: 'supplier',
-      render: (_: unknown, r: PurchaseReturn) => r.supplier?.nameAr ?? '—',
+      render: (_: unknown, r: PurchaseReturn) => displayName(r.supplier) ?? '—',
     },
     {
       title: t('purchases.refundType'),
@@ -944,7 +948,7 @@ function PurchaseReturnsTab() {
                 {view.originalInvoice?.invoiceNo}
               </Descriptions.Item>
               <Descriptions.Item label={t('purchases.supplier')}>
-                {view.supplier?.nameAr}
+                {displayName(view.supplier)}
               </Descriptions.Item>
               <Descriptions.Item label={t('purchases.refundType')}>
                 {t(`purchases.${view.refundType}`)}
@@ -963,7 +967,7 @@ function PurchaseReturnsTab() {
                 {
                   title: t('items.title'),
                   render: (_: unknown, l: ReturnLine) =>
-                    l.item ? `${l.item.code} — ${l.item.nameAr}` : l.itemId,
+                    l.item ? codeAndName(l.item) : l.itemId,
                 },
                 { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'end' as const, render: money },
                 { title: t('purchases.total'), dataIndex: 'lineTotal', width: 120, align: 'end' as const, render: money },
@@ -1093,7 +1097,7 @@ function PurchaseReturnModal({
             style={{ width: 280, display: 'block' }}
             options={(invoices ?? []).map((i) => ({
               value: i.id,
-              label: `${i.invoiceNo ?? `#${i.id}`} — ${i.supplier?.nameAr ?? ''} — ${money(i.grandTotal)}`,
+              label: `${i.invoiceNo ?? `#${i.id}`} — ${displayName(i.supplier) ?? ''} — ${money(i.grandTotal)}`,
             }))}
             value={invoiceId}
             onChange={(v) => {
@@ -1152,7 +1156,7 @@ function PurchaseReturnModal({
             {
               title: t('items.title'),
               render: (_: unknown, l: InvoiceLine) =>
-                l.item ? `${l.item.code} — ${l.item.nameAr}` : l.itemId,
+                l.item ? codeAndName(l.item) : l.itemId,
             },
             {
               title: t('stock.qty'),

@@ -24,6 +24,7 @@ import {
   partiesControllerUpdate,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { displayName, type Named } from '../i18n/displayName';
 
 interface Party {
   id: string;
@@ -130,7 +131,7 @@ export function PartiesPage() {
 
   const columns = [
     { title: t('parties.code'), dataIndex: 'code', width: 110 },
-    { title: t('parties.name'), dataIndex: 'nameAr' },
+    { title: t('common.name'), key: 'name', render: (_: unknown, r: Named) => displayName(r) },
     {
       title: t('parties.type'),
       dataIndex: 'partyType',
