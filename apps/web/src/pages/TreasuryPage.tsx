@@ -96,6 +96,8 @@ interface OpenInvoice {
   invoiceDate: string;
   grandTotal: string;
   paidAmount: string;
+  /** grand − paid − posted credit returns, computed by the API. */
+  outstanding: string;
   customerId?: string;
   supplierId?: string;
 }
@@ -580,13 +582,13 @@ function VoucherModal({
     return src.filter((i) => {
       if (!partyId) return false;
       const pid = kind === 'receipt' ? i.customerId : i.supplierId;
-      return pid === partyId && dec(i.grandTotal).minus(dec(i.paidAmount)).gt(0);
+      return pid === partyId && dec(i.outstanding).gt(0);
     });
   }, [kind, salesInvoices, purchaseInvoices, partyId]);
 
   const invoiceOptions = openInvoices.map((i) => ({
     value: i.id,
-    label: `${i.invoiceNo ?? `#${i.id}`} — ${t('treasury.remaining', { amount: formatAmount(dec(i.grandTotal).minus(dec(i.paidAmount))) })}`,
+    label: `${i.invoiceNo ?? `#${i.id}`} — ${t('treasury.remaining', { amount: formatAmount(i.outstanding) })}`,
   }));
 
   const docType = kind === 'receipt' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';

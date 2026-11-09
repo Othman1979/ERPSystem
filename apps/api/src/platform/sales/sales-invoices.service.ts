@@ -6,6 +6,7 @@ import type { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { computeLineAmounts } from '../shared/invoice-math.js';
+import { creditedByInvoice, withBalance } from '../shared/invoice-balance.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type { CreateSalesInvoiceDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
@@ -33,10 +34,23 @@ export class SalesInvoicesService {
     private readonly audit: AuditService,
   ) {}
 
+  /** Posted credit-return totals for the given invoices (for `outstanding`). */
+  private async creditedFor(
+    db: ReturnType<DocumentSupportService['tenant']>['db'],
+    invoiceIds: bigint[],
+  ) {
+    if (invoiceIds.length === 0) return new Map<string, Decimal>();
+    const returns = await db.salesReturn.findMany({
+      where: { originalInvoiceId: { in: invoiceIds }, status: 'POSTED', refundType: 'CREDIT' },
+      select: { originalInvoiceId: true, grandTotal: true },
+    });
+    return creditedByInvoice(returns);
+  }
+
   async list(status?: string, paymentType?: string, customerId?: string) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    return db.salesInvoice.findMany({
+    const rows = await db.salesInvoice.findMany({
       where: {
         companyId,
         ...(status ? { status: status as 'DRAFT' | 'POSTED' } : {}),
@@ -51,6 +65,8 @@ export class SalesInvoicesService {
       orderBy: [{ invoiceDate: 'desc' }, { id: 'desc' }],
       take: 300,
     });
+    const credited = await this.creditedFor(db, rows.map((r) => r.id));
+    return rows.map((r) => withBalance(r, credited));
   }
 
   async get(id: bigint) {
@@ -73,7 +89,7 @@ export class SalesInvoicesService {
       },
     });
     if (!inv) throw DomainError.notFound('SalesInvoice', id.toString());
-    return inv;
+    return withBalance(inv, await this.creditedFor(db, [inv.id]));
   }
 
   async create(dto: CreateSalesInvoiceDto) {

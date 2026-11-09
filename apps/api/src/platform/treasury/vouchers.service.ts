@@ -5,6 +5,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
+import { outstandingAmount } from '../shared/invoice-balance.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import type { CreatePaymentDto, CreateReceiptDto } from './dto/treasury.dto.js';
 
@@ -434,9 +435,7 @@ export class VouchersService {
         },
         _sum: { grandTotal: true },
       });
-      return new Decimal(inv.grandTotal.toString())
-        .minus(inv.paidAmount.toString())
-        .minus(creditReturns._sum.grandTotal?.toString() ?? '0');
+      return outstandingAmount(inv.grandTotal, inv.paidAmount, creditReturns._sum.grandTotal ?? 0);
     }
     const inv = await tx.purchaseInvoice.findFirst({
       where: { id: documentId },
@@ -452,9 +451,7 @@ export class VouchersService {
       },
       _sum: { grandTotal: true },
     });
-    return new Decimal(inv.grandTotal.toString())
-      .minus(inv.paidAmount.toString())
-      .minus(creditReturns._sum.grandTotal?.toString() ?? '0');
+    return outstandingAmount(inv.grandTotal, inv.paidAmount, creditReturns._sum.grandTotal ?? 0);
   }
 
   // -------------------------------------------------------------- helpers
