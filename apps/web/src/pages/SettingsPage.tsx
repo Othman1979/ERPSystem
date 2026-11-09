@@ -6,6 +6,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
   Space,
   Table,
   Tabs,
@@ -207,9 +208,11 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
                   {t('common.edit')}
                 </Button>
                 {row.isActive && (
-                  <Button size="small" danger onClick={() => deactivate.mutate(row.id)}>
+                  <Popconfirm title={t('common.confirmDeactivate')} onConfirm={() => deactivate.mutate(row.id)}>
+<Button size="small" danger >
                     {t('common.deactivate')}
                   </Button>
+</Popconfirm>
                 )}
               </Space>
             ),

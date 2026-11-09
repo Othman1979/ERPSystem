@@ -1,20 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarcodeOutlined,
+  MoreOutlined,
   ProfileOutlined,
   AppstoreOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
 import JsBarcode from 'jsbarcode';
 import {
+  App,
   Button,
   Card,
   Col,
   DatePicker,
+  Dropdown,
   Form,
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
   Row,
   Segmented,
   Select,
@@ -133,6 +137,7 @@ function useApiError() {
 
 function ItemsTab() {
   const { t } = useTranslation();
+  const { modal } = App.useApp();
   const queryClient = useQueryClient();
   const { contextHolder, show } = useApiError();
   const [modalOpen, setModalOpen] = useState(false);
@@ -306,25 +311,44 @@ function ItemsTab() {
     },
     {
       title: t('common.actions'),
-      width: 260,
+      width: 120,
+      // One visible action per row; the rest live in the "⋯" menu.
       render: (_: unknown, row: Item) => (
-        <Space size={4} wrap>
-          {row.itemKind === 'STOCK' && (
-            <Button size="small" icon={<ProfileOutlined />} onClick={() => setLedgerItem(row)}>
-              {t('items.ledger')}
-            </Button>
-          )}
-          <Button size="small" icon={<BarcodeOutlined />} onClick={() => setBarcodeItem(row)}>
-            {t('items.barcode')}
-          </Button>
+        <Space size={4}>
           <Button size="small" onClick={() => openEdit(row)}>
             {t('common.edit')}
           </Button>
-          {row.isActive && (
-            <Button size="small" danger onClick={() => deactivate.mutate(row.id)}>
-              {t('common.deactivate')}
-            </Button>
-          )}
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                ...(row.itemKind === 'STOCK'
+                  ? [{ key: 'ledger', icon: <ProfileOutlined />, label: t('items.ledger') }]
+                  : []),
+                { key: 'barcode', icon: <BarcodeOutlined />, label: t('items.barcode') },
+                ...(row.isActive
+                  ? [
+                      { type: 'divider' as const },
+                      { key: 'deactivate', danger: true, label: t('common.deactivate') },
+                    ]
+                  : []),
+              ],
+              onClick: ({ key }) => {
+                if (key === 'ledger') setLedgerItem(row);
+                else if (key === 'barcode') setBarcodeItem(row);
+                else if (key === 'deactivate')
+                  modal.confirm({
+                    title: t('items.deactivateConfirm', { name: displayName(row) }),
+                    okText: t('common.deactivate'),
+                    okButtonProps: { danger: true },
+                    cancelText: t('common.cancel'),
+                    onOk: () => deactivate.mutateAsync(row.id),
+                  });
+              },
+            }}
+          >
+            <Button size="small" icon={<MoreOutlined />} aria-label={t('common.more')} />
+          </Dropdown>
         </Space>
       ),
     },
@@ -853,9 +877,11 @@ function GroupsTab() {
                   {t('common.edit')}
                 </Button>
                 {row.isActive && (
-                  <Button size="small" danger onClick={() => deactivate.mutate(row.id)}>
+                  <Popconfirm title={t('common.confirmDeactivate')} onConfirm={() => deactivate.mutate(row.id)}>
+<Button size="small" danger >
                     {t('common.deactivate')}
                   </Button>
+</Popconfirm>
                 )}
               </Space>
             ),
@@ -899,8 +925,9 @@ function GroupsTab() {
 
 export function ItemsPage() {
   const { t } = useTranslation();
+  // No card title: the list below already has its own header (it was shown twice).
   return (
-    <Card title={t('items.title')}>
+    <Card>
       <Tabs
         items={[
           { key: 'items', label: t('items.items'), children: <ItemsTab /> },

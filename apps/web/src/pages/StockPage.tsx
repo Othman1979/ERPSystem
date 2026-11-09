@@ -977,7 +977,7 @@ function MovementsTab() {
             dataIndex: 'movementType',
             width: 80,
             render: (v: string) =>
-              v === 'IN' ? <Tag color="green">IN</Tag> : <Tag color="red">OUT</Tag>,
+              v === 'IN' ? <Tag color="green">{t('stock.types.IN')}</Tag> : <Tag color="red">{t('stock.types.OUT')}</Tag>,
           },
           { title: t('stock.qtyIn'), dataIndex: 'qtyIn', width: 90, align: 'right' as const, render: qtyCell },
           { title: t('stock.qtyOut'), dataIndex: 'qtyOut', width: 90, align: 'right' as const, render: qtyCell },

@@ -861,12 +861,16 @@ function ReturnsTab() {
           <Button size="small" onClick={() => setViewId(r.id)}>{t('common.view')}</Button>
           {r.status === 'DRAFT' && (
             <>
-              <Button size="small" type="primary" onClick={() => post.mutate(r.id)}>
+              <Popconfirm title={t('common.confirmPost')} onConfirm={() => post.mutate(r.id)}>
+<Button size="small" type="primary" >
                 {t('common.post')}
               </Button>
-              <Button size="small" danger onClick={() => del.mutate(r.id)}>
+</Popconfirm>
+              <Popconfirm title={t('common.confirmDelete')} onConfirm={() => del.mutate(r.id)}>
+<Button size="small" danger >
                 {t('common.delete')}
               </Button>
+</Popconfirm>
             </>
           )}
         </Space>

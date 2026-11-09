@@ -148,6 +148,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
   });
 
   const lineTotals = lines.map((l) => amountsFor(l, itemOptions));
+  const discountTotal = sum(lineTotals.map((a) => a.discount));
   const totals = {
     net: sum(lineTotals.map((a) => a.net)),
     tax: sum(lineTotals.map((a) => a.tax)),
@@ -155,6 +156,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
   };
 
   return (
+    <>
     <div className="entry-grid-scroll">
     <table ref={gridRef} className="entry-grid">
       <thead>
@@ -273,6 +275,32 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
       </tfoot>
     </table>
     </div>
+    {/* Document totals, read at a glance (preview — the server recomputes on save) */}
+    <dl className="invoice-summary">
+      <div>
+        <dt>{t('sales.subtotal')}</dt>
+        <dd><Num>{formatAmount(totals.net.plus(discountTotal))}</Num></dd>
+      </div>
+      {!discountTotal.isZero() && (
+        <div>
+          <dt>{t('sales.discount')}</dt>
+          <dd><Num>-{formatAmount(discountTotal)}</Num></dd>
+        </div>
+      )}
+      <div>
+        <dt>{t('sales.net')}</dt>
+        <dd><Num>{formatAmount(totals.net)}</Num></dd>
+      </div>
+      <div>
+        <dt>{t('sales.tax')}</dt>
+        <dd><Num>{formatAmount(totals.tax)}</Num></dd>
+      </div>
+      <div className="invoice-summary-grand">
+        <dt>{t('sales.grandTotal')}</dt>
+        <dd><Num>{formatAmount(totals.total)}</Num></dd>
+      </div>
+    </dl>
+    </>
   );
 }
 

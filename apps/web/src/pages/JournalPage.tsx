@@ -336,11 +336,14 @@ export function JournalPage() {
               title: t('common.status'),
               dataIndex: 'status',
               width: 100,
-              render: (v: string) =>
-                v === 'POSTED' ? (
-                  <Tag color="green">{t('journal.postedStatus')}</Tag>
-                ) : (
+              // §16: fixed colours for draft / posted / reversed.
+              render: (v: string, e: JournalEntry) =>
+                v !== 'POSTED' ? (
                   <Tag>{t('journal.draft')}</Tag>
+                ) : e.reversals?.length ? (
+                  <Tag color="orange">{t('journal.reversedStatus')}</Tag>
+                ) : (
+                  <Tag color="green">{t('journal.postedStatus')}</Tag>
                 ),
             },
             {
@@ -352,7 +355,7 @@ export function JournalPage() {
             },
             {
               title: t('common.actions'),
-              width: 200,
+              width: 160,
               render: (_: unknown, e: JournalEntry) => (
                 <Space onClick={(ev) => ev.stopPropagation()}>
                   {e.status === 'DRAFT' && (
@@ -374,11 +377,6 @@ export function JournalPage() {
                         </Button>
                       </Popconfirm>
                     </>
-                  )}
-                  {e.status === 'POSTED' && !e.reversals?.length && (
-                    <Button size="small" onClick={() => setReverseTarget(e)}>
-                      {t('journal.reverse')}
-                    </Button>
                   )}
                 </Space>
               ),

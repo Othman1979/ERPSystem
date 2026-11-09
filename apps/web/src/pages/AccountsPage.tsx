@@ -6,6 +6,7 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Table,
@@ -310,9 +311,11 @@ export function AccountsPage() {
                   {t('common.edit')}
                 </Button>
                 {a.isActive && !a.isControl && (
-                  <Button size="small" danger onClick={() => deactivate.mutate(a.id)}>
+                  <Popconfirm title={t('common.confirmDeactivate')} onConfirm={() => deactivate.mutate(a.id)}>
+<Button size="small" danger >
                     {t('common.deactivate')}
                   </Button>
+</Popconfirm>
                 )}
               </Space>
             ),

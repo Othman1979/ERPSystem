@@ -5,6 +5,7 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
   Space,
   Table,
   Tag,
@@ -128,9 +129,11 @@ export function BranchesPage() {
                   {t('common.edit')}
                 </Button>
                 {b.isActive && (
-                  <Button size="small" danger onClick={() => deactivate.mutate(b.id)}>
+                  <Popconfirm title={t('common.confirmDeactivate')} onConfirm={() => deactivate.mutate(b.id)}>
+<Button size="small" danger >
                     {t('common.deactivate')}
                   </Button>
+</Popconfirm>
                 )}
               </Space>
             ),

@@ -259,3 +259,44 @@ body {
     display: none !important;
   }
 }
+
+/* Invoice totals box under the lines grid */
+.invoice-summary {
+  width: 300px;
+  max-width: 100%;
+  margin: 12px 0 0;
+  margin-inline-start: auto;
+  padding: 8px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  background: var(--c-surface);
+}
+
+.invoice-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+}
+
+.invoice-summary dt {
+  color: var(--c-text);
+  opacity: 0.75;
+}
+
+.invoice-summary dd {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.invoice-summary .invoice-summary-grand {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--c-border-strong);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.invoice-summary .invoice-summary-grand dt {
+  opacity: 1;
+}
