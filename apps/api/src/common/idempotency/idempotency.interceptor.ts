@@ -12,7 +12,9 @@ import type { RequestContext } from '../cls/cls.types.js';
 import { DomainError } from '../errors/domain.error.js';
 import { ErrorCode } from '../errors/error-codes.js';
 
-const ACTIVITY_PATH = /\/(post|reverse)$/;
+// Posting actions (§10.3): /post and /reverse, plus documents that post on
+// creation (vouchers, cash transfers) and allocation changes (Phase 6).
+const ACTIVITY_PATH = /\/(post|reverse|allocations|cancel)$|\/(receipts|payments|cash-transfers)$/;
 const KEY_TTL_MS = 24 * 60 * 60 * 1000;
 
 function stableStringify(value: unknown): string {
@@ -25,7 +27,7 @@ function stableStringify(value: unknown): string {
 }
 
 /**
- * Enforces Idempotency-Key on /post and /reverse endpoints
+ * Enforces Idempotency-Key on posting actions (see ACTIVITY_PATH)
  * (docs/BUILD_PLAN.md §10.3). Registered BEFORE SerializeInterceptor so the
  * stored responseJson is the final serialized payload.
  */

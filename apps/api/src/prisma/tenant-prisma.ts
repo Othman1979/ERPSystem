@@ -58,6 +58,7 @@ export const TENANT_MODELS = [
   'Receipt',
   'Payment',
   'Allocation',
+  'CashTransfer',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);

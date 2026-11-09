@@ -204,6 +204,69 @@ export class PostingService {
   }
 
   /** Finds the OPEN fiscal period covering `date` for the company. */
+  /**
+   * Posts the mirror image (debits ↔ credits) of a posted entry, dated
+   * `reversalDate` (§8.3). An entry can be reversed once. Shared by manual
+   * journal reversal and document reversals (vouchers, cash transfers).
+   */
+  async reverseEntry(
+    tx: Prisma.TransactionClient,
+    params: {
+      tenantId: bigint;
+      companyId: bigint;
+      entryId: bigint;
+      reversalDate: Date;
+      description?: string | null;
+      postedBy?: bigint | null;
+    },
+  ) {
+    const { tenantId, companyId, reversalDate } = params;
+    const original = await tx.journalEntry.findFirst({
+      where: { tenantId, id: params.entryId },
+      include: { lines: { orderBy: { lineNo: 'asc' } } },
+    });
+    if (!original) throw DomainError.notFound('JournalEntry', params.entryId.toString());
+    if (original.status !== 'POSTED') {
+      throw new DomainError(ErrorCode.CONFLICT, 'Only posted entries can be reversed');
+    }
+    if (original.postingKind === 'REVERSAL') {
+      throw new DomainError(ErrorCode.CONFLICT, 'A reversal entry cannot itself be reversed');
+    }
+    const existing = await tx.journalEntry.findFirst({
+      where: { tenantId, reversalOfId: original.id },
+      select: { id: true },
+    });
+    if (existing) throw new DomainError(ErrorCode.CONFLICT, 'Entry already reversed');
+
+    const period = await this.resolveOpenPeriod(tx, tenantId, companyId, reversalDate);
+    const entryNo = await this.allocateEntryNo(tx, tenantId, companyId, 'JOURNAL_ENTRY', reversalDate);
+    const swapped: JournalLineInput[] = original.lines.map((l) => ({
+      accountId: l.accountId,
+      debit: l.credit.toString(),
+      credit: l.debit.toString(),
+      partyType: l.partyType,
+      partyId: l.partyId,
+      description: l.description,
+      branchId: l.branchId,
+    }));
+    return this.postEntry(tx, {
+      tenantId,
+      companyId,
+      branchId: original.branchId,
+      entryDate: reversalDate,
+      fiscalPeriodId: period.id,
+      entryNo,
+      sourceType: original.sourceType,
+      sourceId: original.sourceId,
+      postingKind: 'REVERSAL',
+      voucherType: original.voucherType,
+      reversalOfId: original.id,
+      description: params.description ?? `Reversal of ${original.entryNo ?? original.id}`,
+      lines: swapped,
+      postedBy: params.postedBy ?? null,
+    });
+  }
+
   async resolveOpenPeriod(
     tx: Prisma.TransactionClient,
     tenantId: bigint,

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PlusOutlined } from '@ant-design/icons';
 import {
   Button,
+  Checkbox,
   DatePicker,
   Form,
   Input,
@@ -39,10 +40,19 @@ import {
   treasuryControllerListCashBoxes,
   treasuryControllerListPayments,
   treasuryControllerListReceipts,
+  treasuryControllerAllocatePayment,
+  treasuryControllerAllocateReceipt,
+  treasuryControllerCancelAllocation,
+  treasuryControllerReversePayment,
+  treasuryControllerReverseReceipt,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { EnterNav } from '../components/EnterNav';
+import { ReverseButton } from '../components/ReverseButton';
+import { idemHeaders } from '../idempotency';
+import { BalancesTab } from './treasury/BalancesTab';
+import { TransfersTab } from './treasury/TransfersTab';
 import { GridSelect } from '../components/GridSelect';
 import { amountCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
@@ -88,7 +98,18 @@ interface Voucher {
   party?: { code: string; nameAr: string; partyType: string } | null;
   cashAccount?: { code: string; nameAr: string };
   status?: string;
-  allocations?: { id: string; amount: string; documentType: string }[];
+  /** Set once the voucher is reversed (Phase 6); it then stays read-only. */
+  reversedAt?: string | null;
+  allocations?: {
+    id: string;
+    amount: string;
+    documentType: string;
+    documentId: string;
+    cancelledAt: string | null;
+  }[];
+  /** Active allocations only (cancelled ones are history). */
+  allocatedAmount?: string;
+  unallocatedAmount?: string;
 }
 interface OpenInvoice {
   id: string;
@@ -141,18 +162,26 @@ function useTreasuryLookups() {
 export function TreasuryPage() {
   const { t } = useTranslation();
   const [tab, setTab] = useState('boxes');
+  const lookups = useTreasuryLookups();
   return (
     <div>
       <PageHeader title={t('nav.treasury')} />
       <Tabs
-      activeKey={tab}
-      onChange={setTab}
-      items={[
-        { key: 'boxes', label: t('treasury.cashBoxes'), children: <CashBoxesTab /> },
-        { key: 'banks', label: t('treasury.bankAccounts'), children: <BankAccountsTab /> },
-        { key: 'receipts', label: t('treasury.receipts'), children: <ReceiptsTab /> },
-        { key: 'payments', label: t('treasury.payments'), children: <PaymentsTab /> },
-      ]}
+        activeKey={tab}
+        onChange={setTab}
+        destroyOnHidden
+        items={[
+          { key: 'boxes', label: t('treasury.cashBoxes'), children: <CashBoxesTab /> },
+          { key: 'banks', label: t('treasury.bankAccounts'), children: <BankAccountsTab /> },
+          { key: 'receipts', label: t('treasury.receipts'), children: <ReceiptsTab /> },
+          { key: 'payments', label: t('treasury.payments'), children: <PaymentsTab /> },
+          {
+            key: 'transfers',
+            label: t('treasury.transfers'),
+            children: <TransfersTab cashAccounts={lookups.cashAccounts} />,
+          },
+          { key: 'balances', label: t('treasury.balances'), children: <BalancesTab /> },
+        ]}
       />
     </div>
   );
@@ -424,7 +453,9 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
-  const [, contextHolder] = message.useMessage();
+  const [api, contextHolder] = message.useMessage();
+  const onError = (err: unknown) =>
+    api.error(err instanceof ApiError ? t(`errors.${err.code}`, { defaultValue: err.message }) : t('errors.INTERNAL'));
 
   const listFn = kind === 'receipt' ? treasuryControllerListReceipts : treasuryControllerListPayments;
   const getFn = kind === 'receipt'
@@ -443,9 +474,48 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: [kind === 'receipt' ? 'receipts' : 'payments'] });
+    void queryClient.invalidateQueries({ queryKey: [kind] });
     void queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
     void queryClient.invalidateQueries({ queryKey: ['purchase-invoices'] });
+    void queryClient.invalidateQueries({ queryKey: ['treasury-balances'] });
   };
+
+  // Phase 6: reverse, allocate the remainder (oldest first), cancel an allocation.
+  const reverse = useMutation({
+    mutationFn: (v: { id: string; reversalDate: string }) =>
+      (kind === 'receipt' ? treasuryControllerReverseReceipt : treasuryControllerReversePayment)(
+        v.id,
+        { reversalDate: v.reversalDate },
+        { headers: idemHeaders() },
+      ),
+    onSuccess: () => {
+      api.success(t('treasury.reversed'));
+      invalidate();
+    },
+    onError,
+  });
+  const allocateRest = useMutation({
+    mutationFn: (id: string) =>
+      (kind === 'receipt' ? treasuryControllerAllocateReceipt : treasuryControllerAllocatePayment)(
+        id,
+        { auto: true },
+        { headers: idemHeaders() },
+      ),
+    onSuccess: () => {
+      api.success(t('common.saved'));
+      invalidate();
+    },
+    onError,
+  });
+  const cancelAllocation = useMutation({
+    mutationFn: (allocationId: string) =>
+      treasuryControllerCancelAllocation(allocationId, { headers: idemHeaders() }),
+    onSuccess: () => {
+      api.success(t('common.done'));
+      invalidate();
+    },
+    onError,
+  });
 
   const columns = [
     {
@@ -468,6 +538,16 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
     },
     { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'right' as const, render: amountCell },
     { title: t('common.description'), dataIndex: 'description', ellipsis: true },
+    {
+      title: t('common.status'),
+      width: 100,
+      render: (_: unknown, v: Voucher) =>
+        v.reversedAt ? (
+          <Tag color="orange">{t('journal.reversedStatus')}</Tag>
+        ) : (
+          <Tag color="green">{t('journal.postedStatus')}</Tag>
+        ),
+    },
     {
       title: '',
       width: 90,
@@ -508,6 +588,13 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
               {view.cashAccount && <> — <strong>{t('treasury.cashAccount')}:</strong> {codeAndName(view.cashAccount)}</>}
             </Typography.Paragraph>
             {view.description && <Typography.Paragraph type="secondary">{view.description}</Typography.Paragraph>}
+            {view.reversedAt && <Tag color="orange">{t('journal.reversedStatus')}</Tag>}
+            {view.party && (
+              <Typography.Paragraph>
+                <strong>{t('treasury.allocated')}:</strong> {money(view.allocatedAmount)} —{' '}
+                <strong>{t('treasury.unallocated')}:</strong> {money(view.unallocatedAmount)}
+              </Typography.Paragraph>
+            )}
             {(view.allocations?.length ?? 0) > 0 && (
               <Table
                 rowKey="id"
@@ -515,10 +602,47 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                 pagination={false}
                 dataSource={view.allocations}
                 columns={[
-                  { title: t('treasury.documentType'), dataIndex: 'documentType', width: 160 },
+                  {
+                    title: t('treasury.documentType'),
+                    width: 200,
+                    render: (_: unknown, a: NonNullable<Voucher['allocations']>[number]) =>
+                      `${t(`treasury.doc_${a.documentType}`, { defaultValue: a.documentType })} #${a.documentId}`,
+                  },
                   { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'right' as const, render: amountCell },
+                  {
+                    title: '',
+                    render: (_: unknown, a: NonNullable<Voucher['allocations']>[number]) =>
+                      a.cancelledAt ? (
+                        <Tag>{t('treasury.cancelled')}</Tag>
+                      ) : view.reversedAt ? null : (
+                        <Popconfirm
+                          title={t('treasury.cancelAllocationConfirm')}
+                          okText={t('treasury.cancelAllocation')}
+                          cancelText={t('common.cancel')}
+                          onConfirm={() => cancelAllocation.mutate(a.id)}
+                        >
+                          <Button size="small" loading={cancelAllocation.isPending && cancelAllocation.variables === a.id}>
+                            {t('treasury.cancelAllocation')}
+                          </Button>
+                        </Popconfirm>
+                      ),
+                  },
                 ]}
               />
+            )}
+            {!view.reversedAt && (
+              <Space style={{ marginTop: 16 }}>
+                {view.party && dec(view.unallocatedAmount).gt(0) && (
+                  <Button loading={allocateRest.isPending} onClick={() => allocateRest.mutate(view.id)}>
+                    {t('treasury.allocateRemaining')}
+                  </Button>
+                )}
+                <ReverseButton
+                  size="middle"
+                  loading={reverse.isPending}
+                  onReverse={(reversalDate) => reverse.mutate({ id: view.id, reversalDate })}
+                />
+              </Space>
             )}
           </>
         )}
@@ -557,6 +681,9 @@ function VoucherModal({
   const [referenceNo, setReferenceNo] = useState('');
   const [description, setDescription] = useState('');
   const [allocations, setAllocations] = useState<{ documentId: string; amount: string | null }[]>([]);
+  const [autoAllocate, setAutoAllocate] = useState(false);
+  // One key per opened dialog: a double-click or retry replays, never posts twice.
+  const idemKey = useMemo(() => crypto.randomUUID(), [open]);
 
   const lookups = useTreasuryLookups();
 
@@ -606,10 +733,11 @@ function VoucherModal({
         allocations: allocations
           .filter((a) => a.documentId && dec(a.amount).gt(0))
           .map((a) => ({ documentType: docType, documentId: a.documentId, amount: a.amount as string })),
+        autoAllocate: autoAllocate && !allocations.some((a) => a.documentId) ? true : undefined,
       };
       return kind === 'receipt'
-        ? treasuryControllerCreateReceipt(base as never)
-        : treasuryControllerCreatePayment(base as never);
+        ? treasuryControllerCreateReceipt(base as never, { headers: { 'Idempotency-Key': idemKey } })
+        : treasuryControllerCreatePayment(base as never, { headers: { 'Idempotency-Key': idemKey } });
     },
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
@@ -700,6 +828,16 @@ function VoucherModal({
         </div>
       </Space>
 
+      {partyId && openInvoices.length > 0 && (
+        <Checkbox
+          style={{ marginBottom: 8 }}
+          checked={autoAllocate}
+          disabled={allocations.some((a) => a.documentId)}
+          onChange={(e) => setAutoAllocate(e.target.checked)}
+        >
+          {t('treasury.autoAllocate')}
+        </Checkbox>
+      )}
       {partyId && openInvoices.length > 0 && (
         <>
           <Typography.Text strong>{t('treasury.allocations')}</Typography.Text>

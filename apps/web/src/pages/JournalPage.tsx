@@ -83,8 +83,13 @@ interface JournalEntry {
   totalCredit: string;
   lines?: JournalLine[];
   reversalOf?: { entryNo: string | null } | null;
+  /** Who produced the entry: manual journal entries, or a document (invoice, voucher…). */
+  sourceType?: string;
   reversals?: { entryNo: string | null; status: string }[];
 }
+
+/** Only manual entries reverse here; document entries reverse through their document. */
+const REVERSIBLE_HERE = new Set(['MANUAL_JOURNAL', 'OPENING_ENTRY']);
 
 const VOUCHER_TYPES = ['JOURNAL', 'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER'] as const;
 type VoucherType = (typeof VOUCHER_TYPES)[number];
@@ -456,7 +461,7 @@ export function JournalPage() {
                     </Popconfirm>
                   </>
                 )}
-                {entry.status === 'POSTED' && !entry.reversals?.length && (
+                {entry.status === 'POSTED' && !entry.reversals?.length && REVERSIBLE_HERE.has(entry.sourceType ?? 'MANUAL_JOURNAL') && (
                   <Button icon={<SwapOutlined />} onClick={() => setReverseTarget(entry)}>
                     {t('journal.reverse')}
                   </Button>

@@ -1,16 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, DatePicker, Descriptions, Input, Select, Space, Table, Tabs, Tag } from 'antd';
+import { Card, DatePicker, Descriptions, Select, Space, Table, Tabs, Tag } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   accountingControllerListAccounts,
   apiFetchData,
-  journalControllerTrialBalance,
+  partiesControllerList,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { bothNames, codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
+import { AgingTab } from './reports/AgingTab';
 import { amountCell } from '../format/cells';
 import { formatAmount } from '../format/number';
 
@@ -105,10 +106,19 @@ export function ReportsPage() {
     to: to?.format('YYYY-MM-DD'),
   };
 
+  // The from/to filters above apply to the trial balance too.
   const { data: tb, isLoading: tbLoading } = useQuery({
-    queryKey: ['report-tb'],
+    queryKey: ['report-tb', range.from, range.to],
+    queryFn: () => apiFetchData<TbResponse>(`/api/v1/reports/trial-balance${qs(range)}`),
+  });
+
+  const { data: parties } = useQuery({
+    queryKey: ['parties', partyType],
     queryFn: () =>
-      journalControllerTrialBalance().then((r) => r.data as unknown as TbResponse),
+      partiesControllerList({ partyType: partyType ?? '', isActive: '' }).then(
+        (r) => r.data as unknown as { id: string; code: string; nameAr: string; nameEn: string | null }[],
+      ),
+    enabled: !!partyType,
   });
 
   const { data: gl, isLoading: glLoading } = useQuery({
@@ -160,13 +170,16 @@ export function ReportsPage() {
             { value: 'SUPPLIER', label: t('reports.supplier') },
           ]}
         />
-        <Input
+        <Select
+          showSearch
           allowClear
+          optionFilterProp="label"
           disabled={!partyType}
-          placeholder={t('reports.partyId')}
-          style={{ width: 140 }}
+          placeholder={t('reports.party')}
+          style={{ minWidth: 240 }}
           value={partyId}
-          onChange={(e) => setPartyId(e.target.value || undefined)}
+          onChange={setPartyId}
+          options={(parties ?? []).map((p) => ({ value: p.id, label: codeAndName(p) }))}
         />
       </Space>
       <Tabs
@@ -281,6 +294,11 @@ export function ReportsPage() {
                 />
               </>
             ),
+          },
+          {
+            key: 'aging',
+            label: t('reports.aging'),
+            children: <AgingTab />,
           },
           {
             key: 'statement',

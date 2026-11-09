@@ -12,6 +12,8 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.IDEMPOTENCY_KEY_REUSED]: HttpStatus.CONFLICT,
   [ErrorCode.TENANT_READ_ONLY]: HttpStatus.FORBIDDEN,
   [ErrorCode.BRANCH_NOT_ALLOWED]: HttpStatus.FORBIDDEN,
+  [ErrorCode.REVERSE_VIA_DOCUMENT]: HttpStatus.CONFLICT,
+  [ErrorCode.VOUCHER_HAS_ALLOCATIONS]: HttpStatus.CONFLICT,
   [ErrorCode.UNBALANCED_ENTRY]: HttpStatus.BAD_REQUEST,
   [ErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_INSUFFICIENT]: HttpStatus.CONFLICT,

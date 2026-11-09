@@ -92,6 +92,12 @@ export interface CreateReceiptDto { [key: string]: unknown }
 
 export interface CreatePaymentDto { [key: string]: unknown }
 
+export interface ReverseVoucherDto { [key: string]: unknown }
+
+export interface AllocateVoucherDto { [key: string]: unknown }
+
+export interface CreateCashTransferDto { [key: string]: unknown }
+
 export interface UpdateTenantStatusDto { [key: string]: unknown }
 
 export interface ExtendTrialDto { [key: string]: unknown }
@@ -5425,6 +5431,458 @@ export const getTreasuryControllerGetPaymentUrl = (id: string,) => {
 export const treasuryControllerGetPayment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerGetPaymentResponse> => {
 
   return apiFetch<treasuryControllerGetPaymentResponse>(getTreasuryControllerGetPaymentUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerReverseReceiptResponse201 = {
+  data: void
+  status: 201
+}
+
+export type treasuryControllerReverseReceiptResponseSuccess = (treasuryControllerReverseReceiptResponse201) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerReverseReceiptResponse = (treasuryControllerReverseReceiptResponseSuccess)
+
+export const getTreasuryControllerReverseReceiptUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/receipts/${id}/reverse`
+}
+
+export const treasuryControllerReverseReceipt = async (id: string,
+    reverseVoucherDto: ReverseVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReverseReceiptResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerReverseReceiptResponse>(getTreasuryControllerReverseReceiptUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reverseVoucherDto)
+  }
+);}
+
+
+
+export type treasuryControllerReversePaymentResponse201 = {
+  data: void
+  status: 201
+}
+
+export type treasuryControllerReversePaymentResponseSuccess = (treasuryControllerReversePaymentResponse201) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerReversePaymentResponse = (treasuryControllerReversePaymentResponseSuccess)
+
+export const getTreasuryControllerReversePaymentUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payments/${id}/reverse`
+}
+
+export const treasuryControllerReversePayment = async (id: string,
+    reverseVoucherDto: ReverseVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReversePaymentResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerReversePaymentResponse>(getTreasuryControllerReversePaymentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reverseVoucherDto)
+  }
+);}
+
+
+
+export type treasuryControllerAllocateReceiptResponse201 = {
+  data: void
+  status: 201
+}
+
+export type treasuryControllerAllocateReceiptResponseSuccess = (treasuryControllerAllocateReceiptResponse201) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerAllocateReceiptResponse = (treasuryControllerAllocateReceiptResponseSuccess)
+
+export const getTreasuryControllerAllocateReceiptUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/receipts/${id}/allocations`
+}
+
+export const treasuryControllerAllocateReceipt = async (id: string,
+    allocateVoucherDto: AllocateVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerAllocateReceiptResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerAllocateReceiptResponse>(getTreasuryControllerAllocateReceiptUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(allocateVoucherDto)
+  }
+);}
+
+
+
+export type treasuryControllerAllocatePaymentResponse201 = {
+  data: void
+  status: 201
+}
+
+export type treasuryControllerAllocatePaymentResponseSuccess = (treasuryControllerAllocatePaymentResponse201) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerAllocatePaymentResponse = (treasuryControllerAllocatePaymentResponseSuccess)
+
+export const getTreasuryControllerAllocatePaymentUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payments/${id}/allocations`
+}
+
+export const treasuryControllerAllocatePayment = async (id: string,
+    allocateVoucherDto: AllocateVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerAllocatePaymentResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerAllocatePaymentResponse>(getTreasuryControllerAllocatePaymentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(allocateVoucherDto)
+  }
+);}
+
+
+
+export type treasuryControllerCancelAllocationResponse201 = {
+  data: void
+  status: 201
+}
+
+export type treasuryControllerCancelAllocationResponseSuccess = (treasuryControllerCancelAllocationResponse201) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerCancelAllocationResponse = (treasuryControllerCancelAllocationResponseSuccess)
+
+export const getTreasuryControllerCancelAllocationUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/allocations/${id}/cancel`
+}
+
+export const treasuryControllerCancelAllocation = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCancelAllocationResponse> => {
+
+  return apiFetch<treasuryControllerCancelAllocationResponse>(getTreasuryControllerCancelAllocationUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerListCashTransfersResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerListCashTransfersResponseSuccess = (treasuryControllerListCashTransfersResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerListCashTransfersResponse = (treasuryControllerListCashTransfersResponseSuccess)
+
+export const getTreasuryControllerListCashTransfersUrl = () => {
+
+
+
+
+  return `/api/v1/cash-transfers`
+}
+
+export const treasuryControllerListCashTransfers = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListCashTransfersResponse> => {
+
+  return apiFetch<treasuryControllerListCashTransfersResponse>(getTreasuryControllerListCashTransfersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerCreateCashTransferResponse201 = {
+  data: void
+  status: 201
+}
+
+export type treasuryControllerCreateCashTransferResponseSuccess = (treasuryControllerCreateCashTransferResponse201) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerCreateCashTransferResponse = (treasuryControllerCreateCashTransferResponseSuccess)
+
+export const getTreasuryControllerCreateCashTransferUrl = () => {
+
+
+
+
+  return `/api/v1/cash-transfers`
+}
+
+export const treasuryControllerCreateCashTransfer = async (createCashTransferDto: CreateCashTransferDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateCashTransferResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerCreateCashTransferResponse>(getTreasuryControllerCreateCashTransferUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createCashTransferDto)
+  }
+);}
+
+
+
+export type treasuryControllerGetCashTransferResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerGetCashTransferResponseSuccess = (treasuryControllerGetCashTransferResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerGetCashTransferResponse = (treasuryControllerGetCashTransferResponseSuccess)
+
+export const getTreasuryControllerGetCashTransferUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cash-transfers/${id}`
+}
+
+export const treasuryControllerGetCashTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerGetCashTransferResponse> => {
+
+  return apiFetch<treasuryControllerGetCashTransferResponse>(getTreasuryControllerGetCashTransferUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerReverseCashTransferResponse201 = {
+  data: void
+  status: 201
+}
+
+export type treasuryControllerReverseCashTransferResponseSuccess = (treasuryControllerReverseCashTransferResponse201) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerReverseCashTransferResponse = (treasuryControllerReverseCashTransferResponseSuccess)
+
+export const getTreasuryControllerReverseCashTransferUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cash-transfers/${id}/reverse`
+}
+
+export const treasuryControllerReverseCashTransfer = async (id: string,
+    reverseVoucherDto: ReverseVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReverseCashTransferResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerReverseCashTransferResponse>(getTreasuryControllerReverseCashTransferUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reverseVoucherDto)
+  }
+);}
+
+
+
+export type treasuryControllerAgingResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerAgingResponseSuccess = (treasuryControllerAgingResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerAgingResponse = (treasuryControllerAgingResponseSuccess)
+
+export const getTreasuryControllerAgingUrl = () => {
+
+
+
+
+  return `/api/v1/reports/aging`
+}
+
+export const treasuryControllerAging = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerAgingResponse> => {
+
+  return apiFetch<treasuryControllerAgingResponse>(getTreasuryControllerAgingUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerCashBalancesResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerCashBalancesResponseSuccess = (treasuryControllerCashBalancesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerCashBalancesResponse = (treasuryControllerCashBalancesResponseSuccess)
+
+export const getTreasuryControllerCashBalancesUrl = () => {
+
+
+
+
+  return `/api/v1/treasury/balances`
+}
+
+export const treasuryControllerCashBalances = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCashBalancesResponse> => {
+
+  return apiFetch<treasuryControllerCashBalancesResponse>(getTreasuryControllerCashBalancesUrl(),
   {
     ...options,
     method: 'GET'
