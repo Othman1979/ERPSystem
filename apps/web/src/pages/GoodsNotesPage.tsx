@@ -48,6 +48,7 @@ import {
 import { StatusBar } from '../components/StatusBar';
 import { PageHeader } from '../components/PageHeader';
 import { codeAndName } from '../i18n/displayName';
+import { palette } from '../theme';
 import { qtyCell, unitCostCell } from '../format/cells';
 
 interface GoodsNote {
@@ -549,8 +550,8 @@ export function GoodsNotesSection({
       {/* Lines */}
       <div
         style={{
-          background: '#fff',
-          border: '1px solid #f0f0f0',
+          background: palette.surface,
+          border: `1px solid `,
           borderRadius: 8,
           padding: '12px 16px',
         }}

@@ -336,7 +336,7 @@ export function JournalPage() {
               title: t('common.status'),
               dataIndex: 'status',
               width: 100,
-              // ง16: fixed colours for draft / posted / reversed.
+              // BUILD_PLAN ยง16: fixed colours for draft / posted / reversed.
               render: (v: string, e: JournalEntry) =>
                 v !== 'POSTED' ? (
                   <Tag>{t('journal.draft')}</Tag>

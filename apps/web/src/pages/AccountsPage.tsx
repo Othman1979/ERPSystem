@@ -24,6 +24,7 @@ import {
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { bothNames, codeAndName } from '../i18n/displayName';
+import { palette } from '../theme';
 import { Num } from '../components/Num';
 import type Decimal from 'decimal.js';
 import { amountCell } from '../format/cells';
@@ -285,7 +286,7 @@ export function AccountsPage() {
               if (trialError) return '—';
               const bal = (a as TreeNode).balBalance;
               return (
-                <Num style={{ color: bal.isNegative() ? '#c42b1c' : undefined }}>
+                <Num style={{ color: bal.isNegative() ? palette.danger : undefined }}>
                   {formatAmount(bal)}
                 </Num>
               );

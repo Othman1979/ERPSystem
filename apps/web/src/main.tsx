@@ -11,6 +11,12 @@ import 'dayjs/locale/ar';
 import { useTranslation } from 'react-i18next';
 import { BrowserRouter } from 'react-router';
 import i18n from './i18n';
+// Self-hosted UI font (ADR-002). Each weight file covers Arabic + Latin via
+// unicode-range, so the browser only downloads the subsets a page uses.
+import '@fontsource/ibm-plex-sans-arabic/400.css';
+import '@fontsource/ibm-plex-sans-arabic/500.css';
+import '@fontsource/ibm-plex-sans-arabic/600.css';
+import '@fontsource/ibm-plex-sans-arabic/700.css';
 import './index.css';
 import { App } from './App';
 import { AuthProvider } from './auth/AuthContext';
