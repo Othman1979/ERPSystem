@@ -1,135 +1,37 @@
-import { Component, useState, type ReactNode } from 'react';
+import { Component, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import {
-  AppstoreOutlined,
-  BankOutlined,
-  CalendarOutlined,
-  CarOutlined,
-  DashboardOutlined,
-  DatabaseOutlined,
-  FileDoneOutlined,
   HomeOutlined,
-  InboxOutlined,
   LogoutOutlined,
-  ProfileOutlined,
-  SettingOutlined,
-  ShopOutlined,
-  ShoppingCartOutlined,
-  TeamOutlined,
+  MenuOutlined,
   UserOutlined,
-  WalletOutlined,
 } from '@ant-design/icons';
-import { Avatar, Button, Card, Col, Drawer, Grid, Row, Select, Space, Spin, Typography } from 'antd';
+import {
+  Avatar,
+  Breadcrumb,
+  Button,
+  Card,
+  Col,
+  Drawer,
+  Grid,
+  Layout,
+  Menu,
+  Row,
+  Select,
+  Space,
+  Spin,
+  Tooltip,
+  Typography,
+  type MenuProps,
+} from 'antd';
 import { useAuth } from './auth/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
-import { UsersPage } from './pages/UsersPage';
-import { BranchesPage } from './pages/BranchesPage';
-import { AccountsPage } from './pages/AccountsPage';
-import { FiscalPage } from './pages/FiscalPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { JournalPage } from './pages/JournalPage';
-import { ReportsPage } from './pages/ReportsPage';
-import { ItemsPage } from './pages/ItemsPage';
-import { WarehousesPage } from './pages/WarehousesPage';
-import { StockPage } from './pages/StockPage';
-import { PartiesPage } from './pages/PartiesPage';
-import { SalesPage } from './pages/SalesPage';
-import { PurchasesPage } from './pages/PurchasesPage';
-import { GoodsNotesPage } from './pages/GoodsNotesPage';
-import { TreasuryPage } from './pages/TreasuryPage';
-import { HealthPage } from './pages/HealthPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 import { displayName } from './i18n/displayName';
-
-type View =
-  | 'home'
-  | 'users'
-  | 'branches'
-  | 'accounts'
-  | 'journal'
-  | 'items'
-  | 'warehouses'
-  | 'stock'
-  | 'sales'
-  | 'purchases'
-  | 'goodsNotes'
-  | 'parties'
-  | 'treasury'
-  | 'reports'
-  | 'fiscal'
-  | 'settings'
-  | 'health';
-
-interface AppTile {
-  key: View;
-  icon: ReactNode;
-  color: string;
-}
-
-interface AppGroup {
-  label: string;
-  tiles: AppTile[];
-}
-
-const APP_GROUPS: AppGroup[] = [
-  {
-    label: 'nav.groupFinance',
-    tiles: [
-      { key: 'accounts', icon: <BankOutlined />, color: '#106ebe' },
-      { key: 'journal', icon: <ProfileOutlined />, color: '#106ebe' },
-      { key: 'treasury', icon: <WalletOutlined />, color: '#106ebe' },
-      { key: 'reports', icon: <DashboardOutlined />, color: '#106ebe' },
-      { key: 'fiscal', icon: <CalendarOutlined />, color: '#106ebe' },
-    ],
-  },
-  {
-    label: 'nav.groupSales',
-    tiles: [
-      { key: 'sales', icon: <ShoppingCartOutlined />, color: '#0078d4' },
-      { key: 'purchases', icon: <CarOutlined />, color: '#0078d4' },
-      { key: 'goodsNotes', icon: <FileDoneOutlined />, color: '#0078d4' },
-      { key: 'parties', icon: <TeamOutlined />, color: '#0078d4' },
-    ],
-  },
-  {
-    label: 'nav.groupInventory',
-    tiles: [
-      { key: 'items', icon: <InboxOutlined />, color: '#0078d4' },
-      { key: 'warehouses', icon: <DatabaseOutlined />, color: '#0078d4' },
-      { key: 'stock', icon: <DatabaseOutlined />, color: '#0078d4' },
-    ],
-  },
-  {
-    label: 'nav.groupAdmin',
-    tiles: [
-      { key: 'users', icon: <TeamOutlined />, color: '#5b6b7a' },
-      { key: 'branches', icon: <ShopOutlined />, color: '#5b6b7a' },
-      { key: 'settings', icon: <SettingOutlined />, color: '#5b6b7a' },
-      { key: 'health', icon: <DashboardOutlined />, color: '#5b6b7a' },
-    ],
-  },
-];
-
-const VIEWS: Record<View, ReactNode> = {
-  home: null,
-  users: <UsersPage />,
-  branches: <BranchesPage />,
-  accounts: <AccountsPage />,
-  journal: <JournalPage />,
-  items: <ItemsPage />,
-  warehouses: <WarehousesPage />,
-  stock: <StockPage />,
-  sales: <SalesPage />,
-  purchases: <PurchasesPage />,
-  goodsNotes: <GoodsNotesPage />,
-  parties: <PartiesPage />,
-  treasury: <TreasuryPage />,
-  reports: <ReportsPage />,
-  fiscal: <FiscalPage />,
-  settings: <SettingsPage />,
-  health: <HealthPage />,
-};
+import { ALL_ROUTES, APP_GROUPS, routeForPath, type AppGroup, type AppRoute } from './routes';
+import { palette, TOPBAR_HEIGHT } from './theme';
 
 interface ErrorBoundaryState {
   error: Error | null;
@@ -165,33 +67,31 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundary
   }
 }
 
-const NAV_LABEL: Record<View, string> = {
-  home: 'nav.home',
-  users: 'nav.users',
-  branches: 'nav.branches',
-  accounts: 'nav.accounts',
-  journal: 'nav.journal',
-  items: 'nav.items',
-  warehouses: 'nav.warehouses',
-  stock: 'nav.stock',
-  sales: 'nav.sales',
-  purchases: 'nav.purchases',
-  goodsNotes: 'nav.goodsNotes',
-  parties: 'nav.parties',
-  treasury: 'nav.treasury',
-  reports: 'nav.reports',
-  fiscal: 'nav.fiscal',
-  settings: 'nav.settings',
-  health: 'nav.health',
-};
+const SIDER_STORAGE_KEY = 'erp.siderCollapsed';
+
+function readSiderCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDER_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeSiderCollapsed(collapsed: boolean): void {
+  try {
+    window.localStorage.setItem(SIDER_STORAGE_KEY, collapsed ? '1' : '0');
+  } catch {
+    // Not critical: the menu just opens expanded next time.
+  }
+}
 
 function AppTileCard({
-  tile,
-  label,
+  route,
+  group,
   onOpen,
 }: {
-  tile: AppTile;
-  label: string;
+  route: AppRoute;
+  group: AppGroup;
   onOpen: () => void;
 }) {
   const { t } = useTranslation();
@@ -199,37 +99,223 @@ function AppTileCard({
     <Card
       hoverable
       onClick={onOpen}
+      className="app-tile"
       styles={{ body: { padding: '18px 12px', textAlign: 'center' } }}
-      style={{ borderRadius: 8 }}
     >
-      <div
-        style={{
-          width: 52,
-          height: 52,
-          margin: '0 auto 10px',
-          borderRadius: 10,
-          background: tile.color,
-          color: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 24,
-        }}
-      >
-        {tile.icon}
+      <div className="app-tile-icon" style={{ background: palette.tone[group.tone] }}>
+        {route.icon}
       </div>
-      <Typography.Text strong>{t(label)}</Typography.Text>
+      <Typography.Text strong>{t(route.label)}</Typography.Text>
     </Card>
   );
 }
 
-export function App() {
+function HomeScreen() {
   const { t } = useTranslation();
-  const { status, me, logout, switchTenant } = useAuth();
-  const [view, setView] = useState<View>('home');
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [appsOpen, setAppsOpen] = useState(false);
+  const { me } = useAuth();
+  const navigate = useNavigate();
+  return (
+    <>
+      <div style={{ marginBottom: 20 }}>
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          {t('app.title')}
+        </Typography.Title>
+        <Typography.Text type="secondary">
+          {me?.currentTenant?.name} —{' '}
+          {displayName(me?.currentTenant?.plan) ?? t('dashboard.noPlan')}
+        </Typography.Text>
+      </div>
+      {APP_GROUPS.map((g) => (
+        <div key={g.label} style={{ marginBottom: 24 }}>
+          <Typography.Title level={5} style={{ marginBottom: 12 }}>
+            {t(g.label)}
+          </Typography.Title>
+          <Row gutter={[16, 16]}>
+            {g.routes.map((r) => (
+              <Col key={r.key} xs={12} sm={8} md={6} lg={4}>
+                <AppTileCard route={r} group={g} onOpen={() => navigate(r.path)} />
+              </Col>
+            ))}
+          </Row>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function AppShell() {
+  const { t } = useTranslation();
+  const { me, logout, switchTenant } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const screens = Grid.useBreakpoint();
+  // Breakpoints are empty on the first render; assume desktop until measured.
+  const isMobile = screens.md === false;
+  const [collapsed, setCollapsed] = useState(readSiderCollapsed);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const language = i18n.language as AppLanguage;
+  const nextLanguage = language === 'ar' ? 'en' : 'ar';
+  const isRtl = language !== 'en';
+  const current = routeForPath(location.pathname);
+
+  useEffect(() => {
+    document.title = current ? `${t(current.label)} — ${t('app.title')}` : t('app.title');
+  }, [current, t, language]);
+
+  const menuItems: MenuProps['items'] = useMemo(
+    () => [
+      { key: '/', icon: <HomeOutlined />, label: t('nav.home') },
+      ...APP_GROUPS.map((g) => ({
+        type: 'group' as const,
+        key: g.label,
+        label: collapsed && !isMobile ? null : t(g.label),
+        children: g.routes.map((r) => ({ key: r.path, icon: r.icon, label: t(r.label) })),
+      })),
+    ],
+    // Labels depend on the language; t identity changes with it.
+    [t, collapsed, isMobile],
+  );
+
+  const menu = (
+    <Menu
+      mode="inline"
+      selectedKeys={[current?.path ?? '/']}
+      items={menuItems}
+      onClick={({ key }) => {
+        navigate(key);
+        setDrawerOpen(false);
+      }}
+      style={{ borderInlineEnd: 'none' }}
+    />
+  );
+
+  const toggleMenu = () => {
+    if (isMobile) {
+      setDrawerOpen(true);
+    } else {
+      setCollapsed((c) => {
+        writeSiderCollapsed(!c);
+        return !c;
+      });
+    }
+  };
+
+  return (
+    <Layout style={{ minHeight: '100vh' }}>
+      <header className="app-topbar" style={{ height: TOPBAR_HEIGHT }}>
+        <Tooltip title={t('nav.menu')}>
+          <Button
+            type="text"
+            className="topbar-btn"
+            icon={<MenuOutlined />}
+            onClick={toggleMenu}
+            aria-label={t('nav.menu')}
+          />
+        </Tooltip>
+        <button type="button" className="topbar-brand" onClick={() => navigate('/')}>
+          {t('app.title')}
+        </button>
+        {current && !isMobile && (
+          <Breadcrumb
+            className="topbar-breadcrumb"
+            items={[{ title: me?.currentTenant?.name ?? '' }, { title: t(current.label) }]}
+          />
+        )}
+        {current && isMobile && <span className="topbar-title">{t(current.label)}</span>}
+        <div style={{ flex: 1 }} />
+        <Space size={isMobile ? 4 : 12}>
+          {me && me.tenants.length > 1 && !isMobile && (
+            <Select
+              size="small"
+              style={{ minWidth: 160 }}
+              value={me.currentTenant?.tenantId}
+              onChange={(v) => void switchTenant(v)}
+              options={me.tenants.map((tn) => ({ value: tn.tenantId, label: tn.tenantName }))}
+              popupMatchSelectWidth={false}
+            />
+          )}
+          <Space size={6}>
+            <Avatar size="small" icon={<UserOutlined />} />
+            {!isMobile && (
+              <span className="topbar-user">{me?.user.fullName ?? me?.user.email}</span>
+            )}
+          </Space>
+          <Button
+            size="small"
+            onClick={() => {
+              void i18n.changeLanguage(
+                SUPPORTED_LANGUAGES.includes(nextLanguage) ? nextLanguage : 'ar',
+              );
+            }}
+          >
+            {t('language.switchTo')}
+          </Button>
+          <Tooltip title={t('auth.logout')}>
+            <Button
+              size="small"
+              type="text"
+              className="topbar-btn"
+              icon={<LogoutOutlined />}
+              onClick={() => {
+                // Next sign-in starts on the home screen, not this user's last page.
+                navigate('/');
+                void logout();
+              }}
+              aria-label={t('auth.logout')}
+            />
+          </Tooltip>
+        </Space>
+      </header>
+
+      <Layout hasSider={!isMobile}>
+        {!isMobile && (
+          <Layout.Sider
+            className="app-sider"
+            width={224}
+            collapsedWidth={56}
+            collapsed={collapsed}
+            trigger={null}
+            theme="light"
+            style={{ top: TOPBAR_HEIGHT, height: `calc(100vh - ${TOPBAR_HEIGHT}px)` }}
+          >
+            {menu}
+          </Layout.Sider>
+        )}
+        <Layout.Content className="app-content" style={{ padding: isMobile ? 12 : 24 }}>
+          <Routes>
+            <Route path="/" element={<HomeScreen />} />
+            {ALL_ROUTES.map((r) => (
+              <Route
+                key={r.key}
+                path={`${r.path}/*`}
+                element={<ViewErrorBoundary key={r.key}>{r.element}</ViewErrorBoundary>}
+              />
+            ))}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Layout.Content>
+      </Layout>
+
+      {isMobile && (
+        <Drawer
+          title={t('nav.apps')}
+          placement={isRtl ? 'right' : 'left'}
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          width={268}
+          styles={{ body: { padding: 0 } }}
+        >
+          {menu}
+        </Drawer>
+      )}
+    </Layout>
+  );
+}
+
+export function App() {
+  const { status } = useAuth();
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
   if (status === 'loading') {
     return (
@@ -239,6 +325,7 @@ export function App() {
     );
   }
 
+  // Guests see the sign-in screen on any URL and land back on it after signing in.
   if (status === 'guest') {
     return authMode === 'login' ? (
       <LoginPage onSwitchToRegister={() => setAuthMode('register')} />
@@ -247,168 +334,5 @@ export function App() {
     );
   }
 
-  const current = i18n.language as AppLanguage;
-  const next = current === 'ar' ? 'en' : 'ar';
-  const isRtl = current !== 'en';
-  const openApp = (v: View) => {
-    setView(v);
-    setAppsOpen(false);
-  };
-
-  return (
-    <div style={{ minHeight: '100vh', background: '#f3f3f3' }}>
-      {/* Odoo-style top bar */}
-      <div
-        className="app-topbar"
-        style={{
-          height: 40,
-          background: '#0078d4',
-          color: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '0 16px',
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-        }}
-      >
-        <Button
-          type="text"
-          icon={<AppstoreOutlined style={{ color: '#fff', fontSize: 18 }} />}
-          onClick={() => setAppsOpen(true)}
-          aria-label={t('nav.apps')}
-          title={t('nav.apps')}
-        />
-        {view !== 'home' && (
-          <Button
-            type="text"
-            icon={<HomeOutlined style={{ color: '#fff', fontSize: 16 }} />}
-            onClick={() => openApp('home')}
-            aria-label={t('nav.home')}
-            title={t('nav.home')}
-          />
-        )}
-        <Typography.Text strong style={{ color: '#fff', fontSize: 15 }}>
-          {view === 'home' ? t('app.title') : t(NAV_LABEL[view])}
-        </Typography.Text>
-        {view !== 'home' && (
-          <Typography.Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13 }}>
-            / {me?.currentTenant?.name ?? ''}
-          </Typography.Text>
-        )}
-        <div style={{ flex: 1 }} />
-        <Space size={12}>
-          {me && me.tenants.length > 1 && (
-            <Select
-              size="small"
-              style={{ minWidth: 160 }}
-              value={me.currentTenant?.tenantId}
-              onChange={(v) => void switchTenant(v)}
-              options={me.tenants.map((tn) => ({
-                value: tn.tenantId,
-                label: tn.tenantName,
-              }))}
-              popupMatchSelectWidth={false}
-            />
-          )}
-          <Space size={6}>
-            <Avatar size="small" icon={<UserOutlined />} />
-            <Typography.Text style={{ color: '#fff' }}>
-              {me?.user.fullName ?? me?.user.email}
-            </Typography.Text>
-          </Space>
-          <Button
-            size="small"
-            onClick={() => {
-              void i18n.changeLanguage(SUPPORTED_LANGUAGES.includes(next) ? next : 'ar');
-            }}
-          >
-            {t('language.switchTo')}
-          </Button>
-          <Button
-            size="small"
-            type="text"
-            icon={<LogoutOutlined style={{ color: '#fff' }} />}
-            onClick={() => void logout()}
-            aria-label={t('auth.logout')}
-          />
-        </Space>
-      </div>
-
-      {/* Content canvas */}
-      <div className="app-content" style={{ padding: screens.md ? 24 : 12 }}>
-        {view === 'home' ? (
-          <>
-            <div style={{ marginBottom: 20 }}>
-              <Typography.Title level={3} style={{ margin: 0 }}>
-                {t('app.title')}
-              </Typography.Title>
-              <Typography.Text type="secondary">
-                {me?.currentTenant?.name} —{' '}
-                {displayName(me?.currentTenant?.plan) ?? t('dashboard.noPlan')}
-              </Typography.Text>
-            </div>
-            {APP_GROUPS.map((g) => (
-              <div key={g.label} style={{ marginBottom: 24 }}>
-                <Typography.Title level={5} style={{ marginBottom: 12 }}>
-                  {t(g.label)}
-                </Typography.Title>
-                <Row gutter={[16, 16]}>
-                  {g.tiles.map((tile) => (
-                    <Col key={tile.key} xs={12} sm={8} md={6} lg={4}>
-                      <AppTileCard
-                        tile={tile}
-                        label={NAV_LABEL[tile.key]}
-                        onOpen={() => openApp(tile.key)}
-                      />
-                    </Col>
-                  ))}
-                </Row>
-              </div>
-            ))}
-          </>
-        ) : (
-          <ViewErrorBoundary key={view}>{VIEWS[view]}</ViewErrorBoundary>
-        )}
-      </div>
-
-      {/* Odoo app drawer — slides in from the same side as the apps button */}
-      <Drawer
-        title={t('nav.apps')}
-        placement={isRtl ? 'right' : 'left'}
-        open={appsOpen}
-        onClose={() => setAppsOpen(false)}
-        width={420}
-      >
-        <Button
-          block
-          icon={<HomeOutlined />}
-          type={view === 'home' ? 'primary' : 'default'}
-          onClick={() => openApp('home')}
-          style={{ marginBottom: 20 }}
-        >
-          {t('nav.home')}
-        </Button>
-        {APP_GROUPS.map((g) => (
-          <div key={g.label} style={{ marginBottom: 20 }}>
-            <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 10 }}>
-              {t(g.label)}
-            </Typography.Text>
-            <Row gutter={[12, 12]}>
-              {g.tiles.map((tile) => (
-                <Col key={tile.key} span={8}>
-                  <AppTileCard
-                    tile={tile}
-                    label={NAV_LABEL[tile.key]}
-                    onOpen={() => openApp(tile.key)}
-                  />
-                </Col>
-              ))}
-            </Row>
-          </div>
-        ))}
-      </Drawer>
-    </div>
-  );
+  return <AppShell />;
 }

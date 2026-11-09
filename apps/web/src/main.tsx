@@ -9,30 +9,16 @@ import enUS from 'antd/es/locale/en_US';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ar';
 import { useTranslation } from 'react-i18next';
+import { BrowserRouter } from 'react-router';
 import i18n from './i18n';
 import './index.css';
 import { App } from './App';
 import { AuthProvider } from './auth/AuthContext';
+import { antdTheme } from './theme';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 });
-
-const theme = {
-  token: {
-    colorPrimary: '#0078d4',
-    colorInfo: '#0078d4',
-    colorBorder: '#e1e1e1',
-    borderRadius: 4,
-    fontFamily: "'Segoe UI', Tahoma, Arial, sans-serif",
-  },
-  components: {
-    Layout: { headerBg: '#0078d4', headerHeight: 40, headerPadding: '0 16px' },
-    Menu: { darkItemBg: '#005a9e', darkSubMenuItemBg: '#004c8c' },
-    Card: { headerBg: 'transparent' },
-    Table: { headerBg: '#f5f5f5', headerColor: '#323130' },
-  },
-};
 
 /** Keeps antd locale, text direction and dayjs in sync with the UI language. */
 function LocalizedApp() {
@@ -49,7 +35,7 @@ function LocalizedApp() {
     <ConfigProvider
       locale={isAr ? arEG : enUS}
       direction={isAr ? 'rtl' : 'ltr'}
-      theme={theme}
+      theme={antdTheme}
     >
       <AntApp>
         <AuthProvider>
@@ -65,7 +51,9 @@ dayjs.locale(i18n.language === 'ar' ? 'ar' : 'en');
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <LocalizedApp />
+      <BrowserRouter>
+        <LocalizedApp />
+      </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,
 );
