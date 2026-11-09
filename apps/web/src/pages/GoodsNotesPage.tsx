@@ -124,7 +124,13 @@ export function GoodsNotesSection({
   const [newWarehouseId, setNewWarehouseId] = useState<string | undefined>();
   const [newDescription, setNewDescription] = useState('');
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1), emptyItemLine(2)]);
-  const [gridFocus, setGridFocus] = useState(0);
+  // New notes start at the warehouse (required, no default); bumped by openNew.
+  const [headerFocus, setHeaderFocus] = useState(0);
+  useEffect(() => {
+    if (!headerFocus) return;
+    const id = requestAnimationFrame(() => focusNamedField('warehouse'));
+    return () => cancelAnimationFrame(id);
+  }, [headerFocus]);
 
   const { data: notes, isLoading } = useQuery({
     queryKey: ['goods-notes', typeFilter],
@@ -184,7 +190,7 @@ export function GoodsNotesSection({
     setNewWarehouseId(undefined);
     setNewDescription('');
     setLines([emptyItemLine(1), emptyItemLine(2)]);
-    setGridFocus((g) => g + 1);
+    setHeaderFocus((g) => g + 1);
     setScreen('entry');
   };
 
@@ -559,7 +565,6 @@ export function GoodsNotesSection({
             itemOptions={itemOptions}
             showCost={newType === 'GRN'}
             showDescription
-            focusSignal={gridFocus}
           />
         ) : (
           <Table

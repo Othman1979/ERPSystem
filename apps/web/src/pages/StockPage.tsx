@@ -54,6 +54,8 @@ import {
 } from '../components/ItemLinesGrid';
 import { codeAndName, displayName, type Named } from '../i18n/displayName';
 import { Num } from '../components/Num';
+import { EnterNav } from '../components/EnterNav';
+import { GridSelect } from '../components/GridSelect';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { formatAmount, formatQty } from '../format/number';
 
@@ -403,6 +405,7 @@ function AdjustmentsTab() {
         confirmLoading={create.isPending}
         width={820}
       >
+        <EnterNav autoFocusWhen={modalOpen}>
         <Form
           form={form}
           layout="vertical"
@@ -415,7 +418,8 @@ function AdjustmentsTab() {
               <DatePicker style={{ width: '100%' }} />
             </Form.Item>
             <Form.Item name="adjustmentType" label={t('stock.type')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <Select
+              <GridSelect
+                enterOpens
                 options={['OPENING', 'IN', 'OUT'].map((v) => ({
                   value: v,
                   label: t(`stock.types.${v}`),
@@ -423,7 +427,7 @@ function AdjustmentsTab() {
               />
             </Form.Item>
             <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <Select options={whOptions} />
+              <GridSelect enterOpens options={whOptions} />
             </Form.Item>
           </Space>
           <Form.Item name="description" label={t('common.description')}>
@@ -437,6 +441,7 @@ function AdjustmentsTab() {
             showDescription
           />
         </Form>
+        </EnterNav>
       </Modal>
       <Modal
         title={t('journal.reverseTitle')}
@@ -631,6 +636,7 @@ function TransfersTab() {
         confirmLoading={create.isPending}
         width={820}
       >
+        <EnterNav autoFocusWhen={modalOpen}>
         <Form
           form={form}
           layout="vertical"
@@ -643,10 +649,10 @@ function TransfersTab() {
               <DatePicker style={{ width: '100%' }} />
             </Form.Item>
             <Form.Item name="fromWarehouseId" label={t('stock.from')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <Select options={whOptions} />
+              <GridSelect enterOpens options={whOptions} />
             </Form.Item>
             <Form.Item name="toWarehouseId" label={t('stock.to')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <Select options={whOptions} />
+              <GridSelect enterOpens options={whOptions} />
             </Form.Item>
           </Space>
           <Form.Item name="description" label={t('common.description')}>
@@ -654,6 +660,7 @@ function TransfersTab() {
           </Form.Item>
           <ItemLinesGrid lines={lines} onChange={setLines} itemOptions={itemOptions} />
         </Form>
+        </EnterNav>
       </Modal>
       <Modal
         title={t('journal.reverseTitle')}
@@ -811,6 +818,7 @@ function CountsTab() {
         onOk={() => form.submit()}
         confirmLoading={create.isPending}
       >
+        <EnterNav autoFocusWhen={modalOpen}>
         <Form
           form={form}
           layout="vertical"
@@ -822,12 +830,13 @@ function CountsTab() {
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]}>
-            <Select options={whOptions} />
+            <GridSelect enterOpens options={whOptions} />
           </Form.Item>
           <Form.Item name="description" label={t('common.description')}>
             <Input maxLength={500} />
           </Form.Item>
         </Form>
+        </EnterNav>
       </Modal>
       <Modal
         title={t('stock.countLines')}

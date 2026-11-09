@@ -78,10 +78,12 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
   // 0=# 1=item 2=qty 3=price 4=discount 5=net 6=tax 7=total 8=del
   const NAV_COLS = [1, 2, 3, 4];
 
+  // Focus once the cell exists; retry a single time if a new row hasn't rendered yet.
+  // (Focusing twice re-opened a select's list after the user had moved on.)
   const focusSoon = (row: number, col: number) => {
     requestAnimationFrame(() => {
-      focusCell(row, col);
-      setTimeout(() => focusCell(row, col), 60); // retry if row not yet rendered
+      if (gridRef.current?.querySelector(`[data-cell="${row}-${col}"]`)) focusCell(row, col);
+      else setTimeout(() => focusCell(row, col), 60);
     });
   };
 
@@ -109,7 +111,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     // An open dropdown handles Enter itself: it selects the highlighted
     // option and GridSelect's onEnterSelect advances to the next cell.
-    if (isSelectDropdownOpen()) return;
+    if (isSelectDropdownOpen(e.currentTarget)) return;
     e.preventDefault();
     advance(row, col);
   };
@@ -118,7 +120,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
   // the select's dropdown-open don't swallow the keys). Select cells keep
   // vertical arrows for their dropdown; horizontal arrows move columns.
   const onCellKeyDownCapture = (e: React.KeyboardEvent, row: number, col: number) => {
-    if (e.nativeEvent.isComposing || isSelectDropdownOpen()) return;
+    if (e.nativeEvent.isComposing || isSelectDropdownOpen(e.currentTarget)) return;
     const key = e.key;
     if (!key.startsWith('Arrow')) return;
     const colPos = NAV_COLS.indexOf(col);
@@ -153,6 +155,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
   };
 
   return (
+    <div className="entry-grid-scroll">
     <table ref={gridRef} className="entry-grid">
       <thead>
         <tr>
@@ -269,6 +272,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
         </tr>
       </tfoot>
     </table>
+    </div>
   );
 }
 

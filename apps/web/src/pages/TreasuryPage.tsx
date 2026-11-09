@@ -42,6 +42,8 @@ import {
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { codeAndName, displayName } from '../i18n/displayName';
+import { EnterNav } from '../components/EnterNav';
+import { GridSelect } from '../components/GridSelect';
 import { amountCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
 
@@ -630,6 +632,7 @@ function VoucherModal({
       destroyOnHidden
     >
       {contextHolder}
+      <EnterNav autoFocusWhen={open}>
       <Space wrap style={{ marginBottom: 12 }}>
         <div>
           <Typography.Text type="secondary">{t('treasury.date')}</Typography.Text>
@@ -637,7 +640,8 @@ function VoucherModal({
         </div>
         <div>
           <Typography.Text type="secondary">{t('parties.type')}</Typography.Text>
-          <Select
+          <GridSelect
+            enterOpens
             style={{ width: 130, display: 'block' }}
             value={partyType}
             onChange={(v) => {
@@ -653,9 +657,8 @@ function VoucherModal({
         </div>
         <div>
           <Typography.Text type="secondary">{t('parties.name')} *</Typography.Text>
-          <Select
-            showSearch
-            optionFilterProp="label"
+          <GridSelect
+            enterOpens
             style={{ width: 240, display: 'block' }}
             options={partyOptions}
             value={partyId}
@@ -667,9 +670,8 @@ function VoucherModal({
         </div>
         <div>
           <Typography.Text type="secondary">{t('treasury.cashAccount')} *</Typography.Text>
-          <Select
-            showSearch
-            optionFilterProp="label"
+          <GridSelect
+            enterOpens
             style={{ width: 220, display: 'block' }}
             options={lookups.cashAccounts}
             value={cashAccountId}
@@ -708,9 +710,8 @@ function VoucherModal({
               {
                 title: t('treasury.invoice'),
                 render: (_: unknown, _a: { documentId: string; amount: string | null }, idx: number) => (
-                  <Select
-                    showSearch
-                    optionFilterProp="label"
+                  <GridSelect
+                    enterOpens
                     style={{ width: '100%' }}
                     placeholder={t('treasury.selectInvoice')}
                     options={invoiceOptions}
@@ -769,6 +770,7 @@ function VoucherModal({
           </Button>
         </>
       )}
+      </EnterNav>
     </Modal>
   );
 }

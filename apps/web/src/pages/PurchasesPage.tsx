@@ -24,7 +24,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   emptyInvoiceLine,
@@ -456,6 +456,12 @@ function PurchaseInvoiceForm({
 }) {
   const { t, i18n } = useTranslation();
   const [apiMessage, contextHolder] = message.useMessage();
+  // Keyboard entry starts at the first field the user must fill.
+  useEffect(() => {
+    if (loading) return;
+    const id = requestAnimationFrame(() => focusNamedField('supplier'));
+    return () => cancelAnimationFrame(id);
+  }, [loading]);
   const [invoiceDate, setInvoiceDate] = useState<Dayjs>(
     invoice ? dayjs(invoice.invoiceDate) : dayjs(),
   );
@@ -651,7 +657,6 @@ function PurchaseInvoiceForm({
         onChange={setLines}
         itemOptions={lookups.itemOptions}
         priceLabel={t('purchases.unitCost')}
-        focusSignal={1}
       />
 
       <div style={{ marginTop: 16, textAlign: 'end' }}>
