@@ -74,7 +74,10 @@ export function GridSelect({
             // antd refocuses the selector right after onChange; close the
             // dropdown and defer the move so it wins the focus race.
             setOpen(false);
+            const origin = document.activeElement;
             setTimeout(() => {
+              // A quick second Enter may already have moved on; don't move twice.
+              if (document.activeElement !== origin) return;
               if (onEnterSelect) {
                 onEnterSelect(v, opt);
               } else {
