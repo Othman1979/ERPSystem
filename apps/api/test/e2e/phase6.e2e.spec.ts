@@ -422,7 +422,11 @@ describe('Phase 6 — treasury', () => {
     const aging = await api().get('/api/v1/reports/aging?partyType=CUSTOMER').set(auth(tokenB));
     expect(aging.body.rows).toEqual([]);
     const balances = await api().get('/api/v1/treasury/balances').set(auth(tokenB));
-    expect(balances.body.rows).toEqual([]);
+    // B sees only its own (unlinked, untouched) cash/bank accounts — none of A's.
+    const bRows = balances.body.rows as { kind: string; balance: string; account: { id: string } }[];
+    expect(bRows.length).toBeGreaterThan(0);
+    expect(bRows.every((r) => r.kind === 'ACCOUNT' && m3(r.balance) === '0.000')).toBe(true);
+    expect(bRows.some((r) => r.account.id === cashAccountId || r.account.id === bankAccountId)).toBe(false);
   });
 
   it('the trial balance stays balanced', async () => {

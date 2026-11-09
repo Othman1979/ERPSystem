@@ -8,7 +8,8 @@ import { formatAmount } from '../../format/number';
 import { codeAndName } from '../../i18n/displayName';
 
 interface BalanceRow {
-  kind: 'CASH_BOX' | 'BANK_ACCOUNT';
+  /** ACCOUNT = a cash/bank ledger account no cash box or bank record points at. */
+  kind: 'CASH_BOX' | 'BANK_ACCOUNT' | 'ACCOUNT';
   id: string;
   name: string;
   isActive: boolean;
@@ -41,7 +42,7 @@ export function BalancesTab() {
           dataIndex: 'kind',
           width: 90,
           render: (k: BalanceRow['kind']) => (
-            <Tag color={k === 'CASH_BOX' ? 'green' : 'blue'}>{t(`treasury.kind_${k}`)}</Tag>
+            <Tag color={k === 'CASH_BOX' ? 'green' : k === 'BANK_ACCOUNT' ? 'blue' : 'default'}>{t(`treasury.kind_${k}`)}</Tag>
           ),
         },
         { title: t('treasury.name'), dataIndex: 'name' },

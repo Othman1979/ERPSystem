@@ -90,24 +90,26 @@ export class TreasuryReportsService {
   /**
    * Balance of every cash box and bank account = its ledger account's posted
    * debit − credit — the same journal lines as the trial balance (Phase 6
-   * acceptance: the two must agree).
+   * acceptance: the two must agree). Cash/bank ledger accounts that no cash
+   * box or bank record points at are listed too (kind ACCOUNT): vouchers can
+   * post to them directly, so leaving them out would hide real money.
    */
   async cashBalances() {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const [boxes, banks] = await Promise.all([
-      db.cashBox.findMany({
-        where: { companyId },
-        include: { account: { select: { id: true, code: true, nameAr: true, nameEn: true } } },
+    const accountSelect = { select: { id: true, code: true, nameAr: true, nameEn: true } } as const;
+    const [boxes, banks, cashAccounts] = await Promise.all([
+      db.cashBox.findMany({ where: { companyId }, include: { account: accountSelect }, orderBy: { code: 'asc' } }),
+      db.bankAccount.findMany({ where: { companyId }, include: { account: accountSelect }, orderBy: { bankName: 'asc' } }),
+      db.account.findMany({
+        where: { companyId, isPostable: true, controlType: { in: ['CASH', 'BANK'] } },
+        select: { id: true, code: true, nameAr: true, nameEn: true, isActive: true },
         orderBy: { code: 'asc' },
       }),
-      db.bankAccount.findMany({
-        where: { companyId },
-        include: { account: { select: { id: true, code: true, nameAr: true, nameEn: true } } },
-        orderBy: { bankName: 'asc' },
-      }),
     ]);
-    const accountIds = [...new Set([...boxes, ...banks].map((x) => x.accountId))];
+    const linked = new Set([...boxes, ...banks].map((x) => x.accountId));
+    const unlinked = cashAccounts.filter((a) => !linked.has(a.id));
+    const accountIds = [...linked, ...unlinked.map((a) => a.id)];
     const sums = accountIds.length
       ? await db.journalLine.groupBy({
           by: ['accountId'],
@@ -123,6 +125,13 @@ export class TreasuryReportsService {
     const rows = [
       ...boxes.map((b) => ({ kind: 'CASH_BOX' as const, id: b.id.toString(), name: b.name, isActive: b.isActive, account: b.account })),
       ...banks.map((b) => ({ kind: 'BANK_ACCOUNT' as const, id: b.id.toString(), name: b.bankName, isActive: b.isActive, account: b.account })),
+      ...unlinked.map(({ isActive, ...a }) => ({
+        kind: 'ACCOUNT' as const,
+        id: a.id.toString(),
+        name: a.nameAr,
+        isActive,
+        account: a,
+      })),
     ].map((r) => ({
       ...r,
       account: { ...r.account, id: r.account.id.toString() },
