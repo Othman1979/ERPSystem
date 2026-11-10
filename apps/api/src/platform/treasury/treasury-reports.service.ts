@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
+import { outstandingAmount } from '../shared/invoice-balance.js';
+import { ReportsService } from '../journal/reports.service.js';
+import { PartiesService } from '../parties/parties.service.js';
 import { SalesInvoicesService } from '../sales/sales-invoices.service.js';
 import { PurchaseInvoicesService } from '../purchases/purchase-invoices.service.js';
 
@@ -18,6 +21,11 @@ export function agingBucket(daysOverdue: number): AgingBucket {
   return 'd90plus';
 }
 
+/** Today's calendar date at UTC midnight (the default "as of"; the web sends its local date). */
+export function todayUtc(now = new Date()): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
 /** Whole days from `due` to `asOf`, both taken as calendar dates (UTC). */
 export function daysOverdue(due: Date, asOf: Date): number {
   const d = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
@@ -25,9 +33,44 @@ export function daysOverdue(due: Date, asOf: Date): number {
   return Math.round((a - d) / DAY_MS);
 }
 
+type Buckets = Record<AgingBucket, Decimal>;
+
+const zeroBuckets = (): Buckets =>
+  Object.fromEntries(AGING_BUCKETS.map((b) => [b, new Decimal(0)])) as Buckets;
+
+/**
+ * Ages the part of a party's balance that its invoices do not explain
+ * (ADR-004 §7): residual = control-account balance − open invoices.
+ *  - residual ≤ 0: unallocated receipts / payments, or credits beyond the
+ *    invoices — nothing to age; it is reported as `unapplied`.
+ *  - residual > 0: it is what is left of the party's opening-balance and
+ *    manual-journal items, taken newest first (the oldest were settled
+ *    first), each aged from its entry date. Any rest the items cannot cover
+ *    is reported as `unapplied` too.
+ */
+export function ageResidual(
+  residual: Decimal,
+  items: { entryDate: Date; amount: Decimal }[],
+  asOf: Date,
+): { buckets: Buckets; unapplied: Decimal } {
+  const buckets = zeroBuckets();
+  if (residual.lte(0)) return { buckets, unapplied: residual };
+  let left = residual;
+  const newestFirst = [...items].sort((x, y) => y.entryDate.getTime() - x.entryDate.getTime());
+  for (const item of newestFirst) {
+    if (left.lte(0)) break;
+    const take = Decimal.min(item.amount, left);
+    const bucket = agingBucket(daysOverdue(item.entryDate, asOf));
+    buckets[bucket] = buckets[bucket].plus(take);
+    left = left.minus(take);
+  }
+  return { buckets, unapplied: left };
+}
+
 /**
  * Treasury reports (Phase 6): receivable/payable aging and cash/bank balances.
- * Invoices are read through the sales/purchases services (module boundary).
+ * Invoices are read through the sales/purchases services, journal balances
+ * through the journal reports service (module boundary).
  */
 @Injectable()
 export class TreasuryReportsService {
@@ -35,56 +78,127 @@ export class TreasuryReportsService {
     private readonly support: DocumentSupportService,
     private readonly sales: SalesInvoicesService,
     private readonly purchases: PurchaseInvoicesService,
+    private readonly ledger: ReportsService,
+    private readonly parties: PartiesService,
   ) {}
 
   /**
-   * Aging as of today: every posted credit invoice that still owes something,
-   * by days past its due date (invoice date when none), summed per party.
+   * Aging as of a date (ADR-004 §7, updated). Per party:
+   *  - every posted credit invoice dated ≤ asOf that still owes something
+   *    then (grand total − credit returns dated ≤ asOf − active allocations
+   *    whose voucher is dated ≤ asOf), by days past its due date (invoice
+   *    date when none). Cancelled allocations never count: their cancel time
+   *    is a system clock, not a business date;
+   *  - plus the rest of its control-account balance (opening balances,
+   *    manual entries, unallocated vouchers), see `ageResidual`.
+   * `total` = the aged buckets; `balance` = total + unapplied = the party's
+   * control-account balance as of the date, as in the trial balance.
    * Buckets: not due, 1–30, 31–60, 61–90, over 90 days.
    */
-  async aging(partyType: 'CUSTOMER' | 'SUPPLIER', asOf = new Date()) {
-    const invoices =
-      partyType === 'CUSTOMER' ? await this.sales.openCreditInvoices() : await this.purchases.openCreditInvoices();
+  async aging(partyType: 'CUSTOMER' | 'SUPPLIER', asOf = todayUtc()) {
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const mapping = await this.support.mappingAccounts(db, tenantId, companyId, [
+      partyType === 'CUSTOMER' ? 'CUSTOMERS_CONTROL' : 'SUPPLIERS_CONTROL',
+    ]);
+    const controlAccountId = Object.values(mapping)[0];
+    const documentType = partyType === 'CUSTOMER' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
+    const [creditInvoices, allocated, balances, items] = await Promise.all([
+      partyType === 'CUSTOMER' ? this.sales.creditInvoicesAsOf(asOf) : this.purchases.creditInvoicesAsOf(asOf),
+      this.allocatedAsOf(documentType, asOf),
+      this.ledger.controlBalancesByParty(partyType, asOf, controlAccountId),
+      this.ledger.openingAndManualItemsByParty(partyType, asOf, controlAccountId),
+    ]);
 
-    const zero = () => Object.fromEntries(AGING_BUCKETS.map((b) => [b, new Decimal(0)])) as Record<AgingBucket, Decimal>;
-    const byParty = new Map<
-      string,
-      { party: { id: bigint; code: string; nameAr: string; nameEn: string | null }; buckets: Record<AgingBucket, Decimal> }
-    >();
-    const totals = zero();
+    type PartyInfo = { id: bigint; code: string; nameAr: string; nameEn: string | null };
+    const byParty = new Map<bigint, { party?: PartyInfo; buckets: Buckets; invoiced: Decimal }>();
+    const entry = (id: bigint) => {
+      const row = byParty.get(id) ?? { buckets: zeroBuckets(), invoiced: new Decimal(0) };
+      byParty.set(id, row);
+      return row;
+    };
 
-    for (const inv of invoices) {
+    for (const inv of creditInvoices) {
+      const owed = outstandingAmount(inv.grandTotal, allocated.get(inv.id) ?? '0', inv.creditedAmount);
+      if (owed.lte(0)) continue;
+      const row = entry(inv.party.id);
+      row.party = inv.party;
       const bucket = agingBucket(daysOverdue(inv.dueDate ?? inv.invoiceDate, asOf));
-      const amount = new Decimal(inv.outstanding);
-      const key = inv.party.id.toString();
-      const row = byParty.get(key) ?? { party: inv.party, buckets: zero() };
-      row.buckets[bucket] = row.buckets[bucket].plus(amount);
-      byParty.set(key, row);
-      totals[bucket] = totals[bucket].plus(amount);
+      row.buckets[bucket] = row.buckets[bucket].plus(owed);
+      row.invoiced = row.invoiced.plus(owed);
+    }
+    for (const partyId of balances.keys()) entry(partyId);
+
+    const unnamed = [...byParty.entries()].filter(([, r]) => !r.party).map(([id]) => id);
+    for (const p of await this.parties.summaries(unnamed)) {
+      const row = byParty.get(p.id);
+      if (row) row.party = p;
     }
 
-    const fmt = (b: Record<AgingBucket, Decimal>) => {
-      const total = AGING_BUCKETS.reduce((s, k) => s.plus(b[k]), new Decimal(0));
-      return {
-        ...(Object.fromEntries(AGING_BUCKETS.map((k) => [k, b[k].toFixed(3)])) as Record<AgingBucket, string>),
-        total: total.toFixed(3),
-      };
-    };
+    const totals = { buckets: zeroBuckets(), unapplied: new Decimal(0), balance: new Decimal(0) };
+    const rows: {
+      party: PartyInfo;
+      buckets: Buckets;
+      total: Decimal;
+      unapplied: Decimal;
+      balance: Decimal;
+    }[] = [];
+    for (const [partyId, row] of byParty) {
+      if (!row.party) continue; // a party of another company: never on this company's lines
+      const balance = balances.get(partyId) ?? new Decimal(0);
+      const rest = ageResidual(balance.minus(row.invoiced), items.get(partyId) ?? [], asOf);
+      const buckets = zeroBuckets();
+      for (const b of AGING_BUCKETS) buckets[b] = row.buckets[b].plus(rest.buckets[b]);
+      const total = AGING_BUCKETS.reduce((s, b) => s.plus(buckets[b]), new Decimal(0));
+      if (total.isZero() && rest.unapplied.isZero()) continue;
+      rows.push({ party: row.party, buckets, total, unapplied: rest.unapplied, balance: total.plus(rest.unapplied) });
+      for (const b of AGING_BUCKETS) totals.buckets[b] = totals.buckets[b].plus(buckets[b]);
+      totals.unapplied = totals.unapplied.plus(rest.unapplied);
+      totals.balance = totals.balance.plus(total.plus(rest.unapplied));
+    }
+
+    const fmt = (b: Buckets, unapplied: Decimal, balance: Decimal) => ({
+      ...(Object.fromEntries(AGING_BUCKETS.map((k) => [k, b[k].toFixed(3)])) as Record<AgingBucket, string>),
+      total: AGING_BUCKETS.reduce((s, k) => s.plus(b[k]), new Decimal(0)).toFixed(3),
+      unapplied: unapplied.toFixed(3),
+      balance: balance.toFixed(3),
+    });
 
     return {
       partyType,
       asOf: asOf.toISOString().slice(0, 10),
-      rows: [...byParty.values()]
+      rows: rows
         .sort((x, y) => x.party.code.localeCompare(y.party.code))
         .map((r) => ({
           partyId: r.party.id.toString(),
           code: r.party.code,
           nameAr: r.party.nameAr,
           nameEn: r.party.nameEn,
-          ...fmt(r.buckets),
+          ...fmt(r.buckets, r.unapplied, r.balance),
         })),
-      totals: fmt(totals),
+      totals: fmt(totals.buckets, totals.unapplied, totals.balance),
     };
+  }
+
+  /**
+   * Active allocations per invoice whose voucher is dated on or before
+   * `asOf`. An invoice dated after its voucher (an advance) is only listed
+   * from its own date on, so the allocation counts from the later of the two.
+   */
+  private async allocatedAsOf(documentType: 'SALES_INVOICE' | 'PURCHASE_INVOICE', asOf: Date) {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const sums = await db.allocation.groupBy({
+      by: ['documentId'],
+      where: {
+        companyId,
+        documentType,
+        cancelledAt: null,
+        OR: [{ receipt: { receiptDate: { lte: asOf } } }, { payment: { paymentDate: { lte: asOf } } }],
+      },
+      _sum: { amount: true },
+    });
+    return new Map(sums.map((s) => [s.documentId, s._sum.amount?.toString() ?? '0']));
   }
 
   /**

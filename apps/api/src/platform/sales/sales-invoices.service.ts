@@ -3,11 +3,19 @@ import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { computeLineAmounts } from '../shared/invoice-math.js';
 import { creditedByInvoice, withBalance } from '../shared/invoice-balance.js';
+import {
+  lockOrder,
+  toSettlementState,
+  type InvoiceSettlement,
+  type SettlementRow,
+  type SettlementState,
+} from '../shared/invoice-settlement.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type { CreateSalesInvoiceDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
@@ -27,7 +35,7 @@ interface ResolvedLine {
 
 /** Sales invoices: draft CRUD + post → stock OUT + COGS/revenue journal (§8.4). */
 @Injectable()
-export class SalesInvoicesService {
+export class SalesInvoicesService implements InvoiceSettlement {
   constructor(
     private readonly support: DocumentSupportService,
     private readonly posting: PostingService,
@@ -49,31 +57,89 @@ export class SalesInvoicesService {
   }
 
   /**
-   * Posted credit invoices that still owe something (Phase 6 aging): what
-   * remains after allocations and credit returns. Cash invoices are settled
-   * at sale and never appear.
+   * Aging as of a date (Phase 6): posted credit invoices dated on or before
+   * `asOf`, with the posted credit returns dated on or before it. Voucher
+   * allocations are treasury's and are subtracted there. Cash invoices are
+   * settled at sale and never appear.
    */
-  async openCreditInvoices() {
+  async creditInvoicesAsOf(asOf: Date) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const rows = await db.salesInvoice.findMany({
-      where: { companyId, status: 'POSTED', paymentType: 'CREDIT' },
-      select: {
-        id: true,
-        invoiceNo: true,
-        invoiceDate: true,
-        dueDate: true,
-        grandTotal: true,
-        paidAmount: true,
-        customer: { select: { id: true, code: true, nameAr: true, nameEn: true } },
-      },
+    const [rows, returns] = await Promise.all([
+      db.salesInvoice.findMany({
+        where: { companyId, status: 'POSTED', paymentType: 'CREDIT', invoiceDate: { lte: asOf } },
+        select: {
+          id: true,
+          invoiceNo: true,
+          invoiceDate: true,
+          dueDate: true,
+          grandTotal: true,
+          customer: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+        },
+        orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
+      }),
+      db.salesReturn.groupBy({
+        by: ['originalInvoiceId'],
+        where: { companyId, status: 'POSTED', refundType: 'CREDIT', returnDate: { lte: asOf } },
+        _sum: { grandTotal: true },
+      }),
+    ]);
+    const credited = new Map(returns.map((r) => [r.originalInvoiceId, r._sum.grandTotal?.toString() ?? '0']));
+    return rows.map(({ customer: party, ...r }) => ({
+      ...r,
+      party,
+      creditedAmount: new Decimal(credited.get(r.id) ?? '0'),
+    }));
+  }
+
+  // --------------------------------------------- settlement (treasury, ADR-004)
+
+  /** SELECT … FOR UPDATE on the invoices, ascending id (§10.1 fixed lock order). */
+  async lockForSettlement(tx: Prisma.TransactionClient, ids: bigint[]): Promise<void> {
+    const { tenantId } = this.support.tenant();
+    for (const id of lockOrder(ids)) {
+      await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    }
+  }
+
+  /**
+   * Party, status, payment type and outstanding, read with LOCKING reads on
+   * the caller's transaction. Under REPEATABLE READ a plain SELECT returns the
+   * snapshot taken before the caller waited for the invoice lock, so a voucher
+   * racing another would still see the old paid_amount and settle the invoice
+   * twice (phase 6 race test). FOR UPDATE / LOCK IN SHARE MODE read the latest
+   * committed rows.
+   */
+  async settlementState(tx: Prisma.TransactionClient, id: bigint): Promise<SettlementState | null> {
+    const { tenantId } = this.support.tenant();
+    const [inv] = await tx.$queryRaw<SettlementRow[]>`
+      SELECT customer_id AS party_id, status, payment_type, grand_total, paid_amount
+        FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    if (!inv) return null;
+    const [credited] = await tx.$queryRaw<{ s: { toString(): string } | null }[]>`
+      SELECT SUM(grand_total) AS s FROM sales_returns
+       WHERE tenant_id = ${tenantId} AND original_invoice_id = ${id}
+         AND status = 'POSTED' AND refund_type = 'CREDIT' LOCK IN SHARE MODE`;
+    return toSettlementState(inv, credited?.s);
+  }
+
+  /** paid_amount projection (§7.8) += delta; negative undoes an allocation. */
+  async addPaid(tx: Prisma.TransactionClient, id: bigint, delta: Decimal): Promise<void> {
+    await tx.salesInvoice.update({ where: { id }, data: { paidAmount: { increment: delta } } });
+  }
+
+  /** The party's posted credit invoices, oldest first. Cash invoices are settled at sale. */
+  async creditInvoiceIdsOldestFirst(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    partyId: bigint,
+  ): Promise<bigint[]> {
+    const rows = await tx.salesInvoice.findMany({
+      where: { companyId, status: 'POSTED', paymentType: 'CREDIT', customerId: partyId },
+      select: { id: true },
       orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
     });
-    const credited = await this.creditedFor(db, rows.map((r) => r.id));
-    return rows
-      .map((r) => withBalance(r, credited))
-      .filter((r) => new Decimal(r.outstanding).gt(0))
-      .map(({ customer: party, ...r }) => ({ ...r, party }));
+    return rows.map((r) => r.id);
   }
 
   async list(status?: string, paymentType?: string, customerId?: string) {

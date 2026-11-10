@@ -27,6 +27,17 @@ export class PartiesService {
     });
   }
 
+  /** Code and names of the given parties (reports that start from journal lines). */
+  async summaries(ids: bigint[]) {
+    if (ids.length === 0) return [];
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    return db.party.findMany({
+      where: { companyId, id: { in: ids } },
+      select: { id: true, code: true, nameAr: true, nameEn: true },
+    });
+  }
+
   async get(id: bigint) {
     const { db } = this.support.tenant();
     const party = await db.party.findFirst({ where: { id } });

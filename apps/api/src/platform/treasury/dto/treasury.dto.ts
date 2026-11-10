@@ -227,4 +227,10 @@ export class CreateCashTransferDto {
 export class AgingQueryDto {
   @IsIn(PARTY_TYPES)
   partyType!: (typeof PARTY_TYPES)[number];
+
+  /** yyyy-mm-dd, inclusive; defaults to today (UTC). */
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDateString({ strict: true })
+  asOf?: string;
 }

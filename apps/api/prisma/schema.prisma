@@ -395,6 +395,7 @@ model Branch {
   membershipBranches MembershipBranch[]
   journalEntries     JournalEntry[]
   warehouses         Warehouse[]
+  goodsNotes         GoodsNote[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1538,6 +1539,8 @@ model GoodsNote {
   tenantId       BigInt         @map("tenant_id") @db.UnsignedBigInt
   companyId      BigInt         @map("company_id") @db.UnsignedBigInt
   warehouseId    BigInt         @map("warehouse_id") @db.UnsignedBigInt
+  /// ADR-003: branch of the note's warehouse (the request branch if the warehouse has none).
+  branchId       BigInt?        @map("branch_id") @db.UnsignedBigInt
   noteDate       DateTime       @map("note_date") @db.Date
   noteType       GoodsNoteType  @map("note_type")
   status         DocumentStatus @default(DRAFT)
@@ -1553,6 +1556,7 @@ model GoodsNote {
   tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   company      Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
   warehouse    Warehouse         @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  branch       Branch?           @relation(fields: [tenantId, branchId], references: [tenantId, id])
   journalEntry JournalEntry?     @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   reversalOf   GoodsNote?        @relation("GoodsNoteReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
   reversals    GoodsNote[]       @relation("GoodsNoteReversal")

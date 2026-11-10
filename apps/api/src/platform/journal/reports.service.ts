@@ -259,4 +259,92 @@ export class ReportsService {
       rows,
     };
   }
+
+  // ------------------------------------------- aging inputs (treasury, ADR-004)
+
+  /** Lines of this party type on its receivable/payable control accounts. */
+  private controlLineWhere(partyType: 'CUSTOMER' | 'SUPPLIER', mappedAccountId?: bigint) {
+    return {
+      partyType,
+      partyId: { not: null },
+      account: {
+        OR: [
+          { controlType: partyType === 'CUSTOMER' ? ('CUSTOMERS' as const) : ('SUPPLIERS' as const) },
+          ...(mappedAccountId ? [{ id: mappedAccountId }] : []),
+        ],
+      },
+    };
+  }
+
+  /**
+   * What each customer owes (or each supplier is owed) as of a date: posted
+   * lines on the control accounts (control type CUSTOMERS / SUPPLIERS, plus
+   * the mapped control account) dated ≤ asOf, in the natural sign —
+   * customers Dr − Cr, suppliers Cr − Dr. Same lines as the trial balance.
+   */
+  async controlBalancesByParty(
+    partyType: 'CUSTOMER' | 'SUPPLIER',
+    asOf: Date,
+    mappedAccountId?: bigint,
+  ): Promise<Map<bigint, Decimal>> {
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const rows = await db.journalLine.groupBy({
+      by: ['partyId'],
+      where: {
+        ...this.controlLineWhere(partyType, mappedAccountId),
+        entry: { companyId, status: 'POSTED', entryDate: { lte: asOf } },
+      },
+      _sum: { debit: true, credit: true },
+    });
+    const out = new Map<bigint, Decimal>();
+    for (const r of rows) {
+      if (r.partyId === null) continue;
+      const dr = new Decimal(r._sum.debit?.toString() ?? '0');
+      const cr = new Decimal(r._sum.credit?.toString() ?? '0');
+      out.set(r.partyId, partyType === 'CUSTOMER' ? dr.minus(cr) : cr.minus(dr));
+    }
+    return out;
+  }
+
+  /**
+   * Opening-balance and manual-journal amounts that raise a party's balance
+   * (customers: debits, suppliers: credits) on its control accounts, dated
+   * ≤ asOf, from entries not reversed on or before asOf. Aging cannot match
+   * these to an invoice, so it ages them by their entry date.
+   */
+  async openingAndManualItemsByParty(
+    partyType: 'CUSTOMER' | 'SUPPLIER',
+    asOf: Date,
+    mappedAccountId?: bigint,
+  ): Promise<Map<bigint, { entryDate: Date; amount: Decimal }[]>> {
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const raising = partyType === 'CUSTOMER' ? { debit: { gt: 0 } } : { credit: { gt: 0 } };
+    const lines = await db.journalLine.findMany({
+      where: {
+        ...this.controlLineWhere(partyType, mappedAccountId),
+        ...raising,
+        entry: {
+          companyId,
+          status: 'POSTED',
+          postingKind: 'POST',
+          sourceType: { in: ['OPENING_ENTRY', 'MANUAL_JOURNAL'] },
+          entryDate: { lte: asOf },
+          reversals: { none: { status: 'POSTED', entryDate: { lte: asOf } } },
+        },
+      },
+      select: { partyId: true, debit: true, credit: true, entry: { select: { entryDate: true } } },
+      orderBy: [{ entry: { entryDate: 'asc' } }, { entry: { id: 'asc' } }, { lineNo: 'asc' }],
+    });
+    const out = new Map<bigint, { entryDate: Date; amount: Decimal }[]>();
+    for (const l of lines) {
+      if (l.partyId === null) continue;
+      const amount = new Decimal((partyType === 'CUSTOMER' ? l.debit : l.credit).toString());
+      const list = out.get(l.partyId) ?? [];
+      list.push({ entryDate: l.entry.entryDate, amount });
+      out.set(l.partyId, list);
+    }
+    return out;
+  }
 }

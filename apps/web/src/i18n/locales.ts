@@ -301,7 +301,12 @@ export const ar = {
     d61_90: '61–90 يوماً',
     d90plus: 'أكثر من 90',
     agingTotal: 'المجموع',
-    agingNote: 'الذمم الآجلة المتبقية حتى اليوم حسب أيام التأخر عن تاريخ الاستحقاق. الفواتير النقدية لا تظهر.',
+    agingNote:
+      'الذمم الآجلة المتبقية في التاريخ المختار حسب أيام التأخر عن تاريخ الاستحقاق. الأرصدة الافتتاحية والقيود اليدوية تُحسب من تاريخ قيدها. الفواتير النقدية لا تظهر.',
+    asOf: 'حتى تاريخ',
+    unapplied: 'غير مخصص',
+    unappliedHint:
+      'سالب: سندات قبض أو صرف لم تُخصص لفاتورة. موجب: رصيد لا تفسره الفواتير ولا القيود الافتتاحية. الرصيد = المجموع + غير المخصص.',
     trialBalance: 'ميزان المراجعة',
     generalLedger: 'دفتر الأستاذ',
     partyStatement: 'كشف حساب طرف',
@@ -859,7 +864,12 @@ export const en: typeof ar = {
     d61_90: '61–90 days',
     d90plus: 'Over 90',
     agingTotal: 'Total',
-    agingNote: 'Credit balances still open today, by days past the due date. Cash invoices never appear.',
+    agingNote:
+      'Credit balances still open on the chosen date, by days past the due date. Opening balances and manual entries count from their entry date. Cash invoices never appear.',
+    asOf: 'As of',
+    unapplied: 'Unapplied',
+    unappliedHint:
+      'Negative: receipts or payments not allocated to an invoice. Positive: a balance that neither invoices nor opening entries explain. Balance = total + unapplied.',
     trialBalance: 'Trial Balance',
     generalLedger: 'General Ledger',
     partyStatement: 'Party Statement',
