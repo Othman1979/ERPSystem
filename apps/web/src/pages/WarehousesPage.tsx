@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, message } from 'antd';
+import { Button, Card, Form, Input, Select, Space, Table, Tag, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -9,6 +9,8 @@ import {
   warehousesControllerList,
   warehousesControllerUpdate,
 } from '@erp/api-client';
+import { ContainerOutlined } from '@ant-design/icons';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { codeAndName, displayName } from '../i18n/displayName';
 
@@ -154,36 +156,38 @@ export function WarehousesPage() {
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={editing ? t('warehouses.edit') : t('warehouses.add')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => form.submit()}
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
-          {!editing && (
-            <Form.Item name="code" label={t('warehouses.code')} rules={[{ required: true }]}>
-              <Input maxLength={50} />
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          <FormSection title={t('items.general')} icon={<ContainerOutlined />}>
+            {!editing && (
+              <Form.Item name="code" label={t('warehouses.code')} rules={[{ required: true }]}>
+                <Input maxLength={50} />
+              </Form.Item>
+            )}
+            <Form.Item name="nameAr" label={t('warehouses.nameAr')} rules={[{ required: true }]}>
+              <Input maxLength={191} />
             </Form.Item>
-          )}
-          <Form.Item name="nameAr" label={t('warehouses.nameAr')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('warehouses.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="branchId" label={t('warehouses.branch')}>
-            <Select
-              allowClear
-              options={(branches ?? []).map((b) => ({ value: b.id, label: codeAndName(b) }))}
-            />
-          </Form.Item>
-          <Form.Item name="address" label={t('warehouses.address')}>
-            <Input.TextArea maxLength={512} rows={2} />
-          </Form.Item>
+            <Form.Item name="nameEn" label={t('warehouses.nameEn')}>
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="branchId" label={t('warehouses.branch')}>
+              <Select
+                allowClear
+                options={(branches ?? []).map((b) => ({ value: b.id, label: codeAndName(b) }))}
+              />
+            </Form.Item>
+            <Form.Item name="address" label={t('warehouses.address')} className="span-all">
+              <Input.TextArea maxLength={512} rows={2} />
+            </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
       </Card>
     </div>
   );

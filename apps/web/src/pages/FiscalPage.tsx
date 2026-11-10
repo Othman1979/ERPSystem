@@ -5,7 +5,6 @@ import {
   DatePicker,
   Form,
   Input,
-  Modal,
   Table,
   Tabs,
   Tag,
@@ -23,6 +22,8 @@ import {
   fiscalControllerListYears,
   fiscalControllerOpenPeriod,
 } from '@erp/api-client';
+import { CalendarOutlined } from '@ant-design/icons';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 
 interface FiscalPeriod {
@@ -162,31 +163,29 @@ export function FiscalPage() {
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={t('fiscal.add')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={createYear.isPending}
+        onSave={() => form.submit()}
+        saving={createYear.isPending}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(v) => createYear.mutate(v)}
-          requiredMark={false}
-        >
-          <Form.Item name="code" label={t('fiscal.code')} rules={[{ required: true }]}>
-            <Input maxLength={20} placeholder="2025" />
-          </Form.Item>
-          <Form.Item
-            name="range"
-            label={`${t('fiscal.startDate')} — ${t('fiscal.endDate')}`}
-            rules={[{ required: true }]}
-          >
-            <DatePicker.RangePicker style={{ width: '100%' }} />
-          </Form.Item>
+        <Form form={form} layout="vertical" onFinish={(v) => createYear.mutate(v)}>
+          <FormSection title={t('items.general')} icon={<CalendarOutlined />}>
+            <Form.Item name="code" label={t('fiscal.code')} rules={[{ required: true }]}>
+              <Input maxLength={20} placeholder="2025" />
+            </Form.Item>
+            <Form.Item
+              name="range"
+              label={`${t('fiscal.startDate')} — ${t('fiscal.endDate')}`}
+              rules={[{ required: true }]}
+              className="span-2"
+            >
+              <DatePicker.RangePicker />
+            </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
       </Card>
     </div>
   );

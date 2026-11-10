@@ -511,6 +511,92 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* ------------------------------------------- master-data dialogs */
+
+.form-dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-section-bar .anticon {
+  opacity: 0.75;
+}
+
+.form-section-extra {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+}
+
+.form-section-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+  padding: 10px 14px 14px;
+}
+
+.form-section-grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-section-grid > .span-2 {
+  grid-column: span 2;
+}
+
+.form-section-grid > .span-all {
+  grid-column: 1 / -1;
+}
+
+.form-section-grid .ant-form-item {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.form-section-grid .ant-form-item-label {
+  padding-bottom: 3px !important;
+}
+
+.form-section-grid .ant-form-item-label > label {
+  height: auto;
+  font-size: 12px;
+}
+
+.form-section-grid .ant-select,
+.form-section-grid .ant-picker,
+.form-section-grid .ant-input-number,
+.form-section-grid .ant-radio-group {
+  width: 100%;
+}
+
+.form-section-grid .ant-radio-group {
+  display: flex;
+}
+
+.form-section-grid .ant-radio-group .ant-radio-button-wrapper {
+  flex: 1;
+  text-align: center;
+}
+
+/* Amounts and quantities line up on the right, as in the grids */
+.form-section-grid .ant-input-number-input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .form-section-grid,
+  .form-section-grid.cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .form-section-grid > .span-2 {
+    grid-column: auto;
+  }
+}
+
 /* Thin gray bar titling a sub-section of a document (e.g. voucher allocations) */
 .doc-subbar {
   display: flex;

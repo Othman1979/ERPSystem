@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusOutlined, PrinterOutlined, SaveOutlined } from '@ant-design/icons';
+import { BankOutlined, PlusOutlined, PrinterOutlined, SaveOutlined, WalletOutlined } from '@ant-design/icons';
 import {
   Button,
   Radio,
@@ -8,7 +8,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Select,
   Space,
@@ -46,6 +45,7 @@ import {
   treasuryControllerReversePayment,
   treasuryControllerReverseReceipt,
 } from '@erp/api-client';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { EnterNav } from '../components/EnterNav';
@@ -282,17 +282,29 @@ function CashBoxesTab() {
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newCashBox')}</Button>
       </div>
       <Table rowKey="id" loading={isLoading} dataSource={boxes ?? []} columns={columns} size="small" pagination={false} />
-      <Modal open={modalOpen} title={editing ? t('treasury.editCashBox') : t('treasury.newCashBox')} onCancel={() => setModalOpen(false)} onOk={() => form.submit()} confirmLoading={save.isPending} destroyOnHidden>
+      <FormDialog open={modalOpen} title={editing ? t('treasury.editCashBox') : t('treasury.newCashBox')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          <FormSection
+            title={t('items.general')}
+            icon={<WalletOutlined />}
+            extra={
+              <>
+                {t('common.active')}
+                <Form.Item name="isActive" valuePropName="checked" noStyle>
+                  <Switch size="small" />
+                </Form.Item>
+              </>
+            }
+          >
           {!editing && (
             <Form.Item name="code" label={t('treasury.code')} rules={[{ required: true }]}>
               <Input maxLength={50} />
             </Form.Item>
           )}
-          <Form.Item name="name" label={t('treasury.name')} rules={[{ required: true }]}>
+          <Form.Item name="name" label={t('treasury.name')} rules={[{ required: true }]} className="span-2">
             <Input maxLength={191} />
           </Form.Item>
-          <Form.Item name="accountId" label={t('treasury.linkedAccount')} rules={[{ required: true }]} extra={editing ? t('treasury.accountLocked') : undefined}>
+          <Form.Item name="accountId" label={t('treasury.linkedAccount')} rules={[{ required: true }]} extra={editing ? t('treasury.accountLocked') : undefined} className="span-all">
             <Select
               showSearch
               optionFilterProp="label"
@@ -300,11 +312,9 @@ function CashBoxesTab() {
               options={lookups.cashAccounts}
             />
           </Form.Item>
-          <Form.Item name="isActive" label={t('common.active')} valuePropName="checked">
-            <Switch />
-          </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
     </div>
   );
 }
@@ -421,27 +431,35 @@ function BankAccountsTab() {
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newBankAccount')}</Button>
       </div>
       <Table rowKey="id" loading={isLoading} dataSource={banks ?? []} columns={columns} size="small" pagination={false} />
-      <Modal open={modalOpen} title={editing ? t('treasury.editBankAccount') : t('treasury.newBankAccount')} onCancel={() => setModalOpen(false)} onOk={() => form.submit()} confirmLoading={save.isPending} destroyOnHidden>
+      <FormDialog open={modalOpen} title={editing ? t('treasury.editBankAccount') : t('treasury.newBankAccount')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <Form.Item name="bankName" label={t('treasury.bankName')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Space size="middle" style={{ display: 'flex' }}>
-            <Form.Item name="accountNoMasked" label={t('treasury.accountNo')} style={{ flex: 1 }}>
+          <FormSection
+            title={t('items.general')}
+            icon={<BankOutlined />}
+            extra={
+              <>
+                {t('common.active')}
+                <Form.Item name="isActive" valuePropName="checked" noStyle>
+                  <Switch size="small" />
+                </Form.Item>
+              </>
+            }
+          >
+            <Form.Item name="bankName" label={t('treasury.bankName')} rules={[{ required: true }]} className="span-all">
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="accountNoMasked" label={t('treasury.accountNo')}>
               <Input maxLength={50} />
             </Form.Item>
-            <Form.Item name="ibanMasked" label={t('treasury.iban')} style={{ flex: 1 }}>
+            <Form.Item name="ibanMasked" label={t('treasury.iban')} className="span-2">
               <Input maxLength={50} />
             </Form.Item>
-          </Space>
-          <Form.Item name="accountId" label={t('treasury.linkedAccount')} rules={[{ required: true }]} extra={t('treasury.accountLocked')}>
-            <Select showSearch optionFilterProp="label" disabled={!!editing} options={lookups.cashAccounts} />
-          </Form.Item>
-          <Form.Item name="isActive" label={t('common.active')} valuePropName="checked">
-            <Switch />
-          </Form.Item>
+            <Form.Item name="accountId" label={t('treasury.linkedAccount')} rules={[{ required: true }]} extra={t('treasury.accountLocked')} className="span-all">
+              <Select showSearch optionFilterProp="label" disabled={!!editing} options={lookups.cashAccounts} />
+            </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
     </div>
   );
 }

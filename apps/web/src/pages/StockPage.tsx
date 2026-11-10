@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { SaveOutlined } from '@ant-design/icons';
+import { InfoCircleOutlined, SaveOutlined } from '@ant-design/icons';
 import {
   Button,
   Card,
@@ -47,6 +47,7 @@ import {
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import { GoodsNotesSection } from './GoodsNotesPage';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import {
   emptyItemLine,
@@ -945,33 +946,34 @@ function CountsTab() {
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={t('stock.newCount')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={create.isPending}
+        onSave={() => form.submit()}
+        saving={create.isPending}
       >
         <EnterNav autoFocusWhen={modalOpen}>
         <Form
           form={form}
           layout="vertical"
           onFinish={(v) => create.mutate(v)}
-          requiredMark={false}
           initialValues={{ countDate: dayjs() }}
         >
-          <Form.Item name="countDate" label={t('stock.date')} rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]}>
-            <GridSelect enterOpens options={whOptions} />
-          </Form.Item>
-          <Form.Item name="description" label={t('common.description')}>
-            <Input maxLength={500} />
-          </Form.Item>
+          <FormSection title={t('items.general')} icon={<InfoCircleOutlined />}>
+            <Form.Item name="countDate" label={t('stock.date')} rules={[{ required: true }]}>
+              <DatePicker />
+            </Form.Item>
+            <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]}>
+              <GridSelect enterOpens options={whOptions} />
+            </Form.Item>
+            <Form.Item name="description" label={t('common.description')}>
+              <Input maxLength={500} />
+            </Form.Item>
+          </FormSection>
         </Form>
         </EnterNav>
-      </Modal>
+      </FormDialog>
     </>
   );
 }

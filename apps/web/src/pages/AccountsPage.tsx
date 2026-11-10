@@ -5,7 +5,6 @@ import {
   Card,
   Form,
   Input,
-  Modal,
   Popconfirm,
   Select,
   Space,
@@ -22,6 +21,8 @@ import {
   accountingControllerUpdateAccount,
   journalControllerTrialBalance,
 } from '@erp/api-client';
+import { BookOutlined } from '@ant-design/icons';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { bothNames, codeAndName } from '../i18n/displayName';
 import { palette } from '../theme';
@@ -323,31 +324,32 @@ export function AccountsPage() {
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={editing ? t('accounts.edit') : t('accounts.add')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => form.submit()}
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          {!editing && isCreate && selectedParent && autoCode && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ margin: 12, marginBottom: 0 }}
+              message={t('accounts.childUnder', { code: selectedParent.code })}
+              description={
+                <>
+                  {t('accounts.autoCodePreview', { code: autoCode })}
+                  <br />
+                  {t('accounts.parentNonPostableWarning')}
+                </>
+              }
+            />
+          )}
+          <FormSection title={t('items.general')} icon={<BookOutlined />}>
           {!editing && (
             <>
-              {isCreate && selectedParent && autoCode && (
-                <Alert
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                  message={t('accounts.childUnder', { code: selectedParent.code })}
-                  description={
-                    <>
-                      {t('accounts.autoCodePreview', { code: autoCode })}
-                      <br />
-                      {t('accounts.parentNonPostableWarning')}
-                    </>
-                  }
-                />
-              )}
               {!(isCreate && watchedParentId) && (
                 <Form.Item
                   name="code"
@@ -378,7 +380,7 @@ export function AccountsPage() {
               </Form.Item>
             </>
           )}
-          <Form.Item name="nameAr" label={t('accounts.nameAr')} rules={[{ required: true }]}>
+          <Form.Item name="nameAr" label={t('accounts.nameAr')} rules={[{ required: true }]} className="span-2">
             <Input maxLength={191} />
           </Form.Item>
           <Form.Item name="nameEn" label={t('accounts.nameEn')}>
@@ -393,8 +395,9 @@ export function AccountsPage() {
               ]}
             />
           </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
       </Card>
     </div>
   );

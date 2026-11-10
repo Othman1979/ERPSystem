@@ -22,6 +22,8 @@ import {
   usersControllerSuspend,
   usersControllerUpdate,
 } from '@erp/api-client';
+import { UserOutlined } from '@ant-design/icons';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 
 interface Membership {
@@ -170,42 +172,43 @@ export function UsersPage() {
         ]}
       />
 
-      <Modal
+      <FormDialog
         title={t('users.invite')}
         open={inviteOpen && !tempPassword}
         onCancel={() => setInviteOpen(false)}
-        onOk={() => inviteForm.submit()}
-        confirmLoading={invite.isPending}
+        onSave={() => inviteForm.submit()}
+        saving={invite.isPending}
       >
         <Form
           form={inviteForm}
           layout="vertical"
           onFinish={(v) => invite.mutate(v)}
-          requiredMark={false}
         >
-          <Form.Item name="email" label={t('users.email')} rules={[{ required: true, type: 'email' }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="fullName" label={t('users.name')}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="roleCode" label={t('users.role')} rules={[{ required: true }]}>
-            <Select
-              options={(roles ?? []).map((r) => ({
-                value: r.code,
-                label: roleName(r.code, r.nameAr, r.nameEn),
-              }))}
-            />
-          </Form.Item>
-          <Form.Item
-            name="password"
-            label={t('users.passwordOptional')}
-            extra={t('users.passwordHint')}
-          >
-            <Input.Password autoComplete="new-password" />
-          </Form.Item>
+          <FormSection title={t('items.general')} icon={<UserOutlined />}>
+            <Form.Item name="email" label={t('users.email')} rules={[{ required: true, type: 'email' }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="fullName" label={t('users.name')}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="roleCode" label={t('users.role')} rules={[{ required: true }]}>
+              <Select
+                options={(roles ?? []).map((r) => ({
+                  value: r.code,
+                  label: roleName(r.code, r.nameAr, r.nameEn),
+                }))}
+              />
+            </Form.Item>
+            <Form.Item
+              name="password"
+              label={t('users.passwordOptional')}
+              extra={t('users.passwordHint')}
+            >
+              <Input.Password autoComplete="new-password" />
+            </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
 
       <Modal
         title={t('users.tempPasswordTitle')}

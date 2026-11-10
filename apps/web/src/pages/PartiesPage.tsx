@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusOutlined } from '@ant-design/icons';
+import { IdcardOutlined, PhoneOutlined, PlusOutlined, WalletOutlined } from '@ant-design/icons';
 import {
   Button,
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
+  Radio,
   Select,
   Space,
   Switch,
@@ -14,7 +14,7 @@ import {
   Tag,
   message,
 } from 'antd';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
@@ -24,6 +24,7 @@ import {
   partiesControllerUpdate,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { displayName, type Named } from '../i18n/displayName';
 import { amountCell } from '../format/cells';
 
@@ -54,6 +55,7 @@ export function PartiesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Party | null>(null);
   const [form] = Form.useForm();
+  const saveAndNew = useRef(false);
   const [apiMessage, contextHolder] = message.useMessage();
 
   const { data: parties, isLoading } = useQuery({
@@ -115,8 +117,17 @@ export function PartiesPage() {
     },
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
-      setModalOpen(false);
       invalidate();
+      if (saveAndNew.current) {
+        // Save & new: keep the dialog open on an empty form, same party type.
+        saveAndNew.current = false;
+        const partyType = form.getFieldValue('partyType');
+        form.resetFields();
+        form.setFieldsValue({ partyType, isCashCustomer: false, isActive: true });
+        requestAnimationFrame(() => form.getFieldInstance('code')?.focus?.());
+        return;
+      }
+      setModalOpen(false);
     },
     onError,
   });
@@ -204,61 +215,89 @@ export function PartiesPage() {
         pagination={{ pageSize: 20 }}
       />
 
-      <Modal
+      <FormDialog
         open={modalOpen}
         title={editing ? t('parties.edit') : t('parties.new')}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => {
+          saveAndNew.current = false;
+          form.submit();
+        }}
+        onSaveAndNew={
+          editing
+            ? undefined
+            : () => {
+                saveAndNew.current = true;
+                form.submit();
+              }
+        }
+        saving={save.isPending}
         destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          {!editing && (
-            <Form.Item name="code" label={t('parties.code')} rules={[{ required: true }]}>
+          <FormSection
+            title={t('items.general')}
+            icon={<IdcardOutlined />}
+            extra={
+              <>
+                {t('common.active')}
+                <Form.Item name="isActive" valuePropName="checked" noStyle>
+                  <Switch size="small" />
+                </Form.Item>
+              </>
+            }
+          >
+            {!editing && (
+              <Form.Item name="code" label={t('parties.code')} rules={[{ required: true }]}>
+                <Input maxLength={50} />
+              </Form.Item>
+            )}
+            <Form.Item
+              name="partyType"
+              label={t('parties.type')}
+              rules={[{ required: true }]}
+              className={editing ? 'span-all' : 'span-2'}
+            >
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
+                options={[
+                  { value: 'CUSTOMER', label: t('parties.type_CUSTOMER') },
+                  { value: 'SUPPLIER', label: t('parties.type_SUPPLIER') },
+                  { value: 'BOTH', label: t('parties.type_BOTH') },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="nameAr" label={t('parties.nameAr')} rules={[{ required: true }]} className="span-2">
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="nameEn" label={t('parties.nameEn')}>
+              <Input maxLength={191} />
+            </Form.Item>
+          </FormSection>
+
+          <FormSection title={t('parties.contact')} icon={<PhoneOutlined />}>
+            <Form.Item name="taxNumber" label={t('parties.taxNumber')}>
               <Input maxLength={50} />
             </Form.Item>
-          )}
-          <Form.Item name="nameAr" label={t('parties.nameAr')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('parties.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="partyType" label={t('parties.type')} rules={[{ required: true }]}>
-            <Select
-              options={[
-                { value: 'CUSTOMER', label: t('parties.type_CUSTOMER') },
-                { value: 'SUPPLIER', label: t('parties.type_SUPPLIER') },
-                { value: 'BOTH', label: t('parties.type_BOTH') },
-              ]}
-            />
-          </Form.Item>
-          <Space size="middle" style={{ display: 'flex' }}>
-            <Form.Item name="taxNumber" label={t('parties.taxNumber')} style={{ flex: 1 }}>
+            <Form.Item name="phone" label={t('parties.phone')}>
               <Input maxLength={50} />
             </Form.Item>
-            <Form.Item name="phone" label={t('parties.phone')} style={{ flex: 1 }}>
-              <Input maxLength={50} />
+          </FormSection>
+
+          <FormSection title={t('parties.terms')} icon={<WalletOutlined />}>
+            <Form.Item name="creditLimit" label={t('parties.creditLimit')}>
+              <InputNumber<string> stringMode min="0" />
             </Form.Item>
-          </Space>
-          <Space size="middle" style={{ display: 'flex' }}>
-            <Form.Item name="creditLimit" label={t('parties.creditLimit')} style={{ flex: 1 }}>
-              <InputNumber<string> stringMode min="0" style={{ width: '100%' }} />
+            <Form.Item name="paymentTermsDays" label={t('parties.paymentTerms')}>
+              <InputNumber min={0} max={3650} />
             </Form.Item>
-            <Form.Item name="paymentTermsDays" label={t('parties.paymentTerms')} style={{ flex: 1 }}>
-              <InputNumber min={0} max={3650} style={{ width: '100%' }} />
-            </Form.Item>
-          </Space>
-          <Space size="large">
             <Form.Item name="isCashCustomer" label={t('parties.isCashCustomer')} valuePropName="checked">
               <Switch />
             </Form.Item>
-            <Form.Item name="isActive" label={t('common.active')} valuePropName="checked">
-              <Switch />
-            </Form.Item>
-          </Space>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
     </div>
   );
 }

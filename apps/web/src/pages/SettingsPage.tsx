@@ -5,7 +5,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Space,
   Table,
@@ -27,6 +26,8 @@ import {
   settingsControllerUpdateTaxCategory,
   settingsControllerUpdateUnit,
 } from '@erp/api-client';
+import { SettingOutlined } from '@ant-design/icons';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { displayName } from '../i18n/displayName';
 import { Num } from '../components/Num';
@@ -219,45 +220,47 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={editing ? t('settings.edit') : `${t('settings.add')} — ${title}`}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => form.submit()}
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
-          {!editing && (
-            <Form.Item name="code" label={t('settings.code')} rules={[{ required: true }]}>
-              <Input maxLength={50} />
-            </Form.Item>
-          )}
-          <Form.Item name="nameAr" label={t('settings.nameAr')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('settings.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          {kind === 'unit' && (
-            <Form.Item name="unEceCode" label={t('settings.unEceCode')}>
-              <Input maxLength={10} placeholder="PCE / KGM / LTR…" />
-            </Form.Item>
-          )}
-          {isTax && (
-            <>
-              <Form.Item name="rate" label={t('settings.rate')} rules={[{ required: true }]}>
-                <InputNumber<string> stringMode min="0" max="100" step="0.0001" style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item name="isDefault" label={t('settings.isDefault')} valuePropName="checked">
-                <input type="checkbox" />
-              </Form.Item>
-              <Form.Item name="einvoiceCode" label={t('settings.einvoiceCode')}>
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          <FormSection title={t('items.general')} icon={<SettingOutlined />}>
+            {!editing && (
+              <Form.Item name="code" label={t('settings.code')} rules={[{ required: true }]}>
                 <Input maxLength={50} />
               </Form.Item>
-            </>
-          )}
+            )}
+            <Form.Item name="nameAr" label={t('settings.nameAr')} rules={[{ required: true }]}>
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="nameEn" label={t('settings.nameEn')}>
+              <Input maxLength={191} />
+            </Form.Item>
+            {kind === 'unit' && (
+              <Form.Item name="unEceCode" label={t('settings.unEceCode')}>
+                <Input maxLength={10} placeholder="PCE / KGM / LTR…" />
+              </Form.Item>
+            )}
+            {isTax && (
+              <>
+                <Form.Item name="rate" label={t('settings.rate')} rules={[{ required: true }]}>
+                  <InputNumber<string> stringMode min="0" max="100" step="0.0001" />
+                </Form.Item>
+                <Form.Item name="isDefault" label={t('settings.isDefault')} valuePropName="checked">
+                  <input type="checkbox" />
+                </Form.Item>
+                <Form.Item name="einvoiceCode" label={t('settings.einvoiceCode')}>
+                  <Input maxLength={50} />
+                </Form.Item>
+              </>
+            )}
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
     </Card>
   );
 }

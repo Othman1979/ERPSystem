@@ -49,7 +49,7 @@ export function DocLayout({
 }
 
 // Field panel controls get the darker grid border so they stand out on the gray panel.
-const fieldPanelTheme = {
+export const fieldPanelTheme = {
   token: { colorBorder: palette.grid.border },
   components: {
     Radio: {

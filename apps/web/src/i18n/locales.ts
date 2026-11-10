@@ -329,6 +329,8 @@ export const ar = {
     new: 'طرف جديد',
     edit: 'تعديل الطرف',
     deactivateConfirm: 'إلغاء تفعيل هذا الطرف؟',
+    contact: 'الاتصال والضريبة',
+    terms: 'الشروط المالية',
   },
   sales: {
     invoices: 'فواتير المبيعات',
@@ -497,6 +499,7 @@ export const ar = {
     close: 'إغلاق',
     open: 'فتح',
     back: 'رجوع',
+    saveAndNew: 'حفظ وجديد',
     print: 'طباعة',
     requiredField: 'مطلوب',
     gridNextField: 'الحقل التالي',
@@ -869,6 +872,8 @@ export const en: typeof ar = {
     new: 'New Party',
     edit: 'Edit Party',
     deactivateConfirm: 'Deactivate this party?',
+    contact: 'Contact & tax',
+    terms: 'Credit terms',
   },
   sales: {
     invoices: 'Sales Invoices',
@@ -1037,6 +1042,7 @@ export const en: typeof ar = {
     close: 'Close',
     open: 'Open',
     back: 'Back',
+    saveAndNew: 'Save & new',
     print: 'Print',
     requiredField: 'Required',
     gridNextField: 'next field',

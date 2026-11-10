@@ -4,7 +4,6 @@ import {
   Card,
   Form,
   Input,
-  Modal,
   Popconfirm,
   Space,
   Table,
@@ -21,6 +20,8 @@ import {
   branchesControllerList,
   branchesControllerUpdate,
 } from '@erp/api-client';
+import { ShopOutlined } from '@ant-design/icons';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { displayName } from '../i18n/displayName';
 
@@ -140,30 +141,32 @@ export function BranchesPage() {
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={editing ? t('branches.edit') : t('branches.add')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => form.submit()}
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
-          {!editing && (
-            <Form.Item name="code" label={t('branches.code')} rules={[{ required: true }]}>
-              <Input maxLength={50} />
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          <FormSection title={t('items.general')} icon={<ShopOutlined />}>
+            {!editing && (
+              <Form.Item name="code" label={t('branches.code')} rules={[{ required: true }]}>
+                <Input maxLength={50} />
+              </Form.Item>
+            )}
+            <Form.Item name="nameAr" label={t('branches.nameAr')} rules={[{ required: true }]}>
+              <Input maxLength={191} />
             </Form.Item>
-          )}
-          <Form.Item name="nameAr" label={t('branches.nameAr')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('branches.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="address" label={t('branches.address')}>
-            <Input maxLength={512} />
-          </Form.Item>
+            <Form.Item name="nameEn" label={t('branches.nameEn')}>
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="address" label={t('branches.address')} className="span-all">
+              <Input maxLength={512} />
+            </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
       <Typography.Text type="secondary">{t('branches.planHint')}</Typography.Text>
       </Card>
     </div>
