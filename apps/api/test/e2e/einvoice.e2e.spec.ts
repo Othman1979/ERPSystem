@@ -69,6 +69,8 @@ function startApi(port: number, worker: 'on' | 'off'): ChildProcess {
       EINVOICE_WORKER: worker,
       EINVOICE_WORKER_INTERVAL_MS: '250',
       EINVOICE_HTTP_TIMEOUT_MS: '1500',
+      // The unreachable case uses a .invalid host; anything else must be loopback.
+      EINVOICE_SANDBOX_HOSTS: 'jofotara-down.invalid',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -426,8 +428,9 @@ describe('Phase 7 — JoFotara', () => {
   });
 
   it('an unreachable server is FAILED with a retry planned, and recovers after a resend', async () => {
+    // A new URL drops the stored secret, so it is sent again with each change.
     const put = (baseUrl: string) =>
-      api().put('/api/v1/einvoice/settings').set(auth(token)).send(settingsBody({ baseUrl }));
+      api().put('/api/v1/einvoice/settings').set(auth(token)).send(settingsBody({ baseUrl, secretKey: SECRET }));
     // .invalid never resolves (RFC 2606): the request cannot leave, so it is FAILED, not UNKNOWN.
     expect((await put('http://jofotara-down.invalid')).status).toBe(200);
     const inv = await draftInvoice('TN', '1');
@@ -460,6 +463,72 @@ describe('Phase 7 — JoFotara', () => {
     // ICVs are unique and consecutive per company.
     const icvs = done.map((s) => s.icv).sort((a, b) => a - b);
     expect(new Set(icvs).size).toBe(icvs.length);
+  });
+
+  it('parallel postings each draw their own ICV', async () => {
+    const drafts = await Promise.all([1, 2, 3, 4, 5].map((q) => draftInvoice('TN', String(q))));
+    const posted = await Promise.all(drafts.map((d) => post('sales-invoices', d.id)));
+    // Status with the error code, so a failure says why (e.g. a deadlock after posting's one retry).
+    expect(posted.map((p) => `${p.status}${p.body?.error?.code ? ` ${p.body.error.code}` : ''}`)).toEqual(
+      Array(5).fill('201'),
+    );
+    const icvs = (await db.query(
+      `SELECT icv FROM einvoice_submissions WHERE tenant_id = ? AND document_type = 'SALES_INVOICE' AND document_id IN (?)`,
+      [tenantId, drafts.map((d) => d.id)],
+    )) as { icv: number }[];
+    expect(new Set(icvs.map((r) => r.icv)).size).toBe(5);
+    const ids = await Promise.all(drafts.map((d) => waitFor(() => submissionOf('SALES_INVOICE', d.id))));
+    for (const s of await Promise.all(ids.map((id) => settled(id)))) expect(s.status).toBe('ACCEPTED');
+  });
+
+  it('a 0% tax line needs its e-invoice code before the invoice can be posted', async () => {
+    const taxes = (await api().get('/api/v1/tax-categories').set(auth(token))).body as { id: string; rate: string }[];
+    const zero = taxes.find((t) => Number(t.rate) === 0)!;
+    const units = await api().get('/api/v1/units').set(auth(token));
+    const pcs = (units.body as { id: string; code: string }[]).find((u) => u.code === 'PCS')!.id;
+    const exempt = await api()
+      .post('/api/v1/items')
+      .set(auth(token))
+      .send({ code: 'EXEMPT', nameAr: 'معفى', baseUnitId: pcs, itemKind: 'SERVICE', taxCategoryId: zero.id });
+    expect(exempt.status).toBe(201);
+    const inv = await api()
+      .post('/api/v1/sales-invoices')
+      .set(auth(token))
+      .send({
+        invoiceDate: '2025-03-10',
+        customerId: party.TN,
+        warehouseId,
+        paymentType: 'CREDIT',
+        lines: [{ itemId: exempt.body.id, qty: '1', unitPrice: '3.000' }],
+      });
+    expect(inv.status).toBe(201);
+    const refused = await post('sales-invoices', inv.body.id);
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.code).toBe('EINVOICE_NOT_READY');
+
+    expect((await api().patch(`/api/v1/tax-categories/${zero.id}`).set(auth(token)).send({ einvoiceCode: 'Z' })).status).toBe(200);
+    expect((await post('sales-invoices', inv.body.id)).status).toBe(201);
+    const s = await settled((await waitFor(() => submissionOf('SALES_INVOICE', inv.body.id)))!);
+    expect(s.status).toBe('ACCEPTED');
+    expect(s.requestXml).toContain('UN/ECE 5305">Z</cbc:ID>');
+  });
+
+  it('the sandbox URL stays on this machine, and changing it drops the stored secret', async () => {
+    const put = (body: object) => api().put('/api/v1/einvoice/settings').set(auth(token)).send(settingsBody(body));
+    for (const baseUrl of ['https://attacker.example', 'http://backend.jofotara.gov.jo:443', 'http://10.0.0.5:8080']) {
+      expect((await put({ baseUrl, isEnabled: false })).status).toBe(400);
+    }
+    // Another local port without the secret: the secret is dropped, so it cannot stay enabled.
+    const moved = await put({ baseUrl: 'http://127.0.0.1:9', isEnabled: false });
+    expect(moved.status).toBe(200);
+    expect(moved.body.hasSecret).toBe(false);
+    const enable = await put({ baseUrl: 'http://127.0.0.1:9' });
+    expect(enable.status).toBe(400);
+    expect(enable.body.error.code).toBe('EINVOICE_NOT_READY');
+    // Back to the working mock with the secret.
+    const back = await put({ secretKey: SECRET });
+    expect(back.status).toBe(200);
+    expect(back.body).toMatchObject({ isEnabled: true, hasSecret: true });
   });
 
   it('the follow-up list counts by status; another tenant sees nothing', async () => {

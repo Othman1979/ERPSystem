@@ -14,6 +14,17 @@ const WAIT_FOR_ORIGINAL_MS = 60_000;
 
 type ErrorItem = { code: string; message: string; source: 'jofotara' | 'local' };
 
+interface FinishData {
+  status: 'ACCEPTED' | 'REJECTED' | 'FAILED' | 'UNKNOWN';
+  errors?: ErrorItem[] | null;
+  qrPayload?: string;
+  governmentUuid?: string | null;
+  responseCode?: number | null;
+  responseBody?: string | null;
+  nextAttemptAt?: Date;
+  reuseXml?: boolean;
+}
+
 /** 1, 2, 4, 8 … minutes after the n-th failed attempt. */
 export const backoffMs = (attempt: number) => 60_000 * 2 ** Math.max(0, attempt - 1);
 
@@ -38,34 +49,48 @@ export class EInvoiceSenderService {
     private readonly config: ConfigService<Env, true>,
   ) {}
 
-  async send(submissionId: bigint): Promise<void> {
+  /**
+   * `claimToken` is the worker's claim on the row: every write below is
+   * guarded by it, so a row the stuck-row rule or a resend took over is
+   * never overwritten, and never sent, by a run that lost it.
+   */
+  async send(submissionId: bigint, claimToken: string): Promise<void> {
     const { db } = this.support.tenant();
     const sub = await db.eInvoiceSubmission.findFirst({
-      where: { id: submissionId, status: 'SENDING' },
+      where: { id: submissionId, status: 'SENDING', claimToken },
       include: {
         originalSubmission: { select: { status: true, documentNo: true, uuid: true, documentId: true, requestXml: true } },
       },
     });
     if (!sub) return;
+    const finish = (attemptCount: number, data: FinishData) => this.finish(db, sub.id, claimToken, attemptCount, data);
 
     // A return is sent only after its original invoice is accepted (§12.2).
     if (sub.originalSubmission && sub.originalSubmission.status !== 'ACCEPTED') {
-      await db.eInvoiceSubmission.update({
-        where: { id: sub.id },
-        data: { status: 'PENDING', claimToken: null, nextAttemptAt: new Date(Date.now() + WAIT_FOR_ORIGINAL_MS) },
+      // Still on its way: look again soon. Stopped (rejected, unknown): look rarely.
+      const moving = ['PENDING', 'SENDING', 'FAILED'].includes(sub.originalSubmission.status);
+      await db.eInvoiceSubmission.updateMany({
+        where: { id: sub.id, claimToken },
+        data: {
+          status: 'PENDING',
+          claimToken: null,
+          nextAttemptAt: new Date(Date.now() + (moving ? WAIT_FOR_ORIGINAL_MS : 10 * WAIT_FOR_ORIGINAL_MS)),
+        },
       });
       return;
     }
 
     const conn = await this.settings.connection(sub.companyId);
     if (!conn) {
-      return this.finish(db, sub.id, sub.attemptCount, {
+      const attempts = sub.attemptCount + 1;
+      return finish(attempts, {
         status: 'FAILED',
+        nextAttemptAt: new Date(Date.now() + backoffMs(attempts)),
         errors: [{ code: 'NOT_CONFIGURED', message: 'E-invoicing credentials or EINVOICE_ENC_KEY are missing', source: 'local' }],
       });
     }
     if (conn.environment !== sub.environment) {
-      return this.finish(db, sub.id, sub.attemptCount, {
+      return finish(sub.attemptCount, {
         status: 'REJECTED',
         errors: [
           {
@@ -85,7 +110,7 @@ export class EInvoiceSenderService {
         xml = await this.documents.buildXml(sub, conn);
       } catch (err) {
         if (!(err instanceof EInvoiceBuildError)) throw err;
-        return this.finish(db, sub.id, sub.attemptCount, {
+        return finish(sub.attemptCount, {
           status: 'REJECTED',
           errors: [{ code: 'NOT_SENDABLE', message: err.message, source: 'local' }],
         });
@@ -94,7 +119,12 @@ export class EInvoiceSenderService {
 
     const attemptNo = (await db.eInvoiceAttempt.count({ where: { submissionId: sub.id } })) + 1;
     const startedAt = new Date();
-    await db.eInvoiceSubmission.update({ where: { id: sub.id }, data: { requestXml: xml, sentAt: startedAt } });
+    // Saved BEFORE sending, and only while we still hold the claim: no claim, no send.
+    const owned = await db.eInvoiceSubmission.updateMany({
+      where: { id: sub.id, claimToken, status: 'SENDING' },
+      data: { requestXml: xml, sentAt: startedAt },
+    });
+    if (owned.count === 0) return;
 
     const client = createClient({
       baseUrl: conn.baseUrl,
@@ -131,7 +161,7 @@ export class EInvoiceSenderService {
     const autoAttempts = sub.attemptCount + 1;
     switch (outcome.status) {
       case 'accepted':
-        return this.finish(db, sub.id, autoAttempts, {
+        return finish(autoAttempts, {
           status: 'ACCEPTED',
           qrPayload: outcome.qr,
           governmentUuid: outcome.governmentUuid ?? null,
@@ -140,60 +170,59 @@ export class EInvoiceSenderService {
           errors: outcome.warnings.length ? outcome.warnings.map((w) => ({ ...w, source: 'jofotara' as const })) : null,
         });
       case 'rejected':
-        return this.finish(db, sub.id, autoAttempts, {
+        return finish(autoAttempts, {
           status: 'REJECTED',
           responseCode: outcome.httpStatus,
           responseBody: outcome.raw,
           errors: outcome.errors.map((e) => ({ code: e.code, message: e.message, source: 'jofotara' as const })),
         });
       case 'unknown':
-        return this.finish(db, sub.id, autoAttempts, {
+        return finish(autoAttempts, {
           status: 'UNKNOWN',
+          reuseXml: true,
           responseCode: outcome.httpStatus ?? null,
           responseBody: outcome.raw ?? null,
           errors: [{ code: outcome.reason.toUpperCase(), message: outcome.message, source: 'local' }],
         });
       case 'not-sent':
         if (outcome.reason === 'invalid') {
-          return this.finish(db, sub.id, autoAttempts, {
+          return finish(autoAttempts, {
             status: 'REJECTED',
             errors: (outcome.findings ?? [])
               .filter((f) => f.severity === 'error')
               .map((f) => ({ code: f.rule, message: f.message, source: 'local' as const })),
           });
         }
-        return this.finish(db, sub.id, autoAttempts, {
+        return finish(autoAttempts, {
           status: 'FAILED',
           nextAttemptAt: new Date(Date.now() + backoffMs(autoAttempts)),
+          reuseXml: true,
           errors: [{ code: 'UNREACHABLE', message: outcome.message, source: 'local' }],
         });
     }
   }
 
+  /**
+   * Records the result, only while `claimToken` still owns the row.
+   * `reuseXml`: true once this attempt's XML was saved and (maybe) sent, so
+   * the next send repeats it byte for byte; undefined leaves it as it was.
+   */
   private async finish(
     db: Prisma.TransactionClient,
     id: bigint,
+    claimToken: string,
     attemptCount: number,
-    data: {
-      status: 'ACCEPTED' | 'REJECTED' | 'FAILED' | 'UNKNOWN';
-      errors?: ErrorItem[] | null;
-      qrPayload?: string;
-      governmentUuid?: string | null;
-      responseCode?: number | null;
-      responseBody?: string | null;
-      nextAttemptAt?: Date;
-    },
+    data: FinishData,
   ): Promise<void> {
-    const { errors, ...rest } = data;
-    await db.eInvoiceSubmission.update({
-      where: { id },
+    const { errors, reuseXml, ...rest } = data;
+    await db.eInvoiceSubmission.updateMany({
+      where: { id, claimToken },
       data: {
         ...rest,
         attemptCount,
         errors: errors === undefined ? undefined : errors === null ? ([] as Prisma.InputJsonValue) : errors,
         claimToken: null,
-        // After UNKNOWN or an unreachable server the next send repeats this exact XML.
-        reuseXml: data.status === 'UNKNOWN' || data.status === 'FAILED',
+        ...(reuseXml === undefined ? {} : { reuseXml }),
         completedAt: data.status === 'FAILED' ? null : new Date(),
       },
     });

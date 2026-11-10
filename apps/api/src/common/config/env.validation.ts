@@ -16,6 +16,8 @@ export const envSchema = z.object({
   EINVOICE_WORKER_INTERVAL_MS: z.coerce.number().int().min(100).default(60_000),
   // Past this the answer is UNKNOWN (never resent automatically).
   EINVOICE_HTTP_TIMEOUT_MS: z.coerce.number().int().min(100).default(30_000),
+  // Extra hosts a SANDBOX URL may use besides this machine (comma-separated).
+  EINVOICE_SANDBOX_HOSTS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

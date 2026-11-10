@@ -373,16 +373,27 @@ export class SalesInvoicesService implements InvoiceSettlement {
         if (draft.paymentType === 'CASH' && !draft.cashAccountId) {
           throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');
         }
-        // JoFotara buyer rules, checked before anything is posted (0005 §11.2).
+        // JoFotara rules (buyer, tax codes), checked before anything is posted (0005 §11).
         const buyer = await tx.party.findFirst({
           where: { id: draft.customerId },
           select: { nameAr: true, taxNumber: true, nationalId: true, nationalIdKind: true, phone: true, isCashCustomer: true },
         });
+        const categoryIds = [...new Set(draft.lines.map((l) => l.taxCategoryId).filter((x): x is bigint => x !== null))];
+        const codes = new Map(
+          (
+            await tx.taxCategory.findMany({ where: { id: { in: categoryIds } }, select: { id: true, einvoiceCode: true } })
+          ).map((c) => [c.id, c.einvoiceCode]),
+        );
         if (buyer) {
           await this.einvoice.assertInvoiceSendable(tx, companyId, {
             paymentType: draft.paymentType,
             grandTotal: draft.grandTotal.toString(),
             buyer,
+            lines: draft.lines.map((l) => ({
+              taxRate: l.taxRate.toString(),
+              taxAmount: l.taxAmount.toString(),
+              einvoiceCode: l.taxCategoryId ? (codes.get(l.taxCategoryId) ?? null) : null,
+            })),
           });
         }
 

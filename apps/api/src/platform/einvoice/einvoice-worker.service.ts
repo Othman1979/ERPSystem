@@ -53,12 +53,21 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
     this.running = true;
     try {
       // system client: cross-tenant outbox maintenance (see class comment).
+      // A row cut off AFTER its XML was saved for sending may have reached
+      // JoFotara: UNKNOWN, same XML on a resend. One cut off before that was
+      // never sent in this claim: back to the queue.
       await this.prisma.client.$executeRaw`
         UPDATE einvoice_submissions
            SET status = 'UNKNOWN', claim_token = NULL, reuse_xml = TRUE, completed_at = UTC_TIMESTAMP(3),
                errors = JSON_ARRAY(JSON_OBJECT('code', 'INTERRUPTED', 'source', 'local',
                  'message', 'Sending was interrupted; check the JoFotara portal before resending'))
-         WHERE status = 'SENDING' AND claimed_at < UTC_TIMESTAMP(3) - INTERVAL ${STUCK_MINUTES} MINUTE`;
+         WHERE status = 'SENDING' AND claimed_at < UTC_TIMESTAMP(3) - INTERVAL ${STUCK_MINUTES} MINUTE
+           AND sent_at IS NOT NULL AND sent_at >= claimed_at`;
+      await this.prisma.client.$executeRaw`
+        UPDATE einvoice_submissions
+           SET status = 'PENDING', claim_token = NULL, next_attempt_at = UTC_TIMESTAMP(3)
+         WHERE status = 'SENDING' AND claimed_at < UTC_TIMESTAMP(3) - INTERVAL ${STUCK_MINUTES} MINUTE
+           AND (sent_at IS NULL OR sent_at < claimed_at)`;
 
       const token = randomUUID();
       // system client: the atomic claim is what keeps two workers apart.
@@ -74,10 +83,15 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
          WHERE claim_token = ${token} AND status = 'SENDING' ORDER BY id`;
 
       for (const row of claimed) {
+        // The stuck-row clock starts when THIS row's send starts, not the batch's.
+        // system client: same row, same claim.
+        await this.prisma.client.$executeRaw`
+          UPDATE einvoice_submissions SET claimed_at = UTC_TIMESTAMP(3)
+           WHERE id = ${row.id} AND claim_token = ${token} AND status = 'SENDING'`;
         await this.cls.run(async () => {
           this.cls.set('tenantId', BigInt(row.tenant_id));
           try {
-            await this.sender.send(BigInt(row.id));
+            await this.sender.send(BigInt(row.id), token);
           } catch (err) {
             // Left SENDING: the stuck-row rule above turns it UNKNOWN, never resent blindly.
             this.log.error(`submission ${row.id}: ${err instanceof Error ? err.message : String(err)}`);

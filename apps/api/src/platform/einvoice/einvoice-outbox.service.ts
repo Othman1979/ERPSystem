@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import type { Decimal } from '../../common/decimal/decimal.utils.js';
+import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -20,25 +20,62 @@ export type EInvoiceDocumentType = 'SALES_INVOICE' | 'SALES_RETURN';
 export class EInvoiceOutboxService {
   constructor(private readonly support: DocumentSupportService) {}
 
-  /** The company's settings while e-invoicing is on; `lock` takes the row (ICV). */
-  private async enabledSettings(tx: Prisma.TransactionClient, companyId: bigint, lock = false) {
-    if (lock) {
-      const { tenantId } = this.support.tenant();
-      await tx.$queryRaw`SELECT id FROM einvoice_settings
-        WHERE tenant_id = ${tenantId} AND company_id = ${companyId} FOR UPDATE`;
-    }
+  /** The company's settings while e-invoicing is on (a plain read: no lock while it is off). */
+  private enabledSettings(tx: Prisma.TransactionClient, companyId: bigint) {
     return tx.eInvoiceSettings.findFirst({ where: { companyId, isEnabled: true } });
   }
 
-  /** Posting check for a sales invoice: the buyer rules (0005 §11.2). */
+  /**
+   * Locks the settings row and reads the ICV counter WITH the lock. A plain
+   * read here would return the transaction's REPEATABLE READ snapshot, taken
+   * before it waited, so two postings at once would draw the same ICV.
+   */
+  private async lockCounter(tx: Prisma.TransactionClient, companyId: bigint) {
+    const { tenantId } = this.support.tenant();
+    const [row] = await tx.$queryRaw<
+      { id: bigint; next_icv: number; environment: 'SANDBOX' | 'PRODUCTION'; is_enabled: number | boolean }[]
+    >`SELECT id, next_icv, environment, is_enabled FROM einvoice_settings
+       WHERE tenant_id = ${tenantId} AND company_id = ${companyId} FOR UPDATE`;
+    return row && Boolean(row.is_enabled) ? row : null;
+  }
+
+  /**
+   * Posting check for a sales invoice (0005 §11): the buyer rules, and every
+   * line must be sendable as it will be posted — an invoice JoFotara cannot
+   * take would be posted and then stuck, as posted invoices are not reversed.
+   */
   async assertInvoiceSendable(
     tx: Prisma.TransactionClient,
     companyId: bigint,
-    input: { paymentType: 'CASH' | 'CREDIT'; grandTotal: Decimal.Value; buyer: BuyerSource },
+    input: {
+      paymentType: 'CASH' | 'CREDIT';
+      grandTotal: Decimal.Value;
+      buyer: BuyerSource;
+      lines: { taxRate: Decimal.Value; taxAmount: Decimal.Value; einvoiceCode: string | null }[];
+    },
   ): Promise<void> {
-    if (!(await this.enabledSettings(tx, companyId))) return;
+    const settings = await this.enabledSettings(tx, companyId);
+    if (!settings) return;
     const r = resolveBuyer(input.buyer, input.paymentType, input.grandTotal);
     if (!r.ok) throw new DomainError(ErrorCode.EINVOICE_BUYER_REQUIRED, r.reason);
+    for (const l of input.lines) {
+      if (settings.track === 'INCOME') {
+        if (!new Decimal(l.taxAmount).isZero()) {
+          throw new DomainError(
+            ErrorCode.EINVOICE_NOT_READY,
+            'The company is on the income track (not registered for sales tax): its invoices cannot carry tax',
+          );
+        }
+        continue;
+      }
+      const code = l.einvoiceCode?.trim().toUpperCase();
+      if (new Decimal(l.taxRate).isZero() && code !== 'Z' && code !== 'O') {
+        throw new DomainError(
+          ErrorCode.EINVOICE_NOT_READY,
+          'A 0% tax category needs its e-invoice code: Z (exempt) or O (zero-rated). Set it in Settings → Taxes',
+        );
+      }
+    }
   }
 
   /** Posting check for a sales return that will be sent: it needs a reason (p.26). */
@@ -74,8 +111,9 @@ export class EInvoiceOutboxService {
     },
   ): Promise<{ id: bigint } | null> {
     const { tenantId } = this.support.tenant();
-    const settings = await this.enabledSettings(tx, input.companyId, true);
-    if (!settings) return null;
+    if (!(await this.enabledSettings(tx, input.companyId))) return null;
+    const counter = await this.lockCounter(tx, input.companyId);
+    if (!counter) return null;
 
     let originalSubmissionId: bigint | null = null;
     if (input.documentType === 'SALES_RETURN') {
@@ -87,7 +125,7 @@ export class EInvoiceOutboxService {
       originalSubmissionId = original.id;
     }
 
-    await tx.eInvoiceSettings.update({ where: { id: settings.id }, data: { nextIcv: { increment: 1 } } });
+    await tx.eInvoiceSettings.update({ where: { id: counter.id }, data: { nextIcv: { increment: 1 } } });
     return tx.eInvoiceSubmission.create({
       data: {
         tenantId,
@@ -96,9 +134,10 @@ export class EInvoiceOutboxService {
         documentId: input.documentId,
         documentNo: input.documentNo,
         uuid: randomUUID(),
-        icv: settings.nextIcv,
-        environment: settings.environment,
+        icv: Number(counter.next_icv),
+        environment: counter.environment,
         status: 'PENDING',
+        nextAttemptAt: new Date(),
         originalSubmissionId,
       },
       select: { id: true },

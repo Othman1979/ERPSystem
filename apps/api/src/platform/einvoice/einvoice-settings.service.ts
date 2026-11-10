@@ -89,8 +89,16 @@ export class EInvoiceSettingsService {
       }
     }
 
-    const baseUrl = dto.environment === 'SANDBOX' ? normalizeSandboxUrl(dto.baseUrl) : null;
-    let secretEncrypted = existing?.secretEncrypted ?? null;
+    const baseUrl =
+      dto.environment === 'SANDBOX'
+        ? normalizeSandboxUrl(dto.baseUrl, this.config.get('EINVOICE_SANDBOX_HOSTS', { infer: true }))
+        : null;
+    // The stored secret belongs to the server it was entered for: a change of
+    // environment or sandbox URL drops it unless a new one comes with it, so a
+    // production Secret-Key can never be sent to another host (BUILD_PLAN §12.3).
+    const target = (env: string, url: string | null) => `${env}|${url ?? ''}`;
+    const sameTarget = existing ? target(existing.environment, existing.baseUrl) === target(dto.environment, baseUrl) : true;
+    let secretEncrypted = sameTarget ? (existing?.secretEncrypted ?? null) : null;
     if (dto.secretKey) {
       const key = this.encryptionKey();
       if (!key) {
@@ -195,7 +203,16 @@ export class EInvoiceSettingsService {
 }
 
 /** A SANDBOX URL must be http(s) and must not be the production host. */
-function normalizeSandboxUrl(raw: string | null | undefined): string | null {
+/** Hosts a sandbox may always use: the mock runs on this machine. */
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
+
+/**
+ * A SANDBOX URL must be http(s), must not be the production host (any port)
+ * and must be this machine — or a host the operator listed in
+ * EINVOICE_SANDBOX_HOSTS (comma-separated), e.g. a shared mock. So the
+ * server never posts to an arbitrary address chosen in the settings screen.
+ */
+function normalizeSandboxUrl(raw: string | null | undefined, allowed: string | undefined): string | null {
   const value = raw?.trim();
   if (!value) return null;
   let url: URL;
@@ -207,8 +224,16 @@ function normalizeSandboxUrl(raw: string | null | undefined): string | null {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new DomainError(ErrorCode.VALIDATION, 'The sandbox URL must start with http:// or https://');
   }
-  if (url.host === new URL(JOFOTARA_PRODUCTION_URL).host) {
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (host === new URL(JOFOTARA_PRODUCTION_URL).hostname) {
     throw new DomainError(ErrorCode.VALIDATION, 'The sandbox must not point at the production JoFotara server');
+  }
+  const extra = new Set((allowed ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean));
+  if (!LOOPBACK.has(host) && !extra.has(host)) {
+    throw new DomainError(
+      ErrorCode.VALIDATION,
+      'The sandbox URL must be on this server (127.0.0.1 / localhost) or listed in EINVOICE_SANDBOX_HOSTS',
+    );
   }
   return value.replace(/\/+$/, '');
 }
