@@ -8,28 +8,48 @@ type TrialBalance = Awaited<ReturnType<ReportsService['trialBalance']>>;
 type GeneralLedger = Awaited<ReturnType<ReportsService['generalLedger']>>;
 type PartyStatement = Awaited<ReturnType<ReportsService['partyStatement']>>;
 
-/** Trial balance JSON → export table (one row per account, debit/credit totals). */
+/**
+ * Trial balance JSON → export table: per account the opening position, the
+ * period's debit / credit and the closing position (ADR-007).
+ */
 export function trialBalanceTable(data: TrialBalance, lang: Lang, range: ReportRange): ReportTable {
   const t = (ar: string, en: string) => L({ lang }, ar, en);
   return {
     title: t('ميزان المراجعة', 'Trial balance'),
     meta: [periodMeta(lang, range.from, range.to)],
     fileName: 'trial-balance',
+    orientation: 'landscape',
     columns: [
       { key: 'code', label: t('الرمز', 'Code'), width: 50 },
       { key: 'name', label: t('الحساب', 'Account') },
-      { key: 'debit', label: t('مدين', 'Debit'), kind: 'amount' },
-      { key: 'credit', label: t('دائن', 'Credit'), kind: 'amount' },
-      { key: 'balance', label: t('الرصيد', 'Balance'), kind: 'amount' },
+      { key: 'openingDebit', label: t('أول المدة مدين', 'Opening debit'), kind: 'amount' },
+      { key: 'openingCredit', label: t('أول المدة دائن', 'Opening credit'), kind: 'amount' },
+      { key: 'periodDebit', label: t('حركة الفترة مدين', 'Period debit'), kind: 'amount' },
+      { key: 'periodCredit', label: t('حركة الفترة دائن', 'Period credit'), kind: 'amount' },
+      { key: 'closingDebit', label: t('الرصيد مدين', 'Closing debit'), kind: 'amount' },
+      { key: 'closingCredit', label: t('الرصيد دائن', 'Closing credit'), kind: 'amount' },
     ],
     rows: data.rows.map((r) => ({
       code: r.code,
       name: localName(lang, r.nameAr, r.nameEn),
-      debit: r.totalDebit,
-      credit: r.totalCredit,
-      balance: r.balance,
+      openingDebit: blankZero(r.openingDebit),
+      openingCredit: blankZero(r.openingCredit),
+      periodDebit: blankZero(r.periodDebit),
+      periodCredit: blankZero(r.periodCredit),
+      closingDebit: blankZero(r.closingDebit),
+      closingCredit: blankZero(r.closingCredit),
     })),
-    totals: [{ name: t('المجموع', 'Total'), debit: data.totals.debit, credit: data.totals.credit }],
+    totals: [
+      {
+        name: t('المجموع', 'Total'),
+        openingDebit: data.totals.openingDebit,
+        openingCredit: data.totals.openingCredit,
+        periodDebit: data.totals.periodDebit,
+        periodCredit: data.totals.periodCredit,
+        closingDebit: data.totals.closingDebit,
+        closingCredit: data.totals.closingCredit,
+      },
+    ],
   };
 }
 

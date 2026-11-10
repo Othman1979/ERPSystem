@@ -143,30 +143,118 @@ export class ReportsService {
       .sort((a, b) => a.account.code.localeCompare(b.account.code));
   }
 
-  /** Trial balance: per-account debit/credit totals over POSTED entries. */
+  /**
+   * Trial balance. Per account:
+   * - opening: everything before `from`, plus opening balances (is_opening)
+   *   dated in the range — they are the start position, not movement (ADR-007);
+   * - period: the other entries in the range (gross debit and credit);
+   * - closing: opening + period, i.e. everything up to `to`.
+   * Opening and closing are netted to one side. totalDebit / totalCredit /
+   * balance keep their earlier meaning — every entry dated in the range.
+   */
   async trialBalance(range: ReportRange) {
-    const rows = (await this.accountTotals(range)).map(({ account: a, debit, credit }) => {
-      // Natural-sign balance: positive = normal side.
-      const balance = a.normalBalance === 'DEBIT' ? debit.minus(credit) : credit.minus(debit);
-      return {
-        accountId: a.id.toString(),
-        code: a.code,
-        nameAr: a.nameAr,
-        nameEn: a.nameEn,
-        accountType: a.accountType,
-        normalBalance: a.normalBalance,
-        totalDebit: debit.toString(),
-        totalCredit: credit.toString(),
-        balance: balance.toString(),
-      };
-    });
+    const { tenantId, db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const from = range.from?.slice(0, 10) ?? '1000-01-01';
+    const to = range.to?.slice(0, 10) ?? '9999-12-31';
 
+    // One pass over the lines: before `from`, opening in range, other in range.
+    const sums = (await db.$queryRaw`
+      SELECT jl.account_id AS accountId,
+        SUM(CASE WHEN je.entry_date < ${from} THEN jl.debit ELSE 0 END) AS bd,
+        SUM(CASE WHEN je.entry_date < ${from} THEN jl.credit ELSE 0 END) AS bc,
+        SUM(CASE WHEN je.entry_date >= ${from} AND je.is_opening = 1 THEN jl.debit ELSE 0 END) AS od,
+        SUM(CASE WHEN je.entry_date >= ${from} AND je.is_opening = 1 THEN jl.credit ELSE 0 END) AS oc,
+        SUM(CASE WHEN je.entry_date >= ${from} AND je.is_opening = 0 THEN jl.debit ELSE 0 END) AS pd,
+        SUM(CASE WHEN je.entry_date >= ${from} AND je.is_opening = 0 THEN jl.credit ELSE 0 END) AS pc
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.tenant_id = jl.tenant_id AND je.id = jl.journal_entry_id
+      WHERE jl.tenant_id = ${tenantId} AND je.tenant_id = ${tenantId}
+        AND je.company_id = ${companyId} AND je.status = 'POSTED' AND je.entry_date <= ${to}
+      GROUP BY jl.account_id
+    `) as { accountId: bigint; bd: unknown; bc: unknown; od: unknown; oc: unknown; pd: unknown; pc: unknown }[];
+
+    const accounts = sums.length
+      ? await db.account.findMany({
+          where: { companyId, id: { in: sums.map((r) => BigInt(r.accountId)) } },
+          select: { id: true, code: true, nameAr: true, nameEn: true, accountType: true, normalBalance: true },
+        })
+      : [];
+    const byId = new Map(accounts.map((a) => [a.id, a]));
+    const d = (v: unknown) => new Decimal(String(v ?? 0));
+    const side = (n: Decimal) => ({ debit: n.gt(0) ? n : new Decimal(0), credit: n.lt(0) ? n.neg() : new Decimal(0) });
+    const isZero = (...vs: string[]) => vs.every((v) => new Decimal(v).isZero());
+
+    const rows = sums
+      .map((s) => {
+        const a = byId.get(BigInt(s.accountId));
+        if (!a) return null;
+        const debit = d(s.od).plus(d(s.pd));
+        const credit = d(s.oc).plus(d(s.pc));
+        const opening = side(d(s.bd).plus(d(s.od)).minus(d(s.bc)).minus(d(s.oc)));
+        const closing = side(d(s.bd).plus(debit).minus(d(s.bc)).minus(credit));
+        // Natural-sign balance: positive = normal side.
+        const balance = a.normalBalance === 'DEBIT' ? debit.minus(credit) : credit.minus(debit);
+        return {
+          accountId: a.id.toString(),
+          code: a.code,
+          nameAr: a.nameAr,
+          nameEn: a.nameEn,
+          accountType: a.accountType,
+          normalBalance: a.normalBalance,
+          totalDebit: debit.toString(),
+          totalCredit: credit.toString(),
+          balance: balance.toString(),
+          openingDebit: opening.debit.toString(),
+          openingCredit: opening.credit.toString(),
+          periodDebit: d(s.pd).toString(),
+          periodCredit: d(s.pc).toString(),
+          closingDebit: closing.debit.toString(),
+          closingCredit: closing.credit.toString(),
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null)
+      // Accounts that only moved before `from` and net to zero add nothing.
+      .filter((r) => !isZero(r.openingDebit, r.openingCredit, r.totalDebit, r.totalCredit))
+      .sort((a, b) => a.code.localeCompare(b.code));
+
+    const total = (pick: (r: (typeof rows)[number]) => string) => sum(rows.map(pick)).toString();
     const totalDebit = sum(rows.map((r) => r.totalDebit));
     const totalCredit = sum(rows.map((r) => r.totalCredit));
     return {
       rows,
-      totals: { debit: totalDebit.toString(), credit: totalCredit.toString() },
+      totals: {
+        debit: totalDebit.toString(),
+        credit: totalCredit.toString(),
+        openingDebit: total((r) => r.openingDebit),
+        openingCredit: total((r) => r.openingCredit),
+        periodDebit: total((r) => r.periodDebit),
+        periodCredit: total((r) => r.periodCredit),
+        closingDebit: total((r) => r.closingDebit),
+        closingCredit: total((r) => r.closingCredit),
+      },
       balanced: totalDebit.eq(totalCredit),
+    };
+  }
+
+  /**
+   * Line filter for statement-style reports (ledger, party statement), ADR-007:
+   * `lines` = entries in the range that are not opening balances; `opening` =
+   * everything before `from` plus opening balances dated in the range.
+   */
+  private openingSplit(range: ReportRange, companyId: bigint) {
+    const dateWhere = this.dateWhere(range);
+    const inRange = Object.keys(dateWhere).length ? { entryDate: dateWhere } : {};
+    return {
+      lines: { companyId, status: 'POSTED' as const, isOpening: false, ...inRange },
+      opening: {
+        companyId,
+        status: 'POSTED' as const,
+        OR: [
+          ...(range.from ? [{ entryDate: { lt: new Date(range.from) } }] : []),
+          { isOpening: true, ...inRange },
+        ],
+      },
     };
   }
 
@@ -174,20 +262,13 @@ export class ReportsService {
   async generalLedger(accountId: bigint, range: ReportRange) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
-    const dateWhere = this.dateWhere(range);
 
     const account = await db.account.findFirst({ where: { id: accountId, companyId } });
     if (!account) throw DomainError.notFound('Account', accountId.toString());
+    const split = this.openingSplit(range, companyId);
 
     const lines = await db.journalLine.findMany({
-      where: {
-        accountId,
-        entry: {
-          companyId,
-          status: 'POSTED',
-          ...(Object.keys(dateWhere).length ? { entryDate: dateWhere } : {}),
-        },
-      },
+      where: { accountId, entry: split.lines },
       orderBy: [{ entry: { entryDate: 'asc' } }, { entry: { id: 'asc' } }, { lineNo: 'asc' }],
       include: {
         entry: {
@@ -203,22 +284,12 @@ export class ReportsService {
       },
     });
 
-    // Opening balance = everything before `from` (summed in the database).
-    let opening = new Decimal(0);
-    if (range.from) {
-      const before = await db.journalLine.aggregate({
-        where: {
-          accountId,
-          entry: {
-            companyId,
-            status: 'POSTED',
-            entryDate: { lt: new Date(range.from) },
-          },
-        },
-        _sum: { debit: true, credit: true },
-      });
-      opening = new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
-    }
+    // Opening balance = everything before `from` + opening balances in range (summed in the database).
+    const before = await db.journalLine.aggregate({
+      where: { accountId, entry: split.opening },
+      _sum: { debit: true, credit: true },
+    });
+    const opening = new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
 
     let running = opening;
     const rows = lines.map((l) => {
@@ -259,18 +330,10 @@ export class ReportsService {
   async partyStatement(partyType: 'CUSTOMER' | 'SUPPLIER', partyId: bigint, range: ReportRange) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
-    const dateWhere = this.dateWhere(range);
 
+    const split = this.openingSplit(range, companyId);
     const lines = await db.journalLine.findMany({
-      where: {
-        partyType,
-        partyId,
-        entry: {
-          companyId,
-          status: 'POSTED',
-          ...(Object.keys(dateWhere).length ? { entryDate: dateWhere } : {}),
-        },
-      },
+      where: { partyType, partyId, entry: split.lines },
       orderBy: [{ entry: { entryDate: 'asc' } }, { entry: { id: 'asc' } }, { lineNo: 'asc' }],
       include: {
         entry: {
@@ -280,18 +343,11 @@ export class ReportsService {
       },
     });
 
-    let opening = new Decimal(0);
-    if (range.from) {
-      const before = await db.journalLine.aggregate({
-        where: {
-          partyType,
-          partyId,
-          entry: { companyId, status: 'POSTED', entryDate: { lt: new Date(range.from) } },
-        },
-        _sum: { debit: true, credit: true },
-      });
-      opening = new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
-    }
+    const before = await db.journalLine.aggregate({
+      where: { partyType, partyId, entry: split.opening },
+      _sum: { debit: true, credit: true },
+    });
+    const opening = new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
 
     let running = opening;
     const rows = lines.map((l) => {

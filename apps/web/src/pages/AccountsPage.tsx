@@ -12,7 +12,7 @@ import {
   Tag,
   message,
 } from 'antd';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
@@ -21,8 +21,17 @@ import {
   accountingControllerUpdateAccount,
   journalControllerTrialBalance,
 } from '@erp/api-client';
-import { BookOutlined } from '@ant-design/icons';
+import { BookOutlined, FlagOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
+import {
+  OpeningNote,
+  OpeningSideFields,
+  openingApi,
+  sameSides,
+  sideValue,
+  toSides,
+  type AccountOpening,
+} from '../components/OpeningBalance';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { bothNames, codeAndName } from '../i18n/displayName';
@@ -141,7 +150,43 @@ export function AccountsPage() {
     return nodes;
   }, [data, trial]);
 
+  // Opening balances (ADR-007): the chart's summary strip and the form section.
+  const { data: opening } = useQuery({ queryKey: ['opening-balances'], queryFn: openingApi.summary });
+  const { data: accountOpening } = useQuery({
+    queryKey: ['opening-account', editing?.id],
+    queryFn: () => openingApi.account(editing!.id),
+    enabled: modalOpen && !!editing,
+  });
+  // Fill the opening fields once per opened account — never over what the user typed
+  // (after a create, the new account's empty answer must not wipe the entry).
+  const openingFilledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (modalOpen && accountOpening && accountOpening.accountId === editing?.id && openingFilledFor.current !== editing.id) {
+      openingFilledFor.current = editing.id;
+      form.setFieldsValue({
+        opening: { debit: sideValue(accountOpening.debit), credit: sideValue(accountOpening.credit) },
+      });
+    }
+  }, [modalOpen, accountOpening, editing, form]);
+  const equityAccount = (data ?? []).find((a) => a.id === opening?.equityAccountId);
+  const openingDate = opening?.date?.slice(0, 10) ?? '';
+
   const watchedParentId = Form.useWatch('parentId', form) as string | undefined;
+  const watchedType = Form.useWatch('accountType', form) as Account['accountType'] | undefined;
+  const watchedPostable = Form.useWatch('isPostable', form) as boolean | undefined;
+  // Edit: the server says why; create: the account rules from the form's own fields,
+  // then the general lock (fiscal year, closed period, permission).
+  const openingLoaded = editing ? accountOpening?.accountId === editing.id : !!opening;
+  const openingLock: AccountOpening['lockedReason'] = editing
+    ? openingLoaded
+      ? accountOpening!.lockedReason
+      : null
+    : watchedType === 'REVENUE' || watchedType === 'EXPENSE'
+      ? 'INCOME_ACCOUNT'
+      : watchedPostable === false
+        ? 'GROUP_ACCOUNT'
+        : (opening?.lockedReason ?? null);
+  const openingEditable = openingLoaded && !openingLock;
   const isCreate = !editing;
   const selectedParent = useMemo(
     () => (data ?? []).find((a) => a.id === watchedParentId) ?? null,
@@ -168,22 +213,36 @@ export function AccountsPage() {
       parentId?: string;
       accountType: Account['accountType'];
       isPostable?: boolean;
+      opening?: { debit?: string; credit?: string };
     }) => {
+      let accountId = editing?.id;
       if (editing) {
-        return accountingControllerUpdateAccount(editing.id, {
+        await accountingControllerUpdateAccount(editing.id, {
           nameAr: values.nameAr,
           nameEn: values.nameEn || null,
           isPostable: values.isPostable,
         });
+      } else {
+        const res = await accountingControllerCreateAccount({
+          code: values.parentId ? undefined : values.code!,
+          nameAr: values.nameAr,
+          nameEn: values.nameEn || undefined,
+          parentId: values.parentId || undefined,
+          accountType: values.accountType,
+          isPostable: values.isPostable ?? true,
+        });
+        const created = (res as unknown as { data: Account }).data;
+        accountId = created.id;
+        // If the opening balance fails below, a retry edits this account instead of adding
+        // another — keeping what was typed (its empty answer must not refill the fields).
+        openingFilledFor.current = created.id;
+        setEditing(created);
       }
-      return accountingControllerCreateAccount({
-        code: values.parentId ? undefined : values.code!,
-        nameAr: values.nameAr,
-        nameEn: values.nameEn || undefined,
-        parentId: values.parentId || undefined,
-        accountType: values.accountType,
-        isPostable: values.isPostable ?? true,
-      });
+      const target = toSides(values.opening);
+      const before = editing && accountOpening ? accountOpening : { debit: '0', credit: '0' };
+      if (openingEditable && accountId && !sameSides(target, before)) {
+        await openingApi.setAccount(accountId, target);
+      }
     },
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
@@ -191,6 +250,9 @@ export function AccountsPage() {
       setEditing(null);
       form.resetFields();
       void queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      void queryClient.invalidateQueries({ queryKey: ['opening-balances'] });
+      void queryClient.invalidateQueries({ queryKey: ['opening-account'] });
+      void queryClient.invalidateQueries({ queryKey: ['trial-balance'] });
     },
     onError: (err) => {
       apiMessage.error(
@@ -216,13 +278,15 @@ export function AccountsPage() {
 
   const openCreate = () => {
     setEditing(null);
+    openingFilledFor.current = null;
     form.resetFields();
     setModalOpen(true);
   };
 
   const openEdit = (a: Account) => {
     setEditing(a);
-    form.setFieldsValue({ nameAr: a.nameAr, nameEn: a.nameEn, isPostable: a.isPostable });
+    openingFilledFor.current = null;
+    form.setFieldsValue({ nameAr: a.nameAr, nameEn: a.nameEn, isPostable: a.isPostable, opening: undefined });
     setModalOpen(true);
   };
 
@@ -252,6 +316,30 @@ export function AccountsPage() {
       <PageHeader title={t('accounts.title')} />
       <Card>
       {contextHolder}
+      {opening?.date && (opening.accounts.length > 0 || opening.editable) && (
+        <div className="opening-strip">
+          <span>{t('opening.strip', { date: openingDate })}</span>
+          <span>
+            {t('journal.debit')} <Num>{formatAmount(opening.totals.debit)}</Num>
+          </span>
+          <span>
+            {t('journal.credit')} <Num>{formatAmount(opening.totals.credit)}</Num>
+          </span>
+          {dec(opening.difference.debit).isZero() && dec(opening.difference.credit).isZero() ? (
+            <Tag color="green">{t('opening.balanced')}</Tag>
+          ) : (
+            <Tag color="gold">
+              {t('opening.differenceIn', { account: equityAccount ? codeAndName(equityAccount) : '' })}{' '}
+              <Num>
+                {formatAmount(
+                  dec(opening.difference.debit).isZero() ? opening.difference.credit : opening.difference.debit,
+                )}
+              </Num>{' '}
+              {dec(opening.difference.debit).isZero() ? t('journal.credit') : t('journal.debit')}
+            </Tag>
+          )}
+        </div>
+      )}
       <ListToolbar
         search={search}
         onSearch={setSearch}
@@ -417,6 +505,17 @@ export function AccountsPage() {
               ]}
             />
           </Form.Item>
+          </FormSection>
+          <FormSection title={t('opening.section')} icon={<FlagOutlined />}>
+            <OpeningSideFields name={['opening']} disabled={!openingEditable} />
+            <OpeningNote>
+              {openingLock
+                ? t(`opening.locked.${openingLock}`)
+                : t('opening.postedOn', {
+                    date: openingDate,
+                    account: equityAccount ? codeAndName(equityAccount) : '',
+                  })}
+            </OpeningNote>
           </FormSection>
         </Form>
       </FormDialog>

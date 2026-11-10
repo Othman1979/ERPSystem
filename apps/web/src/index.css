@@ -1026,3 +1026,55 @@ body {
     print-color-adjust: exact;
   }
 }
+
+/* Opening balances summary on the chart of accounts (ADR-007) */
+.opening-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 6px 12px;
+  margin-bottom: 10px;
+  background: var(--c-grid-panel);
+  border: 1px solid var(--c-grid-line);
+  border-radius: 4px;
+}
+
+/* Row label in an opening-balance section (as customer / as supplier) */
+.opening-role {
+  align-self: end;
+  padding-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Opening stock lines in the item form */
+.opening-stock-grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.opening-stock-grid th {
+  background: var(--c-grid-bar);
+  color: var(--c-grid-bar-text);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 6px;
+  border: 1px solid var(--c-grid-line);
+  text-align: start;
+}
+
+.opening-stock-grid td {
+  padding: 2px 4px;
+  border: 1px solid var(--c-grid-line);
+}
+
+.opening-stock-grid .num-cell {
+  text-align: end;
+  width: 22%;
+}
+
+.opening-stock-grid tfoot td {
+  border: none;
+  padding-top: 6px;
+}

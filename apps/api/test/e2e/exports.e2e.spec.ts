@@ -159,9 +159,19 @@ describe('Phase 8 — report exports', () => {
     {
       name: 'trial balance',
       url: () => '/api/v1/reports/trial-balance?from=2026-01-01&to=2026-12-31',
+      // Opening, period and closing columns (ADR-007); zero cells are empty.
       expected: (d) => [
-        ...d.rows.flatMap((r: J) => n(r.totalDebit, r.totalCredit, r.balance)),
-        ...n(d.totals.debit, d.totals.credit),
+        ...d.rows.flatMap((r: J) =>
+          n(nz(r.openingDebit), nz(r.openingCredit), nz(r.periodDebit), nz(r.periodCredit), nz(r.closingDebit), nz(r.closingCredit)),
+        ),
+        ...n(
+          d.totals.openingDebit,
+          d.totals.openingCredit,
+          d.totals.periodDebit,
+          d.totals.periodCredit,
+          d.totals.closingDebit,
+          d.totals.closingCredit,
+        ),
       ],
     },
     {

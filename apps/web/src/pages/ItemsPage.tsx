@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarcodeOutlined,
   DatabaseOutlined,
+  DeleteOutlined,
+  FlagOutlined,
+  PlusOutlined,
   InfoCircleOutlined,
   MoreOutlined,
   ProfileOutlined,
@@ -56,6 +59,7 @@ import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { ExportButtons } from '../components/ExportButtons';
 import { FormDialog, FormSection } from '../components/FormDialog';
+import { OpeningNote, openingApi, type OpeningStockLine } from '../components/OpeningBalance';
 import { codeAndName, displayName, type Named } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import type Decimal from 'decimal.js';
@@ -83,6 +87,7 @@ interface Item {
   nameEn: string | null;
   description?: string | null;
   itemKind: 'STOCK' | 'SERVICE';
+  baseUnitId?: string;
   baseUnit?: { code: string; nameAr: string } | null;
   itemGroup?: { id: string; code: string; nameAr: string } | null;
   taxCategory?: { id: string; code: string; nameAr: string } | null;
@@ -204,10 +209,51 @@ function ItemsTab() {
     qtyByItem.set(b.itemId, dec(qtyByItem.get(b.itemId)).plus(dec(b.qtyOnHand)));
   }
 
-  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['items'] });
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['items'] });
+    void queryClient.invalidateQueries({ queryKey: ['stock-balances-all'] });
+    void queryClient.invalidateQueries({ queryKey: ['opening-balances'] });
+    void queryClient.invalidateQueries({ queryKey: ['opening-item'] });
+  };
+
+  // Opening stock per warehouse (ADR-007): editable until the item's first other movement.
+  const { data: opening } = useQuery({ queryKey: ['opening-balances'], queryFn: openingApi.summary });
+  const { data: itemOpening } = useQuery({
+    queryKey: ['opening-item', editing?.id],
+    queryFn: () => openingApi.itemStock(editing!.id),
+    enabled: modalOpen && !!editing,
+  });
+  // Fill once per opened item — never over what the user typed (see AccountsPage).
+  const openingFilledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (modalOpen && itemOpening && itemOpening.itemId === editing?.id && openingFilledFor.current !== editing.id) {
+      openingFilledFor.current = editing.id;
+      form.setFieldsValue({
+        openingStock: itemOpening.lines.map((l) => ({ warehouseId: l.warehouseId, qty: l.qty, unitCost: l.unitCost })),
+      });
+    }
+  }, [modalOpen, itemOpening, editing, form]);
+  const watchedKind = Form.useWatch('itemKind', form) as string | undefined;
+  const openingLoaded = editing ? itemOpening?.itemId === editing.id : !!opening;
+  const openingLock = editing
+    ? (openingLoaded ? itemOpening!.lockedReason : null)
+    : (opening?.stockLockedReason ?? null);
+  const openingEditable = openingLoaded && !openingLock && watchedKind === 'STOCK';
+  /** Opening lines as the API takes them; rows without a warehouse or quantity are dropped. */
+  const openingLines = (rows: unknown): OpeningStockLine[] =>
+    ((rows ?? []) as { warehouseId?: string; qty?: string; unitCost?: string }[])
+      .filter((r) => r?.warehouseId && dec(r.qty).gt(0))
+      .map((r) => ({ warehouseId: r.warehouseId!, qty: dec(r.qty).toString(), unitCost: dec(r.unitCost).toString() }));
+  const sameLines = (a: OpeningStockLine[], b: OpeningStockLine[]) => {
+    const key = (l: OpeningStockLine) => `${l.warehouseId}:${dec(l.qty).toString()}:${dec(l.unitCost).toString()}`;
+    const x = a.map(key).sort();
+    const y = b.map(key).sort();
+    return x.length === y.length && x.every((k, i) => k === y[i]);
+  };
 
   const save = useMutation({
-    mutationFn: async (v: Record<string, unknown>): Promise<unknown> => {
+    mutationFn: async (all: Record<string, unknown>): Promise<unknown> => {
+      const { openingStock, ...v } = all;
       const payload = {
         ...v,
         salePrice: v.salePrice ?? undefined,
@@ -221,9 +267,23 @@ function ItemsTab() {
         description: v.description || undefined,
         taxCategoryId: v.taxCategoryId || undefined,
       };
-      return editing
-        ? catalogControllerUpdateItem(editing.id, payload as never)
-        : catalogControllerCreateItem(payload as never);
+      // An update takes no code, kind or base unit (UpdateItemDto rejects unknown fields).
+      const update: Record<string, unknown> = { ...payload };
+      for (const k of ['code', 'itemKind', 'baseUnitId']) delete update[k];
+      const res = editing
+        ? await catalogControllerUpdateItem(editing.id, update as never)
+        : await catalogControllerCreateItem(payload as never);
+      const saved = (res as unknown as { data: Item }).data;
+      // If the opening stock fails below, a retry edits this item instead of adding
+      // another — keeping the typed lines.
+      if (!editing) {
+        openingFilledFor.current = saved.id;
+        setEditing(saved);
+      }
+      const target = openingLines(openingStock);
+      const before = editing && itemOpening ? itemOpening.lines : [];
+      if (openingEditable && !sameLines(target, before)) await openingApi.setItemStock(saved.id, target);
+      return res;
     },
     onSuccess: () => {
       invalidate();
@@ -249,19 +309,21 @@ function ItemsTab() {
 
   const openCreate = () => {
     setEditing(null);
+    openingFilledFor.current = null;
     form.resetFields();
     form.setFieldsValue({ itemKind: 'STOCK', salePriceIncludesTax: false });
     setModalOpen(true);
   };
   const openEdit = (row: Item) => {
     setEditing(row);
+    openingFilledFor.current = null;
     form.setFieldsValue({
       code: row.code,
       nameAr: row.nameAr,
       nameEn: row.nameEn,
       description: row.description,
       itemKind: row.itemKind,
-      baseUnitId: undefined,
+      baseUnitId: row.baseUnitId,
       itemGroupId: row.itemGroup?.id ?? undefined,
       taxCategoryId: row.taxCategory?.id ?? undefined,
       defaultWarehouseId: row.defaultWarehouse?.id ?? undefined,
@@ -271,6 +333,7 @@ function ItemsTab() {
       maxStock: num(row.maxStock),
       salePriceIncludesTax: row.salePriceIncludesTax,
       imageUrl: row.imageUrl ?? undefined,
+      openingStock: [],
     });
     setModalOpen(true);
   };
@@ -588,6 +651,112 @@ function ItemsTab() {
               ) : null
             }
           </Form.Item>
+
+          {watchedKind === 'STOCK' && (
+            <FormSection title={t('opening.stockSection')} icon={<FlagOutlined />}>
+              <div className="span-all">
+                <Form.List
+                  name="openingStock"
+                  rules={[
+                    {
+                      validator: async (_, rows?: { warehouseId?: string; qty?: string; unitCost?: string }[]) => {
+                        const started = (rows ?? []).filter((r) => r && (r.warehouseId || r.qty || r.unitCost));
+                        if (started.some((r) => !r.warehouseId || !dec(r.qty).gt(0) || r.unitCost == null || r.unitCost === '')) {
+                          throw new Error(t('opening.lineIncomplete'));
+                        }
+                        const ids = started.map((r) => r.warehouseId);
+                        if (new Set(ids).size !== ids.length) throw new Error(t('opening.duplicateWarehouse'));
+                      },
+                    },
+                  ]}
+                >
+                  {(fields, { add, remove }, { errors }) => (
+                    <>
+                    <table className="opening-stock-grid">
+                      <thead>
+                        <tr>
+                          <th>{t('opening.warehouse')}</th>
+                          <th className="num-cell">{t('opening.qty')}</th>
+                          <th className="num-cell">{t('opening.unitCost')}</th>
+                          <th className="num-cell">{t('opening.value')}</th>
+                          <th style={{ width: 32 }} />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fields.map((f) => (
+                          <tr key={f.key}>
+                            <td>
+                              <Form.Item name={[f.name, 'warehouseId']} noStyle>
+                                <Select
+                                  size="small"
+                                  disabled={!openingEditable}
+                                  options={(warehouses ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
+                                  style={{ width: '100%' }}
+                                />
+                              </Form.Item>
+                            </td>
+                            <td>
+                              <Form.Item name={[f.name, 'qty']} noStyle>
+                                <InputNumber<string> size="small" stringMode min="0" disabled={!openingEditable} style={{ width: '100%' }} />
+                              </Form.Item>
+                            </td>
+                            <td>
+                              <Form.Item name={[f.name, 'unitCost']} noStyle>
+                                <InputNumber<string> size="small" stringMode min="0" disabled={!openingEditable} style={{ width: '100%' }} />
+                              </Form.Item>
+                            </td>
+                            <td className="num-cell">
+                              <Form.Item noStyle shouldUpdate>
+                                {({ getFieldValue }) => {
+                                  const row = getFieldValue(['openingStock', f.name]) as { qty?: string; unitCost?: string } | undefined;
+                                  return <Num>{formatAmount(dec(row?.qty).times(dec(row?.unitCost)))}</Num>;
+                                }}
+                              </Form.Item>
+                            </td>
+                            <td>
+                              {openingEditable && (
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  danger
+                                  icon={<DeleteOutlined />}
+                                  aria-label={t('common.delete')}
+                                  onClick={() => remove(f.name)}
+                                />
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      {openingEditable && (
+                        <tfoot>
+                          <tr>
+                            <td colSpan={5}>
+                              <Button
+                                size="small"
+                                type="dashed"
+                                icon={<PlusOutlined />}
+                                onClick={() => add({ warehouseId: form.getFieldValue('defaultWarehouseId') ?? warehouses?.[0]?.id })}
+                              >
+                                {t('opening.addLine')}
+                              </Button>
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                    <Form.ErrorList errors={errors} />
+                    </>
+                  )}
+                </Form.List>
+              </div>
+              <OpeningNote>
+                {openingLock
+                  ? t(`opening.locked.${openingLock}`)
+                  : t('opening.stockPostedOn', { date: opening?.date?.slice(0, 10) ?? '' })}
+              </OpeningNote>
+            </FormSection>
+          )}
         </Form>
       </FormDialog>
 

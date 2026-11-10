@@ -233,17 +233,21 @@ export class StockReportsService {
       itemId: BigInt(itemId),
       ...(query?.warehouseId ? { warehouseId: BigInt(query.warehouseId) } : {}),
     };
-    const where = {
-      ...scope,
-      ...(query?.sourceType ? { sourceType: query.sourceType } : {}),
-      ...(query?.from || query?.to
+    const inRange =
+      query?.from || query?.to
         ? {
             movementDate: {
               ...(query.from ? { gte: new Date(query.from) } : {}),
               ...(query.to ? { lte: new Date(query.to) } : {}),
             },
           }
-        : {}),
+        : {};
+    // Opening stock is the start position, never a line (ADR-007).
+    const where = {
+      ...scope,
+      isOpening: false,
+      ...(query?.sourceType ? { sourceType: query.sourceType } : {}),
+      ...inRange,
     };
     const count = await db.stockMovement.count({ where });
     if (count > EXPORT_LIMITS.xlsx) throw tooLarge(count);
@@ -259,14 +263,19 @@ export class StockReportsService {
         where: { itemId: BigInt(itemId), qtyOnHand: { not: 0 } },
         include: { warehouse: { select: { id: true, code: true, nameAr: true } } },
       }),
-      // Opening position = every movement of the item (warehouse filter kept) before `from`.
-      query?.from
-        ? db.stockMovement.groupBy({
-            by: ['movementType'],
-            where: { ...scope, movementDate: { lt: new Date(query.from) } },
-            _sum: { qtyIn: true, qtyOut: true, totalCost: true },
-          })
-        : Promise.resolve([]),
+      // Opening position = every movement of the item (warehouse filter kept) before
+      // `from`, plus its opening stock dated in the range.
+      db.stockMovement.groupBy({
+        by: ['movementType'],
+        where: {
+          ...scope,
+          OR: [
+            ...(query?.from ? [{ movementDate: { lt: new Date(query.from) } }] : []),
+            { isOpening: true, ...inRange },
+          ],
+        },
+        _sum: { qtyIn: true, qtyOut: true, totalCost: true },
+      }),
     ]);
     let openingQty = new Decimal(0);
     let openingValue = new Decimal(0);

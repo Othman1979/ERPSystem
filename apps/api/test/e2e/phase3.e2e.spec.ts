@@ -362,8 +362,10 @@ describe('Phase 3 — journal engine (erp_test)', () => {
     expect(ps.status).toBe(200);
     expect(Number(ps.body.closingBalance)).toBeCloseTo(500, 3);
 
-    expect(ps.body.rows.length).toBe(1);
-    expect(Number(ps.body.rows[0].debit)).toBe(500);
+    // The 500 comes from the opening entry: it is the statement's opening
+    // balance, not a line (ADR-007).
+    expect(Number(ps.body.openingBalance)).toBeCloseTo(500, 3);
+    expect(ps.body.rows.length).toBe(0);
   });
 
   it('receipt voucher posts with a cash debit and keeps its type on reversal', async () => {

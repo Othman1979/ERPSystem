@@ -25,6 +25,8 @@ export interface MovementInput {
   sourceLineId?: bigint | null;
   reversalOfId?: bigint | null;
   description?: string | null;
+  /** Opening stock (or its reversal): the item ledger's opening position (ADR-007). */
+  isOpening?: boolean;
 }
 
 export interface MovementResult {
@@ -147,6 +149,7 @@ export class StockLedgerService {
         balanceQtyAfter: newBalanceQty,
         avgCostAfter: newAvg,
         reversalOfId: input.reversalOfId ?? null,
+        isOpening: input.isOpening ?? false,
       },
     });
 

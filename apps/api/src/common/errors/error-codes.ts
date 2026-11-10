@@ -26,5 +26,7 @@ export enum ErrorCode {
   EINVOICE_NOT_READY = 'EINVOICE_NOT_READY',
   // Phase 8 — reports
   REPORT_TOO_LARGE = 'REPORT_TOO_LARGE',
+  // Opening balances (ADR-007): entered elsewhere, or no longer editable.
+  OPENING_BALANCE_LOCKED = 'OPENING_BALANCE_LOCKED',
   INTERNAL = 'INTERNAL',
 }

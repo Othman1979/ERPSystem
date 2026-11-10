@@ -218,6 +218,11 @@ export class AdjustmentsService {
           adjustmentDate,
         );
 
+        // Opening stock counts as opening only on the opening date (ADR-007).
+        const opening =
+          draft.adjustmentType === 'OPENING' &&
+          (await this.posting.isOpeningDate(tx, tenantId, companyId, adjustmentDate));
+
         // Apply movements first — returns per-line cost for the journal.
         const applied: {
           line: (typeof draft.lines)[number];
@@ -238,6 +243,7 @@ export class AdjustmentsService {
             sourceType: SOURCE,
             sourceId: draft.id,
             sourceLineId: line.id,
+            isOpening: opening,
           });
           applied.push({ line, unitCost: res.unitCost, totalCost: res.totalCost, movementId: res.movementId });
         }
@@ -303,6 +309,7 @@ export class AdjustmentsService {
             description: draft.description ?? `Stock adjustment ${draft.adjustmentType}`,
             lines: journalLines,
             postedBy: userId ?? null,
+            isOpening: opening,
           });
           entryId = entry.id;
         }
@@ -384,6 +391,9 @@ export class AdjustmentsService {
           'INVENTORY_ADJUSTMENT',
           'OPENING_BALANCE_EQUITY',
         ]);
+        const opening =
+          original.adjustmentType === 'OPENING' &&
+          (await this.posting.isOpeningDate(tx, tenantId, companyId, reversalDate));
 
         for (const line of original.lines) {
           const orig = byLine.get(line.id);
@@ -402,6 +412,7 @@ export class AdjustmentsService {
             sourceId: reversal.id,
             sourceLineId: line.id,
             reversalOfId: orig?.id ?? null,
+            isOpening: opening,
           });
           const amount = res.totalCost;
           const isInNow = !wasIn; // reversal direction
@@ -440,6 +451,7 @@ export class AdjustmentsService {
             description: `Reversal of adjustment ${original.docNo ?? original.id}`,
             lines: journalLines,
             postedBy: userId ?? null,
+            isOpening: opening,
           });
           entryId = entry.id;
         }

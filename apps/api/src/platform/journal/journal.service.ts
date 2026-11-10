@@ -371,6 +371,7 @@ export class JournalService {
           description: dto.description ?? 'Opening balances',
           lines,
           postedBy: userId ?? null,
+          isOpening: true,
         });
       }),
     );

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { IdcardOutlined, PhoneOutlined, PlusOutlined, WalletOutlined } from '@ant-design/icons';
+import { FlagOutlined, IdcardOutlined, PhoneOutlined, PlusOutlined, WalletOutlined } from '@ant-design/icons';
 import {
   Button,
   Form,
@@ -14,7 +14,7 @@ import {
   Tag,
   message,
 } from 'antd';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
@@ -26,6 +26,15 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { FormDialog, FormSection } from '../components/FormDialog';
+import {
+  OpeningNote,
+  OpeningSideFields,
+  openingApi,
+  sameSides,
+  sideValue,
+  toSides,
+  type PartyRole,
+} from '../components/OpeningBalance';
 import { displayName, type Named } from '../i18n/displayName';
 import { amountCell } from '../format/cells';
 
@@ -71,7 +80,39 @@ export function PartiesPage() {
       ),
   });
 
-  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['parties'] });
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['parties'] });
+    void queryClient.invalidateQueries({ queryKey: ['opening-balances'] });
+    void queryClient.invalidateQueries({ queryKey: ['opening-party'] });
+  };
+
+  // Opening balance on the customer / supplier control account (ADR-007).
+  const { data: opening } = useQuery({ queryKey: ['opening-balances'], queryFn: openingApi.summary });
+  const { data: partyOpening } = useQuery({
+    queryKey: ['opening-party', editing?.id],
+    queryFn: () => openingApi.party(editing!.id),
+    enabled: modalOpen && !!editing,
+  });
+  // Fill once per opened party — never over what the user typed (see AccountsPage).
+  const openingFilledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (modalOpen && partyOpening && partyOpening.partyId === editing?.id && openingFilledFor.current !== editing.id) {
+      openingFilledFor.current = editing.id;
+      form.setFieldsValue({
+        opening: Object.fromEntries(
+          partyOpening.balances.map((b) => [b.partyType, { debit: sideValue(b.debit), credit: sideValue(b.credit) }]),
+        ),
+      });
+    }
+  }, [modalOpen, partyOpening, editing, form]);
+  const watchedType = Form.useWatch('partyType', form) as 'CUSTOMER' | 'SUPPLIER' | 'BOTH' | undefined;
+  const roles: PartyRole[] =
+    watchedType === 'BOTH' ? ['CUSTOMER', 'SUPPLIER'] : watchedType ? [watchedType] : [];
+  const openingLoaded = editing ? partyOpening?.partyId === editing.id : !!opening;
+  const openingLock = editing ? (openingLoaded ? partyOpening!.lockedReason : null) : (opening?.lockedReason ?? null);
+  const openingEditable = openingLoaded && !openingLock;
+  const openingBefore = (role: PartyRole) =>
+    (editing && partyOpening?.balances.find((b) => b.partyType === role)) || { debit: '0', credit: '0' };
   const onError = (err: unknown) =>
     apiMessage.error(
       err instanceof ApiError
@@ -81,6 +122,7 @@ export function PartiesPage() {
 
   const openCreate = () => {
     setEditing(null);
+    openingFilledFor.current = null;
     form.resetFields();
     form.setFieldsValue({ partyType: 'CUSTOMER', nationalIdKind: 'NIN', isCashCustomer: false, isActive: true });
     setModalOpen(true);
@@ -88,6 +130,7 @@ export function PartiesPage() {
 
   const openEdit = (p: Party) => {
     setEditing(p);
+    openingFilledFor.current = null;
     form.setFieldsValue({
       nameAr: p.nameAr,
       nameEn: p.nameEn ?? undefined,
@@ -100,6 +143,7 @@ export function PartiesPage() {
       paymentTermsDays: p.paymentTermsDays ?? undefined,
       isCashCustomer: p.isCashCustomer,
       isActive: p.isActive,
+      opening: undefined,
     });
     setModalOpen(true);
   };
@@ -122,6 +166,20 @@ export function PartiesPage() {
       const res = editing
         ? await partiesControllerUpdate(editing.id, payload as never)
         : await partiesControllerCreate({ code: values.code, ...payload } as never);
+      const saved = (res as unknown as { data: Party }).data;
+      // If an opening balance fails below, a retry edits this party instead of adding
+      // another — keeping what was typed.
+      if (!editing) {
+        openingFilledFor.current = saved.id;
+        setEditing(saved);
+      }
+      const targets = (values.opening ?? {}) as Partial<Record<PartyRole, { debit?: string; credit?: string }>>;
+      if (openingEditable) {
+        for (const role of roles) {
+          const target = toSides(targets[role]);
+          if (!sameSides(target, openingBefore(role))) await openingApi.setParty(saved.id, role, target);
+        }
+      }
       return res as never;
     },
     onSuccess: () => {
@@ -130,6 +188,7 @@ export function PartiesPage() {
       if (saveAndNew.current) {
         // Save & new: keep the dialog open on an empty form, same party type.
         saveAndNew.current = false;
+        setEditing(null);
         const partyType = form.getFieldValue('partyType');
         form.resetFields();
         form.setFieldsValue({ partyType, nationalIdKind: 'NIN', isCashCustomer: false, isActive: true });
@@ -332,6 +391,22 @@ export function PartiesPage() {
               <Switch />
             </Form.Item>
           </FormSection>
+
+          {roles.length > 0 && (
+            <FormSection title={t('opening.section')} icon={<FlagOutlined />}>
+              {roles.map((role) => (
+                <div key={role} style={{ display: 'contents' }}>
+                  <div className="opening-role">{t(role === 'CUSTOMER' ? 'opening.asCustomer' : 'opening.asSupplier')}</div>
+                  <OpeningSideFields name={['opening', role]} disabled={!openingEditable} />
+                </div>
+              ))}
+              <OpeningNote>
+                {openingLock
+                  ? t(`opening.locked.${openingLock}`)
+                  : t('opening.partyPostedOn', { date: opening?.date?.slice(0, 10) ?? '' })}
+              </OpeningNote>
+            </FormSection>
+          )}
         </Form>
       </FormDialog>
     </div>

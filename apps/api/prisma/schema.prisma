@@ -715,6 +715,9 @@ model JournalEntry {
   totalDebit     Decimal            @default(0) @map("total_debit") @db.Decimal(18, 3)
   totalCredit    Decimal            @default(0) @map("total_credit") @db.Decimal(18, 3)
   reversalOfId   BigInt?            @map("reversal_of_id") @db.UnsignedBigInt
+  /// Opening balance (opening entry or opening stock, and their reversals):
+  /// reports show it as the opening position, never as period movement (ADR-007).
+  isOpening      Boolean            @default(false) @map("is_opening")
   postedAt       DateTime?          @map("posted_at") @db.DateTime(3)
   postedBy       BigInt?            @map("posted_by") @db.UnsignedBigInt
   createdAt      DateTime           @default(now()) @map("created_at") @db.DateTime(3)
@@ -943,6 +946,8 @@ model StockMovement {
   balanceQtyAfter Decimal           @map("balance_qty_after") @db.Decimal(18, 6)
   avgCostAfter    Decimal           @map("avg_cost_after") @db.Decimal(18, 6)
   reversalOfId    BigInt?           @map("reversal_of_id") @db.UnsignedBigInt
+  /// Opening stock (and its reversal): the item ledger's opening position (ADR-007).
+  isOpening       Boolean           @default(false) @map("is_opening")
   createdAt       DateTime          @default(now()) @map("created_at") @db.DateTime(3)
 
   tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)

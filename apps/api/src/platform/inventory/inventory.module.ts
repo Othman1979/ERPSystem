@@ -12,6 +12,8 @@ import { StockReportsService } from './stock-reports.service.js';
 import { TransfersService } from './transfers.service.js';
 import { WarehousesController } from './warehouses.controller.js';
 import { WarehousesService } from './warehouses.service.js';
+import { OpeningStockController } from './opening-stock.controller.js';
+import { OpeningStockService } from './opening-stock.service.js';
 
 @Module({
   imports: [JournalModule, PrintingModule],
@@ -20,6 +22,7 @@ import { WarehousesService } from './warehouses.service.js';
     WarehousesController,
     StockDocumentsController,
     StockReportsController,
+    OpeningStockController,
   ],
   providers: [
     CatalogService,
@@ -29,6 +32,7 @@ import { WarehousesService } from './warehouses.service.js';
     TransfersService,
     CountsService,
     StockReportsService,
+    OpeningStockService,
   ],
   // StockReportsService: the dashboard lists items below their minimum (module boundary).
   exports: [StockLedgerService, StockReportsService],

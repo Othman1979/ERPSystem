@@ -1,5 +1,5 @@
 import { Num } from '../components/Num';
-import { formatAmount, formatQty, formatUnitCost, type NumericInput } from './number';
+import { formatAmount, formatQty, formatUnitCost, toDecimal, type NumericInput } from './number';
 
 /*
  * Table cell renderers for numeric columns. Pair them with `align: 'end'`
@@ -14,3 +14,7 @@ export const unitCostCell = (v: NumericInput) => <Num>{formatUnitCost(v)}</Num>;
 
 /** Blank instead of a dash — for debit/credit columns where one side is empty. */
 export const amountOrBlankCell = (v: NumericInput) => <Num>{formatAmount(v, '')}</Num>;
+
+/** Blank when zero — for one-sided debit/credit columns (trial balance). */
+export const amountOrBlankZeroCell = (v: NumericInput) =>
+  toDecimal(v)?.isZero() ? '' : <Num>{formatAmount(v, '')}</Num>;

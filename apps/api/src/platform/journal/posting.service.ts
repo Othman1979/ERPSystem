@@ -35,6 +35,8 @@ export interface PostEntryParams {
   description?: string | null;
   lines: JournalLineInput[];
   postedBy?: bigint | null;
+  /** Opening balance: reports show it as the opening position (ADR-007). */
+  isOpening?: boolean;
 }
 
 /**
@@ -161,6 +163,12 @@ export class PostingService {
       );
     }
 
+    // Opening only on the opening date (first day of the first fiscal year):
+    // anything later, e.g. a reversal in March, is that period's movement (ADR-007).
+    const isOpening = params.isOpening
+      ? await this.isOpeningDate(tx, tenantId, companyId, params.entryDate)
+      : false;
+
     try {
       const entry = await tx.journalEntry.create({
         data: {
@@ -179,6 +187,7 @@ export class PostingService {
           totalDebit,
           totalCredit,
           reversalOfId: params.reversalOfId ?? null,
+          isOpening,
           postedAt: new Date(),
           postedBy: params.postedBy ?? null,
         },
@@ -272,7 +281,19 @@ export class PostingService {
       description: params.description ?? `Reversal of ${original.entryNo ?? original.id}`,
       lines: swapped,
       postedBy: params.postedBy ?? null,
+      // A reversal on the opening date stays opening; a later one is period movement.
+      isOpening: original.isOpening,
     });
+  }
+
+  /** True when `date` is the first day of the company's first fiscal year (ADR-007). */
+  async isOpeningDate(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint, date: Date): Promise<boolean> {
+    const first = await tx.fiscalYear.findFirst({
+      where: { tenantId, companyId },
+      orderBy: { startDate: 'asc' },
+      select: { startDate: true },
+    });
+    return !!first && first.startDate.toISOString().slice(0, 10) === date.toISOString().slice(0, 10);
   }
 
   async resolveOpenPeriod(

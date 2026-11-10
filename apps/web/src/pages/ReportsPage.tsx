@@ -20,8 +20,8 @@ import { IncomeStatementTab } from './reports/IncomeStatementTab';
 import { TaxSummaryTab } from './reports/TaxSummaryTab';
 import { TradeSummaryTab } from './reports/TradeSummaryTab';
 import { ExportButtons } from '../components/ExportButtons';
-import { amountCell } from '../format/cells';
-import { dec, formatAmount, sum, type NumericInput } from '../format/number';
+import { amountCell, amountOrBlankZeroCell } from '../format/cells';
+import { formatAmount, sum, type NumericInput } from '../format/number';
 
 interface Account {
   id: string;
@@ -29,19 +29,27 @@ interface Account {
   nameAr: string;
 }
 
-interface TbRow {
+/** Opening, period and closing amounts of a trial balance row (ADR-007). */
+const TB_AMOUNTS = [
+  'openingDebit',
+  'openingCredit',
+  'periodDebit',
+  'periodCredit',
+  'closingDebit',
+  'closingCredit',
+] as const;
+type TbAmount = (typeof TB_AMOUNTS)[number];
+
+type TbRow = {
   accountId: string;
   code: string;
   nameAr: string;
   nameEn: string | null;
-  totalDebit: string;
-  totalCredit: string;
-  balance: string;
-}
+} & Record<TbAmount, string>;
 
 interface TbResponse {
   rows: TbRow[];
-  totals: { debit: string; credit: string };
+  totals: Record<TbAmount, string>;
   balanced: boolean;
 }
 
@@ -218,47 +226,47 @@ export function ReportsPage() {
                 <Table
                   rowKey="accountId"
                   size="small"
+                  bordered
                   loading={tbLoading}
                   dataSource={tb?.rows ?? []}
                   pagination={false}
+                  scroll={{ x: 'max-content' }}
                   columns={[
-                    { title: t('accounts.code'), dataIndex: 'code', width: 100 },
+                    { title: t('accounts.code'), dataIndex: 'code', width: 90 },
                     {
                       title: t('common.name'),
                       key: 'name',
                       render: (_: unknown, r: TbRow) => bothNames(r),
                     },
-                    {
-                      title: t('journal.debit'),
-                      dataIndex: 'totalDebit',
-                      align: 'right',
-                      width: 120,
-                      render: amountCell,
-                    },
-                    {
-                      title: t('journal.credit'),
-                      dataIndex: 'totalCredit',
-                      align: 'right',
-                      width: 120,
-                      render: amountCell,
-                    },
-                    {
-                      title: t('reports.balance'),
-                      dataIndex: 'balance',
-                      align: 'right',
-                      width: 120,
-                      render: amountCell,
-                    },
+                    // Opening = before `from` plus opening balances; period = the rest.
+                    ...(
+                      [
+                        ['reports.tbOpening', 'openingDebit', 'openingCredit'],
+                        ['reports.tbPeriod', 'periodDebit', 'periodCredit'],
+                        ['reports.tbClosing', 'closingDebit', 'closingCredit'],
+                      ] as const
+                    ).map(([label, debit, credit]) => ({
+                      title: t(label),
+                      align: 'center' as const,
+                      children: [
+                        { title: t('journal.debit'), dataIndex: debit, align: 'right' as const, width: 110, render: amountOrBlankZeroCell },
+                        { title: t('journal.credit'), dataIndex: credit, align: 'right' as const, width: 110, render: amountOrBlankZeroCell },
+                      ],
+                    })),
                   ]}
                   summary={() =>
-                    tb && tb.rows.length > 0
-                      ? totalsRow(
-                          2,
-                          tb.totals.debit,
-                          tb.totals.credit,
-                          dec(tb.totals.debit).minus(dec(tb.totals.credit)),
-                        )
-                      : null
+                    tb && tb.rows.length > 0 ? (
+                      <Table.Summary.Row>
+                        <Table.Summary.Cell index={0} colSpan={2}>
+                          {t('journal.total')}
+                        </Table.Summary.Cell>
+                        {TB_AMOUNTS.map((k, i) => (
+                          <Table.Summary.Cell key={k} index={i + 1} align="right">
+                            <Num>{formatAmount(tb.totals[k])}</Num>
+                          </Table.Summary.Cell>
+                        ))}
+                      </Table.Summary.Row>
+                    ) : null
                   }
                 />
               </>
