@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusOutlined } from '@ant-design/icons';
-import { Button, DatePicker, Input, InputNumber, Modal, Space, Table, Tag, Typography, message } from 'antd';
+import { PlusOutlined, SwapOutlined } from '@ant-design/icons';
+import { Button, DatePicker, Form, Input, InputNumber, Table, Tag, message } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -11,7 +11,9 @@ import {
   treasuryControllerReverseCashTransfer,
 } from '@erp/api-client';
 import { EnterNav } from '../../components/EnterNav';
+import { FormDialog, FormSection } from '../../components/FormDialog';
 import { GridSelect } from '../../components/GridSelect';
+import { ListToolbar, matchesSearch } from '../../components/ListToolbar';
 import { ReverseButton } from '../../components/ReverseButton';
 import { amountCell } from '../../format/cells';
 import { dec } from '../../format/number';
@@ -35,6 +37,7 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
   const queryClient = useQueryClient();
   const [api, contextHolder] = message.useMessage();
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['cash-transfers'],
@@ -58,19 +61,28 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
     onError,
   });
 
+  const shown = (data ?? []).filter((r) =>
+    matchesSearch(search, r.transferNo, codeAndName(r.fromAccount), codeAndName(r.toAccount), r.description),
+  );
+
   return (
     <div>
       {contextHolder}
-      <div style={{ marginBottom: 12, textAlign: 'end' }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-          {t('treasury.newTransfer')}
-        </Button>
-      </div>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+            {t('treasury.newTransfer')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={shown}
         pagination={{ pageSize: 20 }}
         columns={[
           {
@@ -163,6 +175,7 @@ function TransferModal({
       ),
     onSuccess: () => {
       api.success(t('common.saved'));
+      setTried(false);
       setFrom(undefined);
       setTo(undefined);
       setAmount(null);
@@ -176,70 +189,62 @@ function TransferModal({
 
   const canSave = !!fromAccountId && !!toAccountId && fromAccountId !== toAccountId && dec(amount).gt(0);
 
+  // Save stays enabled: a save attempt with gaps marks the missing fields instead.
+  const [tried, setTried] = useState(false);
+  const gap = (missing: boolean) =>
+    tried && missing ? { validateStatus: 'error' as const, help: t('common.requiredField') } : {};
+  const trySave = () => {
+    if (!canSave) {
+      setTried(true);
+      return;
+    }
+    create.mutate();
+  };
+  const close = () => {
+    setTried(false);
+    onClose();
+  };
+
   return (
-    <Modal
+    <FormDialog
       open={open}
       title={t('treasury.newTransfer')}
-      onCancel={onClose}
-      onOk={() => create.mutate()}
-      okText={t('common.save')}
-      confirmLoading={create.isPending}
-      okButtonProps={{ disabled: !canSave }}
-      width={640}
+      onCancel={close}
+      onSave={trySave}
+      saving={create.isPending}
       destroyOnHidden
     >
       {contextHolder}
       <EnterNav autoFocusWhen={open}>
-        <Space wrap style={{ marginBottom: 12 }}>
-          <div>
-            <Typography.Text type="secondary">{t('treasury.date')}</Typography.Text>
-            <DatePicker style={{ display: 'block' }} value={date} onChange={(d) => d && setDate(d)} />
-          </div>
-          <div>
-            <Typography.Text type="secondary">{t('treasury.fromAccount')} *</Typography.Text>
-            <GridSelect
-              enterOpens
-              style={{ width: 220, display: 'block' }}
-              options={cashAccounts}
-              value={fromAccountId}
-              onChange={setFrom}
-            />
-          </div>
-          <div>
-            <Typography.Text type="secondary">{t('treasury.toAccount')} *</Typography.Text>
-            <GridSelect
-              enterOpens
-              style={{ width: 220, display: 'block' }}
-              options={cashAccounts.filter((a) => a.value !== fromAccountId)}
-              value={toAccountId}
-              onChange={setTo}
-            />
-          </div>
-          <div>
-            <Typography.Text type="secondary">{t('treasury.amount')} *</Typography.Text>
-            <InputNumber<string>
-              stringMode
-              min="0"
-              style={{ width: 140, display: 'block' }}
-              value={amount}
-              onChange={(v) => setAmount(v)}
-            />
-          </div>
-          <div>
-            <Typography.Text type="secondary">{t('treasury.referenceNo')}</Typography.Text>
-            <Input
-              style={{ width: 140, display: 'block' }}
-              value={referenceNo}
-              onChange={(e) => setReferenceNo(e.target.value)}
-              maxLength={100}
-            />
-          </div>
-        </Space>
-        <div>
-          <Typography.Text type="secondary">{t('common.description')}</Typography.Text>
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
-        </div>
+        {/* Fields keep their own state; the Form only lays them out. */}
+        <Form layout="vertical" component="div">
+          <FormSection title={t('treasury.transferDetails')} icon={<SwapOutlined />}>
+            <Form.Item label={t('treasury.date')}>
+              <DatePicker value={date} onChange={(d) => d && setDate(d)} />
+            </Form.Item>
+            <Form.Item label={t('treasury.fromAccount')} required {...gap(!fromAccountId)}>
+              <GridSelect enterOpens options={cashAccounts} value={fromAccountId} onChange={setFrom} />
+            </Form.Item>
+            <Form.Item label={t('treasury.toAccount')} required {...gap(!toAccountId)}>
+              <GridSelect
+                enterOpens
+                options={cashAccounts.filter((a) => a.value !== fromAccountId)}
+                value={toAccountId}
+                onChange={setTo}
+              />
+            </Form.Item>
+            <Form.Item label={t('treasury.amount')} required {...gap(!dec(amount).gt(0))}>
+              <InputNumber<string> stringMode min="0" value={amount} onChange={(v) => setAmount(v)} />
+            </Form.Item>
+            <Form.Item label={t('treasury.referenceNo')}>
+              <Input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} maxLength={100} />
+            </Form.Item>
+            <Form.Item label={t('common.description')} className="span-all">
+              <Input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
+            </Form.Item>
+          </FormSection>
+        </Form>
       </EnterNav>
-    </Modal>
+    </FormDialog>
   );
 }

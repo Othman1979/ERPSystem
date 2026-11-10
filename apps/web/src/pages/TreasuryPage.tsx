@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusOutlined } from '@ant-design/icons';
+import { BankOutlined, PlusOutlined, PrinterOutlined, SaveOutlined, WalletOutlined } from '@ant-design/icons';
 import {
   Button,
+  Radio,
   Checkbox,
   DatePicker,
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Select,
   Space,
@@ -15,7 +15,6 @@ import {
   Table,
   Tabs,
   Tag,
-  Typography,
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -46,16 +45,21 @@ import {
   treasuryControllerReversePayment,
   treasuryControllerReverseReceipt,
 } from '@erp/api-client';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { EnterNav } from '../components/EnterNav';
 import { ReverseButton } from '../components/ReverseButton';
 import { idemHeaders } from '../idempotency';
+import { useNewFromUrl } from '../useNewFromUrl';
+import { useSearchParams } from 'react-router';
 import { BalancesTab } from './treasury/BalancesTab';
 import { TransfersTab } from './treasury/TransfersTab';
-import { GridSelect } from '../components/GridSelect';
+import { enterTo, focusNamedField, GridSelect } from '../components/GridSelect';
+import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { amountCell } from '../format/cells';
-import { dec, formatAmount } from '../format/number';
+import { dec, formatAmount, sum } from '../format/number';
 
 // ------------------------------------------------------------- types
 
@@ -94,6 +98,7 @@ interface Voucher {
   receiptDate?: string;
   paymentDate?: string;
   amount: string;
+  referenceNo?: string | null;
   description?: string | null;
   party?: { code: string; nameAr: string; partyType: string } | null;
   cashAccount?: { code: string; nameAr: string };
@@ -122,8 +127,6 @@ interface OpenInvoice {
   customerId?: string;
   supplierId?: string;
 }
-
-const money = (v?: string | null) => formatAmount(v);
 
 // ------------------------------------------------------------- lookups
 
@@ -161,7 +164,9 @@ function useTreasuryLookups() {
 
 export function TreasuryPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState('boxes');
+  // ?tab=receipts (home quick actions) opens straight on that tab.
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(() => params.get('tab') ?? 'boxes');
   const lookups = useTreasuryLookups();
   return (
     <div>
@@ -193,6 +198,7 @@ function CashBoxesTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<CashBox | null>(null);
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
@@ -275,24 +281,43 @@ function CashBoxesTab() {
     },
   ];
 
+  const shown = (boxes ?? []).filter((b) =>
+    matchesSearch(search, b.code, b.name, b.account ? codeAndName(b.account) : null),
+  );
+
   return (
     <div>
       {contextHolder}
-      <div style={{ marginBottom: 12, textAlign: 'end' }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newCashBox')}</Button>
-      </div>
-      <Table rowKey="id" loading={isLoading} dataSource={boxes ?? []} columns={columns} size="small" pagination={false} />
-      <Modal open={modalOpen} title={editing ? t('treasury.editCashBox') : t('treasury.newCashBox')} onCancel={() => setModalOpen(false)} onOk={() => form.submit()} confirmLoading={save.isPending} destroyOnHidden>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newCashBox')}</Button>}
+      />
+      <Table rowKey="id" loading={isLoading} dataSource={shown} columns={columns} size="small" pagination={false} />
+      <FormDialog open={modalOpen} title={editing ? t('treasury.editCashBox') : t('treasury.newCashBox')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          <FormSection
+            title={t('treasury.cashBoxDetails')}
+            icon={<WalletOutlined />}
+            extra={
+              <>
+                {t('common.active')}
+                <Form.Item name="isActive" valuePropName="checked" noStyle>
+                  <Switch size="small" />
+                </Form.Item>
+              </>
+            }
+          >
           {!editing && (
             <Form.Item name="code" label={t('treasury.code')} rules={[{ required: true }]}>
               <Input maxLength={50} />
             </Form.Item>
           )}
-          <Form.Item name="name" label={t('treasury.name')} rules={[{ required: true }]}>
+          <Form.Item name="name" label={t('treasury.name')} rules={[{ required: true }]} className="span-2">
             <Input maxLength={191} />
           </Form.Item>
-          <Form.Item name="accountId" label={t('treasury.linkedAccount')} rules={[{ required: true }]} extra={editing ? t('treasury.accountLocked') : undefined}>
+          <Form.Item name="accountId" label={t('treasury.linkedAccount')} rules={[{ required: true }]} extra={editing ? t('treasury.accountLocked') : undefined} className="span-all">
             <Select
               showSearch
               optionFilterProp="label"
@@ -300,11 +325,9 @@ function CashBoxesTab() {
               options={lookups.cashAccounts}
             />
           </Form.Item>
-          <Form.Item name="isActive" label={t('common.active')} valuePropName="checked">
-            <Switch />
-          </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
     </div>
   );
 }
@@ -315,6 +338,7 @@ function BankAccountsTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<BankAccount | null>(null);
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
@@ -414,34 +438,49 @@ function BankAccountsTab() {
     },
   ];
 
+  const shown = (banks ?? []).filter((b) =>
+    matchesSearch(search, b.bankName, b.accountNoMasked, b.account ? codeAndName(b.account) : null),
+  );
+
   return (
     <div>
       {contextHolder}
-      <div style={{ marginBottom: 12, textAlign: 'end' }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newBankAccount')}</Button>
-      </div>
-      <Table rowKey="id" loading={isLoading} dataSource={banks ?? []} columns={columns} size="small" pagination={false} />
-      <Modal open={modalOpen} title={editing ? t('treasury.editBankAccount') : t('treasury.newBankAccount')} onCancel={() => setModalOpen(false)} onOk={() => form.submit()} confirmLoading={save.isPending} destroyOnHidden>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newBankAccount')}</Button>}
+      />
+      <Table rowKey="id" loading={isLoading} dataSource={shown} columns={columns} size="small" pagination={false} />
+      <FormDialog open={modalOpen} title={editing ? t('treasury.editBankAccount') : t('treasury.newBankAccount')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <Form.Item name="bankName" label={t('treasury.bankName')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Space size="middle" style={{ display: 'flex' }}>
-            <Form.Item name="accountNoMasked" label={t('treasury.accountNo')} style={{ flex: 1 }}>
+          <FormSection
+            title={t('treasury.bankAccountDetails')}
+            icon={<BankOutlined />}
+            extra={
+              <>
+                {t('common.active')}
+                <Form.Item name="isActive" valuePropName="checked" noStyle>
+                  <Switch size="small" />
+                </Form.Item>
+              </>
+            }
+          >
+            <Form.Item name="bankName" label={t('treasury.bankName')} rules={[{ required: true }]} className="span-all">
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="accountNoMasked" label={t('treasury.accountNo')}>
               <Input maxLength={50} />
             </Form.Item>
-            <Form.Item name="ibanMasked" label={t('treasury.iban')} style={{ flex: 1 }}>
+            <Form.Item name="ibanMasked" label={t('treasury.iban')} className="span-2">
               <Input maxLength={50} />
             </Form.Item>
-          </Space>
-          <Form.Item name="accountId" label={t('treasury.linkedAccount')} rules={[{ required: true }]} extra={t('treasury.accountLocked')}>
-            <Select showSearch optionFilterProp="label" disabled={!!editing} options={lookups.cashAccounts} />
-          </Form.Item>
-          <Form.Item name="isActive" label={t('common.active')} valuePropName="checked">
-            <Switch />
-          </Form.Item>
+            <Form.Item name="accountId" label={t('treasury.linkedAccount')} rules={[{ required: true }]} extra={t('treasury.accountLocked')} className="span-all">
+              <Select showSearch optionFilterProp="label" disabled={!!editing} options={lookups.cashAccounts} />
+            </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
     </div>
   );
 }
@@ -452,6 +491,8 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  useNewFromUrl(() => setModalOpen(true));
+  const [search, setSearch] = useState('');
   const [viewId, setViewId] = useState<string | null>(null);
   const [api, contextHolder] = message.useMessage();
   const onError = (err: unknown) =>
@@ -555,47 +596,92 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
     },
   ];
 
-  return (
-    <div>
-      {contextHolder}
-      <div style={{ marginBottom: 12, textAlign: 'end' }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-          {kind === 'receipt' ? t('treasury.newReceipt') : t('treasury.newPayment')}
-        </Button>
-      </div>
-      <Table rowKey="id" loading={isLoading} dataSource={vouchers ?? []} columns={columns} size="small" pagination={{ pageSize: 20 }} />
-      <VoucherModal
+  const voucherTitle = kind === 'receipt' ? t('journal.typeReceipt') : t('journal.typePayment');
+
+  // A new voucher and an existing voucher each open as a full document page.
+  if (modalOpen) {
+    return (
+      <VoucherForm
         kind={kind}
-        open={modalOpen}
         onClose={() => setModalOpen(false)}
         onCreated={() => {
           setModalOpen(false);
           invalidate();
         }}
       />
-      <Modal
-        open={!!viewId}
-        title={view?.receiptNo ?? view?.paymentNo ?? `#${viewId}`}
-        onCancel={() => setViewId(null)}
-        footer={null}
-        width={640}
-      >
-        {view && (
-          <>
-            <Typography.Paragraph>
-              <strong>{t('treasury.amount')}:</strong> {money(view.amount)}
-              {view.party && <> — <strong>{t('parties.name')}:</strong> {displayName(view.party)}</>}
-              {view.cashAccount && <> — <strong>{t('treasury.cashAccount')}:</strong> {codeAndName(view.cashAccount)}</>}
-            </Typography.Paragraph>
-            {view.description && <Typography.Paragraph type="secondary">{view.description}</Typography.Paragraph>}
-            {view.reversedAt && <Tag color="orange">{t('journal.reversedStatus')}</Tag>}
-            {view.party && (
-              <Typography.Paragraph>
-                <strong>{t('treasury.allocated')}:</strong> {money(view.allocatedAmount)} —{' '}
-                <strong>{t('treasury.unallocated')}:</strong> {money(view.unallocatedAmount)}
-              </Typography.Paragraph>
-            )}
-            {(view.allocations?.length ?? 0) > 0 && (
+    );
+  }
+
+  if (viewId) {
+    return (
+      <>
+        {contextHolder}
+        <DocLayout
+          title={voucherTitle}
+          docNo={view?.receiptNo ?? view?.paymentNo ?? `#${viewId}`}
+          status={view ? 'POSTED' : undefined}
+          onBack={() => setViewId(null)}
+          actions={
+            view && (
+              <>
+                {!view.reversedAt && view.party && dec(view.unallocatedAmount).gt(0) && (
+                  <Button loading={allocateRest.isPending} onClick={() => allocateRest.mutate(view.id)}>
+                    {t('treasury.allocateRemaining')}
+                  </Button>
+                )}
+                {!view.reversedAt && (
+                  <ReverseButton
+                    size="middle"
+                    loading={reverse.isPending}
+                    onReverse={(reversalDate) => reverse.mutate({ id: view.id, reversalDate })}
+                  />
+                )}
+                <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
+                  {t('common.print')}
+                </Button>
+              </>
+            )
+          }
+        >
+          {view ? (
+            <>
+              <DocFields>
+                <DocField label={t('treasury.date')}>
+                  <DocValue>{dayjs(view.receiptDate ?? view.paymentDate).format('YYYY-MM-DD')}</DocValue>
+                </DocField>
+                <DocField label={t('parties.name')}>
+                  <DocValue>{view.party ? displayName(view.party) : '—'}</DocValue>
+                </DocField>
+                <DocField label={t('treasury.cashAccount')}>
+                  <DocValue>{view.cashAccount ? codeAndName(view.cashAccount) : '—'}</DocValue>
+                </DocField>
+                <DocField label={t('treasury.amount')}>
+                  <DocValue>{amountCell(view.amount)}</DocValue>
+                </DocField>
+                {view.party && (
+                  <DocField label={`${t('treasury.allocated')} / ${t('treasury.unallocated')}`}>
+                    <DocValue>
+                      {amountCell(view.allocatedAmount)}
+                      <span style={{ margin: '0 6px' }}>/</span>
+                      {amountCell(view.unallocatedAmount)}
+                    </DocValue>
+                  </DocField>
+                )}
+                <DocField label={t('treasury.referenceNo')}>
+                  <DocValue>{view.referenceNo || '—'}</DocValue>
+                </DocField>
+                {view.reversedAt && (
+                  <DocField label={t('common.status')}>
+                    <DocValue>
+                      <Tag color="orange">{t('journal.reversedStatus')}</Tag>
+                    </DocValue>
+                  </DocField>
+                )}
+                <DocField label={t('common.description')} wide>
+                  <DocValue>{view.description || '—'}</DocValue>
+                </DocField>
+              </DocFields>
+              {(view.allocations?.length ?? 0) > 0 && (
               <Table
                 rowKey="id"
                 size="small"
@@ -629,24 +715,49 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                   },
                 ]}
               />
-            )}
-            {!view.reversedAt && (
-              <Space style={{ marginTop: 16 }}>
-                {view.party && dec(view.unallocatedAmount).gt(0) && (
-                  <Button loading={allocateRest.isPending} onClick={() => allocateRest.mutate(view.id)}>
-                    {t('treasury.allocateRemaining')}
-                  </Button>
-                )}
-                <ReverseButton
-                  size="middle"
-                  loading={reverse.isPending}
-                  onReverse={(reversalDate) => reverse.mutate({ id: view.id, reversalDate })}
-                />
-              </Space>
-            )}
-          </>
-        )}
-      </Modal>
+              )}
+            </>
+          ) : (
+            <div className="doc-section">{t('common.loading')}</div>
+          )}
+        </DocLayout>
+      </>
+    );
+  }
+
+  const shown = (vouchers ?? []).filter((v) =>
+    matchesSearch(
+      search,
+      v.receiptNo,
+      v.paymentNo,
+      v.party ? codeAndName(v.party) : null,
+      v.cashAccount ? codeAndName(v.cashAccount) : null,
+      v.description,
+    ),
+  );
+
+  return (
+    <div>
+      {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+            {kind === 'receipt' ? t('treasury.newReceipt') : t('treasury.newPayment')}
+          </Button>
+        }
+      />
+      <Table
+        rowKey="id"
+        loading={isLoading}
+        dataSource={shown}
+        columns={columns}
+        size="small"
+        pagination={{ pageSize: 20 }}
+        onRow={(v) => ({ onClick: () => setViewId(v.id), style: { cursor: 'pointer' } })}
+      />
     </div>
   );
 }
@@ -660,14 +771,12 @@ function PaymentsTab() {
 
 // ------------------------------------------------------------- voucher modal
 
-function VoucherModal({
+function VoucherForm({
   kind,
-  open,
   onClose,
   onCreated,
 }: {
   kind: 'receipt' | 'payment';
-  open: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -682,8 +791,8 @@ function VoucherModal({
   const [description, setDescription] = useState('');
   const [allocations, setAllocations] = useState<{ documentId: string; amount: string | null }[]>([]);
   const [autoAllocate, setAutoAllocate] = useState(false);
-  // One key per opened dialog: a double-click or retry replays, never posts twice.
-  const idemKey = useMemo(() => crypto.randomUUID(), [open]);
+  // One key per opened form: a double-click or retry replays, never posts twice.
+  const idemKey = useMemo(() => crypto.randomUUID(), []);
 
   const lookups = useTreasuryLookups();
 
@@ -696,12 +805,12 @@ function VoucherModal({
   const { data: salesInvoices } = useQuery({
     queryKey: ['sales-invoices', 'POSTED'],
     queryFn: () => listSalesInvoices({ status: 'POSTED', paymentType: '', customerId: '' }).then((r) => r.data as unknown as OpenInvoice[]),
-    enabled: open && kind === 'receipt',
+    enabled: kind === 'receipt',
   });
   const { data: purchaseInvoices } = useQuery({
     queryKey: ['purchase-invoices', 'POSTED'],
     queryFn: () => listPurchaseInvoices({ status: 'POSTED', paymentType: '', supplierId: '' }).then((r) => r.data as unknown as OpenInvoice[]),
-    enabled: open && kind === 'payment',
+    enabled: kind === 'payment',
   });
 
   const openInvoices = useMemo(() => {
@@ -747,35 +856,57 @@ function VoucherModal({
       apiMessage.error(err instanceof ApiError ? t(`errors.${err.code}`, { defaultValue: err.message }) : t('errors.INTERNAL')),
   });
 
-  const canSave = !!partyId && !!cashAccountId && dec(amount).gt(0);
+  // Save stays enabled: a save attempt with gaps marks the missing fields instead.
+  const [tried, setTried] = useState(false);
+  const missing = {
+    party: !partyId,
+    cashAccount: !cashAccountId,
+    amount: !dec(amount).gt(0),
+  };
+  const trySave = () => {
+    if (create.isPending) return;
+    const firstMissing = (['party', 'cashAccount', 'amount'] as const).find((k) => missing[k]);
+    if (firstMissing) {
+      setTried(true);
+      focusNamedField(firstMissing);
+      return;
+    }
+    create.mutate();
+  };
+  useDocShortcuts({ onSave: trySave });
+  const requiredError = (gap: boolean) => (tried && gap ? t('common.requiredField') : undefined);
+  const allocatedSum = sum(allocations.map((a) => a.amount));
 
   return (
-    <Modal
-      open={open}
+    <DocLayout
       title={kind === 'receipt' ? t('treasury.newReceipt') : t('treasury.newPayment')}
-      onCancel={onClose}
-      onOk={() => create.mutate()}
-      okText={t('common.save')}
-      confirmLoading={create.isPending}
-      okButtonProps={{ disabled: !canSave }}
-      width={720}
-      destroyOnHidden
+      onBack={onClose}
+      actions={
+        <Button type="primary" icon={<SaveOutlined />} loading={create.isPending} onClick={trySave}>
+          {t('common.save')}
+          <span className="doc-kbd">Ctrl+S</span>
+        </Button>
+      }
     >
       {contextHolder}
-      <EnterNav autoFocusWhen={open}>
-      <Space wrap style={{ marginBottom: 12 }}>
-        <div>
-          <Typography.Text type="secondary">{t('treasury.date')}</Typography.Text>
-          <DatePicker style={{ display: 'block' }} value={voucherDate} onChange={(d) => d && setVoucherDate(d)} />
-        </div>
-        <div>
-          <Typography.Text type="secondary">{t('parties.type')}</Typography.Text>
-          <GridSelect
-            enterOpens
-            style={{ width: 130, display: 'block' }}
+      <EnterNav autoFocusWhen>
+      <DocFields>
+        <DocField label={t('treasury.date')}>
+          <DatePicker value={voucherDate} onChange={(d) => d && setVoucherDate(d)} />
+        </DocField>
+        <DocField
+          field="partyType"
+          label={t('parties.type')}
+          onKeyDown={enterTo(() => focusNamedField('party'))}
+        >
+          {/* Arrow keys switch between the two options (native radio group). */}
+          <Radio.Group
+            name="partyType"
+            optionType="button"
+            buttonStyle="solid"
             value={partyType}
-            onChange={(v) => {
-              setPartyType(v);
+            onChange={(e) => {
+              setPartyType(e.target.value);
               setPartyId(undefined);
               setAllocations([]);
             }}
@@ -784,12 +915,11 @@ function VoucherModal({
               { value: 'SUPPLIER', label: t('parties.type_SUPPLIER') },
             ]}
           />
-        </div>
-        <div>
-          <Typography.Text type="secondary">{t('parties.name')} *</Typography.Text>
+        </DocField>
+        <DocField field="party" label={t('parties.name')} required error={requiredError(missing.party)}>
           <GridSelect
             enterOpens
-            style={{ width: 240, display: 'block' }}
+            status={requiredError(missing.party) ? 'error' : undefined}
             options={partyOptions}
             value={partyId}
             onChange={(v) => {
@@ -797,50 +927,60 @@ function VoucherModal({
               setAllocations([]);
             }}
           />
-        </div>
-        <div>
-          <Typography.Text type="secondary">{t('treasury.cashAccount')} *</Typography.Text>
+        </DocField>
+        <DocField
+          field="cashAccount"
+          label={t('treasury.cashAccount')}
+          required
+          error={requiredError(missing.cashAccount)}
+        >
           <GridSelect
             enterOpens
-            style={{ width: 220, display: 'block' }}
+            status={requiredError(missing.cashAccount) ? 'error' : undefined}
             options={lookups.cashAccounts}
             value={cashAccountId}
             onChange={setCashAccountId}
           />
-        </div>
-        <div>
-          <Typography.Text type="secondary">{t('treasury.amount')} *</Typography.Text>
+        </DocField>
+        <DocField field="amount" label={t('treasury.amount')} required error={requiredError(missing.amount)}>
           <InputNumber<string>
+            className="doc-amount"
             stringMode
             min="0"
-            style={{ width: 140, display: 'block' }}
+            status={requiredError(missing.amount) ? 'error' : undefined}
             value={amount}
             onChange={(v) => setAmount(v)}
           />
-        </div>
-        <div>
-          <Typography.Text type="secondary">{t('treasury.referenceNo')}</Typography.Text>
-          <Input style={{ width: 140, display: 'block' }} value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} maxLength={100} />
-        </div>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <Typography.Text type="secondary">{t('common.description')}</Typography.Text>
+        </DocField>
+        <DocField label={t('treasury.referenceNo')}>
+          <Input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} maxLength={100} />
+        </DocField>
+        <DocField label={t('common.description')} wide>
           <Input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
-        </div>
-      </Space>
+        </DocField>
+      </DocFields>
 
       {partyId && openInvoices.length > 0 && (
-        <Checkbox
-          style={{ marginBottom: 8 }}
-          checked={autoAllocate}
-          disabled={allocations.some((a) => a.documentId)}
-          onChange={(e) => setAutoAllocate(e.target.checked)}
-        >
-          {t('treasury.autoAllocate')}
-        </Checkbox>
-      )}
-      {partyId && openInvoices.length > 0 && (
         <>
-          <Typography.Text strong>{t('treasury.allocations')}</Typography.Text>
+          <div className="doc-subbar">
+            <span className="doc-subbar-title">{t('treasury.allocations')}</span>
+            <Checkbox
+              checked={autoAllocate}
+              disabled={allocations.some((a) => a.documentId)}
+              onChange={(e) => setAutoAllocate(e.target.checked)}
+            >
+              {t('treasury.autoAllocate')}
+            </Checkbox>
+            <span className="doc-subbar-total">
+              {t('treasury.allocated')}: {amountCell(allocatedSum)}
+              {dec(amount).gt(0) && (
+                <>
+                  {' / '}
+                  {amountCell(amount)}
+                </>
+              )}
+            </span>
+          </div>
           <Table
             rowKey={(_r, i) => String(i)}
             size="small"
@@ -900,17 +1040,18 @@ function VoucherModal({
               },
             ]}
           />
-          <Button
-            size="small"
-            style={{ marginTop: 8 }}
-            icon={<PlusOutlined />}
-            onClick={() => setAllocations((rows) => [...rows, { documentId: '', amount: null }])}
-          >
-            {t('treasury.addAllocation')}
-          </Button>
+          <div className="doc-section">
+            <Button
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={() => setAllocations((rows) => [...rows, { documentId: '', amount: null }])}
+            >
+              {t('treasury.addAllocation')}
+            </Button>
+          </div>
         </>
       )}
       </EnterNav>
-    </Modal>
+    </DocLayout>
   );
 }

@@ -5,7 +5,6 @@ import {
   Card,
   Form,
   Input,
-  Modal,
   Popconfirm,
   Select,
   Space,
@@ -22,7 +21,10 @@ import {
   accountingControllerUpdateAccount,
   journalControllerTrialBalance,
 } from '@erp/api-client';
+import { BookOutlined } from '@ant-design/icons';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { bothNames, codeAndName } from '../i18n/displayName';
 import { palette } from '../theme';
 import { Num } from '../components/Num';
@@ -107,6 +109,7 @@ export function AccountsPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
@@ -227,22 +230,42 @@ export function AccountsPage() {
     .filter((a) => a.isActive && a.id !== editing?.id)
     .map((a) => ({ value: a.id, label: codeAndName(a) }));
 
+  // Keep matching accounts plus their ancestors so the tree stays intact;
+  // balances were rolled up on the full tree above, so they are unaffected.
+  const shownTree = useMemo(() => {
+    const prune = (nodes: TreeNode[]): TreeNode[] =>
+      nodes.flatMap((n) => {
+        const kids = n.children ? prune(n.children) : [];
+        if (matchesSearch(search, n.code, n.nameAr, n.nameEn) || kids.length) {
+          return [{ ...n, children: kids.length ? kids : undefined }];
+        }
+        return [];
+      });
+    return search.trim() ? prune(tree) : tree;
+  }, [tree, search]);
+  const shownCount = (data ?? []).filter((a) =>
+    matchesSearch(search, a.code, a.nameAr, a.nameEn),
+  ).length;
+
   return (
     <div>
-      <PageHeader
-        title={t('accounts.title')}
+      <PageHeader title={t('accounts.title')} />
+      <Card>
+      {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shownCount}
         actions={
           <Button type="primary" onClick={openCreate}>
             {t('accounts.add')}
           </Button>
         }
       />
-      <Card>
-      {contextHolder}
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={tree}
+        dataSource={shownTree}
         pagination={false}
         expandable={{ defaultExpandAllRows: true }}
         columns={[
@@ -323,31 +346,32 @@ export function AccountsPage() {
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={editing ? t('accounts.edit') : t('accounts.add')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => form.submit()}
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          {!editing && isCreate && selectedParent && autoCode && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ margin: 12, marginBottom: 0 }}
+              message={t('accounts.childUnder', { code: selectedParent.code })}
+              description={
+                <>
+                  {t('accounts.autoCodePreview', { code: autoCode })}
+                  <br />
+                  {t('accounts.parentNonPostableWarning')}
+                </>
+              }
+            />
+          )}
+          <FormSection title={t('accounts.details')} icon={<BookOutlined />}>
           {!editing && (
             <>
-              {isCreate && selectedParent && autoCode && (
-                <Alert
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                  message={t('accounts.childUnder', { code: selectedParent.code })}
-                  description={
-                    <>
-                      {t('accounts.autoCodePreview', { code: autoCode })}
-                      <br />
-                      {t('accounts.parentNonPostableWarning')}
-                    </>
-                  }
-                />
-              )}
               {!(isCreate && watchedParentId) && (
                 <Form.Item
                   name="code"
@@ -378,7 +402,7 @@ export function AccountsPage() {
               </Form.Item>
             </>
           )}
-          <Form.Item name="nameAr" label={t('accounts.nameAr')} rules={[{ required: true }]}>
+          <Form.Item name="nameAr" label={t('accounts.nameAr')} rules={[{ required: true }]} className="span-2">
             <Input maxLength={191} />
           </Form.Item>
           <Form.Item name="nameEn" label={t('accounts.nameEn')}>
@@ -393,8 +417,9 @@ export function AccountsPage() {
               ]}
             />
           </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
       </Card>
     </div>
   );
