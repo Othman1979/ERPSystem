@@ -28,6 +28,7 @@ import { PurchasesModule } from './platform/purchases/purchases.module.js';
 import { GoodsNotesModule } from './platform/goods-notes/goods-notes.module.js';
 import { TreasuryModule } from './platform/treasury/treasury.module.js';
 import { EInvoiceModule } from './platform/einvoice/einvoice.module.js';
+import { ReportsModule } from './platform/reports/reports.module.js';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { EInvoiceModule } from './platform/einvoice/einvoice.module.js';
     GoodsNotesModule,
     TreasuryModule,
     EInvoiceModule,
+    ReportsModule,
     AdminModule,
   ],
   providers: [

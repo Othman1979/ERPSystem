@@ -7,6 +7,17 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
+import {
+  dayKey,
+  foldMonths,
+  itemRefs,
+  partyRefs,
+  summaryRow,
+  taxRows,
+  type DocumentSummaryRow,
+  type SummaryGroupBy,
+  type SummaryRange,
+} from '../shared/document-summary.js';
 import { computeLineAmounts } from '../shared/invoice-math.js';
 import { creditedByInvoice, withBalance } from '../shared/invoice-balance.js';
 import {
@@ -93,6 +104,85 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
       party,
       creditedAmount: new Decimal(credited.get(r.id) ?? '0'),
     }));
+  }
+
+  /**
+   * Posted invoices dated in the range (both ends inclusive), added up by
+   * day, month, supplier, item or (tax category, rate) — the Phase 8 sales /
+   * purchases / tax summaries and the dashboard. Header totals for day,
+   * month and party; line amounts for item and tax (a header's totals are
+   * the sums of its lines).
+   */
+  async summary(range: SummaryRange, groupBy: SummaryGroupBy): Promise<DocumentSummaryRow[]> {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const where = { companyId, status: 'POSTED' as const, invoiceDate: { gte: range.from, lte: range.to } };
+    if (groupBy === 'day' || groupBy === 'month') {
+      const groups = await db.purchaseInvoice.groupBy({
+        by: ['invoiceDate'],
+        where,
+        _sum: { netTotal: true, taxTotal: true, grandTotal: true },
+        _count: { _all: true },
+      });
+      const days = groups.map((g) =>
+        summaryRow(dayKey(g.invoiceDate), g._count._all, {
+          net: g._sum.netTotal,
+          tax: g._sum.taxTotal,
+          grand: g._sum.grandTotal,
+        }),
+      );
+      return groupBy === 'month' ? foldMonths(days) : days;
+    }
+    if (groupBy === 'party') {
+      const groups = await db.purchaseInvoice.groupBy({
+        by: ['supplierId'],
+        where,
+        _sum: { netTotal: true, taxTotal: true, grandTotal: true },
+        _count: { _all: true },
+      });
+      const refs = await partyRefs(db, groups.map((g) => g.supplierId));
+      return groups.map((g) =>
+        summaryRow(
+          g.supplierId.toString(),
+          g._count._all,
+          { net: g._sum.netTotal, tax: g._sum.taxTotal, grand: g._sum.grandTotal },
+          { ref: refs.get(g.supplierId.toString()) ?? null },
+        ),
+      );
+    }
+    const lines = { invoice: where };
+    if (groupBy === 'item') {
+      const groups = await db.purchaseInvoiceLine.groupBy({
+        by: ['itemId'],
+        where: lines,
+        _sum: { qtyBase: true, netAmount: true, taxAmount: true, lineTotal: true },
+        _count: { _all: true },
+      });
+      const refs = await itemRefs(db, groups.map((g) => g.itemId));
+      return groups.map((g) =>
+        summaryRow(
+          g.itemId.toString(),
+          g._count._all,
+          { qty: g._sum.qtyBase, net: g._sum.netAmount, tax: g._sum.taxAmount, grand: g._sum.lineTotal },
+          { ref: refs.get(g.itemId.toString()) ?? null },
+        ),
+      );
+    }
+    const groups = await db.purchaseInvoiceLine.groupBy({
+      by: ['taxCategoryId', 'taxRate'],
+      where: lines,
+      _sum: { qtyBase: true, netAmount: true, taxAmount: true, lineTotal: true },
+      _count: { _all: true },
+    });
+    return taxRows(
+      db,
+      groups.map((g) => ({
+        taxCategoryId: g.taxCategoryId,
+        taxRate: g.taxRate,
+        count: g._count._all,
+        sums: { qty: g._sum.qtyBase, net: g._sum.netAmount, tax: g._sum.taxAmount, grand: g._sum.lineTotal },
+      })),
+    );
   }
 
   // --------------------------------------------- settlement (treasury, ADR-004)
