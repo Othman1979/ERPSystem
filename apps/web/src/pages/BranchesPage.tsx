@@ -149,7 +149,7 @@ export function BranchesPage() {
         saving={save.isPending}
       >
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <FormSection title={t('items.general')} icon={<ShopOutlined />}>
+          <FormSection title={t('branches.details')} icon={<ShopOutlined />}>
             {!editing && (
               <Form.Item name="code" label={t('branches.code')} rules={[{ required: true }]}>
                 <Input maxLength={50} />

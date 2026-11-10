@@ -484,7 +484,7 @@ function ItemsTab() {
         saving={save.isPending}
       >
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <FormSection title={t('items.general')} icon={<InfoCircleOutlined />}>
+          <FormSection title={t('common.basicInfo')} icon={<InfoCircleOutlined />}>
             <Form.Item name="code" label={t('items.code')} rules={[{ required: true }]}>
               <Input maxLength={50} disabled={!!editing} />
             </Form.Item>
@@ -916,7 +916,7 @@ function GroupsTab() {
         saving={save.isPending}
       >
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <FormSection title={t('items.general')} icon={<AppstoreOutlined />}>
+          <FormSection title={t('items.groupDetails')} icon={<AppstoreOutlined />}>
             {!editing && (
               <Form.Item name="code" label={t('items.code')} rules={[{ required: true }]}>
                 <Input maxLength={50} />

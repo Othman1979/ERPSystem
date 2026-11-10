@@ -207,7 +207,7 @@ function TransferModal({
       <EnterNav autoFocusWhen={open}>
         {/* Fields keep their own state; the Form only lays them out. */}
         <Form layout="vertical" component="div">
-          <FormSection title={t('items.general')} icon={<SwapOutlined />}>
+          <FormSection title={t('treasury.transferDetails')} icon={<SwapOutlined />}>
             <Form.Item label={t('treasury.date')}>
               <DatePicker value={date} onChange={(d) => d && setDate(d)} />
             </Form.Item>

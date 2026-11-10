@@ -228,7 +228,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
         saving={save.isPending}
       >
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <FormSection title={t('items.general')} icon={<SettingOutlined />}>
+          <FormSection title={title} icon={<SettingOutlined />}>
             {!editing && (
               <Form.Item name="code" label={t('settings.code')} rules={[{ required: true }]}>
                 <Input maxLength={50} />

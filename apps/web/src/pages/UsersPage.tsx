@@ -184,7 +184,7 @@ export function UsersPage() {
           layout="vertical"
           onFinish={(v) => invite.mutate(v)}
         >
-          <FormSection title={t('items.general')} icon={<UserOutlined />}>
+          <FormSection title={t('users.details')} icon={<UserOutlined />}>
             <Form.Item name="email" label={t('users.email')} rules={[{ required: true, type: 'email' }]}>
               <Input />
             </Form.Item>

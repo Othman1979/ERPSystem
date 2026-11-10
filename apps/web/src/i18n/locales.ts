@@ -54,6 +54,7 @@ export const ar = {
   },
   users: {
     title: 'المستخدمون',
+    details: 'بيانات المستخدم',
     invite: 'دعوة مستخدم',
     name: 'الاسم',
     email: 'البريد الإلكتروني',
@@ -73,6 +74,7 @@ export const ar = {
   },
   branches: {
     title: 'الفروع',
+    details: 'بيانات الفرع',
     add: 'إضافة فرع',
     edit: 'تعديل الفرع',
     code: 'الرمز',
@@ -83,6 +85,7 @@ export const ar = {
   },
   accounts: {
     title: 'دليل الحسابات',
+    details: 'بيانات الحساب',
     add: 'إضافة حساب',
     edit: 'تعديل الحساب',
     code: 'الرمز',
@@ -110,6 +113,7 @@ export const ar = {
   },
   fiscal: {
     title: 'السنوات المالية',
+    details: 'بيانات السنة المالية',
     add: 'إضافة سنة مالية',
     edit: 'تعديل السنة المالية',
     code: 'الرمز',
@@ -148,6 +152,7 @@ export const ar = {
   },
   items: {
     deactivateConfirm: 'إلغاء تفعيل الصنف «{{name}}»؟ لن يظهر في الفواتير الجديدة.',
+    groupDetails: 'بيانات المجموعة',
     title: 'الأصناف',
     items: 'الأصناف',
     groups: 'مجموعات الأصناف',
@@ -195,6 +200,7 @@ export const ar = {
   },
   warehouses: {
     title: 'المستودعات',
+    details: 'بيانات المستودع',
     add: 'إضافة مستودع',
     edit: 'تعديل المستودع',
     code: 'الرمز',
@@ -205,6 +211,7 @@ export const ar = {
   },
   stock: {
     title: 'المخزون',
+    countDetails: 'بيانات الجرد',
     balances: 'الأرصدة',
     adjustments: 'تسويات المخزون',
     transfers: 'تحويلات المخزون',
@@ -416,6 +423,9 @@ export const ar = {
   },
   treasury: {
     cashBoxes: 'الصناديق',
+    cashBoxDetails: 'بيانات الصندوق',
+    bankAccountDetails: 'بيانات الحساب البنكي',
+    transferDetails: 'بيانات التحويل',
     remaining: 'متبقي {{amount}}',
     bankAccounts: 'الحسابات البنكية',
     receipts: 'سندات القبض',
@@ -471,6 +481,7 @@ export const ar = {
   },
   common: {
     status: 'الحالة',
+    basicInfo: 'البيانات الأساسية',
     actions: 'إجراءات',
     edit: 'تعديل',
     description: 'الوصف',
@@ -597,6 +608,7 @@ export const en: typeof ar = {
   },
   users: {
     title: 'Users',
+    details: 'User details',
     invite: 'Invite user',
     name: 'Name',
     email: 'Email',
@@ -616,6 +628,7 @@ export const en: typeof ar = {
   },
   branches: {
     title: 'Branches',
+    details: 'Branch details',
     add: 'Add branch',
     edit: 'Edit branch',
     code: 'Code',
@@ -626,6 +639,7 @@ export const en: typeof ar = {
   },
   accounts: {
     title: 'Chart of Accounts',
+    details: 'Account details',
     add: 'Add account',
     edit: 'Edit account',
     code: 'Code',
@@ -653,6 +667,7 @@ export const en: typeof ar = {
   },
   fiscal: {
     title: 'Fiscal Years',
+    details: 'Fiscal year details',
     add: 'Add fiscal year',
     edit: 'Edit fiscal year',
     code: 'Code',
@@ -691,6 +706,7 @@ export const en: typeof ar = {
   },
   items: {
     deactivateConfirm: 'Deactivate item "{{name}}"? It will no longer appear on new invoices.',
+    groupDetails: 'Group details',
     title: 'Items',
     items: 'Items',
     groups: 'Item groups',
@@ -738,6 +754,7 @@ export const en: typeof ar = {
   },
   warehouses: {
     title: 'Warehouses',
+    details: 'Warehouse details',
     add: 'Add warehouse',
     edit: 'Edit warehouse',
     code: 'Code',
@@ -748,6 +765,7 @@ export const en: typeof ar = {
   },
   stock: {
     title: 'Inventory',
+    countDetails: 'Count details',
     balances: 'Balances',
     adjustments: 'Stock adjustments',
     transfers: 'Stock transfers',
@@ -959,6 +977,9 @@ export const en: typeof ar = {
   },
   treasury: {
     cashBoxes: 'Cash Boxes',
+    cashBoxDetails: 'Cash box details',
+    bankAccountDetails: 'Bank account details',
+    transferDetails: 'Transfer details',
     remaining: '{{amount}} remaining',
     bankAccounts: 'Bank Accounts',
     receipts: 'Receipts',
@@ -1014,6 +1035,7 @@ export const en: typeof ar = {
   },
   common: {
     status: 'Status',
+    basicInfo: 'Basic information',
     actions: 'Actions',
     edit: 'Edit',
     description: 'Description',

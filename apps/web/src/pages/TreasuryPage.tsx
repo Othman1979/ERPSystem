@@ -285,7 +285,7 @@ function CashBoxesTab() {
       <FormDialog open={modalOpen} title={editing ? t('treasury.editCashBox') : t('treasury.newCashBox')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
           <FormSection
-            title={t('items.general')}
+            title={t('treasury.cashBoxDetails')}
             icon={<WalletOutlined />}
             extra={
               <>
@@ -434,7 +434,7 @@ function BankAccountsTab() {
       <FormDialog open={modalOpen} title={editing ? t('treasury.editBankAccount') : t('treasury.newBankAccount')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
           <FormSection
-            title={t('items.general')}
+            title={t('treasury.bankAccountDetails')}
             icon={<BankOutlined />}
             extra={
               <>

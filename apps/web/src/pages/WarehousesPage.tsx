@@ -164,7 +164,7 @@ export function WarehousesPage() {
         saving={save.isPending}
       >
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <FormSection title={t('items.general')} icon={<ContainerOutlined />}>
+          <FormSection title={t('warehouses.details')} icon={<ContainerOutlined />}>
             {!editing && (
               <Form.Item name="code" label={t('warehouses.code')} rules={[{ required: true }]}>
                 <Input maxLength={50} />

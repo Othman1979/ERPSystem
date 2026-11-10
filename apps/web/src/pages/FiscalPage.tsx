@@ -171,7 +171,7 @@ export function FiscalPage() {
         saving={createYear.isPending}
       >
         <Form form={form} layout="vertical" onFinish={(v) => createYear.mutate(v)}>
-          <FormSection title={t('items.general')} icon={<CalendarOutlined />}>
+          <FormSection title={t('fiscal.details')} icon={<CalendarOutlined />}>
             <Form.Item name="code" label={t('fiscal.code')} rules={[{ required: true }]}>
               <Input maxLength={20} placeholder="2025" />
             </Form.Item>

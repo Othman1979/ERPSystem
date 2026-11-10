@@ -236,7 +236,7 @@ export function PartiesPage() {
       >
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
           <FormSection
-            title={t('items.general')}
+            title={t('common.basicInfo')}
             icon={<IdcardOutlined />}
             extra={
               <>

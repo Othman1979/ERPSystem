@@ -347,7 +347,7 @@ export function AccountsPage() {
               }
             />
           )}
-          <FormSection title={t('items.general')} icon={<BookOutlined />}>
+          <FormSection title={t('accounts.details')} icon={<BookOutlined />}>
           {!editing && (
             <>
               {!(isCreate && watchedParentId) && (

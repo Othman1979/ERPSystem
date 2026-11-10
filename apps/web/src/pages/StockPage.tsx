@@ -960,7 +960,7 @@ function CountsTab() {
           onFinish={(v) => create.mutate(v)}
           initialValues={{ countDate: dayjs() }}
         >
-          <FormSection title={t('items.general')} icon={<InfoCircleOutlined />}>
+          <FormSection title={t('stock.countDetails')} icon={<InfoCircleOutlined />}>
             <Form.Item name="countDate" label={t('stock.date')} rules={[{ required: true }]}>
               <DatePicker />
             </Form.Item>
