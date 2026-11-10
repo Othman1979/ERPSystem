@@ -852,7 +852,9 @@ function VoucherForm({
         allocations: allocations
           .filter((a) => a.documentId && dec(a.amount).gt(0))
           .map((a) => ({ documentType: docType, documentId: a.documentId, amount: a.amount as string })),
-        autoAllocate: autoAllocate && !allocations.some((a) => a.documentId) ? true : undefined,
+        // Only while the allocation section is shown: a refund the other way takes none.
+        autoAllocate:
+          autoAllocate && openInvoices.length > 0 && !allocations.some((a) => a.documentId) ? true : undefined,
       };
       return kind === 'receipt'
         ? treasuryControllerCreateReceipt(base as never, { headers: { 'Idempotency-Key': idemKey } })
@@ -919,6 +921,7 @@ function VoucherForm({
               setPartyType(e.target.value);
               setPartyId(undefined);
               setAllocations([]);
+              setAutoAllocate(false);
             }}
             options={[
               { value: 'CUSTOMER', label: t('parties.type_CUSTOMER') },
@@ -935,6 +938,7 @@ function VoucherForm({
             onChange={(v) => {
               setPartyId(v);
               setAllocations([]);
+              setAutoAllocate(false);
             }}
           />
         </DocField>
