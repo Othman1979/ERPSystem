@@ -276,11 +276,87 @@ describe('Aging as of a date', () => {
     }
   });
 
+  // ------------------------------------------- opening balances / journal
+
+  it('opening balances are aged from their entry date, oldest settled first', async () => {
+    const opening = await api()
+      .post('/api/v1/journal-entries/opening')
+      .set(auth(token))
+      .set(idem())
+      .send({
+        entryDate: '2025-01-01',
+        description: 'opening',
+        lines: [
+          { accountId: acc['1103'], debit: '200.000', partyType: 'CUSTOMER', partyId: party.C3 },
+          { accountId: acc['2101'], credit: '300.000', partyType: 'SUPPLIER', partyId: party.S1 },
+        ],
+      });
+    expect(opening.status).toBe(201);
+    await receipt('C3', '2025-02-01', '150.000'); // on account, not allocated
+
+    const c3 = row(await aging('CUSTOMER', '2025-03-01'), 'C3')!;
+    expect(buckets(c3)).toEqual({ d31_60: '50.000' }); // 59 days since the opening entry
+    expect(m3(c3.unapplied)).toBe('0.000');
+    expect(m3(c3.balance)).toBe('50.000');
+
+    // S1: opening 300 (59 days) + its invoice of 2025-01-15 (45 days).
+    const suppliers = await aging('SUPPLIER', '2025-03-01');
+    const s1 = row(suppliers, 'S1')!;
+    expect(buckets(s1)).toEqual({ d31_60: '311.600' });
+    expect(m3(s1.balance)).toBe('311.600');
+    expect(m3(suppliers.totals.balance)).toBe(m3((await controlBalance('2101', '2025-03-01')).neg()));
+  });
+
+  it('a manual party entry counts until it is reversed', async () => {
+    const draft = await api()
+      .post('/api/v1/journal-entries')
+      .set(auth(token))
+      .send({
+        entryDate: '2025-02-10',
+        description: 'manual charge',
+        lines: [
+          { accountId: acc['1103'], debit: '40.000', partyType: 'CUSTOMER', partyId: party.C3 },
+          { accountId: acc['4201'], credit: '40.000' },
+        ],
+      });
+    expect(draft.status).toBe(201);
+    expect((await api().post(`/api/v1/journal-entries/${draft.body.id}/post`).set(auth(token)).set(idem())).status).toBe(201);
+    const reversed = await api()
+      .post(`/api/v1/journal-entries/${draft.body.id}/reverse`)
+      .set(auth(token))
+      .set(idem())
+      .send({ reversalDate: '2025-02-20' });
+    expect(reversed.status).toBe(201);
+
+    // Before the reversal: 40 from 2025-02-10 (5 days) + 50 left of the opening.
+    expect(buckets(row(await aging('CUSTOMER', '2025-02-15'), 'C3'))).toEqual({ d1_30: '40.000', d31_60: '50.000' });
+    // After it: the entry is gone.
+    expect(buckets(row(await aging('CUSTOMER', '2025-02-25'), 'C3'))).toEqual({ d31_60: '50.000' });
+  });
+
+  it('unallocated receipts show as unapplied; balances match the ledger', async () => {
+    const asOf = '2025-04-15';
+    const customers = await aging('CUSTOMER', asOf);
+    // C1: invoice 116 − return 11.6 still open; the 50 receipt is no longer allocated.
+    const c1 = row(customers, 'C1')!;
+    expect(buckets(c1)).toEqual({ d61_90: '104.400' });
+    expect(m3(c1.total)).toBe('104.400');
+    expect(m3(c1.unapplied)).toBe('-50.000');
+    expect(m3(c1.balance)).toBe('54.400');
+
+    for (const r of customers.rows) {
+      const st = await api()
+        .get(`/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${r.partyId}&to=${asOf}`)
+        .set(auth(token));
+      expect(st.status).toBe(200);
+      expect(m3(r.balance)).toBe(m3(st.body.closingBalance));
+      expect(m3(new Decimal(r.total).plus(r.unapplied))).toBe(m3(r.balance));
+    }
+    expect(m3(customers.totals.balance)).toBe(m3(await controlBalance('1103', asOf)));
+  });
+
   it('another tenant sees nothing', async () => {
     const b = await aging('CUSTOMER', '2025-04-15', tokenB);
     expect(b.rows).toEqual([]);
   });
-
-  // Kept for the opening-balance cases below.
-  void controlBalance;
 });

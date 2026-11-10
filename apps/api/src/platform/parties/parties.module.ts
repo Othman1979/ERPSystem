@@ -7,5 +7,7 @@ import { PartiesService } from './parties.service.js';
   imports: [SharedModule],
   controllers: [PartiesController],
   providers: [PartiesService],
+  // Treasury aging names parties that only have journal balances.
+  exports: [PartiesService],
 })
 export class PartiesModule {}

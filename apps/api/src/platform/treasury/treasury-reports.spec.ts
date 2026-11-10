@@ -1,4 +1,34 @@
-import { agingBucket, daysOverdue, todayUtc } from './treasury-reports.service.js';
+import { Decimal } from '../../common/decimal/decimal.utils.js';
+import { ageResidual, agingBucket, daysOverdue, todayUtc } from './treasury-reports.service.js';
+
+describe('ageResidual', () => {
+  const asOf = new Date('2025-03-01');
+  const items = [
+    { entryDate: new Date('2025-01-01'), amount: new Decimal('200') }, // 59 days
+    { entryDate: new Date('2025-02-20'), amount: new Decimal('40') }, // 9 days
+  ];
+  const nonZero = (b: Record<string, Decimal>) =>
+    Object.fromEntries(Object.entries(b).filter(([, v]) => !v.isZero()).map(([k, v]) => [k, v.toFixed(3)]));
+
+  it('ages a positive residual newest item first', () => {
+    const r = ageResidual(new Decimal('90'), items, asOf);
+    expect(nonZero(r.buckets)).toEqual({ d1_30: '40.000', d31_60: '50.000' });
+    expect(r.unapplied.toFixed(3)).toBe('0.000');
+  });
+
+  it('reports what the items cannot cover as unapplied', () => {
+    const r = ageResidual(new Decimal('300'), items, asOf);
+    expect(nonZero(r.buckets)).toEqual({ d1_30: '40.000', d31_60: '200.000' });
+    expect(r.unapplied.toFixed(3)).toBe('60.000');
+  });
+
+  it('leaves a zero or negative residual unaged', () => {
+    expect(nonZero(ageResidual(new Decimal('0'), items, asOf).buckets)).toEqual({});
+    const r = ageResidual(new Decimal('-42'), items, asOf);
+    expect(nonZero(r.buckets)).toEqual({});
+    expect(r.unapplied.toFixed(3)).toBe('-42.000');
+  });
+});
 
 describe('aging buckets', () => {
   it.each([

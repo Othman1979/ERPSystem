@@ -7,6 +7,7 @@ import { ReportsService } from './reports.service.js';
 @Module({
   controllers: [JournalController],
   providers: [JournalService, PostingService, ReportsService],
-  exports: [PostingService],
+  // ReportsService: treasury aging reads party control balances (module boundary).
+  exports: [PostingService, ReportsService],
 })
 export class JournalModule {}
