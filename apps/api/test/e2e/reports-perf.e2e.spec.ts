@@ -34,6 +34,14 @@ const api = () => request(BASE);
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 const timings: Record<string, number> = {};
 
+/** Collects a binary body (PDF / XLSX) into a Buffer. */
+function binary(res: unknown, cb: (err: Error | null, body: Buffer) => void) {
+  const stream = res as NodeJS.ReadableStream;
+  const chunks: Buffer[] = [];
+  stream.on('data', (c: Buffer) => chunks.push(c));
+  stream.on('end', () => cb(null, Buffer.concat(chunks)));
+}
+
 beforeAll(async () => {
   if (process.env.RUN_PERF !== '1') return;
   const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
@@ -68,7 +76,6 @@ afterAll(async () => {
   server?.kill('SIGTERM');
   await once(server, 'exit').catch(() => undefined);
   await db?.end();
-  // eslint-disable-next-line no-console
   console.log('report timings (ms):', JSON.stringify(timings));
 });
 
@@ -241,11 +248,7 @@ perf('Reports on 100,000 journal lines', () => {
         .get(`/api/v1/reports/general-ledger?accountId=${busiest.id}&from=2025-01-01&to=2025-12-31&format=xlsx`)
         .set(auth(A.token))
         .buffer(true)
-        .parse((res, cb) => {
-          const chunks: Buffer[] = [];
-          res.on('data', (c: Buffer) => chunks.push(c));
-          res.on('end', () => cb(null, Buffer.concat(chunks)));
-        }),
+        .parse(binary),
     );
     expect(xlsx.status).toBe(200);
     expect(timings.ledgerXlsx).toBeLessThan(BUDGET.ledgerXlsx);
@@ -257,11 +260,7 @@ perf('Reports on 100,000 journal lines', () => {
         .get('/api/v1/reports/trial-balance?from=2025-01-01&to=2025-12-31&format=pdf')
         .set(auth(A.token))
         .buffer(true)
-        .parse((res, cb) => {
-          const chunks: Buffer[] = [];
-          res.on('data', (c: Buffer) => chunks.push(c));
-          res.on('end', () => cb(null, Buffer.concat(chunks)));
-        }),
+        .parse(binary),
     );
     expect(pdf.status).toBe(200);
     expect((pdf.body as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');

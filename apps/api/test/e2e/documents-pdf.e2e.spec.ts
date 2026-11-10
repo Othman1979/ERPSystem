@@ -46,11 +46,12 @@ afterAll(async () => {
 });
 
 /** supertest buffers binary bodies with this parser. */
-const binary = (res: NodeJS.ReadableStream, cb: (err: Error | null, body: Buffer) => void) => {
+function binary(res: unknown, cb: (err: Error | null, body: Buffer) => void) {
+  const stream = res as NodeJS.ReadableStream; // superagent hands the raw response stream
   const chunks: Buffer[] = [];
-  res.on('data', (c: Buffer) => chunks.push(c));
-  res.on('end', () => cb(null, Buffer.concat(chunks)));
-};
+  stream.on('data', (c: Buffer) => chunks.push(c));
+  stream.on('end', () => cb(null, Buffer.concat(chunks)));
+}
 
 async function pdf(url: string, token: string) {
   return api().get(url).set(auth(token)).buffer(true).parse(binary);
