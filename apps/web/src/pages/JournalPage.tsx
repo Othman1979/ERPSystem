@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeftOutlined,
-  ArrowRightOutlined,
   DeleteOutlined,
   PlusOutlined,
+  PrinterOutlined,
   SaveOutlined,
   SwapOutlined,
 } from '@ant-design/icons';
 import {
+  App,
   Button,
   Card,
   DatePicker,
@@ -40,16 +40,21 @@ import {
   journalControllerPost,
   journalControllerReverse,
 } from '@erp/api-client';
-import i18n from '../i18n';
 import { idemHeaders } from '../idempotency';
+import { useNewFromUrl } from '../useNewFromUrl';
 import {
   enterTo,
   focusFirstGridCell,
   focusNamedField,
   GridSelect,
 } from '../components/GridSelect';
-import { StatusBar } from '../components/StatusBar';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
+import { codeAndName } from '../i18n/displayName';
+import { Num } from '../components/Num';
+import { amountCell, amountOrBlankCell } from '../format/cells';
+import { formatAmount } from '../format/number';
 
 interface Account {
   id: string;
@@ -79,8 +84,13 @@ interface JournalEntry {
   totalCredit: string;
   lines?: JournalLine[];
   reversalOf?: { entryNo: string | null } | null;
+  /** Who produced the entry: manual journal entries, or a document (invoice, voucher…). */
+  sourceType?: string;
   reversals?: { entryNo: string | null; status: string }[];
 }
+
+/** Only manual entries reverse here; document entries reverse through their document. */
+const REVERSIBLE_HERE = new Set(['MANUAL_JOURNAL', 'OPENING_ENTRY']);
 
 const VOUCHER_TYPES = ['JOURNAL', 'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER'] as const;
 type VoucherType = (typeof VOUCHER_TYPES)[number];
@@ -108,6 +118,7 @@ export function JournalPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new entry
   const [reverseTarget, setReverseTarget] = useState<JournalEntry | null>(null);
@@ -138,7 +149,7 @@ export function JournalPage() {
 
   const accountOptions = (accounts ?? [])
     .filter((a) => a.isActive && a.isPostable)
-    .map((a) => ({ value: a.id, label: `${a.code} — ${a.nameAr}` }));
+    .map((a) => ({ value: a.id, label: codeAndName(a) }));
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['journal-entry', entryId],
@@ -166,6 +177,7 @@ export function JournalPage() {
     setGridFocus((g) => g + 1);
     setScreen('entry');
   };
+  useNewFromUrl(() => openNew('JOURNAL'));
 
   const openEntry = (id: string) => {
     setEntryId(id);
@@ -248,36 +260,60 @@ export function JournalPage() {
     onError,
   });
 
+  // Shortcuts on an open entry: Ctrl+S saves a new draft, Ctrl+Enter posts a
+  // saved draft (behind the same confirmation as the button).
+  const { modal } = App.useApp();
+  const openDraft = screen === 'entry' && detail?.status === 'DRAFT' ? detail : null;
+  useDocShortcuts({
+    onSave: screen === 'entry' && !entryId ? () => !createDraft.isPending && saveNew() : undefined,
+    onPost: openDraft
+      ? () => {
+          if (postEntry.isPending) return;
+          modal.confirm({
+            title: t('journal.confirmPost'),
+            onOk: () => postEntry.mutate(openDraft.id),
+          });
+        }
+      : undefined,
+  });
+
   // ============================ LIST VIEW ============================
   if (screen === 'list') {
+    const shown = (entries ?? []).filter((e) => matchesSearch(search, e.entryNo, e.description));
     return (
       <div>
-        <PageHeader
-          title={t('journal.title')}
+        <PageHeader title={t('journal.title')} />
+        <Card>
+        {contextHolder}
+        <ListToolbar
+          search={search}
+          onSearch={setSearch}
+          filters={
+            <>
+                <Select
+                  allowClear
+                  placeholder={t('journal.allStatuses')}
+                  value={statusFilter}
+                  onChange={(v) => setStatusFilter(v)}
+                  options={[
+                    { value: 'DRAFT', label: t('journal.draft') },
+                    { value: 'POSTED', label: t('journal.postedStatus') },
+                  ]}
+                />
+                <Select
+                  allowClear
+                  placeholder={t('journal.voucherType')}
+                  value={typeFilter}
+                  onChange={(v) => setTypeFilter(v)}
+                  options={VOUCHER_TYPES.map((vt) => ({
+                    value: vt,
+                    label: t(VOUCHER_TYPE_LABEL[vt]),
+                  }))}
+                />
+            </>
+          }
+          count={shown.length}
           actions={
-            <Space>
-              <Select
-                allowClear
-                placeholder={t('journal.allStatuses')}
-                style={{ width: 130 }}
-                value={statusFilter}
-                onChange={(v) => setStatusFilter(v)}
-                options={[
-                  { value: 'DRAFT', label: t('journal.draft') },
-                  { value: 'POSTED', label: t('journal.postedStatus') },
-                ]}
-              />
-              <Select
-                allowClear
-                placeholder={t('journal.voucherType')}
-                style={{ width: 150 }}
-                value={typeFilter}
-                onChange={(v) => setTypeFilter(v)}
-                options={VOUCHER_TYPES.map((vt) => ({
-                  value: vt,
-                  label: t(VOUCHER_TYPE_LABEL[vt]),
-                }))}
-              />
               <Dropdown.Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -292,22 +328,20 @@ export function JournalPage() {
               >
                 {t('journal.newEntry')}
               </Dropdown.Button>
-            </Space>
           }
         />
-        <Card>
-        {contextHolder}
         <Table
           rowKey="id"
           loading={isLoading}
-          dataSource={entries ?? []}
+          dataSource={shown}
           pagination={{ pageSize: 20 }}
           onRow={(e) => ({ onClick: () => openEntry(e.id), style: { cursor: 'pointer' } })}
           columns={[
             {
               title: t('journal.entryNo'),
               dataIndex: 'entryNo',
-              width: 110,
+              className: 'nowrap',
+              width: 160,
               render: (v: string | null) => v ?? '—',
             },
             {
@@ -331,11 +365,14 @@ export function JournalPage() {
               title: t('common.status'),
               dataIndex: 'status',
               width: 100,
-              render: (v: string) =>
-                v === 'POSTED' ? (
-                  <Tag color="green">{t('journal.postedStatus')}</Tag>
-                ) : (
+              // BUILD_PLAN §16: fixed colours for draft / posted / reversed.
+              render: (v: string, e: JournalEntry) =>
+                v !== 'POSTED' ? (
                   <Tag>{t('journal.draft')}</Tag>
+                ) : e.reversals?.length ? (
+                  <Tag color="orange">{t('journal.reversedStatus')}</Tag>
+                ) : (
+                  <Tag color="green">{t('journal.postedStatus')}</Tag>
                 ),
             },
             {
@@ -343,11 +380,11 @@ export function JournalPage() {
               dataIndex: 'totalDebit',
               width: 110,
               align: 'right',
-              render: (v: string) => Number(v).toFixed(3),
+              render: amountCell,
             },
             {
               title: t('common.actions'),
-              width: 200,
+              width: 160,
               render: (_: unknown, e: JournalEntry) => (
                 <Space onClick={(ev) => ev.stopPropagation()}>
                   {e.status === 'DRAFT' && (
@@ -370,11 +407,6 @@ export function JournalPage() {
                       </Popconfirm>
                     </>
                   )}
-                  {e.status === 'POSTED' && !e.reversals?.length && (
-                    <Button size="small" onClick={() => setReverseTarget(e)}>
-                      {t('journal.reverse')}
-                    </Button>
-                  )}
                 </Space>
               ),
             },
@@ -392,36 +424,17 @@ export function JournalPage() {
   return (
     <div>
       {contextHolder}
-      {/* Odoo-style control panel */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        <Button
-          icon={i18n.language === 'ar' ? <ArrowRightOutlined /> : <ArrowLeftOutlined />}
-          onClick={backToList}
-        >
-          {t('journal.title')}
-        </Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {isNew
+      <DocLayout
+        title={
+          isNew
             ? t('journal.newEntry')
-            : `${entry?.entryNo ?? '…'} — ${t(VOUCHER_TYPE_LABEL[entry?.voucherType ?? 'JOURNAL'])}`}
-        </Typography.Title>
-        {entry && (
-          <Space size={8}>
-            <VoucherTag type={entry.voucherType} />
-            <StatusBar status={entry.status} />
-          </Space>
-        )}
-        <div style={{ flex: 1 }} />
-        <Space>
-          {isNew ? (
+            : t(VOUCHER_TYPE_LABEL[entry?.voucherType ?? 'JOURNAL'])
+        }
+        docNo={entry?.entryNo}
+        status={isNew ? 'DRAFT' : entry?.status}
+        onBack={backToList}
+        actions={
+          isNew ? (
             <Button
               type="primary"
               icon={<SaveOutlined />}
@@ -429,6 +442,7 @@ export function JournalPage() {
               onClick={saveNew}
             >
               {t('journal.saveDraft')}
+              <span className="doc-kbd">Ctrl+S</span>
             </Button>
           ) : (
             entry && (
@@ -441,6 +455,7 @@ export function JournalPage() {
                     >
                       <Button type="primary" loading={postEntry.isPending}>
                         {t('journal.post')}
+                        <span className="doc-kbd">Ctrl+Enter</span>
                       </Button>
                     </Popconfirm>
                     <Popconfirm
@@ -453,25 +468,26 @@ export function JournalPage() {
                     </Popconfirm>
                   </>
                 )}
-                {entry.status === 'POSTED' && !entry.reversals?.length && (
+                {entry.status === 'POSTED' && !entry.reversals?.length && REVERSIBLE_HERE.has(entry.sourceType ?? 'MANUAL_JOURNAL') && (
                   <Button icon={<SwapOutlined />} onClick={() => setReverseTarget(entry)}>
                     {t('journal.reverse')}
                   </Button>
                 )}
+                <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
+                  {t('common.print')}
+                </Button>
               </>
             )
-          )}
-        </Space>
-      </div>
-
-      {/* Header fields */}
-      <Card size="small" style={{ marginBottom: 16 }}>
+          )
+        }
+      >
         {isNew ? (
-          <Space size={16} wrap>
-            <div data-field="voucherType" onKeyDown={enterTo(() => focusNamedField('date'))}>
-              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                {t('journal.voucherType')}
-              </Typography.Text>
+          <DocFields>
+            <DocField
+              field="voucherType"
+              label={t('journal.voucherType')}
+              onKeyDown={enterTo(() => focusNamedField('date'))}
+            >
               <GridSelect
                 enterOpens
                 value={newVoucherType}
@@ -480,53 +496,50 @@ export function JournalPage() {
                   value: vt,
                   label: t(VOUCHER_TYPE_LABEL[vt]),
                 }))}
-                style={{ width: 180 }}
               />
-            </div>
-            <div data-field="date" onKeyDown={enterTo(() => focusNamedField('description'))}>
-              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                {t('journal.date')}
-              </Typography.Text>
+            </DocField>
+            <DocField
+              field="date"
+              label={t('journal.date')}
+              onKeyDown={enterTo(() => focusNamedField('description'))}
+            >
               <DatePicker value={newDate} onChange={(d) => d && setNewDate(d)} />
-            </div>
-            <div
-              data-field="description"
-              style={{ flex: 1, minWidth: 220 }}
+            </DocField>
+            <DocField
+              field="description"
+              wide
+              label={t('common.description')}
               onKeyDown={enterTo(focusFirstGridCell)}
             >
-              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                {t('common.description')}
-              </Typography.Text>
               <Input
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
                 maxLength={500}
                 placeholder={t('common.description')}
               />
-            </div>
-          </Space>
+            </DocField>
+          </DocFields>
         ) : (
-          <Space size={24} wrap>
-            <span>
-              <Typography.Text type="secondary">{t('journal.date')}: </Typography.Text>
-              {entry ? dayjs(entry.entryDate).format('YYYY-MM-DD') : '—'}
-            </span>
-            <span>
-              <Typography.Text type="secondary">{t('common.description')}: </Typography.Text>
-              {entry?.description ?? '—'}
-            </span>
+          <DocFields>
+            <DocField label={t('journal.voucherType')}>
+              <DocValue>{entry ? <VoucherTag type={entry.voucherType} /> : '—'}</DocValue>
+            </DocField>
+            <DocField label={t('journal.date')}>
+              <DocValue>{entry ? dayjs(entry.entryDate).format('YYYY-MM-DD') : '—'}</DocValue>
+            </DocField>
+            <DocField label={t('common.description')} wide>
+              <DocValue>{entry?.description ?? '—'}</DocValue>
+            </DocField>
             {entry?.reversalOf && (
-              <span>
-                <Typography.Text type="secondary">{t('journal.reversalOf')}: </Typography.Text>
-                {entry.reversalOf.entryNo ?? '—'}
-              </span>
+              <DocField label={t('journal.reversalOf')}>
+                <DocValue>
+                  <span className="doc-no">{entry.reversalOf.entryNo ?? '—'}</span>
+                </DocValue>
+              </DocField>
             )}
-          </Space>
+          </DocFields>
         )}
-      </Card>
 
-      {/* Lines */}
-      <Card size="small" loading={detailLoading && !isNew} title={t('journal.linesTitle')}>
         {isNew ? (
           <JournalLinesGrid
             lines={lines}
@@ -534,6 +547,8 @@ export function JournalPage() {
             accountOptions={accountOptions}
             focusSignal={gridFocus}
           />
+        ) : detailLoading ? (
+          <div className="doc-section">{t('common.loading')}</div>
         ) : (
           <Table
             rowKey={(r) => r.id ?? `${r.account?.code}-${r.debit}-${r.credit}`}
@@ -549,7 +564,7 @@ export function JournalPage() {
               {
                 title: t('journal.account'),
                 render: (_: unknown, l: JournalLine) =>
-                  l.account ? `${l.account.code} — ${l.account.nameAr}` : '—',
+                  l.account ? codeAndName(l.account) : '—',
               },
               {
                 title: t('common.description'),
@@ -561,14 +576,14 @@ export function JournalPage() {
                 dataIndex: 'debit',
                 width: 130,
                 align: 'right',
-                render: (v: string | null) => (v ? Number(v).toFixed(3) : ''),
+                render: amountOrBlankCell,
               },
               {
                 title: t('journal.credit'),
                 dataIndex: 'credit',
                 width: 130,
                 align: 'right',
-                render: (v: string | null) => (v ? Number(v).toFixed(3) : ''),
+                render: amountOrBlankCell,
               },
             ]}
             summary={() => (
@@ -577,16 +592,16 @@ export function JournalPage() {
                   {t('journal.total')}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">
-                  {entry ? Number(entry.totalDebit).toFixed(3) : ''}
+                  {entry ? <Num>{formatAmount(entry.totalDebit)}</Num> : ''}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={2} align="right">
-                  {entry ? Number(entry.totalCredit).toFixed(3) : ''}
+                  {entry ? <Num>{formatAmount(entry.totalCredit)}</Num> : ''}
                 </Table.Summary.Cell>
               </Table.Summary.Row>
             )}
           />
         )}
-      </Card>
+      </DocLayout>
 
       {/* Reverse modal */}
       <Modal

@@ -13,5 +13,8 @@ export interface RequestContext {
   membershipId?: bigint;
   roleCode?: string;
   permissions?: ReadonlySet<string>;
+  /** Branch of this request (X-Branch-Id or the default), set by BranchGuard. */
   branchId?: bigint;
+  /** Branches the member may use; null = all branches of the company (none assigned). */
+  allowedBranchIds?: ReadonlySet<bigint> | null;
 }

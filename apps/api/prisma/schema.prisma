@@ -295,6 +295,7 @@ model Tenant {
   goodsNoteLines       GoodsNoteLine[]
   receipts             Receipt[]
   payments             Payment[]
+  cashTransfers        CashTransfer[]
   allocations          Allocation[]
 
   @@map("tenants")
@@ -367,6 +368,7 @@ model Company {
   goodsNotes        GoodsNote[]
   receipts          Receipt[]
   payments          Payment[]
+  cashTransfers        CashTransfer[]
   allocations       Allocation[]
 
   @@unique([tenantId, id])
@@ -640,6 +642,8 @@ model Account {
   receiptCashAccounts        Receipt[]         @relation("ReceiptCashAccount")
   paymentCashAccounts        Payment[]         @relation("PaymentCashAccount")
   paymentExpenseAccounts     Payment[]         @relation("PaymentExpenseAccount")
+  cashTransfersFrom          CashTransfer[]    @relation("CashTransferFrom")
+  cashTransfersTo            CashTransfer[]    @relation("CashTransferTo")
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
@@ -725,6 +729,7 @@ model JournalEntry {
   goodsNotes       GoodsNote[]
   receipts         Receipt[]
   payments         Payment[]
+  cashTransfers    CashTransfer[]
 
   @@unique([tenantId, id])
   // One POST + one REVERSAL per source document (docs/BUILD_PLAN.md §10.3).
@@ -1593,6 +1598,12 @@ model Receipt {
   description     String?             @db.VarChar(500)
   status          DocumentStatus      @default(POSTED)
   journalEntryId  BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
+  /// ADR-003: branch from the request context at creation.
+  branchId        BigInt?             @map("branch_id") @db.UnsignedBigInt
+  /// Reversal (Phase 6): set once; the original stays POSTED and immutable.
+  reversedAt      DateTime?           @map("reversed_at") @db.DateTime(3)
+  reversedBy      BigInt?             @map("reversed_by") @db.UnsignedBigInt
+  reversalEntryId BigInt?             @map("reversal_entry_id") @db.UnsignedBigInt
   createdAt       DateTime            @default(now()) @map("created_at") @db.DateTime(3)
   createdBy       BigInt?             @map("created_by") @db.UnsignedBigInt
 
@@ -1625,6 +1636,12 @@ model Payment {
   description     String?             @db.VarChar(500)
   status          DocumentStatus      @default(POSTED)
   journalEntryId  BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
+  /// ADR-003: branch from the request context at creation.
+  branchId        BigInt?             @map("branch_id") @db.UnsignedBigInt
+  /// Reversal (Phase 6): set once; the original stays POSTED and immutable.
+  reversedAt      DateTime?           @map("reversed_at") @db.DateTime(3)
+  reversedBy      BigInt?             @map("reversed_by") @db.UnsignedBigInt
+  reversalEntryId BigInt?             @map("reversal_entry_id") @db.UnsignedBigInt
   createdAt       DateTime            @default(now()) @map("created_at") @db.DateTime(3)
   createdBy       BigInt?             @map("created_by") @db.UnsignedBigInt
 
@@ -1654,6 +1671,10 @@ model Allocation {
   documentId    BigInt   @map("document_id") @db.UnsignedBigInt
   amount        Decimal  @db.Decimal(18, 3)
   createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy     BigInt?  @map("created_by") @db.UnsignedBigInt
+  /// Cancelled allocations are kept for history; only active ones count.
+  cancelledAt   DateTime? @map("cancelled_at") @db.DateTime(3)
+  cancelledBy   BigInt?  @map("cancelled_by") @db.UnsignedBigInt
 
   tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   company Company  @relation(fields: [tenantId, companyId], references: [tenantId, id])
@@ -1664,4 +1685,39 @@ model Allocation {
   @@unique([tenantId, id])
   @@index([tenantId, documentType, documentId])
   @@map("allocations")
+}
+
+/// Phase 6 (§7.8): money moved between two cash/bank accounts of the company.
+/// Posted on creation (Dr to, Cr from); corrected only by reversal.
+model CashTransfer {
+  id              BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt         @map("tenant_id") @db.UnsignedBigInt
+  companyId       BigInt         @map("company_id") @db.UnsignedBigInt
+  /// ADR-003: branch from the request context at creation.
+  branchId        BigInt?        @map("branch_id") @db.UnsignedBigInt
+  transferNo      String?        @map("transfer_no") @db.VarChar(50)
+  transferDate    DateTime       @map("transfer_date") @db.Date
+  fromAccountId   BigInt         @map("from_account_id") @db.UnsignedBigInt
+  toAccountId     BigInt         @map("to_account_id") @db.UnsignedBigInt
+  amount          Decimal        @db.Decimal(18, 3)
+  referenceNo     String?        @map("reference_no") @db.VarChar(100)
+  description     String?        @db.VarChar(500)
+  status          DocumentStatus @default(POSTED)
+  journalEntryId  BigInt?        @map("journal_entry_id") @db.UnsignedBigInt
+  reversedAt      DateTime?      @map("reversed_at") @db.DateTime(3)
+  reversedBy      BigInt?        @map("reversed_by") @db.UnsignedBigInt
+  reversalEntryId BigInt?        @map("reversal_entry_id") @db.UnsignedBigInt
+  createdAt       DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy       BigInt?        @map("created_by") @db.UnsignedBigInt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company      Company       @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  fromAccount  Account       @relation("CashTransferFrom", fields: [tenantId, companyId, fromAccountId], references: [tenantId, companyId, id])
+  toAccount    Account       @relation("CashTransferTo", fields: [tenantId, companyId, toAccountId], references: [tenantId, companyId, id])
+  journalEntry JournalEntry? @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, transferNo])
+  @@index([tenantId, transferDate])
+  @@map("cash_transfers")
 }

@@ -10,5 +10,7 @@ import { PurchasesController } from './purchases.controller.js';
   imports: [SharedModule, JournalModule, InventoryModule],
   controllers: [PurchasesController],
   providers: [PurchaseInvoicesService, PurchaseReturnsService],
+  // Treasury reads open credit invoices for aging through this service (module boundary).
+  exports: [PurchaseInvoicesService],
 })
 export class PurchasesModule {}

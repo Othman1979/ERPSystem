@@ -1,19 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { DeleteOutlined, PlusOutlined, PrinterOutlined, SaveOutlined } from '@ant-design/icons';
 import {
-  ArrowLeftOutlined,
-  ArrowRightOutlined,
-  DeleteOutlined,
-  PlusOutlined,
-  SaveOutlined,
-} from '@ant-design/icons';
-import {
+  App,
   Button,
-  Card,
+  Radio,
   DatePicker,
-  Descriptions,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Select,
   Space,
@@ -24,7 +17,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   emptyInvoiceLine,
@@ -38,8 +31,10 @@ import {
   focusNamedField,
   GridSelect,
 } from '../components/GridSelect';
-import { StatusBar } from '../components/StatusBar';
 import { PageHeader } from '../components/PageHeader';
+import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { useNewFromUrl } from '../useNewFromUrl';
 import {
   ApiError,
   accountingControllerListAccounts,
@@ -60,6 +55,9 @@ import {
   settingsControllerListTaxCategories,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
+import { codeAndName, displayName } from '../i18n/displayName';
+import { amountCell, qtyCell, unitCostCell } from '../format/cells';
+import { dec, formatAmount } from '../format/number';
 
 // ------------------------------------------------------------------ types
 
@@ -92,6 +90,7 @@ interface AccountNode {
   id: string;
   code: string;
   nameAr: string;
+  nameEn?: string | null;
   controlType?: string | null;
   children?: AccountNode[];
 }
@@ -149,7 +148,7 @@ interface SalesReturn {
   lines?: ReturnLine[];
 }
 
-const money = (v?: string | null) => (v != null ? Number(v).toFixed(2) : '—');
+const money = (v?: string | null) => formatAmount(v);
 
 // ------------------------------------------------------------------ page
 
@@ -203,8 +202,8 @@ function useSalesLookups() {
   });
 
   const taxRateById = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const tc of taxes.data ?? []) m.set(tc.id, Number(tc.rate));
+    const m = new Map<string, string>();
+    for (const tc of taxes.data ?? []) m.set(tc.id, tc.rate);
     return m;
   }, [taxes.data]);
   const defaultTaxId = useMemo(
@@ -218,26 +217,26 @@ function useSalesLookups() {
         .filter((i) => i.itemKind !== undefined)
         .map((i) => ({
           id: i.id,
-          label: `${i.code} — ${i.nameAr}`,
-          price: i.salePrice != null ? Number(i.salePrice) : null,
-          taxRate: taxRateById.get(i.taxCategoryId ?? '') ?? taxRateById.get(defaultTaxId ?? '') ?? 0,
+          label: codeAndName(i),
+          price: i.salePrice ?? null,
+          taxRate: taxRateById.get(i.taxCategoryId ?? '') ?? taxRateById.get(defaultTaxId ?? '') ?? '0',
           itemKind: i.itemKind,
         })),
     [items.data, taxRateById, defaultTaxId],
   );
 
   const cashAccountOptions = useMemo(() => {
-    const flat: { id: string; code: string; nameAr: string }[] = [];
+    const flat: { id: string; code: string; nameAr: string; nameEn?: string | null }[] = [];
     const walk = (ns: AccountNode[]) => {
       for (const n of ns) {
         if (n.controlType === 'CASH' || n.controlType === 'BANK') {
-          flat.push({ id: n.id, code: n.code, nameAr: n.nameAr });
+          flat.push({ id: n.id, code: n.code, nameAr: n.nameAr, nameEn: n.nameEn });
         }
         if (n.children) walk(n.children);
       }
     };
     walk(accounts.data ?? []);
-    return flat.map((a) => ({ value: a.id, label: `${a.code} — ${a.nameAr}` }));
+    return flat.map((a) => ({ value: a.id, label: codeAndName(a) }));
   }, [accounts.data]);
 
   return {
@@ -258,13 +257,21 @@ function InvoicesTab() {
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
   const lookups = useSalesLookups();
+  useNewFromUrl(() => {
+    setInvoiceId(null);
+    setScreen('form');
+  });
 
+  const [paymentFilter, setPaymentFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
   const { data: invoices, isLoading } = useQuery({
-    queryKey: ['sales-invoices', statusFilter],
+    queryKey: ['sales-invoices', statusFilter, paymentFilter],
     queryFn: () =>
-      salesControllerListInvoices({ status: statusFilter ?? '', paymentType: '', customerId: '' }).then(
-        (r) => r.data as unknown as SalesInvoice[],
-      ),
+      salesControllerListInvoices({
+        status: statusFilter ?? '',
+        paymentType: paymentFilter ?? '',
+        customerId: '',
+      }).then((r) => r.data as unknown as SalesInvoice[]),
     enabled: screen === 'list',
   });
 
@@ -309,6 +316,7 @@ function InvoicesTab() {
     {
       title: t('sales.invoiceNo'),
       dataIndex: 'invoiceNo',
+      className: 'nowrap',
       width: 140,
       render: (v: string | null, r: SalesInvoice) => v ?? `#${r.id}`,
     },
@@ -321,7 +329,7 @@ function InvoicesTab() {
     {
       title: t('sales.customer'),
       dataIndex: 'customer',
-      render: (_: unknown, r: SalesInvoice) => r.customer?.nameAr ?? '—',
+      render: (_: unknown, r: SalesInvoice) => displayName(r.customer) ?? '—',
     },
     {
       title: t('sales.paymentType'),
@@ -335,15 +343,15 @@ function InvoicesTab() {
       title: t('sales.grandTotal'),
       dataIndex: 'grandTotal',
       width: 120,
-      align: 'end' as const,
-      render: money,
+      align: 'right' as const,
+      render: amountCell,
     },
     {
       title: t('sales.paid'),
       dataIndex: 'paidAmount',
       width: 110,
-      align: 'end' as const,
-      render: money,
+      align: 'right' as const,
+      render: amountCell,
     },
     {
       title: t('common.status'),
@@ -392,36 +400,59 @@ function InvoicesTab() {
     );
   }
 
+  const shown = (invoices ?? []).filter((r) =>
+    matchesSearch(search, r.invoiceNo, displayName(r.customer)),
+  );
+
   return (
     <div>
       {contextHolder}
-      <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
-        <Select
-          allowClear
-          placeholder={t('common.status')}
-          style={{ width: 160 }}
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={[
-            { value: 'DRAFT', label: t('common.draft') },
-            { value: 'POSTED', label: t('common.posted') },
-          ]}
-        />
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setInvoiceId(null);
-            setScreen('form');
-          }}
-        >
-          {t('sales.newInvoice')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        searchPlaceholder={t('sales.searchPlaceholder')}
+        filters={
+          <>
+            <Select
+              allowClear
+              placeholder={t('common.status')}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: 'DRAFT', label: t('common.draft') },
+                { value: 'POSTED', label: t('common.posted') },
+              ]}
+            />
+            <Select
+              allowClear
+              placeholder={t('sales.paymentType')}
+              value={paymentFilter}
+              onChange={setPaymentFilter}
+              options={[
+                { value: 'CREDIT', label: t('sales.CREDIT') },
+                { value: 'CASH', label: t('sales.CASH') },
+              ]}
+            />
+          </>
+        }
+        count={shown.length}
+        actions={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setInvoiceId(null);
+              setScreen('form');
+            }}
+          >
+            {t('sales.newInvoice')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={invoices ?? []}
+        dataSource={shown}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}
@@ -448,8 +479,14 @@ function InvoiceForm({
   onBack: () => void;
   onSaved: (id: string) => void;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [apiMessage, contextHolder] = message.useMessage();
+  // Keyboard entry starts at the first field the user must fill.
+  useEffect(() => {
+    if (loading) return;
+    const id = requestAnimationFrame(() => focusNamedField('customer'));
+    return () => cancelAnimationFrame(id);
+  }, [loading]);
   const [invoiceDate, setInvoiceDate] = useState<Dayjs>(
     invoice ? dayjs(invoice.invoiceDate) : dayjs(),
   );
@@ -467,9 +504,9 @@ function InvoiceForm({
       return invoice.lines.map((l, i) => ({
         key: i + 1,
         itemId: l.itemId,
-        qty: Number(l.qtyBase),
-        price: Number(l.unitPrice),
-        discountPct: Number(l.discountPct),
+        qty: l.qtyBase,
+        price: l.unitPrice,
+        discountPct: l.discountPct,
       }));
     }
     return [emptyInvoiceLine(1), emptyInvoiceLine(2)];
@@ -477,11 +514,11 @@ function InvoiceForm({
 
   const customerOptions = lookups.parties.map((p) => ({
     value: p.id,
-    label: `${p.code} — ${p.nameAr}`,
+    label: codeAndName(p),
   }));
   const warehouseOptions = lookups.warehouses.map((w) => ({
     value: w.id,
-    label: `${w.code} — ${w.nameAr}`,
+    label: codeAndName(w),
   }));
 
   const save = useMutation({
@@ -498,8 +535,8 @@ function InvoiceForm({
           .map((l) => ({
             itemId: l.itemId,
             qty: String(l.qty),
-            unitPrice: String(l.price ?? 0),
-            discountPct: l.discountPct != null ? String(l.discountPct) : undefined,
+            unitPrice: l.price ?? '0',
+            discountPct: l.discountPct ?? undefined,
           })),
       } as never;
       const res = isNew
@@ -520,118 +557,134 @@ function InvoiceForm({
       ),
   });
 
-  const canSave =
-    !!customerId && !!warehouseId && (paymentType === 'CREDIT' || !!cashAccountId) &&
-    lines.some((l) => l.itemId && l.qty);
+  // Save stays enabled: a save attempt with gaps marks the missing fields instead.
+  const [tried, setTried] = useState(false);
+  const missing = {
+    customer: !customerId,
+    warehouse: !warehouseId,
+    cashAccount: paymentType === 'CASH' && !cashAccountId,
+    lines: !lines.some((l) => l.itemId && l.qty),
+  };
+  const trySave = () => {
+    if (save.isPending) return;
+    const firstMissing = (['customer', 'warehouse', 'cashAccount'] as const).find((k) => missing[k]);
+    if (firstMissing || missing.lines) {
+      setTried(true);
+      if (firstMissing) focusNamedField(firstMissing);
+      else apiMessage.warning(t('stock.minLines'));
+      return;
+    }
+    save.mutate();
+  };
+  useDocShortcuts({ onSave: trySave });
+  const requiredError = (gap: boolean) => (tried && gap ? t('common.requiredField') : undefined);
 
   if (loading) return <Typography.Text>{t('common.loading')}</Typography.Text>;
 
   return (
-    <Card
-      title={
-        <Space>
-          <Button
-            type="text"
-            icon={i18n.dir() === 'rtl' ? <ArrowRightOutlined /> : <ArrowLeftOutlined />}
-            onClick={onBack}
-          />
-          {isNew ? t('sales.newInvoice') : invoice?.invoiceNo ?? `#${invoice?.id}`}
-        </Space>
+    <DocLayout
+      title={isNew ? t('sales.newInvoice') : t('sales.invoiceTitle')}
+      docNo={invoice?.invoiceNo}
+      status="DRAFT"
+      onBack={onBack}
+      actions={
+        <Button type="primary" icon={<SaveOutlined />} loading={save.isPending} onClick={trySave}>
+          {isNew ? t('common.saveDraft') : t('common.save')}
+          <span className="doc-kbd">Ctrl+S</span>
+        </Button>
       }
     >
       {contextHolder}
-      <Space wrap style={{ marginBottom: 16 }}>
-        <div data-field="customer" onKeyDown={enterTo(() => focusNamedField('warehouse'))}>
-          <Typography.Text type="secondary">{t('sales.customer')} *</Typography.Text>
+      <DocFields>
+        <DocField
+          field="customer"
+          label={t('sales.customer')}
+          required
+          error={requiredError(missing.customer)}
+          onKeyDown={enterTo(() => focusNamedField('warehouse'))}
+        >
           <GridSelect
             enterOpens
-            style={{ width: 260, display: 'block' }}
+            status={requiredError(missing.customer) ? 'error' : undefined}
             options={customerOptions}
             value={customerId}
             onChange={setCustomerId}
           />
-        </div>
-        <div data-field="warehouse" onKeyDown={enterTo(() => focusNamedField('invoiceDate'))}>
-          <Typography.Text type="secondary">{t('sales.warehouse')} *</Typography.Text>
+        </DocField>
+        <DocField
+          field="warehouse"
+          label={t('sales.warehouse')}
+          required
+          error={requiredError(missing.warehouse)}
+          onKeyDown={enterTo(() => focusNamedField('invoiceDate'))}
+        >
           <GridSelect
             enterOpens
-            style={{ width: 200, display: 'block' }}
+            status={requiredError(missing.warehouse) ? 'error' : undefined}
             options={warehouseOptions}
             value={warehouseId}
             onChange={setWarehouseId}
           />
-        </div>
-        <div data-field="invoiceDate" onKeyDown={enterTo(() => focusNamedField('dueDate'))}>
-          <Typography.Text type="secondary">{t('sales.invoiceDate')}</Typography.Text>
-          <DatePicker
-            style={{ display: 'block' }}
-            value={invoiceDate}
-            onChange={(d) => d && setInvoiceDate(d)}
-          />
-        </div>
-        <div data-field="dueDate" onKeyDown={enterTo(() => focusNamedField('paymentType'))}>
-          <Typography.Text type="secondary">{t('sales.dueDate')}</Typography.Text>
-          <DatePicker
-            style={{ display: 'block' }}
-            value={dueDate}
-            onChange={setDueDate}
-            allowClear
-          />
-        </div>
-        <div
-          data-field="paymentType"
+        </DocField>
+        <DocField
+          field="invoiceDate"
+          label={t('sales.invoiceDate')}
+          onKeyDown={enterTo(() => focusNamedField('dueDate'))}
+        >
+          <DatePicker value={invoiceDate} onChange={(d) => d && setInvoiceDate(d)} />
+        </DocField>
+        <DocField
+          field="dueDate"
+          label={t('sales.dueDate')}
+          onKeyDown={enterTo(() => focusNamedField('paymentType'))}
+        >
+          <DatePicker value={dueDate} onChange={setDueDate} allowClear />
+        </DocField>
+        <DocField
+          field="paymentType"
+          label={t('sales.paymentType')}
           onKeyDown={enterTo(() =>
             paymentType === 'CASH' ? focusNamedField('cashAccount') : focusFirstGridCell(),
           )}
         >
-          <Typography.Text type="secondary">{t('sales.paymentType')}</Typography.Text>
-          <GridSelect
-            enterOpens
-            style={{ width: 140, display: 'block' }}
+          {/* Arrow keys switch between the two options (native radio group). */}
+          <Radio.Group
+            name="paymentType"
+            optionType="button"
+            buttonStyle="solid"
             value={paymentType}
-            onChange={setPaymentType}
+            onChange={(e) => setPaymentType(e.target.value)}
             options={[
-              { value: 'CASH', label: t('sales.CASH') },
               { value: 'CREDIT', label: t('sales.CREDIT') },
+              { value: 'CASH', label: t('sales.CASH') },
             ]}
           />
-        </div>
+        </DocField>
         {paymentType === 'CASH' && (
-          <div
-            data-field="cashAccount"
+          <DocField
+            field="cashAccount"
+            label={t('sales.cashAccount')}
+            required
+            error={requiredError(missing.cashAccount)}
             onKeyDown={enterTo(focusFirstGridCell)}
           >
-            <Typography.Text type="secondary">{t('sales.cashAccount')}</Typography.Text>
             <GridSelect
               enterOpens
-              style={{ width: 220, display: 'block' }}
+              status={requiredError(missing.cashAccount) ? 'error' : undefined}
               options={lookups.cashAccountOptions}
               value={cashAccountId}
               onChange={setCashAccountId}
             />
-          </div>
+          </DocField>
         )}
-      </Space>
+      </DocFields>
 
       <InvoiceLinesGrid
         lines={lines}
         onChange={setLines}
         itemOptions={lookups.itemOptions}
-        focusSignal={1}
       />
-
-      <div style={{ marginTop: 16, textAlign: 'end' }}>
-        <Button
-          type="primary"
-          icon={<SaveOutlined />}
-          disabled={!canSave}
-          loading={save.isPending}
-          onClick={() => save.mutate()}
-        >
-          {isNew ? t('common.saveDraft') : t('common.save')}
-        </Button>
-      </div>
-    </Card>
+    </DocLayout>
   );
 }
 
@@ -654,79 +707,90 @@ function InvoiceView({
   onDelete: (id: string) => void;
   posting: boolean;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [, contextHolder] = message.useMessage();
+  const { modal } = App.useApp();
+  const isDraft = invoice?.status === 'DRAFT';
+  // Ctrl+Enter posts a draft, behind the same confirmation as the button.
+  const confirmPost = () => {
+    if (!invoice || !isDraft || posting) return;
+    modal.confirm({ title: t('sales.postConfirm'), onOk: () => onPost(invoice.id) });
+  };
+  useDocShortcuts({ onPost: confirmPost });
   if (loading || !invoice) {
     return <Typography.Text>{t('common.loading')}</Typography.Text>;
   }
-  const isDraft = invoice.status === 'DRAFT';
+  const remaining = dec(invoice.grandTotal).minus(dec(invoice.paidAmount));
   return (
-    <Card
-      title={
-        <Space>
-          <Button
-            type="text"
-            icon={i18n.dir() === 'rtl' ? <ArrowRightOutlined /> : <ArrowLeftOutlined />}
-            onClick={onBack}
-          />
-          <Typography.Text strong>
-            {invoice.invoiceNo ?? `#${invoice.id}`}
-          </Typography.Text>
-          <Tag color={invoice.paymentType === 'CASH' ? 'green' : 'blue'}>
-            {t(`sales.${invoice.paymentType}`)}
-          </Tag>
-          <StatusBar status={invoice.status} />
-        </Space>
-      }
-      extra={
-        <Space>
+    <DocLayout
+      title={t('sales.invoiceTitle')}
+      docNo={invoice.invoiceNo ?? `#${invoice.id}`}
+      status={invoice.status}
+      onBack={onBack}
+      actions={
+        <>
           {contextHolder}
           {isDraft && (
             <>
               <Button onClick={onEdit}>{t('common.edit')}</Button>
-              <Popconfirm
-                title={t('sales.postConfirm')}
-                onConfirm={() => {
-                  onPost(invoice.id);
-                }}
-              >
+              <Popconfirm title={t('sales.postConfirm')} onConfirm={() => onPost(invoice.id)}>
                 <Button type="primary" loading={posting}>
                   {t('common.post')}
+                  <span className="doc-kbd">Ctrl+Enter</span>
                 </Button>
               </Popconfirm>
-              <Popconfirm
-                title={t('common.deleteConfirm')}
-                onConfirm={() => onDelete(invoice.id)}
-              >
-                <Button danger icon={<DeleteOutlined />} />
+              <Popconfirm title={t('common.deleteConfirm')} onConfirm={() => onDelete(invoice.id)}>
+                <Button danger icon={<DeleteOutlined />} aria-label={t('common.delete')} />
               </Popconfirm>
             </>
           )}
-        </Space>
+          <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
+            {t('common.print')}
+          </Button>
+        </>
       }
     >
-      <Descriptions size="small" column={3} style={{ marginBottom: 16 }}>
-        <Descriptions.Item label={t('sales.customer')}>
-          {invoice.customer?.nameAr}
-        </Descriptions.Item>
-        <Descriptions.Item label={t('sales.invoiceDate')}>
-          {dayjs(invoice.invoiceDate).format('YYYY-MM-DD')}
-        </Descriptions.Item>
-        <Descriptions.Item label={t('sales.dueDate')}>
-          {invoice.dueDate ? dayjs(invoice.dueDate).format('YYYY-MM-DD') : '—'}
-        </Descriptions.Item>
-        <Descriptions.Item label={t('sales.net')}>{money(invoice.netTotal)}</Descriptions.Item>
-        <Descriptions.Item label={t('sales.tax')}>{money(invoice.taxTotal)}</Descriptions.Item>
-        <Descriptions.Item label={t('sales.grandTotal')}>
-          <Typography.Text strong>{money(invoice.grandTotal)}</Typography.Text>
-        </Descriptions.Item>
-        <Descriptions.Item label={t('sales.paid')}>{money(invoice.paidAmount)}</Descriptions.Item>
-        {!!invoice.costTotal && Number(invoice.costTotal) > 0 && (
-          <Descriptions.Item label={t('sales.costTotal')}>
-            {money(invoice.costTotal)}
-          </Descriptions.Item>
+      <DocFields>
+        <DocField label={t('sales.customer')}>
+          <DocValue>{displayName(invoice.customer)}</DocValue>
+        </DocField>
+        <DocField label={t('sales.paymentType')}>
+          <DocValue>
+            <Tag color={invoice.paymentType === 'CASH' ? 'green' : 'blue'}>
+              {t(`sales.${invoice.paymentType}`)}
+            </Tag>
+          </DocValue>
+        </DocField>
+        <DocField label={t('sales.invoiceDate')}>
+          <DocValue>{dayjs(invoice.invoiceDate).format('YYYY-MM-DD')}</DocValue>
+        </DocField>
+        <DocField label={t('sales.dueDate')}>
+          <DocValue>{invoice.dueDate ? dayjs(invoice.dueDate).format('YYYY-MM-DD') : '—'}</DocValue>
+        </DocField>
+        <DocField label={t('sales.net')}>
+          <DocValue>{amountCell(invoice.netTotal)}</DocValue>
+        </DocField>
+        <DocField label={t('sales.tax')}>
+          <DocValue>{amountCell(invoice.taxTotal)}</DocValue>
+        </DocField>
+        <DocField label={t('sales.grandTotal')}>
+          <DocValue>{amountCell(invoice.grandTotal)}</DocValue>
+        </DocField>
+        <DocField label={`${t('sales.paid')} / ${t('sales.remaining')}`}>
+          <DocValue>
+            {amountCell(invoice.paidAmount)}
+            <span style={{ margin: '0 6px' }}>/</span>
+            <Typography.Text type={remaining.gt(0) && !isDraft ? 'danger' : undefined}>
+              {amountCell(remaining)}
+            </Typography.Text>
+          </DocValue>
+        </DocField>
+        {dec(invoice.costTotal).gt(0) && (
+          <DocField label={t('sales.costTotal')}>
+            <DocValue>{amountCell(invoice.costTotal)}</DocValue>
+          </DocField>
         )}
-      </Descriptions>
+      </DocFields>
       <Table
         rowKey="id"
         size="small"
@@ -737,17 +801,17 @@ function InvoiceView({
           {
             title: t('items.title'),
             render: (_: unknown, l: InvoiceLine) =>
-              l.item ? `${l.item.code} — ${l.item.nameAr}` : l.itemId,
+              l.item ? codeAndName(l.item) : l.itemId,
           },
-          { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'end' as const, render: money },
-          { title: t('sales.unitPrice'), dataIndex: 'unitPrice', width: 110, align: 'end' as const, render: money },
-          { title: t('sales.discountPct'), dataIndex: 'discountPct', width: 90, align: 'end' as const },
-          { title: t('sales.net'), dataIndex: 'netAmount', width: 110, align: 'end' as const, render: money },
-          { title: t('sales.tax'), dataIndex: 'taxAmount', width: 100, align: 'end' as const, render: money },
-          { title: t('sales.total'), dataIndex: 'lineTotal', width: 110, align: 'end' as const, render: money },
+          { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'right' as const, render: qtyCell },
+          { title: t('sales.unitPrice'), dataIndex: 'unitPrice', width: 110, align: 'right' as const, render: unitCostCell },
+          { title: t('sales.discountPct'), dataIndex: 'discountPct', width: 90, align: 'right' as const },
+          { title: t('sales.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, render: amountCell },
+          { title: t('sales.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
+          { title: t('sales.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
         ]}
       />
-    </Card>
+    </DocLayout>
   );
 }
 
@@ -757,6 +821,7 @@ function ReturnsTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
@@ -808,6 +873,7 @@ function ReturnsTab() {
     {
       title: t('sales.returnNo'),
       dataIndex: 'returnNo',
+      className: 'nowrap',
       width: 140,
       render: (v: string | null, r: SalesReturn) => v ?? `#${r.id}`,
     },
@@ -825,7 +891,7 @@ function ReturnsTab() {
     {
       title: t('sales.customer'),
       dataIndex: 'customer',
-      render: (_: unknown, r: SalesReturn) => r.customer?.nameAr ?? '—',
+      render: (_: unknown, r: SalesReturn) => displayName(r.customer) ?? '—',
     },
     {
       title: t('sales.refundType'),
@@ -833,7 +899,7 @@ function ReturnsTab() {
       width: 110,
       render: (v: string) => <Tag color={v === 'CASH' ? 'green' : 'blue'}>{t(`sales.${v}`)}</Tag>,
     },
-    { title: t('sales.grandTotal'), dataIndex: 'grandTotal', width: 120, align: 'end' as const, render: money },
+    { title: t('sales.grandTotal'), dataIndex: 'grandTotal', width: 120, align: 'right' as const, render: amountCell },
     {
       title: t('common.status'),
       dataIndex: 'status',
@@ -850,12 +916,16 @@ function ReturnsTab() {
           <Button size="small" onClick={() => setViewId(r.id)}>{t('common.view')}</Button>
           {r.status === 'DRAFT' && (
             <>
-              <Button size="small" type="primary" onClick={() => post.mutate(r.id)}>
+              <Popconfirm title={t('common.confirmPost')} onConfirm={() => post.mutate(r.id)}>
+<Button size="small" type="primary" >
                 {t('common.post')}
               </Button>
-              <Button size="small" danger onClick={() => del.mutate(r.id)}>
+</Popconfirm>
+              <Popconfirm title={t('common.confirmDelete')} onConfirm={() => del.mutate(r.id)}>
+<Button size="small" danger >
                 {t('common.delete')}
               </Button>
+</Popconfirm>
             </>
           )}
         </Space>
@@ -863,93 +933,130 @@ function ReturnsTab() {
     },
   ];
 
-  return (
-    <div>
-      {contextHolder}
-      <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
-        <Select
-          allowClear
-          placeholder={t('common.status')}
-          style={{ width: 160 }}
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={[
-            { value: 'DRAFT', label: t('common.draft') },
-            { value: 'POSTED', label: t('common.posted') },
-          ]}
-        />
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-          {t('sales.newReturn')}
-        </Button>
-      </Space>
-      <Table
-        rowKey="id"
-        loading={isLoading}
-        dataSource={returns ?? []}
-        columns={columns}
-        size="small"
-        pagination={{ pageSize: 20 }}
-      />
-      <ReturnModal
-        open={modalOpen}
+  // A new return and an existing return each open as a full document page.
+  if (modalOpen) {
+    return (
+      <ReturnForm
         onClose={() => setModalOpen(false)}
         onCreated={() => {
           setModalOpen(false);
           invalidate();
         }}
       />
-      <Modal
-        open={!!viewId}
-        title={view?.returnNo ?? t('sales.returnDetail')}
-        onCancel={() => setViewId(null)}
-        footer={null}
-        width={720}
-      >
-        {view && (
-          <>
-            <Descriptions size="small" column={2} style={{ marginBottom: 12 }}>
-              <Descriptions.Item label={t('sales.invoice')}>
-                {view.originalInvoice?.invoiceNo}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('sales.customer')}>
-                {view.customer?.nameAr}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('sales.refundType')}>
-                {t(`sales.${view.refundType}`)}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('sales.grandTotal')}>
-                {money(view.grandTotal)}
-              </Descriptions.Item>
-            </Descriptions>
-            <Table
-              rowKey="id"
-              size="small"
-              pagination={false}
-              dataSource={view.lines ?? []}
-              columns={[
-                { title: '#', width: 50, render: (_: unknown, l: ReturnLine) => l.originalLine?.lineNo },
-                {
-                  title: t('items.title'),
-                  render: (_: unknown, l: ReturnLine) =>
-                    l.item ? `${l.item.code} — ${l.item.nameAr}` : l.itemId,
-                },
-                { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'end' as const, render: money },
-                { title: t('sales.total'), dataIndex: 'lineTotal', width: 120, align: 'end' as const, render: money },
-              ]}
-            />
-          </>
-        )}
-      </Modal>
+    );
+  }
+
+  if (viewId) {
+    return (
+      <>
+        {contextHolder}
+        <DocLayout
+          title={t('sales.returnDetail')}
+          docNo={view?.returnNo}
+          status={view?.status}
+          onBack={() => setViewId(null)}
+          actions={
+            <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
+              {t('common.print')}
+            </Button>
+          }
+        >
+          {view ? (
+            <>
+              <DocFields>
+                <DocField label={t('sales.invoice')}>
+                  <DocValue>
+                    <span className="doc-no">{view.originalInvoice?.invoiceNo ?? '—'}</span>
+                  </DocValue>
+                </DocField>
+                <DocField label={t('sales.customer')}>
+                  <DocValue>{displayName(view.customer)}</DocValue>
+                </DocField>
+                <DocField label={t('sales.date')}>
+                  <DocValue>{dayjs(view.returnDate).format('YYYY-MM-DD')}</DocValue>
+                </DocField>
+                <DocField label={t('sales.refundType')}>
+                  <DocValue>{t(`sales.${view.refundType}`)}</DocValue>
+                </DocField>
+                <DocField label={t('sales.grandTotal')}>
+                  <DocValue>{amountCell(view.grandTotal)}</DocValue>
+                </DocField>
+                {view.reason && (
+                  <DocField label={t('common.reason')}>
+                    <DocValue>{view.reason}</DocValue>
+                  </DocField>
+                )}
+              </DocFields>
+              <Table
+                rowKey="id"
+                size="small"
+                pagination={false}
+                dataSource={view.lines ?? []}
+                columns={[
+                  { title: '#', width: 50, render: (_: unknown, l: ReturnLine) => l.originalLine?.lineNo },
+                  {
+                    title: t('items.title'),
+                    render: (_: unknown, l: ReturnLine) =>
+                      l.item ? codeAndName(l.item) : l.itemId,
+                  },
+                  { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'right' as const, render: qtyCell },
+                  { title: t('sales.total'), dataIndex: 'lineTotal', width: 120, align: 'right' as const, render: amountCell },
+                ]}
+              />
+            </>
+          ) : (
+            <div className="doc-section">{t('common.loading')}</div>
+          )}
+        </DocLayout>
+      </>
+    );
+  }
+
+  const shown = (returns ?? []).filter((r) =>
+    matchesSearch(search, r.returnNo, r.originalInvoice?.invoiceNo, displayName(r.customer)),
+  );
+
+  return (
+    <div>
+      {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        filters={
+          <Select
+            allowClear
+            placeholder={t('common.status')}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: 'DRAFT', label: t('common.draft') },
+              { value: 'POSTED', label: t('common.posted') },
+            ]}
+          />
+        }
+        count={shown.length}
+        actions={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+            {t('sales.newReturn')}
+          </Button>
+        }
+      />
+      <Table
+        rowKey="id"
+        loading={isLoading}
+        dataSource={shown}
+        columns={columns}
+        size="small"
+        pagination={{ pageSize: 20 }}
+      />
     </div>
   );
 }
 
-function ReturnModal({
-  open,
+function ReturnForm({
   onClose,
   onCreated,
 }: {
-  open: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -960,7 +1067,7 @@ function ReturnModal({
   const [refundType, setRefundType] = useState<'CASH' | 'CREDIT'>('CREDIT');
   const [cashAccountId, setCashAccountId] = useState<string | undefined>();
   const [reason, setReason] = useState('');
-  const [qtyByLine, setQtyByLine] = useState<Record<string, number>>({});
+  const [qtyByLine, setQtyByLine] = useState<Record<string, string>>({});
 
   const lookups = useSalesLookups();
   const { data: invoices } = useQuery({
@@ -969,7 +1076,6 @@ function ReturnModal({
       salesControllerListInvoices({ status: 'POSTED', paymentType: '', customerId: '' }).then(
         (r) => r.data as unknown as SalesInvoice[],
       ),
-    enabled: open,
   });
   const { data: invoice } = useQuery({
     queryKey: ['sales-invoice', invoiceId],
@@ -987,8 +1093,8 @@ function ReturnModal({
         cashAccountId: refundType === 'CASH' ? cashAccountId : undefined,
         reason: reason || undefined,
         lines: (invoice?.lines ?? [])
-          .filter((l) => (qtyByLine[l.id] ?? 0) > 0)
-          .map((l) => ({ originalLineId: l.id, qty: String(qtyByLine[l.id]) })),
+          .filter((l) => dec(qtyByLine[l.id]).gt(0))
+          .map((l) => ({ originalLineId: l.id, qty: qtyByLine[l.id] })),
       } as never),
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
@@ -1021,47 +1127,50 @@ function ReturnModal({
       ),
   });
 
-  const hasLines = Object.values(qtyByLine).some((q) => q > 0);
+  const hasLines = Object.values(qtyByLine).some((q) => dec(q).gt(0));
+  // Save stays enabled: a save attempt with gaps marks what's missing instead.
+  const [tried, setTried] = useState(false);
+  const busy = create.isPending || postCreated.isPending;
+  const trySave = (andPost: boolean) => {
+    if (busy) return;
+    if (!invoiceId || !hasLines) {
+      setTried(true);
+      if (invoiceId) apiMessage.warning(t('stock.minLines'));
+      return;
+    }
+    if (andPost) postCreated.mutate();
+    else create.mutate();
+  };
+  useDocShortcuts({ onSave: () => trySave(false) });
+  const invoiceError = tried && !invoiceId ? t('common.requiredField') : undefined;
 
   return (
-    <Modal
-      open={open}
+    <DocLayout
       title={t('sales.newReturn')}
-      onCancel={onClose}
-      width={760}
-      footer={[
-        <Button key="cancel" onClick={onClose}>{t('common.cancel')}</Button>,
-        <Button
-          key="draft"
-          disabled={!invoiceId || !hasLines}
-          loading={create.isPending}
-          onClick={() => create.mutate()}
-        >
-          {t('common.saveDraft')}
-        </Button>,
-        <Button
-          key="post"
-          type="primary"
-          disabled={!invoiceId || !hasLines}
-          loading={postCreated.isPending}
-          onClick={() => postCreated.mutate()}
-        >
-          {t('sales.createAndPost')}
-        </Button>,
-      ]}
-      destroyOnHidden
+      status="DRAFT"
+      onBack={onClose}
+      actions={
+        <>
+          <Button loading={create.isPending} onClick={() => trySave(false)}>
+            {t('common.saveDraft')}
+            <span className="doc-kbd">Ctrl+S</span>
+          </Button>
+          <Button type="primary" loading={postCreated.isPending} onClick={() => trySave(true)}>
+            {t('sales.createAndPost')}
+          </Button>
+        </>
+      }
     >
       {contextHolder}
-      <Space wrap style={{ marginBottom: 12 }}>
-        <div>
-          <Typography.Text type="secondary">{t('sales.invoice')}</Typography.Text>
+      <DocFields>
+        <DocField label={t('sales.invoice')} required error={invoiceError}>
           <Select
             showSearch
             optionFilterProp="label"
-            style={{ width: 280, display: 'block' }}
+            status={invoiceError ? 'error' : undefined}
             options={(invoices ?? []).map((i) => ({
               value: i.id,
-              label: `${i.invoiceNo ?? `#${i.id}`} — ${i.customer?.nameAr ?? ''} — ${money(i.grandTotal)}`,
+              label: `${i.invoiceNo ?? `#${i.id}`} — ${displayName(i.customer) ?? ''} — ${money(i.grandTotal)}`,
             }))}
             value={invoiceId}
             onChange={(v) => {
@@ -1069,45 +1178,38 @@ function ReturnModal({
               setQtyByLine({});
             }}
           />
-        </div>
-        <div>
-          <Typography.Text type="secondary">{t('sales.date')}</Typography.Text>
-          <DatePicker style={{ display: 'block' }} value={returnDate} onChange={(d) => d && setReturnDate(d)} />
-        </div>
-        <div>
-          <Typography.Text type="secondary">{t('sales.refundType')}</Typography.Text>
-          <Select
-            style={{ width: 140, display: 'block' }}
+        </DocField>
+        <DocField label={t('sales.date')}>
+          <DatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} />
+        </DocField>
+        <DocField label={t('sales.refundType')}>
+          <Radio.Group
+            name="refundType"
+            optionType="button"
+            buttonStyle="solid"
             value={refundType}
-            onChange={setRefundType}
+            onChange={(e) => setRefundType(e.target.value)}
             options={[
-              { value: 'CASH', label: t('sales.CASH') },
               { value: 'CREDIT', label: t('sales.CREDIT') },
+              { value: 'CASH', label: t('sales.CASH') },
             ]}
           />
-        </div>
+        </DocField>
         {refundType === 'CASH' && (
-          <div>
-            <Typography.Text type="secondary">{t('sales.cashAccount')}</Typography.Text>
+          <DocField label={t('sales.cashAccount')}>
             <Select
               showSearch
               optionFilterProp="label"
-              style={{ width: 200, display: 'block' }}
               options={lookups.cashAccountOptions}
               value={cashAccountId}
               onChange={setCashAccountId}
             />
-          </div>
+          </DocField>
         )}
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <Typography.Text type="secondary">{t('common.reason')}</Typography.Text>
-          <Input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            maxLength={500}
-          />
-        </div>
-      </Space>
+        <DocField label={t('common.reason')}>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
+        </DocField>
+      </DocFields>
 
       {invoice?.lines && invoice.lines.length > 0 && (
         <Table
@@ -1120,24 +1222,25 @@ function ReturnModal({
             {
               title: t('items.title'),
               render: (_: unknown, l: InvoiceLine) =>
-                l.item ? `${l.item.code} — ${l.item.nameAr}` : l.itemId,
+                l.item ? codeAndName(l.item) : l.itemId,
             },
             {
               title: t('stock.qty'),
               dataIndex: 'qtyBase',
               width: 100,
-              align: 'end' as const,
-              render: (v: string) => Number(v).toFixed(3),
+              align: 'right' as const,
+              render: qtyCell,
             },
             {
               title: t('sales.returnQty'),
               width: 130,
               render: (_: unknown, l: InvoiceLine) => (
-                <InputNumber
-                  min={0}
-                  max={Number(l.qtyBase)}
-                  value={qtyByLine[l.id] ?? 0}
-                  onChange={(v) => setQtyByLine((m) => ({ ...m, [l.id]: v ?? 0 }))}
+                <InputNumber<string>
+                  stringMode
+                  min="0"
+                  max={l.qtyBase}
+                  value={qtyByLine[l.id] ?? '0'}
+                  onChange={(v) => setQtyByLine((m) => ({ ...m, [l.id]: v ?? '0' }))}
                   style={{ width: '100%' }}
                   size="small"
                 />
@@ -1147,12 +1250,12 @@ function ReturnModal({
               title: t('sales.total'),
               dataIndex: 'lineTotal',
               width: 110,
-              align: 'end' as const,
-              render: money,
+              align: 'right' as const,
+              render: amountCell,
             },
           ]}
         />
       )}
-    </Modal>
+    </DocLayout>
   );
 }

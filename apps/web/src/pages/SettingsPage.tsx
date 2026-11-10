@@ -5,7 +5,7 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
+  Popconfirm,
   Space,
   Table,
   Tabs,
@@ -26,7 +26,12 @@ import {
   settingsControllerUpdateTaxCategory,
   settingsControllerUpdateUnit,
 } from '@erp/api-client';
+import { SettingOutlined } from '@ant-design/icons';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { displayName } from '../i18n/displayName';
+import { Num } from '../components/Num';
+import { formatPercent } from '../format/number';
 
 type LookupKind = 'unit' | 'taxCategory' | 'paymentMethod';
 
@@ -84,7 +89,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
       code?: string;
       nameAr: string;
       nameEn?: string;
-      rate?: number;
+      rate?: string;
       isDefault?: boolean;
       einvoiceCode?: string;
       unEceCode?: string;
@@ -96,13 +101,13 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
       if (editing) {
         const upd =
           kind === 'taxCategory'
-            ? { ...base, rate: v.rate?.toString(), isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || null }
+            ? { ...base, rate: v.rate, isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || null }
             : { ...base, unEceCode: v.unEceCode || null };
         return UPDATE_FN[kind](editing.id, upd as never);
       }
       const create =
         kind === 'taxCategory'
-          ? { code: v.code!, ...base, rate: v.rate?.toString() ?? '0', isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || undefined }
+          ? { code: v.code!, ...base, rate: v.rate ?? '0', isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || undefined }
           : { code: v.code!, ...base, unEceCode: v.unEceCode || undefined };
       return CREATE_FN[kind](create as never);
     },
@@ -132,7 +137,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
     form.setFieldsValue({
       nameAr: row.nameAr,
       nameEn: row.nameEn,
-      rate: row.rate ? Number(row.rate) : undefined,
+      rate: row.rate ?? undefined,
       isDefault: row.isDefault,
       einvoiceCode: row.einvoiceCode,
       unEceCode: row.unEceCode,
@@ -161,7 +166,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
         pagination={false}
         columns={[
           { title: t('settings.code'), dataIndex: 'code', width: 110 },
-          { title: t('settings.nameAr'), dataIndex: 'nameAr' },
+          { title: t('common.name'), key: 'name', render: (_: unknown, r: LookupRow) => displayName(r) },
           { title: t('settings.nameEn'), dataIndex: 'nameEn' },
           ...(kind === 'unit'
             ? [{ title: t('settings.unEceCode'), dataIndex: 'unEceCode', width: 110, render: (v?: string | null) => v ?? '—' }]
@@ -172,7 +177,9 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
                   title: t('settings.rate'),
                   dataIndex: 'rate',
                   width: 100,
-                  render: (v: string) => v ?? '—',
+                  align: 'right' as const,
+                  render: (v?: string | null) =>
+                    v != null ? <Num>{`${formatPercent(v)}%`}</Num> : '—',
                 },
                 {
                   title: t('settings.isDefault'),
@@ -202,54 +209,58 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
                   {t('common.edit')}
                 </Button>
                 {row.isActive && (
-                  <Button size="small" danger onClick={() => deactivate.mutate(row.id)}>
+                  <Popconfirm title={t('common.confirmDeactivate')} onConfirm={() => deactivate.mutate(row.id)}>
+<Button size="small" danger >
                     {t('common.deactivate')}
                   </Button>
+</Popconfirm>
                 )}
               </Space>
             ),
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={editing ? t('settings.edit') : `${t('settings.add')} — ${title}`}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => form.submit()}
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
-          {!editing && (
-            <Form.Item name="code" label={t('settings.code')} rules={[{ required: true }]}>
-              <Input maxLength={50} />
-            </Form.Item>
-          )}
-          <Form.Item name="nameAr" label={t('settings.nameAr')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('settings.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          {kind === 'unit' && (
-            <Form.Item name="unEceCode" label={t('settings.unEceCode')}>
-              <Input maxLength={10} placeholder="PCE / KGM / LTR…" />
-            </Form.Item>
-          )}
-          {isTax && (
-            <>
-              <Form.Item name="rate" label={t('settings.rate')} rules={[{ required: true }]}>
-                <InputNumber min={0} max={100} step={0.0001} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item name="isDefault" label={t('settings.isDefault')} valuePropName="checked">
-                <input type="checkbox" />
-              </Form.Item>
-              <Form.Item name="einvoiceCode" label={t('settings.einvoiceCode')}>
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          <FormSection title={title} icon={<SettingOutlined />}>
+            {!editing && (
+              <Form.Item name="code" label={t('settings.code')} rules={[{ required: true }]}>
                 <Input maxLength={50} />
               </Form.Item>
-            </>
-          )}
+            )}
+            <Form.Item name="nameAr" label={t('settings.nameAr')} rules={[{ required: true }]}>
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="nameEn" label={t('settings.nameEn')}>
+              <Input maxLength={191} />
+            </Form.Item>
+            {kind === 'unit' && (
+              <Form.Item name="unEceCode" label={t('settings.unEceCode')}>
+                <Input maxLength={10} placeholder="PCE / KGM / LTR…" />
+              </Form.Item>
+            )}
+            {isTax && (
+              <>
+                <Form.Item name="rate" label={t('settings.rate')} rules={[{ required: true }]}>
+                  <InputNumber<string> stringMode min="0" max="100" step="0.0001" />
+                </Form.Item>
+                <Form.Item name="isDefault" label={t('settings.isDefault')} valuePropName="checked">
+                  <input type="checkbox" />
+                </Form.Item>
+                <Form.Item name="einvoiceCode" label={t('settings.einvoiceCode')}>
+                  <Input maxLength={50} />
+                </Form.Item>
+              </>
+            )}
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
     </Card>
   );
 }

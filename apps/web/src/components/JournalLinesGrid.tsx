@@ -2,13 +2,17 @@ import { DeleteOutlined } from '@ant-design/icons';
 import { Button, Input, InputNumber, Typography } from 'antd';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { formatAmount, round3, sum } from '../format/number';
+import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
+import { Num } from './Num';
 
 export interface JournalLineDraft {
   key: number;
   accountId?: string;
-  debit?: number | null;
-  credit?: number | null;
+  // Decimal strings (InputNumber stringMode), never JS floats.
+  debit?: string | null;
+  credit?: string | null;
   description?: string;
 }
 
@@ -53,10 +57,12 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
   // Ordered editable columns for row-major Enter navigation.
   const NAV_COLS = [1, 2, 3, 4]; // account, debit, credit, description
 
+  // Focus once the cell exists; retry a single time if a new row hasn't rendered yet.
+  // (Focusing twice re-opened a select's list after the user had moved on.)
   const focusSoon = (row: number, col: number) => {
     requestAnimationFrame(() => {
-      focusCell(row, col);
-      setTimeout(() => focusCell(row, col), 60); // retry if row not yet rendered
+      if (gridRef.current?.querySelector(`[data-cell="${row}-${col}"]`)) focusCell(row, col);
+      else setTimeout(() => focusCell(row, col), 60);
     });
   };
 
@@ -84,20 +90,20 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     // An open dropdown handles Enter itself: it selects the highlighted
     // option and GridSelect's onEnterSelect advances to the next cell.
-    if (isSelectDropdownOpen()) return;
+    if (isSelectDropdownOpen(e.currentTarget)) return;
     e.preventDefault();
     advance(row, col);
   };
 
-  const totalDebit = lines.reduce((s, l) => s + (l.debit ?? 0), 0);
-  const totalCredit = lines.reduce((s, l) => s + (l.credit ?? 0), 0);
-  const diff = Math.abs(totalDebit - totalCredit);
+  const totalDebit = sum(lines.map((l) => l.debit));
+  const totalCredit = sum(lines.map((l) => l.credit));
+  const diff = round3(totalDebit.minus(totalCredit).abs());
 
   // Arrow-key navigation (capture phase so InputNumber's step-on-arrow and
   // the select's dropdown-open don't swallow the keys). Select cells keep
   // vertical arrows for their dropdown; horizontal arrows move columns.
   const onCellKeyDownCapture = (e: React.KeyboardEvent, row: number, col: number) => {
-    if (e.nativeEvent.isComposing || isSelectDropdownOpen()) return;
+    if (e.nativeEvent.isComposing || isSelectDropdownOpen(e.currentTarget)) return;
     const key = e.key;
     if (!key.startsWith('Arrow')) return;
     const colPos = NAV_COLS.indexOf(col);
@@ -125,24 +131,26 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
   });
 
   return (
-    <div>
+    <div className="entry-grid-frame">
+    <div className="entry-grid-scroll">
       <table ref={gridRef} className="entry-grid">
         <thead>
           <tr>
-            <th>#</th>
-            <th>{t('journal.account')}</th>
-            <th style={{ width: 120 }}>{t('journal.debit')}</th>
-            <th style={{ width: 120 }}>{t('journal.credit')}</th>
+            <th className="row-no">#</th>
+            <th style={{ width: '34%' }}>{t('journal.account')}</th>
+            <th className="num-cell" style={{ width: 130 }}>{t('journal.debit')}</th>
+            <th className="num-cell" style={{ width: 130 }}>{t('journal.credit')}</th>
             <th>{t('common.description')}</th>
-            <th style={{ width: 40 }} />
+            <th style={{ width: 36 }} />
           </tr>
         </thead>
         <tbody>
           {lines.map((l, row) => (
             <tr key={l.key}>
-              <td>{row + 1}</td>
+              <td className="row-no">{row + 1}</td>
               <td {...cellProps(row, 1)}>
                 <GridSelect
+                  variant="borderless"
                   placeholder={t('journal.account')}
                   options={accountOptions}
                   value={l.accountId}
@@ -152,10 +160,12 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                   size="small"
                 />
               </td>
-              <td {...cellProps(row, 2)}>
-                <InputNumber
+              <td className="num-cell" {...cellProps(row, 2)}>
+                <InputNumber<string>
+                  variant="borderless"
+                  stringMode
                   placeholder={t('journal.debit')}
-                  min={0}
+                  min="0"
                   value={l.debit}
                   onChange={(v) => update(l.key, { debit: v })}
                   style={{ width: '100%' }}
@@ -163,10 +173,12 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                   controls={false}
                 />
               </td>
-              <td {...cellProps(row, 3)}>
-                <InputNumber
+              <td className="num-cell" {...cellProps(row, 3)}>
+                <InputNumber<string>
+                  variant="borderless"
+                  stringMode
                   placeholder={t('journal.credit')}
-                  min={0}
+                  min="0"
                   value={l.credit}
                   onChange={(v) => update(l.key, { credit: v })}
                   style={{ width: '100%' }}
@@ -176,6 +188,7 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
               </td>
               <td {...cellProps(row, 4)}>
                 <Input
+                  variant="borderless"
                   placeholder={t('common.description')}
                   maxLength={500}
                   value={l.description}
@@ -186,10 +199,12 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
               <td style={{ textAlign: 'center' }}>
                 {lines.length > 2 && (
                   <Button
+                    className="row-del"
                     type="text"
                     size="small"
                     danger
                     icon={<DeleteOutlined />}
+                    aria-label={t('common.delete')}
                     onClick={() => remove(l.key)}
                   />
                 )}
@@ -202,22 +217,30 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
             <td colSpan={2}>
               {t('journal.total')}
             </td>
-            <td style={{ textAlign: 'right' }}>
-              {totalDebit.toFixed(3)}
+            <td className="num-cell">
+              <Num>{formatAmount(totalDebit)}</Num>
             </td>
-            <td style={{ textAlign: 'right' }}>
-              {totalCredit.toFixed(3)}
+            <td className="num-cell">
+              <Num>{formatAmount(totalCredit)}</Num>
             </td>
             <td colSpan={2}>
-              {diff > 0.0005 && (
+              {!diff.isZero() ? (
                 <Typography.Text type="danger">
-                  {t('journal.unbalanced', { amount: diff.toFixed(3) })}
+                  {t('journal.unbalanced', { amount: formatAmount(diff) })}
                 </Typography.Text>
+              ) : (
+                totalDebit.gt(0) && (
+                  <Typography.Text type="success">{t('journal.balanced')}</Typography.Text>
+                )
               )}
             </td>
           </tr>
         </tfoot>
       </table>
+    </div>
+    <div className="entry-grid-footer">
+      <GridHint />
+    </div>
     </div>
   );
 }

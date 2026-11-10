@@ -2,13 +2,15 @@ import { DeleteOutlined } from '@ant-design/icons';
 import { Button, Input, InputNumber } from 'antd';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
 
 export interface ItemLineDraft {
   key: number;
   itemId?: string;
-  qty?: number | null;
-  unitCost?: number | null;
+  // Decimal strings (InputNumber stringMode), never JS floats.
+  qty?: string | null;
+  unitCost?: string | null;
   description?: string;
 }
 
@@ -75,10 +77,12 @@ export function ItemLinesGrid({
     ...(COL_DESC !== -1 ? [COL_DESC] : []),
   ];
 
+  // Focus once the cell exists; retry a single time if a new row hasn't rendered yet.
+  // (Focusing twice re-opened a select's list after the user had moved on.)
   const focusSoon = (row: number, col: number) => {
     requestAnimationFrame(() => {
-      focusCell(row, col);
-      setTimeout(() => focusCell(row, col), 60); // retry if row not yet rendered
+      if (gridRef.current?.querySelector(`[data-cell="${row}-${col}"]`)) focusCell(row, col);
+      else setTimeout(() => focusCell(row, col), 60);
     });
   };
 
@@ -106,7 +110,7 @@ export function ItemLinesGrid({
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     // An open dropdown handles Enter itself: it selects the highlighted
     // option and GridSelect's onEnterSelect advances to the next cell.
-    if (isSelectDropdownOpen()) return;
+    if (isSelectDropdownOpen(e.currentTarget)) return;
     e.preventDefault();
     advance(row, col);
   };
@@ -115,7 +119,7 @@ export function ItemLinesGrid({
   // the select's dropdown-open don't swallow the keys). Select cells keep
   // vertical arrows for their dropdown; horizontal arrows move columns.
   const onCellKeyDownCapture = (e: React.KeyboardEvent, row: number, col: number) => {
-    if (e.nativeEvent.isComposing || isSelectDropdownOpen()) return;
+    if (e.nativeEvent.isComposing || isSelectDropdownOpen(e.currentTarget)) return;
     const key = e.key;
     if (!key.startsWith('Arrow')) return;
     const colPos = NAV_COLS.indexOf(col);
@@ -143,25 +147,28 @@ export function ItemLinesGrid({
   });
 
   return (
+    <div className="entry-grid-frame">
+    <div className="entry-grid-scroll">
     <table
       ref={gridRef} className="entry-grid"
     >
       <thead>
         <tr>
-          <th>#</th>
+          <th className="row-no">#</th>
           <th>{t('items.title')}</th>
-          <th style={{ width: 110 }}>{t('stock.qty')}</th>
-          {showCost && <th style={{ width: 120 }}>{t('stock.unitCost')}</th>}
+          <th className="num-cell" style={{ width: 110 }}>{t('stock.qty')}</th>
+          {showCost && <th className="num-cell" style={{ width: 120 }}>{t('stock.unitCost')}</th>}
           {showDescription && <th>{t('common.description')}</th>}
-          <th style={{ width: 40 }} />
+          <th style={{ width: 36 }} />
         </tr>
       </thead>
       <tbody>
         {lines.map((l, row) => (
           <tr key={l.key}>
-            <td>{row + 1}</td>
+            <td className="row-no">{row + 1}</td>
             <td {...cellProps(row, COL_ITEM)}>
               <GridSelect
+                variant="borderless"
                 placeholder={t('items.title')}
                 options={itemOptions}
                 value={l.itemId}
@@ -171,9 +178,11 @@ export function ItemLinesGrid({
                 size="small"
               />
             </td>
-            <td {...cellProps(row, COL_QTY)}>
-              <InputNumber
-                min={0.000001}
+            <td className="num-cell" {...cellProps(row, COL_QTY)}>
+              <InputNumber<string>
+                variant="borderless"
+                stringMode
+                min="0.000001"
                 placeholder={t('stock.qty')}
                 value={l.qty}
                 onChange={(v) => update(l.key, { qty: v })}
@@ -183,9 +192,11 @@ export function ItemLinesGrid({
               />
             </td>
             {showCost && (
-              <td {...cellProps(row, COL_COST)}>
-                <InputNumber
-                  min={0}
+              <td className="num-cell" {...cellProps(row, COL_COST)}>
+                <InputNumber<string>
+                  variant="borderless"
+                  stringMode
+                  min="0"
                   placeholder={t('stock.unitCost')}
                   value={l.unitCost}
                   onChange={(v) => update(l.key, { unitCost: v })}
@@ -198,6 +209,7 @@ export function ItemLinesGrid({
             {showDescription && (
               <td {...cellProps(row, COL_DESC)}>
                 <Input
+                  variant="borderless"
                   placeholder={t('common.description')}
                   maxLength={500}
                   value={l.description}
@@ -209,10 +221,12 @@ export function ItemLinesGrid({
             <td style={{ textAlign: 'center' }}>
               {lines.length > 1 && (
                 <Button
+                  className="row-del"
                   type="text"
                   size="small"
                   danger
                   icon={<DeleteOutlined />}
+                  aria-label={t('common.delete')}
                   onClick={() => remove(l.key)}
                 />
               )}
@@ -221,6 +235,11 @@ export function ItemLinesGrid({
         ))}
       </tbody>
     </table>
+    </div>
+    <div className="entry-grid-footer">
+      <GridHint lineCount={lines.filter((l) => l.itemId).length} />
+    </div>
+    </div>
   );
 }
 

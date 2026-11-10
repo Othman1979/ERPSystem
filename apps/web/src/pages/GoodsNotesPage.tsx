@@ -1,12 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { DeleteOutlined, PlusOutlined, PrinterOutlined, SaveOutlined } from '@ant-design/icons';
 import {
-  ArrowLeftOutlined,
-  ArrowRightOutlined,
-  DeleteOutlined,
-  PlusOutlined,
-  SaveOutlined,
-} from '@ant-design/icons';
-import {
+  App,
   Button,
   DatePicker,
   Dropdown,
@@ -16,7 +11,6 @@ import {
   Space,
   Table,
   Tag,
-  Typography,
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -37,7 +31,6 @@ import {
   goodsNotesControllerPost,
   warehousesControllerList,
 } from '@erp/api-client';
-import i18n from '../i18n';
 import { idemHeaders } from '../idempotency';
 import {
   enterTo,
@@ -45,8 +38,11 @@ import {
   focusNamedField,
   GridSelect,
 } from '../components/GridSelect';
-import { StatusBar } from '../components/StatusBar';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
+import { codeAndName } from '../i18n/displayName';
+import { qtyCell, unitCostCell } from '../format/cells';
 
 interface GoodsNote {
   id: string;
@@ -115,6 +111,7 @@ export function GoodsNotesSection({
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new voucher
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
 
   // ---- new-voucher form state ----
   const [newType, setNewType] = useState<NoteType>('GRN');
@@ -122,7 +119,13 @@ export function GoodsNotesSection({
   const [newWarehouseId, setNewWarehouseId] = useState<string | undefined>();
   const [newDescription, setNewDescription] = useState('');
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1), emptyItemLine(2)]);
-  const [gridFocus, setGridFocus] = useState(0);
+  // New notes start at the warehouse (required, no default); bumped by openNew.
+  const [headerFocus, setHeaderFocus] = useState(0);
+  useEffect(() => {
+    if (!headerFocus) return;
+    const id = requestAnimationFrame(() => focusNamedField('warehouse'));
+    return () => cancelAnimationFrame(id);
+  }, [headerFocus]);
 
   const { data: notes, isLoading } = useQuery({
     queryKey: ['goods-notes', typeFilter],
@@ -156,12 +159,12 @@ export function GoodsNotesSection({
     () =>
       (items ?? [])
         .filter((i) => i.itemKind === 'STOCK')
-        .map((i) => ({ value: i.id, label: `${i.code} — ${i.nameAr}` })),
+        .map((i) => ({ value: i.id, label: codeAndName(i) })),
     [items],
   );
   const warehouseOptions = (warehouses ?? []).map((w) => ({
     value: w.id,
-    label: `${w.code} — ${w.nameAr}`,
+    label: codeAndName(w),
   }));
 
   const invalidate = () => {
@@ -182,7 +185,7 @@ export function GoodsNotesSection({
     setNewWarehouseId(undefined);
     setNewDescription('');
     setLines([emptyItemLine(1), emptyItemLine(2)]);
-    setGridFocus((g) => g + 1);
+    setHeaderFocus((g) => g + 1);
     setScreen('entry');
   };
 
@@ -261,28 +264,60 @@ export function GoodsNotesSection({
     (newType === 'GIN' ||
       lines.every((l) => !l.itemId || (l.qty && l.unitCost != null)));
 
+  // Save stays enabled: a save attempt with gaps marks the missing fields instead.
+  const [tried, setTried] = useState(false);
   const saveNew = (andPost: boolean) => {
+    if (create.isPending) return;
     if (!canSave) {
-      apiMessage.error(t('errors.VALIDATION'));
+      setTried(true);
+      if (!newWarehouseId) focusNamedField('warehouse');
+      else apiMessage.error(t('errors.VALIDATION'));
       return;
     }
     create.mutate(andPost);
   };
 
+  // Shortcuts on an open note: Ctrl+S saves a new draft; Ctrl+Enter posts
+  // (a new note is created and posted), behind a confirmation.
+  const { modal } = App.useApp();
+  const openDraft = screen === 'entry' && detail?.status === 'DRAFT' ? detail : null;
+  const isNewEntry = screen === 'entry' && !entryId;
+  useDocShortcuts({
+    onSave: isNewEntry ? () => saveNew(false) : undefined,
+    onPost:
+      isNewEntry || openDraft
+        ? () => {
+            if (create.isPending || post.isPending) return;
+            modal.confirm({
+              title: t('journal.confirmPost'),
+              onOk: () => (openDraft ? post.mutate(openDraft.id) : saveNew(true)),
+            });
+          }
+        : undefined,
+  });
+
   // ============================ LIST VIEW ============================
   if (screen === 'list') {
+    const shown = (notes ?? []).filter((r) =>
+      matchesSearch(search, r.docNo, r.warehouse ? codeAndName(r.warehouse) : null, r.description),
+    );
     return (
       <div>
         {contextHolder}
-        <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
-          <Select
-            allowClear
-            placeholder={t('goods.noteType')}
-            style={{ width: 180 }}
-            value={typeFilter}
-            onChange={setTypeFilter}
-            options={NOTE_TYPES.map((vt) => ({ value: vt, label: t(TYPE_LABEL[vt]) }))}
-          />
+        <ListToolbar
+          search={search}
+          onSearch={setSearch}
+          filters={
+            <Select
+              allowClear
+              placeholder={t('goods.noteType')}
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={NOTE_TYPES.map((vt) => ({ value: vt, label: t(TYPE_LABEL[vt]) }))}
+            />
+          }
+          count={shown.length}
+          actions={
           <Dropdown.Button
             type="primary"
             icon={<PlusOutlined />}
@@ -297,11 +332,12 @@ export function GoodsNotesSection({
           >
             {t('goods.entryVoucher')}
           </Dropdown.Button>
-        </Space>
+          }
+        />
         <Table
           rowKey="id"
           loading={isLoading}
-          dataSource={notes ?? []}
+          dataSource={shown}
           size="small"
           pagination={{ pageSize: 20 }}
           onRow={(r) => ({ onClick: () => openEntry(r.id), style: { cursor: 'pointer' } })}
@@ -309,6 +345,7 @@ export function GoodsNotesSection({
             {
               title: t('goods.docNo'),
               dataIndex: 'docNo',
+              className: 'nowrap',
               width: 150,
               render: (v: string | null, r: GoodsNote) => v ?? `#${r.id}`,
             },
@@ -327,7 +364,7 @@ export function GoodsNotesSection({
             {
               title: t('stock.warehouse'),
               render: (_: unknown, r: GoodsNote) =>
-                r.warehouse ? `${r.warehouse.code} — ${r.warehouse.nameAr}` : '—',
+                r.warehouse ? codeAndName(r.warehouse) : '—',
             },
             {
               title: t('common.description'),
@@ -382,97 +419,72 @@ export function GoodsNotesSection({
   const isNew = !entryId;
   const entry = detail ?? null;
 
+  const warehouseError = tried && !newWarehouseId ? t('common.requiredField') : undefined;
+
   return (
     <div>
       {contextHolder}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        <Button
-          icon={i18n.language === 'ar' ? <ArrowRightOutlined /> : <ArrowLeftOutlined />}
-          onClick={backToList}
-        >
-          {t('nav.goodsNotes')}
-        </Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {isNew
-            ? t(TYPE_LABEL[newType])
-            : `${entry?.docNo ?? '…'} — ${entry ? t(TYPE_LABEL[entry.noteType]) : ''}`}
-        </Typography.Title>
-        {entry && (
-          <Space size={8}>
-            <TypeTag type={entry.noteType} />
-            <StatusBar status={entry.status} />
-          </Space>
-        )}
-        <div style={{ flex: 1 }} />
-        <Space>
-          {isNew ? (
+      <DocLayout
+        title={isNew ? t(TYPE_LABEL[newType]) : entry ? t(TYPE_LABEL[entry.noteType]) : '…'}
+        docNo={entry?.docNo}
+        status={isNew ? 'DRAFT' : entry?.status}
+        onBack={backToList}
+        actions={
+          isNew ? (
             <>
-              <Button
-                disabled={!canSave}
-                loading={create.isPending}
-                onClick={() => saveNew(false)}
-              >
+              <Button loading={create.isPending} onClick={() => saveNew(false)}>
                 {t('journal.saveDraft')}
+                <span className="doc-kbd">Ctrl+S</span>
               </Button>
               <Button
                 type="primary"
                 icon={<SaveOutlined />}
-                disabled={!canSave}
                 loading={create.isPending}
                 onClick={() => saveNew(true)}
               >
                 {t('goods.createAndPost')}
+                <span className="doc-kbd">Ctrl+Enter</span>
               </Button>
             </>
           ) : (
-            entry?.status === 'DRAFT' && (
+            entry && (
               <>
-                <Popconfirm
-                  title={t('journal.confirmPost')}
-                  onConfirm={() => post.mutate(entry.id)}
-                >
-                  <Button type="primary" loading={post.isPending}>
-                    {t('common.post')}
-                  </Button>
-                </Popconfirm>
-                <Popconfirm
-                  title={t('common.confirmDelete')}
-                  onConfirm={() => del.mutate(entry.id)}
-                >
-                  <Button danger icon={<DeleteOutlined />}>
-                    {t('common.delete')}
-                  </Button>
-                </Popconfirm>
+                {entry.status === 'DRAFT' && (
+                  <>
+                    <Popconfirm
+                      title={t('journal.confirmPost')}
+                      onConfirm={() => post.mutate(entry.id)}
+                    >
+                      <Button type="primary" loading={post.isPending}>
+                        {t('common.post')}
+                        <span className="doc-kbd">Ctrl+Enter</span>
+                      </Button>
+                    </Popconfirm>
+                    <Popconfirm
+                      title={t('common.confirmDelete')}
+                      onConfirm={() => del.mutate(entry.id)}
+                    >
+                      <Button danger icon={<DeleteOutlined />}>
+                        {t('common.delete')}
+                      </Button>
+                    </Popconfirm>
+                  </>
+                )}
+                <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
+                  {t('common.print')}
+                </Button>
               </>
             )
-          )}
-        </Space>
-      </div>
-
-      {/* Header fields */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 16,
-          flexWrap: 'wrap',
-          marginBottom: 16,
-          alignItems: 'flex-end',
-        }}
+          )
+        }
       >
         {isNew ? (
-          <>
-            <div data-field="noteType" onKeyDown={enterTo(() => focusNamedField('date'))}>
-              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                {t('goods.noteType')}
-              </Typography.Text>
+          <DocFields>
+            <DocField
+              field="noteType"
+              label={t('goods.noteType')}
+              onKeyDown={enterTo(() => focusNamedField('date'))}
+            >
               <GridSelect
                 enterOpens
                 value={newType}
@@ -481,74 +493,63 @@ export function GoodsNotesSection({
                   value: vt,
                   label: t(TYPE_LABEL[vt]),
                 }))}
-                style={{ width: 180 }}
               />
-            </div>
-            <div data-field="date" onKeyDown={enterTo(() => focusNamedField('warehouse'))}>
-              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                {t('goods.date')}
-              </Typography.Text>
+            </DocField>
+            <DocField
+              field="date"
+              label={t('goods.date')}
+              onKeyDown={enterTo(() => focusNamedField('warehouse'))}
+            >
               <DatePicker value={newDate} onChange={(d) => d && setNewDate(d)} />
-            </div>
-            <div data-field="warehouse" onKeyDown={enterTo(() => focusNamedField('description'))}>
-              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                {t('stock.warehouse')} *
-              </Typography.Text>
+            </DocField>
+            <DocField
+              field="warehouse"
+              label={t('stock.warehouse')}
+              required
+              error={warehouseError}
+              onKeyDown={enterTo(() => focusNamedField('description'))}
+            >
               <GridSelect
                 enterOpens
+                status={warehouseError ? 'error' : undefined}
                 options={warehouseOptions}
                 value={newWarehouseId}
                 onChange={setNewWarehouseId}
-                style={{ width: 220 }}
               />
-            </div>
-            <div
-              data-field="description"
-              style={{ flex: 1, minWidth: 220 }}
+            </DocField>
+            <DocField
+              field="description"
+              label={t('common.description')}
               onKeyDown={enterTo(focusFirstGridCell)}
             >
-              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                {t('common.description')}
-              </Typography.Text>
               <Input
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
                 maxLength={500}
               />
-            </div>
-          </>
+            </DocField>
+          </DocFields>
         ) : (
           entry && (
-            <Space size={24} wrap>
-              <span>
-                <Typography.Text type="secondary">{t('goods.date')}: </Typography.Text>
-                {dayjs(entry.noteDate).format('YYYY-MM-DD')}
-              </span>
-              <span>
-                <Typography.Text type="secondary">{t('stock.warehouse')}: </Typography.Text>
-                {entry.warehouse ? `${entry.warehouse.code} — ${entry.warehouse.nameAr}` : '—'}
-              </span>
-              <span>
-                <Typography.Text type="secondary">{t('common.description')}: </Typography.Text>
-                {entry.description ?? '—'}
-              </span>
-            </Space>
+            <DocFields>
+              <DocField label={t('goods.noteType')}>
+                <DocValue>
+                  <TypeTag type={entry.noteType} />
+                </DocValue>
+              </DocField>
+              <DocField label={t('goods.date')}>
+                <DocValue>{dayjs(entry.noteDate).format('YYYY-MM-DD')}</DocValue>
+              </DocField>
+              <DocField label={t('stock.warehouse')}>
+                <DocValue>{entry.warehouse ? codeAndName(entry.warehouse) : '—'}</DocValue>
+              </DocField>
+              <DocField label={t('common.description')}>
+                <DocValue>{entry.description ?? '—'}</DocValue>
+              </DocField>
+            </DocFields>
           )
         )}
-      </div>
 
-      {/* Lines */}
-      <div
-        style={{
-          background: '#fff',
-          border: '1px solid #f0f0f0',
-          borderRadius: 8,
-          padding: '12px 16px',
-        }}
-      >
-        <Typography.Title level={5} style={{ marginTop: 0 }}>
-          {t('journal.linesTitle')}
-        </Typography.Title>
         {isNew ? (
           <ItemLinesGrid
             lines={lines}
@@ -556,7 +557,6 @@ export function GoodsNotesSection({
             itemOptions={itemOptions}
             showCost={newType === 'GRN'}
             showDescription
-            focusSignal={gridFocus}
           />
         ) : (
           <Table
@@ -570,26 +570,26 @@ export function GoodsNotesSection({
               {
                 title: t('items.title'),
                 render: (_: unknown, l: NonNullable<GoodsNote['lines']>[number]) =>
-                  l.item ? `${l.item.code} — ${l.item.nameAr}` : '—',
+                  l.item ? codeAndName(l.item) : '—',
               },
               {
                 title: t('stock.qty'),
                 dataIndex: 'qty',
                 width: 110,
                 align: 'right' as const,
-                render: (v: string) => Number(v).toFixed(3),
+                render: qtyCell,
               },
               {
                 title: t('stock.unitCost'),
                 dataIndex: 'unitCost',
                 width: 110,
                 align: 'right' as const,
-                render: (v?: string | null) => (v != null ? Number(v).toFixed(2) : '—'),
+                render: unitCostCell,
               },
             ]}
           />
         )}
-      </div>
+      </DocLayout>
     </div>
   );
 }

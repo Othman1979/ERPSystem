@@ -1,20 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarcodeOutlined,
+  DatabaseOutlined,
+  InfoCircleOutlined,
+  MoreOutlined,
   ProfileOutlined,
   AppstoreOutlined,
+  TagOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
 import JsBarcode from 'jsbarcode';
 import {
+  App,
   Button,
   Card,
   Col,
   DatePicker,
+  Dropdown,
   Form,
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
+  Radio,
   Row,
   Segmented,
   Select,
@@ -27,7 +35,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
@@ -45,6 +53,13 @@ import {
   warehousesControllerList,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { FormDialog, FormSection } from '../components/FormDialog';
+import { codeAndName, displayName, type Named } from '../i18n/displayName';
+import { Num } from '../components/Num';
+import type Decimal from 'decimal.js';
+import { amountCell, unitCostCell } from '../format/cells';
+import { dec, formatAmount, formatQty } from '../format/number';
 
 interface Unit {
   id: string;
@@ -109,7 +124,8 @@ interface ItemDetail extends Item {
   barcodes?: { id: string; barcode: string; itemUnit?: { unit?: { code: string } } | null }[];
 }
 
-const num = (v?: string | null) => (v != null ? Number(v) : null);
+// API decimals stay strings in forms (InputNumber stringMode); blank becomes undefined.
+const num = (v?: string | null) => v ?? undefined;
 
 function useApiError() {
   const { t } = useTranslation();
@@ -127,16 +143,24 @@ function useApiError() {
 
 function ItemsTab() {
   const { t } = useTranslation();
+  const { modal } = App.useApp();
   const queryClient = useQueryClient();
   const { contextHolder, show } = useApiError();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
+  // The box updates on every keystroke; the API search waits until typing pauses.
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  useEffect(() => {
+    const id = window.setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => window.clearTimeout(id);
+  }, [searchInput]);
   const [kindFilter, setKindFilter] = useState<string | undefined>();
   const [view, setView] = useState<'table' | 'cards'>('table');
   const [ledgerItem, setLedgerItem] = useState<Item | null>(null);
   const [barcodeItem, setBarcodeItem] = useState<Item | null>(null);
   const [form] = Form.useForm();
+  const saveAndNew = useRef(false);
 
   const { data: items, isLoading } = useQuery({
     queryKey: ['items', search, kindFilter],
@@ -174,9 +198,9 @@ function ItemsTab() {
       ),
   });
 
-  const qtyByItem = new Map<string, number>();
+  const qtyByItem = new Map<string, Decimal>();
   for (const b of balances ?? []) {
-    qtyByItem.set(b.itemId, (qtyByItem.get(b.itemId) ?? 0) + Number(b.qtyOnHand));
+    qtyByItem.set(b.itemId, dec(qtyByItem.get(b.itemId)).plus(dec(b.qtyOnHand)));
   }
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['items'] });
@@ -185,10 +209,10 @@ function ItemsTab() {
     mutationFn: async (v: Record<string, unknown>): Promise<unknown> => {
       const payload = {
         ...v,
-        salePrice: v.salePrice != null ? String(v.salePrice) : undefined,
-        purchasePrice: v.purchasePrice != null ? String(v.purchasePrice) : undefined,
-        minStock: v.minStock != null ? String(v.minStock) : undefined,
-        maxStock: v.maxStock != null ? String(v.maxStock) : undefined,
+        salePrice: v.salePrice ?? undefined,
+        purchasePrice: v.purchasePrice ?? undefined,
+        minStock: v.minStock ?? undefined,
+        maxStock: v.maxStock ?? undefined,
         itemGroupId: v.itemGroupId || undefined,
         defaultWarehouseId: v.defaultWarehouseId || undefined,
         imageUrl: v.imageUrl || undefined,
@@ -202,9 +226,16 @@ function ItemsTab() {
     },
     onSuccess: () => {
       invalidate();
+      form.resetFields();
+      if (saveAndNew.current) {
+        // Save & new: keep the dialog open on an empty form for the next item.
+        saveAndNew.current = false;
+        setEditing(null);
+        requestAnimationFrame(() => form.getFieldInstance('code')?.focus?.());
+        return;
+      }
       setModalOpen(false);
       setEditing(null);
-      form.resetFields();
     },
     onError: show,
   });
@@ -233,10 +264,10 @@ function ItemsTab() {
       itemGroupId: row.itemGroup?.id ?? undefined,
       taxCategoryId: row.taxCategory?.id ?? undefined,
       defaultWarehouseId: row.defaultWarehouse?.id ?? undefined,
-      salePrice: num(row.salePrice) ?? undefined,
-      purchasePrice: num(row.purchasePrice) ?? undefined,
-      minStock: num(row.minStock) ?? undefined,
-      maxStock: num(row.maxStock) ?? undefined,
+      salePrice: num(row.salePrice),
+      purchasePrice: num(row.purchasePrice),
+      minStock: num(row.minStock),
+      maxStock: num(row.maxStock),
       salePriceIncludesTax: row.salePriceIncludesTax,
       imageUrl: row.imageUrl ?? undefined,
     });
@@ -247,14 +278,18 @@ function ItemsTab() {
     if (r.itemKind !== 'STOCK') return <Tag>{t('items.service')}</Tag>;
     const qty = qtyByItem.get(r.id);
     if (qty === undefined) return <Tag color="default">0</Tag>;
-    const min = num(r.minStock) ?? 0;
-    const color = qty <= 0 ? 'red' : qty <= min ? 'orange' : 'green';
-    return <Tag color={color}>{qty.toFixed(3)}</Tag>;
+    const min = dec(r.minStock);
+    const color = qty.lte(0) ? 'red' : qty.lte(min) ? 'orange' : 'green';
+    return (
+      <Tag color={color}>
+        <Num>{formatQty(qty)}</Num>
+      </Tag>
+    );
   };
 
   const columns = [
     { title: t('items.code'), dataIndex: 'code', width: 110 },
-    { title: t('items.nameAr'), dataIndex: 'nameAr' },
+    { title: t('common.name'), key: 'name', render: (_: unknown, r: Named) => displayName(r) },
     {
       title: t('items.kind'),
       dataIndex: 'itemKind',
@@ -270,22 +305,22 @@ function ItemsTab() {
     {
       title: t('items.onHand'),
       width: 100,
-      align: 'end' as const,
+      align: 'right' as const,
       render: (_: unknown, r: Item) => stockBadge(r),
     },
     {
       title: t('items.salePrice'),
       dataIndex: 'salePrice',
       width: 100,
-      align: 'end' as const,
-      render: (v: string | null) => (v != null ? Number(v).toFixed(2) : '—'),
+      align: 'right' as const,
+      render: amountCell,
     },
     {
       title: t('items.purchasePrice'),
       dataIndex: 'purchasePrice',
       width: 110,
-      align: 'end' as const,
-      render: (v: string | null) => (v != null ? Number(v).toFixed(2) : '—'),
+      align: 'right' as const,
+      render: amountCell,
     },
     {
       title: t('common.status'),
@@ -296,25 +331,44 @@ function ItemsTab() {
     },
     {
       title: t('common.actions'),
-      width: 260,
+      width: 120,
+      // One visible action per row; the rest live in the "⋯" menu.
       render: (_: unknown, row: Item) => (
-        <Space size={4} wrap>
-          {row.itemKind === 'STOCK' && (
-            <Button size="small" icon={<ProfileOutlined />} onClick={() => setLedgerItem(row)}>
-              {t('items.ledger')}
-            </Button>
-          )}
-          <Button size="small" icon={<BarcodeOutlined />} onClick={() => setBarcodeItem(row)}>
-            {t('items.barcode')}
-          </Button>
+        <Space size={4}>
           <Button size="small" onClick={() => openEdit(row)}>
             {t('common.edit')}
           </Button>
-          {row.isActive && (
-            <Button size="small" danger onClick={() => deactivate.mutate(row.id)}>
-              {t('common.deactivate')}
-            </Button>
-          )}
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                ...(row.itemKind === 'STOCK'
+                  ? [{ key: 'ledger', icon: <ProfileOutlined />, label: t('items.ledger') }]
+                  : []),
+                { key: 'barcode', icon: <BarcodeOutlined />, label: t('items.barcode') },
+                ...(row.isActive
+                  ? [
+                      { type: 'divider' as const },
+                      { key: 'deactivate', danger: true, label: t('common.deactivate') },
+                    ]
+                  : []),
+              ],
+              onClick: ({ key }) => {
+                if (key === 'ledger') setLedgerItem(row);
+                else if (key === 'barcode') setBarcodeItem(row);
+                else if (key === 'deactivate')
+                  modal.confirm({
+                    title: t('items.deactivateConfirm', { name: displayName(row) }),
+                    okText: t('common.deactivate'),
+                    okButtonProps: { danger: true },
+                    cancelText: t('common.cancel'),
+                    onOk: () => deactivate.mutateAsync(row.id),
+                  });
+              },
+            }}
+          >
+            <Button size="small" icon={<MoreOutlined />} aria-label={t('common.more')} />
+          </Dropdown>
         </Space>
       ),
     },
@@ -322,20 +376,18 @@ function ItemsTab() {
 
   return (
     <div>
-      <PageHeader
-        title={t('items.title')}
-        actions={
-          <Space wrap>
-            <Input.Search
-              allowClear
-              placeholder={t('items.search')}
-              style={{ width: 200 }}
-              onSearch={setSearch}
-            />
+      <PageHeader title={t('items.title')} />
+      <Card size="small">
+      {contextHolder}
+      <ListToolbar
+        search={searchInput}
+        onSearch={setSearchInput}
+        searchPlaceholder={t('items.search')}
+        filters={
+          <>
             <Select
               allowClear
               placeholder={t('items.kind')}
-              style={{ width: 130 }}
               onChange={setKindFilter}
               options={[
                 { value: 'STOCK', label: t('items.stock') },
@@ -350,14 +402,15 @@ function ItemsTab() {
                 { value: 'cards', icon: <AppstoreOutlined /> },
               ]}
             />
-            <Button type="primary" onClick={openCreate}>
-              {t('items.add')}
-            </Button>
-          </Space>
+          </>
+        }
+        count={(items ?? []).length}
+        actions={
+          <Button type="primary" onClick={openCreate}>
+            {t('items.add')}
+          </Button>
         }
       />
-      <Card size="small">
-      {contextHolder}
       {view === 'table' ? (
         <Table
           rowKey="id"
@@ -377,13 +430,13 @@ function ItemsTab() {
                 styles={{ body: { padding: 12 } }}
                 cover={
                   r.imageUrl ? (
-                    <img src={r.imageUrl} alt={r.nameAr} style={{ height: 110, objectFit: 'cover' }} />
+                    <img src={r.imageUrl} alt={displayName(r)} style={{ height: 110, objectFit: 'cover' }} />
                   ) : undefined
                 }
               >
                 <Space direction="vertical" size={4} style={{ width: '100%' }}>
                   <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-                    <Typography.Text strong>{r.nameAr}</Typography.Text>
+                    <Typography.Text strong>{displayName(r)}</Typography.Text>
                     {r.itemKind === 'STOCK' ? (
                       <Tag color="blue">{t('items.stock')}</Tag>
                     ) : (
@@ -392,12 +445,12 @@ function ItemsTab() {
                   </Space>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {r.code} {r.baseUnit ? `· ${r.baseUnit.code}` : ''}
-                    {r.itemGroup ? ` · ${r.itemGroup.nameAr}` : ''}
+                    {r.itemGroup ? ` · ${displayName(r.itemGroup)}` : ''}
                   </Typography.Text>
                   <Space style={{ justifyContent: 'space-between', width: '100%' }}>
                     <span>{t('items.onHand')}: {stockBadge(r)}</span>
                     <Typography.Text strong>
-                      {r.salePrice != null ? `${Number(r.salePrice).toFixed(2)}` : '—'}
+                      {formatAmount(r.salePrice)}
                     </Typography.Text>
                   </Space>
                   <Space size={4} wrap>
@@ -418,22 +471,33 @@ function ItemsTab() {
         </Row>
       )}
 
-      <Modal
+      <FormDialog
         title={editing ? t('items.edit') : t('items.add')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
-        width={640}
+        onSave={() => {
+          saveAndNew.current = false;
+          form.submit();
+        }}
+        onSaveAndNew={
+          editing
+            ? undefined
+            : () => {
+                saveAndNew.current = true;
+                form.submit();
+              }
+        }
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
-          <Typography.Title level={5} style={{ marginTop: 0 }}>{t('items.general')}</Typography.Title>
-          <Space style={{ display: 'flex' }} wrap>
-            <Form.Item name="code" label={t('items.code')} rules={[{ required: true }]} style={{ flex: 1, minWidth: 140 }}>
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          <FormSection title={t('common.basicInfo')} icon={<InfoCircleOutlined />}>
+            <Form.Item name="code" label={t('items.code')} rules={[{ required: true }]}>
               <Input maxLength={50} disabled={!!editing} />
             </Form.Item>
-            <Form.Item name="itemKind" label={t('items.kind')} initialValue="STOCK" style={{ width: 150 }}>
-              <Select
+            <Form.Item name="itemKind" label={t('items.kind')} initialValue="STOCK" className="span-2">
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
                 disabled={!!editing}
                 options={[
                   { value: 'STOCK', label: t('items.stock') },
@@ -441,23 +505,22 @@ function ItemsTab() {
                 ]}
               />
             </Form.Item>
-          </Space>
-          <Form.Item name="nameAr" label={t('items.nameAr')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('items.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="description" label={t('common.description')}>
-            <Input.TextArea rows={2} maxLength={500} />
-          </Form.Item>
-          <Form.Item name="imageUrl" label={t('items.imageUrl')}>
-            <Input maxLength={512} placeholder="https://…" />
-          </Form.Item>
+            <Form.Item name="nameAr" label={t('items.nameAr')} rules={[{ required: true }]} className="span-2">
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="nameEn" label={t('items.nameEn')}>
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="description" label={t('common.description')} className="span-all">
+              <Input.TextArea rows={2} maxLength={500} />
+            </Form.Item>
+            <Form.Item name="imageUrl" label={t('items.imageUrl')} className="span-all">
+              <Input maxLength={512} placeholder="https://…" />
+            </Form.Item>
+          </FormSection>
 
-          <Typography.Title level={5}>{t('items.classification')}</Typography.Title>
-          <Space style={{ display: 'flex' }} wrap>
-            <Form.Item name="baseUnitId" label={t('items.baseUnit')} rules={[{ required: true }]} style={{ flex: 1, minWidth: 160 }}>
+          <FormSection title={t('items.classification')} icon={<AppstoreOutlined />}>
+            <Form.Item name="baseUnitId" label={t('items.baseUnit')} rules={[{ required: true }]}>
               <Select
                 showSearch
                 optionFilterProp="label"
@@ -466,69 +529,66 @@ function ItemsTab() {
                   .filter((u) => u.id)
                   .map((u) => ({
                     value: u.id,
-                    label: `${u.code} — ${u.nameAr}${u.unEceCode ? ` (${u.unEceCode})` : ''}`,
+                    label: `${codeAndName(u)}${u.unEceCode ? ` (${u.unEceCode})` : ''}`,
                   }))}
               />
             </Form.Item>
-            <Form.Item name="itemGroupId" label={t('items.group')} style={{ flex: 1, minWidth: 160 }}>
+            <Form.Item name="itemGroupId" label={t('items.group')}>
               <Select
                 allowClear
                 showSearch
                 optionFilterProp="label"
                 options={(groups ?? [])
                   .filter((g) => g.isActive)
-                  .map((g) => ({ value: g.id, label: `${g.code} — ${g.nameAr}` }))}
+                  .map((g) => ({ value: g.id, label: codeAndName(g) }))}
               />
             </Form.Item>
-            <Form.Item name="taxCategoryId" label={t('items.taxCategory')} style={{ flex: 1, minWidth: 160 }}>
+            <Form.Item name="taxCategoryId" label={t('items.taxCategory')}>
               <Select
                 allowClear
                 options={(taxCategories ?? []).map((tc) => ({
                   value: tc.id,
-                  label: `${tc.code} — ${tc.nameAr} (${tc.rate}%)`,
+                  label: `${codeAndName(tc)} (${tc.rate}%)`,
                 }))}
               />
             </Form.Item>
-          </Space>
+          </FormSection>
 
-          <Typography.Title level={5}>{t('items.pricing')}</Typography.Title>
-          <Space style={{ display: 'flex' }} wrap>
-            <Form.Item name="salePrice" label={t('items.salePrice')} style={{ flex: 1, minWidth: 120 }}>
-              <InputNumber min={0} step={0.001} style={{ width: '100%' }} />
+          <FormSection title={t('items.pricing')} icon={<TagOutlined />}>
+            <Form.Item name="salePrice" label={t('items.salePrice')}>
+              <InputNumber<string> stringMode min="0" step="0.001" />
             </Form.Item>
-            <Form.Item name="purchasePrice" label={t('items.purchasePrice')} style={{ flex: 1, minWidth: 120 }}>
-              <InputNumber min={0} step={0.001} style={{ width: '100%' }} />
+            <Form.Item name="purchasePrice" label={t('items.purchasePrice')}>
+              <InputNumber<string> stringMode min="0" step="0.001" />
             </Form.Item>
-            <Form.Item name="salePriceIncludesTax" label={t('items.priceIncludesTax')} valuePropName="checked" style={{ minWidth: 140 }}>
+            <Form.Item name="salePriceIncludesTax" label={t('items.priceIncludesTax')} valuePropName="checked">
               <Switch />
             </Form.Item>
-          </Space>
+          </FormSection>
 
-          <Typography.Title level={5}>{t('items.inventory')}</Typography.Title>
-          <Space style={{ display: 'flex' }} wrap>
-            <Form.Item noStyle shouldUpdate>
-              {({ getFieldValue }) =>
-                getFieldValue('itemKind') === 'STOCK' ? (
-                  <>
-                    <Form.Item name="minStock" label={t('items.minStock')} style={{ flex: 1, minWidth: 110 }}>
-                      <InputNumber min={0} step={0.000001} style={{ width: '100%' }} />
-                    </Form.Item>
-                    <Form.Item name="maxStock" label={t('items.maxStock')} style={{ flex: 1, minWidth: 110 }}>
-                      <InputNumber min={0} step={0.000001} style={{ width: '100%' }} />
-                    </Form.Item>
-                    <Form.Item name="defaultWarehouseId" label={t('items.defaultWarehouse')} style={{ flex: 1, minWidth: 160 }}>
-                      <Select
-                        allowClear
-                        options={(warehouses ?? []).map((w) => ({ value: w.id, label: `${w.code} — ${w.nameAr}` }))}
-                      />
-                    </Form.Item>
-                  </>
-                ) : null
-              }
-            </Form.Item>
-          </Space>
+          {/* Stock settings only apply to stocked items. */}
+          <Form.Item noStyle shouldUpdate>
+            {({ getFieldValue }) =>
+              getFieldValue('itemKind') === 'STOCK' ? (
+                <FormSection title={t('items.inventory')} icon={<DatabaseOutlined />}>
+                  <Form.Item name="minStock" label={t('items.minStock')}>
+                    <InputNumber<string> stringMode min="0" step="0.000001" />
+                  </Form.Item>
+                  <Form.Item name="maxStock" label={t('items.maxStock')}>
+                    <InputNumber<string> stringMode min="0" step="0.000001" />
+                  </Form.Item>
+                  <Form.Item name="defaultWarehouseId" label={t('items.defaultWarehouse')}>
+                    <Select
+                      allowClear
+                      options={(warehouses ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
+                    />
+                  </Form.Item>
+                </FormSection>
+              ) : null
+            }
+          </Form.Item>
         </Form>
-      </Modal>
+      </FormDialog>
 
       <LedgerModal item={ledgerItem} onClose={() => setLedgerItem(null)} warehouses={warehouses ?? []} />
       <BarcodeModal item={barcodeItem} onClose={() => setBarcodeItem(null)} />
@@ -571,7 +631,7 @@ function LedgerModal({
   return (
     <Modal
       open={!!item}
-      title={item ? `${t('items.ledger')} — ${item.code} ${item.nameAr}` : ''}
+      title={item ? `${t('items.ledger')} — ${codeAndName(item)}` : ''}
       onCancel={onClose}
       footer={null}
       width={1100}
@@ -581,7 +641,7 @@ function LedgerModal({
           allowClear
           placeholder={t('stock.warehouse')}
           style={{ width: 200 }}
-          options={warehouses.map((w) => ({ value: w.id, label: `${w.code} — ${w.nameAr}` }))}
+          options={warehouses.map((w) => ({ value: w.id, label: codeAndName(w) }))}
           value={warehouseId}
           onChange={setWarehouseId}
         />
@@ -590,7 +650,7 @@ function LedgerModal({
         {(data?.balances?.length ?? 0) > 0 && (
           <Typography.Text type="secondary">
             {t('items.onHand')}:{' '}
-            {data!.balances.map((b) => `${b.warehouse.code}: ${Number(b.qtyOnHand).toFixed(3)}`).join(' · ')}
+            {data!.balances.map((b) => `${b.warehouse.code}: ${formatQty(b.qtyOnHand)}`).join(' · ')}
           </Typography.Text>
         )}
       </Space>
@@ -611,7 +671,7 @@ function LedgerModal({
           {
             title: t('stock.warehouse'),
             width: 130,
-            render: (_: unknown, r: LedgerRow) => `${r.warehouse.code} — ${r.warehouse.nameAr}`,
+            render: (_: unknown, r: LedgerRow) => codeAndName(r.warehouse),
           },
           {
             title: t('items.source'),
@@ -622,36 +682,36 @@ function LedgerModal({
             title: t('items.qtyIn'),
             dataIndex: 'qtyIn',
             width: 100,
-            align: 'end' as const,
-            render: (v: string) => (Number(v) > 0 ? `${Number(v).toFixed(3)} ${unit}` : '—'),
+            align: 'right' as const,
+            render: (v: string) => (dec(v).gt(0) ? <Num>{`${formatQty(v)} ${unit}`}</Num> : '—'),
           },
           {
             title: t('items.qtyOut'),
             dataIndex: 'qtyOut',
             width: 100,
-            align: 'end' as const,
-            render: (v: string) => (Number(v) > 0 ? `${Number(v).toFixed(3)} ${unit}` : '—'),
+            align: 'right' as const,
+            render: (v: string) => (dec(v).gt(0) ? <Num>{`${formatQty(v)} ${unit}`}</Num> : '—'),
           },
           {
             title: t('items.balance'),
             dataIndex: 'balanceQtyAfter',
             width: 110,
-            align: 'end' as const,
-            render: (v: string) => `${Number(v).toFixed(3)} ${unit}`,
+            align: 'right' as const,
+            render: (v: string) => <Num>{`${formatQty(v)} ${unit}`}</Num>,
           },
           {
             title: t('items.unitCost'),
             dataIndex: 'unitCost',
             width: 100,
-            align: 'end' as const,
-            render: (v: string) => Number(v).toFixed(3),
+            align: 'right' as const,
+            render: unitCostCell,
           },
           {
             title: t('items.wac'),
             dataIndex: 'avgCostAfter',
             width: 100,
-            align: 'end' as const,
-            render: (v: string) => Number(v).toFixed(3),
+            align: 'right' as const,
+            render: unitCostCell,
           },
         ]}
         summary={() => (
@@ -659,10 +719,10 @@ function LedgerModal({
             <Table.Summary.Cell index={0} colSpan={4}>
               <Typography.Text strong>{t('items.totals')}</Typography.Text>
             </Table.Summary.Cell>
-            <Table.Summary.Cell index={1} align="end">
+            <Table.Summary.Cell index={1} align="right">
               <Typography.Text strong>
-                {Number(data?.totals?.qtyIn ?? 0).toFixed(3)} /{' '}
-                {Number(data?.totals?.qtyOut ?? 0).toFixed(3)}
+                <Num>{formatQty(data?.totals?.qtyIn ?? '0')}</Num> /{' '}
+                <Num>{formatQty(data?.totals?.qtyOut ?? '0')}</Num>
               </Typography.Text>
             </Table.Summary.Cell>
             <Table.Summary.Cell index={2} colSpan={3} />
@@ -689,7 +749,7 @@ function BarcodeModal({ item, onClose }: { item: Item | null; onClose: () => voi
   return (
     <Modal
       open={!!item}
-      title={item ? `${t('items.barcode')} — ${item.nameAr}` : ''}
+      title={item ? `${t('items.barcode')} — ${displayName(item)}` : ''}
       onCancel={onClose}
       footer={[
         <Button key="close" onClick={onClose}>{t('common.close')}</Button>,
@@ -707,7 +767,7 @@ function BarcodeModal({ item, onClose }: { item: Item | null; onClose: () => voi
               <div className="barcode-label-name">{data?.nameAr}</div>
               <svg ref={(el) => { if (el) JsBarcode(el, code, { format: 'CODE128', width: 1.4, height: 40, displayValue: true, fontSize: 12 }); }} />
               <div className="barcode-label-price">
-                {data?.salePrice != null ? `${Number(data.salePrice).toFixed(2)}` : ''}
+                {formatAmount(data?.salePrice, '')}
               </div>
             </div>
           ))}
@@ -736,6 +796,7 @@ function GroupsTab() {
   const { contextHolder, show } = useApiError();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Group | null>(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
 
   const { data: groups, isLoading } = useQuery({
@@ -779,36 +840,39 @@ function GroupsTab() {
   });
 
   const parentName = (id: string | null) =>
-    id ? (groups ?? []).find((g) => g.id === id)?.nameAr ?? id : '—';
+    id ? displayName((groups ?? []).find((g) => g.id === id)) ?? id : '—';
+
+  const shown = (groups ?? []).filter((g) => matchesSearch(search, g.code, displayName(g)));
 
   return (
-    <Card
-      size="small"
-      title={t('items.groups')}
-      extra={
-        <Button
-          type="primary"
-          size="small"
-          onClick={() => {
-            setEditing(null);
-            form.resetFields();
-            setModalOpen(true);
-          }}
-        >
-          {t('items.addGroup')}
-        </Button>
-      }
-    >
+    <Card size="small" title={t('items.groups')}>
       {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button
+            type="primary"
+            onClick={() => {
+              setEditing(null);
+              form.resetFields();
+              setModalOpen(true);
+            }}
+          >
+            {t('items.addGroup')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={groups ?? []}
+        dataSource={shown}
         pagination={false}
         columns={[
           { title: t('items.code'), dataIndex: 'code', width: 110 },
-          { title: t('items.nameAr'), dataIndex: 'nameAr' },
+          { title: t('common.name'), key: 'name', render: (_: unknown, r: Group) => displayName(r) },
           { title: t('items.nameEn'), dataIndex: 'nameEn', render: (v: string | null) => v ?? '—' },
           {
             title: t('items.parent'),
@@ -843,54 +907,59 @@ function GroupsTab() {
                   {t('common.edit')}
                 </Button>
                 {row.isActive && (
-                  <Button size="small" danger onClick={() => deactivate.mutate(row.id)}>
+                  <Popconfirm title={t('common.confirmDeactivate')} onConfirm={() => deactivate.mutate(row.id)}>
+<Button size="small" danger >
                     {t('common.deactivate')}
                   </Button>
+</Popconfirm>
                 )}
               </Space>
             ),
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={editing ? t('items.editGroup') : t('items.addGroup')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => form.submit()}
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
-          {!editing && (
-            <Form.Item name="code" label={t('items.code')} rules={[{ required: true }]}>
-              <Input maxLength={50} />
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          <FormSection title={t('items.groupDetails')} icon={<AppstoreOutlined />}>
+            {!editing && (
+              <Form.Item name="code" label={t('items.code')} rules={[{ required: true }]}>
+                <Input maxLength={50} />
+              </Form.Item>
+            )}
+            <Form.Item name="nameAr" label={t('items.nameAr')} rules={[{ required: true }]}>
+              <Input maxLength={191} />
             </Form.Item>
-          )}
-          <Form.Item name="nameAr" label={t('items.nameAr')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('items.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          {!editing && (
-            <Form.Item name="parentId" label={t('items.parent')}>
-              <Select
-                allowClear
-                options={(groups ?? [])
-                  .filter((g) => g.isActive)
-                  .map((g) => ({ value: g.id, label: `${g.code} — ${g.nameAr}` }))}
-              />
+            <Form.Item name="nameEn" label={t('items.nameEn')}>
+              <Input maxLength={191} />
             </Form.Item>
-          )}
+            {!editing && (
+              <Form.Item name="parentId" label={t('items.parent')}>
+                <Select
+                  allowClear
+                  options={(groups ?? [])
+                    .filter((g) => g.isActive)
+                    .map((g) => ({ value: g.id, label: codeAndName(g) }))}
+                />
+              </Form.Item>
+            )}
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
     </Card>
   );
 }
 
 export function ItemsPage() {
   const { t } = useTranslation();
+  // No card title: the list below already has its own header (it was shown twice).
   return (
-    <Card title={t('items.title')}>
+    <Card>
       <Tabs
         items={[
           { key: 'items', label: t('items.items'), children: <ItemsTab /> },

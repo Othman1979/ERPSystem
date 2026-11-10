@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PlusOutlined } from '@ant-design/icons';
+import { IdcardOutlined, PhoneOutlined, PlusOutlined, WalletOutlined } from '@ant-design/icons';
 import {
   Button,
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
+  Radio,
   Select,
   Space,
   Switch,
@@ -14,7 +14,7 @@ import {
   Tag,
   message,
 } from 'antd';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
@@ -24,6 +24,10 @@ import {
   partiesControllerUpdate,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { FormDialog, FormSection } from '../components/FormDialog';
+import { displayName, type Named } from '../i18n/displayName';
+import { amountCell } from '../format/cells';
 
 interface Party {
   id: string;
@@ -49,9 +53,11 @@ export function PartiesPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Party | null>(null);
   const [form] = Form.useForm();
+  const saveAndNew = useRef(false);
   const [apiMessage, contextHolder] = message.useMessage();
 
   const { data: parties, isLoading } = useQuery({
@@ -85,7 +91,7 @@ export function PartiesPage() {
       partyType: p.partyType,
       taxNumber: p.taxNumber ?? undefined,
       phone: p.phone ?? undefined,
-      creditLimit: p.creditLimit != null ? Number(p.creditLimit) : undefined,
+      creditLimit: p.creditLimit ?? undefined,
       paymentTermsDays: p.paymentTermsDays ?? undefined,
       isCashCustomer: p.isCashCustomer,
       isActive: p.isActive,
@@ -101,7 +107,7 @@ export function PartiesPage() {
         partyType: values.partyType,
         taxNumber: values.taxNumber,
         phone: values.phone,
-        creditLimit: values.creditLimit != null ? String(values.creditLimit) : undefined,
+        creditLimit: values.creditLimit ?? undefined,
         paymentTermsDays: values.paymentTermsDays,
         isCashCustomer: values.isCashCustomer,
         isActive: values.isActive,
@@ -113,8 +119,17 @@ export function PartiesPage() {
     },
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
-      setModalOpen(false);
       invalidate();
+      if (saveAndNew.current) {
+        // Save & new: keep the dialog open on an empty form, same party type.
+        saveAndNew.current = false;
+        const partyType = form.getFieldValue('partyType');
+        form.resetFields();
+        form.setFieldsValue({ partyType, isCashCustomer: false, isActive: true });
+        requestAnimationFrame(() => form.getFieldInstance('code')?.focus?.());
+        return;
+      }
+      setModalOpen(false);
     },
     onError,
   });
@@ -130,7 +145,7 @@ export function PartiesPage() {
 
   const columns = [
     { title: t('parties.code'), dataIndex: 'code', width: 110 },
-    { title: t('parties.name'), dataIndex: 'nameAr' },
+    { title: t('common.name'), key: 'name', render: (_: unknown, r: Named) => displayName(r) },
     {
       title: t('parties.type'),
       dataIndex: 'partyType',
@@ -143,8 +158,8 @@ export function PartiesPage() {
       title: t('parties.creditLimit'),
       dataIndex: 'creditLimit',
       width: 120,
-      align: 'end' as const,
-      render: (v?: string | null) => (v != null ? Number(v).toFixed(2) : '—'),
+      align: 'right' as const,
+      render: amountCell,
     },
     {
       title: t('common.status'),
@@ -171,92 +186,130 @@ export function PartiesPage() {
     },
   ];
 
+  const shown = (parties ?? []).filter((p) =>
+    matchesSearch(search, p.code, displayName(p), p.phone, p.taxNumber),
+  );
+
   return (
     <div>
       {contextHolder}
       <PageHeader title={t('nav.parties')} />
-      <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
-        <Select
-          allowClear
-          placeholder={t('parties.type')}
-          style={{ width: 180 }}
-          value={typeFilter}
-          onChange={setTypeFilter}
-          options={[
-            { value: 'CUSTOMER', label: t('parties.type_CUSTOMER') },
-            { value: 'SUPPLIER', label: t('parties.type_SUPPLIER') },
-            { value: 'BOTH', label: t('parties.type_BOTH') },
-          ]}
-        />
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          {t('parties.new')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        filters={
+          <Select
+            allowClear
+            placeholder={t('parties.type')}
+            value={typeFilter}
+            onChange={setTypeFilter}
+            options={[
+              { value: 'CUSTOMER', label: t('parties.type_CUSTOMER') },
+              { value: 'SUPPLIER', label: t('parties.type_SUPPLIER') },
+              { value: 'BOTH', label: t('parties.type_BOTH') },
+            ]}
+          />
+        }
+        count={shown.length}
+        actions={
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            {t('parties.new')}
+          </Button>
+        }
+      />
 
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={parties ?? []}
+        dataSource={shown}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}
       />
 
-      <Modal
+      <FormDialog
         open={modalOpen}
         title={editing ? t('parties.edit') : t('parties.new')}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => {
+          saveAndNew.current = false;
+          form.submit();
+        }}
+        onSaveAndNew={
+          editing
+            ? undefined
+            : () => {
+                saveAndNew.current = true;
+                form.submit();
+              }
+        }
+        saving={save.isPending}
         destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          {!editing && (
-            <Form.Item name="code" label={t('parties.code')} rules={[{ required: true }]}>
+          <FormSection
+            title={t('common.basicInfo')}
+            icon={<IdcardOutlined />}
+            extra={
+              <>
+                {t('common.active')}
+                <Form.Item name="isActive" valuePropName="checked" noStyle>
+                  <Switch size="small" />
+                </Form.Item>
+              </>
+            }
+          >
+            {!editing && (
+              <Form.Item name="code" label={t('parties.code')} rules={[{ required: true }]}>
+                <Input maxLength={50} />
+              </Form.Item>
+            )}
+            <Form.Item
+              name="partyType"
+              label={t('parties.type')}
+              rules={[{ required: true }]}
+              className={editing ? 'span-all' : 'span-2'}
+            >
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
+                options={[
+                  { value: 'CUSTOMER', label: t('parties.type_CUSTOMER') },
+                  { value: 'SUPPLIER', label: t('parties.type_SUPPLIER') },
+                  { value: 'BOTH', label: t('parties.type_BOTH') },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="nameAr" label={t('parties.nameAr')} rules={[{ required: true }]} className="span-2">
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="nameEn" label={t('parties.nameEn')}>
+              <Input maxLength={191} />
+            </Form.Item>
+          </FormSection>
+
+          <FormSection title={t('parties.contact')} icon={<PhoneOutlined />}>
+            <Form.Item name="taxNumber" label={t('parties.taxNumber')}>
               <Input maxLength={50} />
             </Form.Item>
-          )}
-          <Form.Item name="nameAr" label={t('parties.nameAr')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('parties.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="partyType" label={t('parties.type')} rules={[{ required: true }]}>
-            <Select
-              options={[
-                { value: 'CUSTOMER', label: t('parties.type_CUSTOMER') },
-                { value: 'SUPPLIER', label: t('parties.type_SUPPLIER') },
-                { value: 'BOTH', label: t('parties.type_BOTH') },
-              ]}
-            />
-          </Form.Item>
-          <Space size="middle" style={{ display: 'flex' }}>
-            <Form.Item name="taxNumber" label={t('parties.taxNumber')} style={{ flex: 1 }}>
+            <Form.Item name="phone" label={t('parties.phone')}>
               <Input maxLength={50} />
             </Form.Item>
-            <Form.Item name="phone" label={t('parties.phone')} style={{ flex: 1 }}>
-              <Input maxLength={50} />
+          </FormSection>
+
+          <FormSection title={t('parties.terms')} icon={<WalletOutlined />}>
+            <Form.Item name="creditLimit" label={t('parties.creditLimit')}>
+              <InputNumber<string> stringMode min="0" />
             </Form.Item>
-          </Space>
-          <Space size="middle" style={{ display: 'flex' }}>
-            <Form.Item name="creditLimit" label={t('parties.creditLimit')} style={{ flex: 1 }}>
-              <InputNumber min={0} style={{ width: '100%' }} />
+            <Form.Item name="paymentTermsDays" label={t('parties.paymentTerms')}>
+              <InputNumber min={0} max={3650} />
             </Form.Item>
-            <Form.Item name="paymentTermsDays" label={t('parties.paymentTerms')} style={{ flex: 1 }}>
-              <InputNumber min={0} max={3650} style={{ width: '100%' }} />
-            </Form.Item>
-          </Space>
-          <Space size="large">
             <Form.Item name="isCashCustomer" label={t('parties.isCashCustomer')} valuePropName="checked">
               <Switch />
             </Form.Item>
-            <Form.Item name="isActive" label={t('common.active')} valuePropName="checked">
-              <Switch />
-            </Form.Item>
-          </Space>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
     </div>
   );
 }

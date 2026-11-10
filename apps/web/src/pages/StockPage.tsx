@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { InfoCircleOutlined, SaveOutlined } from '@ant-design/icons';
 import {
   Button,
   Card,
@@ -46,12 +47,21 @@ import {
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import { GoodsNotesSection } from './GoodsNotesPage';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import {
   emptyItemLine,
   ItemLinesGrid,
   type ItemLineDraft,
 } from '../components/ItemLinesGrid';
+import { codeAndName, displayName, type Named } from '../i18n/displayName';
+import { Num } from '../components/Num';
+import { EnterNav } from '../components/EnterNav';
+import { GridSelect } from '../components/GridSelect';
+import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
+import { amountCell, qtyCell, unitCostCell } from '../format/cells';
+import { formatAmount, formatQty } from '../format/number';
 
 interface Warehouse {
   id: string;
@@ -114,6 +124,9 @@ interface CountLine {
 }
 interface CountDetail {
   id: string;
+  docNo?: string | null;
+  countDate?: string;
+  description?: string | null;
   status: string;
   warehouseId: string;
   lines: CountLine[];
@@ -146,12 +159,15 @@ function useLookups() {
   });
   const whOptions = (warehouses.data ?? [])
     .filter((w) => w.isActive)
-    .map((w) => ({ value: w.id, label: `${w.code} — ${w.nameAr}` }));
+    .map((w) => ({ value: w.id, label: codeAndName(w) }));
   const itemOptions = (items.data ?? []).map((i) => ({
     value: i.id,
-    label: `${i.code} — ${i.nameAr}`,
+    label: codeAndName(i),
   }));
-  return { warehouses, items, whOptions, itemOptions };
+  // Report rows only carry the warehouse code; show "code — name" instead.
+  const warehouseLabel = (code: string) =>
+    codeAndName((warehouses.data ?? []).find((w) => w.code === code)) ?? code;
+  return { warehouses, items, whOptions, itemOptions, warehouseLabel };
 }
 
 const statusTag = (s: string, t: (k: string) => string) =>
@@ -161,7 +177,7 @@ function BalancesTab() {
   const { t } = useTranslation();
   const [warehouseId, setWarehouseId] = useState<string | undefined>();
   const [lowStock, setLowStock] = useState(false);
-  const { whOptions } = useLookups();
+  const { whOptions, warehouseLabel } = useLookups();
   const { data, isLoading } = useQuery({
     queryKey: ['stock-balances', warehouseId, lowStock],
     queryFn: () =>
@@ -173,18 +189,22 @@ function BalancesTab() {
   });
   return (
     <>
-      <Space style={{ marginBottom: 12 }}>
-        <Select
-          allowClear
-          placeholder={t('stock.warehouse')}
-          style={{ width: 240 }}
-          options={whOptions}
-          onChange={setWarehouseId}
-        />
-        <Checkbox checked={lowStock} onChange={(e) => setLowStock(e.target.checked)}>
-          {t('stock.lowStockOnly')}
-        </Checkbox>
-      </Space>
+      <ListToolbar
+        filters={
+          <>
+            <Select
+              allowClear
+              placeholder={t('stock.warehouse')}
+              options={whOptions}
+              onChange={setWarehouseId}
+            />
+            <Checkbox checked={lowStock} onChange={(e) => setLowStock(e.target.checked)}>
+              {t('stock.lowStockOnly')}
+            </Checkbox>
+          </>
+        }
+        count={(data ?? []).length}
+      />
       <Table
         rowKey={(r) => `${r.warehouseId}:${r.itemId}`}
         size="small"
@@ -192,12 +212,17 @@ function BalancesTab() {
         dataSource={data ?? []}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: t('stock.warehouse'), dataIndex: 'warehouseCode', width: 110 },
+          {
+            title: t('stock.warehouse'),
+            dataIndex: 'warehouseCode',
+            width: 180,
+            render: (code: string) => warehouseLabel(code),
+          },
           { title: t('items.code'), dataIndex: 'itemCode', width: 110 },
-          { title: t('items.nameAr'), dataIndex: 'itemName' },
-          { title: t('stock.qty'), dataIndex: 'qtyOnHand', width: 110 },
+          { title: t('common.name'), dataIndex: 'itemName' },
+          { title: t('stock.qty'), dataIndex: 'qtyOnHand', width: 110, align: 'right' as const, render: qtyCell },
           { title: t('items.unit'), dataIndex: 'unit', width: 80 },
-          { title: t('items.minStock'), dataIndex: 'minStock', width: 100 },
+          { title: t('items.minStock'), dataIndex: 'minStock', width: 100, align: 'right' as const, render: qtyCell },
         ]}
       />
     </>
@@ -212,6 +237,7 @@ function AdjustmentsTab() {
   const [reverseTarget, setReverseTarget] = useState<DocRow | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const { whOptions, itemOptions } = useLookups();
 
@@ -288,28 +314,108 @@ function AdjustmentsTab() {
   const adjType = Form.useWatch('adjustmentType', form);
   const needsCost = adjType === 'OPENING' || adjType === 'IN';
 
+  const closeNew = () => {
+    setModalOpen(false);
+    setLines([emptyItemLine(1)]);
+  };
+  const submitNew = () => {
+    if (create.isPending) return;
+    const filled = lines.filter((l) => l.itemId && l.qty != null);
+    if (filled.length === 0) {
+      apiMessage.error(t('stock.minLines'));
+      return;
+    }
+    form.submit();
+  };
+  useDocShortcuts({ onSave: modalOpen ? submitNew : undefined });
+
+  // A new adjustment opens as a full document page.
+  if (modalOpen) {
+    return (
+      <>
+        {contextHolder}
+        <DocLayout
+          title={t('stock.newAdjustment')}
+          status="DRAFT"
+          onBack={closeNew}
+          actions={
+            <Button type="primary" icon={<SaveOutlined />} loading={create.isPending} onClick={submitNew}>
+              {t('common.saveDraft')}
+              <span className="doc-kbd">Ctrl+S</span>
+            </Button>
+          }
+        >
+          <EnterNav autoFocusWhen>
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={(v) => create.mutate(v)}
+              requiredMark={false}
+              initialValues={{ adjustmentType: 'IN', adjustmentDate: dayjs() }}
+            >
+              <DocFields>
+                <Form.Item name="adjustmentDate" label={t('stock.date')} rules={[{ required: true }]}>
+                  <DatePicker />
+                </Form.Item>
+                <Form.Item name="adjustmentType" label={t('stock.type')} rules={[{ required: true }]}>
+                  <GridSelect
+                    enterOpens
+                    options={['OPENING', 'IN', 'OUT'].map((v) => ({
+                      value: v,
+                      label: t(`stock.types.${v}`),
+                    }))}
+                  />
+                </Form.Item>
+                <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]}>
+                  <GridSelect enterOpens options={whOptions} />
+                </Form.Item>
+                <Form.Item name="description" label={t('common.description')}>
+                  <Input maxLength={500} />
+                </Form.Item>
+              </DocFields>
+              <ItemLinesGrid
+                lines={lines}
+                onChange={setLines}
+                itemOptions={itemOptions}
+                showCost={needsCost}
+                showDescription
+              />
+            </Form>
+          </EnterNav>
+        </DocLayout>
+      </>
+    );
+  }
+
+  const shown = (data ?? []).filter((r) => matchesSearch(search, r.docNo, displayName(r.warehouse)));
+
   return (
     <>
       {contextHolder}
-      <Space style={{ marginBottom: 12 }}>
-        <Button
-          type="primary"
-          onClick={() => {
-            setLines([emptyItemLine(1)]);
-            setModalOpen(true);
-          }}
-        >
-          {t('stock.newAdjustment')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button
+            type="primary"
+            onClick={() => {
+              setLines([emptyItemLine(1)]);
+              setModalOpen(true);
+            }}
+          >
+            {t('stock.newAdjustment')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={shown}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: t('stock.docNo'), dataIndex: 'docNo', width: 140, render: (v: string | null) => v ?? '—' },
+          { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
           {
             title: t('stock.date'),
             dataIndex: 'adjustmentDate',
@@ -325,7 +431,7 @@ function AdjustmentsTab() {
           {
             title: t('stock.warehouse'),
             width: 140,
-            render: (_: unknown, r: DocRow) => r.warehouse?.nameAr ?? '—',
+            render: (_: unknown, r: DocRow) => displayName(r.warehouse) ?? '—',
           },
           { title: t('stock.lines'), width: 80, render: (_: unknown, r: DocRow) => r._count?.lines ?? '—' },
           {
@@ -374,59 +480,6 @@ function AdjustmentsTab() {
         ]}
       />
       <Modal
-        title={t('stock.newAdjustment')}
-        open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          setLines([emptyItemLine(1)]);
-        }}
-        onOk={() => {
-          const filled = lines.filter((l) => l.itemId && l.qty != null);
-          if (filled.length === 0) {
-            apiMessage.error(t('stock.minLines'));
-            return;
-          }
-          form.submit();
-        }}
-        confirmLoading={create.isPending}
-        width={820}
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(v) => create.mutate(v)}
-          requiredMark={false}
-          initialValues={{ adjustmentType: 'IN', adjustmentDate: dayjs() }}
-        >
-          <Space style={{ display: 'flex' }}>
-            <Form.Item name="adjustmentDate" label={t('stock.date')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <DatePicker style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="adjustmentType" label={t('stock.type')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <Select
-                options={['OPENING', 'IN', 'OUT'].map((v) => ({
-                  value: v,
-                  label: t(`stock.types.${v}`),
-                }))}
-              />
-            </Form.Item>
-            <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <Select options={whOptions} />
-            </Form.Item>
-          </Space>
-          <Form.Item name="description" label={t('common.description')}>
-            <Input maxLength={500} />
-          </Form.Item>
-          <ItemLinesGrid
-            lines={lines}
-            onChange={setLines}
-            itemOptions={itemOptions}
-            showCost={needsCost}
-            showDescription
-          />
-        </Form>
-      </Modal>
-      <Modal
         title={t('journal.reverseTitle')}
         open={!!reverseTarget}
         onCancel={() => setReverseTarget(null)}
@@ -451,6 +504,7 @@ function TransfersTab() {
   const [reverseTarget, setReverseTarget] = useState<DocRow | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const { whOptions, itemOptions } = useLookups();
 
@@ -517,28 +571,96 @@ function TransfersTab() {
     onError: show,
   });
 
+  const closeNew = () => {
+    setModalOpen(false);
+    setLines([emptyItemLine(1)]);
+  };
+  const submitNew = () => {
+    if (create.isPending) return;
+    const filled = lines.filter((l) => l.itemId && l.qty != null);
+    if (filled.length === 0) {
+      apiMessage.error(t('stock.minLines'));
+      return;
+    }
+    form.submit();
+  };
+  useDocShortcuts({ onSave: modalOpen ? submitNew : undefined });
+
+  // A new transfer opens as a full document page.
+  if (modalOpen) {
+    return (
+      <>
+        {contextHolder}
+        <DocLayout
+          title={t('stock.newTransfer')}
+          status="DRAFT"
+          onBack={closeNew}
+          actions={
+            <Button type="primary" icon={<SaveOutlined />} loading={create.isPending} onClick={submitNew}>
+              {t('common.saveDraft')}
+              <span className="doc-kbd">Ctrl+S</span>
+            </Button>
+          }
+        >
+          <EnterNav autoFocusWhen>
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={(v) => create.mutate(v)}
+              requiredMark={false}
+              initialValues={{ transferDate: dayjs() }}
+            >
+              <DocFields>
+                <Form.Item name="transferDate" label={t('stock.date')} rules={[{ required: true }]}>
+                  <DatePicker />
+                </Form.Item>
+                <Form.Item name="fromWarehouseId" label={t('stock.from')} rules={[{ required: true }]}>
+                  <GridSelect enterOpens options={whOptions} />
+                </Form.Item>
+                <Form.Item name="toWarehouseId" label={t('stock.to')} rules={[{ required: true }]}>
+                  <GridSelect enterOpens options={whOptions} />
+                </Form.Item>
+                <Form.Item name="description" label={t('common.description')}>
+                  <Input maxLength={500} />
+                </Form.Item>
+              </DocFields>
+              <ItemLinesGrid lines={lines} onChange={setLines} itemOptions={itemOptions} />
+            </Form>
+          </EnterNav>
+        </DocLayout>
+      </>
+    );
+  }
+
+  const shown = (data ?? []).filter((r) => matchesSearch(search, r.docNo, displayName(r.fromWarehouse), displayName(r.toWarehouse)));
+
   return (
     <>
       {contextHolder}
-      <Space style={{ marginBottom: 12 }}>
-        <Button
-          type="primary"
-          onClick={() => {
-            setLines([emptyItemLine(1)]);
-            setModalOpen(true);
-          }}
-        >
-          {t('stock.newTransfer')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button
+            type="primary"
+            onClick={() => {
+              setLines([emptyItemLine(1)]);
+              setModalOpen(true);
+            }}
+          >
+            {t('stock.newTransfer')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={shown}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: t('stock.docNo'), dataIndex: 'docNo', width: 140, render: (v: string | null) => v ?? '—' },
+          { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
           {
             title: t('stock.date'),
             dataIndex: 'transferDate',
@@ -548,12 +670,12 @@ function TransfersTab() {
           {
             title: t('stock.from'),
             width: 140,
-            render: (_: unknown, r: DocRow) => r.fromWarehouse?.nameAr ?? '—',
+            render: (_: unknown, r: DocRow) => displayName(r.fromWarehouse) ?? '—',
           },
           {
             title: t('stock.to'),
             width: 140,
-            render: (_: unknown, r: DocRow) => r.toWarehouse?.nameAr ?? '—',
+            render: (_: unknown, r: DocRow) => displayName(r.toWarehouse) ?? '—',
           },
           { title: t('stock.lines'), width: 80, render: (_: unknown, r: DocRow) => r._count?.lines ?? '—' },
           {
@@ -602,48 +724,6 @@ function TransfersTab() {
         ]}
       />
       <Modal
-        title={t('stock.newTransfer')}
-        open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          setLines([emptyItemLine(1)]);
-        }}
-        onOk={() => {
-          const filled = lines.filter((l) => l.itemId && l.qty != null);
-          if (filled.length === 0) {
-            apiMessage.error(t('stock.minLines'));
-            return;
-          }
-          form.submit();
-        }}
-        confirmLoading={create.isPending}
-        width={820}
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(v) => create.mutate(v)}
-          requiredMark={false}
-          initialValues={{ transferDate: dayjs() }}
-        >
-          <Space style={{ display: 'flex' }}>
-            <Form.Item name="transferDate" label={t('stock.date')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <DatePicker style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="fromWarehouseId" label={t('stock.from')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <Select options={whOptions} />
-            </Form.Item>
-            <Form.Item name="toWarehouseId" label={t('stock.to')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <Select options={whOptions} />
-            </Form.Item>
-          </Space>
-          <Form.Item name="description" label={t('common.description')}>
-            <Input maxLength={500} />
-          </Form.Item>
-          <ItemLinesGrid lines={lines} onChange={setLines} itemOptions={itemOptions} />
-        </Form>
-      </Modal>
-      <Modal
         title={t('journal.reverseTitle')}
         open={!!reverseTarget}
         onCancel={() => setReverseTarget(null)}
@@ -666,7 +746,8 @@ function CountsTab() {
   const { contextHolder, show, ok } = useApiMessage();
   const [modalOpen, setModalOpen] = useState(false);
   const [detail, setDetail] = useState<CountDetail | null>(null);
-  const [counted, setCounted] = useState<Record<string, number | null>>({});
+  const [counted, setCounted] = useState<Record<string, string | null>>({});
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const { whOptions } = useLookups();
 
@@ -701,15 +782,15 @@ function CountsTab() {
     setDetail(d);
     setCounted(
       Object.fromEntries(
-        d.lines.map((l) => [l.id, l.countedQty != null ? Number(l.countedQty) : null]),
+        d.lines.map((l) => [l.id, l.countedQty ?? null]),
       ),
     );
   };
 
   const saveLine = useMutation({
-    mutationFn: (v: { lineId: string; qty: number }) =>
+    mutationFn: (v: { lineId: string; qty: string }) =>
       stockDocumentsControllerUpdateCountLine(detail!.id, v.lineId, {
-        countedQty: String(v.qty),
+        countedQty: v.qty,
       } as never),
     onError: show,
   });
@@ -743,22 +824,124 @@ function CountsTab() {
     onError: show,
   });
 
+  // The count sheet opens as a full document page.
+  if (detail) {
+    const isDraft = detail.status === 'DRAFT';
+    return (
+      <>
+        {contextHolder}
+        <DocLayout
+          title={t('stock.countLines')}
+          docNo={detail.docNo}
+          onBack={() => setDetail(null)}
+          actions={
+            isDraft && (
+              <Popconfirm
+                title={t('stock.confirmApprove')}
+                onConfirm={() => approve.mutate(detail.id)}
+              >
+                <Button type="primary" loading={approve.isPending}>
+                  {t('stock.approve')}
+                </Button>
+              </Popconfirm>
+            )
+          }
+        >
+          <DocFields>
+            <DocField label={t('stock.date')}>
+              <DocValue>
+                {detail.countDate ? dayjs(detail.countDate).format('YYYY-MM-DD') : '—'}
+              </DocValue>
+            </DocField>
+            <DocField label={t('stock.warehouse')}>
+              <DocValue>
+                {whOptions.find((o) => o.value === detail.warehouseId)?.label ?? '—'}
+              </DocValue>
+            </DocField>
+            <DocField label={t('common.status')}>
+              <DocValue>{statusTag(detail.status, t)}</DocValue>
+            </DocField>
+            {detail.description && (
+              <DocField label={t('common.description')}>
+                <DocValue>{detail.description}</DocValue>
+              </DocField>
+            )}
+          </DocFields>
+          <div onKeyDown={onCountGridKeyDown}>
+            <Table
+              rowKey="id"
+              size="small"
+              dataSource={detail.lines}
+              pagination={false}
+              columns={[
+                {
+                  title: t('items.code'),
+                  width: 110,
+                  render: (_: unknown, l: CountLine) => l.item?.code ?? l.itemId,
+                },
+                {
+                  title: t('common.name'),
+                  render: (_: unknown, l: CountLine) => displayName(l.item) ?? '—',
+                },
+                { title: t('stock.systemQty'), dataIndex: 'systemQty', width: 110, align: 'right' as const, render: qtyCell },
+                {
+                  title: t('stock.countedQty'),
+                  width: 130,
+                  align: 'right' as const,
+                  render: (_: unknown, l: CountLine) =>
+                    isDraft ? (
+                      <InputNumber<string>
+                        stringMode
+                        size="small"
+                        min="0"
+                        value={counted[l.id] ?? null}
+                        onChange={(v) => {
+                          setCounted((c) => ({ ...c, [l.id]: v }));
+                          if (v != null) saveLine.mutate({ lineId: l.id, qty: v });
+                        }}
+                      />
+                    ) : (
+                      <Num>{formatQty(l.countedQty)}</Num>
+                    ),
+                },
+                {
+                  title: t('stock.diff'),
+                  dataIndex: 'differenceQty',
+                  width: 90,
+                  align: 'right' as const,
+                  render: (v: string | null) => <Num>{formatQty(v)}</Num>,
+                },
+              ]}
+            />
+          </div>
+        </DocLayout>
+      </>
+    );
+  }
+
+  const shown = (data ?? []).filter((r) => matchesSearch(search, r.docNo, displayName(r.warehouse)));
+
   return (
     <>
       {contextHolder}
-      <Space style={{ marginBottom: 12 }}>
-        <Button type="primary" onClick={() => setModalOpen(true)}>
-          {t('stock.newCount')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button type="primary" onClick={() => setModalOpen(true)}>
+            {t('stock.newCount')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={shown}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: t('stock.docNo'), dataIndex: 'docNo', width: 140, render: (v: string | null) => v ?? '—' },
+          { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
           {
             title: t('stock.date'),
             dataIndex: 'countDate',
@@ -792,101 +975,34 @@ function CountsTab() {
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={t('stock.newCount')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={create.isPending}
+        onSave={() => form.submit()}
+        saving={create.isPending}
       >
+        <EnterNav autoFocusWhen={modalOpen}>
         <Form
           form={form}
           layout="vertical"
           onFinish={(v) => create.mutate(v)}
-          requiredMark={false}
           initialValues={{ countDate: dayjs() }}
         >
-          <Form.Item name="countDate" label={t('stock.date')} rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]}>
-            <Select options={whOptions} />
-          </Form.Item>
-          <Form.Item name="description" label={t('common.description')}>
-            <Input maxLength={500} />
-          </Form.Item>
+          <FormSection title={t('stock.countDetails')} icon={<InfoCircleOutlined />}>
+            <Form.Item name="countDate" label={t('stock.date')} rules={[{ required: true }]}>
+              <DatePicker />
+            </Form.Item>
+            <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]}>
+              <GridSelect enterOpens options={whOptions} />
+            </Form.Item>
+            <Form.Item name="description" label={t('common.description')}>
+              <Input maxLength={500} />
+            </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
-      <Modal
-        title={t('stock.countLines')}
-        open={!!detail}
-        onCancel={() => setDetail(null)}
-        width={720}
-        footer={
-          detail?.status === 'DRAFT' ? (
-            <Space>
-              <Button onClick={() => setDetail(null)}>{t('common.close')}</Button>
-              <Popconfirm
-                title={t('stock.confirmApprove')}
-                onConfirm={() => approve.mutate(detail.id)}
-              >
-                <Button type="primary" loading={approve.isPending}>
-                  {t('stock.approve')}
-                </Button>
-              </Popconfirm>
-            </Space>
-          ) : (
-            <Button onClick={() => setDetail(null)}>{t('common.close')}</Button>
-          )
-        }
-      >
-        {detail && (
-          <div onKeyDown={onCountGridKeyDown}>
-          <Table
-            rowKey="id"
-            size="small"
-            dataSource={detail.lines}
-            pagination={false}
-            columns={[
-              {
-                title: t('items.code'),
-                width: 110,
-                render: (_: unknown, l: CountLine) => l.item?.code ?? l.itemId,
-              },
-              {
-                title: t('items.nameAr'),
-                render: (_: unknown, l: CountLine) => l.item?.nameAr ?? '—',
-              },
-              { title: t('stock.systemQty'), dataIndex: 'systemQty', width: 110 },
-              {
-                title: t('stock.countedQty'),
-                width: 130,
-                render: (_: unknown, l: CountLine) =>
-                  detail.status === 'DRAFT' ? (
-                    <InputNumber
-                      size="small"
-                      min={0}
-                      value={counted[l.id] ?? null}
-                      onChange={(v) => {
-                        setCounted((c) => ({ ...c, [l.id]: v }));
-                        if (v != null) saveLine.mutate({ lineId: l.id, qty: v });
-                      }}
-                    />
-                  ) : (
-                    (l.countedQty ?? '—')
-                  ),
-              },
-              {
-                title: t('stock.diff'),
-                dataIndex: 'differenceQty',
-                width: 90,
-                render: (v: string | null) => (v != null ? Number(v) : '—'),
-              },
-            ]}
-          />
-          </div>
-        )}
-      </Modal>
+        </EnterNav>
+      </FormDialog>
     </>
   );
 }
@@ -895,7 +1011,7 @@ function MovementsTab() {
   const { t } = useTranslation();
   const [itemId, setItemId] = useState<string | undefined>();
   const [warehouseId, setWarehouseId] = useState<string | undefined>();
-  const { whOptions, itemOptions } = useLookups();
+  const { whOptions, itemOptions, warehouseLabel } = useLookups();
   const { data, isLoading } = useQuery({
     queryKey: ['stock-movements', itemId, warehouseId],
     queryFn: () =>
@@ -911,24 +1027,27 @@ function MovementsTab() {
   });
   return (
     <>
-      <Space style={{ marginBottom: 12 }}>
-        <Select
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          placeholder={t('items.title')}
-          style={{ width: 260 }}
-          options={itemOptions}
-          onChange={setItemId}
-        />
-        <Select
-          allowClear
-          placeholder={t('stock.warehouse')}
-          style={{ width: 240 }}
-          options={whOptions}
-          onChange={setWarehouseId}
-        />
-      </Space>
+      <ListToolbar
+        filters={
+          <>
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('items.title')}
+              options={itemOptions}
+              onChange={setItemId}
+            />
+            <Select
+              allowClear
+              placeholder={t('stock.warehouse')}
+              options={whOptions}
+              onChange={setWarehouseId}
+            />
+          </>
+        }
+        count={(data?.rows ?? []).length}
+      />
       <Table
         rowKey="id"
         size="small"
@@ -942,21 +1061,26 @@ function MovementsTab() {
             width: 110,
             render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
           },
-          { title: t('stock.warehouse'), dataIndex: 'warehouseCode', width: 100 },
+          {
+            title: t('stock.warehouse'),
+            dataIndex: 'warehouseCode',
+            width: 160,
+            render: (code: string) => warehouseLabel(code),
+          },
           { title: t('items.code'), dataIndex: 'itemCode', width: 100 },
-          { title: t('items.nameAr'), dataIndex: 'itemName' },
+          { title: t('common.name'), dataIndex: 'itemName' },
           {
             title: t('stock.type'),
             dataIndex: 'movementType',
             width: 80,
             render: (v: string) =>
-              v === 'IN' ? <Tag color="green">IN</Tag> : <Tag color="red">OUT</Tag>,
+              v === 'IN' ? <Tag color="green">{t('stock.types.IN')}</Tag> : <Tag color="red">{t('stock.types.OUT')}</Tag>,
           },
-          { title: t('stock.qtyIn'), dataIndex: 'qtyIn', width: 90 },
-          { title: t('stock.qtyOut'), dataIndex: 'qtyOut', width: 90 },
-          { title: t('stock.unitCost'), dataIndex: 'unitCost', width: 100 },
-          { title: t('stock.totalCost'), dataIndex: 'totalCost', width: 110 },
-          { title: t('stock.balanceAfter'), dataIndex: 'balanceQtyAfter', width: 110 },
+          { title: t('stock.qtyIn'), dataIndex: 'qtyIn', width: 90, align: 'right' as const, render: qtyCell },
+          { title: t('stock.qtyOut'), dataIndex: 'qtyOut', width: 90, align: 'right' as const, render: qtyCell },
+          { title: t('stock.unitCost'), dataIndex: 'unitCost', width: 100, align: 'right' as const, render: unitCostCell },
+          { title: t('stock.totalCost'), dataIndex: 'totalCost', width: 110, align: 'right' as const, render: amountCell },
+          { title: t('stock.balanceAfter'), dataIndex: 'balanceQtyAfter', width: 110, align: 'right' as const, render: qtyCell },
         ]}
       />
     </>
@@ -975,7 +1099,7 @@ function ValuationTab() {
   return (
     <>
       <Typography.Title level={5}>
-        {t('stock.totalValue')}: {data?.totalValue ?? '—'}
+        {t('stock.totalValue')}: <Num>{formatAmount(data?.totalValue)}</Num>
       </Typography.Title>
       <Table
         rowKey="itemId"
@@ -985,10 +1109,10 @@ function ValuationTab() {
         pagination={{ pageSize: 20 }}
         columns={[
           { title: t('items.code'), dataIndex: 'code', width: 110 },
-          { title: t('items.nameAr'), dataIndex: 'nameAr' },
-          { title: t('stock.qty'), dataIndex: 'qty', width: 110 },
-          { title: t('stock.avgCost'), dataIndex: 'avgCost', width: 110 },
-          { title: t('stock.value'), dataIndex: 'value', width: 120 },
+          { title: t('common.name'), key: 'name', render: (_: unknown, r: Named) => displayName(r) },
+          { title: t('stock.qty'), dataIndex: 'qty', width: 110, align: 'right' as const, render: qtyCell },
+          { title: t('stock.avgCost'), dataIndex: 'avgCost', width: 110, align: 'right' as const, render: unitCostCell },
+          { title: t('stock.value'), dataIndex: 'value', width: 120, align: 'right' as const, render: amountCell },
         ]}
       />
     </>

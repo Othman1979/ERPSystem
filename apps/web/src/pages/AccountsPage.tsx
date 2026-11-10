@@ -5,7 +5,7 @@ import {
   Card,
   Form,
   Input,
-  Modal,
+  Popconfirm,
   Select,
   Space,
   Table,
@@ -21,9 +21,18 @@ import {
   accountingControllerUpdateAccount,
   journalControllerTrialBalance,
 } from '@erp/api-client';
+import { BookOutlined } from '@ant-design/icons';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { bothNames, codeAndName } from '../i18n/displayName';
+import { palette } from '../theme';
+import { Num } from '../components/Num';
+import type Decimal from 'decimal.js';
+import { amountCell } from '../format/cells';
+import { dec, formatAmount } from '../format/number';
 
-interface Account {
+export interface Account {
   id: string;
   code: string;
   nameAr: string;
@@ -38,12 +47,12 @@ interface Account {
   isActive: boolean;
 }
 
-interface TreeNode extends Account {
+export interface TreeNode extends Account {
   children?: TreeNode[];
   /** Rolled-up totals over POSTED journal lines (own + descendants). */
-  balDebit: number;
-  balCredit: number;
-  balBalance: number;
+  balDebit: Decimal;
+  balCredit: Decimal;
+  balBalance: Decimal;
 }
 
 interface TrialRow {
@@ -52,10 +61,10 @@ interface TrialRow {
   totalCredit: string;
 }
 
-function buildTree(accounts: Account[]): TreeNode[] {
+export function buildTree(accounts: Account[]): TreeNode[] {
   const byId = new Map<string, TreeNode>();
   for (const a of accounts)
-    byId.set(a.id, { ...a, balDebit: 0, balCredit: 0, balBalance: 0 });
+    byId.set(a.id, { ...a, balDebit: dec(0), balCredit: dec(0), balBalance: dec(0) });
   const roots: TreeNode[] = [];
   for (const node of byId.values()) {
     const parent = node.parentId ? byId.get(node.parentId) : undefined;
@@ -73,21 +82,24 @@ function buildTree(accounts: Account[]): TreeNode[] {
   return roots;
 }
 
-const ZERO = { debit: 0, credit: 0 };
+const ZERO = { debit: dec(0), credit: dec(0) };
 
 /** Attach rolled-up posted totals to every node (own + descendants). */
-function applyBalances(nodes: TreeNode[], balMap: Map<string, { debit: number; credit: number }>) {
-  let debit = 0;
-  let credit = 0;
+export function applyBalances(
+  nodes: TreeNode[],
+  balMap: Map<string, { debit: Decimal; credit: Decimal }>,
+) {
+  let debit = dec(0);
+  let credit = dec(0);
   for (const n of nodes) {
     const own = balMap.get(n.id) ?? ZERO;
     const child = n.children?.length ? applyBalances(n.children, balMap) : ZERO;
-    n.balDebit = own.debit + child.debit;
-    n.balCredit = own.credit + child.credit;
+    n.balDebit = own.debit.plus(child.debit);
+    n.balCredit = own.credit.plus(child.credit);
     n.balBalance =
-      n.normalBalance === 'DEBIT' ? n.balDebit - n.balCredit : n.balCredit - n.balDebit;
-    debit += n.balDebit;
-    credit += n.balCredit;
+      n.normalBalance === 'DEBIT' ? n.balDebit.minus(n.balCredit) : n.balCredit.minus(n.balDebit);
+    debit = debit.plus(n.balDebit);
+    credit = credit.plus(n.balCredit);
   }
   return { debit, credit };
 }
@@ -97,6 +109,7 @@ export function AccountsPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
@@ -120,16 +133,13 @@ export function AccountsPage() {
       const balMap = new Map(
         trial.rows.map((r) => [
           r.accountId,
-          { debit: Number(r.totalDebit), credit: Number(r.totalCredit) },
+          { debit: dec(r.totalDebit), credit: dec(r.totalCredit) },
         ]),
       );
       applyBalances(nodes, balMap);
     }
     return nodes;
   }, [data, trial]);
-
-  const fmt = (v: number) =>
-    v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const watchedParentId = Form.useWatch('parentId', form) as string | undefined;
   const isCreate = !editing;
@@ -218,37 +228,52 @@ export function AccountsPage() {
 
   const parentOptions = (data ?? [])
     .filter((a) => a.isActive && a.id !== editing?.id)
-    .map((a) => ({ value: a.id, label: `${a.code} — ${a.nameAr}` }));
+    .map((a) => ({ value: a.id, label: codeAndName(a) }));
+
+  // Keep matching accounts plus their ancestors so the tree stays intact;
+  // balances were rolled up on the full tree above, so they are unaffected.
+  const shownTree = useMemo(() => {
+    const prune = (nodes: TreeNode[]): TreeNode[] =>
+      nodes.flatMap((n) => {
+        const kids = n.children ? prune(n.children) : [];
+        if (matchesSearch(search, n.code, n.nameAr, n.nameEn) || kids.length) {
+          return [{ ...n, children: kids.length ? kids : undefined }];
+        }
+        return [];
+      });
+    return search.trim() ? prune(tree) : tree;
+  }, [tree, search]);
+  const shownCount = (data ?? []).filter((a) =>
+    matchesSearch(search, a.code, a.nameAr, a.nameEn),
+  ).length;
 
   return (
     <div>
-      <PageHeader
-        title={t('accounts.title')}
+      <PageHeader title={t('accounts.title')} />
+      <Card>
+      {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shownCount}
         actions={
           <Button type="primary" onClick={openCreate}>
             {t('accounts.add')}
           </Button>
         }
       />
-      <Card>
-      {contextHolder}
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={tree}
+        dataSource={shownTree}
         pagination={false}
         expandable={{ defaultExpandAllRows: true }}
         columns={[
           { title: t('accounts.code'), dataIndex: 'code', width: 110 },
           {
-            title: t('accounts.nameAr'),
-            dataIndex: 'nameAr',
-            render: (v: string, a: Account) => (
-              <span>
-                {v}
-                {a.nameEn ? ` (${a.nameEn})` : ''}
-              </span>
-            ),
+            title: t('common.name'),
+            key: 'name',
+            render: (_: unknown, a: Account) => bothNames(a),
           },
           {
             title: t('accounts.type'),
@@ -265,28 +290,28 @@ export function AccountsPage() {
           {
             title: t('accounts.debit'),
             width: 110,
-            align: 'end',
+            align: 'right',
             render: (_: unknown, a: Account) =>
-              trialError ? '—' : fmt((a as TreeNode).balDebit),
+              trialError ? '—' : amountCell((a as TreeNode).balDebit),
           },
           {
             title: t('accounts.credit'),
             width: 110,
-            align: 'end',
+            align: 'right',
             render: (_: unknown, a: Account) =>
-              trialError ? '—' : fmt((a as TreeNode).balCredit),
+              trialError ? '—' : amountCell((a as TreeNode).balCredit),
           },
           {
             title: t('accounts.balance'),
             width: 120,
-            align: 'end',
+            align: 'right',
             render: (_: unknown, a: Account) => {
               if (trialError) return '—';
               const bal = (a as TreeNode).balBalance;
               return (
-                <span style={{ color: bal < 0 ? '#c42b1c' : undefined }}>
-                  {fmt(bal)}
-                </span>
+                <Num style={{ color: bal.isNegative() ? palette.danger : undefined }}>
+                  {formatAmount(bal)}
+                </Num>
               );
             },
           },
@@ -310,40 +335,43 @@ export function AccountsPage() {
                   {t('common.edit')}
                 </Button>
                 {a.isActive && !a.isControl && (
-                  <Button size="small" danger onClick={() => deactivate.mutate(a.id)}>
+                  <Popconfirm title={t('common.confirmDeactivate')} onConfirm={() => deactivate.mutate(a.id)}>
+<Button size="small" danger >
                     {t('common.deactivate')}
                   </Button>
+</Popconfirm>
                 )}
               </Space>
             ),
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={editing ? t('accounts.edit') : t('accounts.add')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => form.submit()}
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          {!editing && isCreate && selectedParent && autoCode && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ margin: 12, marginBottom: 0 }}
+              message={t('accounts.childUnder', { code: selectedParent.code })}
+              description={
+                <>
+                  {t('accounts.autoCodePreview', { code: autoCode })}
+                  <br />
+                  {t('accounts.parentNonPostableWarning')}
+                </>
+              }
+            />
+          )}
+          <FormSection title={t('accounts.details')} icon={<BookOutlined />}>
           {!editing && (
             <>
-              {isCreate && selectedParent && autoCode && (
-                <Alert
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                  message={t('accounts.childUnder', { code: selectedParent.code })}
-                  description={
-                    <>
-                      {t('accounts.autoCodePreview', { code: autoCode })}
-                      <br />
-                      {t('accounts.parentNonPostableWarning')}
-                    </>
-                  }
-                />
-              )}
               {!(isCreate && watchedParentId) && (
                 <Form.Item
                   name="code"
@@ -374,7 +402,7 @@ export function AccountsPage() {
               </Form.Item>
             </>
           )}
-          <Form.Item name="nameAr" label={t('accounts.nameAr')} rules={[{ required: true }]}>
+          <Form.Item name="nameAr" label={t('accounts.nameAr')} rules={[{ required: true }]} className="span-2">
             <Input maxLength={191} />
           </Form.Item>
           <Form.Item name="nameEn" label={t('accounts.nameEn')}>
@@ -389,8 +417,9 @@ export function AccountsPage() {
               ]}
             />
           </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
       </Card>
     </div>
   );

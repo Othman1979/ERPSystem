@@ -4,7 +4,7 @@ import {
   Card,
   Form,
   Input,
-  Modal,
+  Popconfirm,
   Space,
   Table,
   Tag,
@@ -20,7 +20,11 @@ import {
   branchesControllerList,
   branchesControllerUpdate,
 } from '@erp/api-client';
+import { ShopOutlined } from '@ant-design/icons';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { displayName } from '../i18n/displayName';
 
 interface Branch {
   id: string;
@@ -37,6 +41,7 @@ export function BranchesPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Branch | null>(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
@@ -92,26 +97,31 @@ export function BranchesPage() {
     setModalOpen(true);
   };
 
+  const shown = (data ?? []).filter((b) => matchesSearch(search, b.code, displayName(b)));
+
   return (
     <div>
-      <PageHeader
-        title={t('branches.title')}
+      <PageHeader title={t('branches.title')} />
+      <Card>
+      {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
         actions={
           <Button type="primary" onClick={openCreate}>
             {t('branches.add')}
           </Button>
         }
       />
-      <Card>
-      {contextHolder}
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={shown}
         pagination={false}
         columns={[
           { title: t('branches.code'), dataIndex: 'code' },
-          { title: t('branches.nameAr'), dataIndex: 'nameAr' },
+          { title: t('common.name'), key: 'name', render: (_: unknown, r: Branch) => displayName(r) },
           { title: t('branches.nameEn'), dataIndex: 'nameEn' },
           {
             title: t('common.status'),
@@ -127,39 +137,43 @@ export function BranchesPage() {
                   {t('common.edit')}
                 </Button>
                 {b.isActive && (
-                  <Button size="small" danger onClick={() => deactivate.mutate(b.id)}>
+                  <Popconfirm title={t('common.confirmDeactivate')} onConfirm={() => deactivate.mutate(b.id)}>
+<Button size="small" danger >
                     {t('common.deactivate')}
                   </Button>
+</Popconfirm>
                 )}
               </Space>
             ),
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={editing ? t('branches.edit') : t('branches.add')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => form.submit()}
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
-          {!editing && (
-            <Form.Item name="code" label={t('branches.code')} rules={[{ required: true }]}>
-              <Input maxLength={50} />
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          <FormSection title={t('branches.details')} icon={<ShopOutlined />}>
+            {!editing && (
+              <Form.Item name="code" label={t('branches.code')} rules={[{ required: true }]}>
+                <Input maxLength={50} />
+              </Form.Item>
+            )}
+            <Form.Item name="nameAr" label={t('branches.nameAr')} rules={[{ required: true }]}>
+              <Input maxLength={191} />
             </Form.Item>
-          )}
-          <Form.Item name="nameAr" label={t('branches.nameAr')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('branches.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="address" label={t('branches.address')}>
-            <Input maxLength={512} />
-          </Form.Item>
+            <Form.Item name="nameEn" label={t('branches.nameEn')}>
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="address" label={t('branches.address')} className="span-all">
+              <Input maxLength={512} />
+            </Form.Item>
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
       <Typography.Text type="secondary">{t('branches.planHint')}</Typography.Text>
       </Card>
     </div>

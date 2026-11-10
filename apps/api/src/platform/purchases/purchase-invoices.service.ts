@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
+import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -7,6 +8,7 @@ import type { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { computeLineAmounts } from '../shared/invoice-math.js';
+import { creditedByInvoice, withBalance } from '../shared/invoice-balance.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type { CreatePurchaseInvoiceDto, PurchaseInvoiceLineDto } from './dto/purchases.dto.js';
@@ -37,10 +39,51 @@ export class PurchaseInvoicesService {
     private readonly audit: AuditService,
   ) {}
 
+  /** Posted credit-return totals for the given invoices (for `outstanding`). */
+  private async creditedFor(
+    db: ReturnType<DocumentSupportService['tenant']>['db'],
+    invoiceIds: bigint[],
+  ) {
+    if (invoiceIds.length === 0) return new Map<string, Decimal>();
+    const returns = await db.purchaseReturn.findMany({
+      where: { originalInvoiceId: { in: invoiceIds }, status: 'POSTED', refundType: 'CREDIT' },
+      select: { originalInvoiceId: true, grandTotal: true },
+    });
+    return creditedByInvoice(returns);
+  }
+
+  /**
+   * Posted credit invoices that still owe something (Phase 6 aging): what
+   * remains after allocations and credit returns. Cash invoices are settled
+   * at sale and never appear.
+   */
+  async openCreditInvoices() {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const rows = await db.purchaseInvoice.findMany({
+      where: { companyId, status: 'POSTED', paymentType: 'CREDIT' },
+      select: {
+        id: true,
+        invoiceNo: true,
+        invoiceDate: true,
+        dueDate: true,
+        grandTotal: true,
+        paidAmount: true,
+        supplier: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+      },
+      orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
+    });
+    const credited = await this.creditedFor(db, rows.map((r) => r.id));
+    return rows
+      .map((r) => withBalance(r, credited))
+      .filter((r) => new Decimal(r.outstanding).gt(0))
+      .map(({ supplier: party, ...r }) => ({ ...r, party }));
+  }
+
   async list(status?: string, paymentType?: string, supplierId?: string) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    return db.purchaseInvoice.findMany({
+    const rows = await db.purchaseInvoice.findMany({
       where: {
         companyId,
         ...(status ? { status: status as 'DRAFT' | 'POSTED' } : {}),
@@ -54,6 +97,8 @@ export class PurchaseInvoicesService {
       orderBy: [{ invoiceDate: 'desc' }, { id: 'desc' }],
       take: 300,
     });
+    const credited = await this.creditedFor(db, rows.map((r) => r.id));
+    return rows.map((r) => withBalance(r, credited));
   }
 
   async get(id: bigint) {
@@ -76,7 +121,7 @@ export class PurchaseInvoicesService {
       },
     });
     if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
-    return inv;
+    return withBalance(inv, await this.creditedFor(db, [inv.id]));
   }
 
   async create(dto: CreatePurchaseInvoiceDto) {
@@ -90,6 +135,8 @@ export class PurchaseInvoicesService {
         data: {
           tenantId,
           companyId,
+          // Branch from the request context (BranchGuard), never the body — ADR-003.
+          branchId: currentBranchId(),
           invoiceDate: new Date(dto.invoiceDate),
           dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
           supplierId: BigInt(dto.supplierId),
@@ -141,6 +188,7 @@ export class PurchaseInvoicesService {
     if (inv.status !== 'DRAFT') {
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
     }
+    assertBranchAllowed(inv.branchId);
     const lines = await this.resolveLines(db, tenantId, companyId, dto.lines);
     await this.assertHeader(db, companyId, dto, lines);
 
@@ -197,6 +245,7 @@ export class PurchaseInvoicesService {
     if (inv.status !== 'DRAFT') {
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be deleted');
     }
+    assertBranchAllowed(inv.branchId);
     await db.purchaseInvoice.delete({ where: { id } });
     return { deleted: true };
   }
@@ -217,6 +266,7 @@ export class PurchaseInvoicesService {
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Invoice is not a draft');
         }
+        assertBranchAllowed(draft.branchId);
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Invoice has no lines');
         }
@@ -313,6 +363,7 @@ export class PurchaseInvoicesService {
         const entry = await this.posting.postEntry(tx, {
           tenantId,
           companyId,
+          branchId: draft.branchId,
           entryDate: invoiceDate,
           fiscalPeriodId: period.id,
           entryNo,

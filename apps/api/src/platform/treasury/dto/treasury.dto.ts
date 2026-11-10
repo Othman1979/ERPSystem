@@ -112,6 +112,11 @@ export class CreateReceiptDto {
   @ValidateNested({ each: true })
   @Type(() => AllocationDto)
   allocations?: AllocationDto[];
+
+  /** Allocate to the party's oldest open invoices (ignored when `allocations` is given). */
+  @IsOptional()
+  @IsBoolean()
+  autoAllocate?: boolean;
 }
 
 export class CreatePaymentDto {
@@ -160,4 +165,66 @@ export class CreatePaymentDto {
   @ValidateNested({ each: true })
   @Type(() => AllocationDto)
   allocations?: AllocationDto[];
+
+  /** Allocate to the party's oldest open invoices (ignored when `allocations` is given). */
+  @IsOptional()
+  @IsBoolean()
+  autoAllocate?: boolean;
+}
+
+/** Allocate an existing voucher's unallocated amount (Phase 6). */
+export class AllocateVoucherDto {
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AllocationDto)
+  allocations?: AllocationDto[];
+
+  /** Oldest open invoices first, up to the unallocated amount. */
+  @IsOptional()
+  @IsBoolean()
+  auto?: boolean;
+}
+
+export class ReverseVoucherDto {
+  @IsDateString()
+  reversalDate!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+}
+
+export class CreateCashTransferDto {
+  @IsDateString()
+  transferDate!: string;
+
+  /** Cash/bank account money leaves. */
+  @IsString()
+  @Matches(INT_STRING)
+  fromAccountId!: string;
+
+  /** Cash/bank account money arrives. */
+  @IsString()
+  @Matches(INT_STRING)
+  toAccountId!: string;
+
+  @Matches(MONEY)
+  amount!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  referenceNo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+}
+
+export class AgingQueryDto {
+  @IsIn(PARTY_TYPES)
+  partyType!: (typeof PARTY_TYPES)[number];
 }
