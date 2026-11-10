@@ -2,6 +2,10 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { ExportQueryDto } from '../printing/dto/export.dto.js';
+import { PrintingService } from '../printing/printing.service.js';
+import { voucherPrint } from './treasury.print.js';
+import { agingTable } from './aging.table.js';
 import { CashAccountsService } from './cash-accounts.service.js';
 import { CashTransfersService } from './cash-transfers.service.js';
 import { TreasuryReportsService } from './treasury-reports.service.js';
@@ -25,6 +29,7 @@ export class TreasuryController {
     private readonly vouchers: VouchersService,
     private readonly transfers: CashTransfersService,
     private readonly reports: TreasuryReportsService,
+    private readonly printing: PrintingService,
   ) {}
 
   // ------------------------------------------------------------- cash boxes
@@ -93,6 +98,13 @@ export class TreasuryController {
     return this.vouchers.getReceipt(BigInt(id));
   }
 
+  @Get('receipts/:id/pdf')
+  @RequirePermission(PERMISSIONS.TENANT_READ)
+  async receiptPdf(@Param('id') id: string, @Query() q: ExportQueryDto) {
+    const lang = q.lang ?? 'ar';
+    return this.printing.exportDocument(voucherPrint('receipt', await this.vouchers.printable('receipt', BigInt(id)), lang), lang);
+  }
+
   @Post('receipts')
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   createReceipt(@Body() dto: CreateReceiptDto) {
@@ -111,6 +123,13 @@ export class TreasuryController {
   @RequirePermission(PERMISSIONS.TENANT_READ)
   getPayment(@Param('id') id: string) {
     return this.vouchers.getPayment(BigInt(id));
+  }
+
+  @Get('payments/:id/pdf')
+  @RequirePermission(PERMISSIONS.TENANT_READ)
+  async paymentPdf(@Param('id') id: string, @Query() q: ExportQueryDto) {
+    const lang = q.lang ?? 'ar';
+    return this.printing.exportDocument(voucherPrint('payment', await this.vouchers.printable('payment', BigInt(id)), lang), lang);
   }
 
   @Post('payments')
@@ -181,8 +200,9 @@ export class TreasuryController {
 
   @Get('reports/aging')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
-  aging(@Query() q: AgingQueryDto) {
-    return this.reports.aging(q.partyType, q.asOf ? new Date(q.asOf) : undefined);
+  async aging(@Query() q: AgingQueryDto) {
+    const data = await this.reports.aging(q.partyType, q.asOf ? new Date(q.asOf) : undefined);
+    return this.printing.respond(data, q, agingTable);
   }
 
   @Get('treasury/balances')

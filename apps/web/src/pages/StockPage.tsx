@@ -21,6 +21,7 @@ import {
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 import {
   ApiError,
   catalogControllerListItems,
@@ -50,6 +51,7 @@ import { GoodsNotesSection } from './GoodsNotesPage';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { ExportButtons } from '../components/ExportButtons';
 import {
   emptyItemLine,
   ItemLinesGrid,
@@ -176,7 +178,9 @@ const statusTag = (s: string, t: (k: string) => string) =>
 function BalancesTab() {
   const { t } = useTranslation();
   const [warehouseId, setWarehouseId] = useState<string | undefined>();
-  const [lowStock, setLowStock] = useState(false);
+  // ?lowStock=1 (the home dashboard's "below minimum" card) opens with the filter on.
+  const [searchParams] = useSearchParams();
+  const [lowStock, setLowStock] = useState(() => searchParams.get('lowStock') === '1');
   const { whOptions, warehouseLabel } = useLookups();
   const { data, isLoading } = useQuery({
     queryKey: ['stock-balances', warehouseId, lowStock],
@@ -204,6 +208,12 @@ function BalancesTab() {
           </>
         }
         count={(data ?? []).length}
+        actions={
+          <ExportButtons
+            path="/stock/balances"
+            params={{ warehouseId, lowStock: lowStock ? 'true' : undefined }}
+          />
+        }
       />
       <Table
         rowKey={(r) => `${r.warehouseId}:${r.itemId}`}
@@ -1101,6 +1111,7 @@ function ValuationTab() {
       <Typography.Title level={5}>
         {t('stock.totalValue')}: <Num>{formatAmount(data?.totalValue)}</Num>
       </Typography.Title>
+      <ListToolbar actions={<ExportButtons path="/stock/valuation" />} />
       <Table
         rowKey="itemId"
         size="small"

@@ -6,6 +6,16 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
+/** yyyy-mm-dd of `now` on the wall clock of `timeZone`; UTC when the zone is unknown. */
+export function calendarDateIn(timeZone: string, now = new Date()): string {
+  try {
+    // en-CA formats as yyyy-mm-dd.
+    return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
+}
+
 /** Shared helpers for Phase 5 document services (tenant ctx, mappings, retry). */
 @Injectable()
 export class DocumentSupportService {
@@ -25,6 +35,16 @@ export class DocumentSupportService {
     });
     if (!company) throw new DomainError(ErrorCode.INTERNAL, 'Tenant has no active company');
     return company.id;
+  }
+
+  /** Today's calendar date (yyyy-mm-dd) in the company's timezone (`companies.timezone`). */
+  async companyToday(db: ReturnType<PrismaService['forTenant']>, now = new Date()): Promise<string> {
+    const company = await db.company.findFirst({
+      where: { isActive: true },
+      orderBy: { id: 'asc' },
+      select: { timezone: true },
+    });
+    return calendarDateIn(company?.timezone ?? 'Asia/Amman', now);
   }
 
   userId(): bigint | undefined {

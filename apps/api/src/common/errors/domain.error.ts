@@ -17,6 +17,7 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.EINVOICE_BUYER_REQUIRED]: HttpStatus.BAD_REQUEST,
   [ErrorCode.EINVOICE_REASON_REQUIRED]: HttpStatus.BAD_REQUEST,
   [ErrorCode.EINVOICE_NOT_READY]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.REPORT_TOO_LARGE]: HttpStatus.PAYLOAD_TOO_LARGE,
   [ErrorCode.UNBALANCED_ENTRY]: HttpStatus.BAD_REQUEST,
   [ErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_INSUFFICIENT]: HttpStatus.CONFLICT,

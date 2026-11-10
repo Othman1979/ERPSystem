@@ -34,6 +34,7 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { PrintPdfButton } from '../components/PrintPdfButton';
 import {
   ApiError,
   accountingControllerListAccounts,
@@ -754,9 +755,7 @@ function PurchaseInvoiceView({
               </Popconfirm>
             </>
           )}
-          <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
-            {t('common.print')}
-          </Button>
+          <PrintPdfButton path={`/purchase-invoices/${invoice.id}/pdf`} />
         </>
       }
     >

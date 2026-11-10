@@ -54,6 +54,7 @@ import {
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { ExportButtons } from '../components/ExportButtons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { codeAndName, displayName, type Named } from '../i18n/displayName';
 import { Num } from '../components/Num';
@@ -652,6 +653,12 @@ function LedgerModal({
             {t('items.onHand')}:{' '}
             {data!.balances.map((b) => `${b.warehouse.code}: ${formatQty(b.qtyOnHand)}`).join(' · ')}
           </Typography.Text>
+        )}
+        {item && (
+          <ExportButtons
+            path={`/stock/items/${item.id}/ledger`}
+            params={{ warehouseId, from: from?.format('YYYY-MM-DD'), to: to?.format('YYYY-MM-DD') }}
+          />
         )}
       </Space>
       <Table

@@ -5,6 +5,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiFetchData } from '@erp/api-client';
+import { ExportButtons } from '../../components/ExportButtons';
 import { ListToolbar } from '../../components/ListToolbar';
 import { Num } from '../../components/Num';
 import { amountCell } from '../../format/cells';
@@ -69,9 +70,12 @@ export function AgingTab() {
           </>
         }
         actions={
-          <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
-            {t('common.print')}
-          </Button>
+          <>
+            <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
+              {t('common.print')}
+            </Button>
+            <ExportButtons path="/reports/aging" params={{ partyType, asOf: asOfParam }} />
+          </>
         }
       />
       <Table

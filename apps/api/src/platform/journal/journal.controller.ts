@@ -8,7 +8,10 @@ import {
   ReportQueryDto,
   ReverseJournalEntryDto,
 } from './dto/journal.dto.js';
+import { PartiesService } from '../parties/parties.service.js';
+import { PrintingService } from '../printing/printing.service.js';
 import { JournalService } from './journal.service.js';
+import { generalLedgerTable, partyStatementTable, trialBalanceTable } from './reports.table.js';
 import { ReportsService } from './reports.service.js';
 
 @ApiTags('journal')
@@ -17,6 +20,8 @@ export class JournalController {
   constructor(
     private readonly journal: JournalService,
     private readonly reports: ReportsService,
+    private readonly printing: PrintingService,
+    private readonly parties: PartiesService,
   ) {}
 
   @Get('journal-entries')
@@ -62,27 +67,27 @@ export class JournalController {
     return this.journal.createOpening(dto);
   }
 
-  // ---- reports (JSON) ----
+  // ---- reports (?format=json|pdf|xlsx&lang=ar|en) ----
 
   @Get('reports/trial-balance')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
-  trialBalance(@Query() q: ReportQueryDto) {
-    return this.reports.trialBalance(q);
+  async trialBalance(@Query() q: ReportQueryDto) {
+    return this.printing.respond(await this.reports.trialBalance(q), q, (d, lang) => trialBalanceTable(d, lang, q));
   }
 
   @Get('reports/general-ledger')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
-  generalLedger(@Query() q: ReportQueryDto) {
-    return this.reports.generalLedger(BigInt(q.accountId ?? '0'), q);
+  async generalLedger(@Query() q: ReportQueryDto) {
+    const data = await this.reports.generalLedger(BigInt(q.accountId ?? '0'), q);
+    return this.printing.respond(data, q, (d, lang) => generalLedgerTable(d, lang, q));
   }
 
   @Get('reports/party-statement')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
-  partyStatement(@Query() q: ReportQueryDto) {
-    return this.reports.partyStatement(
-      q.partyType ?? 'CUSTOMER',
-      BigInt(q.partyId ?? '0'),
-      q,
-    );
+  async partyStatement(@Query() q: ReportQueryDto) {
+    const partyId = BigInt(q.partyId ?? '0');
+    const data = await this.reports.partyStatement(q.partyType ?? 'CUSTOMER', partyId, q);
+    const party = q.format && q.format !== 'json' ? ((await this.parties.summaries([partyId]))[0] ?? null) : null;
+    return this.printing.respond(data, q, (d, lang) => partyStatementTable(d, lang, q, party));
   }
 }

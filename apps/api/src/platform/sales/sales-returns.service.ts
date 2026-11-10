@@ -5,6 +5,17 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
+import {
+  dayKey,
+  foldMonths,
+  itemRefs,
+  partyRefs,
+  summaryRow,
+  taxRows,
+  type DocumentSummaryRow,
+  type SummaryGroupBy,
+  type SummaryRange,
+} from '../shared/document-summary.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
@@ -27,6 +38,100 @@ export class SalesReturnsService {
     private readonly audit: AuditService,
     private readonly einvoice: EInvoiceOutboxService,
   ) {}
+
+  /**
+   * Posted returns dated in the range (both ends inclusive), added up by
+   * day, month, customer, item or (tax category, rate) — the Phase 8 sales /
+   * purchases / tax summaries and the dashboard. Header totals for day,
+   * month and party; line amounts for item and tax (a header's totals are
+   * the sums of its lines).
+   */
+  async summary(range: SummaryRange, groupBy: SummaryGroupBy): Promise<DocumentSummaryRow[]> {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const where = { companyId, status: 'POSTED' as const, returnDate: { gte: range.from, lte: range.to } };
+    if (groupBy === 'day' || groupBy === 'month') {
+      const groups = await db.salesReturn.groupBy({
+        by: ['returnDate'],
+        where,
+        _sum: { netTotal: true, taxTotal: true, grandTotal: true, costTotal: true },
+        _count: { _all: true },
+      });
+      const days = groups.map((g) =>
+        summaryRow(dayKey(g.returnDate), g._count._all, {
+          net: g._sum.netTotal,
+          tax: g._sum.taxTotal,
+          grand: g._sum.grandTotal, cost: g._sum.costTotal,
+        }),
+      );
+      return groupBy === 'month' ? foldMonths(days) : days;
+    }
+    if (groupBy === 'party') {
+      const groups = await db.salesReturn.groupBy({
+        by: ['customerId'],
+        where,
+        _sum: { netTotal: true, taxTotal: true, grandTotal: true, costTotal: true },
+        _count: { _all: true },
+      });
+      const refs = await partyRefs(db, groups.map((g) => g.customerId));
+      return groups.map((g) =>
+        summaryRow(
+          g.customerId.toString(),
+          g._count._all,
+          { net: g._sum.netTotal, tax: g._sum.taxTotal, grand: g._sum.grandTotal, cost: g._sum.costTotal },
+          { ref: refs.get(g.customerId.toString()) ?? null },
+        ),
+      );
+    }
+    const lines = { salesReturn: where };
+    if (groupBy === 'item') {
+      // Posting keeps a return's cost on its header only (lines' cost_total
+      // stays 0), so a line's cost is re-derived the way posting computed it:
+      // stock comes back at the original line's unit cost, round3(qty × cost).
+      const rows = await db.salesReturnLine.findMany({
+        where: lines,
+        select: { itemId: true, qtyBase: true, netAmount: true, taxAmount: true, lineTotal: true, unitCost: true },
+      });
+      const byItem = new Map<bigint, { count: number; qty: Decimal; net: Decimal; tax: Decimal; grand: Decimal; cost: Decimal }>();
+      for (const l of rows) {
+        const g = byItem.get(l.itemId) ?? {
+          count: 0,
+          qty: new Decimal(0),
+          net: new Decimal(0),
+          tax: new Decimal(0),
+          grand: new Decimal(0),
+          cost: new Decimal(0),
+        };
+        byItem.set(l.itemId, g);
+        g.count += 1;
+        g.qty = g.qty.plus(l.qtyBase.toString());
+        g.net = g.net.plus(l.netAmount.toString());
+        g.tax = g.tax.plus(l.taxAmount.toString());
+        g.grand = g.grand.plus(l.lineTotal.toString());
+        if (l.unitCost) g.cost = g.cost.plus(round3(new Decimal(l.qtyBase.toString()).times(l.unitCost.toString())));
+      }
+      const refs = await itemRefs(db, [...byItem.keys()]);
+      return [...byItem.entries()].map(([itemId, g]) =>
+        summaryRow(itemId.toString(), g.count, g, { ref: refs.get(itemId.toString()) ?? null }),
+      );
+    }
+    // By tax: base and tax only (line cost is not stored on returns, see above).
+    const groups = await db.salesReturnLine.groupBy({
+      by: ['taxCategoryId', 'taxRate'],
+      where: lines,
+      _sum: { qtyBase: true, netAmount: true, taxAmount: true, lineTotal: true },
+      _count: { _all: true },
+    });
+    return taxRows(
+      db,
+      groups.map((g) => ({
+        taxCategoryId: g.taxCategoryId,
+        taxRate: g.taxRate,
+        count: g._count._all,
+        sums: { qty: g._sum.qtyBase, net: g._sum.netAmount, tax: g._sum.taxAmount, grand: g._sum.lineTotal },
+      })),
+    );
+  }
 
   async list(status?: string) {
     const { db } = this.support.tenant();

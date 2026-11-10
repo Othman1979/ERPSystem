@@ -200,6 +200,23 @@ export class VouchersService {
     return this.getReceipt(result.id);
   }
 
+  /** A voucher for printing: the invoices its active allocations settle, by number. */
+  async printable(kind: VoucherKind, id: bigint) {
+    const v = kind === 'receipt' ? await this.getReceipt(id) : await this.getPayment(id);
+    const active = v.allocations.filter((a) => a.cancelledAt === null);
+    const sales = await this.sales.invoiceNumbers(active.filter((a) => a.documentType === 'SALES_INVOICE').map((a) => a.documentId));
+    const purchases = await this.purchases.invoiceNumbers(
+      active.filter((a) => a.documentType === 'PURCHASE_INVOICE').map((a) => a.documentId),
+    );
+    return {
+      ...v,
+      allocations: v.allocations.map((a) => ({
+        ...a,
+        invoiceNo: (a.documentType === 'SALES_INVOICE' ? sales : purchases).get(a.documentId) ?? null,
+      })),
+    };
+  }
+
   // ------------------------------------------------------------- payments
 
   async listPayments() {
