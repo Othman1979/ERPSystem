@@ -2,6 +2,7 @@ import { DeleteOutlined } from '@ant-design/icons';
 import { Button, Input, InputNumber } from 'antd';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
 
 export interface ItemLineDraft {
@@ -146,26 +147,28 @@ export function ItemLinesGrid({
   });
 
   return (
+    <div className="entry-grid-frame">
     <div className="entry-grid-scroll">
     <table
       ref={gridRef} className="entry-grid"
     >
       <thead>
         <tr>
-          <th>#</th>
+          <th className="row-no">#</th>
           <th>{t('items.title')}</th>
-          <th style={{ width: 110 }}>{t('stock.qty')}</th>
-          {showCost && <th style={{ width: 120 }}>{t('stock.unitCost')}</th>}
+          <th className="num-cell" style={{ width: 110 }}>{t('stock.qty')}</th>
+          {showCost && <th className="num-cell" style={{ width: 120 }}>{t('stock.unitCost')}</th>}
           {showDescription && <th>{t('common.description')}</th>}
-          <th style={{ width: 40 }} />
+          <th style={{ width: 36 }} />
         </tr>
       </thead>
       <tbody>
         {lines.map((l, row) => (
           <tr key={l.key}>
-            <td>{row + 1}</td>
+            <td className="row-no">{row + 1}</td>
             <td {...cellProps(row, COL_ITEM)}>
               <GridSelect
+                variant="borderless"
                 placeholder={t('items.title')}
                 options={itemOptions}
                 value={l.itemId}
@@ -175,8 +178,9 @@ export function ItemLinesGrid({
                 size="small"
               />
             </td>
-            <td {...cellProps(row, COL_QTY)}>
+            <td className="num-cell" {...cellProps(row, COL_QTY)}>
               <InputNumber<string>
+                variant="borderless"
                 stringMode
                 min="0.000001"
                 placeholder={t('stock.qty')}
@@ -188,8 +192,9 @@ export function ItemLinesGrid({
               />
             </td>
             {showCost && (
-              <td {...cellProps(row, COL_COST)}>
+              <td className="num-cell" {...cellProps(row, COL_COST)}>
                 <InputNumber<string>
+                  variant="borderless"
                   stringMode
                   min="0"
                   placeholder={t('stock.unitCost')}
@@ -204,6 +209,7 @@ export function ItemLinesGrid({
             {showDescription && (
               <td {...cellProps(row, COL_DESC)}>
                 <Input
+                  variant="borderless"
                   placeholder={t('common.description')}
                   maxLength={500}
                   value={l.description}
@@ -215,10 +221,12 @@ export function ItemLinesGrid({
             <td style={{ textAlign: 'center' }}>
               {lines.length > 1 && (
                 <Button
+                  className="row-del"
                   type="text"
                   size="small"
                   danger
                   icon={<DeleteOutlined />}
+                  aria-label={t('common.delete')}
                   onClick={() => remove(l.key)}
                 />
               )}
@@ -227,6 +235,10 @@ export function ItemLinesGrid({
         ))}
       </tbody>
     </table>
+    </div>
+    <div className="entry-grid-footer">
+      <GridHint lineCount={lines.filter((l) => l.itemId).length} />
+    </div>
     </div>
   );
 }

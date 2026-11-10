@@ -52,6 +52,34 @@ export class PurchaseInvoicesService {
     return creditedByInvoice(returns);
   }
 
+  /**
+   * Posted credit invoices that still owe something (Phase 6 aging): what
+   * remains after allocations and credit returns. Cash invoices are settled
+   * at sale and never appear.
+   */
+  async openCreditInvoices() {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const rows = await db.purchaseInvoice.findMany({
+      where: { companyId, status: 'POSTED', paymentType: 'CREDIT' },
+      select: {
+        id: true,
+        invoiceNo: true,
+        invoiceDate: true,
+        dueDate: true,
+        grandTotal: true,
+        paidAmount: true,
+        supplier: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+      },
+      orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
+    });
+    const credited = await this.creditedFor(db, rows.map((r) => r.id));
+    return rows
+      .map((r) => withBalance(r, credited))
+      .filter((r) => new Decimal(r.outstanding).gt(0))
+      .map(({ supplier: party, ...r }) => ({ ...r, party }));
+  }
+
   async list(status?: string, paymentType?: string, supplierId?: string) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);

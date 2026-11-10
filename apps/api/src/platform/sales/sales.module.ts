@@ -10,5 +10,7 @@ import { SalesReturnsService } from './sales-returns.service.js';
   imports: [SharedModule, JournalModule, InventoryModule],
   controllers: [SalesController],
   providers: [SalesInvoicesService, SalesReturnsService],
+  // Treasury reads open credit invoices for aging through this service (module boundary).
+  exports: [SalesInvoicesService],
 })
 export class SalesModule {}

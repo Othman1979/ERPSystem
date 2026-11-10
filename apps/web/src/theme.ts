@@ -24,6 +24,16 @@ export const palette = {
   success: '#107c10',
   successBg: '#dff6dd',
   successBorder: '#8fd18f',
+  /** Grids and tables (owner-chosen palette): gray panels, blue-gray header bars. */
+  grid: {
+    panel: '#eeeeee',
+    panelHi: '#fafafa',
+    bar: '#d3dce3',
+    barHi: '#f2f4f6',
+    barText: '#1b2a36',
+    line: '#c0c0c0',
+    border: '#aaaaaa',
+  },
   /** Home-screen tile colour per module group. */
   tone: {
     finance: '#0078d4',
@@ -51,6 +61,19 @@ export const antdTheme: ThemeConfig = {
     Layout: { headerBg: palette.primary, siderBg: palette.surface, bodyBg: palette.canvas },
     Menu: { itemBg: palette.surface, itemSelectedBg: palette.hover, itemSelectedColor: palette.primaryDark },
     Card: { headerBg: 'transparent' },
-    Table: { headerBg: palette.headerBg, headerColor: palette.text },
+    Table: {
+      headerBg: palette.grid.bar,
+      headerColor: palette.grid.barText,
+      headerSplitColor: palette.grid.border,
+      headerBorderRadius: 0,
+      borderColor: palette.grid.line,
+      rowHoverBg: palette.hover,
+      footerBg: palette.grid.panel,
+      // Compact rows (~32px) for dense lists.
+      cellPaddingBlock: 6,
+      cellPaddingInline: 10,
+      cellPaddingBlockMD: 5,
+      cellPaddingBlockSM: 4,
+    },
   },
 };

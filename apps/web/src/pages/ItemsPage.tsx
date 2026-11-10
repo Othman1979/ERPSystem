@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarcodeOutlined,
+  DatabaseOutlined,
+  InfoCircleOutlined,
   MoreOutlined,
   ProfileOutlined,
   AppstoreOutlined,
+  TagOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
 import JsBarcode from 'jsbarcode';
@@ -19,6 +22,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Radio,
   Row,
   Segmented,
   Select,
@@ -31,7 +35,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
@@ -49,6 +53,8 @@ import {
   warehousesControllerList,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { codeAndName, displayName, type Named } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import type Decimal from 'decimal.js';
@@ -142,12 +148,19 @@ function ItemsTab() {
   const { contextHolder, show } = useApiError();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
+  // The box updates on every keystroke; the API search waits until typing pauses.
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  useEffect(() => {
+    const id = window.setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => window.clearTimeout(id);
+  }, [searchInput]);
   const [kindFilter, setKindFilter] = useState<string | undefined>();
   const [view, setView] = useState<'table' | 'cards'>('table');
   const [ledgerItem, setLedgerItem] = useState<Item | null>(null);
   const [barcodeItem, setBarcodeItem] = useState<Item | null>(null);
   const [form] = Form.useForm();
+  const saveAndNew = useRef(false);
 
   const { data: items, isLoading } = useQuery({
     queryKey: ['items', search, kindFilter],
@@ -213,9 +226,16 @@ function ItemsTab() {
     },
     onSuccess: () => {
       invalidate();
+      form.resetFields();
+      if (saveAndNew.current) {
+        // Save & new: keep the dialog open on an empty form for the next item.
+        saveAndNew.current = false;
+        setEditing(null);
+        requestAnimationFrame(() => form.getFieldInstance('code')?.focus?.());
+        return;
+      }
       setModalOpen(false);
       setEditing(null);
-      form.resetFields();
     },
     onError: show,
   });
@@ -356,20 +376,18 @@ function ItemsTab() {
 
   return (
     <div>
-      <PageHeader
-        title={t('items.title')}
-        actions={
-          <Space wrap>
-            <Input.Search
-              allowClear
-              placeholder={t('items.search')}
-              style={{ width: 200 }}
-              onSearch={setSearch}
-            />
+      <PageHeader title={t('items.title')} />
+      <Card size="small">
+      {contextHolder}
+      <ListToolbar
+        search={searchInput}
+        onSearch={setSearchInput}
+        searchPlaceholder={t('items.search')}
+        filters={
+          <>
             <Select
               allowClear
               placeholder={t('items.kind')}
-              style={{ width: 130 }}
               onChange={setKindFilter}
               options={[
                 { value: 'STOCK', label: t('items.stock') },
@@ -384,14 +402,15 @@ function ItemsTab() {
                 { value: 'cards', icon: <AppstoreOutlined /> },
               ]}
             />
-            <Button type="primary" onClick={openCreate}>
-              {t('items.add')}
-            </Button>
-          </Space>
+          </>
+        }
+        count={(items ?? []).length}
+        actions={
+          <Button type="primary" onClick={openCreate}>
+            {t('items.add')}
+          </Button>
         }
       />
-      <Card size="small">
-      {contextHolder}
       {view === 'table' ? (
         <Table
           rowKey="id"
@@ -452,22 +471,33 @@ function ItemsTab() {
         </Row>
       )}
 
-      <Modal
+      <FormDialog
         title={editing ? t('items.edit') : t('items.add')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
-        width={640}
+        onSave={() => {
+          saveAndNew.current = false;
+          form.submit();
+        }}
+        onSaveAndNew={
+          editing
+            ? undefined
+            : () => {
+                saveAndNew.current = true;
+                form.submit();
+              }
+        }
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
-          <Typography.Title level={5} style={{ marginTop: 0 }}>{t('items.general')}</Typography.Title>
-          <Space style={{ display: 'flex' }} wrap>
-            <Form.Item name="code" label={t('items.code')} rules={[{ required: true }]} style={{ flex: 1, minWidth: 140 }}>
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          <FormSection title={t('common.basicInfo')} icon={<InfoCircleOutlined />}>
+            <Form.Item name="code" label={t('items.code')} rules={[{ required: true }]}>
               <Input maxLength={50} disabled={!!editing} />
             </Form.Item>
-            <Form.Item name="itemKind" label={t('items.kind')} initialValue="STOCK" style={{ width: 150 }}>
-              <Select
+            <Form.Item name="itemKind" label={t('items.kind')} initialValue="STOCK" className="span-2">
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
                 disabled={!!editing}
                 options={[
                   { value: 'STOCK', label: t('items.stock') },
@@ -475,23 +505,22 @@ function ItemsTab() {
                 ]}
               />
             </Form.Item>
-          </Space>
-          <Form.Item name="nameAr" label={t('items.nameAr')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('items.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="description" label={t('common.description')}>
-            <Input.TextArea rows={2} maxLength={500} />
-          </Form.Item>
-          <Form.Item name="imageUrl" label={t('items.imageUrl')}>
-            <Input maxLength={512} placeholder="https://…" />
-          </Form.Item>
+            <Form.Item name="nameAr" label={t('items.nameAr')} rules={[{ required: true }]} className="span-2">
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="nameEn" label={t('items.nameEn')}>
+              <Input maxLength={191} />
+            </Form.Item>
+            <Form.Item name="description" label={t('common.description')} className="span-all">
+              <Input.TextArea rows={2} maxLength={500} />
+            </Form.Item>
+            <Form.Item name="imageUrl" label={t('items.imageUrl')} className="span-all">
+              <Input maxLength={512} placeholder="https://…" />
+            </Form.Item>
+          </FormSection>
 
-          <Typography.Title level={5}>{t('items.classification')}</Typography.Title>
-          <Space style={{ display: 'flex' }} wrap>
-            <Form.Item name="baseUnitId" label={t('items.baseUnit')} rules={[{ required: true }]} style={{ flex: 1, minWidth: 160 }}>
+          <FormSection title={t('items.classification')} icon={<AppstoreOutlined />}>
+            <Form.Item name="baseUnitId" label={t('items.baseUnit')} rules={[{ required: true }]}>
               <Select
                 showSearch
                 optionFilterProp="label"
@@ -504,7 +533,7 @@ function ItemsTab() {
                   }))}
               />
             </Form.Item>
-            <Form.Item name="itemGroupId" label={t('items.group')} style={{ flex: 1, minWidth: 160 }}>
+            <Form.Item name="itemGroupId" label={t('items.group')}>
               <Select
                 allowClear
                 showSearch
@@ -514,7 +543,7 @@ function ItemsTab() {
                   .map((g) => ({ value: g.id, label: codeAndName(g) }))}
               />
             </Form.Item>
-            <Form.Item name="taxCategoryId" label={t('items.taxCategory')} style={{ flex: 1, minWidth: 160 }}>
+            <Form.Item name="taxCategoryId" label={t('items.taxCategory')}>
               <Select
                 allowClear
                 options={(taxCategories ?? []).map((tc) => ({
@@ -523,46 +552,43 @@ function ItemsTab() {
                 }))}
               />
             </Form.Item>
-          </Space>
+          </FormSection>
 
-          <Typography.Title level={5}>{t('items.pricing')}</Typography.Title>
-          <Space style={{ display: 'flex' }} wrap>
-            <Form.Item name="salePrice" label={t('items.salePrice')} style={{ flex: 1, minWidth: 120 }}>
-              <InputNumber<string> stringMode min="0" step="0.001" style={{ width: '100%' }} />
+          <FormSection title={t('items.pricing')} icon={<TagOutlined />}>
+            <Form.Item name="salePrice" label={t('items.salePrice')}>
+              <InputNumber<string> stringMode min="0" step="0.001" />
             </Form.Item>
-            <Form.Item name="purchasePrice" label={t('items.purchasePrice')} style={{ flex: 1, minWidth: 120 }}>
-              <InputNumber<string> stringMode min="0" step="0.001" style={{ width: '100%' }} />
+            <Form.Item name="purchasePrice" label={t('items.purchasePrice')}>
+              <InputNumber<string> stringMode min="0" step="0.001" />
             </Form.Item>
-            <Form.Item name="salePriceIncludesTax" label={t('items.priceIncludesTax')} valuePropName="checked" style={{ minWidth: 140 }}>
+            <Form.Item name="salePriceIncludesTax" label={t('items.priceIncludesTax')} valuePropName="checked">
               <Switch />
             </Form.Item>
-          </Space>
+          </FormSection>
 
-          <Typography.Title level={5}>{t('items.inventory')}</Typography.Title>
-          <Space style={{ display: 'flex' }} wrap>
-            <Form.Item noStyle shouldUpdate>
-              {({ getFieldValue }) =>
-                getFieldValue('itemKind') === 'STOCK' ? (
-                  <>
-                    <Form.Item name="minStock" label={t('items.minStock')} style={{ flex: 1, minWidth: 110 }}>
-                      <InputNumber<string> stringMode min="0" step="0.000001" style={{ width: '100%' }} />
-                    </Form.Item>
-                    <Form.Item name="maxStock" label={t('items.maxStock')} style={{ flex: 1, minWidth: 110 }}>
-                      <InputNumber<string> stringMode min="0" step="0.000001" style={{ width: '100%' }} />
-                    </Form.Item>
-                    <Form.Item name="defaultWarehouseId" label={t('items.defaultWarehouse')} style={{ flex: 1, minWidth: 160 }}>
-                      <Select
-                        allowClear
-                        options={(warehouses ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
-                      />
-                    </Form.Item>
-                  </>
-                ) : null
-              }
-            </Form.Item>
-          </Space>
+          {/* Stock settings only apply to stocked items. */}
+          <Form.Item noStyle shouldUpdate>
+            {({ getFieldValue }) =>
+              getFieldValue('itemKind') === 'STOCK' ? (
+                <FormSection title={t('items.inventory')} icon={<DatabaseOutlined />}>
+                  <Form.Item name="minStock" label={t('items.minStock')}>
+                    <InputNumber<string> stringMode min="0" step="0.000001" />
+                  </Form.Item>
+                  <Form.Item name="maxStock" label={t('items.maxStock')}>
+                    <InputNumber<string> stringMode min="0" step="0.000001" />
+                  </Form.Item>
+                  <Form.Item name="defaultWarehouseId" label={t('items.defaultWarehouse')}>
+                    <Select
+                      allowClear
+                      options={(warehouses ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
+                    />
+                  </Form.Item>
+                </FormSection>
+              ) : null
+            }
+          </Form.Item>
         </Form>
-      </Modal>
+      </FormDialog>
 
       <LedgerModal item={ledgerItem} onClose={() => setLedgerItem(null)} warehouses={warehouses ?? []} />
       <BarcodeModal item={barcodeItem} onClose={() => setBarcodeItem(null)} />
@@ -770,6 +796,7 @@ function GroupsTab() {
   const { contextHolder, show } = useApiError();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Group | null>(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
 
   const { data: groups, isLoading } = useQuery({
@@ -815,30 +842,33 @@ function GroupsTab() {
   const parentName = (id: string | null) =>
     id ? displayName((groups ?? []).find((g) => g.id === id)) ?? id : '—';
 
+  const shown = (groups ?? []).filter((g) => matchesSearch(search, g.code, displayName(g)));
+
   return (
-    <Card
-      size="small"
-      title={t('items.groups')}
-      extra={
-        <Button
-          type="primary"
-          size="small"
-          onClick={() => {
-            setEditing(null);
-            form.resetFields();
-            setModalOpen(true);
-          }}
-        >
-          {t('items.addGroup')}
-        </Button>
-      }
-    >
+    <Card size="small" title={t('items.groups')}>
       {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button
+            type="primary"
+            onClick={() => {
+              setEditing(null);
+              form.resetFields();
+              setModalOpen(true);
+            }}
+          >
+            {t('items.addGroup')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={groups ?? []}
+        dataSource={shown}
         pagination={false}
         columns={[
           { title: t('items.code'), dataIndex: 'code', width: 110 },
@@ -888,37 +918,39 @@ function GroupsTab() {
           },
         ]}
       />
-      <Modal
+      <FormDialog
         title={editing ? t('items.editGroup') : t('items.addGroup')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={save.isPending}
+        onSave={() => form.submit()}
+        saving={save.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} requiredMark={false}>
-          {!editing && (
-            <Form.Item name="code" label={t('items.code')} rules={[{ required: true }]}>
-              <Input maxLength={50} />
+        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+          <FormSection title={t('items.groupDetails')} icon={<AppstoreOutlined />}>
+            {!editing && (
+              <Form.Item name="code" label={t('items.code')} rules={[{ required: true }]}>
+                <Input maxLength={50} />
+              </Form.Item>
+            )}
+            <Form.Item name="nameAr" label={t('items.nameAr')} rules={[{ required: true }]}>
+              <Input maxLength={191} />
             </Form.Item>
-          )}
-          <Form.Item name="nameAr" label={t('items.nameAr')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('items.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          {!editing && (
-            <Form.Item name="parentId" label={t('items.parent')}>
-              <Select
-                allowClear
-                options={(groups ?? [])
-                  .filter((g) => g.isActive)
-                  .map((g) => ({ value: g.id, label: codeAndName(g) }))}
-              />
+            <Form.Item name="nameEn" label={t('items.nameEn')}>
+              <Input maxLength={191} />
             </Form.Item>
-          )}
+            {!editing && (
+              <Form.Item name="parentId" label={t('items.parent')}>
+                <Select
+                  allowClear
+                  options={(groups ?? [])
+                    .filter((g) => g.isActive)
+                    .map((g) => ({ value: g.id, label: codeAndName(g) }))}
+                />
+              </Form.Item>
+            )}
+          </FormSection>
         </Form>
-      </Modal>
+      </FormDialog>
     </Card>
   );
 }
