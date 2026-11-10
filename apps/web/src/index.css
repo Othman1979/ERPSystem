@@ -22,6 +22,17 @@ body,
   --c-on-primary: #ffffff;
   --c-on-primary-muted: rgba(255, 255, 255, 0.72);
   --topbar-height: 44px;
+  /* Grids and tables (palette.grid) */
+  --c-grid-panel: #eeeeee;
+  --c-grid-panel-hi: #fafafa;
+  --c-grid-bar: #d3dce3;
+  --c-grid-bar-hi: #f2f4f6;
+  --c-grid-bar-text: #1b2a36;
+  --c-grid-line: #c0c0c0;
+  --c-grid-border: #aaaaaa;
+  /* Bars and panels get a soft 3px lighter top edge. */
+  --c-grid-bar-bg: linear-gradient(to bottom, var(--c-grid-bar-hi), var(--c-grid-bar) 3px);
+  --c-grid-panel-bg: linear-gradient(to bottom, var(--c-grid-panel-hi), var(--c-grid-panel) 3px);
 }
 
 body {
@@ -166,60 +177,138 @@ body {
   white-space: nowrap;
 }
 
-/* Keep table headers readable on the gray canvas */
+/* List tables: blue-gray header bar, framed body */
+.ant-table-wrapper .ant-table-container {
+  border: 1px solid var(--c-grid-border);
+}
+
 .ant-table-thead > tr > th {
-  background: var(--c-header-bg) !important;
+  background: var(--c-grid-bar-bg) !important;
+  border-bottom: 1px solid var(--c-grid-border) !important;
+}
+
+.ant-table-wrapper .ant-table-summary > tr > td {
+  background: var(--c-grid-panel-bg);
+  border-top: 1px solid var(--c-grid-border);
+  font-weight: 600;
 }
 
 /* Data-entry grids (invoice / stock / journal lines) — Windows theme. */
+.entry-grid-frame {
+  border: 1px solid var(--c-grid-border);
+  background: var(--c-surface);
+}
+
 .entry-grid {
-  --eg-header: var(--c-header-bg);
-  --eg-header-text: var(--c-text);
-  --eg-line: var(--c-border-strong);
-  --eg-row-line: var(--c-row-line);
-  --eg-zebra: var(--c-zebra);
-  --eg-hover: var(--c-hover);
   --eg-focus: var(--c-primary);
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .entry-grid thead th {
-  background: var(--eg-header);
-  color: var(--eg-header-text);
+  background: var(--c-grid-bar-bg);
+  color: var(--c-grid-bar-text);
   font-weight: 600;
-  padding: 8px;
-  border-bottom: 2px solid var(--eg-line);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--c-grid-border);
   text-align: start;
   white-space: nowrap;
 }
 
 .entry-grid td {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--eg-row-line);
+  height: 30px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--c-grid-line);
   vertical-align: middle;
+  background: var(--c-surface);
 }
 
-.entry-grid tbody tr:nth-child(even) td {
-  background: var(--eg-zebra);
+/* Row-number column and read-only computed cells keep normal padding */
+.entry-grid .row-no,
+.entry-grid .num-cell {
+  padding: 0 8px;
 }
 
-.entry-grid tbody tr:hover td {
-  background: var(--eg-hover);
+.entry-grid .row-no {
+  width: 32px;
+  color: var(--c-text);
+  opacity: 0.6;
 }
 
-/* Highlight the cell that currently owns keyboard focus */
-.entry-grid td:focus-within {
+/* Number inputs line up with the computed number cells */
+.entry-grid th.num-cell,
+.entry-grid .num-cell .ant-input-number-input {
+  text-align: right;
+}
+
+/* The row being edited */
+.entry-grid tbody tr:focus-within td {
+  background: var(--c-hover);
+}
+
+/* The cell that owns keyboard focus */
+.entry-grid tbody td:focus-within {
+  background: var(--c-surface);
   outline: 2px solid var(--eg-focus);
   outline-offset: -2px;
 }
 
 .entry-grid tfoot td {
-  background: var(--eg-header);
-  color: var(--eg-header-text);
+  height: 30px;
+  padding: 0 8px;
+  background: var(--c-grid-panel-bg);
+  color: var(--c-text);
   font-weight: 600;
-  border-top: 2px solid var(--eg-line);
+  border-top: 1px solid var(--c-grid-border);
+  border-bottom: 0;
+}
+
+/* Delete buttons show on row hover/focus where a pointer can hover (always on touch) */
+@media (hover: hover) {
+  .entry-grid .row-del {
+    opacity: 0;
+    transition: opacity 0.12s ease-out;
+  }
+
+  .entry-grid tr:hover .row-del,
+  .entry-grid tr:focus-within .row-del {
+    opacity: 1;
+  }
+}
+
+/* Keyboard hint (+ totals) strip under a grid */
+.entry-grid-footer {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  background: var(--c-grid-panel-bg);
+  border-top: 1px solid var(--c-grid-border);
+}
+
+.entry-grid-hint {
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--c-text);
+  opacity: 0.75;
+}
+
+.entry-grid-hint kbd {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 0 5px;
+  border: 1px solid var(--c-grid-border);
+  border-radius: 2px;
+  background: var(--c-surface);
+}
+
+@media (max-width: 640px) {
+  .entry-grid-footer {
+    flex-direction: column;
+  }
 }
 
 /* Don't break a row across printed pages */
@@ -244,7 +333,9 @@ body {
     print-color-adjust: exact;
   }
 
-  .entry-grid tfoot td {
+  .entry-grid tfoot td,
+  .entry-grid-footer,
+  .invoice-summary .invoice-summary-grand {
     background: #fff !important;
   }
 
@@ -255,28 +346,29 @@ body {
   /* Hide interactive-only chrome inside cards/tables when printing */
   .ant-btn,
   .ant-pagination,
-  .ant-dropdown-trigger {
+  .ant-dropdown-trigger,
+  .entry-grid-hint {
     display: none !important;
   }
 }
 
-/* Invoice totals box under the lines grid */
+/* Invoice totals box (in the grid's footer strip) */
 .invoice-summary {
   width: 300px;
   max-width: 100%;
-  margin: 12px 0 0;
+  margin: 0;
   margin-inline-start: auto;
-  padding: 8px 14px;
-  border: 1px solid var(--c-border);
-  border-radius: 6px;
+  border: 1px solid var(--c-grid-border);
   background: var(--c-surface);
+  font-variant-numeric: tabular-nums;
 }
 
 .invoice-summary > div {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 3px 0;
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--c-grid-line);
 }
 
 .invoice-summary dt {
@@ -290,13 +382,23 @@ body {
 }
 
 .invoice-summary .invoice-summary-grand {
-  margin-top: 4px;
-  padding-top: 8px;
-  border-top: 1px solid var(--c-border-strong);
+  padding: 6px 10px;
+  border-bottom: 0;
+  border-top: 1px solid var(--c-grid-border);
+  margin-top: -1px;
+  background: var(--c-grid-bar-bg);
+  color: var(--c-grid-bar-text);
   font-weight: 700;
   font-size: 15px;
 }
 
 .invoice-summary .invoice-summary-grand dt {
+  color: inherit;
   opacity: 1;
+}
+
+@media (max-width: 640px) {
+  .invoice-summary {
+    width: 100%;
+  }
 }
