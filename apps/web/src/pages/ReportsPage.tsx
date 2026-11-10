@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { PrinterOutlined } from '@ant-design/icons';
 import { Button, Card, DatePicker, Select, Table, Tabs, Tag } from 'antd';
-import dayjs, { type Dayjs } from 'dayjs';
+import type { Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -17,11 +17,12 @@ import { Num } from '../components/Num';
 import { AgingTab } from './reports/AgingTab';
 import { BalanceSheetTab } from './reports/BalanceSheetTab';
 import { IncomeStatementTab } from './reports/IncomeStatementTab';
+import { ItemBalancesTab } from './reports/ItemBalancesTab';
+import { LedgerTable, sideCell, type LedgerData } from './reports/LedgerTable';
 import { TaxSummaryTab } from './reports/TaxSummaryTab';
 import { TradeSummaryTab } from './reports/TradeSummaryTab';
 import { ExportButtons } from '../components/ExportButtons';
-import { amountCell } from '../format/cells';
-import { dec, formatAmount, sum, type NumericInput } from '../format/number';
+import { formatAmount } from '../format/number';
 
 interface Account {
   id: string;
@@ -29,57 +30,32 @@ interface Account {
   nameAr: string;
 }
 
-interface TbRow {
+/** Opening / movement / closing, each debit and credit (ADR-008). */
+const TB_COLUMNS = [
+  'openingDebit',
+  'openingCredit',
+  'periodDebit',
+  'periodCredit',
+  'closingDebit',
+  'closingCredit',
+] as const;
+type TbColumn = (typeof TB_COLUMNS)[number];
+
+interface TbRow extends Record<TbColumn, string> {
   accountId: string;
   code: string;
   nameAr: string;
   nameEn: string | null;
-  totalDebit: string;
-  totalCredit: string;
-  balance: string;
 }
 
 interface TbResponse {
   rows: TbRow[];
-  totals: { debit: string; credit: string };
+  totals: Record<TbColumn, string>;
   balanced: boolean;
 }
 
-interface LedgerRow {
-  lineId: string;
-  entryNo: string;
-  entryDate: string;
-  description: string | null;
-  debit: string;
-  credit: string;
-  balance: string;
-}
-
-interface LedgerResponse {
-  account: { code: string; nameAr: string };
-  openingBalance: string;
-  closingBalance: string;
-  rows: LedgerRow[];
-}
-
-interface StatementRow {
-  lineId: string;
-  entryNo: string;
-  entryDate: string;
-  accountCode: string;
-  accountName: string;
-  description: string | null;
-  debit: string;
-  credit: string;
-  balance: string;
-}
-
-interface StatementResponse {
-  openingBalance: string;
-  closingBalance: string;
-  totalDebit: string;
-  totalCredit: string;
-  rows: StatementRow[];
+interface LedgerResponse extends LedgerData {
+  account: { code: string; nameAr: string; nameEn?: string | null };
 }
 
 function qs(params: Record<string, string | undefined>): string {
@@ -90,7 +66,6 @@ function qs(params: Record<string, string | undefined>): string {
 }
 
 
-const dateCol = { title: '', dataIndex: 'entryDate', width: 110, render: (v: string) => dayjs(v).format('YYYY-MM-DD') };
 
 export function ReportsPage() {
   const { t } = useTranslation();
@@ -103,7 +78,14 @@ export function ReportsPage() {
   };
   const [from, setFrom] = useState<Dayjs | null>(null);
   const [to, setTo] = useState<Dayjs | null>(null);
-  const [accountId, setAccountId] = useState<string | undefined>(undefined);
+  // ?tab=gl&accountId= (account statement shortcuts on accounts and cash boxes).
+  const [accountId, setAccountId] = useState<string | undefined>(searchParams.get('accountId') ?? undefined);
+  const [tab, setTab] = useState(searchParams.get('tab') ?? 'tb');
+  // Double-clicking a trial balance row opens that account's statement.
+  const openStatement = (id: string) => {
+    setAccountId(id);
+    setTab('gl');
+  };
   const [partyType, setPartyType] = useState<'CUSTOMER' | 'SUPPLIER' | undefined>(undefined);
   const [partyId, setPartyId] = useState<string | undefined>(undefined);
 
@@ -148,7 +130,7 @@ export function ReportsPage() {
   const { data: statement, isLoading: stLoading } = useQuery({
     queryKey: ['report-statement', partyType, partyId, range.from, range.to],
     queryFn: () =>
-      apiFetchData<StatementResponse>(
+      apiFetchData<LedgerData>(
         `/api/v1/reports/party-statement${qs({ partyType, partyId, ...range })}`,
       ),
     enabled: !!partyType && !!partyId,
@@ -166,35 +148,25 @@ export function ReportsPage() {
       {t('common.print')}
     </Button>
   );
-  // Bottom totals row for the ledger-style reports (debit, credit, closing balance).
-  const totalsRow = (
-    labelSpan: number,
-    debit: NumericInput,
-    credit: NumericInput,
-    closing: NumericInput,
-  ) => (
-    <Table.Summary.Row>
-      <Table.Summary.Cell index={0} colSpan={labelSpan}>
-        {t('journal.total')}
-      </Table.Summary.Cell>
-      <Table.Summary.Cell index={1} align="right">
-        <Num>{formatAmount(debit)}</Num>
-      </Table.Summary.Cell>
-      <Table.Summary.Cell index={2} align="right">
-        <Num>{formatAmount(credit)}</Num>
-      </Table.Summary.Cell>
-      <Table.Summary.Cell index={3} align="right">
-        <Num>{formatAmount(closing)}</Num>
-      </Table.Summary.Cell>
-    </Table.Summary.Row>
-  );
+  // Trial balance column groups: opening, movements, closing — debit / credit each.
+  const tbGroup = (prefix: 'opening' | 'period' | 'closing', title: string) => ({
+    title,
+    children: (['Debit', 'Credit'] as const).map((side) => ({
+      title: t(side === 'Debit' ? 'journal.debit' : 'journal.credit'),
+      dataIndex: `${prefix}${side}`,
+      align: 'right' as const,
+      width: 115,
+      render: sideCell,
+    })),
+  });
 
   return (
     <div>
       <PageHeader title={t('reports.title')} />
       <Card>
       <Tabs
-        defaultActiveKey={searchParams.get('tab') ?? 'tb'}
+        activeKey={tab}
+        onChange={setTab}
         items={[
           {
             key: 'tb',
@@ -215,50 +187,42 @@ export function ReportsPage() {
                     </>
                   }
                 />
-                <Table
+                <div className="report-meta">
+                  <span>{t('reports.openingNote')}</span>
+                </div>
+                <Table<TbRow>
                   rowKey="accountId"
                   size="small"
+                  bordered
                   loading={tbLoading}
                   dataSource={tb?.rows ?? []}
                   pagination={false}
+                  scroll={{ x: 1000 }}
+                  onRow={(r) => ({ onDoubleClick: () => openStatement(r.accountId), style: { cursor: 'pointer' } })}
                   columns={[
-                    { title: t('accounts.code'), dataIndex: 'code', width: 100 },
+                    { title: t('accounts.code'), dataIndex: 'code', width: 90 },
                     {
                       title: t('common.name'),
                       key: 'name',
                       render: (_: unknown, r: TbRow) => bothNames(r),
                     },
-                    {
-                      title: t('journal.debit'),
-                      dataIndex: 'totalDebit',
-                      align: 'right',
-                      width: 120,
-                      render: amountCell,
-                    },
-                    {
-                      title: t('journal.credit'),
-                      dataIndex: 'totalCredit',
-                      align: 'right',
-                      width: 120,
-                      render: amountCell,
-                    },
-                    {
-                      title: t('reports.balance'),
-                      dataIndex: 'balance',
-                      align: 'right',
-                      width: 120,
-                      render: amountCell,
-                    },
+                    tbGroup('opening', t('reports.openingPeriod')),
+                    tbGroup('period', t('reports.movements')),
+                    tbGroup('closing', t('reports.closingPeriod')),
                   ]}
                   summary={() =>
-                    tb && tb.rows.length > 0
-                      ? totalsRow(
-                          2,
-                          tb.totals.debit,
-                          tb.totals.credit,
-                          dec(tb.totals.debit).minus(dec(tb.totals.credit)),
-                        )
-                      : null
+                    tb && tb.rows.length > 0 ? (
+                      <Table.Summary.Row className="report-row-strong">
+                        <Table.Summary.Cell index={0} colSpan={2}>
+                          {t('journal.total')}
+                        </Table.Summary.Cell>
+                        {TB_COLUMNS.map((k, i) => (
+                          <Table.Summary.Cell key={k} index={i + 1} align="right">
+                            <Num>{formatAmount(tb.totals[k])}</Num>
+                          </Table.Summary.Cell>
+                        ))}
+                      </Table.Summary.Row>
+                    ) : null
                   }
                 />
               </>
@@ -305,54 +269,10 @@ export function ReportsPage() {
                     <span>
                       {t('reports.account')}: <strong>{codeAndName(gl.account)}</strong>
                     </span>
-                    <span>
-                      {t('reports.openingBalance')}: <strong><Num>{formatAmount(gl.openingBalance)}</Num></strong>
-                    </span>
+                    <span>{t('reports.openingNote')}</span>
                   </div>
                 )}
-                <Table
-                  rowKey="lineId"
-                  size="small"
-                  loading={glLoading}
-                  dataSource={gl?.rows ?? []}
-                  pagination={{ pageSize: 50 }}
-                  columns={[
-                    { title: t('journal.entryNo'), dataIndex: 'entryNo', width: 150, className: 'nowrap' },
-                    { ...dateCol, title: t('journal.date') },
-                    { title: t('common.description'), dataIndex: 'description' },
-                    {
-                      title: t('journal.debit'),
-                      dataIndex: 'debit',
-                      align: 'right',
-                      width: 110,
-                      render: amountCell,
-                    },
-                    {
-                      title: t('journal.credit'),
-                      dataIndex: 'credit',
-                      align: 'right',
-                      width: 110,
-                      render: amountCell,
-                    },
-                    {
-                      title: t('reports.balance'),
-                      dataIndex: 'balance',
-                      align: 'right',
-                      width: 120,
-                      render: amountCell,
-                    },
-                  ]}
-                  summary={() =>
-                    gl && gl.rows.length > 0
-                      ? totalsRow(
-                          3,
-                          sum(gl.rows.map((r) => r.debit)),
-                          sum(gl.rows.map((r) => r.credit)),
-                          gl.closingBalance,
-                        )
-                      : null
-                  }
-                />
+                <LedgerTable data={gl} loading={glLoading} />
                 </>
                 )}
               </>
@@ -410,66 +330,19 @@ export function ReportsPage() {
                 <div className="report-empty">{t('reports.selectParty')}</div>
               ) : (
                 <>
-                  {statement && (
-                    <div className="report-meta">
-                      <span>
-                        {t('reports.openingBalance')}: <strong><Num>{formatAmount(statement.openingBalance)}</Num></strong>
-                      </span>
-                    </div>
-                  )}
-                  <Table
-                    rowKey="lineId"
-                    size="small"
-                    loading={stLoading}
-                    dataSource={statement?.rows ?? []}
-                    pagination={{ pageSize: 50 }}
-                    columns={[
-                      { title: t('journal.entryNo'), dataIndex: 'entryNo', width: 150, className: 'nowrap' },
-                      { ...dateCol, title: t('journal.date') },
-                      {
-                        title: t('accounts.code'),
-                        dataIndex: 'accountCode',
-                        width: 90,
-                      },
-                      { title: t('common.name'), dataIndex: 'accountName' },
-                      { title: t('common.description'), dataIndex: 'description' },
-                      {
-                        title: t('journal.debit'),
-                        dataIndex: 'debit',
-                        align: 'right',
-                        width: 110,
-                        render: amountCell,
-                      },
-                      {
-                        title: t('journal.credit'),
-                        dataIndex: 'credit',
-                        align: 'right',
-                        width: 110,
-                        render: amountCell,
-                      },
-                      {
-                        title: t('reports.balance'),
-                        dataIndex: 'balance',
-                        align: 'right',
-                        width: 120,
-                        render: amountCell,
-                      },
-                    ]}
-                    summary={() =>
-                      statement && statement.rows.length > 0
-                        ? totalsRow(
-                            5,
-                            statement.totalDebit,
-                            statement.totalCredit,
-                            statement.closingBalance,
-                          )
-                        : null
-                    }
-                  />
+                  <div className="report-meta">
+                    <span>{t('reports.openingNote')}</span>
+                  </div>
+                  <LedgerTable data={statement} loading={stLoading} withAccount />
                 </>
               )}
               </>
             ),
+          },
+          {
+            key: 'items',
+            label: t('reports.itemBalances'),
+            children: <ItemBalancesTab range={range} dateFilters={dateFilters} printButton={printButton} />,
           },
           {
             key: 'aging',

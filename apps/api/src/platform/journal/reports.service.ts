@@ -13,6 +13,20 @@ export interface ReportRange {
 
 export type AccountTypeCode = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
+/**
+ * A net debit-minus-credit balance shown on one side: `{prefix}Debit` when
+ * positive, `{prefix}Credit` when negative, the other side '0'.
+ */
+export function sides<P extends string>(
+  prefix: P,
+  net: Decimal,
+): Record<`${P}Debit` | `${P}Credit`, string> {
+  return {
+    [`${prefix}Debit`]: (net.gt(0) ? net : new Decimal(0)).toString(),
+    [`${prefix}Credit`]: (net.lt(0) ? net.neg() : new Decimal(0)).toString(),
+  } as Record<`${P}Debit` | `${P}Credit`, string>;
+}
+
 /** One account of the company's chart (groups too), for statement trees. */
 export interface ChartAccount {
   id: bigint;
@@ -66,6 +80,50 @@ export class ReportsService {
       where.lte = d;
     }
     return where;
+  }
+
+  /**
+   * Entries making up a period's opening balance (ADR-008): everything dated
+   * before `from`, plus the opening entries (is_opening) dated in the period.
+   * Without `from`, the opening entries up to `to`.
+   */
+  private openingEntryWhere(range: ReportRange) {
+    const inRange = this.dateWhere(range);
+    const openingInRange = {
+      isOpening: true,
+      ...(Object.keys(inRange).length ? { entryDate: inRange } : {}),
+    };
+    return range.from
+      ? { OR: [{ entryDate: { lt: new Date(range.from) } }, openingInRange] }
+      : openingInRange;
+  }
+
+  /** Entries that are the period's movements: dated in it and not opening entries. */
+  private movementEntryWhere(range: ReportRange) {
+    const inRange = this.dateWhere(range);
+    return { isOpening: false, ...(Object.keys(inRange).length ? { entryDate: inRange } : {}) };
+  }
+
+  /** Posted debit / credit sums per account for an entry filter. */
+  private async sumsByAccount(
+    db: ReturnType<PrismaService['forTenant']>,
+    companyId: bigint,
+    entryWhere: Record<string, unknown>,
+  ): Promise<Map<bigint, { debit: Decimal; credit: Decimal }>> {
+    const grouped = await db.journalLine.groupBy({
+      by: ['accountId'],
+      where: { entry: { companyId, status: 'POSTED', ...entryWhere } },
+      _sum: { debit: true, credit: true },
+    });
+    return new Map(
+      grouped.map((g) => [
+        g.accountId,
+        {
+          debit: new Decimal(g._sum.debit?.toString() ?? 0),
+          credit: new Decimal(g._sum.credit?.toString() ?? 0),
+        },
+      ]),
+    );
   }
 
   /** The company's whole chart of accounts (groups included), by code. */
@@ -144,37 +202,94 @@ export class ReportsService {
   }
 
   /** Trial balance: per-account debit/credit totals over POSTED entries. */
+  /**
+   * Trial balance with balances and totals (ميزان بالأرصدة والمجاميع, ADR-008):
+   * per account the opening balance (net, on one side), the period's
+   * movements (both sides) and the closing balance (net, on one side).
+   * `totalDebit` / `totalCredit` / `balance` keep their meaning: every posted
+   * line dated in the range, opening entries included.
+   */
   async trialBalance(range: ReportRange) {
-    const rows = (await this.accountTotals(range)).map(({ account: a, debit, credit }) => {
-      // Natural-sign balance: positive = normal side.
-      const balance = a.normalBalance === 'DEBIT' ? debit.minus(credit) : credit.minus(debit);
-      return {
-        accountId: a.id.toString(),
-        code: a.code,
-        nameAr: a.nameAr,
-        nameEn: a.nameEn,
-        accountType: a.accountType,
-        normalBalance: a.normalBalance,
-        totalDebit: debit.toString(),
-        totalCredit: credit.toString(),
-        balance: balance.toString(),
-      };
-    });
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const [inRange, opening, movement, chart] = await Promise.all([
+      this.accountTotals(range),
+      this.sumsByAccount(db, companyId, this.openingEntryWhere(range)),
+      this.sumsByAccount(db, companyId, this.movementEntryWhere(range)),
+      this.chart(),
+    ]);
+    const accountById = new Map(chart.map((a) => [a.id, a]));
+    const inRangeById = new Map(inRange.map((r) => [r.account.id, r]));
+    const zero = { debit: new Decimal(0), credit: new Decimal(0) };
+    const ids = new Set([...inRangeById.keys(), ...opening.keys(), ...movement.keys()]);
 
-    const totalDebit = sum(rows.map((r) => r.totalDebit));
-    const totalCredit = sum(rows.map((r) => r.totalCredit));
+    const rows = [...ids]
+      .map((id) => {
+        const a = accountById.get(id);
+        if (!a) return null;
+        const debit = inRangeById.get(id)?.debit ?? new Decimal(0);
+        const credit = inRangeById.get(id)?.credit ?? new Decimal(0);
+        const o = opening.get(id) ?? zero;
+        const m = movement.get(id) ?? zero;
+        const openingNet = o.debit.minus(o.credit);
+        const closingNet = openingNet.plus(m.debit).minus(m.credit);
+        if (openingNet.isZero() && m.debit.isZero() && m.credit.isZero() && debit.isZero() && credit.isZero()) {
+          return null;
+        }
+        // Natural-sign balance: positive = normal side.
+        const balance = a.normalBalance === 'DEBIT' ? debit.minus(credit) : credit.minus(debit);
+        return {
+          accountId: a.id.toString(),
+          code: a.code,
+          nameAr: a.nameAr,
+          nameEn: a.nameEn,
+          accountType: a.accountType,
+          normalBalance: a.normalBalance,
+          totalDebit: debit.toString(),
+          totalCredit: credit.toString(),
+          balance: balance.toString(),
+          ...sides('opening', openingNet),
+          periodDebit: m.debit.toString(),
+          periodCredit: m.credit.toString(),
+          ...sides('closing', closingNet),
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null)
+      .sort((x, y) => x.code.localeCompare(y.code));
+
+    const total = (key: keyof (typeof rows)[number]) => sum(rows.map((r) => r[key] as string));
+    const totals = {
+      debit: total('totalDebit'),
+      credit: total('totalCredit'),
+      openingDebit: total('openingDebit'),
+      openingCredit: total('openingCredit'),
+      periodDebit: total('periodDebit'),
+      periodCredit: total('periodCredit'),
+      closingDebit: total('closingDebit'),
+      closingCredit: total('closingCredit'),
+    };
     return {
       rows,
-      totals: { debit: totalDebit.toString(), credit: totalCredit.toString() },
-      balanced: totalDebit.eq(totalCredit),
+      totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, v.toString()])) as Record<
+        keyof typeof totals,
+        string
+      >,
+      balanced:
+        totals.debit.eq(totals.credit) &&
+        totals.openingDebit.eq(totals.openingCredit) &&
+        totals.periodDebit.eq(totals.periodCredit) &&
+        totals.closingDebit.eq(totals.closingCredit),
     };
   }
 
-  /** General ledger for one account: lines + running balance. */
+  /**
+   * Account statement (كشف حساب / general ledger) for one account: the
+   * opening balance (ADR-008: before `from` plus the opening entries of the
+   * period), the period's other lines with a running balance, the closing.
+   */
   async generalLedger(accountId: bigint, range: ReportRange) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
-    const dateWhere = this.dateWhere(range);
 
     const account = await db.account.findFirst({ where: { id: accountId, companyId } });
     if (!account) throw DomainError.notFound('Account', accountId.toString());
@@ -182,11 +297,7 @@ export class ReportsService {
     const lines = await db.journalLine.findMany({
       where: {
         accountId,
-        entry: {
-          companyId,
-          status: 'POSTED',
-          ...(Object.keys(dateWhere).length ? { entryDate: dateWhere } : {}),
-        },
+        entry: { companyId, status: 'POSTED', ...this.movementEntryWhere(range) },
       },
       orderBy: [{ entry: { entryDate: 'asc' } }, { entry: { id: 'asc' } }, { lineNo: 'asc' }],
       include: {
@@ -203,22 +314,12 @@ export class ReportsService {
       },
     });
 
-    // Opening balance = everything before `from` (summed in the database).
-    let opening = new Decimal(0);
-    if (range.from) {
-      const before = await db.journalLine.aggregate({
-        where: {
-          accountId,
-          entry: {
-            companyId,
-            status: 'POSTED',
-            entryDate: { lt: new Date(range.from) },
-          },
-        },
-        _sum: { debit: true, credit: true },
-      });
-      opening = new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
-    }
+    // Opening balance, summed in the database.
+    const before = await db.journalLine.aggregate({
+      where: { accountId, entry: { companyId, status: 'POSTED', ...this.openingEntryWhere(range) } },
+      _sum: { debit: true, credit: true },
+    });
+    const opening = new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
 
     let running = opening;
     const rows = lines.map((l) => {
@@ -250,26 +351,28 @@ export class ReportsService {
         normalBalance: account.normalBalance,
       },
       openingBalance: opening.toString(),
+      ...sides('opening', opening),
+      totalDebit: sum(rows.map((r) => r.debit)).toString(),
+      totalCredit: sum(rows.map((r) => r.credit)).toString(),
       closingBalance: running.toString(),
+      ...sides('closing', running),
       rows,
     };
   }
 
-  /** Party statement: control-account lines for one customer/supplier. */
+  /**
+   * Party statement: control-account lines for one customer/supplier, with
+   * the same opening / movements / closing split as the account statement.
+   */
   async partyStatement(partyType: 'CUSTOMER' | 'SUPPLIER', partyId: bigint, range: ReportRange) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
-    const dateWhere = this.dateWhere(range);
 
     const lines = await db.journalLine.findMany({
       where: {
         partyType,
         partyId,
-        entry: {
-          companyId,
-          status: 'POSTED',
-          ...(Object.keys(dateWhere).length ? { entryDate: dateWhere } : {}),
-        },
+        entry: { companyId, status: 'POSTED', ...this.movementEntryWhere(range) },
       },
       orderBy: [{ entry: { entryDate: 'asc' } }, { entry: { id: 'asc' } }, { lineNo: 'asc' }],
       include: {
@@ -280,18 +383,11 @@ export class ReportsService {
       },
     });
 
-    let opening = new Decimal(0);
-    if (range.from) {
-      const before = await db.journalLine.aggregate({
-        where: {
-          partyType,
-          partyId,
-          entry: { companyId, status: 'POSTED', entryDate: { lt: new Date(range.from) } },
-        },
-        _sum: { debit: true, credit: true },
-      });
-      opening = new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
-    }
+    const before = await db.journalLine.aggregate({
+      where: { partyType, partyId, entry: { companyId, status: 'POSTED', ...this.openingEntryWhere(range) } },
+      _sum: { debit: true, credit: true },
+    });
+    const opening = new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
 
     let running = opening;
     const rows = lines.map((l) => {
@@ -319,7 +415,9 @@ export class ReportsService {
       partyType,
       partyId: partyId.toString(),
       openingBalance: opening.toString(),
+      ...sides('opening', opening),
       closingBalance: running.toString(),
+      ...sides('closing', running),
       totalDebit: totalDebit.toString(),
       totalCredit: totalCredit.toString(),
       rows,

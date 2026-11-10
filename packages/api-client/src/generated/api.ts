@@ -162,6 +162,12 @@ export type StockReportsControllerItemLedgerParams = {
   to?: string;
 };
 
+export type StockReportsControllerItemBalancesParams = {
+  warehouseId?: string;
+  from?: string;
+  to?: string;
+};
+
 export type StockReportsControllerValuationParams = {
   warehouseId?: string;
 };
@@ -3769,6 +3775,46 @@ export const stockReportsControllerItemLedger = async (itemId: string,
     params?: StockReportsControllerItemLedgerParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerItemLedgerResponse> => {
 
   return apiFetch<stockReportsControllerItemLedgerResponse>(getStockReportsControllerItemLedgerUrl(itemId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockReportsControllerItemBalancesResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockReportsControllerItemBalancesResponseSuccess = (stockReportsControllerItemBalancesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockReportsControllerItemBalancesResponse = (stockReportsControllerItemBalancesResponseSuccess)
+
+export const getStockReportsControllerItemBalancesUrl = (params?: StockReportsControllerItemBalancesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/stock/item-balances?${stringifiedParams}` : `/api/v1/stock/item-balances`
+}
+
+export const stockReportsControllerItemBalances = async (params?: StockReportsControllerItemBalancesParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerItemBalancesResponse> => {
+
+  return apiFetch<stockReportsControllerItemBalancesResponse>(getStockReportsControllerItemBalancesUrl(params),
   {
     ...options,
     method: 'GET'

@@ -715,6 +715,10 @@ model JournalEntry {
   totalDebit     Decimal            @default(0) @map("total_debit") @db.Decimal(18, 3)
   totalCredit    Decimal            @default(0) @map("total_credit") @db.Decimal(18, 3)
   reversalOfId   BigInt?            @map("reversal_of_id") @db.UnsignedBigInt
+  /// Opening balances (§8.6, ADR-008): the opening entry and the entries of
+  /// OPENING stock adjustments, and their reversals. Reports show these
+  /// lines as the opening balance of a period, not as movements.
+  isOpening      Boolean            @default(false) @map("is_opening")
   postedAt       DateTime?          @map("posted_at") @db.DateTime(3)
   postedBy       BigInt?            @map("posted_by") @db.UnsignedBigInt
   createdAt      DateTime           @default(now()) @map("created_at") @db.DateTime(3)
