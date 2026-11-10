@@ -81,12 +81,17 @@ export class PostingService {
         throw new DomainError(ErrorCode.NOT_FOUND, `Account ${line.accountId} not found`);
       }
       if (!account.isActive) {
-        throw new DomainError(ErrorCode.VALIDATION, `Account ${account.code} is inactive`);
+        throw new DomainError(ErrorCode.VALIDATION, `Account ${account.code} is inactive`, {
+          rule: 'ACCOUNT_INACTIVE',
+          line: i + 1,
+          accountCode: account.code,
+        });
       }
       if (!account.isPostable) {
         throw new DomainError(
           ErrorCode.VALIDATION,
           `Account ${account.code} is not postable (parent/group account)`,
+          { rule: 'ACCOUNT_NOT_POSTABLE', line: i + 1, accountCode: account.code },
         );
       }
 
@@ -98,6 +103,7 @@ export class PostingService {
         throw new DomainError(
           ErrorCode.VALIDATION,
           `Line ${i + 1}: exactly one of debit/credit must be > 0`,
+          { rule: 'ONE_SIDE', line: i + 1, accountCode: account.code },
         );
       }
 
@@ -107,6 +113,7 @@ export class PostingService {
           throw new DomainError(
             ErrorCode.VALIDATION,
             `Line ${i + 1}: control account ${account.code} requires partyType and partyId`,
+            { rule: 'PARTY_REQUIRED', line: i + 1, accountCode: account.code, controlType: account.controlType },
           );
         }
         const expected =
@@ -119,6 +126,7 @@ export class PostingService {
           throw new DomainError(
             ErrorCode.VALIDATION,
             `Line ${i + 1}: account ${account.code} expects partyType ${expected}`,
+            { rule: 'PARTY_TYPE', line: i + 1, accountCode: account.code, controlType: account.controlType },
           );
         }
       }

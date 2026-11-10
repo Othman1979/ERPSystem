@@ -383,6 +383,12 @@ body {
   background: var(--c-surface);
 }
 
+/* A required cell left empty (e.g. the customer on a receivables line) */
+.entry-grid td.cell-missing {
+  background: #fdf0ef;
+  box-shadow: inset 0 0 0 1px #c42b1c; /* theme.ts danger */
+}
+
 /* Row-number column and read-only computed cells keep normal padding */
 .entry-grid .row-no,
 .entry-grid .num-cell {

@@ -23,13 +23,20 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   emptyLine,
   JournalLinesGrid,
+  type GridParty,
   type JournalLineDraft,
 } from '../components/JournalLinesGrid';
+import {
+  firstLineProblem,
+  partyTypeFor,
+  type LineAccount,
+  type PartyType,
+} from '../components/journalLineChecks';
 import {
   ApiError,
   accountingControllerListAccounts,
@@ -39,6 +46,7 @@ import {
   journalControllerList,
   journalControllerPost,
   journalControllerReverse,
+  partiesControllerList,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
@@ -62,6 +70,17 @@ interface Account {
   nameAr: string;
   isPostable: boolean;
   isActive: boolean;
+  isControl?: boolean;
+  controlType?: string | null;
+}
+
+interface Party {
+  id: string;
+  code: string;
+  nameAr: string;
+  nameEn?: string | null;
+  partyType: 'CUSTOMER' | 'SUPPLIER' | 'BOTH';
+  isActive: boolean;
 }
 
 interface JournalLine {
@@ -70,6 +89,8 @@ interface JournalLine {
   debit?: string | null;
   credit?: string | null;
   description?: string | null;
+  partyType?: 'CUSTOMER' | 'SUPPLIER' | null;
+  partyId?: string | null;
   account?: { code: string; nameAr: string };
 }
 
@@ -131,6 +152,7 @@ export function JournalPage() {
   const [newDescription, setNewDescription] = useState('');
   const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
   const [gridFocus, setGridFocus] = useState(0);
+  const [missingParty, setMissingParty] = useState<number | null>(null);
 
   const { data: entries, isLoading } = useQuery({
     queryKey: ['journal-entries', statusFilter, typeFilter],
@@ -150,6 +172,30 @@ export function JournalPage() {
   const accountOptions = (accounts ?? [])
     .filter((a) => a.isActive && a.isPostable)
     .map((a) => ({ value: a.id, label: codeAndName(a) }));
+  const accountById = useMemo(
+    () => new Map<string, LineAccount>((accounts ?? []).map((a) => [a.id, a])),
+    [accounts],
+  );
+
+  // Customers / suppliers for control-account lines (receivables, payables).
+  const { data: partyList } = useQuery({
+    queryKey: ['parties', 'all'],
+    queryFn: () =>
+      partiesControllerList({ partyType: '', isActive: '' }).then(
+        (r) => r.data as unknown as Party[],
+      ),
+  });
+  const partyById = useMemo(
+    () => new Map((partyList ?? []).map((p) => [p.id, p])),
+    [partyList],
+  );
+  const gridParties: GridParty[] = useMemo(
+    () =>
+      (partyList ?? [])
+        .filter((p) => p.isActive)
+        .map((p) => ({ id: p.id, label: codeAndName(p), partyType: p.partyType })),
+    [partyList],
+  );
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['journal-entry', entryId],
@@ -161,12 +207,28 @@ export function JournalPage() {
     void queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
     void queryClient.invalidateQueries({ queryKey: ['journal-entry'] });
   };
-  const onError = (err: unknown) =>
+  // A rejected line names its rule (PostingService.validateLines): say which line and why.
+  const lineRuleText = (rule: string, line: unknown, code: unknown, partyType: PartyType | null) => {
+    const key = rule === 'PARTY_REQUIRED' && partyType ? `PARTY_REQUIRED_${partyType}` : rule;
+    return t(`journal.lineRule.${key}`, { line, code, defaultValue: '' });
+  };
+  const onError = (err: unknown) => {
+    if (err instanceof ApiError && err.code === 'VALIDATION' && typeof err.details?.rule === 'string') {
+      const d = err.details;
+      const partyType = partyTypeFor({ code: '', controlType: d.controlType as string | null });
+      const text = lineRuleText(d.rule as string, d.line, d.accountCode, partyType);
+      if (text) {
+        // Drafts can't be edited, so a saved line that can't post means re-entering it.
+        apiMessage.error(`${text}. ${t('journal.fixDraftHint')}`, 6);
+        return;
+      }
+    }
     apiMessage.error(
       err instanceof ApiError
         ? t(`errors.${err.code}`, { defaultValue: err.message })
         : t('errors.INTERNAL'),
     );
+  };
 
   const openNew = (voucherType: VoucherType = 'JOURNAL') => {
     setEntryId(null);
@@ -174,6 +236,7 @@ export function JournalPage() {
     setNewVoucherType(voucherType);
     setNewDescription('');
     setLines([emptyLine(1), emptyLine(2)]);
+    setMissingParty(null);
     setGridFocus((g) => g + 1);
     setScreen('entry');
   };
@@ -202,6 +265,8 @@ export function JournalPage() {
             debit: l.debit != null ? String(l.debit) : undefined,
             credit: l.credit != null ? String(l.credit) : undefined,
             description: l.description || undefined,
+            partyType: l.partyId ? (l.partyType ?? undefined) : undefined,
+            partyId: l.partyId ?? undefined,
           })),
       } as never),
     onSuccess: (res) => {
@@ -223,6 +288,13 @@ export function JournalPage() {
       apiMessage.error(t('journal.minLines'));
       return;
     }
+    const problem = firstLineProblem(lines, accountById);
+    if (problem) {
+      apiMessage.error(lineRuleText(problem.rule, problem.line, problem.accountCode, problem.partyType));
+      setMissingParty(problem.rule === 'PARTY_REQUIRED' ? lines[problem.line - 1].key : null);
+      return;
+    }
+    setMissingParty(null);
     createDraft.mutate();
   };
 
@@ -545,6 +617,9 @@ export function JournalPage() {
             lines={lines}
             onChange={setLines}
             accountOptions={accountOptions}
+            accountById={accountById}
+            parties={gridParties}
+            missingParty={missingParty}
             focusSignal={gridFocus}
           />
         ) : detailLoading ? (
@@ -565,6 +640,13 @@ export function JournalPage() {
                 title: t('journal.account'),
                 render: (_: unknown, l: JournalLine) =>
                   l.account ? codeAndName(l.account) : '—',
+              },
+              {
+                title: t('journal.party'),
+                render: (_: unknown, l: JournalLine) => {
+                  const p = l.partyId ? partyById.get(l.partyId) : undefined;
+                  return p ? codeAndName(p) : '—';
+                },
               },
               {
                 title: t('common.description'),
@@ -588,7 +670,7 @@ export function JournalPage() {
             ]}
             summary={() => (
               <Table.Summary.Row style={{ fontWeight: 600 }}>
-                <Table.Summary.Cell index={0} colSpan={3}>
+                <Table.Summary.Cell index={0} colSpan={4}>
                   {t('journal.total')}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">

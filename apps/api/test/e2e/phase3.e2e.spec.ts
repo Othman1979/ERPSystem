@@ -188,6 +188,7 @@ describe('Phase 3 — journal engine (erp_test)', () => {
       .set(idem());
     expect(post.status).toBe(400);
     expect(post.body.error.code).toBe('VALIDATION');
+    expect(post.body.error.details).toMatchObject({ rule: 'ACCOUNT_NOT_POSTABLE', line: 1, accountCode: '1' });
   });
 
   it('rejects control-account lines without party info', async () => {
@@ -202,6 +203,13 @@ describe('Phase 3 — journal engine (erp_test)', () => {
     expect(post.status).toBe(400);
     expect(post.body.error.code).toBe('VALIDATION');
     expect(post.body.error.message).toContain('party');
+    // The screen names the line and the missing customer from these details.
+    expect(post.body.error.details).toEqual({
+      rule: 'PARTY_REQUIRED',
+      line: 1,
+      accountCode: '1103',
+      controlType: 'CUSTOMERS',
+    });
   });
 
   it('posts a balanced manual journal with gapless JV number', async () => {

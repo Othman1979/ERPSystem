@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { formatAmount, round3, sum } from '../format/number';
 import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
+import { needsParty, partyTypeFor, type LineAccount, type PartyType } from './journalLineChecks';
 import { Num } from './Num';
 
 export interface JournalLineDraft {
@@ -14,6 +15,15 @@ export interface JournalLineDraft {
   debit?: string | null;
   credit?: string | null;
   description?: string;
+  /** Customer / supplier, required on control-account lines. */
+  partyId?: string | null;
+  partyType?: PartyType | null;
+}
+
+export interface GridParty {
+  id: string;
+  label: string;
+  partyType: 'CUSTOMER' | 'SUPPLIER' | 'BOTH';
 }
 
 export const emptyLine = (key: number): JournalLineDraft => ({ key });
@@ -22,21 +32,64 @@ interface Props {
   lines: JournalLineDraft[];
   onChange: (lines: JournalLineDraft[]) => void;
   accountOptions: { value: string; label: string }[];
+  /** Accounts by id: which lines need a party, and of which type. */
+  accountById: Map<string, LineAccount>;
+  /** Active customers and suppliers for the party column. */
+  parties: GridParty[];
+  /** Key of a line to mark as missing its party (after a failed save check). */
+  missingParty?: number | null;
   /** Increment to auto-focus the first cell (e.g. when a form opens). */
   focusSignal?: number;
 }
+
+/** A BOTH party fits either control account. */
+const fits = (p: GridParty, want: PartyType | null) =>
+  !want || p.partyType === want || p.partyType === 'BOTH';
 
 /**
  * Excel-like journal lines grid: Enter on the last row appends a new line,
  * Enter elsewhere moves focus to the same column on the next row.
  */
-export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal }: Props) {
+export function JournalLinesGrid({
+  lines,
+  onChange,
+  accountOptions,
+  accountById,
+  parties,
+  missingParty,
+  focusSignal,
+}: Props) {
   const { t } = useTranslation();
   const gridRef = useRef<HTMLTableElement>(null);
   const nextKey = useRef(lines.length);
 
   const update = (key: number, patch: Partial<JournalLineDraft>) =>
     onChange(lines.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+
+  const lineNeedsParty = (l?: JournalLineDraft, accountId = l?.accountId) =>
+    needsParty(accountId ? accountById.get(accountId) : undefined);
+
+  // A new account keeps the party only if it still fits; a non-control account drops it.
+  const changeAccount = (l: JournalLineDraft, accountId?: string) => {
+    const account = accountId ? accountById.get(accountId) : undefined;
+    const want = partyTypeFor(account);
+    const party = parties.find((p) => p.id === l.partyId);
+    const keep = needsParty(account) && party && fits(party, want);
+    update(l.key, {
+      accountId,
+      partyId: keep ? l.partyId : null,
+      partyType: keep ? (want ?? l.partyType ?? null) : null,
+    });
+  };
+
+  const changeParty = (l: JournalLineDraft, partyId?: string) => {
+    const want = partyTypeFor(l.accountId ? accountById.get(l.accountId) : undefined);
+    const party = parties.find((p) => p.id === partyId);
+    update(l.key, {
+      partyId: partyId ?? null,
+      partyType: party ? (want ?? (party.partyType === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER')) : null,
+    });
+  };
 
   const remove = (key: number) => {
     const next = lines.filter((l) => l.key !== key);
@@ -55,7 +108,12 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
   };
 
   // Ordered editable columns for row-major Enter navigation.
-  const NAV_COLS = [1, 2, 3, 4]; // account, debit, credit, description
+  const PARTY_COL = 2;
+  const NAV_COLS = [1, PARTY_COL, 3, 4, 5]; // account, party, debit, credit, description
+  // The party cell only takes focus on lines whose account needs a party.
+  // `accountId` is the account just picked, before the new lines reach props.
+  const navigable = (row: number, col: number, accountId?: string) =>
+    col !== PARTY_COL || lineNeedsParty(lines[row], accountId ?? lines[row]?.accountId);
 
   // Focus once the cell exists; retry a single time if a new row hasn't rendered yet.
   // (Focusing twice re-opened a select's list after the user had moved on.)
@@ -70,10 +128,13 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
     if (focusSignal) focusSoon(0, NAV_COLS[0]);
   }, [focusSignal]);
 
-  const advance = (row: number, col: number) => {
+  const advance = (row: number, col: number, pickedAccountId?: string) => {
     const colPos = NAV_COLS.indexOf(col);
     let nextRow = row;
     let nextColPos = colPos + 1;
+    if (nextColPos < NAV_COLS.length && !navigable(row, NAV_COLS[nextColPos], pickedAccountId)) {
+      nextColPos += 1;
+    }
     if (nextColPos >= NAV_COLS.length) {
       nextRow += 1;
       nextColPos = 0;
@@ -82,7 +143,9 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
       addRow();
       focusSoon(nextRow, NAV_COLS[0]);
     } else {
-      focusCell(nextRow, NAV_COLS[nextColPos]);
+      // A just-picked account may add the party select: focus after it renders.
+      if (pickedAccountId) focusSoon(nextRow, NAV_COLS[nextColPos]);
+      else focusCell(nextRow, NAV_COLS[nextColPos]);
     }
   };
 
@@ -118,10 +181,25 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
     else if (key === 'ArrowUp') nr -= 1;
     else nr += 1;
     if (nr < 0 || nr >= lines.length || nc < 0 || nc >= NAV_COLS.length) return;
+    // Step over a party cell the line doesn't use (left/right), or stay put (up/down).
+    if (!navigable(nr, NAV_COLS[nc])) {
+      if (key === 'ArrowLeft') nc -= 1;
+      else if (key === 'ArrowRight') nc += 1;
+      if (nc < 0 || nc >= NAV_COLS.length || !navigable(nr, NAV_COLS[nc])) return;
+    }
 
     e.preventDefault();
     e.stopPropagation();
     focusCell(nr, NAV_COLS[nc]);
+  };
+
+  const partyOptions = (l: JournalLineDraft) => {
+    const want = partyTypeFor(l.accountId ? accountById.get(l.accountId) : undefined);
+    return parties.filter((p) => fits(p, want)).map((p) => ({ value: p.id, label: p.label }));
+  };
+  const partyPlaceholder = (l: JournalLineDraft) => {
+    const want = partyTypeFor(l.accountId ? accountById.get(l.accountId) : undefined);
+    return want === 'SUPPLIER' ? t('journal.pickSupplier') : want === 'CUSTOMER' ? t('journal.pickCustomer') : t('journal.party');
   };
 
   const cellProps = (row: number, col: number) => ({
@@ -137,7 +215,8 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
         <thead>
           <tr>
             <th className="row-no">#</th>
-            <th style={{ width: '34%' }}>{t('journal.account')}</th>
+            <th style={{ width: '28%' }}>{t('journal.account')}</th>
+            <th style={{ width: '20%' }}>{t('journal.party')}</th>
             <th className="num-cell" style={{ width: 130 }}>{t('journal.debit')}</th>
             <th className="num-cell" style={{ width: 130 }}>{t('journal.credit')}</th>
             <th>{t('common.description')}</th>
@@ -154,13 +233,30 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                   placeholder={t('journal.account')}
                   options={accountOptions}
                   value={l.accountId}
-                  onChange={(v) => update(l.key, { accountId: v })}
-                  onEnterSelect={() => advance(row, 1)}
+                  onChange={(v) => changeAccount(l, v)}
+                  onEnterSelect={(v) => advance(row, 1, v as string)}
                   style={{ width: '100%' }}
                   size="small"
                 />
               </td>
-              <td className="num-cell" {...cellProps(row, 2)}>
+              <td
+                className={missingParty === l.key && !l.partyId ? 'cell-missing' : undefined}
+                {...cellProps(row, PARTY_COL)}
+              >
+                {lineNeedsParty(l) && (
+                  <GridSelect
+                    variant="borderless"
+                    placeholder={partyPlaceholder(l)}
+                    options={partyOptions(l)}
+                    value={l.partyId ?? undefined}
+                    onChange={(v) => changeParty(l, v)}
+                    onEnterSelect={() => advance(row, PARTY_COL)}
+                    style={{ width: '100%' }}
+                    size="small"
+                  />
+                )}
+              </td>
+              <td className="num-cell" {...cellProps(row, 3)}>
                 <InputNumber<string>
                   variant="borderless"
                   stringMode
@@ -173,7 +269,7 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                   controls={false}
                 />
               </td>
-              <td className="num-cell" {...cellProps(row, 3)}>
+              <td className="num-cell" {...cellProps(row, 4)}>
                 <InputNumber<string>
                   variant="borderless"
                   stringMode
@@ -186,7 +282,7 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                   controls={false}
                 />
               </td>
-              <td {...cellProps(row, 4)}>
+              <td {...cellProps(row, 5)}>
                 <Input
                   variant="borderless"
                   placeholder={t('common.description')}
@@ -214,7 +310,7 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan={2}>
+            <td colSpan={3}>
               {t('journal.total')}
             </td>
             <td className="num-cell">
