@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { ClsModule } from 'nestjs-cls';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { CommonModule } from './common/common.module.js';
@@ -13,6 +13,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard.js';
 import { PlatformAdminGuard } from './common/guards/platform-admin.guard.js';
 import { TenantGuard } from './common/guards/tenant.guard.js';
 import { BranchGuard } from './common/guards/branch.guard.js';
+import { AppThrottlerGuard, throttlers } from './common/throttle/throttle.js';
 import { HealthModule } from './health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { AuthModule } from './platform/auth/auth.module.js';
@@ -40,7 +41,7 @@ import { ReportsModule } from './platform/reports/reports.module.js';
       global: true,
       middleware: { mount: true, saveReq: true, generateId: true },
     }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    ThrottlerModule.forRoot(throttlers),
     CommonModule,
     PrismaModule,
     HealthModule,
@@ -65,8 +66,9 @@ import { ReportsModule } from './platform/reports/reports.module.js';
     // are already in wire format.
     { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
     { provide: APP_INTERCEPTOR, useClass: SerializeInterceptor },
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // AuthGuard first: the throttler counts a signed-in request against its user (ADR-008).
     { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
     { provide: APP_GUARD, useClass: TenantGuard },
     { provide: APP_GUARD, useClass: BranchGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },

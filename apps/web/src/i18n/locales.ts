@@ -741,6 +741,7 @@ export const ar = {
     lastChecked: 'آخر فحص',
   },
   errors: {
+    RATE_LIMITED: 'محاولات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.',
     INTERNAL: 'خطأ داخلي في الخادم',
     VALIDATION: 'بيانات غير صالحة',
     UNAUTHORIZED: 'غير مصرح',
@@ -1507,6 +1508,7 @@ export const en: typeof ar = {
     lastChecked: 'Last checked',
   },
   errors: {
+    RATE_LIMITED: 'Too many attempts. Wait a minute and try again.',
     INTERNAL: 'Internal server error',
     VALIDATION: 'Invalid input',
     UNAUTHORIZED: 'Unauthorized',

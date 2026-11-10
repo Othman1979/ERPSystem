@@ -21,9 +21,21 @@ export const envSchema = z.object({
   // Report exports (Phase 8): most rows one PDF / XLSX export may have (REPORT_TOO_LARGE above).
   REPORT_PDF_MAX_ROWS: z.coerce.number().int().positive().default(1_000),
   REPORT_XLSX_MAX_ROWS: z.coerce.number().int().positive().default(50_000),
+  // Proxies whose X-Forwarded-For gives the client address for request limits (ADR-008):
+  // false, a hop count, or addresses/subnets such as "loopback, 10.0.0.0/8". Never "true" on a public server.
+  TRUST_PROXY: z.string().default('loopback'),
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/** Express `trust proxy` from TRUST_PROXY: false, true, a hop count, or addresses and subnets. */
+export function trustProxySetting(value: string): boolean | number | string {
+  const v = value.trim();
+  if (v === '' || v === 'false') return false;
+  if (v === 'true') return true;
+  if (/^\d+$/.test(v)) return Number(v);
+  return v;
+}
 
 export function validateEnv(config: Record<string, unknown>): Env {
   const result = envSchema.safeParse(config);

@@ -26,5 +26,7 @@ export enum ErrorCode {
   EINVOICE_NOT_READY = 'EINVOICE_NOT_READY',
   // Phase 8 — reports
   REPORT_TOO_LARGE = 'REPORT_TOO_LARGE',
+  // 429: too many requests in a minute (ADR-008)
+  RATE_LIMITED = 'RATE_LIMITED',
   INTERNAL = 'INTERNAL',
 }
