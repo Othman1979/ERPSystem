@@ -52,6 +52,7 @@ interface GoodsNote {
   status: 'DRAFT' | 'POSTED';
   description?: string | null;
   warehouse?: { code: string; nameAr: string } | null;
+  branch?: { code: string; nameAr: string } | null;
   lines?: {
     id: string;
     lineNo: number;
@@ -542,6 +543,9 @@ export function GoodsNotesSection({
               </DocField>
               <DocField label={t('stock.warehouse')}>
                 <DocValue>{entry.warehouse ? codeAndName(entry.warehouse) : '—'}</DocValue>
+              </DocField>
+              <DocField label={t('warehouses.branch')}>
+                <DocValue>{entry.branch ? codeAndName(entry.branch) : '—'}</DocValue>
               </DocField>
               <DocField label={t('common.description')}>
                 <DocValue>{entry.description ?? '—'}</DocValue>

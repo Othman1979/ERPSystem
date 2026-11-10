@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
+import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { AuditService } from '../../common/audit/audit.service.js';
@@ -13,6 +14,8 @@ import type { CreateGoodsNoteDto } from './dto/goods-notes.dto.js';
  * without an invoice (§7.4-style documents).
  *  GRN: Dr INVENTORY / Cr GOODS_RECEIVED_NOT_INVOICED (2104)
  *  GIN: Dr INVENTORY_ADJUSTMENT / Cr INVENTORY
+ * Branch (ADR-003): the warehouse's branch, or the request branch when the
+ * warehouse has none. Never taken from the body.
  */
 @Injectable()
 export class GoodsNotesService {
@@ -34,6 +37,7 @@ export class GoodsNotesService {
       },
       include: {
         warehouse: { select: { id: true, code: true, nameAr: true } },
+        branch: { select: { id: true, code: true, nameAr: true } },
         _count: { select: { lines: true } },
       },
       orderBy: [{ noteDate: 'desc' }, { id: 'desc' }],
@@ -47,6 +51,7 @@ export class GoodsNotesService {
       where: { id },
       include: {
         warehouse: true,
+        branch: { select: { id: true, code: true, nameAr: true } },
         lines: {
           orderBy: { lineNo: 'asc' },
           include: { item: { select: { id: true, code: true, nameAr: true } } },
@@ -64,9 +69,11 @@ export class GoodsNotesService {
 
     const warehouse = await db.warehouse.findFirst({
       where: { companyId, id: BigInt(dto.warehouseId), isActive: true },
-      select: { id: true },
+      select: { id: true, branchId: true },
     });
     if (!warehouse) throw DomainError.notFound('Warehouse', dto.warehouseId);
+    const branchId = warehouse.branchId ?? currentBranchId();
+    assertBranchAllowed(branchId);
 
     const itemIds = dto.lines.map((l) => BigInt(l.itemId));
     const items = await db.item.findMany({
@@ -92,6 +99,7 @@ export class GoodsNotesService {
         data: {
           tenantId,
           companyId,
+          branchId,
           warehouseId: warehouse.id,
           noteDate: new Date(dto.noteDate),
           noteType: dto.noteType,
@@ -127,11 +135,18 @@ export class GoodsNotesService {
     if (note.status !== 'DRAFT') {
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft notes can be modified');
     }
+    assertBranchAllowed(note.branchId);
     const warehouse = await db.warehouse.findFirst({
       where: { companyId, id: BigInt(dto.warehouseId), isActive: true },
-      select: { id: true },
+      select: { id: true, branchId: true },
     });
     if (!warehouse) throw DomainError.notFound('Warehouse', dto.warehouseId);
+    // Same warehouse: the note keeps its branch. Another warehouse: that one's branch.
+    const branchId =
+      warehouse.id === note.warehouseId && note.branchId != null
+        ? note.branchId
+        : (warehouse.branchId ?? currentBranchId());
+    assertBranchAllowed(branchId);
 
     const itemIds = dto.lines.map((l) => BigInt(l.itemId));
     const items = await db.item.findMany({
@@ -157,6 +172,7 @@ export class GoodsNotesService {
         data: {
           noteDate: new Date(dto.noteDate),
           noteType: dto.noteType,
+          branchId,
           warehouseId: warehouse.id,
           description: dto.description ?? null,
         },
@@ -183,6 +199,7 @@ export class GoodsNotesService {
     if (note.status !== 'DRAFT') {
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft notes can be deleted');
     }
+    assertBranchAllowed(note.branchId);
     await db.goodsNote.delete({ where: { id } });
     return { deleted: true };
   }
@@ -202,6 +219,7 @@ export class GoodsNotesService {
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Note is not a draft');
         }
+        assertBranchAllowed(draft.branchId);
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Note has no lines');
         }
@@ -262,6 +280,7 @@ export class GoodsNotesService {
             entryNo,
             sourceType: docType,
             sourceId: draft.id,
+            branchId: draft.branchId,
             description: draft.description ?? `${draft.noteType} ${docNo}`,
             lines: journalLines,
             postedBy: userId ?? null,

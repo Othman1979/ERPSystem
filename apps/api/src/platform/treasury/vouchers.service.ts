@@ -104,6 +104,7 @@ export class VouchersService {
     const userId = this.support.userId();
     const amount = new Decimal(dto.amount);
     if (amount.lte(0)) throw new DomainError(ErrorCode.VALIDATION, 'amount must be > 0');
+    const branchId = currentBranchId();
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
@@ -135,6 +136,7 @@ export class VouchersService {
           entryNo,
           sourceType: 'RECEIPT',
           sourceId: null, // set after receipt creation below via second pass? — see note
+          branchId, // ADR-003: the entry carries its voucher's branch
           voucherType: 'RECEIPT_VOUCHER',
           description: dto.description ?? `Receipt ${receiptNo}`,
           lines: [
@@ -153,7 +155,7 @@ export class VouchersService {
           data: {
             tenantId,
             companyId,
-            branchId: currentBranchId(),
+            branchId,
             receiptNo,
             receiptDate: new Date(dto.receiptDate),
             partyType: dto.partyType,
@@ -247,6 +249,7 @@ export class VouchersService {
     if (dto.partyId && !dto.partyType) {
       throw new DomainError(ErrorCode.VALIDATION, 'partyType is required when partyId is set');
     }
+    const branchId = currentBranchId();
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
@@ -305,6 +308,7 @@ export class VouchersService {
           entryNo,
           sourceType: 'PAYMENT',
           sourceId: null,
+          branchId, // ADR-003: the entry carries its voucher's branch
           voucherType: 'PAYMENT_VOUCHER',
           description: dto.description ?? `Payment ${paymentNo}`,
           lines: [
@@ -318,7 +322,7 @@ export class VouchersService {
           data: {
             tenantId,
             companyId,
-            branchId: currentBranchId(),
+            branchId,
             paymentNo,
             paymentDate: new Date(dto.paymentDate),
             partyType: dto.partyType ?? null,
