@@ -10,6 +10,7 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
+import { ExportQueryDto } from '../../printing/dto/export.dto.js';
 
 const PARTY_TYPES = ['CUSTOMER', 'SUPPLIER'] as const;
 const VOUCHER_TYPES = ['JOURNAL', 'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER'] as const;
@@ -113,7 +114,7 @@ export class CreateOpeningEntryDto {
   lines!: OpeningLineDto[];
 }
 
-export class ReportQueryDto {
+export class ReportQueryDto extends ExportQueryDto {
   @IsOptional()
   @IsDateString()
   from?: string;

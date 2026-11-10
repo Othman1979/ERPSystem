@@ -9,7 +9,18 @@ export const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(16).optional(),
   ACCESS_TOKEN_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  // JoFotara (docs/decisions/0005 §13): 32 random bytes, base64; seals the Secret-Key at rest.
   EINVOICE_ENC_KEY: z.string().optional(),
+  // The outbox worker: 'off' disables it (e.g. a second API instance that should not send).
+  EINVOICE_WORKER: z.enum(['on', 'off']).default('on'),
+  EINVOICE_WORKER_INTERVAL_MS: z.coerce.number().int().min(100).default(60_000),
+  // Past this the answer is UNKNOWN (never resent automatically).
+  EINVOICE_HTTP_TIMEOUT_MS: z.coerce.number().int().min(100).default(30_000),
+  // Extra hosts a SANDBOX URL may use besides this machine (comma-separated).
+  EINVOICE_SANDBOX_HOSTS: z.string().optional(),
+  // Report exports (Phase 8): most rows one PDF / XLSX export may have (REPORT_TOO_LARGE above).
+  REPORT_PDF_MAX_ROWS: z.coerce.number().int().positive().default(1_000),
+  REPORT_XLSX_MAX_ROWS: z.coerce.number().int().positive().default(50_000),
 });
 
 export type Env = z.infer<typeof envSchema>;

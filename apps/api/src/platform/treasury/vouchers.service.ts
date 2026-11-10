@@ -6,8 +6,10 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
-import { outstandingAmount } from '../shared/invoice-balance.js';
+import type { InvoiceSettlement } from '../shared/invoice-settlement.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
+import { PurchaseInvoicesService } from '../purchases/purchase-invoices.service.js';
+import { SalesInvoicesService } from '../sales/sales-invoices.service.js';
 import type {
   AllocateVoucherDto,
   CreatePaymentDto,
@@ -31,8 +33,10 @@ function withAllocationTotals<
   };
 }
 
+type InvoiceDocType = 'SALES_INVOICE' | 'PURCHASE_INVOICE';
+
 type AllocationInput = {
-  documentType: 'SALES_INVOICE' | 'PURCHASE_INVOICE';
+  documentType: InvoiceDocType;
   documentId: string;
   amount: string;
 };
@@ -41,7 +45,8 @@ type AllocationInput = {
  * Treasury vouchers (§7.8): receipt (سند قبض) and payment (سند صرف) documents
  * that post a journal entry immediately and optionally allocate the amount
  * to open invoices. Invoice outstanding = grand_total − paid_amount −
- * posted credit returns (§7.8 decision).
+ * posted credit returns (§7.8 decision). Invoices are locked, read and
+ * updated only through the invoice services (module boundary, ADR-004).
  */
 @Injectable()
 export class VouchersService {
@@ -49,7 +54,14 @@ export class VouchersService {
     private readonly support: DocumentSupportService,
     private readonly posting: PostingService,
     private readonly audit: AuditService,
+    private readonly sales: SalesInvoicesService,
+    private readonly purchases: PurchaseInvoicesService,
   ) {}
+
+  /** The invoice service that owns the given document type. */
+  private settlement(documentType: InvoiceDocType): InvoiceSettlement {
+    return documentType === 'SALES_INVOICE' ? this.sales : this.purchases;
+  }
 
   // ------------------------------------------------------------- receipts
 
@@ -92,6 +104,7 @@ export class VouchersService {
     const userId = this.support.userId();
     const amount = new Decimal(dto.amount);
     if (amount.lte(0)) throw new DomainError(ErrorCode.VALIDATION, 'amount must be > 0');
+    const branchId = currentBranchId();
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
@@ -123,6 +136,7 @@ export class VouchersService {
           entryNo,
           sourceType: 'RECEIPT',
           sourceId: null, // set after receipt creation below via second pass? — see note
+          branchId, // ADR-003: the entry carries its voucher's branch
           voucherType: 'RECEIPT_VOUCHER',
           description: dto.description ?? `Receipt ${receiptNo}`,
           lines: [
@@ -141,7 +155,7 @@ export class VouchersService {
           data: {
             tenantId,
             companyId,
-            branchId: currentBranchId(),
+            branchId,
             receiptNo,
             receiptDate: new Date(dto.receiptDate),
             partyType: dto.partyType,
@@ -184,6 +198,23 @@ export class VouchersService {
       after: { receiptNo: result.receiptNo },
     });
     return this.getReceipt(result.id);
+  }
+
+  /** A voucher for printing: the invoices its active allocations settle, by number. */
+  async printable(kind: VoucherKind, id: bigint) {
+    const v = kind === 'receipt' ? await this.getReceipt(id) : await this.getPayment(id);
+    const active = v.allocations.filter((a) => a.cancelledAt === null);
+    const sales = await this.sales.invoiceNumbers(active.filter((a) => a.documentType === 'SALES_INVOICE').map((a) => a.documentId));
+    const purchases = await this.purchases.invoiceNumbers(
+      active.filter((a) => a.documentType === 'PURCHASE_INVOICE').map((a) => a.documentId),
+    );
+    return {
+      ...v,
+      allocations: v.allocations.map((a) => ({
+        ...a,
+        invoiceNo: (a.documentType === 'SALES_INVOICE' ? sales : purchases).get(a.documentId) ?? null,
+      })),
+    };
   }
 
   // ------------------------------------------------------------- payments
@@ -235,6 +266,7 @@ export class VouchersService {
     if (dto.partyId && !dto.partyType) {
       throw new DomainError(ErrorCode.VALIDATION, 'partyType is required when partyId is set');
     }
+    const branchId = currentBranchId();
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
@@ -293,6 +325,7 @@ export class VouchersService {
           entryNo,
           sourceType: 'PAYMENT',
           sourceId: null,
+          branchId, // ADR-003: the entry carries its voucher's branch
           voucherType: 'PAYMENT_VOUCHER',
           description: dto.description ?? `Payment ${paymentNo}`,
           lines: [
@@ -306,7 +339,7 @@ export class VouchersService {
           data: {
             tenantId,
             companyId,
-            branchId: currentBranchId(),
+            branchId,
             paymentNo,
             paymentDate: new Date(dto.paymentDate),
             partyType: dto.partyType ?? null,
@@ -410,24 +443,14 @@ export class VouchersService {
         if (!a) throw DomainError.notFound('Allocation', id.toString());
         if (a.cancelledAt) throw new DomainError(ErrorCode.CONFLICT, 'Allocation already cancelled');
         assertBranchAllowed(a.receipt?.branchId ?? a.payment?.branchId);
-        const documentType = a.documentType as 'SALES_INVOICE' | 'PURCHASE_INVOICE';
-        await this.lockInvoice(tx, tenantId, documentType, a.documentId);
+        const invoices = this.settlement(a.documentType as InvoiceDocType);
+        await invoices.lockForSettlement(tx, [a.documentId]);
         await tx.allocation.update({
           where: { id },
           data: { cancelledAt: new Date(), cancelledBy: userId ?? null },
         });
         // Projection: paid_amount on the invoice (§7.8).
-        if (documentType === 'SALES_INVOICE') {
-          await tx.salesInvoice.update({
-            where: { id: a.documentId },
-            data: { paidAmount: { decrement: a.amount } },
-          });
-        } else {
-          await tx.purchaseInvoice.update({
-            where: { id: a.documentId },
-            data: { paidAmount: { decrement: a.amount } },
-          });
-        }
+        await invoices.addPaid(tx, a.documentId, new Decimal(a.amount.toString()).neg());
         return a.receipt
           ? { kind: 'receipt' as const, id: a.receipt.id }
           : { kind: 'payment' as const, id: a.payment!.id };
@@ -526,23 +549,36 @@ export class VouchersService {
       userId?: bigint | null;
     },
   ) {
+    if (opts.allocations.length === 0 && !opts.auto) return;
+    // Only a receipt from a customer or a payment to a supplier settles
+    // invoices. A refund the other way (receipt from a supplier, payment to
+    // a customer) raises the party's balance, so it cannot lower what an
+    // invoice owes (ADR-004 §3).
+    const settles = opts.receiptId ? 'CUSTOMER' : 'SUPPLIER';
+    if (opts.partyType !== settles) {
+      throw new DomainError(
+        ErrorCode.VALIDATION,
+        opts.receiptId
+          ? 'A receipt from a supplier is a refund and cannot be allocated to invoices'
+          : 'A payment to a customer is a refund and cannot be allocated to invoices',
+      );
+    }
     // Direction check: customers settle sales invoices, suppliers purchase invoices.
-    const expectedDoc = opts.partyType === 'CUSTOMER' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
+    const expectedDoc: InvoiceDocType = opts.partyType === 'CUSTOMER' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
+    const invoices = this.settlement(expectedDoc);
     let requested = opts.allocations;
     if (requested.length === 0 && opts.auto) {
-      requested = await this.oldestFirst(tx, tenantId, companyId, expectedDoc, opts.partyId, opts.amount);
+      requested = await this.oldestFirst(tx, companyId, expectedDoc, opts.partyId, opts.amount);
     }
     if (requested.length === 0) return;
 
     // Lock the invoices (fixed id order) before reading what they still owe:
     // two vouchers allocating the same invoice at once must not both see the
     // old balance (§10.1 step 7).
-    const ids = [
-      ...new Set(requested.filter((a) => a.documentType === expectedDoc).map((a) => a.documentId)),
-    ]
-      .map(BigInt)
-      .sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
-    for (const id of ids) await this.lockInvoice(tx, tenantId, expectedDoc, id);
+    await invoices.lockForSettlement(
+      tx,
+      requested.filter((a) => a.documentType === expectedDoc).map((a) => BigInt(a.documentId)),
+    );
 
     let allocated = new Decimal(0);
     for (const a of requested) {
@@ -555,42 +591,26 @@ export class VouchersService {
         );
       }
       const docId = BigInt(a.documentId);
-      const outstanding = await this.invoiceOutstanding(tx, tenantId, a.documentType, docId);
-      if (outstanding === null) {
+      // Fresh per iteration: the paid_amount increments below are visible to
+      // the next lookup within this transaction.
+      const inv = await invoices.settlementState(tx, docId);
+      if (inv === null) {
         throw DomainError.notFound(a.documentType, a.documentId);
       }
-      const doc =
-        a.documentType === 'SALES_INVOICE'
-          ? await tx.salesInvoice.findFirst({
-              where: { id: docId },
-              select: { customerId: true, status: true, paymentType: true },
-            })
-          : await tx.purchaseInvoice.findFirst({
-              where: { id: docId },
-              select: { supplierId: true, status: true, paymentType: true },
-            });
-      const docParty =
-        a.documentType === 'SALES_INVOICE'
-          ? (doc as { customerId?: bigint } | null)?.customerId
-          : (doc as { supplierId?: bigint } | null)?.supplierId;
-      if (!doc || doc.status !== 'POSTED' || docParty !== opts.partyId) {
+      if (inv.status !== 'POSTED' || inv.partyId !== opts.partyId) {
         throw new DomainError(ErrorCode.VALIDATION, 'Invoice not found, not posted, or belongs to another party');
       }
-      // Cash invoices are settled at sale (Dr cash); a voucher on one would
-      // record the same money twice.
-      if (doc.paymentType === 'CASH') {
-        throw new DomainError(ErrorCode.VALIDATION, 'Cash invoices are paid at sale and cannot take allocations');
+      if (inv.paymentType !== 'CREDIT') {
+        throw new DomainError(ErrorCode.VALIDATION, 'A cash invoice is settled at sale and takes no allocations');
       }
       allocated = allocated.plus(amt);
       if (allocated.gt(opts.amount)) {
         throw new DomainError(ErrorCode.VALIDATION, 'Total allocations exceed voucher amount');
       }
-      // `outstanding` is fresh per iteration — paid_amount increments below
-      // are visible to the next lookup within this transaction.
-      if (amt.gt(outstanding)) {
+      if (amt.gt(inv.outstanding)) {
         throw new DomainError(
           ErrorCode.VALIDATION,
-          `Allocation ${amt.toString()} exceeds invoice outstanding ${outstanding.toString()}`,
+          `Allocation ${amt.toString()} exceeds invoice outstanding ${inv.outstanding.toString()}`,
         );
       }
 
@@ -610,31 +630,7 @@ export class VouchersService {
       });
 
       // Projection: paid_amount on the invoice (§7.8).
-      if (a.documentType === 'SALES_INVOICE') {
-        await tx.salesInvoice.update({
-          where: { id: docId },
-          data: { paidAmount: { increment: amt } },
-        });
-      } else {
-        await tx.purchaseInvoice.update({
-          where: { id: docId },
-          data: { paidAmount: { increment: amt } },
-        });
-      }
-    }
-  }
-
-  /** SELECT … FOR UPDATE on an invoice row (tenant-scoped raw query). */
-  private async lockInvoice(
-    tx: Prisma.TransactionClient,
-    tenantId: bigint,
-    documentType: 'SALES_INVOICE' | 'PURCHASE_INVOICE',
-    id: bigint,
-  ) {
-    if (documentType === 'SALES_INVOICE') {
-      await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
-    } else {
-      await tx.$queryRaw`SELECT id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      await invoices.addPaid(tx, docId, amt);
     }
   }
 
@@ -645,69 +641,26 @@ export class VouchersService {
    */
   private async oldestFirst(
     tx: Prisma.TransactionClient,
-    tenantId: bigint,
     companyId: bigint,
-    documentType: 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    documentType: InvoiceDocType,
     partyId: bigint,
     available: Decimal,
   ): Promise<AllocationInput[]> {
-    const where = { companyId, status: 'POSTED' as const, paymentType: 'CREDIT' as const };
-    const orderBy = [{ invoiceDate: 'asc' as const }, { id: 'asc' as const }];
-    const invoices =
-      documentType === 'SALES_INVOICE'
-        ? await tx.salesInvoice.findMany({ where: { ...where, customerId: partyId }, select: { id: true }, orderBy })
-        : await tx.purchaseInvoice.findMany({ where: { ...where, supplierId: partyId }, select: { id: true }, orderBy });
+    const invoices = this.settlement(documentType);
+    const ids = await invoices.creditInvoiceIdsOldestFirst(tx, companyId, partyId);
 
     const result: AllocationInput[] = [];
     let left = available;
-    for (const inv of invoices) {
+    for (const id of ids) {
       if (left.lte(0)) break;
-      await this.lockInvoice(tx, tenantId, documentType, inv.id);
-      const owed = await this.invoiceOutstanding(tx, tenantId, documentType, inv.id);
-      if (!owed || owed.lte(0)) continue;
-      const amount = Decimal.min(owed, left);
-      result.push({ documentType, documentId: inv.id.toString(), amount: amount.toFixed(3) });
+      await invoices.lockForSettlement(tx, [id]);
+      const inv = await invoices.settlementState(tx, id);
+      if (!inv || inv.outstanding.lte(0)) continue;
+      const amount = Decimal.min(inv.outstanding, left);
+      result.push({ documentType, documentId: id.toString(), amount: amount.toFixed(3) });
       left = left.minus(amount);
     }
     return result;
-  }
-
-  /**
-   * outstanding = grand_total − paid_amount − posted credit-return totals,
-   * read with LOCKING reads. Under REPEATABLE READ a plain SELECT returns the
-   * transaction's snapshot, taken before it waited for the invoice lock — so
-   * a voucher racing another would still see the old paid_amount and settle
-   * the invoice twice (caught by the phase 6 race test). FOR UPDATE / LOCK IN
-   * SHARE MODE always read the latest committed rows.
-   */
-  private async invoiceOutstanding(
-    tx: Prisma.TransactionClient,
-    tenantId: bigint,
-    documentType: 'SALES_INVOICE' | 'PURCHASE_INVOICE',
-    documentId: bigint,
-  ): Promise<Decimal | null> {
-    type Totals = { grand_total: { toString(): string }; paid_amount: { toString(): string } };
-    type Sum = { s: { toString(): string } | null };
-    const [inv] =
-      documentType === 'SALES_INVOICE'
-        ? await tx.$queryRaw<Totals[]>`
-            SELECT grand_total, paid_amount FROM sales_invoices
-             WHERE tenant_id = ${tenantId} AND id = ${documentId} FOR UPDATE`
-        : await tx.$queryRaw<Totals[]>`
-            SELECT grand_total, paid_amount FROM purchase_invoices
-             WHERE tenant_id = ${tenantId} AND id = ${documentId} FOR UPDATE`;
-    if (!inv) return null;
-    const [returns] =
-      documentType === 'SALES_INVOICE'
-        ? await tx.$queryRaw<Sum[]>`
-            SELECT SUM(grand_total) AS s FROM sales_returns
-             WHERE tenant_id = ${tenantId} AND original_invoice_id = ${documentId}
-               AND status = 'POSTED' AND refund_type = 'CREDIT' LOCK IN SHARE MODE`
-        : await tx.$queryRaw<Sum[]>`
-            SELECT SUM(grand_total) AS s FROM purchase_returns
-             WHERE tenant_id = ${tenantId} AND original_invoice_id = ${documentId}
-               AND status = 'POSTED' AND refund_type = 'CREDIT' LOCK IN SHARE MODE`;
-    return outstandingAmount(inv.grand_total, inv.paid_amount, returns?.s ?? 0);
   }
 
   // -------------------------------------------------------------- helpers

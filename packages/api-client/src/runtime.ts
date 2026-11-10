@@ -93,10 +93,8 @@ async function tryRefresh(): Promise<boolean> {
   return refreshPromise;
 }
 
-export async function apiFetch<T>(
-  path: string,
-  init: RequestInit = {},
-): Promise<T> {
+/** Sends one API request with auth and branch headers; on 401 refreshes once and retries. */
+async function send(path: string, init: RequestInit): Promise<Response> {
   const url = path.startsWith('/api/') ? path : `${API_PREFIX}${path}`;
   const doFetch = (): Promise<Response> => {
     const headers = new Headers(init.headers);
@@ -119,6 +117,26 @@ export async function apiFetch<T>(
       response = await doFetch();
     }
   }
+  return response;
+}
+
+/** The API's error envelope (or the bare status when the body has none) as an ApiError. */
+function apiError(response: Response, data: unknown): ApiError {
+  const body = data as ApiErrorBody | undefined;
+  return new ApiError(
+    response.status,
+    body?.error?.code ?? 'INTERNAL',
+    body?.error?.message ?? response.statusText,
+    body?.error?.details,
+    body?.error?.requestId,
+  );
+}
+
+export async function apiFetch<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const response = await send(path, init);
 
   if (response.status === 204) {
     return { data: undefined, status: 204, headers: response.headers } as T;
@@ -128,17 +146,55 @@ export async function apiFetch<T>(
   const data = text ? (JSON.parse(text) as unknown) : undefined;
 
   if (!response.ok) {
-    const body = data as ApiErrorBody | undefined;
-    throw new ApiError(
-      response.status,
-      body?.error?.code ?? 'INTERNAL',
-      body?.error?.message ?? response.statusText,
-      body?.error?.details,
-      body?.error?.requestId,
-    );
+    throw apiError(response, data);
   }
 
   return { data, status: response.status, headers: response.headers } as T;
+}
+
+export interface ApiFile {
+  blob: Blob;
+  /** From Content-Disposition; null when the server sent none (or it isn't readable). */
+  filename: string | null;
+}
+
+/** File name from a Content-Disposition header (`filename*=UTF-8''…` preferred over `filename=`). */
+export function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const star = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(header);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim().replace(/^"|"$/g, ''));
+    } catch {
+      // Malformed escape: fall back to the plain filename parameter.
+    }
+  }
+  const plain = /filename\s*=\s*("([^"]*)"|[^;]+)/.exec(header);
+  const name = plain ? (plain[2] ?? plain[1]).trim() : '';
+  return name || null;
+}
+
+/**
+ * Binary download (PDF / XLSX exports, printed documents) with the same auth,
+ * branch and refresh handling as `apiFetch`. Error responses still carry the
+ * JSON envelope and throw the same ApiError.
+ */
+export async function apiFetchBlob(path: string, init: RequestInit = {}): Promise<ApiFile> {
+  const response = await send(path, init);
+  if (!response.ok) {
+    const text = await response.text();
+    let data: unknown;
+    try {
+      data = text ? JSON.parse(text) : undefined;
+    } catch {
+      data = undefined;
+    }
+    throw apiError(response, data);
+  }
+  return {
+    blob: await response.blob(),
+    filename: filenameFromDisposition(response.headers.get('Content-Disposition')),
+  };
 }
 
 /** Convenience for hand-written callers: resolves to the response body only. */

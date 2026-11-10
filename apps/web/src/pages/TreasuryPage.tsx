@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BankOutlined, PlusOutlined, PrinterOutlined, SaveOutlined, WalletOutlined } from '@ant-design/icons';
+import { BankOutlined, PlusOutlined, SaveOutlined, WalletOutlined } from '@ant-design/icons';
 import {
   Button,
   Radio,
@@ -48,6 +48,7 @@ import {
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { PrintPdfButton } from '../components/PrintPdfButton';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { EnterNav } from '../components/EnterNav';
 import { ReverseButton } from '../components/ReverseButton';
@@ -101,6 +102,8 @@ interface Voucher {
   referenceNo?: string | null;
   description?: string | null;
   party?: { code: string; nameAr: string; partyType: string } | null;
+  /** The side the voucher was made for (a BOTH party can be either). */
+  partyType?: 'CUSTOMER' | 'SUPPLIER' | null;
   cashAccount?: { code: string; nameAr: string };
   status?: string;
   /** Set once the voucher is reversed (Phase 6); it then stays read-only. */
@@ -124,6 +127,8 @@ interface OpenInvoice {
   paidAmount: string;
   /** grand − paid − posted credit returns, computed by the API. */
   outstanding: string;
+  /** Cash invoices are settled at sale and take no allocations. */
+  paymentType: 'CASH' | 'CREDIT';
   customerId?: string;
   supplierId?: string;
 }
@@ -624,7 +629,11 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
           actions={
             view && (
               <>
-                {!view.reversedAt && view.party && dec(view.unallocatedAmount).gt(0) && (
+                {!view.reversedAt &&
+                  view.party &&
+                  // Refunds the other way (receipt from a supplier, payment to a customer) settle no invoice.
+                  view.partyType === (kind === 'receipt' ? 'CUSTOMER' : 'SUPPLIER') &&
+                  dec(view.unallocatedAmount).gt(0) && (
                   <Button loading={allocateRest.isPending} onClick={() => allocateRest.mutate(view.id)}>
                     {t('treasury.allocateRemaining')}
                   </Button>
@@ -636,9 +645,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                     onReverse={(reversalDate) => reverse.mutate({ id: view.id, reversalDate })}
                   />
                 )}
-                <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
-                  {t('common.print')}
-                </Button>
+                <PrintPdfButton path={`/${kind === 'receipt' ? 'receipts' : 'payments'}/${view.id}/pdf`} />
               </>
             )
           }
@@ -814,13 +821,15 @@ function VoucherForm({
   });
 
   const openInvoices = useMemo(() => {
+    // Only a receipt from a customer or a payment to a supplier settles invoices;
+    // a refund the other way raises the balance instead (ADR-004).
+    if (!partyId || partyType !== (kind === 'receipt' ? 'CUSTOMER' : 'SUPPLIER')) return [];
     const src = kind === 'receipt' ? salesInvoices ?? [] : purchaseInvoices ?? [];
     return src.filter((i) => {
-      if (!partyId) return false;
       const pid = kind === 'receipt' ? i.customerId : i.supplierId;
-      return pid === partyId && dec(i.outstanding).gt(0);
+      return pid === partyId && i.paymentType === 'CREDIT' && dec(i.outstanding).gt(0);
     });
-  }, [kind, salesInvoices, purchaseInvoices, partyId]);
+  }, [kind, salesInvoices, purchaseInvoices, partyId, partyType]);
 
   const invoiceOptions = openInvoices.map((i) => ({
     value: i.id,
@@ -842,7 +851,9 @@ function VoucherForm({
         allocations: allocations
           .filter((a) => a.documentId && dec(a.amount).gt(0))
           .map((a) => ({ documentType: docType, documentId: a.documentId, amount: a.amount as string })),
-        autoAllocate: autoAllocate && !allocations.some((a) => a.documentId) ? true : undefined,
+        // Only while the allocation section is shown: a refund the other way takes none.
+        autoAllocate:
+          autoAllocate && openInvoices.length > 0 && !allocations.some((a) => a.documentId) ? true : undefined,
       };
       return kind === 'receipt'
         ? treasuryControllerCreateReceipt(base as never, { headers: { 'Idempotency-Key': idemKey } })
@@ -909,6 +920,7 @@ function VoucherForm({
               setPartyType(e.target.value);
               setPartyId(undefined);
               setAllocations([]);
+              setAutoAllocate(false);
             }}
             options={[
               { value: 'CUSTOMER', label: t('parties.type_CUSTOMER') },
@@ -925,6 +937,7 @@ function VoucherForm({
             onChange={(v) => {
               setPartyId(v);
               setAllocations([]);
+              setAutoAllocate(false);
             }}
           />
         </DocField>

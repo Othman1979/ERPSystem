@@ -7,8 +7,26 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
+import {
+  dayKey,
+  foldMonths,
+  itemRefs,
+  partyRefs,
+  summaryRow,
+  taxRows,
+  type DocumentSummaryRow,
+  type SummaryGroupBy,
+  type SummaryRange,
+} from '../shared/document-summary.js';
 import { computeLineAmounts } from '../shared/invoice-math.js';
 import { creditedByInvoice, withBalance } from '../shared/invoice-balance.js';
+import {
+  lockOrder,
+  toSettlementState,
+  type InvoiceSettlement,
+  type SettlementRow,
+  type SettlementState,
+} from '../shared/invoice-settlement.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type { CreatePurchaseInvoiceDto, PurchaseInvoiceLineDto } from './dto/purchases.dto.js';
@@ -31,7 +49,7 @@ interface ResolvedLine {
  * netAmount/qtyBase cost) + inventory/purchases/tax journal (§8.4).
  */
 @Injectable()
-export class PurchaseInvoicesService {
+export class PurchaseInvoicesService implements InvoiceSettlement {
   constructor(
     private readonly support: DocumentSupportService,
     private readonly posting: PostingService,
@@ -53,31 +71,176 @@ export class PurchaseInvoicesService {
   }
 
   /**
-   * Posted credit invoices that still owe something (Phase 6 aging): what
-   * remains after allocations and credit returns. Cash invoices are settled
-   * at sale and never appear.
+   * Aging as of a date (Phase 6): posted credit invoices dated on or before
+   * `asOf`, with the posted credit returns dated on or before it. Voucher
+   * allocations are treasury's and are subtracted there. Cash invoices are
+   * settled at purchase and never appear.
    */
-  async openCreditInvoices() {
+  async creditInvoicesAsOf(asOf: Date) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const rows = await db.purchaseInvoice.findMany({
-      where: { companyId, status: 'POSTED', paymentType: 'CREDIT' },
-      select: {
-        id: true,
-        invoiceNo: true,
-        invoiceDate: true,
-        dueDate: true,
-        grandTotal: true,
-        paidAmount: true,
-        supplier: { select: { id: true, code: true, nameAr: true, nameEn: true } },
-      },
+    const [rows, returns] = await Promise.all([
+      db.purchaseInvoice.findMany({
+        where: { companyId, status: 'POSTED', paymentType: 'CREDIT', invoiceDate: { lte: asOf } },
+        select: {
+          id: true,
+          invoiceNo: true,
+          invoiceDate: true,
+          dueDate: true,
+          grandTotal: true,
+          supplier: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+        },
+        orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
+      }),
+      db.purchaseReturn.groupBy({
+        by: ['originalInvoiceId'],
+        where: { companyId, status: 'POSTED', refundType: 'CREDIT', returnDate: { lte: asOf } },
+        _sum: { grandTotal: true },
+      }),
+    ]);
+    const credited = new Map(returns.map((r) => [r.originalInvoiceId, r._sum.grandTotal?.toString() ?? '0']));
+    return rows.map(({ supplier: party, ...r }) => ({
+      ...r,
+      party,
+      creditedAmount: new Decimal(credited.get(r.id) ?? '0'),
+    }));
+  }
+
+  /**
+   * Posted invoices dated in the range (both ends inclusive), added up by
+   * day, month, supplier, item or (tax category, rate) — the Phase 8 sales /
+   * purchases / tax summaries and the dashboard. Header totals for day,
+   * month and party; line amounts for item and tax (a header's totals are
+   * the sums of its lines).
+   */
+  async summary(range: SummaryRange, groupBy: SummaryGroupBy): Promise<DocumentSummaryRow[]> {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const where = { companyId, status: 'POSTED' as const, invoiceDate: { gte: range.from, lte: range.to } };
+    if (groupBy === 'day' || groupBy === 'month') {
+      const groups = await db.purchaseInvoice.groupBy({
+        by: ['invoiceDate'],
+        where,
+        _sum: { netTotal: true, taxTotal: true, grandTotal: true },
+        _count: { _all: true },
+      });
+      const days = groups.map((g) =>
+        summaryRow(dayKey(g.invoiceDate), g._count._all, {
+          net: g._sum.netTotal,
+          tax: g._sum.taxTotal,
+          grand: g._sum.grandTotal,
+        }),
+      );
+      return groupBy === 'month' ? foldMonths(days) : days;
+    }
+    if (groupBy === 'party') {
+      const groups = await db.purchaseInvoice.groupBy({
+        by: ['supplierId'],
+        where,
+        _sum: { netTotal: true, taxTotal: true, grandTotal: true },
+        _count: { _all: true },
+      });
+      const refs = await partyRefs(db, groups.map((g) => g.supplierId));
+      return groups.map((g) =>
+        summaryRow(
+          g.supplierId.toString(),
+          g._count._all,
+          { net: g._sum.netTotal, tax: g._sum.taxTotal, grand: g._sum.grandTotal },
+          { ref: refs.get(g.supplierId.toString()) ?? null },
+        ),
+      );
+    }
+    const lines = { invoice: where };
+    if (groupBy === 'item') {
+      const groups = await db.purchaseInvoiceLine.groupBy({
+        by: ['itemId'],
+        where: lines,
+        _sum: { qtyBase: true, netAmount: true, taxAmount: true, lineTotal: true },
+        _count: { _all: true },
+      });
+      const refs = await itemRefs(db, groups.map((g) => g.itemId));
+      return groups.map((g) =>
+        summaryRow(
+          g.itemId.toString(),
+          g._count._all,
+          { qty: g._sum.qtyBase, net: g._sum.netAmount, tax: g._sum.taxAmount, grand: g._sum.lineTotal },
+          { ref: refs.get(g.itemId.toString()) ?? null },
+        ),
+      );
+    }
+    const groups = await db.purchaseInvoiceLine.groupBy({
+      by: ['taxCategoryId', 'taxRate'],
+      where: lines,
+      _sum: { qtyBase: true, netAmount: true, taxAmount: true, lineTotal: true },
+      _count: { _all: true },
+    });
+    return taxRows(
+      db,
+      groups.map((g) => ({
+        taxCategoryId: g.taxCategoryId,
+        taxRate: g.taxRate,
+        count: g._count._all,
+        sums: { qty: g._sum.qtyBase, net: g._sum.netAmount, tax: g._sum.taxAmount, grand: g._sum.lineTotal },
+      })),
+    );
+  }
+
+  // --------------------------------------------- settlement (treasury, ADR-004)
+
+  /** SELECT … FOR UPDATE on the invoices, ascending id (§10.1 fixed lock order). */
+  async lockForSettlement(tx: Prisma.TransactionClient, ids: bigint[]): Promise<void> {
+    const { tenantId } = this.support.tenant();
+    for (const id of lockOrder(ids)) {
+      await tx.$queryRaw`SELECT id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    }
+  }
+
+  /**
+   * Party, status, payment type and outstanding, read with LOCKING reads on
+   * the caller's transaction. Under REPEATABLE READ a plain SELECT returns the
+   * snapshot taken before the caller waited for the invoice lock, so a voucher
+   * racing another would still see the old paid_amount and settle the invoice
+   * twice (phase 6 race test). FOR UPDATE / LOCK IN SHARE MODE read the latest
+   * committed rows.
+   */
+  async settlementState(tx: Prisma.TransactionClient, id: bigint): Promise<SettlementState | null> {
+    const { tenantId } = this.support.tenant();
+    const [inv] = await tx.$queryRaw<SettlementRow[]>`
+      SELECT supplier_id AS party_id, status, payment_type, grand_total, paid_amount
+        FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    if (!inv) return null;
+    const [credited] = await tx.$queryRaw<{ s: { toString(): string } | null }[]>`
+      SELECT SUM(grand_total) AS s FROM purchase_returns
+       WHERE tenant_id = ${tenantId} AND original_invoice_id = ${id}
+         AND status = 'POSTED' AND refund_type = 'CREDIT' LOCK IN SHARE MODE`;
+    return toSettlementState(inv, credited?.s);
+  }
+
+  /** paid_amount projection (§7.8) += delta; negative undoes an allocation. */
+  async addPaid(tx: Prisma.TransactionClient, id: bigint, delta: Decimal): Promise<void> {
+    await tx.purchaseInvoice.update({ where: { id }, data: { paidAmount: { increment: delta } } });
+  }
+
+  /** The party's posted credit invoices, oldest first. Cash invoices are settled at sale. */
+  async creditInvoiceIdsOldestFirst(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    partyId: bigint,
+  ): Promise<bigint[]> {
+    const rows = await tx.purchaseInvoice.findMany({
+      where: { companyId, status: 'POSTED', paymentType: 'CREDIT', supplierId: partyId },
+      select: { id: true },
       orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
     });
-    const credited = await this.creditedFor(db, rows.map((r) => r.id));
-    return rows
-      .map((r) => withBalance(r, credited))
-      .filter((r) => new Decimal(r.outstanding).gt(0))
-      .map(({ supplier: party, ...r }) => ({ ...r, party }));
+    return rows.map((r) => r.id);
+  }
+
+  /** Invoice numbers by id (printed vouchers name the invoices they settled). */
+  async invoiceNumbers(ids: bigint[]): Promise<Map<bigint, string | null>> {
+    if (ids.length === 0) return new Map();
+    const { db } = this.support.tenant();
+    const rows = await db.purchaseInvoice.findMany({ where: { id: { in: ids } }, select: { id: true, invoiceNo: true } });
+    return new Map(rows.map((r) => [r.id, r.invoiceNo]));
   }
 
   async list(status?: string, paymentType?: string, supplierId?: string) {

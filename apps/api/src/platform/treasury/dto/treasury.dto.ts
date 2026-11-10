@@ -11,6 +11,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { ExportQueryDto } from '../../printing/dto/export.dto.js';
 
 const INT_STRING = /^\d+$/;
 const MONEY = /^\d+(\.\d{1,3})?$/;
@@ -224,7 +225,13 @@ export class CreateCashTransferDto {
   description?: string;
 }
 
-export class AgingQueryDto {
+export class AgingQueryDto extends ExportQueryDto {
   @IsIn(PARTY_TYPES)
   partyType!: (typeof PARTY_TYPES)[number];
+
+  /** yyyy-mm-dd, inclusive; defaults to today (UTC). */
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDateString({ strict: true })
+  asOf?: string;
 }

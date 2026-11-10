@@ -30,6 +30,7 @@ import {
   type MenuProps,
 } from 'antd';
 import { useAuth } from './auth/AuthContext';
+import { HomeDashboard } from './pages/HomeDashboard';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
@@ -136,6 +137,7 @@ function HomeScreen() {
           </Typography.Text>
         </div>
       </div>
+      <HomeDashboard />
       <div className="home-quick">
         <span className="home-quick-title">{t('dashboard.quickActions')}</span>
         {QUICK_ACTIONS.map((a) => (

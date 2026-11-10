@@ -2,6 +2,9 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { ExportQueryDto } from '../printing/dto/export.dto.js';
+import { PrintingService } from '../printing/printing.service.js';
+import { purchaseInvoicePrint } from './purchases.print.js';
 import { PurchaseInvoicesService } from './purchase-invoices.service.js';
 import { PurchaseReturnsService } from './purchase-returns.service.js';
 import { CreatePurchaseInvoiceDto, CreatePurchaseReturnDto } from './dto/purchases.dto.js';
@@ -12,6 +15,7 @@ export class PurchasesController {
   constructor(
     private readonly invoices: PurchaseInvoicesService,
     private readonly returns: PurchaseReturnsService,
+    private readonly printing: PrintingService,
   ) {}
 
   // ---------------------------------------------------- purchase invoices
@@ -30,6 +34,13 @@ export class PurchasesController {
   @RequirePermission(PERMISSIONS.TENANT_READ)
   getInvoice(@Param('id') id: string) {
     return this.invoices.get(BigInt(id));
+  }
+
+  @Get('purchase-invoices/:id/pdf')
+  @RequirePermission(PERMISSIONS.TENANT_READ)
+  async invoicePdf(@Param('id') id: string, @Query() q: ExportQueryDto) {
+    const lang = q.lang ?? 'ar';
+    return this.printing.exportDocument(purchaseInvoicePrint(await this.invoices.get(BigInt(id)), lang), lang);
   }
 
   @Post('purchase-invoices')

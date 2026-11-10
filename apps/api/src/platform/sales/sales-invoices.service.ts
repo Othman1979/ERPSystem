@@ -3,13 +3,33 @@ import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, currentBranchId, assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
+import {
+  dayKey,
+  foldMonths,
+  itemRefs,
+  partyRefs,
+  summaryRow,
+  taxRows,
+  type DocumentSummaryRow,
+  type SummaryGroupBy,
+  type SummaryRange,
+} from '../shared/document-summary.js';
 import { computeLineAmounts } from '../shared/invoice-math.js';
 import { creditedByInvoice, withBalance } from '../shared/invoice-balance.js';
+import {
+  lockOrder,
+  toSettlementState,
+  type InvoiceSettlement,
+  type SettlementRow,
+  type SettlementState,
+} from '../shared/invoice-settlement.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
+import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesInvoiceDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
 
 const SOURCE = 'SALES_INVOICE';
@@ -27,12 +47,13 @@ interface ResolvedLine {
 
 /** Sales invoices: draft CRUD + post → stock OUT + COGS/revenue journal (§8.4). */
 @Injectable()
-export class SalesInvoicesService {
+export class SalesInvoicesService implements InvoiceSettlement {
   constructor(
     private readonly support: DocumentSupportService,
     private readonly posting: PostingService,
     private readonly ledger: StockLedgerService,
     private readonly audit: AuditService,
+    private readonly einvoice: EInvoiceOutboxService,
   ) {}
 
   /** Posted credit-return totals for the given invoices (for `outstanding`). */
@@ -49,31 +70,176 @@ export class SalesInvoicesService {
   }
 
   /**
-   * Posted credit invoices that still owe something (Phase 6 aging): what
-   * remains after allocations and credit returns. Cash invoices are settled
-   * at sale and never appear.
+   * Aging as of a date (Phase 6): posted credit invoices dated on or before
+   * `asOf`, with the posted credit returns dated on or before it. Voucher
+   * allocations are treasury's and are subtracted there. Cash invoices are
+   * settled at sale and never appear.
    */
-  async openCreditInvoices() {
+  async creditInvoicesAsOf(asOf: Date) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const rows = await db.salesInvoice.findMany({
-      where: { companyId, status: 'POSTED', paymentType: 'CREDIT' },
-      select: {
-        id: true,
-        invoiceNo: true,
-        invoiceDate: true,
-        dueDate: true,
-        grandTotal: true,
-        paidAmount: true,
-        customer: { select: { id: true, code: true, nameAr: true, nameEn: true } },
-      },
+    const [rows, returns] = await Promise.all([
+      db.salesInvoice.findMany({
+        where: { companyId, status: 'POSTED', paymentType: 'CREDIT', invoiceDate: { lte: asOf } },
+        select: {
+          id: true,
+          invoiceNo: true,
+          invoiceDate: true,
+          dueDate: true,
+          grandTotal: true,
+          customer: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+        },
+        orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
+      }),
+      db.salesReturn.groupBy({
+        by: ['originalInvoiceId'],
+        where: { companyId, status: 'POSTED', refundType: 'CREDIT', returnDate: { lte: asOf } },
+        _sum: { grandTotal: true },
+      }),
+    ]);
+    const credited = new Map(returns.map((r) => [r.originalInvoiceId, r._sum.grandTotal?.toString() ?? '0']));
+    return rows.map(({ customer: party, ...r }) => ({
+      ...r,
+      party,
+      creditedAmount: new Decimal(credited.get(r.id) ?? '0'),
+    }));
+  }
+
+  /**
+   * Posted invoices dated in the range (both ends inclusive), added up by
+   * day, month, customer, item or (tax category, rate) — the Phase 8 sales /
+   * purchases / tax summaries and the dashboard. Header totals for day,
+   * month and party; line amounts for item and tax (a header's totals are
+   * the sums of its lines).
+   */
+  async summary(range: SummaryRange, groupBy: SummaryGroupBy): Promise<DocumentSummaryRow[]> {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const where = { companyId, status: 'POSTED' as const, invoiceDate: { gte: range.from, lte: range.to } };
+    if (groupBy === 'day' || groupBy === 'month') {
+      const groups = await db.salesInvoice.groupBy({
+        by: ['invoiceDate'],
+        where,
+        _sum: { netTotal: true, taxTotal: true, grandTotal: true, costTotal: true },
+        _count: { _all: true },
+      });
+      const days = groups.map((g) =>
+        summaryRow(dayKey(g.invoiceDate), g._count._all, {
+          net: g._sum.netTotal,
+          tax: g._sum.taxTotal,
+          grand: g._sum.grandTotal, cost: g._sum.costTotal,
+        }),
+      );
+      return groupBy === 'month' ? foldMonths(days) : days;
+    }
+    if (groupBy === 'party') {
+      const groups = await db.salesInvoice.groupBy({
+        by: ['customerId'],
+        where,
+        _sum: { netTotal: true, taxTotal: true, grandTotal: true, costTotal: true },
+        _count: { _all: true },
+      });
+      const refs = await partyRefs(db, groups.map((g) => g.customerId));
+      return groups.map((g) =>
+        summaryRow(
+          g.customerId.toString(),
+          g._count._all,
+          { net: g._sum.netTotal, tax: g._sum.taxTotal, grand: g._sum.grandTotal, cost: g._sum.costTotal },
+          { ref: refs.get(g.customerId.toString()) ?? null },
+        ),
+      );
+    }
+    const lines = { invoice: where };
+    if (groupBy === 'item') {
+      const groups = await db.salesInvoiceLine.groupBy({
+        by: ['itemId'],
+        where: lines,
+        _sum: { qtyBase: true, netAmount: true, taxAmount: true, lineTotal: true, costTotal: true },
+        _count: { _all: true },
+      });
+      const refs = await itemRefs(db, groups.map((g) => g.itemId));
+      return groups.map((g) =>
+        summaryRow(
+          g.itemId.toString(),
+          g._count._all,
+          { qty: g._sum.qtyBase, net: g._sum.netAmount, tax: g._sum.taxAmount, grand: g._sum.lineTotal, cost: g._sum.costTotal },
+          { ref: refs.get(g.itemId.toString()) ?? null },
+        ),
+      );
+    }
+    const groups = await db.salesInvoiceLine.groupBy({
+      by: ['taxCategoryId', 'taxRate'],
+      where: lines,
+      _sum: { qtyBase: true, netAmount: true, taxAmount: true, lineTotal: true, costTotal: true },
+      _count: { _all: true },
+    });
+    return taxRows(
+      db,
+      groups.map((g) => ({
+        taxCategoryId: g.taxCategoryId,
+        taxRate: g.taxRate,
+        count: g._count._all,
+        sums: { qty: g._sum.qtyBase, net: g._sum.netAmount, tax: g._sum.taxAmount, grand: g._sum.lineTotal, cost: g._sum.costTotal },
+      })),
+    );
+  }
+
+  // --------------------------------------------- settlement (treasury, ADR-004)
+
+  /** SELECT … FOR UPDATE on the invoices, ascending id (§10.1 fixed lock order). */
+  async lockForSettlement(tx: Prisma.TransactionClient, ids: bigint[]): Promise<void> {
+    const { tenantId } = this.support.tenant();
+    for (const id of lockOrder(ids)) {
+      await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    }
+  }
+
+  /**
+   * Party, status, payment type and outstanding, read with LOCKING reads on
+   * the caller's transaction. Under REPEATABLE READ a plain SELECT returns the
+   * snapshot taken before the caller waited for the invoice lock, so a voucher
+   * racing another would still see the old paid_amount and settle the invoice
+   * twice (phase 6 race test). FOR UPDATE / LOCK IN SHARE MODE read the latest
+   * committed rows.
+   */
+  async settlementState(tx: Prisma.TransactionClient, id: bigint): Promise<SettlementState | null> {
+    const { tenantId } = this.support.tenant();
+    const [inv] = await tx.$queryRaw<SettlementRow[]>`
+      SELECT customer_id AS party_id, status, payment_type, grand_total, paid_amount
+        FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    if (!inv) return null;
+    const [credited] = await tx.$queryRaw<{ s: { toString(): string } | null }[]>`
+      SELECT SUM(grand_total) AS s FROM sales_returns
+       WHERE tenant_id = ${tenantId} AND original_invoice_id = ${id}
+         AND status = 'POSTED' AND refund_type = 'CREDIT' LOCK IN SHARE MODE`;
+    return toSettlementState(inv, credited?.s);
+  }
+
+  /** paid_amount projection (§7.8) += delta; negative undoes an allocation. */
+  async addPaid(tx: Prisma.TransactionClient, id: bigint, delta: Decimal): Promise<void> {
+    await tx.salesInvoice.update({ where: { id }, data: { paidAmount: { increment: delta } } });
+  }
+
+  /** The party's posted credit invoices, oldest first. Cash invoices are settled at sale. */
+  async creditInvoiceIdsOldestFirst(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    partyId: bigint,
+  ): Promise<bigint[]> {
+    const rows = await tx.salesInvoice.findMany({
+      where: { companyId, status: 'POSTED', paymentType: 'CREDIT', customerId: partyId },
+      select: { id: true },
       orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
     });
-    const credited = await this.creditedFor(db, rows.map((r) => r.id));
-    return rows
-      .map((r) => withBalance(r, credited))
-      .filter((r) => new Decimal(r.outstanding).gt(0))
-      .map(({ customer: party, ...r }) => ({ ...r, party }));
+    return rows.map((r) => r.id);
+  }
+
+  /** Invoice numbers by id (printed vouchers name the invoices they settled). */
+  async invoiceNumbers(ids: bigint[]): Promise<Map<bigint, string | null>> {
+    if (ids.length === 0) return new Map();
+    const { db } = this.support.tenant();
+    const rows = await db.salesInvoice.findMany({ where: { id: { in: ids } }, select: { id: true, invoiceNo: true } });
+    return new Map(rows.map((r) => [r.id, r.invoiceNo]));
   }
 
   async list(status?: string, paymentType?: string, customerId?: string) {
@@ -118,7 +284,46 @@ export class SalesInvoicesService {
       },
     });
     if (!inv) throw DomainError.notFound('SalesInvoice', id.toString());
-    return withBalance(inv, await this.creditedFor(db, [inv.id]));
+    return {
+      ...withBalance(inv, await this.creditedFor(db, [inv.id])),
+      einvoice: await this.einvoice.stateOf('SALES_INVOICE', inv.id),
+    };
+  }
+
+  /**
+   * A posted invoice as JoFotara needs it (docs/decisions/0005 §3–§7):
+   * amounts exactly as posted. Read by the e-invoice module (module boundary).
+   */
+  async einvoiceSource(id: bigint) {
+    const { db } = this.support.tenant();
+    return db.salesInvoice.findFirst({
+      where: { id, status: 'POSTED' },
+      select: {
+        id: true,
+        invoiceNo: true,
+        invoiceDate: true,
+        paymentType: true,
+        description: true,
+        grandTotal: true,
+        customer: {
+          select: { nameAr: true, taxNumber: true, nationalId: true, nationalIdKind: true, phone: true, isCashCustomer: true },
+        },
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: {
+            lineNo: true,
+            qty: true,
+            unitPrice: true,
+            discountAmount: true,
+            netAmount: true,
+            taxRate: true,
+            taxAmount: true,
+            item: { select: { nameAr: true } },
+            taxCategory: { select: { einvoiceCode: true } },
+          },
+        },
+      },
+    });
   }
 
   async create(dto: CreateSalesInvoiceDto) {
@@ -271,6 +476,29 @@ export class SalesInvoicesService {
         if (draft.paymentType === 'CASH' && !draft.cashAccountId) {
           throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');
         }
+        // JoFotara rules (buyer, tax codes), checked before anything is posted (0005 §11).
+        const buyer = await tx.party.findFirst({
+          where: { id: draft.customerId },
+          select: { nameAr: true, taxNumber: true, nationalId: true, nationalIdKind: true, phone: true, isCashCustomer: true },
+        });
+        const categoryIds = [...new Set(draft.lines.map((l) => l.taxCategoryId).filter((x): x is bigint => x !== null))];
+        const codes = new Map(
+          (
+            await tx.taxCategory.findMany({ where: { id: { in: categoryIds } }, select: { id: true, einvoiceCode: true } })
+          ).map((c) => [c.id, c.einvoiceCode]),
+        );
+        if (buyer) {
+          await this.einvoice.assertInvoiceSendable(tx, companyId, {
+            paymentType: draft.paymentType,
+            grandTotal: draft.grandTotal.toString(),
+            buyer,
+            lines: draft.lines.map((l) => ({
+              taxRate: l.taxRate.toString(),
+              taxAmount: l.taxAmount.toString(),
+              einvoiceCode: l.taxCategoryId ? (codes.get(l.taxCategoryId) ?? null) : null,
+            })),
+          });
+        }
 
         const invoiceDate = new Date(draft.invoiceDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, invoiceDate);
@@ -376,6 +604,13 @@ export class SalesInvoicesService {
             postedAt: new Date(),
             postedBy: userId ?? null,
           },
+        });
+        // Outbox (BUILD_PLAN §12.2): queued in this transaction, sent by the worker after it commits.
+        await this.einvoice.enqueue(tx, {
+          companyId,
+          documentType: 'SALES_INVOICE',
+          documentId: draft.id,
+          documentNo: invoiceNo,
         });
         return { id: draft.id, invoiceNo };
       }),

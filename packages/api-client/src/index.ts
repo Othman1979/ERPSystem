@@ -11,13 +11,15 @@ import { apiFetchData } from './runtime';
 export {
   ApiError,
   apiFetch,
+  apiFetchBlob,
   apiFetchData,
+  filenameFromDisposition,
   getAccessToken,
   getBranchId,
   setAccessToken,
   setBranchId,
 } from './runtime';
-export type { ApiErrorBody, ApiResponse } from './runtime';
+export type { ApiErrorBody, ApiFile, ApiResponse } from './runtime';
 
 // orval-generated client (do not edit src/generated/* by hand)
 export * from './generated/api';

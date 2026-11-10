@@ -200,6 +200,98 @@ body {
   display: inline-flex;
 }
 
+/* Dashboard figures above the quick actions: one framed tile per figure, linking to its report */
+.home-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+  align-items: stretch;
+  margin-bottom: 16px;
+}
+
+.home-stats .home-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--c-surface);
+  border: 1px solid var(--c-grid-border);
+  color: var(--c-text);
+  text-decoration: none;
+}
+
+.home-stats .home-stat:hover,
+.home-stats .home-stat:focus-visible {
+  color: var(--c-text);
+  border-color: var(--c-primary);
+  outline: none;
+}
+
+.home-stats .home-stat:focus-visible {
+  box-shadow: 0 0 0 1px var(--c-primary);
+}
+
+.home-stat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-weight: 600;
+  background: var(--c-grid-bar-bg);
+  color: var(--c-grid-bar-text);
+  border-bottom: 1px solid var(--c-grid-border);
+}
+
+.home-stat-body {
+  display: grid;
+  gap: 4px;
+  padding: 8px 12px 10px;
+}
+
+.home-stat .ant-statistic-content {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-stat-sub {
+  font-size: 12px;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-stat-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-stat-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+  border-top: 1px solid var(--c-grid-line);
+}
+
+.home-stat-list-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-stat-more {
+  opacity: 0.75;
+}
+
+.home-stats-error {
+  margin-bottom: 16px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
 /* ---------------------------------------------------------------- phones */
 
 @media (max-width: 767px) {
@@ -480,6 +572,35 @@ body {
   border: 1px solid var(--c-grid-border);
   border-bottom: 0;
   font-variant-numeric: tabular-nums;
+}
+
+/* Financial statements: section headings, the indented account tree, subtotals and results */
+.stmt-table .ant-table-tbody > tr.stmt-heading > td {
+  background: var(--c-grid-panel-bg);
+  font-weight: 600;
+}
+
+.stmt-table .ant-table-tbody > tr.stmt-group > td {
+  font-weight: 600;
+}
+
+.stmt-table .ant-table-tbody > tr.stmt-subtotal > td {
+  font-weight: 600;
+  border-top: 1px solid var(--c-grid-border);
+}
+
+.stmt-table .ant-table-tbody > tr.stmt-result > td {
+  background: var(--c-grid-bar-bg);
+  color: var(--c-grid-bar-text);
+  font-weight: 700;
+  border-top: 1px solid var(--c-grid-border);
+}
+
+@media print {
+  .stmt-table .ant-table-tbody > tr.stmt-heading > td,
+  .stmt-table .ant-table-tbody > tr.stmt-result > td {
+    background: #fff;
+  }
 }
 
 /* "Pick an account first" style hints in place of a report table */
@@ -803,5 +924,99 @@ body {
 @media (max-width: 640px) {
   .invoice-summary {
     width: 100%;
+  }
+}
+
+/* ------------------------------------------- e-invoicing (JoFotara) */
+
+/* Settings tab framed like a dialog body: sections, then a footer bar */
+.settings-panel {
+  background: var(--c-surface);
+  border: 1px solid var(--c-grid-border);
+}
+
+.settings-panel-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--c-grid-panel);
+  border-top: 1px solid var(--c-grid-border);
+}
+
+/* "Not accepted by JoFotara yet" marker on a posted document */
+.einvoice-banner {
+  border-bottom: 1px solid var(--c-grid-border);
+}
+
+.einvoice-banner-title,
+.einvoice-drawer-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.einvoice-banner-errors {
+  margin: 4px 0 0;
+  padding-inline-start: 18px;
+}
+
+/* QR and identifiers of an accepted e-invoice, under the lines */
+.einvoice-qr-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 12px;
+  border-top: 1px solid var(--c-grid-border);
+  break-inside: avoid;
+}
+
+.einvoice-qr-facts {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.einvoice-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.einvoice-detail .einvoice-qr-panel {
+  border: 1px solid var(--c-grid-line);
+}
+
+.einvoice-detail h5 {
+  margin-bottom: 6px;
+}
+
+/* Sent XML / raw answer: left-to-right code, scrolls inside its box */
+.einvoice-xml {
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
+  font-size: 11px;
+  direction: ltr;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--c-grid-panel);
+  border: 1px solid var(--c-grid-line);
+}
+
+@media print {
+  /* Keep the marker's colour and the QR on paper */
+  .einvoice-banner {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .einvoice-qr-panel svg {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
