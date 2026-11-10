@@ -40,9 +40,6 @@ export class JournalLineDto {
   @MaxLength(500)
   description?: string;
 
-  @IsOptional()
-  @IsString()
-  branchId?: string;
 }
 
 export class CreateJournalEntryDto {
@@ -59,9 +56,6 @@ export class CreateJournalEntryDto {
   @MaxLength(500)
   description?: string;
 
-  @IsOptional()
-  @IsString()
-  branchId?: string;
 
   @IsArray()
   @ArrayMinSize(2)

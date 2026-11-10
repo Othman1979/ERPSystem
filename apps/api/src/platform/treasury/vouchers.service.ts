@@ -563,11 +563,11 @@ export class VouchersService {
         a.documentType === 'SALES_INVOICE'
           ? await tx.salesInvoice.findFirst({
               where: { id: docId },
-              select: { customerId: true, status: true },
+              select: { customerId: true, status: true, paymentType: true },
             })
           : await tx.purchaseInvoice.findFirst({
               where: { id: docId },
-              select: { supplierId: true, status: true },
+              select: { supplierId: true, status: true, paymentType: true },
             });
       const docParty =
         a.documentType === 'SALES_INVOICE'
@@ -575,6 +575,11 @@ export class VouchersService {
           : (doc as { supplierId?: bigint } | null)?.supplierId;
       if (!doc || doc.status !== 'POSTED' || docParty !== opts.partyId) {
         throw new DomainError(ErrorCode.VALIDATION, 'Invoice not found, not posted, or belongs to another party');
+      }
+      // Cash invoices are settled at sale (Dr cash); a voucher on one would
+      // record the same money twice.
+      if (doc.paymentType === 'CASH') {
+        throw new DomainError(ErrorCode.VALIDATION, 'Cash invoices are paid at sale and cannot take allocations');
       }
       allocated = allocated.plus(amt);
       if (allocated.gt(opts.amount)) {

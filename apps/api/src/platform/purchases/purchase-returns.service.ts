@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal, round3, sum } from '../../common/decimal/decimal.utils.js';
-import { assertBranchAllowed } from '../../common/branch/branch-context.js';
+import { assertBranchAllowed, assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { AuditService } from '../../common/audit/audit.service.js';
@@ -95,11 +95,21 @@ export class PurchaseReturnsService {
     }
 
     const origById = new Map(invoice.lines.map((l) => [l.id, l]));
+    // Each original line at most once per return: the remaining-qty check below
+    // only counts earlier returns, so a repeated line would slip past it.
+    const seenLines = new Set<bigint>();
     const resolved = dto.lines.map((l, i) => {
       const orig = origById.get(BigInt(l.originalLineId));
       if (!orig) {
         throw new DomainError(ErrorCode.VALIDATION, `Line ${i + 1}: originalLineId not on this invoice`);
       }
+      if (seenLines.has(orig.id)) {
+        throw new DomainError(
+          ErrorCode.VALIDATION,
+          `Line ${i + 1}: invoice line ${orig.lineNo} appears more than once in this return`,
+        );
+      }
+      seenLines.add(orig.id);
       const qtyBase = new Decimal(l.qty);
       if (qtyBase.lte(0)) throw new DomainError(ErrorCode.VALIDATION, 'Return qty must be > 0');
       const already = returnedByLine.get(orig.id) ?? new Decimal(0);
@@ -205,11 +215,16 @@ export class PurchaseReturnsService {
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
+        // Lock the document first (§10.1 step 7). As the first statement it also
+        // makes every later read see the latest committed state, so two
+        // concurrent requests cannot both post or reverse it.
+        await tx.$queryRaw`SELECT id FROM purchase_returns WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
         const draft = await tx.purchaseReturn.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },
         });
         if (!draft) throw DomainError.notFound('PurchaseReturn', id.toString());
+        await assertWarehouseBranchAllowed(tx, draft.warehouseId);
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Return is not a draft');
         }

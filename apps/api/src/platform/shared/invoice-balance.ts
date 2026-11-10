@@ -32,14 +32,21 @@ export function creditedByInvoice(
   return map;
 }
 
-/** Adds `creditedAmount` and `outstanding` (decimal strings) to invoice rows. */
+/**
+ * Adds `creditedAmount` and `outstanding` (decimal strings) to invoice rows.
+ * A CASH invoice is settled at sale (paid_amount stays 0), so it owes nothing.
+ */
 export function withBalance<
-  T extends { id: bigint; grandTotal: DecimalLike; paidAmount: DecimalLike },
+  T extends { id: bigint; grandTotal: DecimalLike; paidAmount: DecimalLike; paymentType?: string },
 >(invoice: T, credited: Map<string, Decimal>): T & { creditedAmount: string; outstanding: string } {
   const creditedAmount = credited.get(invoice.id.toString()) ?? new Decimal(0);
+  const outstanding =
+    invoice.paymentType === 'CASH'
+      ? new Decimal(0)
+      : outstandingAmount(invoice.grandTotal, invoice.paidAmount, creditedAmount);
   return {
     ...invoice,
     creditedAmount: creditedAmount.toFixed(3),
-    outstanding: outstandingAmount(invoice.grandTotal, invoice.paidAmount, creditedAmount).toFixed(3),
+    outstanding: outstanding.toFixed(3),
   };
 }

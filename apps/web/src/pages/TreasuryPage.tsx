@@ -804,12 +804,12 @@ function VoucherForm({
   // Open invoices for allocations
   const { data: salesInvoices } = useQuery({
     queryKey: ['sales-invoices', 'POSTED'],
-    queryFn: () => listSalesInvoices({ status: 'POSTED', paymentType: '', customerId: '' }).then((r) => r.data as unknown as OpenInvoice[]),
+    queryFn: () => listSalesInvoices({ status: 'POSTED', paymentType: 'CREDIT', customerId: '' }).then((r) => r.data as unknown as OpenInvoice[]),
     enabled: kind === 'receipt',
   });
   const { data: purchaseInvoices } = useQuery({
     queryKey: ['purchase-invoices', 'POSTED'],
-    queryFn: () => listPurchaseInvoices({ status: 'POSTED', paymentType: '', supplierId: '' }).then((r) => r.data as unknown as OpenInvoice[]),
+    queryFn: () => listPurchaseInvoices({ status: 'POSTED', paymentType: 'CREDIT', supplierId: '' }).then((r) => r.data as unknown as OpenInvoice[]),
     enabled: kind === 'payment',
   });
 

@@ -264,6 +264,25 @@ export class CountsService {
     // AdjustmentsService.create rejects COUNT_ADJUSTMENT from the API, so
     // build the document rows directly, then post via adjustments.post().
     const adjustment = await db.$transaction(async (tx) => {
+      // Claim the count under a row lock: a second approval arriving at the
+      // same time sees the claim and stops, instead of creating (and posting)
+      // a second adjustment for the same count.
+      const [locked] = (await tx.$queryRaw`
+        SELECT status, adjustment_id FROM stock_counts
+         WHERE tenant_id = ${tenantId} AND id = ${count.id} FOR UPDATE`) as {
+        status: string;
+        adjustment_id: bigint | null;
+      }[];
+      if (!locked || locked.status !== 'DRAFT') {
+        throw new DomainError(ErrorCode.CONFLICT, 'Count is not a draft');
+      }
+      if (locked.adjustment_id !== null) {
+        // A previous approval created the adjustment but did not finish posting:
+        // resume with that one rather than adding another.
+        const existing = await tx.stockAdjustment.findFirst({ where: { id: locked.adjustment_id } });
+        if (existing?.status === 'DRAFT') return existing;
+        throw new DomainError(ErrorCode.CONFLICT, 'Count is already being approved');
+      }
       const created = await tx.stockAdjustment.create({
         data: {
           tenantId,
@@ -288,6 +307,7 @@ export class CountsService {
           };
         }),
       });
+      await tx.stockCount.update({ where: { id: count.id }, data: { adjustmentId: created.id } });
       return created;
     });
 

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
-import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
+import { assertBranchAllowed, currentBranchId, assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
@@ -251,11 +251,16 @@ export class SalesInvoicesService {
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
+        // Lock the document first (§10.1 step 7). As the first statement it also
+        // makes every later read see the latest committed state, so two
+        // concurrent requests cannot both post or reverse it.
+        await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
         const draft = await tx.salesInvoice.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },
         });
         if (!draft) throw DomainError.notFound('SalesInvoice', id.toString());
+        await assertWarehouseBranchAllowed(tx, draft.warehouseId);
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Invoice is not a draft');
         }
@@ -409,9 +414,10 @@ export class SalesInvoicesService {
     }
     const warehouse = await db.warehouse.findFirst({
       where: { companyId, id: BigInt(dto.warehouseId), isActive: true },
-      select: { id: true },
+      select: { id: true, branchId: true },
     });
     if (!warehouse) throw DomainError.notFound('Warehouse', dto.warehouseId);
+    assertBranchAllowed(warehouse.branchId);
     if (dto.paymentType === 'CASH') {
       if (!dto.cashAccountId) {
         throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');
