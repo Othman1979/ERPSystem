@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
+import { outstandingAmount } from '../shared/invoice-balance.js';
 import { SalesInvoicesService } from '../sales/sales-invoices.service.js';
 import { PurchaseInvoicesService } from '../purchases/purchase-invoices.service.js';
 
@@ -16,6 +17,11 @@ export function agingBucket(daysOverdue: number): AgingBucket {
   if (daysOverdue <= 60) return 'd31_60';
   if (daysOverdue <= 90) return 'd61_90';
   return 'd90plus';
+}
+
+/** Today's calendar date at UTC midnight (the default "as of"; the web sends its local date). */
+export function todayUtc(now = new Date()): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
 /** Whole days from `due` to `asOf`, both taken as calendar dates (UTC). */
@@ -38,13 +44,26 @@ export class TreasuryReportsService {
   ) {}
 
   /**
-   * Aging as of today: every posted credit invoice that still owes something,
-   * by days past its due date (invoice date when none), summed per party.
-   * Buckets: not due, 1–30, 31–60, 61–90, over 90 days.
+   * Aging as of a date (ADR-004 §7, updated): every posted credit invoice dated on or
+   * before `asOf` that still owes something then, by days past its due date
+   * (invoice date when none), summed per party. What it owes then = grand
+   * total − credit returns dated ≤ asOf − active allocations whose voucher is
+   * dated ≤ asOf. Cancelled allocations never count (their cancel time is a
+   * system clock, not a business date). Buckets: not due, 1–30, 31–60, 61–90,
+   * over 90 days.
    */
-  async aging(partyType: 'CUSTOMER' | 'SUPPLIER', asOf = new Date()) {
-    const invoices =
-      partyType === 'CUSTOMER' ? await this.sales.openCreditInvoices() : await this.purchases.openCreditInvoices();
+  async aging(partyType: 'CUSTOMER' | 'SUPPLIER', asOf = todayUtc()) {
+    const documentType = partyType === 'CUSTOMER' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
+    const [creditInvoices, allocated] = await Promise.all([
+      partyType === 'CUSTOMER' ? this.sales.creditInvoicesAsOf(asOf) : this.purchases.creditInvoicesAsOf(asOf),
+      this.allocatedAsOf(documentType, asOf),
+    ]);
+    const invoices = creditInvoices
+      .map((inv) => ({
+        ...inv,
+        outstanding: outstandingAmount(inv.grandTotal, allocated.get(inv.id) ?? '0', inv.creditedAmount),
+      }))
+      .filter((inv) => inv.outstanding.gt(0));
 
     const zero = () => Object.fromEntries(AGING_BUCKETS.map((b) => [b, new Decimal(0)])) as Record<AgingBucket, Decimal>;
     const byParty = new Map<
@@ -55,7 +74,7 @@ export class TreasuryReportsService {
 
     for (const inv of invoices) {
       const bucket = agingBucket(daysOverdue(inv.dueDate ?? inv.invoiceDate, asOf));
-      const amount = new Decimal(inv.outstanding);
+      const amount = inv.outstanding;
       const key = inv.party.id.toString();
       const row = byParty.get(key) ?? { party: inv.party, buckets: zero() };
       row.buckets[bucket] = row.buckets[bucket].plus(amount);
@@ -85,6 +104,27 @@ export class TreasuryReportsService {
         })),
       totals: fmt(totals),
     };
+  }
+
+  /**
+   * Active allocations per invoice whose voucher is dated on or before
+   * `asOf`. An invoice dated after its voucher (an advance) is only listed
+   * from its own date on, so the allocation counts from the later of the two.
+   */
+  private async allocatedAsOf(documentType: 'SALES_INVOICE' | 'PURCHASE_INVOICE', asOf: Date) {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const sums = await db.allocation.groupBy({
+      by: ['documentId'],
+      where: {
+        companyId,
+        documentType,
+        cancelledAt: null,
+        OR: [{ receipt: { receiptDate: { lte: asOf } } }, { payment: { paymentDate: { lte: asOf } } }],
+      },
+      _sum: { amount: true },
+    });
+    return new Map(sums.map((s) => [s.documentId, s._sum.amount?.toString() ?? '0']));
   }
 
   /**

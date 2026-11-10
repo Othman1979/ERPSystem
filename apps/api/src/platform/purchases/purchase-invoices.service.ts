@@ -60,31 +60,39 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
   }
 
   /**
-   * Posted credit invoices that still owe something (Phase 6 aging): what
-   * remains after allocations and credit returns. Cash invoices are settled
-   * at sale and never appear.
+   * Aging as of a date (Phase 6): posted credit invoices dated on or before
+   * `asOf`, with the posted credit returns dated on or before it. Voucher
+   * allocations are treasury's and are subtracted there. Cash invoices are
+   * settled at purchase and never appear.
    */
-  async openCreditInvoices() {
+  async creditInvoicesAsOf(asOf: Date) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const rows = await db.purchaseInvoice.findMany({
-      where: { companyId, status: 'POSTED', paymentType: 'CREDIT' },
-      select: {
-        id: true,
-        invoiceNo: true,
-        invoiceDate: true,
-        dueDate: true,
-        grandTotal: true,
-        paidAmount: true,
-        supplier: { select: { id: true, code: true, nameAr: true, nameEn: true } },
-      },
-      orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
-    });
-    const credited = await this.creditedFor(db, rows.map((r) => r.id));
-    return rows
-      .map((r) => withBalance(r, credited))
-      .filter((r) => new Decimal(r.outstanding).gt(0))
-      .map(({ supplier: party, ...r }) => ({ ...r, party }));
+    const [rows, returns] = await Promise.all([
+      db.purchaseInvoice.findMany({
+        where: { companyId, status: 'POSTED', paymentType: 'CREDIT', invoiceDate: { lte: asOf } },
+        select: {
+          id: true,
+          invoiceNo: true,
+          invoiceDate: true,
+          dueDate: true,
+          grandTotal: true,
+          supplier: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+        },
+        orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
+      }),
+      db.purchaseReturn.groupBy({
+        by: ['originalInvoiceId'],
+        where: { companyId, status: 'POSTED', refundType: 'CREDIT', returnDate: { lte: asOf } },
+        _sum: { grandTotal: true },
+      }),
+    ]);
+    const credited = new Map(returns.map((r) => [r.originalInvoiceId, r._sum.grandTotal?.toString() ?? '0']));
+    return rows.map(({ supplier: party, ...r }) => ({
+      ...r,
+      party,
+      creditedAmount: new Decimal(credited.get(r.id) ?? '0'),
+    }));
   }
 
   // --------------------------------------------- settlement (treasury, ADR-004)

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { PrinterOutlined } from '@ant-design/icons';
-import { Button, Segmented, Table, Typography } from 'antd';
+import { Button, DatePicker, Segmented, Table, Typography } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiFetchData } from '@erp/api-client';
@@ -26,13 +27,17 @@ interface AgingResponse {
   totals: AgingAmounts;
 }
 
-/** Phase 6: open credit balances by days past due, per customer or supplier. */
+/** Phase 6: open credit balances by days past due, per customer or supplier, as of a date. */
 export function AgingTab() {
   const { t } = useTranslation();
   const [partyType, setPartyType] = useState<'CUSTOMER' | 'SUPPLIER'>('CUSTOMER');
+  // The local calendar date, so "today" is the user's day rather than the server's UTC day.
+  const [asOf, setAsOf] = useState<Dayjs>(() => dayjs());
+  const asOfParam = asOf.format('YYYY-MM-DD');
   const { data, isLoading } = useQuery({
-    queryKey: ['report-aging', partyType],
-    queryFn: () => apiFetchData<AgingResponse>(`/api/v1/reports/aging?partyType=${partyType}`),
+    queryKey: ['report-aging', partyType, asOfParam],
+    queryFn: () =>
+      apiFetchData<AgingResponse>(`/api/v1/reports/aging?partyType=${partyType}&asOf=${asOfParam}`),
   });
 
   return (
@@ -48,8 +53,16 @@ export function AgingTab() {
                 { value: 'SUPPLIER', label: t('reports.suppliers') },
               ]}
             />
+            <DatePicker
+              value={asOf}
+              onChange={(d) => d && setAsOf(d)}
+              allowClear={false}
+              placeholder={t('reports.asOf')}
+              prefix={t('reports.asOf')}
+              aria-label={t('reports.asOf')}
+            />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {t('reports.agingNote')} {data?.asOf ? `(${data.asOf})` : ''}
+              {t('reports.agingNote')}
             </Typography.Text>
           </>
         }

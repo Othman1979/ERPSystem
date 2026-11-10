@@ -182,7 +182,7 @@ export class TreasuryController {
   @Get('reports/aging')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
   aging(@Query() q: AgingQueryDto) {
-    return this.reports.aging(q.partyType);
+    return this.reports.aging(q.partyType, q.asOf ? new Date(q.asOf) : undefined);
   }
 
   @Get('treasury/balances')
