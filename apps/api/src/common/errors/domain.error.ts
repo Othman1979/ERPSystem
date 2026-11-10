@@ -14,6 +14,7 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.BRANCH_NOT_ALLOWED]: HttpStatus.FORBIDDEN,
   [ErrorCode.REVERSE_VIA_DOCUMENT]: HttpStatus.CONFLICT,
   [ErrorCode.VOUCHER_HAS_ALLOCATIONS]: HttpStatus.CONFLICT,
+  [ErrorCode.OPENING_INVENTORY_VIA_STOCK]: HttpStatus.BAD_REQUEST,
   [ErrorCode.EINVOICE_BUYER_REQUIRED]: HttpStatus.BAD_REQUEST,
   [ErrorCode.EINVOICE_REASON_REQUIRED]: HttpStatus.BAD_REQUEST,
   [ErrorCode.EINVOICE_NOT_READY]: HttpStatus.BAD_REQUEST,

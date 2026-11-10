@@ -44,6 +44,10 @@ export interface ReverseJournalEntryDto { [key: string]: unknown }
 
 export interface CreateOpeningEntryDto { [key: string]: unknown }
 
+export interface CreatePartyDto { [key: string]: unknown }
+
+export interface UpdatePartyDto { [key: string]: unknown }
+
 export interface CreateItemGroupDto { [key: string]: unknown }
 
 export interface UpdateItemGroupDto { [key: string]: unknown }
@@ -70,10 +74,6 @@ export interface CreateStockCountDto { [key: string]: unknown }
 
 export interface UpdateCountLineDto { [key: string]: unknown }
 
-export interface CreatePartyDto { [key: string]: unknown }
-
-export interface UpdatePartyDto { [key: string]: unknown }
-
 export interface CreateSalesInvoiceDto { [key: string]: unknown }
 
 export interface CreateSalesReturnDto { [key: string]: unknown }
@@ -98,6 +98,8 @@ export interface AllocateVoucherDto { [key: string]: unknown }
 
 export interface CreateCashTransferDto { [key: string]: unknown }
 
+export interface UpdateEInvoiceSettingsDto { [key: string]: unknown }
+
 export interface UpdateTenantStatusDto { [key: string]: unknown }
 
 export interface ExtendTrialDto { [key: string]: unknown }
@@ -111,6 +113,12 @@ export type FiscalControllerListSequencesParams = {
 export type JournalControllerListParams = {
   status: string;
   voucherType: string;
+  sourceType: string;
+};
+
+export type PartiesControllerListParams = {
+  partyType: string;
+  isActive: string;
 };
 
 export type CatalogControllerListItemsParams = {
@@ -132,9 +140,9 @@ export type StockDocumentsControllerListCountsParams = {
 };
 
 export type StockReportsControllerBalancesParams = {
-  warehouseId: string;
-  itemId: string;
-  lowStock: string;
+  warehouseId?: string;
+  itemId?: string;
+  lowStock?: string;
 };
 
 export type StockReportsControllerMovementsParams = {
@@ -148,19 +156,14 @@ export type StockReportsControllerMovementsParams = {
 };
 
 export type StockReportsControllerItemLedgerParams = {
-  warehouseId: string;
-  sourceType: string;
-  from: string;
-  to: string;
+  warehouseId?: string;
+  sourceType?: string;
+  from?: string;
+  to?: string;
 };
 
 export type StockReportsControllerValuationParams = {
-  warehouseId: string;
-};
-
-export type PartiesControllerListParams = {
-  partyType: string;
-  isActive: string;
+  warehouseId?: string;
 };
 
 export type SalesControllerListInvoicesParams = {
@@ -2130,6 +2133,207 @@ export const journalControllerPartyStatement = async ( options?: Parameters<type
 
 
 
+export type partiesControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type partiesControllerListResponseSuccess = (partiesControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type partiesControllerListResponse = (partiesControllerListResponseSuccess)
+
+export const getPartiesControllerListUrl = (params: PartiesControllerListParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/parties?${stringifiedParams}` : `/api/v1/parties`
+}
+
+export const partiesControllerList = async (params: PartiesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerListResponse> => {
+
+  return apiFetch<partiesControllerListResponse>(getPartiesControllerListUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type partiesControllerCreateResponse201 = {
+  data: void
+  status: 201
+}
+
+export type partiesControllerCreateResponseSuccess = (partiesControllerCreateResponse201) & {
+  headers: Headers;
+};
+;
+
+export type partiesControllerCreateResponse = (partiesControllerCreateResponseSuccess)
+
+export const getPartiesControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/parties`
+}
+
+export const partiesControllerCreate = async (createPartyDto: CreatePartyDto, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerCreateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<partiesControllerCreateResponse>(getPartiesControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPartyDto)
+  }
+);}
+
+
+
+export type partiesControllerGetResponse200 = {
+  data: void
+  status: 200
+}
+
+export type partiesControllerGetResponseSuccess = (partiesControllerGetResponse200) & {
+  headers: Headers;
+};
+;
+
+export type partiesControllerGetResponse = (partiesControllerGetResponseSuccess)
+
+export const getPartiesControllerGetUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/parties/${id}`
+}
+
+export const partiesControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerGetResponse> => {
+
+  return apiFetch<partiesControllerGetResponse>(getPartiesControllerGetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type partiesControllerUpdateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type partiesControllerUpdateResponseSuccess = (partiesControllerUpdateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type partiesControllerUpdateResponse = (partiesControllerUpdateResponseSuccess)
+
+export const getPartiesControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/parties/${id}`
+}
+
+export const partiesControllerUpdate = async (id: string,
+    updatePartyDto: UpdatePartyDto, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerUpdateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<partiesControllerUpdateResponse>(getPartiesControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updatePartyDto)
+  }
+);}
+
+
+
+export type partiesControllerDeactivateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type partiesControllerDeactivateResponseSuccess = (partiesControllerDeactivateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type partiesControllerDeactivateResponse = (partiesControllerDeactivateResponseSuccess)
+
+export const getPartiesControllerDeactivateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/parties/${id}/deactivate`
+}
+
+export const partiesControllerDeactivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerDeactivateResponse> => {
+
+  return apiFetch<partiesControllerDeactivateResponse>(getPartiesControllerDeactivateUrl(id),
+  {
+    ...options,
+    method: 'PATCH'
+
+
+  }
+);}
+
+
+
 export type catalogControllerListGroupsResponse200 = {
   data: void
   status: 200
@@ -3465,7 +3669,7 @@ export type stockReportsControllerBalancesResponseSuccess = (stockReportsControl
 
 export type stockReportsControllerBalancesResponse = (stockReportsControllerBalancesResponseSuccess)
 
-export const getStockReportsControllerBalancesUrl = (params: StockReportsControllerBalancesParams,) => {
+export const getStockReportsControllerBalancesUrl = (params?: StockReportsControllerBalancesParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -3480,7 +3684,7 @@ export const getStockReportsControllerBalancesUrl = (params: StockReportsControl
   return stringifiedParams.length > 0 ? `/api/v1/stock/balances?${stringifiedParams}` : `/api/v1/stock/balances`
 }
 
-export const stockReportsControllerBalances = async (params: StockReportsControllerBalancesParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerBalancesResponse> => {
+export const stockReportsControllerBalances = async (params?: StockReportsControllerBalancesParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerBalancesResponse> => {
 
   return apiFetch<stockReportsControllerBalancesResponse>(getStockReportsControllerBalancesUrl(params),
   {
@@ -3546,7 +3750,7 @@ export type stockReportsControllerItemLedgerResponseSuccess = (stockReportsContr
 export type stockReportsControllerItemLedgerResponse = (stockReportsControllerItemLedgerResponseSuccess)
 
 export const getStockReportsControllerItemLedgerUrl = (itemId: string,
-    params: StockReportsControllerItemLedgerParams,) => {
+    params?: StockReportsControllerItemLedgerParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -3562,7 +3766,7 @@ export const getStockReportsControllerItemLedgerUrl = (itemId: string,
 }
 
 export const stockReportsControllerItemLedger = async (itemId: string,
-    params: StockReportsControllerItemLedgerParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerItemLedgerResponse> => {
+    params?: StockReportsControllerItemLedgerParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerItemLedgerResponse> => {
 
   return apiFetch<stockReportsControllerItemLedgerResponse>(getStockReportsControllerItemLedgerUrl(itemId,params),
   {
@@ -3587,7 +3791,7 @@ export type stockReportsControllerValuationResponseSuccess = (stockReportsContro
 
 export type stockReportsControllerValuationResponse = (stockReportsControllerValuationResponseSuccess)
 
-export const getStockReportsControllerValuationUrl = (params: StockReportsControllerValuationParams,) => {
+export const getStockReportsControllerValuationUrl = (params?: StockReportsControllerValuationParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -3602,7 +3806,7 @@ export const getStockReportsControllerValuationUrl = (params: StockReportsContro
   return stringifiedParams.length > 0 ? `/api/v1/stock/valuation?${stringifiedParams}` : `/api/v1/stock/valuation`
 }
 
-export const stockReportsControllerValuation = async (params: StockReportsControllerValuationParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerValuationResponse> => {
+export const stockReportsControllerValuation = async (params?: StockReportsControllerValuationParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerValuationResponse> => {
 
   return apiFetch<stockReportsControllerValuationResponse>(getStockReportsControllerValuationUrl(params),
   {
@@ -3641,207 +3845,6 @@ export const stockReportsControllerVerify = async ( options?: Parameters<typeof 
   {
     ...options,
     method: 'GET'
-
-
-  }
-);}
-
-
-
-export type partiesControllerListResponse200 = {
-  data: void
-  status: 200
-}
-
-export type partiesControllerListResponseSuccess = (partiesControllerListResponse200) & {
-  headers: Headers;
-};
-;
-
-export type partiesControllerListResponse = (partiesControllerListResponseSuccess)
-
-export const getPartiesControllerListUrl = (params: PartiesControllerListParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : String(value))
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/api/v1/parties?${stringifiedParams}` : `/api/v1/parties`
-}
-
-export const partiesControllerList = async (params: PartiesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerListResponse> => {
-
-  return apiFetch<partiesControllerListResponse>(getPartiesControllerListUrl(params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export type partiesControllerCreateResponse201 = {
-  data: void
-  status: 201
-}
-
-export type partiesControllerCreateResponseSuccess = (partiesControllerCreateResponse201) & {
-  headers: Headers;
-};
-;
-
-export type partiesControllerCreateResponse = (partiesControllerCreateResponseSuccess)
-
-export const getPartiesControllerCreateUrl = () => {
-
-
-
-
-  return `/api/v1/parties`
-}
-
-export const partiesControllerCreate = async (createPartyDto: CreatePartyDto, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerCreateResponse> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return apiFetch<partiesControllerCreateResponse>(getPartiesControllerCreateUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(createPartyDto)
-  }
-);}
-
-
-
-export type partiesControllerGetResponse200 = {
-  data: void
-  status: 200
-}
-
-export type partiesControllerGetResponseSuccess = (partiesControllerGetResponse200) & {
-  headers: Headers;
-};
-;
-
-export type partiesControllerGetResponse = (partiesControllerGetResponseSuccess)
-
-export const getPartiesControllerGetUrl = (id: string,) => {
-
-
-
-
-  return `/api/v1/parties/${id}`
-}
-
-export const partiesControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerGetResponse> => {
-
-  return apiFetch<partiesControllerGetResponse>(getPartiesControllerGetUrl(id),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export type partiesControllerUpdateResponse200 = {
-  data: void
-  status: 200
-}
-
-export type partiesControllerUpdateResponseSuccess = (partiesControllerUpdateResponse200) & {
-  headers: Headers;
-};
-;
-
-export type partiesControllerUpdateResponse = (partiesControllerUpdateResponseSuccess)
-
-export const getPartiesControllerUpdateUrl = (id: string,) => {
-
-
-
-
-  return `/api/v1/parties/${id}`
-}
-
-export const partiesControllerUpdate = async (id: string,
-    updatePartyDto: UpdatePartyDto, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerUpdateResponse> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return apiFetch<partiesControllerUpdateResponse>(getPartiesControllerUpdateUrl(id),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(updatePartyDto)
-  }
-);}
-
-
-
-export type partiesControllerDeactivateResponse200 = {
-  data: void
-  status: 200
-}
-
-export type partiesControllerDeactivateResponseSuccess = (partiesControllerDeactivateResponse200) & {
-  headers: Headers;
-};
-;
-
-export type partiesControllerDeactivateResponse = (partiesControllerDeactivateResponseSuccess)
-
-export const getPartiesControllerDeactivateUrl = (id: string,) => {
-
-
-
-
-  return `/api/v1/parties/${id}/deactivate`
-}
-
-export const partiesControllerDeactivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerDeactivateResponse> => {
-
-  return apiFetch<partiesControllerDeactivateResponse>(getPartiesControllerDeactivateUrl(id),
-  {
-    ...options,
-    method: 'PATCH'
 
 
   }
@@ -4050,6 +4053,39 @@ export const salesControllerDeleteInvoice = async (id: string, options?: Paramet
 
 
 
+export type salesControllerInvoicePdfResponse200 = {
+  data: void
+  status: 200
+}
+
+export type salesControllerInvoicePdfResponseSuccess = (salesControllerInvoicePdfResponse200) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerInvoicePdfResponse = (salesControllerInvoicePdfResponseSuccess)
+
+export const getSalesControllerInvoicePdfUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-invoices/${id}/pdf`
+}
+
+export const salesControllerInvoicePdf = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerInvoicePdfResponse> => {
+
+  return apiFetch<salesControllerInvoicePdfResponse>(getSalesControllerInvoicePdfUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export type salesControllerPostInvoiceResponse201 = {
   data: void
   status: 201
@@ -4229,6 +4265,39 @@ export const salesControllerDeleteReturn = async (id: string, options?: Paramete
   {
     ...options,
     method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type salesControllerReturnPdfResponse200 = {
+  data: void
+  status: 200
+}
+
+export type salesControllerReturnPdfResponseSuccess = (salesControllerReturnPdfResponse200) & {
+  headers: Headers;
+};
+;
+
+export type salesControllerReturnPdfResponse = (salesControllerReturnPdfResponseSuccess)
+
+export const getSalesControllerReturnPdfUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-returns/${id}/pdf`
+}
+
+export const salesControllerReturnPdf = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerReturnPdfResponse> => {
+
+  return apiFetch<salesControllerReturnPdfResponse>(getSalesControllerReturnPdfUrl(id),
+  {
+    ...options,
+    method: 'GET'
 
 
   }
@@ -4463,6 +4532,39 @@ export const purchasesControllerDeleteInvoice = async (id: string, options?: Par
   {
     ...options,
     method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type purchasesControllerInvoicePdfResponse200 = {
+  data: void
+  status: 200
+}
+
+export type purchasesControllerInvoicePdfResponseSuccess = (purchasesControllerInvoicePdfResponse200) & {
+  headers: Headers;
+};
+;
+
+export type purchasesControllerInvoicePdfResponse = (purchasesControllerInvoicePdfResponseSuccess)
+
+export const getPurchasesControllerInvoicePdfUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-invoices/${id}/pdf`
+}
+
+export const purchasesControllerInvoicePdf = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerInvoicePdfResponse> => {
+
+  return apiFetch<purchasesControllerInvoicePdfResponse>(getPurchasesControllerInvoicePdfUrl(id),
+  {
+    ...options,
+    method: 'GET'
 
 
   }
@@ -5328,6 +5430,39 @@ export const treasuryControllerGetReceipt = async (id: string, options?: Paramet
 
 
 
+export type treasuryControllerReceiptPdfResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerReceiptPdfResponseSuccess = (treasuryControllerReceiptPdfResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerReceiptPdfResponse = (treasuryControllerReceiptPdfResponseSuccess)
+
+export const getTreasuryControllerReceiptPdfUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/receipts/${id}/pdf`
+}
+
+export const treasuryControllerReceiptPdf = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReceiptPdfResponse> => {
+
+  return apiFetch<treasuryControllerReceiptPdfResponse>(getTreasuryControllerReceiptPdfUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export type treasuryControllerListPaymentsResponse200 = {
   data: void
   status: 200
@@ -5431,6 +5566,39 @@ export const getTreasuryControllerGetPaymentUrl = (id: string,) => {
 export const treasuryControllerGetPayment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerGetPaymentResponse> => {
 
   return apiFetch<treasuryControllerGetPaymentResponse>(getTreasuryControllerGetPaymentUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type treasuryControllerPaymentPdfResponse200 = {
+  data: void
+  status: 200
+}
+
+export type treasuryControllerPaymentPdfResponseSuccess = (treasuryControllerPaymentPdfResponse200) & {
+  headers: Headers;
+};
+;
+
+export type treasuryControllerPaymentPdfResponse = (treasuryControllerPaymentPdfResponseSuccess)
+
+export const getTreasuryControllerPaymentPdfUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payments/${id}/pdf`
+}
+
+export const treasuryControllerPaymentPdf = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerPaymentPdfResponse> => {
+
+  return apiFetch<treasuryControllerPaymentPdfResponse>(getTreasuryControllerPaymentPdfUrl(id),
   {
     ...options,
     method: 'GET'
@@ -5883,6 +6051,383 @@ export const getTreasuryControllerCashBalancesUrl = () => {
 export const treasuryControllerCashBalances = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCashBalancesResponse> => {
 
   return apiFetch<treasuryControllerCashBalancesResponse>(getTreasuryControllerCashBalancesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type eInvoiceControllerGetSettingsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type eInvoiceControllerGetSettingsResponseSuccess = (eInvoiceControllerGetSettingsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type eInvoiceControllerGetSettingsResponse = (eInvoiceControllerGetSettingsResponseSuccess)
+
+export const getEInvoiceControllerGetSettingsUrl = () => {
+
+
+
+
+  return `/api/v1/einvoice/settings`
+}
+
+export const eInvoiceControllerGetSettings = async ( options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerGetSettingsResponse> => {
+
+  return apiFetch<eInvoiceControllerGetSettingsResponse>(getEInvoiceControllerGetSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type eInvoiceControllerUpdateSettingsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type eInvoiceControllerUpdateSettingsResponseSuccess = (eInvoiceControllerUpdateSettingsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type eInvoiceControllerUpdateSettingsResponse = (eInvoiceControllerUpdateSettingsResponseSuccess)
+
+export const getEInvoiceControllerUpdateSettingsUrl = () => {
+
+
+
+
+  return `/api/v1/einvoice/settings`
+}
+
+export const eInvoiceControllerUpdateSettings = async (updateEInvoiceSettingsDto: UpdateEInvoiceSettingsDto, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerUpdateSettingsResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<eInvoiceControllerUpdateSettingsResponse>(getEInvoiceControllerUpdateSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateEInvoiceSettingsDto)
+  }
+);}
+
+
+
+export type eInvoiceControllerListSubmissionsResponse200 = {
+  data: void
+  status: 200
+}
+
+export type eInvoiceControllerListSubmissionsResponseSuccess = (eInvoiceControllerListSubmissionsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type eInvoiceControllerListSubmissionsResponse = (eInvoiceControllerListSubmissionsResponseSuccess)
+
+export const getEInvoiceControllerListSubmissionsUrl = () => {
+
+
+
+
+  return `/api/v1/einvoice/submissions`
+}
+
+export const eInvoiceControllerListSubmissions = async ( options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerListSubmissionsResponse> => {
+
+  return apiFetch<eInvoiceControllerListSubmissionsResponse>(getEInvoiceControllerListSubmissionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type eInvoiceControllerGetSubmissionResponse200 = {
+  data: void
+  status: 200
+}
+
+export type eInvoiceControllerGetSubmissionResponseSuccess = (eInvoiceControllerGetSubmissionResponse200) & {
+  headers: Headers;
+};
+;
+
+export type eInvoiceControllerGetSubmissionResponse = (eInvoiceControllerGetSubmissionResponseSuccess)
+
+export const getEInvoiceControllerGetSubmissionUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/einvoice/submissions/${id}`
+}
+
+export const eInvoiceControllerGetSubmission = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerGetSubmissionResponse> => {
+
+  return apiFetch<eInvoiceControllerGetSubmissionResponse>(getEInvoiceControllerGetSubmissionUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type eInvoiceControllerResendResponse201 = {
+  data: void
+  status: 201
+}
+
+export type eInvoiceControllerResendResponseSuccess = (eInvoiceControllerResendResponse201) & {
+  headers: Headers;
+};
+;
+
+export type eInvoiceControllerResendResponse = (eInvoiceControllerResendResponseSuccess)
+
+export const getEInvoiceControllerResendUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/einvoice/submissions/${id}/resend`
+}
+
+export const eInvoiceControllerResend = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerResendResponse> => {
+
+  return apiFetch<eInvoiceControllerResendResponse>(getEInvoiceControllerResendUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type reportsControllerIncomeStatementResponse200 = {
+  data: void
+  status: 200
+}
+
+export type reportsControllerIncomeStatementResponseSuccess = (reportsControllerIncomeStatementResponse200) & {
+  headers: Headers;
+};
+;
+
+export type reportsControllerIncomeStatementResponse = (reportsControllerIncomeStatementResponseSuccess)
+
+export const getReportsControllerIncomeStatementUrl = () => {
+
+
+
+
+  return `/api/v1/reports/income-statement`
+}
+
+export const reportsControllerIncomeStatement = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerIncomeStatementResponse> => {
+
+  return apiFetch<reportsControllerIncomeStatementResponse>(getReportsControllerIncomeStatementUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type reportsControllerBalanceSheetResponse200 = {
+  data: void
+  status: 200
+}
+
+export type reportsControllerBalanceSheetResponseSuccess = (reportsControllerBalanceSheetResponse200) & {
+  headers: Headers;
+};
+;
+
+export type reportsControllerBalanceSheetResponse = (reportsControllerBalanceSheetResponseSuccess)
+
+export const getReportsControllerBalanceSheetUrl = () => {
+
+
+
+
+  return `/api/v1/reports/balance-sheet`
+}
+
+export const reportsControllerBalanceSheet = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerBalanceSheetResponse> => {
+
+  return apiFetch<reportsControllerBalanceSheetResponse>(getReportsControllerBalanceSheetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type reportsControllerTaxSummaryResponse200 = {
+  data: void
+  status: 200
+}
+
+export type reportsControllerTaxSummaryResponseSuccess = (reportsControllerTaxSummaryResponse200) & {
+  headers: Headers;
+};
+;
+
+export type reportsControllerTaxSummaryResponse = (reportsControllerTaxSummaryResponseSuccess)
+
+export const getReportsControllerTaxSummaryUrl = () => {
+
+
+
+
+  return `/api/v1/reports/tax-summary`
+}
+
+export const reportsControllerTaxSummary = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerTaxSummaryResponse> => {
+
+  return apiFetch<reportsControllerTaxSummaryResponse>(getReportsControllerTaxSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type reportsControllerSalesSummaryResponse200 = {
+  data: void
+  status: 200
+}
+
+export type reportsControllerSalesSummaryResponseSuccess = (reportsControllerSalesSummaryResponse200) & {
+  headers: Headers;
+};
+;
+
+export type reportsControllerSalesSummaryResponse = (reportsControllerSalesSummaryResponseSuccess)
+
+export const getReportsControllerSalesSummaryUrl = () => {
+
+
+
+
+  return `/api/v1/reports/sales-summary`
+}
+
+export const reportsControllerSalesSummary = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerSalesSummaryResponse> => {
+
+  return apiFetch<reportsControllerSalesSummaryResponse>(getReportsControllerSalesSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type reportsControllerPurchasesSummaryResponse200 = {
+  data: void
+  status: 200
+}
+
+export type reportsControllerPurchasesSummaryResponseSuccess = (reportsControllerPurchasesSummaryResponse200) & {
+  headers: Headers;
+};
+;
+
+export type reportsControllerPurchasesSummaryResponse = (reportsControllerPurchasesSummaryResponseSuccess)
+
+export const getReportsControllerPurchasesSummaryUrl = () => {
+
+
+
+
+  return `/api/v1/reports/purchases-summary`
+}
+
+export const reportsControllerPurchasesSummary = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerPurchasesSummaryResponse> => {
+
+  return apiFetch<reportsControllerPurchasesSummaryResponse>(getReportsControllerPurchasesSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type reportsControllerDashboardSummaryResponse200 = {
+  data: void
+  status: 200
+}
+
+export type reportsControllerDashboardSummaryResponseSuccess = (reportsControllerDashboardSummaryResponse200) & {
+  headers: Headers;
+};
+;
+
+export type reportsControllerDashboardSummaryResponse = (reportsControllerDashboardSummaryResponseSuccess)
+
+export const getReportsControllerDashboardSummaryUrl = () => {
+
+
+
+
+  return `/api/v1/dashboard/summary`
+}
+
+export const reportsControllerDashboardSummary = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerDashboardSummaryResponse> => {
+
+  return apiFetch<reportsControllerDashboardSummaryResponse>(getReportsControllerDashboardSummaryUrl(),
   {
     ...options,
     method: 'GET'

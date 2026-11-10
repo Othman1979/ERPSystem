@@ -17,7 +17,9 @@ async function req(path: string, token?: string, body?: unknown, method = 'POST'
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(path.endsWith('/post') || path.endsWith('/reverse') || path.endsWith('/approve')
+      // Every POST carries a fresh key; the API only checks it on posting
+      // actions (/post, /reverse, /journal-entries/opening, vouchers…).
+      ...(method === 'POST'
         ? { 'Idempotency-Key': `demo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }
         : {}),
     },
@@ -86,6 +88,20 @@ async function main() {
     return child.id;
   };
 
+  // Parties of the sample entries, resolved by code (created once). Party
+  // lines must name a real party of the right kind.
+  const parties = (await req('/parties', H.token, undefined, 'GET')) as { id: string; code: string }[];
+  const partyId = async (code: string, nameAr: string, partyType: 'CUSTOMER' | 'SUPPLIER') => {
+    const found = parties.find((p) => p.code === code);
+    if (found) return found.id;
+    const created = (await req('/parties', H.token, { code, nameAr, partyType })) as { id: string };
+    console.log('party created:', code);
+    return created.id;
+  };
+  const customer1 = await partyId('C-001', 'محمد', 'CUSTOMER');
+  const customer2 = await partyId('C-002', 'أحمد', 'CUSTOMER');
+  const supplier1 = await partyId('S-001', 'مؤسسة التوريد', 'SUPPLIER');
+
   // ---- inventory demo data (Arabic) ----
   await seedInventory(H.token);
 
@@ -101,7 +117,9 @@ async function main() {
     existing.filter((e) => e.status === 'POSTED').map((e) => e.description),
   );
 
-  // Opening balances (difference auto-plugs to OPENING_BALANCE_EQUITY)
+  // Opening balances (difference auto-plugs to OPENING_BALANCE_EQUITY).
+  // No inventory line: opening stock comes from the OPENING stock
+  // adjustment below (§8.6), which the API enforces.
   if (existing.length === 0)
   await req('/journal-entries/opening', H.token, {
     entryDate: '2026-01-01',
@@ -109,13 +127,12 @@ async function main() {
     lines: [
       { accountId: acct('1101'), debit: '5000' },
       { accountId: acct('1102'), debit: '25000' },
-      { accountId: acct('1104'), debit: '40000' },
       { accountId: acct('1201'), debit: '8000' },
       {
         accountId: acct('2101'),
         credit: '30000',
         partyType: 'SUPPLIER',
-        partyId: '1',
+        partyId: supplier1,
       },
     ],
   });
@@ -147,24 +164,19 @@ async function main() {
     { accountId: acct('2102'), credit: '160' },
   ]);
 
-  await post('2026-01-15', 'تكلفة البضاعة المباعة', [
-    { accountId: acct('5101'), debit: '600' },
-    { accountId: acct('1104'), credit: '600' },
-  ]);
-
   await post('2026-02-01', 'إيجار شهر فبراير', [
     { accountId: acct('5202'), debit: '500' },
     { accountId: acct('1101'), credit: '500' },
   ]);
 
   await post('2026-02-10', 'مبيعات آجلة للعميل', [
-    { accountId: acct('1103'), debit: '2320', partyType: 'CUSTOMER', partyId: '1' },
+    { accountId: acct('1103'), debit: '2320', partyType: 'CUSTOMER', partyId: customer1 },
     { accountId: acct('4101'), credit: '2000' },
     { accountId: acct('2102'), credit: '320' },
   ]);
 
   await post('2026-02-12', 'سداد جزئي للمورد', [
-    { accountId: acct('2101'), debit: '500', partyType: 'SUPPLIER', partyId: '1' },
+    { accountId: acct('2101'), debit: '500', partyType: 'SUPPLIER', partyId: supplier1 },
     { accountId: acct('1102'), credit: '500' },
   ]);
 
@@ -178,7 +190,7 @@ async function main() {
         accountId: acct('1103'),
         credit: '1160',
         partyType: 'CUSTOMER',
-        partyId: '1',
+        partyId: customer1,
       },
     ],
     'RECEIPT_VOUCHER',
@@ -223,7 +235,7 @@ async function main() {
         accountId: acct('2101'),
         debit: '800',
         partyType: 'SUPPLIER',
-        partyId: '1',
+        partyId: supplier1,
       },
       { accountId: acct('1102'), credit: '800' },
     ],
@@ -255,7 +267,7 @@ async function main() {
         accountId: acct('1103'),
         credit: '1160',
         partyType: 'CUSTOMER',
-        partyId: '2',
+        partyId: customer2,
       },
     ],
     'RECEIPT_VOUCHER',
@@ -273,7 +285,7 @@ async function main() {
 
   await post('2026-04-15', 'مردودات مبيعات — بضاعة تالفة', [
     { accountId: acct('4102'), debit: '92' },
-    { accountId: acct('1103'), credit: '92', partyType: 'CUSTOMER', partyId: '1' },
+    { accountId: acct('1103'), credit: '92', partyType: 'CUSTOMER', partyId: customer1 },
   ]);
 
   // Leave one draft for the user to post from the UI

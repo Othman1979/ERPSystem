@@ -13,8 +13,10 @@ import { DomainError } from '../errors/domain.error.js';
 import { ErrorCode } from '../errors/error-codes.js';
 
 // Posting actions (§10.3): /post and /reverse, plus documents that post on
-// creation (vouchers, cash transfers) and allocation changes (Phase 6).
-const ACTIVITY_PATH = /\/(post|reverse|allocations|cancel)$|\/(receipts|payments|cash-transfers)$/;
+// creation (vouchers, cash transfers, the opening entry) and allocation
+// changes (Phase 6).
+const ACTIVITY_PATH =
+  /\/(post|reverse|allocations|cancel)$|\/(receipts|payments|cash-transfers)$|\/journal-entries\/opening$/;
 const KEY_TTL_MS = 24 * 60 * 60 * 1000;
 
 function stableStringify(value: unknown): string {
