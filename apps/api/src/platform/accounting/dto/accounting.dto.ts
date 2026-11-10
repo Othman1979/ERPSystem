@@ -161,9 +161,9 @@ export class CreateTaxCategoryDto extends CreateUnitDto {
   @IsString()
   rate!: string;
 
+  /** JoFotara tax category (0005 §6): S taxed, Z exempt, O zero-rated. */
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
+  @IsIn(['S', 'Z', 'O'])
   einvoiceCode?: string;
 
   @IsOptional()
@@ -177,8 +177,7 @@ export class UpdateTaxCategoryDto extends UpdateLookupDto {
   rate?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
+  @IsIn(['S', 'Z', 'O', null])
   einvoiceCode?: string | null;
 
   @IsOptional()

@@ -43,6 +43,11 @@ export class CreatePartyDto {
   @MaxLength(50)
   nationalId?: string;
 
+  /** JoFotara buyer scheme for nationalId (0005 §5): NIN Jordanian, PN non-Jordanian. */
+  @IsOptional()
+  @IsIn(['NIN', 'PN'])
+  nationalIdKind?: 'NIN' | 'PN';
+
   @IsOptional()
   @IsString()
   @MaxLength(50)
@@ -102,6 +107,11 @@ export class UpdatePartyDto {
   @IsString()
   @MaxLength(50)
   nationalId?: string;
+
+  /** JoFotara buyer scheme for nationalId (0005 §5): NIN Jordanian, PN non-Jordanian. */
+  @IsOptional()
+  @IsIn(['NIN', 'PN'])
+  nationalIdKind?: 'NIN' | 'PN';
 
   @IsOptional()
   @IsString()

@@ -253,6 +253,7 @@ describe('Phase 7 — JoFotara', () => {
     for (const [code, extra] of [
       ['TN', { taxNumber: '87654321' }],
       ['NIN', { nationalId: '9871234567' }],
+      ['PN', { nationalId: '445566', nationalIdKind: 'PN' }],
       ['NONE', {}],
     ] as const) {
       const p = await api()
@@ -322,6 +323,14 @@ describe('Phase 7 — JoFotara', () => {
     const s = await settled((await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!);
     expect(s.status).toBe('ACCEPTED');
     expect(s.requestXml).toContain('<cbc:ID schemeID="TN">0</cbc:ID>');
+  });
+
+  it('a non-Jordanian buyer goes with his personal number (PN)', async () => {
+    const inv = await draftInvoice('PN', '1', 'CASH');
+    expect((await post('sales-invoices', inv.id)).status).toBe(201);
+    const s = await settled((await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!);
+    expect(s.status).toBe('ACCEPTED');
+    expect(s.requestXml).toContain('<cbc:ID schemeID="PN">445566</cbc:ID>');
   });
 
   // ------------------------------------------------------------ happy path
