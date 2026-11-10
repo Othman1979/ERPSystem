@@ -532,6 +532,20 @@ export class VouchersService {
       userId?: bigint | null;
     },
   ) {
+    if (opts.allocations.length === 0 && !opts.auto) return;
+    // Only a receipt from a customer or a payment to a supplier settles
+    // invoices. A refund the other way (receipt from a supplier, payment to
+    // a customer) raises the party's balance, so it cannot lower what an
+    // invoice owes (ADR-004 §3).
+    const settles = opts.receiptId ? 'CUSTOMER' : 'SUPPLIER';
+    if (opts.partyType !== settles) {
+      throw new DomainError(
+        ErrorCode.VALIDATION,
+        opts.receiptId
+          ? 'A receipt from a supplier is a refund and cannot be allocated to invoices'
+          : 'A payment to a customer is a refund and cannot be allocated to invoices',
+      );
+    }
     // Direction check: customers settle sales invoices, suppliers purchase invoices.
     const expectedDoc: InvoiceDocType = opts.partyType === 'CUSTOMER' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
     const invoices = this.settlement(expectedDoc);
@@ -568,6 +582,9 @@ export class VouchersService {
       }
       if (inv.status !== 'POSTED' || inv.partyId !== opts.partyId) {
         throw new DomainError(ErrorCode.VALIDATION, 'Invoice not found, not posted, or belongs to another party');
+      }
+      if (inv.paymentType !== 'CREDIT') {
+        throw new DomainError(ErrorCode.VALIDATION, 'A cash invoice is settled at sale and takes no allocations');
       }
       allocated = allocated.plus(amt);
       if (allocated.gt(opts.amount)) {

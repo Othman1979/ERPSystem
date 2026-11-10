@@ -7,6 +7,7 @@
  *  - opening balances and manual party entries are aged from their entry
  *    date, oldest settled first, and each party's balance equals its control
  *    account (unallocated receipts show as "unapplied");
+ *  - allocation rules: cash invoices take none, refunds settle no invoice;
  *  - tenant isolation.
  * Real MariaDB (erp_test) + built API. Run `pnpm build` before `pnpm test`.
  */
@@ -353,6 +354,62 @@ describe('Aging as of a date', () => {
       expect(m3(new Decimal(r.total).plus(r.unapplied))).toBe(m3(r.balance));
     }
     expect(m3(customers.totals.balance)).toBe(m3(await controlBalance('1103', asOf)));
+  });
+
+  // --------------------------------------------- allocation rules (ADR-004 §3)
+
+  it('a cash invoice takes no allocation', async () => {
+    const cash = await api()
+      .post('/api/v1/sales-invoices')
+      .set(auth(token))
+      .send({
+        invoiceDate: '2025-05-01',
+        customerId: party.C2,
+        warehouseId,
+        paymentType: 'CASH',
+        cashAccountId,
+        lines: [{ itemId, qty: '1', unitPrice: '2.000' }],
+      });
+    expect(cash.status).toBe(201);
+    expect((await api().post(`/api/v1/sales-invoices/${cash.body.id}/post`).set(auth(token)).set(idem())).status).toBe(201);
+    const res = await api()
+      .post('/api/v1/receipts')
+      .set(auth(token))
+      .set(idem())
+      .send({
+        receiptDate: '2025-05-02',
+        partyType: 'CUSTOMER',
+        partyId: party.C2,
+        cashAccountId,
+        amount: '1.000',
+        allocations: [{ documentType: 'SALES_INVOICE', documentId: cash.body.id, amount: '1.000' }],
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('a refund the other way cannot settle an invoice, but can still be made', async () => {
+    const open = await sale('C2', '2025-05-01', '5'); // 11.600, credit
+    const refund = (body: object) =>
+      api()
+        .post('/api/v1/payments')
+        .set(auth(token))
+        .set(idem())
+        .send({ paymentDate: '2025-05-03', partyType: 'CUSTOMER', partyId: party.C2, cashAccountId, amount: '5.000', ...body });
+    expect(
+      (await refund({ allocations: [{ documentType: 'SALES_INVOICE', documentId: open.id, amount: '5.000' }] })).status,
+    ).toBe(400);
+    expect((await refund({ autoAllocate: true })).status).toBe(400);
+    const supplierRefund = await api()
+      .post('/api/v1/receipts')
+      .set(auth(token))
+      .set(idem())
+      .send({ receiptDate: '2025-05-03', partyType: 'SUPPLIER', partyId: party.S1, cashAccountId, amount: '1.000', autoAllocate: true });
+    expect(supplierRefund.status).toBe(400);
+
+    const plain = await refund({});
+    expect(plain.status).toBe(201);
+    const left = await api().get(`/api/v1/sales-invoices/${open.id}`).set(auth(token));
+    expect(m3(left.body.outstanding)).toBe('11.600');
   });
 
   it('another tenant sees nothing', async () => {
