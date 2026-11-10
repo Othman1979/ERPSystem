@@ -19,7 +19,7 @@ declare module 'pdfmake' {
 declare module 'fontkit' {
   export interface Font {
     unitsPerEm: number;
-    layout(text: string): { advanceWidth: number };
+    layout(text: string): { advanceWidth: number; glyphs: { codePoints: number[] }[] };
   }
   export function openSync(path: string): Font;
 }

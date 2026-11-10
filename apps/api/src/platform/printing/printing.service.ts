@@ -10,10 +10,20 @@ import { tablePdf, tableXlsx, type PrintContext, type ReportTable } from './repo
 
 export type ExportFormat = 'json' | 'pdf' | 'xlsx';
 
-/** Rows a report may export at most (REPORT_TOO_LARGE above); env-tunable, proven in the perf test. */
+/**
+ * Rows a report may export at most (REPORT_TOO_LARGE above), env-tunable.
+ * Read on every use, not at import time: ConfigModule loads `.env` into
+ * process.env only after this module is imported. Kept low because exports
+ * run in the request thread (ADR-006: streaming XLSX / a PDF worker are
+ * known debt).
+ */
 export const EXPORT_LIMITS = {
-  pdf: Number(process.env.REPORT_PDF_MAX_ROWS ?? 3_000),
-  xlsx: Number(process.env.REPORT_XLSX_MAX_ROWS ?? 200_000),
+  get pdf() {
+    return Number(process.env.REPORT_PDF_MAX_ROWS || 1_000);
+  },
+  get xlsx() {
+    return Number(process.env.REPORT_XLSX_MAX_ROWS || 50_000);
+  },
 };
 
 let configured = false;

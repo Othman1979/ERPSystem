@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import { FONT_NAME } from './fonts.js';
 import { formatAmount, formatQty, toExcelNumber } from './format.js';
 import { paragraph } from './pdf-text.js';
+import { ltr } from './rtl-text.js';
 
 /**
  * One model for every report export (BUILD_PLAN §15 "?format=json|pdf|xlsx"):
@@ -78,8 +79,9 @@ export function headerBlock(ctx: PrintContext, title: string, meta: string[], wi
   const align = ctx.lang === 'ar' ? 'right' : 'left';
   const base = ctx.lang === 'ar' ? 'rtl' : 'ltr';
   const companyLine = [
-    ctx.company.taxNumber ? `${L(ctx, 'الرقم الضريبي', 'Tax no.')}: ${ctx.company.taxNumber}` : '',
-    ctx.company.phone ?? '',
+    // Numbers with spaces or a "+" stay one left-to-right unit inside Arabic.
+    ctx.company.taxNumber ? `${L(ctx, 'الرقم الضريبي', 'Tax no.')}: ${ltr(ctx.company.taxNumber)}` : '',
+    ctx.company.phone ? ltr(ctx.company.phone) : '',
   ]
     .filter(Boolean)
     .join('   ');
@@ -180,12 +182,18 @@ export function tablePdf(table: ReportTable, ctx: PrintContext): object {
   };
 }
 
+/** Excel sheet names: at most 31 characters, none of * ? : \ / [ ] (file names carry free-text codes). */
+export function sheetName(name: string): string {
+  const clean = name.replace(/[*?:\\/[\]]+/g, '-').replace(/^'+|'+$/g, '').slice(0, 31).trim();
+  return clean || 'report';
+}
+
 /** XLSX workbook for a report table: one sheet, right-to-left in Arabic, numbers as numbers. */
 export async function tableXlsx(table: ReportTable, ctx: PrintContext): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'ERP Cloud';
   wb.created = ctx.printedAt;
-  const ws = wb.addWorksheet(table.fileName.slice(0, 31), {
+  const ws = wb.addWorksheet(sheetName(table.fileName), {
     views: [{ rightToLeft: ctx.lang === 'ar', state: 'frozen', ySplit: 0 }],
     pageSetup: { paperSize: 9, orientation: table.orientation ?? 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
   });
@@ -214,7 +222,7 @@ export async function tableXlsx(table: ReportTable, ctx: PrintContext): Promise<
       const cell = row.getCell(i + 1);
       if (c.kind === 'amount') cell.numFmt = '#,##0.000';
       if (c.kind === 'qty') cell.numFmt = '#,##0.######';
-      if (c.kind === 'text' && i === 0 && r._indent) cell.alignment = { indent: r._indent };
+      if ((c.kind ?? 'text') === 'text' && i === 0 && r._indent) cell.alignment = { indent: r._indent };
     });
     if (bold || r._bold) row.font = { bold: true };
     return row;

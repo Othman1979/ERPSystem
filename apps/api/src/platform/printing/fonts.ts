@@ -15,12 +15,21 @@ export const FONT_FILES = {
 export const FONT_NAME = 'Plex';
 
 let fonts: { normal: fontkit.Font; bold: fontkit.Font } | undefined;
+/** Widths per em, by weight and text: wrapping measures the same words again and again. */
+const widthCache = new Map<string, number>();
 
 /** Width of `text` in points at `size`, with the font pdfmake draws it in. */
 export function measureAt(size: number): Measure {
   fonts ??= { normal: fontkit.openSync(FONT_FILES.normal), bold: fontkit.openSync(FONT_FILES.bold) };
   return (text, bold) => {
-    const f = bold ? fonts!.bold : fonts!.normal;
-    return (f.layout(text).advanceWidth / f.unitsPerEm) * size;
+    const key = `${bold ? 1 : 0}|${text}`;
+    let units = widthCache.get(key);
+    if (units === undefined) {
+      const f = bold ? fonts!.bold : fonts!.normal;
+      units = f.layout(text).advanceWidth / f.unitsPerEm;
+      if (widthCache.size > 50_000) widthCache.clear();
+      widthCache.set(key, units);
+    }
+    return units * size;
   };
 }

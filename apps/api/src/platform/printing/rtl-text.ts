@@ -36,6 +36,9 @@ const BIDI_CONTROLS = /[‎‏‪-‮⁦-⁩]/g;
 /** A number or Latin code with inner separators, optionally signed: 2025-12-31, SI-1/A, -1,234.500, 12:30. */
 const LTR_TOKEN = /-?[A-Za-z0-9]+(?:[-/.:,][A-Za-z0-9]+)+|-\d+(?:\.\d+)?/g;
 
+/** Keeps `text` (a phone number, a tax number) as one left-to-right unit inside Arabic. */
+export const ltr = (text: string) => `${LRI}${text}${PDI}`;
+
 type Kind = 'space' | 'rtl' | 'ltr';
 
 /**
@@ -76,9 +79,11 @@ export function visualPieces(input: string, base: 'rtl' | 'ltr'): string[] {
       run = [];
       return;
     }
-    // The run is in visual order. fontkit reverses words of RTL scripts on its
-    // own, so give it those in logical order; neutrals (".", "-") it leaves as is.
-    if (runKind === 'rtl' && hasRtl(text)) text = text.split('').reverse().join('');
+    // The run is in visual order. fontkit lays out anything in an RTL script
+    // right to left — Arabic letters AND Arabic-Indic digits (١٢٣, which sit
+    // at an even, LTR level) — so hand it those pieces reversed and it puts
+    // them back; neutrals (".", "-") and Latin it leaves as they are.
+    if (hasRtl(text)) text = text.split('').reverse().join('');
     pieces.push(text);
     run = [];
   };
