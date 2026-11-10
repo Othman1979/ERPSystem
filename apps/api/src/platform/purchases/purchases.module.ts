@@ -11,7 +11,8 @@ import { PurchasesController } from './purchases.controller.js';
   imports: [SharedModule, JournalModule, InventoryModule, PrintingModule],
   controllers: [PurchasesController],
   providers: [PurchaseInvoicesService, PurchaseReturnsService],
-  // Treasury reads open credit invoices for aging through this service (module boundary).
-  exports: [PurchaseInvoicesService],
+  // Treasury reads open credit invoices for aging through this service (module boundary);
+  // the Phase 8 reports add up invoices and returns through their summary().
+  exports: [PurchaseInvoicesService, PurchaseReturnsService],
 })
 export class PurchasesModule {}

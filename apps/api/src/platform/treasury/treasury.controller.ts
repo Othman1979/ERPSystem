@@ -5,6 +5,7 @@ import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { ExportQueryDto } from '../printing/dto/export.dto.js';
 import { PrintingService } from '../printing/printing.service.js';
 import { voucherPrint } from './treasury.print.js';
+import { agingTable } from './aging.table.js';
 import { CashAccountsService } from './cash-accounts.service.js';
 import { CashTransfersService } from './cash-transfers.service.js';
 import { TreasuryReportsService } from './treasury-reports.service.js';
@@ -199,8 +200,9 @@ export class TreasuryController {
 
   @Get('reports/aging')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
-  aging(@Query() q: AgingQueryDto) {
-    return this.reports.aging(q.partyType, q.asOf ? new Date(q.asOf) : undefined);
+  async aging(@Query() q: AgingQueryDto) {
+    const data = await this.reports.aging(q.partyType, q.asOf ? new Date(q.asOf) : undefined);
+    return this.printing.respond(data, q, agingTable);
   }
 
   @Get('treasury/balances')

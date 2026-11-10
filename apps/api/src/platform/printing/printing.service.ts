@@ -68,6 +68,21 @@ export class PrintingService {
     return file(await this.pdf(documentPdf(doc, ctx)), 'pdf', doc.fileName);
   }
 
+  /**
+   * A report endpoint's answer for `?format=json|pdf|xlsx&lang=ar|en`: the
+   * JSON unchanged, or `toTable(data, lang)` as a downloadable file.
+   */
+  async respond<T>(
+    data: T,
+    q: { format?: ExportFormat; lang?: 'ar' | 'en' },
+    toTable: (data: T, lang: 'ar' | 'en') => ReportTable,
+  ): Promise<T | StreamableFile> {
+    const format = q.format ?? 'json';
+    if (format === 'json') return data;
+    const lang = q.lang ?? 'ar';
+    return this.exportTable(toTable(data, lang), format, lang);
+  }
+
   /** A report as a downloadable PDF or XLSX file. */
   async exportTable(table: ReportTable, format: 'pdf' | 'xlsx', lang: 'ar' | 'en'): Promise<StreamableFile> {
     const rows = table.rows.length;

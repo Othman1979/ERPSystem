@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JournalModule } from '../journal/journal.module.js';
+import { PrintingModule } from '../printing/printing.module.js';
 import { AdjustmentsService } from './adjustments.service.js';
 import { CatalogController } from './catalog.controller.js';
 import { CatalogService } from './catalog.service.js';
@@ -13,7 +14,7 @@ import { WarehousesController } from './warehouses.controller.js';
 import { WarehousesService } from './warehouses.service.js';
 
 @Module({
-  imports: [JournalModule],
+  imports: [JournalModule, PrintingModule],
   controllers: [
     CatalogController,
     WarehousesController,
@@ -29,6 +30,7 @@ import { WarehousesService } from './warehouses.service.js';
     CountsService,
     StockReportsService,
   ],
-  exports: [StockLedgerService],
+  // StockReportsService: the dashboard lists items below their minimum (module boundary).
+  exports: [StockLedgerService, StockReportsService],
 })
 export class InventoryModule {}

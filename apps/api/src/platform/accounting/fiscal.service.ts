@@ -139,6 +139,20 @@ export class FiscalService {
     return year;
   }
 
+  /**
+   * The company's fiscal year whose start..end range contains `date` (a
+   * calendar date at UTC midnight), or null. Reports use it for the default
+   * period and the balance sheet's year start (Phase 8).
+   */
+  async yearContaining(date: Date) {
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    return db.fiscalYear.findFirst({
+      where: { companyId, startDate: { lte: date }, endDate: { gte: date } },
+      select: { id: true, code: true, startDate: true, endDate: true, status: true },
+    });
+  }
+
   /** Close/reopen a period — fiscal.close permission enforced at controller. */
   async setPeriodStatus(periodId: bigint, status: 'OPEN' | 'CLOSED') {
     const { db } = this.tenant();

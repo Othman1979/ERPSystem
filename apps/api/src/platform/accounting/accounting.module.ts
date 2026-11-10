@@ -17,6 +17,7 @@ import { SettingsService } from './settings.service.js';
     SettingsService,
     ChartProvisioningService,
   ],
-  exports: [ChartProvisioningService],
+  // FiscalService: reports find the fiscal year containing a date (module boundary).
+  exports: [ChartProvisioningService, FiscalService],
 })
 export class AccountingModule {}

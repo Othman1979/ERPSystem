@@ -15,5 +15,7 @@ import { VouchersService } from './vouchers.service.js';
   imports: [SharedModule, JournalModule, PartiesModule, SalesModule, PurchasesModule, PrintingModule],
   controllers: [TreasuryController],
   providers: [CashAccountsService, VouchersService, CashTransfersService, TreasuryReportsService],
+  // The dashboard reads receivables from the aging totals (module boundary).
+  exports: [TreasuryReportsService],
 })
 export class TreasuryModule {}
