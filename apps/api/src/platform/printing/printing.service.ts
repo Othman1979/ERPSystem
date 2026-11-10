@@ -5,6 +5,7 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { FONT_DIR, FONT_FILES, FONT_NAME } from './fonts.js';
+import { documentPdf, type DocumentPrint } from './document-pdf.js';
 import { tablePdf, tableXlsx, type PrintContext, type ReportTable } from './report-table.js';
 
 export type ExportFormat = 'json' | 'pdf' | 'xlsx';
@@ -59,6 +60,12 @@ export class PrintingService {
   async pdf(definition: object): Promise<Buffer> {
     configurePdfmake();
     return Buffer.from(await pdfmake.createPdf(definition).getBuffer());
+  }
+
+  /** A business document as an A4 PDF (§13.7). */
+  async exportDocument(doc: DocumentPrint, lang: 'ar' | 'en'): Promise<StreamableFile> {
+    const ctx = await this.context(lang);
+    return file(await this.pdf(documentPdf(doc, ctx)), 'pdf', doc.fileName);
   }
 
   /** A report as a downloadable PDF or XLSX file. */

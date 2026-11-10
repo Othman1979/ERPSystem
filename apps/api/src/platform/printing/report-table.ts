@@ -65,7 +65,8 @@ function cellText(kind: ColumnKind, v: Cell): string {
 
 function widthsFor(table: ReportTable): number[] {
   const page = PAGE[table.orientation ?? (table.columns.length > 7 ? 'landscape' : 'portrait')];
-  const usable = page - 2 * MARGIN;
+  // pdfmake adds each cell's padding and rules to the widths given.
+  const usable = page - 2 * MARGIN - table.columns.length * (CELL_PAD + 1);
   const fixed = table.columns.map((c) => c.width ?? DEFAULT_WIDTH[c.kind ?? 'text']);
   const free = table.columns.filter((c, i) => fixed[i] === 0).length;
   const rest = Math.max(usable - fixed.reduce((s, w) => s + w, 0), free * 60);

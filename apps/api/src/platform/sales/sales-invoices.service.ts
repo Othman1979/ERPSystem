@@ -144,6 +144,14 @@ export class SalesInvoicesService implements InvoiceSettlement {
     return rows.map((r) => r.id);
   }
 
+  /** Invoice numbers by id (printed vouchers name the invoices they settled). */
+  async invoiceNumbers(ids: bigint[]): Promise<Map<bigint, string | null>> {
+    if (ids.length === 0) return new Map();
+    const { db } = this.support.tenant();
+    const rows = await db.salesInvoice.findMany({ where: { id: { in: ids } }, select: { id: true, invoiceNo: true } });
+    return new Map(rows.map((r) => [r.id, r.invoiceNo]));
+  }
+
   async list(status?: string, paymentType?: string, customerId?: string) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
