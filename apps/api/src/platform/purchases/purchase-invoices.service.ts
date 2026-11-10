@@ -9,6 +9,13 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { computeLineAmounts } from '../shared/invoice-math.js';
 import { creditedByInvoice, withBalance } from '../shared/invoice-balance.js';
+import {
+  lockOrder,
+  toSettlementState,
+  type InvoiceSettlement,
+  type SettlementRow,
+  type SettlementState,
+} from '../shared/invoice-settlement.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type { CreatePurchaseInvoiceDto, PurchaseInvoiceLineDto } from './dto/purchases.dto.js';
@@ -31,7 +38,7 @@ interface ResolvedLine {
  * netAmount/qtyBase cost) + inventory/purchases/tax journal (§8.4).
  */
 @Injectable()
-export class PurchaseInvoicesService {
+export class PurchaseInvoicesService implements InvoiceSettlement {
   constructor(
     private readonly support: DocumentSupportService,
     private readonly posting: PostingService,
@@ -78,6 +85,56 @@ export class PurchaseInvoicesService {
       .map((r) => withBalance(r, credited))
       .filter((r) => new Decimal(r.outstanding).gt(0))
       .map(({ supplier: party, ...r }) => ({ ...r, party }));
+  }
+
+  // --------------------------------------------- settlement (treasury, ADR-004)
+
+  /** SELECT … FOR UPDATE on the invoices, ascending id (§10.1 fixed lock order). */
+  async lockForSettlement(tx: Prisma.TransactionClient, ids: bigint[]): Promise<void> {
+    const { tenantId } = this.support.tenant();
+    for (const id of lockOrder(ids)) {
+      await tx.$queryRaw`SELECT id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    }
+  }
+
+  /**
+   * Party, status, payment type and outstanding, read with LOCKING reads on
+   * the caller's transaction. Under REPEATABLE READ a plain SELECT returns the
+   * snapshot taken before the caller waited for the invoice lock, so a voucher
+   * racing another would still see the old paid_amount and settle the invoice
+   * twice (phase 6 race test). FOR UPDATE / LOCK IN SHARE MODE read the latest
+   * committed rows.
+   */
+  async settlementState(tx: Prisma.TransactionClient, id: bigint): Promise<SettlementState | null> {
+    const { tenantId } = this.support.tenant();
+    const [inv] = await tx.$queryRaw<SettlementRow[]>`
+      SELECT supplier_id AS party_id, status, payment_type, grand_total, paid_amount
+        FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    if (!inv) return null;
+    const [credited] = await tx.$queryRaw<{ s: { toString(): string } | null }[]>`
+      SELECT SUM(grand_total) AS s FROM purchase_returns
+       WHERE tenant_id = ${tenantId} AND original_invoice_id = ${id}
+         AND status = 'POSTED' AND refund_type = 'CREDIT' LOCK IN SHARE MODE`;
+    return toSettlementState(inv, credited?.s);
+  }
+
+  /** paid_amount projection (§7.8) += delta; negative undoes an allocation. */
+  async addPaid(tx: Prisma.TransactionClient, id: bigint, delta: Decimal): Promise<void> {
+    await tx.purchaseInvoice.update({ where: { id }, data: { paidAmount: { increment: delta } } });
+  }
+
+  /** The party's posted credit invoices, oldest first. Cash invoices are settled at sale. */
+  async creditInvoiceIdsOldestFirst(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    partyId: bigint,
+  ): Promise<bigint[]> {
+    const rows = await tx.purchaseInvoice.findMany({
+      where: { companyId, status: 'POSTED', paymentType: 'CREDIT', supplierId: partyId },
+      select: { id: true },
+      orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map((r) => r.id);
   }
 
   async list(status?: string, paymentType?: string, supplierId?: string) {
