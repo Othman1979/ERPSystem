@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal, round3, sum } from '../../common/decimal/decimal.utils.js';
+import { assertBranchAllowed } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { AuditService } from '../../common/audit/audit.service.js';
@@ -217,6 +218,12 @@ export class SalesReturnsService {
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Return is not a draft');
         }
+        // A return belongs to its original invoice's branch (ADR-003).
+        const original = await tx.salesInvoice.findFirst({
+          where: { id: draft.originalInvoiceId },
+          select: { branchId: true },
+        });
+        assertBranchAllowed(original?.branchId);
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Return has no lines');
         }
@@ -298,6 +305,7 @@ export class SalesReturnsService {
         const entry = await this.posting.postEntry(tx, {
           tenantId,
           companyId,
+          branchId: original?.branchId ?? null,
           entryDate: returnDate,
           fiscalPeriodId: period.id,
           entryNo,

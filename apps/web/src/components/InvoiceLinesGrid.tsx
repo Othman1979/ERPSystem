@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { lineAmounts, type LineAmounts } from '../format/invoiceMath';
 import { formatAmount, sum } from '../format/number';
+import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
 import { Num } from './Num';
 
@@ -156,20 +157,20 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
   };
 
   return (
-    <>
+    <div className="entry-grid-frame">
     <div className="entry-grid-scroll">
     <table ref={gridRef} className="entry-grid">
       <thead>
         <tr>
-          <th>#</th>
+          <th className="row-no">#</th>
           <th>{t('items.title')}</th>
-          <th style={{ width: 90 }}>{t('stock.qty')}</th>
-          <th style={{ width: 110 }}>{priceLabel ?? t('sales.unitPrice')}</th>
-          <th style={{ width: 90 }}>{t('sales.discountPct')}</th>
-          <th style={{ width: 100 }}>{t('sales.net')}</th>
-          <th style={{ width: 90 }}>{t('sales.tax')}</th>
-          <th style={{ width: 110 }}>{t('sales.total')}</th>
-          <th style={{ width: 40 }} />
+          <th className="num-cell" style={{ width: 90 }}>{t('stock.qty')}</th>
+          <th className="num-cell" style={{ width: 110 }}>{priceLabel ?? t('sales.unitPrice')}</th>
+          <th className="num-cell" style={{ width: 90 }}>{t('sales.discountPct')}</th>
+          <th className="num-cell" style={{ width: 100 }}>{t('sales.net')}</th>
+          <th className="num-cell" style={{ width: 90 }}>{t('sales.tax')}</th>
+          <th className="num-cell" style={{ width: 110 }}>{t('sales.total')}</th>
+          <th style={{ width: 36 }} />
         </tr>
       </thead>
       <tbody>
@@ -177,9 +178,10 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
           const a = lineTotals[row];
           return (
             <tr key={l.key}>
-              <td>{row + 1}</td>
+              <td className="row-no">{row + 1}</td>
               <td {...cellProps(row, 1)}>
                 <GridSelect
+                  variant="borderless"
                   placeholder={t('items.title')}
                   options={itemOptions.map((o) => ({
                     value: o.id,
@@ -198,8 +200,9 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                   size="small"
                 />
               </td>
-              <td {...cellProps(row, 2)}>
+              <td className="num-cell" {...cellProps(row, 2)}>
                 <InputNumber<string>
+                  variant="borderless"
                   stringMode
                   min="0.000001"
                   value={l.qty}
@@ -209,8 +212,9 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                   controls={false}
                 />
               </td>
-              <td {...cellProps(row, 3)}>
+              <td className="num-cell" {...cellProps(row, 3)}>
                 <InputNumber<string>
+                  variant="borderless"
                   stringMode
                   min="0"
                   value={l.price}
@@ -220,8 +224,9 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                   controls={false}
                 />
               </td>
-              <td {...cellProps(row, 4)}>
+              <td className="num-cell" {...cellProps(row, 4)}>
                 <InputNumber<string>
+                  variant="borderless"
                   stringMode
                   min="0"
                   max="100"
@@ -244,10 +249,12 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
               <td style={{ textAlign: 'center' }}>
                 {lines.length > 1 && (
                   <Button
+                    className="row-del"
                     type="text"
                     size="small"
                     danger
                     icon={<DeleteOutlined />}
+                    aria-label={t('common.delete')}
                     onClick={() => remove(l.key)}
                   />
                 )}
@@ -275,6 +282,8 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
       </tfoot>
     </table>
     </div>
+    <div className="entry-grid-footer">
+    <GridHint lineCount={lines.filter((l) => l.itemId).length} />
     {/* Document totals, read at a glance (preview — the server recomputes on save) */}
     <dl className="invoice-summary">
       <div>
@@ -300,7 +309,8 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
         <dd><Num>{formatAmount(totals.total)}</Num></dd>
       </div>
     </dl>
-    </>
+    </div>
+    </div>
   );
 }
 

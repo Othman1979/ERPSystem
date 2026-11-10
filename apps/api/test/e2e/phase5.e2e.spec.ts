@@ -302,6 +302,7 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
     const res = await api()
       .post('/api/v1/receipts')
       .set(auth(token))
+      .set(idem())
       .send({
         receiptDate: '2025-03-16',
         partyType: 'CUSTOMER',
@@ -326,6 +327,7 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
     const res = await api()
       .post('/api/v1/receipts')
       .set(auth(token))
+      .set(idem())
       .send({
         receiptDate: '2025-03-17',
         partyType: 'CUSTOMER',
@@ -348,6 +350,7 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
     const res = await api()
       .post('/api/v1/payments')
       .set(auth(token))
+      .set(idem())
       .send({
         paymentDate: '2025-03-18',
         partyType: 'SUPPLIER',

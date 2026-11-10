@@ -46,6 +46,8 @@ const API_PREFIX = '/api/v1';
 const AUTH_PATHS = /\/auth\/(login|register|refresh|logout)/;
 
 let accessToken: string | null = null;
+// Branch picked in the top bar; sent as X-Branch-Id (checked by BranchGuard, ADR-003).
+let branchId: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
 
 export function setAccessToken(token: string | null): void {
@@ -54,6 +56,14 @@ export function setAccessToken(token: string | null): void {
 
 export function getAccessToken(): string | null {
   return accessToken;
+}
+
+export function setBranchId(id: string | null): void {
+  branchId = id;
+}
+
+export function getBranchId(): string | null {
+  return branchId;
 }
 
 /** Called by the app on 401: rotates the refresh cookie once (deduped). */
@@ -95,6 +105,9 @@ export async function apiFetch<T>(
     }
     if (accessToken && !headers.has('Authorization')) {
       headers.set('Authorization', `Bearer ${accessToken}`);
+    }
+    if (branchId && !headers.has('X-Branch-Id')) {
+      headers.set('X-Branch-Id', branchId);
     }
     return fetch(url, { ...init, headers, credentials: 'include' });
   };

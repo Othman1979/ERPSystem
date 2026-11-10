@@ -3,6 +3,7 @@ import { Button, Input, InputNumber, Typography } from 'antd';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatAmount, round3, sum } from '../format/number';
+import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
 import { Num } from './Num';
 
@@ -130,24 +131,26 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
   });
 
   return (
+    <div className="entry-grid-frame">
     <div className="entry-grid-scroll">
       <table ref={gridRef} className="entry-grid">
         <thead>
           <tr>
-            <th>#</th>
-            <th>{t('journal.account')}</th>
-            <th style={{ width: 120 }}>{t('journal.debit')}</th>
-            <th style={{ width: 120 }}>{t('journal.credit')}</th>
+            <th className="row-no">#</th>
+            <th style={{ width: '34%' }}>{t('journal.account')}</th>
+            <th className="num-cell" style={{ width: 130 }}>{t('journal.debit')}</th>
+            <th className="num-cell" style={{ width: 130 }}>{t('journal.credit')}</th>
             <th>{t('common.description')}</th>
-            <th style={{ width: 40 }} />
+            <th style={{ width: 36 }} />
           </tr>
         </thead>
         <tbody>
           {lines.map((l, row) => (
             <tr key={l.key}>
-              <td>{row + 1}</td>
+              <td className="row-no">{row + 1}</td>
               <td {...cellProps(row, 1)}>
                 <GridSelect
+                  variant="borderless"
                   placeholder={t('journal.account')}
                   options={accountOptions}
                   value={l.accountId}
@@ -157,8 +160,9 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                   size="small"
                 />
               </td>
-              <td {...cellProps(row, 2)}>
+              <td className="num-cell" {...cellProps(row, 2)}>
                 <InputNumber<string>
+                  variant="borderless"
                   stringMode
                   placeholder={t('journal.debit')}
                   min="0"
@@ -169,8 +173,9 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
                   controls={false}
                 />
               </td>
-              <td {...cellProps(row, 3)}>
+              <td className="num-cell" {...cellProps(row, 3)}>
                 <InputNumber<string>
+                  variant="borderless"
                   stringMode
                   placeholder={t('journal.credit')}
                   min="0"
@@ -183,6 +188,7 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
               </td>
               <td {...cellProps(row, 4)}>
                 <Input
+                  variant="borderless"
                   placeholder={t('common.description')}
                   maxLength={500}
                   value={l.description}
@@ -193,10 +199,12 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
               <td style={{ textAlign: 'center' }}>
                 {lines.length > 2 && (
                   <Button
+                    className="row-del"
                     type="text"
                     size="small"
                     danger
                     icon={<DeleteOutlined />}
+                    aria-label={t('common.delete')}
                     onClick={() => remove(l.key)}
                   />
                 )}
@@ -216,15 +224,23 @@ export function JournalLinesGrid({ lines, onChange, accountOptions, focusSignal 
               <Num>{formatAmount(totalCredit)}</Num>
             </td>
             <td colSpan={2}>
-              {!diff.isZero() && (
+              {!diff.isZero() ? (
                 <Typography.Text type="danger">
                   {t('journal.unbalanced', { amount: formatAmount(diff) })}
                 </Typography.Text>
+              ) : (
+                totalDebit.gt(0) && (
+                  <Typography.Text type="success">{t('journal.balanced')}</Typography.Text>
+                )
               )}
             </td>
           </tr>
         </tfoot>
       </table>
+    </div>
+    <div className="entry-grid-footer">
+      <GridHint />
+    </div>
     </div>
   );
 }
