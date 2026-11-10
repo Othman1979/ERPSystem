@@ -318,6 +318,14 @@ body {
     display: none !important;
   }
 
+  .doc-toolbar {
+    position: static;
+  }
+
+  .doc-fields {
+    background: #fff !important;
+  }
+
   .app-content {
     padding: 0 !important;
   }
@@ -349,6 +357,183 @@ body {
   .ant-dropdown-trigger,
   .entry-grid-hint {
     display: none !important;
+  }
+}
+
+/* ------------------------------------------------- document screens */
+
+.doc-layout {
+  background: var(--c-surface);
+  border: 1px solid var(--c-grid-border);
+}
+
+/* Toolbar stays under the app's top bar while the document scrolls */
+.doc-toolbar {
+  position: sticky;
+  top: var(--topbar-height);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-grid-border);
+}
+
+.doc-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.doc-no {
+  font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--c-text);
+  opacity: 0.8;
+  direction: ltr;
+  unicode-bidi: isolate;
+  white-space: nowrap;
+}
+
+.doc-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+/* Shortcut hint inside a toolbar button */
+.doc-kbd {
+  font-size: 10px;
+  opacity: 0.75;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  padding: 0 3px;
+  margin-inline-start: 6px;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* Header fields: gray panel, responsive grid */
+.doc-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px 14px;
+  padding: 12px;
+  background: var(--c-grid-panel-bg);
+  border-bottom: 1px solid var(--c-grid-border);
+}
+
+.doc-field {
+  min-width: 0;
+}
+
+/* Controls fill their column (GridSelect wraps its select, so match descendants) */
+.doc-fields .ant-select,
+.doc-fields .ant-picker,
+.doc-fields .ant-input,
+.doc-fields .ant-input-number,
+.doc-field > .ant-radio-group {
+  width: 100%;
+}
+
+/* antd Form.Items placed straight in the field panel (forms with validation rules) */
+.doc-fields .ant-form-item {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.doc-fields .ant-form-item-label {
+  padding-bottom: 3px !important;
+}
+
+.doc-fields .ant-form-item-label > label {
+  height: auto;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.doc-field > .ant-radio-group {
+  display: flex;
+}
+
+.doc-field > .ant-radio-group .ant-radio-button-wrapper {
+  flex: 1;
+  text-align: center;
+}
+
+.doc-field-wide {
+  grid-column: span 2;
+}
+
+.doc-field-label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12px;
+  color: var(--c-text);
+  opacity: 0.85;
+}
+
+.doc-field-req {
+  color: #c42b1c;
+  margin-inline-start: 3px;
+}
+
+.doc-field-error {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #c42b1c;
+}
+
+.doc-field-value {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+/* Lines and totals inside a document sit flush with its frame */
+.doc-layout .entry-grid-frame,
+.doc-layout .ant-table-wrapper .ant-table-container {
+  border: 0;
+}
+
+.doc-section {
+  padding: 12px;
+}
+
+/* Amount inputs in the field panel read like the amounts in the grids */
+.doc-fields .doc-amount .ant-input-number-input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Thin gray bar titling a sub-section of a document (e.g. voucher allocations) */
+.doc-subbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 6px 12px;
+  background: var(--c-grid-panel-bg);
+  border-bottom: 1px solid var(--c-grid-border);
+}
+
+.doc-subbar-title {
+  font-weight: 600;
+}
+
+.doc-subbar-total {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .doc-field-wide {
+    grid-column: auto;
   }
 }
 

@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeftOutlined,
-  ArrowRightOutlined,
   DeleteOutlined,
   PlusOutlined,
+  PrinterOutlined,
   SaveOutlined,
   SwapOutlined,
 } from '@ant-design/icons';
 import {
+  App,
   Button,
   Card,
   DatePicker,
@@ -40,7 +40,6 @@ import {
   journalControllerPost,
   journalControllerReverse,
 } from '@erp/api-client';
-import i18n from '../i18n';
 import { idemHeaders } from '../idempotency';
 import {
   enterTo,
@@ -48,8 +47,8 @@ import {
   focusNamedField,
   GridSelect,
 } from '../components/GridSelect';
-import { StatusBar } from '../components/StatusBar';
 import { PageHeader } from '../components/PageHeader';
+import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { amountCell, amountOrBlankCell } from '../format/cells';
@@ -257,6 +256,23 @@ export function JournalPage() {
     onError,
   });
 
+  // Shortcuts on an open entry: Ctrl+S saves a new draft, Ctrl+Enter posts a
+  // saved draft (behind the same confirmation as the button).
+  const { modal } = App.useApp();
+  const openDraft = screen === 'entry' && detail?.status === 'DRAFT' ? detail : null;
+  useDocShortcuts({
+    onSave: screen === 'entry' && !entryId ? () => !createDraft.isPending && saveNew() : undefined,
+    onPost: openDraft
+      ? () => {
+          if (postEntry.isPending) return;
+          modal.confirm({
+            title: t('journal.confirmPost'),
+            onOk: () => postEntry.mutate(openDraft.id),
+          });
+        }
+      : undefined,
+  });
+
   // ============================ LIST VIEW ============================
   if (screen === 'list') {
     return (
@@ -400,36 +416,17 @@ export function JournalPage() {
   return (
     <div>
       {contextHolder}
-      {/* Odoo-style control panel */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        <Button
-          icon={i18n.language === 'ar' ? <ArrowRightOutlined /> : <ArrowLeftOutlined />}
-          onClick={backToList}
-        >
-          {t('journal.title')}
-        </Button>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {isNew
+      <DocLayout
+        title={
+          isNew
             ? t('journal.newEntry')
-            : `${entry?.entryNo ?? '…'} — ${t(VOUCHER_TYPE_LABEL[entry?.voucherType ?? 'JOURNAL'])}`}
-        </Typography.Title>
-        {entry && (
-          <Space size={8}>
-            <VoucherTag type={entry.voucherType} />
-            <StatusBar status={entry.status} />
-          </Space>
-        )}
-        <div style={{ flex: 1 }} />
-        <Space>
-          {isNew ? (
+            : t(VOUCHER_TYPE_LABEL[entry?.voucherType ?? 'JOURNAL'])
+        }
+        docNo={entry?.entryNo}
+        status={isNew ? 'DRAFT' : entry?.status}
+        onBack={backToList}
+        actions={
+          isNew ? (
             <Button
               type="primary"
               icon={<SaveOutlined />}
@@ -437,6 +434,7 @@ export function JournalPage() {
               onClick={saveNew}
             >
               {t('journal.saveDraft')}
+              <span className="doc-kbd">Ctrl+S</span>
             </Button>
           ) : (
             entry && (
@@ -449,6 +447,7 @@ export function JournalPage() {
                     >
                       <Button type="primary" loading={postEntry.isPending}>
                         {t('journal.post')}
+                        <span className="doc-kbd">Ctrl+Enter</span>
                       </Button>
                     </Popconfirm>
                     <Popconfirm
@@ -466,20 +465,21 @@ export function JournalPage() {
                     {t('journal.reverse')}
                   </Button>
                 )}
+                <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
+                  {t('common.print')}
+                </Button>
               </>
             )
-          )}
-        </Space>
-      </div>
-
-      {/* Header fields */}
-      <Card size="small" style={{ marginBottom: 16 }}>
+          )
+        }
+      >
         {isNew ? (
-          <Space size={16} wrap>
-            <div data-field="voucherType" onKeyDown={enterTo(() => focusNamedField('date'))}>
-              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                {t('journal.voucherType')}
-              </Typography.Text>
+          <DocFields>
+            <DocField
+              field="voucherType"
+              label={t('journal.voucherType')}
+              onKeyDown={enterTo(() => focusNamedField('date'))}
+            >
               <GridSelect
                 enterOpens
                 value={newVoucherType}
@@ -488,53 +488,50 @@ export function JournalPage() {
                   value: vt,
                   label: t(VOUCHER_TYPE_LABEL[vt]),
                 }))}
-                style={{ width: 180 }}
               />
-            </div>
-            <div data-field="date" onKeyDown={enterTo(() => focusNamedField('description'))}>
-              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                {t('journal.date')}
-              </Typography.Text>
+            </DocField>
+            <DocField
+              field="date"
+              label={t('journal.date')}
+              onKeyDown={enterTo(() => focusNamedField('description'))}
+            >
               <DatePicker value={newDate} onChange={(d) => d && setNewDate(d)} />
-            </div>
-            <div
-              data-field="description"
-              style={{ flex: 1, minWidth: 220 }}
+            </DocField>
+            <DocField
+              field="description"
+              wide
+              label={t('common.description')}
               onKeyDown={enterTo(focusFirstGridCell)}
             >
-              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
-                {t('common.description')}
-              </Typography.Text>
               <Input
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
                 maxLength={500}
                 placeholder={t('common.description')}
               />
-            </div>
-          </Space>
+            </DocField>
+          </DocFields>
         ) : (
-          <Space size={24} wrap>
-            <span>
-              <Typography.Text type="secondary">{t('journal.date')}: </Typography.Text>
-              {entry ? dayjs(entry.entryDate).format('YYYY-MM-DD') : '—'}
-            </span>
-            <span>
-              <Typography.Text type="secondary">{t('common.description')}: </Typography.Text>
-              {entry?.description ?? '—'}
-            </span>
+          <DocFields>
+            <DocField label={t('journal.voucherType')}>
+              <DocValue>{entry ? <VoucherTag type={entry.voucherType} /> : '—'}</DocValue>
+            </DocField>
+            <DocField label={t('journal.date')}>
+              <DocValue>{entry ? dayjs(entry.entryDate).format('YYYY-MM-DD') : '—'}</DocValue>
+            </DocField>
+            <DocField label={t('common.description')} wide>
+              <DocValue>{entry?.description ?? '—'}</DocValue>
+            </DocField>
             {entry?.reversalOf && (
-              <span>
-                <Typography.Text type="secondary">{t('journal.reversalOf')}: </Typography.Text>
-                {entry.reversalOf.entryNo ?? '—'}
-              </span>
+              <DocField label={t('journal.reversalOf')}>
+                <DocValue>
+                  <span className="doc-no">{entry.reversalOf.entryNo ?? '—'}</span>
+                </DocValue>
+              </DocField>
             )}
-          </Space>
+          </DocFields>
         )}
-      </Card>
 
-      {/* Lines */}
-      <Card size="small" loading={detailLoading && !isNew} title={t('journal.linesTitle')}>
         {isNew ? (
           <JournalLinesGrid
             lines={lines}
@@ -542,6 +539,8 @@ export function JournalPage() {
             accountOptions={accountOptions}
             focusSignal={gridFocus}
           />
+        ) : detailLoading ? (
+          <div className="doc-section">{t('common.loading')}</div>
         ) : (
           <Table
             rowKey={(r) => r.id ?? `${r.account?.code}-${r.debit}-${r.credit}`}
@@ -594,7 +593,7 @@ export function JournalPage() {
             )}
           />
         )}
-      </Card>
+      </DocLayout>
 
       {/* Reverse modal */}
       <Modal

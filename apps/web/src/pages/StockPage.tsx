@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { SaveOutlined } from '@ant-design/icons';
 import {
   Button,
   Card,
@@ -56,6 +57,7 @@ import { codeAndName, displayName, type Named } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { EnterNav } from '../components/EnterNav';
 import { GridSelect } from '../components/GridSelect';
+import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { formatAmount, formatQty } from '../format/number';
 
@@ -120,6 +122,9 @@ interface CountLine {
 }
 interface CountDetail {
   id: string;
+  docNo?: string | null;
+  countDate?: string;
+  description?: string | null;
   status: string;
   warehouseId: string;
   lines: CountLine[];
@@ -302,6 +307,79 @@ function AdjustmentsTab() {
   const adjType = Form.useWatch('adjustmentType', form);
   const needsCost = adjType === 'OPENING' || adjType === 'IN';
 
+  const closeNew = () => {
+    setModalOpen(false);
+    setLines([emptyItemLine(1)]);
+  };
+  const submitNew = () => {
+    if (create.isPending) return;
+    const filled = lines.filter((l) => l.itemId && l.qty != null);
+    if (filled.length === 0) {
+      apiMessage.error(t('stock.minLines'));
+      return;
+    }
+    form.submit();
+  };
+  useDocShortcuts({ onSave: modalOpen ? submitNew : undefined });
+
+  // A new adjustment opens as a full document page.
+  if (modalOpen) {
+    return (
+      <>
+        {contextHolder}
+        <DocLayout
+          title={t('stock.newAdjustment')}
+          status="DRAFT"
+          onBack={closeNew}
+          actions={
+            <Button type="primary" icon={<SaveOutlined />} loading={create.isPending} onClick={submitNew}>
+              {t('common.saveDraft')}
+              <span className="doc-kbd">Ctrl+S</span>
+            </Button>
+          }
+        >
+          <EnterNav autoFocusWhen>
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={(v) => create.mutate(v)}
+              requiredMark={false}
+              initialValues={{ adjustmentType: 'IN', adjustmentDate: dayjs() }}
+            >
+              <DocFields>
+                <Form.Item name="adjustmentDate" label={t('stock.date')} rules={[{ required: true }]}>
+                  <DatePicker />
+                </Form.Item>
+                <Form.Item name="adjustmentType" label={t('stock.type')} rules={[{ required: true }]}>
+                  <GridSelect
+                    enterOpens
+                    options={['OPENING', 'IN', 'OUT'].map((v) => ({
+                      value: v,
+                      label: t(`stock.types.${v}`),
+                    }))}
+                  />
+                </Form.Item>
+                <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]}>
+                  <GridSelect enterOpens options={whOptions} />
+                </Form.Item>
+                <Form.Item name="description" label={t('common.description')}>
+                  <Input maxLength={500} />
+                </Form.Item>
+              </DocFields>
+              <ItemLinesGrid
+                lines={lines}
+                onChange={setLines}
+                itemOptions={itemOptions}
+                showCost={needsCost}
+                showDescription
+              />
+            </Form>
+          </EnterNav>
+        </DocLayout>
+      </>
+    );
+  }
+
   return (
     <>
       {contextHolder}
@@ -387,62 +465,6 @@ function AdjustmentsTab() {
           },
         ]}
       />
-      <Modal
-        title={t('stock.newAdjustment')}
-        open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          setLines([emptyItemLine(1)]);
-        }}
-        onOk={() => {
-          const filled = lines.filter((l) => l.itemId && l.qty != null);
-          if (filled.length === 0) {
-            apiMessage.error(t('stock.minLines'));
-            return;
-          }
-          form.submit();
-        }}
-        confirmLoading={create.isPending}
-        width={820}
-      >
-        <EnterNav autoFocusWhen={modalOpen}>
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(v) => create.mutate(v)}
-          requiredMark={false}
-          initialValues={{ adjustmentType: 'IN', adjustmentDate: dayjs() }}
-        >
-          <Space style={{ display: 'flex' }}>
-            <Form.Item name="adjustmentDate" label={t('stock.date')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <DatePicker style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="adjustmentType" label={t('stock.type')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <GridSelect
-                enterOpens
-                options={['OPENING', 'IN', 'OUT'].map((v) => ({
-                  value: v,
-                  label: t(`stock.types.${v}`),
-                }))}
-              />
-            </Form.Item>
-            <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <GridSelect enterOpens options={whOptions} />
-            </Form.Item>
-          </Space>
-          <Form.Item name="description" label={t('common.description')}>
-            <Input maxLength={500} />
-          </Form.Item>
-          <ItemLinesGrid
-            lines={lines}
-            onChange={setLines}
-            itemOptions={itemOptions}
-            showCost={needsCost}
-            showDescription
-          />
-        </Form>
-        </EnterNav>
-      </Modal>
       <Modal
         title={t('journal.reverseTitle')}
         open={!!reverseTarget}
@@ -534,6 +556,67 @@ function TransfersTab() {
     onError: show,
   });
 
+  const closeNew = () => {
+    setModalOpen(false);
+    setLines([emptyItemLine(1)]);
+  };
+  const submitNew = () => {
+    if (create.isPending) return;
+    const filled = lines.filter((l) => l.itemId && l.qty != null);
+    if (filled.length === 0) {
+      apiMessage.error(t('stock.minLines'));
+      return;
+    }
+    form.submit();
+  };
+  useDocShortcuts({ onSave: modalOpen ? submitNew : undefined });
+
+  // A new transfer opens as a full document page.
+  if (modalOpen) {
+    return (
+      <>
+        {contextHolder}
+        <DocLayout
+          title={t('stock.newTransfer')}
+          status="DRAFT"
+          onBack={closeNew}
+          actions={
+            <Button type="primary" icon={<SaveOutlined />} loading={create.isPending} onClick={submitNew}>
+              {t('common.saveDraft')}
+              <span className="doc-kbd">Ctrl+S</span>
+            </Button>
+          }
+        >
+          <EnterNav autoFocusWhen>
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={(v) => create.mutate(v)}
+              requiredMark={false}
+              initialValues={{ transferDate: dayjs() }}
+            >
+              <DocFields>
+                <Form.Item name="transferDate" label={t('stock.date')} rules={[{ required: true }]}>
+                  <DatePicker />
+                </Form.Item>
+                <Form.Item name="fromWarehouseId" label={t('stock.from')} rules={[{ required: true }]}>
+                  <GridSelect enterOpens options={whOptions} />
+                </Form.Item>
+                <Form.Item name="toWarehouseId" label={t('stock.to')} rules={[{ required: true }]}>
+                  <GridSelect enterOpens options={whOptions} />
+                </Form.Item>
+                <Form.Item name="description" label={t('common.description')}>
+                  <Input maxLength={500} />
+                </Form.Item>
+              </DocFields>
+              <ItemLinesGrid lines={lines} onChange={setLines} itemOptions={itemOptions} />
+            </Form>
+          </EnterNav>
+        </DocLayout>
+      </>
+    );
+  }
+
   return (
     <>
       {contextHolder}
@@ -618,50 +701,6 @@ function TransfersTab() {
           },
         ]}
       />
-      <Modal
-        title={t('stock.newTransfer')}
-        open={modalOpen}
-        onCancel={() => {
-          setModalOpen(false);
-          setLines([emptyItemLine(1)]);
-        }}
-        onOk={() => {
-          const filled = lines.filter((l) => l.itemId && l.qty != null);
-          if (filled.length === 0) {
-            apiMessage.error(t('stock.minLines'));
-            return;
-          }
-          form.submit();
-        }}
-        confirmLoading={create.isPending}
-        width={820}
-      >
-        <EnterNav autoFocusWhen={modalOpen}>
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(v) => create.mutate(v)}
-          requiredMark={false}
-          initialValues={{ transferDate: dayjs() }}
-        >
-          <Space style={{ display: 'flex' }}>
-            <Form.Item name="transferDate" label={t('stock.date')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <DatePicker style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="fromWarehouseId" label={t('stock.from')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <GridSelect enterOpens options={whOptions} />
-            </Form.Item>
-            <Form.Item name="toWarehouseId" label={t('stock.to')} rules={[{ required: true }]} style={{ flex: 1 }}>
-              <GridSelect enterOpens options={whOptions} />
-            </Form.Item>
-          </Space>
-          <Form.Item name="description" label={t('common.description')}>
-            <Input maxLength={500} />
-          </Form.Item>
-          <ItemLinesGrid lines={lines} onChange={setLines} itemOptions={itemOptions} />
-        </Form>
-        </EnterNav>
-      </Modal>
       <Modal
         title={t('journal.reverseTitle')}
         open={!!reverseTarget}
@@ -762,6 +801,101 @@ function CountsTab() {
     onError: show,
   });
 
+  // The count sheet opens as a full document page.
+  if (detail) {
+    const isDraft = detail.status === 'DRAFT';
+    return (
+      <>
+        {contextHolder}
+        <DocLayout
+          title={t('stock.countLines')}
+          docNo={detail.docNo}
+          onBack={() => setDetail(null)}
+          actions={
+            isDraft && (
+              <Popconfirm
+                title={t('stock.confirmApprove')}
+                onConfirm={() => approve.mutate(detail.id)}
+              >
+                <Button type="primary" loading={approve.isPending}>
+                  {t('stock.approve')}
+                </Button>
+              </Popconfirm>
+            )
+          }
+        >
+          <DocFields>
+            <DocField label={t('stock.date')}>
+              <DocValue>
+                {detail.countDate ? dayjs(detail.countDate).format('YYYY-MM-DD') : '—'}
+              </DocValue>
+            </DocField>
+            <DocField label={t('stock.warehouse')}>
+              <DocValue>
+                {whOptions.find((o) => o.value === detail.warehouseId)?.label ?? '—'}
+              </DocValue>
+            </DocField>
+            <DocField label={t('common.status')}>
+              <DocValue>{statusTag(detail.status, t)}</DocValue>
+            </DocField>
+            {detail.description && (
+              <DocField label={t('common.description')}>
+                <DocValue>{detail.description}</DocValue>
+              </DocField>
+            )}
+          </DocFields>
+          <div onKeyDown={onCountGridKeyDown}>
+            <Table
+              rowKey="id"
+              size="small"
+              dataSource={detail.lines}
+              pagination={false}
+              columns={[
+                {
+                  title: t('items.code'),
+                  width: 110,
+                  render: (_: unknown, l: CountLine) => l.item?.code ?? l.itemId,
+                },
+                {
+                  title: t('common.name'),
+                  render: (_: unknown, l: CountLine) => displayName(l.item) ?? '—',
+                },
+                { title: t('stock.systemQty'), dataIndex: 'systemQty', width: 110, align: 'right' as const, render: qtyCell },
+                {
+                  title: t('stock.countedQty'),
+                  width: 130,
+                  align: 'right' as const,
+                  render: (_: unknown, l: CountLine) =>
+                    isDraft ? (
+                      <InputNumber<string>
+                        stringMode
+                        size="small"
+                        min="0"
+                        value={counted[l.id] ?? null}
+                        onChange={(v) => {
+                          setCounted((c) => ({ ...c, [l.id]: v }));
+                          if (v != null) saveLine.mutate({ lineId: l.id, qty: v });
+                        }}
+                      />
+                    ) : (
+                      <Num>{formatQty(l.countedQty)}</Num>
+                    ),
+                },
+                {
+                  title: t('stock.diff'),
+                  dataIndex: 'differenceQty',
+                  width: 90,
+                  align: 'right' as const,
+                  render: (v: string | null) => <Num>{formatQty(v)}</Num>,
+                },
+              ]}
+            />
+          </div>
+        </DocLayout>
+      </>
+    );
+  }
+
   return (
     <>
       {contextHolder}
@@ -837,77 +971,6 @@ function CountsTab() {
           </Form.Item>
         </Form>
         </EnterNav>
-      </Modal>
-      <Modal
-        title={t('stock.countLines')}
-        open={!!detail}
-        onCancel={() => setDetail(null)}
-        width={720}
-        footer={
-          detail?.status === 'DRAFT' ? (
-            <Space>
-              <Button onClick={() => setDetail(null)}>{t('common.close')}</Button>
-              <Popconfirm
-                title={t('stock.confirmApprove')}
-                onConfirm={() => approve.mutate(detail.id)}
-              >
-                <Button type="primary" loading={approve.isPending}>
-                  {t('stock.approve')}
-                </Button>
-              </Popconfirm>
-            </Space>
-          ) : (
-            <Button onClick={() => setDetail(null)}>{t('common.close')}</Button>
-          )
-        }
-      >
-        {detail && (
-          <div onKeyDown={onCountGridKeyDown}>
-          <Table
-            rowKey="id"
-            size="small"
-            dataSource={detail.lines}
-            pagination={false}
-            columns={[
-              {
-                title: t('items.code'),
-                width: 110,
-                render: (_: unknown, l: CountLine) => l.item?.code ?? l.itemId,
-              },
-              {
-                title: t('common.name'),
-                render: (_: unknown, l: CountLine) => displayName(l.item) ?? '—',
-              },
-              { title: t('stock.systemQty'), dataIndex: 'systemQty', width: 110, align: 'right' as const, render: qtyCell },
-              {
-                title: t('stock.countedQty'),
-                width: 130,
-                render: (_: unknown, l: CountLine) =>
-                  detail.status === 'DRAFT' ? (
-                    <InputNumber<string>
-                      stringMode
-                      size="small"
-                      min="0"
-                      value={counted[l.id] ?? null}
-                      onChange={(v) => {
-                        setCounted((c) => ({ ...c, [l.id]: v }));
-                        if (v != null) saveLine.mutate({ lineId: l.id, qty: v });
-                      }}
-                    />
-                  ) : (
-                    <Num>{formatQty(l.countedQty)}</Num>
-                  ),
-              },
-              {
-                title: t('stock.diff'),
-                dataIndex: 'differenceQty',
-                width: 90,
-                render: (v: string | null) => <Num>{formatQty(v)}</Num>,
-              },
-            ]}
-          />
-          </div>
-        )}
       </Modal>
     </>
   );
