@@ -4,6 +4,7 @@ import { Button, Card, DatePicker, Select, Table, Tabs, Tag } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 import {
   accountingControllerListAccounts,
   apiFetchData,
@@ -14,6 +15,11 @@ import { ListToolbar } from '../components/ListToolbar';
 import { bothNames, codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { AgingTab } from './reports/AgingTab';
+import { BalanceSheetTab } from './reports/BalanceSheetTab';
+import { IncomeStatementTab } from './reports/IncomeStatementTab';
+import { TaxSummaryTab } from './reports/TaxSummaryTab';
+import { TradeSummaryTab } from './reports/TradeSummaryTab';
+import { ExportButtons } from '../components/ExportButtons';
 import { amountCell } from '../format/cells';
 import { dec, formatAmount, sum, type NumericInput } from '../format/number';
 
@@ -88,6 +94,13 @@ const dateCol = { title: '', dataIndex: 'entryDate', width: 110, render: (v: str
 
 export function ReportsPage() {
   const { t } = useTranslation();
+  // ?tab=sales&from&to&groupBy (dashboard links) opens a report with those filters.
+  const [searchParams] = useSearchParams();
+  const linkFilters = {
+    from: searchParams.get('from'),
+    to: searchParams.get('to'),
+    groupBy: searchParams.get('groupBy'),
+  };
   const [from, setFrom] = useState<Dayjs | null>(null);
   const [to, setTo] = useState<Dayjs | null>(null);
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
@@ -181,6 +194,7 @@ export function ReportsPage() {
       <PageHeader title={t('reports.title')} />
       <Card>
       <Tabs
+        defaultActiveKey={searchParams.get('tab') ?? 'tb'}
         items={[
           {
             key: 'tb',
@@ -197,6 +211,7 @@ export function ReportsPage() {
                         </Tag>
                       )}
                       {printButton}
+                      <ExportButtons path="/reports/trial-balance" params={range} />
                     </>
                   }
                 />
@@ -249,6 +264,8 @@ export function ReportsPage() {
               </>
             ),
           },
+          { key: 'is', label: t('reports.incomeStatement'), children: <IncomeStatementTab /> },
+          { key: 'bs', label: t('reports.balanceSheet'), children: <BalanceSheetTab /> },
           {
             key: 'gl',
             label: t('reports.generalLedger'),
@@ -270,7 +287,14 @@ export function ReportsPage() {
                       {dateFilters}
                     </>
                   }
-                  actions={accountId && printButton}
+                  actions={
+                    accountId && (
+                      <>
+                        {printButton}
+                        <ExportButtons path="/reports/general-ledger" params={{ accountId, ...range }} />
+                      </>
+                    )
+                  }
                 />
                 {!accountId ? (
                   <div className="report-empty">{t('reports.selectAccount')}</div>
@@ -369,7 +393,18 @@ export function ReportsPage() {
                       {dateFilters}
                     </>
                   }
-                  actions={partyType && partyId && printButton}
+                  actions={
+                    partyType &&
+                    partyId && (
+                      <>
+                        {printButton}
+                        <ExportButtons
+                          path="/reports/party-statement"
+                          params={{ partyType, partyId, ...range }}
+                        />
+                      </>
+                    )
+                  }
                 />
               {!partyType || !partyId ? (
                 <div className="report-empty">{t('reports.selectParty')}</div>
@@ -440,6 +475,27 @@ export function ReportsPage() {
             key: 'aging',
             label: t('reports.aging'),
             children: <AgingTab />,
+          },
+          { key: 'tax', label: t('reports.taxSummary'), children: <TaxSummaryTab /> },
+          {
+            key: 'sales',
+            label: t('reports.salesSummary'),
+            children: (
+              <TradeSummaryTab
+                kind="sales"
+                initial={searchParams.get('tab') === 'sales' ? linkFilters : undefined}
+              />
+            ),
+          },
+          {
+            key: 'purchases',
+            label: t('reports.purchasesSummary'),
+            children: (
+              <TradeSummaryTab
+                kind="purchases"
+                initial={searchParams.get('tab') === 'purchases' ? linkFilters : undefined}
+              />
+            ),
           },
         ]}
       />

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DeleteOutlined, PlusOutlined, PrinterOutlined, SaveOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import {
   App,
   Button,
@@ -34,6 +34,7 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { PrintPdfButton } from '../components/PrintPdfButton';
 import { useNewFromUrl } from '../useNewFromUrl';
 import {
   ApiError,
@@ -756,9 +757,7 @@ function InvoiceView({
               </Popconfirm>
             </>
           )}
-          <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
-            {t('common.print')}
-          </Button>
+          <PrintPdfButton path={`/sales-invoices/${invoice.id}/pdf`} />
         </>
       }
     >
@@ -977,11 +976,7 @@ function ReturnsTab() {
           docNo={view?.returnNo}
           status={view?.status}
           onBack={() => setViewId(null)}
-          actions={
-            <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
-              {t('common.print')}
-            </Button>
-          }
+          actions={<PrintPdfButton path={`/sales-returns/${viewId}/pdf`} />}
         >
           {view ? (
             <>
