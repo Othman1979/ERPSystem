@@ -7,6 +7,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
+import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesReturnDto } from './dto/sales.dto.js';
 
 const SOURCE = 'SALES_RETURN';
@@ -24,6 +25,7 @@ export class SalesReturnsService {
     private readonly posting: PostingService,
     private readonly ledger: StockLedgerService,
     private readonly audit: AuditService,
+    private readonly einvoice: EInvoiceOutboxService,
   ) {}
 
   async list(status?: string) {
@@ -61,7 +63,46 @@ export class SalesReturnsService {
       },
     });
     if (!ret) throw DomainError.notFound('SalesReturn', id.toString());
-    return ret;
+    return { ...ret, einvoice: await this.einvoice.stateOf('SALES_RETURN', ret.id) };
+  }
+
+  /**
+   * A posted return as JoFotara needs it (docs/decisions/0005 §6, §8): each
+   * line with its ORIGINAL line number, unit and tax, amounts as posted.
+   * Read by the e-invoice module (module boundary).
+   */
+  async einvoiceSource(id: bigint) {
+    const { db } = this.support.tenant();
+    return db.salesReturn.findFirst({
+      where: { id, status: 'POSTED' },
+      select: {
+        id: true,
+        returnNo: true,
+        returnDate: true,
+        reason: true,
+        originalInvoiceId: true,
+        grandTotal: true,
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: {
+            qtyBase: true,
+            unitPrice: true,
+            netAmount: true,
+            taxRate: true,
+            taxAmount: true,
+            originalLine: {
+              select: {
+                lineNo: true,
+                qty: true,
+                qtyBase: true,
+                item: { select: { nameAr: true } },
+                taxCategory: { select: { einvoiceCode: true } },
+              },
+            },
+          },
+        },
+      },
+    });
   }
 
   async create(dto: CreateSalesReturnDto) {
@@ -227,6 +268,10 @@ export class SalesReturnsService {
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Return has no lines');
         }
+        await this.einvoice.assertReturnSendable(tx, companyId, {
+          originalInvoiceId: draft.originalInvoiceId,
+          reason: draft.reason,
+        });
         if (draft.refundType === 'CASH' && !draft.cashAccountId) {
           throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash refunds');
         }
@@ -326,6 +371,14 @@ export class SalesReturnsService {
             postedAt: new Date(),
             postedBy: userId ?? null,
           },
+        });
+        // Outbox (BUILD_PLAN §12.2); sent only after its original invoice is accepted.
+        await this.einvoice.enqueue(tx, {
+          companyId,
+          documentType: 'SALES_RETURN',
+          documentId: draft.id,
+          documentNo: returnNo,
+          originalInvoiceId: draft.originalInvoiceId,
         });
         return { id: draft.id, returnNo };
       }),
