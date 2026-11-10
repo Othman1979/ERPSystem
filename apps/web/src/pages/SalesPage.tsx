@@ -58,6 +58,13 @@ import { idemHeaders } from '../idempotency';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
+import {
+  EInvoiceNotice,
+  EInvoiceQrPanel,
+  EInvoiceStatusTag,
+  isInFlight,
+  type EInvoiceState,
+} from './einvoice/EInvoiceStatus';
 
 // ------------------------------------------------------------------ types
 
@@ -124,6 +131,8 @@ interface SalesInvoice {
   warehouse?: Warehouse;
   lines?: InvoiceLine[];
   journalEntry?: { entryNo: string | null } | null;
+  /** JoFotara submission; null when the invoice was not e-invoiced. */
+  einvoice?: EInvoiceState | null;
 }
 interface ReturnLine {
   id: string;
@@ -146,6 +155,7 @@ interface SalesReturn {
   customer?: Party;
   originalInvoice?: { invoiceNo: string | null };
   lines?: ReturnLine[];
+  einvoice?: EInvoiceState | null;
 }
 
 const money = (v?: string | null) => formatAmount(v);
@@ -280,6 +290,8 @@ function InvoicesTab() {
     queryFn: () =>
       salesControllerGetInvoice(invoiceId!).then((r) => r.data as unknown as SalesInvoice),
     enabled: (screen === 'view' || screen === 'form') && !!invoiceId,
+    // Just posted: follow the e-invoice until JoFotara answers, so the QR shows up.
+    refetchInterval: (query) => (screen === 'view' && isInFlight(query.state.data?.einvoice?.status) ? 4000 : false),
   });
 
   const invalidate = () => {
@@ -750,6 +762,7 @@ function InvoiceView({
         </>
       }
     >
+      <EInvoiceNotice einvoice={invoice.einvoice} />
       <DocFields>
         <DocField label={t('sales.customer')}>
           <DocValue>{displayName(invoice.customer)}</DocValue>
@@ -790,6 +803,13 @@ function InvoiceView({
             <DocValue>{amountCell(invoice.costTotal)}</DocValue>
           </DocField>
         )}
+        {invoice.einvoice && (
+          <DocField label={t('einvoice.field')}>
+            <DocValue>
+              <EInvoiceStatusTag status={invoice.einvoice.status} />
+            </DocValue>
+          </DocField>
+        )}
       </DocFields>
       <Table
         rowKey="id"
@@ -811,6 +831,7 @@ function InvoiceView({
           { title: t('sales.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
         ]}
       />
+      <EInvoiceQrPanel einvoice={invoice.einvoice} />
     </DocLayout>
   );
 }
@@ -838,6 +859,7 @@ function ReturnsTab() {
     queryFn: () =>
       salesControllerGetReturn(viewId!).then((r) => r.data as unknown as SalesReturn),
     enabled: !!viewId,
+    refetchInterval: (query) => (isInFlight(query.state.data?.einvoice?.status) ? 4000 : false),
   });
 
   const invalidate = () => {
@@ -963,6 +985,7 @@ function ReturnsTab() {
         >
           {view ? (
             <>
+              <EInvoiceNotice einvoice={view.einvoice} />
               <DocFields>
                 <DocField label={t('sales.invoice')}>
                   <DocValue>
@@ -986,6 +1009,13 @@ function ReturnsTab() {
                     <DocValue>{view.reason}</DocValue>
                   </DocField>
                 )}
+                {view.einvoice && (
+                  <DocField label={t('einvoice.field')}>
+                    <DocValue>
+                      <EInvoiceStatusTag status={view.einvoice.status} />
+                    </DocValue>
+                  </DocField>
+                )}
               </DocFields>
               <Table
                 rowKey="id"
@@ -1003,6 +1033,7 @@ function ReturnsTab() {
                   { title: t('sales.total'), dataIndex: 'lineTotal', width: 120, align: 'right' as const, render: amountCell },
                 ]}
               />
+              <EInvoiceQrPanel einvoice={view.einvoice} />
             </>
           ) : (
             <div className="doc-section">{t('common.loading')}</div>

@@ -6,6 +6,7 @@ import {
   Input,
   InputNumber,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tabs,
@@ -32,6 +33,10 @@ import { PageHeader } from '../components/PageHeader';
 import { displayName } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { formatPercent } from '../format/number';
+import { EInvoiceSettingsTab } from './einvoice/EInvoiceSettingsTab';
+
+/** JoFotara tax category codes (0005 §6). */
+type EInvoiceCode = 'S' | 'Z' | 'O';
 
 type LookupKind = 'unit' | 'taxCategory' | 'paymentMethod';
 
@@ -43,7 +48,7 @@ interface LookupRow {
   isActive: boolean;
   rate?: string;
   isDefault?: boolean;
-  einvoiceCode?: string | null;
+  einvoiceCode?: EInvoiceCode | null;
   unEceCode?: string | null;
 }
 
@@ -91,7 +96,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
       nameEn?: string;
       rate?: string;
       isDefault?: boolean;
-      einvoiceCode?: string;
+      einvoiceCode?: EInvoiceCode | null;
       unEceCode?: string;
     }) => {
       const base = {
@@ -107,7 +112,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
       }
       const create =
         kind === 'taxCategory'
-          ? { code: v.code!, ...base, rate: v.rate ?? '0', isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || undefined }
+          ? { code: v.code!, ...base, rate: v.rate ?? '0', isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || null }
           : { code: v.code!, ...base, unEceCode: v.unEceCode || undefined };
       return CREATE_FN[kind](create as never);
     },
@@ -187,6 +192,12 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
                   width: 90,
                   render: (v: boolean) => (v ? <Tag color="blue">✓</Tag> : '—'),
                 },
+                {
+                  title: t('settings.einvoiceCode'),
+                  dataIndex: 'einvoiceCode',
+                  width: 130,
+                  render: (v?: string | null) => v ?? '—',
+                },
               ]
             : []),
           {
@@ -253,8 +264,19 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
                 <Form.Item name="isDefault" label={t('settings.isDefault')} valuePropName="checked">
                   <input type="checkbox" />
                 </Form.Item>
-                <Form.Item name="einvoiceCode" label={t('settings.einvoiceCode')}>
-                  <Input maxLength={50} />
+                <Form.Item
+                  name="einvoiceCode"
+                  label={t('settings.einvoiceCode')}
+                  extra={t('settings.einvoiceCodeHint')}
+                >
+                  <Select
+                    allowClear
+                    options={[
+                      { value: 'S', label: t('settings.einvoiceCode_S') },
+                      { value: 'Z', label: t('settings.einvoiceCode_Z') },
+                      { value: 'O', label: t('settings.einvoiceCode_O') },
+                    ]}
+                  />
                 </Form.Item>
               </>
             )}
@@ -284,6 +306,7 @@ export function SettingsPage() {
             label: t('settings.paymentMethods'),
             children: <LookupTable kind="paymentMethod" title={t('settings.paymentMethods')} />,
           },
+          { key: 'einvoice', label: t('settings.einvoice'), children: <EInvoiceSettingsTab /> },
         ]}
       />
       </Card>

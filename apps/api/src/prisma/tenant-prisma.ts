@@ -59,6 +59,9 @@ export const TENANT_MODELS = [
   'Payment',
   'Allocation',
   'CashTransfer',
+  'EInvoiceSettings',
+  'EInvoiceSubmission',
+  'EInvoiceAttempt',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);

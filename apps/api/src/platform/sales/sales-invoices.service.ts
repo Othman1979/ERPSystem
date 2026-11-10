@@ -18,6 +18,7 @@ import {
 } from '../shared/invoice-settlement.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
+import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesInvoiceDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
 
 const SOURCE = 'SALES_INVOICE';
@@ -41,6 +42,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
     private readonly posting: PostingService,
     private readonly ledger: StockLedgerService,
     private readonly audit: AuditService,
+    private readonly einvoice: EInvoiceOutboxService,
   ) {}
 
   /** Posted credit-return totals for the given invoices (for `outstanding`). */
@@ -184,7 +186,46 @@ export class SalesInvoicesService implements InvoiceSettlement {
       },
     });
     if (!inv) throw DomainError.notFound('SalesInvoice', id.toString());
-    return withBalance(inv, await this.creditedFor(db, [inv.id]));
+    return {
+      ...withBalance(inv, await this.creditedFor(db, [inv.id])),
+      einvoice: await this.einvoice.stateOf('SALES_INVOICE', inv.id),
+    };
+  }
+
+  /**
+   * A posted invoice as JoFotara needs it (docs/decisions/0005 §3–§7):
+   * amounts exactly as posted. Read by the e-invoice module (module boundary).
+   */
+  async einvoiceSource(id: bigint) {
+    const { db } = this.support.tenant();
+    return db.salesInvoice.findFirst({
+      where: { id, status: 'POSTED' },
+      select: {
+        id: true,
+        invoiceNo: true,
+        invoiceDate: true,
+        paymentType: true,
+        description: true,
+        grandTotal: true,
+        customer: {
+          select: { nameAr: true, taxNumber: true, nationalId: true, nationalIdKind: true, phone: true, isCashCustomer: true },
+        },
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: {
+            lineNo: true,
+            qty: true,
+            unitPrice: true,
+            discountAmount: true,
+            netAmount: true,
+            taxRate: true,
+            taxAmount: true,
+            item: { select: { nameAr: true } },
+            taxCategory: { select: { einvoiceCode: true } },
+          },
+        },
+      },
+    });
   }
 
   async create(dto: CreateSalesInvoiceDto) {
@@ -332,6 +373,29 @@ export class SalesInvoicesService implements InvoiceSettlement {
         if (draft.paymentType === 'CASH' && !draft.cashAccountId) {
           throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');
         }
+        // JoFotara rules (buyer, tax codes), checked before anything is posted (0005 §11).
+        const buyer = await tx.party.findFirst({
+          where: { id: draft.customerId },
+          select: { nameAr: true, taxNumber: true, nationalId: true, nationalIdKind: true, phone: true, isCashCustomer: true },
+        });
+        const categoryIds = [...new Set(draft.lines.map((l) => l.taxCategoryId).filter((x): x is bigint => x !== null))];
+        const codes = new Map(
+          (
+            await tx.taxCategory.findMany({ where: { id: { in: categoryIds } }, select: { id: true, einvoiceCode: true } })
+          ).map((c) => [c.id, c.einvoiceCode]),
+        );
+        if (buyer) {
+          await this.einvoice.assertInvoiceSendable(tx, companyId, {
+            paymentType: draft.paymentType,
+            grandTotal: draft.grandTotal.toString(),
+            buyer,
+            lines: draft.lines.map((l) => ({
+              taxRate: l.taxRate.toString(),
+              taxAmount: l.taxAmount.toString(),
+              einvoiceCode: l.taxCategoryId ? (codes.get(l.taxCategoryId) ?? null) : null,
+            })),
+          });
+        }
 
         const invoiceDate = new Date(draft.invoiceDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, invoiceDate);
@@ -437,6 +501,13 @@ export class SalesInvoicesService implements InvoiceSettlement {
             postedAt: new Date(),
             postedBy: userId ?? null,
           },
+        });
+        // Outbox (BUILD_PLAN §12.2): queued in this transaction, sent by the worker after it commits.
+        await this.einvoice.enqueue(tx, {
+          companyId,
+          documentType: 'SALES_INVOICE',
+          documentId: draft.id,
+          documentNo: invoiceNo,
         });
         return { id: draft.id, invoiceNo };
       }),

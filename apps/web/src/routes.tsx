@@ -7,6 +7,7 @@ import {
   ContainerOutlined,
   DashboardOutlined,
   FileDoneOutlined,
+  FileProtectOutlined,
   InboxOutlined,
   ProfileOutlined,
   SettingOutlined,
@@ -19,6 +20,7 @@ import {
 } from '@ant-design/icons';
 import { AccountsPage } from './pages/AccountsPage';
 import { BranchesPage } from './pages/BranchesPage';
+import { EInvoicePage } from './pages/EInvoicePage';
 import { FiscalPage } from './pages/FiscalPage';
 import { GoodsNotesPage } from './pages/GoodsNotesPage';
 import { HealthPage } from './pages/HealthPage';
@@ -70,6 +72,7 @@ export const APP_GROUPS: AppGroup[] = [
     tone: 'trade',
     routes: [
       { key: 'sales', path: '/sales', label: 'nav.sales', icon: <ShoppingCartOutlined />, element: <SalesPage /> },
+      { key: 'einvoice', path: '/einvoice', label: 'nav.einvoice', icon: <FileProtectOutlined />, element: <EInvoicePage /> },
       { key: 'purchases', path: '/purchases', label: 'nav.purchases', icon: <ShoppingOutlined />, element: <PurchasesPage /> },
       { key: 'goodsNotes', path: '/goods-notes', label: 'nav.goodsNotes', icon: <FileDoneOutlined />, element: <GoodsNotesPage /> },
       { key: 'parties', path: '/parties', label: 'nav.parties', icon: <SolutionOutlined />, element: <PartiesPage /> },

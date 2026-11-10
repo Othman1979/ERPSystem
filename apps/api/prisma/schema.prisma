@@ -296,6 +296,9 @@ model Tenant {
   receipts             Receipt[]
   payments             Payment[]
   cashTransfers        CashTransfer[]
+  einvoiceSettings     EInvoiceSettings[]
+  einvoiceSubmissions  EInvoiceSubmission[]
+  einvoiceAttempts     EInvoiceAttempt[]
   allocations          Allocation[]
 
   @@map("tenants")
@@ -369,6 +372,8 @@ model Company {
   receipts          Receipt[]
   payments          Payment[]
   cashTransfers        CashTransfer[]
+  einvoiceSettings     EInvoiceSettings[]
+  einvoiceSubmissions  EInvoiceSubmission[]
   allocations       Allocation[]
 
   @@unique([tenantId, id])
@@ -1169,6 +1174,8 @@ model Party {
   partyType        PartyType @map("party_type")
   taxNumber        String?   @map("tax_number") @db.VarChar(50)
   nationalId       String?   @map("national_id") @db.VarChar(50)
+  /// JoFotara buyer scheme for national_id (0005 §5): NIN Jordanian, PN non-Jordanian.
+  nationalIdKind   NationalIdKind @default(NIN) @map("national_id_kind")
   phone            String?   @db.VarChar(50)
   address          String?   @db.VarChar(512)
   city             String?   @db.VarChar(100)
@@ -1724,4 +1731,133 @@ model CashTransfer {
   @@unique([tenantId, transferNo])
   @@index([tenantId, transferDate])
   @@map("cash_transfers")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 — JoFotara e-invoicing (docs/decisions/0005-jofotara-fields.md)
+// ---------------------------------------------------------------------------
+
+enum NationalIdKind {
+  NIN
+  PN
+}
+
+enum EInvoiceEnvironment {
+  SANDBOX
+  PRODUCTION
+}
+
+enum EInvoiceTrack {
+  INCOME
+  GENERAL_SALES
+}
+
+enum EInvoiceStatus {
+  PENDING
+  SENDING
+  ACCEPTED
+  REJECTED
+  FAILED
+  UNKNOWN
+}
+
+/// JoFotara connection of one company (0005 §10). The Secret-Key is stored
+/// only AES-256-GCM sealed (EINVOICE_ENC_KEY) and never returned by the API.
+model EInvoiceSettings {
+  id                   BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId             BigInt              @map("tenant_id") @db.UnsignedBigInt
+  companyId            BigInt              @map("company_id") @db.UnsignedBigInt
+  environment          EInvoiceEnvironment @default(SANDBOX)
+  /// SANDBOX only: the local mock (jofotara-kit serve). PRODUCTION always uses the official URL.
+  baseUrl              String?             @map("base_url") @db.VarChar(255)
+  clientId             String?             @map("client_id") @db.VarChar(191)
+  secretEncrypted      String?             @map("secret_encrypted") @db.VarChar(512)
+  incomeSourceSequence String?             @map("income_source_sequence") @db.VarChar(50)
+  track                EInvoiceTrack       @default(GENERAL_SALES)
+  /// Next invoice counter (ICV); taken under a row lock when a document is queued.
+  nextIcv              Int                 @default(1) @map("next_icv")
+  isEnabled            Boolean             @default(false) @map("is_enabled")
+  /// Documents posted before this moment are never sent.
+  enabledAt            DateTime?           @map("enabled_at") @db.DateTime(3)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy            BigInt?             @map("created_by") @db.UnsignedBigInt
+  updatedBy            BigInt?             @map("updated_by") @db.UnsignedBigInt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId])
+  @@map("einvoice_settings")
+}
+
+/// One posted sales invoice or sales return on its way to JoFotara (0005 §13).
+/// ID + UUID + ICV are fixed when it is queued; every retry reuses them.
+model EInvoiceSubmission {
+  id                   BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId             BigInt              @map("tenant_id") @db.UnsignedBigInt
+  companyId            BigInt              @map("company_id") @db.UnsignedBigInt
+  /// SALES_INVOICE | SALES_RETURN
+  documentType         String              @map("document_type") @db.VarChar(30)
+  documentId           BigInt              @map("document_id") @db.UnsignedBigInt
+  documentNo           String              @map("document_no") @db.VarChar(50)
+  uuid                 String              @db.Char(36)
+  icv                  Int
+  environment          EInvoiceEnvironment
+  status               EInvoiceStatus      @default(PENDING)
+  /// Automatic attempts since the last manual resend (at most 5 while FAILED).
+  attemptCount         Int                 @default(0) @map("attempt_count")
+  nextAttemptAt        DateTime            @default(now()) @map("next_attempt_at") @db.DateTime(3)
+  claimToken           String?             @map("claim_token") @db.Char(36)
+  claimedAt            DateTime?           @map("claimed_at") @db.DateTime(3)
+  /// A manual resend after UNKNOWN must send this exact XML again.
+  reuseXml             Boolean             @default(false) @map("reuse_xml")
+  originalSubmissionId BigInt?             @map("original_submission_id") @db.UnsignedBigInt
+  /// The XML sent (no credentials in it).
+  requestXml           String?             @map("request_xml") @db.MediumText
+  responseCode         Int?                @map("response_code")
+  responseBody         String?             @map("response_body") @db.MediumText
+  /// [{ code, message, source }] from JoFotara or local validation.
+  errors               Json?
+  qrPayload            String?             @map("qr_payload") @db.Text
+  governmentUuid       String?             @map("government_uuid") @db.VarChar(100)
+  sentAt               DateTime?           @map("sent_at") @db.DateTime(3)
+  completedAt          DateTime?           @map("completed_at") @db.DateTime(3)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant             Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company            Company              @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  originalSubmission EInvoiceSubmission?  @relation("EInvoiceReturnOf", fields: [tenantId, originalSubmissionId], references: [tenantId, id])
+  returnSubmissions  EInvoiceSubmission[] @relation("EInvoiceReturnOf")
+  attempts           EInvoiceAttempt[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, documentType, documentId])
+  @@unique([tenantId, companyId, icv])
+  @@index([status, nextAttemptAt])
+  @@index([claimToken])
+  @@map("einvoice_submissions")
+}
+
+/// Every attempt to send a submission, with the raw answer (0005 §13).
+model EInvoiceAttempt {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt   @map("tenant_id") @db.UnsignedBigInt
+  submissionId BigInt   @map("submission_id") @db.UnsignedBigInt
+  attemptNo    Int      @map("attempt_no")
+  /// accepted | rejected | unknown | not-sent
+  outcome      String   @db.VarChar(20)
+  httpStatus   Int?     @map("http_status")
+  responseBody String?  @map("response_body") @db.MediumText
+  message      String?  @db.VarChar(1000)
+  startedAt    DateTime @map("started_at") @db.DateTime(3)
+  finishedAt   DateTime @map("finished_at") @db.DateTime(3)
+
+  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  submission EInvoiceSubmission @relation(fields: [tenantId, submissionId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, submissionId, attemptNo])
+  @@map("einvoice_attempts")
 }
