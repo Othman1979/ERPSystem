@@ -36,6 +36,9 @@ interface Party {
   nameEn?: string | null;
   partyType: 'CUSTOMER' | 'SUPPLIER' | 'BOTH';
   taxNumber?: string | null;
+  nationalId?: string | null;
+  /** JoFotara buyer scheme for nationalId: NIN Jordanian, PN non-Jordanian. */
+  nationalIdKind?: 'NIN' | 'PN';
   phone?: string | null;
   creditLimit?: string | null;
   paymentTermsDays?: number | null;
@@ -79,7 +82,7 @@ export function PartiesPage() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ partyType: 'CUSTOMER', isCashCustomer: false, isActive: true });
+    form.setFieldsValue({ partyType: 'CUSTOMER', nationalIdKind: 'NIN', isCashCustomer: false, isActive: true });
     setModalOpen(true);
   };
 
@@ -90,6 +93,8 @@ export function PartiesPage() {
       nameEn: p.nameEn ?? undefined,
       partyType: p.partyType,
       taxNumber: p.taxNumber ?? undefined,
+      nationalId: p.nationalId ?? undefined,
+      nationalIdKind: p.nationalIdKind ?? 'NIN',
       phone: p.phone ?? undefined,
       creditLimit: p.creditLimit ?? undefined,
       paymentTermsDays: p.paymentTermsDays ?? undefined,
@@ -106,6 +111,8 @@ export function PartiesPage() {
         nameEn: values.nameEn,
         partyType: values.partyType,
         taxNumber: values.taxNumber,
+        nationalId: values.nationalId,
+        nationalIdKind: values.nationalIdKind,
         phone: values.phone,
         creditLimit: values.creditLimit ?? undefined,
         paymentTermsDays: values.paymentTermsDays,
@@ -125,7 +132,7 @@ export function PartiesPage() {
         saveAndNew.current = false;
         const partyType = form.getFieldValue('partyType');
         form.resetFields();
-        form.setFieldsValue({ partyType, isCashCustomer: false, isActive: true });
+        form.setFieldsValue({ partyType, nationalIdKind: 'NIN', isCashCustomer: false, isActive: true });
         requestAnimationFrame(() => form.getFieldInstance('code')?.focus?.());
         return;
       }
@@ -187,7 +194,7 @@ export function PartiesPage() {
   ];
 
   const shown = (parties ?? []).filter((p) =>
-    matchesSearch(search, p.code, displayName(p), p.phone, p.taxNumber),
+    matchesSearch(search, p.code, displayName(p), p.phone, p.taxNumber, p.nationalId),
   );
 
   return (
@@ -291,6 +298,23 @@ export function PartiesPage() {
           <FormSection title={t('parties.contact')} icon={<PhoneOutlined />}>
             <Form.Item name="taxNumber" label={t('parties.taxNumber')}>
               <Input maxLength={50} />
+            </Form.Item>
+            <Form.Item label={t('parties.nationalId')} tooltip={t('parties.nationalIdHint')} className="span-2">
+              <Space.Compact block>
+                <Form.Item name="nationalIdKind" noStyle>
+                  <Select
+                    style={{ width: 130, flex: 'none' }}
+                    aria-label={t('parties.nationalId')}
+                    options={[
+                      { value: 'NIN', label: t('parties.nationalIdKind_NIN') },
+                      { value: 'PN', label: t('parties.nationalIdKind_PN') },
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item name="nationalId" noStyle>
+                  <Input maxLength={50} />
+                </Form.Item>
+              </Space.Compact>
             </Form.Item>
             <Form.Item name="phone" label={t('parties.phone')}>
               <Input maxLength={50} />

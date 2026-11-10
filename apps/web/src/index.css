@@ -805,3 +805,97 @@ body {
     width: 100%;
   }
 }
+
+/* ------------------------------------------- e-invoicing (JoFotara) */
+
+/* Settings tab framed like a dialog body: sections, then a footer bar */
+.settings-panel {
+  background: var(--c-surface);
+  border: 1px solid var(--c-grid-border);
+}
+
+.settings-panel-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--c-grid-panel);
+  border-top: 1px solid var(--c-grid-border);
+}
+
+/* "Not accepted by JoFotara yet" marker on a posted document */
+.einvoice-banner {
+  border-bottom: 1px solid var(--c-grid-border);
+}
+
+.einvoice-banner-title,
+.einvoice-drawer-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.einvoice-banner-errors {
+  margin: 4px 0 0;
+  padding-inline-start: 18px;
+}
+
+/* QR and identifiers of an accepted e-invoice, under the lines */
+.einvoice-qr-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 12px;
+  border-top: 1px solid var(--c-grid-border);
+  break-inside: avoid;
+}
+
+.einvoice-qr-facts {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.einvoice-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.einvoice-detail .einvoice-qr-panel {
+  border: 1px solid var(--c-grid-line);
+}
+
+.einvoice-detail h5 {
+  margin-bottom: 6px;
+}
+
+/* Sent XML / raw answer: left-to-right code, scrolls inside its box */
+.einvoice-xml {
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
+  font-size: 11px;
+  direction: ltr;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--c-grid-panel);
+  border: 1px solid var(--c-grid-line);
+}
+
+@media print {
+  /* Keep the marker's colour and the QR on paper */
+  .einvoice-banner {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .einvoice-qr-panel svg {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
