@@ -49,6 +49,7 @@ import { idemHeaders } from '../idempotency';
 import { GoodsNotesSection } from './GoodsNotesPage';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import {
   emptyItemLine,
   ItemLinesGrid,
@@ -188,18 +189,22 @@ function BalancesTab() {
   });
   return (
     <>
-      <Space style={{ marginBottom: 12 }}>
-        <Select
-          allowClear
-          placeholder={t('stock.warehouse')}
-          style={{ width: 240 }}
-          options={whOptions}
-          onChange={setWarehouseId}
-        />
-        <Checkbox checked={lowStock} onChange={(e) => setLowStock(e.target.checked)}>
-          {t('stock.lowStockOnly')}
-        </Checkbox>
-      </Space>
+      <ListToolbar
+        filters={
+          <>
+            <Select
+              allowClear
+              placeholder={t('stock.warehouse')}
+              options={whOptions}
+              onChange={setWarehouseId}
+            />
+            <Checkbox checked={lowStock} onChange={(e) => setLowStock(e.target.checked)}>
+              {t('stock.lowStockOnly')}
+            </Checkbox>
+          </>
+        }
+        count={(data ?? []).length}
+      />
       <Table
         rowKey={(r) => `${r.warehouseId}:${r.itemId}`}
         size="small"
@@ -232,6 +237,7 @@ function AdjustmentsTab() {
   const [reverseTarget, setReverseTarget] = useState<DocRow | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const { whOptions, itemOptions } = useLookups();
 
@@ -381,25 +387,32 @@ function AdjustmentsTab() {
     );
   }
 
+  const shown = (data ?? []).filter((r) => matchesSearch(search, r.docNo, displayName(r.warehouse)));
+
   return (
     <>
       {contextHolder}
-      <Space style={{ marginBottom: 12 }}>
-        <Button
-          type="primary"
-          onClick={() => {
-            setLines([emptyItemLine(1)]);
-            setModalOpen(true);
-          }}
-        >
-          {t('stock.newAdjustment')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button
+            type="primary"
+            onClick={() => {
+              setLines([emptyItemLine(1)]);
+              setModalOpen(true);
+            }}
+          >
+            {t('stock.newAdjustment')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={shown}
         pagination={{ pageSize: 20 }}
         columns={[
           { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
@@ -491,6 +504,7 @@ function TransfersTab() {
   const [reverseTarget, setReverseTarget] = useState<DocRow | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const { whOptions, itemOptions } = useLookups();
 
@@ -618,25 +632,32 @@ function TransfersTab() {
     );
   }
 
+  const shown = (data ?? []).filter((r) => matchesSearch(search, r.docNo, displayName(r.fromWarehouse), displayName(r.toWarehouse)));
+
   return (
     <>
       {contextHolder}
-      <Space style={{ marginBottom: 12 }}>
-        <Button
-          type="primary"
-          onClick={() => {
-            setLines([emptyItemLine(1)]);
-            setModalOpen(true);
-          }}
-        >
-          {t('stock.newTransfer')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button
+            type="primary"
+            onClick={() => {
+              setLines([emptyItemLine(1)]);
+              setModalOpen(true);
+            }}
+          >
+            {t('stock.newTransfer')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={shown}
         pagination={{ pageSize: 20 }}
         columns={[
           { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
@@ -726,6 +747,7 @@ function CountsTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [detail, setDetail] = useState<CountDetail | null>(null);
   const [counted, setCounted] = useState<Record<string, string | null>>({});
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const { whOptions } = useLookups();
 
@@ -897,19 +919,26 @@ function CountsTab() {
     );
   }
 
+  const shown = (data ?? []).filter((r) => matchesSearch(search, r.docNo, displayName(r.warehouse)));
+
   return (
     <>
       {contextHolder}
-      <Space style={{ marginBottom: 12 }}>
-        <Button type="primary" onClick={() => setModalOpen(true)}>
-          {t('stock.newCount')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button type="primary" onClick={() => setModalOpen(true)}>
+            {t('stock.newCount')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={shown}
         pagination={{ pageSize: 20 }}
         columns={[
           { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
@@ -998,24 +1027,27 @@ function MovementsTab() {
   });
   return (
     <>
-      <Space style={{ marginBottom: 12 }}>
-        <Select
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          placeholder={t('items.title')}
-          style={{ width: 260 }}
-          options={itemOptions}
-          onChange={setItemId}
-        />
-        <Select
-          allowClear
-          placeholder={t('stock.warehouse')}
-          style={{ width: 240 }}
-          options={whOptions}
-          onChange={setWarehouseId}
-        />
-      </Space>
+      <ListToolbar
+        filters={
+          <>
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('items.title')}
+              options={itemOptions}
+              onChange={setItemId}
+            />
+            <Select
+              allowClear
+              placeholder={t('stock.warehouse')}
+              options={whOptions}
+              onChange={setWarehouseId}
+            />
+          </>
+        }
+        count={(data?.rows ?? []).length}
+      />
       <Table
         rowKey="id"
         size="small"

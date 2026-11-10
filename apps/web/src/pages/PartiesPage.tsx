@@ -24,6 +24,7 @@ import {
   partiesControllerUpdate,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { displayName, type Named } from '../i18n/displayName';
 import { amountCell } from '../format/cells';
@@ -52,6 +53,7 @@ export function PartiesPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Party | null>(null);
   const [form] = Form.useForm();
@@ -184,32 +186,42 @@ export function PartiesPage() {
     },
   ];
 
+  const shown = (parties ?? []).filter((p) =>
+    matchesSearch(search, p.code, displayName(p), p.phone, p.taxNumber),
+  );
+
   return (
     <div>
       {contextHolder}
       <PageHeader title={t('nav.parties')} />
-      <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
-        <Select
-          allowClear
-          placeholder={t('parties.type')}
-          style={{ width: 180 }}
-          value={typeFilter}
-          onChange={setTypeFilter}
-          options={[
-            { value: 'CUSTOMER', label: t('parties.type_CUSTOMER') },
-            { value: 'SUPPLIER', label: t('parties.type_SUPPLIER') },
-            { value: 'BOTH', label: t('parties.type_BOTH') },
-          ]}
-        />
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          {t('parties.new')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        filters={
+          <Select
+            allowClear
+            placeholder={t('parties.type')}
+            value={typeFilter}
+            onChange={setTypeFilter}
+            options={[
+              { value: 'CUSTOMER', label: t('parties.type_CUSTOMER') },
+              { value: 'SUPPLIER', label: t('parties.type_SUPPLIER') },
+              { value: 'BOTH', label: t('parties.type_BOTH') },
+            ]}
+          />
+        }
+        count={shown.length}
+        actions={
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            {t('parties.new')}
+          </Button>
+        }
+      />
 
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={parties ?? []}
+        dataSource={shown}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}

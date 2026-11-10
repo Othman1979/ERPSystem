@@ -33,6 +33,8 @@ import {
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { useNewFromUrl } from '../useNewFromUrl';
 import {
   ApiError,
   accountingControllerListAccounts,
@@ -255,13 +257,21 @@ function InvoicesTab() {
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
   const lookups = useSalesLookups();
+  useNewFromUrl(() => {
+    setInvoiceId(null);
+    setScreen('form');
+  });
 
+  const [paymentFilter, setPaymentFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
   const { data: invoices, isLoading } = useQuery({
-    queryKey: ['sales-invoices', statusFilter],
+    queryKey: ['sales-invoices', statusFilter, paymentFilter],
     queryFn: () =>
-      salesControllerListInvoices({ status: statusFilter ?? '', paymentType: '', customerId: '' }).then(
-        (r) => r.data as unknown as SalesInvoice[],
-      ),
+      salesControllerListInvoices({
+        status: statusFilter ?? '',
+        paymentType: paymentFilter ?? '',
+        customerId: '',
+      }).then((r) => r.data as unknown as SalesInvoice[]),
     enabled: screen === 'list',
   });
 
@@ -390,36 +400,59 @@ function InvoicesTab() {
     );
   }
 
+  const shown = (invoices ?? []).filter((r) =>
+    matchesSearch(search, r.invoiceNo, displayName(r.customer)),
+  );
+
   return (
     <div>
       {contextHolder}
-      <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
-        <Select
-          allowClear
-          placeholder={t('common.status')}
-          style={{ width: 160 }}
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={[
-            { value: 'DRAFT', label: t('common.draft') },
-            { value: 'POSTED', label: t('common.posted') },
-          ]}
-        />
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setInvoiceId(null);
-            setScreen('form');
-          }}
-        >
-          {t('sales.newInvoice')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        searchPlaceholder={t('sales.searchPlaceholder')}
+        filters={
+          <>
+            <Select
+              allowClear
+              placeholder={t('common.status')}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: 'DRAFT', label: t('common.draft') },
+                { value: 'POSTED', label: t('common.posted') },
+              ]}
+            />
+            <Select
+              allowClear
+              placeholder={t('sales.paymentType')}
+              value={paymentFilter}
+              onChange={setPaymentFilter}
+              options={[
+                { value: 'CREDIT', label: t('sales.CREDIT') },
+                { value: 'CASH', label: t('sales.CASH') },
+              ]}
+            />
+          </>
+        }
+        count={shown.length}
+        actions={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setInvoiceId(null);
+              setScreen('form');
+            }}
+          >
+            {t('sales.newInvoice')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={invoices ?? []}
+        dataSource={shown}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}
@@ -788,6 +821,7 @@ function ReturnsTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
@@ -978,29 +1012,39 @@ function ReturnsTab() {
     );
   }
 
+  const shown = (returns ?? []).filter((r) =>
+    matchesSearch(search, r.returnNo, r.originalInvoice?.invoiceNo, displayName(r.customer)),
+  );
+
   return (
     <div>
       {contextHolder}
-      <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
-        <Select
-          allowClear
-          placeholder={t('common.status')}
-          style={{ width: 160 }}
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={[
-            { value: 'DRAFT', label: t('common.draft') },
-            { value: 'POSTED', label: t('common.posted') },
-          ]}
-        />
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-          {t('sales.newReturn')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        filters={
+          <Select
+            allowClear
+            placeholder={t('common.status')}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: 'DRAFT', label: t('common.draft') },
+              { value: 'POSTED', label: t('common.posted') },
+            ]}
+          />
+        }
+        count={shown.length}
+        actions={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+            {t('sales.newReturn')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={returns ?? []}
+        dataSource={shown}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}

@@ -12,6 +12,7 @@ import {
 import { ContainerOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { codeAndName, displayName } from '../i18n/displayName';
 
 interface Warehouse {
@@ -35,6 +36,7 @@ export function WarehousesPage() {
   const [apiMessage, contextHolder] = message.useMessage();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Warehouse | null>(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
 
   const { data: warehouses, isLoading } = useQuery({
@@ -104,23 +106,28 @@ export function WarehousesPage() {
     setModalOpen(true);
   };
 
+  const shown = (warehouses ?? []).filter((w) => matchesSearch(search, w.code, displayName(w)));
+
   return (
     <div>
-      <PageHeader
-        title={t('warehouses.title')}
+      <PageHeader title={t('warehouses.title')} />
+      <Card>
+      {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
         actions={
           <Button type="primary" onClick={openCreate}>
             {t('warehouses.add')}
           </Button>
         }
       />
-      <Card>
-      {contextHolder}
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={warehouses ?? []}
+        dataSource={shown}
         pagination={false}
         columns={[
           { title: t('warehouses.code'), dataIndex: 'code', width: 110 },

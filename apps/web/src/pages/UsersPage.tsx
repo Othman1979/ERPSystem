@@ -25,6 +25,7 @@ import {
 import { UserOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 
 interface Membership {
   membershipId: string;
@@ -55,6 +56,7 @@ export function UsersPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm] = Form.useForm();
   const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
   const [apiMessage, contextHolder] = message.useMessage();
 
   const { data, isLoading } = useQuery({
@@ -113,22 +115,27 @@ export function UsersPage() {
   const roleName = (_code: string, ar: string, en: string | null) =>
     i18n.language === 'ar' ? ar : (en ?? ar);
 
+  const shown = (data ?? []).filter((m) => matchesSearch(search, m.user.fullName, m.user.email));
+
   return (
     <div>
-      <PageHeader
-        title={t('users.title')}
+      <PageHeader title={t('users.title')} />
+      <Card>
+      {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
         actions={
           <Button type="primary" onClick={() => setInviteOpen(true)}>
             {t('users.invite')}
           </Button>
         }
       />
-      <Card>
-      {contextHolder}
       <Table
         rowKey="membershipId"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={shown}
         pagination={false}
         columns={[
           { title: t('users.name'), render: (_: unknown, m: Membership) => m.user.fullName },

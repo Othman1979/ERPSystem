@@ -39,6 +39,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
 import { qtyCell, unitCostCell } from '../format/cells';
@@ -110,6 +111,7 @@ export function GoodsNotesSection({
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new voucher
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
 
   // ---- new-voucher form state ----
   const [newType, setNewType] = useState<NoteType>('GRN');
@@ -296,18 +298,26 @@ export function GoodsNotesSection({
 
   // ============================ LIST VIEW ============================
   if (screen === 'list') {
+    const shown = (notes ?? []).filter((r) =>
+      matchesSearch(search, r.docNo, r.warehouse ? codeAndName(r.warehouse) : null, r.description),
+    );
     return (
       <div>
         {contextHolder}
-        <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
-          <Select
-            allowClear
-            placeholder={t('goods.noteType')}
-            style={{ width: 180 }}
-            value={typeFilter}
-            onChange={setTypeFilter}
-            options={NOTE_TYPES.map((vt) => ({ value: vt, label: t(TYPE_LABEL[vt]) }))}
-          />
+        <ListToolbar
+          search={search}
+          onSearch={setSearch}
+          filters={
+            <Select
+              allowClear
+              placeholder={t('goods.noteType')}
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={NOTE_TYPES.map((vt) => ({ value: vt, label: t(TYPE_LABEL[vt]) }))}
+            />
+          }
+          count={shown.length}
+          actions={
           <Dropdown.Button
             type="primary"
             icon={<PlusOutlined />}
@@ -322,11 +332,12 @@ export function GoodsNotesSection({
           >
             {t('goods.entryVoucher')}
           </Dropdown.Button>
-        </Space>
+          }
+        />
         <Table
           rowKey="id"
           loading={isLoading}
-          dataSource={notes ?? []}
+          dataSource={shown}
           size="small"
           pagination={{ pageSize: 20 }}
           onRow={(r) => ({ onClick: () => openEntry(r.id), style: { cursor: 'pointer' } })}

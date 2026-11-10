@@ -47,6 +47,7 @@ export const ar = {
   dashboard: {
     title: 'لوحة التحكم',
     welcome: 'مرحباً {{name}}',
+    quickActions: 'إجراءات سريعة',
     plan: 'الباقة',
     noPlan: 'بدون باقة',
     status: 'حالة الاشتراك',
@@ -350,6 +351,7 @@ export const ar = {
     customer: 'العميل',
     invoice: 'الفاتورة',
     invoiceTitle: 'فاتورة مبيعات',
+    searchPlaceholder: 'بحث برقم الفاتورة أو العميل…',
     paymentType: 'نوع الدفع',
     CASH: 'نقدي',
     CREDIT: 'آجل',
@@ -481,6 +483,8 @@ export const ar = {
   },
   common: {
     status: 'الحالة',
+    search: 'بحث…',
+    resultCount: 'عدد النتائج: {{count}}',
     basicInfo: 'البيانات الأساسية',
     actions: 'إجراءات',
     edit: 'تعديل',
@@ -601,6 +605,7 @@ export const en: typeof ar = {
   dashboard: {
     title: 'Dashboard',
     welcome: 'Welcome {{name}}',
+    quickActions: 'Quick actions',
     plan: 'Plan',
     noPlan: 'No plan',
     status: 'Subscription status',
@@ -904,6 +909,7 @@ export const en: typeof ar = {
     customer: 'Customer',
     invoice: 'Invoice',
     invoiceTitle: 'Sales Invoice',
+    searchPlaceholder: 'Search by invoice no. or customer…',
     paymentType: 'Payment Type',
     CASH: 'Cash',
     CREDIT: 'Credit',
@@ -1035,6 +1041,8 @@ export const en: typeof ar = {
   },
   common: {
     status: 'Status',
+    search: 'Search…',
+    resultCount: 'Results: {{count}}',
     basicInfo: 'Basic information',
     actions: 'Actions',
     edit: 'Edit',

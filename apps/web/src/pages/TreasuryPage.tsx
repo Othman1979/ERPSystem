@@ -47,10 +47,13 @@ import {
 } from '@erp/api-client';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { EnterNav } from '../components/EnterNav';
 import { ReverseButton } from '../components/ReverseButton';
 import { idemHeaders } from '../idempotency';
+import { useNewFromUrl } from '../useNewFromUrl';
+import { useSearchParams } from 'react-router';
 import { BalancesTab } from './treasury/BalancesTab';
 import { TransfersTab } from './treasury/TransfersTab';
 import { enterTo, focusNamedField, GridSelect } from '../components/GridSelect';
@@ -161,7 +164,9 @@ function useTreasuryLookups() {
 
 export function TreasuryPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState('boxes');
+  // ?tab=receipts (home quick actions) opens straight on that tab.
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(() => params.get('tab') ?? 'boxes');
   const lookups = useTreasuryLookups();
   return (
     <div>
@@ -193,6 +198,7 @@ function CashBoxesTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<CashBox | null>(null);
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
@@ -275,13 +281,20 @@ function CashBoxesTab() {
     },
   ];
 
+  const shown = (boxes ?? []).filter((b) =>
+    matchesSearch(search, b.code, b.name, b.account ? codeAndName(b.account) : null),
+  );
+
   return (
     <div>
       {contextHolder}
-      <div style={{ marginBottom: 12, textAlign: 'end' }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newCashBox')}</Button>
-      </div>
-      <Table rowKey="id" loading={isLoading} dataSource={boxes ?? []} columns={columns} size="small" pagination={false} />
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newCashBox')}</Button>}
+      />
+      <Table rowKey="id" loading={isLoading} dataSource={shown} columns={columns} size="small" pagination={false} />
       <FormDialog open={modalOpen} title={editing ? t('treasury.editCashBox') : t('treasury.newCashBox')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
           <FormSection
@@ -325,6 +338,7 @@ function BankAccountsTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<BankAccount | null>(null);
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
@@ -424,13 +438,20 @@ function BankAccountsTab() {
     },
   ];
 
+  const shown = (banks ?? []).filter((b) =>
+    matchesSearch(search, b.bankName, b.accountNoMasked, b.account ? codeAndName(b.account) : null),
+  );
+
   return (
     <div>
       {contextHolder}
-      <div style={{ marginBottom: 12, textAlign: 'end' }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newBankAccount')}</Button>
-      </div>
-      <Table rowKey="id" loading={isLoading} dataSource={banks ?? []} columns={columns} size="small" pagination={false} />
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newBankAccount')}</Button>}
+      />
+      <Table rowKey="id" loading={isLoading} dataSource={shown} columns={columns} size="small" pagination={false} />
       <FormDialog open={modalOpen} title={editing ? t('treasury.editBankAccount') : t('treasury.newBankAccount')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
           <FormSection
@@ -470,6 +491,8 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  useNewFromUrl(() => setModalOpen(true));
+  const [search, setSearch] = useState('');
   const [viewId, setViewId] = useState<string | null>(null);
   const [api, contextHolder] = message.useMessage();
   const onError = (err: unknown) =>
@@ -702,18 +725,34 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
     );
   }
 
+  const shown = (vouchers ?? []).filter((v) =>
+    matchesSearch(
+      search,
+      v.receiptNo,
+      v.paymentNo,
+      v.party ? codeAndName(v.party) : null,
+      v.cashAccount ? codeAndName(v.cashAccount) : null,
+      v.description,
+    ),
+  );
+
   return (
     <div>
       {contextHolder}
-      <div style={{ marginBottom: 12, textAlign: 'end' }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-          {kind === 'receipt' ? t('treasury.newReceipt') : t('treasury.newPayment')}
-        </Button>
-      </div>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+            {kind === 'receipt' ? t('treasury.newReceipt') : t('treasury.newPayment')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={vouchers ?? []}
+        dataSource={shown}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}

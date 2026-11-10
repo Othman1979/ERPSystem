@@ -33,6 +33,7 @@ import {
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import {
   ApiError,
   accountingControllerListAccounts,
@@ -53,6 +54,7 @@ import {
   settingsControllerListTaxCategories,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
+import { useNewFromUrl } from '../useNewFromUrl';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
@@ -252,10 +254,15 @@ function PurchaseInvoicesTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
   const [screen, setScreen] = useState<'list' | 'form' | 'view'>('list');
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
   const lookups = usePurchaseLookups();
+  useNewFromUrl(() => {
+    setInvoiceId(null);
+    setScreen('form');
+  });
 
   const { data: invoices, isLoading } = useQuery({
     queryKey: ['purchase-invoices', statusFilter],
@@ -391,36 +398,46 @@ function PurchaseInvoicesTab() {
     );
   }
 
+  const shown = (invoices ?? []).filter((r) =>
+    matchesSearch(search, r.invoiceNo, displayName(r.supplier), r.supplierInvoiceNo),
+  );
+
   return (
     <div>
       {contextHolder}
-      <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
-        <Select
-          allowClear
-          placeholder={t('common.status')}
-          style={{ width: 160 }}
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={[
-            { value: 'DRAFT', label: t('common.draft') },
-            { value: 'POSTED', label: t('common.posted') },
-          ]}
-        />
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setInvoiceId(null);
-            setScreen('form');
-          }}
-        >
-          {t('purchases.newInvoice')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        filters={
+          <Select
+            allowClear
+            placeholder={t('common.status')}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: 'DRAFT', label: t('common.draft') },
+              { value: 'POSTED', label: t('common.posted') },
+            ]}
+          />
+        }
+        count={shown.length}
+        actions={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setInvoiceId(null);
+              setScreen('form');
+            }}
+          >
+            {t('purchases.newInvoice')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={invoices ?? []}
+        dataSource={shown}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}
@@ -817,6 +834,7 @@ function PurchaseReturnsTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
@@ -1007,29 +1025,39 @@ function PurchaseReturnsTab() {
     );
   }
 
+  const shown = (returns ?? []).filter((r) =>
+    matchesSearch(search, r.returnNo, r.originalInvoice?.invoiceNo, displayName(r.supplier)),
+  );
+
   return (
     <div>
       {contextHolder}
-      <Space style={{ marginBottom: 12, justifyContent: 'space-between', width: '100%' }}>
-        <Select
-          allowClear
-          placeholder={t('common.status')}
-          style={{ width: 160 }}
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={[
-            { value: 'DRAFT', label: t('common.draft') },
-            { value: 'POSTED', label: t('common.posted') },
-          ]}
-        />
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-          {t('purchases.newReturn')}
-        </Button>
-      </Space>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        filters={
+          <Select
+            allowClear
+            placeholder={t('common.status')}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: 'DRAFT', label: t('common.draft') },
+              { value: 'POSTED', label: t('common.posted') },
+            ]}
+          />
+        }
+        count={shown.length}
+        actions={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+            {t('purchases.newReturn')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={returns ?? []}
+        dataSource={shown}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}

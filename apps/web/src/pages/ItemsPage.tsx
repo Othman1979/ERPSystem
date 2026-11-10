@@ -35,7 +35,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
@@ -53,6 +53,7 @@ import {
   warehousesControllerList,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { codeAndName, displayName, type Named } from '../i18n/displayName';
 import { Num } from '../components/Num';
@@ -147,7 +148,13 @@ function ItemsTab() {
   const { contextHolder, show } = useApiError();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
+  // The box updates on every keystroke; the API search waits until typing pauses.
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  useEffect(() => {
+    const id = window.setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => window.clearTimeout(id);
+  }, [searchInput]);
   const [kindFilter, setKindFilter] = useState<string | undefined>();
   const [view, setView] = useState<'table' | 'cards'>('table');
   const [ledgerItem, setLedgerItem] = useState<Item | null>(null);
@@ -369,20 +376,18 @@ function ItemsTab() {
 
   return (
     <div>
-      <PageHeader
-        title={t('items.title')}
-        actions={
-          <Space wrap>
-            <Input.Search
-              allowClear
-              placeholder={t('items.search')}
-              style={{ width: 200 }}
-              onSearch={setSearch}
-            />
+      <PageHeader title={t('items.title')} />
+      <Card size="small">
+      {contextHolder}
+      <ListToolbar
+        search={searchInput}
+        onSearch={setSearchInput}
+        searchPlaceholder={t('items.search')}
+        filters={
+          <>
             <Select
               allowClear
               placeholder={t('items.kind')}
-              style={{ width: 130 }}
               onChange={setKindFilter}
               options={[
                 { value: 'STOCK', label: t('items.stock') },
@@ -397,14 +402,15 @@ function ItemsTab() {
                 { value: 'cards', icon: <AppstoreOutlined /> },
               ]}
             />
-            <Button type="primary" onClick={openCreate}>
-              {t('items.add')}
-            </Button>
-          </Space>
+          </>
+        }
+        count={(items ?? []).length}
+        actions={
+          <Button type="primary" onClick={openCreate}>
+            {t('items.add')}
+          </Button>
         }
       />
-      <Card size="small">
-      {contextHolder}
       {view === 'table' ? (
         <Table
           rowKey="id"
@@ -790,6 +796,7 @@ function GroupsTab() {
   const { contextHolder, show } = useApiError();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Group | null>(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
 
   const { data: groups, isLoading } = useQuery({
@@ -835,30 +842,33 @@ function GroupsTab() {
   const parentName = (id: string | null) =>
     id ? displayName((groups ?? []).find((g) => g.id === id)) ?? id : '—';
 
+  const shown = (groups ?? []).filter((g) => matchesSearch(search, g.code, displayName(g)));
+
   return (
-    <Card
-      size="small"
-      title={t('items.groups')}
-      extra={
-        <Button
-          type="primary"
-          size="small"
-          onClick={() => {
-            setEditing(null);
-            form.resetFields();
-            setModalOpen(true);
-          }}
-        >
-          {t('items.addGroup')}
-        </Button>
-      }
-    >
+    <Card size="small" title={t('items.groups')}>
       {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button
+            type="primary"
+            onClick={() => {
+              setEditing(null);
+              form.resetFields();
+              setModalOpen(true);
+            }}
+          >
+            {t('items.addGroup')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={groups ?? []}
+        dataSource={shown}
         pagination={false}
         columns={[
           { title: t('items.code'), dataIndex: 'code', width: 110 },

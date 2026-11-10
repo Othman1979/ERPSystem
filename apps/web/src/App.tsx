@@ -2,22 +2,26 @@ import { Component, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import {
+  ExportOutlined,
   HomeOutlined,
+  ImportOutlined,
   LogoutOutlined,
   MenuOutlined,
+  ProfileOutlined,
+  ShoppingCartOutlined,
+  ShoppingOutlined,
   UserOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import {
   Avatar,
   Breadcrumb,
   Button,
   Card,
-  Col,
   Drawer,
   Grid,
   Layout,
   Menu,
-  Row,
   Select,
   Space,
   Spin,
@@ -85,30 +89,35 @@ function writeSiderCollapsed(collapsed: boolean): void {
   }
 }
 
-function AppTileCard({
-  route,
-  group,
-  onOpen,
-}: {
-  route: AppRoute;
-  group: AppGroup;
-  onOpen: () => void;
-}) {
+/** Home-screen module group: a titled panel listing its screens as links. */
+function HomeGroup({ group, onOpen }: { group: AppGroup; onOpen: (route: AppRoute) => void }) {
   const { t } = useTranslation();
   return (
-    <Card
-      hoverable
-      onClick={onOpen}
-      className="app-tile"
-      styles={{ body: { padding: '18px 12px', textAlign: 'center' } }}
-    >
-      <div className="app-tile-icon" style={{ background: palette.tone[group.tone] }}>
-        {route.icon}
+    <section className="home-group">
+      <div className="home-group-head">
+        <span className="home-group-dot" style={{ background: palette.tone[group.tone] }} />
+        {t(group.label)}
       </div>
-      <Typography.Text strong>{t(route.label)}</Typography.Text>
-    </Card>
+      {group.routes.map((r) => (
+        <button key={r.key} type="button" className="home-link" onClick={() => onOpen(r)}>
+          <span className="home-link-icon" style={{ color: palette.tone[group.tone] }}>
+            {r.icon}
+          </span>
+          {t(r.label)}
+        </button>
+      ))}
+    </section>
   );
 }
+
+/** Everyday documents, opened straight into a new form (pages read `?new=1`). */
+const QUICK_ACTIONS = [
+  { key: 'sale', label: 'sales.newInvoice', path: '/sales?new=1', icon: <ShoppingCartOutlined /> },
+  { key: 'purchase', label: 'purchases.newInvoice', path: '/purchases?new=1', icon: <ShoppingOutlined /> },
+  { key: 'receipt', label: 'treasury.newReceipt', path: '/treasury?tab=receipts&new=1', icon: <ImportOutlined /> },
+  { key: 'payment', label: 'treasury.newPayment', path: '/treasury?tab=payments&new=1', icon: <ExportOutlined /> },
+  { key: 'journal', label: 'journal.newEntry', path: '/journal?new=1', icon: <ProfileOutlined /> },
+] as const;
 
 function HomeScreen() {
   const { t } = useTranslation();
@@ -116,29 +125,30 @@ function HomeScreen() {
   const navigate = useNavigate();
   return (
     <>
-      <div style={{ marginBottom: 20 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('app.title')}
-        </Typography.Title>
-        <Typography.Text type="secondary">
-          {me?.currentTenant?.name} —{' '}
-          {displayName(me?.currentTenant?.plan) ?? t('dashboard.noPlan')}
-        </Typography.Text>
-      </div>
-      {APP_GROUPS.map((g) => (
-        <div key={g.label} style={{ marginBottom: 24 }}>
-          <Typography.Title level={5} style={{ marginBottom: 12 }}>
-            {t(g.label)}
+      <div className="home-head">
+        <div>
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            {me?.currentTenant?.name ?? t('app.title')}
           </Typography.Title>
-          <Row gutter={[16, 16]}>
-            {g.routes.map((r) => (
-              <Col key={r.key} xs={12} sm={8} md={6} lg={4}>
-                <AppTileCard route={r} group={g} onOpen={() => navigate(r.path)} />
-              </Col>
-            ))}
-          </Row>
+          <Typography.Text type="secondary">
+            {displayName(me?.currentTenant?.plan) ?? t('dashboard.noPlan')} —{' '}
+            {dayjs().format('dddd D MMMM YYYY')}
+          </Typography.Text>
         </div>
-      ))}
+      </div>
+      <div className="home-quick">
+        <span className="home-quick-title">{t('dashboard.quickActions')}</span>
+        {QUICK_ACTIONS.map((a) => (
+          <Button key={a.key} icon={a.icon} onClick={() => navigate(a.path)}>
+            {t(a.label)}
+          </Button>
+        ))}
+      </div>
+      <div className="home-groups">
+        {APP_GROUPS.map((g) => (
+          <HomeGroup key={g.label} group={g} onOpen={(r) => navigate(r.path)} />
+        ))}
+      </div>
     </>
   );
 }

@@ -24,6 +24,7 @@ import {
 import { BookOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { bothNames, codeAndName } from '../i18n/displayName';
 import { palette } from '../theme';
 import { Num } from '../components/Num';
@@ -108,6 +109,7 @@ export function AccountsPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
@@ -228,22 +230,42 @@ export function AccountsPage() {
     .filter((a) => a.isActive && a.id !== editing?.id)
     .map((a) => ({ value: a.id, label: codeAndName(a) }));
 
+  // Keep matching accounts plus their ancestors so the tree stays intact;
+  // balances were rolled up on the full tree above, so they are unaffected.
+  const shownTree = useMemo(() => {
+    const prune = (nodes: TreeNode[]): TreeNode[] =>
+      nodes.flatMap((n) => {
+        const kids = n.children ? prune(n.children) : [];
+        if (matchesSearch(search, n.code, n.nameAr, n.nameEn) || kids.length) {
+          return [{ ...n, children: kids.length ? kids : undefined }];
+        }
+        return [];
+      });
+    return search.trim() ? prune(tree) : tree;
+  }, [tree, search]);
+  const shownCount = (data ?? []).filter((a) =>
+    matchesSearch(search, a.code, a.nameAr, a.nameEn),
+  ).length;
+
   return (
     <div>
-      <PageHeader
-        title={t('accounts.title')}
+      <PageHeader title={t('accounts.title')} />
+      <Card>
+      {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shownCount}
         actions={
           <Button type="primary" onClick={openCreate}>
             {t('accounts.add')}
           </Button>
         }
       />
-      <Card>
-      {contextHolder}
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={tree}
+        dataSource={shownTree}
         pagination={false}
         expandable={{ defaultExpandAllRows: true }}
         columns={[

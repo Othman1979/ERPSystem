@@ -41,6 +41,7 @@ import {
   journalControllerReverse,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
+import { useNewFromUrl } from '../useNewFromUrl';
 import {
   enterTo,
   focusFirstGridCell,
@@ -48,6 +49,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
@@ -116,6 +118,7 @@ export function JournalPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new entry
   const [reverseTarget, setReverseTarget] = useState<JournalEntry | null>(null);
@@ -174,6 +177,7 @@ export function JournalPage() {
     setGridFocus((g) => g + 1);
     setScreen('entry');
   };
+  useNewFromUrl(() => openNew('JOURNAL'));
 
   const openEntry = (id: string) => {
     setEntryId(id);
@@ -275,34 +279,41 @@ export function JournalPage() {
 
   // ============================ LIST VIEW ============================
   if (screen === 'list') {
+    const shown = (entries ?? []).filter((e) => matchesSearch(search, e.entryNo, e.description));
     return (
       <div>
-        <PageHeader
-          title={t('journal.title')}
+        <PageHeader title={t('journal.title')} />
+        <Card>
+        {contextHolder}
+        <ListToolbar
+          search={search}
+          onSearch={setSearch}
+          filters={
+            <>
+                <Select
+                  allowClear
+                  placeholder={t('journal.allStatuses')}
+                  value={statusFilter}
+                  onChange={(v) => setStatusFilter(v)}
+                  options={[
+                    { value: 'DRAFT', label: t('journal.draft') },
+                    { value: 'POSTED', label: t('journal.postedStatus') },
+                  ]}
+                />
+                <Select
+                  allowClear
+                  placeholder={t('journal.voucherType')}
+                  value={typeFilter}
+                  onChange={(v) => setTypeFilter(v)}
+                  options={VOUCHER_TYPES.map((vt) => ({
+                    value: vt,
+                    label: t(VOUCHER_TYPE_LABEL[vt]),
+                  }))}
+                />
+            </>
+          }
+          count={shown.length}
           actions={
-            <Space>
-              <Select
-                allowClear
-                placeholder={t('journal.allStatuses')}
-                style={{ width: 130 }}
-                value={statusFilter}
-                onChange={(v) => setStatusFilter(v)}
-                options={[
-                  { value: 'DRAFT', label: t('journal.draft') },
-                  { value: 'POSTED', label: t('journal.postedStatus') },
-                ]}
-              />
-              <Select
-                allowClear
-                placeholder={t('journal.voucherType')}
-                style={{ width: 150 }}
-                value={typeFilter}
-                onChange={(v) => setTypeFilter(v)}
-                options={VOUCHER_TYPES.map((vt) => ({
-                  value: vt,
-                  label: t(VOUCHER_TYPE_LABEL[vt]),
-                }))}
-              />
               <Dropdown.Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -317,15 +328,12 @@ export function JournalPage() {
               >
                 {t('journal.newEntry')}
               </Dropdown.Button>
-            </Space>
           }
         />
-        <Card>
-        {contextHolder}
         <Table
           rowKey="id"
           loading={isLoading}
-          dataSource={entries ?? []}
+          dataSource={shown}
           pagination={{ pageSize: 20 }}
           onRow={(e) => ({ onClick: () => openEntry(e.id), style: { cursor: 'pointer' } })}
           columns={[

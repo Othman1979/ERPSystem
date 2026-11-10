@@ -117,21 +117,87 @@ body {
   min-width: 0;
 }
 
-/* Home-screen launcher tiles */
-.app-tile {
-  border-radius: 8px;
+/* ---------------------------------------------------------- home screen */
+
+.home-head {
+  margin-bottom: 14px;
 }
 
-.app-tile-icon {
-  width: 52px;
-  height: 52px;
-  margin: 0 auto 10px;
-  border-radius: 10px;
-  color: #fff;
+/* Quick actions: one gray bar of everyday "new document" buttons */
+.home-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  background: var(--c-grid-panel-bg);
+  border: 1px solid var(--c-grid-border);
+}
+
+.home-quick-title {
+  font-weight: 600;
+  margin-inline-end: 6px;
+}
+
+/* Module groups as compact titled lists */
+.home-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.home-group {
+  background: var(--c-surface);
+  border: 1px solid var(--c-grid-border);
+}
+
+.home-group-head {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 24px;
+  gap: 8px;
+  padding: 6px 12px;
+  font-weight: 600;
+  background: var(--c-grid-bar-bg);
+  color: var(--c-grid-bar-text);
+  border-bottom: 1px solid var(--c-grid-border);
+}
+
+.home-group-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.home-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--c-grid-line);
+  background: none;
+  font: inherit;
+  color: var(--c-text);
+  text-align: start;
+  cursor: pointer;
+}
+
+.home-link:last-child {
+  border-bottom: 0;
+}
+
+.home-link:hover,
+.home-link:focus-visible {
+  background: var(--c-hover);
+  outline: none;
+}
+
+.home-link-icon {
+  font-size: 16px;
+  display: inline-flex;
 }
 
 /* ---------------------------------------------------------------- phones */
@@ -358,6 +424,72 @@ body {
   .entry-grid-hint {
     display: none !important;
   }
+}
+
+/* ------------------------------------------------------- list toolbar */
+
+/* Gray bar sitting flush on top of a list table's frame */
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--c-grid-panel-bg);
+  border: 1px solid var(--c-grid-border);
+  border-bottom: 0;
+}
+
+.list-toolbar-search {
+  width: 240px;
+  max-width: 100%;
+}
+
+.list-toolbar .ant-select {
+  min-width: 150px;
+}
+
+.list-toolbar-count {
+  font-size: 12px;
+  color: var(--c-text);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.list-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+@media (max-width: 640px) {
+  .list-toolbar-search {
+    width: 100%;
+  }
+}
+
+/* Report header facts (account, opening balance) between the filter bar and the table */
+.report-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-grid-border);
+  border-bottom: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Pick an account first" style hints in place of a report table */
+.report-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--c-text);
+  opacity: 0.7;
+  border: 1px solid var(--c-grid-border);
+  background: var(--c-surface);
 }
 
 /* ------------------------------------------------- document screens */

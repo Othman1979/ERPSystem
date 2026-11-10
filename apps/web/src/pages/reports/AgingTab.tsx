@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { Segmented, Table, Typography } from 'antd';
+import { PrinterOutlined } from '@ant-design/icons';
+import { Button, Segmented, Table, Typography } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiFetchData } from '@erp/api-client';
+import { ListToolbar } from '../../components/ListToolbar';
 import { Num } from '../../components/Num';
 import { amountCell } from '../../format/cells';
 import { formatAmount } from '../../format/number';
@@ -35,18 +37,28 @@ export function AgingTab() {
 
   return (
     <>
-      <Segmented
-        style={{ marginBottom: 12 }}
-        value={partyType}
-        onChange={(v) => setPartyType(v as 'CUSTOMER' | 'SUPPLIER')}
-        options={[
-          { value: 'CUSTOMER', label: t('reports.customers') },
-          { value: 'SUPPLIER', label: t('reports.suppliers') },
-        ]}
+      <ListToolbar
+        filters={
+          <>
+            <Segmented
+              value={partyType}
+              onChange={(v) => setPartyType(v as 'CUSTOMER' | 'SUPPLIER')}
+              options={[
+                { value: 'CUSTOMER', label: t('reports.customers') },
+                { value: 'SUPPLIER', label: t('reports.suppliers') },
+              ]}
+            />
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {t('reports.agingNote')} {data?.asOf ? `(${data.asOf})` : ''}
+            </Typography.Text>
+          </>
+        }
+        actions={
+          <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
+            {t('common.print')}
+          </Button>
+        }
       />
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-        {t('reports.agingNote')} {data?.asOf ? `(${data.asOf})` : ''}
-      </Typography.Paragraph>
       <Table
         rowKey="partyId"
         size="small"

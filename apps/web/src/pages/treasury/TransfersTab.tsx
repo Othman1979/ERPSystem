@@ -13,6 +13,7 @@ import {
 import { EnterNav } from '../../components/EnterNav';
 import { FormDialog, FormSection } from '../../components/FormDialog';
 import { GridSelect } from '../../components/GridSelect';
+import { ListToolbar, matchesSearch } from '../../components/ListToolbar';
 import { ReverseButton } from '../../components/ReverseButton';
 import { amountCell } from '../../format/cells';
 import { dec } from '../../format/number';
@@ -36,6 +37,7 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
   const queryClient = useQueryClient();
   const [api, contextHolder] = message.useMessage();
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['cash-transfers'],
@@ -59,19 +61,28 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
     onError,
   });
 
+  const shown = (data ?? []).filter((r) =>
+    matchesSearch(search, r.transferNo, codeAndName(r.fromAccount), codeAndName(r.toAccount), r.description),
+  );
+
   return (
     <div>
       {contextHolder}
-      <div style={{ marginBottom: 12, textAlign: 'end' }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-          {t('treasury.newTransfer')}
-        </Button>
-      </div>
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
+        actions={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+            {t('treasury.newTransfer')}
+          </Button>
+        }
+      />
       <Table
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={shown}
         pagination={{ pageSize: 20 }}
         columns={[
           {

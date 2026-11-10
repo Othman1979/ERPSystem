@@ -23,6 +23,7 @@ import {
 import { ShopOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { displayName } from '../i18n/displayName';
 
 interface Branch {
@@ -40,6 +41,7 @@ export function BranchesPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Branch | null>(null);
+  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
@@ -95,22 +97,27 @@ export function BranchesPage() {
     setModalOpen(true);
   };
 
+  const shown = (data ?? []).filter((b) => matchesSearch(search, b.code, displayName(b)));
+
   return (
     <div>
-      <PageHeader
-        title={t('branches.title')}
+      <PageHeader title={t('branches.title')} />
+      <Card>
+      {contextHolder}
+      <ListToolbar
+        search={search}
+        onSearch={setSearch}
+        count={shown.length}
         actions={
           <Button type="primary" onClick={openCreate}>
             {t('branches.add')}
           </Button>
         }
       />
-      <Card>
-      {contextHolder}
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={shown}
         pagination={false}
         columns={[
           { title: t('branches.code'), dataIndex: 'code' },
