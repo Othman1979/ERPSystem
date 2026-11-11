@@ -86,6 +86,8 @@ describe('Phase 3 — journal engine (erp_test)', () => {
   let token = '';
   const acc: Record<string, Account> = {};
   let fyPeriod1Id = '';
+  // A real customer: party lines must name a party of the tenant.
+  let customerId = '';
 
   const acct = (code: string) => acc[code].id;
 
@@ -120,6 +122,13 @@ describe('Phase 3 — journal engine (erp_test)', () => {
     expect(acc['4101']).toBeDefined();
     expect(acc['1101']).toBeDefined();
     expect(acc['1103'].isControl).toBe(true);
+
+    const customer = await api()
+      .post('/api/v1/parties')
+      .set(auth(token))
+      .send({ code: 'C1', nameAr: 'عميل', partyType: 'CUSTOMER' });
+    expect(customer.status).toBe(201);
+    customerId = customer.body.id;
   });
 
   it('rejects posting outside any fiscal year', async () => {
@@ -287,6 +296,7 @@ describe('Phase 3 — journal engine (erp_test)', () => {
     const res = await api()
       .post('/api/v1/journal-entries/opening')
       .set(auth(token))
+      .set(idem())
       .send({
         entryDate: '2025-01-01',
         description: 'opening',
@@ -301,7 +311,7 @@ describe('Phase 3 — journal engine (erp_test)', () => {
             accountId: acct('1103'),
             debit: '500.000',
             partyType: 'CUSTOMER',
-            partyId: '42',
+            partyId: customerId,
           },
         ],
       });
@@ -349,7 +359,7 @@ describe('Phase 3 — journal engine (erp_test)', () => {
   it('party statement matches control-account balance', async () => {
     const ps = await api()
       .get('/api/v1/reports/party-statement')
-      .query({ partyType: 'CUSTOMER', partyId: '42' })
+      .query({ partyType: 'CUSTOMER', partyId: customerId })
       .set(auth(token));
     expect(ps.status).toBe(200);
     expect(Number(ps.body.closingBalance)).toBeCloseTo(500, 3);
@@ -429,7 +439,7 @@ describe('Phase 3 — journal engine (erp_test)', () => {
             accountId: acct('1103'),
             debit: '10.000',
             partyType: 'CUSTOMER',
-            partyId: '7',
+            partyId: customerId,
           },
           { accountId: acct('4101'), credit: '10.000' },
         ],

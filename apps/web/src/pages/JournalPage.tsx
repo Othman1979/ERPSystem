@@ -28,8 +28,10 @@ import { useTranslation } from 'react-i18next';
 import {
   emptyLine,
   JournalLinesGrid,
+  partyFields,
   type JournalLineDraft,
 } from '../components/JournalLinesGrid';
+import { usePartyColumn } from '../components/usePartyColumn';
 import {
   ApiError,
   accountingControllerListAccounts,
@@ -62,6 +64,7 @@ interface Account {
   nameAr: string;
   isPostable: boolean;
   isActive: boolean;
+  controlType?: string | null;
 }
 
 interface JournalLine {
@@ -70,6 +73,7 @@ interface JournalLine {
   debit?: string | null;
   credit?: string | null;
   description?: string | null;
+  partyId?: string | null;
   account?: { code: string; nameAr: string };
 }
 
@@ -138,6 +142,7 @@ export function JournalPage() {
       journalControllerList({
         status: statusFilter ?? '',
         voucherType: typeFilter ?? '',
+        sourceType: '',
       }).then((r) => r.data as unknown as JournalEntry[]),
     enabled: screen === 'list',
   });
@@ -150,6 +155,7 @@ export function JournalPage() {
   const accountOptions = (accounts ?? [])
     .filter((a) => a.isActive && a.isPostable)
     .map((a) => ({ value: a.id, label: codeAndName(a) }));
+  const { partyColumn, partyName } = usePartyColumn(accounts);
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['journal-entry', entryId],
@@ -202,6 +208,7 @@ export function JournalPage() {
             debit: l.debit != null ? String(l.debit) : undefined,
             credit: l.credit != null ? String(l.credit) : undefined,
             description: l.description || undefined,
+            ...partyFields(l, partyColumn),
           })),
       } as never),
     onSuccess: (res) => {
@@ -221,6 +228,13 @@ export function JournalPage() {
     const filled = lines.filter((l) => l.accountId);
     if (filled.length < 2) {
       apiMessage.error(t('journal.minLines'));
+      return;
+    }
+    const noParty = filled.findIndex(
+      (l) => partyColumn.kindByAccount.has(l.accountId!) && !l.partyId,
+    );
+    if (noParty >= 0) {
+      apiMessage.error(t('journal.partyRequired', { line: lines.indexOf(filled[noParty]) + 1 }));
       return;
     }
     createDraft.mutate();
@@ -546,6 +560,7 @@ export function JournalPage() {
             onChange={setLines}
             accountOptions={accountOptions}
             focusSignal={gridFocus}
+            partyColumn={partyColumn}
           />
         ) : detailLoading ? (
           <div className="doc-section">{t('common.loading')}</div>
@@ -565,6 +580,10 @@ export function JournalPage() {
                 title: t('journal.account'),
                 render: (_: unknown, l: JournalLine) =>
                   l.account ? codeAndName(l.account) : '—',
+              },
+              {
+                title: t('journal.party'),
+                render: (_: unknown, l: JournalLine) => partyName(l.partyId) ?? '—',
               },
               {
                 title: t('common.description'),
@@ -588,7 +607,7 @@ export function JournalPage() {
             ]}
             summary={() => (
               <Table.Summary.Row style={{ fontWeight: 600 }}>
-                <Table.Summary.Cell index={0} colSpan={3}>
+                <Table.Summary.Cell index={0} colSpan={4}>
                   {t('journal.total')}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">
