@@ -41,4 +41,9 @@ export class StorageService {
   async remove(key: string): Promise<void> {
     await rm(this.pathOf(key), { force: true });
   }
+
+  /** Removes every file of a tenant (its folder); used only by the purge job. */
+  async removeTenant(tenantId: bigint): Promise<void> {
+    await rm(this.pathOf(`t${tenantId}`), { recursive: true, force: true });
+  }
 }

@@ -8,6 +8,8 @@
     "build": "nest build",
     "start": "node dist/main.js",
     "job:tenant-status": "node dist/jobs/cli.js tenant-status",
+    "job:einvoice-send": "node dist/jobs/cli.js einvoice-send",
+    "job:purge-tenant": "node dist/jobs/cli.js purge-tenant",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
