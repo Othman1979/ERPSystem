@@ -29,17 +29,67 @@ export const envSchema = z.object({
   RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
   // Uploaded files (company logo): a folder outside the web root (ADR-009 §7).
   STORAGE_DIR: z.string().min(1).default('storage'),
+  // Reverse proxies in front of the API (the host's, nginx): how many, so req.ip
+  // (rate limits, audit) is the client's address. 0 = clients connect directly.
+  // More than the real count lets a client forge its address (ADR-010 §10.1).
+  TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
+  // The built web app (apps/web/dist), served by the API on the same origin
+  // (ADR-010 §2). Unset: API only.
+  WEB_DIST_DIR: z.string().min(1).optional(),
+  // OpenAPI pages at /api/docs. Unset: on, except in production (ADR-010 §5).
+  API_DOCS: z.enum(['on', 'off']).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * What production must have on top of the schema (ADR-010 §10.1). Each
+ * problem names its variable; the API refuses to start.
+ */
+export function productionProblems(env: Env): { path: string; message: string }[] {
+  if (env.NODE_ENV !== 'production') return [];
+  const problems: { path: string; message: string }[] = [];
+  if (env.JWT_ACCESS_SECRET.length < 32) {
+    problems.push({ path: 'JWT_ACCESS_SECRET', message: 'must be at least 32 characters in production' });
+  }
+  let origin: URL | null = null;
+  try {
+    origin = new URL(env.CORS_ORIGIN);
+  } catch {
+    // reported below
+  }
+  if (!origin || origin.protocol !== 'https:' || LOCAL_HOSTS.has(origin.hostname)) {
+    problems.push({ path: 'CORS_ORIGIN', message: 'must be the site https:// address in production' });
+  }
+  const key = env.EINVOICE_ENC_KEY ? Buffer.from(env.EINVOICE_ENC_KEY, 'base64') : Buffer.alloc(0);
+  if (key.length !== 32) {
+    problems.push({ path: 'EINVOICE_ENC_KEY', message: 'is required in production: 32 random bytes, base64' });
+  }
+  if (env.EINVOICE_WORKER === 'on') {
+    problems.push({
+      path: 'EINVOICE_WORKER',
+      message: 'must be off in production: e-invoices are sent by Cron (ADR-009 §15)',
+    });
+  }
+  return problems;
+}
+
 export function validateEnv(config: Record<string, unknown>): Env {
-  const result = envSchema.safeParse(config);
-  if (!result.success) {
-    const issues = result.error.issues
-      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-      .join('; ');
-    throw new Error(`Invalid environment configuration: ${issues}`);
+  // `NAME=` in a .env file means unset: its default applies, or "required".
+  const given = Object.fromEntries(Object.entries(config).filter(([, v]) => v !== ''));
+  const result = envSchema.safeParse(given);
+  const issues = result.success
+    ? productionProblems(result.data).map((p) => `${p.path}: ${p.message}`)
+    : result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
+  if (!result.success || issues.length > 0) {
+    throw new Error(`Invalid environment configuration: ${issues.join('; ')}`);
   }
   return result.data;
+}
+
+/** Whether /api/docs is served (ADR-010 §5). */
+export function apiDocsEnabled(env: Pick<Env, 'API_DOCS' | 'NODE_ENV'>): boolean {
+  return (env.API_DOCS ?? (env.NODE_ENV === 'production' ? 'off' : 'on')) === 'on';
 }

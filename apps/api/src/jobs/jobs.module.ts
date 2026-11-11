@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { validateEnv } from '../common/config/env.validation.js';
 import { StorageService } from '../common/storage/storage.service.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
+import { PlatformAdminGrantService } from './platform-admin-grant.service.js';
+import { PreflightService } from './preflight.service.js';
 import { TenantPurgeService } from './tenant-purge.service.js';
 import { TenantStatusService } from './tenant-status.service.js';
 
@@ -13,6 +15,6 @@ import { TenantStatusService } from './tenant-status.service.js';
  */
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), PrismaModule],
-  providers: [TenantStatusService, TenantPurgeService, StorageService],
+  providers: [TenantStatusService, TenantPurgeService, StorageService, PreflightService, PlatformAdminGrantService],
 })
 export class JobsModule {}
