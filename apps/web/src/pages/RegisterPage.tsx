@@ -70,6 +70,16 @@ export function RegisterPage({ onSwitchToLogin }: { onSwitchToLogin: () => void 
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+            {t('auth.consentBefore')}
+            <a href="/terms" target="_blank" rel="noreferrer">
+              {t('legal.terms.title')}
+            </a>
+            {t('auth.consentAnd')}
+            <a href="/privacy" target="_blank" rel="noreferrer">
+              {t('legal.privacy.title')}
+            </a>
+          </Typography.Paragraph>
           <Button type="primary" htmlType="submit" block loading={loading}>
             {t('auth.register')}
           </Button>

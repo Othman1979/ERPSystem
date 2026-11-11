@@ -5,6 +5,7 @@ import {
   CloudServerOutlined,
   ExportOutlined,
   HomeOutlined,
+  QuestionCircleOutlined,
   ImportOutlined,
   LogoutOutlined,
   MenuOutlined,
@@ -36,6 +37,8 @@ import { HomeDashboard } from './pages/HomeDashboard';
 import { LoginPage } from './pages/LoginPage';
 import { PlatformAdminPage } from './pages/PlatformAdminPage';
 import { SetupWizardPage } from './pages/SetupWizardPage';
+import { HelpPage } from './pages/HelpPage';
+import { LegalPage } from './pages/LegalPage';
 import { useCompany } from './components/CompanyProfileForm';
 import { RegisterPage } from './pages/RegisterPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
@@ -296,6 +299,16 @@ function AppShell() {
               <span className="topbar-user">{me?.user.fullName ?? me?.user.email}</span>
             )}
           </Space>
+          <Tooltip title={t('help.title')}>
+            <Button
+              size="small"
+              type="text"
+              className="topbar-btn"
+              icon={<QuestionCircleOutlined />}
+              aria-label={t('help.title')}
+              onClick={() => navigate('/help')}
+            />
+          </Tooltip>
           <Button
             size="small"
             onClick={() => {
@@ -347,6 +360,9 @@ function AppShell() {
                 element={<ViewErrorBoundary key={r.key}>{r.element}</ViewErrorBoundary>}
               />
             ))}
+            <Route path="/help" element={<HelpPage />} />
+            <Route path="/privacy" element={<LegalPage kind="privacy" />} />
+            <Route path="/terms" element={<LegalPage kind="terms" />} />
             <Route
               path="/setup"
               element={
@@ -388,7 +404,13 @@ function AppShell() {
 
 export function App() {
   const { status } = useAuth();
+  const location = useLocation();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+  // The privacy policy and terms are public: registration links to them.
+  if (status === 'guest' && (location.pathname === '/privacy' || location.pathname === '/terms')) {
+    return <LegalPage kind={location.pathname === '/privacy' ? 'privacy' : 'terms'} standalone />;
+  }
 
   if (status === 'loading') {
     return (

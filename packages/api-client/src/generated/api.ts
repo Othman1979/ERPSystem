@@ -6706,6 +6706,39 @@ export const reportsControllerDashboardSummary = async ( options?: Parameters<ty
 
 
 
+export type tenantExportControllerTenantDataResponse200 = {
+  data: void
+  status: 200
+}
+
+export type tenantExportControllerTenantDataResponseSuccess = (tenantExportControllerTenantDataResponse200) & {
+  headers: Headers;
+};
+;
+
+export type tenantExportControllerTenantDataResponse = (tenantExportControllerTenantDataResponseSuccess)
+
+export const getTenantExportControllerTenantDataUrl = () => {
+
+
+
+
+  return `/api/v1/export/tenant-data`
+}
+
+export const tenantExportControllerTenantData = async ( options?: Parameters<typeof apiFetch>[1]): Promise<tenantExportControllerTenantDataResponse> => {
+
+  return apiFetch<tenantExportControllerTenantDataResponse>(getTenantExportControllerTenantDataUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export type adminControllerListResponse200 = {
   data: void
   status: 200

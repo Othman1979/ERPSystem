@@ -35,6 +35,8 @@ export const ar = {
   auth: {
     loginTitle: 'تسجيل الدخول',
     registerTitle: 'إنشاء حساب جديد',
+    consentBefore: 'بإنشاء الحساب توافق على ',
+    consentAnd: ' و',
     email: 'البريد الإلكتروني',
     password: 'كلمة المرور',
     login: 'دخول',
@@ -348,6 +350,152 @@ export const ar = {
     replaceLogo: 'تغيير الشعار',
     removeLogo: 'حذف الشعار',
     logoSaved: 'تم حفظ الشعار',
+  },
+  legal: {
+    draftNotice: 'مسودة — هذا النص لم يُراجع قانونياً بعد، ويُستبدل بالنص المعتمد قبل الإطلاق.',
+    updated: 'آخر تحديث: مسودة المرحلة 9',
+    backToSignIn: 'العودة إلى تسجيل الدخول',
+    privacy: {
+      title: 'سياسة الخصوصية',
+      intro: 'توضح هذه السياسة البيانات التي يعالجها النظام عند استخدام شركتك له، وكيف تُحفظ وتُحمى، وحقوقك تجاهها.',
+      who: {
+        title: 'من نحن',
+        body: 'نقدّم نظام محاسبة ومستودعات سحابياً للشركات الصغيرة والمتوسطة في الأردن. شركتك هي صاحبة بياناتها، ونحن نعالجها لتقديم الخدمة فقط.',
+      },
+      data: {
+        title: 'البيانات التي نعالجها',
+        body: '• بيانات الحساب: اسم المستخدم وبريده الإلكتروني.\n• بيانات الشركة: الاسم والرقم الضريبي والعنوان والهاتف والشعار.\n• البيانات التي تدخلها: الحسابات والقيود والفواتير والأطراف والأصناف والمخزون.\n• بيانات تقنية: عنوان IP ونوع المتصفح في سجل التدقيق، لأغراض الأمان.',
+      },
+      use: {
+        title: 'كيف نستخدمها',
+        body: 'لتشغيل الخدمة وحفظ بياناتك، ولإرسال الفواتير الإلكترونية إلى منظومة الفوترة الوطنية بطلب من شركتك، وللدعم الفني، ولحماية الحسابات من إساءة الاستخدام.',
+      },
+      sharing: {
+        title: 'مشاركة البيانات',
+        body: 'لا نبيع البيانات ولا نشاركها لأغراض تسويقية. تُرسل بيانات الفواتير إلى منظومة الفوترة الوطنية (JoFotara) عند تفعيلها من شركتك. ويُستضاف النظام لدى مزوّد استضافة يلتزم بحماية البيانات.',
+      },
+      retention: {
+        title: 'مدة الحفظ والحذف',
+        body: 'تُحفظ البيانات طوال مدة الاشتراك. بعد الإلغاء تبقى متاحة للتصدير 90 يوماً، ثم تُحذف بعد إشعار المالك. يمكن للمالك تنزيل نسخة كاملة من بياناته في أي وقت من الإعدادات.',
+      },
+      security: {
+        title: 'الأمان',
+        body: 'كلمات المرور محفوظة بتشفير أحادي الاتجاه، وبيانات كل شركة معزولة عن غيرها، وبيانات اعتماد الفوترة الإلكترونية مشفرة، وتُؤخذ نسخ احتياطية يومية.',
+      },
+      rights: {
+        title: 'حقوقك',
+        body: 'لك الحق في الاطلاع على بياناتك وتصحيحها وتصديرها وطلب حذفها، وفق قانون حماية البيانات الشخصية الأردني.',
+      },
+      changes: {
+        title: 'تعديل السياسة',
+        body: 'قد نعدّل هذه السياسة، ونُعلم المالك بأي تغيير جوهري قبل سريانه.',
+      },
+      contact: {
+        title: 'التواصل',
+        body: 'لأي استفسار عن الخصوصية: [يُستكمل — البريد الإلكتروني وعنوان الشركة المشغّلة].',
+      },
+    },
+    terms: {
+      title: 'شروط الاستخدام',
+      intro: 'باستخدامك النظام توافق على هذه الشروط نيابة عن شركتك.',
+      acceptance: {
+        title: 'القبول',
+        body: 'تسري هذه الشروط على كل من يسجّل حساباً أو يستخدم النظام. إن لم توافق عليها فلا تستخدم الخدمة.',
+      },
+      service: {
+        title: 'الخدمة',
+        body: 'نظام محاسبة ومستودعات سحابي: القيود والفواتير والمخزون والخزينة والتقارير والفوترة الإلكترونية، ضمن حدود الباقة المشترك بها.',
+      },
+      account: {
+        title: 'الحساب والمسؤولية',
+        body: 'المالك مسؤول عن صحة البيانات المدخلة وعن صلاحيات المستخدمين الذين يدعوهم وعن سرية كلمات المرور.',
+      },
+      billing: {
+        title: 'التجربة والاشتراك والدفع',
+        body: 'تبدأ كل شركة بفترة تجريبية مدتها 14 يوماً. الدفع يدوي بالتحويل البنكي أو CliQ. عند انتهاء الفترة المدفوعة تُمنح 7 أيام سماح، ثم يصبح الحساب للقراءة فقط حتى التجديد.',
+      },
+      cancellation: {
+        title: 'الإلغاء والبيانات',
+        body: 'يمكن إلغاء الاشتراك في أي وقت. بعد الإلغاء يبقى تصدير البيانات متاحاً 90 يوماً، ثم تُحذف.',
+      },
+      einvoice: {
+        title: 'الفوترة الإلكترونية',
+        body: 'يرسل النظام الفواتير بالبيانات التي تدخلها شركتك. تبقى الشركة مسؤولة عن صحة فواتيرها وعن التزاماتها الضريبية.',
+      },
+      use: {
+        title: 'الاستخدام المقبول',
+        body: 'يُمنع استخدام النظام لأي نشاط مخالف للقانون، أو محاولة الوصول إلى بيانات شركات أخرى، أو تعطيل الخدمة.',
+      },
+      liability: {
+        title: 'حدود المسؤولية',
+        body: '[يُستكمل بصياغة قانونية — حدود المسؤولية عن الأعطال وفقدان البيانات والأضرار غير المباشرة].',
+      },
+      law: {
+        title: 'القانون الواجب التطبيق',
+        body: 'تخضع هذه الشروط لقوانين المملكة الأردنية الهاشمية.',
+      },
+      changes: {
+        title: 'تعديل الشروط والتواصل',
+        body: 'قد نعدّل هذه الشروط، ونُعلم المالك بأي تغيير جوهري قبل سريانه. للتواصل: [يُستكمل].',
+      },
+    },
+  },
+  help: {
+    title: 'المساعدة',
+    subtitle: 'دليل مختصر لأهم المهام اليومية',
+    open: 'فتح الشاشة',
+    start: {
+      title: 'البدء: إعداد الشركة',
+      body: 'افتح «معالج الإعداد» وأكمل الخطوات: بيانات الشركة والرقم الضريبي والشعار، السنة المالية، الضريبة، المستودع والصندوق الرئيسيان. يمكنك العودة إليه في أي وقت من الإعدادات.',
+    },
+    opening: {
+      title: 'الأرصدة الافتتاحية',
+      body: 'من «الأرصدة الافتتاحية» أدخل أرصدة الصناديق والبنوك والأصول، وأرصدة العملاء والموردين بعمود العميل/المورد. الفرق يُرحّل تلقائياً إلى حساب الأرصدة الافتتاحية.\nأدخل بضاعة أول المدة من المخزون ← تسويات المخزون بنوع «افتتاحي»، ولا تدخل حساب المخزون في القيد الافتتاحي.',
+    },
+    masters: {
+      title: 'الأصناف والعملاء والموردون',
+      body: 'عرّف الأصناف ووحداتها وأسعارها، والعملاء والموردين برقمهم الضريبي إن وجد. الصنف «الخدمي» لا يحرّك المخزون.',
+    },
+    sales: {
+      title: 'المبيعات',
+      body: 'أنشئ فاتورة البيع كمسودة، راجعها، ثم رحّلها (Ctrl+Enter). الترحيل يُنشئ القيد ويخرج البضاعة ويرسل الفاتورة الإلكترونية. للتصحيح استخدم المرتجع أو العكس، فالفاتورة المرحّلة لا تُعدّل.',
+    },
+    purchases: {
+      title: 'المشتريات',
+      body: 'فاتورة الشراء تدخل البضاعة بتكلفتها وتُحدّث متوسط التكلفة. المرتجع يُخرجها بتكلفة السطر الأصلي.',
+    },
+    treasury: {
+      title: 'الخزينة',
+      body: 'سند القبض من العميل وسند الصرف للمورد أو للمصروف. خصّص السند على الفواتير الآجلة، يدوياً أو تلقائياً على الأقدم. التحويل ينقل المال بين الصناديق والبنوك.',
+    },
+    stock: {
+      title: 'المخزون',
+      body: 'التسويات للإدخال والإخراج اليدوي، والتحويلات بين المستودعات، والجرد يُنشئ تسوية بالفروق عند اعتماده.',
+    },
+    journal: {
+      title: 'القيود اليدوية',
+      body: 'القيد اليدوي يُحفظ مسودة ثم يُرحّل، ولا يُرحّل إلا إذا تساوى المدين والدائن. التصحيح بقيد عكسي بتاريخ تختاره.',
+    },
+    reports: {
+      title: 'التقارير',
+      body: 'ميزان المراجعة بأرصدة أول المدة والحركة وآخر المدة، وكشف حساب أي حساب أو طرف، وميزان المواد، وقائمة الدخل والميزانية، وأعمار الديون. كل تقرير يُطبع ويُصدّر PDF وExcel.',
+    },
+    einvoice: {
+      title: 'الفوترة الإلكترونية',
+      body: 'تابع حالة إرسال كل فاتورة إلى JoFotara. الرفض يظهر برسالة مفهومة، وإعادة الإرسال للحالات الفاشلة فقط.',
+    },
+    users: {
+      title: 'المستخدمون والفروع',
+      body: 'ادعُ المستخدمين وحدد دور كل منهم (محاسب، أمين مستودع، كاشير) والفروع المسموحة له.',
+    },
+    subscription: {
+      title: 'الاشتراك وتصدير البيانات',
+      body: 'بعد انتهاء الاشتراك بفترة السماح يصبح الحساب للقراءة فقط حتى التجديد. يمكن للمالك تنزيل كل بيانات الشركة من الإعدادات ← تصدير البيانات في أي وقت.',
+    },
+    keyboard: {
+      title: 'اختصارات لوحة المفاتيح',
+      body: 'Enter: الحقل التالي في النماذج والجداول.\nالأسهم: التنقل بين خلايا الجدول.\nCtrl+S: حفظ المسودة.\nCtrl+Enter: الترحيل.',
+    },
   },
   dataExport: {
     title: 'تصدير البيانات',
@@ -975,6 +1123,8 @@ export const en: typeof ar = {
   auth: {
     loginTitle: 'Sign in',
     registerTitle: 'Create account',
+    consentBefore: 'By creating the account you accept the ',
+    consentAnd: ' and the ',
     email: 'Email',
     password: 'Password',
     login: 'Sign in',
@@ -1288,6 +1438,152 @@ export const en: typeof ar = {
     replaceLogo: 'Replace logo',
     removeLogo: 'Remove logo',
     logoSaved: 'Logo saved',
+  },
+  legal: {
+    draftNotice: 'Draft — this text has not been reviewed by a lawyer yet and will be replaced by the approved text before launch.',
+    updated: 'Last updated: Phase 9 draft',
+    backToSignIn: 'Back to sign in',
+    privacy: {
+      title: 'Privacy Policy',
+      intro: 'This policy explains what data the system processes when your company uses it, how it is kept and protected, and your rights over it.',
+      who: {
+        title: 'Who we are',
+        body: 'We provide a cloud accounting and inventory system for small and medium companies in Jordan. Your company owns its data; we process it only to provide the service.',
+      },
+      data: {
+        title: 'Data we process',
+        body: '• Account data: user name and email.\n• Company data: name, tax number, address, phone and logo.\n• Data you enter: accounts, journal entries, invoices, parties, items and stock.\n• Technical data: IP address and browser in the audit log, for security.',
+      },
+      use: {
+        title: 'How we use it',
+        body: 'To run the service and keep your data, to send e-invoices to the national invoicing system at your company’s request, for support, and to protect accounts from misuse.',
+      },
+      sharing: {
+        title: 'Sharing',
+        body: 'We do not sell data or share it for marketing. Invoice data is sent to the national e-invoicing system (JoFotara) when your company enables it. The system is hosted by a hosting provider bound to protect the data.',
+      },
+      retention: {
+        title: 'Retention and deletion',
+        body: 'Data is kept for the length of the subscription. After cancellation it stays available for export for 90 days, then it is deleted after notice to the owner. The owner can download a full copy of the data at any time from Settings.',
+      },
+      security: {
+        title: 'Security',
+        body: 'Passwords are stored with one-way hashing, each company’s data is isolated, e-invoicing credentials are encrypted, and daily backups are taken.',
+      },
+      rights: {
+        title: 'Your rights',
+        body: 'You may access, correct, export and request deletion of your data, under the Jordanian personal data protection law.',
+      },
+      changes: {
+        title: 'Changes',
+        body: 'We may change this policy and will notify the owner of any material change before it takes effect.',
+      },
+      contact: {
+        title: 'Contact',
+        body: 'For privacy questions: [to be completed — email and address of the operating company].',
+      },
+    },
+    terms: {
+      title: 'Terms of Use',
+      intro: 'By using the system you accept these terms on behalf of your company.',
+      acceptance: {
+        title: 'Acceptance',
+        body: 'These terms apply to everyone who registers or uses the system. If you do not accept them, do not use the service.',
+      },
+      service: {
+        title: 'The service',
+        body: 'A cloud accounting and inventory system: journal entries, invoices, stock, treasury, reports and e-invoicing, within the limits of the subscribed plan.',
+      },
+      account: {
+        title: 'Account and responsibility',
+        body: 'The owner is responsible for the accuracy of the data entered, for the permissions of invited users and for keeping passwords secret.',
+      },
+      billing: {
+        title: 'Trial, subscription and payment',
+        body: 'Every company starts with a 14-day trial. Payment is manual, by bank transfer or CliQ. When a paid period ends there are 7 days of grace, then the account becomes read only until renewed.',
+      },
+      cancellation: {
+        title: 'Cancellation and data',
+        body: 'The subscription can be cancelled at any time. After cancellation the data export stays available for 90 days, then the data is deleted.',
+      },
+      einvoice: {
+        title: 'E-invoicing',
+        body: 'The system sends invoices with the data your company enters. The company remains responsible for its invoices and its tax obligations.',
+      },
+      use: {
+        title: 'Acceptable use',
+        body: 'Using the system for unlawful activity, trying to reach other companies’ data, or disrupting the service is not allowed.',
+      },
+      liability: {
+        title: 'Limitation of liability',
+        body: '[To be completed with legal wording — liability for outages, data loss and indirect damages].',
+      },
+      law: {
+        title: 'Governing law',
+        body: 'These terms are governed by the laws of the Hashemite Kingdom of Jordan.',
+      },
+      changes: {
+        title: 'Changes and contact',
+        body: 'We may change these terms and will notify the owner of any material change before it takes effect. Contact: [to be completed].',
+      },
+    },
+  },
+  help: {
+    title: 'Help',
+    subtitle: 'A short guide to the main daily tasks',
+    open: 'Open the screen',
+    start: {
+      title: 'Getting started: company setup',
+      body: 'Open the setup wizard and complete the steps: company data, tax number and logo, fiscal year, tax, main warehouse and cash box. You can come back to it at any time from Settings.',
+    },
+    opening: {
+      title: 'Opening balances',
+      body: 'In Opening Balances enter cash, bank and asset balances, and customer and supplier balances with the customer/supplier column. The difference posts to the opening balances account.\nEnter opening stock under Stock → Stock adjustments, type "Opening"; do not put the inventory account in the opening entry.',
+    },
+    masters: {
+      title: 'Items, customers and suppliers',
+      body: 'Define items with their units and prices, and customers and suppliers with their tax number when they have one. A service item does not move stock.',
+    },
+    sales: {
+      title: 'Sales',
+      body: 'Create the sales invoice as a draft, check it, then post it (Ctrl+Enter). Posting creates the entry, takes the goods out and sends the e-invoice. To correct it use a return or a reversal: a posted invoice is never edited.',
+    },
+    purchases: {
+      title: 'Purchases',
+      body: 'A purchase invoice brings the goods in at their cost and updates the average cost. A return takes them out at the original line cost.',
+    },
+    treasury: {
+      title: 'Treasury',
+      body: 'Receipts from customers and payments to suppliers or for expenses. Allocate a voucher to credit invoices, by hand or automatically to the oldest. A transfer moves money between cash boxes and banks.',
+    },
+    stock: {
+      title: 'Stock',
+      body: 'Adjustments for manual ins and outs, transfers between warehouses, and stock counts that create an adjustment for the differences when approved.',
+    },
+    journal: {
+      title: 'Journal entries',
+      body: 'A manual entry is saved as a draft then posted, and posts only when debits equal credits. Correct it with a reversal on a date you choose.',
+    },
+    reports: {
+      title: 'Reports',
+      body: 'Trial balance with opening, movement and closing balances, the statement of any account or party, the items balance, income statement and balance sheet, and aging. Every report prints and exports to PDF and Excel.',
+    },
+    einvoice: {
+      title: 'E-invoicing',
+      body: 'Follow the sending status of each invoice to JoFotara. A rejection shows a clear message; only failed ones can be resent.',
+    },
+    users: {
+      title: 'Users and branches',
+      body: 'Invite users and choose each one’s role (accountant, storekeeper, cashier) and allowed branches.',
+    },
+    subscription: {
+      title: 'Subscription and data export',
+      body: 'When a subscription ends and the grace period is over, the account becomes read only until renewed. The owner can download all company data from Settings → Data Export at any time.',
+    },
+    keyboard: {
+      title: 'Keyboard shortcuts',
+      body: 'Enter: next field in forms and grids.\nArrows: move between grid cells.\nCtrl+S: save the draft.\nCtrl+Enter: post.',
+    },
   },
   dataExport: {
     title: 'Data Export',
