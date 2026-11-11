@@ -47,6 +47,8 @@ describe('production rules (ADR-010 §10.1)', () => {
     ['CORS_ORIGIN', { CORS_ORIGIN: 'http://erp.example.jo' }],
     ['CORS_ORIGIN', { CORS_ORIGIN: 'https://localhost:5173' }],
     ['CORS_ORIGIN', { CORS_ORIGIN: 'not a url' }],
+    ['CORS_ORIGIN', { CORS_ORIGIN: 'https://erp.example.jo/' }],
+    ['CORS_ORIGIN', { CORS_ORIGIN: 'https://erp.example.jo/app' }],
     ['EINVOICE_ENC_KEY', { EINVOICE_ENC_KEY: undefined }],
     ['EINVOICE_ENC_KEY', { EINVOICE_ENC_KEY: Buffer.alloc(16).toString('base64') }],
     ['EINVOICE_WORKER', { EINVOICE_WORKER: 'on' }],

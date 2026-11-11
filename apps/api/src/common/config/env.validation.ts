@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { isSealingKey } from '../crypto/secret-box.js';
+import { LOOPBACK_HOSTS } from '../net/loopback.js';
 
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -42,8 +44,6 @@ export const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
-
 /**
  * What production must have on top of the schema (ADR-010 §10.1). Each
  * problem names its variable; the API refuses to start.
@@ -60,11 +60,14 @@ export function productionProblems(env: Env): { path: string; message: string }[
   } catch {
     // reported below
   }
-  if (!origin || origin.protocol !== 'https:' || LOCAL_HOSTS.has(origin.hostname)) {
-    problems.push({ path: 'CORS_ORIGIN', message: 'must be the site https:// address in production' });
+  // Browsers compare the Origin header exactly: scheme and host only, no path or trailing slash.
+  if (!origin || origin.protocol !== 'https:' || LOOPBACK_HOSTS.has(origin.hostname) || origin.origin !== env.CORS_ORIGIN) {
+    problems.push({
+      path: 'CORS_ORIGIN',
+      message: 'must be the site https:// address in production (scheme and host, no path or trailing slash)',
+    });
   }
-  const key = env.EINVOICE_ENC_KEY ? Buffer.from(env.EINVOICE_ENC_KEY, 'base64') : Buffer.alloc(0);
-  if (key.length !== 32) {
+  if (!isSealingKey(env.EINVOICE_ENC_KEY)) {
     problems.push({ path: 'EINVOICE_ENC_KEY', message: 'is required in production: 32 random bytes, base64' });
   }
   if (env.EINVOICE_WORKER === 'on') {

@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from './app.module.js';
 import { apiDocsEnabled, type Env } from './common/config/env.validation.js';
+import { warnOnUntrustedProxy } from './common/web/proxy-warning.js';
 import { serveWebApp } from './common/web/serve-web-app.js';
 
 async function bootstrap(): Promise<void> {
@@ -19,6 +20,7 @@ async function bootstrap(): Promise<void> {
   // limits and audit see the client (ADR-010 §10.1).
   const proxies = config.get('TRUST_PROXY', { infer: true });
   if (proxies > 0) app.set('trust proxy', proxies);
+  else app.use(warnOnUntrustedProxy());
   // Close the database pool when the host restarts the app.
   app.enableShutdownHooks();
 
@@ -45,13 +47,16 @@ async function bootstrap(): Promise<void> {
     credentials: true,
   });
 
-  // Helmet's defaults plus: item images are external https links, PDFs open
-  // as blob: URLs, no framing at all; https upgrades only where there is https.
+  // Helmet's defaults plus: item images are external https links; printed
+  // documents open as blob: PDFs, whose page inherits this policy, and the
+  // browser's PDF viewer is a plugin (object-src 'none' would show a blank
+  // page); no framing at all; https upgrades only where there is https.
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
           'img-src': ["'self'", 'data:', 'blob:', 'https:'],
+          'object-src': ['blob:'],
           'frame-ancestors': ["'none'"],
           'upgrade-insecure-requests': production ? [] : null,
         },

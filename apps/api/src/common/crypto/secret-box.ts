@@ -8,6 +8,16 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
  */
 const VERSION = 'v1';
 
+/** Whether `base64Key` can seal and open secrets (checked at boot in production). */
+export function isSealingKey(base64Key: string | undefined): boolean {
+  try {
+    keyFrom(base64Key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function keyFrom(base64Key: string | undefined): Buffer {
   const key = base64Key ? Buffer.from(base64Key, 'base64') : Buffer.alloc(0);
   if (key.length !== 32) {

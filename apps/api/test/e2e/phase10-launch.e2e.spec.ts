@@ -124,6 +124,8 @@ describe('Phase 10.1 — the web app on the same origin', () => {
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("img-src 'self' data: blob: https:");
     expect(csp).toContain("script-src 'self'");
+    // Printed documents open as blob: PDFs that inherit this policy.
+    expect(csp).toContain('object-src blob:');
     expect(csp).toContain('upgrade-insecure-requests');
     expect(home.headers['strict-transport-security']).toBeDefined();
     expect(home.headers['x-powered-by']).toBeUndefined();
@@ -184,7 +186,11 @@ describe('Phase 10.1 — the web app on the same origin', () => {
     });
     let stderr = '';
     bad.stderr?.on('data', (d) => (stderr += d));
-    const [code] = (await once(bad, 'exit')) as [number | null];
+    // Should it start after all, stop it rather than wait for Jest's timeout.
+    const guard = setTimeout(() => bad.kill('SIGKILL'), 30_000);
+    const [code, signal] = (await once(bad, 'exit')) as [number | null, string | null];
+    clearTimeout(guard);
+    expect(signal).toBeNull();
     expect(code).not.toBe(0);
     expect(stderr).toMatch(/CORS_ORIGIN: must be the site https:\/\/ address/);
     expect(stderr).toMatch(/EINVOICE_WORKER: must be off in production/);
@@ -203,7 +209,7 @@ describe('Phase 10.1 — preflight and grant-platform-admin', () => {
     expect(out.ok).toBe(true);
     const checks = byName(run.stdout);
     expect(Object.keys(checks).sort()).toEqual(
-      ['database', 'environment', 'migrations', 'plans', 'platform-admin', 'storage', 'timezone', 'web'].sort(),
+      ['database', 'environment', 'migrations', 'plans', 'platform-admin', 'proxy', 'storage', 'timezone', 'web'].sort(),
     );
     expect(checks.environment.level).toBe('warn'); // NODE_ENV=test is not production
     expect(checks.migrations.detail).toMatch(/applied/);
@@ -220,6 +226,26 @@ describe('Phase 10.1 — preflight and grant-platform-admin', () => {
     const exposed = await cli(['preflight'], { WEB_DIST_DIR: webDir, STORAGE_DIR: path.join(webDir, 'uploads') });
     expect(exposed.code).toBe(1);
     expect(byName(exposed.stdout).storage.detail).toMatch(/overlaps WEB_DIST_DIR/);
+  }, 60_000);
+
+  it('on a database with no migrations it reports every check instead of crashing', async () => {
+    const name = `erp_p10_empty_${RUN}`;
+    await db.query(`CREATE DATABASE ${name}`);
+    try {
+      const run = await cli(['preflight'], {
+        DATABASE_URL: databaseUrl.replace(/\/erp_test(\?|$)/, `/${name}$1`),
+        WEB_DIST_DIR: webDir,
+        STORAGE_DIR: path.join(tmp, 'storage'),
+      });
+      expect(run.code).toBe(1);
+      const checks = byName(run.stdout);
+      expect(checks.database.ok).toBe(true);
+      expect(checks.migrations).toMatchObject({ ok: false, detail: expect.stringMatching(/none applied .*prisma migrate deploy/) });
+      expect(checks.plans.ok).toBe(false);
+      expect([checks.storage.ok, checks.web.ok]).toEqual([true, true]);
+    } finally {
+      await db.query(`DROP DATABASE IF EXISTS ${name}`);
+    }
   }, 60_000);
 
   it('grants, audits, is idempotent and revokes the platform administrator', async () => {
