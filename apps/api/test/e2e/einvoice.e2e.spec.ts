@@ -11,12 +11,13 @@
  * Real MariaDB (erp_test) + built API. Run `pnpm build` before `pnpm test`.
  */
 import 'dotenv/config';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import http, { type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { createMockServer, validate } from 'jofotara-kit';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
@@ -80,6 +81,24 @@ function startApi(port: number, worker: 'on' | 'off'): ChildProcess {
     process.stderr.write(`[api:${port}] ${d}`);
   });
   return child;
+}
+
+/** One run of the Cron command `einvoice-send` against erp_test (ADR-009 §15). */
+async function runSendJob(): Promise<{ runs: number; claimed: number }> {
+  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const { stdout, stderr } = await promisify(execFile)('node', ['dist/jobs/cli.js', 'einvoice-send'], {
+    cwd: path.resolve(import.meta.dirname, '..', '..'),
+    env: {
+      ...process.env,
+      DATABASE_URL: databaseUrl,
+      NODE_ENV: 'test',
+      EINVOICE_ENC_KEY: ENC_KEY,
+      EINVOICE_HTTP_TIMEOUT_MS: '1500',
+      EINVOICE_SANDBOX_HOSTS: 'jofotara-down.invalid',
+    },
+  });
+  logs.push(stdout, stderr);
+  return JSON.parse(stdout) as { runs: number; claimed: number };
 }
 
 async function waitForHealth(port: number, timeoutMs = 30_000): Promise<void> {
@@ -463,7 +482,7 @@ describe('Phase 7 — JoFotara', () => {
     // ICVs are unique and consecutive per company.
     const icvs = done.map((s) => s.icv).sort((a, b) => a - b);
     expect(new Set(icvs).size).toBe(icvs.length);
-  });
+  }, 60_000);
 
   it('parallel postings each draw their own ICV', async () => {
     const drafts = await Promise.all([1, 2, 3, 4, 5].map((q) => draftInvoice('TN', String(q))));
@@ -546,6 +565,37 @@ describe('Phase 7 — JoFotara', () => {
     const bSettings = await api().get('/api/v1/einvoice/settings').set(auth(tokenB));
     expect(bSettings.body).toMatchObject({ isEnabled: false, hasSecret: false, clientId: null });
   });
+
+  it('the Cron command sends the outbox; two runs at once never send a document twice', async () => {
+    // Restart without the in-process loop (the default now): only the command sends.
+    for (const p of [api1, api2]) {
+      if (!p) continue;
+      p.kill('SIGTERM');
+      await once(p, 'exit').catch(() => undefined);
+    }
+    api2 = undefined;
+    api1 = startApi(API_PORT, 'off');
+    await waitForHealth(API_PORT);
+
+    const ids: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const inv = await draftInvoice('TN', String(i + 1));
+      expect((await post('sales-invoices', inv.id)).status).toBe(201);
+      ids.push((await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!);
+    }
+    await sleep(1000);
+    const waiting = (await db.query('SELECT status FROM einvoice_submissions WHERE id IN (?)', [ids])) as { status: string }[];
+    expect(waiting.map((r) => r.status)).toEqual(Array(4).fill('PENDING'));
+
+    const [a, b] = await Promise.all([runSendJob(), runSendJob()]);
+    expect(a.claimed + b.claimed).toBe(4);
+    for (const s of await Promise.all(ids.map((id) => settled(id)))) {
+      expect(s.status).toBe('ACCEPTED');
+      expect(seen.filter((u) => u === s.uuid)).toHaveLength(1);
+    }
+    // An empty outbox: one run, nothing claimed.
+    expect(await runSendJob()).toMatchObject({ runs: 1, claimed: 0 });
+  }, 120_000);
 
   it('the secret never reached the logs', () => {
     expect(logs.join('')).not.toContain(SECRET);
