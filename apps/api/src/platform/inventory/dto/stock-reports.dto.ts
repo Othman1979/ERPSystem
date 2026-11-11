@@ -53,26 +53,6 @@ export class ItemLedgerQueryDto extends ExportQueryDto {
   to?: string;
 }
 
-export class ItemBalancesQueryDto extends ExportQueryDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @Matches(OPTIONAL_ID)
-  warehouseId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @Matches(OPTIONAL_DATE)
-  from?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @Matches(OPTIONAL_DATE)
-  to?: string;
-}
-
 export class StockValuationQueryDto extends ExportQueryDto {
   @ApiPropertyOptional()
   @IsOptional()

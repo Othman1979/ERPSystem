@@ -603,13 +603,6 @@ body {
   }
 }
 
-/* Opening / closing balance rows of statements and balances (ADR-008) */
-.ant-table-tbody > tr.report-row-strong > td,
-.ant-table-summary tr.report-row-strong > td {
-  font-weight: 600;
-  background: var(--c-grid-panel-bg);
-}
-
 /* "Pick an account first" style hints in place of a report table */
 .report-empty {
   padding: 24px 12px;

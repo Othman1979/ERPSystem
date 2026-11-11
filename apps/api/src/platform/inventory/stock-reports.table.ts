@@ -6,7 +6,6 @@ type Lang = 'ar' | 'en';
 type Balances = Awaited<ReturnType<StockReportsService['balances']>>;
 type Valuation = Awaited<ReturnType<StockReportsService['valuation']>>;
 type ItemLedger = Awaited<ReturnType<StockReportsService['itemLedger']>>;
-type ItemBalances = Awaited<ReturnType<StockReportsService['itemBalances']>>;
 type WarehouseLabel = { code: string; nameAr: string; nameEn: string | null } | null;
 
 function warehouseMeta(lang: Lang, wh: WarehouseLabel): string {
@@ -67,56 +66,7 @@ export function stockValuationTable(data: Valuation, lang: Lang, wh: WarehouseLa
   };
 }
 
-/** Items balance JSON → export table: opening, ins, outs and closing (quantity and value). */
-export function itemBalancesTable(
-  data: ItemBalances,
-  lang: Lang,
-  q: { from?: string; to?: string },
-  wh: WarehouseLabel,
-): ReportTable {
-  const t = (ar: string, en: string) => L({ lang }, ar, en);
-  return {
-    title: t('ميزان المواد', 'Items balance'),
-    meta: [warehouseMeta(lang, wh), periodMeta(lang, q.from || null, q.to || null)],
-    fileName: 'items-balance',
-    orientation: 'landscape',
-    columns: [
-      { key: 'code', label: t('الرمز', 'Code'), width: 56 },
-      { key: 'name', label: t('الصنف', 'Item') },
-      { key: 'openingQty', label: t('أول المدة كمية', 'Opening qty'), kind: 'qty' },
-      { key: 'openingValue', label: t('أول المدة قيمة', 'Opening value'), kind: 'amount' },
-      { key: 'inQty', label: t('وارد كمية', 'In qty'), kind: 'qty' },
-      { key: 'inValue', label: t('وارد قيمة', 'In value'), kind: 'amount' },
-      { key: 'outQty', label: t('صادر كمية', 'Out qty'), kind: 'qty' },
-      { key: 'outValue', label: t('صادر قيمة', 'Out value'), kind: 'amount' },
-      { key: 'closingQty', label: t('آخر المدة كمية', 'Closing qty'), kind: 'qty' },
-      { key: 'closingValue', label: t('آخر المدة قيمة', 'Closing value'), kind: 'amount' },
-    ],
-    rows: data.rows.map((r) => ({
-      code: r.code,
-      name: localName(lang, r.nameAr, r.nameEn),
-      openingQty: r.openingQty,
-      openingValue: r.openingValue,
-      inQty: r.inQty,
-      inValue: r.inValue,
-      outQty: r.outQty,
-      outValue: r.outValue,
-      closingQty: r.closingQty,
-      closingValue: r.closingValue,
-    })),
-    totals: [
-      {
-        name: t('المجموع', 'Total'),
-        openingValue: data.totals.openingValue,
-        inValue: data.totals.inValue,
-        outValue: data.totals.outValue,
-        closingValue: data.totals.closingValue,
-      },
-    ],
-  };
-}
-
-/** Item ledger JSON → export table: opening position, movements, totals, closing position. */
+/** Item ledger JSON → export table: opening position (when `from` is set), movements, totals. */
 export function itemLedgerTable(
   data: ItemLedger,
   lang: Lang,
@@ -124,9 +74,9 @@ export function itemLedgerTable(
   wh: WarehouseLabel,
 ): ReportTable {
   const t = (ar: string, en: string) => L({ lang }, ar, en);
-  const opening = [
-    { source: t('رصيد أول المدة', 'Opening balance'), totalCost: data.opening.value, balance: data.opening.qty, _bold: true },
-  ];
+  const opening = q.from
+    ? [{ source: t('رصيد افتتاحي', 'Opening balance'), totalCost: data.opening.value, balance: data.opening.qty, _bold: true }]
+    : [];
   return {
     title: `${t('بطاقة صنف', 'Item card')}: ${data.item.code} ${localName(lang, data.item.nameAr, data.item.nameEn)}`,
     meta: [warehouseMeta(lang, wh), periodMeta(lang, q.from || null, q.to || null)],
@@ -155,9 +105,6 @@ export function itemLedgerTable(
         balance: r.balanceQtyAfter,
       })),
     ],
-    totals: [
-      { source: t('المجموع', 'Total'), qtyIn: data.totals.qtyIn, qtyOut: data.totals.qtyOut },
-      { source: t('رصيد آخر المدة', 'Closing balance'), totalCost: data.closing.value, balance: data.closing.qty },
-    ],
+    totals: [{ source: t('المجموع', 'Total'), qtyIn: data.totals.qtyIn, qtyOut: data.totals.qtyOut }],
   };
 }

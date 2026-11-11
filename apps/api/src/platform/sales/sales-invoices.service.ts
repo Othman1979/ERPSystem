@@ -6,7 +6,6 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
-import { PlanLimitsService } from '../../common/plan-limits/plan-limits.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import {
   dayKey,
@@ -55,7 +54,6 @@ export class SalesInvoicesService implements InvoiceSettlement {
     private readonly ledger: StockLedgerService,
     private readonly audit: AuditService,
     private readonly einvoice: EInvoiceOutboxService,
-    private readonly limits: PlanLimitsService,
   ) {}
 
   /** Posted credit-return totals for the given invoices (for `outstanding`). */
@@ -499,15 +497,6 @@ export class SalesInvoicesService implements InvoiceSettlement {
 
         const invoiceDate = new Date(draft.invoiceDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, invoiceDate);
-
-        // Plan quota (§13.1): sales invoices already posted in this invoice's month.
-        const monthStart = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth(), 1));
-        const nextMonth = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth() + 1, 1));
-        await this.limits.assertMonthlyInvoiceQuota(
-          await tx.salesInvoice.count({
-            where: { companyId, status: 'POSTED', invoiceDate: { gte: monthStart, lt: nextMonth } },
-          }),
-        );
 
         // Stock OUT for STOCK items — returns avg cost per base unit.
         let costTotal = new Decimal(0);

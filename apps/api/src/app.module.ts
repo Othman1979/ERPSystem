@@ -29,7 +29,6 @@ import { GoodsNotesModule } from './platform/goods-notes/goods-notes.module.js';
 import { TreasuryModule } from './platform/treasury/treasury.module.js';
 import { EInvoiceModule } from './platform/einvoice/einvoice.module.js';
 import { ReportsModule } from './platform/reports/reports.module.js';
-import { ExportModule } from './platform/export/export.module.js';
 
 @Module({
   imports: [
@@ -58,7 +57,6 @@ import { ExportModule } from './platform/export/export.module.js';
     TreasuryModule,
     EInvoiceModule,
     ReportsModule,
-    ExportModule,
     AdminModule,
   ],
   providers: [

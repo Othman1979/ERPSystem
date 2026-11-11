@@ -13,10 +13,8 @@ const BATCH = 20;
 const STUCK_MINUTES = 10;
 
 /**
- * The outbox job (BUILD_PLAN §12.2). Normally run by Cron through
- * `job:einvoice-send` (CLAUDE.md: no daemons, ADR-009 §15); with
- * EINVOICE_WORKER=on it also runs inside the API every
- * EINVOICE_WORKER_INTERVAL_MS (development). Each run claims due rows with one atomic UPDATE (works on MariaDB 10.4, which has
+ * The outbox job (BUILD_PLAN §12.2): every EINVOICE_WORKER_INTERVAL_MS it
+ * claims due rows with one atomic UPDATE (works on MariaDB 10.4, which has
  * no SKIP LOCKED), so two API instances never send the same document, then
  * sends each one inside its tenant's context.
  *
@@ -49,14 +47,10 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
     if (this.timer) clearInterval(this.timer);
   }
 
-  /**
-   * One run; overlapping runs in the same process are skipped. Returns how
-   * many submissions it claimed (the Cron command repeats while there are some).
-   */
-  async tick(): Promise<number> {
-    if (this.running) return 0;
+  /** One run; overlapping runs in the same process are skipped. */
+  async tick(): Promise<void> {
+    if (this.running) return;
     this.running = true;
-    let claimedCount = 0;
     try {
       // system client: cross-tenant outbox maintenance (see class comment).
       // A row cut off AFTER its XML was saved for sending may have reached
@@ -87,7 +81,6 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
       const claimed = await this.prisma.client.$queryRaw<{ id: bigint; tenant_id: bigint }[]>`
         SELECT id, tenant_id FROM einvoice_submissions
          WHERE claim_token = ${token} AND status = 'SENDING' ORDER BY id`;
-      claimedCount = claimed.length;
 
       for (const row of claimed) {
         // The stuck-row clock starts when THIS row's send starts, not the batch's.
@@ -110,6 +103,5 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
     } finally {
       this.running = false;
     }
-    return claimedCount;
   }
 }

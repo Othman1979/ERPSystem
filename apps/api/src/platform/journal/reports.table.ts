@@ -1,3 +1,4 @@
+import { sum } from '../../common/decimal/decimal.utils.js';
 import { L, type ReportTable } from '../printing/report-table.js';
 import { blankZero, isoDate, localName, periodMeta } from '../printing/report-meta.js';
 import type { ReportRange, ReportsService } from './reports.service.js';
@@ -7,99 +8,39 @@ type TrialBalance = Awaited<ReturnType<ReportsService['trialBalance']>>;
 type GeneralLedger = Awaited<ReturnType<ReportsService['generalLedger']>>;
 type PartyStatement = Awaited<ReturnType<ReportsService['partyStatement']>>;
 
-/**
- * Trial balance JSON → export table: per account the opening balance, the
- * period's movements and the closing balance, each as debit / credit.
- */
+/** Trial balance JSON → export table (one row per account, debit/credit totals). */
 export function trialBalanceTable(data: TrialBalance, lang: Lang, range: ReportRange): ReportTable {
   const t = (ar: string, en: string) => L({ lang }, ar, en);
   return {
     title: t('ميزان المراجعة', 'Trial balance'),
     meta: [periodMeta(lang, range.from, range.to)],
     fileName: 'trial-balance',
-    orientation: 'landscape',
     columns: [
       { key: 'code', label: t('الرمز', 'Code'), width: 50 },
       { key: 'name', label: t('الحساب', 'Account') },
-      { key: 'openingDebit', label: t('أول المدة مدين', 'Opening debit'), kind: 'amount' },
-      { key: 'openingCredit', label: t('أول المدة دائن', 'Opening credit'), kind: 'amount' },
-      { key: 'periodDebit', label: t('الحركة مدين', 'Movement debit'), kind: 'amount' },
-      { key: 'periodCredit', label: t('الحركة دائن', 'Movement credit'), kind: 'amount' },
-      { key: 'closingDebit', label: t('آخر المدة مدين', 'Closing debit'), kind: 'amount' },
-      { key: 'closingCredit', label: t('آخر المدة دائن', 'Closing credit'), kind: 'amount' },
+      { key: 'debit', label: t('مدين', 'Debit'), kind: 'amount' },
+      { key: 'credit', label: t('دائن', 'Credit'), kind: 'amount' },
+      { key: 'balance', label: t('الرصيد', 'Balance'), kind: 'amount' },
     ],
     rows: data.rows.map((r) => ({
       code: r.code,
       name: localName(lang, r.nameAr, r.nameEn),
-      // The computed "prior years profit" row (ADR-008 §7) stands out.
-      ...(r.kind ? { _bold: true } : {}),
-      openingDebit: r.openingDebit,
-      openingCredit: r.openingCredit,
-      periodDebit: r.periodDebit,
-      periodCredit: r.periodCredit,
-      closingDebit: r.closingDebit,
-      closingCredit: r.closingCredit,
+      debit: r.totalDebit,
+      credit: r.totalCredit,
+      balance: r.balance,
     })),
-    totals: [
-      {
-        name: t('المجموع', 'Total'),
-        openingDebit: data.totals.openingDebit,
-        openingCredit: data.totals.openingCredit,
-        periodDebit: data.totals.periodDebit,
-        periodCredit: data.totals.periodCredit,
-        closingDebit: data.totals.closingDebit,
-        closingCredit: data.totals.closingCredit,
-      },
-    ],
+    totals: [{ name: t('المجموع', 'Total'), debit: data.totals.debit, credit: data.totals.credit }],
   };
 }
 
-/** Opening row, movements, totals and closing row shared by the two statements. */
-function statementRows(
-  data: GeneralLedger | PartyStatement,
-  lang: Lang,
-  line: (r: (GeneralLedger | PartyStatement)['rows'][number]) => Record<string, string>,
-): Pick<ReportTable, 'rows' | 'totals'> {
-  const t = (ar: string, en: string) => L({ lang }, ar, en);
-  return {
-    rows: [
-      {
-        description: t('رصيد أول المدة', 'Opening balance'),
-        debit: blankZero(data.openingDebit),
-        credit: blankZero(data.openingCredit),
-        balance: data.openingBalance,
-        _bold: true,
-      },
-      ...data.rows.map((r) => ({
-        date: isoDate(r.entryDate),
-        entryNo: r.entryNo ?? '',
-        description: r.description ?? '',
-        debit: blankZero(r.debit),
-        credit: blankZero(r.credit),
-        balance: r.balance,
-        ...line(r),
-      })),
-    ],
-    totals: [
-      { description: t('مجموع الحركات', 'Movements'), debit: data.totalDebit, credit: data.totalCredit },
-      {
-        description: t('رصيد آخر المدة', 'Closing balance'),
-        debit: blankZero(data.closingDebit),
-        credit: blankZero(data.closingCredit),
-        balance: data.closingBalance,
-      },
-    ],
-  };
-}
-
-/** Account statement (general ledger) JSON → export table. */
+/** General ledger JSON → export table: opening row, lines with running balance, totals. */
 export function generalLedgerTable(data: GeneralLedger, lang: Lang, range: ReportRange): ReportTable {
   const t = (ar: string, en: string) => L({ lang }, ar, en);
   const account = `${data.account.code} ${localName(lang, data.account.nameAr, data.account.nameEn)}`;
   return {
-    title: t('كشف حساب', 'Account statement'),
+    title: t('دفتر الأستاذ', 'General ledger'),
     meta: [`${t('الحساب', 'Account')}: ${account}`, periodMeta(lang, range.from, range.to)],
-    fileName: `account-statement-${data.account.code}`,
+    fileName: `general-ledger-${data.account.code}`,
     columns: [
       { key: 'date', label: t('التاريخ', 'Date'), kind: 'date' },
       { key: 'entryNo', label: t('رقم القيد', 'Entry no.'), width: 80 },
@@ -108,7 +49,25 @@ export function generalLedgerTable(data: GeneralLedger, lang: Lang, range: Repor
       { key: 'credit', label: t('دائن', 'Credit'), kind: 'amount' },
       { key: 'balance', label: t('الرصيد', 'Balance'), kind: 'amount' },
     ],
-    ...statementRows(data, lang, () => ({})),
+    rows: [
+      { description: t('رصيد افتتاحي', 'Opening balance'), balance: data.openingBalance, _bold: true },
+      ...data.rows.map((r) => ({
+        date: isoDate(r.entryDate),
+        entryNo: r.entryNo ?? '',
+        description: r.description ?? '',
+        debit: blankZero(r.debit),
+        credit: blankZero(r.credit),
+        balance: r.balance,
+      })),
+    ],
+    totals: [
+      {
+        description: t('المجموع والرصيد الختامي', 'Totals and closing balance'),
+        debit: sum(data.rows.map((r) => r.debit)).toString(),
+        credit: sum(data.rows.map((r) => r.credit)).toString(),
+        balance: data.closingBalance,
+      },
+    ],
   };
 }
 
@@ -135,6 +94,25 @@ export function partyStatementTable(
       { key: 'credit', label: t('دائن', 'Credit'), kind: 'amount' },
       { key: 'balance', label: t('الرصيد', 'Balance'), kind: 'amount' },
     ],
-    ...statementRows(data, lang, (r) => ({ account: 'accountCode' in r ? r.accountCode : '' })),
+    rows: [
+      { description: t('رصيد افتتاحي', 'Opening balance'), balance: data.openingBalance, _bold: true },
+      ...data.rows.map((r) => ({
+        date: isoDate(r.entryDate),
+        entryNo: r.entryNo ?? '',
+        account: r.accountCode,
+        description: r.description ?? '',
+        debit: blankZero(r.debit),
+        credit: blankZero(r.credit),
+        balance: r.balance,
+      })),
+    ],
+    totals: [
+      {
+        description: t('المجموع والرصيد الختامي', 'Totals and closing balance'),
+        debit: data.totalDebit,
+        credit: data.totalCredit,
+        balance: data.closingBalance,
+      },
+    ],
   };
 }

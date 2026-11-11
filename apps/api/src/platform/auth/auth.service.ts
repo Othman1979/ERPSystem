@@ -1,16 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DomainError } from '../../common/errors/domain.error.js';
-import type { Env } from '../../common/config/env.validation.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { ChartProvisioningService } from '../accounting/chart-provisioning.service.js';
 import { LoginDto, RegisterDto, SwitchTenantDto } from './dto/auth.dto.js';
 import { PasswordService } from './password.service.js';
 import { TokenService } from './token.service.js';
+
+const TRIAL_DAYS = 14;
 
 export interface AuthMeta {
   userAgent?: string;
@@ -25,7 +25,6 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
     private readonly provisioning: ChartProvisioningService,
-    private readonly config: ConfigService<Env, true>,
   ) {}
 
   /**
@@ -51,7 +50,7 @@ export class AuthService {
         throw new DomainError(ErrorCode.CONFLICT, 'Email is already registered');
       }
 
-      const trialEnds = new Date(Date.now() + this.config.get('TRIAL_DAYS', { infer: true }) * 24 * 60 * 60 * 1000);
+      const trialEnds = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
       const today = new Date();
 
       const user = await tx.user.create({
@@ -66,7 +65,6 @@ export class AuthService {
         data: {
           name: dto.tenantName,
           status: 'TRIAL',
-          statusChangedAt: today,
           planId: plan.id,
           trialEndsAt: trialEnds,
         },

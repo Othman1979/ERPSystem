@@ -247,8 +247,6 @@ model Tenant {
   status      TenantStatus @default(TRIAL)
   planId      BigInt?      @map("plan_id") @db.UnsignedBigInt
   trialEndsAt DateTime?    @map("trial_ends_at") @db.DateTime(3)
-  /// Last status change (ADR-009): grace and post-cancellation retention count from it.
-  statusChangedAt DateTime? @map("status_changed_at") @db.DateTime(3)
   createdAt   DateTime     @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt   DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
 
@@ -341,8 +339,6 @@ model Company {
   costingMethod          CostingMethod @default(WEIGHTED_AVERAGE) @map("costing_method")
   allowNegativeStock     Boolean       @default(false) @map("allow_negative_stock")
   pricesIncludeTax       Boolean       @default(false) @map("prices_include_tax")
-  /// Set when the owner finishes the setup wizard (§13.4, ADR-009).
-  onboardingCompletedAt  DateTime?     @map("onboarding_completed_at") @db.DateTime(3)
   isActive               Boolean       @default(true) @map("is_active")
   createdAt              DateTime      @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt              DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
@@ -719,10 +715,6 @@ model JournalEntry {
   totalDebit     Decimal            @default(0) @map("total_debit") @db.Decimal(18, 3)
   totalCredit    Decimal            @default(0) @map("total_credit") @db.Decimal(18, 3)
   reversalOfId   BigInt?            @map("reversal_of_id") @db.UnsignedBigInt
-  /// Opening balances (§8.6, ADR-008): the opening entry and the entries of
-  /// OPENING stock adjustments, and their reversals. Reports show these
-  /// lines as the opening balance of a period, not as movements.
-  isOpening      Boolean            @default(false) @map("is_opening")
   postedAt       DateTime?          @map("posted_at") @db.DateTime(3)
   postedBy       BigInt?            @map("posted_by") @db.UnsignedBigInt
   createdAt      DateTime           @default(now()) @map("created_at") @db.DateTime(3)

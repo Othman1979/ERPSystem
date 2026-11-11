@@ -28,20 +28,6 @@ export class FiscalController {
     return this.fiscal.getYear(BigInt(id));
   }
 
-  /** Closes every period of the year at once (ADR-008 §7). */
-  @Post('fiscal-years/:id/close')
-  @RequirePermission(PERMISSIONS.FISCAL_CLOSE)
-  closeYear(@Param('id') id: string) {
-    return this.fiscal.setYearStatus(BigInt(id), 'CLOSED');
-  }
-
-  /** Reopens every period of the year. */
-  @Post('fiscal-years/:id/open')
-  @RequirePermission(PERMISSIONS.FISCAL_CLOSE)
-  openYear(@Param('id') id: string) {
-    return this.fiscal.setYearStatus(BigInt(id), 'OPEN');
-  }
-
   @Post('fiscal-periods/:id/close')
   @RequirePermission(PERMISSIONS.FISCAL_CLOSE)
   closePeriod(@Param('id') id: string) {
