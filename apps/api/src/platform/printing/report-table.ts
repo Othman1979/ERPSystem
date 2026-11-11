@@ -43,7 +43,14 @@ export interface ReportTable {
 
 export interface PrintContext {
   lang: 'ar' | 'en';
-  company: { name: string; taxNumber: string | null; address: string | null; phone: string | null };
+  company: {
+    name: string;
+    taxNumber: string | null;
+    address: string | null;
+    phone: string | null;
+    /** Logo as a data URL (PNG / JPEG), or null. */
+    logo?: string | null;
+  };
   printedAt: Date;
 }
 
@@ -86,6 +93,7 @@ export function headerBlock(ctx: PrintContext, title: string, meta: string[], wi
     .filter(Boolean)
     .join('   ');
   return [
+    ...(ctx.company.logo ? [{ image: ctx.company.logo, fit: [140, 48], alignment: align, margin: [0, 0, 0, 4] }] : []),
     paragraph(ctx.company.name, { width, size: 13, bold: true, align, base }),
     ...(companyLine ? [paragraph(companyLine, { width, size: 8, align, base, color: '#555555' })] : []),
     ...(ctx.company.address ? [paragraph(ctx.company.address, { width, size: 8, align, base, color: '#555555' })] : []),

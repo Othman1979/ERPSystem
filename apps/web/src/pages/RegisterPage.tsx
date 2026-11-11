@@ -1,12 +1,14 @@
 import { Alert, Button, Card, Form, Input, Typography } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router';
 import { ApiError, type RegisterDto } from '@erp/api-client';
 import { useAuth } from '../auth/AuthContext';
 
 export function RegisterPage({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
   const { t } = useTranslation();
   const { register } = useAuth();
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -28,6 +30,8 @@ export function RegisterPage({ onSwitchToLogin }: { onSwitchToLogin: () => void 
         companyNameAr: values.companyNameAr || undefined,
       };
       await register(dto);
+      // A new company starts with the setup wizard (§13.4).
+      navigate('/setup', { replace: true });
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -66,6 +70,16 @@ export function RegisterPage({ onSwitchToLogin }: { onSwitchToLogin: () => void 
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+            {t('auth.consentBefore')}
+            <a href="/terms" target="_blank" rel="noreferrer">
+              {t('legal.terms.title')}
+            </a>
+            {t('auth.consentAnd')}
+            <a href="/privacy" target="_blank" rel="noreferrer">
+              {t('legal.privacy.title')}
+            </a>
+          </Typography.Paragraph>
           <Button type="primary" htmlType="submit" block loading={loading}>
             {t('auth.register')}
           </Button>

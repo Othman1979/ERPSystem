@@ -3,6 +3,7 @@ import { Injectable, StreamableFile } from '@nestjs/common';
 import pdfmake from 'pdfmake';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { StorageService } from '../../common/storage/storage.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { FONT_DIR, FONT_FILES, FONT_NAME } from './fonts.js';
 import { documentPdf, type DocumentPrint } from './document-pdf.js';
@@ -45,7 +46,10 @@ function configurePdfmake() {
  */
 @Injectable()
 export class PrintingService {
-  constructor(private readonly support: DocumentSupportService) {}
+  constructor(
+    private readonly support: DocumentSupportService,
+    private readonly storage: StorageService,
+  ) {}
 
   /** Company header data and language for a printout. */
   async context(lang: 'ar' | 'en' = 'ar'): Promise<PrintContext> {
@@ -53,8 +57,19 @@ export class PrintingService {
     const companyId = await this.support.companyId(db);
     const c = await db.company.findFirst({
       where: { id: companyId },
-      select: { legalNameAr: true, legalNameEn: true, taxNumber: true, address: true, phone: true },
+      select: {
+        legalNameAr: true,
+        legalNameEn: true,
+        taxNumber: true,
+        address: true,
+        phone: true,
+        logoAttachment: { select: { storageKey: true, mimeType: true } },
+      },
     });
+    // The company logo (§13.7) as a data URL: pdfmake reads no URL or file besides the fonts.
+    const logo = c?.logoAttachment
+      ? `data:${c.logoAttachment.mimeType};base64,${(await this.storage.read(c.logoAttachment.storageKey)).toString('base64')}`
+      : null;
     return {
       lang,
       company: {
@@ -62,6 +77,7 @@ export class PrintingService {
         taxNumber: c?.taxNumber ?? null,
         address: c?.address ?? null,
         phone: c?.phone ?? null,
+        logo,
       },
       printedAt: new Date(),
     };
