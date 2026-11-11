@@ -922,6 +922,72 @@ export const fiscalControllerGetYear = async (id: string, options?: Parameters<t
 
 
 
+export type fiscalControllerCloseYearResponse201 = {
+  data: void
+  status: 201
+}
+
+export type fiscalControllerCloseYearResponseSuccess = (fiscalControllerCloseYearResponse201) & {
+  headers: Headers;
+};
+;
+
+export type fiscalControllerCloseYearResponse = (fiscalControllerCloseYearResponseSuccess)
+
+export const getFiscalControllerCloseYearUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/fiscal-years/${id}/close`
+}
+
+export const fiscalControllerCloseYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerCloseYearResponse> => {
+
+  return apiFetch<fiscalControllerCloseYearResponse>(getFiscalControllerCloseYearUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type fiscalControllerOpenYearResponse201 = {
+  data: void
+  status: 201
+}
+
+export type fiscalControllerOpenYearResponseSuccess = (fiscalControllerOpenYearResponse201) & {
+  headers: Headers;
+};
+;
+
+export type fiscalControllerOpenYearResponse = (fiscalControllerOpenYearResponseSuccess)
+
+export const getFiscalControllerOpenYearUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/fiscal-years/${id}/open`
+}
+
+export const fiscalControllerOpenYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerOpenYearResponse> => {
+
+  return apiFetch<fiscalControllerOpenYearResponse>(getFiscalControllerOpenYearUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
 export type fiscalControllerClosePeriodResponse201 = {
   data: void
   status: 201
