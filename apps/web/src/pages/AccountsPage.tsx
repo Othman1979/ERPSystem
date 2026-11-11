@@ -14,7 +14,6 @@ import {
 } from 'antd';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router';
 import {
   ApiError,
   accountingControllerCreateAccount,
@@ -107,7 +106,6 @@ export function applyBalances(
 
 export function AccountsPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
@@ -330,17 +328,12 @@ export function AccountsPage() {
           },
           {
             title: t('common.actions'),
-            width: 230,
+            width: 150,
             render: (_: unknown, a: Account) => (
               <Space>
                 <Button size="small" onClick={() => openEdit(a)}>
                   {t('common.edit')}
                 </Button>
-                {a.isPostable && (
-                  <Button size="small" onClick={() => navigate(`/reports?tab=gl&accountId=${a.id}`)}>
-                    {t('reports.accountStatement')}
-                  </Button>
-                )}
                 {a.isActive && !a.isControl && (
                   <Popconfirm title={t('common.confirmDeactivate')} onConfirm={() => deactivate.mutate(a.id)}>
 <Button size="small" danger >

@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { AccountingModule } from '../accounting/accounting.module.js';
 import { PartiesModule } from '../parties/parties.module.js';
 import { PrintingModule } from '../printing/printing.module.js';
 import { JournalController } from './journal.controller.js';
@@ -8,9 +7,8 @@ import { PostingService } from './posting.service.js';
 import { ReportsService } from './reports.service.js';
 
 @Module({
-  // Report exports (PDF / XLSX), the party's name on a statement, and the
-  // fiscal year holding a report's start (ADR-008 §7).
-  imports: [PrintingModule, PartiesModule, AccountingModule],
+  // Report exports (PDF / XLSX) and the party's name on a statement.
+  imports: [PrintingModule, PartiesModule],
   controllers: [JournalController],
   providers: [JournalService, PostingService, ReportsService],
   // ReportsService: treasury aging reads party control balances, and the

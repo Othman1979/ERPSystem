@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '../generated/prisma/client.js';
-import mariadb, { type Pool, type PoolConfig } from 'mariadb';
+import mariadb, { type PoolConfig } from 'mariadb';
 import type { Env } from '../common/config/env.validation.js';
 import { tenantScopedPrisma } from './tenant-prisma.js';
 
@@ -30,12 +30,11 @@ function parseDatabaseUrl(url: string): PoolConfig {
 @Injectable()
 export class PrismaService implements OnModuleDestroy {
   readonly client: PrismaClient;
-  private readonly pool: Pool;
 
   constructor(config: ConfigService<Env, true>) {
     const databaseUrl = config.get('DATABASE_URL', { infer: true });
-    this.pool = mariadb.createPool(parseDatabaseUrl(databaseUrl));
-    this.client = new PrismaClient({ adapter: new PrismaMariaDb(this.pool) });
+    const pool = mariadb.createPool(parseDatabaseUrl(databaseUrl));
+    this.client = new PrismaClient({ adapter: new PrismaMariaDb(pool) });
   }
 
   /** Tenant-scoped client: auto-injects tenant_id from arg or CLS context. */
@@ -45,8 +44,5 @@ export class PrismaService implements OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.client.$disconnect();
-    // The adapter does not own the pool we gave it: end it too, or its open
-    // connections keep the process alive (one-shot Cron jobs never exit).
-    await this.pool.end();
   }
 }

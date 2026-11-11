@@ -98,8 +98,7 @@ async function send(path: string, init: RequestInit): Promise<Response> {
   const url = path.startsWith('/api/') ? path : `${API_PREFIX}${path}`;
   const doFetch = (): Promise<Response> => {
     const headers = new Headers(init.headers);
-    // FormData (file uploads) sets its own multipart type with the boundary.
-    if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    if (init.body && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }
     if (accessToken && !headers.has('Authorization')) {

@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { Button, Table, Tag, Typography } from 'antd';
+import { Table, Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router';
 import { treasuryControllerCashBalances } from '@erp/api-client';
 import { Num } from '../../components/Num';
 import { amountCell } from '../../format/cells';
@@ -24,7 +23,6 @@ interface BalanceRow {
  */
 export function BalancesTab() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['treasury-balances'],
     queryFn: () =>
@@ -50,15 +48,6 @@ export function BalancesTab() {
         { title: t('treasury.name'), dataIndex: 'name' },
         { title: t('treasury.linkedAccount'), render: (_: unknown, r: BalanceRow) => codeAndName(r.account) },
         { title: t('treasury.balance'), dataIndex: 'balance', width: 150, align: 'right' as const, render: amountCell },
-        {
-          title: '',
-          width: 110,
-          render: (_: unknown, r: BalanceRow) => (
-            <Button size="small" onClick={() => navigate(`/reports?tab=gl&accountId=${r.account.id}`)}>
-              {t('reports.accountStatement')}
-            </Button>
-          ),
-        },
       ]}
       summary={() => (
         <Table.Summary.Row>
@@ -70,7 +59,6 @@ export function BalancesTab() {
               <Num>{formatAmount(data?.total)}</Num>
             </Typography.Text>
           </Table.Summary.Cell>
-          <Table.Summary.Cell index={2} />
         </Table.Summary.Row>
       )}
     />

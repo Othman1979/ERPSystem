@@ -3,15 +3,10 @@ import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { PrintingService } from '../printing/printing.service.js';
-import {
-  ItemBalancesQueryDto,
-  ItemLedgerQueryDto,
-  StockBalancesQueryDto,
-  StockValuationQueryDto,
-} from './dto/stock-reports.dto.js';
+import { ItemLedgerQueryDto, StockBalancesQueryDto, StockValuationQueryDto } from './dto/stock-reports.dto.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import { StockReportsService } from './stock-reports.service.js';
-import { itemBalancesTable, itemLedgerTable, stockBalancesTable, stockValuationTable } from './stock-reports.table.js';
+import { itemLedgerTable, stockBalancesTable, stockValuationTable } from './stock-reports.table.js';
 
 @ApiTags('stock-reports')
 @Controller('stock')
@@ -65,19 +60,6 @@ export class StockReportsController {
     const data = await this.reports.itemLedger(itemId, q);
     const wh = await this.warehouseLabel(q);
     return this.printing.respond(data, q, (d, lang) => itemLedgerTable(d, lang, q, wh));
-  }
-
-  /** Items balance (ميزان المواد): opening, ins, outs, closing per item (ADR-008). */
-  @Get('item-balances')
-  @RequirePermission(PERMISSIONS.REPORTS_VIEW)
-  async itemBalances(@Query() q: ItemBalancesQueryDto) {
-    const data = await this.reports.itemBalances({
-      warehouseId: q.warehouseId || undefined,
-      from: q.from || undefined,
-      to: q.to || undefined,
-    });
-    const wh = await this.warehouseLabel(q);
-    return this.printing.respond(data, q, (d, lang) => itemBalancesTable(d, lang, q, wh));
   }
 
   @Get('valuation')

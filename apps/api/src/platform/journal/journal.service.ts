@@ -426,7 +426,6 @@ export class JournalService {
           entryNo,
           sourceType: OPENING_SOURCE,
           sourceId: null,
-          isOpening: true,
           description: dto.description ?? 'Opening balances',
           lines,
           postedBy: userId ?? null,

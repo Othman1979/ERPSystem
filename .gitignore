@@ -11,6 +11,3 @@ apps/api/src/generated/
 
 # local caches
 npm-cache/
-
-# uploaded files (STORAGE_DIR)
-apps/api/storage/
