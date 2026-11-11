@@ -15,6 +15,8 @@ import {
 } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router';
+import { CompanyProfileForm } from '../components/CompanyProfileForm';
 import {
   ApiError,
   settingsControllerCreatePaymentMethod,
@@ -289,12 +291,25 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
 
 export function SettingsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   return (
     <div>
       <PageHeader title={t('settings.title')} />
       <Card>
       <Tabs
         items={[
+          {
+            key: 'company',
+            label: t('company.title'),
+            children: (
+              <>
+                <Button style={{ marginBottom: 16 }} onClick={() => navigate('/setup')}>
+                  {t('setup.open')}
+                </Button>
+                <CompanyProfileForm withTax />
+              </>
+            ),
+          },
           { key: 'units', label: t('settings.units'), children: <LookupTable kind="unit" title={t('settings.units')} /> },
           {
             key: 'tax',

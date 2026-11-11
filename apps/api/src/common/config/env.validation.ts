@@ -26,6 +26,8 @@ export const envSchema = z.object({
   TRIAL_DAYS: z.coerce.number().int().min(1).max(365).default(14),
   GRACE_DAYS: z.coerce.number().int().min(0).max(90).default(7),
   RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+  // Uploaded files (company logo): a folder outside the web root (ADR-009 §7).
+  STORAGE_DIR: z.string().min(1).default('storage'),
 });
 
 export type Env = z.infer<typeof envSchema>;

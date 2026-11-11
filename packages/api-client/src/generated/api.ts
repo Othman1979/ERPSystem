@@ -30,6 +30,8 @@ export interface CreateTaxCategoryDto { [key: string]: unknown }
 
 export interface UpdateTaxCategoryDto { [key: string]: unknown }
 
+export interface UpdateCompanyDto { [key: string]: unknown }
+
 export interface InviteUserDto { [key: string]: unknown }
 
 export interface UpdateMembershipDto { [key: string]: unknown }
@@ -110,6 +112,10 @@ export interface UpdatePlanDto { [key: string]: unknown }
 
 export type FiscalControllerListSequencesParams = {
   fiscalYearId: string;
+};
+
+export type CompanyControllerUploadLogoBody = {
+  file: Blob | File;
 };
 
 export type JournalControllerListParams = {
@@ -1401,6 +1407,220 @@ return apiFetch<settingsControllerUpdatePaymentMethodResponse>(getSettingsContro
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(updateLookupDto)
+  }
+);}
+
+
+
+export type companyControllerGetResponse200 = {
+  data: void
+  status: 200
+}
+
+export type companyControllerGetResponseSuccess = (companyControllerGetResponse200) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerGetResponse = (companyControllerGetResponseSuccess)
+
+export const getCompanyControllerGetUrl = () => {
+
+
+
+
+  return `/api/v1/company`
+}
+
+export const companyControllerGet = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerGetResponse> => {
+
+  return apiFetch<companyControllerGetResponse>(getCompanyControllerGetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type companyControllerUpdateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type companyControllerUpdateResponseSuccess = (companyControllerUpdateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerUpdateResponse = (companyControllerUpdateResponseSuccess)
+
+export const getCompanyControllerUpdateUrl = () => {
+
+
+
+
+  return `/api/v1/company`
+}
+
+export const companyControllerUpdate = async (updateCompanyDto: UpdateCompanyDto, options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerUpdateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<companyControllerUpdateResponse>(getCompanyControllerUpdateUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateCompanyDto)
+  }
+);}
+
+
+
+export type companyControllerLogoResponse200 = {
+  data: void
+  status: 200
+}
+
+export type companyControllerLogoResponseSuccess = (companyControllerLogoResponse200) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerLogoResponse = (companyControllerLogoResponseSuccess)
+
+export const getCompanyControllerLogoUrl = () => {
+
+
+
+
+  return `/api/v1/company/logo`
+}
+
+export const companyControllerLogo = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerLogoResponse> => {
+
+  return apiFetch<companyControllerLogoResponse>(getCompanyControllerLogoUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type companyControllerUploadLogoResponse201 = {
+  data: void
+  status: 201
+}
+
+export type companyControllerUploadLogoResponseSuccess = (companyControllerUploadLogoResponse201) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerUploadLogoResponse = (companyControllerUploadLogoResponseSuccess)
+
+export const getCompanyControllerUploadLogoUrl = () => {
+
+
+
+
+  return `/api/v1/company/logo`
+}
+
+export const companyControllerUploadLogo = async (companyControllerUploadLogoBody: CompanyControllerUploadLogoBody, options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerUploadLogoResponse> => {
+    const formData = new FormData();
+formData.append(`file`, companyControllerUploadLogoBody.file);
+
+  return apiFetch<companyControllerUploadLogoResponse>(getCompanyControllerUploadLogoUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+export type companyControllerRemoveLogoResponse200 = {
+  data: void
+  status: 200
+}
+
+export type companyControllerRemoveLogoResponseSuccess = (companyControllerRemoveLogoResponse200) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerRemoveLogoResponse = (companyControllerRemoveLogoResponseSuccess)
+
+export const getCompanyControllerRemoveLogoUrl = () => {
+
+
+
+
+  return `/api/v1/company/logo`
+}
+
+export const companyControllerRemoveLogo = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerRemoveLogoResponse> => {
+
+  return apiFetch<companyControllerRemoveLogoResponse>(getCompanyControllerRemoveLogoUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type companyControllerCompleteOnboardingResponse201 = {
+  data: void
+  status: 201
+}
+
+export type companyControllerCompleteOnboardingResponseSuccess = (companyControllerCompleteOnboardingResponse201) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerCompleteOnboardingResponse = (companyControllerCompleteOnboardingResponseSuccess)
+
+export const getCompanyControllerCompleteOnboardingUrl = () => {
+
+
+
+
+  return `/api/v1/company/onboarding/complete`
+}
+
+export const companyControllerCompleteOnboarding = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerCompleteOnboardingResponse> => {
+
+  return apiFetch<companyControllerCompleteOnboardingResponse>(getCompanyControllerCompleteOnboardingUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 );}
 

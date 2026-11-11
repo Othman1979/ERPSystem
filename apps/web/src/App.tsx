@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
+  Alert,
   Avatar,
   Breadcrumb,
   Button,
@@ -34,6 +35,8 @@ import { useAuth } from './auth/AuthContext';
 import { HomeDashboard } from './pages/HomeDashboard';
 import { LoginPage } from './pages/LoginPage';
 import { PlatformAdminPage } from './pages/PlatformAdminPage';
+import { SetupWizardPage } from './pages/SetupWizardPage';
+import { useCompany } from './components/CompanyProfileForm';
 import { RegisterPage } from './pages/RegisterPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 import { displayName } from './i18n/displayName';
@@ -129,8 +132,24 @@ function HomeScreen() {
   const { t } = useTranslation();
   const { me } = useAuth();
   const navigate = useNavigate();
+  const company = useCompany();
   return (
     <>
+      {company.data && !company.data.onboardingCompletedAt && (
+        // Until the setup wizard is finished (§13.4).
+        <Alert
+          type="info"
+          showIcon
+          message={t('setup.bannerTitle')}
+          description={t('setup.bannerText')}
+          action={
+            <Button type="primary" onClick={() => navigate('/setup')}>
+              {t('setup.open')}
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
       <div className="home-head">
         <div>
           <Typography.Title level={4} style={{ margin: 0 }}>
@@ -328,6 +347,14 @@ function AppShell() {
                 element={<ViewErrorBoundary key={r.key}>{r.element}</ViewErrorBoundary>}
               />
             ))}
+            <Route
+              path="/setup"
+              element={
+                <ViewErrorBoundary key="setup">
+                  <SetupWizardPage />
+                </ViewErrorBoundary>
+              }
+            />
             {isPlatformAdmin && (
               <Route
                 path={`${PLATFORM_PATH}/*`}
