@@ -34,7 +34,7 @@ export class PartiesService {
     const companyId = await this.support.companyId(db);
     return db.party.findMany({
       where: { companyId, id: { in: ids } },
-      select: { id: true, code: true, nameAr: true, nameEn: true },
+      select: { id: true, code: true, nameAr: true, nameEn: true, partyType: true },
     });
   }
 

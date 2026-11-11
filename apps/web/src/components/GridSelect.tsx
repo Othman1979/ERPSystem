@@ -164,6 +164,9 @@ export function focusCellEl(el: HTMLElement | null | undefined): void {
     // Make sure the dropdown actually opens — GridSelect opens on ArrowDown
     // when closed, so nudge it only if nothing opened after the mousedown.
     requestAnimationFrame(() => {
+      // A late frame (slow device, background tab) must not reopen a list the
+      // user has already picked from and left.
+      if (document.activeElement !== input) return;
       if (!el.querySelector('.grid-select-open')) {
         select.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
       }

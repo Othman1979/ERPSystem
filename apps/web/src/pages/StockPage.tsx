@@ -1132,7 +1132,9 @@ function ValuationTab() {
 
 export function StockPage() {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('balances');
+  const [searchParams] = useSearchParams();
+  // ?tab=adjustments: the opening balances screen links to opening stock.
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') ?? 'balances');
   const [voucherRequest, setVoucherRequest] = useState<'GRN' | 'GIN' | null>(null);
 
   const openVoucher = (type: 'GRN' | 'GIN') => {

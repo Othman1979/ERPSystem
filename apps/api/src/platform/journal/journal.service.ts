@@ -8,6 +8,7 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { PartiesService } from '../parties/parties.service.js';
 import {
   CreateJournalEntryDto,
   CreateOpeningEntryDto,
@@ -38,7 +39,38 @@ export class JournalService {
     private readonly prisma: PrismaService,
     private readonly posting: PostingService,
     private readonly audit: AuditService,
+    private readonly parties: PartiesService,
   ) {}
+
+  /**
+   * Party ids typed by the user (manual and opening entries) must be parties
+   * of this company, of the line's kind (a BOTH party fits either). Document
+   * entries take their party from the document, so they skip this.
+   */
+  private async assertParties(
+    lines: { partyType?: 'CUSTOMER' | 'SUPPLIER' | null; partyId?: string | null }[],
+  ): Promise<void> {
+    const ids = [...new Set(lines.filter((l) => l.partyId).map((l) => BigInt(l.partyId!)))];
+    if (ids.length === 0) return;
+    const typeById = new Map((await this.parties.summaries(ids)).map((p) => [p.id, p.partyType]));
+    lines.forEach((l, i) => {
+      if (!l.partyId) return;
+      const type = typeById.get(BigInt(l.partyId));
+      if (!type) {
+        throw new DomainError(ErrorCode.NOT_FOUND, `Line ${i + 1}: party ${l.partyId} not found`, {
+          line: i + 1,
+          partyId: l.partyId,
+        });
+      }
+      if (l.partyType && type !== 'BOTH' && type !== l.partyType) {
+        throw new DomainError(
+          ErrorCode.VALIDATION,
+          `Line ${i + 1}: party ${l.partyId} is a ${type}, not a ${l.partyType}`,
+          { line: i + 1, partyId: l.partyId },
+        );
+      }
+    });
+  }
 
   private tenant() {
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
@@ -60,17 +92,22 @@ export class JournalService {
     return ClsServiceManager.getClsService<RequestContext>().get('userId');
   }
 
-  async list(status?: string, voucherType?: string) {
+  async list(status?: string, voucherType?: string, sourceType?: string) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
+    if (sourceType && sourceType !== MANUAL_SOURCE && sourceType !== OPENING_SOURCE) {
+      throw new DomainError(ErrorCode.VALIDATION, `Unsupported sourceType filter: ${sourceType}`);
+    }
     return db.journalEntry.findMany({
       where: {
         companyId,
         ...(status ? { status: status as 'DRAFT' | 'POSTED' } : {}),
         ...(voucherType ? { voucherType: voucherType as 'JOURNAL' | 'RECEIPT_VOUCHER' | 'PAYMENT_VOUCHER' } : {}),
+        ...(sourceType ? { sourceType } : {}),
       },
       orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
-      include: { _count: { select: { lines: true } } },
+      // reversals: lets the list tag reversed entries.
+      include: { _count: { select: { lines: true } }, reversals: { select: { id: true, entryNo: true } } },
       take: 200,
     });
   }
@@ -99,6 +136,7 @@ export class JournalService {
     const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
     const branchId = currentBranchId();
+    await this.assertParties(dto.lines);
 
     const entry = await db.$transaction(async (tx) => {
       const created = await tx.journalEntry.create({
@@ -318,17 +356,35 @@ export class JournalService {
     const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
     const userId = this.userId();
+    await this.assertParties(dto.lines);
 
     const result = await this.withRetry(() =>
       db.$transaction(async (tx) => {
         const entryDate = new Date(dto.entryDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, entryDate);
 
-        const mapping = await tx.accountMapping.findFirst({
-          where: { tenantId, companyId, mappingKey: 'OPENING_BALANCE_EQUITY' },
+        const mappings = await tx.accountMapping.findMany({
+          where: { tenantId, companyId, mappingKey: { in: ['OPENING_BALANCE_EQUITY', 'INVENTORY'] } },
+          select: { mappingKey: true, accountId: true },
         });
+        const mapping = mappings.find((m) => m.mappingKey === 'OPENING_BALANCE_EQUITY');
         if (!mapping) {
           throw new DomainError(ErrorCode.INTERNAL, 'OPENING_BALANCE_EQUITY mapping missing');
+        }
+
+        // §8.6: the inventory account balance must equal the opening stock
+        // value, which only an OPENING stock adjustment produces (with its
+        // movements and costs). A manual line here would double-count it.
+        const inventoryAccountId = mappings.find((m) => m.mappingKey === 'INVENTORY')?.accountId;
+        if (inventoryAccountId !== undefined) {
+          const lineNo = dto.lines.findIndex((l) => BigInt(l.accountId) === inventoryAccountId);
+          if (lineNo >= 0) {
+            throw new DomainError(
+              ErrorCode.OPENING_INVENTORY_VIA_STOCK,
+              'Enter opening stock through an OPENING stock adjustment, not on the inventory account',
+              { line: lineNo + 1, accountId: inventoryAccountId.toString() },
+            );
+          }
         }
 
         const lines: JournalLineInput[] = dto.lines.map((l) => ({
@@ -337,6 +393,7 @@ export class JournalService {
           credit: l.credit ?? '0',
           partyType: l.partyType ?? null,
           partyId: l.partyId ? BigInt(l.partyId) : null,
+          description: l.description ?? null,
         }));
 
         // Plug the difference into OPENING_BALANCE_EQUITY.
@@ -359,8 +416,9 @@ export class JournalService {
         );
 
         // source_id stays NULL: the unique index treats NULLs as distinct,
-        // and opening entries are rare — double-submit protection comes
-        // from the mandatory Idempotency-Key on this endpoint.
+        // and a company may enter its opening balances in several entries.
+        // Double-submit protection comes from the mandatory Idempotency-Key
+        // on this endpoint (ACTIVITY_PATH in the idempotency interceptor).
         return this.posting.postEntry(tx, {
           tenantId,
           companyId,

@@ -7,6 +7,7 @@ import {
   ContainerOutlined,
   DashboardOutlined,
   FileDoneOutlined,
+  FlagOutlined,
   FileProtectOutlined,
   InboxOutlined,
   ProfileOutlined,
@@ -26,6 +27,7 @@ import { GoodsNotesPage } from './pages/GoodsNotesPage';
 import { HealthPage } from './pages/HealthPage';
 import { ItemsPage } from './pages/ItemsPage';
 import { JournalPage } from './pages/JournalPage';
+import { OpeningBalancesPage } from './pages/OpeningBalancesPage';
 import { PartiesPage } from './pages/PartiesPage';
 import { PurchasesPage } from './pages/PurchasesPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -62,6 +64,13 @@ export const APP_GROUPS: AppGroup[] = [
     routes: [
       { key: 'accounts', path: '/accounts', label: 'nav.accounts', icon: <BankOutlined />, element: <AccountsPage /> },
       { key: 'journal', path: '/journal', label: 'nav.journal', icon: <ProfileOutlined />, element: <JournalPage /> },
+      {
+        key: 'openingBalances',
+        path: '/opening-balances',
+        label: 'nav.openingBalances',
+        icon: <FlagOutlined />,
+        element: <OpeningBalancesPage />,
+      },
       { key: 'treasury', path: '/treasury', label: 'nav.treasury', icon: <WalletOutlined />, element: <TreasuryPage /> },
       { key: 'reports', path: '/reports', label: 'nav.reports', icon: <BarChartOutlined />, element: <ReportsPage /> },
       { key: 'fiscal', path: '/fiscal', label: 'nav.fiscal', icon: <CalendarOutlined />, element: <FiscalPage /> },

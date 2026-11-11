@@ -119,4 +119,8 @@ main()
     console.error(e);
     process.exitCode = 1;
   })
-  .finally(() => prisma.$disconnect());
+  .finally(async () => {
+    await prisma.$disconnect();
+    // The adapter does not end a pool it was handed; left open, it keeps the process alive.
+    await pool.end();
+  });

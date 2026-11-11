@@ -95,6 +95,11 @@ export class OpeningLineDto {
   @IsOptional()
   @IsString()
   partyId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
 }
 
 export class CreateOpeningEntryDto {
