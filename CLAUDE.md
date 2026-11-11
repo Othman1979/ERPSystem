@@ -4,7 +4,7 @@
 المطور: شخص واحد. أنت تعمل كمساعده في التنفيذ.
 
 **المرجع الكامل:** `docs/BUILD_PLAN.md`. اقرأ الأقسام المتعلقة بالمرحلة الحالية قبل أي عمل.
-**المرحلة الحالية:** 8  ← حدّث هذا السطر عند الانتقال إلى مرحلة جديدة.
+**المرحلة الحالية:** 9  ← حدّث هذا السطر عند الانتقال إلى مرحلة جديدة.
 
 ---
 
@@ -31,6 +31,7 @@ pnpm lint
 pnpm --filter api prisma migrate dev --name <name>
 pnpm --filter api prisma db seed
 pnpm api-client:generate # يولد packages/api-client من OpenAPI
+pnpm --filter api job:tenant-status # Cron يومي: دورة حالات الاشتراك (ADR-009)، بعد pnpm build
 ```
 
 > حدّث هذا القسم عند إضافة أوامر جديدة.

@@ -2,6 +2,7 @@ import { Component, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import {
+  CloudServerOutlined,
   ExportOutlined,
   HomeOutlined,
   ImportOutlined,
@@ -32,6 +33,7 @@ import {
 import { useAuth } from './auth/AuthContext';
 import { HomeDashboard } from './pages/HomeDashboard';
 import { LoginPage } from './pages/LoginPage';
+import { PlatformAdminPage } from './pages/PlatformAdminPage';
 import { RegisterPage } from './pages/RegisterPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 import { displayName } from './i18n/displayName';
@@ -73,6 +75,9 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundary
 }
 
 const SIDER_STORAGE_KEY = 'erp.siderCollapsed';
+
+/** Platform owner console (outside the tenant modules of routes.tsx). */
+const PLATFORM_PATH = '/platform';
 
 function readSiderCollapsed(): boolean {
   try {
@@ -176,6 +181,8 @@ function AppShell() {
     document.title = current ? `${t(current.label)} — ${t('app.title')}` : t('app.title');
   }, [current, t, language]);
 
+  // The platform owner's console (§13.3) — only for User.isPlatformAdmin.
+  const isPlatformAdmin = !!me?.user.isPlatformAdmin;
   const menuItems: MenuProps['items'] = useMemo(
     () => [
       { key: '/', icon: <HomeOutlined />, label: t('nav.home') },
@@ -185,15 +192,18 @@ function AppShell() {
         label: collapsed && !isMobile ? null : t(g.label),
         children: g.routes.map((r) => ({ key: r.path, icon: r.icon, label: t(r.label) })),
       })),
+      ...(isPlatformAdmin
+        ? [{ key: PLATFORM_PATH, icon: <CloudServerOutlined />, label: t('platform.nav') }]
+        : []),
     ],
     // Labels depend on the language; t identity changes with it.
-    [t, collapsed, isMobile],
+    [t, collapsed, isMobile, isPlatformAdmin],
   );
 
   const menu = (
     <Menu
       mode="inline"
-      selectedKeys={[current?.path ?? '/']}
+      selectedKeys={[current?.path ?? (location.pathname.startsWith(PLATFORM_PATH) ? PLATFORM_PATH : '/')]}
       items={menuItems}
       onClick={({ key }) => {
         navigate(key);
@@ -318,6 +328,16 @@ function AppShell() {
                 element={<ViewErrorBoundary key={r.key}>{r.element}</ViewErrorBoundary>}
               />
             ))}
+            {isPlatformAdmin && (
+              <Route
+                path={`${PLATFORM_PATH}/*`}
+                element={
+                  <ViewErrorBoundary key="platform">
+                    <PlatformAdminPage />
+                  </ViewErrorBoundary>
+                }
+              />
+            )}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout.Content>

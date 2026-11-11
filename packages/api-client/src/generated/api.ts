@@ -106,6 +106,8 @@ export interface ExtendTrialDto { [key: string]: unknown }
 
 export interface CreateSubscriptionDto { [key: string]: unknown }
 
+export interface UpdatePlanDto { [key: string]: unknown }
+
 export type FiscalControllerListSequencesParams = {
   fiscalYearId: string;
 };
@@ -6696,5 +6698,86 @@ return apiFetch<adminControllerCreateSubscriptionResponse>(getAdminControllerCre
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(createSubscriptionDto)
+  }
+);}
+
+
+
+export type adminPlansControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type adminPlansControllerListResponseSuccess = (adminPlansControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type adminPlansControllerListResponse = (adminPlansControllerListResponseSuccess)
+
+export const getAdminPlansControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/admin/plans`
+}
+
+export const adminPlansControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<adminPlansControllerListResponse> => {
+
+  return apiFetch<adminPlansControllerListResponse>(getAdminPlansControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type adminPlansControllerUpdateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type adminPlansControllerUpdateResponseSuccess = (adminPlansControllerUpdateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type adminPlansControllerUpdateResponse = (adminPlansControllerUpdateResponseSuccess)
+
+export const getAdminPlansControllerUpdateUrl = (code: string,) => {
+
+
+
+
+  return `/api/v1/admin/plans/${code}`
+}
+
+export const adminPlansControllerUpdate = async (code: string,
+    updatePlanDto: UpdatePlanDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminPlansControllerUpdateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<adminPlansControllerUpdateResponse>(getAdminPlansControllerUpdateUrl(code),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updatePlanDto)
   }
 );}

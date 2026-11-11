@@ -247,6 +247,8 @@ model Tenant {
   status      TenantStatus @default(TRIAL)
   planId      BigInt?      @map("plan_id") @db.UnsignedBigInt
   trialEndsAt DateTime?    @map("trial_ends_at") @db.DateTime(3)
+  /// Last status change (ADR-009): grace and post-cancellation retention count from it.
+  statusChangedAt DateTime? @map("status_changed_at") @db.DateTime(3)
   createdAt   DateTime     @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt   DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
 

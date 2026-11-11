@@ -21,6 +21,11 @@ export const envSchema = z.object({
   // Report exports (Phase 8): most rows one PDF / XLSX export may have (REPORT_TOO_LARGE above).
   REPORT_PDF_MAX_ROWS: z.coerce.number().int().positive().default(1_000),
   REPORT_XLSX_MAX_ROWS: z.coerce.number().int().positive().default(50_000),
+  // Subscriptions (Phase 9, ADR-009): trial length at registration, grace after
+  // a paid period ends, data kept after cancellation (never deleted automatically).
+  TRIAL_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+  GRACE_DAYS: z.coerce.number().int().min(0).max(90).default(7),
+  RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
 });
 
 export type Env = z.infer<typeof envSchema>;
