@@ -5,6 +5,10 @@ import type { RequestContext } from '../../common/cls/cls.types.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { FiscalService } from '../accounting/fiscal.service.js';
+
+/** Accounts closed into equity at year end (their opening restarts each year). */
+const NOMINAL_TYPES: ReadonlySet<string> = new Set(['REVENUE', 'EXPENSE']);
 
 export interface ReportRange {
   from?: string;
@@ -53,7 +57,23 @@ export interface AccountTotal {
  */
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fiscal: FiscalService,
+  ) {}
+
+  /**
+   * Profit and loss accounts start each fiscal year at zero (ADR-008 §7,
+   * owner's option B — no closing entry, §8.5): with a `from`, their opening
+   * counts only from the start of the fiscal year holding `from`. Returns
+   * that start, or null (no `from`, or no fiscal year around it).
+   */
+  private async nominalStart(range: ReportRange): Promise<Date | null> {
+    if (!range.from) return null;
+    const from = new Date(range.from);
+    const year = await this.fiscal.yearContaining(from);
+    return year ? new Date(year.startDate) : null;
+  }
 
   private tenant() {
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
@@ -212,24 +232,36 @@ export class ReportsService {
   async trialBalance(range: ReportRange) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
-    const [inRange, opening, movement, chart] = await Promise.all([
+    const nominalStart = await this.nominalStart(range);
+    const [inRange, opening, movement, chart, prior] = await Promise.all([
       this.accountTotals(range),
       this.sumsByAccount(db, companyId, this.openingEntryWhere(range)),
       this.sumsByAccount(db, companyId, this.movementEntryWhere(range)),
       this.chart(),
+      // Lines of earlier fiscal years: P&L accounts leave them out of their opening.
+      nominalStart
+        ? this.sumsByAccount(db, companyId, { entryDate: { lt: nominalStart } })
+        : Promise.resolve(new Map<bigint, { debit: Decimal; credit: Decimal }>()),
     ]);
     const accountById = new Map(chart.map((a) => [a.id, a]));
     const inRangeById = new Map(inRange.map((r) => [r.account.id, r]));
     const zero = { debit: new Decimal(0), credit: new Decimal(0) };
     const ids = new Set([...inRangeById.keys(), ...opening.keys(), ...movement.keys()]);
+    // Unclosed profit of earlier years (debit − credit; negative = profit).
+    let priorNet = new Decimal(0);
 
-    const rows = [...ids]
+    const accountRows = [...ids]
       .map((id) => {
         const a = accountById.get(id);
         if (!a) return null;
         const debit = inRangeById.get(id)?.debit ?? new Decimal(0);
         const credit = inRangeById.get(id)?.credit ?? new Decimal(0);
-        const o = opening.get(id) ?? zero;
+        let o = opening.get(id) ?? zero;
+        const p = prior.get(id);
+        if (p && NOMINAL_TYPES.has(a.accountType)) {
+          o = { debit: o.debit.minus(p.debit), credit: o.credit.minus(p.credit) };
+          priorNet = priorNet.plus(p.debit).minus(p.credit);
+        }
         const m = movement.get(id) ?? zero;
         const openingNet = o.debit.minus(o.credit);
         const closingNet = openingNet.plus(m.debit).minus(m.credit);
@@ -240,6 +272,8 @@ export class ReportsService {
         const balance = a.normalBalance === 'DEBIT' ? debit.minus(credit) : credit.minus(debit);
         return {
           accountId: a.id.toString(),
+          /** null for an account; PRIOR_YEARS for the computed equity row. */
+          kind: null as 'PRIOR_YEARS' | null,
           code: a.code,
           nameAr: a.nameAr,
           nameEn: a.nameEn,
@@ -257,6 +291,32 @@ export class ReportsService {
       .filter((r): r is NonNullable<typeof r> => r !== null)
       .sort((x, y) => x.code.localeCompare(y.code));
 
+    // Earlier years' unclosed profit, shown with equity (as the balance
+    // sheet's "prior years" line): the opening totals still balance.
+    const rows = [...accountRows];
+    if (!priorNet.isZero()) {
+      const priorRow = {
+        accountId: '',
+        kind: 'PRIOR_YEARS' as const,
+        code: '',
+        nameAr: 'أرباح سنوات سابقة غير مقفلة',
+        nameEn: 'Prior years profit (not closed)',
+        accountType: 'EQUITY' as const,
+        normalBalance: 'CREDIT' as const,
+        totalDebit: '0',
+        totalCredit: '0',
+        balance: '0',
+        ...sides('opening', priorNet),
+        periodDebit: '0',
+        periodCredit: '0',
+        ...sides('closing', priorNet),
+      };
+      const lastEquity = rows.map((r) => r.accountType).lastIndexOf('EQUITY');
+      const firstNominal = rows.findIndex((r) => NOMINAL_TYPES.has(r.accountType));
+      const at = lastEquity >= 0 ? lastEquity + 1 : firstNominal >= 0 ? firstNominal : rows.length;
+      rows.splice(at, 0, priorRow);
+    }
+
     const total = (key: keyof (typeof rows)[number]) => sum(rows.map((r) => r[key] as string));
     const totals = {
       debit: total('totalDebit'),
@@ -270,6 +330,8 @@ export class ReportsService {
     };
     return {
       rows,
+      /** Start of the fiscal year P&L accounts open from (null: no `from` or no year). */
+      nominalFrom: nominalStart ? nominalStart.toISOString().slice(0, 10) : null,
       totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, v.toString()])) as Record<
         keyof typeof totals,
         string
@@ -314,9 +376,18 @@ export class ReportsService {
       },
     });
 
-    // Opening balance, summed in the database.
+    // Opening balance, summed in the database. A P&L account opens from the
+    // start of the fiscal year holding `from` (earlier years are not its own).
+    const nominalStart = NOMINAL_TYPES.has(account.accountType) ? await this.nominalStart(range) : null;
     const before = await db.journalLine.aggregate({
-      where: { accountId, entry: { companyId, status: 'POSTED', ...this.openingEntryWhere(range) } },
+      where: {
+        accountId,
+        entry: {
+          companyId,
+          status: 'POSTED',
+          AND: [this.openingEntryWhere(range), ...(nominalStart ? [{ entryDate: { gte: nominalStart } }] : [])],
+        },
+      },
       _sum: { debit: true, credit: true },
     });
     const opening = new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);

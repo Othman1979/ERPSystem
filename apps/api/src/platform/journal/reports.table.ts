@@ -31,6 +31,8 @@ export function trialBalanceTable(data: TrialBalance, lang: Lang, range: ReportR
     rows: data.rows.map((r) => ({
       code: r.code,
       name: localName(lang, r.nameAr, r.nameEn),
+      // The computed "prior years profit" row (ADR-008 §7) stands out.
+      ...(r.kind ? { _bold: true } : {}),
       openingDebit: r.openingDebit,
       openingCredit: r.openingCredit,
       periodDebit: r.periodDebit,

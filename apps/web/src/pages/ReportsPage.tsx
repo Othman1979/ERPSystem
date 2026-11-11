@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { PrinterOutlined } from '@ant-design/icons';
 import { Button, Card, DatePicker, Select, Table, Tabs, Tag } from 'antd';
-import type { Dayjs } from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import {
   accountingControllerListAccounts,
+  fiscalControllerListYears,
   apiFetchData,
   partiesControllerList,
 } from '@erp/api-client';
@@ -43,9 +44,18 @@ type TbColumn = (typeof TB_COLUMNS)[number];
 
 interface TbRow extends Record<TbColumn, string> {
   accountId: string;
+  /** PRIOR_YEARS: the computed "unclosed prior years profit" row (ADR-008 §7). */
+  kind: 'PRIOR_YEARS' | null;
   code: string;
   nameAr: string;
   nameEn: string | null;
+}
+
+interface FiscalYearOption {
+  id: string;
+  code: string;
+  startDate: string;
+  endDate: string;
 }
 
 interface TbResponse {
@@ -136,9 +146,30 @@ export function ReportsPage() {
     enabled: !!partyType && !!partyId,
   });
 
+  // A fiscal year fills the date range (the dates stay editable).
+  const { data: years } = useQuery({
+    queryKey: ['fiscal-years'],
+    queryFn: () => fiscalControllerListYears().then((r) => r.data as unknown as FiscalYearOption[]),
+  });
+  const selectedYear = (years ?? []).find(
+    (y) => range.from === y.startDate.slice(0, 10) && range.to === y.endDate.slice(0, 10),
+  );
+
   // Each report shows only the filters it uses; the date range is shared between tabs.
   const dateFilters = (
     <>
+      <Select
+        allowClear
+        placeholder={t('reports.fiscalYear')}
+        style={{ minWidth: 130 }}
+        value={selectedYear?.id}
+        onChange={(id?: string) => {
+          const y = (years ?? []).find((x) => x.id === id);
+          setFrom(y ? dayjs(y.startDate.slice(0, 10)) : null);
+          setTo(y ? dayjs(y.endDate.slice(0, 10)) : null);
+        }}
+        options={(years ?? []).map((y) => ({ value: y.id, label: y.code }))}
+      />
       <DatePicker placeholder={t('reports.from')} value={from} onChange={setFrom} />
       <DatePicker placeholder={t('reports.to')} value={to} onChange={setTo} />
     </>
@@ -189,22 +220,28 @@ export function ReportsPage() {
                 />
                 <div className="report-meta">
                   <span>{t('reports.openingNote')}</span>
+                  {tb?.rows.some((r) => r.kind === 'PRIOR_YEARS') && <span>{t('reports.priorYearsNote')}</span>}
                 </div>
                 <Table<TbRow>
-                  rowKey="accountId"
+                  rowKey={(r) => r.accountId || 'prior-years'}
                   size="small"
                   bordered
                   loading={tbLoading}
                   dataSource={tb?.rows ?? []}
                   pagination={false}
                   scroll={{ x: 1000 }}
-                  onRow={(r) => ({ onDoubleClick: () => openStatement(r.accountId), style: { cursor: 'pointer' } })}
+                  rowClassName={(r) => (r.kind ? 'report-row-strong' : '')}
+                  onRow={(r) =>
+                    r.kind
+                      ? {}
+                      : { onDoubleClick: () => openStatement(r.accountId), style: { cursor: 'pointer' } }
+                  }
                   columns={[
                     { title: t('accounts.code'), dataIndex: 'code', width: 90 },
                     {
                       title: t('common.name'),
                       key: 'name',
-                      render: (_: unknown, r: TbRow) => bothNames(r),
+                      render: (_: unknown, r: TbRow) => (r.kind ? t('reports.priorYearsRow') : bothNames(r)),
                     },
                     tbGroup('opening', t('reports.openingPeriod')),
                     tbGroup('period', t('reports.movements')),

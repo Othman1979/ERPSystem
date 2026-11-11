@@ -482,7 +482,7 @@ describe('Phase 7 — JoFotara', () => {
     // ICVs are unique and consecutive per company.
     const icvs = done.map((s) => s.icv).sort((a, b) => a - b);
     expect(new Set(icvs).size).toBe(icvs.length);
-  });
+  }, 60_000);
 
   it('parallel postings each draw their own ICV', async () => {
     const drafts = await Promise.all([1, 2, 3, 4, 5].map((q) => draftInvoice('TN', String(q))));

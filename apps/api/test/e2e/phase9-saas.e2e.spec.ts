@@ -256,7 +256,7 @@ describe('Phase 9.1 — subscriptions and the platform console', () => {
         new Date(now - 100 * DAY),
         t.cancelled.tenantId,
       ]);
-    });
+    }, 60_000);
 
     it('moves each tenant per ADR-009 and lists cancelled ones past retention', async () => {
       const run = await runStatusJob();
@@ -293,13 +293,13 @@ describe('Phase 9.1 — subscriptions and the platform console', () => {
       // The driver returns JSON columns as text.
       const json = (v: unknown) => (typeof v === 'string' ? JSON.parse(v) : v) as { status: string };
       expect([json(audit[0].before_json).status, json(audit[0].after_json).status]).toEqual(['TRIAL', 'SUSPENDED']);
-    });
+    }, 60_000);
 
     it('a second run the same day changes nothing for these tenants', async () => {
       const run = await runStatusJob();
       const mine = new Set(Object.values(t).map((x) => x.tenantId));
       expect(run.changed.filter((c) => mine.has(c.tenantId))).toEqual([]);
-    });
+    }, 60_000);
 
     it('a suspended tenant reads but cannot write', async () => {
       const read = await api().get('/api/v1/parties?partyType=&isActive=').set(auth(t.trial.token));

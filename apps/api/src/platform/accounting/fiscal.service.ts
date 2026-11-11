@@ -153,6 +153,38 @@ export class FiscalService {
     });
   }
 
+  /**
+   * Closes (or reopens) a whole fiscal year: every period of it, and the
+   * year's own status (ADR-008 §7). Posting checks the periods, so a closed
+   * year takes no document; nothing is posted or reversed (no closing entry,
+   * §8.5). fiscal.close permission enforced at the controller.
+   */
+  async setYearStatus(yearId: bigint, status: 'OPEN' | 'CLOSED') {
+    const { db } = this.tenant();
+    const year = await db.fiscalYear.findFirst({ where: { id: yearId }, select: { id: true, code: true, status: true } });
+    if (!year) throw DomainError.notFound('FiscalYear', yearId.toString());
+    const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
+    const changed = await db.$transaction(async (tx) => {
+      const periods = await tx.fiscalPeriod.updateMany({
+        where: { fiscalYearId: yearId, status: status === 'CLOSED' ? 'OPEN' : 'CLOSED' },
+        data:
+          status === 'CLOSED'
+            ? { status, closedAt: new Date(), closedBy: userId }
+            : { status, closedAt: null, closedBy: null },
+      });
+      await tx.fiscalYear.update({ where: { id: yearId }, data: { status } });
+      return periods.count;
+    });
+    await this.audit.log({
+      action: status === 'CLOSED' ? 'fiscal_year.close' : 'fiscal_year.open',
+      entityType: 'fiscal_year',
+      entityId: yearId,
+      before: { status: year.status },
+      after: { status, periodsChanged: changed },
+    });
+    return this.getYear(yearId);
+  }
+
   /** Close/reopen a period — fiscal.close permission enforced at controller. */
   async setPeriodStatus(periodId: bigint, status: 'OPEN' | 'CLOSED') {
     const { db } = this.tenant();
@@ -167,6 +199,13 @@ export class FiscalService {
         status === 'CLOSED'
           ? { status, closedAt: new Date(), closedBy: cls.get('userId') ?? null }
           : { status, closedAt: null, closedBy: null },
+    });
+    // The year follows its periods: closed once all are closed, open again
+    // as soon as one reopens.
+    const stillOpen = await db.fiscalPeriod.count({ where: { fiscalYearId: period.fiscalYearId, status: 'OPEN' } });
+    await db.fiscalYear.update({
+      where: { id: period.fiscalYearId },
+      data: { status: stillOpen > 0 ? 'OPEN' : 'CLOSED' },
     });
     await this.audit.log({
       action: status === 'CLOSED' ? 'fiscal_period.close' : 'fiscal_period.open',
