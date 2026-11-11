@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { CompanyProfileForm } from '../components/CompanyProfileForm';
+import { DataExportCard } from '../components/DataExportCard';
 import {
   ApiError,
   settingsControllerCreatePaymentMethod,
@@ -322,6 +323,7 @@ export function SettingsPage() {
             children: <LookupTable kind="paymentMethod" title={t('settings.paymentMethods')} />,
           },
           { key: 'einvoice', label: t('settings.einvoice'), children: <EInvoiceSettingsTab /> },
+          { key: 'data', label: t('dataExport.title'), children: <DataExportCard /> },
         ]}
       />
       </Card>

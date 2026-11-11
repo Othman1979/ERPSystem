@@ -349,6 +349,15 @@ export const ar = {
     removeLogo: 'حذف الشعار',
     logoSaved: 'تم حفظ الشعار',
   },
+  dataExport: {
+    title: 'تصدير البيانات',
+    intro: 'نسخة كاملة من بيانات شركتك في ملف ZIP، فيه ملفات Excel تفتحها في أي برنامج جداول.',
+    contents:
+      'يشمل: الشركة والفروع والسنوات المالية، الحسابات، القيود، الأصناف والمستودعات، حركات المخزون والمستندات المخزنية، العملاء والموردين، المبيعات والمشتريات والمرتجعات، الصناديق والسندات، الفوترة الإلكترونية، سجل التدقيق، والمستخدمين والشعار. متاح دائماً، حتى لو كان الاشتراك معلّقاً أو ملغى.',
+    download: 'تنزيل بيانات الشركة (ZIP)',
+    done: 'بدأ تنزيل الملف',
+    ownerOnly: 'تصدير البيانات متاح لمالك الحساب فقط.',
+  },
   setup: {
     title: 'إعداد الشركة',
     subtitle: 'خطوات قليلة لتجهيز النظام، ويمكنك العودة إلى أي خطوة لاحقاً',
@@ -1279,6 +1288,15 @@ export const en: typeof ar = {
     replaceLogo: 'Replace logo',
     removeLogo: 'Remove logo',
     logoSaved: 'Logo saved',
+  },
+  dataExport: {
+    title: 'Data Export',
+    intro: 'A complete copy of your company data as a ZIP of Excel workbooks you can open in any spreadsheet.',
+    contents:
+      'Includes: company, branches and fiscal years, accounts, journal entries, items and warehouses, stock movements and stock documents, customers and suppliers, sales, purchases and returns, cash boxes and vouchers, e-invoicing, the audit log, users and the logo. Always available, even when the subscription is suspended or cancelled.',
+    download: 'Download company data (ZIP)',
+    done: 'The download has started',
+    ownerOnly: 'Only the account owner can export the data.',
   },
   setup: {
     title: 'Company Setup',
