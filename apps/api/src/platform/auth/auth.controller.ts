@@ -11,6 +11,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { Public, TenantOptional } from '../../common/decorators/auth.decorators.js';
+import { LimitPerAccount } from '../../common/throttle/throttle.js';
 import { AuthService, type AuthMeta } from './auth.service.js';
 import { LoginDto, RegisterDto, SwitchTenantDto } from './dto/auth.dto.js';
 
@@ -59,7 +60,9 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  // 10 a minute per address and email; 30 a minute per address across emails (ADR-008).
+  @LimitPerAccount()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('login')
   @HttpCode(200)
   async login(
