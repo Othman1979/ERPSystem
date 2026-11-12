@@ -35,6 +35,8 @@ pnpm --filter api job:tenant-status # Cron يومي: دورة حالات الا�
 pnpm --filter api job:einvoice-send # Cron كل دقيقة: إرسال الفوترة الإلكترونية (ADR-009 §15)
 pnpm --filter api job:purge-tenant <id> [--confirm "<name>"] # يدوي: حذف مستأجر ملغى بعد الاحتفاظ (§14)
 pnpm --filter api job:preflight          # قبل النشر وبعده: جاهزية الخادم (ADR-010 §10.1)
+pnpm --filter api job:backup             # Cron يومي: نسخة القاعدة والمرفقات مع تدوير (ADR-010 §10.2)
+pnpm --filter api job:backup-verify <folder|latest> [--keep] # شهري: استعادة في قاعدة مؤقتة وفحصها
 pnpm --filter api start:web              # تجربة محلية بشكل الإنتاج: الـ API المبني يقدّم الواجهة المبنية على 3002
 pnpm --filter api job:grant-platform-admin <email> [--revoke] # يدوي: مدير المنصة
 ```

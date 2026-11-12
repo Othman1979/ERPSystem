@@ -68,7 +68,8 @@ async function cli(args: string[], env: Record<string, string | undefined> = {})
   try {
     const { stdout, stderr } = await promisify(execFile)('node', ['dist/jobs/cli.js', ...args], {
       cwd: API_DIR,
-      env: { ...process.env, DATABASE_URL: databaseUrl, NODE_ENV: 'test', ...env },
+      // Backups (preflight's probe) in the test folder, not in apps/api.
+      env: { ...process.env, DATABASE_URL: databaseUrl, NODE_ENV: 'test', BACKUP_DIR: path.join(tmp, 'backups'), ...env },
     });
     return { code: 0, stdout, stderr };
   } catch (err) {
@@ -192,7 +193,7 @@ describe('Phase 10.1 — the web app on the same origin', () => {
     clearTimeout(guard);
     expect(signal).toBeNull();
     expect(code).not.toBe(0);
-    expect(stderr).toMatch(/CORS_ORIGIN: must be the site https:\/\/ address/);
+    expect(stderr).toMatch(/CORS_ORIGIN: must be exactly the site's https:\/\/ origin/);
     expect(stderr).toMatch(/EINVOICE_WORKER: must be off in production/);
   }, 60_000);
 });
@@ -209,10 +210,12 @@ describe('Phase 10.1 — preflight and grant-platform-admin', () => {
     expect(out.ok).toBe(true);
     const checks = byName(run.stdout);
     expect(Object.keys(checks).sort()).toEqual(
-      ['database', 'environment', 'migrations', 'plans', 'platform-admin', 'proxy', 'storage', 'timezone', 'web'].sort(),
+      ['backup', 'database', 'environment', 'migrations', 'plans', 'platform-admin', 'proxy', 'storage', 'timezone', 'web'].sort(),
     );
     expect(checks.environment.level).toBe('warn'); // NODE_ENV=test is not production
     expect(checks.migrations.detail).toMatch(/applied/);
+    // The backup folder is writable and the dump tool runs (MYSQLDUMP_PATH).
+    expect(checks.backup).toMatchObject({ ok: true, level: 'info', detail: expect.stringMatching(/writable: .*kept 14 days; .*(mysqldump|mariadb-dump)/i) });
     expect(checks.database.detail).toMatch(/MariaDB|^connected/);
   }, 60_000);
 

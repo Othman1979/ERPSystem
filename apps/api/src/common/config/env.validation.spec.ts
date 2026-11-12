@@ -56,6 +56,12 @@ describe('production rules (ADR-010 §10.1)', () => {
     expect(() => validateEnv({ ...good, ...change })).toThrow(new RegExp(`${name}: `));
   });
 
+  it('says which origin it expects', () => {
+    expect(() => validateEnv({ ...good, CORS_ORIGIN: 'https://ERP.example.jo:443/' })).toThrow(
+      /\(here: https:\/\/erp\.example\.jo\)/,
+    );
+  });
+
   it('names every problem at once', () => {
     const problems = productionProblems(validateEnv({ ...good, NODE_ENV: 'test' }));
     expect(problems).toEqual([]); // the rules are production only

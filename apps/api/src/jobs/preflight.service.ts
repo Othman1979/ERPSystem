@@ -5,7 +5,10 @@ import path from 'node:path';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../common/config/env.validation.js';
+import { overlaps } from '../common/fs/is-inside.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { BackupService } from './backup/backup.service.js';
+import { firstLine, toolVersion } from './backup/mysql-tools.js';
 
 export interface PreflightCheck {
   name: string;
@@ -38,20 +41,9 @@ export function compareMigrations(
   };
 }
 
-/** The first line of an error, for a one-line check detail. */
-function firstLine(err: unknown): string {
-  return (err instanceof Error ? err.message : String(err)).split('\n')[0];
-}
-
-/** Whether `child` is `parent` or inside it. */
-function isInside(child: string, parent: string): boolean {
-  const rel = path.relative(parent, child);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
-
 /**
  * Before and after a deployment (ADR-010 §10.1): is this server ready to
- * take traffic? Reads only; the storage check writes and removes one file.
+ * take traffic? Reads only; the storage and backup checks write and remove one file each.
  * systemPrisma: platform-wide checks, no tenant (allowed in `jobs`).
  */
 @Injectable()
@@ -59,6 +51,7 @@ export class PreflightService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
+    private readonly backup: BackupService,
   ) {}
 
   async run(): Promise<PreflightResult> {
@@ -122,6 +115,7 @@ export class PreflightService {
     }
 
     await attempt('storage', () => this.storage(add));
+    await attempt('backup', () => this.backupReady(add, env === 'production'));
     return { ok: checks.every((c) => c.ok), checks };
   }
 
@@ -151,6 +145,27 @@ export class PreflightService {
     add('migrations', problems.length === 0, problems.length ? problems.join('; ') : `${folders.length} applied`);
   }
 
+  /** BACKUP_DIR writable and apart from the uploads and the web folder; the dump tool runs. */
+  private async backupReady(
+    add: (name: string, ok: boolean, detail: string, level?: PreflightCheck['level']) => void,
+    production: boolean,
+  ): Promise<void> {
+    const root = this.backup.backupRoot();
+    const probe = path.join(root, `.preflight-${randomUUID()}`);
+    await mkdir(root, { recursive: true });
+    await writeFile(probe, 'ok');
+    await rm(probe);
+    const bin = this.config.get('MYSQLDUMP_PATH', { infer: true });
+    const version = await toolVersion(bin);
+    const keep = this.config.get('BACKUP_KEEP_DAYS', { infer: true });
+    if (version) {
+      add('backup', true, `writable: ${root}, kept ${keep} days; ${version}`);
+    } else {
+      // Without the tool the daily backup fails: an error where it matters.
+      add('backup', !production, `${bin} cannot run: set MYSQLDUMP_PATH (backups in ${root})`, production ? 'error' : 'warn');
+    }
+  }
+
   private async storage(add: (name: string, ok: boolean, detail: string) => void): Promise<void> {
     const root = path.resolve(this.config.get('STORAGE_DIR', { infer: true }));
     const webDir = this.config.get('WEB_DIST_DIR', { infer: true });
@@ -164,7 +179,7 @@ export class PreflightService {
     }
 
     // Uploaded files must never be reachable as web pages.
-    if (web && (isInside(root, web) || isInside(web, root))) {
+    if (web && overlaps(root, web)) {
       add('storage', false, `STORAGE_DIR ${root} overlaps WEB_DIST_DIR ${web}`);
       return;
     }

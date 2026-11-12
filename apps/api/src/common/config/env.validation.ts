@@ -40,6 +40,15 @@ export const envSchema = z.object({
   WEB_DIST_DIR: z.string().min(1).optional(),
   // OpenAPI pages at /api/docs. Unset: on, except in production (ADR-010 §5).
   API_DOCS: z.enum(['on', 'off']).optional(),
+  // Daily backups (ADR-010 §10.2, docs/runbooks/backup-restore.md): the folder
+  // (outside the web root, apart from STORAGE_DIR), how many days to keep, the
+  // client tools (mysqldump / mariadb-dump, mysql / mariadb), and the scratch
+  // database backup-verify restores into (its name must contain restore or verify).
+  BACKUP_DIR: z.string().min(1).default('backups'),
+  BACKUP_KEEP_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+  MYSQLDUMP_PATH: z.string().min(1).default('mysqldump'),
+  MYSQL_PATH: z.string().min(1).default('mysql'),
+  BACKUP_VERIFY_DATABASE_URL: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -60,11 +69,13 @@ export function productionProblems(env: Env): { path: string; message: string }[
   } catch {
     // reported below
   }
-  // Browsers compare the Origin header exactly: scheme and host only, no path or trailing slash.
+  // Browsers compare the Origin header exactly, as they serialise it: scheme
+  // and host in lowercase, no default port, no path or trailing slash.
   if (!origin || origin.protocol !== 'https:' || LOOPBACK_HOSTS.has(origin.hostname) || origin.origin !== env.CORS_ORIGIN) {
+    const exact = origin?.protocol === 'https:' && !LOOPBACK_HOSTS.has(origin.hostname) ? ` (here: ${origin.origin})` : '';
     problems.push({
       path: 'CORS_ORIGIN',
-      message: 'must be the site https:// address in production (scheme and host, no path or trailing slash)',
+      message: `must be exactly the site's https:// origin in production: lowercase, no path or trailing slash${exact}`,
     });
   }
   if (!isSealingKey(env.EINVOICE_ENC_KEY)) {
