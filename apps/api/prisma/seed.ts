@@ -119,9 +119,8 @@ main()
     console.error(e);
     process.exitCode = 1;
   })
-  // The adapter does not own the pool we gave it: end it too, or its open
-  // connections keep the process alive and `prisma db seed` never returns.
   .finally(async () => {
     await prisma.$disconnect();
+    // The adapter does not end a pool it was handed; left open, it keeps the process alive.
     await pool.end();
   });

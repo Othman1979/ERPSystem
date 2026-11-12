@@ -8,6 +8,8 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # A stuck run fails here instead of holding the runner for the 6-hour default.
+    timeout-minutes: 30
     services:
       mariadb:
         image: mariadb:11
@@ -22,7 +24,10 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     env:
-      DATABASE_URL: mysql://root:root@localhost:3306/erp_test
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/erp_test
+      # CI-only values: the API refuses to start without them (src/common/config/env.validation.ts).
+      JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production
       # Backup tests (ADR-010 §10.2) run the MariaDB client tools installed below.
       MYSQLDUMP_PATH: mariadb-dump
       MYSQL_PATH: mariadb
@@ -37,4 +42,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
-      - run: pnpm test
+      # The e2e suites spawn the built API (apps/api/dist/main.js).
+      - run: pnpm --filter api build
+      - run: pnpm --filter api exec prisma migrate deploy
+      # Plans, currencies, countries and system roles; sign-up needs the TRIAL plan and OWNER role.
+      - run: pnpm --filter api seed
+        timeout-minutes: 2
+      - name: test (api)
+        # --forceExit: a suite that leaves a handle open must not keep the job alive.
+        run: pnpm --filter api test --forceExit
+        timeout-minutes: 20
+      - name: test (other packages)
+        run: pnpm -r --filter '!api' run test

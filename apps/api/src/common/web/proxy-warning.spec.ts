@@ -1,18 +1,21 @@
 import { warnOnUntrustedProxy } from './proxy-warning.js';
 
-describe('warnOnUntrustedProxy (ADR-010 §10.1)', () => {
-  it('warns once when a proxied request arrives, and always lets requests through', () => {
+describe('warnOnUntrustedProxy (ADR-010 §10.1, ADR-011)', () => {
+  it('warns once when forwarded requests come from a proxy TRUST_PROXY does not name', () => {
     const warnings: string[] = [];
     const middleware = warnOnUntrustedProxy({ warn: (m) => warnings.push(m) });
     let passed = 0;
     const next = () => (passed += 1);
 
-    middleware({ headers: {} }, {}, next);
+    middleware({ headers: {}, ips: [] }, {}, next);
+    // Trusted: Express resolved the client from the header.
+    middleware({ headers: { 'x-forwarded-for': '203.0.113.7' }, ips: ['203.0.113.7'] }, {}, next);
     expect(warnings).toHaveLength(0);
-    middleware({ headers: { 'x-forwarded-for': '203.0.113.7' } }, {}, next);
-    middleware({ headers: { 'x-forwarded-for': '203.0.113.8' } }, {}, next);
+    // Not trusted: the header is there but ignored.
+    middleware({ headers: { 'x-forwarded-for': '203.0.113.7' }, ips: [] }, {}, next);
+    middleware({ headers: { 'x-forwarded-for': '203.0.113.8' }, ips: [] }, {}, next);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toMatch(/TRUST_PROXY=0/);
-    expect(passed).toBe(3);
+    expect(warnings[0]).toMatch(/TRUST_PROXY does not name/);
+    expect(passed).toBe(4);
   });
 });

@@ -7,7 +7,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
 import { AppModule } from './app.module.js';
-import { apiDocsEnabled, type Env } from './common/config/env.validation.js';
+import { apiDocsEnabled, trustProxySetting, type Env } from './common/config/env.validation.js';
 import { warnOnUntrustedProxy } from './common/web/proxy-warning.js';
 import { serveWebApp } from './common/web/serve-web-app.js';
 
@@ -16,11 +16,10 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService<Env, true>);
   const production = config.get('NODE_ENV', { infer: true }) === 'production';
 
-  // Behind the host's proxy req.ip is the proxy's: count the hops so rate
-  // limits and audit see the client (ADR-010 §10.1).
-  const proxies = config.get('TRUST_PROXY', { infer: true });
-  if (proxies > 0) app.set('trust proxy', proxies);
-  else app.use(warnOnUntrustedProxy());
+  // req.ip is the client's address only behind the proxies named here (request limits, ADR-011).
+  app.set('trust proxy', trustProxySetting(config.get('TRUST_PROXY', { infer: true })));
+  // Forwarded requests from a proxy not named there: say so once (ADR-010 §10.1).
+  app.use(warnOnUntrustedProxy());
   // Close the database pool when the host restarts the app.
   app.enableShutdownHooks();
 

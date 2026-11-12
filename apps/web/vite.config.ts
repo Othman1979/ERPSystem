@@ -9,6 +9,8 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
+        // Pass the browser's address on, as a production proxy does (ADR-011).
+        xfwd: true,
       },
     },
   },

@@ -24,6 +24,9 @@ export const envSchema = z.object({
   // Report exports (Phase 8): most rows one PDF / XLSX export may have (REPORT_TOO_LARGE above).
   REPORT_PDF_MAX_ROWS: z.coerce.number().int().positive().default(1_000),
   REPORT_XLSX_MAX_ROWS: z.coerce.number().int().positive().default(50_000),
+  // Proxies whose X-Forwarded-For gives the client address for request limits (ADR-011):
+  // false, a hop count, or addresses/subnets such as "loopback, 10.0.0.0/8". Never "true" on a public server.
+  TRUST_PROXY: z.string().default('loopback'),
   // Subscriptions (Phase 9, ADR-009): trial length at registration, grace after
   // a paid period ends, data kept after cancellation (never deleted automatically).
   TRIAL_DAYS: z.coerce.number().int().min(1).max(365).default(14),
@@ -31,10 +34,6 @@ export const envSchema = z.object({
   RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
   // Uploaded files (company logo): a folder outside the web root (ADR-009 §7).
   STORAGE_DIR: z.string().min(1).default('storage'),
-  // Reverse proxies in front of the API (the host's, nginx): how many, so req.ip
-  // (rate limits, audit) is the client's address. 0 = clients connect directly.
-  // More than the real count lets a client forge its address (ADR-010 §10.1).
-  TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
   // The built web app (apps/web/dist), served by the API on the same origin
   // (ADR-010 §2). Unset: API only.
   WEB_DIST_DIR: z.string().min(1).optional(),
@@ -81,6 +80,12 @@ export function productionProblems(env: Env): { path: string; message: string }[
   if (!isSealingKey(env.EINVOICE_ENC_KEY)) {
     problems.push({ path: 'EINVOICE_ENC_KEY', message: 'is required in production: 32 random bytes, base64' });
   }
+  if (trustProxySetting(env.TRUST_PROXY) === true) {
+    problems.push({
+      path: 'TRUST_PROXY',
+      message: 'must not be true in production: name the proxies (e.g. loopback), or anyone can forge their address (ADR-011)',
+    });
+  }
   if (env.EINVOICE_WORKER === 'on') {
     problems.push({
       path: 'EINVOICE_WORKER',
@@ -88,6 +93,15 @@ export function productionProblems(env: Env): { path: string; message: string }[
     });
   }
   return problems;
+}
+
+/** Express `trust proxy` from TRUST_PROXY: false, true, a hop count, or addresses and subnets. */
+export function trustProxySetting(value: string): boolean | number | string {
+  const v = value.trim();
+  if (v === '' || v === 'false') return false;
+  if (v === 'true') return true;
+  if (/^\d+$/.test(v)) return Number(v);
+  return v;
 }
 
 export function validateEnv(config: Record<string, unknown>): Env {

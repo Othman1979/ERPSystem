@@ -1,4 +1,4 @@
-import { apiDocsEnabled, productionProblems, validateEnv } from './env.validation.js';
+import { apiDocsEnabled, productionProblems, trustProxySetting, validateEnv } from './env.validation.js';
 
 describe('validateEnv', () => {
   it('accepts minimal config and applies defaults', () => {
@@ -9,6 +9,7 @@ describe('validateEnv', () => {
     expect(env.API_PORT).toBe(3001);
     expect(env.CORS_ORIGIN).toBe('http://localhost:5173');
     expect(env.NODE_ENV).toBe('development');
+    expect(env.TRUST_PROXY).toBe('loopback');
   });
 
   it('rejects missing DATABASE_URL', () => {
@@ -35,9 +36,9 @@ describe('production rules (ADR-010 §10.1)', () => {
     EINVOICE_ENC_KEY: Buffer.alloc(32, 7).toString('base64'),
   };
 
-  it('accepts a complete production configuration; docs are off, the proxy untrusted', () => {
+  it('accepts a complete production configuration; docs are off, only a local proxy trusted', () => {
     const env = validateEnv(good);
-    expect([env.EINVOICE_WORKER, env.TRUST_PROXY, apiDocsEnabled(env)]).toEqual(['off', 0, false]);
+    expect([env.EINVOICE_WORKER, env.TRUST_PROXY, apiDocsEnabled(env)]).toEqual(['off', 'loopback', false]);
     expect(apiDocsEnabled({ NODE_ENV: 'production', API_DOCS: 'on' })).toBe(true);
     expect(apiDocsEnabled({ NODE_ENV: 'development', API_DOCS: undefined })).toBe(true);
   });
@@ -52,6 +53,7 @@ describe('production rules (ADR-010 §10.1)', () => {
     ['EINVOICE_ENC_KEY', { EINVOICE_ENC_KEY: undefined }],
     ['EINVOICE_ENC_KEY', { EINVOICE_ENC_KEY: Buffer.alloc(16).toString('base64') }],
     ['EINVOICE_WORKER', { EINVOICE_WORKER: 'on' }],
+    ['TRUST_PROXY', { TRUST_PROXY: 'true' }],
   ])('refuses to start without a sound %s', (name, change) => {
     expect(() => validateEnv({ ...good, ...change })).toThrow(new RegExp(`${name}: `));
   });
@@ -70,10 +72,10 @@ describe('production rules (ADR-010 §10.1)', () => {
     );
   });
 
-  it('reads TRUST_PROXY as a small count', () => {
-    expect(validateEnv({ ...good, TRUST_PROXY: '1' }).TRUST_PROXY).toBe(1);
-    expect(() => validateEnv({ ...good, TRUST_PROXY: '-1' })).toThrow(/TRUST_PROXY/);
-    expect(() => validateEnv({ ...good, TRUST_PROXY: 'true' })).toThrow(/TRUST_PROXY/);
+  it('accepts named proxies or a hop count in production (ADR-011)', () => {
+    expect(validateEnv({ ...good, TRUST_PROXY: 'loopback, 10.0.0.0/8' }).TRUST_PROXY).toBe('loopback, 10.0.0.0/8');
+    expect(validateEnv({ ...good, TRUST_PROXY: '1' }).TRUST_PROXY).toBe('1');
+    expect(validateEnv({ ...good, TRUST_PROXY: 'false' }).TRUST_PROXY).toBe('false');
   });
 });
 
@@ -90,11 +92,24 @@ describe('empty values (NAME= in a .env file)', () => {
     expect([env.API_DOCS, env.WEB_DIST_DIR, env.TRUST_PROXY, env.EINVOICE_ENC_KEY]).toEqual([
       undefined,
       undefined,
-      0,
+      'loopback',
       undefined,
     ]);
     expect(() => validateEnv({ DATABASE_URL: '', JWT_ACCESS_SECRET: 'test-secret-at-least-16-chars' })).toThrow(
       /DATABASE_URL/,
     );
+  });
+});
+
+describe('trustProxySetting', () => {
+  it.each([
+    ['false', false],
+    ['', false],
+    ['true', true],
+    ['1', 1],
+    ['loopback', 'loopback'],
+    [' loopback, 10.0.0.0/8 ', 'loopback, 10.0.0.0/8'],
+  ])('%j gives %j', (value, expected) => {
+    expect(trustProxySetting(value)).toEqual(expected);
   });
 });

@@ -4,7 +4,7 @@ import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { Env } from '../common/config/env.validation.js';
+import { type Env, trustProxySetting } from '../common/config/env.validation.js';
 import { overlaps } from '../common/fs/is-inside.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { BackupService } from './backup/backup.service.js';
@@ -71,14 +71,17 @@ export class PreflightService {
 
     // Loading the module already validated the environment (production rules included).
     add('environment', true, env === 'production' ? 'production' : `${env} (not production)`, env === 'production' ? 'info' : 'warn');
+    // ADR-011: which proxies may name the client; none trusted behind a proxy
+    // means every client shares one rate limit (the API also logs it then).
     const proxies = this.config.get('TRUST_PROXY', { infer: true });
+    const none = trustProxySetting(proxies) === false;
     add(
       'proxy',
       true,
-      proxies > 0
-        ? `TRUST_PROXY=${proxies}`
-        : 'TRUST_PROXY=0: behind the host proxy every client shares one rate limit; set it to the number of proxies',
-      env === 'production' && proxies === 0 ? 'warn' : 'info',
+      none
+        ? `TRUST_PROXY=${proxies}: no proxy trusted; behind the host proxy every client shares one rate limit`
+        : `TRUST_PROXY=${proxies}`,
+      env === 'production' && none ? 'warn' : 'info',
     );
 
     const db = this.prisma.client;
