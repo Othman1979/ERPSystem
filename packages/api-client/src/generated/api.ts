@@ -110,6 +110,8 @@ export interface CreateSubscriptionDto { [key: string]: unknown }
 
 export interface UpdatePlanDto { [key: string]: unknown }
 
+export interface ClientErrorDto { [key: string]: unknown }
+
 export type FiscalControllerListSequencesParams = {
   fiscalYearId: string;
 };
@@ -211,6 +213,30 @@ export type AdminControllerListParams = {
   page: string;
   pageSize: string;
 };
+
+export type AdminErrorsControllerListParams = {
+  /** open (default), resolved or all */
+  status?: AdminErrorsControllerListStatus;
+  source?: AdminErrorsControllerListSource;
+};
+
+export type AdminErrorsControllerListStatus = typeof AdminErrorsControllerListStatus[keyof typeof AdminErrorsControllerListStatus];
+
+
+export const AdminErrorsControllerListStatus = {
+  open: 'open',
+  resolved: 'resolved',
+  all: 'all',
+} as const;
+
+export type AdminErrorsControllerListSource = typeof AdminErrorsControllerListSource[keyof typeof AdminErrorsControllerListSource];
+
+
+export const AdminErrorsControllerListSource = {
+  API: 'API',
+  WEB: 'WEB',
+  JOB: 'JOB',
+} as const;
 
 export type healthControllerHealthResponse200 = {
   data: void
@@ -7098,5 +7124,191 @@ return apiFetch<adminPlansControllerUpdateResponse>(getAdminPlansControllerUpdat
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(updatePlanDto)
+  }
+);}
+
+
+
+export type clientErrorsControllerReportResponse204 = {
+  data: void
+  status: 204
+}
+
+export type clientErrorsControllerReportResponseSuccess = (clientErrorsControllerReportResponse204) & {
+  headers: Headers;
+};
+;
+
+export type clientErrorsControllerReportResponse = (clientErrorsControllerReportResponseSuccess)
+
+export const getClientErrorsControllerReportUrl = () => {
+
+
+
+
+  return `/api/v1/client-errors`
+}
+
+export const clientErrorsControllerReport = async (clientErrorDto: ClientErrorDto, options?: Parameters<typeof apiFetch>[1]): Promise<clientErrorsControllerReportResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<clientErrorsControllerReportResponse>(getClientErrorsControllerReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(clientErrorDto)
+  }
+);}
+
+
+
+export type adminErrorsControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type adminErrorsControllerListResponseSuccess = (adminErrorsControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type adminErrorsControllerListResponse = (adminErrorsControllerListResponseSuccess)
+
+export const getAdminErrorsControllerListUrl = (params?: AdminErrorsControllerListParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/admin/errors?${stringifiedParams}` : `/api/v1/admin/errors`
+}
+
+export const adminErrorsControllerList = async (params?: AdminErrorsControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerListResponse> => {
+
+  return apiFetch<adminErrorsControllerListResponse>(getAdminErrorsControllerListUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type adminErrorsControllerGetResponse200 = {
+  data: void
+  status: 200
+}
+
+export type adminErrorsControllerGetResponseSuccess = (adminErrorsControllerGetResponse200) & {
+  headers: Headers;
+};
+;
+
+export type adminErrorsControllerGetResponse = (adminErrorsControllerGetResponseSuccess)
+
+export const getAdminErrorsControllerGetUrl = (id: number,) => {
+
+
+
+
+  return `/api/v1/admin/errors/${id}`
+}
+
+export const adminErrorsControllerGet = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerGetResponse> => {
+
+  return apiFetch<adminErrorsControllerGetResponse>(getAdminErrorsControllerGetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type adminErrorsControllerResolveResponse201 = {
+  data: void
+  status: 201
+}
+
+export type adminErrorsControllerResolveResponseSuccess = (adminErrorsControllerResolveResponse201) & {
+  headers: Headers;
+};
+;
+
+export type adminErrorsControllerResolveResponse = (adminErrorsControllerResolveResponseSuccess)
+
+export const getAdminErrorsControllerResolveUrl = (id: number,) => {
+
+
+
+
+  return `/api/v1/admin/errors/${id}/resolve`
+}
+
+export const adminErrorsControllerResolve = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerResolveResponse> => {
+
+  return apiFetch<adminErrorsControllerResolveResponse>(getAdminErrorsControllerResolveUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type adminErrorsControllerReopenResponse201 = {
+  data: void
+  status: 201
+}
+
+export type adminErrorsControllerReopenResponseSuccess = (adminErrorsControllerReopenResponse201) & {
+  headers: Headers;
+};
+;
+
+export type adminErrorsControllerReopenResponse = (adminErrorsControllerReopenResponseSuccess)
+
+export const getAdminErrorsControllerReopenUrl = (id: number,) => {
+
+
+
+
+  return `/api/v1/admin/errors/${id}/reopen`
+}
+
+export const adminErrorsControllerReopen = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerReopenResponse> => {
+
+  return apiFetch<adminErrorsControllerReopenResponse>(getAdminErrorsControllerReopenUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 );}

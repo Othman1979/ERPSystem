@@ -210,7 +210,7 @@ describe('Phase 10.1 — preflight and grant-platform-admin', () => {
     expect(out.ok).toBe(true);
     const checks = byName(run.stdout);
     expect(Object.keys(checks).sort()).toEqual(
-      ['backup', 'database', 'environment', 'migrations', 'plans', 'platform-admin', 'proxy', 'storage', 'timezone', 'web'].sort(),
+      ['backup', 'database', 'environment', 'isolation', 'migrations', 'plans', 'platform-admin', 'proxy', 'storage', 'timezone', 'web'].sort(),
     );
     expect(checks.environment.level).toBe('warn'); // NODE_ENV=test is not production
     expect(checks.migrations.detail).toMatch(/applied/);

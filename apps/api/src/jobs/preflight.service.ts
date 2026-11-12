@@ -107,6 +107,17 @@ export class PreflightService {
           admins > 0 ? 'info' : 'warn',
         );
       });
+      await attempt('isolation', async () => {
+        // MariaDB 11.6.2+ defaults innodb_snapshot_isolation ON; the pool turns it
+        // off per session (SESSION_INIT_SQL). Still ON here means a server where
+        // that statement does not apply and someone set it ON: concurrent
+        // postings would fail with 1020 instead of waiting.
+        const rows = await db.$queryRaw<{ Value: string }[]>`SHOW SESSION VARIABLES LIKE 'innodb_snapshot_isolation'`;
+        const value = rows[0]?.Value;
+        if (value === undefined) add('isolation', true, 'innodb_snapshot_isolation not present (MariaDB before 10.6.18, or MySQL)');
+        else if (value.toUpperCase() === 'OFF') add('isolation', true, 'innodb_snapshot_isolation OFF for the application connections');
+        else add('isolation', false, 'innodb_snapshot_isolation is ON: set it OFF globally, or concurrent postings fail with 1020');
+      });
       await attempt('timezone', async () => {
         const [tz] = await db.$queryRaw<{ g: string; s: string }[]>`SELECT @@global.time_zone AS g, @@session.time_zone AS s`;
         add(

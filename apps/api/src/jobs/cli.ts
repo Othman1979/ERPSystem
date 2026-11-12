@@ -1,9 +1,11 @@
 import type { Type } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { EInvoiceWorker } from '../platform/einvoice/einvoice-worker.service.js';
+import { ErrorEventsService } from '../platform/monitoring/error-events.service.js';
 import { BackupVerifyService } from './backup/backup-verify.service.js';
 import { BackupService } from './backup/backup.service.js';
 import { EInvoiceJobsModule } from './einvoice-jobs.module.js';
+import { ErrorDigestService } from './error-digest.service.js';
 import { JobsModule } from './jobs.module.js';
 import { PlatformAdminGrantService } from './platform-admin-grant.service.js';
 import { PreflightService } from './preflight.service.js';
@@ -19,6 +21,8 @@ import { TenantStatusService } from './tenant-status.service.js';
  *   grant-platform-admin <email> [--revoke]  by hand: the platform administrator (ADR-010 §10.1)
  *   backup                               daily Cron: database + uploaded files, rotated (ADR-010 §10.2)
  *   backup-verify <folder|latest> [--keep]   monthly: restore into a scratch database and check it
+ *   error-digest                         hourly Cron: alert new errors to ALERT_WEBHOOK_URL (ADR-010 §10.3)
+ * A Cron command that fails is recorded as a JOB error for the platform console.
  * Prints the result as JSON; exits 1 on failure, refusal or a failed check so Cron mail shows it.
  */
 type Context = Awaited<ReturnType<typeof NestFactory.createApplicationContext>>;
@@ -26,10 +30,18 @@ type Context = Awaited<ReturnType<typeof NestFactory.createApplicationContext>>;
 /** Sending stops after this, leaving the rest to the next minute's run. */
 const SEND_BUDGET_MS = 50_000;
 
-const JOBS: Record<string, { module: Type<unknown>; run: (app: Context, args: string[]) => Promise<unknown> }> = {
-  'tenant-status': { module: JobsModule, run: (app) => app.get(TenantStatusService).run() },
+interface Job {
+  module: Type<unknown>;
+  run: (app: Context, args: string[]) => Promise<unknown>;
+  /** Run by Cron: a failure is recorded for the platform console (no one is watching). */
+  cron?: boolean;
+}
+
+const JOBS: Record<string, Job> = {
+  'tenant-status': { module: JobsModule, cron: true, run: (app) => app.get(TenantStatusService).run() },
   'einvoice-send': {
     module: EInvoiceJobsModule,
+    cron: true,
     run: async (app) => {
       const worker = app.get(EInvoiceWorker);
       const started = Date.now();
@@ -64,7 +76,8 @@ const JOBS: Record<string, { module: Type<unknown>; run: (app: Context, args: st
       return app.get(PlatformAdminGrantService).set(email, !args.includes('--revoke'));
     },
   },
-  backup: { module: JobsModule, run: (app) => app.get(BackupService).run() },
+  backup: { module: JobsModule, cron: true, run: (app) => app.get(BackupService).run() },
+  'error-digest': { module: JobsModule, cron: true, run: (app) => app.get(ErrorDigestService).run() },
   'backup-verify': {
     module: JobsModule,
     run: async (app, args) => {
@@ -91,6 +104,10 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ job: name, ...(result as object) }, null, 2));
     // A job that reports checks (preflight) fails the command when one fails.
     if ((result as { ok?: unknown }).ok === false) process.exitCode = 1;
+  } catch (err) {
+    // Recording never throws; the error still fails the command (Cron mail).
+    if (job.cron) await app.get(ErrorEventsService, { strict: false }).record({ source: 'JOB', error: err, path: name });
+    throw err;
   } finally {
     await app.close();
   }

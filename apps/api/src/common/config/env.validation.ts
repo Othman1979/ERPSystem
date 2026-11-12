@@ -48,6 +48,10 @@ export const envSchema = z.object({
   MYSQLDUMP_PATH: z.string().min(1).default('mysqldump'),
   MYSQL_PATH: z.string().min(1).default('mysql'),
   BACKUP_VERIFY_DATABASE_URL: z.string().min(1).optional(),
+  // Error alerts (ADR-010 §10.3): the hourly error-digest command posts new
+  // errors here as JSON { text, content } (Slack, Discord, Mattermost, a
+  // Telegram sendMessage URL with chat_id). A secret: never logged. Unset: no alerts.
+  ALERT_WEBHOOK_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -85,6 +89,9 @@ export function productionProblems(env: Env): { path: string; message: string }[
       path: 'TRUST_PROXY',
       message: 'must not be true in production: name the proxies (e.g. loopback), or anyone can forge their address (ADR-011)',
     });
+  }
+  if (env.ALERT_WEBHOOK_URL && !env.ALERT_WEBHOOK_URL.startsWith('https://')) {
+    problems.push({ path: 'ALERT_WEBHOOK_URL', message: 'must be https:// in production: alerts carry error details' });
   }
   if (env.EINVOICE_WORKER === 'on') {
     problems.push({
