@@ -2,8 +2,10 @@ import { Component, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import {
+  CloudServerOutlined,
   ExportOutlined,
   HomeOutlined,
+  QuestionCircleOutlined,
   ImportOutlined,
   LogoutOutlined,
   MenuOutlined,
@@ -14,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
+  Alert,
   Avatar,
   Breadcrumb,
   Button,
@@ -32,6 +35,11 @@ import {
 import { useAuth } from './auth/AuthContext';
 import { HomeDashboard } from './pages/HomeDashboard';
 import { LoginPage } from './pages/LoginPage';
+import { PlatformAdminPage } from './pages/PlatformAdminPage';
+import { SetupWizardPage } from './pages/SetupWizardPage';
+import { HelpPage } from './pages/HelpPage';
+import { LegalPage } from './pages/LegalPage';
+import { useCompany } from './components/CompanyProfileForm';
 import { RegisterPage } from './pages/RegisterPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 import { displayName } from './i18n/displayName';
@@ -73,6 +81,9 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundary
 }
 
 const SIDER_STORAGE_KEY = 'erp.siderCollapsed';
+
+/** Platform owner console (outside the tenant modules of routes.tsx). */
+const PLATFORM_PATH = '/platform';
 
 function readSiderCollapsed(): boolean {
   try {
@@ -124,8 +135,24 @@ function HomeScreen() {
   const { t } = useTranslation();
   const { me } = useAuth();
   const navigate = useNavigate();
+  const company = useCompany();
   return (
     <>
+      {company.data && !company.data.onboardingCompletedAt && (
+        // Until the setup wizard is finished (§13.4).
+        <Alert
+          type="info"
+          showIcon
+          message={t('setup.bannerTitle')}
+          description={t('setup.bannerText')}
+          action={
+            <Button type="primary" onClick={() => navigate('/setup')}>
+              {t('setup.open')}
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
       <div className="home-head">
         <div>
           <Typography.Title level={4} style={{ margin: 0 }}>
@@ -176,6 +203,8 @@ function AppShell() {
     document.title = current ? `${t(current.label)} — ${t('app.title')}` : t('app.title');
   }, [current, t, language]);
 
+  // The platform owner's console (§13.3) — only for User.isPlatformAdmin.
+  const isPlatformAdmin = !!me?.user.isPlatformAdmin;
   const menuItems: MenuProps['items'] = useMemo(
     () => [
       { key: '/', icon: <HomeOutlined />, label: t('nav.home') },
@@ -185,15 +214,18 @@ function AppShell() {
         label: collapsed && !isMobile ? null : t(g.label),
         children: g.routes.map((r) => ({ key: r.path, icon: r.icon, label: t(r.label) })),
       })),
+      ...(isPlatformAdmin
+        ? [{ key: PLATFORM_PATH, icon: <CloudServerOutlined />, label: t('platform.nav') }]
+        : []),
     ],
     // Labels depend on the language; t identity changes with it.
-    [t, collapsed, isMobile],
+    [t, collapsed, isMobile, isPlatformAdmin],
   );
 
   const menu = (
     <Menu
       mode="inline"
-      selectedKeys={[current?.path ?? '/']}
+      selectedKeys={[current?.path ?? (location.pathname.startsWith(PLATFORM_PATH) ? PLATFORM_PATH : '/')]}
       items={menuItems}
       onClick={({ key }) => {
         navigate(key);
@@ -267,6 +299,16 @@ function AppShell() {
               <span className="topbar-user">{me?.user.fullName ?? me?.user.email}</span>
             )}
           </Space>
+          <Tooltip title={t('help.title')}>
+            <Button
+              size="small"
+              type="text"
+              className="topbar-btn"
+              icon={<QuestionCircleOutlined />}
+              aria-label={t('help.title')}
+              onClick={() => navigate('/help')}
+            />
+          </Tooltip>
           <Button
             size="small"
             onClick={() => {
@@ -318,6 +360,27 @@ function AppShell() {
                 element={<ViewErrorBoundary key={r.key}>{r.element}</ViewErrorBoundary>}
               />
             ))}
+            <Route path="/help" element={<HelpPage />} />
+            <Route path="/privacy" element={<LegalPage kind="privacy" />} />
+            <Route path="/terms" element={<LegalPage kind="terms" />} />
+            <Route
+              path="/setup"
+              element={
+                <ViewErrorBoundary key="setup">
+                  <SetupWizardPage />
+                </ViewErrorBoundary>
+              }
+            />
+            {isPlatformAdmin && (
+              <Route
+                path={`${PLATFORM_PATH}/*`}
+                element={
+                  <ViewErrorBoundary key="platform">
+                    <PlatformAdminPage />
+                  </ViewErrorBoundary>
+                }
+              />
+            )}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout.Content>
@@ -341,7 +404,13 @@ function AppShell() {
 
 export function App() {
   const { status } = useAuth();
+  const location = useLocation();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+  // The privacy policy and terms are public: registration links to them.
+  if (status === 'guest' && (location.pathname === '/privacy' || location.pathname === '/terms')) {
+    return <LegalPage kind={location.pathname === '/privacy' ? 'privacy' : 'terms'} standalone />;
+  }
 
   if (status === 'loading') {
     return (

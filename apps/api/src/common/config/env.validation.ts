@@ -11,8 +11,9 @@ export const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
   // JoFotara (docs/decisions/0005 §13): 32 random bytes, base64; seals the Secret-Key at rest.
   EINVOICE_ENC_KEY: z.string().optional(),
-  // The outbox worker: 'off' disables it (e.g. a second API instance that should not send).
-  EINVOICE_WORKER: z.enum(['on', 'off']).default('on'),
+  // In-process outbox loop: 'on' for development only. Production sends by Cron
+  // (job:einvoice-send every minute, ADR-009 §15): no daemon.
+  EINVOICE_WORKER: z.enum(['on', 'off']).default('off'),
   EINVOICE_WORKER_INTERVAL_MS: z.coerce.number().int().min(100).default(60_000),
   // Past this the answer is UNKNOWN (never resent automatically).
   EINVOICE_HTTP_TIMEOUT_MS: z.coerce.number().int().min(100).default(30_000),
@@ -21,9 +22,16 @@ export const envSchema = z.object({
   // Report exports (Phase 8): most rows one PDF / XLSX export may have (REPORT_TOO_LARGE above).
   REPORT_PDF_MAX_ROWS: z.coerce.number().int().positive().default(1_000),
   REPORT_XLSX_MAX_ROWS: z.coerce.number().int().positive().default(50_000),
-  // Proxies whose X-Forwarded-For gives the client address for request limits (ADR-008):
+  // Proxies whose X-Forwarded-For gives the client address for request limits (ADR-011):
   // false, a hop count, or addresses/subnets such as "loopback, 10.0.0.0/8". Never "true" on a public server.
   TRUST_PROXY: z.string().default('loopback'),
+  // Subscriptions (Phase 9, ADR-009): trial length at registration, grace after
+  // a paid period ends, data kept after cancellation (never deleted automatically).
+  TRIAL_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+  GRACE_DAYS: z.coerce.number().int().min(0).max(90).default(7),
+  RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+  // Uploaded files (company logo): a folder outside the web root (ADR-009 §7).
+  STORAGE_DIR: z.string().min(1).default('storage'),
 });
 
 export type Env = z.infer<typeof envSchema>;

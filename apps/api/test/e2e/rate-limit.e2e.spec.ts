@@ -1,5 +1,5 @@
 /**
- * Request limits (ADR-008):
+ * Request limits (ADR-011):
  *  - a refused request says RATE_LIMITED (429), not INTERNAL;
  *  - sign-in counts per address and email, with a cap per address;
  *  - behind a trusted proxy (loopback by default) each client address counts on its own;
@@ -53,7 +53,7 @@ afterAll(async () => {
   await once(server, 'exit').catch(() => undefined);
 });
 
-describe('Request limits (ADR-008)', () => {
+describe('Request limits (ADR-011)', () => {
   const a = `limit-a-${RUN}@test.dev`;
   const b = `limit-b-${RUN}@test.dev`;
   let tokenA = '';

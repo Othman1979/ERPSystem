@@ -30,6 +30,8 @@ export interface CreateTaxCategoryDto { [key: string]: unknown }
 
 export interface UpdateTaxCategoryDto { [key: string]: unknown }
 
+export interface UpdateCompanyDto { [key: string]: unknown }
+
 export interface InviteUserDto { [key: string]: unknown }
 
 export interface UpdateMembershipDto { [key: string]: unknown }
@@ -106,8 +108,14 @@ export interface ExtendTrialDto { [key: string]: unknown }
 
 export interface CreateSubscriptionDto { [key: string]: unknown }
 
+export interface UpdatePlanDto { [key: string]: unknown }
+
 export type FiscalControllerListSequencesParams = {
   fiscalYearId: string;
+};
+
+export type CompanyControllerUploadLogoBody = {
+  file: Blob | File;
 };
 
 export type JournalControllerListParams = {
@@ -158,6 +166,12 @@ export type StockReportsControllerMovementsParams = {
 export type StockReportsControllerItemLedgerParams = {
   warehouseId?: string;
   sourceType?: string;
+  from?: string;
+  to?: string;
+};
+
+export type StockReportsControllerItemBalancesParams = {
+  warehouseId?: string;
   from?: string;
   to?: string;
 };
@@ -908,6 +922,72 @@ export const fiscalControllerGetYear = async (id: string, options?: Parameters<t
 
 
 
+export type fiscalControllerCloseYearResponse201 = {
+  data: void
+  status: 201
+}
+
+export type fiscalControllerCloseYearResponseSuccess = (fiscalControllerCloseYearResponse201) & {
+  headers: Headers;
+};
+;
+
+export type fiscalControllerCloseYearResponse = (fiscalControllerCloseYearResponseSuccess)
+
+export const getFiscalControllerCloseYearUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/fiscal-years/${id}/close`
+}
+
+export const fiscalControllerCloseYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerCloseYearResponse> => {
+
+  return apiFetch<fiscalControllerCloseYearResponse>(getFiscalControllerCloseYearUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type fiscalControllerOpenYearResponse201 = {
+  data: void
+  status: 201
+}
+
+export type fiscalControllerOpenYearResponseSuccess = (fiscalControllerOpenYearResponse201) & {
+  headers: Headers;
+};
+;
+
+export type fiscalControllerOpenYearResponse = (fiscalControllerOpenYearResponseSuccess)
+
+export const getFiscalControllerOpenYearUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/fiscal-years/${id}/open`
+}
+
+export const fiscalControllerOpenYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerOpenYearResponse> => {
+
+  return apiFetch<fiscalControllerOpenYearResponse>(getFiscalControllerOpenYearUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
 export type fiscalControllerClosePeriodResponse201 = {
   data: void
   status: 201
@@ -1393,6 +1473,220 @@ return apiFetch<settingsControllerUpdatePaymentMethodResponse>(getSettingsContro
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(updateLookupDto)
+  }
+);}
+
+
+
+export type companyControllerGetResponse200 = {
+  data: void
+  status: 200
+}
+
+export type companyControllerGetResponseSuccess = (companyControllerGetResponse200) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerGetResponse = (companyControllerGetResponseSuccess)
+
+export const getCompanyControllerGetUrl = () => {
+
+
+
+
+  return `/api/v1/company`
+}
+
+export const companyControllerGet = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerGetResponse> => {
+
+  return apiFetch<companyControllerGetResponse>(getCompanyControllerGetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type companyControllerUpdateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type companyControllerUpdateResponseSuccess = (companyControllerUpdateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerUpdateResponse = (companyControllerUpdateResponseSuccess)
+
+export const getCompanyControllerUpdateUrl = () => {
+
+
+
+
+  return `/api/v1/company`
+}
+
+export const companyControllerUpdate = async (updateCompanyDto: UpdateCompanyDto, options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerUpdateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<companyControllerUpdateResponse>(getCompanyControllerUpdateUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateCompanyDto)
+  }
+);}
+
+
+
+export type companyControllerLogoResponse200 = {
+  data: void
+  status: 200
+}
+
+export type companyControllerLogoResponseSuccess = (companyControllerLogoResponse200) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerLogoResponse = (companyControllerLogoResponseSuccess)
+
+export const getCompanyControllerLogoUrl = () => {
+
+
+
+
+  return `/api/v1/company/logo`
+}
+
+export const companyControllerLogo = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerLogoResponse> => {
+
+  return apiFetch<companyControllerLogoResponse>(getCompanyControllerLogoUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type companyControllerUploadLogoResponse201 = {
+  data: void
+  status: 201
+}
+
+export type companyControllerUploadLogoResponseSuccess = (companyControllerUploadLogoResponse201) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerUploadLogoResponse = (companyControllerUploadLogoResponseSuccess)
+
+export const getCompanyControllerUploadLogoUrl = () => {
+
+
+
+
+  return `/api/v1/company/logo`
+}
+
+export const companyControllerUploadLogo = async (companyControllerUploadLogoBody: CompanyControllerUploadLogoBody, options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerUploadLogoResponse> => {
+    const formData = new FormData();
+formData.append(`file`, companyControllerUploadLogoBody.file);
+
+  return apiFetch<companyControllerUploadLogoResponse>(getCompanyControllerUploadLogoUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+export type companyControllerRemoveLogoResponse200 = {
+  data: void
+  status: 200
+}
+
+export type companyControllerRemoveLogoResponseSuccess = (companyControllerRemoveLogoResponse200) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerRemoveLogoResponse = (companyControllerRemoveLogoResponseSuccess)
+
+export const getCompanyControllerRemoveLogoUrl = () => {
+
+
+
+
+  return `/api/v1/company/logo`
+}
+
+export const companyControllerRemoveLogo = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerRemoveLogoResponse> => {
+
+  return apiFetch<companyControllerRemoveLogoResponse>(getCompanyControllerRemoveLogoUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type companyControllerCompleteOnboardingResponse201 = {
+  data: void
+  status: 201
+}
+
+export type companyControllerCompleteOnboardingResponseSuccess = (companyControllerCompleteOnboardingResponse201) & {
+  headers: Headers;
+};
+;
+
+export type companyControllerCompleteOnboardingResponse = (companyControllerCompleteOnboardingResponseSuccess)
+
+export const getCompanyControllerCompleteOnboardingUrl = () => {
+
+
+
+
+  return `/api/v1/company/onboarding/complete`
+}
+
+export const companyControllerCompleteOnboarding = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerCompleteOnboardingResponse> => {
+
+  return apiFetch<companyControllerCompleteOnboardingResponse>(getCompanyControllerCompleteOnboardingUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 );}
 
@@ -3769,6 +4063,46 @@ export const stockReportsControllerItemLedger = async (itemId: string,
     params?: StockReportsControllerItemLedgerParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerItemLedgerResponse> => {
 
   return apiFetch<stockReportsControllerItemLedgerResponse>(getStockReportsControllerItemLedgerUrl(itemId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockReportsControllerItemBalancesResponse200 = {
+  data: void
+  status: 200
+}
+
+export type stockReportsControllerItemBalancesResponseSuccess = (stockReportsControllerItemBalancesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type stockReportsControllerItemBalancesResponse = (stockReportsControllerItemBalancesResponseSuccess)
+
+export const getStockReportsControllerItemBalancesUrl = (params?: StockReportsControllerItemBalancesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/stock/item-balances?${stringifiedParams}` : `/api/v1/stock/item-balances`
+}
+
+export const stockReportsControllerItemBalances = async (params?: StockReportsControllerItemBalancesParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerItemBalancesResponse> => {
+
+  return apiFetch<stockReportsControllerItemBalancesResponse>(getStockReportsControllerItemBalancesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6438,6 +6772,39 @@ export const reportsControllerDashboardSummary = async ( options?: Parameters<ty
 
 
 
+export type tenantExportControllerTenantDataResponse200 = {
+  data: void
+  status: 200
+}
+
+export type tenantExportControllerTenantDataResponseSuccess = (tenantExportControllerTenantDataResponse200) & {
+  headers: Headers;
+};
+;
+
+export type tenantExportControllerTenantDataResponse = (tenantExportControllerTenantDataResponseSuccess)
+
+export const getTenantExportControllerTenantDataUrl = () => {
+
+
+
+
+  return `/api/v1/export/tenant-data`
+}
+
+export const tenantExportControllerTenantData = async ( options?: Parameters<typeof apiFetch>[1]): Promise<tenantExportControllerTenantDataResponse> => {
+
+  return apiFetch<tenantExportControllerTenantDataResponse>(getTenantExportControllerTenantDataUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export type adminControllerListResponse200 = {
   data: void
   status: 200
@@ -6650,5 +7017,86 @@ return apiFetch<adminControllerCreateSubscriptionResponse>(getAdminControllerCre
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(createSubscriptionDto)
+  }
+);}
+
+
+
+export type adminPlansControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type adminPlansControllerListResponseSuccess = (adminPlansControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type adminPlansControllerListResponse = (adminPlansControllerListResponseSuccess)
+
+export const getAdminPlansControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/admin/plans`
+}
+
+export const adminPlansControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<adminPlansControllerListResponse> => {
+
+  return apiFetch<adminPlansControllerListResponse>(getAdminPlansControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type adminPlansControllerUpdateResponse200 = {
+  data: void
+  status: 200
+}
+
+export type adminPlansControllerUpdateResponseSuccess = (adminPlansControllerUpdateResponse200) & {
+  headers: Headers;
+};
+;
+
+export type adminPlansControllerUpdateResponse = (adminPlansControllerUpdateResponseSuccess)
+
+export const getAdminPlansControllerUpdateUrl = (code: string,) => {
+
+
+
+
+  return `/api/v1/admin/plans/${code}`
+}
+
+export const adminPlansControllerUpdate = async (code: string,
+    updatePlanDto: UpdatePlanDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminPlansControllerUpdateResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<adminPlansControllerUpdateResponse>(getAdminPlansControllerUpdateUrl(code),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updatePlanDto)
   }
 );}

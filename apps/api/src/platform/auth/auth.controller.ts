@@ -60,7 +60,7 @@ export class AuthController {
   }
 
   @Public()
-  // 10 a minute per address and email; 30 a minute per address across emails (ADR-008).
+  // 10 a minute per address and email; 30 a minute per address across emails (ADR-011).
   @LimitPerAccount()
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('login')
