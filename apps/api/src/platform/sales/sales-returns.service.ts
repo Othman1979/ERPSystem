@@ -21,6 +21,9 @@ import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesReturnDto } from './dto/sales.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
+import { computeReturnLines, returnedByLine } from '../shared/return-lines.js';
+import { assertRefundType } from '../shared/refund-type.js';
+import { stockWriteOffLines } from '../shared/stock-write-off.js';
 
 const SOURCE = 'SALES_RETURN';
 
@@ -162,7 +165,9 @@ export class SalesReturnsService {
           orderBy: { lineNo: 'asc' },
           include: {
             item: { select: { id: true, code: true, nameAr: true } },
-            originalLine: { select: { id: true, lineNo: true, qty: true, qtyBase: true } },
+            originalLine: {
+              select: { id: true, lineNo: true, qty: true, qtyBase: true, itemUnit: { select: { unit: { select: { nameAr: true } } } } },
+            },
           },
         },
         journalEntry: { select: { id: true, entryNo: true, status: true } },
@@ -193,6 +198,7 @@ export class SalesReturnsService {
           select: {
             qtyBase: true,
             unitPrice: true,
+            discountAmount: true,
             netAmount: true,
             taxRate: true,
             taxAmount: true,
@@ -201,6 +207,7 @@ export class SalesReturnsService {
                 lineNo: true,
                 qty: true,
                 qtyBase: true,
+                invoice: { select: { pricesIncludeTax: true } },
                 item: { select: { nameAr: true } },
                 taxCategory: { select: { einvoiceCode: true } },
               },
@@ -214,68 +221,6 @@ export class SalesReturnsService {
   async create(dto: CreateSalesReturnDto) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-
-    const invoice = await db.salesInvoice.findFirst({
-      where: { id: BigInt(dto.originalInvoiceId), companyId },
-      include: { lines: true },
-    });
-    if (!invoice) throw DomainError.notFound('SalesInvoice', dto.originalInvoiceId);
-    if (invoice.status !== 'POSTED') {
-      throw new DomainError(ErrorCode.VALIDATION, 'Returns require a posted invoice');
-    }
-
-    // Already-returned qty per original line (all statuses — drafts reserve qty).
-    const priorReturns = await db.salesReturnLine.findMany({
-      where: { tenantId, originalLine: { invoiceId: invoice.id } },
-      select: { originalLineId: true, qtyBase: true },
-    });
-    const returnedByLine = new Map<bigint, Decimal>();
-    for (const r of priorReturns) {
-      returnedByLine.set(
-        r.originalLineId,
-        (returnedByLine.get(r.originalLineId) ?? new Decimal(0)).plus(r.qtyBase),
-      );
-    }
-
-    const origById = new Map(invoice.lines.map((l) => [l.id, l]));
-    // Each original line at most once per return: the remaining-qty check below
-    // only counts earlier returns, so a repeated line would slip past it.
-    const seenLines = new Set<bigint>();
-    const resolved = dto.lines.map((l, i) => {
-      const orig = origById.get(BigInt(l.originalLineId));
-      if (!orig) {
-        throw new DomainError(ErrorCode.VALIDATION, `Line ${i + 1}: originalLineId not on this invoice`);
-      }
-      if (seenLines.has(orig.id)) {
-        throw new DomainError(
-          ErrorCode.VALIDATION,
-          `Line ${i + 1}: invoice line ${orig.lineNo} appears more than once in this return`,
-        );
-      }
-      seenLines.add(orig.id);
-      const qtyBase = new Decimal(l.qty);
-      if (qtyBase.lte(0)) throw new DomainError(ErrorCode.VALIDATION, 'Return qty must be > 0');
-      const already = returnedByLine.get(orig.id) ?? new Decimal(0);
-      const remaining = new Decimal(orig.qtyBase.toString()).minus(already);
-      if (qtyBase.gt(remaining)) {
-        throw new DomainError(
-          ErrorCode.VALIDATION,
-          `Return qty exceeds remaining qty for line ${orig.lineNo} (remaining ${remaining.toString()})`,
-        );
-      }
-      // Proportional amounts by qtyBase ratio.
-      const ratio = qtyBase.div(orig.qtyBase.toString());
-      const netAmount = round3(new Decimal(orig.netAmount.toString()).times(ratio));
-      const taxAmount = round3(new Decimal(orig.taxAmount.toString()).times(ratio));
-      return {
-        dto: l,
-        orig,
-        qtyBase,
-        netAmount,
-        taxAmount,
-        lineTotal: netAmount.plus(taxAmount),
-      };
-    });
 
     if (dto.refundType === 'CASH' && !dto.cashAccountId) {
       throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash refunds');
@@ -296,13 +241,33 @@ export class SalesReturnsService {
       }
     }
 
-    const totals = {
-      netTotal: sum(resolved.map((r) => r.netAmount)),
-      taxTotal: sum(resolved.map((r) => r.taxAmount)),
-      grandTotal: sum(resolved.map((r) => r.lineTotal)),
-    };
-
-    const ret = await db.$transaction(async (tx) => {
+    const { ret, invoiceId } = await db.$transaction(async (tx) => {
+      // TRADE-01: lock the original invoice first. Every return of it is
+      // created and posted under this lock, so the returned-so-far read below
+      // (this transaction's first plain read) sees all of them.
+      await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${BigInt(dto.originalInvoiceId)} FOR UPDATE`;
+      const invoice = await tx.salesInvoice.findFirst({
+        where: { id: BigInt(dto.originalInvoiceId), companyId },
+        include: { lines: true },
+      });
+      if (!invoice) throw DomainError.notFound('SalesInvoice', dto.originalInvoiceId);
+      if (invoice.status !== 'POSTED') {
+        throw new DomainError(ErrorCode.VALIDATION, 'Returns require a posted invoice');
+      }
+      // A return belongs to its original invoice's branch (ADR-003, TRADE-11).
+      assertBranchAllowed(invoice.branchId);
+      assertRefundType(invoice.paymentType, dto.refundType);
+      // Already-returned qty per original line (all statuses — drafts reserve qty).
+      const prior = await tx.salesReturnLine.findMany({
+        where: { tenantId, originalLine: { invoiceId: invoice.id } },
+        select: { originalLineId: true, qtyBase: true, discountAmount: true, netAmount: true, taxAmount: true },
+      });
+      const resolved = computeReturnLines(invoice.lines, dto.lines, returnedByLine(prior));
+      const totals = {
+        netTotal: sum(resolved.map((r) => r.netAmount)),
+        taxTotal: sum(resolved.map((r) => r.taxAmount)),
+        grandTotal: sum(resolved.map((r) => r.lineTotal)),
+      };
       const created = await tx.salesReturn.create({
         data: {
           tenantId,
@@ -325,11 +290,11 @@ export class SalesReturnsService {
           lineNo: i + 1,
           originalLineId: r.orig.id,
           itemId: r.orig.itemId,
-          qty: r.qtyBase,
+          qty: r.qty,
           qtyBase: r.qtyBase,
           unitPrice: r.orig.unitPrice,
           discountPct: r.orig.discountPct,
-          discountAmount: round3(new Decimal(r.orig.discountAmount.toString()).times(r.qtyBase.div(r.orig.qtyBase.toString()))),
+          discountAmount: r.discountAmount,
           netAmount: r.netAmount,
           taxCategoryId: r.orig.taxCategoryId,
           taxRate: r.orig.taxRate,
@@ -338,13 +303,13 @@ export class SalesReturnsService {
           unitCost: r.orig.unitCost,
         })),
       });
-      return created;
+      return { ret: created, invoiceId: invoice.id };
     }, POSTING_TX_OPTIONS);
     await this.audit.log({
       action: 'sales_return.create',
       entityType: 'sales_return',
       entityId: ret.id,
-      after: { originalInvoiceId: invoice.id },
+      after: { originalInvoiceId: invoiceId },
     });
     return this.get(ret.id);
   }
@@ -356,6 +321,11 @@ export class SalesReturnsService {
     if (ret.status !== 'DRAFT') {
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft returns can be deleted');
     }
+    const original = await db.salesInvoice.findFirst({
+      where: { id: ret.originalInvoiceId },
+      select: { branchId: true },
+    });
+    assertBranchAllowed(original?.branchId);
     await db.salesReturn.delete({ where: { id } });
     return { deleted: true };
   }
@@ -364,12 +334,18 @@ export class SalesReturnsService {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const userId = this.support.userId();
+    // The original invoice never changes on a return: read it first to lock it first.
+    const head = await db.salesReturn.findFirst({ where: { id }, select: { originalInvoiceId: true } });
+    if (!head) throw DomainError.notFound('SalesReturn', id.toString());
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
-        // Lock the document first (§10.1 step 7). As the first statement it also
-        // makes every later read see the latest committed state, so two
-        // concurrent requests cannot both post or reverse it.
+        // Lock the original invoice, then the return (§10.1 step 7), the order
+        // every return path and voucher allocation follows. Every return of
+        // the invoice is created and posted under the invoice lock (TRADE-01),
+        // and as locking reads ahead of any plain read they make the reads
+        // below see the latest committed state.
+        await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${head.originalInvoiceId} FOR UPDATE`;
         await tx.$queryRaw`SELECT id FROM sales_returns WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
         const draft = await tx.salesReturn.findFirst({
           where: { id },
@@ -383,9 +359,26 @@ export class SalesReturnsService {
         // A return belongs to its original invoice's branch (ADR-003).
         const original = await tx.salesInvoice.findFirst({
           where: { id: draft.originalInvoiceId },
-          select: { branchId: true },
+          select: { branchId: true, paymentType: true, lines: { select: { id: true, lineNo: true, qtyBase: true } } },
         });
         assertBranchAllowed(original?.branchId);
+        if (original) assertRefundType(original.paymentType, draft.refundType);
+        // TRADE-01: posted returns of the invoice plus this one stay within each line.
+        const posted = await tx.salesReturnLine.findMany({
+          where: { tenantId, salesReturn: { originalInvoiceId: draft.originalInvoiceId, status: 'POSTED' } },
+          select: { originalLineId: true, qtyBase: true, discountAmount: true, netAmount: true, taxAmount: true },
+        });
+        const postedByLine = returnedByLine(posted);
+        for (const line of draft.lines) {
+          const orig = original?.lines.find((l) => l.id === line.originalLineId);
+          const taken = postedByLine.get(line.originalLineId)?.qtyBase ?? new Decimal(0);
+          if (!orig || taken.plus(line.qtyBase.toString()).gt(orig.qtyBase.toString())) {
+            throw new DomainError(
+              ErrorCode.VALIDATION,
+              `Return qty exceeds remaining qty for line ${orig?.lineNo ?? line.lineNo}`,
+            );
+          }
+        }
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Return has no lines');
         }
@@ -401,7 +394,7 @@ export class SalesReturnsService {
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, returnDate);
 
         // Lock every (item, warehouse) in the fixed order before any movement.
-        await this.ledger.lockForDocument(
+        const stockItems = await this.ledger.lockForDocument(
           tx,
           companyId,
           draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
@@ -409,12 +402,9 @@ export class SalesReturnsService {
 
         // Stock IN at ORIGINAL unit cost (§8.4, §9.5).
         let costTotal = new Decimal(0);
+        let writeOff = new Decimal(0);
         for (const line of draft.lines) {
-          const item = await tx.item.findFirst({
-            where: { tenantId, id: line.itemId },
-            select: { itemKind: true },
-          });
-          if (!item || item.itemKind !== 'STOCK') continue;
+          if (!stockItems.has(line.itemId)) continue;
           const res = await this.ledger.applyMovement(tx, companyId, {
             warehouseId: draft.warehouseId,
             itemId: line.itemId,
@@ -428,6 +418,7 @@ export class SalesReturnsService {
             description: `Sales return ${draft.id}`,
           });
           costTotal = costTotal.plus(res.totalCost);
+          writeOff = writeOff.plus(res.writeOff);
         }
 
         const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
@@ -435,6 +426,7 @@ export class SalesReturnsService {
           'OUTPUT_TAX',
           'COGS',
           'INVENTORY',
+          'INVENTORY_ADJUSTMENT',
           'CUSTOMERS_CONTROL',
         ]);
 
@@ -468,6 +460,9 @@ export class SalesReturnsService {
           journalLines.push({ accountId: mapping.INVENTORY, debit: costTotal.toString() });
           journalLines.push({ accountId: mapping.COGS, credit: costTotal.toString() });
         }
+        journalLines.push(
+          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+        );
 
         const returnNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'SALES_RETURN', returnDate,

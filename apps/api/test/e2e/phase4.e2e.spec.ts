@@ -338,7 +338,8 @@ describe('Phase 4 — inventory (erp_test)', () => {
     // countedQty=null everywhere → approve must fail.
     const early = await api()
       .post(`/api/v1/stock-counts/${count.body.id}/approve`)
-      .set(auth(token));
+      .set(auth(token))
+      .set(idem()); // keyed like every posting route (TRADE-07)
     expect(early.status).toBe(400);
 
     for (const line of count.body.lines as {
@@ -357,7 +358,8 @@ describe('Phase 4 — inventory (erp_test)', () => {
 
     const approve = await api()
       .post(`/api/v1/stock-counts/${count.body.id}/approve`)
-      .set(auth(token));
+      .set(auth(token))
+      .set(idem()); // keyed like every posting route (TRADE-07)
     expect(approve.status).toBe(201);
     expect(approve.body.status).toBe('POSTED');
     expect(approve.body.adjustmentId).not.toBeNull();

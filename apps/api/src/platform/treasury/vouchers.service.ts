@@ -42,6 +42,23 @@ type AllocationInput = {
   amount: string;
 };
 
+/** An allocation checked against its locked invoice, written once the voucher exists. */
+type PlannedAllocation = {
+  documentType: InvoiceDocType;
+  documentId: bigint;
+  amount: Decimal;
+};
+
+/** Whether the current member may work on `branchId` (ADR-003). */
+function branchAllowed(branchId: bigint | null): boolean {
+  try {
+    assertBranchAllowed(branchId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Treasury vouchers (§7.8): receipt (سند قبض) and payment (سند صرف) documents
  * that post a journal entry immediately and optionally allocate the amount
@@ -114,10 +131,40 @@ export class VouchersService {
         const period = await this.posting.resolveOpenPeriod(
           tx, tenantId, companyId, new Date(dto.receiptDate),
         );
+        // TRADE-17: lock and check the invoices before taking the document
+        // numbers, the order invoice posting follows (invoice, then sequences).
+        const plan = await this.planAllocations(tx, companyId, {
+          receipt: true,
+          partyType: dto.partyType,
+          partyId: BigInt(dto.partyId),
+          amount,
+          allocations: dto.allocations ?? [],
+          auto: dto.autoAllocate === true,
+        });
 
         const receiptNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'RECEIPT', new Date(dto.receiptDate),
         );
+        // The voucher row first, so the entry is posted with its source (no
+        // update of a posted journal entry afterwards).
+        const receipt = await tx.receipt.create({
+          data: {
+            tenantId,
+            companyId,
+            branchId,
+            receiptNo,
+            receiptDate: new Date(dto.receiptDate),
+            partyType: dto.partyType,
+            partyId: BigInt(dto.partyId),
+            cashAccountId: BigInt(dto.cashAccountId),
+            amount,
+            paymentMethodId: dto.paymentMethodId ? BigInt(dto.paymentMethodId) : null,
+            referenceNo: dto.referenceNo ?? null,
+            description: dto.description ?? null,
+            status: 'POSTED',
+            createdBy: userId ?? null,
+          },
+        });
         const entryNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'JOURNAL_ENTRY', new Date(dto.receiptDate),
         );
@@ -136,7 +183,7 @@ export class VouchersService {
           fiscalPeriodId: period.id,
           entryNo,
           sourceType: 'RECEIPT',
-          sourceId: null, // set after receipt creation below via second pass? — see note
+          sourceId: receipt.id,
           branchId, // ADR-003: the entry carries its voucher's branch
           voucherType: 'RECEIPT_VOUCHER',
           description: dto.description ?? `Receipt ${receiptNo}`,
@@ -152,39 +199,12 @@ export class VouchersService {
           postedBy: userId ?? null,
         });
 
-        const receipt = await tx.receipt.create({
-          data: {
-            tenantId,
-            companyId,
-            branchId,
-            receiptNo,
-            receiptDate: new Date(dto.receiptDate),
-            partyType: dto.partyType,
-            partyId: BigInt(dto.partyId),
-            cashAccountId: BigInt(dto.cashAccountId),
-            amount,
-            paymentMethodId: dto.paymentMethodId ? BigInt(dto.paymentMethodId) : null,
-            referenceNo: dto.referenceNo ?? null,
-            description: dto.description ?? null,
-            status: 'POSTED',
-            journalEntryId: entry.id,
-            createdBy: userId ?? null,
-          },
-        });
+        await tx.receipt.update({ where: { id: receipt.id }, data: { journalEntryId: entry.id } });
 
-        // Link journal entry source to the receipt for traceability.
-        await tx.journalEntry.update({
-          where: { id: entry.id },
-          data: { sourceId: receipt.id },
-        });
-
-        await this.applyAllocations(tx, tenantId, companyId, {
+        await this.writeAllocations(tx, tenantId, companyId, plan, {
           receiptId: receipt.id,
           partyType: dto.partyType,
           partyId: BigInt(dto.partyId),
-          amount,
-          allocations: dto.allocations ?? [],
-          auto: dto.autoAllocate === true,
           userId,
         });
 
@@ -289,10 +309,44 @@ export class VouchersService {
         const period = await this.posting.resolveOpenPeriod(
           tx, tenantId, companyId, new Date(dto.paymentDate),
         );
+        // TRADE-17: lock and check the invoices before taking the document numbers.
+        let plan: PlannedAllocation[] = [];
+        if (dto.partyId && dto.partyType) {
+          plan = await this.planAllocations(tx, companyId, {
+            receipt: false,
+            partyType: dto.partyType,
+            partyId: BigInt(dto.partyId),
+            amount,
+            allocations: dto.allocations ?? [],
+            auto: dto.autoAllocate === true,
+          });
+        } else if ((dto.allocations ?? []).length > 0 || dto.autoAllocate) {
+          throw new DomainError(ErrorCode.VALIDATION, 'allocations require a party payment');
+        }
 
         const paymentNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'PAYMENT', new Date(dto.paymentDate),
         );
+        // The voucher row first, so the entry is posted with its source.
+        const payment = await tx.payment.create({
+          data: {
+            tenantId,
+            companyId,
+            branchId,
+            paymentNo,
+            paymentDate: new Date(dto.paymentDate),
+            partyType: dto.partyType ?? null,
+            partyId: dto.partyId ? BigInt(dto.partyId) : null,
+            expenseAccountId: dto.expenseAccountId ? BigInt(dto.expenseAccountId) : null,
+            cashAccountId: BigInt(dto.cashAccountId),
+            amount,
+            paymentMethodId: dto.paymentMethodId ? BigInt(dto.paymentMethodId) : null,
+            referenceNo: dto.referenceNo ?? null,
+            description: dto.description ?? null,
+            status: 'POSTED',
+            createdBy: userId ?? null,
+          },
+        });
         const entryNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'JOURNAL_ENTRY', new Date(dto.paymentDate),
         );
@@ -325,7 +379,7 @@ export class VouchersService {
           fiscalPeriodId: period.id,
           entryNo,
           sourceType: 'PAYMENT',
-          sourceId: null,
+          sourceId: payment.id,
           branchId, // ADR-003: the entry carries its voucher's branch
           voucherType: 'PAYMENT_VOUCHER',
           description: dto.description ?? `Payment ${paymentNo}`,
@@ -336,43 +390,15 @@ export class VouchersService {
           postedBy: userId ?? null,
         });
 
-        const payment = await tx.payment.create({
-          data: {
-            tenantId,
-            companyId,
-            branchId,
-            paymentNo,
-            paymentDate: new Date(dto.paymentDate),
-            partyType: dto.partyType ?? null,
-            partyId: dto.partyId ? BigInt(dto.partyId) : null,
-            expenseAccountId: dto.expenseAccountId ? BigInt(dto.expenseAccountId) : null,
-            cashAccountId: BigInt(dto.cashAccountId),
-            amount,
-            paymentMethodId: dto.paymentMethodId ? BigInt(dto.paymentMethodId) : null,
-            referenceNo: dto.referenceNo ?? null,
-            description: dto.description ?? null,
-            status: 'POSTED',
-            journalEntryId: entry.id,
-            createdBy: userId ?? null,
-          },
-        });
-        await tx.journalEntry.update({
-          where: { id: entry.id },
-          data: { sourceId: payment.id },
-        });
+        await tx.payment.update({ where: { id: payment.id }, data: { journalEntryId: entry.id } });
 
         if (dto.partyId && dto.partyType) {
-          await this.applyAllocations(tx, tenantId, companyId, {
+          await this.writeAllocations(tx, tenantId, companyId, plan, {
             paymentId: payment.id,
             partyType: dto.partyType,
             partyId: BigInt(dto.partyId),
-            amount,
-            allocations: dto.allocations ?? [],
-            auto: dto.autoAllocate === true,
             userId,
           });
-        } else if ((dto.allocations ?? []).length > 0 || dto.autoAllocate) {
-          throw new DomainError(ErrorCode.VALIDATION, 'allocations require a party payment');
         }
 
         return { id: payment.id, paymentNo };
@@ -409,13 +435,18 @@ export class VouchersService {
         }
         const left = new Decimal(v.amount.toString()).minus(await this.activeAllocated(tx, kind, id));
         if (left.lte(0)) throw new DomainError(ErrorCode.VALIDATION, 'The voucher is fully allocated');
-        await this.applyAllocations(tx, tenantId, companyId, {
-          ...(kind === 'receipt' ? { receiptId: id } : { paymentId: id }),
+        const plan = await this.planAllocations(tx, companyId, {
+          receipt: kind === 'receipt',
           partyType: v.partyType,
           partyId: v.partyId,
           amount: left,
           allocations: dto.allocations ?? [],
           auto: dto.auto === true,
+        });
+        await this.writeAllocations(tx, tenantId, companyId, plan, {
+          ...(kind === 'receipt' ? { receiptId: id } : { paymentId: id }),
+          partyType: v.partyType,
+          partyId: v.partyId,
           userId,
         });
       }, POSTING_TX_OPTIONS),
@@ -446,6 +477,8 @@ export class VouchersService {
         assertBranchAllowed(a.receipt?.branchId ?? a.payment?.branchId);
         const invoices = this.settlement(a.documentType as InvoiceDocType);
         await invoices.lockForSettlement(tx, [a.documentId]);
+        // The invoice's branch too: a branch-restricted user does not reopen another branch's invoice (TRADE-11).
+        assertBranchAllowed((await invoices.settlementState(tx, a.documentId))?.branchId);
         await tx.allocation.update({
           where: { id },
           data: { cancelledAt: new Date(), cancelledBy: userId ?? null },
@@ -533,13 +566,19 @@ export class VouchersService {
 
   // ------------------------------------------------------------ allocations
 
-  private async applyAllocations(
+  /**
+   * Checks a voucher's allocations and locks their invoices, before the
+   * voucher takes its numbers (TRADE-17): a receipt from a customer or a
+   * payment to a supplier only (ADR-004 §3), credit invoices of that party,
+   * each within what it still owes, all within `amount`, and in the
+   * invoice's branch for a branch-restricted user (ADR-003, TRADE-11).
+   * Auto-allocation settles the oldest open invoices first.
+   */
+  private async planAllocations(
     tx: Prisma.TransactionClient,
-    tenantId: bigint,
     companyId: bigint,
     opts: {
-      receiptId?: bigint;
-      paymentId?: bigint;
+      receipt: boolean;
       partyType: 'CUSTOMER' | 'SUPPLIER';
       partyId: bigint;
       /** Most that may be allocated now: the voucher amount, or what is left of it. */
@@ -547,19 +586,18 @@ export class VouchersService {
       allocations: AllocationInput[];
       /** No explicit allocations: settle the party's oldest open invoices first. */
       auto?: boolean;
-      userId?: bigint | null;
     },
-  ) {
-    if (opts.allocations.length === 0 && !opts.auto) return;
+  ): Promise<PlannedAllocation[]> {
+    if (opts.allocations.length === 0 && !opts.auto) return [];
     // Only a receipt from a customer or a payment to a supplier settles
     // invoices. A refund the other way (receipt from a supplier, payment to
     // a customer) raises the party's balance, so it cannot lower what an
     // invoice owes (ADR-004 §3).
-    const settles = opts.receiptId ? 'CUSTOMER' : 'SUPPLIER';
+    const settles = opts.receipt ? 'CUSTOMER' : 'SUPPLIER';
     if (opts.partyType !== settles) {
       throw new DomainError(
         ErrorCode.VALIDATION,
-        opts.receiptId
+        opts.receipt
           ? 'A receipt from a supplier is a refund and cannot be allocated to invoices'
           : 'A payment to a customer is a refund and cannot be allocated to invoices',
       );
@@ -567,11 +605,10 @@ export class VouchersService {
     // Direction check: customers settle sales invoices, suppliers purchase invoices.
     const expectedDoc: InvoiceDocType = opts.partyType === 'CUSTOMER' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
     const invoices = this.settlement(expectedDoc);
-    let requested = opts.allocations;
-    if (requested.length === 0 && opts.auto) {
-      requested = await this.oldestFirst(tx, companyId, expectedDoc, opts.partyId, opts.amount);
+    if (opts.allocations.length === 0) {
+      return this.oldestFirst(tx, companyId, expectedDoc, opts.partyId, opts.amount);
     }
-    if (requested.length === 0) return;
+    const requested = opts.allocations;
 
     // Lock the invoices (fixed id order) before reading what they still owe:
     // two vouchers allocating the same invoice at once must not both see the
@@ -581,6 +618,8 @@ export class VouchersService {
       requested.filter((a) => a.documentType === expectedDoc).map((a) => BigInt(a.documentId)),
     );
 
+    const planned: PlannedAllocation[] = [];
+    const plannedOn = new Map<bigint, Decimal>();
     let allocated = new Decimal(0);
     for (const a of requested) {
       const amt = new Decimal(a.amount);
@@ -592,8 +631,6 @@ export class VouchersService {
         );
       }
       const docId = BigInt(a.documentId);
-      // Fresh per iteration: the paid_amount increments below are visible to
-      // the next lookup within this transaction.
       const inv = await invoices.settlementState(tx, docId);
       if (inv === null) {
         throw DomainError.notFound(a.documentType, a.documentId);
@@ -601,6 +638,7 @@ export class VouchersService {
       if (inv.status !== 'POSTED' || inv.partyId !== opts.partyId) {
         throw new DomainError(ErrorCode.VALIDATION, 'Invoice not found, not posted, or belongs to another party');
       }
+      assertBranchAllowed(inv.branchId);
       if (inv.paymentType !== 'CREDIT') {
         throw new DomainError(ErrorCode.VALIDATION, 'A cash invoice is settled at sale and takes no allocations');
       }
@@ -608,13 +646,35 @@ export class VouchersService {
       if (allocated.gt(opts.amount)) {
         throw new DomainError(ErrorCode.VALIDATION, 'Total allocations exceed voucher amount');
       }
-      if (amt.gt(inv.outstanding)) {
+      // The same invoice twice in one request: the second sees the first.
+      const outstanding = inv.outstanding.minus(plannedOn.get(docId) ?? 0);
+      if (amt.gt(outstanding)) {
         throw new DomainError(
           ErrorCode.VALIDATION,
-          `Allocation ${amt.toString()} exceeds invoice outstanding ${inv.outstanding.toString()}`,
+          `Allocation ${amt.toString()} exceeds invoice outstanding ${outstanding.toString()}`,
         );
       }
+      plannedOn.set(docId, (plannedOn.get(docId) ?? new Decimal(0)).plus(amt));
+      planned.push({ documentType: expectedDoc, documentId: docId, amount: amt });
+    }
+    return planned;
+  }
 
+  /** Writes planned allocations of a voucher and the invoices' paid_amount projection (§7.8). */
+  private async writeAllocations(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    plan: PlannedAllocation[],
+    opts: {
+      receiptId?: bigint;
+      paymentId?: bigint;
+      partyType: 'CUSTOMER' | 'SUPPLIER';
+      partyId: bigint;
+      userId?: bigint | null;
+    },
+  ) {
+    for (const p of plan) {
       await tx.allocation.create({
         data: {
           tenantId,
@@ -623,22 +683,23 @@ export class VouchersService {
           paymentId: opts.paymentId ?? null,
           partyType: opts.partyType,
           partyId: opts.partyId,
-          documentType: a.documentType,
-          documentId: docId,
-          amount: amt,
+          documentType: p.documentType,
+          documentId: p.documentId,
+          amount: p.amount,
           createdBy: opts.userId ?? null,
         },
       });
-
-      // Projection: paid_amount on the invoice (§7.8).
-      await invoices.addPaid(tx, docId, amt);
+      await this.settlement(p.documentType).addPaid(tx, p.documentId, p.amount);
     }
   }
 
   /**
-   * Auto-allocation (Phase 6): the party's posted credit invoices, oldest
-   * first, each up to what it still owes, until `available` is used up.
-   * Cash invoices are settled at sale and never take allocations.
+   * Auto-allocation (Phase 6): the party's posted credit invoices with an
+   * open balance, oldest first, each up to what it still owes, until
+   * `available` is used up. TRADE-18: the open invoices are found in one
+   * query and locked in one query in id order (the order a manual
+   * allocation locks in, so the two cannot deadlock), then re-read under
+   * the lock. Invoices of a branch the user may not use are skipped.
    */
   private async oldestFirst(
     tx: Prisma.TransactionClient,
@@ -646,19 +707,20 @@ export class VouchersService {
     documentType: InvoiceDocType,
     partyId: bigint,
     available: Decimal,
-  ): Promise<AllocationInput[]> {
+  ): Promise<PlannedAllocation[]> {
     const invoices = this.settlement(documentType);
     const ids = await invoices.creditInvoiceIdsOldestFirst(tx, companyId, partyId);
+    await invoices.lockForSettlement(tx, ids);
 
-    const result: AllocationInput[] = [];
+    const result: PlannedAllocation[] = [];
     let left = available;
     for (const id of ids) {
       if (left.lte(0)) break;
-      await invoices.lockForSettlement(tx, [id]);
       const inv = await invoices.settlementState(tx, id);
-      if (!inv || inv.outstanding.lte(0)) continue;
+      if (!inv || inv.status !== 'POSTED' || inv.outstanding.lte(0)) continue;
+      if (!branchAllowed(inv.branchId)) continue;
       const amount = Decimal.min(inv.outstanding, left);
-      result.push({ documentType, documentId: id.toString(), amount: amount.toFixed(3) });
+      result.push({ documentType, documentId: id, amount });
       left = left.minus(amount);
     }
     return result;

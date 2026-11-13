@@ -40,5 +40,10 @@ export enum ErrorCode {
   PASSWORD_CHANGE_REQUIRED = 'PASSWORD_CHANGE_REQUIRED',
   // Password change and reset (ADR-012): this member's password may not be reset here.
   PASSWORD_RESET_NOT_ALLOWED = 'PASSWORD_RESET_NOT_ALLOWED',
+  // Trade review fixes (ADR-016): a GRN is billed by one purchase invoice only.
+  GRN_ALREADY_INVOICED = 'GRN_ALREADY_INVOICED',
+  // TRADE-07: a counted line's book balance changed since the count snapshot;
+  // refresh the count, then approve again.
+  STOCK_COUNT_STALE = 'STOCK_COUNT_STALE',
   INTERNAL = 'INTERNAL',
 }

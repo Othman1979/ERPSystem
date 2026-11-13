@@ -88,6 +88,16 @@ export class CreatePurchaseInvoiceDto {
   @ValidateNested({ each: true })
   @Type(() => PurchaseInvoiceLineDto)
   lines!: PurchaseInvoiceLineDto[];
+
+  /**
+   * A posted goods receipt note (GRN) this invoice bills (TRADE-02, ADR-016):
+   * its stock lines then clear account 2104 instead of receiving the goods a
+   * second time. A GRN is billed by one invoice only.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  receivedGrnId?: string;
 }
 
 export class PurchaseReturnLineDto {

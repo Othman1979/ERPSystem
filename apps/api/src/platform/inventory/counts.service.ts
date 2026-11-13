@@ -10,6 +10,7 @@ import { AdjustmentsService } from './adjustments.service.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import type { CreateStockCountDto, UpdateCountLineDto } from './dto/inventory.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
+import { retryOnLockConflict } from '../shared/document-support.service.js';
 
 /**
  * Physical stock counts (§7.4): capture system vs counted quantities,
@@ -205,130 +206,133 @@ export class CountsService {
   }
 
   /**
-   * Approves the count: every line must have a countedQty. Generates a
-   * COUNT_ADJUSTMENT document for the differences and posts it through
-   * AdjustmentsService (movements + journal in one tx).
+   * Re-reads the book balance of every line (the count snapshot) and its
+   * difference, for a count whose balances moved since it was taken
+   * (TRADE-07: approval refuses a stale snapshot).
+   */
+  async refresh(id: bigint) {
+    const { tenantId, db } = this.tenant();
+    await db.$transaction(async (tx) => {
+      const [locked] = await tx.$queryRaw<{ status: string }[]>`
+        SELECT status FROM stock_counts WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      if (!locked) throw DomainError.notFound('StockCount', id.toString());
+      if (locked.status !== 'DRAFT') throw new DomainError(ErrorCode.CONFLICT, 'Count is not a draft');
+      const count = await tx.stockCount.findFirst({ where: { id }, include: { lines: true } });
+      const balances = await tx.stockBalance.findMany({
+        where: { tenantId, warehouseId: count!.warehouseId, itemId: { in: count!.lines.map((l) => l.itemId) } },
+        select: { itemId: true, qtyOnHand: true },
+      });
+      const onHand = new Map(balances.map((b) => [b.itemId, new Decimal(b.qtyOnHand.toString())]));
+      for (const line of count!.lines) {
+        const systemQty = onHand.get(line.itemId) ?? new Decimal(0);
+        await tx.stockCountLine.update({
+          where: { id: line.id },
+          data: {
+            systemQty,
+            differenceQty: line.countedQty === null ? null : new Decimal(line.countedQty.toString()).minus(systemQty),
+          },
+        });
+      }
+    }, POSTING_TX_OPTIONS);
+    await this.audit.log({ action: 'stock_count.refresh', entityType: 'stock_count', entityId: id });
+    return this.get(id);
+  }
+
+  /**
+   * Approves the count (TRADE-07): every line must have a countedQty, and
+   * every line's book balance must still be the count's snapshot — under the
+   * stock locks — or the approval is refused with STOCK_COUNT_STALE (refresh,
+   * then approve again). The COUNT_ADJUSTMENT for the differences, its
+   * posting (movements + journal, AdjustmentsService.postLocked) and the
+   * count's status commit in one transaction. The route requires an
+   * Idempotency-Key.
    */
   async approve(id: bigint) {
     const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
+    const userId = ClsServiceManager.getClsService<RequestContext>().get('userId');
 
-    const count = await db.stockCount.findFirst({
-      where: { id },
-      include: { lines: true },
-    });
-    if (!count) throw DomainError.notFound('StockCount', id.toString());
-    if (count.status !== 'DRAFT') {
-      throw new DomainError(ErrorCode.CONFLICT, 'Count is not a draft');
-    }
-    if (count.lines.length === 0) {
-      throw new DomainError(ErrorCode.VALIDATION, 'Count has no lines');
-    }
-    const missing = count.lines.filter((l) => l.countedQty === null);
-    if (missing.length > 0) {
-      throw new DomainError(
-        ErrorCode.VALIDATION,
-        `${missing.length} line(s) have no counted quantity`,
-      );
-    }
+    const result = await retryOnLockConflict(() =>
+      db.$transaction(async (tx) => {
+        // Lock the count first (§10.1 step 7): a second approval waits here,
+        // then finds the count posted.
+        await tx.$queryRaw`SELECT id FROM stock_counts WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        const count = await tx.stockCount.findFirst({ where: { id }, include: { lines: true } });
+        if (!count) throw DomainError.notFound('StockCount', id.toString());
+        if (count.status !== 'DRAFT') {
+          throw new DomainError(ErrorCode.CONFLICT, 'Count is not a draft');
+        }
+        if (count.lines.length === 0) {
+          throw new DomainError(ErrorCode.VALIDATION, 'Count has no lines');
+        }
+        const missing = count.lines.filter((l) => l.countedQty === null);
+        if (missing.length > 0) {
+          throw new DomainError(ErrorCode.VALIDATION, `${missing.length} line(s) have no counted quantity`);
+        }
 
-    // Current average cost for IN-side (surplus) lines — OUT lines cost at
-    // posting time from the ledger anyway.
-    const costs = await db.itemCost.findMany({
-      where: { tenantId, companyId, itemId: { in: count.lines.map((l) => l.itemId) } },
-      select: { itemId: true, avgCost: true },
-    });
-    const avgByItem = new Map(costs.map((c) => [c.itemId, c.avgCost]));
-
-    const adjLines = count.lines
-      .map((l) => {
-        const diff = new Decimal(l.differenceQty?.toString() ?? '0');
-        if (diff.isZero()) return null;
-        return {
-          itemId: l.itemId,
-          diff,
-          unitCost: diff.gt(0) ? avgByItem.get(l.itemId)?.toString() : undefined,
-        };
-      })
-      .filter((l): l is NonNullable<typeof l> => l !== null);
-
-    if (adjLines.length === 0) {
-      // Nothing differs — close the count without an adjustment.
-      await db.stockCount.update({
-        where: { id: count.id },
-        data: { status: 'POSTED', postedAt: new Date(), description: count.description },
-      });
-      return this.get(count.id);
-    }
-
-    // Split surplus/shortage into qtyIn/qtyOut via a COUNT_ADJUSTMENT doc.
-    // AdjustmentsService.create rejects COUNT_ADJUSTMENT from the API, so
-    // build the document rows directly, then post via adjustments.post().
-    const adjustment = await db.$transaction(async (tx) => {
-      // Claim the count under a row lock: a second approval arriving at the
-      // same time sees the claim and stops, instead of creating (and posting)
-      // a second adjustment for the same count.
-      const [locked] = (await tx.$queryRaw`
-        SELECT status, adjustment_id FROM stock_counts
-         WHERE tenant_id = ${tenantId} AND id = ${count.id} FOR UPDATE`) as {
-        status: string;
-        adjustment_id: bigint | null;
-      }[];
-      if (!locked || locked.status !== 'DRAFT') {
-        throw new DomainError(ErrorCode.CONFLICT, 'Count is not a draft');
-      }
-      if (locked.adjustment_id !== null) {
-        // A previous approval created the adjustment but did not finish posting:
-        // resume with that one rather than adding another.
-        const existing = await tx.stockAdjustment.findFirst({ where: { id: locked.adjustment_id } });
-        if (existing?.status === 'DRAFT') return existing;
-        throw new DomainError(ErrorCode.CONFLICT, 'Count is already being approved');
-      }
-      const created = await tx.stockAdjustment.create({
-        data: {
-          tenantId,
+        await this.ledger.lockForDocument(
+          tx,
           companyId,
-          warehouseId: count.warehouseId,
-          adjustmentDate: count.countDate,
-          adjustmentType: 'COUNT_ADJUSTMENT',
-          description: `Stock count ${count.id}`,
-        },
-      });
-      await tx.stockAdjustmentLine.createMany({
-        data: adjLines.map((l, i) => {
-          const isIn = l.diff.gt(0);
-          return {
-            tenantId,
-            adjustmentId: created.id,
-            lineNo: i + 1,
-            itemId: l.itemId,
-            qtyIn: isIn ? l.diff.abs().toString() : '0',
-            qtyOut: isIn ? '0' : l.diff.abs().toString(),
-            unitCost: isIn ? (l.unitCost ?? null) : null,
-          };
-        }),
-      });
-      await tx.stockCount.update({ where: { id: count.id }, data: { adjustmentId: created.id } });
-      return created;
-    }, POSTING_TX_OPTIONS);
+          count.lines.map((l) => ({ itemId: l.itemId, warehouseId: count.warehouseId })),
+        );
+        const stale = count.lines.filter(
+          (l) => !this.ledger.lockedQtyOnHand(tx, count.warehouseId, l.itemId).eq(l.systemQty.toString()),
+        );
+        if (stale.length > 0) {
+          throw new DomainError(
+            ErrorCode.STOCK_COUNT_STALE,
+            `${stale.length} line(s) moved since the count was taken: refresh the count and approve again`,
+            { itemIds: stale.map((l) => l.itemId.toString()) },
+          );
+        }
 
-    const posted = await this.adjustments.post(adjustment.id);
-    await db.stockCount.update({
-      where: { id: count.id },
-      data: {
-        status: 'POSTED',
-        adjustmentId: adjustment.id,
-        docNo: posted.docNo ?? null,
-        postedAt: new Date(),
-      },
-    });
+        const adjLines = count.lines
+          .map((l) => ({ itemId: l.itemId, diff: new Decimal(l.countedQty!.toString()).minus(l.systemQty.toString()) }))
+          .filter((l) => !l.diff.isZero());
+
+        let adjustmentId: bigint | null = null;
+        let docNo: string | null = null;
+        if (adjLines.length > 0) {
+          const created = await tx.stockAdjustment.create({
+            data: {
+              tenantId,
+              companyId,
+              warehouseId: count.warehouseId,
+              adjustmentDate: count.countDate,
+              adjustmentType: 'COUNT_ADJUSTMENT',
+              description: `Stock count ${count.id}`,
+            },
+          });
+          await tx.stockAdjustmentLine.createMany({
+            data: adjLines.map((l, i) => ({
+              tenantId,
+              adjustmentId: created.id,
+              lineNo: i + 1,
+              itemId: l.itemId,
+              qtyIn: l.diff.gt(0) ? l.diff.toString() : '0',
+              qtyOut: l.diff.gt(0) ? '0' : l.diff.abs().toString(),
+              // A surplus enters at the current average cost (applyMovement's default).
+              unitCost: null,
+            })),
+          });
+          const posted = await this.adjustments.postLocked(tx, created.id, companyId, userId);
+          adjustmentId = created.id;
+          docNo = posted.docNo;
+        }
+        await tx.stockCount.update({
+          where: { id: count.id },
+          data: { status: 'POSTED', adjustmentId, docNo, postedAt: new Date() },
+        });
+        return { adjustmentId, docNo };
+      }, POSTING_TX_OPTIONS),
+    );
 
     await this.audit.log({
       action: 'stock_count.approve',
       entityType: 'stock_count',
-      entityId: count.id,
-      after: { adjustmentId: adjustment.id.toString(), docNo: posted.docNo },
+      entityId: id,
+      after: { adjustmentId: result.adjustmentId?.toString() ?? null, docNo: result.docNo },
     });
-    return this.get(count.id);
+    return this.get(id);
   }
 }

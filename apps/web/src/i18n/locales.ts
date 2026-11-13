@@ -1134,6 +1134,8 @@ export const ar = {
     INVALID_CURRENT_PASSWORD: 'كلمة المرور الحالية غير صحيحة',
     PASSWORD_CHANGE_REQUIRED: 'غيّر كلمة المرور المؤقتة أولاً',
     PASSWORD_RESET_NOT_ALLOWED: 'لا يمكن إعادة تعيين كلمة مرور هذا المستخدم من هنا: إما حسابك أنت، أو مدير منصة، أو عضو في شركة أخرى، أو مالك ولست مالكاً',
+    GRN_ALREADY_INVOICED: 'إشعار الاستلام هذا مُفوتر بفاتورة شراء مرحّلة، ولا يُفوتر مرتين',
+    STOCK_COUNT_STALE: 'تغيّر رصيد بعض الأصناف منذ الجرد. حدّث الجرد ثم اعتمده من جديد',
   },
 };
 
@@ -2273,5 +2275,7 @@ export const en: typeof ar = {
     INVALID_CURRENT_PASSWORD: 'The current password is incorrect',
     PASSWORD_CHANGE_REQUIRED: 'Change your temporary password first',
     PASSWORD_RESET_NOT_ALLOWED: "This user's password cannot be reset here: it is your own account, a platform admin, a member of another company, or an owner while you are not one.",
+    GRN_ALREADY_INVOICED: 'This goods receipt is already billed by a posted purchase invoice and cannot be billed twice.',
+    STOCK_COUNT_STALE: 'Some balances changed since the count was taken. Refresh the count, then approve it again.',
   },
 };

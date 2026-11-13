@@ -49,6 +49,25 @@ function skipBalanced(source: string, from: number): number {
   return source.length;
 }
 
+/**
+ * Bodies of methods that run on the caller's transaction — their first
+ * parameter is `tx: Prisma.TransactionClient` (e.g. AdjustmentsService.postLocked,
+ * shared by posting and stock count approval). A stock movement written there
+ * is inside a transaction too.
+ */
+export function txMethodBodies(source: string): { line: number; name: string; body: string }[] {
+  const out: { line: number; name: string; body: string }[] = [];
+  for (const m of source.matchAll(/\n\s+(?:async\s+)?(\w+)\(\s*tx: Prisma\.TransactionClient\b/g)) {
+    const paramsOpen = source.indexOf('(', m.index);
+    const paramsEnd = skipBalanced(source, paramsOpen);
+    // The body's brace ends its line; a `{` inside the return type does not.
+    const open = paramsEnd + source.slice(paramsEnd).search(/\{[ \t]*\r?\n/);
+    const end = skipBalanced(source, open) - 1;
+    out.push({ line: source.slice(0, m.index + 1).split('\n').length, name: m[1], body: source.slice(open + 1, end) });
+  }
+  return out;
+}
+
 export function transactionCalls(source: string): TransactionCall[] {
   const out: TransactionCall[] = [];
   for (const m of source.matchAll(/\$transaction\s*\(/g)) {

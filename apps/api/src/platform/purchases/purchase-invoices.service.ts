@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
+import { Decimal, round3, sum } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, currentBranchId, assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
@@ -19,6 +19,8 @@ import {
   type SummaryRange,
 } from '../shared/document-summary.js';
 import { computeLineAmounts } from '../shared/invoice-math.js';
+import { stockWriteOffLines } from '../shared/stock-write-off.js';
+import { GoodsNotesService, type GrnBillingSource } from '../goods-notes/goods-notes.service.js';
 import { creditedByInvoice, withBalance } from '../shared/invoice-balance.js';
 import {
   lockOrder,
@@ -56,6 +58,7 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
     private readonly posting: PostingService,
     private readonly ledger: StockLedgerService,
     private readonly audit: AuditService,
+    private readonly goodsNotes: GoodsNotesService,
   ) {}
 
   /** Posted credit-return totals for the given invoices (for `outstanding`). */
@@ -191,9 +194,13 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
   /** SELECT … FOR UPDATE on the invoices, ascending id (§10.1 fixed lock order). */
   async lockForSettlement(tx: Prisma.TransactionClient, ids: bigint[]): Promise<void> {
     const { tenantId } = this.support.tenant();
-    for (const id of lockOrder(ids)) {
-      await tx.$queryRaw`SELECT id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
-    }
+    const sorted = lockOrder(ids);
+    if (sorted.length === 0) return;
+    // One locking read in id order (TRADE-18: auto-allocation used to lock every invoice one by one).
+    await tx.$queryRaw`
+      SELECT id FROM purchase_invoices
+       WHERE tenant_id = ${tenantId} AND id IN (${Prisma.join(sorted)})
+       ORDER BY id FOR UPDATE`;
   }
 
   /**
@@ -207,7 +214,7 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
   async settlementState(tx: Prisma.TransactionClient, id: bigint): Promise<SettlementState | null> {
     const { tenantId } = this.support.tenant();
     const [inv] = await tx.$queryRaw<SettlementRow[]>`
-      SELECT supplier_id AS party_id, status, payment_type, grand_total, paid_amount
+      SELECT supplier_id AS party_id, branch_id, status, payment_type, grand_total, paid_amount
         FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
     if (!inv) return null;
     const [credited] = await tx.$queryRaw<{ s: { toString(): string } | null }[]>`
@@ -222,18 +229,32 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
     await tx.purchaseInvoice.update({ where: { id }, data: { paidAmount: { increment: delta } } });
   }
 
-  /** The party's posted credit invoices, oldest first. Cash invoices are settled at sale. */
+  /**
+   * The party's posted credit invoices that still have an outstanding
+   * balance (§7.8), oldest first. Cash invoices are settled at purchase. A
+   * plain read: the caller locks them all with lockForSettlement and re-reads
+   * each with settlementState (TRADE-18).
+   */
   async creditInvoiceIdsOldestFirst(
     tx: Prisma.TransactionClient,
     companyId: bigint,
     partyId: bigint,
   ): Promise<bigint[]> {
-    const rows = await tx.purchaseInvoice.findMany({
-      where: { companyId, status: 'POSTED', paymentType: 'CREDIT', supplierId: partyId },
-      select: { id: true },
-      orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
-    });
-    return rows.map((r) => r.id);
+    const { tenantId } = this.support.tenant();
+    const rows = await tx.$queryRaw<{ id: bigint }[]>`
+      SELECT i.id
+        FROM purchase_invoices i
+        LEFT JOIN (
+          SELECT original_invoice_id, SUM(grand_total) AS credited
+            FROM purchase_returns
+           WHERE tenant_id = ${tenantId} AND status = 'POSTED' AND refund_type = 'CREDIT'
+           GROUP BY original_invoice_id
+        ) r ON r.original_invoice_id = i.id
+       WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId} AND i.supplier_id = ${partyId}
+         AND i.status = 'POSTED' AND i.payment_type = 'CREDIT'
+         AND i.grand_total - i.paid_amount - COALESCE(r.credited, 0) > 0
+       ORDER BY i.invoice_date, i.id`;
+    return rows.map((r) => BigInt(r.id));
   }
 
   /** Invoice numbers by id (printed vouchers name the invoices they settled). */
@@ -282,6 +303,7 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
         },
         journalEntry: { select: { id: true, entryNo: true, status: true } },
         returns: { select: { id: true, returnNo: true, status: true, grandTotal: true } },
+        receivedGrn: { select: { id: true, docNo: true, noteDate: true } },
       },
     });
     if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
@@ -291,10 +313,12 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
   async create(dto: CreatePurchaseInvoiceDto) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines);
+    const pricesIncludeTax = await this.support.pricesIncludeTax(db);
+    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto, lines);
 
     const inv = await db.$transaction(async (tx) => {
+      const receivedGrnId = await this.checkDraftGrn(tx, tenantId, null, dto, lines);
       const created = await tx.purchaseInvoice.create({
         data: {
           tenantId,
@@ -310,6 +334,8 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
           description: dto.description ?? null,
+          pricesIncludeTax,
+          receivedGrnId,
           ...this.totals(lines),
           createdBy: this.support.userId() ?? null,
         },
@@ -353,10 +379,12 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
     }
     assertBranchAllowed(inv.branchId);
-    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines);
+    const pricesIncludeTax = await this.support.pricesIncludeTax(db);
+    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto, lines);
 
     await db.$transaction(async (tx) => {
+      const receivedGrnId = await this.checkDraftGrn(tx, tenantId, id, dto, lines);
       await tx.purchaseInvoiceLine.deleteMany({ where: { invoiceId: id } });
       await tx.purchaseInvoice.update({
         where: { id },
@@ -370,6 +398,8 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
           description: dto.description ?? null,
+          pricesIncludeTax,
+          receivedGrnId,
           ...this.totals(lines),
           updatedBy: this.support.userId() ?? null,
         },
@@ -443,7 +473,8 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
           throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');
         }
 
-        const hasStock = await this.hasStockLines(tx, tenantId, draft.lines.map((l) => l.itemId));
+        const stockItems = await this.ledger.stockItemIds(tx, companyId, draft.lines.map((l) => l.itemId));
+        const hasStock = stockItems.size > 0;
         if (hasStock && !draft.warehouseId) {
           throw new DomainError(ErrorCode.VALIDATION, 'warehouseId is required for stocked items');
         }
@@ -458,10 +489,17 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
         const invoiceDate = new Date(draft.invoiceDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, invoiceDate);
 
+        // TRADE-02 (ADR-016): an invoice billing a posted GRN receives no
+        // stock: the GRN did. Its stock lines clear 2104 at the GRN's value,
+        // and the price difference goes to INVENTORY_ADJUSTMENT.
+        const grn = draft.receivedGrnId
+          ? await this.lockReceivedGrn(tx, tenantId, draft, stockItems)
+          : null;
+
         // Lock every (item, warehouse) in the fixed order before any movement
         // (no warehouse: a service-only invoice, checked above).
         const warehouseId = draft.warehouseId;
-        if (warehouseId) {
+        if (warehouseId && !grn) {
           await this.ledger.lockForDocument(
             tx,
             companyId,
@@ -472,15 +510,13 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
         // Stock IN for STOCK lines at net cost per base unit.
         let stockNet = new Decimal(0);
         let serviceNet = new Decimal(0);
+        let writeOff = new Decimal(0);
         for (const line of draft.lines) {
-          const item = await tx.item.findFirst({
-            where: { tenantId, id: line.itemId },
-            select: { itemKind: true },
-          });
-          if (!item) throw DomainError.notFound('Item', line.itemId.toString());
-          if (item.itemKind === 'STOCK') {
+          if (stockItems.has(line.itemId) && grn) {
+            stockNet = stockNet.plus(line.netAmount);
+          } else if (stockItems.has(line.itemId)) {
             const unitCost = new Decimal(line.netAmount.toString()).div(line.qtyBase.toString());
-            await this.ledger.applyMovement(tx, companyId, {
+            const res = await this.ledger.applyMovement(tx, companyId, {
               warehouseId: draft.warehouseId!,
               itemId: line.itemId,
               movementDate: invoiceDate,
@@ -493,6 +529,7 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
               description: `Purchase invoice ${draft.id}`,
             });
             stockNet = stockNet.plus(line.netAmount);
+            writeOff = writeOff.plus(res.writeOff);
           } else {
             serviceNet = serviceNet.plus(line.netAmount);
           }
@@ -500,6 +537,8 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
 
         const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
           'INVENTORY',
+          'INVENTORY_ADJUSTMENT',
+          'GOODS_RECEIVED_NOT_INVOICED',
           'PURCHASES',
           'INPUT_TAX',
           'SUPPLIERS_CONTROL',
@@ -509,9 +548,28 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
         const grand = draft.grandTotal;
         const tax = draft.taxTotal;
 
-        if (stockNet.gt(0)) {
+        if (grn) {
+          // Clear the GRN's value from 2104; the invoice's price difference
+          // (positive: dearer than received) goes to INVENTORY_ADJUSTMENT.
+          if (grn.cleared.gt(0)) {
+            journalLines.push({
+              accountId: mapping.GOODS_RECEIVED_NOT_INVOICED,
+              debit: grn.cleared.toString(),
+              description: `Goods received ${grn.docNo ?? grn.id}`,
+            });
+          }
+          const difference = stockNet.minus(grn.cleared);
+          if (difference.gt(0)) {
+            journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, debit: difference.toString(), description: 'Invoice vs goods received' });
+          } else if (difference.lt(0)) {
+            journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, credit: difference.abs().toString(), description: 'Invoice vs goods received' });
+          }
+        } else if (stockNet.gt(0)) {
           journalLines.push({ accountId: mapping.INVENTORY, debit: stockNet.toString() });
         }
+        journalLines.push(
+          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+        );
         if (serviceNet.gt(0)) {
           journalLines.push({ accountId: mapping.PURCHASES, debit: serviceNet.toString() });
         }
@@ -587,16 +645,92 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
     };
   }
 
-  private async hasStockLines(
+  /**
+   * Draft check of the GRN a purchase invoice bills (TRADE-02, ADR-016), on
+   * the draft's own transaction: the GRN is posted, in the invoice's
+   * warehouse, not billed by a posted invoice, and covers the invoice's stock
+   * quantities. Posting checks it all again under the GRN's lock.
+   */
+  private async checkDraftGrn(
     tx: Prisma.TransactionClient,
     tenantId: bigint,
-    itemIds: bigint[],
-  ): Promise<boolean> {
-    const items = await tx.item.findMany({
-      where: { tenantId, id: { in: itemIds } },
-      select: { itemKind: true },
-    });
-    return items.some((i) => i.itemKind === 'STOCK');
+    invoiceId: bigint | null,
+    dto: CreatePurchaseInvoiceDto,
+    lines: ResolvedLine[],
+  ): Promise<bigint | null> {
+    if (!dto.receivedGrnId) return null;
+    const grn = await this.goodsNotes.lockForBilling(tx, BigInt(dto.receivedGrnId));
+    const qtyByItem = new Map<bigint, Decimal>();
+    for (const l of lines) {
+      if (l.itemKind !== 'STOCK') continue;
+      qtyByItem.set(l.itemId, (qtyByItem.get(l.itemId) ?? new Decimal(0)).plus(l.amounts.qtyBase));
+    }
+    await this.assertGrnBillable(tx, tenantId, invoiceId, grn, dto.receivedGrnId, dto.warehouseId ? BigInt(dto.warehouseId) : null, qtyByItem);
+    return grn!.id;
+  }
+
+  /**
+   * At posting: the GRN locked FOR UPDATE (two invoices billing it queue
+   * here), checked again, and the value its billed quantities clear from
+   * 2104 — the GRN's own value per item, pro rata for a partial bill.
+   */
+  private async lockReceivedGrn(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    draft: { id: bigint; receivedGrnId: bigint | null; warehouseId: bigint | null; lines: { itemId: bigint; qtyBase: { toString(): string } }[] },
+    stockItems: Set<bigint>,
+  ): Promise<{ id: bigint; docNo: string | null; cleared: Decimal }> {
+    const grnId = draft.receivedGrnId!;
+    const grn = await this.goodsNotes.lockForBilling(tx, grnId);
+    const qtyByItem = new Map<bigint, Decimal>();
+    for (const l of draft.lines) {
+      if (!stockItems.has(l.itemId)) continue;
+      qtyByItem.set(l.itemId, (qtyByItem.get(l.itemId) ?? new Decimal(0)).plus(l.qtyBase.toString()));
+    }
+    await this.assertGrnBillable(tx, tenantId, draft.id, grn, grnId.toString(), draft.warehouseId, qtyByItem);
+    let cleared = new Decimal(0);
+    for (const [itemId, qty] of qtyByItem) {
+      const received = grn!.byItem.get(itemId)!;
+      cleared = cleared.plus(qty.eq(received.qty) ? received.value : round3(received.value.times(qty).div(received.qty)));
+    }
+    return { id: grn!.id, docNo: grn!.docNo, cleared };
+  }
+
+  private async assertGrnBillable(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    invoiceId: bigint | null,
+    grn: GrnBillingSource | null,
+    grnId: string,
+    warehouseId: bigint | null,
+    qtyByItem: Map<bigint, Decimal>,
+  ): Promise<void> {
+    if (!grn) throw DomainError.notFound('GoodsNote', grnId);
+    if (grn.noteType !== 'GRN' || grn.status !== 'POSTED') {
+      throw new DomainError(ErrorCode.VALIDATION, 'receivedGrnId must be a posted goods receipt note');
+    }
+    if (warehouseId !== grn.warehouseId) {
+      throw new DomainError(ErrorCode.VALIDATION, 'The invoice warehouse must be the warehouse the goods were received in');
+    }
+    // A locking read: it sees an invoice that billed the GRN and committed
+    // while this transaction waited for the GRN lock.
+    const billed = await tx.$queryRaw<{ id: bigint }[]>`
+      SELECT id FROM purchase_invoices
+       WHERE tenant_id = ${tenantId} AND received_grn_id = ${grn.id} AND status = 'POSTED'
+         AND id <> ${invoiceId ?? 0n}
+       LIMIT 1 LOCK IN SHARE MODE`;
+    if (billed.length > 0) {
+      throw new DomainError(ErrorCode.GRN_ALREADY_INVOICED, `Goods receipt ${grn.docNo ?? grn.id} is already invoiced`);
+    }
+    for (const [itemId, qty] of qtyByItem) {
+      const received = grn.byItem.get(itemId);
+      if (!received || qty.gt(received.qty)) {
+        throw new DomainError(
+          ErrorCode.VALIDATION,
+          `Item ${itemId} on the invoice exceeds the goods received (${received?.qty.toString() ?? '0'})`,
+        );
+      }
+    }
   }
 
   private async assertHeader(
@@ -656,6 +790,7 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
     tenantId: bigint,
     companyId: bigint,
     dtos: PurchaseInvoiceLineDto[],
+    pricesIncludeTax = false,
   ): Promise<ResolvedLine[]> {
     const itemIds = dtos.map((l) => BigInt(l.itemId));
     const items = await db.item.findMany({
@@ -723,6 +858,7 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
         unitPrice: l.unitCost,
         discountPct: l.discountPct ?? '0',
         taxRate,
+        pricesIncludeTax,
       });
       out.push({
         dto: l,

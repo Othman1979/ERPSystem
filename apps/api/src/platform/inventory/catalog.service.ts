@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
+import { Decimal, round6 } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -235,6 +236,18 @@ export class CatalogService {
     const cls = ClsServiceManager.getClsService<RequestContext>();
     const existing = await db.item.findFirst({ where: { id } });
     if (!existing) throw DomainError.notFound('Item', id.toString());
+    if (dto.isActive === false && existing.isActive) {
+      const stock = await db.stockBalance.findFirst({
+        where: { itemId: id, qtyOnHand: { not: '0' } },
+        select: { id: true },
+      });
+      if (stock) {
+        throw new DomainError(
+          ErrorCode.CONFLICT,
+          `Item ${existing.code} has stock on hand and cannot be deactivated`,
+        );
+      }
+    }
     if (dto.itemGroupId) {
       const group = await db.itemGroup.findFirst({ where: { id: BigInt(dto.itemGroupId) } });
       if (!group) throw DomainError.notFound('ItemGroup', dto.itemGroupId);
@@ -272,32 +285,110 @@ export class CatalogService {
 
   // ------------------------------------------------------------ item units
 
+  /**
+   * Replaces the unit set of an item in place: existing rows (matched on unitId)
+   * are updated so their ids stay stable for invoice lines and barcodes; units
+   * missing from the request are deleted unless still referenced.
+   */
   async replaceItemUnits(
     tx: Prisma.TransactionClient,
     tenantId: bigint,
     itemId: bigint,
     units: ItemUnitInputDto[],
   ) {
-    await tx.itemUnit.deleteMany({ where: { tenantId, itemId } });
-    for (const u of units) {
-      const factor = Number(u.factorToBase);
-      if (!Number.isFinite(factor) || factor <= 0) {
+    // Normalise every factor to 6 dp first; a factor that rounds to 0 is rejected.
+    const normalised = units.map((u) => {
+      const factor = round6(new Decimal(u.factorToBase));
+      if (!factor.gt(0)) {
         throw new DomainError(ErrorCode.VALIDATION, 'factorToBase must be > 0');
       }
+      return { input: u, unitId: BigInt(u.unitId), factor };
+    });
+
+    const requestedUnitIds = new Set(normalised.map((n) => n.unitId.toString()));
+    const existingRows = await tx.itemUnit.findMany({
+      where: { tenantId, itemId },
+      select: { id: true, unitId: true, unit: { select: { code: true } } },
+    });
+    for (const row of existingRows) {
+      if (requestedUnitIds.has(row.unitId.toString())) continue;
+      await this.assertItemUnitNotReferenced(tx, tenantId, row.id, row.unit.code);
+      await tx.itemUnit.delete({ where: { tenantId_id: { tenantId, id: row.id } } });
+    }
+
+    for (const { input: u, unitId, factor } of normalised) {
       const unit = await tx.unit.findFirst({
-        where: { tenantId, id: BigInt(u.unitId), isActive: true },
+        where: { tenantId, id: unitId, isActive: true },
       });
       if (!unit) throw DomainError.notFound('Unit', u.unitId);
-      await tx.itemUnit.create({
-        data: {
-          tenantId,
-          itemId,
-          unitId: BigInt(u.unitId),
-          factorToBase: u.factorToBase,
-          isDefaultSale: u.isDefaultSale ?? false,
-          isDefaultPurchase: u.isDefaultPurchase ?? false,
-        },
+
+      const existing = await tx.itemUnit.findFirst({
+        where: { tenantId, itemId, unitId },
+        select: { id: true, factorToBase: true },
       });
+      if (existing) {
+        if (!existing.factorToBase.eq(factor)) {
+          await this.assertFactorChangeAllowed(tx, tenantId, existing.id, unit.code);
+        }
+        await tx.itemUnit.update({
+          where: { tenantId_id: { tenantId, id: existing.id } },
+          data: {
+            factorToBase: factor,
+            isDefaultSale: u.isDefaultSale ?? false,
+            isDefaultPurchase: u.isDefaultPurchase ?? false,
+          },
+        });
+      } else {
+        await tx.itemUnit.create({
+          data: {
+            tenantId,
+            itemId,
+            unitId,
+            factorToBase: factor,
+            isDefaultSale: u.isDefaultSale ?? false,
+            isDefaultPurchase: u.isDefaultPurchase ?? false,
+          },
+        });
+      }
+    }
+  }
+
+  /** Refuses removal of an item unit that invoice lines or barcodes still point to. */
+  private async assertItemUnitNotReferenced(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    itemUnitId: bigint,
+    unitCode: string,
+  ) {
+    const salesLines = await tx.salesInvoiceLine.count({ where: { tenantId, itemUnitId } });
+    const purchaseLines = await tx.purchaseInvoiceLine.count({ where: { tenantId, itemUnitId } });
+    const barcodes = await tx.itemBarcode.count({ where: { tenantId, itemUnitId } });
+    if (salesLines + purchaseLines + barcodes > 0) {
+      throw new DomainError(
+        ErrorCode.CONFLICT,
+        `Unit ${unitCode} is used by documents or barcodes and cannot be removed`,
+      );
+    }
+  }
+
+  /** Refuses a factor change for a unit any invoice line uses: a draft keeps the qty_base of the old factor. */
+  private async assertFactorChangeAllowed(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    itemUnitId: bigint,
+    unitCode: string,
+  ) {
+    const postedSales = await tx.salesInvoiceLine.count({
+      where: { tenantId, itemUnitId },
+    });
+    const postedPurchases = await tx.purchaseInvoiceLine.count({
+      where: { tenantId, itemUnitId },
+    });
+    if (postedSales + postedPurchases > 0) {
+      throw new DomainError(
+        ErrorCode.CONFLICT,
+        `Unit ${unitCode} is used by documents and its factor cannot be changed`,
+      );
     }
   }
 

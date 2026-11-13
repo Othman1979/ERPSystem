@@ -988,7 +988,7 @@ model StockMovement {
   sourceLineId    BigInt?           @map("source_line_id") @db.UnsignedBigInt
   qtyIn           Decimal           @default(0) @map("qty_in") @db.Decimal(18, 6)
   qtyOut          Decimal           @default(0) @map("qty_out") @db.Decimal(18, 6)
-  unitCost        Decimal           @map("unit_cost") @db.Decimal(18, 3)
+  unitCost        Decimal           @map("unit_cost") @db.Decimal(18, 6)
   totalCost       Decimal           @map("total_cost") @db.Decimal(18, 3)
   balanceQtyAfter Decimal           @map("balance_qty_after") @db.Decimal(18, 6)
   avgCostAfter    Decimal           @map("avg_cost_after") @db.Decimal(18, 6)
@@ -1086,7 +1086,7 @@ model StockAdjustmentLine {
   itemId       BigInt   @map("item_id") @db.UnsignedBigInt
   qtyIn        Decimal  @default(0) @map("qty_in") @db.Decimal(18, 6)
   qtyOut       Decimal  @default(0) @map("qty_out") @db.Decimal(18, 6)
-  unitCost     Decimal? @map("unit_cost") @db.Decimal(18, 3)
+  unitCost     Decimal? @map("unit_cost") @db.Decimal(18, 6)
   description  String?  @db.VarChar(500)
   createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
@@ -1306,6 +1306,8 @@ model SalesInvoice {
   customerId     BigInt              @map("customer_id") @db.UnsignedBigInt
   warehouseId    BigInt              @map("warehouse_id") @db.UnsignedBigInt
   paymentType    InvoicePaymentType  @map("payment_type")
+  /// ADR-017: line prices were entered including tax (company setting when the draft was saved).
+  pricesIncludeTax Boolean           @default(false) @map("prices_include_tax")
   cashAccountId  BigInt?             @map("cash_account_id") @db.UnsignedBigInt
   status         DocumentStatus      @default(DRAFT)
   description    String?             @db.VarChar(500)
@@ -1386,6 +1388,8 @@ model PurchaseInvoice {
   supplierInvoiceDate DateTime?           @map("supplier_invoice_date") @db.Date
   warehouseId         BigInt?             @map("warehouse_id") @db.UnsignedBigInt
   paymentType         InvoicePaymentType  @map("payment_type")
+  /// ADR-017: line costs were entered including tax (company setting when the draft was saved).
+  pricesIncludeTax    Boolean             @default(false) @map("prices_include_tax")
   cashAccountId       BigInt?             @map("cash_account_id") @db.UnsignedBigInt
   status              DocumentStatus      @default(DRAFT)
   description         String?             @db.VarChar(500)
@@ -1395,6 +1399,8 @@ model PurchaseInvoice {
   paidAmount          Decimal             @default(0) @map("paid_amount") @db.Decimal(18, 3)
   journalEntryId      BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
   reversalOfId        BigInt?             @map("reversal_of_id") @db.UnsignedBigInt
+  /// TRADE-02: the posted GRN this invoice bills; its stock lines clear 2104 instead of moving stock again.
+  receivedGrnId       BigInt?             @map("received_grn_id") @db.UnsignedBigInt
   postedAt            DateTime?           @map("posted_at") @db.DateTime(3)
   postedBy            BigInt?             @map("posted_by") @db.UnsignedBigInt
   createdAt           DateTime            @default(now()) @map("created_at") @db.DateTime(3)
@@ -1410,12 +1416,14 @@ model PurchaseInvoice {
   journalEntry JournalEntry?        @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   reversalOf   PurchaseInvoice?     @relation("PurchaseInvoiceReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
   reversals    PurchaseInvoice[]    @relation("PurchaseInvoiceReversal")
+  receivedGrn  GoodsNote?           @relation(fields: [tenantId, receivedGrnId], references: [tenantId, id])
   lines        PurchaseInvoiceLine[]
   returns      PurchaseReturn[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, invoiceNo])
   @@index([tenantId, status])
+  @@index([tenantId, receivedGrnId])
   @@map("purchase_invoices")
 }
 
@@ -1617,6 +1625,7 @@ model GoodsNote {
   journalEntry JournalEntry?     @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   reversalOf   GoodsNote?        @relation("GoodsNoteReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
   reversals    GoodsNote[]       @relation("GoodsNoteReversal")
+  invoices     PurchaseInvoice[]
   lines        GoodsNoteLine[]
 
   @@unique([tenantId, id])
@@ -1632,7 +1641,7 @@ model GoodsNoteLine {
   lineNo    Int      @map("line_no")
   itemId    BigInt   @map("item_id") @db.UnsignedBigInt
   qty       Decimal  @db.Decimal(18, 6)
-  unitCost  Decimal? @map("unit_cost") @db.Decimal(18, 3)
+  unitCost  Decimal? @map("unit_cost") @db.Decimal(18, 6)
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)

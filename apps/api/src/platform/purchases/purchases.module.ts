@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { GoodsNotesModule } from '../goods-notes/goods-notes.module.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
 import { JournalModule } from '../journal/journal.module.js';
 import { SharedModule } from '../shared/shared.module.js';
@@ -8,7 +9,7 @@ import { PurchaseReturnsService } from './purchase-returns.service.js';
 import { PurchasesController } from './purchases.controller.js';
 
 @Module({
-  imports: [SharedModule, JournalModule, InventoryModule, PrintingModule],
+  imports: [SharedModule, JournalModule, InventoryModule, GoodsNotesModule, PrintingModule],
   controllers: [PurchasesController],
   providers: [PurchaseInvoicesService, PurchaseReturnsService],
   // Treasury reads open credit invoices for aging through this service (module boundary);

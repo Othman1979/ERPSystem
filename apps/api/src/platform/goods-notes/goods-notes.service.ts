@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Decimal } from '../../common/decimal/decimal.utils.js';
+import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -9,6 +9,19 @@ import { PostingService, type JournalLineInput } from '../journal/posting.servic
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type { CreateGoodsNoteDto } from './dto/goods-notes.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
+import type { Prisma } from '../../generated/prisma/client.js';
+import { stockWriteOffLines } from '../shared/stock-write-off.js';
+
+/** A goods receipt note as a purchase invoice bills it (TRADE-02, ADR-016). */
+export interface GrnBillingSource {
+  id: bigint;
+  docNo: string | null;
+  status: 'DRAFT' | 'POSTED';
+  noteType: 'GRN' | 'GIN';
+  warehouseId: bigint;
+  /** Base quantity and value received per item; value = Σ round3(qty × unit cost), as the movements. */
+  byItem: Map<bigint, { qty: Decimal; value: Decimal }>;
+}
 
 /**
  * Goods notes — GRN (استلام بضاعة) and GIN (صرف بضاعة): stock movements
@@ -205,6 +218,36 @@ export class GoodsNotesService {
     return { deleted: true };
   }
 
+  /**
+   * The GRN a purchase invoice bills, locked FOR UPDATE on the caller's
+   * transaction: two invoices billing the same GRN queue here, so it is
+   * billed once (TRADE-02). Null when it does not exist.
+   */
+  async lockForBilling(tx: Prisma.TransactionClient, id: bigint): Promise<GrnBillingSource | null> {
+    const { tenantId } = this.support.tenant();
+    const [locked] = await tx.$queryRaw<{ id: bigint }[]>`
+      SELECT id FROM goods_notes WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    if (!locked) return null;
+    const note = await tx.goodsNote.findFirst({ where: { id }, include: { lines: true } });
+    if (!note) return null;
+    const byItem = new Map<bigint, { qty: Decimal; value: Decimal }>();
+    for (const l of note.lines) {
+      const cur = byItem.get(l.itemId) ?? { qty: new Decimal(0), value: new Decimal(0) };
+      byItem.set(l.itemId, {
+        qty: cur.qty.plus(l.qty.toString()),
+        value: cur.value.plus(round3(new Decimal(l.qty.toString()).times(l.unitCost?.toString() ?? 0))),
+      });
+    }
+    return {
+      id: note.id,
+      docNo: note.docNo,
+      status: note.status,
+      noteType: note.noteType,
+      warehouseId: note.warehouseId,
+      byItem,
+    };
+  }
+
   async post(id: bigint) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
@@ -241,6 +284,7 @@ export class GoodsNotesService {
         );
 
         let totalCost = new Decimal(0);
+        let writeOff = new Decimal(0);
         for (const line of draft.lines) {
           const res = await this.ledger.applyMovement(tx, companyId, {
             warehouseId: draft.warehouseId,
@@ -255,6 +299,7 @@ export class GoodsNotesService {
             description: `${draft.noteType} ${draft.id}`,
           });
           totalCost = totalCost.plus(res.totalCost);
+          writeOff = writeOff.plus(res.writeOff);
         }
 
         const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
@@ -276,6 +321,9 @@ export class GoodsNotesService {
             journalLines.push({ accountId: mapping.INVENTORY, credit: totalCost.toString() });
           }
         }
+        journalLines.push(
+          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+        );
 
         const docType = isGrn ? 'GOODS_RECEIPT' : 'GOODS_ISSUE';
         const docNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, docType, noteDate);

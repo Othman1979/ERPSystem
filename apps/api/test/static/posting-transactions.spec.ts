@@ -10,7 +10,7 @@
  */
 import { POSTING_TX_OPTIONS } from '../../src/prisma/transaction-options.js';
 import { read, sourceFiles } from './isolation-scan.js';
-import { transactionCalls } from './transaction-scan.js';
+import { transactionCalls, txMethodBodies } from './transaction-scan.js';
 
 /** Posting services that do not import PostingService / StockLedgerService themselves. */
 const ALSO_POSTING = ['src/platform/accounting/fiscal.service.ts'];
@@ -81,22 +81,30 @@ describe('Posting transactions — static guard (CLAUDE.md «الترحيل»)',
   });
 
   // §10.1 step 12: a document locks all its (item, warehouse) projections in
-  // one sorted pass before its first movement, never line by line.
+  // one sorted pass before its first movement, never line by line. A movement
+  // is applyMovement or applyTransfer; a body is a $transaction callback or a
+  // method that runs on the caller's transaction (txMethodBodies).
   it('locks every stock document with lockForDocument before its first movement', () => {
+    const MOVE = /\.apply(?:Movement|Transfer)\(/;
+    const count = (text: string) => text.split(/\.apply(?:Movement|Transfer)\(/).length - 1;
     const unlocked: string[] = [];
     let documents = 0;
     let movesInTransactions = 0;
     let movesInSource = 0;
     for (const f of sourceFiles().filter((s) => !s.endsWith('/stock-ledger.service.ts'))) {
       const source = read(f);
-      movesInSource += source.split('.applyMovement(').length - 1;
-      for (const call of transactionCalls(source)) {
-        const move = call.args.indexOf('.applyMovement(');
+      movesInSource += count(source);
+      const bodies = [
+        ...transactionCalls(source).map((c) => ({ line: c.line, text: c.args })),
+        ...txMethodBodies(source).map((m) => ({ line: m.line, text: m.body })),
+      ];
+      for (const b of bodies) {
+        const move = b.text.search(MOVE);
         if (move < 0) continue;
         documents += 1;
-        movesInTransactions += call.args.split('.applyMovement(').length - 1;
-        const lock = call.args.indexOf('.lockForDocument(');
-        if (lock < 0 || lock > move) unlocked.push(`${f}:${call.line}`);
+        movesInTransactions += count(b.text);
+        const lock = b.text.indexOf('.lockForDocument(');
+        if (lock < 0 || lock > move) unlocked.push(`${f}:${b.line}`);
       }
     }
     expect(documents).toBeGreaterThanOrEqual(9);

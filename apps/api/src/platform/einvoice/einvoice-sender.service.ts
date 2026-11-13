@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, type SubmitOutcome } from 'jofotara-kit';
 import type { Env } from '../../common/config/env.validation.js';
+import { DomainError } from '../../common/errors/domain.error.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { EInvoiceBuildError, EInvoiceDocumentsService } from './einvoice-documents.service.js';
@@ -80,7 +81,20 @@ export class EInvoiceSenderService {
       return;
     }
 
-    const conn = await this.settings.connection(sub.companyId);
+    // A refused connection (disabled, production not allowed) is a retry, not a crash:
+    // a throw here would leave the row SENDING until the stuck-row rule marks it UNKNOWN.
+    let conn: Awaited<ReturnType<EInvoiceSettingsService['connection']>>;
+    try {
+      conn = await this.settings.connection(sub.companyId);
+    } catch (err) {
+      if (!(err instanceof DomainError)) throw err;
+      const attempts = sub.attemptCount + 1;
+      return finish(attempts, {
+        status: 'FAILED',
+        nextAttemptAt: new Date(Date.now() + backoffMs(attempts)),
+        errors: [{ code: 'NOT_CONFIGURED', message: err.message, source: 'local' }],
+      });
+    }
     if (!conn) {
       const attempts = sub.attemptCount + 1;
       return finish(attempts, {

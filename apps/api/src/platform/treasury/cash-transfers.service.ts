@@ -68,26 +68,10 @@ export class CashTransfersService {
         await this.assertCashAccount(tx, companyId, dto.toAccountId, 'toAccountId');
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, date);
         const transferNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, 'CASH_TRANSFER', date);
-        const entryNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, 'JOURNAL_ENTRY', date);
         const branchId = currentBranchId();
 
-        const entry = await this.posting.postEntry(tx, {
-          tenantId,
-          companyId,
-          branchId,
-          entryDate: date,
-          fiscalPeriodId: period.id,
-          entryNo,
-          sourceType: SOURCE,
-          sourceId: null, // linked below once the transfer exists
-          description: dto.description ?? `Cash transfer ${transferNo}`,
-          lines: [
-            { accountId: BigInt(dto.toAccountId), debit: amount.toString() },
-            { accountId: BigInt(dto.fromAccountId), credit: amount.toString() },
-          ],
-          postedBy: userId ?? null,
-        });
-
+        // The transfer row first, so the entry is posted with its source
+        // (TRADE-17: no update of a posted journal entry afterwards).
         const transfer = await tx.cashTransfer.create({
           data: {
             tenantId,
@@ -101,11 +85,28 @@ export class CashTransfersService {
             referenceNo: dto.referenceNo ?? null,
             description: dto.description ?? null,
             status: 'POSTED',
-            journalEntryId: entry.id,
             createdBy: userId ?? null,
           },
         });
-        await tx.journalEntry.update({ where: { id: entry.id }, data: { sourceId: transfer.id } });
+        const entryNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, 'JOURNAL_ENTRY', date);
+        const entry = await this.posting.postEntry(tx, {
+          tenantId,
+          companyId,
+          branchId,
+          entryDate: date,
+          fiscalPeriodId: period.id,
+          entryNo,
+          sourceType: SOURCE,
+          sourceId: transfer.id,
+          description: dto.description ?? `Cash transfer ${transferNo}`,
+          lines: [
+            { accountId: BigInt(dto.toAccountId), debit: amount.toString() },
+            { accountId: BigInt(dto.fromAccountId), credit: amount.toString() },
+          ],
+          postedBy: userId ?? null,
+        });
+
+        await tx.cashTransfer.update({ where: { id: transfer.id }, data: { journalEntryId: entry.id } });
         return { id: transfer.id, transferNo };
       }, POSTING_TX_OPTIONS),
     );
