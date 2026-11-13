@@ -65,10 +65,36 @@ export class JournalService {
       }
       if (l.partyType && type !== 'BOTH' && type !== l.partyType) {
         throw new DomainError(
-          ErrorCode.VALIDATION,
+          ErrorCode.PARTY_TYPE_MISMATCH,
           `Line ${i + 1}: party ${l.partyId} is a ${type}, not a ${l.partyType}`,
           { line: i + 1, partyId: l.partyId },
         );
+      }
+    });
+  }
+
+  /**
+   * LEDGER-09: an account id that is missing or belongs to another tenant or
+   * company must be a 404 here, not a foreign-key failure (500) at insert time.
+   */
+  private async assertAccountsExist(
+    db: ReturnType<PrismaService['forTenant']>,
+    companyId: bigint,
+    lines: { accountId: string }[],
+  ): Promise<void> {
+    const ids = [...new Set(lines.map((l) => BigInt(l.accountId)))];
+    const found = new Set(
+      (await db.account.findMany({
+        where: { companyId, id: { in: ids } },
+        select: { id: true },
+      })).map((a) => a.id),
+    );
+    lines.forEach((l, i) => {
+      if (!found.has(BigInt(l.accountId))) {
+        throw new DomainError(ErrorCode.NOT_FOUND, `Line ${i + 1}: account ${l.accountId} not found`, {
+          line: i + 1,
+          accountId: l.accountId,
+        });
       }
     });
   }
@@ -138,6 +164,7 @@ export class JournalService {
     const companyId = await this.companyId(db);
     const branchId = currentBranchId();
     await this.assertParties(dto.lines);
+    await this.assertAccountsExist(db, companyId, dto.lines);
 
     const entry = await db.$transaction(async (tx) => {
       const created = await tx.journalEntry.create({
@@ -187,14 +214,28 @@ export class JournalService {
 
   /** Deletes a DRAFT entry (and its lines via cascade). */
   async deleteDraft(id: bigint) {
-    const { db } = this.tenant();
-    const entry = await db.journalEntry.findFirst({ where: { id } });
-    if (!entry) throw DomainError.notFound('JournalEntry', id.toString());
-    if (entry.status !== 'DRAFT') {
-      throw new DomainError(ErrorCode.CONFLICT, 'Only draft entries can be deleted');
-    }
-    assertBranchAllowed(entry.branchId);
-    await db.journalEntry.delete({ where: { id } });
+    const { tenantId, db } = this.tenant();
+    // LEDGER-01: a delete racing a post used to remove a posted entry. Lock the
+    // row first and re-check the status inside the same transaction.
+    await this.withRetry(() => db.$transaction(async (tx) => {
+      const rows = (await tx.$queryRaw`
+        SELECT id, status, branch_id FROM journal_entries
+        WHERE tenant_id = ${tenantId} AND id = ${id}
+        FOR UPDATE
+      `) as { id: bigint; status: string; branch_id: bigint | null }[];
+      const entry = rows[0];
+      if (!entry) throw DomainError.notFound('JournalEntry', id.toString());
+      if (entry.status !== 'DRAFT') {
+        throw new DomainError(ErrorCode.ENTRY_NOT_DRAFT, 'Only draft entries can be deleted');
+      }
+      assertBranchAllowed(entry.branch_id);
+      const { count } = await tx.journalEntry.deleteMany({
+        where: { tenantId, id, status: 'DRAFT' },
+      });
+      if (count !== 1) {
+        throw new DomainError(ErrorCode.ENTRY_NOT_DRAFT, 'Only draft entries can be deleted');
+      }
+    }, POSTING_TX_OPTIONS));
     await this.audit.log({
       action: 'journal.delete_draft',
       entityType: 'journal_entry',
@@ -231,7 +272,7 @@ export class JournalService {
         const draft = rows[0];
         if (!draft) throw DomainError.notFound('JournalEntry', id.toString());
         if (draft.status !== 'DRAFT') {
-          throw new DomainError(ErrorCode.CONFLICT, 'Entry is not a draft');
+          throw new DomainError(ErrorCode.ENTRY_NOT_DRAFT, 'Entry is not a draft');
         }
         assertBranchAllowed(draft.branch_id);
 
@@ -242,13 +283,6 @@ export class JournalService {
 
         const entryDate = new Date(draft.entry_date);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, entryDate);
-        const entryNo = await this.posting.allocateEntryNo(
-          tx,
-          tenantId,
-          companyId,
-          'JOURNAL_ENTRY',
-          entryDate,
-        );
 
         const input: JournalLineInput[] = lines.map((l) => ({
           accountId: l.accountId,
@@ -277,6 +311,16 @@ export class JournalService {
         if (draft.voucher_type !== 'JOURNAL') {
           await this.assertVoucherRules(tx, tenantId, companyId, draft.voucher_type, normalized);
         }
+
+        // DB-08: the JOURNAL_ENTRY sequence row lock is held to COMMIT, so the
+        // number is taken last, after every check has passed.
+        const entryNo = await this.posting.allocateEntryNo(
+          tx,
+          tenantId,
+          companyId,
+          'JOURNAL_ENTRY',
+          entryDate,
+        );
 
         await tx.journalEntry.update({
           where: { id },
@@ -314,18 +358,21 @@ export class JournalService {
 
     const result = await this.withRetry(() =>
       db.$transaction(async (tx) => {
-        const original = await tx.journalEntry.findFirst({
-          where: { tenantId, id },
-          select: { id: true, sourceType: true },
-        });
+        // LEDGER-02: lock first, so this transaction's reads see a concurrent reversal.
+        const rows = (await tx.$queryRaw`
+          SELECT id, source_type FROM journal_entries
+          WHERE tenant_id = ${tenantId} AND id = ${id}
+          FOR UPDATE
+        `) as { id: bigint; source_type: string }[];
+        const original = rows[0];
         if (!original) throw DomainError.notFound('JournalEntry', id.toString());
         // Entries generated by a document (invoice, voucher, stock…) are
         // reversed through that document, so its stock, allocations and
         // status stay consistent with the books.
-        if (original.sourceType !== MANUAL_SOURCE && original.sourceType !== OPENING_SOURCE) {
+        if (original.source_type !== MANUAL_SOURCE && original.source_type !== OPENING_SOURCE) {
           throw new DomainError(
             ErrorCode.REVERSE_VIA_DOCUMENT,
-            `This entry was generated by ${original.sourceType}; reverse that document instead`,
+            `This entry was generated by ${original.source_type}; reverse that document instead`,
           );
         }
         return this.posting.reverseEntry(tx, {
@@ -358,11 +405,26 @@ export class JournalService {
     const companyId = await this.companyId(db);
     const userId = this.userId();
     await this.assertParties(dto.lines);
+    await this.assertAccountsExist(db, companyId, dto.lines);
 
     const result = await this.withRetry(() =>
       db.$transaction(async (tx) => {
         const entryDate = new Date(dto.entryDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, entryDate);
+
+        // D-3 / LEDGER-16: an opening entry is dated on the first day of its fiscal
+        // year. A company that starts mid-year creates a fiscal year that starts on its go-live date.
+        const year = await tx.fiscalYear.findFirst({
+          where: { tenantId, companyId, startDate: { lte: entryDate }, endDate: { gte: entryDate } },
+          select: { startDate: true },
+        });
+        if (year && year.startDate.getTime() !== entryDate.getTime()) {
+          throw new DomainError(
+            ErrorCode.OPENING_DATE_NOT_YEAR_START,
+            'An opening entry is dated on the first day of its fiscal year',
+            { fiscalYearStart: year.startDate.toISOString().slice(0, 10) },
+          );
+        }
 
         const mappings = await tx.accountMapping.findMany({
           where: { tenantId, companyId, mappingKey: { in: ['OPENING_BALANCE_EQUITY', 'INVENTORY'] } },
@@ -419,7 +481,7 @@ export class JournalService {
         // source_id stays NULL: the unique index treats NULLs as distinct,
         // and a company may enter its opening balances in several entries.
         // Double-submit protection comes from the mandatory Idempotency-Key
-        // on this endpoint (ACTIVITY_PATH in the idempotency interceptor).
+        // on this endpoint (@RequiresIdempotencyKey on the route).
         return this.posting.postEntry(tx, {
           tenantId,
           companyId,
@@ -429,7 +491,7 @@ export class JournalService {
           sourceType: OPENING_SOURCE,
           sourceId: null,
           isOpening: true,
-          description: dto.description ?? 'Opening balances',
+          description: dto.description ?? null,
           lines,
           postedBy: userId ?? null,
         });

@@ -26,7 +26,13 @@ export interface PostEntryParams {
   branchId?: bigint | null;
   entryDate: Date;
   fiscalPeriodId: bigint;
-  entryNo: string;
+  /**
+   * Omit it to let postEntry allocate the JOURNAL_ENTRY number after validating
+   * the lines, just before the insert (DB-08): the document_sequences row lock
+   * is then held only from there to COMMIT.
+   * Callers should post the entry as late as possible.
+   */
+  entryNo?: string;
   sourceType: string;
   sourceId?: bigint | null;
   postingKind?: 'POST' | 'REVERSAL';
@@ -38,6 +44,9 @@ export interface PostEntryParams {
   lines: JournalLineInput[];
   postedBy?: bigint | null;
 }
+
+/** Party kind a control account expects, or null when any kind is accepted. */
+type ExpectedPartyType = 'CUSTOMER' | 'SUPPLIER' | null;
 
 /**
  * Core double-entry posting engine (docs/BUILD_PLAN.md §8.1, §10).
@@ -58,8 +67,13 @@ export class PostingService {
 
   /**
    * Validates journal lines against §8.1: accounts exist in the same
-   * company, are active + postable, debit XOR credit > 0, control accounts
-   * carry matching party info. Returns normalized lines with round3 amounts.
+   * company, are active + postable, debit XOR credit > 0, and parties follow
+   * decision D-2 (docs/reviews decisions D-2: a party only on a customers/suppliers
+   * control account). A party control account requires a partyType and partyId
+   * matching its control type. A party on any other account is rejected, except
+   * on the account currently mapped as CUSTOMERS_CONTROL or SUPPLIERS_CONTROL,
+   * which stays a party control account for legacy tenants.
+   * Returns normalized lines with round3 amounts.
    */
   async validateLines(
     tx: Prisma.TransactionClient,
@@ -77,18 +91,50 @@ export class PostingService {
     });
     const byId = new Map(accounts.map((a) => [a.id, a]));
 
+    const isPartyControl = (a: (typeof accounts)[number]): boolean =>
+      a.isControl || a.controlType === 'CUSTOMERS' || a.controlType === 'SUPPLIERS';
+    const expectedOf = (a: (typeof accounts)[number]): ExpectedPartyType =>
+      a.controlType === 'CUSTOMERS' ? 'CUSTOMER' : a.controlType === 'SUPPLIERS' ? 'SUPPLIER' : null;
+
+    // Legacy tenants may carry a party on the account mapped as the control
+    // account. Load those mappings only when some party sits on an account
+    // that is not a party control account by its own flags.
+    const needsLegacyLookup = lines.some((l) => {
+      const account = byId.get(l.accountId);
+      return account !== undefined && !isPartyControl(account) && Boolean(l.partyId || l.partyType);
+    });
+    const legacyExpected = new Map<bigint, ExpectedPartyType>();
+    if (needsLegacyLookup) {
+      const mappings = await tx.accountMapping.findMany({
+        where: { tenantId, companyId, mappingKey: { in: ['CUSTOMERS_CONTROL', 'SUPPLIERS_CONTROL'] } },
+        select: { mappingKey: true, accountId: true },
+      });
+      for (const m of mappings) {
+        legacyExpected.set(m.accountId, m.mappingKey === 'CUSTOMERS_CONTROL' ? 'CUSTOMER' : 'SUPPLIER');
+      }
+    }
+
     return lines.map((line, i) => {
+      const lineNo = i + 1;
+      const accountId = line.accountId.toString();
       const account = byId.get(line.accountId);
       if (!account) {
-        throw new DomainError(ErrorCode.NOT_FOUND, `Account ${line.accountId} not found`);
+        throw new DomainError(ErrorCode.NOT_FOUND, `Account ${accountId} not found`, {
+          line: lineNo,
+          accountId,
+        });
       }
       if (!account.isActive) {
-        throw new DomainError(ErrorCode.VALIDATION, `Account ${account.code} is inactive`);
+        throw new DomainError(ErrorCode.ACCOUNT_INACTIVE, `Account ${account.code} is inactive`, {
+          line: lineNo,
+          accountId,
+        });
       }
       if (!account.isPostable) {
         throw new DomainError(
-          ErrorCode.VALIDATION,
+          ErrorCode.ACCOUNT_NOT_POSTABLE,
           `Account ${account.code} is not postable (parent/group account)`,
+          { line: lineNo, accountId },
         );
       }
 
@@ -99,28 +145,43 @@ export class PostingService {
       if (hasDebit === hasCredit) {
         throw new DomainError(
           ErrorCode.VALIDATION,
-          `Line ${i + 1}: exactly one of debit/credit must be > 0`,
+          `Line ${lineNo}: exactly one of debit/credit must be > 0`,
+          { line: lineNo, accountId },
         );
       }
 
-      // Control accounts require party info matching their control type.
-      if (account.isControl) {
-        if (!line.partyType || !line.partyId) {
+      // Decide whether this account is a party control account, and which party kind it expects.
+      let partyControl = false;
+      let expected: ExpectedPartyType = null;
+      if (isPartyControl(account)) {
+        partyControl = true;
+        expected = expectedOf(account);
+      } else if (legacyExpected.has(line.accountId)) {
+        partyControl = true;
+        expected = legacyExpected.get(line.accountId) ?? null;
+      }
+
+      if (!partyControl) {
+        if (line.partyId || line.partyType) {
           throw new DomainError(
-            ErrorCode.VALIDATION,
-            `Line ${i + 1}: control account ${account.code} requires partyType and partyId`,
+            ErrorCode.PARTY_ON_NON_CONTROL_ACCOUNT,
+            `Line ${lineNo}: account ${account.code} is not a customers/suppliers control account; remove the party`,
+            { line: lineNo, accountId },
           );
         }
-        const expected =
-          account.controlType === 'CUSTOMERS'
-            ? 'CUSTOMER'
-            : account.controlType === 'SUPPLIERS'
-              ? 'SUPPLIER'
-              : null;
+      } else {
+        if (!line.partyType || !line.partyId) {
+          throw new DomainError(
+            ErrorCode.PARTY_REQUIRED,
+            `Line ${lineNo}: control account ${account.code} requires partyType and partyId`,
+            { line: lineNo, accountId },
+          );
+        }
         if (expected && line.partyType !== expected) {
           throw new DomainError(
-            ErrorCode.VALIDATION,
-            `Line ${i + 1}: account ${account.code} expects partyType ${expected}`,
+            ErrorCode.PARTY_TYPE_MISMATCH,
+            `Line ${lineNo}: account ${account.code} expects partyType ${expected}`,
+            { line: lineNo, accountId },
           );
         }
       }
@@ -155,13 +216,18 @@ export class PostingService {
       );
     }
 
+    // DB-08: with no number given, take the JOURNAL_ENTRY number only now,
+    // after every check: the sequence row lock is held to COMMIT.
+    const entryNo =
+      params.entryNo ?? (await this.allocateEntryNo(tx, tenantId, companyId, 'JOURNAL_ENTRY', params.entryDate));
+
     try {
       const entry = await tx.journalEntry.create({
         data: {
           tenantId,
           companyId,
           branchId: params.branchId ?? null,
-          entryNo: params.entryNo,
+          entryNo,
           entryDate: params.entryDate,
           fiscalPeriodId: params.fiscalPeriodId,
           sourceType: params.sourceType,
@@ -194,9 +260,14 @@ export class PostingService {
         })),
       });
 
-      return { id: entry.id, entryNo: params.entryNo, totalDebit, totalCredit };
+      return { id: entry.id, entryNo, totalDebit, totalCredit };
     } catch (err) {
       if ((err as { code?: string }).code === 'P2002') {
+        if (params.reversalOfId) {
+          throw new DomainError(ErrorCode.ENTRY_ALREADY_REVERSED, 'Entry already reversed', {
+            entryId: params.reversalOfId.toString(),
+          });
+        }
         throw new DomainError(
           ErrorCode.CONFLICT,
           'A journal entry already exists for this source document',
@@ -206,11 +277,12 @@ export class PostingService {
     }
   }
 
-  /** Finds the OPEN fiscal period covering `date` for the company. */
   /**
    * Posts the mirror image (debits ↔ credits) of a posted entry, dated
-   * `reversalDate` (§8.3). An entry can be reversed once. Shared by manual
-   * journal reversal and document reversals (vouchers, cash transfers).
+   * `reversalDate` (§8.3). An entry is reversed once: enforced by the row lock
+   * on the original and by the unique (tenant_id, reversal_of_id) index. D-1:
+   * "reversed" is derived from the reversal entry; there is no REVERSED status.
+   * Shared by manual journal reversal and document reversals (vouchers, cash transfers).
    */
   async reverseEntry(
     tx: Prisma.TransactionClient,
@@ -224,25 +296,53 @@ export class PostingService {
     },
   ) {
     const { tenantId, companyId, reversalDate } = params;
+
+    // Lock the original row first, so every read below sees a consistent state.
+    const locked = (await tx.$queryRaw`
+      SELECT id FROM journal_entries
+      WHERE tenant_id = ${tenantId} AND id = ${params.entryId}
+      FOR UPDATE
+    `) as { id: bigint }[];
+    if (!locked[0]) throw DomainError.notFound('JournalEntry', params.entryId.toString());
+
     const original = await tx.journalEntry.findFirst({
       where: { tenantId, id: params.entryId },
       include: { lines: { orderBy: { lineNo: 'asc' } } },
     });
     if (!original) throw DomainError.notFound('JournalEntry', params.entryId.toString());
     if (original.status !== 'POSTED') {
-      throw new DomainError(ErrorCode.CONFLICT, 'Only posted entries can be reversed');
+      throw new DomainError(ErrorCode.ENTRY_NOT_POSTED, 'Only posted entries can be reversed', {
+        entryId: original.id.toString(),
+      });
     }
     if (original.postingKind === 'REVERSAL') {
-      throw new DomainError(ErrorCode.CONFLICT, 'A reversal entry cannot itself be reversed');
+      throw new DomainError(ErrorCode.REVERSAL_NOT_REVERSIBLE, 'A reversal entry cannot itself be reversed', {
+        entryId: original.id.toString(),
+      });
     }
-    const existing = await tx.journalEntry.findFirst({
-      where: { tenantId, reversalOfId: original.id },
-      select: { id: true },
-    });
-    if (existing) throw new DomainError(ErrorCode.CONFLICT, 'Entry already reversed');
+
+    // Locking read: sees a reversal committed after this transaction's snapshot.
+    const existing = (await tx.$queryRaw`
+      SELECT id FROM journal_entries
+      WHERE tenant_id = ${tenantId} AND reversal_of_id = ${original.id}
+      FOR UPDATE
+    `) as { id: bigint }[];
+    if (existing.length > 0) {
+      throw new DomainError(ErrorCode.ENTRY_ALREADY_REVERSED, 'Entry already reversed', {
+        entryId: original.id.toString(),
+      });
+    }
+
+    // LEDGER-10: both dates are calendar dates at UTC midnight.
+    if (reversalDate.getTime() < original.entryDate.getTime()) {
+      throw new DomainError(
+        ErrorCode.REVERSAL_BEFORE_ORIGINAL,
+        'The reversal date is before the original entry date',
+        { entryDate: original.entryDate.toISOString().slice(0, 10) },
+      );
+    }
 
     const period = await this.resolveOpenPeriod(tx, tenantId, companyId, reversalDate);
-    const entryNo = await this.allocateEntryNo(tx, tenantId, companyId, 'JOURNAL_ENTRY', reversalDate);
     const swapped: JournalLineInput[] = original.lines.map((l) => ({
       accountId: l.accountId,
       debit: l.credit.toString(),
@@ -258,7 +358,6 @@ export class PostingService {
       branchId: original.branchId,
       entryDate: reversalDate,
       fiscalPeriodId: period.id,
-      entryNo,
       sourceType: original.sourceType,
       sourceId: original.sourceId,
       postingKind: 'REVERSAL',
@@ -266,12 +365,13 @@ export class PostingService {
       reversalOfId: original.id,
       // A reversed opening entry stays in the opening balance (it nets out).
       isOpening: original.isOpening,
-      description: params.description ?? `Reversal of ${original.entryNo ?? original.id}`,
+      description: params.description ?? null,
       lines: swapped,
       postedBy: params.postedBy ?? null,
     });
   }
 
+  /** Finds the OPEN fiscal period covering `date` for the company. */
   async resolveOpenPeriod(
     tx: Prisma.TransactionClient,
     tenantId: bigint,
@@ -293,13 +393,20 @@ export class PostingService {
         `No fiscal period covers ${date.toISOString().slice(0, 10)}`,
       );
     }
-    if (period.status !== 'OPEN') {
+    // DB-20: re-read the status under a shared lock held to COMMIT. A concurrent
+    // close waits for this posting, and a posting after a close sees CLOSED.
+    const [row] = (await tx.$queryRaw`
+      SELECT status FROM fiscal_periods
+      WHERE tenant_id = ${tenantId} AND id = ${period.id}
+      LOCK IN SHARE MODE
+    `) as { status: string }[];
+    if (!row || row.status !== 'OPEN') {
       throw new DomainError(
         ErrorCode.PERIOD_CLOSED,
         `Fiscal period ${period.periodNo} is closed`,
       );
     }
-    return period;
+    return { id: period.id, status: row.status };
   }
 
   /**

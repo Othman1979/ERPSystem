@@ -36,7 +36,9 @@ export class ReportPeriods {
    */
   async period(q: { from?: string; to?: string }): Promise<ResolvedPeriod> {
     if (q.from && q.to) {
-      if (q.from > q.to) throw new DomainError(ErrorCode.VALIDATION, 'from must not be after to');
+      if (q.from > q.to) {
+        throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', { from: q.from, to: q.to });
+      }
       const fy = await this.fiscal.yearContaining(utcDate(q.to));
       return { from: q.from, to: q.to, fiscalYear: fy ? { id: fy.id.toString(), code: fy.code } : null };
     }
@@ -44,7 +46,9 @@ export class ReportPeriods {
     const fy = await this.fiscal.yearContaining(utcDate(anchor));
     const from = q.from ?? (fy ? iso(fy.startDate) : `${anchor.slice(0, 4)}-01-01`);
     const to = q.to ?? (fy ? iso(fy.endDate) : `${anchor.slice(0, 4)}-12-31`);
-    if (from > to) throw new DomainError(ErrorCode.VALIDATION, 'from must not be after to');
+    if (from > to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', { from, to });
+    }
     return { from, to, fiscalYear: fy ? { id: fy.id.toString(), code: fy.code } : null };
   }
 

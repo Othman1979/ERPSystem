@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
-import { DocumentSupportService } from '../shared/document-support.service.js';
+import { calendarDateIn, DocumentSupportService } from '../shared/document-support.service.js';
 import { outstandingAmount } from '../shared/invoice-balance.js';
 import { ReportsService } from '../journal/reports.service.js';
 import { PartiesService } from '../parties/parties.service.js';
@@ -85,10 +85,9 @@ export class TreasuryReportsService {
   /**
    * Aging as of a date (ADR-004 §7, updated). Per party:
    *  - every posted credit invoice dated ≤ asOf that still owes something
-   *    then (grand total − credit returns dated ≤ asOf − active allocations
-   *    whose voucher is dated ≤ asOf), by days past its due date (invoice
-   *    date when none). Cancelled allocations never count: their cancel time
-   *    is a system clock, not a business date;
+   *    then (grand total − credit returns dated ≤ asOf − allocations counted
+   *    as of asOf, see `allocatedAsOf`), by days past its due date (invoice
+   *    date when none);
    *  - plus the rest of its control-account balance (opening balances,
    *    manual entries, unallocated vouchers), see `ageResidual`.
    * `total` = the aged buckets; `balance` = total + unapplied = the party's
@@ -181,24 +180,50 @@ export class TreasuryReportsService {
   }
 
   /**
-   * Active allocations per invoice whose voucher is dated on or before
-   * `asOf`. An invoice dated after its voucher (an advance) is only listed
-   * from its own date on, so the allocation counts from the later of the two.
+   * Allocations per invoice counted as of `asOf`, summed per document (3 decimals).
+   * An allocation counts when its voucher is dated on or before `asOf` and it is
+   * either still active or was cancelled after `asOf`. A cancellation has no
+   * business date, so its calendar date (in the company's timezone) stands in:
+   * an allocation cancelled on or before `asOf` no longer counts from then on.
+   * An invoice dated after its voucher (an advance) is only listed from its own
+   * date on, so the allocation counts from the later of the two.
    */
   private async allocatedAsOf(documentType: 'SALES_INVOICE' | 'PURCHASE_INVOICE', asOf: Date) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const sums = await db.allocation.groupBy({
-      by: ['documentId'],
-      where: {
-        companyId,
-        documentType,
-        cancelledAt: null,
-        OR: [{ receipt: { receiptDate: { lte: asOf } } }, { payment: { paymentDate: { lte: asOf } } }],
-      },
-      _sum: { amount: true },
-    });
-    return new Map(sums.map((s) => [s.documentId, s._sum.amount?.toString() ?? '0']));
+    const company = await db.company.findFirst({ where: { id: companyId }, select: { timezone: true } });
+    const timeZone = company?.timezone || 'Asia/Amman';
+    const asOfIso = asOf.toISOString().slice(0, 10);
+    const voucherDated = {
+      OR: [{ receipt: { receiptDate: { lte: asOf } } }, { payment: { paymentDate: { lte: asOf } } }],
+    };
+
+    const [active, cancelled] = await Promise.all([
+      db.allocation.groupBy({
+        by: ['documentId'],
+        where: { companyId, documentType, cancelledAt: null, ...voucherDated },
+        _sum: { amount: true },
+      }),
+      // A calendar day in any zone (UTC-12 to UTC+14) starts within a day before asOf.
+      db.allocation.findMany({
+        where: {
+          companyId,
+          documentType,
+          cancelledAt: { gte: new Date(asOf.getTime() - DAY_MS) },
+          ...voucherDated,
+        },
+        select: { documentId: true, amount: true, cancelledAt: true },
+      }),
+    ]);
+
+    const totals = new Map<bigint, Decimal>(
+      active.map((s) => [s.documentId, new Decimal(s._sum.amount?.toString() ?? '0')]),
+    );
+    for (const a of cancelled) {
+      if (!a.cancelledAt || calendarDateIn(timeZone, a.cancelledAt) <= asOfIso) continue;
+      totals.set(a.documentId, (totals.get(a.documentId) ?? new Decimal(0)).plus(new Decimal(a.amount.toString())));
+    }
+    return new Map([...totals].map(([id, sum]) => [id, sum.toFixed(3)]));
   }
 
   /**

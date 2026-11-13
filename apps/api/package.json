@@ -23,6 +23,7 @@
     "prisma": "prisma",
     "seed": "tsx prisma/seed.ts",
     "demo:seed": "tsx scripts/demo-seed.mts",
+    "ledger:check": "tsx scripts/ledger-check.mts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
