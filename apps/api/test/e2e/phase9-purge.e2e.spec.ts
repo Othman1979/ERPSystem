@@ -169,11 +169,11 @@ describe('purge-tenant', () => {
     await addMember(BASE, tokenB, { email: declEmail, roleCode: 'ACCOUNTANT', password: PASS });
     const [decl] = (await db.query('SELECT id FROM users WHERE email = ?', [declEmail])) as { id: bigint }[];
     const [accountant] = (await db.query("SELECT id FROM roles WHERE code = 'ACCOUNTANT'")) as { id: bigint }[];
-    await db.query("INSERT INTO tenant_memberships (tenant_id, user_id, role_id, status) VALUES (?, ?, ?, 'ACTIVE')", [
-      tenantA,
-      String(decl.id),
-      String(accountant.id),
-    ]);
+    // updated_at has no database default (Prisma @updatedAt): strict SQL mode (CI) refuses the row without it.
+    await db.query(
+      "INSERT INTO tenant_memberships (tenant_id, user_id, role_id, status, created_at, updated_at) VALUES (?, ?, ?, 'ACTIVE', NOW(3), NOW(3))",
+      [tenantA, String(decl.id), String(accountant.id)],
+    );
     await db.query('DELETE FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?', [tenantB, String(decl.id)]);
     await db.query("INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (?, ?, 'user.invite_decline', 'membership', ?)", [
       tenantB,
