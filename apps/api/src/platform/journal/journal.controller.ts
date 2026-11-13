@@ -3,6 +3,9 @@ import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { RequiresIdempotencyKey } from '../../common/idempotency/requires-idempotency-key.decorator.js';
+import { DomainError } from '../../common/errors/domain.error.js';
+import { ErrorCode } from '../../common/errors/error-codes.js';
+import { ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
 import {
   CreateJournalEntryDto,
   CreateOpeningEntryDto,
@@ -44,27 +47,27 @@ export class JournalController {
 
   @Get('journal-entries/:id')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  get(@Param('id') id: string) {
+  get(@Param('id', ParseIdPipe) id: string) {
     return this.journal.get(BigInt(id));
   }
 
   @Delete('journal-entries/:id')
   @RequirePermission(PERMISSIONS.JOURNAL_MANAGE)
-  deleteDraft(@Param('id') id: string) {
+  deleteDraft(@Param('id', ParseIdPipe) id: string) {
     return this.journal.deleteDraft(BigInt(id));
   }
 
   @Post('journal-entries/:id/post')
   @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.JOURNAL_POST)
-  post(@Param('id') id: string) {
+  post(@Param('id', ParseIdPipe) id: string) {
     return this.journal.postDraft(BigInt(id));
   }
 
   @Post('journal-entries/:id/reverse')
   @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.JOURNAL_POST)
-  reverse(@Param('id') id: string, @Body() dto: ReverseJournalEntryDto) {
+  reverse(@Param('id', ParseIdPipe) id: string, @Body() dto: ReverseJournalEntryDto) {
     return this.journal.reverse(BigInt(id), dto);
   }
 
@@ -87,15 +90,23 @@ export class JournalController {
   @Get('reports/general-ledger')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
   async generalLedger(@Query() q: ReportQueryDto) {
-    const data = await this.reports.generalLedger(BigInt(q.accountId ?? '0'), q);
+    if (!q.accountId) {
+      throw new DomainError(ErrorCode.VALIDATION, 'accountId is required', { field: 'accountId' });
+    }
+    const data = await this.reports.generalLedger(BigInt(q.accountId), q);
     return this.printing.respond(data, q, (d, lang) => generalLedgerTable(d, lang, q));
   }
 
   @Get('reports/party-statement')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
   async partyStatement(@Query() q: ReportQueryDto) {
-    const partyId = BigInt(q.partyId ?? '0');
-    const data = await this.reports.partyStatement(q.partyType ?? 'CUSTOMER', partyId, q);
+    if (!q.partyId || !q.partyType) {
+      throw new DomainError(ErrorCode.VALIDATION, 'partyType and partyId are required', {
+        field: !q.partyType ? 'partyType' : 'partyId',
+      });
+    }
+    const partyId = BigInt(q.partyId);
+    const data = await this.reports.partyStatement(q.partyType, partyId, q);
     const party = q.format && q.format !== 'json' ? ((await this.parties.summaries([partyId]))[0] ?? null) : null;
     return this.printing.respond(data, q, (d, lang) => partyStatementTable(d, lang, q, party));
   }

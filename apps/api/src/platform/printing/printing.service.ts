@@ -19,8 +19,10 @@ export type ExportFormat = 'json' | 'pdf' | 'xlsx';
  * known debt).
  */
 export const EXPORT_LIMITS = {
+  // Owner decision D-4 (2026-11-13): the PDF limit rose from 1,000 to 10,000 rows;
+  // the header repeats on every page and the pages are numbered.
   get pdf() {
-    return Number(process.env.REPORT_PDF_MAX_ROWS || 1_000);
+    return Number(process.env.REPORT_PDF_MAX_ROWS || 10_000);
   },
   get xlsx() {
     return Number(process.env.REPORT_XLSX_MAX_ROWS || 50_000);
@@ -63,6 +65,7 @@ export class PrintingService {
         taxNumber: true,
         address: true,
         phone: true,
+        timezone: true,
         logoAttachment: { select: { storageKey: true, mimeType: true } },
       },
     });
@@ -80,6 +83,7 @@ export class PrintingService {
         logo,
       },
       printedAt: new Date(),
+      timeZone: c?.timezone || 'Asia/Amman',
     };
   }
 

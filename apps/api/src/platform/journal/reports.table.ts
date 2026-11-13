@@ -2,6 +2,16 @@ import { L, type ReportTable } from '../printing/report-table.js';
 import { blankZero, isoDate, localName, periodMeta } from '../printing/report-meta.js';
 import type { ReportRange, ReportsService } from './reports.service.js';
 
+/** Description of a statement line whose own text is empty (the server leaves it empty, LEDGER-22). */
+function fallbackDescription(
+  r: { sourceType: string; postingKind: string },
+  t: (ar: string, en: string) => string,
+): string {
+  if (r.sourceType === 'OPENING_ENTRY') return t('أرصدة افتتاحية', 'Opening balances');
+  if (r.postingKind === 'REVERSAL') return t('قيد عكسي', 'Reversal entry');
+  return '';
+}
+
 type Lang = 'ar' | 'en';
 type TrialBalance = Awaited<ReturnType<ReportsService['trialBalance']>>;
 type GeneralLedger = Awaited<ReturnType<ReportsService['generalLedger']>>;
@@ -73,7 +83,7 @@ function statementRows(
       ...data.rows.map((r) => ({
         date: isoDate(r.entryDate),
         entryNo: r.entryNo ?? '',
-        description: r.description ?? '',
+        description: r.description || fallbackDescription(r, t),
         debit: blankZero(r.debit),
         credit: blankZero(r.credit),
         balance: r.balance,
@@ -126,15 +136,20 @@ export function partyStatementTable(
     title: t('كشف حساب', 'Account statement'),
     meta: [`${who}: ${name}`, periodMeta(lang, range.from, range.to)],
     fileName: `statement-${party?.code ?? data.partyId}`,
+    // Wide enough for the account column next to the description (LEDGER-23).
+    orientation: 'landscape',
     columns: [
       { key: 'date', label: t('التاريخ', 'Date'), kind: 'date' },
       { key: 'entryNo', label: t('رقم القيد', 'Entry no.'), width: 80 },
-      { key: 'account', label: t('الحساب', 'Account'), width: 60 },
+      { key: 'account', label: t('الحساب', 'Account'), width: 150 },
       { key: 'description', label: t('البيان', 'Description') },
       { key: 'debit', label: t('مدين', 'Debit'), kind: 'amount' },
       { key: 'credit', label: t('دائن', 'Credit'), kind: 'amount' },
       { key: 'balance', label: t('الرصيد', 'Balance'), kind: 'amount' },
     ],
-    ...statementRows(data, lang, (r) => ({ account: 'accountCode' in r ? r.accountCode : '' })),
+    ...statementRows(data, lang, (r) => ({
+      account:
+        'accountCode' in r ? `${r.accountCode} ${localName(lang, r.accountName, r.accountNameEn)}` : '',
+    })),
   };
 }
