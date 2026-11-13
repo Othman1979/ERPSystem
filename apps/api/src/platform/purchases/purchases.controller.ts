@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { RequiresIdempotencyKey } from '../../common/idempotency/requires-idempotency-key.decorator.js';
 import { ExportQueryDto } from '../printing/dto/export.dto.js';
 import { PrintingService } from '../printing/printing.service.js';
 import { purchaseInvoicePrint } from './purchases.print.js';
@@ -62,6 +63,7 @@ export class PurchasesController {
   }
 
   @Post('purchase-invoices/:id/post')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.PURCHASE_POST)
   postInvoice(@Param('id') id: string) {
     return this.invoices.post(BigInt(id));
@@ -94,6 +96,7 @@ export class PurchasesController {
   }
 
   @Post('purchase-returns/:id/post')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.PURCHASE_RETURN)
   postReturn(@Param('id') id: string) {
     return this.returns.post(BigInt(id));

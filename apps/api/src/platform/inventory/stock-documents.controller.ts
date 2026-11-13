@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { RequiresIdempotencyKey } from '../../common/idempotency/requires-idempotency-key.decorator.js';
 import { AdjustmentsService } from './adjustments.service.js';
 import { CountsService } from './counts.service.js';
 import { TransfersService } from './transfers.service.js';
@@ -49,12 +50,14 @@ export class StockDocumentsController {
   }
 
   @Post('stock-adjustments/:id/post')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.STOCK_MOVEMENT)
   postAdjustment(@Param('id') id: string) {
     return this.adjustments.post(BigInt(id));
   }
 
   @Post('stock-adjustments/:id/reverse')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.STOCK_MOVEMENT)
   reverseAdjustment(@Param('id') id: string, @Body() dto: ReverseStockDocumentDto) {
     return this.adjustments.reverse(BigInt(id), new Date(dto.reversalDate));
@@ -87,12 +90,14 @@ export class StockDocumentsController {
   }
 
   @Post('stock-transfers/:id/post')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.STOCK_MOVEMENT)
   postTransfer(@Param('id') id: string) {
     return this.transfers.post(BigInt(id));
   }
 
   @Post('stock-transfers/:id/reverse')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.STOCK_MOVEMENT)
   reverseTransfer(@Param('id') id: string, @Body() dto: ReverseStockDocumentDto) {
     return this.transfers.reverse(BigInt(id), new Date(dto.reversalDate));

@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { RequiresIdempotencyKey } from '../../common/idempotency/requires-idempotency-key.decorator.js';
 import { GoodsNotesService } from './goods-notes.service.js';
 import { CreateGoodsNoteDto } from './dto/goods-notes.dto.js';
 
@@ -41,6 +42,7 @@ export class GoodsNotesController {
   }
 
   @Post(':id/post')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.STOCK_MOVEMENT)
   post(@Param('id') id: string) {
     return this.notes.post(BigInt(id));
