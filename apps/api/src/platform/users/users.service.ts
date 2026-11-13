@@ -77,10 +77,24 @@ export class UsersService {
     });
   }
 
+  /** Role code of the calling member in the current tenant (PLAT-01). */
+  private async callerRoleCode(): Promise<string | undefined> {
+    const selfId = ClsServiceManager.getClsService<RequestContext>().get('membershipId');
+    if (!selfId) return undefined;
+    const self = await this.tenant().tenantMembership.findFirst({
+      where: { id: selfId },
+      select: { role: { select: { code: true } } },
+    });
+    return self?.role.code;
+  }
+
   async invite(dto: InviteUserDto) {
     const prisma = this.tenant();
     const role = await this.prisma.client.role.findUnique({ where: { code: dto.roleCode } });
     if (!role) throw DomainError.notFound('Role', dto.roleCode);
+    if (role.code === 'OWNER' && (await this.callerRoleCode()) !== 'OWNER') {
+      throw new DomainError(ErrorCode.FORBIDDEN, 'Only an owner can grant the owner role');
+    }
 
     await this.planLimits.assertUserSlotAvailable();
 
@@ -169,6 +183,19 @@ export class UsersService {
       include: { role: true },
     });
     if (!membership) throw DomainError.notFound('Membership', membershipId.toString());
+
+    // PLAT-01: no self role/status change; only an owner grants OWNER or
+    // touches an owner's membership.
+    const selfId = ClsServiceManager.getClsService<RequestContext>().get('membershipId');
+    if (membershipId === selfId && (dto.roleCode !== undefined || dto.status !== undefined)) {
+      throw new DomainError(ErrorCode.FORBIDDEN, 'You cannot change your own role or status');
+    }
+    if (
+      (membership.role.code === 'OWNER' || dto.roleCode === 'OWNER') &&
+      (await this.callerRoleCode()) !== 'OWNER'
+    ) {
+      throw new DomainError(ErrorCode.FORBIDDEN, 'Only an owner can grant the owner role or change an owner');
+    }
 
     const data: Prisma.TenantMembershipUncheckedUpdateInput = {};
     if (dto.roleCode !== undefined) {
