@@ -70,10 +70,18 @@ export function getBranchId(): string | null {
 async function tryRefresh(): Promise<boolean> {
   refreshPromise ??= (async () => {
     try {
-      const res = await fetch(`${API_PREFIX}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const post = () =>
+        fetch(`${API_PREFIX}/auth/refresh`, { method: 'POST', credentials: 'include' });
+      let res = await post();
+      // Another tab may have rotated the same cookie a moment earlier: the
+      // server answers 401 without ending the session, and the cookie jar now
+      // holds the winner's token, so one retry succeeds (ADR-012). The pause
+      // lets the winner's Set-Cookie land first: its response is still in
+      // flight when the loser's 401 arrives.
+      if (res.status === 401) {
+        await new Promise((r) => setTimeout(r, 500));
+        res = await post();
+      }
       if (!res.ok) return false;
       const body = (await res.json()) as { accessToken?: string };
       if (body.accessToken) {

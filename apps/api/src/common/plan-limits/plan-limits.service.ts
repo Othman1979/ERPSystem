@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import type { RequestContext } from '../cls/cls.types.js';
 import { DomainError } from '../errors/domain.error.js';
 import { ErrorCode } from '../errors/error-codes.js';
+import type { Plan, Prisma } from '../../generated/prisma/client.js';
 
 /**
  * Enforces subscription plan limits (docs/BUILD_PLAN.md §13.1).
@@ -16,72 +17,64 @@ export class PlanLimitsService {
   private async planForCurrentTenant() {
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
     if (!tenantId) return null;
-    // systemPrisma: plan lookup by tenant id — the count queries below are
-    // tenant-scoped explicitly.
+    // systemPrisma: plan lookup by tenant id only.
     return this.prisma.client.tenant.findUnique({
       where: { id: tenantId },
       select: { plan: true },
     });
   }
 
-  private async countTenantRows(
+  /**
+   * Locks the tenant row, then reads its plan and counts `model` rows, all in
+   * the caller's transaction (PLAT-04). Concurrent creations of the same
+   * tenant queue on the lock, so the count-then-insert cannot overshoot the
+   * limit. The lock MUST be the transaction's first statement: under
+   * REPEATABLE READ the count's snapshot is taken at the first plain read, so
+   * it then sees every row committed by the previous holder of the lock.
+   */
+  private async assertSlot(
+    tx: Prisma.TransactionClient,
     model: 'tenantMembership' | 'branch' | 'warehouse',
-    tenantId: bigint,
-  ) {
-    // systemPrisma + explicit tenantId: counts must include INVITED/SUSPENDED
-    // memberships and disabled branches to enforce limits correctly.
-    if (model === 'tenantMembership') {
-      return this.prisma.client.tenantMembership.count({ where: { tenantId } });
-    }
-    if (model === 'warehouse') {
-      return this.prisma.client.warehouse.count({ where: { tenantId } });
-    }
-    return this.prisma.client.branch.count({ where: { tenantId } });
-  }
-
-  async assertUserSlotAvailable(): Promise<void> {
-    const tenant = await this.planForCurrentTenant();
-    const plan = tenant?.plan;
+    label: string,
+    limitOf: (plan: Plan) => number,
+  ): Promise<void> {
+    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
+    if (!tenantId) return;
+    await tx.$queryRaw`SELECT id FROM tenants WHERE id = ${tenantId} FOR UPDATE`;
+    const plan = (await tx.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } }))
+      ?.plan;
     if (!plan) return; // no plan → trial defaults handled at registration
-    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
-    const used = await this.countTenantRows('tenantMembership', tenantId);
-    if (used >= plan.maxUsers) {
+    // Explicit tenantId: counts include INVITED/SUSPENDED memberships and
+    // disabled branches.
+    const used =
+      model === 'tenantMembership'
+        ? await tx.tenantMembership.count({ where: { tenantId } })
+        : model === 'warehouse'
+          ? await tx.warehouse.count({ where: { tenantId } })
+          : await tx.branch.count({ where: { tenantId } });
+    const limit = limitOf(plan);
+    if (used >= limit) {
       throw new DomainError(
         ErrorCode.PLAN_LIMIT_EXCEEDED,
-        `User limit reached for plan ${plan.code} (${plan.maxUsers})`,
-        { limit: plan.maxUsers, used },
+        `${label} limit reached for plan ${plan.code} (${limit})`,
+        { limit, used },
       );
     }
   }
 
-  async assertBranchSlotAvailable(): Promise<void> {
-    const tenant = await this.planForCurrentTenant();
-    const plan = tenant?.plan;
-    if (!plan) return;
-    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
-    const used = await this.countTenantRows('branch', tenantId);
-    if (used >= plan.maxBranches) {
-      throw new DomainError(
-        ErrorCode.PLAN_LIMIT_EXCEEDED,
-        `Branch limit reached for plan ${plan.code} (${plan.maxBranches})`,
-        { limit: plan.maxBranches, used },
-      );
-    }
+  /** Call first inside the transaction that creates the membership. */
+  assertUserSlotAvailable(tx: Prisma.TransactionClient): Promise<void> {
+    return this.assertSlot(tx, 'tenantMembership', 'User', (p) => p.maxUsers);
   }
 
-  async assertWarehouseSlotAvailable(): Promise<void> {
-    const tenant = await this.planForCurrentTenant();
-    const plan = tenant?.plan;
-    if (!plan) return;
-    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
-    const used = await this.countTenantRows('warehouse', tenantId);
-    if (used >= plan.maxWarehouses) {
-      throw new DomainError(
-        ErrorCode.PLAN_LIMIT_EXCEEDED,
-        `Warehouse limit reached for plan ${plan.code} (${plan.maxWarehouses})`,
-        { limit: plan.maxWarehouses, used },
-      );
-    }
+  /** Call first inside the transaction that creates the branch. */
+  assertBranchSlotAvailable(tx: Prisma.TransactionClient): Promise<void> {
+    return this.assertSlot(tx, 'branch', 'Branch', (p) => p.maxBranches);
+  }
+
+  /** Call first inside the transaction that creates the warehouse. */
+  assertWarehouseSlotAvailable(tx: Prisma.TransactionClient): Promise<void> {
+    return this.assertSlot(tx, 'warehouse', 'Warehouse', (p) => p.maxWarehouses);
   }
 
   /**
@@ -89,7 +82,11 @@ export class PlanLimitsService {
    * sales invoices the tenant already posted in the invoice's calendar month;
    * the sales module counts its own table and passes it in. Two invoices
    * posted at the same instant at the limit may both pass: a commercial
-   * limit, not worth serialising every posting of the tenant for.
+   * limit, not worth serialising every posting of the tenant for. The tenant
+   * row lock used above is unsafe here: about 50 tables have a foreign key to
+   * tenants, so every insert takes a shared lock on that row, and an
+   * exclusive lock taken mid-posting would deadlock with concurrent postings
+   * that hold item locks (PLAT-04).
    */
   async assertMonthlyInvoiceQuota(posted: number): Promise<void> {
     const plan = (await this.planForCurrentTenant())?.plan;

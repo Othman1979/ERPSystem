@@ -60,25 +60,27 @@ export class WarehousesService {
     const companyId = await this.companyId(db);
     const cls = ClsServiceManager.getClsService<RequestContext>();
 
-    await this.planLimits.assertWarehouseSlotAvailable();
-
     if (dto.branchId) {
       const branch = await db.branch.findFirst({ where: { id: BigInt(dto.branchId), companyId } });
       if (!branch) throw DomainError.notFound('Branch', dto.branchId);
     }
 
     try {
-      const wh = await db.warehouse.create({
-        data: {
-          tenantId,
-          companyId,
-          branchId: dto.branchId ? BigInt(dto.branchId) : null,
-          code: dto.code,
-          nameAr: dto.nameAr,
-          nameEn: dto.nameEn ?? null,
-          address: dto.address ?? null,
-          createdBy: cls.get('userId') ?? null,
-        },
+      // The plan check locks the tenant row, so it and the insert share one transaction.
+      const wh = await db.$transaction(async (tx) => {
+        await this.planLimits.assertWarehouseSlotAvailable(tx);
+        return tx.warehouse.create({
+          data: {
+            tenantId,
+            companyId,
+            branchId: dto.branchId ? BigInt(dto.branchId) : null,
+            code: dto.code,
+            nameAr: dto.nameAr,
+            nameEn: dto.nameEn ?? null,
+            address: dto.address ?? null,
+            createdBy: cls.get('userId') ?? null,
+          },
+        });
       });
       await this.audit.log({
         action: 'warehouse.create',

@@ -140,6 +140,16 @@ export function UsersPage() {
     m.status !== 'SUSPENDED' &&
     !(m.role.code === 'OWNER' && me?.currentMembership?.roleCode !== 'OWNER');
 
+  // Mirrors the server refusals in UsersService.update/invite (PLAT-01): no one
+  // changes their own role or status, and only an owner grants OWNER or
+  // changes an owner's membership.
+  const isOwner = me?.currentMembership?.roleCode === 'OWNER';
+  const canManage = (m: Membership) =>
+    m.user.id !== me?.user.id && (isOwner || m.role.code !== 'OWNER');
+  const roleOptions = (roles ?? [])
+    .filter((r) => isOwner || r.code !== 'OWNER')
+    .map((r) => ({ value: r.code, label: roleName(r.code, r.nameAr, r.nameEn) }));
+
   const shown = (data ?? []).filter((m) => matchesSearch(search, m.user.fullName, m.user.email));
 
   return (
@@ -179,16 +189,15 @@ export function UsersPage() {
             title: t('users.actions'),
             render: (_: unknown, m: Membership) => (
               <Space>
-                <Select
-                  size="small"
-                  style={{ width: 140 }}
-                  value={m.role.code}
-                  onChange={(roleCode) => changeRole.mutate({ id: m.membershipId, roleCode })}
-                  options={(roles ?? []).map((r) => ({
-                    value: r.code,
-                    label: roleName(r.code, r.nameAr, r.nameEn),
-                  }))}
-                />
+                {canManage(m) && (
+                  <Select
+                    size="small"
+                    style={{ width: 140 }}
+                    value={m.role.code}
+                    onChange={(roleCode) => changeRole.mutate({ id: m.membershipId, roleCode })}
+                    options={roleOptions}
+                  />
+                )}
                 {canResetPassword(m) && (
                   <Popconfirm
                     title={t('users.resetPasswordConfirm')}
@@ -207,7 +216,7 @@ export function UsersPage() {
                     </Tooltip>
                   </Popconfirm>
                 )}
-                {m.status === 'ACTIVE' && (
+                {m.status === 'ACTIVE' && canManage(m) && (
                   <Button
                     size="small"
                     danger
@@ -242,12 +251,7 @@ export function UsersPage() {
               <Input />
             </Form.Item>
             <Form.Item name="roleCode" label={t('users.role')} rules={[{ required: true }]}>
-              <Select
-                options={(roles ?? []).map((r) => ({
-                  value: r.code,
-                  label: roleName(r.code, r.nameAr, r.nameEn),
-                }))}
-              />
+              <Select options={roleOptions} />
             </Form.Item>
             <Form.Item
               name="password"
