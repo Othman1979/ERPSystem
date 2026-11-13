@@ -8,6 +8,9 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { DOCUMENT_TYPE_PREFIXES } from './chart-template.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
+/** Longest allowed fiscal year: twelve months (LEDGER-25). */
+const MAX_YEAR_MONTHS = 12;
+
 @Injectable()
 export class FiscalService {
   constructor(
@@ -47,66 +50,88 @@ export class FiscalService {
       throw new DomainError(ErrorCode.VALIDATION, 'endDate must be after startDate');
     }
 
-    // Reject overlapping years for the same company.
-    const overlap = await db.fiscalYear.findFirst({
-      where: {
-        companyId,
-        OR: [
-          { startDate: { lte: end }, endDate: { gte: start } },
-        ],
-      },
-    });
-    if (overlap) {
-      throw new DomainError(ErrorCode.CONFLICT, 'Fiscal year overlaps an existing year');
+    // The last day of a year that starts on `start` and lasts MAX_YEAR_MONTHS.
+    const maxEnd = new Date(
+      Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + MAX_YEAR_MONTHS, start.getUTCDate() - 1),
+    );
+    if (end > maxEnd) {
+      throw new DomainError(ErrorCode.FISCAL_YEAR_TOO_LONG, 'A fiscal year is at most 12 months long', {
+        maxEndDate: maxEnd.toISOString().slice(0, 10),
+      });
     }
 
-    const year = await db.$transaction(async (tx) => {
-      const y = await tx.fiscalYear.create({
-        data: {
-          tenantId,
-          companyId,
-          code: dto.code,
-          startDate: start,
-          endDate: end,
-          createdBy: userId ?? null,
-        },
-      });
+    const year = await db
+      .$transaction(async (tx) => {
+        // Lock the company row first: two concurrent creates must not both
+        // pass the overlap check below.
+        await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
 
-      // Monthly periods clipped to the year bounds.
-      const periods: { periodNo: number; startDate: Date; endDate: Date }[] = [];
-      const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-      let no = 1;
-      while (cursor <= end) {
-        const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0));
-        const pStart = cursor < start ? start : cursor;
-        const pEnd = monthEnd > end ? end : monthEnd;
-        // Clone — cursor is mutated each iteration and must not be shared.
-        periods.push({
-          periodNo: no++,
-          startDate: new Date(pStart),
-          endDate: new Date(pEnd),
+        // Reject overlapping years for the same company.
+        const overlap = await tx.fiscalYear.findFirst({
+          where: {
+            companyId,
+            OR: [{ startDate: { lte: end }, endDate: { gte: start } }],
+          },
         });
-        cursor.setUTCMonth(cursor.getUTCMonth() + 1);
-      }
-      await tx.fiscalPeriod.createMany({
-        data: periods.map((p) => ({ tenantId, fiscalYearId: y.id, ...p })),
-      });
+        if (overlap) {
+          throw new DomainError(ErrorCode.FISCAL_YEAR_OVERLAP, 'Fiscal year overlaps an existing year');
+        }
 
-      // Default document sequences for this fiscal year.
-      const yearCode = y.code;
-      await tx.documentSequence.createMany({
-        data: Object.entries(DOCUMENT_TYPE_PREFIXES).map(([documentType, prefix]) => ({
-          tenantId,
-          companyId,
-          documentType,
-          fiscalYearId: y.id,
-          prefix: `${prefix}-${yearCode}`,
-          nextNumber: 1,
-          padding: 6,
-        })),
+        const y = await tx.fiscalYear.create({
+          data: {
+            tenantId,
+            companyId,
+            code: dto.code,
+            startDate: start,
+            endDate: end,
+            createdBy: userId ?? null,
+          },
+        });
+
+        // Monthly periods clipped to the year bounds.
+        const periods: { periodNo: number; startDate: Date; endDate: Date }[] = [];
+        const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+        let no = 1;
+        while (cursor <= end) {
+          const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0));
+          const pStart = cursor < start ? start : cursor;
+          const pEnd = monthEnd > end ? end : monthEnd;
+          // Clone — cursor is mutated each iteration and must not be shared.
+          periods.push({
+            periodNo: no++,
+            startDate: new Date(pStart),
+            endDate: new Date(pEnd),
+          });
+          cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+        }
+        await tx.fiscalPeriod.createMany({
+          data: periods.map((p) => ({ tenantId, fiscalYearId: y.id, ...p })),
+        });
+
+        // Default document sequences for this fiscal year.
+        const yearCode = y.code;
+        await tx.documentSequence.createMany({
+          data: Object.entries(DOCUMENT_TYPE_PREFIXES).map(([documentType, prefix]) => ({
+            tenantId,
+            companyId,
+            documentType,
+            fiscalYearId: y.id,
+            prefix: `${prefix}-${yearCode}`,
+            nextNumber: 1,
+            padding: 6,
+          })),
+        });
+        return y;
+      }, POSTING_TX_OPTIONS)
+      .catch((err: unknown) => {
+        // The unique key on (company, code) is the only one a new year can hit.
+        if ((err as { code?: string }).code === 'P2002') {
+          throw new DomainError(ErrorCode.DUPLICATE_CODE, 'Fiscal year code already exists', {
+            code: dto.code,
+          });
+        }
+        throw err;
       });
-      return y;
-    }, POSTING_TX_OPTIONS);
 
     await this.audit.log({
       action: 'fiscal_year.create',
@@ -161,16 +186,21 @@ export class FiscalService {
    * §8.5). fiscal.close permission enforced at the controller.
    */
   async setYearStatus(yearId: bigint, status: 'OPEN' | 'CLOSED') {
-    const { db } = this.tenant();
+    const { tenantId, db } = this.tenant();
     const year = await db.fiscalYear.findFirst({ where: { id: yearId }, select: { id: true, code: true, status: true } });
     if (!year) throw DomainError.notFound('FiscalYear', yearId.toString());
     const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
     const changed = await db.$transaction(async (tx) => {
+      // Lock every period of the year before writing. Postings hold a shared
+      // lock on their period until COMMIT, so this waits for in-flight postings
+      // (DB-20). closedAt is taken after the lock.
+      await tx.$queryRaw`SELECT id FROM fiscal_periods WHERE tenant_id = ${tenantId} AND fiscal_year_id = ${yearId} ORDER BY id FOR UPDATE`;
+      const closedAt = new Date();
       const periods = await tx.fiscalPeriod.updateMany({
         where: { fiscalYearId: yearId, status: status === 'CLOSED' ? 'OPEN' : 'CLOSED' },
         data:
           status === 'CLOSED'
-            ? { status, closedAt: new Date(), closedBy: userId }
+            ? { status, closedAt, closedBy: userId }
             : { status, closedAt: null, closedBy: null },
       });
       await tx.fiscalYear.update({ where: { id: yearId }, data: { status } });
@@ -188,34 +218,55 @@ export class FiscalService {
 
   /** Close/reopen a period — fiscal.close permission enforced at controller. */
   async setPeriodStatus(periodId: bigint, status: 'OPEN' | 'CLOSED') {
-    const { db } = this.tenant();
-    const period = await db.fiscalPeriod.findFirst({ where: { id: periodId } });
-    if (!period) throw DomainError.notFound('FiscalPeriod', periodId.toString());
-    if (period.status === status) return period;
+    const { tenantId, db } = this.tenant();
+    const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
 
-    const cls = ClsServiceManager.getClsService<RequestContext>();
-    const updated = await db.fiscalPeriod.update({
-      where: { id: periodId },
-      data:
-        status === 'CLOSED'
-          ? { status, closedAt: new Date(), closedBy: cls.get('userId') ?? null }
-          : { status, closedAt: null, closedBy: null },
-    });
-    // The year follows its periods: closed once all are closed, open again
-    // as soon as one reopens.
-    const stillOpen = await db.fiscalPeriod.count({ where: { fiscalYearId: period.fiscalYearId, status: 'OPEN' } });
-    await db.fiscalYear.update({
-      where: { id: period.fiscalYearId },
-      data: { status: stillOpen > 0 ? 'OPEN' : 'CLOSED' },
-    });
-    await this.audit.log({
-      action: status === 'CLOSED' ? 'fiscal_period.close' : 'fiscal_period.open',
-      entityType: 'fiscal_period',
-      entityId: periodId,
-      before: { status: period.status },
-      after: { status },
-    });
-    return updated;
+    const result = await db.$transaction(async (tx) => {
+      // Postings hold a shared lock on their period until COMMIT
+      // (PostingService.resolveOpenPeriod), so the close waits for in-flight
+      // postings and no posting lands in a period after it closed (DB-20).
+      const rows = await tx.$queryRaw<{ id: bigint; status: string; fiscal_year_id: bigint }[]>`SELECT id, status, fiscal_year_id FROM fiscal_periods WHERE tenant_id = ${tenantId} AND id = ${periodId} FOR UPDATE`;
+      const locked = rows[0];
+      if (!locked) throw DomainError.notFound('FiscalPeriod', periodId.toString());
+
+      const before = locked.status;
+      if (before === status) {
+        const unchanged = await tx.fiscalPeriod.findFirst({ where: { id: periodId } });
+        if (!unchanged) throw DomainError.notFound('FiscalPeriod', periodId.toString());
+        return { changed: false, before, period: unchanged };
+      }
+
+      // Read the clock only after the lock, so closedAt is the real close time.
+      const closedAt = new Date();
+      const updated = await tx.fiscalPeriod.update({
+        where: { id: periodId },
+        data:
+          status === 'CLOSED'
+            ? { status, closedAt, closedBy: userId }
+            : { status, closedAt: null, closedBy: null },
+      });
+      // The year follows its periods: closed once all are closed, open again
+      // as soon as one reopens.
+      const stillOpen = await tx.fiscalPeriod.count({
+        where: { fiscalYearId: locked.fiscal_year_id, status: 'OPEN' },
+      });
+      await tx.fiscalYear.update({
+        where: { id: locked.fiscal_year_id },
+        data: { status: stillOpen > 0 ? 'OPEN' : 'CLOSED' },
+      });
+      return { changed: true, before, period: updated };
+    }, POSTING_TX_OPTIONS);
+
+    if (result.changed) {
+      await this.audit.log({
+        action: status === 'CLOSED' ? 'fiscal_period.close' : 'fiscal_period.open',
+        entityType: 'fiscal_period',
+        entityId: periodId,
+        before: { status: result.before },
+        after: { status },
+      });
+    }
+    return result.period;
   }
 
   async listSequences(fiscalYearId?: bigint) {

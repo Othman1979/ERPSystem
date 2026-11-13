@@ -22,6 +22,7 @@ import { App } from './App';
 import { AuthProvider, SessionBoundary } from './auth/AuthContext';
 import { notifyQueryError, QueryErrorToast } from './components/QueryState';
 import { installErrorReporting } from './errorReporting';
+import { applyReferenceDataPolicy } from './referenceData';
 import { antdTheme } from './theme';
 
 // Uncaught errors go to the platform's error monitor (ADR-010 §10.3).
@@ -39,6 +40,8 @@ const queryClient = new QueryClient({
   // refetchOnReconnect stays on (the default), so lists recover when the network returns.
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: refetchOnFocus } },
 });
+// Accounts, warehouses, taxes, branches and units: fresh for 5 minutes, expired on any write to them (WEB-13).
+applyReferenceDataPolicy(queryClient);
 
 /** Keeps antd locale, text direction and dayjs in sync with the UI language. */
 function LocalizedApp() {

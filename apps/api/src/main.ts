@@ -12,6 +12,7 @@ import { apiDocsEnabled, trustProxySetting, type Env } from './common/config/env
 import { redact } from './common/errors/error-events.util.js';
 import { DocumentSizePipe } from './common/pipes/document-size.pipe.js';
 import { IdParamPipe } from './common/pipes/id-param.pipe.js';
+import { apiCompression } from './common/web/compression.js';
 import { warnOnUntrustedProxy } from './common/web/proxy-warning.js';
 import { serveWebApp } from './common/web/serve-web-app.js';
 
@@ -51,6 +52,8 @@ async function bootstrap(): Promise<void> {
   );
 
   app.use(cookieParser());
+  // Compress API JSON; auth responses are excluded (WEB-11).
+  app.use(apiCompression());
   app.use(
     (req: { headers: Record<string, unknown>; requestId?: string }, _res: unknown, next: () => void) => {
       const incoming = req.headers['x-request-id'];

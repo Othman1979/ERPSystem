@@ -2,23 +2,24 @@ import { SaveOutlined } from '@ant-design/icons';
 import { Button, ConfigProvider, Modal } from 'antd';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { palette } from '../theme';
-import { fieldPanelTheme, useDocShortcuts } from './DocLayout';
+import { fieldPanelTheme } from '../theme';
+import { useDocShortcuts } from './DocLayout';
 
+// Inline styles so they always win over antd's own; colours are the --c-* tokens.
 const dialogStyles = {
-  content: { padding: 0, borderRadius: 4, border: `1px solid ${palette.grid.border}` },
+  content: { padding: 0, borderRadius: 4, border: '1px solid var(--c-grid-frame)' },
   header: {
     margin: 0,
     padding: '10px 16px',
-    borderBottom: `1px solid ${palette.grid.border}`,
+    borderBottom: '1px solid var(--c-grid-frame)',
   },
   // Only the body scrolls, so Save stays in view however long the form is.
   body: { maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' as const },
   footer: {
     margin: 0,
     padding: '8px 12px',
-    background: palette.grid.panel,
-    borderTop: `1px solid ${palette.grid.border}`,
+    background: 'var(--c-panel)',
+    borderTop: '1px solid var(--c-grid-frame)',
   },
 };
 

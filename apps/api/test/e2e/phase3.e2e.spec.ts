@@ -196,7 +196,7 @@ describe('Phase 3 — journal engine (erp_test)', () => {
       .set(auth(token))
       .set(idem());
     expect(post.status).toBe(400);
-    expect(post.body.error.code).toBe('VALIDATION');
+    expect(post.body.error.code).toBe('ACCOUNT_NOT_POSTABLE');
   });
 
   it('rejects control-account lines without party info', async () => {
@@ -209,7 +209,7 @@ describe('Phase 3 — journal engine (erp_test)', () => {
       .set(auth(token))
       .set(idem());
     expect(post.status).toBe(400);
-    expect(post.body.error.code).toBe('VALIDATION');
+    expect(post.body.error.code).toBe('PARTY_REQUIRED');
     expect(post.body.error.message).toContain('party');
   });
 

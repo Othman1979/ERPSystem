@@ -102,33 +102,32 @@ export function CompanyProfileForm({
 
   return (
     <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} style={{ maxWidth: 720 }}>
-      <Space wrap align="start" size={16}>
+      {/* One aligned two-column grid, the same as the master-data dialogs (UI-11). */}
+      <div className="form-section-grid cols-2 is-flush">
         <Form.Item name="legalNameAr" label={t('company.legalNameAr')} rules={[{ required: true, whitespace: true }]}>
-          <Input maxLength={191} style={{ width: 320 }} />
+          <Input maxLength={191} />
         </Form.Item>
         <Form.Item name="legalNameEn" label={t('company.legalNameEn')}>
-          <Input maxLength={191} style={{ width: 320 }} dir="ltr" />
+          <Input maxLength={191} dir="ltr" />
         </Form.Item>
-      </Space>
-      <Space wrap align="start" size={16}>
         <Form.Item
           name="taxNumber"
           label={t('company.taxNumber')}
           extra={t('company.taxNumberHint')}
           rules={[{ pattern: /^\d*$/, message: t('company.taxNumberDigits') }]}
         >
-          <Input maxLength={50} style={{ width: 200 }} dir="ltr" inputMode="numeric" />
+          <Input maxLength={50} dir="ltr" inputMode="numeric" />
         </Form.Item>
         <Form.Item name="commercialRegistration" label={t('company.commercialRegistration')}>
-          <Input maxLength={100} style={{ width: 200 }} dir="ltr" />
+          <Input maxLength={100} dir="ltr" />
         </Form.Item>
         <Form.Item name="phone" label={t('company.phone')}>
-          <Input maxLength={50} style={{ width: 200 }} dir="ltr" />
+          <Input maxLength={50} dir="ltr" />
         </Form.Item>
-      </Space>
-      <Form.Item name="address" label={t('company.address')}>
-        <Input.TextArea maxLength={512} autoSize={{ minRows: 2, maxRows: 4 }} />
-      </Form.Item>
+        <Form.Item name="address" label={t('company.address')} className="span-all">
+          <Input.TextArea maxLength={512} autoSize={{ minRows: 2, maxRows: 4 }} />
+        </Form.Item>
+      </div>
       {withTax && (
         <Form.Item name="pricesIncludeTax" label={t('company.pricesIncludeTax')} valuePropName="checked" extra={t('company.pricesIncludeTaxHint')}>
           <Switch />
