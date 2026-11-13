@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { dbTarget, sameDatabase, withOptionFile } from './mysql-tools.js';
+import { dbTarget, optionFileBody, sameDatabase, serverOffersTls, withOptionFile } from './mysql-tools.js';
 
 describe('database client helpers (ADR-010 §10.2)', () => {
   it('reads a DATABASE_URL, decoding the credentials', () => {
@@ -27,10 +27,14 @@ describe('database client helpers (ADR-010 §10.2)', () => {
   it('keeps the password in a private option file, quoted, removed afterwards', async () => {
     const target = dbTarget('mysql://root:a%5Cb%22c@localhost:3306/erp');
     let seen = '';
-    const file = await withOptionFile(target, async (f) => {
-      seen = readFileSync(f, 'utf8');
-      return f;
-    });
+    const file = await withOptionFile(
+      target,
+      async (f) => {
+        seen = readFileSync(f, 'utf8');
+        return f;
+      },
+      true,
+    );
     expect(seen).toContain('[client]');
     // TCP like the app's driver: never the local socket for host=localhost.
     expect(seen).toContain('protocol=TCP');
@@ -39,11 +43,28 @@ describe('database client helpers (ADR-010 §10.2)', () => {
     // Removed even when the work fails.
     let failed = '';
     await expect(
-      withOptionFile(target, async (f) => {
-        failed = f;
-        throw new Error('boom');
-      }),
+      withOptionFile(
+        target,
+        async (f) => {
+          failed = f;
+          throw new Error('boom');
+        },
+        true,
+      ),
     ).rejects.toThrow('boom');
     expect(existsSync(failed)).toBe(false);
+  });
+
+  it('connects in plain only to a server without TLS (11.4+ clients require it by default)', () => {
+    const target = dbTarget('mysql://root:pw@db:3306/erp');
+    // A 10.11 server without certificates, an 11.x client: TLS off, else the client refuses to connect.
+    expect(optionFileBody(target, false)).toContain('\nloose-skip-ssl\n');
+    // A server that offers TLS: the client's TLS and certificate check stay on.
+    expect(optionFileBody(target, true)).not.toContain('ssl');
+  });
+
+  it('asks the server whether it offers TLS, and keeps the client defaults when it cannot tell', async () => {
+    // Nothing listens on port 1: no answer, so no change to the tools' defaults.
+    await expect(serverOffersTls(dbTarget('mysql://u:p@127.0.0.1:1/erp'))).resolves.toBe(true);
   });
 });
