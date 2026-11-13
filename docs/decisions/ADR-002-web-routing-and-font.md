@@ -26,7 +26,7 @@ Options considered for routing:
 - **Font:** IBM Plex Sans Arabic, self-hosted through `@fontsource/ibm-plex-sans-arabic`
   (weights 400/500/600/700), bundled by Vite — no request to Google Fonts.
   Latin text uses the same family's Latin glyphs, Segoe UI/Tahoma as fallback.
-- **Colour:** keep Windows blue `#0078d4` as the primary colour (owner's choice).
+- **Colour:** keep Windows blue `#0078d4` as the primary colour (owner's choice). *Superseded by ADR-020 (ink tokens, 2026-11-13).*
 
 ## العواقب
 - **Hosting:** any path the server doesn't know must return `index.html`

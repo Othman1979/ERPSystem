@@ -1,9 +1,24 @@
 import { ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
-import { Button, ConfigProvider } from 'antd';
-import { useEffect, useRef, type KeyboardEventHandler, type ReactNode } from 'react';
+import { AutoComplete, Button, ConfigProvider, DatePicker, Input, InputNumber, Radio, Select } from 'antd';
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  type KeyboardEventHandler,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import { palette } from '../theme';
+import { fieldPanelTheme } from '../theme';
+import { GridSelect } from './GridSelect';
 import { StatusBar } from './StatusBar';
+
+// Kept here as well: pages import the panel theme from DocLayout.
+export { fieldPanelTheme };
 
 /**
  * Shared frame for document screens (invoices, journal entries, stock notes…):
@@ -48,20 +63,7 @@ export function DocLayout({
   );
 }
 
-// Field panel controls get the darker grid border so they stand out on the gray panel.
-export const fieldPanelTheme = {
-  token: { colorBorder: palette.grid.border },
-  components: {
-    Radio: {
-      buttonSolidCheckedBg: palette.grid.bar,
-      buttonSolidCheckedHoverBg: palette.grid.bar,
-      buttonSolidCheckedActiveBg: palette.grid.bar,
-      buttonSolidCheckedColor: palette.grid.barText,
-    },
-  },
-};
-
-/** Gray panel laying header fields out in a responsive grid (3–4 columns on desktop). */
+/** Panel laying header fields out in a responsive grid (3–4 columns on desktop). */
 export function DocFields({ children }: { children: ReactNode }) {
   return (
     <ConfigProvider theme={fieldPanelTheme}>
@@ -70,7 +72,38 @@ export function DocFields({ children }: { children: ReactNode }) {
   );
 }
 
-/** One labelled header field; `field` is the data-field key used by Enter navigation. */
+/** Controls whose `id` lands on the focusable input, so `<label htmlFor>` names them. */
+const LABELABLE: ReadonlySet<unknown> = new Set<unknown>([
+  Input,
+  Input.TextArea,
+  Input.Password,
+  InputNumber,
+  Select,
+  GridSelect,
+  AutoComplete,
+  DatePicker,
+]);
+
+const NAMEABLE_CONTROL =
+  'input:not([type="hidden"]):not([type="radio"]), textarea, [role="combobox"], [role="radiogroup"], [role="switch"], button[role="checkbox"]';
+
+type ControlProps = {
+  id?: string;
+  role?: string;
+  'aria-labelledby'?: string;
+  'aria-required'?: boolean;
+  'aria-invalid'?: boolean;
+  'aria-describedby'?: string;
+};
+
+/**
+ * One labelled header field; `field` is the data-field key used by Enter navigation.
+ *
+ * Accessible name (UI-02): the label is a real `<label for>` bound to the
+ * control's input; a radio group is named through aria-labelledby. Anything
+ * else that renders a control (wrapped controls, custom pickers) is named
+ * after mount by pointing its first unnamed control at the label.
+ */
 export function DocField({
   label,
   required,
@@ -90,18 +123,77 @@ export function DocField({
   onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
   children: ReactNode;
 }) {
+  const baseId = useId();
+  const labelId = `${baseId}-label`;
+  const errorId = `${baseId}-error`;
+  const ref = useRef<HTMLDivElement>(null);
+
+  const only = Children.count(children) === 1 && isValidElement(children) ? children : null;
+  const a11y: ControlProps = {
+    'aria-required': required || undefined,
+    'aria-invalid': error ? true : undefined,
+    'aria-describedby': error ? errorId : undefined,
+  };
+
+  let control: ReactNode = children;
+  let htmlFor: string | undefined;
+  if (only && LABELABLE.has(only.type)) {
+    const el = only as ReactElement<ControlProps>;
+    htmlFor = el.props.id ?? `${baseId}-control`;
+    control = cloneElement(el, { ...a11y, id: htmlFor });
+  } else if (only && only.type === Radio.Group) {
+    control = cloneElement(only as ReactElement<ControlProps>, {
+      ...a11y,
+      role: 'radiogroup',
+      'aria-labelledby': labelId,
+    });
+  }
+
+  // Fallback naming for anything the clone above did not cover. Read-only
+  // values and radio groups need none.
+  const needsFallback = !htmlFor && only?.type !== Radio.Group && only?.type !== DocValue;
+  useLayoutEffect(() => {
+    if (!needsFallback || !ref.current) return;
+    const target = ref.current.querySelector<HTMLElement>(NAMEABLE_CONTROL);
+    if (!target || target.hasAttribute('aria-label') || target.hasAttribute('aria-labelledby')) return;
+    if (target.id && ref.current.querySelector(`label[for="${CSS.escape(target.id)}"]`)) return;
+    target.setAttribute('aria-labelledby', labelId);
+    if (required) target.setAttribute('aria-required', 'true');
+  });
+
+  const labelContent = (
+    <>
+      {label}
+      {required && (
+        <span className="doc-field-req" aria-hidden="true">
+          *
+        </span>
+      )}
+    </>
+  );
+
   return (
     <div
+      ref={ref}
       className={wide ? 'doc-field doc-field-wide' : 'doc-field'}
       data-field={field}
       onKeyDown={onKeyDown}
     >
-      <span className="doc-field-label">
-        {label}
-        {required && <span className="doc-field-req">*</span>}
-      </span>
-      {children}
-      {error && <div className="doc-field-error">{error}</div>}
+      {htmlFor ? (
+        <label id={labelId} htmlFor={htmlFor} className="doc-field-label">
+          {labelContent}
+        </label>
+      ) : (
+        <span id={labelId} className="doc-field-label">
+          {labelContent}
+        </span>
+      )}
+      {control}
+      {error && (
+        <div id={errorId} className="doc-field-error" role="alert">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
