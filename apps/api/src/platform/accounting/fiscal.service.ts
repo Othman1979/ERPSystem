@@ -6,6 +6,7 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { DOCUMENT_TYPE_PREFIXES } from './chart-template.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 @Injectable()
 export class FiscalService {
@@ -105,7 +106,7 @@ export class FiscalService {
         })),
       });
       return y;
-    });
+    }, POSTING_TX_OPTIONS);
 
     await this.audit.log({
       action: 'fiscal_year.create',
@@ -174,7 +175,7 @@ export class FiscalService {
       });
       await tx.fiscalYear.update({ where: { id: yearId }, data: { status } });
       return periods.count;
-    });
+    }, POSTING_TX_OPTIONS);
     await this.audit.log({
       action: status === 'CLOSED' ? 'fiscal_year.close' : 'fiscal_year.open',
       entityType: 'fiscal_year',

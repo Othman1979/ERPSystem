@@ -9,6 +9,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PartiesService } from '../parties/parties.service.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import {
   CreateJournalEntryDto,
   CreateOpeningEntryDto,
@@ -173,7 +174,7 @@ export class JournalService {
         })),
       });
       return created;
-    });
+    }, POSTING_TX_OPTIONS);
 
     await this.audit.log({
       action: 'journal.create_draft',
@@ -290,7 +291,7 @@ export class JournalService {
           },
         });
         return { id, entryNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({
@@ -335,7 +336,7 @@ export class JournalService {
           description: dto.description,
           postedBy: userId ?? null,
         });
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({
@@ -432,7 +433,7 @@ export class JournalService {
           lines,
           postedBy: userId ?? null,
         });
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({

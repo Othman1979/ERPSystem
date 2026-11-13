@@ -5,6 +5,7 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import mariadb, { type Pool, type PoolConfig } from 'mariadb';
 import type { Env } from '../common/config/env.validation.js';
 import { tenantScopedPrisma } from './tenant-prisma.js';
+import { POSTING_TX_OPTIONS } from './transaction-options.js';
 
 /**
  * Run on every new connection, before it is used. MariaDB 11.6.2 turned
@@ -50,7 +51,12 @@ export class PrismaService implements OnModuleDestroy {
   constructor(config: ConfigService<Env, true>) {
     const databaseUrl = config.get('DATABASE_URL', { infer: true });
     this.pool = mariadb.createPool(parseDatabaseUrl(databaseUrl));
-    this.client = new PrismaClient({ adapter: new PrismaMariaDb(this.pool) });
+    // Default for every interactive transaction; posting services also pass
+    // POSTING_TX_OPTIONS explicitly (guarded by test/static/posting-transactions.spec.ts).
+    this.client = new PrismaClient({
+      adapter: new PrismaMariaDb(this.pool),
+      transactionOptions: POSTING_TX_OPTIONS,
+    });
   }
 
   /** Tenant-scoped client: auto-injects tenant_id from arg or CLS context. */

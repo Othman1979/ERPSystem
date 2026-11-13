@@ -32,6 +32,7 @@ import { PostingService, type JournalLineInput } from '../journal/posting.servic
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesInvoiceDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 const SOURCE = 'SALES_INVOICE';
 
@@ -372,7 +373,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
         })),
       });
       return created;
-    });
+    }, POSTING_TX_OPTIONS);
     await this.audit.log({
       action: 'sales_invoice.create',
       entityType: 'sales_invoice',
@@ -429,7 +430,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
           lineTotal: l.amounts.lineTotal,
         })),
       });
-    });
+    }, POSTING_TX_OPTIONS);
     await this.audit.log({
       action: 'sales_invoice.update',
       entityType: 'sales_invoice',
@@ -517,6 +518,12 @@ export class SalesInvoicesService implements InvoiceSettlement {
         // Stock OUT for STOCK items — returns avg cost per base unit.
         let costTotal = new Decimal(0);
         const costByLine = new Map<bigint, { unitCost: Decimal; totalCost: Decimal }>();
+        // Lock every (item, warehouse) in the fixed order before any movement.
+        await this.ledger.lockForDocument(
+          tx,
+          companyId,
+          draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
+        );
         for (const line of draft.lines) {
           const item = await tx.item.findFirst({
             where: { tenantId, id: line.itemId },
@@ -624,7 +631,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
           documentNo: invoiceNo,
         });
         return { id: draft.id, invoiceNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({

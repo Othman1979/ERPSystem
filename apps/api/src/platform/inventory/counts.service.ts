@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { AdjustmentsService } from './adjustments.service.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import type { CreateStockCountDto, UpdateCountLineDto } from './dto/inventory.dto.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 /**
  * Physical stock counts (§7.4): capture system vs counted quantities,
@@ -158,7 +159,7 @@ export class CountsService {
         }),
       });
       return created;
-    });
+    }, POSTING_TX_OPTIONS);
 
     await this.audit.log({
       action: 'stock_count.create',
@@ -309,7 +310,7 @@ export class CountsService {
       });
       await tx.stockCount.update({ where: { id: count.id }, data: { adjustmentId: created.id } });
       return created;
-    });
+    }, POSTING_TX_OPTIONS);
 
     const posted = await this.adjustments.post(adjustment.id);
     await db.stockCount.update({

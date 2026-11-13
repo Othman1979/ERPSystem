@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { PostingService } from '../journal/posting.service.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import type { CreateStockTransferDto } from './dto/inventory.dto.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 const SOURCE = 'STOCK_TRANSFER';
 
@@ -151,7 +152,7 @@ export class TransfersService {
         })),
       });
       return created;
-    });
+    }, POSTING_TX_OPTIONS);
 
     await this.audit.log({
       action: 'stock_transfer.create',
@@ -206,6 +207,16 @@ export class TransfersService {
         // enforces an open fiscal period.
         await this.posting.resolveOpenPeriod(tx, tenantId, companyId, transferDate);
 
+        // Lock both sides of every line in the fixed order before any movement.
+        await this.ledger.lockForDocument(
+          tx,
+          companyId,
+          draft.lines.flatMap((l) => [
+            { itemId: l.itemId, warehouseId: draft.fromWarehouseId },
+            { itemId: l.itemId, warehouseId: draft.toWarehouseId },
+          ]),
+        );
+
         // OUT from source then IN to destination at the SAME avg cost.
         // Process items in a fixed order to keep lock ordering deterministic.
         const sorted = [...draft.lines].sort((a, b) => Number(a.itemId - b.itemId));
@@ -246,7 +257,7 @@ export class TransfersService {
           },
         });
         return { id: draft.id, docNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({
@@ -315,6 +326,15 @@ export class TransfersService {
           })),
         });
 
+        // Lock both sides of every line in the fixed order before any movement.
+        await this.ledger.lockForDocument(
+          tx,
+          companyId,
+          original.lines.flatMap((l) => [
+            { itemId: l.itemId, warehouseId: original.fromWarehouseId },
+            { itemId: l.itemId, warehouseId: original.toWarehouseId },
+          ]),
+        );
         const sorted = [...original.lines].sort((a, b) => Number(a.itemId - b.itemId));
         for (const line of sorted) {
           const unitCost = costByLine.get(line.id)?.toString();
@@ -344,7 +364,7 @@ export class TransfersService {
         const docNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, 'STOCK_TRANSFER', reversalDate);
         await tx.stockTransfer.update({ where: { id: reversal.id }, data: { docNo } });
         return { id: reversal.id, docNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({

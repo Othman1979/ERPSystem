@@ -20,6 +20,7 @@ import { PostingService, type JournalLineInput } from '../journal/posting.servic
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesReturnDto } from './dto/sales.dto.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 const SOURCE = 'SALES_RETURN';
 
@@ -338,7 +339,7 @@ export class SalesReturnsService {
         })),
       });
       return created;
-    });
+    }, POSTING_TX_OPTIONS);
     await this.audit.log({
       action: 'sales_return.create',
       entityType: 'sales_return',
@@ -398,6 +399,13 @@ export class SalesReturnsService {
 
         const returnDate = new Date(draft.returnDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, returnDate);
+
+        // Lock every (item, warehouse) in the fixed order before any movement.
+        await this.ledger.lockForDocument(
+          tx,
+          companyId,
+          draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
+        );
 
         // Stock IN at ORIGINAL unit cost (§8.4, §9.5).
         let costTotal = new Decimal(0);
@@ -501,7 +509,7 @@ export class SalesReturnsService {
           originalInvoiceId: draft.originalInvoiceId,
         });
         return { id: draft.id, returnNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({

@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import type { CreateStockAdjustmentDto } from './dto/inventory.dto.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 const SOURCE = 'STOCK_ADJUSTMENT';
 
@@ -167,7 +168,7 @@ export class AdjustmentsService {
         })),
       });
       return created;
-    });
+    }, POSTING_TX_OPTIONS);
     await this.audit.log({
       action: 'stock_adjustment.create',
       entityType: 'stock_adjustment',
@@ -222,6 +223,13 @@ export class AdjustmentsService {
           tenantId,
           companyId,
           adjustmentDate,
+        );
+
+        // Lock every (item, warehouse) in the fixed order before any movement.
+        await this.ledger.lockForDocument(
+          tx,
+          companyId,
+          draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
         );
 
         // Apply movements first — returns per-line cost for the journal.
@@ -326,7 +334,7 @@ export class AdjustmentsService {
           },
         });
         return { id: draft.id, docNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({
@@ -398,6 +406,13 @@ export class AdjustmentsService {
           'OPENING_BALANCE_EQUITY',
         ]);
 
+        // Lock every (item, warehouse) in the fixed order before any movement.
+        await this.ledger.lockForDocument(
+          tx,
+          companyId,
+          original.lines.map((l) => ({ itemId: l.itemId, warehouseId: original.warehouseId })),
+        );
+
         for (const line of original.lines) {
           const orig = byLine.get(line.id);
           const wasIn = new Decimal(line.qtyIn.toString()).gt(0);
@@ -462,7 +477,7 @@ export class AdjustmentsService {
           data: { journalEntryId: entryId },
         });
         return { id: reversal.id, docNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({

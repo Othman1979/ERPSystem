@@ -30,6 +30,7 @@ import {
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type { CreatePurchaseInvoiceDto, PurchaseInvoiceLineDto } from './dto/purchases.dto.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 const SOURCE = 'PURCHASE_INVOICE';
 
@@ -333,7 +334,7 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
         })),
       });
       return created;
-    });
+    }, POSTING_TX_OPTIONS);
     await this.audit.log({
       action: 'purchase_invoice.create',
       entityType: 'purchase_invoice',
@@ -392,7 +393,7 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
           lineTotal: l.amounts.lineTotal,
         })),
       });
-    });
+    }, POSTING_TX_OPTIONS);
     await this.audit.log({
       action: 'purchase_invoice.update',
       entityType: 'purchase_invoice',
@@ -456,6 +457,17 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
 
         const invoiceDate = new Date(draft.invoiceDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, invoiceDate);
+
+        // Lock every (item, warehouse) in the fixed order before any movement
+        // (no warehouse: a service-only invoice, checked above).
+        const warehouseId = draft.warehouseId;
+        if (warehouseId) {
+          await this.ledger.lockForDocument(
+            tx,
+            companyId,
+            draft.lines.map((l) => ({ itemId: l.itemId, warehouseId })),
+          );
+        }
 
         // Stock IN for STOCK lines at net cost per base unit.
         let stockNet = new Decimal(0);
@@ -553,7 +565,7 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
           },
         });
         return { id: draft.id, invoiceNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({

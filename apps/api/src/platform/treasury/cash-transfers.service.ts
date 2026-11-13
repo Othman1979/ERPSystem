@@ -8,6 +8,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { PostingService } from '../journal/posting.service.js';
 import type { CreateCashTransferDto, ReverseVoucherDto } from './dto/treasury.dto.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 const SOURCE = 'CASH_TRANSFER';
 const ACCOUNT_SELECT = { select: { id: true, code: true, nameAr: true, nameEn: true } } as const;
@@ -106,7 +107,7 @@ export class CashTransfersService {
         });
         await tx.journalEntry.update({ where: { id: entry.id }, data: { sourceId: transfer.id } });
         return { id: transfer.id, transferNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({
@@ -146,7 +147,7 @@ export class CashTransfersService {
           where: { id },
           data: { reversedAt: new Date(), reversedBy: userId ?? null, reversalEntryId: reversal.id },
         });
-      }),
+      }, POSTING_TX_OPTIONS),
     );
     await this.audit.log({ action: 'cash_transfer.reverse', entityType: 'cash_transfer', entityId: id });
     return this.get(id);
