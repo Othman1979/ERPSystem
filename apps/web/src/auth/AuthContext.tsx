@@ -13,6 +13,7 @@ import {
   setBranchId,
   type RegisterDto,
 } from '@erp/api-client';
+import type { Permission } from './permissions';
 
 export interface TenantSummary {
   tenantId: string;
@@ -51,6 +52,8 @@ export interface MeData {
   currentMembership: {
     membershipId: string;
     roleCode: string;
+    /** Permission codes of this role in the current tenant (GET /me); see `can`. */
+    permissions: string[];
     defaultBranchId: string | null;
     /** Branches this member may switch to (all active ones when none are assigned). */
     branches: BranchSummary[];
@@ -74,6 +77,11 @@ interface AuthState {
   branchId: string | null;
   setBranch: (branchId: string) => void;
   refreshMe: () => Promise<void>;
+  /**
+   * True when the user's role has `permission` in the current tenant. The web
+   * hides what this is false for; the API still enforces every permission.
+   */
+  can: (permission: Permission) => boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -219,11 +227,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshMe();
   }, [refreshMe, queryClient]);
 
+  const permissions = useMemo(() => new Set(me?.currentMembership?.permissions ?? []), [me]);
+  const can = useCallback((permission: Permission) => permissions.has(permission), [permissions]);
+
   // A new object only when something in it changes, so useAuth() consumers do
   // not re-render on every provider render (WEB-18).
   const value = useMemo<AuthState>(
-    () => ({ status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch }),
-    [status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch],
+    () => ({ status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch, can }),
+    [status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch, can],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

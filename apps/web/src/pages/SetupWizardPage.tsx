@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import {
   ApiError,
-  accountingControllerListAccounts,
   branchesControllerList,
   companyControllerCompleteOnboarding,
   fiscalControllerCreateYear,
@@ -22,6 +21,7 @@ import { CompanyProfileForm, useCompany } from '../components/CompanyProfileForm
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { codeAndName, displayName } from '../i18n/displayName';
+import { useAccounts } from '../hooks/useAccounts';
 
 interface FiscalYear {
   id: string;
@@ -35,11 +35,6 @@ interface Named {
   code: string;
   nameAr: string;
   nameEn?: string | null;
-}
-interface AccountRow extends Named {
-  isPostable: boolean;
-  isActive: boolean;
-  controlType?: string | null;
 }
 interface TaxCategory extends Named {
   rate: string;
@@ -79,27 +74,24 @@ export function SetupWizardPage() {
 
   const years = useQuery({
     queryKey: ['fiscal-years'],
-    queryFn: () => fiscalControllerListYears().then((r) => r.data as unknown as FiscalYear[]),
+    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data as unknown as FiscalYear[]),
   });
   const taxes = useQuery({
     queryKey: ['tax-categories'],
-    queryFn: () => settingsControllerListTaxCategories().then((r) => r.data as unknown as TaxCategory[]),
+    queryFn: ({ signal }) => settingsControllerListTaxCategories({ signal }).then((r) => r.data as unknown as TaxCategory[]),
   });
-  const accounts = useQuery({
-    queryKey: ['accounts-postable'],
-    queryFn: () => accountingControllerListAccounts().then((r) => r.data as unknown as AccountRow[]),
-  });
+  const accounts = useAccounts();
   const branches = useQuery({
     queryKey: ['branches'],
-    queryFn: () => branchesControllerList().then((r) => r.data as unknown as Named[]),
+    queryFn: ({ signal }) => branchesControllerList({ signal }).then((r) => r.data as unknown as Named[]),
   });
   const warehouses = useQuery({
     queryKey: ['warehouses'],
-    queryFn: () => warehousesControllerList().then((r) => r.data as unknown as Named[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as Named[]),
   });
   const cashBoxes = useQuery({
     queryKey: ['cash-boxes'],
-    queryFn: () => treasuryControllerListCashBoxes().then((r) => r.data as unknown as CashBox[]),
+    queryFn: ({ signal }) => treasuryControllerListCashBoxes({ signal }).then((r) => r.data as unknown as CashBox[]),
   });
 
   // --- step 2: fiscal year (default 1 January of this year, §13.4)

@@ -1133,6 +1133,11 @@ export const ar = {
     retrying: 'جارٍ الاتصال…',
     autoRetry: 'إعادة المحاولة تلقائياً بعد {{seconds}} ث',
   },
+  access: {
+    title: 'لا تملك صلاحية فتح هذه الشاشة',
+    text: 'دورك في هذه الشركة ({{role}}) لا يشمل هذه الشاشة. إذا احتجت إليها فاطلب الصلاحية من مالك الحساب.',
+    home: 'العودة إلى الرئيسية',
+  },
   ui: {
     cellLabel: '{{column}}، السطر {{line}}',
     userMenu: 'قائمة المستخدم',
@@ -2348,6 +2353,11 @@ export const en: typeof ar = {
     retryNow: 'Retry now',
     retrying: 'Connecting…',
     autoRetry: 'Retrying automatically in {{seconds}} s',
+  },
+  access: {
+    title: 'You do not have access to this screen',
+    text: 'Your role in this company ({{role}}) does not include this screen. If you need it, ask the account owner for access.',
+    home: 'Back to home',
   },
   ui: {
     cellLabel: '{{column}}, line {{line}}',

@@ -17,7 +17,14 @@ vi.mock('@erp/api-client', async (importOriginal) => {
       user: { id: 'u1', email: 'a@x.test', fullName: 'A', locale: 'ar', isPlatformAdmin: false },
       tenants: [],
       currentTenant: { tenantId, name: tenantId, status: 'ACTIVE', plan: null },
-      currentMembership: { membershipId: 'm1', roleCode: 'OWNER', defaultBranchId: null, branches: [] },
+      currentMembership: {
+        membershipId: 'm1',
+        roleCode: tenantId === 'A' ? 'OWNER' : 'VIEWER',
+        // Each tenant's own role permissions, as GET /me lists them.
+        permissions: tenantId === 'A' ? ['tenant.read', 'user.manage'] : ['tenant.read'],
+        defaultBranchId: null,
+        branches: [],
+      },
     },
   });
   return {
@@ -98,5 +105,46 @@ describe('AuthProvider query cache (WEB-01)', () => {
     seedTenantAData();
     await act(() => auth!.login('b@x.test', 'secret'));
     expect(cacheSizeAtTokenSet).toEqual([0]);
+  });
+});
+
+describe('AuthProvider can() follows the current tenant role', () => {
+  let root: Root;
+
+  beforeEach(async () => {
+    session.tenant = 'A';
+    client = new QueryClient();
+    root = createRoot(document.createElement('div'));
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <AuthProvider>
+            <Probe />
+          </AuthProvider>
+        </QueryClientProvider>,
+      );
+    });
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    auth = null;
+  });
+
+  it('answers from the permissions GET /me listed for this tenant', () => {
+    expect(auth!.can('user.manage')).toBe(true);
+    expect(auth!.can('tenant.read')).toBe(true);
+    expect(auth!.can('settings.manage')).toBe(false);
+  });
+
+  it("drops tenant A's permissions after switching to tenant B", async () => {
+    await act(() => auth!.switchTenant('B'));
+    expect(auth!.can('user.manage')).toBe(false);
+    expect(auth!.can('tenant.read')).toBe(true);
+  });
+
+  it('allows nothing once signed out', async () => {
+    await act(() => auth!.logout());
+    expect(auth!.can('tenant.read')).toBe(false);
   });
 });

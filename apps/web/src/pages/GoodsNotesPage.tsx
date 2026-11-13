@@ -131,8 +131,8 @@ export function GoodsNotesSection({
 
   const notesQuery = useQuery({
     queryKey: ['goods-notes', typeFilter],
-    queryFn: () =>
-      goodsNotesControllerList({ status: '', noteType: typeFilter ?? '' }).then(
+    queryFn: ({ signal }) =>
+      goodsNotesControllerList({ status: '', noteType: typeFilter ?? '' }, { signal }).then(
         (r) => r.data as unknown as GoodsNote[],
       ),
     enabled: screen === 'list',
@@ -140,21 +140,21 @@ export function GoodsNotesSection({
   const { data: notes, isLoading } = notesQuery;
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['goods-note', entryId],
-    queryFn: () => goodsNotesControllerGet(entryId!).then((r) => r.data as unknown as GoodsNote),
+    queryFn: ({ signal }) => goodsNotesControllerGet(entryId!, { signal }).then((r) => r.data as unknown as GoodsNote),
     enabled: screen === 'entry' && !!entryId,
   });
 
   const { data: items } = useQuery({
     queryKey: ['items'],
-    queryFn: () =>
-      catalogControllerListItems({ search: '', itemKind: '', isActive: '' }).then(
+    queryFn: ({ signal }) =>
+      catalogControllerListItems({ search: '', itemKind: '', isActive: '' }, { signal }).then(
         (r) => r.data as unknown as Item[],
       ),
     enabled: screen === 'entry' && !entryId,
   });
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: () => warehousesControllerList().then((r) => r.data as unknown as Warehouse[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as Warehouse[]),
     enabled: screen === 'entry' && !entryId,
   });
 

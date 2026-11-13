@@ -42,11 +42,15 @@ import { LoginPage } from './pages/LoginPage';
 import { useCompany } from './components/CompanyProfileForm';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { ServerUnreachable } from './components/ServerUnreachable';
+import { NoAccess } from './components/NoAccess';
+import { PERMISSIONS } from './auth/permissions';
 import { lazyPage } from './lazyPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 import { displayName } from './i18n/displayName';
 import {
   ALL_ROUTES,
+  allowedGroups,
+  allowedRoute,
   APP_GROUPS,
   INVITATIONS_PATH,
   routeForPath,
@@ -165,18 +169,21 @@ function HomeGroup({ group, onOpen }: { group: AppGroup; onOpen: (route: AppRout
   );
 }
 
-/** Everyday documents, opened straight into a new form (pages read `?new=1`). */
+/** Everyday documents, opened straight into a new form (pages read `?new=1`); shown to roles that may create them. */
 const QUICK_ACTIONS = [
-  { key: 'sale', label: 'sales.newInvoice', path: '/sales?new=1', icon: <ShoppingCartOutlined /> },
-  { key: 'purchase', label: 'purchases.newInvoice', path: '/purchases?new=1', icon: <ShoppingOutlined /> },
-  { key: 'receipt', label: 'treasury.newReceipt', path: '/treasury?tab=receipts&new=1', icon: <ImportOutlined /> },
-  { key: 'payment', label: 'treasury.newPayment', path: '/treasury?tab=payments&new=1', icon: <ExportOutlined /> },
-  { key: 'journal', label: 'journal.newEntry', path: '/journal?new=1', icon: <ProfileOutlined /> },
+  { key: 'sale', label: 'sales.newInvoice', path: '/sales?new=1', icon: <ShoppingCartOutlined />, permission: PERMISSIONS.SALES_MANAGE },
+  { key: 'purchase', label: 'purchases.newInvoice', path: '/purchases?new=1', icon: <ShoppingOutlined />, permission: PERMISSIONS.PURCHASE_MANAGE },
+  { key: 'receipt', label: 'treasury.newReceipt', path: '/treasury?tab=receipts&new=1', icon: <ImportOutlined />, permission: PERMISSIONS.TREASURY_MANAGE },
+  { key: 'payment', label: 'treasury.newPayment', path: '/treasury?tab=payments&new=1', icon: <ExportOutlined />, permission: PERMISSIONS.TREASURY_MANAGE },
+  { key: 'journal', label: 'journal.newEntry', path: '/journal?new=1', icon: <ProfileOutlined />, permission: PERMISSIONS.JOURNAL_MANAGE },
 ] as const;
 
 function HomeScreen() {
   const { t } = useTranslation();
-  const { me } = useAuth();
+  const { me, can } = useAuth();
+  // Only what the role can use: the API would refuse the rest with 403.
+  const quickActions = QUICK_ACTIONS.filter((a) => can(a.permission));
+  const groups = allowedGroups(APP_GROUPS, can);
   const navigate = useNavigate();
   const company = useCompany();
   return (
@@ -208,16 +215,18 @@ function HomeScreen() {
         </div>
       </div>
       <HomeDashboard />
-      <div className="home-quick">
-        <span className="home-quick-title">{t('dashboard.quickActions')}</span>
-        {QUICK_ACTIONS.map((a) => (
-          <Button key={a.key} icon={a.icon} onClick={() => navigate(a.path)}>
-            {t(a.label)}
-          </Button>
-        ))}
-      </div>
+      {quickActions.length > 0 && (
+        <div className="home-quick">
+          <span className="home-quick-title">{t('dashboard.quickActions')}</span>
+          {quickActions.map((a) => (
+            <Button key={a.key} icon={a.icon} onClick={() => navigate(a.path)}>
+              {t(a.label)}
+            </Button>
+          ))}
+        </div>
+      )}
       <div className="home-groups">
-        {APP_GROUPS.map((g) => (
+        {groups.map((g) => (
           <HomeGroup key={g.label} group={g} onOpen={(r) => navigate(r.path)} />
         ))}
       </div>
@@ -227,7 +236,7 @@ function HomeScreen() {
 
 function AppShell() {
   const { t } = useTranslation();
-  const { me, logout, switchTenant, branchId, setBranch } = useAuth();
+  const { me, logout, switchTenant, branchId, setBranch, can } = useAuth();
   const branches = me?.currentMembership?.branches ?? [];
   const location = useLocation();
   const navigate = useNavigate();
@@ -261,9 +270,10 @@ function AppShell() {
   const menuItems: MenuProps['items'] = useMemo(
     () => [
       ...(noCompany ? [] : [{ key: '/', icon: <HomeOutlined />, label: t('nav.home') }]),
+      // Screens the role cannot use are not offered (the API would answer 403).
       ...(noCompany
         ? APP_GROUPS.filter((g) => g.routes.some((r) => r.path === INVITATIONS_PATH))
-        : APP_GROUPS
+        : allowedGroups(APP_GROUPS, can)
       ).map((g) => ({
         type: 'group' as const,
         key: g.label,
@@ -289,7 +299,7 @@ function AppShell() {
         : []),
     ],
     // Labels depend on the language; t identity changes with it.
-    [t, siderCollapsed, isMobile, isPlatformAdmin, noCompany, pendingInvitations],
+    [t, siderCollapsed, isMobile, isPlatformAdmin, noCompany, pendingInvitations, can],
   );
 
   const menu = (
@@ -488,7 +498,9 @@ function AppShell() {
                 <Route
                   key={r.key}
                   path={`${r.path}/*`}
-                  element={<ViewErrorBoundary key={r.key}>{r.element}</ViewErrorBoundary>}
+                  element={
+                    <ViewErrorBoundary key={r.key}>{allowedRoute(r, can) ? r.element : <NoAccess />}</ViewErrorBoundary>
+                  }
                 />
               ))}
               <Route

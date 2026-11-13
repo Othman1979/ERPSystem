@@ -21,6 +21,7 @@ import {
   WalletOutlined,
 } from '@ant-design/icons';
 import { lazyPage } from './lazyPage';
+import { PERMISSIONS, type Permission } from './auth/permissions';
 
 /**
  * Each module's page is its own chunk, loaded when first opened (WEB-10).
@@ -78,6 +79,12 @@ export interface AppRoute {
   element: ReactNode;
   /** Count shown as a badge on the menu entry, when above zero. */
   badge?: 'pendingInvitations';
+  /**
+   * Permission the screen's main list needs (the API's @RequirePermission on
+   * it). Without it the entry is hidden and the URL shows "no access" instead
+   * of a request that fails with 403. Absent: no company permission needed.
+   */
+  permission?: Permission;
 }
 
 export interface AppGroup {
@@ -97,47 +104,48 @@ export const APP_GROUPS: AppGroup[] = [
     label: 'nav.groupFinance',
     tone: 'finance',
     routes: [
-      { key: 'accounts', path: '/accounts', label: 'nav.accounts', icon: <BankOutlined />, element: <AccountsPage /> },
-      { key: 'journal', path: '/journal', label: 'nav.journal', icon: <ProfileOutlined />, element: <JournalPage /> },
+      { key: 'accounts', path: '/accounts', label: 'nav.accounts', icon: <BankOutlined />, element: <AccountsPage />, permission: PERMISSIONS.TENANT_READ },
+      { key: 'journal', path: '/journal', label: 'nav.journal', icon: <ProfileOutlined />, element: <JournalPage />, permission: PERMISSIONS.TENANT_READ },
       {
         key: 'openingBalances',
         path: '/opening-balances',
         label: 'nav.openingBalances',
         icon: <FlagOutlined />,
         element: <OpeningBalancesPage />,
+        permission: PERMISSIONS.TENANT_READ,
       },
-      { key: 'treasury', path: '/treasury', label: 'nav.treasury', icon: <WalletOutlined />, element: <TreasuryPage /> },
-      { key: 'reports', path: '/reports', label: 'nav.reports', icon: <BarChartOutlined />, element: <ReportsPage /> },
-      { key: 'fiscal', path: '/fiscal', label: 'nav.fiscal', icon: <CalendarOutlined />, element: <FiscalPage /> },
+      { key: 'treasury', path: '/treasury', label: 'nav.treasury', icon: <WalletOutlined />, element: <TreasuryPage />, permission: PERMISSIONS.TENANT_READ },
+      { key: 'reports', path: '/reports', label: 'nav.reports', icon: <BarChartOutlined />, element: <ReportsPage />, permission: PERMISSIONS.REPORTS_VIEW },
+      { key: 'fiscal', path: '/fiscal', label: 'nav.fiscal', icon: <CalendarOutlined />, element: <FiscalPage />, permission: PERMISSIONS.TENANT_READ },
     ],
   },
   {
     label: 'nav.groupSales',
     tone: 'trade',
     routes: [
-      { key: 'sales', path: '/sales', label: 'nav.sales', icon: <ShoppingCartOutlined />, element: <SalesPage /> },
-      { key: 'einvoice', path: '/einvoice', label: 'nav.einvoice', icon: <FileProtectOutlined />, element: <EInvoicePage /> },
-      { key: 'purchases', path: '/purchases', label: 'nav.purchases', icon: <ShoppingOutlined />, element: <PurchasesPage /> },
-      { key: 'goodsNotes', path: '/goods-notes', label: 'nav.goodsNotes', icon: <FileDoneOutlined />, element: <GoodsNotesPage /> },
-      { key: 'parties', path: '/parties', label: 'nav.parties', icon: <SolutionOutlined />, element: <PartiesPage /> },
+      { key: 'sales', path: '/sales', label: 'nav.sales', icon: <ShoppingCartOutlined />, element: <SalesPage />, permission: PERMISSIONS.TENANT_READ },
+      { key: 'einvoice', path: '/einvoice', label: 'nav.einvoice', icon: <FileProtectOutlined />, element: <EInvoicePage />, permission: PERMISSIONS.REPORTS_VIEW },
+      { key: 'purchases', path: '/purchases', label: 'nav.purchases', icon: <ShoppingOutlined />, element: <PurchasesPage />, permission: PERMISSIONS.TENANT_READ },
+      { key: 'goodsNotes', path: '/goods-notes', label: 'nav.goodsNotes', icon: <FileDoneOutlined />, element: <GoodsNotesPage />, permission: PERMISSIONS.TENANT_READ },
+      { key: 'parties', path: '/parties', label: 'nav.parties', icon: <SolutionOutlined />, element: <PartiesPage />, permission: PERMISSIONS.TENANT_READ },
     ],
   },
   {
     label: 'nav.groupInventory',
     tone: 'inventory',
     routes: [
-      { key: 'items', path: '/items', label: 'nav.items', icon: <InboxOutlined />, element: <ItemsPage /> },
-      { key: 'warehouses', path: '/warehouses', label: 'nav.warehouses', icon: <ContainerOutlined />, element: <WarehousesPage /> },
-      { key: 'stock', path: '/stock', label: 'nav.stock', icon: <AuditOutlined />, element: <StockPage /> },
+      { key: 'items', path: '/items', label: 'nav.items', icon: <InboxOutlined />, element: <ItemsPage />, permission: PERMISSIONS.TENANT_READ },
+      { key: 'warehouses', path: '/warehouses', label: 'nav.warehouses', icon: <ContainerOutlined />, element: <WarehousesPage />, permission: PERMISSIONS.TENANT_READ },
+      { key: 'stock', path: '/stock', label: 'nav.stock', icon: <AuditOutlined />, element: <StockPage />, permission: PERMISSIONS.TENANT_READ },
     ],
   },
   {
     label: 'nav.groupAdmin',
     tone: 'admin',
     routes: [
-      { key: 'users', path: '/users', label: 'nav.users', icon: <TeamOutlined />, element: <UsersPage /> },
-      { key: 'branches', path: '/branches', label: 'nav.branches', icon: <ShopOutlined />, element: <BranchesPage /> },
-      { key: 'settings', path: '/settings', label: 'nav.settings', icon: <SettingOutlined />, element: <SettingsPage /> },
+      { key: 'users', path: '/users', label: 'nav.users', icon: <TeamOutlined />, element: <UsersPage />, permission: PERMISSIONS.USER_MANAGE },
+      { key: 'branches', path: '/branches', label: 'nav.branches', icon: <ShopOutlined />, element: <BranchesPage />, permission: PERMISSIONS.TENANT_READ },
+      { key: 'settings', path: '/settings', label: 'nav.settings', icon: <SettingOutlined />, element: <SettingsPage />, permission: PERMISSIONS.SETTINGS_MANAGE },
       { key: 'health', path: '/health', label: 'nav.health', icon: <DashboardOutlined />, element: <HealthPage /> },
     ],
   },
@@ -158,6 +166,18 @@ export const APP_GROUPS: AppGroup[] = [
 ];
 
 export const ALL_ROUTES: AppRoute[] = APP_GROUPS.flatMap((g) => g.routes);
+
+/** True when a role with `can` may open `route` (the permission it names, if any). */
+export function allowedRoute(route: AppRoute, can: (permission: Permission) => boolean): boolean {
+  return !route.permission || can(route.permission);
+}
+
+/** `groups` with only the routes the role may open; groups left empty are dropped. */
+export function allowedGroups(groups: AppGroup[], can: (permission: Permission) => boolean): AppGroup[] {
+  return groups
+    .map((g) => ({ ...g, routes: g.routes.filter((r) => allowedRoute(r, can)) }))
+    .filter((g) => g.routes.length > 0);
+}
 
 /** The module a URL belongs to (also matches nested paths like /sales/…); undefined on home. */
 export function routeForPath(pathname: string): AppRoute | undefined {

@@ -76,7 +76,7 @@ export function TradeSummaryTab({ kind, initial }: { kind: Kind; initial?: Trade
   const params = { from: isoDay(from), to: isoDay(to), groupBy };
   const listQuery = useQuery({
     queryKey: ['report-trade-summary', kind, params.from, params.to, groupBy],
-    queryFn: () => apiFetchData<TradeSummary>(`/api/v1${path}${queryString(params)}`),
+    queryFn: ({ signal }) => apiFetchData<TradeSummary>(`/api/v1${path}${queryString(params)}`, { signal }),
   });
   const { data, isLoading } = listQuery;
 
