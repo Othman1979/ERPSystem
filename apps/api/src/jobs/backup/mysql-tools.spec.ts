@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { dbTarget, sameDatabase, withOptionFile } from './mysql-tools.js';
+import { dbTarget, optionFileBody, sameDatabase, serverOffersTls, withOptionFile } from './mysql-tools.js';
 
 describe('database client helpers (ADR-010 §10.2)', () => {
   it('reads a DATABASE_URL, decoding the credentials', () => {
@@ -39,6 +39,7 @@ describe('database client helpers (ADR-010 §10.2)', () => {
           return f;
         },
         dir,
+        true,
       );
       expect(seen).toContain('[client]');
       // TCP like the app's driver: never the local socket for host=localhost.
@@ -54,6 +55,7 @@ describe('database client helpers (ADR-010 §10.2)', () => {
           expect(path.basename(f)).toMatch(/^\.erp-db-[0-9a-f-]+\.cnf$/);
         },
         dir,
+        true,
       );
       // Removed even when the work fails.
       let failed = '';
@@ -65,6 +67,7 @@ describe('database client helpers (ADR-010 §10.2)', () => {
             throw new Error('boom');
           },
           dir,
+          true,
         ),
       ).rejects.toThrow('boom');
       expect(existsSync(failed)).toBe(false);
@@ -73,5 +76,18 @@ describe('database client helpers (ADR-010 §10.2)', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it('connects in plain only to a server without TLS (11.4+ clients require it by default)', () => {
+    const target = dbTarget('mysql://root:pw@db:3306/erp');
+    // A 10.11 server without certificates, an 11.x client: TLS off, else the client refuses to connect.
+    expect(optionFileBody(target, false)).toContain('\nloose-skip-ssl\n');
+    // A server that offers TLS: the client's TLS and certificate check stay on.
+    expect(optionFileBody(target, true)).not.toContain('ssl');
+  });
+
+  it('asks the server whether it offers TLS, and keeps the client defaults when it cannot tell', async () => {
+    // Nothing listens on port 1: no answer, so no change to the tools' defaults.
+    await expect(serverOffersTls(dbTarget('mysql://u:p@127.0.0.1:1/erp'))).resolves.toBe(true);
   });
 });
