@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import {
@@ -38,14 +38,10 @@ import {
 import { useAuth } from './auth/AuthContext';
 import { HomeDashboard } from './pages/HomeDashboard';
 import { LoginPage } from './pages/LoginPage';
-import { PlatformAdminPage } from './pages/PlatformAdminPage';
-import { SetupWizardPage } from './pages/SetupWizardPage';
-import { HelpPage } from './pages/HelpPage';
-import { LegalPage } from './pages/LegalPage';
 import { useCompany } from './components/CompanyProfileForm';
-import { RegisterPage } from './pages/RegisterPage';
-import { ChangePasswordRequiredPage } from './pages/ChangePasswordRequiredPage';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
+import { ServerUnreachable } from './components/ServerUnreachable';
+import { lazyPage } from './lazyPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 import { displayName } from './i18n/displayName';
 import { ALL_ROUTES, APP_GROUPS, routeForPath, type AppGroup, type AppRoute } from './routes';
@@ -59,6 +55,25 @@ installCssVariables();
 function toggleLanguage(): void {
   const next: AppLanguage = i18n.language === 'ar' ? 'en' : 'ar';
   void i18n.changeLanguage(SUPPORTED_LANGUAGES.includes(next) ? next : 'ar');
+}
+
+// The sign-in screen and the home screen ship with the app; the rest load when opened (WEB-10).
+const PlatformAdminPage = lazyPage(() => import('./pages/PlatformAdminPage').then((m) => m.PlatformAdminPage));
+const SetupWizardPage = lazyPage(() => import('./pages/SetupWizardPage').then((m) => m.SetupWizardPage));
+const HelpPage = lazyPage(() => import('./pages/HelpPage').then((m) => m.HelpPage));
+const LegalPage = lazyPage(() => import('./pages/LegalPage').then((m) => m.LegalPage));
+const RegisterPage = lazyPage(() => import('./pages/RegisterPage').then((m) => m.RegisterPage));
+const ChangePasswordRequiredPage = lazyPage(() =>
+  import('./pages/ChangePasswordRequiredPage').then((m) => m.ChangePasswordRequiredPage),
+);
+
+/** Shown while a page's chunk loads. */
+function PageSpinner({ full }: { full?: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', marginTop: full ? '20vh' : 64 }}>
+      <Spin size="large" />
+    </div>
+  );
 }
 
 interface ErrorBoundaryState {
@@ -437,38 +452,61 @@ function AppShell() {
           </Layout.Sider>
         )}
         <Layout.Content className="app-content" style={{ padding: isMobile ? 12 : 24 }}>
-          <Routes>
-            <Route path="/" element={<HomeScreen />} />
-            {ALL_ROUTES.map((r) => (
+          <Suspense fallback={<PageSpinner />}>
+            <Routes>
+              <Route path="/" element={<HomeScreen />} />
+              {ALL_ROUTES.map((r) => (
+                <Route
+                  key={r.key}
+                  path={`${r.path}/*`}
+                  element={<ViewErrorBoundary key={r.key}>{r.element}</ViewErrorBoundary>}
+                />
+              ))}
               <Route
-                key={r.key}
-                path={`${r.path}/*`}
-                element={<ViewErrorBoundary key={r.key}>{r.element}</ViewErrorBoundary>}
-              />
-            ))}
-            <Route path="/help" element={<HelpPage />} />
-            <Route path="/privacy" element={<LegalPage kind="privacy" />} />
-            <Route path="/terms" element={<LegalPage kind="terms" />} />
-            <Route
-              path="/setup"
-              element={
-                <ViewErrorBoundary key="setup">
-                  <SetupWizardPage />
-                </ViewErrorBoundary>
-              }
-            />
-            {isPlatformAdmin && (
-              <Route
-                path={`${PLATFORM_PATH}/*`}
+                path="/help"
                 element={
-                  <ViewErrorBoundary key="platform">
-                    <PlatformAdminPage />
+                  <ViewErrorBoundary key="help">
+                    <HelpPage />
                   </ViewErrorBoundary>
                 }
               />
-            )}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              <Route
+                path="/privacy"
+                element={
+                  <ViewErrorBoundary key="privacy">
+                    <LegalPage kind="privacy" />
+                  </ViewErrorBoundary>
+                }
+              />
+              <Route
+                path="/terms"
+                element={
+                  <ViewErrorBoundary key="terms">
+                    <LegalPage kind="terms" />
+                  </ViewErrorBoundary>
+                }
+              />
+              <Route
+                path="/setup"
+                element={
+                  <ViewErrorBoundary key="setup">
+                    <SetupWizardPage />
+                  </ViewErrorBoundary>
+                }
+              />
+              {isPlatformAdmin && (
+                <Route
+                  path={`${PLATFORM_PATH}/*`}
+                  element={
+                    <ViewErrorBoundary key="platform">
+                      <PlatformAdminPage />
+                    </ViewErrorBoundary>
+                  }
+                />
+              )}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </Layout.Content>
       </Layout>
 
@@ -504,8 +542,8 @@ function GuestTopbar() {
   );
 }
 
-export function App() {
-  const { status, me } = useAuth();
+function AppGate() {
+  const { status, me, refreshMe, logout } = useAuth();
   const location = useLocation();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
@@ -514,12 +552,12 @@ export function App() {
     return <LegalPage kind={location.pathname === '/privacy' ? 'privacy' : 'terms'} standalone />;
   }
 
-  if (status === 'loading') {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20vh' }}>
-        <Spin size="large" />
-      </div>
-    );
+  if (status === 'loading') return <PageSpinner full />;
+
+  // The server did not answer: not the sign-in screen, the session is probably fine (WEB-04).
+  // Signing out works offline too: the logout call may fail, the screen still returns to sign-in.
+  if (status === 'unreachable') {
+    return <ServerUnreachable onRetry={refreshMe} onSignOut={() => logout().catch(() => undefined)} />;
   }
 
   // Guests see the sign-in screen on any URL and land back on it after signing in.
@@ -540,4 +578,14 @@ export function App() {
   if (me?.user.mustChangePassword) return <ChangePasswordRequiredPage />;
 
   return <AppShell />;
+}
+
+export function App() {
+  return (
+    <ViewErrorBoundary>
+      <Suspense fallback={<PageSpinner full />}>
+        <AppGate />
+      </Suspense>
+    </ViewErrorBoundary>
+  );
 }
