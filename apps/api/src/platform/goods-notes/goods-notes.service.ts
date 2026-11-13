@@ -338,15 +338,11 @@ export class GoodsNotesService {
         const docNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, docType, noteDate);
         let entryId: bigint | null = null;
         if (journalLines.length > 0) {
-          const entryNo = await this.posting.allocateEntryNo(
-            tx, tenantId, companyId, 'JOURNAL_ENTRY', noteDate,
-          );
           const entry = await this.posting.postEntry(tx, {
             tenantId,
             companyId,
             entryDate: noteDate,
             fiscalPeriodId: period.id,
-            entryNo,
             sourceType: docType,
             sourceId: draft.id,
             branchId: draft.branchId,

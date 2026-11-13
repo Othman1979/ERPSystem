@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { calendarDateIn, DocumentSupportService } from '../shared/document-support.service.js';
-import { outstandingAmount } from '../shared/invoice-balance.js';
 import { ReportsService } from '../journal/reports.service.js';
 import { PartiesService } from '../parties/parties.service.js';
 import { SalesInvoicesService } from '../sales/sales-invoices.service.js';
@@ -86,8 +85,9 @@ export class TreasuryReportsService {
    * Aging as of a date (ADR-004 §7, updated). Per party:
    *  - every posted credit invoice dated ≤ asOf that still owes something
    *    then (grand total − credit returns dated ≤ asOf − allocations counted
-   *    as of asOf, see `allocatedAsOf`), by days past its due date (invoice
-   *    date when none);
+   *    as of asOf, see `allocationShiftAsOf`), by days past its due date
+   *    (invoice date when none). Settled invoices are filtered out in SQL
+   *    (DB-14), so a long history of paid invoices is not read;
    *  - plus the rest of its control-account balance (opening balances,
    *    manual entries, unallocated vouchers), see `ageResidual`.
    * `total` = the aged buckets; `balance` = total + unapplied = the party's
@@ -102,9 +102,11 @@ export class TreasuryReportsService {
     ]);
     const controlAccountId = Object.values(mapping)[0];
     const documentType = partyType === 'CUSTOMER' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
-    const [creditInvoices, allocated, balances, items] = await Promise.all([
-      partyType === 'CUSTOMER' ? this.sales.creditInvoicesAsOf(asOf) : this.purchases.creditInvoicesAsOf(asOf),
-      this.allocatedAsOf(documentType, asOf),
+    const shift = await this.allocationShiftAsOf(documentType, asOf);
+    const [openInvoices, balances, items] = await Promise.all([
+      partyType === 'CUSTOMER'
+        ? this.sales.openCreditInvoicesAsOf(asOf, shift)
+        : this.purchases.openCreditInvoicesAsOf(asOf, shift),
       this.ledger.controlBalancesByParty(partyType, asOf, controlAccountId),
       this.ledger.openingAndManualItemsByParty(partyType, asOf, controlAccountId),
     ]);
@@ -117,19 +119,17 @@ export class TreasuryReportsService {
       return row;
     };
 
-    for (const inv of creditInvoices) {
-      const owed = outstandingAmount(inv.grandTotal, allocated.get(inv.id) ?? '0', inv.creditedAmount);
-      if (owed.lte(0)) continue;
-      const row = entry(inv.party.id);
-      row.party = inv.party;
+    for (const inv of openInvoices) {
+      const row = entry(inv.partyId);
       const bucket = agingBucket(daysOverdue(inv.dueDate ?? inv.invoiceDate, asOf));
-      row.buckets[bucket] = row.buckets[bucket].plus(owed);
-      row.invoiced = row.invoiced.plus(owed);
+      row.buckets[bucket] = row.buckets[bucket].plus(inv.owed);
+      row.invoiced = row.invoiced.plus(inv.owed);
     }
     for (const partyId of balances.keys()) entry(partyId);
 
-    const unnamed = [...byParty.entries()].filter(([, r]) => !r.party).map(([id]) => id);
-    for (const p of await this.parties.summaries(unnamed)) {
+    // Names through the parties service (module boundary), for invoice and
+    // journal-only parties alike.
+    for (const p of await this.parties.summaries([...byParty.keys()])) {
       const row = byParty.get(p.id);
       if (row) row.party = p;
     }
@@ -180,16 +180,26 @@ export class TreasuryReportsService {
   }
 
   /**
-   * Allocations per invoice counted as of `asOf`, summed per document (3 decimals).
-   * An allocation counts when its voucher is dated on or before `asOf` and it is
-   * either still active or was cancelled after `asOf`. A cancellation has no
-   * business date, so its calendar date (in the company's timezone) stands in:
-   * an allocation cancelled on or before `asOf` no longer counts from then on,
-   * nor one whose voucher's reversal entry is dated on or before `asOf`.
-   * An invoice dated after its voucher (an advance) is only listed from its own
-   * date on, so the allocation counts from the later of the two.
+   * Per invoice: allocations counted now (the invoice's paid_amount, every
+   * active allocation) minus allocations counted as of `asOf` (DB-14). The
+   * invoice services subtract paid_amount in SQL and add this back.
+   * An allocation counts as of `asOf` when its voucher is dated on or before
+   * `asOf` and it is either still active or was cancelled after `asOf`. A
+   * cancellation has no business date, so its calendar date (in the company's
+   * timezone) stands in: an allocation cancelled on or before `asOf` no longer
+   * counts from then on, nor one whose voucher's reversal entry is dated on or
+   * before `asOf`. So the shift is
+   *   + active allocations of vouchers dated after asOf (in paid_amount, not yet counted),
+   *   − cancelled allocations that still count as of asOf (counted, no longer in paid_amount).
+   * Both sets only hold allocations touched after `asOf`, so for today's aging
+   * the map is nearly empty. An invoice dated after its voucher (an advance)
+   * is only listed from its own date on, so the allocation counts from the
+   * later of the two.
    */
-  private async allocatedAsOf(documentType: 'SALES_INVOICE' | 'PURCHASE_INVOICE', asOf: Date) {
+  private async allocationShiftAsOf(
+    documentType: 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    asOf: Date,
+  ): Promise<Map<bigint, Decimal>> {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const company = await db.company.findFirst({ where: { id: companyId }, select: { timezone: true } });
@@ -199,10 +209,15 @@ export class TreasuryReportsService {
       OR: [{ receipt: { receiptDate: { lte: asOf } } }, { payment: { paymentDate: { lte: asOf } } }],
     };
 
-    const [active, cancelled] = await Promise.all([
+    const [later, cancelled] = await Promise.all([
       db.allocation.groupBy({
         by: ['documentId'],
-        where: { companyId, documentType, cancelledAt: null, ...voucherDated },
+        where: {
+          companyId,
+          documentType,
+          cancelledAt: null,
+          OR: [{ receipt: { receiptDate: { gt: asOf } } }, { payment: { paymentDate: { gt: asOf } } }],
+        },
         _sum: { amount: true },
       }),
       // A calendar day in any zone (UTC-12 to UTC+14) starts within a day before asOf.
@@ -231,17 +246,17 @@ export class TreasuryReportsService {
       .filter((id): id is bigint => id !== null);
     const reversalDates = await this.ledger.entryDates(reversalIds);
 
-    const totals = new Map<bigint, Decimal>(
-      active.map((s) => [s.documentId, new Decimal(s._sum.amount?.toString() ?? '0')]),
+    const shift = new Map<bigint, Decimal>(
+      later.map((s) => [s.documentId, new Decimal(s._sum.amount?.toString() ?? '0')]),
     );
     for (const a of cancelled) {
       if (!a.cancelledAt || calendarDateIn(timeZone, a.cancelledAt) <= asOfIso) continue;
       const reversalId = a.receipt?.reversalEntryId ?? a.payment?.reversalEntryId ?? null;
       const reversedOn = reversalId !== null ? reversalDates.get(reversalId) : undefined;
       if (reversedOn && reversedOn.getTime() <= asOf.getTime()) continue;
-      totals.set(a.documentId, (totals.get(a.documentId) ?? new Decimal(0)).plus(new Decimal(a.amount.toString())));
+      shift.set(a.documentId, (shift.get(a.documentId) ?? new Decimal(0)).minus(new Decimal(a.amount.toString())));
     }
-    return new Map([...totals].map(([id, sum]) => [id, sum.toFixed(3)]));
+    return shift;
   }
 
   /**

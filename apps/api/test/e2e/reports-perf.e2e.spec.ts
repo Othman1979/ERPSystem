@@ -10,6 +10,7 @@
  * checked against them (and tenant B's rows never count).
  * Measured times are printed and copied into docs/phase-reports/phase-8.md.
  * Real MariaDB (erp_test) + built API. Run `pnpm build` before `pnpm test`.
+ * Aging (DB-14): 20,000 credit invoices of which 19,900 are settled; the report must read only the open ones.
  */
 import 'dotenv/config';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -26,7 +27,7 @@ const ENTRIES_A = 50_000;
 const ENTRIES_B = 500;
 
 /** Budgets in ms (BUILD_PLAN §17 phase 8). */
-const BUDGET = { statementJson: 2_000, ledgerJson: 2_000, ledgerXlsx: 15_000, statementPdf: 10_000 };
+const BUDGET = { statementJson: 2_000, ledgerJson: 2_000, ledgerXlsx: 15_000, statementPdf: 10_000, agingJson: 2_000 };
 
 let server: ChildProcess;
 let db: Connection;
@@ -195,12 +196,13 @@ const perf = process.env.RUN_PERF === '1' ? describe : describe.skip;
 
 perf('Reports on 100,000 journal lines', () => {
   let A: Tenant;
+  let B: Tenant;
   let expected: Map<string, { dr: bigint; cr: bigint }>;
   let busiest = { id: 0n, code: '' };
 
   it('seeds tenant A with 100k lines and tenant B with 1k', async () => {
     A = await register(`PERF ${RUN}`);
-    const B = await register(`PERF B ${RUN}`);
+    B = await register(`PERF B ${RUN}`);
     expected = await seed(A, ENTRIES_A, 1);
     await seed(B, ENTRIES_B, 2);
     const [{ n }] = (await db.query('SELECT COUNT(*) AS n FROM journal_lines WHERE tenant_id = ?', [A.tenantId])) as { n: bigint }[];
@@ -266,4 +268,84 @@ perf('Reports on 100,000 journal lines', () => {
     expect((pdf.body as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');
     expect(timings.trialBalancePdf).toBeLessThan(BUDGET.statementPdf);
   }, 60_000);
+
+  it('aging (JSON) over 20,000 credit invoices, 19,900 settled, within budget', async () => {
+    const AGING_INVOICES = 20_000;
+    const AGING_SETTLED = 19_900;
+    const CHUNK = 1_000;
+    const now = new Date();
+
+    // Customer and warehouse for tenant A (company from the seeding test).
+    await db.query(
+      `INSERT INTO parties (tenant_id, company_id, code, name_ar, party_type, national_id_kind, is_cash_customer, is_active, created_at, updated_at)
+       VALUES (?, ?, 'AGE-C', 'Aging customer', 'CUSTOMER', 'NIN', 0, 1, NOW(3), NOW(3))`,
+      [A.tenantId, A.companyId],
+    );
+    await db.query(
+      `INSERT INTO warehouses (tenant_id, company_id, code, name_ar, is_active, created_at, updated_at)
+       VALUES (?, ?, 'AGE-W', 'Aging warehouse', 1, NOW(3), NOW(3))`,
+      [A.tenantId, A.companyId],
+    );
+    const [customer] = (await db.query(`SELECT id FROM parties WHERE tenant_id = ? AND code = 'AGE-C'`, [A.tenantId])) as {
+      id: bigint;
+    }[];
+    const [warehouse] = (await db.query(`SELECT id FROM warehouses WHERE tenant_id = ? AND code = 'AGE-W'`, [A.tenantId])) as {
+      id: bigint;
+    }[];
+
+    // Credit invoices, posted, no journal lines: invoice i (0-based) is dated
+    // 2025-01-01 + (i % 350) days. The first 19,900 are fully paid (10.000 of
+    // 10.000); the last 100 owe 6.000 each.
+    for (let start = 0; start < AGING_INVOICES; start += CHUNK) {
+      const rows: string[] = [];
+      const params: unknown[] = [];
+      for (let i = start; i < start + CHUNK; i++) {
+        const day = new Date(Date.UTC(2025, 0, 1 + (i % 350))).toISOString().slice(0, 10);
+        const paid = i < AGING_SETTLED ? '10.000' : '4.000';
+        rows.push('(?,?,?,?,DATE_ADD(?, INTERVAL 30 DAY),?,?,?,?,?,?,?,?,?,?)');
+        params.push(
+          A.tenantId,
+          A.companyId,
+          `AGE-${i + 1}`,
+          day,
+          day,
+          customer.id,
+          warehouse.id,
+          'CREDIT',
+          'POSTED',
+          '10.000',
+          '0.000',
+          '10.000',
+          paid,
+          now,
+          now,
+        );
+      }
+      await db.query(
+        `INSERT INTO sales_invoices (tenant_id, company_id, invoice_no, invoice_date, due_date, customer_id, warehouse_id,
+           payment_type, status, net_total, tax_total, grand_total, paid_amount, created_at, updated_at)
+         VALUES ${rows.join(',')}`,
+        params,
+      );
+    }
+
+    const res = await timed('agingJson', () => api().get('/api/v1/reports/aging?partyType=CUSTOMER&asOf=2025-12-31').set(auth(A.token)));
+    expect(res.status).toBe(200);
+    expect(timings.agingJson).toBeLessThan(BUDGET.agingJson);
+
+    const rows = res.body.rows as Record<string, string>[];
+    const row = rows.find((r) => r.code === 'AGE-C');
+    expect(row).toBeDefined();
+    expect(row!.total).toBe('600.000'); // 100 open invoices x 6.000
+    expect(row!.unapplied).toBe('-600.000'); // no journal lines: the invoices' amount is unapplied
+    expect(row!.balance).toBe('0.000');
+    const buckets = ['notDue', 'd1_30', 'd31_60', 'd61_90', 'd90plus'] as const;
+    const bucketSum = buckets.reduce((s, b) => s + fils(row![b]), 0n);
+    expect(bucketSum).toBe(fils(row!.total));
+
+    // Tenant B never sees tenant A's customer.
+    const other = await api().get('/api/v1/reports/aging?partyType=CUSTOMER&asOf=2025-12-31').set(auth(B.token));
+    expect(other.status).toBe(200);
+    expect((other.body.rows as { code: string }[]).some((r) => r.code === 'AGE-C')).toBe(false);
+  }, 120_000);
 });

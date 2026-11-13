@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../../common/cls/cls.types.js';
@@ -20,6 +20,7 @@ import {
   type JournalLineInput,
   type NormalizedLine,
 } from './posting.service.js';
+import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 
 const MANUAL_SOURCE = 'MANUAL_JOURNAL';
 const OPENING_SOURCE = 'OPENING_ENTRY';
@@ -35,13 +36,33 @@ function isRetryable(err: unknown): boolean {
  * opening-balance entry (docs/BUILD_PLAN.md §8.2, §8.3, §8.6).
  */
 @Injectable()
-export class JournalService {
+export class JournalService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly posting: PostingService,
     private readonly audit: AuditService,
     private readonly parties: PartiesService,
+    private readonly partyUsage: PartyUsageRegistry,
   ) {}
+
+  onModuleInit(): void {
+    this.partyUsage.register('journal', (partyId) => this.partyInUse(partyId));
+  }
+
+  /**
+   * DB-15 / ADR-021: the first journal table that references the party in
+   * any status (drafts included), or null. A party used here is deactivated,
+   * never deleted.
+   */
+  async partyInUse(partyId: bigint): Promise<string | null> {
+    const { db } = this.tenant();
+    // journal_lines.party_id has no FK to parties: this check is the only guard.
+    const line = await db.journalLine.findFirst({
+      where: { partyType: { in: ['CUSTOMER', 'SUPPLIER'] }, partyId },
+      select: { id: true },
+    });
+    return line ? 'journal_lines' : null;
+  }
 
   /**
    * Party ids typed by the user (manual and opening entries) must be parties

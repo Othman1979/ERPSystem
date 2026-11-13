@@ -88,14 +88,12 @@ export class CashTransfersService {
             createdBy: userId ?? null,
           },
         });
-        const entryNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, 'JOURNAL_ENTRY', date);
         const entry = await this.posting.postEntry(tx, {
           tenantId,
           companyId,
           branchId,
           entryDate: date,
           fiscalPeriodId: period.id,
-          entryNo,
           sourceType: SOURCE,
           sourceId: transfer.id,
           description: dto.description ?? `Cash transfer ${transferNo}`,
