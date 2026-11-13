@@ -50,6 +50,7 @@ import { idemHeaders } from '../idempotency';
 import { GoodsNotesSection } from './GoodsNotesPage';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { ExportButtons } from '../components/ExportButtons';
 import {
@@ -182,7 +183,7 @@ function BalancesTab() {
   const [searchParams] = useSearchParams();
   const [lowStock, setLowStock] = useState(() => searchParams.get('lowStock') === '1');
   const { whOptions, warehouseLabel } = useLookups();
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['stock-balances', warehouseId, lowStock],
     queryFn: () =>
       stockReportsControllerBalances({
@@ -191,6 +192,7 @@ function BalancesTab() {
         lowStock: lowStock ? 'true' : '',
       }).then((r) => r.data as unknown as BalanceRow[]),
   });
+  const { data, isLoading } = listQuery;
   return (
     <>
       <ListToolbar
@@ -220,6 +222,7 @@ function BalancesTab() {
         size="small"
         loading={isLoading}
         dataSource={data ?? []}
+        locale={tableLocale(listQuery)}
         pagination={{ pageSize: 20 }}
         columns={[
           {
@@ -251,13 +254,14 @@ function AdjustmentsTab() {
   const [form] = Form.useForm();
   const { whOptions, itemOptions } = useLookups();
 
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['stock-adjustments'],
     queryFn: () =>
       stockDocumentsControllerListAdjustments({ status: '' }).then(
         (r) => r.data as unknown as DocRow[],
       ),
   });
+  const { data, isLoading } = listQuery;
   const invalidate = () =>
     void queryClient.invalidateQueries({ queryKey: ['stock-adjustments'] });
 
@@ -423,6 +427,7 @@ function AdjustmentsTab() {
         size="small"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(listQuery)}
         pagination={{ pageSize: 20 }}
         columns={[
           { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
@@ -518,13 +523,14 @@ function TransfersTab() {
   const [form] = Form.useForm();
   const { whOptions, itemOptions } = useLookups();
 
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['stock-transfers'],
     queryFn: () =>
       stockDocumentsControllerListTransfers({ status: '' }).then(
         (r) => r.data as unknown as DocRow[],
       ),
   });
+  const { data, isLoading } = listQuery;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['stock-transfers'] });
 
   const create = useMutation({
@@ -668,6 +674,7 @@ function TransfersTab() {
         size="small"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(listQuery)}
         pagination={{ pageSize: 20 }}
         columns={[
           { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
@@ -761,13 +768,14 @@ function CountsTab() {
   const [form] = Form.useForm();
   const { whOptions } = useLookups();
 
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['stock-counts'],
     queryFn: () =>
       stockDocumentsControllerListCounts({ status: '' }).then(
         (r) => r.data as unknown as DocRow[],
       ),
   });
+  const { data, isLoading } = listQuery;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['stock-counts'] });
 
   const create = useMutation({
@@ -949,6 +957,7 @@ function CountsTab() {
         size="small"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(listQuery)}
         pagination={{ pageSize: 20 }}
         columns={[
           { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
@@ -1022,7 +1031,7 @@ function MovementsTab() {
   const [itemId, setItemId] = useState<string | undefined>();
   const [warehouseId, setWarehouseId] = useState<string | undefined>();
   const { whOptions, itemOptions, warehouseLabel } = useLookups();
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['stock-movements', itemId, warehouseId],
     queryFn: () =>
       stockReportsControllerMovements({
@@ -1035,6 +1044,7 @@ function MovementsTab() {
         pageSize: '100',
       }).then((r) => r.data as unknown as { rows: MovementRow[]; total: number }),
   });
+  const { data, isLoading } = listQuery;
   return (
     <>
       <ListToolbar
@@ -1063,6 +1073,7 @@ function MovementsTab() {
         size="small"
         loading={isLoading}
         dataSource={data?.rows ?? []}
+        locale={tableLocale(listQuery)}
         pagination={{ pageSize: 20 }}
         columns={[
           {
@@ -1099,13 +1110,14 @@ function MovementsTab() {
 
 function ValuationTab() {
   const { t } = useTranslation();
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['stock-valuation'],
     queryFn: () =>
       stockReportsControllerValuation({ warehouseId: '' }).then(
         (r) => r.data as unknown as { rows: { itemId: string; code: string; nameAr: string; qty: string; avgCost: string; value: string }[]; totalValue: string },
       ),
   });
+  const { data, isLoading } = listQuery;
   return (
     <>
       <Typography.Title level={5}>
@@ -1117,6 +1129,7 @@ function ValuationTab() {
         size="small"
         loading={isLoading}
         dataSource={data?.rows ?? []}
+        locale={tableLocale(listQuery)}
         pagination={{ pageSize: 20 }}
         columns={[
           { title: t('items.code'), dataIndex: 'code', width: 110 },

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryCache, QueryClient, QueryClientProvider, type Query } from '@tanstack/react-query';
 import { App as AntApp, ConfigProvider } from 'antd';
 // Import the ES-module builds: the CJS 'antd/locale/*' entry reaches the app
 // wrapped as { default: locale }, so ConfigProvider silently fell back to English.
@@ -19,15 +19,25 @@ import '@fontsource/ibm-plex-sans-arabic/600.css';
 import '@fontsource/ibm-plex-sans-arabic/700.css';
 import './index.css';
 import { App } from './App';
-import { AuthProvider } from './auth/AuthContext';
+import { AuthProvider, SessionBoundary } from './auth/AuthContext';
+import { notifyQueryError, QueryErrorToast } from './components/QueryState';
 import { installErrorReporting } from './errorReporting';
 import { antdTheme } from './theme';
 
 // Uncaught errors go to the platform's error monitor (ADR-010 §10.3).
 installErrorReporting();
 
+/** Refetch on window focus at most every 30 s per query, and always after a failure (WEB-03). */
+const FOCUS_REFETCH_AFTER_MS = 30_000;
+function refetchOnFocus(query: Query): boolean {
+  return query.state.status === 'error' || Date.now() - query.state.dataUpdatedAt > FOCUS_REFETCH_AFTER_MS;
+}
+
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+  // One toast for failed loads; the list itself shows the error and a retry button.
+  queryCache: new QueryCache({ onError: (error) => notifyQueryError(error) }),
+  // refetchOnReconnect stays on (the default), so lists recover when the network returns.
+  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: refetchOnFocus } },
 });
 
 /** Keeps antd locale, text direction and dayjs in sync with the UI language. */
@@ -48,8 +58,11 @@ function LocalizedApp() {
       theme={antdTheme}
     >
       <AntApp>
+        <QueryErrorToast />
         <AuthProvider>
-          <App />
+          <SessionBoundary>
+            <App />
+          </SessionBoundary>
         </AuthProvider>
       </AntApp>
     </ConfigProvider>

@@ -26,6 +26,7 @@ import { BookOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { tableLocale } from '../components/QueryState';
 import { bothNames, codeAndName } from '../i18n/displayName';
 import { palette } from '../theme';
 import { Num } from '../components/Num';
@@ -115,10 +116,11 @@ export function AccountsPage() {
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
-  const { data, isLoading } = useQuery({
+  const accountsQuery = useQuery({
     queryKey: ['accounts'],
     queryFn: () => accountingControllerListAccounts().then((r) => r.data as unknown as Account[]),
   });
+  const { data, isLoading } = accountsQuery;
 
   const { data: trial, isError: trialError } = useQuery({
     queryKey: ['trial-balance'],
@@ -268,6 +270,7 @@ export function AccountsPage() {
         rowKey="id"
         loading={isLoading}
         dataSource={shownTree}
+        locale={tableLocale(accountsQuery)}
         pagination={false}
         expandable={{ defaultExpandAllRows: true }}
         columns={[

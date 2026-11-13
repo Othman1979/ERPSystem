@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, Fragment, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ApiError,
@@ -179,6 +179,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const switchTenant = useCallback(async (tenantId: string) => {
     const res = await meControllerSwitchTenant({ tenantId });
     const data = res.data as unknown as { accessToken: string };
+    // Unmount the tenant-A pages first (App shows a spinner while loading), so none of
+    // them refetches with the new token and the old branch before /me answers.
+    setBranchId(null);
+    setBranchState(null);
+    setStatus('loading');
     // Drop every cached query of the previous user/tenant before the new token is used (WEB-01).
     queryClient.clear();
     setAccessToken(data.accessToken);
@@ -198,4 +203,15 @@ export function useAuth(): AuthState {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
   return ctx;
+}
+
+/**
+ * Remounts everything below it when the signed-in user or tenant changes, so
+ * no component keeps local state (filters, open drawers, selected rows) from
+ * the previous session (WEB-01). The query cache itself is cleared by AuthProvider.
+ */
+export function SessionBoundary({ children }: { children: ReactNode }) {
+  const { me } = useAuth();
+  const key = `${me?.user.id ?? 'guest'}:${me?.currentTenant?.tenantId ?? 'none'}`;
+  return <Fragment key={key}>{children}</Fragment>;
 }

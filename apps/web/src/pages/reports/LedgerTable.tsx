@@ -3,6 +3,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { Num } from '../../components/Num';
+import { tableLocale, type ListQueryState } from '../../components/QueryState';
 import { dec, formatAmount, type NumericInput } from '../../format/number';
 
 export interface LedgerLine {
@@ -43,10 +44,13 @@ export const sideCell =(v: NumericInput) => (v === undefined || v === null || de
 export function LedgerTable({
   data,
   loading,
+  query,
   withAccount = false,
 }: {
   data: LedgerData | undefined;
   loading: boolean;
+  /** The query that fetched `data`: its failure shows in the table, not as an empty ledger. */
+  query: ListQueryState;
   /** Party statements show the control account of each line. */
   withAccount?: boolean;
 }) {
@@ -99,6 +103,7 @@ export function LedgerTable({
       size="small"
       loading={loading}
       dataSource={rows}
+      locale={tableLocale(query)}
       pagination={{ pageSize: 50 }}
       columns={columns}
       rowClassName={(r) => (r.kind === 'opening' ? 'report-row-strong' : '')}

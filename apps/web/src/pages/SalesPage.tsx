@@ -32,6 +32,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { PrintPdfButton } from '../components/PrintPdfButton';
@@ -275,7 +276,7 @@ function InvoicesTab() {
 
   const [paymentFilter, setPaymentFilter] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState('');
-  const { data: invoices, isLoading } = useQuery({
+  const invoicesQuery = useQuery({
     queryKey: ['sales-invoices', statusFilter, paymentFilter],
     queryFn: () =>
       salesControllerListInvoices({
@@ -285,6 +286,7 @@ function InvoicesTab() {
       }).then((r) => r.data as unknown as SalesInvoice[]),
     enabled: screen === 'list',
   });
+  const { data: invoices, isLoading } = invoicesQuery;
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['sales-invoice', invoiceId],
@@ -466,6 +468,7 @@ function InvoicesTab() {
         rowKey="id"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(invoicesQuery)}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}
@@ -846,13 +849,14 @@ function ReturnsTab() {
   const [viewId, setViewId] = useState<string | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
 
-  const { data: returns, isLoading } = useQuery({
+  const returnsQuery = useQuery({
     queryKey: ['sales-returns', statusFilter],
     queryFn: () =>
       salesControllerListReturns({ status: statusFilter ?? '' }).then(
         (r) => r.data as unknown as SalesReturn[],
       ),
   });
+  const { data: returns, isLoading } = returnsQuery;
   const { data: view } = useQuery({
     queryKey: ['sales-return', viewId],
     queryFn: () =>
@@ -1071,6 +1075,7 @@ function ReturnsTab() {
         rowKey="id"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(returnsQuery)}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}

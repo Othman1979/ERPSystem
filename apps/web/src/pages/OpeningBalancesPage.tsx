@@ -25,6 +25,7 @@ import {
 } from '../components/JournalLinesGrid';
 import { Num } from '../components/Num';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { ReverseButton } from '../components/ReverseButton';
 import { usePartyColumn } from '../components/usePartyColumn';
 import { amountCell, amountOrBlankCell } from '../format/cells';
@@ -299,7 +300,7 @@ export function OpeningBalancesPage() {
             loading={entries.isLoading}
             dataSource={entries.data ?? []}
             pagination={{ pageSize: 20 }}
-            locale={{ emptyText: t('opening.empty') }}
+            locale={tableLocale(entries, t('opening.empty'))}
             onRow={(e) => ({ onClick: () => openEntry(e.id), style: { cursor: 'pointer' } })}
             columns={[
               {

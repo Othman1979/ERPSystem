@@ -13,6 +13,7 @@ import { ContainerOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { tableLocale } from '../components/QueryState';
 import { codeAndName, displayName } from '../i18n/displayName';
 
 interface Warehouse {
@@ -39,10 +40,11 @@ export function WarehousesPage() {
   const [search, setSearch] = useState('');
   const [form] = Form.useForm();
 
-  const { data: warehouses, isLoading } = useQuery({
+  const warehousesQuery = useQuery({
     queryKey: ['warehouses'],
     queryFn: () => warehousesControllerList().then((r) => r.data as unknown as Warehouse[]),
   });
+  const { data: warehouses, isLoading } = warehousesQuery;
   const { data: branches } = useQuery({
     queryKey: ['branches'],
     queryFn: () => branchesControllerList().then((r) => r.data as unknown as Branch[]),
@@ -128,6 +130,7 @@ export function WarehousesPage() {
         size="small"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(warehousesQuery)}
         pagination={false}
         columns={[
           { title: t('warehouses.code'), dataIndex: 'code', width: 110 },

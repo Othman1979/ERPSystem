@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { apiFetchData } from '@erp/api-client';
 import { ExportButtons, queryString } from '../../components/ExportButtons';
 import { ListToolbar } from '../../components/ListToolbar';
+import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
 import { amountCell } from '../../format/cells';
 import { dec, formatAmount, formatPercent } from '../../format/number';
@@ -58,10 +59,11 @@ export function TaxSummaryTab() {
   const [from, setFrom] = useState<Dayjs | null>(() => bimonthStart(dayjs()));
   const [to, setTo] = useState<Dayjs | null>(() => bimonthEnd(bimonthStart(dayjs())));
   const params = { from: isoDay(from), to: isoDay(to) };
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['report-tax-summary', params.from, params.to],
     queryFn: () => apiFetchData<TaxSummary>(`/api/v1${PATH}${queryString(params)}`),
   });
+  const { data, isLoading } = listQuery;
 
   const presets = bimonthPresets(dayjs(), i18n.language);
   const preset = presets.find((p) => isoDay(p.from) === params.from && isoDay(p.to) === params.to)?.value;
@@ -140,6 +142,7 @@ export function TaxSummaryTab() {
         size="small"
         loading={isLoading}
         dataSource={data?.rows ?? []}
+        locale={tableLocale(listQuery)}
         pagination={false}
         scroll={{ x: 'max-content' }}
         columns={[

@@ -12,6 +12,7 @@ import {
   partiesControllerList,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
 import { bothNames, codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
@@ -114,10 +115,11 @@ export function ReportsPage() {
   };
 
   // The from/to filters above apply to the trial balance too.
-  const { data: tb, isLoading: tbLoading } = useQuery({
+  const tbQuery = useQuery({
     queryKey: ['report-tb', range.from, range.to],
     queryFn: () => apiFetchData<TbResponse>(`/api/v1/reports/trial-balance${qs(range)}`),
   });
+  const { data: tb, isLoading: tbLoading } = tbQuery;
 
   const { data: parties } = useQuery({
     queryKey: ['parties', partyType],
@@ -128,7 +130,7 @@ export function ReportsPage() {
     enabled: !!partyType,
   });
 
-  const { data: gl, isLoading: glLoading } = useQuery({
+  const glQuery = useQuery({
     queryKey: ['report-gl', accountId, range.from, range.to],
     queryFn: () =>
       apiFetchData<LedgerResponse>(
@@ -136,8 +138,9 @@ export function ReportsPage() {
       ),
     enabled: !!accountId,
   });
+  const { data: gl, isLoading: glLoading } = glQuery;
 
-  const { data: statement, isLoading: stLoading } = useQuery({
+  const statementQuery = useQuery({
     queryKey: ['report-statement', partyType, partyId, range.from, range.to],
     queryFn: () =>
       apiFetchData<LedgerData>(
@@ -145,6 +148,7 @@ export function ReportsPage() {
       ),
     enabled: !!partyType && !!partyId,
   });
+  const { data: statement, isLoading: stLoading } = statementQuery;
 
   // A fiscal year fills the date range (the dates stay editable).
   const { data: years } = useQuery({
@@ -228,6 +232,7 @@ export function ReportsPage() {
                   bordered
                   loading={tbLoading}
                   dataSource={tb?.rows ?? []}
+                  locale={tableLocale(tbQuery)}
                   pagination={false}
                   scroll={{ x: 1000 }}
                   rowClassName={(r) => (r.kind ? 'report-row-strong' : '')}
@@ -309,7 +314,7 @@ export function ReportsPage() {
                     <span>{t('reports.openingNote')}</span>
                   </div>
                 )}
-                <LedgerTable data={gl} loading={glLoading} />
+                <LedgerTable data={gl} loading={glLoading} query={glQuery} />
                 </>
                 )}
               </>
@@ -370,7 +375,7 @@ export function ReportsPage() {
                   <div className="report-meta">
                     <span>{t('reports.openingNote')}</span>
                   </div>
-                  <LedgerTable data={statement} loading={stLoading} withAccount />
+                  <LedgerTable data={statement} loading={stLoading} query={statementQuery} withAccount />
                 </>
               )}
               </>

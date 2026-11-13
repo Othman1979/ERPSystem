@@ -14,6 +14,7 @@ import { EnterNav } from '../../components/EnterNav';
 import { FormDialog, FormSection } from '../../components/FormDialog';
 import { GridSelect } from '../../components/GridSelect';
 import { ListToolbar, matchesSearch } from '../../components/ListToolbar';
+import { tableLocale } from '../../components/QueryState';
 import { ReverseButton } from '../../components/ReverseButton';
 import { amountCell } from '../../format/cells';
 import { dec } from '../../format/number';
@@ -39,10 +40,11 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['cash-transfers'],
     queryFn: () => treasuryControllerListCashTransfers().then((r) => r.data as unknown as Transfer[]),
   });
+  const { data, isLoading } = listQuery;
 
   const onError = (err: unknown) =>
     api.error(err instanceof ApiError ? t(`errors.${err.code}`, { defaultValue: err.message }) : t('errors.INTERNAL'));
@@ -83,6 +85,7 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
         size="small"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(listQuery)}
         pagination={{ pageSize: 20 }}
         columns={[
           {

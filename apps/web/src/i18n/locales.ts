@@ -1088,6 +1088,10 @@ export const ar = {
     name: 'الاسم',
     reload: 'إعادة التحميل',
     viewCrashed: 'حدث خطأ أثناء عرض هذه الصفحة',
+    loadFailed: 'تعذّر تحميل البيانات. ما يظهر هنا ليس قائمة فارغة.',
+    networkError: 'تعذّر الاتصال بالخادم',
+    retry: 'إعادة المحاولة',
+    loadFailedToast: 'تعذّر تحميل البيانات: {{message}}',
   },
   language: {
     switchTo: 'English',
@@ -2223,6 +2227,10 @@ export const en: typeof ar = {
     name: 'Name',
     reload: 'Reload',
     viewCrashed: 'Something went wrong while showing this page',
+    loadFailed: 'The data could not be loaded. This is not an empty list.',
+    networkError: 'Could not reach the server',
+    retry: 'Retry',
+    loadFailedToast: 'Could not load data: {{message}}',
   },
   language: {
     switchTo: 'العربية',

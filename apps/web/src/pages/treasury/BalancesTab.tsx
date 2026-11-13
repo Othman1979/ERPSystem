@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { treasuryControllerCashBalances } from '@erp/api-client';
 import { Num } from '../../components/Num';
+import { tableLocale } from '../../components/QueryState';
 import { amountCell } from '../../format/cells';
 import { formatAmount } from '../../format/number';
 import { codeAndName } from '../../i18n/displayName';
@@ -25,11 +26,12 @@ interface BalanceRow {
 export function BalancesTab() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['treasury-balances'],
     queryFn: () =>
       treasuryControllerCashBalances().then((r) => r.data as unknown as { rows: BalanceRow[]; total: string }),
   });
+  const { data, isLoading } = listQuery;
 
   return (
     <Table
@@ -37,6 +39,7 @@ export function BalancesTab() {
       size="small"
       loading={isLoading}
       dataSource={data?.rows ?? []}
+      locale={tableLocale(listQuery)}
       pagination={false}
       columns={[
         {

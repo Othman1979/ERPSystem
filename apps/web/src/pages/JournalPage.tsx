@@ -51,6 +51,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
@@ -136,7 +137,7 @@ export function JournalPage() {
   const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
   const [gridFocus, setGridFocus] = useState(0);
 
-  const { data: entries, isLoading } = useQuery({
+  const entriesQuery = useQuery({
     queryKey: ['journal-entries', statusFilter, typeFilter],
     queryFn: () =>
       journalControllerList({
@@ -146,6 +147,7 @@ export function JournalPage() {
       }).then((r) => r.data as unknown as JournalEntry[]),
     enabled: screen === 'list',
   });
+  const { data: entries, isLoading } = entriesQuery;
 
   const { data: accounts } = useQuery({
     queryKey: ['accounts-postable'],
@@ -348,6 +350,7 @@ export function JournalPage() {
           rowKey="id"
           loading={isLoading}
           dataSource={shown}
+        locale={tableLocale(entriesQuery)}
           pagination={{ pageSize: 20 }}
           onRow={(e) => ({ onClick: () => openEntry(e.id), style: { cursor: 'pointer' } })}
           columns={[

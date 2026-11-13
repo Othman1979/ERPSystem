@@ -38,10 +38,11 @@ export function IncomeStatementTab() {
   const [from, setFrom] = useState<Dayjs | null>(null);
   const [to, setTo] = useState<Dayjs | null>(null);
   const params = { from: isoDay(from), to: isoDay(to) };
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['report-income-statement', params.from, params.to],
     queryFn: () => apiFetchData<IncomeStatement>(`/api/v1${PATH}${queryString(params)}`),
   });
+  const { data, isLoading } = listQuery;
 
   const lang = i18n.language;
   const lines: StatementLine[] = data
@@ -81,7 +82,7 @@ export function IncomeStatementTab() {
           <PeriodMeta from={data.from} to={data.to} fiscalYear={data.fiscalYear} />
         </div>
       )}
-      <StatementTable lines={lines} loading={isLoading} />
+      <StatementTable lines={lines} loading={isLoading} query={listQuery} />
     </>
   );
 }

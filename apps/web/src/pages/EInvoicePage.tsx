@@ -23,6 +23,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError, apiFetchData } from '@erp/api-client';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { tableLocale } from '../components/QueryState';
 import { Num } from '../components/Num';
 import { PageHeader } from '../components/PageHeader';
 import { idemHeaders } from '../idempotency';
@@ -114,7 +115,7 @@ export function EInvoicePage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const { data, isLoading, isFetching, refetch, error } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['einvoice-submissions', statusFilter, typeFilter],
     queryFn: () => {
       const q = new URLSearchParams();
@@ -125,6 +126,7 @@ export function EInvoicePage() {
     // The worker sends in the background: follow documents still on their way.
     refetchInterval: (query) => (query.state.data?.rows.some((r) => isInFlight(r.status)) ? 5000 : false),
   });
+  const { data, isLoading, isFetching, refetch, error } = listQuery;
 
   const counts = data?.counts ?? {};
   const shown = (data?.rows ?? []).filter((r) => matchesSearch(search, r.documentNo, r.uuid));
@@ -244,6 +246,7 @@ export function EInvoicePage() {
         size="small"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(listQuery)}
         columns={columns}
         pagination={{ pageSize: 20 }}
         scroll={{ x: 'max-content' }}

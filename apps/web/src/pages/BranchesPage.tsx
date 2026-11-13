@@ -24,6 +24,7 @@ import { ShopOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { tableLocale } from '../components/QueryState';
 import { displayName } from '../i18n/displayName';
 
 interface Branch {
@@ -45,10 +46,11 @@ export function BranchesPage() {
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
-  const { data, isLoading } = useQuery({
+  const branchesQuery = useQuery({
     queryKey: ['branches'],
     queryFn: () => branchesControllerList().then((r) => r.data as unknown as Branch[]),
   });
+  const { data, isLoading } = branchesQuery;
 
   const save = useMutation({
     mutationFn: async (values: { code?: string; nameAr: string; nameEn?: string; address?: string }) => {
@@ -118,6 +120,7 @@ export function BranchesPage() {
         rowKey="id"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(branchesQuery)}
         pagination={false}
         columns={[
           { title: t('branches.code'), dataIndex: 'code' },

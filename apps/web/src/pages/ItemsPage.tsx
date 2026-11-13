@@ -53,6 +53,7 @@ import {
   warehousesControllerList,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { ExportButtons } from '../components/ExportButtons';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -167,7 +168,7 @@ function ItemsTab() {
   const [form] = Form.useForm();
   const saveAndNew = useRef(false);
 
-  const { data: items, isLoading } = useQuery({
+  const itemsQuery = useQuery({
     queryKey: ['items', search, kindFilter],
     queryFn: () =>
       catalogControllerListItems({
@@ -176,6 +177,7 @@ function ItemsTab() {
         isActive: '',
       }).then((r) => r.data as unknown as Item[]),
   });
+  const { data: items, isLoading } = itemsQuery;
   const { data: units } = useQuery({
     queryKey: ['units'],
     queryFn: () => settingsControllerListUnits().then((r) => r.data as unknown as Unit[]),
@@ -422,6 +424,7 @@ function ItemsTab() {
           size="small"
           loading={isLoading}
           dataSource={items ?? []}
+          locale={tableLocale(itemsQuery)}
           pagination={{ pageSize: 20 }}
           columns={columns}
         />
@@ -618,7 +621,7 @@ function LedgerModal({
   const [from, setFrom] = useState<Dayjs | null>(null);
   const [to, setTo] = useState<Dayjs | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const ledgerQuery = useQuery({
     queryKey: ['item-ledger', item?.id, warehouseId, from?.format('YYYY-MM-DD'), to?.format('YYYY-MM-DD')],
     queryFn: () =>
       stockReportsControllerItemLedger(item!.id, {
@@ -629,6 +632,7 @@ function LedgerModal({
       }).then((r) => r.data as unknown as LedgerResponse),
     enabled: !!item,
   });
+  const { data, isLoading } = ledgerQuery;
 
   const unit = data?.item?.baseUnit?.code ?? item?.baseUnit?.code ?? '';
   // Opening position first (before the start date + opening stock), then the movements.
@@ -691,6 +695,7 @@ function LedgerModal({
         size="small"
         loading={isLoading}
         dataSource={rows}
+        locale={tableLocale(ledgerQuery)}
         pagination={{ pageSize: 50 }}
         scroll={{ x: 900 }}
         rowClassName={(r) => (r.kind === 'opening' ? 'report-row-strong' : '')}
@@ -849,10 +854,11 @@ function GroupsTab() {
   const [search, setSearch] = useState('');
   const [form] = Form.useForm();
 
-  const { data: groups, isLoading } = useQuery({
+  const groupsQuery = useQuery({
     queryKey: ['item-groups'],
     queryFn: () => catalogControllerListGroups().then((r) => r.data as unknown as Group[]),
   });
+  const { data: groups, isLoading } = groupsQuery;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['item-groups'] });
 
   const save = useMutation({
@@ -919,6 +925,7 @@ function GroupsTab() {
         size="small"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(groupsQuery)}
         pagination={false}
         columns={[
           { title: t('items.code'), dataIndex: 'code', width: 110 },

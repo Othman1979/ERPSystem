@@ -37,6 +37,7 @@ import {
 } from '@erp/api-client';
 import { ListToolbar } from '../components/ListToolbar';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { amountCell } from '../format/cells';
 import { displayName } from '../i18n/displayName';
 
@@ -144,13 +145,14 @@ function TenantsTab() {
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const tenantsQuery = useQuery({
     queryKey: ['platform-tenants', status, search, page],
     queryFn: () =>
       adminControllerList({ status: status ?? '', search, page: String(page), pageSize: '20' }).then(
         (r) => r.data as unknown as { total: number; items: TenantRow[] },
       ),
   });
+  const { data, isLoading } = tenantsQuery;
 
   return (
     <>
@@ -180,6 +182,7 @@ function TenantsTab() {
         size="small"
         loading={isLoading}
         dataSource={data?.items ?? []}
+        locale={tableLocale(tenantsQuery)}
         pagination={{ current: page, pageSize: 20, total: data?.total ?? 0, onChange: setPage }}
         onRow={(r) => ({ onClick: () => setOpenId(r.id), style: { cursor: 'pointer' } })}
         columns={[
@@ -374,10 +377,11 @@ function PlansTab() {
   const [editing, setEditing] = useState<Plan | null>(null);
   const [form] = Form.useForm();
 
-  const { data, isLoading } = useQuery({
+  const plansQuery = useQuery({
     queryKey: ['platform-plans'],
     queryFn: () => adminPlansControllerList().then((r) => r.data as unknown as Plan[]),
   });
+  const { data, isLoading } = plansQuery;
   const save = useMutation({
     mutationFn: (v: Record<string, unknown>) =>
       adminPlansControllerUpdate(editing!.code, {
@@ -406,6 +410,7 @@ function PlansTab() {
         size="small"
         loading={isLoading}
         dataSource={data ?? []}
+        locale={tableLocale(plansQuery)}
         pagination={false}
         columns={[
           { title: t('platform.planCode'), dataIndex: 'code', width: 90 },
@@ -498,10 +503,11 @@ function ErrorsTab() {
   const [source, setSource] = useState<(typeof ERROR_SOURCES)[number] | undefined>(undefined);
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const errorsQuery = useQuery({
     queryKey: ['platform-errors', status, source],
     queryFn: () => adminErrorsControllerList({ status, ...(source ? { source } : {}) }).then((r) => r.data as unknown as ErrorEvent[]),
   });
+  const { data, isLoading } = errorsQuery;
   const { data: detail } = useQuery({
     queryKey: ['platform-error', openId],
     queryFn: () => adminErrorsControllerGet(openId!).then((r) => r.data as unknown as ErrorEvent),
@@ -541,6 +547,7 @@ function ErrorsTab() {
         size="small"
         loading={isLoading}
         dataSource={data ?? []}
+        locale={tableLocale(errorsQuery)}
         pagination={{ pageSize: 50 }}
         onRow={(e) => ({ onClick: () => setOpenId(e.id), style: { cursor: 'pointer' } })}
         columns={[
