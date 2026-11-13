@@ -54,6 +54,15 @@ async function errorRow(where: string, params: unknown[]): Promise<ErrorRow | un
   return rows[0];
 }
 
+/**
+ * Makes the boom error pending for the digest again. A repeat request would
+ * do it too, but the recorder writes one kind at most 5 times per 10 s, and
+ * on a fast runner a sixth boom inside that window is only counted.
+ */
+async function markBoomPending(): Promise<void> {
+  await db.query("UPDATE error_events SET notified_at = NULL WHERE source = 'API' AND message LIKE 'boom %'");
+}
+
 async function waitForHealth(timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -265,8 +274,7 @@ describe('Phase 10.3 — error monitoring', () => {
     }, 90_000);
 
     it('a failing webhook keeps the errors pending and is itself recorded', async () => {
-      await api().get('/api/v1/__test/boom').set(auth(token));
-      await settle();
+      await markBoomPending();
       answer = 500;
       const failed = await cli(['error-digest'], { ALERT_WEBHOOK_URL: hookUrl });
       expect(failed.code).toBe(1);
@@ -282,8 +290,7 @@ describe('Phase 10.3 — error monitoring', () => {
     }, 90_000);
 
     it('without a webhook nothing is sent and nothing is marked', async () => {
-      await api().get('/api/v1/__test/boom').set(auth(token));
-      await settle();
+      await markBoomPending();
       const before = (await errorRow("source = 'API' AND message LIKE 'boom %'", []))!;
       const run = await cli(['error-digest'], { ALERT_WEBHOOK_URL: '' });
       expect(JSON.parse(run.stdout)).toMatchObject({ sent: false, reason: 'ALERT_WEBHOOK_URL is not set' });
