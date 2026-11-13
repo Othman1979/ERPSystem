@@ -63,9 +63,15 @@ export class TenantStatusService {
     const changed: StatusChange[] = [];
 
     const move = async (t: { id: bigint; name: string; status: Status }, to: Status, reason: string) => {
-      await db.$transaction([
-        db.tenant.update({ where: { id: t.id }, data: { status: to, statusChangedAt: now } }),
-        db.auditLog.create({
+      // Interactive: the status is changed only if it is still the one read above.
+      // An admin who changed it meanwhile wins: no change, no audit row, not reported.
+      const moved = await db.$transaction(async (tx) => {
+        const { count } = await tx.tenant.updateMany({
+          where: { id: t.id, status: t.status },
+          data: { status: to, statusChangedAt: now },
+        });
+        if (count === 0) return false;
+        await tx.auditLog.create({
           data: {
             tenantId: t.id,
             userId: null,
@@ -75,9 +81,10 @@ export class TenantStatusService {
             beforeJson: { status: t.status },
             afterJson: { status: to, reason },
           },
-        }),
-      ]);
-      changed.push({ tenantId: t.id.toString(), name: t.name, from: t.status, to, reason });
+        });
+        return true;
+      });
+      if (moved) changed.push({ tenantId: t.id.toString(), name: t.name, from: t.status, to, reason });
     };
 
     // Trials that ended: no paid subscription yet (one would have made them ACTIVE).

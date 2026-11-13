@@ -7,6 +7,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
@@ -16,7 +17,8 @@ import {
   Public,
   TenantOptional,
 } from '../../common/decorators/auth.decorators.js';
-import { LimitPerAccount } from '../../common/throttle/throttle.js';
+import type { Env } from '../../common/config/env.validation.js';
+import { LimitPerAccount, LimitSignup } from '../../common/throttle/throttle.js';
 import { AuthService, type AuthMeta } from './auth.service.js';
 import { ChangePasswordDto, LoginDto, RegisterDto, SwitchTenantDto } from './dto/auth.dto.js';
 
@@ -30,13 +32,18 @@ function meta(req: Request): AuthMeta {
   };
 }
 
-function setRefreshCookie(res: Response, token: string, maxAgeDays: number): void {
+/** Cookie settings from config: lifetime from REFRESH_TOKEN_TTL_DAYS, `secure` in production. */
+function setRefreshCookie(
+  res: Response,
+  token: string,
+  config: ConfigService<Env, true>,
+): void {
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: config.get('NODE_ENV', { infer: true }) === 'production',
     sameSite: 'strict',
     path: COOKIE_PATH,
-    maxAge: maxAgeDays * 24 * 60 * 60 * 1000,
+    maxAge: config.get('REFRESH_TOKEN_TTL_DAYS', { infer: true }) * 24 * 60 * 60 * 1000,
   });
 }
 
@@ -44,14 +51,18 @@ function clearRefreshCookie(res: Response): void {
   res.clearCookie(REFRESH_COOKIE, { path: COOKIE_PATH });
 }
 
-const REFRESH_TTL_DAYS = 30;
-
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly config: ConfigService<Env, true>,
+  ) {}
 
   @Public()
+  // Public registration has the strictest limit: 5 a minute and 20 an hour per address (ADR-011).
+  @LimitSignup()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('register')
   async register(
     @Body() dto: RegisterDto,
@@ -59,7 +70,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.auth.register(dto, meta(req));
-    setRefreshCookie(res, result.refreshToken, REFRESH_TTL_DAYS);
+    setRefreshCookie(res, result.refreshToken, this.config);
     const { refreshToken: _rt, familyId: _f, ...body } = result;
     return body;
   }
@@ -76,7 +87,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.auth.login(dto, meta(req));
-    setRefreshCookie(res, result.refreshToken, REFRESH_TTL_DAYS);
+    setRefreshCookie(res, result.refreshToken, this.config);
     const { refreshToken: _rt, familyId: _f, ...body } = result;
     return body;
   }
@@ -86,7 +97,7 @@ export class AuthController {
   @HttpCode(200)
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.refresh(req.cookies?.[REFRESH_COOKIE], meta(req));
-    setRefreshCookie(res, result.refreshToken, REFRESH_TTL_DAYS);
+    setRefreshCookie(res, result.refreshToken, this.config);
     const { refreshToken: _rt, user, ...body } = result;
     return { ...body, user };
   }
@@ -96,6 +107,24 @@ export class AuthController {
   @HttpCode(204)
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(req.cookies?.[REFRESH_COOKIE]);
+    clearRefreshCookie(res);
+  }
+
+  /**
+   * Ends every session of the signed-in user, on every device (PLAT-22). The
+   * current session's cookie is cleared too; its access token stays valid until
+   * it expires.
+   */
+  @TenantOptional()
+  @AllowPendingPasswordChange()
+  @Post('logout-all')
+  @HttpCode(204)
+  async logoutAll(
+    @CurrentUser() userId: bigint,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.auth.logoutAll(userId, meta(req));
     clearRefreshCookie(res);
   }
 
@@ -121,7 +150,10 @@ export class AuthController {
 @ApiTags('me')
 @Controller('me')
 export class MeController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly config: ConfigService<Env, true>,
+  ) {}
 
   @TenantOptional()
   @AllowPendingPasswordChange()
@@ -146,7 +178,7 @@ export class MeController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.auth.switchTenant(dto, meta(req));
-    setRefreshCookie(res, result.refreshToken, REFRESH_TTL_DAYS);
+    setRefreshCookie(res, result.refreshToken, this.config);
     const { refreshToken: _rt, familyId: _f, ...body } = result;
     return body;
   }

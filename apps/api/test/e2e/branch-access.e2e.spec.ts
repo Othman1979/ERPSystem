@@ -15,6 +15,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { addMember } from './support/members.js';
 
 const API_PORT = 3193;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -142,22 +143,14 @@ describe('Branch access (BranchGuard, ADR-003)', () => {
       });
     await api().post(`/api/v1/stock-adjustments/${adj.body.id}/post`).set(auth(owner)).set(idem());
 
-    const invite = await api()
-      .post('/api/v1/users/invite')
-      .set(auth(owner))
-      .send({
-        email: `branch-cashier-${RUN}@test.dev`,
-        roleCode: 'CASHIER',
-        password: PASS,
-        defaultBranchId: mainId,
-        branchIds: [mainId],
-      });
-    expect(invite.status).toBe(201);
-    const login = await api()
-      .post('/api/v1/auth/login')
-      .send({ email: `branch-cashier-${RUN}@test.dev`, password: PASS });
-    expect(login.status).toBe(200);
-    cashier = login.body.accessToken;
+    const member = await addMember(BASE, owner, {
+      email: `branch-cashier-${RUN}@test.dev`,
+      roleCode: 'CASHIER',
+      password: PASS,
+      defaultBranchId: mainId,
+      branchIds: [mainId],
+    });
+    cashier = member.token;
   });
 
   it('/me lists the branches each user may switch to', async () => {
@@ -234,14 +227,14 @@ describe('Branch access (BranchGuard, ADR-003)', () => {
   /** Invite a member limited to MAIN with `roleCode`; returns their token and membership id. */
   async function mainOnly(roleCode: string) {
     const email = `branch-${roleCode.toLowerCase()}-${RUN}@test.dev`;
-    const invite = await api()
-      .post('/api/v1/users/invite')
-      .set(auth(owner))
-      .send({ email, roleCode, password: PASS, defaultBranchId: mainId, branchIds: [mainId] });
-    expect(invite.status).toBe(201);
-    const login = await api().post('/api/v1/auth/login').send({ email, password: PASS });
-    expect(login.status).toBe(200);
-    return { token: login.body.accessToken as string, membershipId: invite.body.membershipId as string };
+    const member = await addMember(BASE, owner, {
+      email,
+      roleCode,
+      password: PASS,
+      defaultBranchId: mainId,
+      branchIds: [mainId],
+    });
+    return { token: member.token, membershipId: member.membershipId };
   }
 
   // The TRIAL plan allows 3 users (owner, cashier and this one), so the stock

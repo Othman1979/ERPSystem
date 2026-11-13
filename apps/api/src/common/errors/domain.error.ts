@@ -28,6 +28,10 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.PASSWORD_CHANGE_REQUIRED]: HttpStatus.FORBIDDEN,
   // Reset refused by the rules in UsersService.resetPassword (ADR-012).
   [ErrorCode.PASSWORD_RESET_NOT_ALLOWED]: HttpStatus.FORBIDDEN,
+  [ErrorCode.LOGIN_LOCKED]: HttpStatus.TOO_MANY_REQUESTS,
+  [ErrorCode.PAYLOAD_TOO_LARGE]: HttpStatus.PAYLOAD_TOO_LARGE,
+  [ErrorCode.DOCUMENT_TOO_MANY_LINES]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.INVITATION_CODE_INVALID]: HttpStatus.BAD_REQUEST,
   // Ledger review 2026-11-13: 400 = the request itself is wrong, 409 = the
   // entry or account is in a state that refuses it.
   [ErrorCode.ENTRY_NOT_DRAFT]: HttpStatus.CONFLICT,

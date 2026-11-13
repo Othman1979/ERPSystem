@@ -53,6 +53,8 @@ BACKUP_DIR=/home/<user>/erp-data/backups
 MYSQLDUMP_PATH=mysqldump
 MYSQL_PATH=mysql
 BACKUP_VERIFY_DATABASE_URL="mysql://<user>:<password>@localhost:3306/<القاعدة المؤقتة>"
+BACKUP_ENCRYPTION_KEY="<32 بايتاً عشوائياً base64>"   # احفظه خارج الخادم: فقده = فقد كل النسخ الاحتياطية
+ERROR_LOG_FILE=/home/<user>/erp-data/logs/errors-fallback.log   # الأخطاء التي لم تُكتب في القاعدة
 ALERT_WEBHOOK_URL="https://..."           # اختياري
 ```
 
@@ -80,7 +82,10 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
    ```bash
    node dist/jobs/cli.js preflight
    ```
-4. **التشغيل.** أمر البدء: `node dist/main.js`، ومجلد العمل `apps/api`.
+4. **التشغيل.** أمر البدء: `node --max-old-space-size=512 dist/main.js`، ومجلد العمل `apps/api`.
+   - سقف الـ heap (PLAT-18): 512 MB تكفي، فالعملية تثبت قرب 650 MB من الذاكرة الكلية بعد حمل 50 طلباً متزامناً.
+     على استضافة بحد 1 GB يبقى هامش لأوامر Cron. إن لم تقبل اللوحة خيارات Node فاضبط
+     `NODE_OPTIONS=--max-old-space-size=512`.
    - في لوحة Hostinger: هذا هو ملف بدء تطبيق Node.
    - على VPS: مدير عمليات، مثل systemd.
    - **تحقق من البروكسي:** بعد أول طلبات افتح سجل التطبيق. إن ظهر تحذير `TrustProxy` فالبروكسي لا يأتي من
@@ -96,6 +101,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
    * * * * *   cd ~/erp/apps/api && node dist/jobs/cli.js einvoice-send  >> ~/erp-data/logs/jobs.log 2>&1
    15 2 * * *  cd ~/erp/apps/api && node dist/jobs/cli.js backup        >> ~/erp-data/logs/jobs.log 2>&1
    5 * * * *   cd ~/erp/apps/api && node dist/jobs/cli.js error-digest  >> ~/erp-data/logs/jobs.log 2>&1
+   45 3 * * *  cd ~/erp/apps/api && node dist/jobs/cli.js purge-expired >> ~/erp-data/logs/jobs.log 2>&1
    ```
    - اختبار الاستعادة شهرياً، يدوياً: `node dist/jobs/cli.js backup-verify latest`. التفاصيل في
      `backup-restore.md`.
@@ -108,6 +114,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
        مثال: 10 + 2 × 3 = 16.
 7. **مراقبة التشغيل:** مراقب خارجي مجاني على `https://<النطاق>/api/v1/health`، مثل UptimeRobot، كل 5
    دقائق.
+   - `/health` يتحقق أن القاعدة **تكتب** وتستعمل مجلدها المؤقت (القرص الممتلئ يرد 503)، بمهلة ثانيتين.
+   - `/health/live` لا يلمس القاعدة: لفحص «العملية حيّة» في مدير العمليات، كي لا يُعاد تشغيلها بسبب عطل القاعدة.
 8. **فحص يدوي سريع:**
    - الدخول؛
    - ميزان المراجعة لشركة تجريبية متوازن؛

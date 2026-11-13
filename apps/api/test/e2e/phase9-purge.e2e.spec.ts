@@ -5,7 +5,8 @@
  *  - without --confirm it only reports (nothing changes);
  *  - with it, no row of the tenant is left in any tenant table, its files
  *    are gone, users of that tenant only are deleted (a user who is also in
- *    another tenant stays), and a platform audit row records it;
+ *    another tenant stays, and so does one with history in another company,
+ *    such as a declined invitation), and a platform audit row records it;
  *  - the other tenant is untouched (rows, trial balance, sign-in).
  * Real MariaDB (erp_test) + built API and job. Run `pnpm build` before `pnpm test`.
  */
@@ -18,6 +19,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+
+import { addMember } from './support/members.js';
 
 const API_PORT = 3211;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -156,9 +159,27 @@ describe('purge-tenant', () => {
       [tokenA, `pg-shared-${RUN}@test.dev`],
       [tokenB, `pg-shared-${RUN}@test.dev`],
     ]) {
-      expect((await api().post('/api/v1/users/invite').set(auth(token)).send({ email, roleCode: 'ACCOUNTANT', password: PASS })).status).toBe(201);
+      await addMember(BASE, token, { email, roleCode: 'ACCOUNTANT', password: PASS });
     }
     await seed(tokenB, 'B');
+    // The declined-invitation case: invited to B, the invitation declined (B's membership goes, the audit row
+    // stays in B), and a member of A only. A is at its plan's user limit, so its membership is written here
+    // directly; roles are global, so the ACCOUNTANT role is the same row for both companies.
+    const declEmail = `pg-decl-${RUN}@test.dev`;
+    await addMember(BASE, tokenB, { email: declEmail, roleCode: 'ACCOUNTANT', password: PASS });
+    const [decl] = (await db.query('SELECT id FROM users WHERE email = ?', [declEmail])) as { id: bigint }[];
+    const [accountant] = (await db.query("SELECT id FROM roles WHERE code = 'ACCOUNTANT'")) as { id: bigint }[];
+    // updated_at has no database default (Prisma @updatedAt): strict SQL mode (CI) refuses the row without it.
+    await db.query(
+      "INSERT INTO tenant_memberships (tenant_id, user_id, role_id, status, created_at, updated_at) VALUES (?, ?, ?, 'ACTIVE', NOW(3), NOW(3))",
+      [tenantA, String(decl.id), String(accountant.id)],
+    );
+    await db.query('DELETE FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?', [tenantB, String(decl.id)]);
+    await db.query("INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (?, ?, 'user.invite_decline', 'membership', ?)", [
+      tenantB,
+      String(decl.id),
+      String(decl.id),
+    ]);
 
     expect(Object.keys(await rowsOf(tenantA)).length).toBeGreaterThan(10);
     expect(existsSync(path.join(STORAGE, `t${tenantA}`))).toBe(true);
@@ -197,9 +218,34 @@ describe('purge-tenant', () => {
   });
 
   slow('deletes every row, file and sole user of the tenant, and records it', async () => {
+    // The sole users' ids and addresses, read before they are deleted.
+    const soleEmails = [`pg-a-${RUN}@test.dev`, `pg-solo-${RUN}@test.dev`];
+    const soleIds = ((await db.query('SELECT id FROM users WHERE email IN (?, ?)', soleEmails)) as { id: bigint }[]).map((u) =>
+      String(u.id),
+    );
+    expect(soleIds).toHaveLength(2);
+
     const done = await purge(tenantA, '--confirm', nameA);
     expect(done.code).toBe(0);
     expect(done.json).toMatchObject({ purged: true, tenantId: tenantA });
+
+    // No audit row keeps a purged user's id or address (the platform's own rows included).
+    // entity_id is matched for user rows only: another entity may share the numeric id.
+    const [kept] = (await db.query(
+      `SELECT COUNT(*) AS n FROM audit_logs
+        WHERE user_id IN (?) OR (entity_type = 'user' AND entity_id IN (?))
+           OR CAST(after_json AS CHAR) LIKE ? OR CAST(after_json AS CHAR) LIKE ?
+           OR CAST(before_json AS CHAR) LIKE ? OR CAST(before_json AS CHAR) LIKE ?`,
+      [
+        soleIds,
+        soleIds,
+        `%${soleEmails[0]}%`,
+        `%${soleEmails[1]}%`,
+        `%${soleEmails[0]}%`,
+        `%${soleEmails[1]}%`,
+      ],
+    )) as { n: bigint }[];
+    expect(Number(kept.n)).toBe(0);
 
     expect(await rowsOf(tenantA)).toEqual({});
     expect(await db.query('SELECT id FROM tenants WHERE id = ?', [tenantA])).toHaveLength(0);
@@ -225,6 +271,19 @@ describe('purge-tenant', () => {
     expect(audit[0].tenant_id).toBeNull();
     const [checks] = (await db.query('SELECT @@FOREIGN_KEY_CHECKS AS on_')) as { on_: number }[];
     expect(Number(checks.on_)).toBe(1);
+  });
+
+  slow('keeps a member whose history reaches another company, and that history stays whole', async () => {
+    const [decl] = (await db.query('SELECT id FROM users WHERE email = ?', [`pg-decl-${RUN}@test.dev`])) as { id: bigint }[];
+    expect(decl).toBeDefined();
+    // The membership in A went with the tenant; the user and the record in B did not.
+    const [memberships] = (await db.query('SELECT COUNT(*) AS n FROM tenant_memberships WHERE user_id = ?', [String(decl.id)])) as { n: bigint }[];
+    expect(Number(memberships.n)).toBe(0);
+    const [declines] = (await db.query(
+      "SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'user.invite_decline' AND user_id = ? AND tenant_id = ?",
+      [String(decl.id), tenantB],
+    )) as { n: bigint }[];
+    expect(Number(declines.n)).toBe(1);
   });
 
   slow('leaves the other tenant exactly as it was', async () => {

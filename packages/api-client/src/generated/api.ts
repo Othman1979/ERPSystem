@@ -38,6 +38,8 @@ export interface InviteUserDto { [key: string]: unknown }
 
 export interface UpdateMembershipDto { [key: string]: unknown }
 
+export interface AcceptInvitationDto { [key: string]: unknown }
+
 export interface CreateBranchDto { [key: string]: unknown }
 
 export interface UpdateBranchDto { [key: string]: unknown }
@@ -261,11 +263,47 @@ export const getHealthControllerHealthUrl = () => {
 }
 
 /**
- * @summary Liveness + database connectivity check
+ * @summary Readiness: the database can write and use its temp directory
  */
 export const healthControllerHealth = async ( options?: Parameters<typeof apiFetch>[1]): Promise<healthControllerHealthResponse> => {
 
   return apiFetch<healthControllerHealthResponse>(getHealthControllerHealthUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type healthControllerLiveResponse200 = {
+  data: void
+  status: 200
+}
+
+export type healthControllerLiveResponseSuccess = (healthControllerLiveResponse200) & {
+  headers: Headers;
+};
+;
+
+export type healthControllerLiveResponse = (healthControllerLiveResponseSuccess)
+
+export const getHealthControllerLiveUrl = () => {
+
+
+
+
+  return `/api/v1/health/live`
+}
+
+/**
+ * @summary Liveness: the process answers (no database access)
+ */
+export const healthControllerLive = async ( options?: Parameters<typeof apiFetch>[1]): Promise<healthControllerLiveResponse> => {
+
+  return apiFetch<healthControllerLiveResponse>(getHealthControllerLiveUrl(),
   {
     ...options,
     method: 'GET'
@@ -426,6 +464,39 @@ export const getAuthControllerLogoutUrl = () => {
 export const authControllerLogout = async ( options?: Parameters<typeof apiFetch>[1]): Promise<authControllerLogoutResponse> => {
 
   return apiFetch<authControllerLogoutResponse>(getAuthControllerLogoutUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type authControllerLogoutAllResponse204 = {
+  data: void
+  status: 204
+}
+
+export type authControllerLogoutAllResponseSuccess = (authControllerLogoutAllResponse204) & {
+  headers: Headers;
+};
+;
+
+export type authControllerLogoutAllResponse = (authControllerLogoutAllResponseSuccess)
+
+export const getAuthControllerLogoutAllUrl = () => {
+
+
+
+
+  return `/api/v1/auth/logout-all`
+}
+
+export const authControllerLogoutAll = async ( options?: Parameters<typeof apiFetch>[1]): Promise<authControllerLogoutAllResponse> => {
+
+  return apiFetch<authControllerLogoutAllResponse>(getAuthControllerLogoutAllUrl(),
   {
     ...options,
     method: 'POST'
@@ -1961,6 +2032,39 @@ export const usersControllerSuspend = async (membershipId: string, options?: Par
 
 
 
+export type usersControllerReissueInvitationCodeResponse200 = {
+  data: void
+  status: 200
+}
+
+export type usersControllerReissueInvitationCodeResponseSuccess = (usersControllerReissueInvitationCodeResponse200) & {
+  headers: Headers;
+};
+;
+
+export type usersControllerReissueInvitationCodeResponse = (usersControllerReissueInvitationCodeResponseSuccess)
+
+export const getUsersControllerReissueInvitationCodeUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/users/${membershipId}/invitation-code`
+}
+
+export const usersControllerReissueInvitationCode = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerReissueInvitationCodeResponse> => {
+
+  return apiFetch<usersControllerReissueInvitationCodeResponse>(getUsersControllerReissueInvitationCodeUrl(membershipId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
 export type usersControllerResetPasswordResponse200 = {
   data: void
   status: 200
@@ -1984,6 +2088,120 @@ export const getUsersControllerResetPasswordUrl = (membershipId: string,) => {
 export const usersControllerResetPassword = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerResetPasswordResponse> => {
 
   return apiFetch<usersControllerResetPasswordResponse>(getUsersControllerResetPasswordUrl(membershipId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type invitationsControllerListResponse200 = {
+  data: void
+  status: 200
+}
+
+export type invitationsControllerListResponseSuccess = (invitationsControllerListResponse200) & {
+  headers: Headers;
+};
+;
+
+export type invitationsControllerListResponse = (invitationsControllerListResponseSuccess)
+
+export const getInvitationsControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/me/invitations`
+}
+
+export const invitationsControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerListResponse> => {
+
+  return apiFetch<invitationsControllerListResponse>(getInvitationsControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type invitationsControllerAcceptResponse200 = {
+  data: void
+  status: 200
+}
+
+export type invitationsControllerAcceptResponseSuccess = (invitationsControllerAcceptResponse200) & {
+  headers: Headers;
+};
+;
+
+export type invitationsControllerAcceptResponse = (invitationsControllerAcceptResponseSuccess)
+
+export const getInvitationsControllerAcceptUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/me/invitations/${membershipId}/accept`
+}
+
+export const invitationsControllerAccept = async (membershipId: string,
+    acceptInvitationDto: AcceptInvitationDto, options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerAcceptResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<invitationsControllerAcceptResponse>(getInvitationsControllerAcceptUrl(membershipId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(acceptInvitationDto)
+  }
+);}
+
+
+
+export type invitationsControllerDeclineResponse204 = {
+  data: void
+  status: 204
+}
+
+export type invitationsControllerDeclineResponseSuccess = (invitationsControllerDeclineResponse204) & {
+  headers: Headers;
+};
+;
+
+export type invitationsControllerDeclineResponse = (invitationsControllerDeclineResponseSuccess)
+
+export const getInvitationsControllerDeclineUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/me/invitations/${membershipId}/decline`
+}
+
+export const invitationsControllerDecline = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerDeclineResponse> => {
+
+  return apiFetch<invitationsControllerDeclineResponse>(getInvitationsControllerDeclineUrl(membershipId),
   {
     ...options,
     method: 'POST'

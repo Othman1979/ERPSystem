@@ -8,6 +8,8 @@ export interface RequestContext {
   requestId?: string;
   userId?: bigint;
   userEmail?: string;
+  /** Refresh-token family of this session (access token `fid`), for switch-tenant and logout-all (PLAT-22). */
+  familyId?: string;
   isPlatformAdmin?: boolean;
   tenantId?: bigint;
   membershipId?: bigint;

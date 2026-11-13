@@ -10,6 +10,7 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { PasswordService } from '../auth/password.service.js';
 import { generateTemporaryPassword, temporaryPasswordWrites } from '../auth/temporary-password.js';
 import { InviteUserDto, UpdateMembershipDto } from './dto/users.dto.js';
+import { issueInvitationCode } from './invitation-code.js';
 
 const membershipInclude = {
   user: { select: { id: true, email: true, fullName: true, isActive: true } },
@@ -33,7 +34,12 @@ function serialize(m: {
     status: m.status,
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
-    user: { ...m.user, id: m.user.id.toString() },
+    user: {
+      ...m.user,
+      id: m.user.id.toString(),
+      // The invitee's name stays hidden from the inviting company until they accept.
+      fullName: m.status === 'INVITED' ? null : m.user.fullName,
+    },
     role: m.role,
     defaultBranch: m.defaultBranch
       ? { ...m.defaultBranch, id: m.defaultBranch.id.toString() }
@@ -88,6 +94,11 @@ export class UsersService {
     return self?.role.code;
   }
 
+  /**
+   * Invites a person to the current company. An existing user gets an INVITED
+   * membership and accepts it themself (GET /me/invitations). A new user gets an
+   * ACTIVE membership and a generated temporary password, returned once here.
+   */
   async invite(dto: InviteUserDto) {
     const prisma = this.tenant();
     const role = await this.prisma.client.role.findUnique({ where: { code: dto.roleCode } });
@@ -116,28 +127,20 @@ export class UsersService {
     let temporaryPassword: string | undefined;
     let newUser: Prisma.UserCreateInput | undefined;
     if (!knownUser) {
-      const fullName = dto.fullName ?? dto.email.split('@')[0]!;
-      if (dto.password) {
-        // The inviter chose this password deliberately, so no forced change; the member can change it any time.
-        newUser = {
-          email: dto.email,
-          fullName,
-          passwordHash: await this.passwords.hash(dto.password),
-        };
-      } else {
-        // The invitee signs in with a generated password, so they must replace it first (ADR-012).
-        temporaryPassword = generateTemporaryPassword();
-        newUser = {
-          email: dto.email,
-          fullName,
-          passwordHash: await this.passwords.hash(temporaryPassword),
-          mustChangePassword: true,
-        };
-      }
+      // A new account signs in with a generated password and must replace it first (ADR-012).
+      temporaryPassword = generateTemporaryPassword();
+      newUser = {
+        email: dto.email,
+        fullName: dto.fullName ?? dto.email.split('@')[0]!,
+        passwordHash: await this.passwords.hash(temporaryPassword),
+        mustChangePassword: true,
+      };
     }
 
-    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
-    const { membership, createdUser } = await prisma.$transaction(async (tx) => {
+    const cls = ClsServiceManager.getClsService<RequestContext>();
+    const tenantId = cls.get('tenantId')!;
+    const invitedBy = cls.get('userId');
+    const { membership, createdUser, status, acceptanceCode, codeExpiresAt } = await prisma.$transaction(async (tx) => {
       // First statement: locks the tenant row so concurrent invites cannot overshoot the plan (PLAT-04).
       await this.planLimits.assertUserSlotAvailable(tx);
 
@@ -156,33 +159,66 @@ export class UsersService {
         user = await tx.user.create({ data: newUser });
       }
 
+      // An existing user accepts the invitation themself; only a brand-new account is active at once.
+      const status = createdUser ? 'ACTIVE' : 'INVITED';
+      // The invited person accepts only with this code, handed over by the admin
+      // (ADR-012 §PLAT-10): holding their account is not enough to join.
+      const issued = status === 'INVITED' ? issueInvitationCode() : null;
       const membership = await tx.tenantMembership.create({
         data: {
           tenantId,
           userId: user.id,
           roleId: role.id,
-          status: 'ACTIVE',
+          status,
+          ...(issued?.data ?? {}),
           defaultBranchId: dto.defaultBranchId ? BigInt(dto.defaultBranchId) : null,
-          invitedBy: ClsServiceManager.getClsService<RequestContext>().get('userId'),
+          invitedBy,
           allowedBranches: {
             create: branchIds.map((branchId) => ({ branchId })),
           },
         },
         include: membershipInclude,
       });
-      return { membership, createdUser };
+      return { membership, createdUser, status, acceptanceCode: issued?.code, codeExpiresAt: issued?.data.inviteCodeExpiresAt };
     });
 
     await this.audit.log({
       action: 'user.invite',
       entityType: 'tenant_membership',
       entityId: membership.id,
-      after: { email: dto.email, roleCode: dto.roleCode },
+      after: { email: dto.email, roleCode: dto.roleCode, status },
     });
 
     return {
       ...serialize(membership),
       ...(createdUser && temporaryPassword ? { temporaryPassword } : {}),
+      // Shown once: the admin gives it to the person directly.
+      ...(acceptanceCode ? { acceptanceCode, acceptanceCodeExpiresAt: codeExpiresAt } : {}),
+    };
+  }
+
+  /**
+   * Issues a new acceptance code for a pending invitation; the old one stops
+   * working and the attempt count starts again (ADR-012 §PLAT-10).
+   */
+  async reissueInvitationCode(membershipId: bigint): Promise<{ membershipId: string; acceptanceCode: string; acceptanceCodeExpiresAt: Date }> {
+    const prisma = this.tenant();
+    const issued = issueInvitationCode();
+    // Tenant-scoped: another company's membership id matches nothing (404).
+    const updated = await prisma.tenantMembership.updateMany({
+      where: { id: membershipId, status: 'INVITED' },
+      data: issued.data,
+    });
+    if (updated.count === 0) throw DomainError.notFound('Invitation', membershipId.toString());
+    await this.audit.log({
+      action: 'user.invite_code_reissue',
+      entityType: 'tenant_membership',
+      entityId: membershipId,
+    });
+    return {
+      membershipId: membershipId.toString(),
+      acceptanceCode: issued.code,
+      acceptanceCodeExpiresAt: issued.data.inviteCodeExpiresAt,
     };
   }
 
@@ -193,6 +229,10 @@ export class UsersService {
       include: { role: true },
     });
     if (!membership) throw DomainError.notFound('Membership', membershipId.toString());
+    // Only the invitee accepts an invitation (or the inviter cancels it, see suspend()).
+    if (membership.status === 'INVITED' && dto.status !== undefined) {
+      throw new DomainError(ErrorCode.FORBIDDEN, 'An invited member accepts the invitation themself');
+    }
 
     // PLAT-01: no self role/status change; only an owner grants OWNER or
     // touches an owner's membership.
@@ -211,15 +251,19 @@ export class UsersService {
     }
 
     const data: Prisma.TenantMembershipUncheckedUpdateInput = {};
+    // Only an ACTIVE owner counts toward the last-owner rule (the count below is
+    // ACTIVE owners), so re-roling an OWNER invitation or a suspended owner is
+    // not removing an owner.
+    const activeOwner = membership.role.code === 'OWNER' && membership.status === 'ACTIVE';
     let removesOwner = false;
     if (dto.roleCode !== undefined) {
       const role = await this.prisma.client.role.findUnique({ where: { code: dto.roleCode } });
       if (!role) throw DomainError.notFound('Role', dto.roleCode);
-      removesOwner ||= membership.role.code === 'OWNER' && role.code !== 'OWNER';
+      removesOwner ||= activeOwner && role.code !== 'OWNER';
       data.roleId = role.id;
     }
     if (dto.status !== undefined) {
-      removesOwner ||= membership.role.code === 'OWNER' && dto.status === 'SUSPENDED';
+      removesOwner ||= activeOwner && dto.status === 'SUSPENDED';
       data.status = dto.status;
     }
     if (dto.defaultBranchId !== undefined) {
@@ -239,8 +283,9 @@ export class UsersService {
         // count (the count's snapshot is taken after the lock).
         const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
         await tx.$queryRaw`SELECT id FROM tenants WHERE id = ${tenantId} FOR UPDATE`;
+        // Only ACTIVE owners count: an OWNER invitation not yet accepted protects nothing.
         const ownerCount = await tx.tenantMembership.count({
-          where: { role: { code: 'OWNER' }, status: { not: 'SUSPENDED' } },
+          where: { role: { code: 'OWNER' }, status: 'ACTIVE' },
         });
         if (ownerCount <= 1) {
           throw new DomainError(
@@ -302,6 +347,15 @@ export class UsersService {
     if (!membership) throw DomainError.notFound('Membership', membershipId.toString());
     const targetUserId = membership.userId;
 
+    // An invited person has not joined this company: it may not take over their
+    // existing identity (they may have no other membership to block it below).
+    if (membership.status === 'INVITED') {
+      throw new DomainError(
+        ErrorCode.PASSWORD_RESET_NOT_ALLOWED,
+        'This person has not accepted the invitation yet',
+      );
+    }
+
     if (targetUserId === callerId) {
       throw new DomainError(
         ErrorCode.PASSWORD_RESET_NOT_ALLOWED,
@@ -359,32 +413,55 @@ export class UsersService {
     return { temporaryPassword };
   }
 
+  /**
+   * Suspends an active member, or cancels a pending invitation (the membership is
+   * deleted and its branch links cascade). Suspension goes through update(), which
+   * keeps the last-OWNER guard (PLAT-24).
+   */
   async suspend(membershipId: bigint) {
+    const prisma = this.tenant();
+    const current = await prisma.tenantMembership.findFirst({
+      where: { id: membershipId },
+      select: { status: true, userId: true },
+    });
+    if (!current) throw DomainError.notFound('Membership', membershipId.toString());
+    if (current.status === 'INVITED') return this.cancelInvitation(membershipId);
+
     const result = await this.update(membershipId, { status: 'SUSPENDED' });
 
     // Revoke refresh tokens issued for this user in this tenant.
-    const prisma = this.tenant();
-    const membership = await prisma.tenantMembership.findFirst({
-      where: { id: membershipId },
-      select: { userId: true },
+    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
+    // systemPrisma: refresh_tokens is platform-global; scoped explicitly.
+    await this.prisma.client.refreshToken.updateMany({
+      where: {
+        userId: current.userId,
+        tenantId,
+        revokedAt: null,
+      },
+      data: { revokedAt: new Date() },
     });
-    if (membership) {
-      const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
-      // systemPrisma: refresh_tokens is platform-global; scoped explicitly.
-      await this.prisma.client.refreshToken.updateMany({
-        where: {
-          userId: membership.userId,
-          tenantId,
-          revokedAt: null,
-        },
-        data: { revokedAt: new Date() },
-      });
-    }
     await this.audit.log({
       action: 'user.suspend',
       entityType: 'tenant_membership',
       entityId: membershipId,
     });
     return result;
+  }
+
+  /** Deletes a pending invitation of the current tenant (membership_branches cascade). */
+  private async cancelInvitation(membershipId: bigint) {
+    await this.tenant().$transaction(async (tx) => {
+      const removed = await tx.tenantMembership.deleteMany({
+        where: { id: membershipId, status: 'INVITED' },
+      });
+      if (removed.count === 0) throw DomainError.notFound('Invitation', membershipId.toString());
+    });
+
+    await this.audit.log({
+      action: 'user.invite_cancel',
+      entityType: 'tenant_membership',
+      entityId: membershipId,
+    });
+    return { membershipId: membershipId.toString(), cancelled: true as const };
   }
 }

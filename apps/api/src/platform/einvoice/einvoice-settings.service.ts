@@ -17,8 +17,8 @@ export const DEFAULT_SANDBOX_URL = 'http://127.0.0.1:8080';
 
 /**
  * PRODUCTION e-invoicing is allowed only on a production server, or when the
- * operator explicitly opts in. EINVOICE_ALLOW_PRODUCTION is read from
- * process.env because it is not in the config schema yet (platform session).
+ * operator explicitly opts in with EINVOICE_ALLOW_PRODUCTION=true (validated
+ * config, decisions.md TRADE-24).
  */
 export function productionAllowed(nodeEnv: string | undefined, allowFlag: string | undefined): boolean {
   return nodeEnv === 'production' || allowFlag === 'true';
@@ -94,7 +94,7 @@ export class EInvoiceSettingsService {
     // Production sends real tax records: only on a production server (or with the explicit flag).
     if (
       dto.environment === 'PRODUCTION' &&
-      !productionAllowed(this.config.get('NODE_ENV', { infer: true }), process.env.EINVOICE_ALLOW_PRODUCTION)
+      !productionAllowed(this.config.get('NODE_ENV', { infer: true }), this.config.get('EINVOICE_ALLOW_PRODUCTION', { infer: true }))
     ) {
       throw new DomainError(
         ErrorCode.VALIDATION,
@@ -214,7 +214,7 @@ export class EInvoiceSettingsService {
     // Re-checked at send time: a stored PRODUCTION setting must not reach the production host on a server that does not allow it.
     if (
       s.environment === 'PRODUCTION' &&
-      !productionAllowed(this.config.get('NODE_ENV', { infer: true }), process.env.EINVOICE_ALLOW_PRODUCTION)
+      !productionAllowed(this.config.get('NODE_ENV', { infer: true }), this.config.get('EINVOICE_ALLOW_PRODUCTION', { infer: true }))
     ) {
       throw new DomainError(
         ErrorCode.EINVOICE_NOT_READY,

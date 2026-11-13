@@ -15,6 +15,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { addMember } from './support/members.js';
 
 const API_PORT = 3191;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -152,20 +153,14 @@ describe('Branch on goods notes and voucher entries', () => {
     };
     walk(accounts.body as never[]);
 
-    const invite = await api()
-      .post('/api/v1/users/invite')
-      .set(auth(owner))
-      .send({
-        email: `gnb-store-${RUN}@test.dev`,
-        roleCode: 'STOREKEEPER',
-        password: PASS,
-        defaultBranchId: mainId,
-        branchIds: [mainId],
-      });
-    expect(invite.status).toBe(201);
-    const login = await api().post('/api/v1/auth/login').send({ email: `gnb-store-${RUN}@test.dev`, password: PASS });
-    expect(login.status).toBe(200);
-    storekeeper = login.body.accessToken;
+    const store = await addMember(BASE, owner, {
+      email: `gnb-store-${RUN}@test.dev`,
+      roleCode: 'STOREKEEPER',
+      password: PASS,
+      defaultBranchId: mainId,
+      branchIds: [mainId],
+    });
+    storekeeper = store.token;
   });
 
   it("a note takes its warehouse's branch, whatever the request branch is", async () => {

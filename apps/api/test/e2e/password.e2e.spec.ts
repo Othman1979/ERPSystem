@@ -13,6 +13,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import request from 'supertest';
 import mariadb, { type Connection } from 'mariadb';
+import { addMember } from './support/members.js';
 
 const API_PORT = 3218;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -167,6 +168,15 @@ describe('Password change and reset (ADR-012, erp_test)', () => {
       m1TempPassword = invite.body.temporaryPassword;
     });
 
+    it('refuses a password chosen by the inviter (400 VALIDATION); nothing is created', async () => {
+      const res = await api()
+        .post('/api/v1/users/invite')
+        .set(auth(ownerTokenA))
+        .send({ email: `chosen-${RUN}@test.dev`, roleCode: 'VIEWER', password: PASS });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION');
+    });
+
     it('signs in with the temporary password; /me reports the flag and business routes are refused', async () => {
       const res = await login(emailM1, m1TempPassword);
       expect(res.status).toBe(200);
@@ -240,11 +250,13 @@ describe('Password change and reset (ADR-012, erp_test)', () => {
   describe('b. other sessions are signed out', () => {
     it('keeps the session that changed the password and revokes the others', async () => {
       // A separate member of tenant B: M1's sign-in count stays within the login limit.
-      const invite = await api()
-        .post('/api/v1/users/invite')
-        .set(auth(ownerTokenB))
-        .send({ email: emailS, roleCode: 'VIEWER', password: SESSIONS_PASS });
-      expect(invite.status).toBe(201);
+      // A new user: the temporary password is replaced by SESSIONS_PASS inside addMember.
+      const member = await addMember(BASE, ownerTokenB, {
+        email: emailS,
+        roleCode: 'VIEWER',
+        password: SESSIONS_PASS,
+      });
+      expect(member.membershipId).toBeTruthy();
 
       const s1 = await login(emailS, SESSIONS_PASS);
       const s2 = await login(emailS, SESSIONS_PASS);
@@ -304,20 +316,22 @@ describe('Password change and reset (ADR-012, erp_test)', () => {
       expect(res.body.error.code).toBe('PASSWORD_RESET_NOT_ALLOWED');
     });
 
-    it('invites X (accountant, password chosen by the inviter) into A and B', async () => {
-      const inviteA = await api()
-        .post('/api/v1/users/invite')
-        .set(auth(ownerTokenA))
-        .send({ email: emailX, roleCode: 'ACCOUNTANT', password: SHARED_PASS });
-      expect(inviteA.status).toBe(201);
-      expect(inviteA.body.temporaryPassword).toBeUndefined();
-      xMembershipIdInA = inviteA.body.membershipId;
+    it('invites X (accountant) into A as a new user, then into B where X is an existing user who accepts', async () => {
+      const inA = await addMember(BASE, ownerTokenA, {
+        email: emailX,
+        roleCode: 'ACCOUNTANT',
+        password: SHARED_PASS,
+      });
+      xMembershipIdInA = inA.membershipId;
 
-      const inviteB = await api()
-        .post('/api/v1/users/invite')
-        .set(auth(ownerTokenB))
-        .send({ email: emailX, roleCode: 'VIEWER' });
-      expect(inviteB.status).toBe(201);
+      // X already has an account: the B invitation is INVITED until X accepts it (addMember does that).
+      const inB = await addMember(BASE, ownerTokenB, {
+        email: emailX,
+        roleCode: 'VIEWER',
+        password: SHARED_PASS,
+      });
+      expect(inB.invite.temporaryPassword).toBeUndefined();
+      expect(inB.membershipId).toBeTruthy();
     });
 
     it('refuses owner A resetting X, who also belongs to tenant B (403)', async () => {
@@ -328,14 +342,15 @@ describe('Password change and reset (ADR-012, erp_test)', () => {
       expect(res.body.error.code).toBe('PASSWORD_RESET_NOT_ALLOWED');
     });
 
-    it('refuses an accountant resetting the owner (403): only an owner may reset an owner', async () => {
+    it('refuses an accountant resetting the owner (403)', async () => {
       const accountant = await login(emailX, SHARED_PASS);
       expect(accountant.status).toBe(200);
       const res = await api()
         .post(`/api/v1/users/${ownerMembershipA}/reset-password`)
         .set(auth(accountant.body.accessToken));
+      // user.manage is OWNER-only (decisions.md §Platform): the permission gate refuses first.
       expect(res.status).toBe(403);
-      expect(res.body.error.code).toBe('PASSWORD_RESET_NOT_ALLOWED');
+      expect(res.body.error.code).toBe('FORBIDDEN');
     });
 
     it('isolates tenants: owner B resetting a membership of tenant A is 404', async () => {
@@ -370,7 +385,8 @@ describe('Password change and reset (ADR-012, erp_test)', () => {
       const before = await db.query('SELECT must_change_password FROM users WHERE email = ?', [emailCli]);
       expect(Number(before[0].must_change_password)).toBe(0);
 
-      const res = await cli(['reset-password', emailCli]);
+      // Not a terminal here: the temporary password is printed only on request (PLAT-30).
+      const res = await cli(['reset-password', emailCli, '--print-password']);
       expect(res.code).toBe(0);
       const out = JSON.parse(res.stdout) as {
         job: string;
@@ -403,8 +419,20 @@ describe('Password change and reset (ADR-012, erp_test)', () => {
     }, 60_000);
 
     it('exits 1 for an unknown email', async () => {
-      const res = await cli(['reset-password', `nobody-${RUN}@test.dev`]);
+      const res = await cli(['reset-password', `nobody-${RUN}@test.dev`, '--print-password']);
       expect(res.code).toBe(1);
+    }, 60_000);
+
+    it('refuses to print a temporary password outside a terminal without --print-password', async () => {
+      const res = await cli(['reset-password', emailCli]);
+      expect(res.code).toBe(1);
+      expect(res.stderr).toMatch(/--print-password/);
+      // Refused before the reset: the password hash is unchanged.
+      const before = await db.query('SELECT password_hash FROM users WHERE email = ?', [emailCli]);
+      const again = await cli(['reset-password', emailCli]);
+      expect(again.code).toBe(1);
+      const after = await db.query('SELECT password_hash FROM users WHERE email = ?', [emailCli]);
+      expect(after[0].password_hash).toBe(before[0].password_hash);
     }, 60_000);
   });
 });

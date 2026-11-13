@@ -28,6 +28,9 @@ export const envSchema = z.object({
   EINVOICE_HTTP_TIMEOUT_MS: z.coerce.number().int().min(100).default(30_000),
   // Extra hosts a SANDBOX URL may use besides this machine (comma-separated).
   EINVOICE_SANDBOX_HOSTS: z.string().optional(),
+  // PRODUCTION e-invoicing (real JoFotara) outside NODE_ENV=production only when
+  // explicitly 'true' (decisions.md TRADE-24). Any value but true/false is refused.
+  EINVOICE_ALLOW_PRODUCTION: z.enum(['true', 'false']).default('false'),
   // Report exports (Phase 8): most rows one PDF / XLSX export may have (REPORT_TOO_LARGE above).
   REPORT_PDF_MAX_ROWS: z.coerce.number().int().positive().default(1_000),
   REPORT_XLSX_MAX_ROWS: z.coerce.number().int().positive().default(50_000),
@@ -59,6 +62,12 @@ export const envSchema = z.object({
   // errors here as JSON { text, content } (Slack, Discord, Mattermost, a
   // Telegram sendMessage URL with chat_id). A secret: never logged. Unset: no alerts.
   ALERT_WEBHOOK_URL: z.string().url().optional(),
+  // Backup encryption (ADR-010 §10.2): 32 random bytes, base64. Every backup file is
+  // AES-256-GCM encrypted with it; backup-verify needs the same key. Required in production.
+  BACKUP_ENCRYPTION_KEY: z.string().optional(),
+  // Where the error monitor appends errors it could not write to the database (ADR-010 §10.3);
+  // error-digest alerts them. Outside the web root.
+  ERROR_LOG_FILE: z.string().min(1).default('logs/errors-fallback.log'),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -99,6 +108,9 @@ export function productionProblems(env: Env): { path: string; message: string }[
   }
   if (env.ALERT_WEBHOOK_URL && !env.ALERT_WEBHOOK_URL.startsWith('https://')) {
     problems.push({ path: 'ALERT_WEBHOOK_URL', message: 'must be https:// in production: alerts carry error details' });
+  }
+  if (!isSealingKey(env.BACKUP_ENCRYPTION_KEY)) {
+    problems.push({ path: 'BACKUP_ENCRYPTION_KEY', message: 'is required in production: 32 random bytes, base64 (backups leave the server)' });
   }
   if (env.EINVOICE_WORKER === 'on') {
     problems.push({

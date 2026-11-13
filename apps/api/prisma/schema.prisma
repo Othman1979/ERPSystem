@@ -425,6 +425,11 @@ model TenantMembership {
   status          MembershipStatus @default(INVITED)
   defaultBranchId BigInt?          @map("default_branch_id") @db.UnsignedBigInt
   invitedBy       BigInt?          @map("invited_by") @db.UnsignedBigInt
+  // Invitation acceptance code (ADR-012, PLAT-10): sha256 of the one-time code
+  // the inviting admin hands over; never the code itself.
+  inviteCodeHash      String?   @map("invite_code_hash") @db.Char(64)
+  inviteCodeExpiresAt DateTime? @map("invite_code_expires_at") @db.DateTime(3)
+  inviteCodeAttempts  Int       @default(0) @map("invite_code_attempts")
   createdAt       DateTime         @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt       DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
 

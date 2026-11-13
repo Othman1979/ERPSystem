@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsString()
@@ -39,6 +39,7 @@ export class LoginDto {
 
   @IsOptional()
   @IsString()
+  @Matches(/^\d{1,19}$/, { message: 'tenantId must be a numeric id' })
   tenantId?: string;
 }
 
@@ -55,5 +56,6 @@ export class ChangePasswordDto {
 
 export class SwitchTenantDto {
   @IsString()
+  @Matches(/^\d{1,19}$/, { message: 'tenantId must be a numeric id' })
   tenantId!: string;
 }

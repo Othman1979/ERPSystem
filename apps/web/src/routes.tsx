@@ -10,6 +10,7 @@ import {
   FlagOutlined,
   FileProtectOutlined,
   InboxOutlined,
+  MailOutlined,
   ProfileOutlined,
   SettingOutlined,
   ShopOutlined,
@@ -44,6 +45,7 @@ export const PAGE_LOADERS = {
   branches: () => import('./pages/BranchesPage').then((m) => m.BranchesPage),
   settings: () => import('./pages/SettingsPage').then((m) => m.SettingsPage),
   health: () => import('./pages/HealthPage').then((m) => m.HealthPage),
+  invitations: () => import('./pages/InvitationsPage').then((m) => m.InvitationsPage),
 };
 
 const AccountsPage = lazyPage(PAGE_LOADERS.accounts);
@@ -64,6 +66,7 @@ const UsersPage = lazyPage(PAGE_LOADERS.users);
 const BranchesPage = lazyPage(PAGE_LOADERS.branches);
 const SettingsPage = lazyPage(PAGE_LOADERS.settings);
 const HealthPage = lazyPage(PAGE_LOADERS.health);
+const InvitationsPage = lazyPage(PAGE_LOADERS.invitations);
 
 export interface AppRoute {
   key: string;
@@ -73,6 +76,8 @@ export interface AppRoute {
   label: string;
   icon: ReactNode;
   element: ReactNode;
+  /** Count shown as a badge on the menu entry, when above zero. */
+  badge?: 'pendingInvitations';
 }
 
 export interface AppGroup {
@@ -82,6 +87,9 @@ export interface AppGroup {
   tone: 'finance' | 'trade' | 'inventory' | 'admin';
   routes: AppRoute[];
 }
+
+/** Invitations are reachable without a company (ADR-012 §PLAT-10). */
+export const INVITATIONS_PATH = '/invitations';
 
 /** Every module, grouped as on the home screen and in the side menu. */
 export const APP_GROUPS: AppGroup[] = [
@@ -131,6 +139,20 @@ export const APP_GROUPS: AppGroup[] = [
       { key: 'branches', path: '/branches', label: 'nav.branches', icon: <ShopOutlined />, element: <BranchesPage /> },
       { key: 'settings', path: '/settings', label: 'nav.settings', icon: <SettingOutlined />, element: <SettingsPage /> },
       { key: 'health', path: '/health', label: 'nav.health', icon: <DashboardOutlined />, element: <HealthPage /> },
+    ],
+  },
+  {
+    label: 'nav.groupAccount',
+    tone: 'admin',
+    routes: [
+      {
+        key: 'invitations',
+        path: INVITATIONS_PATH,
+        label: 'nav.invitations',
+        icon: <MailOutlined />,
+        element: <InvitationsPage />,
+        badge: 'pendingInvitations',
+      },
     ],
   },
 ];

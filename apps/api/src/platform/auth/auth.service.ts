@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'node:crypto';
 import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { AuditService } from '../../common/audit/audit.service.js';
@@ -9,6 +10,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { ChartProvisioningService } from '../accounting/chart-provisioning.service.js';
 import { ChangePasswordDto, LoginDto, RegisterDto, SwitchTenantDto } from './dto/auth.dto.js';
+import { LoginLockoutService } from './login-lockout.service.js';
 import { PasswordService } from './password.service.js';
 import { hashToken, TokenService } from './token.service.js';
 
@@ -26,7 +28,19 @@ export class AuthService {
     private readonly audit: AuditService,
     private readonly provisioning: ChartProvisioningService,
     private readonly config: ConfigService<Env, true>,
+    private readonly lockout: LoginLockoutService,
   ) {}
+
+  /**
+   * Argon2 hash of random bytes, computed once. An unknown email is verified
+   * against it, so a missing account costs the same time as a wrong password (PLAT-16).
+   */
+  private dummyHash: Promise<string> | null = null;
+
+  private getDummyHash(): Promise<string> {
+    this.dummyHash ??= this.passwords.hash(randomBytes(32).toString('base64url'));
+    return this.dummyHash;
+  }
 
   /**
    * Self-registration: creates tenant (TRIAL) + company + owner user +
@@ -129,36 +143,64 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, meta: AuthMeta) {
+    // Checked and counted before any lookup or argon2, in one synchronous step,
+    // for known and unknown emails alike (owner decision): parallel guesses
+    // cannot all pass while the first is being verified. A correct password
+    // clears the count below.
+    const { retryAfterMs: wait, delayMs } = this.lockout.attempt(dto.email);
+    if (wait > 0) {
+      // Not audited per attempt: an attacker on many addresses would turn the delay
+      // into one audit row per request. The failure that starts the delay is audited.
+      throw new DomainError(
+        ErrorCode.LOGIN_LOCKED,
+        'Too many failed sign-ins for this email; try again later',
+        { retryAfterSeconds: Math.ceil(wait / 1000) },
+      );
+    }
+
     // systemPrisma: login precedes any tenant context.
     const user = await this.prisma.client.user.findUnique({
       where: { email: dto.email },
       include: {
         memberships: {
-          where: { status: 'ACTIVE' },
+          where: { status: { in: ['ACTIVE', 'INVITED'] } },
           include: { tenant: { select: { id: true, name: true, status: true } } },
           orderBy: { id: 'asc' },
         },
       },
     });
 
-    const valid = user ? await this.passwords.verify(user.passwordHash, dto.password) : false;
+    // PLAT-16: an unknown email is verified too, so both paths cost the same.
+    const matches = await this.passwords.verify(
+      user?.passwordHash ?? (await this.getDummyHash()),
+      dto.password,
+    );
+    // An inactive user fails exactly like a wrong password.
+    const valid = user !== null && user.isActive && matches;
     if (!user || !valid) {
+      // Already counted by attempt(); delayMs is the delay this failure started.
       await this.audit.log({
-        action: 'auth.login_failed',
+        action: delayMs > 0 ? 'auth.login_locked' : 'auth.login_failed',
         entityType: 'user',
         entityId: user?.id,
-        after: { email: dto.email },
+        after: delayMs > 0 ? { email: dto.email, lockedForSeconds: Math.ceil(delayMs / 1000) } : { email: dto.email },
         ip: meta.ip,
         userAgent: meta.userAgent,
       });
       throw new DomainError(ErrorCode.UNAUTHORIZED, 'Invalid email or password');
     }
+    this.lockout.succeed(dto.email);
 
+    const active = user.memberships.filter((m) => m.status === 'ACTIVE');
+    const pendingInvitations = user.memberships.filter((m) => m.status === 'INVITED').length;
     const wantedTenant = dto.tenantId ? BigInt(dto.tenantId) : null;
     const membership = wantedTenant
-      ? user.memberships.find((m) => m.tenantId === wantedTenant)
-      : user.memberships[0];
-    if (!membership) {
+      ? active.find((m) => m.tenantId === wantedTenant)
+      : active[0];
+    // Only invitations are waiting: sign in without a company, so the user can
+    // see and accept them (GET /me/invitations).
+    const withoutTenant = !membership && !wantedTenant && pendingInvitations > 0;
+    if (!membership && !withoutTenant) {
       throw new DomainError(ErrorCode.FORBIDDEN, 'No active membership for this tenant');
     }
 
@@ -168,7 +210,7 @@ export class AuthService {
     });
 
     const cls = ClsServiceManager.getClsService<RequestContext>();
-    cls.set('tenantId', membership.tenantId);
+    if (membership) cls.set('tenantId', membership.tenantId);
     cls.set('userId', user.id);
     await this.audit.log({
       action: 'auth.login',
@@ -178,12 +220,13 @@ export class AuthService {
       userAgent: meta.userAgent,
     });
 
-    return this.issueSession(user.id, user.email, membership.tenantId, meta, {
-      tenants: user.memberships.map((m) => ({
+    return this.issueSession(user.id, user.email, membership?.tenantId ?? null, meta, {
+      tenants: active.map((m) => ({
         tenantId: m.tenantId.toString(),
         name: m.tenant.name,
         status: m.tenant.status,
       })),
+      pendingInvitations,
     });
   }
 
@@ -195,16 +238,11 @@ export class AuthService {
     if (!rotated) {
       throw new DomainError(ErrorCode.UNAUTHORIZED, 'Invalid or expired refresh token');
     }
-    const user = await this.prisma.client.user.findUnique({
-      where: { id: rotated.userId },
-      select: { id: true, email: true },
-    });
-    const accessToken = await this.tokens.signAccessToken(
-      rotated.userId,
-      rotated.tenantId,
-      user?.email ?? '',
-    );
-    return { accessToken, refreshToken: rotated.refreshToken, user };
+    return {
+      accessToken: rotated.accessToken,
+      refreshToken: rotated.refreshToken,
+      user: { id: rotated.userId, email: rotated.email },
+    };
   }
 
   /**
@@ -277,6 +315,20 @@ export class AuthService {
     if (rawToken) await this.tokens.revokeToken(rawToken);
   }
 
+  /** Ends every session of the caller on every device (PLAT-22). Returns the revoked count. */
+  async logoutAll(userId: bigint, meta: AuthMeta): Promise<number> {
+    const revoked = await this.tokens.revokeAllForUser(userId);
+    await this.audit.log({
+      action: 'auth.logout_all',
+      entityType: 'user',
+      entityId: userId,
+      after: { sessionsRevoked: revoked },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    });
+    return revoked;
+  }
+
   async switchTenant(dto: SwitchTenantDto, meta: AuthMeta) {
     const cls = ClsServiceManager.getClsService<RequestContext>();
     const userId = cls.get('userId');
@@ -294,6 +346,9 @@ export class AuthService {
 
     const tokens = await this.issueSession(userId, membership.user.email, tenantId, meta);
     cls.set('tenantId', tenantId);
+    // PLAT-22: switching company ends the session it leaves.
+    const previousFamily = cls.get('familyId');
+    if (previousFamily) await this.tokens.revokeFamily(previousFamily, userId);
     await this.audit.log({
       action: 'auth.switch_tenant',
       entityType: 'tenant',
@@ -310,7 +365,7 @@ export class AuthService {
     const tenantId = cls.get('tenantId');
     if (!userId) throw new DomainError(ErrorCode.UNAUTHORIZED, 'Not authenticated');
 
-    const [user, memberships] = await Promise.all([
+    const [user, memberships, pendingInvitations] = await Promise.all([
       // systemPrisma: users is platform-global; membership scoping done manually.
       this.prisma.client.user.findUnique({
         where: { id: userId },
@@ -338,6 +393,8 @@ export class AuthService {
         },
         orderBy: { id: 'asc' },
       }),
+      // systemPrisma: memberships of this user only (count, no tenant data).
+      this.prisma.client.tenantMembership.count({ where: { userId, status: 'INVITED' } }),
     ]);
     if (!user) throw new DomainError(ErrorCode.UNAUTHORIZED, 'User not found');
 
@@ -362,6 +419,8 @@ export class AuthService {
     }
     return {
       user,
+      /** Companies this user was invited to and has not accepted yet. */
+      pendingInvitations,
       tenants: memberships.map((m) => ({
         tenantId: m.tenantId.toString(),
         tenantName: m.tenant.name,
@@ -414,7 +473,7 @@ export class AuthService {
   private async issueSession(
     userId: bigint,
     email: string,
-    tenantId: bigint,
+    tenantId: bigint | null,
     meta: AuthMeta,
     extra: Record<string, unknown> = {},
   ) {

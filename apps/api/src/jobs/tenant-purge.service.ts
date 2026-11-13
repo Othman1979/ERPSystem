@@ -35,7 +35,8 @@ export interface PurgePlan {
  * go in one transaction with foreign-key checks off for that connection
  * (the whole tenant goes, so nothing is left dangling; self references
  * such as reversal_of_id would otherwise need a delete order), then the
- * tenant's files. Users who belong to no other tenant go too.
+ * tenant's files. Users who belong to no other tenant, and have no history
+ * in another company, go too.
  *
  * systemPrisma: a platform job across tables; every statement on a tenant
  * table filters on tenant_id.
@@ -97,13 +98,23 @@ export class TenantPurgeService {
     };
   }
 
-  /** Users of this tenant with no membership elsewhere; platform admins are kept. */
+  /**
+   * Users who belong to this tenant only; platform admins are kept. A user
+   * whose history reaches another company is kept too: an audit row there
+   * (a declined or accepted invitation outlives the membership) or an
+   * invitation they sent into another company. Deleting them would leave
+   * those rows pointing at nobody.
+   */
   private soleUsers(tenantId: bigint) {
     return this.prisma.client.$queryRaw<{ id: bigint; email: string }[]>`
       SELECT u.id, u.email FROM users u
        WHERE u.is_platform_admin = 0
          AND EXISTS (SELECT 1 FROM tenant_memberships m WHERE m.user_id = u.id AND m.tenant_id = ${tenantId})
          AND NOT EXISTS (SELECT 1 FROM tenant_memberships m WHERE m.user_id = u.id AND m.tenant_id <> ${tenantId})
+         AND NOT EXISTS (SELECT 1 FROM audit_logs a
+                          WHERE a.user_id = u.id AND a.tenant_id IS NOT NULL AND a.tenant_id <> ${tenantId})
+         AND NOT EXISTS (SELECT 1 FROM tenant_memberships m
+                          WHERE m.invited_by = u.id AND m.tenant_id <> ${tenantId})
        ORDER BY u.id`;
   }
 
@@ -114,7 +125,7 @@ export class TenantPurgeService {
     if (confirmName !== plan.name) throw new Error('Refused: --confirm must be the exact tenant name');
 
     const tables = await this.tenantTables();
-    const userIds = (await this.soleUsers(tenantId)).map((u) => u.id);
+    const users = await this.soleUsers(tenantId);
     await this.prisma.client.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 0');
@@ -122,9 +133,16 @@ export class TenantPurgeService {
           for (const table of tables) {
             await tx.$executeRawUnsafe(`DELETE FROM \`${table}\` WHERE tenant_id = ?`, tenantId);
           }
-          for (const id of userIds) {
-            await tx.$executeRaw`DELETE FROM refresh_tokens WHERE user_id = ${id}`;
-            await tx.$executeRaw`DELETE FROM users WHERE id = ${id}`;
+          for (const user of users) {
+            // Audit rows that stay (platform rows, failed sign-ins) lose the link to the person and the address.
+            await tx.$executeRaw`UPDATE audit_logs SET user_id = NULL WHERE user_id = ${user.id} AND tenant_id IS NULL`;
+            await tx.$executeRaw`UPDATE audit_logs SET entity_id = NULL
+              WHERE entity_type = 'user' AND entity_id = ${user.id.toString()} AND tenant_id IS NULL`;
+            await tx.$executeRaw`UPDATE audit_logs SET after_json = JSON_SET(after_json, '$.email', '[deleted]')
+              WHERE tenant_id IS NULL AND action IN ('auth.login_failed', 'auth.login_locked')
+                AND LOWER(JSON_UNQUOTE(JSON_EXTRACT(after_json, '$.email'))) = LOWER(${user.email})`;
+            await tx.$executeRaw`DELETE FROM refresh_tokens WHERE user_id = ${user.id}`;
+            await tx.$executeRaw`DELETE FROM users WHERE id = ${user.id}`;
           }
           await tx.$executeRaw`DELETE FROM tenants WHERE id = ${tenantId}`;
         } finally {

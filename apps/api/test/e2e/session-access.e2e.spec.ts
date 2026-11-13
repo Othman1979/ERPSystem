@@ -14,6 +14,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import request from 'supertest';
 import mariadb, { type Connection } from 'mariadb';
+import { addMember } from './support/members.js';
 
 const API_PORT = 3501;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -141,26 +142,16 @@ describe('Access control and sessions (erp_test)', () => {
         (m: { role: { code: string } }) => m.role.code === 'OWNER',
       ).membershipId;
 
-      const x = await api()
-        .post('/api/v1/users/invite')
-        .set(auth(ownerTokenA))
-        .send({ email: emailX, roleCode: 'ACCOUNTANT', password: PASS });
-      expect(x.status).toBe(201);
-      xMembership = x.body.membershipId;
+      const x = await addMember(BASE, ownerTokenA, { email: emailX, roleCode: 'ACCOUNTANT', password: PASS });
+      xMembership = x.membershipId;
+      xToken = x.token;
 
-      const v = await api()
-        .post('/api/v1/users/invite')
-        .set(auth(ownerTokenA))
-        .send({ email: emailV, roleCode: 'VIEWER', password: PASS });
-      expect(v.status).toBe(201);
-      vMembership = v.body.membershipId;
-
-      const signIn = await login(emailX, PASS);
-      expect(signIn.status).toBe(200);
-      xToken = signIn.body.accessToken;
+      const v = await addMember(BASE, ownerTokenA, { email: emailV, roleCode: 'VIEWER', password: PASS });
+      vMembership = v.membershipId;
     });
 
     it('refuses an accountant promoting themself to OWNER', async () => {
+      // user.manage is OWNER-only (decisions.md §Platform): the refusal is the permission gate.
       const res = await api()
         .patch(`/api/v1/users/${xMembership}`)
         .set(auth(xToken))
@@ -209,15 +200,23 @@ describe('Access control and sessions (erp_test)', () => {
       const res = await api()
         .post('/api/v1/users/invite')
         .set(auth(xToken))
-        .send({ email: `sa-would-be-owner-${RUN}@test.dev`, roleCode: 'OWNER', password: PASS });
+        .send({ email: `sa-would-be-owner-${RUN}@test.dev`, roleCode: 'OWNER' });
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe('FORBIDDEN');
     });
 
-    it('still lets a non-owner assign non-owner roles to others', async () => {
-      const res = await api()
+    it('refuses a non-owner assigning any role, and lets the owner assign non-owner roles', async () => {
+      // user.manage is OWNER-only (decisions.md §Platform): an accountant cannot assign even non-owner roles.
+      const refused = await api()
         .patch(`/api/v1/users/${vMembership}`)
         .set(auth(xToken))
+        .send({ roleCode: 'ACCOUNTANT' });
+      expect(refused.status).toBe(403);
+      expect(refused.body.error.code).toBe('FORBIDDEN');
+
+      const res = await api()
+        .patch(`/api/v1/users/${vMembership}`)
+        .set(auth(ownerTokenA))
         .send({ roleCode: 'ACCOUNTANT' });
       expect(res.status).toBe(200);
       expect(res.body.role.code).toBe('ACCOUNTANT');
@@ -253,7 +252,9 @@ describe('Access control and sessions (erp_test)', () => {
       ]);
       expect([aDemotesV.status, vDemotesA.status].sort()).toEqual([200, 409]);
 
-      const list = await api().get('/api/v1/users').set(auth(xToken));
+      // Read with whichever owner survived the race (GET /users is OWNER-only).
+      const survivorToken = aDemotesV.status === 200 ? ownerTokenA : vToken;
+      const list = await api().get('/api/v1/users').set(auth(survivorToken));
       const owners = list.body.filter((m: { role: { code: string } }) => m.role.code === 'OWNER');
       expect(owners).toHaveLength(1);
     });
@@ -338,7 +339,7 @@ describe('Access control and sessions (erp_test)', () => {
           api()
             .post('/api/v1/users/invite')
             .set(auth(ownerTokenB))
-            .send({ email: `sa-b-${i}-${RUN}@test.dev`, roleCode: 'VIEWER', password: PASS }),
+            .send({ email: `sa-b-${i}-${RUN}@test.dev`, roleCode: 'VIEWER' }),
         ),
       );
       expect(results.filter((r) => r.status === 201)).toHaveLength(2);

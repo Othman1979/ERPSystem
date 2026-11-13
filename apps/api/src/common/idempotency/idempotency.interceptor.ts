@@ -15,6 +15,8 @@ import { ErrorCode } from '../errors/error-codes.js';
 import { REQUIRES_IDEMPOTENCY_KEY } from './requires-idempotency-key.decorator.js';
 
 const KEY_TTL_MS = 24 * 60 * 60 * 1000;
+/** 1 to 128 visible ASCII characters (PLAT-17). */
+const KEY_PATTERN = /^[\x21-\x7E]{1,128}$/;
 // A reservation that loses the race may find the winner's row already
 // released (the winner failed); it then tries again a bounded number of times.
 const RESERVE_ATTEMPTS = 3;
@@ -69,6 +71,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
         'Idempotency-Key header is required for this endpoint',
       );
     }
+    if (!KEY_PATTERN.test(key)) {
+      throw new DomainError(
+        ErrorCode.VALIDATION,
+        'Idempotency-Key must be 1 to 128 visible ASCII characters',
+      );
+    }
 
     // Canonical identity of the request: the route pattern plus its params,
     // not the raw URL, so `/5/post/` and `/5/POST` hash like `/5/post`.
@@ -106,6 +114,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
         }
         const existing = await prisma.idempotencyKey.findFirst({ where: { key } });
         if (!existing) continue; // the holder failed and released it; retry
+        if (existing.expiresAt < new Date()) {
+          // An expired key is not a conflict: release it and reserve again (PLAT-17).
+          await prisma.idempotencyKey.deleteMany({ where: { key, expiresAt: { lt: new Date() } } });
+          continue;
+        }
         if (existing.requestHash !== requestHash) {
           throw new DomainError(
             ErrorCode.IDEMPOTENCY_KEY_REUSED,

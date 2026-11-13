@@ -15,6 +15,8 @@ export interface AccessTokenPayload {
   sub: string;
   tid?: string;
   email?: string;
+  /** Refresh-token family of the session (PLAT-22). */
+  fid?: string;
   /** Issued-at time in whole seconds (added by JwtService). */
   iat?: number;
 }
@@ -100,6 +102,7 @@ export class AuthGuard implements CanActivate {
     cls.set('userEmail', user.email);
     cls.set('isPlatformAdmin', user.isPlatformAdmin);
     if (payload.tid) cls.set('tenantId', BigInt(payload.tid));
+    if (typeof payload.fid === 'string') cls.set('familyId', payload.fid);
     return true;
   }
 }

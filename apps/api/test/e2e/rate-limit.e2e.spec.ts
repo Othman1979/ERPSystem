@@ -71,8 +71,10 @@ describe('Request limits (ADR-011)', () => {
   });
 
   it('refuses the 11th sign-in a minute for one email with RATE_LIMITED', async () => {
+    // Wrong passwords would now trip the per-email lockout (LOGIN_LOCKED, auth-hardening.e2e),
+    // so the account limit is reached with successful sign-ins instead.
     for (let i = 0; i < 10; i++) {
-      expect((await login(a, 'wrong-password')).status).toBe(401);
+      expect((await login(a, PASS)).status).toBe(200);
     }
     const refused = await login(a, PASS);
     expect(refused.status).toBe(429);
@@ -99,9 +101,10 @@ describe('Request limits (ADR-011)', () => {
     expect([refused.status, refused.body.error.code]).toEqual([429, 'RATE_LIMITED']);
   });
 
-  it('counts signed-in requests per user, not per address', async () => {
+  it('counts signed-in requests per user (300 a minute), not per address', async () => {
     const me = (token: string) => api().get('/api/v1/me').set({ Authorization: `Bearer ${token}` });
-    for (let batch = 0; batch < 5; batch++) {
+    // 15 batches of 20 concurrent requests = 300, the signed-in limit (D-6).
+    for (let batch = 0; batch < 15; batch++) {
       const statuses = (await Promise.all(Array.from({ length: 20 }, () => me(tokenA)))).map((r) => r.status);
       expect(statuses.every((s) => s === 200)).toBe(true);
     }

@@ -30,12 +30,22 @@ export class TokenService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async signAccessToken(userId: bigint, tenantId: bigint | null, email: string): Promise<string> {
+  /**
+   * `familyId` is the refresh-token family of the session (claim `fid`), so a
+   * request can be tied back to its session (switch-tenant, logout-all, PLAT-22).
+   */
+  async signAccessToken(
+    userId: bigint,
+    tenantId: bigint | null,
+    email: string,
+    familyId?: string,
+  ): Promise<string> {
     return this.jwt.signAsync(
       {
         sub: userId.toString(),
         tid: tenantId?.toString() ?? null,
         email,
+        ...(familyId ? { fid: familyId } : {}),
       },
       {
         secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
@@ -70,7 +80,7 @@ export class TokenService {
       },
     });
 
-    const accessToken = await this.signAccessToken(userId, tenantId, email);
+    const accessToken = await this.signAccessToken(userId, tenantId, email, familyId);
     return { accessToken, refreshToken, familyId };
   }
 
@@ -93,6 +103,7 @@ export class TokenService {
     accessToken: string;
     refreshToken: string;
     userId: bigint;
+    email: string;
     tenantId: bigint | null;
   } | null> {
     const tokenHash = hashToken(rawToken);
@@ -101,6 +112,21 @@ export class TokenService {
       where: { tokenHash },
     });
     if (!existing || existing.expiresAt < new Date()) return null;
+
+    // PLAT-16: a missing or inactive user ends the session before any rotation.
+    // The token is revoked so a later retry fails at once.
+    // systemPrisma: users is a platform-global table.
+    const user = await this.prisma.client.user.findUnique({
+      where: { id: existing.userId },
+      select: { id: true, email: true, isActive: true },
+    });
+    if (!user?.isActive) {
+      await this.prisma.client.refreshToken.updateMany({
+        where: { id: existing.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      return null;
+    }
 
     const newRefresh = randomBytes(48).toString('base64url');
     const ttlDays = this.config.get('REFRESH_TOKEN_TTL_DAYS', { infer: true });
@@ -151,17 +177,17 @@ export class TokenService {
       return null;
     }
 
-    const user = await this.prisma.client.user.findUnique({
-      where: { id: existing.userId },
-      select: { id: true, email: true, isActive: true },
-    });
-    if (!user?.isActive) return null;
-
-    const accessToken = await this.signAccessToken(user.id, existing.tenantId, user.email);
+    const accessToken = await this.signAccessToken(
+      user.id,
+      existing.tenantId,
+      user.email,
+      existing.familyId,
+    );
     return {
       accessToken,
       refreshToken: newRefresh,
       userId: user.id,
+      email: user.email,
       tenantId: existing.tenantId,
     };
   }
@@ -171,5 +197,25 @@ export class TokenService {
       where: { tokenHash: hashToken(rawToken), revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  /** Ends one session: every live refresh token of its family. Returns the count. */
+  async revokeFamily(familyId: string, userId: bigint): Promise<number> {
+    // systemPrisma: refresh_tokens is platform-global.
+    const result = await this.prisma.client.refreshToken.updateMany({
+      where: { familyId, userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return result.count;
+  }
+
+  /** Ends every session of the user (logout-all). Returns the count. */
+  async revokeAllForUser(userId: bigint): Promise<number> {
+    // systemPrisma: refresh_tokens is platform-global.
+    const result = await this.prisma.client.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return result.count;
   }
 }

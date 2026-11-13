@@ -9,6 +9,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import request from 'supertest';
 import mariadb, { type Connection } from 'mariadb';
+import { addMember } from './support/members.js';
 
 const API_PORT = 3198;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -243,19 +244,12 @@ describe('Phase 2 — financial setup (erp_test)', () => {
 
   it('gates period close/open by permission and audits it', async () => {
     // invite a VIEWER (no fiscal.close)
-    const invite = await api()
-      .post('/api/v1/users/invite')
-      .set(auth(tokenA))
-      .send({
-        email: `viewer-fin-${RUN}@test.dev`,
-        roleCode: 'VIEWER',
-        password: 'viewer-pass-1',
-      });
-    expect(invite.status).toBe(201);
-    const login = await api()
-      .post('/api/v1/auth/login')
-      .send({ email: `viewer-fin-${RUN}@test.dev`, password: 'viewer-pass-1' });
-    viewerToken = login.body.accessToken;
+    const viewer = await addMember(BASE, tokenA, {
+      email: `viewer-fin-${RUN}@test.dev`,
+      roleCode: 'VIEWER',
+      password: 'viewer-pass-1',
+    });
+    viewerToken = viewer.token;
 
     const year = await api().get(`/api/v1/fiscal-years/${yearId}`).set(auth(tokenA));
     const periodId = year.body.periods[0].id;

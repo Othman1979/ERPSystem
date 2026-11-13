@@ -46,6 +46,7 @@ const productionEnv = () => ({
   JWT_ACCESS_SECRET: randomBytes(32).toString('hex'),
   CORS_ORIGIN: 'https://erp.example.test',
   EINVOICE_ENC_KEY: randomBytes(32).toString('base64'),
+  BACKUP_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
   EINVOICE_WORKER: 'off',
   API_DOCS: '',
 });
@@ -168,13 +169,18 @@ describe('Phase 10.1 — the web app on the same origin', () => {
   });
 
   it('behind the proxy, each client has its own login limit', async () => {
-    const email = `p10-nobody-${RUN}@test.dev`;
+    // A new email each time: the per-email delay (ADR-012) stays out of it, and the
+    // per-address cap of sign-in (30 a minute, ADR-011) is what refuses the 31st.
+    let n = 0;
     const login = (ip: string) =>
-      api().post('/api/v1/auth/login').set('X-Forwarded-For', ip).send({ email, password: 'wrong-password' });
+      api()
+        .post('/api/v1/auth/login')
+        .set('X-Forwarded-For', ip)
+        .send({ email: `p10-nobody-${++n}-${RUN}@test.dev`, password: 'wrong-password' });
     const statuses: number[] = [];
-    for (let i = 0; i < 11; i++) statuses.push((await login('203.0.113.7')).status);
-    expect(statuses.slice(0, 10).every((s) => s === 401)).toBe(true);
-    expect(statuses[10]).toBe(429);
+    for (let i = 0; i < 31; i++) statuses.push((await login('203.0.113.7')).status);
+    expect(statuses.slice(0, 30).every((s) => s === 401)).toBe(true);
+    expect(statuses[30]).toBe(429);
     // Another client through the same proxy is not blocked.
     expect((await login('203.0.113.8')).status).toBe(401);
   });
@@ -210,7 +216,10 @@ describe('Phase 10.1 — preflight and grant-platform-admin', () => {
     expect(out.ok).toBe(true);
     const checks = byName(run.stdout);
     expect(Object.keys(checks).sort()).toEqual(
-      ['backup', 'database', 'environment', 'isolation', 'migrations', 'plans', 'platform-admin', 'proxy', 'storage', 'timezone', 'web'].sort(),
+      [
+        'backup', 'backup-age', 'backup-key', 'database', 'database-write', 'disk', 'environment', 'isolation',
+        'migrations', 'plans', 'platform-admin', 'proxy', 'restore-tool', 'storage', 'timezone', 'web',
+      ].sort(),
     );
     expect(checks.environment.level).toBe('warn'); // NODE_ENV=test is not production
     expect(checks.migrations.detail).toMatch(/applied/);

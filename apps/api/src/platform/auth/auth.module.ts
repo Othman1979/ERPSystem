@@ -5,6 +5,7 @@ import type { Env } from '../../common/config/env.validation.js';
 import { AccountingModule } from '../accounting/accounting.module.js';
 import { AuthController, MeController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { LoginLockoutService } from './login-lockout.service.js';
 import { PasswordService } from './password.service.js';
 import { TokenService } from './token.service.js';
 
@@ -23,7 +24,7 @@ import { TokenService } from './token.service.js';
     }),
   ],
   controllers: [AuthController, MeController],
-  providers: [AuthService, TokenService, PasswordService],
+  providers: [AuthService, TokenService, PasswordService, LoginLockoutService],
   exports: [TokenService, PasswordService],
 })
 export class AuthModule {}
