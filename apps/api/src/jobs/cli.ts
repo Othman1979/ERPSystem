@@ -10,6 +10,8 @@ import { JobsModule } from './jobs.module.js';
 import { PasswordResetService } from './password-reset.service.js';
 import { PlatformAdminGrantService } from './platform-admin-grant.service.js';
 import { PreflightService } from './preflight.service.js';
+import { StockVerifyJobsModule } from './stock-verify-jobs.module.js';
+import { StockVerifyService } from './stock-verify.service.js';
 import { TenantPurgeService } from './tenant-purge.service.js';
 import { TenantStatusService } from './tenant-status.service.js';
 
@@ -24,6 +26,7 @@ import { TenantStatusService } from './tenant-status.service.js';
  *   backup                               daily Cron: database + uploaded files, rotated (ADR-010 §10.2)
  *   backup-verify <folder|latest> [--keep]   monthly: restore into a scratch database and check it
  *   error-digest                         hourly Cron: alert new errors to ALERT_WEBHOOK_URL (ADR-010 §10.3)
+ *   stock-verify                         daily Cron: stock projections and stock value vs the GL, every tenant (TRADE-20)
  * A Cron command that fails is recorded as a JOB error for the platform console.
  * Prints the result as JSON; exits 1 on failure, refusal or a failed check so Cron mail shows it.
  */
@@ -88,6 +91,7 @@ const JOBS: Record<string, Job> = {
   },
   backup: { module: JobsModule, cron: true, run: (app) => app.get(BackupService).run() },
   'error-digest': { module: JobsModule, cron: true, run: (app) => app.get(ErrorDigestService).run() },
+  'stock-verify': { module: StockVerifyJobsModule, cron: true, run: (app) => app.get(StockVerifyService).run() },
   'backup-verify': {
     module: JobsModule,
     run: async (app, args) => {

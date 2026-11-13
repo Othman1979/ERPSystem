@@ -139,8 +139,17 @@ export class StockDocumentsController {
     return this.counts.updateLine(BigInt(id), BigInt(lineId), dto);
   }
 
+  /** Re-takes the book-balance snapshot of a draft count (after STOCK_COUNT_STALE). */
+  @Post('stock-counts/:id/refresh')
+  @RequirePermission(PERMISSIONS.STOCK_MOVEMENT)
+  refreshCount(@Param('id') id: string) {
+    return this.counts.refresh(BigInt(id));
+  }
+
+  // Posts the count's adjustment (TRADE-07): keyed like every posting route.
   @Post('stock-counts/:id/approve')
   @RequirePermission(PERMISSIONS.STOCK_MOVEMENT)
+  @RequiresIdempotencyKey()
   approveCount(@Param('id') id: string) {
     return this.counts.approve(BigInt(id));
   }

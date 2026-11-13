@@ -4,6 +4,7 @@ import { Decimal, round3, round6 } from '../../common/decimal/decimal.utils.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { SalesInvoicesService } from '../sales/sales-invoices.service.js';
 import { SalesReturnsService } from '../sales/sales-returns.service.js';
+import { netOfTaxLine } from '../shared/invoice-math.js';
 import { resolveBuyer } from './buyer.js';
 import { renderUbl, type TaxCategoryCode, type UblDocument, type UblLine } from './ubl-render.js';
 
@@ -82,12 +83,16 @@ export class EInvoiceDocumentsService {
     if (!buyer.ok) throw new EInvoiceBuildError(buyer.reason);
     const lines: UblLine[] = inv.lines.map((l) => {
       const rate = dec(l.taxRate);
+      // ADR-017: a tax-inclusive price is sent net of tax, the line still adding up.
+      const priced = inv.pricesIncludeTax
+        ? netOfTaxLine({ quantity: l.qty.toString(), discountAmount: l.discountAmount.toString(), netAmount: l.netAmount.toString(), taxRate: l.taxRate.toString() })
+        : { unitPrice: dec(l.unitPrice), discount: dec(l.discountAmount) };
       return {
         id: l.lineNo,
         name: l.item.nameAr,
         quantity: dec(l.qty),
-        unitPrice: dec(l.unitPrice),
-        discount: dec(l.discountAmount),
+        unitPrice: priced.unitPrice,
+        discount: priced.discount,
         extension: dec(l.netAmount),
         category: track === 'INCOME' ? 'Z' : categoryOf(l.taxCategory?.einvoiceCode, rate),
         rate,
@@ -133,8 +138,11 @@ export class EInvoiceDocumentsService {
     const lines: UblLine[] = ret.lines.map((l) => {
       const o = l.originalLine;
       const quantity = round6(dec(l.qtyBase).times(dec(o.qty)).div(dec(o.qtyBase)));
-      const unitPrice = dec(l.unitPrice);
       const extension = dec(l.netAmount);
+      // ADR-017: the original was priced including tax: send the price net of tax.
+      const unitPrice = o.invoice.pricesIncludeTax
+        ? netOfTaxLine({ quantity: quantity.toString(), discountAmount: l.discountAmount.toString(), netAmount: l.netAmount.toString(), taxRate: l.taxRate.toString() }).unitPrice
+        : dec(l.unitPrice);
       const gross = round3(quantity.times(unitPrice));
       const rate = dec(l.taxRate);
       return {
