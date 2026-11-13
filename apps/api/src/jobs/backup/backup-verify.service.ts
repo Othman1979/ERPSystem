@@ -1,5 +1,5 @@
 import { createReadStream, existsSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -9,6 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { unzipSync } from 'fflate';
 import mariadb, { type Connection } from 'mariadb';
 import type { Env } from '../../common/config/env.validation.js';
+import { onAbort } from '../abort-cleanup.js';
+import { PRIVATE_DIR, sweepStale, VERIFY_SCRATCH_PREFIX } from './backup.service.js';
 import { backupKey, createDecryptStream, decryptFileToBuffer, keyProblem } from './backup-crypto.js';
 import {
   type BackupManifest,
@@ -35,6 +37,8 @@ export interface VerifyResult {
   restoredInto: string | null;
   kept: boolean;
   checks: VerifyCheck[];
+  /** Leftovers of killed runs removed at the start (see sweepStale). */
+  swept: string[];
 }
 
 /** A scratch database: its name says so, so a typo cannot point this at real data. */
@@ -60,6 +64,8 @@ export class BackupVerifyService {
 
   async run(which: string, keep = false): Promise<VerifyResult> {
     const root = path.resolve(this.config.get('BACKUP_DIR', { infer: true }));
+    // No lock is taken by a verify, so only the leftovers of old killed runs are swept.
+    const swept = await sweepStale(root, new Date(), false);
     const folder = await resolveBackupFolder(which, root);
     const checks: VerifyCheck[] = [];
     const add = (name: string, ok: boolean, detail: string) => checks.push({ name, ok, detail });
@@ -69,6 +75,7 @@ export class BackupVerifyService {
       restoredInto,
       kept,
       checks,
+      swept,
     });
 
     const manifest = JSON.parse(await readFile(path.join(folder, MANIFEST_FILE), 'utf8')) as BackupManifest;
@@ -197,21 +204,31 @@ export class BackupVerifyService {
    */
   private async load(target: DbTarget, dump: Readable, root: string): Promise<void> {
     const bin = this.config.get('MYSQL_PATH', { infer: true });
-    await withOptionFile(
-      target,
-      async (options) => {
-        const { done, stdin } = runTool(
-          bin,
-          [`--defaults-extra-file=${options}`, '--default-character-set=utf8mb4', target.database],
-          { stdin: true },
-        );
-        const [client, feed] = await Promise.allSettled([done, pipeline(dump, createGunzip(), stdin!)]);
-        if (feed.status === 'rejected' && (feed.reason as NodeJS.ErrnoException).code !== 'EPIPE') throw feed.reason;
-        if (client.status === 'rejected') throw client.reason;
-        if (feed.status === 'rejected') throw feed.reason;
-      },
-      root,
-    );
+    // A scratch folder of this run: the credentials file lives only in it, and it goes when the load ends,
+    // or when an interrupt arrives (the folder is removed whole, files only: nothing is emptied here).
+    const scratch = await mkdtemp(path.join(root, VERIFY_SCRATCH_PREFIX));
+    await chmod(scratch, PRIVATE_DIR);
+    const unregister = onAbort(() => rm(scratch, { recursive: true, force: true }));
+    try {
+      await withOptionFile(
+        target,
+        async (options) => {
+          const { done, stdin } = runTool(
+            bin,
+            [`--defaults-extra-file=${options}`, '--default-character-set=utf8mb4', target.database],
+            { stdin: true },
+          );
+          const [client, feed] = await Promise.allSettled([done, pipeline(dump, createGunzip(), stdin!)]);
+          if (feed.status === 'rejected' && (feed.reason as NodeJS.ErrnoException).code !== 'EPIPE') throw feed.reason;
+          if (client.status === 'rejected') throw client.reason;
+          if (feed.status === 'rejected') throw feed.reason;
+        },
+        scratch,
+      );
+    } finally {
+      unregister();
+      await rm(scratch, { recursive: true, force: true });
+    }
   }
 
   private async inspect(

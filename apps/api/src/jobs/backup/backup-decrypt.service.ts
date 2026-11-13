@@ -5,7 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../common/config/env.validation.js';
-import { isInside } from '../../common/fs/is-inside.js';
+import { isInside, overlaps } from '../../common/fs/is-inside.js';
 import { backupKey, createDecryptStream, keyProblem } from './backup-crypto.js';
 import {
   type BackupManifest,
@@ -32,7 +32,8 @@ export interface DecryptResult {
  * when loading), with a copy of the manifest. Run by hand:
  *   node dist/jobs/cli.js backup-decrypt <folder|latest> <outdir>
  * The output holds every tenant's data in clear: it is created 0700 and
- * refused inside the uploads or the public web folder. A failed run removes it.
+ * refused inside the uploads, the public web folder, or BACKUP_DIR (or
+ * containing it). A failed run removes it.
  * Each stored file's checksum is checked first; the AES-GCM tag checks the rest.
  */
 @Injectable()
@@ -54,12 +55,15 @@ export class BackupDecryptService {
     const problem = keyProblem(enc.keyId, key);
     if (problem !== null || key === null) throw new Error(problem ?? 'BACKUP_ENCRYPTION_KEY is not set');
 
-    // The output folder: never inside the uploads or the public web folder.
+    // The output folder: never inside the uploads, the public web folder, or the backups (copied off the server).
     const out = path.resolve(outDir);
     const storage = path.resolve(this.config.get('STORAGE_DIR', { infer: true }));
     const web = this.config.get('WEB_DIST_DIR', { infer: true });
     if (isInside(out, storage)) throw new Error(`Refused: ${out} is inside STORAGE_DIR`);
     if (web && isInside(out, path.resolve(web))) throw new Error(`Refused: ${out} is inside WEB_DIST_DIR (public)`);
+    if (overlaps(out, root)) {
+      throw new Error(`Refused: ${out} is inside BACKUP_DIR (copied off the server; plaintext must not go there)`);
+    }
     if (existsSync(out)) throw new Error(`${out} already exists: choose a new folder`);
 
     // The stored files must match the manifest before anything is decrypted.

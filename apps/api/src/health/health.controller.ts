@@ -8,12 +8,21 @@ import { type DbProbeResult, probeDatabase } from './db-probe.js';
 
 /** Longest the readiness check may take: a load balancer gives up around there. */
 const PROBE_TIMEOUT_MS = 2000;
+/**
+ * A probe result is reused this long: /health is public, and each probe writes
+ * a row (rolled back) and an on-disk temp table, so callers cannot make the
+ * database do that on every request. A monitor polling every minute still sees
+ * every outage.
+ */
+const PROBE_CACHE_MS = 5000;
 
 @ApiTags('health')
 @Controller()
 export class HealthController {
   /** The probe running now: concurrent checks share it instead of each writing a row. */
   private inFlight: Promise<DbProbeResult> | null = null;
+  /** The last finished probe and when it finished. */
+  private last: { result: DbProbeResult; at: number } | null = null;
   private readonly logger = new Logger(HealthController.name);
 
   constructor(private readonly prisma: PrismaService) {}
@@ -55,13 +64,19 @@ export class HealthController {
   }
 
   private probe(): Promise<DbProbeResult> {
+    if (this.last && Date.now() - this.last.at < PROBE_CACHE_MS) return Promise.resolve(this.last.result);
     this.inFlight ??= probeDatabase(
       // systemPrisma: a connectivity and write probe, no table of a tenant and no tenant id.
       this.prisma.client,
       PROBE_TIMEOUT_MS,
-    ).finally(() => {
-      this.inFlight = null;
-    });
+    )
+      .then((result) => {
+        this.last = { result, at: Date.now() };
+        return result;
+      })
+      .finally(() => {
+        this.inFlight = null;
+      });
     return this.inFlight;
   }
 }

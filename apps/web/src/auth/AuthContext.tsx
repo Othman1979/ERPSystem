@@ -53,6 +53,8 @@ export interface MeData {
     /** Branches this member may switch to (all active ones when none are assigned). */
     branches: BranchSummary[];
   } | null;
+  /** Company invitations waiting for this user's acceptance (ADR-012 §PLAT-10). */
+  pendingInvitations?: number;
 }
 
 interface AuthState {

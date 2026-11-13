@@ -297,7 +297,10 @@ describe('Phase 10.2 — backup and restore', () => {
     await new Promise((r) => setTimeout(r, 1100));
     const res = await job(['backup']);
     expect(res.code).toBe(0);
-    expect((JSON.parse(res.stdout).removed as string[]).sort()).toEqual(['.partial-backup-20200102-000000', 'backup-20200101-000000']);
+    // The crashed run's partial folder is swept at the start (the lock is held); the old backup is rotated out.
+    const out = JSON.parse(res.stdout) as { removed: string[]; swept: string[] };
+    expect(out.swept).toEqual(['.partial-backup-20200102-000000']);
+    expect(out.removed).toEqual(['backup-20200101-000000']);
     const left = readdirSync(backupDir);
     expect(left).toContain('keep-me');
     expect(left.filter((n) => /^backup-/.test(n))).toHaveLength(3);
@@ -310,6 +313,30 @@ describe('Phase 10.2 — backup and restore', () => {
     expect(existsSync(path.join(storageDir, 'backups'))).toBe(false);
     expect(await readFile(path.join(firstBackup, 'manifest.json'), 'utf8')).toContain(SOURCE);
   }, 60_000);
+
+  it('backup-verify sweeps what a killed run left: old credentials and scratch folders go, fresh ones stay', async () => {
+    // Left by a verify killed mid-load (credentials in plaintext), 7 hours ago; and one from a verify running now.
+    const oldCnf = path.join(backupDir, '.erp-db-old.cnf');
+    const newCnf = path.join(backupDir, '.erp-db-new.cnf');
+    const oldDir = path.join(backupDir, '.verify-old');
+    const seven = new Date(Date.now() - 7 * 60 * 60_000);
+    await writeFile(oldCnf, '[client]\npassword=old\n');
+    utimesSync(oldCnf, seven, seven);
+    await mkdir(oldDir);
+    await writeFile(path.join(oldDir, '.erp-db-inner.cnf'), '[client]\npassword=old\n');
+    utimesSync(oldDir, seven, seven);
+    await writeFile(newCnf, '[client]\npassword=new\n');
+
+    const res = await job(['backup-verify', 'latest']);
+    expect((JSON.parse(res.stdout) as { swept: string[] }).swept.sort()).toEqual(['.erp-db-old.cnf', '.verify-old']);
+    expect(existsSync(oldCnf)).toBe(false);
+    expect(existsSync(oldDir)).toBe(false);
+    expect(existsSync(newCnf)).toBe(true);
+
+    // The fresh one is removed here; after any verify, no credentials file or scratch folder is left in BACKUP_DIR.
+    await rm(newCnf);
+    expect(readdirSync(backupDir).filter((n) => /^\.erp-db-.*\.cnf$/.test(n) || n.startsWith('.verify-'))).toEqual([]);
+  }, 180_000);
 });
 
 describe('Phase 10.2 — encryption, decryption and the lock (ADR-010 §10.2)', () => {
@@ -394,6 +421,12 @@ describe('Phase 10.2 — encryption, decryption and the lock (ADR-010 §10.2)', 
     expect(inside.code).toBe(1);
     expect(inside.stderr).toMatch(/inside STORAGE_DIR/);
     expect(existsSync(path.join(storageDir, 'plain'))).toBe(false);
+
+    // BACKUP_DIR is copied off the server: plaintext of every tenant must not land in it.
+    const inBackups = await job(['backup-decrypt', path.basename(encrypted), path.join(backupDir, 'plain')], { BACKUP_ENCRYPTION_KEY: KEY });
+    expect(inBackups.code).toBe(1);
+    expect(inBackups.stderr).toMatch(/inside BACKUP_DIR \(copied off the server; plaintext must not go there\)/);
+    expect(existsSync(path.join(backupDir, 'plain'))).toBe(false);
   }, 180_000);
 
   it('a backup while another runs is refused and the other lock is left alone; a stale lock is taken over', async () => {

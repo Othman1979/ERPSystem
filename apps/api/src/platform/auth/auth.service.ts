@@ -143,9 +143,11 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, meta: AuthMeta) {
-    // Checked before any lookup, for known and unknown emails alike, so the
-    // answer does not reveal whether the account exists (owner decision).
-    const wait = this.lockout.retryAfterMs(dto.email);
+    // Checked and counted before any lookup or argon2, in one synchronous step,
+    // for known and unknown emails alike (owner decision): parallel guesses
+    // cannot all pass while the first is being verified. A correct password
+    // clears the count below.
+    const { retryAfterMs: wait, delayMs } = this.lockout.attempt(dto.email);
     if (wait > 0) {
       // Not audited per attempt: an attacker on many addresses would turn the delay
       // into one audit row per request. The failure that starts the delay is audited.
@@ -176,7 +178,7 @@ export class AuthService {
     // An inactive user fails exactly like a wrong password.
     const valid = user !== null && user.isActive && matches;
     if (!user || !valid) {
-      const delayMs = this.lockout.fail(dto.email);
+      // Already counted by attempt(); delayMs is the delay this failure started.
       await this.audit.log({
         action: delayMs > 0 ? 'auth.login_locked' : 'auth.login_failed',
         entityType: 'user',

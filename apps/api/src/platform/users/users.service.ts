@@ -10,6 +10,7 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { PasswordService } from '../auth/password.service.js';
 import { generateTemporaryPassword, temporaryPasswordWrites } from '../auth/temporary-password.js';
 import { InviteUserDto, UpdateMembershipDto } from './dto/users.dto.js';
+import { issueInvitationCode } from './invitation-code.js';
 
 const membershipInclude = {
   user: { select: { id: true, email: true, fullName: true, isActive: true } },
@@ -139,7 +140,7 @@ export class UsersService {
     const cls = ClsServiceManager.getClsService<RequestContext>();
     const tenantId = cls.get('tenantId')!;
     const invitedBy = cls.get('userId');
-    const { membership, createdUser, status } = await prisma.$transaction(async (tx) => {
+    const { membership, createdUser, status, acceptanceCode, codeExpiresAt } = await prisma.$transaction(async (tx) => {
       // First statement: locks the tenant row so concurrent invites cannot overshoot the plan (PLAT-04).
       await this.planLimits.assertUserSlotAvailable(tx);
 
@@ -160,12 +161,16 @@ export class UsersService {
 
       // An existing user accepts the invitation themself; only a brand-new account is active at once.
       const status = createdUser ? 'ACTIVE' : 'INVITED';
+      // The invited person accepts only with this code, handed over by the admin
+      // (ADR-012 §PLAT-10): holding their account is not enough to join.
+      const issued = status === 'INVITED' ? issueInvitationCode() : null;
       const membership = await tx.tenantMembership.create({
         data: {
           tenantId,
           userId: user.id,
           roleId: role.id,
           status,
+          ...(issued?.data ?? {}),
           defaultBranchId: dto.defaultBranchId ? BigInt(dto.defaultBranchId) : null,
           invitedBy,
           allowedBranches: {
@@ -174,7 +179,7 @@ export class UsersService {
         },
         include: membershipInclude,
       });
-      return { membership, createdUser, status };
+      return { membership, createdUser, status, acceptanceCode: issued?.code, codeExpiresAt: issued?.data.inviteCodeExpiresAt };
     });
 
     await this.audit.log({
@@ -187,6 +192,33 @@ export class UsersService {
     return {
       ...serialize(membership),
       ...(createdUser && temporaryPassword ? { temporaryPassword } : {}),
+      // Shown once: the admin gives it to the person directly.
+      ...(acceptanceCode ? { acceptanceCode, acceptanceCodeExpiresAt: codeExpiresAt } : {}),
+    };
+  }
+
+  /**
+   * Issues a new acceptance code for a pending invitation; the old one stops
+   * working and the attempt count starts again (ADR-012 §PLAT-10).
+   */
+  async reissueInvitationCode(membershipId: bigint): Promise<{ membershipId: string; acceptanceCode: string; acceptanceCodeExpiresAt: Date }> {
+    const prisma = this.tenant();
+    const issued = issueInvitationCode();
+    // Tenant-scoped: another company's membership id matches nothing (404).
+    const updated = await prisma.tenantMembership.updateMany({
+      where: { id: membershipId, status: 'INVITED' },
+      data: issued.data,
+    });
+    if (updated.count === 0) throw DomainError.notFound('Invitation', membershipId.toString());
+    await this.audit.log({
+      action: 'user.invite_code_reissue',
+      entityType: 'tenant_membership',
+      entityId: membershipId,
+    });
+    return {
+      membershipId: membershipId.toString(),
+      acceptanceCode: issued.code,
+      acceptanceCodeExpiresAt: issued.data.inviteCodeExpiresAt,
     };
   }
 
@@ -219,15 +251,19 @@ export class UsersService {
     }
 
     const data: Prisma.TenantMembershipUncheckedUpdateInput = {};
+    // Only an ACTIVE owner counts toward the last-owner rule (the count below is
+    // ACTIVE owners), so re-roling an OWNER invitation or a suspended owner is
+    // not removing an owner.
+    const activeOwner = membership.role.code === 'OWNER' && membership.status === 'ACTIVE';
     let removesOwner = false;
     if (dto.roleCode !== undefined) {
       const role = await this.prisma.client.role.findUnique({ where: { code: dto.roleCode } });
       if (!role) throw DomainError.notFound('Role', dto.roleCode);
-      removesOwner ||= membership.role.code === 'OWNER' && role.code !== 'OWNER';
+      removesOwner ||= activeOwner && role.code !== 'OWNER';
       data.roleId = role.id;
     }
     if (dto.status !== undefined) {
-      removesOwner ||= membership.role.code === 'OWNER' && dto.status === 'SUSPENDED';
+      removesOwner ||= activeOwner && dto.status === 'SUSPENDED';
       data.status = dto.status;
     }
     if (dto.defaultBranchId !== undefined) {
@@ -310,6 +346,15 @@ export class UsersService {
     });
     if (!membership) throw DomainError.notFound('Membership', membershipId.toString());
     const targetUserId = membership.userId;
+
+    // An invited person has not joined this company: it may not take over their
+    // existing identity (they may have no other membership to block it below).
+    if (membership.status === 'INVITED') {
+      throw new DomainError(
+        ErrorCode.PASSWORD_RESET_NOT_ALLOWED,
+        'This person has not accepted the invitation yet',
+      );
+    }
 
     if (targetUserId === callerId) {
       throw new DomainError(

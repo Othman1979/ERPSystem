@@ -7,6 +7,7 @@ import {
   IsString,
   Matches,
   MaxLength,
+  MinLength,
   ValidateIf,
 } from 'class-validator';
 
@@ -40,6 +41,14 @@ export class InviteUserDto {
   @IsString({ each: true })
   @Matches(ID_PATTERN, { each: true })
   branchIds?: string[];
+}
+
+/** The acceptance code the inviting admin handed over (ADR-012 §PLAT-10). */
+export class AcceptInvitationDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(32)
+  code!: string;
 }
 
 export class UpdateMembershipDto {

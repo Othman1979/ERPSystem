@@ -10,6 +10,7 @@ import {
   FlagOutlined,
   FileProtectOutlined,
   InboxOutlined,
+  MailOutlined,
   ProfileOutlined,
   SettingOutlined,
   ShopOutlined,
@@ -25,6 +26,7 @@ import { EInvoicePage } from './pages/EInvoicePage';
 import { FiscalPage } from './pages/FiscalPage';
 import { GoodsNotesPage } from './pages/GoodsNotesPage';
 import { HealthPage } from './pages/HealthPage';
+import { InvitationsPage } from './pages/InvitationsPage';
 import { ItemsPage } from './pages/ItemsPage';
 import { JournalPage } from './pages/JournalPage';
 import { OpeningBalancesPage } from './pages/OpeningBalancesPage';
@@ -46,6 +48,8 @@ export interface AppRoute {
   label: string;
   icon: ReactNode;
   element: ReactNode;
+  /** Count shown as a badge on the menu entry, when above zero. */
+  badge?: 'pendingInvitations';
 }
 
 export interface AppGroup {
@@ -55,6 +59,9 @@ export interface AppGroup {
   tone: 'finance' | 'trade' | 'inventory' | 'admin';
   routes: AppRoute[];
 }
+
+/** Invitations are reachable without a company (ADR-012 §PLAT-10). */
+export const INVITATIONS_PATH = '/invitations';
 
 /** Every module, grouped as on the home screen and in the side menu. */
 export const APP_GROUPS: AppGroup[] = [
@@ -104,6 +111,20 @@ export const APP_GROUPS: AppGroup[] = [
       { key: 'branches', path: '/branches', label: 'nav.branches', icon: <ShopOutlined />, element: <BranchesPage /> },
       { key: 'settings', path: '/settings', label: 'nav.settings', icon: <SettingOutlined />, element: <SettingsPage /> },
       { key: 'health', path: '/health', label: 'nav.health', icon: <DashboardOutlined />, element: <HealthPage /> },
+    ],
+  },
+  {
+    label: 'nav.groupAccount',
+    tone: 'admin',
+    routes: [
+      {
+        key: 'invitations',
+        path: INVITATIONS_PATH,
+        label: 'nav.invitations',
+        icon: <MailOutlined />,
+        element: <InvitationsPage />,
+        badge: 'pendingInvitations',
+      },
     ],
   },
 ];

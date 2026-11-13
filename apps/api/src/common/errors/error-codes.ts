@@ -46,5 +46,7 @@ export enum ErrorCode {
   PAYLOAD_TOO_LARGE = 'PAYLOAD_TOO_LARGE',
   // A document has more lines than MAX_DOCUMENT_LINES (500).
   DOCUMENT_TOO_MANY_LINES = 'DOCUMENT_TOO_MANY_LINES',
+  // Invitation acceptance code wrong, expired or out of attempts (ADR-012 §PLAT-10).
+  INVITATION_CODE_INVALID = 'INVITATION_CODE_INVALID',
   INTERNAL = 'INTERNAL',
 }

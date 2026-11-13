@@ -11,6 +11,7 @@ import { Zip, ZipPassThrough } from 'fflate';
 import type { Env } from '../../common/config/env.validation.js';
 import { overlaps } from '../../common/fs/is-inside.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { onAbort } from '../abort-cleanup.js';
 import { backupKey, createEncryptStream, keyId } from './backup-crypto.js';
 import {
   type BackupManifest,
@@ -33,6 +34,12 @@ const PRIVATE_FILE = 0o600;
 export const LOCK_FILE = '.backup.lock';
 /** A lock older than this is from a killed run: taken over once. */
 const STALE_LOCK_MS = 6 * 60 * 60 * 1000;
+/** A verify's scratch folder (one per run, holding its credentials file) gets this prefix. */
+export const VERIFY_SCRATCH_PREFIX = '.verify-';
+/** The credentials file of mysqldump / mysql (backup-verify and backup write one each). */
+const CREDENTIALS_FILE = /^\.erp-db-.*\.cnf$/;
+/** Younger than this, a credentials file or scratch folder may belong to a verify still running. */
+const LEFTOVER_MS = 6 * 60 * 60 * 1000;
 
 export interface BackupRun {
   folder: string;
@@ -40,7 +47,37 @@ export interface BackupRun {
   storageFiles: number;
   /** Folders deleted by the rotation (BACKUP_KEEP_DAYS). */
   removed: string[];
+  /** Leftovers of killed runs removed at the start (see sweepStale). */
+  swept: string[];
   ms: number;
+}
+
+/**
+ * Removes what killed runs left in BACKUP_DIR: credentials files and verify
+ * scratch folders older than six hours, and, when `partials` is set, every
+ * partial backup folder. Only a run that holds `.backup.lock` may pass
+ * `partials`: no other backup can be writing one then. Returns the names removed.
+ */
+export async function sweepStale(root: string, now: Date, partials: boolean): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true }).catch((err: NodeJS.ErrnoException) => {
+    if (err.code === 'ENOENT') return [];
+    throw err;
+  });
+  const swept: string[] = [];
+  for (const entry of entries) {
+    const isPartial = partials && entry.isDirectory() && entry.name.startsWith(PARTIAL_PREFIX);
+    const isLeftover =
+      (entry.isFile() && CREDENTIALS_FILE.test(entry.name)) || (entry.isDirectory() && entry.name.startsWith(VERIFY_SCRATCH_PREFIX));
+    if (!isPartial && !isLeftover) continue;
+    const file = path.join(root, entry.name);
+    if (!isPartial) {
+      const info = await stat(file).catch(() => null);
+      if (!info || now.getTime() - info.mtimeMs <= LEFTOVER_MS) continue;
+    }
+    await rm(file, { recursive: true, force: true });
+    swept.push(entry.name);
+  }
+  return swept;
 }
 
 /**
@@ -79,14 +116,19 @@ export class BackupService {
     // Every tenant's data: readable by this account only (folders 0700, files 0600).
     await mkdir(root, { recursive: true, mode: PRIVATE_DIR });
     const lock = await acquireLock(root, now);
+    // An interrupt releases the lock too: a killed run must not hold the next one off for six hours.
+    const unregister = onAbort(() => rm(lock, { force: true }));
     try {
       return await this.backupLocked(root, now, started);
     } finally {
+      unregister();
       await rm(lock, { force: true });
     }
   }
 
   private async backupLocked(root: string, now: Date, started: number): Promise<BackupRun> {
+    // The lock is held: no other backup runs, so every partial folder is a killed run's.
+    const swept = await sweepStale(root, now, true);
     const name = backupName(now);
     const folder = path.join(root, name);
     if (existsSync(folder)) throw new Error(`${folder} already exists`);
@@ -94,6 +136,8 @@ export class BackupService {
     // Not recursive: a second run in the same second fails here instead of
     // writing into this one's files (and leaves them alone: outside the try).
     await mkdir(partial, { mode: PRIVATE_DIR });
+    // An interrupt removes the partial folder, which holds the credentials file while the dump runs.
+    const unregister = onAbort(() => rm(partial, { recursive: true, force: true }));
 
     const key = backupKey(this.config.get('BACKUP_ENCRYPTION_KEY', { infer: true }));
     let files: ManifestFile[];
@@ -126,10 +170,12 @@ export class BackupService {
     } catch (err) {
       await rm(partial, { recursive: true, force: true });
       throw err;
+    } finally {
+      unregister();
     }
 
     const removed = await this.rotate(root, now);
-    return { folder, files, storageFiles, removed, ms: Date.now() - started };
+    return { folder, files, storageFiles, removed, swept, ms: Date.now() - started };
   }
 
   /** mysqldump → gzip → (encrypt) → file, hashing the bytes that reach the disk. */

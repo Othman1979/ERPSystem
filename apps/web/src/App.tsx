@@ -19,6 +19,7 @@ import dayjs from 'dayjs';
 import {
   Alert,
   Avatar,
+  Badge,
   Breadcrumb,
   Button,
   Card,
@@ -46,7 +47,14 @@ import { ChangePasswordRequiredPage } from './pages/ChangePasswordRequiredPage';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 import { displayName } from './i18n/displayName';
-import { ALL_ROUTES, APP_GROUPS, routeForPath, type AppGroup, type AppRoute } from './routes';
+import {
+  ALL_ROUTES,
+  APP_GROUPS,
+  INVITATIONS_PATH,
+  routeForPath,
+  type AppGroup,
+  type AppRoute,
+} from './routes';
 import { reportError } from './errorReporting';
 import { palette, TOPBAR_HEIGHT } from './theme';
 
@@ -204,6 +212,10 @@ function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
 
+  // Signed in with invitations only (no company yet): the invitations page is the only tenant-free screen (ADR-012 §PLAT-10).
+  const noCompany = !me?.currentTenant;
+  const pendingInvitations = me?.pendingInvitations ?? 0;
+
   const language = i18n.language as AppLanguage;
   const nextLanguage = language === 'ar' ? 'en' : 'ar';
   const isRtl = language !== 'en';
@@ -217,19 +229,36 @@ function AppShell() {
   const isPlatformAdmin = !!me?.user.isPlatformAdmin;
   const menuItems: MenuProps['items'] = useMemo(
     () => [
-      { key: '/', icon: <HomeOutlined />, label: t('nav.home') },
-      ...APP_GROUPS.map((g) => ({
+      ...(noCompany ? [] : [{ key: '/', icon: <HomeOutlined />, label: t('nav.home') }]),
+      ...(noCompany
+        ? APP_GROUPS.filter((g) => g.routes.some((r) => r.path === INVITATIONS_PATH))
+        : APP_GROUPS
+      ).map((g) => ({
         type: 'group' as const,
         key: g.label,
         label: collapsed && !isMobile ? null : t(g.label),
-        children: g.routes.map((r) => ({ key: r.path, icon: r.icon, label: t(r.label) })),
+        children: g.routes
+          .filter((r) => !noCompany || r.path === INVITATIONS_PATH)
+          .map((r) => ({
+            key: r.path,
+            icon: r.icon,
+            label:
+              r.badge === 'pendingInvitations' && pendingInvitations > 0 ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  {t(r.label)}
+                  <Badge count={pendingInvitations} size="small" />
+                </span>
+              ) : (
+                t(r.label)
+              ),
+          })),
       })),
       ...(isPlatformAdmin
         ? [{ key: PLATFORM_PATH, icon: <CloudServerOutlined />, label: t('platform.nav') }]
         : []),
     ],
     // Labels depend on the language; t identity changes with it.
-    [t, collapsed, isMobile, isPlatformAdmin],
+    [t, collapsed, isMobile, isPlatformAdmin, noCompany, pendingInvitations],
   );
 
   const menu = (
@@ -271,7 +300,7 @@ function AppShell() {
         <button type="button" className="topbar-brand" onClick={() => navigate('/')}>
           {t('app.title')}
         </button>
-        {current && !isMobile && (
+        {current && !isMobile && !noCompany && (
           <Breadcrumb
             className="topbar-breadcrumb"
             items={[{ title: me?.currentTenant?.name ?? '' }, { title: t(current.label) }]}
@@ -372,8 +401,8 @@ function AppShell() {
         )}
         <Layout.Content className="app-content" style={{ padding: isMobile ? 12 : 24 }}>
           <Routes>
-            <Route path="/" element={<HomeScreen />} />
-            {ALL_ROUTES.map((r) => (
+            {!noCompany && <Route path="/" element={<HomeScreen />} />}
+            {ALL_ROUTES.filter((r) => !noCompany || r.path === INVITATIONS_PATH).map((r) => (
               <Route
                 key={r.key}
                 path={`${r.path}/*`}
@@ -383,14 +412,16 @@ function AppShell() {
             <Route path="/help" element={<HelpPage />} />
             <Route path="/privacy" element={<LegalPage kind="privacy" />} />
             <Route path="/terms" element={<LegalPage kind="terms" />} />
-            <Route
-              path="/setup"
-              element={
-                <ViewErrorBoundary key="setup">
-                  <SetupWizardPage />
-                </ViewErrorBoundary>
-              }
-            />
+            {!noCompany && (
+              <Route
+                path="/setup"
+                element={
+                  <ViewErrorBoundary key="setup">
+                    <SetupWizardPage />
+                  </ViewErrorBoundary>
+                }
+              />
+            )}
             {isPlatformAdmin && (
               <Route
                 path={`${PLATFORM_PATH}/*`}
@@ -401,7 +432,7 @@ function AppShell() {
                 }
               />
             )}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to={noCompany ? INVITATIONS_PATH : '/'} replace />} />
           </Routes>
         </Layout.Content>
       </Layout>

@@ -111,9 +111,11 @@ describe('Invitations and membership (erp_test)', () => {
   let idA = '';
   let idE = '';
   let inviteB = '';
+  let codeB = '';
   let inviteBC = '';
   let inviteF = '';
   let inviteE = '';
+  let codeE = '';
 
   it('sets up four companies on a dedicated plan', async () => {
     tokA = await register(nameA, emailA);
@@ -181,6 +183,8 @@ describe('Invitations and membership (erp_test)', () => {
     expect(invited.body.temporaryPassword).toBeUndefined();
     expect(invited.body.user.fullName).toBeNull();
     inviteB = invited.body.membershipId as string;
+    codeB = invited.body.acceptanceCode as string;
+    expect(codeB).toMatch(/^[0-9A-Z]{5}-[0-9A-Z]{5}$/);
 
     const listA = await api().get('/api/v1/users').set(bearer(tokA));
     const row = listA.body.find((m: { membershipId: string }) => m.membershipId === inviteB);
@@ -209,7 +213,7 @@ describe('Invitations and membership (erp_test)', () => {
   });
 
   it('accepts the invitation, then switches to that company', async () => {
-    const accepted = await api().post(`/api/v1/me/invitations/${inviteB}/accept`).set(bearer(tokB));
+    const accepted = await api().post(`/api/v1/me/invitations/${inviteB}/accept`).set(bearer(tokB)).send({ code: codeB });
     expect(accepted.status).toBe(200);
     expect(accepted.body).toEqual({ membershipId: inviteB, tenantId: idA, tenantName: nameA });
 
@@ -269,6 +273,18 @@ describe('Invitations and membership (erp_test)', () => {
     expect(activate.status).toBe(403);
     expect(activate.body.error.code).toBe('FORBIDDEN');
 
+    // The inviting company cannot reset the invited person's password (identity takeover).
+    const reset = await api().post(`/api/v1/users/${inviteF}/reset-password`).set(bearer(tokA));
+    expect(reset.status).toBe(403);
+    expect(reset.body.error.code).toBe('PASSWORD_RESET_NOT_ALLOWED');
+
+    // Re-roling a mistaken OWNER invitation is not "removing the last owner".
+    const asOwner = await api().patch(`/api/v1/users/${inviteF}`).set(bearer(tokA)).send({ roleCode: 'OWNER' });
+    expect(asOwner.status).toBe(200);
+    const back = await api().patch(`/api/v1/users/${inviteF}`).set(bearer(tokA)).send({ roleCode: 'VIEWER' });
+    expect(back.status).toBe(200);
+    expect(back.body.role.code).toBe('VIEWER');
+
     const cancelled = await api().delete(`/api/v1/users/${inviteF}`).set(bearer(tokA));
     expect(cancelled.status).toBe(200);
     expect(cancelled.body).toEqual({ membershipId: inviteF, cancelled: true });
@@ -286,9 +302,11 @@ describe('Invitations and membership (erp_test)', () => {
       .send({ email: emailE, roleCode: 'VIEWER' });
     expect(invited.status).toBe(201);
     inviteE = invited.body.membershipId as string;
+    codeE = invited.body.acceptanceCode as string;
 
     // Company B's owner is not the invitee.
-    const accept = await api().post(`/api/v1/me/invitations/${inviteE}/accept`).set(bearer(tokB));
+    // Even with the right code: the invitation is not theirs.
+    const accept = await api().post(`/api/v1/me/invitations/${inviteE}/accept`).set(bearer(tokB)).send({ code: codeE });
     expect(accept.status).toBe(404);
     const decline = await api()
       .post(`/api/v1/me/invitations/${inviteE}/decline`)
@@ -330,7 +348,8 @@ describe('Invitations and membership (erp_test)', () => {
 
     const accepted = await api()
       .post(`/api/v1/me/invitations/${inviteE}/accept`)
-      .set(bearer(tokPending));
+      .set(bearer(tokPending))
+      .send({ code: codeE });
     expect(accepted.status).toBe(200);
 
     const signedIn = await login(emailE, PASS);

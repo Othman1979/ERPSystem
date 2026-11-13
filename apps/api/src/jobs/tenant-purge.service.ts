@@ -35,7 +35,8 @@ export interface PurgePlan {
  * go in one transaction with foreign-key checks off for that connection
  * (the whole tenant goes, so nothing is left dangling; self references
  * such as reversal_of_id would otherwise need a delete order), then the
- * tenant's files. Users who belong to no other tenant go too.
+ * tenant's files. Users who belong to no other tenant, and have no history
+ * in another company, go too.
  *
  * systemPrisma: a platform job across tables; every statement on a tenant
  * table filters on tenant_id.
@@ -97,13 +98,23 @@ export class TenantPurgeService {
     };
   }
 
-  /** Users of this tenant with no membership elsewhere; platform admins are kept. */
+  /**
+   * Users who belong to this tenant only; platform admins are kept. A user
+   * whose history reaches another company is kept too: an audit row there
+   * (a declined or accepted invitation outlives the membership) or an
+   * invitation they sent into another company. Deleting them would leave
+   * those rows pointing at nobody.
+   */
   private soleUsers(tenantId: bigint) {
     return this.prisma.client.$queryRaw<{ id: bigint; email: string }[]>`
       SELECT u.id, u.email FROM users u
        WHERE u.is_platform_admin = 0
          AND EXISTS (SELECT 1 FROM tenant_memberships m WHERE m.user_id = u.id AND m.tenant_id = ${tenantId})
          AND NOT EXISTS (SELECT 1 FROM tenant_memberships m WHERE m.user_id = u.id AND m.tenant_id <> ${tenantId})
+         AND NOT EXISTS (SELECT 1 FROM audit_logs a
+                          WHERE a.user_id = u.id AND a.tenant_id IS NOT NULL AND a.tenant_id <> ${tenantId})
+         AND NOT EXISTS (SELECT 1 FROM tenant_memberships m
+                          WHERE m.invited_by = u.id AND m.tenant_id <> ${tenantId})
        ORDER BY u.id`;
   }
 

@@ -31,6 +31,7 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.LOGIN_LOCKED]: HttpStatus.TOO_MANY_REQUESTS,
   [ErrorCode.PAYLOAD_TOO_LARGE]: HttpStatus.PAYLOAD_TOO_LARGE,
   [ErrorCode.DOCUMENT_TOO_MANY_LINES]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.INVITATION_CODE_INVALID]: HttpStatus.BAD_REQUEST,
   [ErrorCode.UNBALANCED_ENTRY]: HttpStatus.BAD_REQUEST,
   [ErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_INSUFFICIENT]: HttpStatus.CONFLICT,

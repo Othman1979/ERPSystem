@@ -35,6 +35,14 @@ export class UsersController {
     return this.users.update(BigInt(id), dto);
   }
 
+  /** A new acceptance code for a pending invitation; the old one stops working (ADR-012 §PLAT-10). */
+  @Post(':membershipId/invitation-code')
+  @HttpCode(200)
+  @RequirePermission(PERMISSIONS.USER_MANAGE)
+  reissueInvitationCode(@Param('membershipId') id: string) {
+    return this.users.reissueInvitationCode(BigInt(id));
+  }
+
   /** Replaces the member's password with a temporary one (ADR-012). */
   @Post(':membershipId/reset-password')
   @HttpCode(200)

@@ -87,4 +87,26 @@ describe('LoginLockoutService', () => {
     expect(tracked.has('user-0@example.test')).toBe(false);
     expect(tracked.size).toBe(MAX_TRACKED);
   });
+  it('attempt() checks and counts in one step: when a delay ends, only the first parallel guess passes', () => {
+    for (let i = 0; i < 5; i++) lockout.attempt(EMAIL, T0);
+    const after = T0 + BASE_DELAY_MS; // the 30 s delay has just ended
+    // Three guesses arrive together: each attempt() runs before any argon2.
+    const results = [lockout.attempt(EMAIL, after), lockout.attempt(EMAIL, after), lockout.attempt(EMAIL, after)];
+    expect(results[0]).toEqual({ retryAfterMs: 0, delayMs: BASE_DELAY_MS * 2 });
+    expect(results[1].retryAfterMs).toBe(BASE_DELAY_MS * 2);
+    expect(results[2].retryAfterMs).toBe(BASE_DELAY_MS * 2);
+  });
+
+  it('a correct password after attempt() clears the count it added', () => {
+    for (let i = 0; i < 4; i++) lockout.attempt(EMAIL, T0);
+    lockout.attempt(EMAIL, T0);
+    lockout.succeed(EMAIL);
+    expect(lockout.retryAfterMs(EMAIL, T0)).toBe(0);
+  });
+
+  it('a flood of junk emails evicts them before a locked victim', () => {
+    for (let i = 0; i < 7; i++) lockout.attempt(EMAIL, T0); // locked, escalated
+    for (let i = 0; i < MAX_TRACKED + 50; i++) lockout.attempt(`junk-${i}@example.test`, T0 + 1);
+    expect(lockout.retryAfterMs(EMAIL, T0 + 2)).toBeGreaterThan(0);
+  });
 });

@@ -2,6 +2,7 @@ import type { Type } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { EInvoiceWorker } from '../platform/einvoice/einvoice-worker.service.js';
 import { ErrorEventsService } from '../platform/monitoring/error-events.service.js';
+import { runAbortCleanups } from './abort-cleanup.js';
 import { BackupDecryptService } from './backup/backup-decrypt.service.js';
 import { BackupVerifyService } from './backup/backup-verify.service.js';
 import { BackupService } from './backup/backup.service.js';
@@ -121,6 +122,18 @@ const JOBS: Record<string, Job> = {
   },
 };
 
+/**
+ * An interrupted job removes what it registered (partial backup, scratch
+ * folder with credentials) before the process exits. The exit codes follow
+ * the shell convention: 128 + the signal number.
+ */
+function exitOnSignal(signal: 'SIGINT' | 'SIGTERM'): void {
+  process.once(signal, () => {
+    console.error(`${signal}: cleaning up, then exiting`);
+    void runAbortCleanups().finally(() => process.exit(signal === 'SIGINT' ? 130 : 143));
+  });
+}
+
 async function main(): Promise<void> {
   const [name = '', ...args] = process.argv.slice(2);
   const job = JOBS[name];
@@ -129,6 +142,8 @@ async function main(): Promise<void> {
     process.exitCode = 2;
     return;
   }
+  exitOnSignal('SIGINT');
+  exitOnSignal('SIGTERM');
   // A command never starts the in-process e-invoice loop: it runs once and exits.
   process.env.EINVOICE_WORKER = 'off';
   const app = await NestFactory.createApplicationContext(job.module, { logger: ['error', 'warn'] });

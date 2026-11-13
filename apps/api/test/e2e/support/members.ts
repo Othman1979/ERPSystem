@@ -99,7 +99,9 @@ export async function addMember(
   const own = await tokenOf(base, opts.email, opts.password);
   const accepted = await request(base)
     .post(`/api/v1/me/invitations/${membershipId}/accept`)
-    .set(bearer(own));
+    .set(bearer(own))
+    // The one-time code the inviting admin hands over (ADR-012 §PLAT-10).
+    .send({ code: invite.acceptanceCode });
   if (accepted.status !== 200) {
     throw new Error(`accept of ${opts.email} failed: ${accepted.status} ${JSON.stringify(accepted.body)}`);
   }

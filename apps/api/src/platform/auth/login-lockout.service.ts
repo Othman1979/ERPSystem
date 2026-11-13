@@ -66,21 +66,46 @@ export class LoginLockoutService {
     return Math.max(0, entry.lockedUntil - now);
   }
 
+  /**
+   * Checks and counts one sign-in attempt in a single synchronous step, before
+   * the password is verified: parallel attempts cannot all pass the check while
+   * the first is still in argon2 (each one is counted at once). Returns how long
+   * the email is held back (`retryAfterMs` > 0: refuse, nothing counted), or the
+   * delay this attempt starts if it turns out to fail (`delayMs`). A correct
+   * password then calls succeed(), which clears the count.
+   */
+  attempt(email: string, now = Date.now()): { retryAfterMs: number; delayMs: number } {
+    const retryAfterMs = this.retryAfterMs(email, now);
+    if (retryAfterMs > 0) return { retryAfterMs, delayMs: 0 };
+    return { retryAfterMs: 0, delayMs: this.fail(email, now) };
+  }
+
   /** A successful sign-in clears this email's failures. */
   succeed(email: string): void {
     this.entries.delete(keyOf(email));
   }
 
-  /** Frees a slot for a new email: forgotten entries first, then the oldest inserted. */
+  /**
+   * Frees a slot for a new email, cheapest loss first: forgotten entries, then
+   * entries still under FREE_FAILURES (a flood of junk emails), then unlocked
+   * ones, and only then the oldest, so junk sign-ins cannot reset a victim's
+   * escalation.
+   */
   private makeRoom(now: number): void {
     if (this.entries.size < MAX_TRACKED) return;
     for (const [key, entry] of this.entries) {
       if (now - entry.lastFailureAt > FORGET_AFTER_MS) this.entries.delete(key);
     }
-    while (this.entries.size >= MAX_TRACKED) {
-      const oldest = this.entries.keys().next();
-      if (oldest.done) break;
-      this.entries.delete(oldest.value);
+    const passes: ((e: Entry) => boolean)[] = [
+      (e) => e.failures < FREE_FAILURES && e.lockedUntil <= now,
+      (e) => e.lockedUntil <= now,
+      () => true,
+    ];
+    for (const evictable of passes) {
+      for (const [key, entry] of this.entries) {
+        if (this.entries.size < MAX_TRACKED) return;
+        if (evictable(entry)) this.entries.delete(key);
+      }
     }
   }
 }
