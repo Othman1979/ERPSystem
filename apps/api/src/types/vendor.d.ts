@@ -7,7 +7,7 @@ declare module 'pdfmake' {
     getBuffer(): Promise<Uint8Array>;
   }
   interface PdfMake {
-    setFonts(fonts: Record<string, Record<'normal' | 'bold' | 'italics' | 'bolditalics', string>>): void;
+    setFonts(fonts: Record<string, Record<'normal' | 'bold' | 'italics' | 'bolditalics', string | Buffer>>): void;
     setUrlAccessPolicy(callback: (url: string) => boolean): void;
     setLocalAccessPolicy(callback: (path: string) => boolean): void;
     createPdf(definition: object, options?: object): OutputDocument;
@@ -19,7 +19,8 @@ declare module 'pdfmake' {
 declare module 'fontkit' {
   export interface Font {
     unitsPerEm: number;
-    layout(text: string): { advanceWidth: number; glyphs: { codePoints: number[] }[] };
+    layout(text: string): { advanceWidth: number; glyphs: { id: number; codePoints: number[] }[] };
   }
   export function openSync(path: string): Font;
+  export function create(buffer: Buffer): Font;
 }

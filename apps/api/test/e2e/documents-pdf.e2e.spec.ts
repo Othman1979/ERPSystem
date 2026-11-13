@@ -105,6 +105,19 @@ describe('Printed documents', () => {
       .set(auth(token))
       .send({ invoiceDate: '2025-03-10', customerId: customer, warehouseId, paymentType: 'CREDIT', lines: [{ itemId, qty: '2', unitPrice: '10.000' }] });
     ids.invoice = inv.body.id;
+    // A 200-line draft for the speed check (TRADE-21): the PDF must not cost seconds per document.
+    ids.bigInvoice = (
+      await api()
+        .post('/api/v1/sales-invoices')
+        .set(auth(token))
+        .send({
+          invoiceDate: '2025-03-11',
+          customerId: customer,
+          warehouseId,
+          paymentType: 'CREDIT',
+          lines: Array.from({ length: 200 }, (_, i) => ({ itemId, qty: '1', unitPrice: `${i + 1}.000` })),
+        })
+    ).body.id;
     ids.draftInvoice = (
       await api()
         .post('/api/v1/sales-invoices')
@@ -160,6 +173,23 @@ describe('Printed documents', () => {
       `/api/v1/payments/${ids.payment}/pdf`,
     ]) {
       expectPdf(await pdf(url, token));
+    }
+  }, 60_000);
+
+  it('a 200-line invoice prints in Arabic and English in under 1.5 s', async () => {
+    expect(ids.bigInvoice).toBeTruthy();
+    // The first request of the process pays one-off costs; the bound applies to the next ones.
+    expectPdf(await pdf(`/api/v1/sales-invoices/${ids.bigInvoice}/pdf`, token));
+    for (const lang of ['ar', 'en']) {
+      const started = performance.now();
+      const res = await pdf(`/api/v1/sales-invoices/${ids.bigInvoice}/pdf?lang=${lang}`, token);
+      const took = performance.now() - started;
+      expectPdf(res);
+      const pages = ((res.body as Buffer).toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+      expect(pages).toBeGreaterThanOrEqual(9);
+      expect(pages).toBeLessThanOrEqual(11);
+      // Was ~2 s before fonts were unwrapped once per process; now ~0.4 s; the bound leaves room for a slow CI runner.
+      expect(took).toBeLessThan(1_500);
     }
   }, 60_000);
 
