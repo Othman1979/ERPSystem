@@ -8,6 +8,7 @@ import type { Env } from '../../common/config/env.validation.js';
 import { openSecret, sealSecret } from '../../common/crypto/secret-box.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { LOOPBACK_HOSTS } from '../../common/net/loopback.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import type { UpdateEInvoiceSettingsDto } from './dto/einvoice.dto.js';
 
@@ -202,10 +203,6 @@ export class EInvoiceSettingsService {
   }
 }
 
-/** A SANDBOX URL must be http(s) and must not be the production host. */
-/** Hosts a sandbox may always use: the mock runs on this machine. */
-const LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
-
 /**
  * A SANDBOX URL must be http(s), must not be the production host (any port)
  * and must be this machine — or a host the operator listed in
@@ -229,7 +226,7 @@ function normalizeSandboxUrl(raw: string | null | undefined, allowed: string | u
     throw new DomainError(ErrorCode.VALIDATION, 'The sandbox must not point at the production JoFotara server');
   }
   const extra = new Set((allowed ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean));
-  if (!LOOPBACK.has(host) && !extra.has(host)) {
+  if (!LOOPBACK_HOSTS.has(host) && !extra.has(host)) {
     throw new DomainError(
       ErrorCode.VALIDATION,
       'The sandbox URL must be on this server (127.0.0.1 / localhost) or listed in EINVOICE_SANDBOX_HOSTS',

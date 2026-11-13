@@ -14,3 +14,5 @@ npm-cache/
 
 # uploaded files (STORAGE_DIR)
 apps/api/storage/
+# Daily backups (ADR-010 §10.2): database dumps, never in Git
+apps/api/backups/

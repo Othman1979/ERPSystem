@@ -154,6 +154,8 @@ export class TenantExportService {
       }
     }
 
+    // systemPrisma: `tenants` is the platform's table (not tenant-scoped); read by
+    // the CLS tenant's own id only, for the README.
     const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId }, select: { name: true, status: true } });
     const now = new Date();
     files['README.txt'] = strToU8(readme(tenant?.name ?? '', tenant?.status ?? '', now, counts));

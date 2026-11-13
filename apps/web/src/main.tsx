@@ -20,7 +20,11 @@ import '@fontsource/ibm-plex-sans-arabic/700.css';
 import './index.css';
 import { App } from './App';
 import { AuthProvider } from './auth/AuthContext';
+import { installErrorReporting } from './errorReporting';
 import { antdTheme } from './theme';
+
+// Uncaught errors go to the platform's error monitor (ADR-010 §10.3).
+installErrorReporting();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },

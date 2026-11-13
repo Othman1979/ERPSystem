@@ -28,6 +28,10 @@ import {
   adminControllerGet,
   adminControllerList,
   adminControllerUpdateStatus,
+  adminErrorsControllerGet,
+  adminErrorsControllerList,
+  adminErrorsControllerReopen,
+  adminErrorsControllerResolve,
   adminPlansControllerList,
   adminPlansControllerUpdate,
 } from '@erp/api-client';
@@ -101,7 +105,8 @@ function StatusTag({ status }: { status: Status }) {
 /**
  * Platform owner console (BUILD_PLAN §13.3, ADR-009): tenants with their
  * status, plan and paid periods — no tenant financial data — and the plan
- * catalogue (limits, prices). Visible to User.isPlatformAdmin only.
+ * catalogue (limits, prices), and the error monitor (ADR-010 §10.3).
+ * Visible to User.isPlatformAdmin only.
  */
 export function PlatformAdminPage() {
   const { t } = useTranslation();
@@ -113,6 +118,7 @@ export function PlatformAdminPage() {
           items={[
             { key: 'tenants', label: t('platform.tenants'), children: <TenantsTab /> },
             { key: 'plans', label: t('platform.plans'), children: <PlansTab /> },
+            { key: 'errors', label: t('platform.errors'), children: <ErrorsTab /> },
           ]}
         />
       </Card>
@@ -456,6 +462,138 @@ function PlansTab() {
           </Space>
         </Form>
       </Modal>
+    </>
+  );
+}
+
+// -------------------------------------------------------------------- errors
+
+interface ErrorEvent {
+  id: string;
+  source: 'API' | 'WEB' | 'JOB';
+  name: string;
+  message: string;
+  method: string | null;
+  path: string | null;
+  status: number | null;
+  tenantId: string | null;
+  userId: string | null;
+  requestId: string | null;
+  count: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+  stack?: string | null;
+}
+
+const ERROR_FILTERS = ['open', 'resolved', 'all'] as const;
+const ERROR_SOURCES = ['API', 'WEB', 'JOB'] as const;
+
+/** Errors of the server, the web app and Cron jobs, grouped and counted (ADR-010 §10.3). */
+function ErrorsTab() {
+  const { t } = useTranslation();
+  const onError = useApiError();
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState<(typeof ERROR_FILTERS)[number]>('open');
+  const [source, setSource] = useState<(typeof ERROR_SOURCES)[number] | undefined>(undefined);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-errors', status, source],
+    queryFn: () => adminErrorsControllerList({ status, ...(source ? { source } : {}) }).then((r) => r.data as unknown as ErrorEvent[]),
+  });
+  const { data: detail } = useQuery({
+    queryKey: ['platform-error', openId],
+    queryFn: () => adminErrorsControllerGet(openId!).then((r) => r.data as unknown as ErrorEvent),
+    enabled: !!openId,
+  });
+  const toggle = useMutation({
+    mutationFn: (e: ErrorEvent) => (e.resolvedAt ? adminErrorsControllerReopen(e.id) : adminErrorsControllerResolve(e.id)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['platform-errors'] });
+      void queryClient.invalidateQueries({ queryKey: ['platform-error'] });
+    },
+    onError,
+  });
+  const when = (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm');
+
+  return (
+    <>
+      <Typography.Paragraph type="secondary">{t('platform.errorsHint')}</Typography.Paragraph>
+      <Space style={{ marginBottom: 12 }} wrap>
+        <Select
+          style={{ minWidth: 140 }}
+          value={status}
+          onChange={setStatus}
+          options={ERROR_FILTERS.map((f) => ({ value: f, label: t(`platform.errors_${f}`) }))}
+        />
+        <Select
+          allowClear
+          style={{ minWidth: 140 }}
+          placeholder={t('platform.errorSource')}
+          value={source}
+          onChange={setSource}
+          options={ERROR_SOURCES.map((s) => ({ value: s, label: t(`platform.errorSource_${s}`) }))}
+        />
+      </Space>
+      <Table<ErrorEvent>
+        rowKey="id"
+        size="small"
+        loading={isLoading}
+        dataSource={data ?? []}
+        pagination={{ pageSize: 50 }}
+        onRow={(e) => ({ onClick: () => setOpenId(e.id), style: { cursor: 'pointer' } })}
+        columns={[
+          { title: t('platform.errorSource'), dataIndex: 'source', width: 80, render: (v: ErrorEvent['source']) => <Tag>{t(`platform.errorSource_${v}`)}</Tag> },
+          {
+            title: t('platform.errorMessage'),
+            render: (_: unknown, e) => (
+              <Typography.Text ellipsis style={{ maxWidth: 420 }}>
+                <b>{e.name}</b>: {e.message}
+              </Typography.Text>
+            ),
+          },
+          { title: t('platform.errorWhere'), render: (_: unknown, e) => [e.method, e.path].filter(Boolean).join(' ') || '—' },
+          { title: t('platform.errorCount'), dataIndex: 'count', align: 'right', width: 80 },
+          { title: t('platform.errorLastSeen'), dataIndex: 'lastSeenAt', width: 150, render: when },
+          {
+            title: '',
+            width: 120,
+            render: (_: unknown, e) => (
+              <Button
+                size="small"
+                loading={toggle.isPending && toggle.variables?.id === e.id}
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  toggle.mutate(e);
+                }}
+              >
+                {e.resolvedAt ? t('platform.errorReopen') : t('platform.errorResolve')}
+              </Button>
+            ),
+          },
+        ]}
+      />
+      <Drawer open={!!openId} width={720} onClose={() => setOpenId(null)} title={detail ? `${detail.name}: ${detail.message}` : ''}>
+        {detail && (
+          <>
+            <Descriptions size="small" column={1} bordered>
+              <Descriptions.Item label={t('platform.errorSource')}>{t(`platform.errorSource_${detail.source}`)}</Descriptions.Item>
+              <Descriptions.Item label={t('platform.errorWhere')}>{[detail.method, detail.path, detail.status].filter(Boolean).join(' ') || '—'}</Descriptions.Item>
+              <Descriptions.Item label={t('platform.errorCount')}>{detail.count}</Descriptions.Item>
+              <Descriptions.Item label={t('platform.errorFirstSeen')}>{when(detail.firstSeenAt)}</Descriptions.Item>
+              <Descriptions.Item label={t('platform.errorLastSeen')}>{when(detail.lastSeenAt)}</Descriptions.Item>
+              <Descriptions.Item label={t('platform.errorTenant')}>{detail.tenantId ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label={t('platform.errorRequest')}>{detail.requestId ?? '—'}</Descriptions.Item>
+            </Descriptions>
+            <Typography.Paragraph style={{ marginTop: 16 }}>
+              <Typography.Text code style={{ whiteSpace: 'pre-wrap', display: 'block', direction: 'ltr', textAlign: 'left' }}>
+                {detail.stack ?? t('platform.errorNoStack')}
+              </Typography.Text>
+            </Typography.Paragraph>
+          </>
+        )}
+      </Drawer>
     </>
   );
 }

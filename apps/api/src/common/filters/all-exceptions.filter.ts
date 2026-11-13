@@ -7,7 +7,11 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { ClsServiceManager } from 'nestjs-cls';
+import type { RequestContext } from '../cls/cls.types.js';
 import { DomainError } from '../errors/domain.error.js';
+import { redact } from '../errors/error-events.util.js';
+import { ErrorEventsService } from '../../platform/monitoring/error-events.service.js';
 import { ErrorCode } from '../errors/error-codes.js';
 
 interface ErrorBody {
@@ -22,6 +26,8 @@ interface ErrorBody {
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
+
+  constructor(private readonly errors: ErrorEventsService) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
@@ -50,7 +56,24 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
       code = status === HttpStatus.BAD_REQUEST ? ErrorCode.VALIDATION : this.codeForStatus(status);
     } else {
-      this.logger.error('Unhandled exception', exception instanceof Error ? exception.stack : String(exception));
+      // Masked like the monitor's copy: no password or token in the host's logs (CLAUDE.md).
+      this.logger.error('Unhandled exception', redact(exception instanceof Error ? (exception.stack ?? exception.message) : String(exception)));
+    }
+
+    // Server faults go to the platform console (ADR-010 §10.3); the answer
+    // does not wait for it, and recording never throws.
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      const cls = ClsServiceManager.getClsService<RequestContext>();
+      void this.errors.record({
+        source: 'API',
+        error: exception,
+        method: request.method,
+        path: request.originalUrl ?? request.url,
+        status,
+        tenantId: cls.isActive() ? (cls.get('tenantId') ?? null) : null,
+        userId: cls.isActive() ? (cls.get('userId') ?? null) : null,
+        requestId,
+      });
     }
 
     const body: ErrorBody = {

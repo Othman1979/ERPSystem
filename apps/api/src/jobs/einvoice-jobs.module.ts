@@ -4,6 +4,7 @@ import { ClsModule } from 'nestjs-cls';
 import { CommonModule } from '../common/common.module.js';
 import { validateEnv } from '../common/config/env.validation.js';
 import { EInvoiceModule } from '../platform/einvoice/einvoice.module.js';
+import { ErrorEventsService } from '../platform/monitoring/error-events.service.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
 
 /**
@@ -18,5 +19,7 @@ import { PrismaModule } from '../prisma/prisma.module.js';
     PrismaModule,
     EInvoiceModule,
   ],
+  // A failed send run is recorded for the platform console (ADR-010 §10.3).
+  providers: [ErrorEventsService],
 })
 export class EInvoiceJobsModule {}

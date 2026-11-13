@@ -15,6 +15,7 @@ export class HealthController {
   @ApiOperation({ summary: 'Liveness + database connectivity check' })
   async health(): Promise<{ status: string; db: string; timestamp: string }> {
     try {
+      // systemPrisma: a connectivity probe, no table and no tenant.
       await this.prisma.client.$queryRaw`SELECT 1`;
     } catch {
       throw new DomainError(ErrorCode.DB_UNAVAILABLE, 'Database is not reachable');

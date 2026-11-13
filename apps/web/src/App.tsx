@@ -44,6 +44,7 @@ import { RegisterPage } from './pages/RegisterPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 import { displayName } from './i18n/displayName';
 import { ALL_ROUTES, APP_GROUPS, routeForPath, type AppGroup, type AppRoute } from './routes';
+import { reportError } from './errorReporting';
 import { palette, TOPBAR_HEIGHT } from './theme';
 
 interface ErrorBoundaryState {
@@ -55,6 +56,11 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundary
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error };
+  }
+
+  // A view that crashed is an error worth knowing about (ADR-010 §10.3).
+  componentDidCatch(error: Error): void {
+    reportError(error);
   }
 
   render() {

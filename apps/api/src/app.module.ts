@@ -31,6 +31,8 @@ import { TreasuryModule } from './platform/treasury/treasury.module.js';
 import { EInvoiceModule } from './platform/einvoice/einvoice.module.js';
 import { ReportsModule } from './platform/reports/reports.module.js';
 import { ExportModule } from './platform/export/export.module.js';
+import { MonitoringModule } from './platform/monitoring/monitoring.module.js';
+import { TestSupportModule } from './platform/monitoring/test-support.module.js';
 
 @Module({
   imports: [
@@ -61,6 +63,9 @@ import { ExportModule } from './platform/export/export.module.js';
     ReportsModule,
     ExportModule,
     AdminModule,
+    MonitoringModule,
+    // A route that fails on purpose, for the error-monitor tests only (ADR-010 §10.3).
+    ...(process.env.NODE_ENV === 'test' ? [TestSupportModule] : []),
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

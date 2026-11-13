@@ -447,6 +447,44 @@ model MembershipBranch {
   @@map("membership_branches")
 }
 
+/// Where an error came from (ADR-010 §10.3).
+enum ErrorSource {
+  API
+  WEB
+  JOB
+}
+
+/// Errors for the platform console (ADR-010 §10.3): server 500s, errors in the
+/// web app, failed Cron commands. One row per kind of error (fingerprint),
+/// counted and dated. Platform-level like audit_logs: tenant_id / user_id are
+/// context of the last occurrence only (no relation, not tenant-scoped); the
+/// purge job removes a tenant's rows with its other tables. Text is redacted
+/// (passwords, tokens) before it is stored.
+model ErrorEvent {
+  id          BigInt      @id @default(autoincrement()) @db.UnsignedBigInt
+  fingerprint String      @unique @db.Char(64)
+  source      ErrorSource
+  name        String      @db.VarChar(191)
+  message     String      @db.VarChar(1000)
+  stack       String?     @db.Text
+  method      String?     @db.VarChar(10)
+  path        String?     @db.VarChar(500)
+  status      Int?
+  tenantId    BigInt?     @map("tenant_id") @db.UnsignedBigInt
+  userId      BigInt?     @map("user_id") @db.UnsignedBigInt
+  requestId   String?     @map("request_id") @db.VarChar(64)
+  count       Int         @default(1)
+  firstSeenAt DateTime    @default(now()) @map("first_seen_at") @db.DateTime(3)
+  lastSeenAt  DateTime    @default(now()) @map("last_seen_at") @db.DateTime(3)
+  /// Set from the console; a new occurrence reopens it.
+  resolvedAt  DateTime?   @map("resolved_at") @db.DateTime(3)
+  /// Last alert sent for it (error-digest); a later occurrence alerts again.
+  notifiedAt  DateTime?   @map("notified_at") @db.DateTime(3)
+
+  @@index([resolvedAt, lastSeenAt])
+  @@map("error_events")
+}
+
 model AuditLog {
   id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
   tenantId   BigInt?  @map("tenant_id") @db.UnsignedBigInt
