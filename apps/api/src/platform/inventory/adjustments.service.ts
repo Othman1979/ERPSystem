@@ -3,6 +3,7 @@ import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
+import { assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -198,11 +199,16 @@ export class AdjustmentsService {
 
     const result = await this.withRetry(() =>
       db.$transaction(async (tx) => {
+        // Lock the document first (§10.1 step 7). As the first statement it also
+        // makes every later read see the latest committed state, so two
+        // concurrent requests cannot both post or reverse it.
+        await tx.$queryRaw`SELECT id FROM stock_adjustments WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
         const draft = await tx.stockAdjustment.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },
         });
         if (!draft) throw DomainError.notFound('StockAdjustment', id.toString());
+        await assertWarehouseBranchAllowed(tx, draft.warehouseId);
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Adjustment is not a draft');
         }
@@ -340,11 +346,16 @@ export class AdjustmentsService {
 
     const result = await this.withRetry(() =>
       db.$transaction(async (tx) => {
+        // Lock the document first (§10.1 step 7). As the first statement it also
+        // makes every later read see the latest committed state, so two
+        // concurrent requests cannot both post or reverse it.
+        await tx.$queryRaw`SELECT id FROM stock_adjustments WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
         const original = await tx.stockAdjustment.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },
         });
         if (!original) throw DomainError.notFound('StockAdjustment', id.toString());
+        await assertWarehouseBranchAllowed(tx, original.warehouseId);
         if (original.status !== 'POSTED') {
           throw new DomainError(ErrorCode.CONFLICT, 'Only posted adjustments can be reversed');
         }

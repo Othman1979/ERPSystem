@@ -300,6 +300,17 @@ describe('Phase 6 — treasury', () => {
     expect(m3(aging.body.totals.d90plus)).toBe(m3(aging.body.totals.total));
   });
 
+  it('a cash invoice owes nothing and cannot take a receipt allocation', async () => {
+    const cashInv = await creditSale('2025-03-11', '2', '2.000', customerId, 'CASH'); // 4.640, settled at sale
+    expect(await outstanding(cashInv)).toBe('0.000');
+    const res = await receipt({
+      receiptDate: '2025-03-12',
+      amount: '4.640',
+      allocations: [{ documentType: 'SALES_INVOICE', documentId: cashInv, amount: '4.640' }],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION');
+  });
   it('a voucher with allocations cannot be reversed until they are cancelled', async () => {
     const blocked = await api()
       .post(`/api/v1/receipts/${firstReceiptId}/reverse`)

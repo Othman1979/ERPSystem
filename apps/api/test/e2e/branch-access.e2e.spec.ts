@@ -228,4 +228,107 @@ describe('Branch access (BranchGuard, ADR-003)', () => {
     if (res.status !== 403) throw new Error(`${res.status} ${JSON.stringify(res.body)}`);
     expect(res.body.error.code).toBe('BRANCH_NOT_ALLOWED');
   });
+
+  // ---------------------------------------------- review fixes (2026-11-10)
+
+  /** Invite a member limited to MAIN with `roleCode`; returns their token and membership id. */
+  async function mainOnly(roleCode: string) {
+    const email = `branch-${roleCode.toLowerCase()}-${RUN}@test.dev`;
+    const invite = await api()
+      .post('/api/v1/users/invite')
+      .set(auth(owner))
+      .send({ email, roleCode, password: PASS, defaultBranchId: mainId, branchIds: [mainId] });
+    expect(invite.status).toBe(201);
+    const login = await api().post('/api/v1/auth/login').send({ email, password: PASS });
+    expect(login.status).toBe(200);
+    return { token: login.body.accessToken as string, membershipId: invite.body.membershipId as string };
+  }
+
+  // The TRIAL plan allows 3 users (owner, cashier and this one), so the stock
+  // test re-roles the same MAIN-only member instead of inviting a fourth.
+  let mainMember = { token: '', membershipId: '' };
+
+  it('manual journals take the branch from context; a body branchId is refused', async () => {
+    mainMember = await mainOnly('ACCOUNTANT');
+    const accountant = mainMember.token;
+    const accounts = await api().get('/api/v1/accounts').set(auth(owner));
+    const flat: { id: string; code: string }[] = [];
+    const walk = (ns: { id: string; code: string; children?: unknown[] }[]) => {
+      for (const n of ns) {
+        flat.push(n);
+        if (n.children) walk(n.children as typeof ns);
+      }
+    };
+    walk(accounts.body as never[]);
+    const acct = (code: string) => flat.find((a) => a.code === code)!.id;
+    const lines = [
+      { accountId: acct('5204'), debit: '5.000' },
+      { accountId: acct('1101'), credit: '5.000' },
+    ];
+
+    const sneaky = await api()
+      .post('/api/v1/journal-entries')
+      .set(auth(accountant))
+      .send({ entryDate: '2025-02-20', description: 'x', branchId: b2Id, lines });
+    expect(sneaky.status).toBe(400);
+
+    // Owner drafts on B2; the MAIN-only accountant may not post or delete it.
+    const draft = await api()
+      .post('/api/v1/journal-entries')
+      .set(auth(owner))
+      .set('X-Branch-Id', b2Id)
+      .send({ entryDate: '2025-02-20', description: 'B2 entry', lines });
+    expect(draft.status).toBe(201);
+    const [row] = (await db.query('SELECT branch_id FROM journal_entries WHERE id = ?', [draft.body.id])) as {
+      branch_id: bigint;
+    }[];
+    expect(String(row.branch_id)).toBe(b2Id);
+    const post = await api().post(`/api/v1/journal-entries/${draft.body.id}/post`).set(auth(accountant)).set(idem());
+    expect(post.status).toBe(403);
+    expect(post.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+    expect((await api().delete(`/api/v1/journal-entries/${draft.body.id}`).set(auth(accountant))).status).toBe(403);
+  });
+
+  it("a MAIN-only cashier cannot sell from, or adjust, B2's warehouse", async () => {
+    const [t] = (await db.query(
+      'SELECT t.id AS tenantId, c.id AS companyId FROM tenants t JOIN companies c ON c.tenant_id = t.id WHERE t.name = ?',
+      [`Branch ${RUN}`],
+    )) as { tenantId: bigint; companyId: bigint }[];
+    const now = new Date();
+    const ins = (await db.query(
+      'INSERT INTO warehouses (tenant_id, company_id, branch_id, code, name_ar, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)',
+      [t.tenantId, t.companyId, b2Id, 'WB2', 'مستودع فرع 2', now, now],
+    )) as { insertId: bigint };
+    const b2Warehouse = String(ins.insertId);
+
+    const sale = await api()
+      .post('/api/v1/sales-invoices')
+      .set(auth(cashier))
+      .send({ ...invoiceBody(), warehouseId: b2Warehouse });
+    expect(sale.status).toBe(403);
+    expect(sale.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+
+    // A draft adjustment on B2's warehouse can be saved, but not posted by the storekeeper.
+    const adj = await api()
+      .post('/api/v1/stock-adjustments')
+      .set(auth(owner))
+      .send({
+        adjustmentDate: '2025-02-21',
+        adjustmentType: 'IN',
+        warehouseId: b2Warehouse,
+        lines: [{ itemId, qty: '1', unitCost: '4.000' }],
+      });
+    expect(adj.status).toBe(201);
+    const rerole = await api()
+      .patch(`/api/v1/users/${mainMember.membershipId}`)
+      .set(auth(owner))
+      .send({ roleCode: 'STOREKEEPER' });
+    expect(rerole.status).toBe(200);
+    const storekeeper = mainMember.token; // permissions are read per request
+    const post = await api().post(`/api/v1/stock-adjustments/${adj.body.id}/post`).set(auth(storekeeper)).set(idem());
+    expect(post.status).toBe(403);
+    expect(post.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+    // The owner may.
+    expect((await api().post(`/api/v1/stock-adjustments/${adj.body.id}/post`).set(auth(owner)).set(idem())).status).toBe(201);
+  });
 });

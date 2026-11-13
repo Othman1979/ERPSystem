@@ -231,4 +231,88 @@ describe('Phase 5 acceptance — single posting, server totals, service items', 
     expect(codes).not.toContain('5101'); // COGS
     expect(codes).not.toContain('1104'); // inventory
   });
+
+  // ---------------------------------------------- review fixes (2026-11-10)
+
+  it('a return listing the same invoice line twice is rejected', async () => {
+    const inv = await api()
+      .post('/api/v1/sales-invoices')
+      .set(auth(token))
+      .send({
+        invoiceDate: '2025-02-13',
+        customerId,
+        warehouseId,
+        paymentType: 'CREDIT',
+        lines: [{ itemId: stockItemId, qty: '4', unitPrice: '10.000' }],
+      });
+    expect(inv.status).toBe(201);
+    const posted = await api().post(`/api/v1/sales-invoices/${inv.body.id}/post`).set(auth(token)).set('Idempotency-Key', key());
+    expect(posted.status).toBe(201);
+    const lineId = (posted.body.lines as { id: string }[])[0].id;
+    const body = (lines: object[]) => ({ returnDate: '2025-02-14', originalInvoiceId: inv.body.id, refundType: 'CREDIT', lines });
+
+    const twice = await api()
+      .post('/api/v1/sales-returns')
+      .set(auth(token))
+      .send(body([{ originalLineId: lineId, qty: '4' }, { originalLineId: lineId, qty: '4' }]));
+    expect(twice.status).toBe(400);
+    expect(twice.body.error.code).toBe('VALIDATION');
+
+    const once = await api().post('/api/v1/sales-returns').set(auth(token)).send(body([{ originalLineId: lineId, qty: '4' }]));
+    expect(once.status).toBe(201);
+  });
+
+  it('two concurrent reversals of a stock adjustment reverse it once', async () => {
+    const adj = await api()
+      .post('/api/v1/stock-adjustments')
+      .set(auth(token))
+      .send({ adjustmentDate: '2025-02-15', adjustmentType: 'IN', warehouseId, lines: [{ itemId: stockItemId, qty: '5', unitCost: '4.000' }] });
+    expect(adj.status).toBe(201);
+    expect((await api().post(`/api/v1/stock-adjustments/${adj.body.id}/post`).set(auth(token)).set('Idempotency-Key', key())).status).toBe(201);
+
+    const reverse = () =>
+      api()
+        .post(`/api/v1/stock-adjustments/${adj.body.id}/reverse`)
+        .set(auth(token))
+        .set('Idempotency-Key', key())
+        .send({ reversalDate: '2025-02-16' });
+    const results = await Promise.all([reverse(), reverse(), reverse()]);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+    const [row] = (await db.query(
+      'SELECT COUNT(*) AS n FROM stock_adjustments WHERE tenant_id = ? AND reversal_of_id = ?',
+      [tenantId, adj.body.id],
+    )) as { n: bigint }[];
+    expect(Number(row.n)).toBe(1);
+    const verify = await api().get('/api/v1/stock/verify').set(auth(token));
+    expect(verify.body.mismatches).toEqual([]);
+  });
+
+  it('two concurrent posts of a stock transfer move the stock once', async () => {
+    // TRIAL allows one warehouse; add the destination directly.
+    const [{ companyId }] = (await db.query('SELECT id AS companyId FROM companies WHERE tenant_id = ?', [tenantId])) as {
+      companyId: bigint;
+    }[];
+    const now = new Date();
+    const ins = (await db.query(
+      'INSERT INTO warehouses (tenant_id, company_id, code, name_ar, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)',
+      [tenantId, companyId, 'W2', 'W2', now, now],
+    )) as { insertId: bigint };
+    const w2 = String(ins.insertId);
+
+    const tr = await api()
+      .post('/api/v1/stock-transfers')
+      .set(auth(token))
+      .send({ transferDate: '2025-02-17', fromWarehouseId: warehouseId, toWarehouseId: w2, lines: [{ itemId: stockItemId, qty: '3' }] });
+    expect(tr.status).toBe(201);
+    const post = () => api().post(`/api/v1/stock-transfers/${tr.body.id}/post`).set(auth(token)).set('Idempotency-Key', key());
+    const results = await Promise.all([post(), post(), post()]);
+    expect(results.filter((r) => r.status === 201)).toHaveLength(1);
+
+    const balances = await api().get('/api/v1/stock/balances').set(auth(token));
+    const atW2 = (balances.body as { itemId: string; warehouseId: string; qtyOnHand: string }[]).find(
+      (b) => b.itemId === stockItemId && b.warehouseId === w2,
+    );
+    expect(new Decimal(atW2!.qtyOnHand).toString()).toBe('3');
+    expect((await api().get('/api/v1/stock/verify').set(auth(token))).body.mismatches).toEqual([]);
+  });
 });
