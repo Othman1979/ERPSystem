@@ -7,7 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { type Env, trustProxySetting } from '../common/config/env.validation.js';
 import { overlaps } from '../common/fs/is-inside.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { BackupService } from './backup/backup.service.js';
+import { BackupService, PRIVATE_DIR } from './backup/backup.service.js';
 import { firstLine, toolVersion } from './backup/mysql-tools.js';
 
 export interface PreflightCheck {
@@ -166,7 +166,8 @@ export class PreflightService {
   ): Promise<void> {
     const root = this.backup.backupRoot();
     const probe = path.join(root, `.preflight-${randomUUID()}`);
-    await mkdir(root, { recursive: true });
+    // Created private, as the backup itself would (it holds every tenant's data).
+    await mkdir(root, { recursive: true, mode: PRIVATE_DIR });
     await writeFile(probe, 'ok');
     await rm(probe);
     const bin = this.config.get('MYSQLDUMP_PATH', { infer: true });

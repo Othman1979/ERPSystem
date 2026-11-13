@@ -36,4 +36,15 @@ describe('error events: redaction and grouping (ADR-010 §10.3)', () => {
     expect(fingerprint('WEB', 'TypeError', 'No line 3 on invoice 120', stackA)).not.toBe(a);
     expect(a).toMatch(/^[0-9a-f]{64}$/);
   });
+
+  it('groups Firefox and Safari stacks by function and file, not by column', () => {
+    const firefoxA = 'TypeError: x\nrender@https://erp.example/assets/index-abc.js:1:2345\nmain@https://erp.example/assets/index-abc.js:1:99';
+    const firefoxB = 'TypeError: x\nsave@https://erp.example/assets/index-abc.js:1:2345';
+    const firefoxSameFnOtherColumn = 'TypeError: x\nrender@https://erp.example/assets/index-abc.js:1:2999';
+    const a = fingerprint('WEB', 'TypeError', 'x', firefoxA);
+    expect(fingerprint('WEB', 'TypeError', 'x', firefoxB)).not.toBe(a);
+    expect(fingerprint('WEB', 'TypeError', 'x', firefoxSameFnOtherColumn)).toBe(a);
+    const otherFile = 'TypeError: x\nrender@https://erp.example/assets/index-def.js:1:2345';
+    expect(fingerprint('WEB', 'TypeError', 'x', otherFile)).not.toBe(a);
+  });
 });

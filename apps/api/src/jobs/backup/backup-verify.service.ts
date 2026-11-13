@@ -119,7 +119,14 @@ export class BackupVerifyService {
       add(loaded ? 'inspect' : 'restore', false, firstLine(err));
     } finally {
       // --keep holds even on failure: that is when the copy is worth a look.
-      if (!keep) await this.empty(target);
+      if (!keep) {
+        try {
+          await this.empty(target);
+        } catch (err) {
+          // Reported with the other checks; the next run empties it first anyway.
+          add('cleanup', false, `could not empty ${target.database}: ${firstLine(err)}`);
+        }
+      }
     }
     return result(target.database, keep);
   }

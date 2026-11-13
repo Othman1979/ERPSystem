@@ -18,7 +18,7 @@ export interface DbTarget {
 export function dbTarget(url: string): DbTarget {
   const u = new URL(url);
   const database = decodeURIComponent(u.pathname.replace(/^\//, ''));
-  // Names go into SQL identifiers (CREATE / DROP DATABASE): letters, digits, underscore only.
+  // Names go to the client tools as arguments: letters, digits, underscore only (as hosting panels name them), so nothing needs quoting.
   if (!/^[A-Za-z0-9_]+$/.test(database)) throw new Error(`Unsupported database name "${database}"`);
   return {
     host: u.hostname,

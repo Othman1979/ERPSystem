@@ -6,6 +6,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Resolved errors are kept this long, then deleted. */
 const RESOLVED_KEEP_DAYS = 90;
+/** Open errors not seen again for this long are deleted too: they were alerted and stopped happening (and a flood of one-off reports cannot grow the table forever). */
+const STALE_OPEN_DAYS = 30;
 /** Errors listed by name in one alert; the rest are counted. */
 const LISTED = 10;
 const WEBHOOK_TIMEOUT_MS = 10_000;
@@ -18,7 +20,7 @@ export interface ErrorDigestRun {
   sent: boolean;
   /** Why nothing was sent, when pending > 0. */
   reason: string | null;
-  /** Resolved errors older than RESOLVED_KEEP_DAYS, deleted. */
+  /** Resolved errors older than RESOLVED_KEEP_DAYS, and open ones not seen for STALE_OPEN_DAYS, deleted. */
   pruned: number;
 }
 
@@ -39,7 +41,14 @@ export class ErrorDigestService {
   async run(now = new Date()): Promise<ErrorDigestRun> {
     const db = this.prisma.client;
     const pruned = (
-      await db.errorEvent.deleteMany({ where: { resolvedAt: { lt: new Date(now.getTime() - RESOLVED_KEEP_DAYS * DAY_MS) } } })
+      await db.errorEvent.deleteMany({
+        where: {
+          OR: [
+            { resolvedAt: { lt: new Date(now.getTime() - RESOLVED_KEEP_DAYS * DAY_MS) } },
+            { resolvedAt: null, lastSeenAt: { lt: new Date(now.getTime() - STALE_OPEN_DAYS * DAY_MS) } },
+          ],
+        },
+      })
     ).count;
 
     const pending = await db.errorEvent.findMany({

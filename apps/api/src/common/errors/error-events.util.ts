@@ -39,7 +39,8 @@ export function pathOnly(url: string | undefined): string | null {
 /**
  * One fingerprint per kind of error, so repeats count on one row: the
  * source, the error name, the message with numbers and ids blanked out, and
- * the first stack frame (where it was thrown), without line columns.
+ * the first stack frame (V8 `at …` or Firefox/Safari `fn@url:line:col`, where
+ * it was thrown), without line columns.
  */
 export function fingerprint(source: string, name: string, message: string, stack: string | null): string {
   const normalised = message
@@ -48,7 +49,7 @@ export function fingerprint(source: string, name: string, message: string, stack
   const frame = (stack ?? '')
     .split('\n')
     .map((l) => l.trim())
-    .find((l) => l.startsWith('at '))
+    .find((l) => l.startsWith('at ') || /@.+:\d+:\d+$/.test(l))
     ?.replace(/:\d+(?=\)?$)/, '');
   return createHash('sha256').update([source, name, normalised, frame ?? ''].join('\n')).digest('hex');
 }

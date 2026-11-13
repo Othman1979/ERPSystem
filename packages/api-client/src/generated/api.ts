@@ -7228,7 +7228,7 @@ export type adminErrorsControllerGetResponseSuccess = (adminErrorsControllerGetR
 
 export type adminErrorsControllerGetResponse = (adminErrorsControllerGetResponseSuccess)
 
-export const getAdminErrorsControllerGetUrl = (id: number,) => {
+export const getAdminErrorsControllerGetUrl = (id: string,) => {
 
 
 
@@ -7236,7 +7236,7 @@ export const getAdminErrorsControllerGetUrl = (id: number,) => {
   return `/api/v1/admin/errors/${id}`
 }
 
-export const adminErrorsControllerGet = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerGetResponse> => {
+export const adminErrorsControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerGetResponse> => {
 
   return apiFetch<adminErrorsControllerGetResponse>(getAdminErrorsControllerGetUrl(id),
   {
@@ -7261,7 +7261,7 @@ export type adminErrorsControllerResolveResponseSuccess = (adminErrorsController
 
 export type adminErrorsControllerResolveResponse = (adminErrorsControllerResolveResponseSuccess)
 
-export const getAdminErrorsControllerResolveUrl = (id: number,) => {
+export const getAdminErrorsControllerResolveUrl = (id: string,) => {
 
 
 
@@ -7269,7 +7269,7 @@ export const getAdminErrorsControllerResolveUrl = (id: number,) => {
   return `/api/v1/admin/errors/${id}/resolve`
 }
 
-export const adminErrorsControllerResolve = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerResolveResponse> => {
+export const adminErrorsControllerResolve = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerResolveResponse> => {
 
   return apiFetch<adminErrorsControllerResolveResponse>(getAdminErrorsControllerResolveUrl(id),
   {
@@ -7294,7 +7294,7 @@ export type adminErrorsControllerReopenResponseSuccess = (adminErrorsControllerR
 
 export type adminErrorsControllerReopenResponse = (adminErrorsControllerReopenResponseSuccess)
 
-export const getAdminErrorsControllerReopenUrl = (id: number,) => {
+export const getAdminErrorsControllerReopenUrl = (id: string,) => {
 
 
 
@@ -7302,7 +7302,7 @@ export const getAdminErrorsControllerReopenUrl = (id: number,) => {
   return `/api/v1/admin/errors/${id}/reopen`
 }
 
-export const adminErrorsControllerReopen = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerReopenResponse> => {
+export const adminErrorsControllerReopen = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerReopenResponse> => {
 
   return apiFetch<adminErrorsControllerReopenResponse>(getAdminErrorsControllerReopenUrl(id),
   {

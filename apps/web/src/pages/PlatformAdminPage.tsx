@@ -504,11 +504,11 @@ function ErrorsTab() {
   });
   const { data: detail } = useQuery({
     queryKey: ['platform-error', openId],
-    queryFn: () => adminErrorsControllerGet(Number(openId)).then((r) => r.data as unknown as ErrorEvent),
+    queryFn: () => adminErrorsControllerGet(openId!).then((r) => r.data as unknown as ErrorEvent),
     enabled: !!openId,
   });
   const toggle = useMutation({
-    mutationFn: (e: ErrorEvent) => (e.resolvedAt ? adminErrorsControllerReopen(Number(e.id)) : adminErrorsControllerResolve(Number(e.id))),
+    mutationFn: (e: ErrorEvent) => (e.resolvedAt ? adminErrorsControllerReopen(e.id) : adminErrorsControllerResolve(e.id)),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['platform-errors'] });
       void queryClient.invalidateQueries({ queryKey: ['platform-error'] });

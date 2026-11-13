@@ -25,7 +25,7 @@ import {
 import { allOrFirstError, dbTarget, runTool, withOptionFile } from './mysql-tools.js';
 
 /** A backup holds every tenant's data: only this account may read it. */
-const PRIVATE_DIR = 0o700;
+export const PRIVATE_DIR = 0o700;
 const PRIVATE_FILE = 0o600;
 
 export interface BackupRun {

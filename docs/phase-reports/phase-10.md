@@ -35,7 +35,7 @@
 - لا تغيير على أي جدول مالي.
 
 ## 3. الـ endpoints والشاشات
-- **`POST /client-errors`:** أخطاء الواجهة، للمستخدم المسجّل، 20 في الدقيقة.
+- **`POST /client-errors`:** أخطاء الواجهة، للمستخدم المسجّل، 60 في الساعة.
 - **لوحة المنصة:** `GET /admin/errors`، و`GET /admin/errors/:id`، و`POST /admin/errors/:id/resolve|reopen`.
 - **شاشة:** تبويب «الأخطاء» في لوحة إدارة المنصة.
 - **في الاختبار فقط:** `GET /__test/boom`، لا يُحمَّل إلا مع `NODE_ENV=test`.

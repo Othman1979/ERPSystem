@@ -1,11 +1,24 @@
-import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { DomainError } from '../../common/errors/domain.error.js';
 import { PlatformAdmin, TenantOptional } from '../../common/decorators/auth.decorators.js';
 import { ClientErrorDto, ListErrorsQueryDto } from './dto/monitoring.dto.js';
 import { MonitoringService } from './monitoring.service.js';
 
-/** Errors the web app reports (ADR-010 §10.3): any signed-in user, limited per user. */
+/**
+ * An error id from the path: digits only, else not found (never a 500 from BigInt).
+ */
+function errorId(id: string): bigint {
+  if (!/^\d{1,20}$/.test(id)) throw DomainError.notFound('ErrorEvent', id);
+  return BigInt(id);
+}
+
+/**
+ * Errors the web app reports (ADR-010 §10.3): any signed-in user, at most 60
+ * reports an hour per user (the web app sends at most 5 per page load), so one
+ * user cannot fill the error table.
+ */
 @ApiTags('monitoring')
 @Controller('client-errors')
 @TenantOptional()
@@ -14,7 +27,7 @@ export class ClientErrorsController {
 
   @Post()
   @HttpCode(204)
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Throttle({ default: { limit: 60, ttl: 3_600_000 } })
   async report(@Body() dto: ClientErrorDto): Promise<void> {
     await this.monitoring.reportClientError(dto);
   }
@@ -34,17 +47,17 @@ export class AdminErrorsController {
   }
 
   @Get(':id')
-  get(@Param('id', ParseIntPipe) id: number) {
-    return this.monitoring.get(BigInt(id));
+  get(@Param('id') id: string) {
+    return this.monitoring.get(errorId(id));
   }
 
   @Post(':id/resolve')
-  resolve(@Param('id', ParseIntPipe) id: number) {
-    return this.monitoring.setResolved(BigInt(id), true);
+  resolve(@Param('id') id: string) {
+    return this.monitoring.setResolved(errorId(id), true);
   }
 
   @Post(':id/reopen')
-  reopen(@Param('id', ParseIntPipe) id: number) {
-    return this.monitoring.setResolved(BigInt(id), false);
+  reopen(@Param('id') id: string) {
+    return this.monitoring.setResolved(errorId(id), false);
   }
 }
