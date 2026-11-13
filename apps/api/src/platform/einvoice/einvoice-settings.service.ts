@@ -15,6 +15,15 @@ import type { UpdateEInvoiceSettingsDto } from './dto/einvoice.dto.js';
 /** Where SANDBOX sends by default: the local mock (`npx jofotara-kit serve --port 8080`). */
 export const DEFAULT_SANDBOX_URL = 'http://127.0.0.1:8080';
 
+/**
+ * PRODUCTION e-invoicing is allowed only on a production server, or when the
+ * operator explicitly opts in. EINVOICE_ALLOW_PRODUCTION is read from
+ * process.env because it is not in the config schema yet (platform session).
+ */
+export function productionAllowed(nodeEnv: string | undefined, allowFlag: string | undefined): boolean {
+  return nodeEnv === 'production' || allowFlag === 'true';
+}
+
 type SettingsRow = {
   environment: 'SANDBOX' | 'PRODUCTION';
   baseUrl: string | null;
@@ -82,6 +91,16 @@ export class EInvoiceSettingsService {
     const userId = this.support.userId();
     const existing = await db.eInvoiceSettings.findFirst({ where: { companyId } });
 
+    // Production sends real tax records: only on a production server (or with the explicit flag).
+    if (
+      dto.environment === 'PRODUCTION' &&
+      !productionAllowed(this.config.get('NODE_ENV', { infer: true }), process.env.EINVOICE_ALLOW_PRODUCTION)
+    ) {
+      throw new DomainError(
+        ErrorCode.VALIDATION,
+        'PRODUCTION e-invoicing is only allowed on a production server (NODE_ENV=production) or with EINVOICE_ALLOW_PRODUCTION=true',
+      );
+    }
     // Production sends real tax records: the owner's call only (BUILD_PLAN §12.3).
     if (dto.environment === 'PRODUCTION' && existing?.environment !== 'PRODUCTION') {
       const role = ClsServiceManager.getClsService<RequestContext>().get('roleCode');
@@ -92,7 +111,11 @@ export class EInvoiceSettingsService {
 
     const baseUrl =
       dto.environment === 'SANDBOX'
-        ? normalizeSandboxUrl(dto.baseUrl, this.config.get('EINVOICE_SANDBOX_HOSTS', { infer: true }))
+        ? normalizeSandboxUrl(
+            dto.baseUrl,
+            this.config.get('EINVOICE_SANDBOX_HOSTS', { infer: true }),
+            this.config.get('NODE_ENV', { infer: true }),
+          )
         : null;
     // The stored secret belongs to the server it was entered for: a change of
     // environment or sandbox URL drops it unless a new one comes with it, so a
@@ -183,7 +206,21 @@ export class EInvoiceSettingsService {
   async connection(companyId: bigint) {
     const { db } = this.support.tenant();
     const s = await db.eInvoiceSettings.findFirst({ where: { companyId } });
+    // Disabling e-invoicing stops the queue: the sender turns this into FAILED, not a send.
+    if (s && !s.isEnabled) {
+      throw new DomainError(ErrorCode.EINVOICE_NOT_READY, 'E-invoicing is disabled for this company');
+    }
     if (!s?.clientId || !s.secretEncrypted) return null;
+    // Re-checked at send time: a stored PRODUCTION setting must not reach the production host on a server that does not allow it.
+    if (
+      s.environment === 'PRODUCTION' &&
+      !productionAllowed(this.config.get('NODE_ENV', { infer: true }), process.env.EINVOICE_ALLOW_PRODUCTION)
+    ) {
+      throw new DomainError(
+        ErrorCode.EINVOICE_NOT_READY,
+        'PRODUCTION e-invoicing is only allowed on a production server (NODE_ENV=production) or with EINVOICE_ALLOW_PRODUCTION=true',
+      );
+    }
     const key = this.encryptionKey();
     if (!key) return null;
     let secretKey: string;
@@ -192,9 +229,25 @@ export class EInvoiceSettingsService {
     } catch {
       return null;
     }
+    // A stored sandbox URL is checked again at send time against today's
+    // rules and EINVOICE_SANDBOX_HOSTS (TRADE-24): a host that was allowed
+    // when saved, or saved before the rule, is not posted to.
+    let sandboxUrl = DEFAULT_SANDBOX_URL;
+    if (s.environment !== 'PRODUCTION' && s.baseUrl) {
+      try {
+        sandboxUrl =
+          normalizeSandboxUrl(
+            s.baseUrl,
+            this.config.get('EINVOICE_SANDBOX_HOSTS', { infer: true }),
+            this.config.get('NODE_ENV', { infer: true }),
+          ) ?? DEFAULT_SANDBOX_URL;
+      } catch (err) {
+        throw new DomainError(ErrorCode.EINVOICE_NOT_READY, (err as Error).message);
+      }
+    }
     return {
       environment: s.environment,
-      baseUrl: s.environment === 'PRODUCTION' ? JOFOTARA_PRODUCTION_URL : (s.baseUrl ?? DEFAULT_SANDBOX_URL),
+      baseUrl: s.environment === 'PRODUCTION' ? JOFOTARA_PRODUCTION_URL : sandboxUrl,
       clientId: s.clientId,
       secretKey,
       track: s.track,
@@ -208,8 +261,13 @@ export class EInvoiceSettingsService {
  * and must be this machine — or a host the operator listed in
  * EINVOICE_SANDBOX_HOSTS (comma-separated), e.g. a shared mock. So the
  * server never posts to an arbitrary address chosen in the settings screen.
+ * In production, loopback is accepted only when listed too (hostname or hostname:port).
  */
-function normalizeSandboxUrl(raw: string | null | undefined, allowed: string | undefined): string | null {
+function normalizeSandboxUrl(
+  raw: string | null | undefined,
+  allowed: string | undefined,
+  nodeEnv: string | undefined,
+): string | null {
   const value = raw?.trim();
   if (!value) return null;
   let url: URL;
@@ -226,7 +284,10 @@ function normalizeSandboxUrl(raw: string | null | undefined, allowed: string | u
     throw new DomainError(ErrorCode.VALIDATION, 'The sandbox must not point at the production JoFotara server');
   }
   const extra = new Set((allowed ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean));
-  if (!LOOPBACK_HOSTS.has(host) && !extra.has(host)) {
+  const hostPort = url.port ? `${host}:${url.port}` : host;
+  const listed = extra.has(host) || extra.has(hostPort);
+  const loopbackOk = LOOPBACK_HOSTS.has(host) && (nodeEnv !== 'production' || listed);
+  if (!loopbackOk && !listed) {
     throw new DomainError(
       ErrorCode.VALIDATION,
       'The sandbox URL must be on this server (127.0.0.1 / localhost) or listed in EINVOICE_SANDBOX_HOSTS',

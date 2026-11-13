@@ -151,6 +151,8 @@ interface ReturnLike {
     taxAmount: Dec;
     lineTotal: Dec;
     item: { code: string; nameAr: string } | null;
+    /** The quantity and price are in the original line's unit (TRADE-13). */
+    originalLine?: { itemUnit?: { unit: { nameAr: string } | null } | null } | null;
   }[];
   einvoice?: EInvoiceState | null;
 }
@@ -170,10 +172,11 @@ export function salesReturnPrint(ret: ReturnLike, lang: Lang): DocumentPrint {
       { label: t(lang, 'الرقم الضريبي للعميل', 'Customer tax no.'), value: ret.customer?.taxNumber ?? '—' },
     ],
     lines: {
-      columns: lineColumns(lang).filter((c) => c.key !== 'unit'),
+      columns: lineColumns(lang),
       rows: ret.lines.map((l) => ({
         no: l.lineNo,
         item: l.item ? `${l.item.code} — ${l.item.nameAr}` : '',
+        unit: l.originalLine?.itemUnit?.unit?.nameAr ?? '',
         qty: l.qty.toString(),
         price: l.unitPrice.toString(),
         discount: l.discountAmount.toString(),

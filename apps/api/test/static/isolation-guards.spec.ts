@@ -28,6 +28,7 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/jobs/preflight.service.ts': 'server checks: version, migrations, plans, admins, settings',
   'src/jobs/tenant-purge.service.ts': "deletes one tenant's rows; every statement filters on tenant_id",
   'src/jobs/tenant-status.service.ts': 'subscription lifecycle across tenants',
+  'src/jobs/stock-verify.service.ts': 'lists tenants (platform table), then verifies each in its own tenant context',
   'src/platform/admin/admin.service.ts': 'platform console (platform admins only)',
   'src/platform/auth/auth.service.ts': 'sign-in and registration happen before a tenant is chosen',
   'src/platform/auth/token.service.ts': 'refresh tokens belong to users, not tenants',

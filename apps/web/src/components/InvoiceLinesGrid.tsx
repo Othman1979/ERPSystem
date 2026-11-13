@@ -3,6 +3,7 @@ import { Button, InputNumber } from 'antd';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { lineAmounts, type LineAmounts } from '../format/invoiceMath';
+import { useCompany } from './CompanyProfileForm';
 import { formatAmount, sum } from '../format/number';
 import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
@@ -40,13 +41,14 @@ interface Props {
   focusSignal?: number;
 }
 
-function amountsFor(l: InvoiceLineDraft, items: InvoiceItemOption[]): LineAmounts {
+function amountsFor(l: InvoiceLineDraft, items: InvoiceItemOption[], pricesIncludeTax: boolean): LineAmounts {
   const item = items.find((i) => i.id === l.itemId);
   return lineAmounts({
     qty: l.qty,
     price: l.price ?? item?.price,
     discountPct: l.discountPct,
     taxRate: item?.taxRate,
+    pricesIncludeTax,
   });
 }
 
@@ -149,7 +151,9 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
     onKeyDown: (e: React.KeyboardEvent) => onCellKeyDown(e, row, col),
   });
 
-  const lineTotals = lines.map((l) => amountsFor(l, itemOptions));
+  // The server prices the invoice with the company setting (ADR-017): the live totals follow it.
+  const pricesIncludeTax = useCompany().data?.pricesIncludeTax === true;
+  const lineTotals = lines.map((l) => amountsFor(l, itemOptions, pricesIncludeTax));
   const discountTotal = sum(lineTotals.map((a) => a.discount));
   const totals = {
     net: sum(lineTotals.map((a) => a.net)),

@@ -55,6 +55,8 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_INSUFFICIENT]: HttpStatus.CONFLICT,
   [ErrorCode.BACKDATED_STOCK_POSTING]: HttpStatus.CONFLICT,
+  [ErrorCode.GRN_ALREADY_INVOICED]: HttpStatus.CONFLICT,
+  [ErrorCode.STOCK_COUNT_STALE]: HttpStatus.CONFLICT,
 };
 
 export class DomainError extends HttpException {

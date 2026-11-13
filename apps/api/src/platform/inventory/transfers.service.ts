@@ -11,14 +11,10 @@ import { PostingService } from '../journal/posting.service.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import type { CreateStockTransferDto } from './dto/inventory.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
+import { retryOnLockConflict } from '../shared/document-support.service.js';
 
 const SOURCE = 'STOCK_TRANSFER';
 
-function isRetryable(err: unknown): boolean {
-  const code = (err as { code?: string }).code;
-  const msg = String((err as Error)?.message ?? '');
-  return code === 'P2034' || /deadlock|lock wait timeout/i.test(msg);
-}
 
 /**
  * Inter-warehouse transfers (§7.4, §9.2): OUT at source + IN at destination
@@ -179,7 +175,7 @@ export class TransfersService {
     const companyId = await this.companyId(db);
     const userId = this.userId();
 
-    const result = await this.withRetry(() =>
+    const result = await retryOnLockConflict(() =>
       db.$transaction(async (tx) => {
         // Lock the document first (§10.1 step 7). As the first statement it also
         // makes every later read see the latest committed state, so two
@@ -217,27 +213,15 @@ export class TransfersService {
           ]),
         );
 
-        // OUT from source then IN to destination at the SAME avg cost.
-        // Process items in a fixed order to keep lock ordering deterministic.
-        const sorted = [...draft.lines].sort((a, b) => Number(a.itemId - b.itemId));
-        for (const line of sorted) {
-          const out = await this.ledger.applyMovement(tx, companyId, {
-            warehouseId: draft.fromWarehouseId,
+        // OUT of the source and IN to the destination at the same value; the
+        // item's company-level cost does not change (§9.2).
+        for (const line of draft.lines) {
+          await this.ledger.applyTransfer(tx, companyId, {
             itemId: line.itemId,
+            fromWarehouseId: draft.fromWarehouseId,
+            toWarehouseId: draft.toWarehouseId,
             movementDate: transferDate,
-            type: 'OUT',
             qty: line.qty.toString(),
-            sourceType: SOURCE,
-            sourceId: draft.id,
-            sourceLineId: line.id,
-          });
-          await this.ledger.applyMovement(tx, companyId, {
-            warehouseId: draft.toWarehouseId,
-            itemId: line.itemId,
-            movementDate: transferDate,
-            type: 'IN',
-            qty: line.qty.toString(),
-            unitCost: out.unitCost.toString(),
             sourceType: SOURCE,
             sourceId: draft.id,
             sourceLineId: line.id,
@@ -275,7 +259,7 @@ export class TransfersService {
     const companyId = await this.companyId(db);
     const userId = this.userId();
 
-    const result = await this.withRetry(() =>
+    const result = await retryOnLockConflict(() =>
       db.$transaction(async (tx) => {
         // Lock the document first (§10.1 step 7). As the first statement it also
         // makes every later read see the latest committed state, so two
@@ -293,13 +277,18 @@ export class TransfersService {
         }
         const existing = await tx.stockTransfer.findFirst({ where: { reversalOfId: original.id } });
         if (existing) throw new DomainError(ErrorCode.CONFLICT, 'Transfer already reversed');
+        // TRADE-19: reversing a reversal would post a third, opposite transfer.
+        if (original.reversalOfId !== null) {
+          throw new DomainError(ErrorCode.CONFLICT, 'A reversal cannot be reversed');
+        }
 
         await this.posting.resolveOpenPeriod(tx, tenantId, companyId, reversalDate);
 
         const origMovements = await tx.stockMovement.findMany({
-          where: { tenantId, sourceType: SOURCE, sourceId: original.id, movementType: 'OUT' },
+          where: { tenantId, sourceType: SOURCE, sourceId: original.id },
         });
-        const costByLine = new Map(origMovements.map((m) => [m.sourceLineId, m.unitCost]));
+        const outByLine = new Map(origMovements.filter((m) => m.movementType === 'OUT').map((m) => [m.sourceLineId, m]));
+        const inByLine = new Map(origMovements.filter((m) => m.movementType === 'IN').map((m) => [m.sourceLineId, m]));
 
         const reversal = await tx.stockTransfer.create({
           data: {
@@ -335,29 +324,22 @@ export class TransfersService {
             { itemId: l.itemId, warehouseId: original.toWarehouseId },
           ]),
         );
-        const sorted = [...original.lines].sort((a, b) => Number(a.itemId - b.itemId));
-        for (const line of sorted) {
-          const unitCost = costByLine.get(line.id)?.toString();
-          const out = await this.ledger.applyMovement(tx, companyId, {
-            warehouseId: original.toWarehouseId,
+        // DB-04: the reversal mirrors the original legs at their own cost.
+        for (const line of original.lines) {
+          const out = outByLine.get(line.id);
+          await this.ledger.applyTransfer(tx, companyId, {
             itemId: line.itemId,
+            fromWarehouseId: original.toWarehouseId,
+            toWarehouseId: original.fromWarehouseId,
             movementDate: reversalDate,
-            type: 'OUT',
             qty: line.qty.toString(),
+            unitCost: out?.unitCost.toString(),
+            totalCost: out?.totalCost.toString(),
             sourceType: SOURCE,
             sourceId: reversal.id,
             sourceLineId: line.id,
-          });
-          await this.ledger.applyMovement(tx, companyId, {
-            warehouseId: original.fromWarehouseId,
-            itemId: line.itemId,
-            movementDate: reversalDate,
-            type: 'IN',
-            qty: line.qty.toString(),
-            unitCost: unitCost ?? out.unitCost.toString(),
-            sourceType: SOURCE,
-            sourceId: reversal.id,
-            sourceLineId: line.id,
+            reversalOfInId: inByLine.get(line.id)?.id ?? null,
+            reversalOfOutId: out?.id ?? null,
           });
         }
 
@@ -376,12 +358,4 @@ export class TransfersService {
     return this.get(result.id);
   }
 
-  private async withRetry<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      return await fn();
-    } catch (err) {
-      if (isRetryable(err)) return fn();
-      throw err;
-    }
-  }
 }
