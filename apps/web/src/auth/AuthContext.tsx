@@ -1,10 +1,11 @@
-import { createContext, Fragment, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, Fragment, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ApiError,
   authControllerLogin,
   authControllerLogout,
   authControllerRegister,
+  isConnectionError,
   meControllerMe,
   meControllerSwitchTenant,
   setAccessToken,
@@ -56,7 +57,11 @@ export interface MeData {
 }
 
 interface AuthState {
-  status: 'loading' | 'authed' | 'guest';
+  /**
+   * `unreachable`: the session could not be checked because the server did not
+   * answer (WEB-04). The session may well be valid, so this is not `guest`.
+   */
+  status: 'loading' | 'authed' | 'guest' | 'unreachable';
   me: MeData | null;
   login: (email: string, password: string) => Promise<void>;
   register: (dto: RegisterDto) => Promise<void>;
@@ -120,8 +125,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAccessToken(null);
         setMe(null);
         setStatus('guest');
+      } else if (isConnectionError(err) || (err instanceof ApiError && err.status >= 500)) {
+        // No answer about the session. A signed-in user stays signed in (the
+        // lists show their own errors); otherwise say the server is unreachable.
+        setStatus((s) => (s === 'authed' ? s : 'unreachable'));
       } else {
-        // Network/server error — treat as guest but keep it simple.
         setStatus('guest');
       }
     }
@@ -190,13 +198,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshMe();
   }, [refreshMe, queryClient]);
 
-  return (
-    <AuthContext.Provider
-      value={{ status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch }}
-    >
-      {children}
-    </AuthContext.Provider>
+  // A new object only when something in it changes, so useAuth() consumers do
+  // not re-render on every provider render (WEB-18).
+  const value = useMemo<AuthState>(
+    () => ({ status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch }),
+    [status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthState {

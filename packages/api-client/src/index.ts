@@ -13,13 +13,18 @@ export {
   apiFetch,
   apiFetchBlob,
   apiFetchData,
+  CLIENT_ERROR,
+  DOWNLOAD_TIMEOUT_MS,
   filenameFromDisposition,
   getAccessToken,
   getBranchId,
+  isConnectionError,
+  onApiWrite,
+  REQUEST_TIMEOUT_MS,
   setAccessToken,
   setBranchId,
 } from './runtime';
-export type { ApiErrorBody, ApiFile, ApiResponse } from './runtime';
+export type { ApiErrorBody, ApiFile, ApiRequestInit, ApiResponse, ApiWrite } from './runtime';
 
 // orval-generated client (do not edit src/generated/* by hand)
 export * from './generated/api';

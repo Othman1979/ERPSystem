@@ -1096,6 +1096,13 @@ export const ar = {
   language: {
     switchTo: 'English',
   },
+  connection: {
+    title: 'تعذّر الاتصال بالخادم',
+    text: 'قد يكون الخادم قيد التحديث، أو أن الاتصال بالإنترنت منقطع. جلستك محفوظة، فلا داعي لتسجيل الدخول من جديد.',
+    retryNow: 'أعد المحاولة الآن',
+    retrying: 'جارٍ الاتصال…',
+    autoRetry: 'إعادة المحاولة تلقائياً بعد {{seconds}} ث',
+  },
   health: {
     title: 'فحص الاتصال',
     apiOk: 'الواجهة متصلة بالخادم',
@@ -1107,6 +1114,10 @@ export const ar = {
   },
   errors: {
     RATE_LIMITED: 'محاولات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.',
+    NETWORK_ERROR: 'تعذّر الاتصال بالخادم. تحقق من اتصالك بالإنترنت ثم أعد المحاولة.',
+    NETWORK_TIMEOUT: 'لم يردّ الخادم في الوقت المحدد. أعد المحاولة بعد قليل.',
+    SERVER_UNAVAILABLE: 'الخادم غير متاح الآن، وقد يكون قيد التحديث. أعد المحاولة بعد قليل.',
+    INVALID_RESPONSE: 'وصل ردّ غير متوقع من الخادم. أعد المحاولة، وإن تكرر فأبلغ الدعم.',
     INTERNAL: 'خطأ داخلي في الخادم',
     VALIDATION: 'بيانات غير صالحة',
     UNAUTHORIZED: 'غير مصرح',
@@ -2235,6 +2246,13 @@ export const en: typeof ar = {
   language: {
     switchTo: 'العربية',
   },
+  connection: {
+    title: 'Cannot reach the server',
+    text: 'The server may be restarting, or your internet connection is down. Your session is kept, so there is no need to sign in again.',
+    retryNow: 'Retry now',
+    retrying: 'Connecting…',
+    autoRetry: 'Retrying automatically in {{seconds}} s',
+  },
   health: {
     title: 'Connection Check',
     apiOk: 'Frontend reached the server',
@@ -2246,6 +2264,10 @@ export const en: typeof ar = {
   },
   errors: {
     RATE_LIMITED: 'Too many attempts. Wait a minute and try again.',
+    NETWORK_ERROR: 'Could not reach the server. Check your internet connection and try again.',
+    NETWORK_TIMEOUT: 'The server did not answer in time. Try again in a moment.',
+    SERVER_UNAVAILABLE: 'The server is unavailable right now, possibly restarting. Try again in a moment.',
+    INVALID_RESPONSE: 'The server sent an unexpected response. Try again, and contact support if it happens again.',
     INTERNAL: 'Internal server error',
     VALIDATION: 'Invalid input',
     UNAUTHORIZED: 'Unauthorized',
