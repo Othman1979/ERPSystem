@@ -29,3 +29,10 @@ describe('invoice balance', () => {
     expect(none.outstanding).toBe('0.000');
   });
 });
+
+describe('withBalance — cash invoices', () => {
+  it('a CASH invoice owes nothing even though paid_amount stays 0', () => {
+    const row = withBalance({ id: 9n, grandTotal: '31.320', paidAmount: '0', paymentType: 'CASH' }, new Map());
+    expect(row.outstanding).toBe('0.000');
+  });
+});

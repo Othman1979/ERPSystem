@@ -211,6 +211,10 @@ export class GoodsNotesService {
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
+        // Lock the document first (§10.1 step 7). As the first statement it also
+        // makes every later read see the latest committed state, so two
+        // concurrent requests cannot both post or reverse it.
+        await tx.$queryRaw`SELECT id FROM goods_notes WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
         const draft = await tx.goodsNote.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },

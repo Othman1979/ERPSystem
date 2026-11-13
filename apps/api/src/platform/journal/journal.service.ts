@@ -3,6 +3,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
+import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -134,6 +135,7 @@ export class JournalService {
   async createDraft(dto: CreateJournalEntryDto) {
     const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
+    const branchId = currentBranchId();
     await this.assertParties(dto.lines);
 
     const entry = await db.$transaction(async (tx) => {
@@ -141,7 +143,8 @@ export class JournalService {
         data: {
           tenantId,
           companyId,
-          branchId: dto.branchId ? BigInt(dto.branchId) : null,
+          // Branch from the request context (BranchGuard), never the body — ADR-003.
+          branchId,
           entryDate: new Date(dto.entryDate),
           sourceType: MANUAL_SOURCE,
           voucherType: dto.voucherType ?? 'JOURNAL',
@@ -166,11 +169,7 @@ export class JournalService {
           partyType: l.partyType ?? null,
           partyId: l.partyId ? BigInt(l.partyId) : null,
           description: l.description ?? null,
-          branchId: l.branchId
-            ? BigInt(l.branchId)
-            : dto.branchId
-              ? BigInt(dto.branchId)
-              : null,
+          branchId,
         })),
       });
       return created;
@@ -193,6 +192,7 @@ export class JournalService {
     if (entry.status !== 'DRAFT') {
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft entries can be deleted');
     }
+    assertBranchAllowed(entry.branchId);
     await db.journalEntry.delete({ where: { id } });
     await this.audit.log({
       action: 'journal.delete_draft',
@@ -232,6 +232,7 @@ export class JournalService {
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Entry is not a draft');
         }
+        assertBranchAllowed(draft.branch_id);
 
         const lines = await tx.journalLine.findMany({
           where: { tenantId, journalEntryId: id },
