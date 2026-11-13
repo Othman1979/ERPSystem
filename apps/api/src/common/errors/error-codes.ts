@@ -22,13 +22,16 @@ export enum ErrorCode {
   VOUCHER_HAS_ALLOCATIONS = 'VOUCHER_HAS_ALLOCATIONS',
   // §8.6: opening stock enters through an OPENING stock adjustment only.
   OPENING_INVENTORY_VIA_STOCK = 'OPENING_INVENTORY_VIA_STOCK',
+  // Phase 9 — uploads (logo, import files)
+  UPLOAD_TOO_LARGE = 'UPLOAD_TOO_LARGE',
+  UPLOAD_TYPE_NOT_ALLOWED = 'UPLOAD_TYPE_NOT_ALLOWED',
   // Phase 7 — JoFotara (docs/decisions/0005)
   EINVOICE_BUYER_REQUIRED = 'EINVOICE_BUYER_REQUIRED',
   EINVOICE_REASON_REQUIRED = 'EINVOICE_REASON_REQUIRED',
   EINVOICE_NOT_READY = 'EINVOICE_NOT_READY',
   // Phase 8 — reports
   REPORT_TOO_LARGE = 'REPORT_TOO_LARGE',
-  // 429: too many requests in a minute (ADR-008)
+  // 429: too many requests in a minute (ADR-011)
   RATE_LIMITED = 'RATE_LIMITED',
   INTERNAL = 'INTERNAL',
 }

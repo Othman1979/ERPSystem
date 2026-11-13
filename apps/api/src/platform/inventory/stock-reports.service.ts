@@ -7,6 +7,9 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { EXPORT_LIMITS } from '../printing/printing.service.js';
 
+const ADJUSTMENT_SOURCE = 'STOCK_ADJUSTMENT';
+const TRANSFER_SOURCE = 'STOCK_TRANSFER';
+
 /** A report the JSON endpoint will not answer in one piece: the rows it would have and the cap. */
 function tooLarge(rows: number): DomainError {
   return new DomainError(
@@ -38,6 +41,136 @@ export class StockReportsService {
     });
     if (!company) throw new DomainError(ErrorCode.INTERNAL, 'Tenant has no active company');
     return company.id;
+  }
+
+  /**
+   * Movement filters for a period with opening balances (ADR-008): the
+   * opening part is everything before `from` plus the movements of OPENING
+   * stock adjustments (and their reversals) dated in the period; the period
+   * part is the rest of the period.
+   */
+  private async periodWhere(
+    db: ReturnType<PrismaService['forTenant']>,
+    range: { from?: string; to?: string },
+  ) {
+    const openingDocs = await db.stockAdjustment.findMany({
+      where: { adjustmentType: 'OPENING' },
+      select: { id: true },
+    });
+    const fromOpeningDoc = { sourceType: ADJUSTMENT_SOURCE, sourceId: { in: openingDocs.map((a) => a.id) } };
+    const inRange = {
+      ...(range.from || range.to
+        ? {
+            movementDate: {
+              ...(range.from ? { gte: new Date(range.from) } : {}),
+              ...(range.to ? { lte: new Date(range.to) } : {}),
+            },
+          }
+        : {}),
+    };
+    const openingInRange = { AND: [fromOpeningDoc, inRange] };
+    return {
+      opening: range.from
+        ? { OR: [{ movementDate: { lt: new Date(range.from) } }, openingInRange] }
+        : openingInRange,
+      period: { AND: [inRange, { NOT: fromOpeningDoc }] },
+    };
+  }
+
+  /**
+   * Items balance (ميزان المواد): per item the opening quantity and value,
+   * the period's ins and outs, and the closing quantity and value. Company
+   * wide, transfers between warehouses are left out (they move nothing in or
+   * out of the company); with a warehouse they count as its ins and outs.
+   */
+  async itemBalances(query: { warehouseId?: string; from?: string; to?: string }) {
+    const { db } = this.tenant();
+    const parts = await this.periodWhere(db, query);
+    const scope = query.warehouseId
+      ? { warehouseId: BigInt(query.warehouseId) }
+      : { NOT: { sourceType: TRANSFER_SOURCE } };
+    const sums = (part: object) =>
+      db.stockMovement.groupBy({
+        by: ['itemId', 'movementType'],
+        where: { AND: [scope, part] },
+        _sum: { qtyIn: true, qtyOut: true, totalCost: true },
+      });
+    const [opening, period] = await Promise.all([sums(parts.opening), sums(parts.period)]);
+
+    const zero = () => ({
+      openingQty: new Decimal(0),
+      openingValue: new Decimal(0),
+      inQty: new Decimal(0),
+      inValue: new Decimal(0),
+      outQty: new Decimal(0),
+      outValue: new Decimal(0),
+    });
+    const byItem = new Map<bigint, ReturnType<typeof zero>>();
+    const acc = (itemId: bigint) => {
+      let a = byItem.get(itemId);
+      if (!a) byItem.set(itemId, (a = zero()));
+      return a;
+    };
+    for (const g of opening) {
+      const a = acc(g.itemId);
+      const cost = new Decimal(g._sum.totalCost?.toString() ?? 0);
+      a.openingQty = a.openingQty.plus(g._sum.qtyIn?.toString() ?? 0).minus(g._sum.qtyOut?.toString() ?? 0);
+      a.openingValue = g.movementType === 'IN' ? a.openingValue.plus(cost) : a.openingValue.minus(cost);
+    }
+    for (const g of period) {
+      const a = acc(g.itemId);
+      const cost = new Decimal(g._sum.totalCost?.toString() ?? 0);
+      if (g.movementType === 'IN') {
+        a.inQty = a.inQty.plus(g._sum.qtyIn?.toString() ?? 0);
+        a.inValue = a.inValue.plus(cost);
+      } else {
+        a.outQty = a.outQty.plus(g._sum.qtyOut?.toString() ?? 0);
+        a.outValue = a.outValue.plus(cost);
+      }
+    }
+    if (byItem.size > EXPORT_LIMITS.xlsx) throw tooLarge(byItem.size);
+
+    const items = await db.item.findMany({
+      where: { id: { in: [...byItem.keys()] } },
+      select: { id: true, code: true, nameAr: true, nameEn: true, baseUnit: { select: { code: true, nameAr: true } } },
+    });
+    const rows = items
+      .map((item) => {
+        const a = byItem.get(item.id)!;
+        const closingQty = a.openingQty.plus(a.inQty).minus(a.outQty);
+        const closingValue = a.openingValue.plus(a.inValue).minus(a.outValue);
+        return {
+          itemId: item.id.toString(),
+          code: item.code,
+          nameAr: item.nameAr,
+          nameEn: item.nameEn,
+          unit: item.baseUnit,
+          openingQty: a.openingQty.toString(),
+          openingValue: a.openingValue.toFixed(3),
+          inQty: a.inQty.toString(),
+          inValue: a.inValue.toFixed(3),
+          outQty: a.outQty.toString(),
+          outValue: a.outValue.toFixed(3),
+          closingQty: closingQty.toString(),
+          closingValue: closingValue.toFixed(3),
+        };
+      })
+      .filter((r) =>
+        [r.openingQty, r.openingValue, r.inQty, r.outQty, r.closingValue].some((v) => !new Decimal(v).isZero()),
+      )
+      .sort((x, y) => x.code.localeCompare(y.code));
+
+    const total = (key: 'openingValue' | 'inValue' | 'outValue' | 'closingValue') =>
+      rows.reduce((s, r) => s.plus(r[key]), new Decimal(0)).toFixed(3);
+    return {
+      rows,
+      totals: {
+        openingValue: total('openingValue'),
+        inValue: total('inValue'),
+        outValue: total('outValue'),
+        closingValue: total('closingValue'),
+      },
+    };
   }
 
   /**
@@ -233,17 +366,10 @@ export class StockReportsService {
       itemId: BigInt(itemId),
       ...(query?.warehouseId ? { warehouseId: BigInt(query.warehouseId) } : {}),
     };
+    // Opening stock is the opening position, not a row (ADR-008).
+    const parts = await this.periodWhere(db, { from: query?.from, to: query?.to });
     const where = {
-      ...scope,
-      ...(query?.sourceType ? { sourceType: query.sourceType } : {}),
-      ...(query?.from || query?.to
-        ? {
-            movementDate: {
-              ...(query.from ? { gte: new Date(query.from) } : {}),
-              ...(query.to ? { lte: new Date(query.to) } : {}),
-            },
-          }
-        : {}),
+      AND: [scope, query?.sourceType ? { sourceType: query.sourceType } : {}, parts.period],
     };
     const count = await db.stockMovement.count({ where });
     if (count > EXPORT_LIMITS.xlsx) throw tooLarge(count);
@@ -259,14 +385,13 @@ export class StockReportsService {
         where: { itemId: BigInt(itemId), qtyOnHand: { not: 0 } },
         include: { warehouse: { select: { id: true, code: true, nameAr: true } } },
       }),
-      // Opening position = every movement of the item (warehouse filter kept) before `from`.
-      query?.from
-        ? db.stockMovement.groupBy({
-            by: ['movementType'],
-            where: { ...scope, movementDate: { lt: new Date(query.from) } },
-            _sum: { qtyIn: true, qtyOut: true, totalCost: true },
-          })
-        : Promise.resolve([]),
+      // Opening position: movements of the item (warehouse filter kept)
+      // before `from`, plus the period's opening stock.
+      db.stockMovement.groupBy({
+        by: ['movementType'],
+        where: { AND: [scope, parts.opening] },
+        _sum: { qtyIn: true, qtyOut: true, totalCost: true },
+      }),
     ]);
     let openingQty = new Decimal(0);
     let openingValue = new Decimal(0);
@@ -278,9 +403,13 @@ export class StockReportsService {
 
     let qtyIn = new Decimal(0);
     let qtyOut = new Decimal(0);
+    let valueIn = new Decimal(0);
+    let valueOut = new Decimal(0);
     const mapped = rows.map((m) => {
       qtyIn = qtyIn.plus(m.qtyIn.toString());
       qtyOut = qtyOut.plus(m.qtyOut.toString());
+      if (m.movementType === 'IN') valueIn = valueIn.plus(m.totalCost.toString());
+      else valueOut = valueOut.plus(m.totalCost.toString());
       return {
         id: m.id.toString(),
         movementDate: m.movementDate,
@@ -304,6 +433,13 @@ export class StockReportsService {
       totals: {
         qtyIn: qtyIn.toString(),
         qtyOut: qtyOut.toString(),
+        valueIn: valueIn.toFixed(3),
+        valueOut: valueOut.toFixed(3),
+      },
+      // Opening + the rows shown (with a sourceType filter, of those rows only).
+      closing: {
+        qty: openingQty.plus(qtyIn).minus(qtyOut).toString(),
+        value: openingValue.plus(valueIn).minus(valueOut).toFixed(3),
       },
       balances: balances.map((b) => ({
         warehouse: b.warehouse,

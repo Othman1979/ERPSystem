@@ -159,31 +159,30 @@ describe('Phase 8 — report exports', () => {
     {
       name: 'trial balance',
       url: () => '/api/v1/reports/trial-balance?from=2026-01-01&to=2026-12-31',
-      expected: (d) => [
-        ...d.rows.flatMap((r: J) => n(r.totalDebit, r.totalCredit, r.balance)),
-        ...n(d.totals.debit, d.totals.credit),
-      ],
+      // ADR-008: opening, movements and closing, each debit / credit.
+      expected: (d) =>
+        [...d.rows, d.totals].flatMap((r: J) =>
+          n(r.openingDebit, r.openingCredit, r.periodDebit, r.periodCredit, r.closingDebit, r.closingCredit),
+        ),
     },
     {
       name: 'general ledger',
       url: () => `/api/v1/reports/general-ledger?accountId=${acc['1103']}&from=2026-03-01`,
       expected: (d) => [
-        ...n(d.openingBalance),
+        ...n(nz(d.openingDebit), nz(d.openingCredit), d.openingBalance),
         ...d.rows.flatMap((r: J) => n(nz(r.debit), nz(r.credit), r.balance)),
-        ...n(
-          d.rows.reduce((s: Decimal, r: J) => s.plus(r.debit), new Decimal(0)),
-          d.rows.reduce((s: Decimal, r: J) => s.plus(r.credit), new Decimal(0)),
-          d.closingBalance,
-        ),
+        ...n(d.totalDebit, d.totalCredit),
+        ...n(nz(d.closingDebit), nz(d.closingCredit), d.closingBalance),
       ],
     },
     {
       name: 'party statement',
       url: () => `/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${id.c1}`,
       expected: (d) => [
-        ...n(d.openingBalance),
+        ...n(nz(d.openingDebit), nz(d.openingCredit), d.openingBalance),
         ...d.rows.flatMap((r: J) => n(nz(r.debit), nz(r.credit), r.balance)),
-        ...n(d.totalDebit, d.totalCredit, d.closingBalance),
+        ...n(d.totalDebit, d.totalCredit),
+        ...n(nz(d.closingDebit), nz(d.closingCredit), d.closingBalance),
       ],
     },
     {
@@ -211,6 +210,7 @@ describe('Phase 8 — report exports', () => {
         ...n(d.opening.value, d.opening.qty),
         ...d.rows.flatMap((r: J) => n(r.qtyIn, r.qtyOut, r.unitCost, r.totalCost, r.balanceQtyAfter)),
         ...n(d.totals.qtyIn, d.totals.qtyOut),
+        ...n(d.closing.value, d.closing.qty),
       ],
     },
     {

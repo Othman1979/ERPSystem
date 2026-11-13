@@ -32,6 +32,8 @@ export interface PostEntryParams {
   postingKind?: 'POST' | 'REVERSAL';
   voucherType?: 'JOURNAL' | 'RECEIPT_VOUCHER' | 'PAYMENT_VOUCHER';
   reversalOfId?: bigint | null;
+  /** Opening balances entry (§8.6): reports show it as the period's opening. */
+  isOpening?: boolean;
   description?: string | null;
   lines: JournalLineInput[];
   postedBy?: bigint | null;
@@ -171,6 +173,7 @@ export class PostingService {
           totalDebit,
           totalCredit,
           reversalOfId: params.reversalOfId ?? null,
+          isOpening: params.isOpening ?? false,
           postedAt: new Date(),
           postedBy: params.postedBy ?? null,
         },
@@ -261,6 +264,8 @@ export class PostingService {
       postingKind: 'REVERSAL',
       voucherType: original.voucherType,
       reversalOfId: original.id,
+      // A reversed opening entry stays in the opening balance (it nets out).
+      isOpening: original.isOpening,
       description: params.description ?? `Reversal of ${original.entryNo ?? original.id}`,
       lines: swapped,
       postedBy: params.postedBy ?? null,

@@ -306,6 +306,8 @@ export class AdjustmentsService {
             entryNo,
             sourceType: SOURCE,
             sourceId: draft.id,
+            // Opening stock is part of the opening balances in reports (§8.6).
+            isOpening: draft.adjustmentType === 'OPENING',
             description: draft.description ?? `Stock adjustment ${draft.adjustmentType}`,
             lines: journalLines,
             postedBy: userId ?? null,
@@ -448,6 +450,7 @@ export class AdjustmentsService {
             sourceId: reversal.id,
             postingKind: 'REVERSAL',
             reversalOfId: original.journalEntryId,
+            isOpening: original.adjustmentType === 'OPENING',
             description: `Reversal of adjustment ${original.docNo ?? original.id}`,
             lines: journalLines,
             postedBy: userId ?? null,
