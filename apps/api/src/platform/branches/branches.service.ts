@@ -61,20 +61,23 @@ export class BranchesService {
   }
 
   async create(dto: CreateBranchDto) {
-    await this.planLimits.assertBranchSlotAvailable();
     const companyId = await this.companyId();
     const cls = ClsServiceManager.getClsService<RequestContext>();
     try {
-      const branch = await this.tenant().branch.create({
-        data: {
-          tenantId: ClsServiceManager.getClsService<RequestContext>().get('tenantId')!,
-          companyId,
-          code: dto.code,
-          nameAr: dto.nameAr,
-          nameEn: dto.nameEn ?? null,
-          address: dto.address ?? null,
-          createdBy: cls.get('userId') ?? null,
-        },
+      // The plan check locks the tenant row, so it and the insert share one transaction.
+      const branch = await this.tenant().$transaction(async (tx) => {
+        await this.planLimits.assertBranchSlotAvailable(tx);
+        return tx.branch.create({
+          data: {
+            tenantId: ClsServiceManager.getClsService<RequestContext>().get('tenantId')!,
+            companyId,
+            code: dto.code,
+            nameAr: dto.nameAr,
+            nameEn: dto.nameEn ?? null,
+            address: dto.address ?? null,
+            createdBy: cls.get('userId') ?? null,
+          },
+        });
       });
       await this.audit.log({
         action: 'branch.create',

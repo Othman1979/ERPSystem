@@ -77,46 +77,23 @@ export class UsersService {
     });
   }
 
+  /** Role code of the calling member in the current tenant (PLAT-01). */
+  private async callerRoleCode(): Promise<string | undefined> {
+    const selfId = ClsServiceManager.getClsService<RequestContext>().get('membershipId');
+    if (!selfId) return undefined;
+    const self = await this.tenant().tenantMembership.findFirst({
+      where: { id: selfId },
+      select: { role: { select: { code: true } } },
+    });
+    return self?.role.code;
+  }
+
   async invite(dto: InviteUserDto) {
     const prisma = this.tenant();
     const role = await this.prisma.client.role.findUnique({ where: { code: dto.roleCode } });
     if (!role) throw DomainError.notFound('Role', dto.roleCode);
-
-    await this.planLimits.assertUserSlotAvailable();
-
-    const existingMembership = await prisma.tenantMembership.findFirst({
-      where: { user: { email: dto.email } },
-    });
-    if (existingMembership) {
-      throw new DomainError(ErrorCode.CONFLICT, 'User is already a member of this tenant');
-    }
-
-    // systemPrisma: users is a platform-global table; membership is tenant-scoped.
-    let user = await this.prisma.client.user.findUnique({ where: { email: dto.email } });
-    let temporaryPassword: string | undefined;
-
-    if (!user) {
-      if (dto.password) {
-        // The inviter chose this password deliberately, so no forced change; the member can change it any time.
-        user = await this.prisma.client.user.create({
-          data: {
-            email: dto.email,
-            passwordHash: await this.passwords.hash(dto.password),
-            fullName: dto.fullName ?? dto.email.split('@')[0]!,
-          },
-        });
-      } else {
-        // The invitee signs in with a generated password, so they must replace it first (ADR-012).
-        temporaryPassword = generateTemporaryPassword();
-        user = await this.prisma.client.user.create({
-          data: {
-            email: dto.email,
-            passwordHash: await this.passwords.hash(temporaryPassword),
-            fullName: dto.fullName ?? dto.email.split('@')[0]!,
-            mustChangePassword: true,
-          },
-        });
-      }
+    if (role.code === 'OWNER' && (await this.callerRoleCode()) !== 'OWNER') {
+      throw new DomainError(ErrorCode.FORBIDDEN, 'Only an owner can grant the owner role');
     }
 
     const branchIds = dto.branchIds?.map(BigInt) ?? [];
@@ -133,20 +110,67 @@ export class UsersService {
       if (!branch) throw DomainError.notFound('Branch', dto.defaultBranchId);
     }
 
+    // Hash before the transaction: it holds the tenant lock (plan limit).
+    // systemPrisma: users is a platform-global table.
+    const knownUser = await this.prisma.client.user.findUnique({ where: { email: dto.email } });
+    let temporaryPassword: string | undefined;
+    let newUser: Prisma.UserCreateInput | undefined;
+    if (!knownUser) {
+      const fullName = dto.fullName ?? dto.email.split('@')[0]!;
+      if (dto.password) {
+        // The inviter chose this password deliberately, so no forced change; the member can change it any time.
+        newUser = {
+          email: dto.email,
+          fullName,
+          passwordHash: await this.passwords.hash(dto.password),
+        };
+      } else {
+        // The invitee signs in with a generated password, so they must replace it first (ADR-012).
+        temporaryPassword = generateTemporaryPassword();
+        newUser = {
+          email: dto.email,
+          fullName,
+          passwordHash: await this.passwords.hash(temporaryPassword),
+          mustChangePassword: true,
+        };
+      }
+    }
+
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
-    const membership = await prisma.tenantMembership.create({
-      data: {
-        tenantId,
-        userId: user.id,
-        roleId: role.id,
-        status: 'ACTIVE',
-        defaultBranchId: dto.defaultBranchId ? BigInt(dto.defaultBranchId) : null,
-        invitedBy: ClsServiceManager.getClsService<RequestContext>().get('userId'),
-        allowedBranches: {
-          create: branchIds.map((branchId) => ({ branchId })),
+    const { membership, createdUser } = await prisma.$transaction(async (tx) => {
+      // First statement: locks the tenant row so concurrent invites cannot overshoot the plan (PLAT-04).
+      await this.planLimits.assertUserSlotAvailable(tx);
+
+      const existingMembership = await tx.tenantMembership.findFirst({
+        where: { user: { email: dto.email } },
+      });
+      if (existingMembership) {
+        throw new DomainError(ErrorCode.CONFLICT, 'User is already a member of this tenant');
+      }
+
+      let user = await tx.user.findUnique({ where: { email: dto.email } });
+      const createdUser = !user;
+      if (!user) {
+        if (!newUser)
+          throw new DomainError(ErrorCode.CONFLICT, 'User changed during invite; retry');
+        user = await tx.user.create({ data: newUser });
+      }
+
+      const membership = await tx.tenantMembership.create({
+        data: {
+          tenantId,
+          userId: user.id,
+          roleId: role.id,
+          status: 'ACTIVE',
+          defaultBranchId: dto.defaultBranchId ? BigInt(dto.defaultBranchId) : null,
+          invitedBy: ClsServiceManager.getClsService<RequestContext>().get('userId'),
+          allowedBranches: {
+            create: branchIds.map((branchId) => ({ branchId })),
+          },
         },
-      },
-      include: membershipInclude,
+        include: membershipInclude,
+      });
+      return { membership, createdUser };
     });
 
     await this.audit.log({
@@ -158,7 +182,7 @@ export class UsersService {
 
     return {
       ...serialize(membership),
-      ...(temporaryPassword ? { temporaryPassword } : {}),
+      ...(createdUser && temporaryPassword ? { temporaryPassword } : {}),
     };
   }
 
@@ -170,41 +194,32 @@ export class UsersService {
     });
     if (!membership) throw DomainError.notFound('Membership', membershipId.toString());
 
+    // PLAT-01: no self role/status change; only an owner grants OWNER or
+    // touches an owner's membership.
+    const selfId = ClsServiceManager.getClsService<RequestContext>().get('membershipId');
+    if (membershipId === selfId && (dto.roleCode !== undefined || dto.status !== undefined)) {
+      throw new DomainError(ErrorCode.FORBIDDEN, 'You cannot change your own role or status');
+    }
+    if (
+      (membership.role.code === 'OWNER' || dto.roleCode === 'OWNER') &&
+      (await this.callerRoleCode()) !== 'OWNER'
+    ) {
+      throw new DomainError(
+        ErrorCode.FORBIDDEN,
+        'Only an owner can grant the owner role or change an owner',
+      );
+    }
+
     const data: Prisma.TenantMembershipUncheckedUpdateInput = {};
+    let removesOwner = false;
     if (dto.roleCode !== undefined) {
       const role = await this.prisma.client.role.findUnique({ where: { code: dto.roleCode } });
       if (!role) throw DomainError.notFound('Role', dto.roleCode);
-
-      // Never allow removing the last OWNER of the tenant.
-      const isLeavingOwner =
-        membership.role.code === 'OWNER' && role.code !== 'OWNER';
-      if (isLeavingOwner || dto.status === 'SUSPENDED') {
-        const ownerCount = await prisma.tenantMembership.count({
-          where: { role: { code: 'OWNER' }, status: { not: 'SUSPENDED' } },
-        });
-        const selfId = ClsServiceManager.getClsService<RequestContext>().get('membershipId');
-        const targetsSelf = membershipId === selfId;
-        if (membership.role.code === 'OWNER' && (ownerCount <= 1 || targetsSelf)) {
-          // Allow self-demotion only if another active OWNER remains.
-          if (ownerCount <= 1) {
-            throw new DomainError(
-              ErrorCode.CONFLICT,
-              'Cannot remove or demote the last active OWNER',
-            );
-          }
-        }
-      }
+      removesOwner ||= membership.role.code === 'OWNER' && role.code !== 'OWNER';
       data.roleId = role.id;
     }
     if (dto.status !== undefined) {
-      if (membership.role.code === 'OWNER' && dto.status === 'SUSPENDED') {
-        const ownerCount = await prisma.tenantMembership.count({
-          where: { role: { code: 'OWNER' }, status: { not: 'SUSPENDED' } },
-        });
-        if (ownerCount <= 1) {
-          throw new DomainError(ErrorCode.CONFLICT, 'Cannot suspend the last active OWNER');
-        }
-      }
+      removesOwner ||= membership.role.code === 'OWNER' && dto.status === 'SUSPENDED';
       data.status = dto.status;
     }
     if (dto.defaultBranchId !== undefined) {
@@ -217,9 +232,24 @@ export class UsersService {
       }
     }
 
-    await prisma.tenantMembership.update({
-      where: { id: membershipId },
-      data,
+    await prisma.$transaction(async (tx) => {
+      if (removesOwner) {
+        // Never remove the last active OWNER. The tenant row lock comes first
+        // so two owners demoting each other at once cannot both pass the
+        // count (the count's snapshot is taken after the lock).
+        const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
+        await tx.$queryRaw`SELECT id FROM tenants WHERE id = ${tenantId} FOR UPDATE`;
+        const ownerCount = await tx.tenantMembership.count({
+          where: { role: { code: 'OWNER' }, status: { not: 'SUSPENDED' } },
+        });
+        if (ownerCount <= 1) {
+          throw new DomainError(
+            ErrorCode.CONFLICT,
+            'Cannot remove or suspend the last active OWNER',
+          );
+        }
+      }
+      await tx.tenantMembership.update({ where: { id: membershipId }, data });
     });
 
     if (dto.branchIds !== undefined) {
@@ -286,7 +316,10 @@ export class UsersService {
       select: { isPlatformAdmin: true },
     });
     if (target?.isPlatformAdmin) {
-      throw new DomainError(ErrorCode.PASSWORD_RESET_NOT_ALLOWED, 'A platform administrator password cannot be reset here');
+      throw new DomainError(
+        ErrorCode.PASSWORD_RESET_NOT_ALLOWED,
+        'A platform administrator password cannot be reset here',
+      );
     }
     // Users are global: a reset here would change the password for their other
     // companies too, which would let one company take over another's account.
@@ -300,12 +333,11 @@ export class UsersService {
       );
     }
     if (membership.role.code === 'OWNER') {
-      const callerMembership = await prisma.tenantMembership.findFirst({
-        where: { userId: callerId },
-        select: { role: { select: { code: true } } },
-      });
-      if (callerMembership?.role.code !== 'OWNER') {
-        throw new DomainError(ErrorCode.PASSWORD_RESET_NOT_ALLOWED, 'Only an owner can reset an owner password');
+      if ((await this.callerRoleCode()) !== 'OWNER') {
+        throw new DomainError(
+          ErrorCode.PASSWORD_RESET_NOT_ALLOWED,
+          'Only an owner can reset an owner password',
+        );
       }
     }
 

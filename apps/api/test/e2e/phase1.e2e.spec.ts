@@ -171,7 +171,9 @@ describe('Phase 1 — platform & tenant isolation (erp_test)', () => {
     expect(list.body).toHaveLength(2);
   });
 
-  it('rotates refresh tokens and revokes the family on reuse', async () => {
+  // Reuse within the 10-second grace window (ADR-012) answers 401 but keeps
+  // the family; reuse after it revokes the family (session-access.e2e).
+  it('rotates refresh tokens; a reuse within the grace window is refused without ending the session', async () => {
     const login = await api()
       .post('/api/v1/auth/login')
       .send({ email: `owner-b-${RUN}@test.dev`, password: PASS });
@@ -197,7 +199,7 @@ describe('Phase 1 — platform & tenant isolation (erp_test)', () => {
     const after = await api()
       .post('/api/v1/auth/refresh')
       .set('Cookie', [`refresh_token=${rotated}`]);
-    expect(after.status).toBe(401);
+    expect(after.status).toBe(200);
   });
 
   it('blocks platform admin endpoints for non-admins', async () => {
