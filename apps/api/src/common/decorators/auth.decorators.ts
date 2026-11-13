@@ -14,6 +14,13 @@ export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 export const TENANT_OPTIONAL_KEY = 'tenantOptional';
 export const TenantOptional = () => SetMetadata(TENANT_OPTIONAL_KEY, true);
 
+/**
+ * Lets a user whose password is temporary (User.mustChangePassword) reach this
+ * route. Everything else answers PASSWORD_CHANGE_REQUIRED until they change it.
+ */
+export const ALLOW_PENDING_PASSWORD_CHANGE_KEY = 'allowPendingPasswordChange';
+export const AllowPendingPasswordChange = () => SetMetadata(ALLOW_PENDING_PASSWORD_CHANGE_KEY, true);
+
 /** Requires platform admin (User.isPlatformAdmin). */
 export const IS_PLATFORM_ADMIN_KEY = 'isPlatformAdmin';
 export const PlatformAdmin = () => SetMetadata(IS_PLATFORM_ADMIN_KEY, true);

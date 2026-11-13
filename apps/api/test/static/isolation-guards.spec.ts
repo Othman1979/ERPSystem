@@ -23,6 +23,7 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/jobs/backup/backup.service.ts': 'whole-database backup (migrations list, server version)',
   'src/jobs/error-digest.service.ts': 'platform error table across tenants',
   'src/jobs/platform-admin-grant.service.ts': 'users are platform-wide',
+  'src/jobs/password-reset.service.ts': 'users and refresh tokens are platform-wide (CLI reset, ADR-012)',
   'src/jobs/preflight.service.ts': 'server checks: version, migrations, plans, admins, settings',
   'src/jobs/tenant-purge.service.ts': "deletes one tenant's rows; every statement filters on tenant_id",
   'src/jobs/tenant-status.service.ts': 'subscription lifecycle across tenants',

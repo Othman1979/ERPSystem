@@ -22,6 +22,12 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.EINVOICE_NOT_READY]: HttpStatus.BAD_REQUEST,
   [ErrorCode.REPORT_TOO_LARGE]: HttpStatus.PAYLOAD_TOO_LARGE,
   [ErrorCode.RATE_LIMITED]: HttpStatus.TOO_MANY_REQUESTS,
+  // Wrong current password on change-password (ADR-012).
+  [ErrorCode.INVALID_CURRENT_PASSWORD]: HttpStatus.BAD_REQUEST,
+  // Signed in with a temporary password: only change-password and /me are allowed (ADR-012).
+  [ErrorCode.PASSWORD_CHANGE_REQUIRED]: HttpStatus.FORBIDDEN,
+  // Reset refused by the rules in UsersService.resetPassword (ADR-012).
+  [ErrorCode.PASSWORD_RESET_NOT_ALLOWED]: HttpStatus.FORBIDDEN,
   [ErrorCode.UNBALANCED_ENTRY]: HttpStatus.BAD_REQUEST,
   [ErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_INSUFFICIENT]: HttpStatus.CONFLICT,

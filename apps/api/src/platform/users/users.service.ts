@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { randomBytes } from 'node:crypto';
 import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
@@ -9,6 +8,7 @@ import { PlanLimitsService } from '../../common/plan-limits/plan-limits.service.
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PasswordService } from '../auth/password.service.js';
+import { generateTemporaryPassword, temporaryPasswordWrites } from '../auth/temporary-password.js';
 import { InviteUserDto, UpdateMembershipDto } from './dto/users.dto.js';
 
 const membershipInclude = {
@@ -97,6 +97,7 @@ export class UsersService {
 
     if (!user) {
       if (dto.password) {
+        // The inviter chose this password deliberately, so no forced change; the member can change it any time.
         user = await this.prisma.client.user.create({
           data: {
             email: dto.email,
@@ -105,12 +106,14 @@ export class UsersService {
           },
         });
       } else {
-        temporaryPassword = randomBytes(9).toString('base64url');
+        // The invitee signs in with a generated password, so they must replace it first (ADR-012).
+        temporaryPassword = generateTemporaryPassword();
         user = await this.prisma.client.user.create({
           data: {
             email: dto.email,
             passwordHash: await this.passwords.hash(temporaryPassword),
             fullName: dto.fullName ?? dto.email.split('@')[0]!,
+            mustChangePassword: true,
           },
         });
       }
@@ -249,6 +252,79 @@ export class UsersService {
       include: membershipInclude,
     });
     return serialize(refreshed);
+  }
+
+  /**
+   * Replaces a member's password with a temporary one (ADR-012). The member
+   * must change it at next sign-in and every refresh token is revoked. The
+   * refusals below are the reasons a reset is not allowed.
+   */
+  async resetPassword(membershipId: bigint): Promise<{ temporaryPassword: string }> {
+    const cls = ClsServiceManager.getClsService<RequestContext>();
+    const callerId = cls.get('userId');
+    const prisma = this.tenant();
+    const tenantId = cls.get('tenantId');
+    if (!tenantId) throw new DomainError(ErrorCode.FORBIDDEN, 'No tenant selected');
+    const membership = await prisma.tenantMembership.findFirst({
+      where: { id: membershipId },
+      include: { role: { select: { code: true } } },
+    });
+    if (!membership) throw DomainError.notFound('Membership', membershipId.toString());
+    const targetUserId = membership.userId;
+
+    if (targetUserId === callerId) {
+      throw new DomainError(
+        ErrorCode.PASSWORD_RESET_NOT_ALLOWED,
+        'Use change password to change your own password',
+      );
+    }
+
+    // systemPrisma: users and memberships of other tenants are platform-wide; the
+    // reads only decide whether a reset is allowed, and no other tenant's data is returned.
+    const target = await this.prisma.client.user.findUnique({
+      where: { id: targetUserId },
+      select: { isPlatformAdmin: true },
+    });
+    if (target?.isPlatformAdmin) {
+      throw new DomainError(ErrorCode.PASSWORD_RESET_NOT_ALLOWED, 'A platform administrator password cannot be reset here');
+    }
+    // Users are global: a reset here would change the password for their other
+    // companies too, which would let one company take over another's account.
+    const otherTenants = await this.prisma.client.tenantMembership.count({
+      where: { userId: targetUserId, tenantId: { not: tenantId } },
+    });
+    if (otherTenants > 0) {
+      throw new DomainError(
+        ErrorCode.PASSWORD_RESET_NOT_ALLOWED,
+        'This user also belongs to another company; their password cannot be reset from here',
+      );
+    }
+    if (membership.role.code === 'OWNER') {
+      const callerMembership = await prisma.tenantMembership.findFirst({
+        where: { userId: callerId },
+        select: { role: { select: { code: true } } },
+      });
+      if (callerMembership?.role.code !== 'OWNER') {
+        throw new DomainError(ErrorCode.PASSWORD_RESET_NOT_ALLOWED, 'Only an owner can reset an owner password');
+      }
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await this.passwords.hash(temporaryPassword);
+    const now = new Date();
+    // systemPrisma: users and refresh_tokens are platform-wide tables.
+    await this.prisma.client.$transaction([
+      ...temporaryPasswordWrites(this.prisma.client, targetUserId, passwordHash, now),
+    ]);
+
+    await this.audit.log({
+      action: 'user.password_reset',
+      entityType: 'tenant_membership',
+      entityId: membership.id,
+      after: { userId: targetUserId.toString() },
+    });
+
+    return { temporaryPassword };
   }
 
   async suspend(membershipId: bigint) {

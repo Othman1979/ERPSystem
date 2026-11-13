@@ -36,6 +36,8 @@ export interface MeData {
     fullName: string;
     locale: string;
     isPlatformAdmin: boolean;
+    /** True while the account still uses a temporary password (ADR-012). */
+    mustChangePassword?: boolean;
   };
   tenants: TenantSummary[];
   currentTenant: {

@@ -33,5 +33,12 @@ export enum ErrorCode {
   REPORT_TOO_LARGE = 'REPORT_TOO_LARGE',
   // 429: too many requests in a minute (ADR-011)
   RATE_LIMITED = 'RATE_LIMITED',
+  // Password change and reset (ADR-012): the current password did not match.
+  INVALID_CURRENT_PASSWORD = 'INVALID_CURRENT_PASSWORD',
+  // Password change and reset (ADR-012): a temporary password must be replaced
+  // before any other request is served.
+  PASSWORD_CHANGE_REQUIRED = 'PASSWORD_CHANGE_REQUIRED',
+  // Password change and reset (ADR-012): this member's password may not be reset here.
+  PASSWORD_RESET_NOT_ALLOWED = 'PASSWORD_RESET_NOT_ALLOWED',
   INTERNAL = 'INTERNAL',
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
@@ -31,6 +31,14 @@ export class UsersController {
   @RequirePermission(PERMISSIONS.USER_MANAGE)
   update(@Param('membershipId') id: string, @Body() dto: UpdateMembershipDto) {
     return this.users.update(BigInt(id), dto);
+  }
+
+  /** Replaces the member's password with a temporary one (ADR-012). */
+  @Post(':membershipId/reset-password')
+  @HttpCode(200)
+  @RequirePermission(PERMISSIONS.USER_MANAGE)
+  resetPassword(@Param('membershipId') id: string) {
+    return this.users.resetPassword(BigInt(id));
   }
 
   @Delete(':membershipId')

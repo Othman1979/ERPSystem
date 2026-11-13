@@ -10,6 +10,8 @@ export interface RegisterDto { [key: string]: unknown }
 
 export interface LoginDto { [key: string]: unknown }
 
+export interface ChangePasswordDto { [key: string]: unknown }
+
 export interface SwitchTenantDto { [key: string]: unknown }
 
 export interface CreateAccountDto { [key: string]: unknown }
@@ -429,6 +431,53 @@ export const authControllerLogout = async ( options?: Parameters<typeof apiFetch
     method: 'POST'
 
 
+  }
+);}
+
+
+
+export type authControllerChangePasswordResponse204 = {
+  data: void
+  status: 204
+}
+
+export type authControllerChangePasswordResponseSuccess = (authControllerChangePasswordResponse204) & {
+  headers: Headers;
+};
+;
+
+export type authControllerChangePasswordResponse = (authControllerChangePasswordResponseSuccess)
+
+export const getAuthControllerChangePasswordUrl = () => {
+
+
+
+
+  return `/api/v1/auth/change-password`
+}
+
+export const authControllerChangePassword = async (changePasswordDto: ChangePasswordDto, options?: Parameters<typeof apiFetch>[1]): Promise<authControllerChangePasswordResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<authControllerChangePasswordResponse>(getAuthControllerChangePasswordUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(changePasswordDto)
   }
 );}
 
@@ -1905,6 +1954,39 @@ export const usersControllerSuspend = async (membershipId: string, options?: Par
   {
     ...options,
     method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type usersControllerResetPasswordResponse200 = {
+  data: void
+  status: 200
+}
+
+export type usersControllerResetPasswordResponseSuccess = (usersControllerResetPasswordResponse200) & {
+  headers: Headers;
+};
+;
+
+export type usersControllerResetPasswordResponse = (usersControllerResetPasswordResponseSuccess)
+
+export const getUsersControllerResetPasswordUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/users/${membershipId}/reset-password`
+}
+
+export const usersControllerResetPassword = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerResetPasswordResponse> => {
+
+  return apiFetch<usersControllerResetPasswordResponse>(getUsersControllerResetPasswordUrl(membershipId),
+  {
+    ...options,
+    method: 'POST'
 
 
   }

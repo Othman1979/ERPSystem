@@ -7,6 +7,7 @@ import { BackupService } from './backup/backup.service.js';
 import { EInvoiceJobsModule } from './einvoice-jobs.module.js';
 import { ErrorDigestService } from './error-digest.service.js';
 import { JobsModule } from './jobs.module.js';
+import { PasswordResetService } from './password-reset.service.js';
 import { PlatformAdminGrantService } from './platform-admin-grant.service.js';
 import { PreflightService } from './preflight.service.js';
 import { TenantPurgeService } from './tenant-purge.service.js';
@@ -19,6 +20,7 @@ import { TenantStatusService } from './tenant-status.service.js';
  *   purge-tenant <id> [--confirm <name>] by hand: delete a cancelled tenant after retention (ADR-009 §14)
  *   preflight                            before/after a deployment: is the server ready (ADR-010 §10.1)
  *   grant-platform-admin <email> [--revoke]  by hand: the platform administrator (ADR-010 §10.1)
+ *   reset-password <email>               by hand: a temporary password, sessions signed out (ADR-012)
  *   backup                               daily Cron: database + uploaded files, rotated (ADR-010 §10.2)
  *   backup-verify <folder|latest> [--keep]   monthly: restore into a scratch database and check it
  *   error-digest                         hourly Cron: alert new errors to ALERT_WEBHOOK_URL (ADR-010 §10.3)
@@ -74,6 +76,14 @@ const JOBS: Record<string, Job> = {
       const email = args.find((a) => !a.startsWith('--'));
       if (!email) throw new Error('Usage: grant-platform-admin <email> [--revoke]');
       return app.get(PlatformAdminGrantService).set(email, !args.includes('--revoke'));
+    },
+  },
+  'reset-password': {
+    module: JobsModule,
+    run: async (app, args) => {
+      const email = args.find((a) => !a.startsWith('--'));
+      if (!email) throw new Error('Usage: reset-password <email>');
+      return app.get(PasswordResetService).run(email);
     },
   },
   backup: { module: JobsModule, cron: true, run: (app) => app.get(BackupService).run() },

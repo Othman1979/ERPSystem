@@ -11,7 +11,8 @@ export interface IssuedTokens {
   familyId: string;
 }
 
-function hashToken(token: string): string {
+/** SHA-256 of a raw refresh token: the only form stored in refresh_tokens. */
+export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
