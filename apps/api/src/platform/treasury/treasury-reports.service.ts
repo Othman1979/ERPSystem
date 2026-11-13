@@ -184,7 +184,8 @@ export class TreasuryReportsService {
    * An allocation counts when its voucher is dated on or before `asOf` and it is
    * either still active or was cancelled after `asOf`. A cancellation has no
    * business date, so its calendar date (in the company's timezone) stands in:
-   * an allocation cancelled on or before `asOf` no longer counts from then on.
+   * an allocation cancelled on or before `asOf` no longer counts from then on,
+   * nor one whose voucher's reversal entry is dated on or before `asOf`.
    * An invoice dated after its voucher (an advance) is only listed from its own
    * date on, so the allocation counts from the later of the two.
    */
@@ -212,15 +213,32 @@ export class TreasuryReportsService {
           cancelledAt: { gte: new Date(asOf.getTime() - DAY_MS) },
           ...voucherDated,
         },
-        select: { documentId: true, amount: true, cancelledAt: true },
+        select: {
+          documentId: true,
+          amount: true,
+          cancelledAt: true,
+          receipt: { select: { reversalEntryId: true } },
+          payment: { select: { reversalEntryId: true } },
+        },
       }),
     ]);
+
+    // A voucher is reversed only once its allocations are cancelled, but its
+    // reversal may be dated before the cancel: from that date the payment is
+    // gone from the ledger, so its allocation stops counting too (review of PR #26).
+    const reversalIds = cancelled
+      .map((a) => a.receipt?.reversalEntryId ?? a.payment?.reversalEntryId ?? null)
+      .filter((id): id is bigint => id !== null);
+    const reversalDates = await this.ledger.entryDates(reversalIds);
 
     const totals = new Map<bigint, Decimal>(
       active.map((s) => [s.documentId, new Decimal(s._sum.amount?.toString() ?? '0')]),
     );
     for (const a of cancelled) {
       if (!a.cancelledAt || calendarDateIn(timeZone, a.cancelledAt) <= asOfIso) continue;
+      const reversalId = a.receipt?.reversalEntryId ?? a.payment?.reversalEntryId ?? null;
+      const reversedOn = reversalId !== null ? reversalDates.get(reversalId) : undefined;
+      if (reversedOn && reversedOn.getTime() <= asOf.getTime()) continue;
       totals.set(a.documentId, (totals.get(a.documentId) ?? new Decimal(0)).plus(new Decimal(a.amount.toString())));
     }
     return new Map([...totals].map(([id, sum]) => [id, sum.toFixed(3)]));

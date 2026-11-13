@@ -4,6 +4,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import {
   ACCOUNT_MAPPING_KEYS,
@@ -65,7 +66,7 @@ export class MappingsService {
    * control key. Control and cash/bank accounts never map to other keys.
    */
   private async validateAccount(
-    db: TenantDb,
+    db: Prisma.TransactionClient,
     companyId: bigint,
     key: AccountMappingKey,
     accountId: bigint,
@@ -108,26 +109,32 @@ export class MappingsService {
     return account;
   }
 
-  async upsert(dto: UpsertMappingDto) {
-    const { tenantId, db } = this.tenant();
-    const companyId = await this.companyId(db);
+  /**
+   * Validates and saves one mapping inside the caller's transaction (LEDGER-05).
+   * A key in LOCKED_AFTER_POSTING keeps its account once entries are posted to
+   * it. The current account is locked FOR UPDATE first: postings hold a shared
+   * lock on their accounts until COMMIT (PostingService.validateLines), so no
+   * posting lands on it between the check and the change (review of PR #26).
+   */
+  private async save(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint, dto: UpsertMappingDto) {
     if (!isMappingKey(dto.mappingKey)) {
       throw new DomainError(ErrorCode.VALIDATION, `Unknown mapping key: ${dto.mappingKey}`);
     }
     const key = dto.mappingKey;
     const accountId = BigInt(dto.accountId);
-    await this.validateAccount(db, companyId, key, accountId);
+    await this.validateAccount(tx, companyId, key, accountId);
 
     if (LOCKED_AFTER_POSTING.has(key)) {
-      const current = await db.accountMapping.findFirst({
-        where: { companyId, mappingKey: key },
+      const current = await tx.accountMapping.findFirst({
+        where: { tenantId, companyId, mappingKey: key },
         select: { accountId: true },
       });
       if (current && current.accountId !== accountId) {
         // Re-saving the same account is allowed; moving a balance someone
         // else settles to another account would split it (LEDGER-05).
-        const posted = await db.journalLine.count({
-          where: { accountId: current.accountId, entry: { status: 'POSTED' } },
+        await tx.$queryRaw`SELECT id FROM accounts WHERE tenant_id = ${tenantId} AND id = ${current.accountId} FOR UPDATE`;
+        const posted = await tx.journalLine.count({
+          where: { tenantId, accountId: current.accountId, entry: { status: 'POSTED' } },
         });
         if (posted > 0) {
           throw new DomainError(
@@ -139,27 +146,44 @@ export class MappingsService {
       }
     }
 
-    const row = await db.accountMapping.upsert({
+    return tx.accountMapping.upsert({
       where: {
         tenantId_companyId_mappingKey: { tenantId, companyId, mappingKey: key },
       },
       update: { accountId },
       create: { tenantId, companyId, mappingKey: key, accountId },
     });
-    await this.audit.log({
-      action: 'account_mapping.upsert',
-      entityType: 'account_mapping',
-      entityId: row.id,
-      after: { mappingKey: key, accountId: dto.accountId },
-    });
+  }
+
+  private async audited(rows: { id: bigint; mappingKey: string; accountId: bigint }[]) {
+    for (const row of rows) {
+      await this.audit.log({
+        action: 'account_mapping.upsert',
+        entityType: 'account_mapping',
+        entityId: row.id,
+        after: { mappingKey: row.mappingKey, accountId: row.accountId.toString() },
+      });
+    }
+  }
+
+  async upsert(dto: UpsertMappingDto) {
+    const { tenantId, db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const row = await db.$transaction((tx) => this.save(tx, tenantId, companyId, dto));
+    await this.audited([row]);
     return row;
   }
 
+  /** All or nothing: one refused mapping saves none of the batch. */
   async bulk(dto: BulkMappingsDto) {
-    const results = [];
-    for (const m of dto.mappings) {
-      results.push(await this.upsert(m));
-    }
-    return results;
+    const { tenantId, db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const rows = await db.$transaction(async (tx) => {
+      const saved = [];
+      for (const m of dto.mappings) saved.push(await this.save(tx, tenantId, companyId, m));
+      return saved;
+    });
+    await this.audited(rows);
+    return rows;
   }
 }

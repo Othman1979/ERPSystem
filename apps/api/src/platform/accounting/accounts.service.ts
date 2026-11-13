@@ -7,6 +7,7 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { calendarDateIn } from '../shared/document-support.service.js';
 import { CreateAccountDto, UpdateAccountDto } from './dto/accounting.dto.js';
 
 // journal_lines is read here, not through JournalModule: JournalModule imports AccountingModule (cycle). Read-only usage checks; both are the accounting domain (CLAUDE.md module list).
@@ -217,11 +218,39 @@ export class AccountsService {
   }
 
   /**
+   * Start of the period whose balance a deactivation must find at zero. Profit
+   * and loss accounts close into equity at each year end without a closing
+   * entry (§8.5, ADR-008 §7), so they only carry the current fiscal year's
+   * lines: the year holding today (company timezone), else the latest year
+   * already started. Other accounts carry every line (null).
+   */
+  private async balanceStart(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    accountType: string,
+  ): Promise<Date | null> {
+    if (accountType !== 'REVENUE' && accountType !== 'EXPENSE') return null;
+    const company = await tx.company.findFirst({ where: { id: companyId }, select: { timezone: true } });
+    const today = new Date(`${calendarDateIn(company?.timezone || 'Asia/Amman')}T00:00:00.000Z`);
+    const year = await tx.fiscalYear.findFirst({
+      where: { companyId, startDate: { lte: today } },
+      orderBy: { startDate: 'desc' },
+      select: { startDate: true },
+    });
+    return year?.startDate ?? null;
+  }
+
+  /**
    * Refuses to deactivate an account that is still in use: mapped, a parent,
    * or holding a posted balance or draft lines (LEDGER-04, LEDGER-11).
    */
-  private async assertCanDeactivate(db: TenantDb, id: bigint): Promise<void> {
-    const mappings = await db.accountMapping.count({ where: { accountId: id } });
+  private async assertCanDeactivate(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    account: { id: bigint; accountType: string },
+  ): Promise<void> {
+    const id = account.id;
+    const mappings = await tx.accountMapping.count({ where: { accountId: id } });
     if (mappings > 0) {
       throw new DomainError(
         ErrorCode.ACCOUNT_IN_USE,
@@ -229,23 +258,25 @@ export class AccountsService {
         { reason: 'MAPPED' },
       );
     }
-    const children = await db.account.count({ where: { parentId: id } });
+    const children = await tx.account.count({ where: { parentId: id } });
     if (children > 0) {
       throw new DomainError(ErrorCode.ACCOUNT_HAS_CHILDREN, 'Cannot deactivate an account with children');
     }
 
-    const posted = await db.journalLine.aggregate({
-      where: { accountId: id, entry: { status: 'POSTED' } },
+    const from = await this.balanceStart(tx, companyId, account.accountType);
+    const posted = await tx.journalLine.aggregate({
+      where: { accountId: id, entry: { status: 'POSTED', ...(from ? { entryDate: { gte: from } } : {}) } },
       _sum: { debit: true, credit: true },
     });
     const net = new Decimal(posted._sum.debit?.toString() ?? 0).minus(posted._sum.credit?.toString() ?? 0);
     if (!net.isZero()) {
       throw new DomainError(ErrorCode.ACCOUNT_HAS_BALANCE, 'Cannot deactivate an account with a balance', {
         balance: net.toFixed(3),
+        ...(from ? { from: from.toISOString().slice(0, 10) } : {}),
       });
     }
 
-    const drafts = await db.journalLine.count({ where: { accountId: id, entry: { status: 'DRAFT' } } });
+    const drafts = await tx.journalLine.count({ where: { accountId: id, entry: { status: 'DRAFT' } } });
     if (drafts > 0) {
       throw new DomainError(ErrorCode.ACCOUNT_HAS_BALANCE, 'Cannot deactivate an account used by draft entries', {
         drafts,
@@ -254,52 +285,62 @@ export class AccountsService {
   }
 
   async update(id: bigint, dto: UpdateAccountDto) {
-    const { db } = this.tenant();
+    const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
-    const existing = await db.account.findFirst({ where: { id, companyId } });
-    if (!existing) throw DomainError.notFound('Account', id.toString());
+    const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
 
-    if (dto.isActive === false) {
-      await this.assertCanDeactivate(db, id);
-    }
+    // One transaction behind a row lock: postings hold a shared lock on their
+    // accounts until COMMIT (PostingService.validateLines), so the checks
+    // below and the update see no posting in flight, and a later posting sees
+    // the new flags (review of PR #26).
+    const { existing, updated } = await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM accounts WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      const existing = await tx.account.findFirst({ where: { id, companyId } });
+      if (!existing) throw DomainError.notFound('Account', id.toString());
 
-    if (dto.isPostable === true) {
-      // Any account with children is a group, root or not (LEDGER-04).
-      const children = await db.account.count({ where: { parentId: id } });
-      if (children > 0) {
-        throw new DomainError(ErrorCode.ACCOUNT_HAS_CHILDREN, 'A parent account cannot be postable');
+      if (dto.isActive === false && existing.isActive) {
+        await this.assertCanDeactivate(tx, companyId, existing);
       }
-    }
 
-    if (dto.isPostable === false && existing.isPostable) {
-      // Same rule as LEDGER-03: a used account must stay postable.
-      const mappings = await db.accountMapping.count({ where: { accountId: id } });
-      if (mappings > 0) {
-        throw new DomainError(
-          ErrorCode.ACCOUNT_IN_USE,
-          'Cannot make an account used in account mappings non-postable',
-          { reason: 'MAPPED' },
-        );
+      if (dto.isPostable === true) {
+        // Any account with children is a group, root or not (LEDGER-04).
+        const children = await tx.account.count({ where: { parentId: id } });
+        if (children > 0) {
+          throw new DomainError(ErrorCode.ACCOUNT_HAS_CHILDREN, 'A parent account cannot be postable');
+        }
       }
-      const lines = await db.journalLine.count({ where: { accountId: id } });
-      if (lines > 0) {
-        throw new DomainError(
-          ErrorCode.ACCOUNT_IN_USE,
-          'Cannot make an account with journal lines non-postable',
-          { reason: 'HAS_LINES' },
-        );
-      }
-    }
 
-    const updated = await db.account.update({
-      where: { id },
-      data: {
-        nameAr: dto.nameAr,
-        nameEn: dto.nameEn,
-        isPostable: dto.isPostable,
-        isActive: dto.isActive,
-        updatedBy: ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null,
-      },
+      if (dto.isPostable === false && existing.isPostable) {
+        // Same rule as LEDGER-03: a used account must stay postable.
+        const mappings = await tx.accountMapping.count({ where: { accountId: id } });
+        if (mappings > 0) {
+          throw new DomainError(
+            ErrorCode.ACCOUNT_IN_USE,
+            'Cannot make an account used in account mappings non-postable',
+            { reason: 'MAPPED' },
+          );
+        }
+        const lines = await tx.journalLine.count({ where: { accountId: id } });
+        if (lines > 0) {
+          throw new DomainError(
+            ErrorCode.ACCOUNT_IN_USE,
+            'Cannot make an account with journal lines non-postable',
+            { reason: 'HAS_LINES' },
+          );
+        }
+      }
+
+      const updated = await tx.account.update({
+        where: { id },
+        data: {
+          nameAr: dto.nameAr,
+          nameEn: dto.nameEn,
+          isPostable: dto.isPostable,
+          isActive: dto.isActive,
+          updatedBy: userId,
+        },
+      });
+      return { existing, updated };
     });
     await this.audit.log({
       action: 'account.update',

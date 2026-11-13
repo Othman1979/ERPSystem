@@ -640,6 +640,47 @@ describe('Ledger review — journal engine (erp_test)', () => {
     T,
   );
 
+  // Review of PR #26: reversals of DIFFERENT entries never block each other
+  // (no gap lock on reversal_of_id), and each gets its own reversal.
+  it(
+    'concurrent reversals of different entries all succeed',
+    async () => {
+      const ids: string[] = [];
+      for (let i = 0; i < 8; i++) {
+        const draft = await makeDraft(A.token, pair(A, '5204', '1101', '3.000'), '2025-06-10');
+        const id = bodyOf<EntryBody>(draft).id;
+        expect((await post(A.token, id)).status).toBe(201);
+        ids.push(id);
+      }
+      const results = await Promise.all(ids.map((id) => reverse(A.token, id, { reversalDate: '2025-06-11' })));
+      expect(results.map((r) => r.status)).toEqual(ids.map(() => 201));
+      for (const id of ids) {
+        const [n] = await sql<{ n: bigint }>('SELECT COUNT(*) AS n FROM journal_entries WHERE reversal_of_id = ?', [id]);
+        expect(Number(n.n)).toBe(1);
+      }
+    },
+    T,
+  );
+
+  // Review of PR #26 (D-2): an account mapped as CUSTOMERS_CONTROL without its
+  // own control flags (a legacy chart) still requires a party on every line.
+  it(
+    'a legacy mapped control account requires a party',
+    async () => {
+      const id = A.accounts['1103'];
+      await sql('UPDATE accounts SET is_control = 0, control_type = NULL WHERE tenant_id = ? AND id = ?', [A.tenantId, id]);
+      try {
+        const noParty = await makeDraft(A.token, pair(A, '1103', '4101', '4.000'), '2025-06-12');
+        const res = await post(A.token, bodyOf<EntryBody>(noParty).id);
+        expect(res.status).toBe(400);
+        expect(errorCode(res)).toBe('PARTY_REQUIRED');
+      } finally {
+        await sql("UPDATE accounts SET is_control = 1, control_type = 'CUSTOMERS' WHERE tenant_id = ? AND id = ?", [A.tenantId, id]);
+      }
+    },
+    T,
+  );
+
   // Books stay balanced.
   it(
     'trial balance for A is balanced with 3-decimal totals, with and without a date range',

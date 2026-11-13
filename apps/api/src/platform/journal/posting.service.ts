@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 
 export interface JournalLineInput {
   accountId: bigint;
@@ -86,9 +86,34 @@ export class PostingService {
     }
 
     const accountIds = [...new Set(lines.map((l) => l.accountId))];
-    const accounts = await tx.account.findMany({
-      where: { tenantId, companyId, id: { in: accountIds } },
-    });
+    // Shared lock on the accounts, held to COMMIT, read with the lock so the
+    // flags are the latest committed ones: an account that is turned into a
+    // group, deactivated or re-mapped (FOR UPDATE in AccountsService and
+    // MappingsService) waits for this posting, and a posting after that change
+    // sees it (review of PR #26, LEDGER-03). Ascending id order, so two
+    // postings never take these locks in opposite orders.
+    const rows = (await tx.$queryRaw`
+      SELECT id, code, is_active, is_postable, is_control, control_type
+      FROM accounts
+      WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id IN (${Prisma.join(accountIds)})
+      ORDER BY id
+      LOCK IN SHARE MODE
+    `) as {
+      id: bigint;
+      code: string;
+      is_active: number | boolean;
+      is_postable: number | boolean;
+      is_control: number | boolean;
+      control_type: string | null;
+    }[];
+    const accounts = rows.map((r) => ({
+      id: BigInt(r.id),
+      code: r.code,
+      isActive: Boolean(r.is_active),
+      isPostable: Boolean(r.is_postable),
+      isControl: Boolean(r.is_control),
+      controlType: r.control_type,
+    }));
     const byId = new Map(accounts.map((a) => [a.id, a]));
 
     const isPartyControl = (a: (typeof accounts)[number]): boolean =>
@@ -96,22 +121,17 @@ export class PostingService {
     const expectedOf = (a: (typeof accounts)[number]): ExpectedPartyType =>
       a.controlType === 'CUSTOMERS' ? 'CUSTOMER' : a.controlType === 'SUPPLIERS' ? 'SUPPLIER' : null;
 
-    // Legacy tenants may carry a party on the account mapped as the control
-    // account. Load those mappings only when some party sits on an account
-    // that is not a party control account by its own flags.
-    const needsLegacyLookup = lines.some((l) => {
-      const account = byId.get(l.accountId);
-      return account !== undefined && !isPartyControl(account) && Boolean(l.partyId || l.partyType);
-    });
+    // Legacy tenants may have mapped CUSTOMERS_CONTROL / SUPPLIERS_CONTROL to
+    // an account without control flags: that account is still a party control
+    // account, both ways (a party is allowed on it, and required). Two rows by
+    // a unique key, so always loaded.
     const legacyExpected = new Map<bigint, ExpectedPartyType>();
-    if (needsLegacyLookup) {
-      const mappings = await tx.accountMapping.findMany({
-        where: { tenantId, companyId, mappingKey: { in: ['CUSTOMERS_CONTROL', 'SUPPLIERS_CONTROL'] } },
-        select: { mappingKey: true, accountId: true },
-      });
-      for (const m of mappings) {
-        legacyExpected.set(m.accountId, m.mappingKey === 'CUSTOMERS_CONTROL' ? 'CUSTOMER' : 'SUPPLIER');
-      }
+    const mappings = await tx.accountMapping.findMany({
+      where: { tenantId, companyId, mappingKey: { in: ['CUSTOMERS_CONTROL', 'SUPPLIERS_CONTROL'] } },
+      select: { mappingKey: true, accountId: true },
+    });
+    for (const m of mappings) {
+      legacyExpected.set(m.accountId, m.mappingKey === 'CUSTOMERS_CONTROL' ? 'CUSTOMER' : 'SUPPLIER');
     }
 
     return lines.map((line, i) => {
@@ -321,13 +341,17 @@ export class PostingService {
       });
     }
 
-    // Locking read: sees a reversal committed after this transaction's snapshot.
-    const existing = (await tx.$queryRaw`
-      SELECT id FROM journal_entries
-      WHERE tenant_id = ${tenantId} AND reversal_of_id = ${original.id}
-      FOR UPDATE
-    `) as { id: bigint }[];
-    if (existing.length > 0) {
+    // A plain read: the row lock above already serialises reversals of this
+    // entry. A locking read here would match no row and take a gap lock on
+    // the reversal_of_id index, which deadlocks reversals of different
+    // entries and blocks the tenant's other journal inserts (review of PR #26).
+    // If this snapshot predates a concurrent reversal, the unique
+    // (tenant_id, reversal_of_id) index refuses the insert: ENTRY_ALREADY_REVERSED.
+    const existing = await tx.journalEntry.findFirst({
+      where: { tenantId, reversalOfId: original.id },
+      select: { id: true },
+    });
+    if (existing) {
       throw new DomainError(ErrorCode.ENTRY_ALREADY_REVERSED, 'Entry already reversed', {
         entryId: original.id.toString(),
       });

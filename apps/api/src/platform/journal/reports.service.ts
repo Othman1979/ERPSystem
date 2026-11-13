@@ -543,6 +543,18 @@ export class ReportsService {
 
   // ------------------------------------------- aging inputs (treasury, ADR-004)
 
+  /** Entry date of each given journal entry of the company (treasury aging: voucher reversal dates). */
+  async entryDates(ids: bigint[]): Promise<Map<bigint, Date>> {
+    if (ids.length === 0) return new Map();
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const rows = await db.journalEntry.findMany({
+      where: { companyId, id: { in: [...new Set(ids)] } },
+      select: { id: true, entryDate: true },
+    });
+    return new Map(rows.map((r) => [r.id, r.entryDate]));
+  }
+
   /** Lines of this party type on its receivable/payable control accounts. */
   private controlLineWhere(partyType: 'CUSTOMER' | 'SUPPLIER', mappedAccountId?: bigint) {
     return {

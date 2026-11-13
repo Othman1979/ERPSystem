@@ -381,6 +381,35 @@ describe('Ledger review fixes (2026-11-13) — chart, mappings, fiscal years, re
     expect((await api().post('/api/v1/fiscal-periods/abc/close').set(auth(token))).status).toBe(400);
   });
 
+  // Review of PR #26: P&L accounts close into equity each year without a
+  // closing entry, so only the current fiscal year's lines count. 5204 has
+  // 60.000 of 2025 expenses and nothing in 2026 (the year now running).
+  it('LEDGER-11: a P&L account used only in a prior fiscal year can be deactivated', async () => {
+    const setActive = (id: string, isActive: boolean) =>
+      api().patch(`/api/v1/accounts/${id}`).set(auth(token)).send({ isActive });
+    expect((await setActive(acct('5204'), false)).status).toBe(200);
+    expect((await setActive(acct('5204'), true)).status).toBe(200);
+    // A balance-sheet account keeps its balance across years: still refused.
+    expectRefused(await setActive(acct('1102'), false), 409, 'ACCOUNT_HAS_BALANCE');
+  });
+
+  // Review of PR #26: a bulk save is all or nothing.
+  it('LEDGER-05: a bulk mapping save with one refused key saves none', async () => {
+    const res = await api()
+      .post('/api/v1/account-mappings/bulk')
+      .set(auth(token))
+      .send({
+        mappings: [
+          { mappingKey: 'SALES', accountId: acct('4201') },
+          { mappingKey: 'CUSTOMERS_CONTROL', accountId: acct('4101') },
+        ],
+      });
+    expectRefused(res, 400, 'MAPPING_ACCOUNT_INVALID');
+    const list = await api().get('/api/v1/account-mappings').set(auth(token));
+    const sales = (list.body as { mappingKey: string; accountId: string | null }[]).find((m) => m.mappingKey === 'SALES');
+    expect(sales?.accountId).toBe(acct('4101'));
+  });
+
   it('LEDGER-24: reversed report ranges are refused; TB amounts are three-decimal and balanced', async () => {
     const get = (url: string) => api().get(url).set(auth(token));
 

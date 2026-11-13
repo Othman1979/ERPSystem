@@ -263,6 +263,33 @@ describe('Aging as of a date', () => {
     expect(m3(after.balance)).toBe(m3(before.balance));
   });
 
+  it('a cancelled allocation stops counting at its voucher reversal date when that is earlier', async () => {
+    // Invoice 23.200 (2025-05-01), receipt allocated in full (2025-05-05). Today
+    // the allocation is cancelled and the receipt reversed, dated 2025-05-20.
+    const inv = await sale('C2', '2025-05-01', '10');
+    const r = await receipt('C2', '2025-05-05', '23.200', [
+      { documentType: 'SALES_INVOICE', documentId: inv.id, amount: '23.200' },
+    ]);
+    const before = row(await aging('CUSTOMER', '2025-05-10'), 'C2')!;
+    expect((await api().post(`/api/v1/allocations/${r.allocations[0].id}/cancel`).set(auth(token)).set(idem())).status).toBe(201);
+    const reversed = await api()
+      .post(`/api/v1/receipts/${r.id}/reverse`)
+      .set(auth(token))
+      .set(idem())
+      .send({ reversalDate: '2025-05-20' });
+    expect(reversed.status).toBe(201);
+
+    // Between the receipt and its reversal date the allocation still counts.
+    const during = row(await aging('CUSTOMER', '2025-05-10'), 'C2')!;
+    expect([m3(during.total), m3(during.unapplied)]).toEqual([m3(before.total), m3(before.unapplied)]);
+    // From the reversal date the receipt is gone from the ledger, and so is its
+    // allocation, although it was cancelled later (today).
+    const after = row(await aging('CUSTOMER', '2025-05-25'), 'C2')!;
+    expect(m3(after.total)).toBe(m3(new Decimal(during.total).plus('23.200')));
+    expect(m3(after.unapplied)).toBe(m3(during.unapplied));
+    expect(m3(after.balance)).toBe(m3(new Decimal(during.balance).plus('23.200')));
+  });
+
   it('supplier invoices follow the same date rule', async () => {
     const inv = await api()
       .post('/api/v1/purchase-invoices')
