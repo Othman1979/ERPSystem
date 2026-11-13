@@ -70,6 +70,8 @@ const job = (args: string[], env: Record<string, string | undefined> = {}) =>
   });
 
 type Check = { name: string; ok: boolean; detail: string };
+const tables = async (schema: string) =>
+  Number(((await db.query('SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = ?', [schema])) as { n: bigint }[])[0].n);
 const byName = (checks: Check[]) => Object.fromEntries(checks.map((c) => [c.name, c]));
 
 async function waitForHealth(timeoutMs = 30_000): Promise<void> {
@@ -101,6 +103,9 @@ beforeAll(async () => {
     password: decodeURIComponent(url.password),
   });
   await db.query(`CREATE DATABASE ${SOURCE} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+  // The scratch database exists beforehand, as one created from a hosting panel:
+  // backup-verify only empties it (no CREATE / DROP DATABASE privilege needed).
+  await db.query(`CREATE DATABASE ${SCRATCH} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
   tmp = await mkdtemp(path.join(os.tmpdir(), 'erp-bk-'));
   storageDir = path.join(tmp, 'storage');
   backupDir = path.join(tmp, 'backups');
@@ -108,7 +113,8 @@ beforeAll(async () => {
   // A fresh installation: migrations, then the seed, as in a first deployment.
   const migrate = await run('node', ['node_modules/prisma/build/index.js', 'migrate', 'deploy'], { DATABASE_URL: urlFor(SOURCE) });
   if (migrate.code !== 0) throw new Error(`migrate deploy failed: ${migrate.stderr || migrate.stdout}`);
-  const seed = await run('node', ['node_modules/tsx/dist/cli.mjs', 'prisma/seed.ts'], { DATABASE_URL: urlFor(SOURCE) });
+  // As the deployment guide says: prisma db seed (configured in prisma.config.ts).
+  const seed = await run('node', ['node_modules/prisma/build/index.js', 'db', 'seed'], { DATABASE_URL: urlFor(SOURCE) });
   if (seed.code !== 0) throw new Error(`seed failed: ${seed.stderr || seed.stdout}`);
 
   server = spawn('node', ['dist/main.js'], {
@@ -206,10 +212,10 @@ describe('Phase 10.2 — backup and restore', () => {
       (await db.query(`SELECT SUM(debit) AS d, SUM(credit) AS c FROM ${schema}.journal_lines`))[0] as { d: string; c: string };
     expect(await sums(SCRATCH)).toEqual(await sums(SOURCE));
 
-    // Without --keep the scratch database is gone afterwards.
+    // Without --keep the scratch database is emptied afterwards (it stays, as created from the panel).
     const again = await job(['backup-verify', path.basename(firstBackup)]);
     expect(JSON.parse(again.stdout)).toMatchObject({ ok: true, kept: false });
-    expect(await db.query(`SHOW DATABASES LIKE '${SCRATCH}'`)).toHaveLength(0);
+    expect(await tables(SCRATCH)).toBe(0);
   }, 180_000);
 
   it('a damaged backup is refused before anything is loaded', async () => {
@@ -233,6 +239,11 @@ describe('Phase 10.2 — backup and restore', () => {
 
     const unset = await job(['backup-verify', 'latest'], { BACKUP_VERIFY_DATABASE_URL: '' });
     expect(byName(JSON.parse(unset.stdout).checks).restore.detail).toMatch(/set BACKUP_VERIFY_DATABASE_URL/);
+
+    // Not created yet: it is made once from the hosting panel, and the check says so.
+    const missing = await job(['backup-verify', 'latest'], { BACKUP_VERIFY_DATABASE_URL: urlFor(`erp_bk_${RUN}_none_verify`) });
+    expect(missing.code).toBe(1);
+    expect(byName(JSON.parse(missing.stdout).checks).restore.detail).toMatch(/create it first, from the hosting panel/);
     // The source was never touched.
     const [t] = await db.query(`SELECT COUNT(*) AS n FROM ${SOURCE}.tenants`);
     expect(Number(t.n)).toBe(1);
@@ -251,7 +262,7 @@ describe('Phase 10.2 — backup and restore', () => {
     const res = await job(['backup-verify', 'latest', '--keep']);
     expect(res.code).toBe(1);
     expect(JSON.parse(res.stdout)).toMatchObject({ ok: false, kept: true });
-    expect(await db.query(`SHOW DATABASES LIKE '${SCRATCH}'`)).toHaveLength(1);
+    expect(await tables(SCRATCH)).toBeGreaterThan(0);
     const checks = byName(JSON.parse(res.stdout).checks);
     expect([checks.files.ok, checks.restore.ok, checks.migrations.ok]).toEqual([true, true, true]);
     expect(checks.journal).toMatchObject({ ok: false, detail: '1 posted entries do not balance' });

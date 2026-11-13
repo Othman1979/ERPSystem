@@ -34,11 +34,12 @@ const SCRATCH_NAME = /restore|verify/i;
  * test environment succeeds and is documented"):
  *  1. every file matches its manifest checksum;
  *  2. the dump is loaded into BACKUP_VERIFY_DATABASE_URL, a scratch database
- *     (dropped and recreated; never the live one);
+ *     created once from the hosting panel (emptied before and after; never
+ *     the live one; no CREATE / DROP DATABASE privilege needed);
  *  3. the restored data is checked: same migrations, every posted journal
  *     entry balanced, stock balances equal to the movements, every uploaded
  *     file referenced by the database present in the storage zip.
- * The scratch database is dropped afterwards unless `keep`.
+ * The scratch database is emptied afterwards unless `keep`.
  * Cross-tenant SQL on purpose: the whole restored copy is checked, through
  * the driver, outside the application (allowed in `jobs`).
  */
@@ -90,10 +91,10 @@ export class BackupVerifyService {
 
     const started = Date.now();
     try {
-      await this.recreate(target);
+      await this.empty(target);
     } catch (err) {
-      // E.g. the database user may not create databases: say so as a check.
-      add('restore', false, `cannot create ${target.database}: ${firstLine(err)}`);
+      // E.g. it does not exist yet: it is created once from the hosting panel.
+      add('restore', false, `cannot use ${target.database} (create it first, from the hosting panel): ${firstLine(err)}`);
       return result(null, false);
     }
     let loaded = false;
@@ -118,7 +119,7 @@ export class BackupVerifyService {
       add(loaded ? 'inspect' : 'restore', false, firstLine(err));
     } finally {
       // --keep holds even on failure: that is when the copy is worth a look.
-      if (!keep) await this.drop(target);
+      if (!keep) await this.empty(target);
     }
     return result(target.database, keep);
   }
@@ -139,25 +140,30 @@ export class BackupVerifyService {
     return folder;
   }
 
-  private async server(target: DbTarget): Promise<Connection> {
-    return mariadb.createConnection({ host: target.host, port: target.port, user: target.user, password: target.password });
-  }
-
-  private async recreate(target: DbTarget): Promise<void> {
-    const conn = await this.server(target);
+  /**
+   * Empties the scratch database: drops every table and view in it. No
+   * CREATE / DROP DATABASE, which hosting accounts usually may not run: the
+   * database itself is created once from the hosting panel.
+   */
+  private async empty(target: DbTarget): Promise<void> {
+    const conn = await mariadb.createConnection({
+      host: target.host,
+      port: target.port,
+      user: target.user,
+      password: target.password,
+      database: target.database,
+    });
     try {
-      // The name was checked against [A-Za-z0-9_]+ (dbTarget) and the scratch pattern.
-      await conn.query(`DROP DATABASE IF EXISTS \`${target.database}\``);
-      await conn.query(`CREATE DATABASE \`${target.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-    } finally {
-      await conn.end();
-    }
-  }
-
-  private async drop(target: DbTarget): Promise<void> {
-    const conn = await this.server(target);
-    try {
-      await conn.query(`DROP DATABASE IF EXISTS \`${target.database}\``);
+      const tables = (await conn.query(
+        `SELECT TABLE_NAME AS name, TABLE_TYPE AS type FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()`,
+      )) as { name: string; type: string }[];
+      await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+      for (const t of tables) {
+        // Names come from information_schema of this database; quoted as identifiers.
+        const name = t.name.replace(/`/g, '``');
+        await conn.query(t.type === 'VIEW' ? `DROP VIEW IF EXISTS \`${name}\`` : `DROP TABLE IF EXISTS \`${name}\``);
+      }
+      await conn.query('SET FOREIGN_KEY_CHECKS = 1');
     } finally {
       await conn.end();
     }

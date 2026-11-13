@@ -114,6 +114,8 @@ export function trustProxySetting(value: string): boolean | number | string {
 export function validateEnv(config: Record<string, unknown>): Env {
   // `NAME=` in a .env file means unset: its default applies, or "required".
   const given = Object.fromEntries(Object.entries(config).filter(([, v]) => v !== ''));
+  // Node hosting panels hand the app its port in PORT: listen there unless API_PORT says otherwise.
+  if (given.API_PORT === undefined && given.PORT !== undefined) given.API_PORT = given.PORT;
   const result = envSchema.safeParse(given);
   const issues = result.success
     ? productionProblems(result.data).map((p) => `${p.path}: ${p.message}`)

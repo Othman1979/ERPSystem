@@ -113,3 +113,13 @@ describe('trustProxySetting', () => {
     expect(trustProxySetting(value)).toEqual(expected);
   });
 });
+
+describe('the port (ADR-010 §10.5)', () => {
+  const base = { DATABASE_URL: 'mysql://root@localhost:3306/db', JWT_ACCESS_SECRET: 'test-secret-at-least-16-chars' };
+
+  it("listens on the host's PORT unless API_PORT is set", () => {
+    expect(validateEnv({ ...base, PORT: '41234' }).API_PORT).toBe(41234);
+    expect(validateEnv({ ...base, PORT: '41234', API_PORT: '3001' }).API_PORT).toBe(3001);
+    expect(validateEnv(base).API_PORT).toBe(3001);
+  });
+});
