@@ -53,20 +53,23 @@ export const CLIENT_ERROR = {
   NETWORK_ERROR: 'NETWORK_ERROR',
   /** No answer within the request's time limit. Status 0. */
   NETWORK_TIMEOUT: 'NETWORK_TIMEOUT',
-  /** A 5xx without the API's envelope: a proxy or the host answered because the API is down. */
+  /** A 502/503/504 without the API's envelope: the proxy answered because the API is down. */
   SERVER_UNAVAILABLE: 'SERVER_UNAVAILABLE',
   /** Any other answer the API would never send: HTML, plain text, JSON without the envelope. */
   INVALID_RESPONSE: 'INVALID_RESPONSE',
 } as const;
 
-/** True when the server could not be reached at all (as opposed to an answer from the API). */
+/**
+ * True only when the API itself could not be reached: no answer, no answer in
+ * time, or the proxy's 502/503/504. An answer from something that did respond
+ * (the API's own 5xx, an HTML 403 from a firewall) is not a connection error.
+ */
 export function isConnectionError(err: unknown): boolean {
   return (
     err instanceof ApiError &&
     (err.code === CLIENT_ERROR.NETWORK_ERROR ||
       err.code === CLIENT_ERROR.NETWORK_TIMEOUT ||
-      err.code === CLIENT_ERROR.SERVER_UNAVAILABLE ||
-      err.code === CLIENT_ERROR.INVALID_RESPONSE)
+      err.code === CLIENT_ERROR.SERVER_UNAVAILABLE)
   );
 }
 
@@ -105,9 +108,36 @@ let accessToken: string | null = null;
 let branchId: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
 const writeListeners = new Set<(write: ApiWrite) => void>();
+const sessionListeners = new Set<() => void>();
 
 export function setAccessToken(token: string | null): void {
   accessToken = token;
+}
+
+/** `sub:tid` of an access token (read only to compare sessions; the server verifies it). */
+export function tokenSession(token: string | null): string | null {
+  const payload = token?.split('.')[1];
+  if (!payload) return null;
+  try {
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/')) as string;
+    const claims = JSON.parse(json) as { sub?: unknown; tid?: unknown };
+    return `${String(claims.sub ?? '')}:${String(claims.tid ?? '')}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Calls `listener` when a token refresh returns a different user or tenant
+ * than the token it replaced: another tab switched tenant or signed in as
+ * someone else, and the shared refresh cookie followed it. This tab's cached
+ * data belongs to the old session. Returns the unsubscribe function.
+ */
+export function onSessionChange(listener: () => void): () => void {
+  sessionListeners.add(listener);
+  return () => {
+    sessionListeners.delete(listener);
+  };
 }
 
 export function getAccessToken(): string | null {
@@ -222,7 +252,8 @@ function apiError(response: StatusLine, data: unknown): ApiError {
       data.error.requestId,
     );
   }
-  const code = response.status >= 500 ? CLIENT_ERROR.SERVER_UNAVAILABLE : CLIENT_ERROR.INVALID_RESPONSE;
+  const gateway = response.status >= 502 && response.status <= 504;
+  const code = gateway ? CLIENT_ERROR.SERVER_UNAVAILABLE : CLIENT_ERROR.INVALID_RESPONSE;
   return new ApiError(response.status, code, response.statusText || `HTTP ${response.status}`);
 }
 
@@ -255,15 +286,27 @@ async function postRefresh(): Promise<boolean> {
   }
   const parsed = parseJson(res.text);
   if (!res.ok) {
-    // The API said no: the session is over. Anything else (a proxy's 502, an
-    // HTML page) says nothing about the session and is thrown as it is.
+    // The server answered no: the session is over. Only an API that could not
+    // be reached (network, timeout, proxy 502–504) says nothing about the
+    // session, and is thrown as it is.
     const err = apiError(res, parsed.ok ? parsed.data : undefined);
     if (isConnectionError(err)) throw err;
     return false;
   }
   const body = (parsed.ok ? parsed.data : undefined) as { accessToken?: string } | undefined;
   if (body?.accessToken) {
+    const before = tokenSession(accessToken);
     accessToken = body.accessToken;
+    const after = tokenSession(accessToken);
+    if (before !== null && after !== before) {
+      for (const listener of sessionListeners) {
+        try {
+          listener();
+        } catch {
+          // A listener's bug must not fail the refresh.
+        }
+      }
+    }
     return true;
   }
   return false;

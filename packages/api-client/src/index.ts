@@ -20,9 +20,11 @@ export {
   getBranchId,
   isConnectionError,
   onApiWrite,
+  onSessionChange,
   REQUEST_TIMEOUT_MS,
   setAccessToken,
   setBranchId,
+  tokenSession,
 } from './runtime';
 export type { ApiErrorBody, ApiFile, ApiRequestInit, ApiResponse, ApiWrite } from './runtime';
 

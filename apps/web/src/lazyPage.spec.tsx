@@ -1,7 +1,7 @@
 import { act, Suspense, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { lazyPage, loadWithReload } from './lazyPage';
+import { appIsServed, lazyPage, loadWithReload } from './lazyPage';
 import { ALL_ROUTES, PAGE_LOADERS } from './routes';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -32,26 +32,66 @@ describe('lazy pages (WEB-10)', () => {
     const missing = () => Promise.reject(new TypeError('Failed to fetch dynamically imported module'));
     let clock = 1_000_000;
     const now = () => clock;
+    const served = () => Promise.resolve(true);
 
     // First failure: reload, and never settle while the page goes away.
     let settled = false;
-    void loadWithReload(missing, reload, now).finally(() => (settled = true));
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(reload).toHaveBeenCalledTimes(1);
+    void loadWithReload(missing, reload, now, served).finally(() => (settled = true));
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
     expect(settled).toBe(false);
 
     // The same failure right after the reload is a real error: no reload loop.
     clock += 2_000;
-    await expect(loadWithReload(missing, reload, now)).rejects.toThrow('dynamically imported module');
+    await expect(loadWithReload(missing, reload, now, served)).rejects.toThrow('dynamically imported module');
     expect(reload).toHaveBeenCalledTimes(1);
 
     // Much later (another release), it may reload again.
     clock += 60_000;
-    void loadWithReload(missing, reload, now);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(reload).toHaveBeenCalledTimes(2);
+    void loadWithReload(missing, reload, now, served);
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(2));
+  });
+
+  it('does not reload when the app is not being served (offline, proxy 502 during a restart)', async () => {
+    const reload = vi.fn();
+    const missing = () => Promise.reject(new TypeError('Failed to fetch dynamically imported module'));
+    await expect(loadWithReload(missing, reload, () => 1_000_000, () => Promise.resolve(false))).rejects.toThrow(
+      'dynamically imported module',
+    );
+    expect(reload).not.toHaveBeenCalled();
+    // The one reload is still available once the server is back.
+    void loadWithReload(missing, reload, () => 1_001_000, () => Promise.resolve(true));
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+  });
+
+  describe('appIsServed', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    it('is false offline, without asking the server', async () => {
+      const fetchSpy = vi.fn();
+      vi.stubGlobal('fetch', fetchSpy);
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      expect(await appIsServed()).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('is false when the proxy answers 502, or answers with another page', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('<h1>502 Bad Gateway</h1>', { status: 502 })));
+      expect(await appIsServed()).toBe(false);
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('<h1>Maintenance</h1>', { status: 200 })));
+      expect(await appIsServed()).toBe(false);
+      vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
+      expect(await appIsServed()).toBe(false);
+    });
+
+    it("is true when the server hands out the app's index.html", async () => {
+      const fetchSpy = vi.fn(async () => new Response('<div id="root"></div>', { status: 200 }));
+      vi.stubGlobal('fetch', fetchSpy);
+      expect(await appIsServed()).toBe(true);
+      expect(fetchSpy).toHaveBeenCalledWith('/', expect.objectContaining({ cache: 'no-store' }));
+    });
   });
 
   it('passes a loaded module straight through', async () => {

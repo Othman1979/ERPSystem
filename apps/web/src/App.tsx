@@ -463,7 +463,7 @@ function AppShell() {
 }
 
 function AppGate() {
-  const { status, me, refreshMe } = useAuth();
+  const { status, me, refreshMe, logout } = useAuth();
   const location = useLocation();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
@@ -475,7 +475,10 @@ function AppGate() {
   if (status === 'loading') return <PageSpinner full />;
 
   // The server did not answer: not the sign-in screen, the session is probably fine (WEB-04).
-  if (status === 'unreachable') return <ServerUnreachable onRetry={refreshMe} />;
+  // Signing out works offline too: the logout call may fail, the screen still returns to sign-in.
+  if (status === 'unreachable') {
+    return <ServerUnreachable onRetry={refreshMe} onSignOut={() => logout().catch(() => undefined)} />;
+  }
 
   // Guests see the sign-in screen on any URL and land back on it after signing in.
   if (status === 'guest') {

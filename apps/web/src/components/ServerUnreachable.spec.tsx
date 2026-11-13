@@ -11,13 +11,15 @@ describe('ServerUnreachable (WEB-04)', () => {
   let container: HTMLDivElement;
   // The server stays down: each retry finishes and the screen stays.
   const onRetry = vi.fn(async () => {});
+  const onSignOut = vi.fn();
 
   beforeEach(async () => {
     vi.useFakeTimers();
     onRetry.mockClear();
+    onSignOut.mockClear();
     container = document.createElement('div');
     root = createRoot(container);
-    await act(async () => root.render(<ServerUnreachable onRetry={onRetry} />));
+    await act(async () => root.render(<ServerUnreachable onRetry={onRetry} onSignOut={onSignOut} />));
   });
 
   afterEach(() => {
@@ -48,8 +50,14 @@ describe('ServerUnreachable (WEB-04)', () => {
   it('retries at once when the browser comes back online, and on the button', async () => {
     await act(async () => window.dispatchEvent(new Event('online')));
     expect(onRetry).toHaveBeenCalledTimes(1);
-    await act(async () => container.querySelector('button')!.click());
+    await act(async () => container.querySelectorAll('button')[0].click());
     expect(onRetry).toHaveBeenCalledTimes(2);
+  });
+
+  it('offers a way out to the sign-in screen', async () => {
+    await act(async () => container.querySelectorAll('button')[1].click());
+    expect(onSignOut).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain(i18n.t('auth.logout'));
   });
 
   it('caps the delay', () => {

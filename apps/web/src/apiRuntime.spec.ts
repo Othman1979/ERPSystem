@@ -6,6 +6,7 @@ import {
   DOWNLOAD_TIMEOUT_MS,
   isConnectionError,
   onApiWrite,
+  onSessionChange,
   REQUEST_TIMEOUT_MS,
   setAccessToken,
   type ApiWrite,
@@ -79,11 +80,23 @@ describe('api-client runtime: error classification (WEB-06)', () => {
     expect(isConnectionError(err)).toBe(true);
   });
 
-  it.each([502, 503, 504, 500])('turns an HTML %i from a proxy into SERVER_UNAVAILABLE', async (status) => {
+  it.each([502, 503, 504])('turns an HTML %i from a proxy into SERVER_UNAVAILABLE', async (status) => {
     handler = () => html(status);
     const err = await caught(apiFetch('/parties'));
     expect(err).toMatchObject({ status, code: CLIENT_ERROR.SERVER_UNAVAILABLE });
     expect(isConnectionError(err)).toBe(true);
+  });
+
+  it('keeps an HTML 500 (something did answer) apart from an unreachable server', async () => {
+    handler = () => html(500);
+    const err = await caught(apiFetch('/parties'));
+    expect(err).toMatchObject({ status: 500, code: CLIENT_ERROR.INVALID_RESPONSE });
+    expect(isConnectionError(err)).toBe(false);
+  });
+
+  it("does not count the API's own 500 as a connection error", async () => {
+    handler = () => json(500, { error: { code: 'INTERNAL', message: 'boom', requestId: 'r' } });
+    expect(isConnectionError(await caught(apiFetch('/me')))).toBe(false);
   });
 
   it('turns a 200 that is not JSON into INVALID_RESPONSE', async () => {
@@ -207,6 +220,18 @@ describe('api-client runtime: token refresh on 401', () => {
     await vi.advanceTimersByTimeAsync(2 * REQUEST_TIMEOUT_MS + 1000);
   });
 
+  it('ends the session when something in front of the API refuses the refresh with an HTML 403', async () => {
+    vi.useFakeTimers();
+    setAccessToken('old');
+    handler = (url) =>
+      url.endsWith('/auth/refresh')
+        ? new Response('<h1>Forbidden</h1>', { status: 403 })
+        : json(401, { error: { code: 'UNAUTHORIZED', message: 'x' } });
+    const result = caught(apiFetch('/parties'));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await result).toMatchObject({ status: 401, code: 'UNAUTHORIZED' });
+  });
+
   it('returns the 401 when the API refuses the refresh', async () => {
     vi.useFakeTimers();
     setAccessToken('old');
@@ -239,5 +264,47 @@ describe('api-client runtime: write notifications (WEB-13)', () => {
       { method: 'POST', path: '/cash-boxes', status: 201 },
       { method: 'DELETE', path: '/branches/3', status: 204 },
     ]);
+  });
+});
+
+describe('api-client runtime: session change from another tab', () => {
+  const jwt = (sub: string, tid: string) => `h.${btoa(JSON.stringify({ sub, tid })).replace(/=+$/, '')}.s`;
+
+  function refreshTo(token: string) {
+    handler = (url, init) => {
+      if (url.endsWith('/auth/refresh')) return json(200, { accessToken: token });
+      const auth = new Headers(init.headers).get('Authorization');
+      return auth === `Bearer ${token}` ? json(200, []): json(401, { error: { code: 'UNAUTHORIZED', message: 'x' } });
+    };
+  }
+
+  it('reports a refresh that lands in another tenant', async () => {
+    const changes = vi.fn();
+    const off = onSessionChange(changes);
+    try {
+      setAccessToken(jwt('1', 'A'));
+      refreshTo(jwt('1', 'B'));
+      await apiFetch('/parties');
+      expect(changes).toHaveBeenCalledTimes(1);
+    } finally {
+      off();
+    }
+  });
+
+  it('stays quiet for a refresh into the same session, or the first one after a page load', async () => {
+    const changes = vi.fn();
+    const off = onSessionChange(changes);
+    try {
+      setAccessToken(jwt('1', 'A'));
+      refreshTo(jwt('1', 'A') + 'x');
+      await apiFetch('/parties');
+      await new Promise((r) => setTimeout(r, 0));
+      setAccessToken(null);
+      refreshTo(jwt('1', 'B'));
+      await apiFetch('/parties');
+      expect(changes).not.toHaveBeenCalled();
+    } finally {
+      off();
+    }
   });
 });

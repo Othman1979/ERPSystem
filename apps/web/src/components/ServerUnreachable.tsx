@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DisconnectOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DisconnectOutlined, LogoutOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Button, Result, Typography } from 'antd';
 
 /** Seconds before each automatic retry; the last one repeats. */
@@ -17,7 +17,14 @@ export function retryDelay(attempt: number): number {
  * cookie is probably still valid. Retries on its own with a growing delay, at
  * once when the browser comes back online, and on the button.
  */
-export function ServerUnreachable({ onRetry }: { onRetry: () => Promise<void> }) {
+export function ServerUnreachable({
+  onRetry,
+  onSignOut,
+}: {
+  onRetry: () => Promise<void>;
+  /** Way out for a user who would rather sign in again (or as someone else). */
+  onSignOut: () => void;
+}) {
   const { t } = useTranslation();
   const attempts = useRef(0);
   const busy = useRef(false);
@@ -64,6 +71,9 @@ export function ServerUnreachable({ onRetry }: { onRetry: () => Promise<void> })
         <>
           <Button type="primary" icon={<ReloadOutlined />} loading={retrying} onClick={() => void retry()}>
             {t('connection.retryNow')}
+          </Button>
+          <Button icon={<LogoutOutlined />} onClick={onSignOut}>
+            {t('auth.logout')}
           </Button>
           <Typography.Paragraph type="secondary" style={{ marginTop: 12 }} aria-live="polite">
             {retrying ? t('connection.retrying') : t('connection.autoRetry', { seconds: secondsLeft })}

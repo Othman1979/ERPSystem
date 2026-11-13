@@ -24,22 +24,40 @@ function markReload(now: number): void {
 }
 
 /**
+ * True when reloading would land on this app again: the browser is online and
+ * the server hands out the app's index.html. Offline, or while the proxy
+ * answers 502 during a restart, a reload would replace the app with the
+ * browser's or the proxy's error page.
+ */
+export async function appIsServed(): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+  try {
+    const res = await fetch('/', { cache: 'no-store', headers: { Accept: 'text/html' } });
+    return res.ok && (await res.text()).includes('id="root"');
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Runs a dynamic import. When it fails (typically: a new release replaced the
  * hashed chunk this tab's old index.html points at), reloads the page once to
- * pick up the new index.html. A second failure soon after is thrown, so the
- * view's error boundary shows it instead of reloading in a loop.
+ * pick up the new index.html, but only when the app itself is being served
+ * (`appIsServed`). Otherwise, or on a second failure soon after, the error is
+ * thrown, so the view's error boundary shows it instead of reloading in a loop.
  */
 export async function loadWithReload<T>(
   load: () => Promise<T>,
   reload: () => void = () => window.location.reload(),
   now: () => number = Date.now,
+  canReload: () => Promise<boolean> = appIsServed,
 ): Promise<T> {
   try {
     return await load();
   } catch (err) {
     const last = lastReload();
     const t = now();
-    if (last !== null && t - last > RELOAD_WINDOW_MS) {
+    if (last !== null && t - last > RELOAD_WINDOW_MS && (await canReload())) {
       markReload(t);
       reload();
       // The page is going away; never settle so nothing renders an error meanwhile.

@@ -8,6 +8,7 @@ import {
   isConnectionError,
   meControllerMe,
   meControllerSwitchTenant,
+  onSessionChange,
   setAccessToken,
   setBranchId,
   type RegisterDto,
@@ -125,9 +126,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAccessToken(null);
         setMe(null);
         setStatus('guest');
-      } else if (isConnectionError(err) || (err instanceof ApiError && err.status >= 500)) {
-        // No answer about the session. A signed-in user stays signed in (the
-        // lists show their own errors); otherwise say the server is unreachable.
+      } else if (isConnectionError(err)) {
+        // The API could not be reached, so nothing is known about the session.
+        // A signed-in user stays signed in (the lists show their own errors);
+        // otherwise say the server is unreachable. Any answer the server did
+        // give (its own 5xx included) falls through to the sign-in screen.
         setStatus((s) => (s === 'authed' ? s : 'unreachable'));
       } else {
         setStatus('guest');
@@ -138,6 +141,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshMe();
   }, [refreshMe]);
+
+  // Another tab switched tenant or signed in as someone else, and this tab's
+  // token refresh followed the shared cookie into that session: drop this
+  // tab's cache (reference data stays fresh for 5 minutes) and reload /me,
+  // as a switch in this tab does (WEB-01, WEB-13).
+  useEffect(
+    () =>
+      onSessionChange(() => {
+        setBranchId(null);
+        setBranchState(null);
+        setStatus('loading');
+        queryClient.clear();
+        void refreshMe();
+      }),
+    [queryClient, refreshMe],
+  );
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await authControllerLogin({ email, password });

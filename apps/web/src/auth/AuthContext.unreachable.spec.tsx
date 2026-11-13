@@ -5,6 +5,9 @@ import { ApiError, CLIENT_ERROR, meControllerMe } from '@erp/api-client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider, useAuth } from './AuthContext';
 
+// The listener AuthProvider registers for a session change in another tab.
+const session = vi.hoisted(() => ({ onChange: null as null | (() => void) }));
+
 vi.mock('@erp/api-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@erp/api-client')>();
   return {
@@ -17,6 +20,12 @@ vi.mock('@erp/api-client', async (importOriginal) => {
         currentMembership: { membershipId: 'm1', roleCode: 'OWNER', defaultBranchId: null, branches: [] },
       },
     })),
+    onSessionChange: vi.fn((listener: () => void) => {
+      session.onChange = listener;
+      return () => {
+        session.onChange = null;
+      };
+    }),
     setAccessToken: vi.fn(),
     setBranchId: vi.fn(),
   };
@@ -45,6 +54,7 @@ function Parent() {
 
 describe('AuthProvider when the server does not answer (WEB-04, WEB-18)', () => {
   let root: Root;
+  let client: QueryClient;
 
   beforeEach(() => {
     seen.length = 0;
@@ -56,10 +66,11 @@ describe('AuthProvider when the server does not answer (WEB-04, WEB-18)', () => 
   });
 
   async function mount() {
+    client = new QueryClient();
     root = createRoot(document.createElement('div'));
     await act(async () => {
       root.render(
-        <QueryClientProvider client={new QueryClient()}>
+        <QueryClientProvider client={client}>
           <Parent />
         </QueryClientProvider>,
       );
@@ -76,6 +87,22 @@ describe('AuthProvider when the server does not answer (WEB-04, WEB-18)', () => 
     vi.mocked(meControllerMe).mockRejectedValueOnce(error);
     await mount();
     expect(last().status).toBe('unreachable');
+  });
+
+  it('is guest, not unreachable, when the API itself answers /me with a 500', async () => {
+    vi.mocked(meControllerMe).mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'boom'));
+    await mount();
+    expect(last().status).toBe('guest');
+  });
+
+  it('drops the cache and reloads /me when a refresh lands in another session', async () => {
+    await mount();
+    client.setQueryData(['accounts-tree'], [{ id: 'A-1' }]);
+    const calls = vi.mocked(meControllerMe).mock.calls.length;
+    await act(async () => session.onChange!());
+    expect(client.getQueryData(['accounts-tree'])).toBeUndefined();
+    expect(vi.mocked(meControllerMe).mock.calls.length).toBe(calls + 1);
+    expect(last().status).toBe('authed');
   });
 
   it('is guest after a 401 on /me', async () => {
