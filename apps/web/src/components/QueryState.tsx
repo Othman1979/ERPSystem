@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { App, Button, Empty, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import { ApiError } from '@erp/api-client';
+import { ApiError, isConnectionError } from '@erp/api-client';
 
 /** The part of a TanStack query result needed to tell "failed" from "empty". */
 export interface ListQueryState {
@@ -15,8 +15,10 @@ export interface ListQueryState {
 
 /** User-facing text for a failed request: the translated API code, or a network message. */
 export function queryErrorMessage(error: unknown, t: TFunction): string {
-  // 502–504 come from the proxy when the API is down: say so, not "internal error".
-  const unreachable = error instanceof ApiError && error.status >= 502 && error.status <= 504;
+  // The server could not be reached (the runtime classifies it, WEB-06), or a
+  // 502–504 from the proxy: say so, not "internal error".
+  const unreachable =
+    isConnectionError(error) || (error instanceof ApiError && error.status >= 502 && error.status <= 504);
   if (error instanceof ApiError && !unreachable) {
     return t(`errors.${error.code}`, { defaultValue: error.message || t('errors.INTERNAL') });
   }

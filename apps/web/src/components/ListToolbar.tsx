@@ -1,7 +1,8 @@
 import { SearchOutlined } from '@ant-design/icons';
-import { Input } from 'antd';
+import { ConfigProvider, Input } from 'antd';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { fieldPanelTheme } from '../theme';
 
 /**
  * Standard bar above a list table: search, filters and result count on the
@@ -26,23 +27,27 @@ export function ListToolbar({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="list-toolbar">
-      {onSearch && (
-        <Input
-          className="list-toolbar-search"
-          allowClear
-          prefix={<SearchOutlined />}
-          placeholder={searchPlaceholder ?? t('common.search')}
-          value={search}
-          onChange={(e) => onSearch(e.target.value)}
-        />
-      )}
-      {filters}
-      {count !== undefined && (
-        <span className="list-toolbar-count">{t('common.resultCount', { count })}</span>
-      )}
-      {actions && <div className="list-toolbar-actions">{actions}</div>}
-    </div>
+    // Controls sit on the panel, so they take the panel input border (3:1 there).
+    <ConfigProvider theme={fieldPanelTheme}>
+      <div className="list-toolbar">
+        {onSearch && (
+          <Input
+            className="list-toolbar-search"
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder={searchPlaceholder ?? t('common.search')}
+            aria-label={searchPlaceholder ?? t('common.search')}
+            value={search}
+            onChange={(e) => onSearch(e.target.value)}
+          />
+        )}
+        {filters}
+        {count !== undefined && (
+          <span className="list-toolbar-count">{t('common.resultCount', { count })}</span>
+        )}
+        {actions && <div className="list-toolbar-actions">{actions}</div>}
+      </div>
+    </ConfigProvider>
   );
 }
 

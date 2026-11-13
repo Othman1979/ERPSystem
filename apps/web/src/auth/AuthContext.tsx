@@ -1,12 +1,14 @@
-import { createContext, Fragment, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, Fragment, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ApiError,
   authControllerLogin,
   authControllerLogout,
   authControllerRegister,
+  isConnectionError,
   meControllerMe,
   meControllerSwitchTenant,
+  onSessionChange,
   setAccessToken,
   setBranchId,
   type RegisterDto,
@@ -56,7 +58,11 @@ export interface MeData {
 }
 
 interface AuthState {
-  status: 'loading' | 'authed' | 'guest';
+  /**
+   * `unreachable`: the session could not be checked because the server did not
+   * answer (WEB-04). The session may well be valid, so this is not `guest`.
+   */
+  status: 'loading' | 'authed' | 'guest' | 'unreachable';
   me: MeData | null;
   login: (email: string, password: string) => Promise<void>;
   register: (dto: RegisterDto) => Promise<void>;
@@ -120,8 +126,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAccessToken(null);
         setMe(null);
         setStatus('guest');
+      } else if (isConnectionError(err)) {
+        // The API could not be reached, so nothing is known about the session.
+        // A signed-in user stays signed in (the lists show their own errors);
+        // otherwise say the server is unreachable. Any answer the server did
+        // give (its own 5xx included) falls through to the sign-in screen.
+        setStatus((s) => (s === 'authed' ? s : 'unreachable'));
       } else {
-        // Network/server error — treat as guest but keep it simple.
         setStatus('guest');
       }
     }
@@ -130,6 +141,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshMe();
   }, [refreshMe]);
+
+  // Another tab switched tenant or signed in as someone else, and this tab's
+  // token refresh followed the shared cookie into that session: drop this
+  // tab's cache (reference data stays fresh for 5 minutes) and reload /me,
+  // as a switch in this tab does (WEB-01, WEB-13).
+  useEffect(
+    () =>
+      onSessionChange(() => {
+        setBranchId(null);
+        setBranchState(null);
+        setStatus('loading');
+        queryClient.clear();
+        void refreshMe();
+      }),
+    [queryClient, refreshMe],
+  );
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await authControllerLogin({ email, password });
@@ -190,13 +217,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshMe();
   }, [refreshMe, queryClient]);
 
-  return (
-    <AuthContext.Provider
-      value={{ status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch }}
-    >
-      {children}
-    </AuthContext.Provider>
+  // A new object only when something in it changes, so useAuth() consumers do
+  // not re-render on every provider render (WEB-18).
+  const value = useMemo<AuthState>(
+    () => ({ status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch }),
+    [status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthState {

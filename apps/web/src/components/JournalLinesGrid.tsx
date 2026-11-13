@@ -6,6 +6,7 @@ import { formatAmount, round3, sum } from '../format/number';
 import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
 import { Num } from './Num';
+import { cellLabel } from './gridA11y';
 
 export interface JournalLineDraft {
   key: number;
@@ -207,6 +208,7 @@ export function JournalLinesGrid({
                 <td className="row-no">{row + 1}</td>
                 <td {...cellProps(row, 1)}>
                   <GridSelect
+                    aria-label={cellLabel(t, t('journal.account'), row)}
                     variant="borderless"
                     placeholder={t('journal.account')}
                     options={accountOptions}
@@ -227,6 +229,7 @@ export function JournalLinesGrid({
                   <td {...cellProps(row, 5)}>
                     {kind ? (
                       <GridSelect
+                        aria-label={cellLabel(t, t('journal.party'), row)}
                         variant="borderless"
                         placeholder={t(kind === 'CUSTOMER' ? 'journal.pickCustomer' : 'journal.pickSupplier')}
                         options={partyColumn.options[kind]}
@@ -243,6 +246,7 @@ export function JournalLinesGrid({
                 )}
                 <td className="num-cell" {...cellProps(row, 2)}>
                   <InputNumber<string>
+                    aria-label={cellLabel(t, t('journal.debit'), row)}
                     variant="borderless"
                     stringMode
                     placeholder={t('journal.debit')}
@@ -256,6 +260,7 @@ export function JournalLinesGrid({
                 </td>
                 <td className="num-cell" {...cellProps(row, 3)}>
                   <InputNumber<string>
+                    aria-label={cellLabel(t, t('journal.credit'), row)}
                     variant="borderless"
                     stringMode
                     placeholder={t('journal.credit')}
@@ -269,6 +274,7 @@ export function JournalLinesGrid({
                 </td>
                 <td {...cellProps(row, 4)}>
                   <Input
+                    aria-label={cellLabel(t, t('common.description'), row)}
                     variant="borderless"
                     placeholder={t('common.description')}
                     maxLength={500}

@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import {
@@ -13,6 +13,7 @@ import {
   ProfileOutlined,
   ShoppingCartOutlined,
   ShoppingOutlined,
+  TranslationOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -23,6 +24,7 @@ import {
   Button,
   Card,
   Drawer,
+  Dropdown,
   Grid,
   Layout,
   Menu,
@@ -36,19 +38,43 @@ import {
 import { useAuth } from './auth/AuthContext';
 import { HomeDashboard } from './pages/HomeDashboard';
 import { LoginPage } from './pages/LoginPage';
-import { PlatformAdminPage } from './pages/PlatformAdminPage';
-import { SetupWizardPage } from './pages/SetupWizardPage';
-import { HelpPage } from './pages/HelpPage';
-import { LegalPage } from './pages/LegalPage';
 import { useCompany } from './components/CompanyProfileForm';
-import { RegisterPage } from './pages/RegisterPage';
-import { ChangePasswordRequiredPage } from './pages/ChangePasswordRequiredPage';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
+import { ServerUnreachable } from './components/ServerUnreachable';
+import { lazyPage } from './lazyPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 import { displayName } from './i18n/displayName';
 import { ALL_ROUTES, APP_GROUPS, routeForPath, type AppGroup, type AppRoute } from './routes';
 import { reportError } from './errorReporting';
-import { palette, TOPBAR_HEIGHT } from './theme';
+import { installCssVariables, palette, TOPBAR_HEIGHT } from './theme';
+
+// The --c-* custom properties index.css uses, generated from the palette (UI-20).
+installCssVariables();
+
+/** Switches between Arabic and English (top bar, signed in or not). */
+function toggleLanguage(): void {
+  const next: AppLanguage = i18n.language === 'ar' ? 'en' : 'ar';
+  void i18n.changeLanguage(SUPPORTED_LANGUAGES.includes(next) ? next : 'ar');
+}
+
+// The sign-in screen and the home screen ship with the app; the rest load when opened (WEB-10).
+const PlatformAdminPage = lazyPage(() => import('./pages/PlatformAdminPage').then((m) => m.PlatformAdminPage));
+const SetupWizardPage = lazyPage(() => import('./pages/SetupWizardPage').then((m) => m.SetupWizardPage));
+const HelpPage = lazyPage(() => import('./pages/HelpPage').then((m) => m.HelpPage));
+const LegalPage = lazyPage(() => import('./pages/LegalPage').then((m) => m.LegalPage));
+const RegisterPage = lazyPage(() => import('./pages/RegisterPage').then((m) => m.RegisterPage));
+const ChangePasswordRequiredPage = lazyPage(() =>
+  import('./pages/ChangePasswordRequiredPage').then((m) => m.ChangePasswordRequiredPage),
+);
+
+/** Shown while a page's chunk loads. */
+function PageSpinner({ full }: { full?: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', marginTop: full ? '20vh' : 64 }}>
+      <Spin size="large" />
+    </div>
+  );
+}
 
 interface ErrorBoundaryState {
   error: Error | null;
@@ -200,12 +226,17 @@ function AppShell() {
   const screens = Grid.useBreakpoint();
   // Breakpoints are empty on the first render; assume desktop until measured.
   const isMobile = screens.md === false;
+  // Tablets (768–991 px) start with the menu folded to icons, so the page
+  // keeps its width (UI-01); the toggle opens it for this visit only.
+  const isTablet = screens.md === true && screens.lg === false;
   const [collapsed, setCollapsed] = useState(readSiderCollapsed);
+  const [tabletExpanded, setTabletExpanded] = useState(false);
+  const siderCollapsed = isTablet ? !tabletExpanded : collapsed;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const language = i18n.language as AppLanguage;
-  const nextLanguage = language === 'ar' ? 'en' : 'ar';
   const isRtl = language !== 'en';
   const current = routeForPath(location.pathname);
 
@@ -221,7 +252,7 @@ function AppShell() {
       ...APP_GROUPS.map((g) => ({
         type: 'group' as const,
         key: g.label,
-        label: collapsed && !isMobile ? null : t(g.label),
+        label: siderCollapsed && !isMobile ? null : t(g.label),
         children: g.routes.map((r) => ({ key: r.path, icon: r.icon, label: t(r.label) })),
       })),
       ...(isPlatformAdmin
@@ -229,7 +260,7 @@ function AppShell() {
         : []),
     ],
     // Labels depend on the language; t identity changes with it.
-    [t, collapsed, isMobile, isPlatformAdmin],
+    [t, siderCollapsed, isMobile, isPlatformAdmin],
   );
 
   const menu = (
@@ -248,12 +279,47 @@ function AppShell() {
   const toggleMenu = () => {
     if (isMobile) {
       setDrawerOpen(true);
+    } else if (isTablet) {
+      setTabletExpanded((x) => !x);
     } else {
       setCollapsed((c) => {
         writeSiderCollapsed(!c);
         return !c;
       });
     }
+  };
+
+  const logOut = () => {
+    // Next sign-in starts on the home screen, not this user's last page.
+    navigate('/');
+    void logout();
+  };
+  const userName = me?.user.fullName ?? me?.user.email;
+
+  // Phones: help, language, password and sign-out move into the avatar's menu,
+  // so the page title keeps the top bar's width (UI-10).
+  const userMenu: MenuProps = {
+    items: [
+      // A heading, not a disabled item: readable (text-2) and not announced as unavailable.
+      {
+        type: 'group',
+        key: 'user',
+        label: <span className="topbar-menu-user">{userName}</span>,
+        children: [],
+      },
+      { type: 'divider' },
+      { key: 'help', icon: <QuestionCircleOutlined />, label: t('help.title') },
+      { key: 'language', icon: <TranslationOutlined />, label: t('language.switchTo') },
+      { key: 'password', icon: <KeyOutlined />, label: t('auth.changePassword') },
+      { type: 'divider' },
+      { key: 'logout', icon: <LogoutOutlined />, label: t('auth.logout') },
+    ],
+    onClick: ({ key }) => {
+      if (key === 'help') navigate('/help');
+      else if (key === 'language') toggleLanguage();
+      else if (key === 'password') setPasswordOpen(true);
+      else if (key === 'logout') logOut();
+    },
   };
 
   return (
@@ -268,17 +334,21 @@ function AppShell() {
             aria-label={t('nav.menu')}
           />
         </Tooltip>
-        <button type="button" className="topbar-brand" onClick={() => navigate('/')}>
-          {t('app.title')}
-        </button>
+        {!isMobile && (
+          <button type="button" className="topbar-brand" onClick={() => navigate('/')}>
+            {t('app.title')}
+          </button>
+        )}
         {current && !isMobile && (
           <Breadcrumb
             className="topbar-breadcrumb"
             items={[{ title: me?.currentTenant?.name ?? '' }, { title: t(current.label) }]}
           />
         )}
-        {current && isMobile && <span className="topbar-title">{t(current.label)}</span>}
-        <div style={{ flex: 1 }} />
+        {isMobile && (
+          <span className="topbar-title">{current ? t(current.label) : t('app.title')}</span>
+        )}
+        {!isMobile && <div style={{ flex: 1 }} />}
         <Space size={isMobile ? 4 : 12}>
           {branches.length > 1 && (
             <Select
@@ -301,58 +371,69 @@ function AppShell() {
               onChange={(v) => void switchTenant(v)}
               options={me.tenants.map((tn) => ({ value: tn.tenantId, label: tn.tenantName }))}
               popupMatchSelectWidth={false}
+              aria-label={t('ui.switchCompany')}
+              title={t('ui.switchCompany')}
             />
           )}
-          <Space size={6}>
-            <Avatar size="small" icon={<UserOutlined />} />
-            {!isMobile && (
-              <span className="topbar-user">{me?.user.fullName ?? me?.user.email}</span>
-            )}
-          </Space>
-          <Tooltip title={t('help.title')}>
-            <Button
-              size="small"
-              type="text"
-              className="topbar-btn"
-              icon={<QuestionCircleOutlined />}
-              aria-label={t('help.title')}
-              onClick={() => navigate('/help')}
-            />
-          </Tooltip>
-          <Button
-            size="small"
-            onClick={() => {
-              void i18n.changeLanguage(
-                SUPPORTED_LANGUAGES.includes(nextLanguage) ? nextLanguage : 'ar',
-              );
-            }}
-          >
-            {t('language.switchTo')}
-          </Button>
-          <Tooltip title={t('auth.changePassword')}>
-            <Button
-              size="small"
-              type="text"
-              className="topbar-btn"
-              icon={<KeyOutlined />}
-              aria-label={t('auth.changePassword')}
-              onClick={() => setPasswordOpen(true)}
-            />
-          </Tooltip>
-          <Tooltip title={t('auth.logout')}>
-            <Button
-              size="small"
-              type="text"
-              className="topbar-btn"
-              icon={<LogoutOutlined />}
-              onClick={() => {
-                // Next sign-in starts on the home screen, not this user's last page.
-                navigate('/');
-                void logout();
-              }}
-              aria-label={t('auth.logout')}
-            />
-          </Tooltip>
+          {isMobile ? (
+            <Dropdown
+              menu={userMenu}
+              trigger={['click']}
+              placement="bottomRight"
+              open={userMenuOpen}
+              onOpenChange={setUserMenuOpen}
+            >
+              <button
+                type="button"
+                className="topbar-user-menu"
+                aria-label={t('ui.userMenu')}
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+              >
+                <Avatar size="small" icon={<UserOutlined />} />
+              </button>
+            </Dropdown>
+          ) : (
+            <>
+              <Space size={6}>
+                <Avatar size="small" icon={<UserOutlined />} />
+                <span className="topbar-user">{userName}</span>
+              </Space>
+              <Tooltip title={t('help.title')}>
+                <Button
+                  size="small"
+                  type="text"
+                  className="topbar-btn"
+                  icon={<QuestionCircleOutlined />}
+                  aria-label={t('help.title')}
+                  onClick={() => navigate('/help')}
+                />
+              </Tooltip>
+              <Button size="small" className="topbar-lang" onClick={toggleLanguage}>
+                {t('language.switchTo')}
+              </Button>
+              <Tooltip title={t('auth.changePassword')}>
+                <Button
+                  size="small"
+                  type="text"
+                  className="topbar-btn"
+                  icon={<KeyOutlined />}
+                  aria-label={t('auth.changePassword')}
+                  onClick={() => setPasswordOpen(true)}
+                />
+              </Tooltip>
+              <Tooltip title={t('auth.logout')}>
+                <Button
+                  size="small"
+                  type="text"
+                  className="topbar-btn"
+                  icon={<LogoutOutlined />}
+                  onClick={logOut}
+                  aria-label={t('auth.logout')}
+                />
+              </Tooltip>
+            </>
+          )}
         </Space>
       </header>
 
@@ -362,7 +443,7 @@ function AppShell() {
             className="app-sider"
             width={224}
             collapsedWidth={56}
-            collapsed={collapsed}
+            collapsed={siderCollapsed}
             trigger={null}
             theme="light"
             style={{ top: TOPBAR_HEIGHT, height: `calc(100vh - ${TOPBAR_HEIGHT}px)` }}
@@ -371,38 +452,61 @@ function AppShell() {
           </Layout.Sider>
         )}
         <Layout.Content className="app-content" style={{ padding: isMobile ? 12 : 24 }}>
-          <Routes>
-            <Route path="/" element={<HomeScreen />} />
-            {ALL_ROUTES.map((r) => (
+          <Suspense fallback={<PageSpinner />}>
+            <Routes>
+              <Route path="/" element={<HomeScreen />} />
+              {ALL_ROUTES.map((r) => (
+                <Route
+                  key={r.key}
+                  path={`${r.path}/*`}
+                  element={<ViewErrorBoundary key={r.key}>{r.element}</ViewErrorBoundary>}
+                />
+              ))}
               <Route
-                key={r.key}
-                path={`${r.path}/*`}
-                element={<ViewErrorBoundary key={r.key}>{r.element}</ViewErrorBoundary>}
-              />
-            ))}
-            <Route path="/help" element={<HelpPage />} />
-            <Route path="/privacy" element={<LegalPage kind="privacy" />} />
-            <Route path="/terms" element={<LegalPage kind="terms" />} />
-            <Route
-              path="/setup"
-              element={
-                <ViewErrorBoundary key="setup">
-                  <SetupWizardPage />
-                </ViewErrorBoundary>
-              }
-            />
-            {isPlatformAdmin && (
-              <Route
-                path={`${PLATFORM_PATH}/*`}
+                path="/help"
                 element={
-                  <ViewErrorBoundary key="platform">
-                    <PlatformAdminPage />
+                  <ViewErrorBoundary key="help">
+                    <HelpPage />
                   </ViewErrorBoundary>
                 }
               />
-            )}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              <Route
+                path="/privacy"
+                element={
+                  <ViewErrorBoundary key="privacy">
+                    <LegalPage kind="privacy" />
+                  </ViewErrorBoundary>
+                }
+              />
+              <Route
+                path="/terms"
+                element={
+                  <ViewErrorBoundary key="terms">
+                    <LegalPage kind="terms" />
+                  </ViewErrorBoundary>
+                }
+              />
+              <Route
+                path="/setup"
+                element={
+                  <ViewErrorBoundary key="setup">
+                    <SetupWizardPage />
+                  </ViewErrorBoundary>
+                }
+              />
+              {isPlatformAdmin && (
+                <Route
+                  path={`${PLATFORM_PATH}/*`}
+                  element={
+                    <ViewErrorBoundary key="platform">
+                      <PlatformAdminPage />
+                    </ViewErrorBoundary>
+                  }
+                />
+              )}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </Layout.Content>
       </Layout>
 
@@ -413,6 +517,7 @@ function AppShell() {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           width={268}
+          rootClassName="app-drawer-menu"
           styles={{ body: { padding: 0 } }}
         >
           {menu}
@@ -424,8 +529,21 @@ function AppShell() {
   );
 }
 
-export function App() {
-  const { status, me } = useAuth();
+/** Brand and language switch above the sign-in and registration screens (UI-15). */
+function GuestTopbar() {
+  const { t } = useTranslation();
+  return (
+    <header className="guest-topbar app-topbar">
+      <span className="topbar-brand">{t('app.title')}</span>
+      <Button size="small" className="topbar-lang" onClick={toggleLanguage}>
+        {t('language.switchTo')}
+      </Button>
+    </header>
+  );
+}
+
+function AppGate() {
+  const { status, me, refreshMe, logout } = useAuth();
   const location = useLocation();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
@@ -434,20 +552,25 @@ export function App() {
     return <LegalPage kind={location.pathname === '/privacy' ? 'privacy' : 'terms'} standalone />;
   }
 
-  if (status === 'loading') {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20vh' }}>
-        <Spin size="large" />
-      </div>
-    );
+  if (status === 'loading') return <PageSpinner full />;
+
+  // The server did not answer: not the sign-in screen, the session is probably fine (WEB-04).
+  // Signing out works offline too: the logout call may fail, the screen still returns to sign-in.
+  if (status === 'unreachable') {
+    return <ServerUnreachable onRetry={refreshMe} onSignOut={() => logout().catch(() => undefined)} />;
   }
 
   // Guests see the sign-in screen on any URL and land back on it after signing in.
   if (status === 'guest') {
-    return authMode === 'login' ? (
-      <LoginPage onSwitchToRegister={() => setAuthMode('register')} />
-    ) : (
-      <RegisterPage onSwitchToLogin={() => setAuthMode('login')} />
+    return (
+      <>
+        <GuestTopbar />
+        {authMode === 'login' ? (
+          <LoginPage onSwitchToRegister={() => setAuthMode('register')} />
+        ) : (
+          <RegisterPage onSwitchToLogin={() => setAuthMode('login')} />
+        )}
+      </>
     );
   }
 
@@ -455,4 +578,14 @@ export function App() {
   if (me?.user.mustChangePassword) return <ChangePasswordRequiredPage />;
 
   return <AppShell />;
+}
+
+export function App() {
+  return (
+    <ViewErrorBoundary>
+      <Suspense fallback={<PageSpinner full />}>
+        <AppGate />
+      </Suspense>
+    </ViewErrorBoundary>
+  );
 }
