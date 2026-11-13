@@ -3,7 +3,7 @@ import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, currentBranchId, assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { PlanLimitsService } from '../../common/plan-limits/plan-limits.service.js';
@@ -20,6 +20,7 @@ import {
   type SummaryRange,
 } from '../shared/document-summary.js';
 import { computeLineAmounts } from '../shared/invoice-math.js';
+import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import { creditedByInvoice, withBalance } from '../shared/invoice-balance.js';
 import {
   lockOrder,
@@ -192,9 +193,13 @@ export class SalesInvoicesService implements InvoiceSettlement {
   /** SELECT … FOR UPDATE on the invoices, ascending id (§10.1 fixed lock order). */
   async lockForSettlement(tx: Prisma.TransactionClient, ids: bigint[]): Promise<void> {
     const { tenantId } = this.support.tenant();
-    for (const id of lockOrder(ids)) {
-      await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
-    }
+    const sorted = lockOrder(ids);
+    if (sorted.length === 0) return;
+    // One locking read in id order (TRADE-18: auto-allocation used to lock every invoice one by one).
+    await tx.$queryRaw`
+      SELECT id FROM sales_invoices
+       WHERE tenant_id = ${tenantId} AND id IN (${Prisma.join(sorted)})
+       ORDER BY id FOR UPDATE`;
   }
 
   /**
@@ -208,7 +213,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
   async settlementState(tx: Prisma.TransactionClient, id: bigint): Promise<SettlementState | null> {
     const { tenantId } = this.support.tenant();
     const [inv] = await tx.$queryRaw<SettlementRow[]>`
-      SELECT customer_id AS party_id, status, payment_type, grand_total, paid_amount
+      SELECT customer_id AS party_id, branch_id, status, payment_type, grand_total, paid_amount
         FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
     if (!inv) return null;
     const [credited] = await tx.$queryRaw<{ s: { toString(): string } | null }[]>`
@@ -223,18 +228,32 @@ export class SalesInvoicesService implements InvoiceSettlement {
     await tx.salesInvoice.update({ where: { id }, data: { paidAmount: { increment: delta } } });
   }
 
-  /** The party's posted credit invoices, oldest first. Cash invoices are settled at sale. */
+  /**
+   * The party's posted credit invoices that still have an outstanding
+   * balance (§7.8), oldest first. Cash invoices are settled at sale. A plain
+   * read: the caller locks them all with lockForSettlement and re-reads each
+   * with settlementState (TRADE-18).
+   */
   async creditInvoiceIdsOldestFirst(
     tx: Prisma.TransactionClient,
     companyId: bigint,
     partyId: bigint,
   ): Promise<bigint[]> {
-    const rows = await tx.salesInvoice.findMany({
-      where: { companyId, status: 'POSTED', paymentType: 'CREDIT', customerId: partyId },
-      select: { id: true },
-      orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
-    });
-    return rows.map((r) => r.id);
+    const { tenantId } = this.support.tenant();
+    const rows = await tx.$queryRaw<{ id: bigint }[]>`
+      SELECT i.id
+        FROM sales_invoices i
+        LEFT JOIN (
+          SELECT original_invoice_id, SUM(grand_total) AS credited
+            FROM sales_returns
+           WHERE tenant_id = ${tenantId} AND status = 'POSTED' AND refund_type = 'CREDIT'
+           GROUP BY original_invoice_id
+        ) r ON r.original_invoice_id = i.id
+       WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId} AND i.customer_id = ${partyId}
+         AND i.status = 'POSTED' AND i.payment_type = 'CREDIT'
+         AND i.grand_total - i.paid_amount - COALESCE(r.credited, 0) > 0
+       ORDER BY i.invoice_date, i.id`;
+    return rows.map((r) => BigInt(r.id));
   }
 
   /** Invoice numbers by id (printed vouchers name the invoices they settled). */
@@ -306,6 +325,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
         invoiceNo: true,
         invoiceDate: true,
         paymentType: true,
+        pricesIncludeTax: true,
         description: true,
         grandTotal: true,
         customer: {
@@ -332,7 +352,8 @@ export class SalesInvoicesService implements InvoiceSettlement {
   async create(dto: CreateSalesInvoiceDto) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines);
+    const pricesIncludeTax = await this.support.pricesIncludeTax(db);
+    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto);
 
     const inv = await db.$transaction(async (tx) => {
@@ -349,6 +370,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
           description: dto.description ?? null,
+          pricesIncludeTax,
           ...this.totals(lines),
           createdBy: this.support.userId() ?? null,
         },
@@ -392,10 +414,18 @@ export class SalesInvoicesService implements InvoiceSettlement {
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
     }
     assertBranchAllowed(inv.branchId);
-    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines);
+    const pricesIncludeTax = await this.support.pricesIncludeTax(db);
+    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto);
 
     await db.$transaction(async (tx) => {
+      // Lock the invoice and re-check it first: a save racing a post of the
+      // same draft must not delete and rewrite the lines of a posted invoice.
+      const [locked] = await tx.$queryRaw<{ status: string }[]>`
+        SELECT status FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      if (!locked || locked.status !== 'DRAFT') {
+        throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
+      }
       await tx.salesInvoiceLine.deleteMany({ where: { invoiceId: id } });
       await tx.salesInvoice.update({
         where: { id },
@@ -407,6 +437,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
           description: dto.description ?? null,
+          pricesIncludeTax,
           ...this.totals(lines),
           updatedBy: this.support.userId() ?? null,
         },
@@ -517,20 +548,16 @@ export class SalesInvoicesService implements InvoiceSettlement {
 
         // Stock OUT for STOCK items — returns avg cost per base unit.
         let costTotal = new Decimal(0);
+        let writeOff = new Decimal(0);
         const costByLine = new Map<bigint, { unitCost: Decimal; totalCost: Decimal }>();
         // Lock every (item, warehouse) in the fixed order before any movement.
-        await this.ledger.lockForDocument(
+        const stockItems = await this.ledger.lockForDocument(
           tx,
           companyId,
           draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
         );
         for (const line of draft.lines) {
-          const item = await tx.item.findFirst({
-            where: { tenantId, id: line.itemId },
-            select: { itemKind: true },
-          });
-          if (!item) throw DomainError.notFound('Item', line.itemId.toString());
-          if (item.itemKind !== 'STOCK') continue;
+          if (!stockItems.has(line.itemId)) continue;
           const res = await this.ledger.applyMovement(tx, companyId, {
             warehouseId: draft.warehouseId,
             itemId: line.itemId,
@@ -544,6 +571,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
           });
           costByLine.set(line.id, { unitCost: res.unitCost, totalCost: res.totalCost });
           costTotal = costTotal.plus(res.totalCost);
+          writeOff = writeOff.plus(res.writeOff);
         }
         // Persist per-line cost snapshot.
         for (const [lineId, c] of costByLine) {
@@ -558,6 +586,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
           'OUTPUT_TAX',
           'COGS',
           'INVENTORY',
+          'INVENTORY_ADJUSTMENT',
           'CUSTOMERS_CONTROL',
         ]);
 
@@ -591,6 +620,9 @@ export class SalesInvoicesService implements InvoiceSettlement {
           journalLines.push({ accountId: mapping.COGS, debit: costTotal.toString() });
           journalLines.push({ accountId: mapping.INVENTORY, credit: costTotal.toString() });
         }
+        journalLines.push(
+          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+        );
 
         const invoiceNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'SALES_INVOICE', invoiceDate,
@@ -696,6 +728,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
     tenantId: bigint,
     companyId: bigint,
     dtos: SalesInvoiceLineDto[],
+    pricesIncludeTax = false,
   ): Promise<ResolvedLine[]> {
     const itemIds = dtos.map((l) => BigInt(l.itemId));
     const items = await db.item.findMany({
@@ -764,6 +797,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
         unitPrice: l.unitPrice,
         discountPct: l.discountPct ?? '0',
         taxRate,
+        pricesIncludeTax,
       });
       out.push({
         dto: l,

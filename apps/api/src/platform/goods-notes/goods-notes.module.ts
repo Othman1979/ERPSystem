@@ -9,5 +9,7 @@ import { GoodsNotesService } from './goods-notes.service.js';
   imports: [SharedModule, JournalModule, InventoryModule],
   controllers: [GoodsNotesController],
   providers: [GoodsNotesService],
+  // Purchase invoices bill a posted GRN through it (TRADE-02, module boundary).
+  exports: [GoodsNotesService],
 })
 export class GoodsNotesModule {}

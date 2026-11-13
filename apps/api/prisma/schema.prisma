@@ -238,6 +238,8 @@ model RefreshToken {
 
   @@index([userId])
   @@index([familyId])
+  // The purge job deletes by expiry (DB-12).
+  @@index([expiresAt])
   @@map("refresh_tokens")
 }
 
@@ -511,7 +513,8 @@ model AuditLog {
   user   User?   @relation(fields: [userId], references: [id])
 
   @@index([tenantId, createdAt])
-  @@index([entityType, entityId])
+  // Tenant first: a reader by entity must never search across tenants (DB-21).
+  @@index([tenantId, entityType, entityId])
   @@map("audit_logs")
 }
 
@@ -547,6 +550,8 @@ model IdempotencyKey {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key])
+  // The purge job deletes by expiry (DB-12).
+  @@index([expiresAt])
   @@map("idempotency_keys")
 }
 
@@ -800,7 +805,8 @@ model JournalEntry {
   // from the reversal that points here. NULL (not a reversal) repeats freely.
   @@unique([tenantId, reversalOfId])
   @@index([tenantId, companyId, entryDate])
-  @@index([tenantId, status])
+  // Reports read posted entries of a company by date (DB-10).
+  @@index([tenantId, companyId, status, entryDate])
   @@map("journal_entries")
 }
 
@@ -824,8 +830,10 @@ model JournalLine {
 
   @@unique([tenantId, id])
   @@unique([tenantId, journalEntryId, lineNo])
-  @@index([tenantId, accountId])
-  @@index([tenantId, partyType, partyId])
+  // Ledger and balances per account: the entry join key is in the index (DB-10).
+  @@index([tenantId, accountId, journalEntryId])
+  // Party statement and control balances per party (aging).
+  @@index([tenantId, partyType, partyId, journalEntryId])
   @@map("journal_lines")
 }
 
@@ -996,7 +1004,7 @@ model StockMovement {
   sourceLineId    BigInt?           @map("source_line_id") @db.UnsignedBigInt
   qtyIn           Decimal           @default(0) @map("qty_in") @db.Decimal(18, 6)
   qtyOut          Decimal           @default(0) @map("qty_out") @db.Decimal(18, 6)
-  unitCost        Decimal           @map("unit_cost") @db.Decimal(18, 3)
+  unitCost        Decimal           @map("unit_cost") @db.Decimal(18, 6)
   totalCost       Decimal           @map("total_cost") @db.Decimal(18, 3)
   balanceQtyAfter Decimal           @map("balance_qty_after") @db.Decimal(18, 6)
   avgCostAfter    Decimal           @map("avg_cost_after") @db.Decimal(18, 6)
@@ -1014,6 +1022,8 @@ model StockMovement {
   @@index([tenantId, warehouseId, itemId])
   @@index([tenantId, itemId, movementDate])
   @@index([tenantId, sourceType, sourceId])
+  // Movement list by date (wave 3 keyset, DB-22), balances by period, stock:verify (DB-10).
+  @@index([tenantId, movementDate, id])
   @@map("stock_movements")
 }
 
@@ -1032,6 +1042,8 @@ model StockBalance {
 
   @@unique([tenantId, id])
   @@unique([tenantId, warehouseId, itemId])
+  // Balances of one item across warehouses (also the item FK).
+  @@index([tenantId, itemId])
   @@map("stock_balances")
 }
 
@@ -1081,7 +1093,7 @@ model StockAdjustment {
   lines        StockAdjustmentLine[]
 
   @@unique([tenantId, id])
-  @@unique([tenantId, docNo])
+  @@unique([tenantId, companyId, docNo])
   @@index([tenantId, status])
   @@map("stock_adjustments")
 }
@@ -1094,7 +1106,7 @@ model StockAdjustmentLine {
   itemId       BigInt   @map("item_id") @db.UnsignedBigInt
   qtyIn        Decimal  @default(0) @map("qty_in") @db.Decimal(18, 6)
   qtyOut       Decimal  @default(0) @map("qty_out") @db.Decimal(18, 6)
-  unitCost     Decimal? @map("unit_cost") @db.Decimal(18, 3)
+  unitCost     Decimal? @map("unit_cost") @db.Decimal(18, 6)
   description  String?  @db.VarChar(500)
   createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
@@ -1132,7 +1144,7 @@ model StockTransfer {
   lines         StockTransferLine[]
 
   @@unique([tenantId, id])
-  @@unique([tenantId, docNo])
+  @@unique([tenantId, companyId, docNo])
   @@index([tenantId, status])
   @@map("stock_transfers")
 }
@@ -1176,7 +1188,7 @@ model StockCount {
   lines     StockCountLine[]
 
   @@unique([tenantId, id])
-  @@unique([tenantId, docNo])
+  @@unique([tenantId, companyId, docNo])
   @@index([tenantId, status])
   @@map("stock_counts")
 }
@@ -1314,6 +1326,8 @@ model SalesInvoice {
   customerId     BigInt              @map("customer_id") @db.UnsignedBigInt
   warehouseId    BigInt              @map("warehouse_id") @db.UnsignedBigInt
   paymentType    InvoicePaymentType  @map("payment_type")
+  /// ADR-017: line prices were entered including tax (company setting when the draft was saved).
+  pricesIncludeTax Boolean           @default(false) @map("prices_include_tax")
   cashAccountId  BigInt?             @map("cash_account_id") @db.UnsignedBigInt
   status         DocumentStatus      @default(DRAFT)
   description    String?             @db.VarChar(500)
@@ -1323,7 +1337,6 @@ model SalesInvoice {
   paidAmount     Decimal             @default(0) @map("paid_amount") @db.Decimal(18, 3)
   costTotal      Decimal             @default(0) @map("cost_total") @db.Decimal(18, 3)
   journalEntryId BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
-  reversalOfId   BigInt?             @map("reversal_of_id") @db.UnsignedBigInt
   postedAt       DateTime?           @map("posted_at") @db.DateTime(3)
   postedBy       BigInt?             @map("posted_by") @db.UnsignedBigInt
   createdAt      DateTime            @default(now()) @map("created_at") @db.DateTime(3)
@@ -1337,14 +1350,17 @@ model SalesInvoice {
   warehouse    Warehouse           @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
   cashAccount  Account?            @relation("SalesInvoiceCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
   journalEntry JournalEntry?       @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
-  reversalOf   SalesInvoice?       @relation("SalesInvoiceReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
-  reversals    SalesInvoice[]      @relation("SalesInvoiceReversal")
   lines        SalesInvoiceLine[]
   returns      SalesReturn[]
 
   @@unique([tenantId, id])
-  @@unique([tenantId, invoiceNo])
-  @@index([tenantId, status])
+  @@unique([tenantId, companyId, invoiceNo])
+  // Lists: ORDER BY invoice_date DESC, id DESC (DB-10).
+  @@index([tenantId, companyId, invoiceDate, id])
+  // Posted-only counts and sums by date: monthly quota on every post, summaries.
+  @@index([tenantId, companyId, status, invoiceDate])
+  // Oldest-first settlement and aging per customer; also the customer FK.
+  @@index([tenantId, customerId, status, paymentType, invoiceDate])
   @@map("sales_invoices")
 }
 
@@ -1394,6 +1410,8 @@ model PurchaseInvoice {
   supplierInvoiceDate DateTime?           @map("supplier_invoice_date") @db.Date
   warehouseId         BigInt?             @map("warehouse_id") @db.UnsignedBigInt
   paymentType         InvoicePaymentType  @map("payment_type")
+  /// ADR-017: line costs were entered including tax (company setting when the draft was saved).
+  pricesIncludeTax    Boolean             @default(false) @map("prices_include_tax")
   cashAccountId       BigInt?             @map("cash_account_id") @db.UnsignedBigInt
   status              DocumentStatus      @default(DRAFT)
   description         String?             @db.VarChar(500)
@@ -1402,7 +1420,8 @@ model PurchaseInvoice {
   grandTotal          Decimal             @default(0) @map("grand_total") @db.Decimal(18, 3)
   paidAmount          Decimal             @default(0) @map("paid_amount") @db.Decimal(18, 3)
   journalEntryId      BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
-  reversalOfId        BigInt?             @map("reversal_of_id") @db.UnsignedBigInt
+  /// TRADE-02: the posted GRN this invoice bills; its stock lines clear 2104 instead of moving stock again.
+  receivedGrnId       BigInt?             @map("received_grn_id") @db.UnsignedBigInt
   postedAt            DateTime?           @map("posted_at") @db.DateTime(3)
   postedBy            BigInt?             @map("posted_by") @db.UnsignedBigInt
   createdAt           DateTime            @default(now()) @map("created_at") @db.DateTime(3)
@@ -1416,14 +1435,20 @@ model PurchaseInvoice {
   warehouse    Warehouse?           @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
   cashAccount  Account?             @relation("PurchaseInvoiceCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
   journalEntry JournalEntry?        @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
-  reversalOf   PurchaseInvoice?     @relation("PurchaseInvoiceReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
-  reversals    PurchaseInvoice[]    @relation("PurchaseInvoiceReversal")
+  receivedGrn  GoodsNote?           @relation(fields: [tenantId, receivedGrnId], references: [tenantId, id])
   lines        PurchaseInvoiceLine[]
   returns      PurchaseReturn[]
 
   @@unique([tenantId, id])
-  @@unique([tenantId, invoiceNo])
-  @@index([tenantId, status])
+  @@unique([tenantId, companyId, invoiceNo])
+  // Lists: ORDER BY invoice_date DESC, id DESC (DB-10).
+  @@index([tenantId, companyId, invoiceDate, id])
+  // Posted-only sums by date: summaries, aging.
+  @@index([tenantId, companyId, status, invoiceDate])
+  // Oldest-first settlement and aging per supplier; also the supplier FK.
+  @@index([tenantId, supplierId, status, paymentType, invoiceDate])
+  // The GRN an invoice bills (TRADE-02, session 2B).
+  @@index([tenantId, receivedGrnId])
   @@map("purchase_invoices")
 }
 
@@ -1493,8 +1518,11 @@ model SalesReturn {
   lines           SalesReturnLine[]
 
   @@unique([tenantId, id])
-  @@unique([tenantId, returnNo])
-  @@index([tenantId, status])
+  @@unique([tenantId, companyId, returnNo])
+  // Lists: ORDER BY return_date DESC, id DESC; posted-only sums by date (DB-10).
+  @@index([tenantId, companyId, returnDate, id])
+  // Credited amount per invoice (also the original invoice FK).
+  @@index([tenantId, originalInvoiceId])
   @@map("sales_returns")
 }
 
@@ -1564,8 +1592,11 @@ model PurchaseReturn {
   lines           PurchaseReturnLine[]
 
   @@unique([tenantId, id])
-  @@unique([tenantId, returnNo])
-  @@index([tenantId, status])
+  @@unique([tenantId, companyId, returnNo])
+  // Lists: ORDER BY return_date DESC, id DESC; posted-only sums by date (DB-10).
+  @@index([tenantId, companyId, returnDate, id])
+  // Credited amount per invoice (also the original invoice FK).
+  @@index([tenantId, originalInvoiceId])
   @@map("purchase_returns")
 }
 
@@ -1612,7 +1643,6 @@ model GoodsNote {
   docNo          String?        @map("doc_no") @db.VarChar(50)
   description    String?        @db.VarChar(500)
   journalEntryId BigInt?        @map("journal_entry_id") @db.UnsignedBigInt
-  reversalOfId   BigInt?        @map("reversal_of_id") @db.UnsignedBigInt
   postedAt       DateTime?      @map("posted_at") @db.DateTime(3)
   postedBy       BigInt?        @map("posted_by") @db.UnsignedBigInt
   createdAt      DateTime       @default(now()) @map("created_at") @db.DateTime(3)
@@ -1623,13 +1653,14 @@ model GoodsNote {
   warehouse    Warehouse         @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
   branch       Branch?           @relation(fields: [tenantId, branchId], references: [tenantId, id])
   journalEntry JournalEntry?     @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
-  reversalOf   GoodsNote?        @relation("GoodsNoteReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
-  reversals    GoodsNote[]       @relation("GoodsNoteReversal")
+  invoices     PurchaseInvoice[]
   lines        GoodsNoteLine[]
 
   @@unique([tenantId, id])
-  @@unique([tenantId, docNo])
+  @@unique([tenantId, companyId, docNo])
   @@index([tenantId, status])
+  // Lists: ORDER BY note_date DESC, id DESC (DB-10).
+  @@index([tenantId, companyId, noteDate, id])
   @@map("goods_notes")
 }
 
@@ -1640,7 +1671,7 @@ model GoodsNoteLine {
   lineNo    Int      @map("line_no")
   itemId    BigInt   @map("item_id") @db.UnsignedBigInt
   qty       Decimal  @db.Decimal(18, 6)
-  unitCost  Decimal? @map("unit_cost") @db.Decimal(18, 3)
+  unitCost  Decimal? @map("unit_cost") @db.Decimal(18, 6)
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1685,7 +1716,9 @@ model Receipt {
   allocations    Allocation[]
 
   @@unique([tenantId, id])
-  @@unique([tenantId, receiptNo])
+  @@unique([tenantId, companyId, receiptNo])
+  // Lists: ORDER BY receipt_date DESC, id DESC (DB-10).
+  @@index([tenantId, companyId, receiptDate, id])
   @@map("receipts")
 }
 
@@ -1724,7 +1757,9 @@ model Payment {
   allocations    Allocation[]
 
   @@unique([tenantId, id])
-  @@unique([tenantId, paymentNo])
+  @@unique([tenantId, companyId, paymentNo])
+  // Lists: ORDER BY payment_date DESC, id DESC (DB-10).
+  @@index([tenantId, companyId, paymentDate, id])
   @@map("payments")
 }
 
@@ -1753,6 +1788,9 @@ model Allocation {
 
   @@unique([tenantId, id])
   @@index([tenantId, documentType, documentId])
+  // Allocated amount per voucher (also the receipt / payment FKs).
+  @@index([tenantId, receiptId])
+  @@index([tenantId, paymentId])
   @@map("allocations")
 }
 
@@ -1786,7 +1824,7 @@ model CashTransfer {
   journalEntry JournalEntry? @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
 
   @@unique([tenantId, id])
-  @@unique([tenantId, transferNo])
+  @@unique([tenantId, companyId, transferNo])
   @@index([tenantId, transferDate])
   @@map("cash_transfers")
 }

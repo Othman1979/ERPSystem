@@ -12,7 +12,7 @@ import { read, sourceFiles } from './isolation-scan.js';
 
 // Matched against `<controller path>/<route path>`, case-insensitively.
 const POSTING_ROUTE =
-  /\/(post|reverse|allocations|cancel)$|(^|\/)(receipts|payments|cash-transfers)$|(^|\/)journal-entries\/opening$/i;
+  /\/(post|reverse|allocations|cancel|approve)$|(^|\/)(receipts|payments|cash-transfers)$|(^|\/)journal-entries\/opening$/i;
 const HTTP_METHOD = /^@(Get|Post|Put|Patch|Delete|All)\(\s*(?:'([^']*)')?\s*\)/;
 const METHOD_SIGNATURE = /^(async\s+)?[A-Za-z_]\w*\s*\(/;
 

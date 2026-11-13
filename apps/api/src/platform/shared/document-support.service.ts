@@ -16,6 +16,30 @@ export function calendarDateIn(timeZone: string, now = new Date()): string {
   }
 }
 
+const RETRIES = 3;
+
+/** A deadlock or lock wait timeout: the transaction rolled back and can run again. */
+export function isLockConflict(err: unknown): boolean {
+  const code = (err as { code?: string }).code;
+  const msg = String((err as Error)?.message ?? '');
+  return code === 'P2034' || /deadlock|lock wait timeout|\b(?:1213|1205)\b/i.test(msg);
+}
+
+/** See DocumentSupportService.withRetry; also used by the stock document services. */
+export async function retryOnLockConflict<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isLockConflict(err)) throw err;
+      if (attempt >= RETRIES) {
+        throw new DomainError(ErrorCode.CONFLICT, 'The document is busy with another posting; try again');
+      }
+      await new Promise((r) => setTimeout(r, 20 + Math.floor(Math.random() * 80) * (attempt + 1)));
+    }
+  }
+}
+
 /** Shared helpers for Phase 5 document services (tenant ctx, mappings, retry). */
 @Injectable()
 export class DocumentSupportService {
@@ -47,6 +71,16 @@ export class DocumentSupportService {
     return calendarDateIn(company?.timezone ?? 'Asia/Amman', now);
   }
 
+  /** Company setting: invoice prices are entered including tax (ADR-017). */
+  async pricesIncludeTax(db: ReturnType<PrismaService['forTenant']>): Promise<boolean> {
+    const company = await db.company.findFirst({
+      where: { isActive: true },
+      orderBy: { id: 'asc' },
+      select: { pricesIncludeTax: true },
+    });
+    return company?.pricesIncludeTax ?? false;
+  }
+
   userId(): bigint | undefined {
     return ClsServiceManager.getClsService<RequestContext>().get('userId');
   }
@@ -70,14 +104,14 @@ export class DocumentSupportService {
     return out;
   }
 
-  async withRetry<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      return await fn();
-    } catch (err) {
-      const code = (err as { code?: string }).code;
-      const msg = String((err as Error)?.message ?? '');
-      if (code === 'P2034' || /deadlock|lock wait timeout/i.test(msg)) return fn();
-      throw err;
-    }
+  /**
+   * Retries a posting transaction that lost a lock race: a deadlock (1213)
+   * or a lock wait timeout (1205), surfaced by Prisma as P2034 or in the
+   * message. Up to 3 retries with a short random backoff, then 409 CONFLICT
+   * instead of a 500 (TRADE-05). P2028 (transaction timeout) is never
+   * retried: COMMIT may already have run (transaction-options.ts).
+   */
+  withRetry<T>(fn: () => Promise<T>): Promise<T> {
+    return retryOnLockConflict(fn);
   }
 }

@@ -128,3 +128,17 @@ describe('the port (ADR-010 §10.5)', () => {
     expect(validateEnv(base).API_PORT).toBe(3001);
   });
 });
+
+describe('EINVOICE_ALLOW_PRODUCTION (decisions.md TRADE-24)', () => {
+  const base = { DATABASE_URL: 'mysql://root@localhost:3306/db', JWT_ACCESS_SECRET: 'test-secret-at-least-16-chars' };
+
+  it('is false unless set to true; empty counts as unset', () => {
+    expect(validateEnv(base).EINVOICE_ALLOW_PRODUCTION).toBe('false');
+    expect(validateEnv({ ...base, EINVOICE_ALLOW_PRODUCTION: '' }).EINVOICE_ALLOW_PRODUCTION).toBe('false');
+    expect(validateEnv({ ...base, EINVOICE_ALLOW_PRODUCTION: 'true' }).EINVOICE_ALLOW_PRODUCTION).toBe('true');
+  });
+
+  it('refuses anything but true or false, so a typo cannot pass silently', () => {
+    expect(() => validateEnv({ ...base, EINVOICE_ALLOW_PRODUCTION: 'yes' })).toThrow(/EINVOICE_ALLOW_PRODUCTION/);
+  });
+});

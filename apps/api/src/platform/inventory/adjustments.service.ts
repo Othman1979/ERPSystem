@@ -12,14 +12,10 @@ import { PostingService, type JournalLineInput } from '../journal/posting.servic
 import { StockLedgerService } from './stock-ledger.service.js';
 import type { CreateStockAdjustmentDto } from './dto/inventory.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
+import { retryOnLockConflict } from '../shared/document-support.service.js';
+import { stockWriteOffLines } from '../shared/stock-write-off.js';
 
 const SOURCE = 'STOCK_ADJUSTMENT';
-
-function isRetryable(err: unknown): boolean {
-  const code = (err as { code?: string }).code;
-  const msg = String((err as Error)?.message ?? '');
-  return code === 'P2034' || /deadlock|lock wait timeout/i.test(msg);
-}
 
 /**
  * Manual stock adjustments: OPENING, IN, OUT, COUNT_ADJUSTMENT (§7.4, §8.4,
@@ -198,12 +194,38 @@ export class AdjustmentsService {
     const companyId = await this.companyId(db);
     const userId = this.userId();
 
-    const result = await this.withRetry(() =>
+    const result = await retryOnLockConflict(() =>
       db.$transaction(async (tx) => {
         // Lock the document first (§10.1 step 7). As the first statement it also
         // makes every later read see the latest committed state, so two
         // concurrent requests cannot both post or reverse it.
         await tx.$queryRaw`SELECT id FROM stock_adjustments WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        return this.postLocked(tx, id, companyId, userId);
+      }, POSTING_TX_OPTIONS),
+    );
+
+    await this.audit.log({
+      action: 'stock_adjustment.post',
+      entityType: 'stock_adjustment',
+      entityId: result.id,
+      after: { docNo: result.docNo },
+    });
+    return this.get(result.id);
+  }
+
+  /**
+   * Posts a draft adjustment on the caller's transaction, which already holds
+   * the adjustment's row lock: movements, then the journal entry. Also used
+   * by stock count approval, so the count, its adjustment and the posting
+   * commit together (TRADE-07).
+   */
+  async postLocked(
+    tx: Prisma.TransactionClient,
+    id: bigint,
+    companyId: bigint,
+    userId: bigint | undefined,
+  ): Promise<{ id: bigint; docNo: string }> {
+        const { tenantId } = this.tenant();
         const draft = await tx.stockAdjustment.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },
@@ -233,6 +255,7 @@ export class AdjustmentsService {
         );
 
         // Apply movements first — returns per-line cost for the journal.
+        let writeOff = new Decimal(0);
         const applied: {
           line: (typeof draft.lines)[number];
           unitCost: Decimal;
@@ -254,6 +277,7 @@ export class AdjustmentsService {
             sourceLineId: line.id,
           });
           applied.push({ line, unitCost: res.unitCost, totalCost: res.totalCost, movementId: res.movementId });
+          writeOff = writeOff.plus(res.writeOff);
         }
 
         // Journal entry (§8.4):
@@ -287,6 +311,10 @@ export class AdjustmentsService {
             }
           }
         }
+
+        journalLines.push(
+          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+        );
 
         // Merge duplicate account sides? postEntry validates each line
         // independently — multiple lines on the same account are fine.
@@ -334,16 +362,6 @@ export class AdjustmentsService {
           },
         });
         return { id: draft.id, docNo };
-      }, POSTING_TX_OPTIONS),
-    );
-
-    await this.audit.log({
-      action: 'stock_adjustment.post',
-      entityType: 'stock_adjustment',
-      entityId: result.id,
-      after: { docNo: result.docNo },
-    });
-    return this.get(result.id);
   }
 
   /** Reverses a posted adjustment: opposite movements + reversal journal. */
@@ -352,7 +370,7 @@ export class AdjustmentsService {
     const companyId = await this.companyId(db);
     const userId = this.userId();
 
-    const result = await this.withRetry(() =>
+    const result = await retryOnLockConflict(() =>
       db.$transaction(async (tx) => {
         // Lock the document first (§10.1 step 7). As the first statement it also
         // makes every later read see the latest committed state, so two
@@ -372,6 +390,10 @@ export class AdjustmentsService {
         });
         if (existingReversal) {
           throw new DomainError(ErrorCode.CONFLICT, 'Adjustment already reversed');
+        }
+        // TRADE-19: a reversal has no lines; reversing it posted an empty document.
+        if (original.reversalOfId !== null) {
+          throw new DomainError(ErrorCode.CONFLICT, 'A reversal cannot be reversed');
         }
 
         // Original movements for this doc (for reversal linkage + costs).
@@ -413,24 +435,29 @@ export class AdjustmentsService {
           original.lines.map((l) => ({ itemId: l.itemId, warehouseId: original.warehouseId })),
         );
 
+        let writeOff = new Decimal(0);
         for (const line of original.lines) {
           const orig = byLine.get(line.id);
           const wasIn = new Decimal(line.qtyIn.toString()).gt(0);
           const qty = wasIn ? line.qtyIn.toString() : line.qtyOut.toString();
-          // Reverse uses the ORIGINAL unit cost (§9.5-style symmetric reversal).
-          const unitCost = orig ? orig.unitCost.toString() : undefined;
+          // §9.5, DB-05: the reversal mirrors the original movement, same
+          // unit cost and same total, in both directions — so the journal
+          // below is the original's mirror and no residue stays in
+          // INVENTORY_ADJUSTMENT or OPENING_BALANCE_EQUITY.
           const res = await this.ledger.applyMovement(tx, companyId, {
             warehouseId: original.warehouseId,
             itemId: line.itemId,
             movementDate: reversalDate,
             type: wasIn ? 'OUT' : 'IN',
             qty,
-            unitCost: wasIn ? undefined : unitCost,
+            unitCost: orig?.unitCost.toString(),
+            totalCost: orig?.totalCost.toString(),
             sourceType: SOURCE,
             sourceId: reversal.id,
             sourceLineId: line.id,
             reversalOfId: orig?.id ?? null,
           });
+          writeOff = writeOff.plus(res.writeOff);
           const amount = res.totalCost;
           const isInNow = !wasIn; // reversal direction
           if (original.adjustmentType === 'OPENING') {
@@ -448,6 +475,10 @@ export class AdjustmentsService {
             journalLines.push({ accountId: cr, credit: amount.toString() });
           }
         }
+
+        journalLines.push(
+          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+        );
 
         const docNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, 'STOCK_ADJUSTMENT', reversalDate);
         await tx.stockAdjustment.update({ where: { id: reversal.id }, data: { docNo } });
@@ -510,12 +541,4 @@ export class AdjustmentsService {
     return out;
   }
 
-  private async withRetry<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      return await fn();
-    } catch (err) {
-      if (isRetryable(err)) return fn();
-      throw err;
-    }
-  }
 }

@@ -50,6 +50,9 @@ export class CashAccountsService {
     const box = await db.cashBox.findFirst({ where: { id, companyId } });
     if (!box) throw DomainError.notFound('CashBox', id.toString());
     if (dto.accountId) await this.assertCashAccount(db, companyId, dto.accountId, 'CASH');
+    if (dto.accountId && BigInt(dto.accountId) !== box.accountId) {
+      await this.assertNoJournalLines(db, box.accountId);
+    }
     return db.cashBox.update({
       where: { id },
       data: {
@@ -66,6 +69,11 @@ export class CashAccountsService {
     const companyId = await this.support.companyId(db);
     const box = await db.cashBox.findFirst({ where: { id, companyId } });
     if (!box) throw DomainError.notFound('CashBox', id.toString());
+    if (await this.hasJournalLines(db, box.accountId)) {
+      // History exists on the GL account: deactivate instead of hard delete (TRADE-25).
+      await db.cashBox.update({ where: { id }, data: { isActive: false } });
+      return { deleted: false, deactivated: true };
+    }
     await db.cashBox.delete({ where: { id } });
     return { deleted: true };
   }
@@ -107,6 +115,9 @@ export class CashAccountsService {
     const acc = await db.bankAccount.findFirst({ where: { id, companyId } });
     if (!acc) throw DomainError.notFound('BankAccount', id.toString());
     if (dto.accountId) await this.assertCashAccount(db, companyId, dto.accountId, 'BANK');
+    if (dto.accountId && BigInt(dto.accountId) !== acc.accountId) {
+      await this.assertNoJournalLines(db, acc.accountId);
+    }
     return db.bankAccount.update({
       where: { id },
       data: {
@@ -124,8 +135,36 @@ export class CashAccountsService {
     const companyId = await this.support.companyId(db);
     const acc = await db.bankAccount.findFirst({ where: { id, companyId } });
     if (!acc) throw DomainError.notFound('BankAccount', id.toString());
+    if (await this.hasJournalLines(db, acc.accountId)) {
+      // History exists on the GL account: deactivate instead of hard delete (TRADE-25).
+      await db.bankAccount.update({ where: { id }, data: { isActive: false } });
+      return { deleted: false, deactivated: true };
+    }
     await db.bankAccount.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  /** True when any journal line already references the GL account. */
+  private async hasJournalLines(
+    db: ReturnType<PrismaService['forTenant']>,
+    accountId: bigint,
+  ): Promise<boolean> {
+    // Read-only check on journal_lines (TRADE-25); no write.
+    const line = await db.journalLine.findFirst({ where: { accountId }, select: { id: true } });
+    return line !== null;
+  }
+
+  /** Blocks re-linking a cash box / bank account whose current GL account has history. */
+  private async assertNoJournalLines(
+    db: ReturnType<PrismaService['forTenant']>,
+    accountId: bigint,
+  ): Promise<void> {
+    if (await this.hasJournalLines(db, accountId)) {
+      throw new DomainError(
+        ErrorCode.CONFLICT,
+        'The account has journal lines; it cannot be re-linked',
+      );
+    }
   }
 
   private async assertCashAccount(

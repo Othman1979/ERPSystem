@@ -7,12 +7,21 @@ on:
 
 jobs:
   verify:
+    name: verify (MariaDB ${{ matrix.mariadb }})
     runs-on: ubuntu-latest
     # A stuck run fails here instead of holding the runner for the 6-hour default.
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # The supported range (ADR-019, docs/runbooks/deploy.md): the oldest
+        # supported LTS and the newest LTS, which has innodb_snapshot_isolation
+        # ON by default (SESSION_INIT_SQL). Pinned to LTS series, never a bare
+        # major tag that moves by itself.
+        mariadb: ['10.11', '11.8']
     services:
       mariadb:
-        image: mariadb:11
+        image: mariadb:${{ matrix.mariadb }}
         env:
           MARIADB_ROOT_PASSWORD: root
           MARIADB_DATABASE: erp_test
@@ -40,8 +49,11 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Database-independent checks run once, on the newest LTS leg.
       - run: pnpm lint
+        if: matrix.mariadb == '11.8'
       - run: pnpm typecheck
+        if: matrix.mariadb == '11.8'
       # The e2e suites spawn the built API (apps/api/dist/main.js).
       - run: pnpm --filter api build
       - run: pnpm --filter api exec prisma migrate deploy
@@ -53,4 +65,5 @@ jobs:
         run: pnpm --filter api test --forceExit
         timeout-minutes: 20
       - name: test (other packages)
+        if: matrix.mariadb == '11.8'
         run: pnpm -r --filter '!api' run test

@@ -5,6 +5,13 @@ import { LOOPBACK_HOSTS } from '../net/loopback.js';
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  // Database connections per process (DB-07): the API and each Cron command
+  // open their own pool. Keep the API's pool plus the Cron pools that can run
+  // at once under the host's max_user_connections. This is the API's; a Cron
+  // command uses 2 unless its own line passes DB_POOL_SIZE (jobs/job-env.ts).
+  DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+  // How long a query waits for a free connection before it fails.
+  DB_POOL_ACQUIRE_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(10_000),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   JWT_ACCESS_SECRET: z.string().min(16),
@@ -21,6 +28,9 @@ export const envSchema = z.object({
   EINVOICE_HTTP_TIMEOUT_MS: z.coerce.number().int().min(100).default(30_000),
   // Extra hosts a SANDBOX URL may use besides this machine (comma-separated).
   EINVOICE_SANDBOX_HOSTS: z.string().optional(),
+  // PRODUCTION e-invoicing (real JoFotara) outside NODE_ENV=production only when
+  // explicitly 'true' (decisions.md TRADE-24). Any value but true/false is refused.
+  EINVOICE_ALLOW_PRODUCTION: z.enum(['true', 'false']).default('false'),
   // Report exports (Phase 8): most rows one PDF / XLSX export may have (REPORT_TOO_LARGE above).
   REPORT_PDF_MAX_ROWS: z.coerce.number().int().positive().default(1_000),
   REPORT_XLSX_MAX_ROWS: z.coerce.number().int().positive().default(50_000),

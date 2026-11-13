@@ -4244,6 +4244,39 @@ return apiFetch<stockDocumentsControllerUpdateCountLineResponse>(getStockDocumen
 
 
 
+export type stockDocumentsControllerRefreshCountResponse201 = {
+  data: void
+  status: 201
+}
+
+export type stockDocumentsControllerRefreshCountResponseSuccess = (stockDocumentsControllerRefreshCountResponse201) & {
+  headers: Headers;
+};
+;
+
+export type stockDocumentsControllerRefreshCountResponse = (stockDocumentsControllerRefreshCountResponseSuccess)
+
+export const getStockDocumentsControllerRefreshCountUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-counts/${id}/refresh`
+}
+
+export const stockDocumentsControllerRefreshCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerRefreshCountResponse> => {
+
+  return apiFetch<stockDocumentsControllerRefreshCountResponse>(getStockDocumentsControllerRefreshCountUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
 export type stockDocumentsControllerApproveCountResponse201 = {
   data: void
   status: 201

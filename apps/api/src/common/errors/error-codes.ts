@@ -71,5 +71,10 @@ export enum ErrorCode {
   DOCUMENT_TOO_MANY_LINES = 'DOCUMENT_TOO_MANY_LINES',
   // Invitation acceptance code wrong, expired or out of attempts (ADR-012 §PLAT-10).
   INVITATION_CODE_INVALID = 'INVITATION_CODE_INVALID',
+  // Trade review fixes (ADR-016): a GRN is billed by one purchase invoice only.
+  GRN_ALREADY_INVOICED = 'GRN_ALREADY_INVOICED',
+  // TRADE-07: a counted line's book balance changed since the count snapshot;
+  // refresh the count, then approve again.
+  STOCK_COUNT_STALE = 'STOCK_COUNT_STALE',
   INTERNAL = 'INTERNAL',
 }
