@@ -52,6 +52,40 @@ export interface PrintContext {
     logo?: string | null;
   };
   printedAt: Date;
+  /** IANA name of the company's zone, used for the printed-at time. */
+  timeZone: string;
+}
+
+/**
+ * yyyy-mm-dd HH:mm of `at` on the wall clock of `timeZone` (UTC when the zone is unknown).
+ */
+export function wallClock(at: Date, timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(at);
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
+    return `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`;
+  } catch (err) {
+    if (!(err instanceof RangeError)) throw err;
+    return at.toISOString().slice(0, 16).replace('T', ' ');
+  }
+}
+
+/** The zone's name for the footer, or 'UTC' when the zone is unknown. */
+function zoneLabel(timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone }).resolvedOptions().timeZone;
+  } catch (err) {
+    if (!(err instanceof RangeError)) throw err;
+    return 'UTC';
+  }
 }
 
 /** The owner's grid palette (theme.ts / index.css). */
@@ -105,11 +139,11 @@ export function headerBlock(ctx: PrintContext, title: string, meta: string[], wi
 }
 
 export function footer(ctx: PrintContext) {
-  const printed = ctx.printedAt.toISOString().slice(0, 16).replace('T', ' ');
+  const printed = `${wallClock(ctx.printedAt, ctx.timeZone)} ${zoneLabel(ctx.timeZone)}`;
   return (page: number, pages: number) => ({
     columns: [
       { text: `${page} / ${pages}`, alignment: ctx.lang === 'ar' ? 'left' : 'right', fontSize: 8, color: '#777777' },
-      paragraph(`${L(ctx, 'طُبع في', 'Printed')} ${printed} UTC`, {
+      paragraph(`${L(ctx, 'طُبع في', 'Printed')} ${printed}`, {
         width: 260,
         size: 8,
         align: ctx.lang === 'ar' ? 'right' : 'left',
@@ -170,8 +204,11 @@ export function tablePdf(table: ReportTable, ctx: PrintContext): object {
     content: [
       ...headerBlock(ctx, table.title, table.meta ?? [], usable),
       {
+        // D-4: the header row repeats on every page; the footer numbers the pages (page / pages).
         table: {
           headerRows: 1,
+          keepWithHeaderRows: 1,
+          dontBreakRows: true,
           widths: order.map((i) => widths[i]),
           body: [header, ...(body.length ? body : [order.map(() => ({ text: '' }))]), ...totals],
         },
@@ -223,11 +260,14 @@ export async function tableXlsx(table: ReportTable, ctx: PrintContext): Promise<
         const v = r[c.key] as Cell;
         const kind = c.kind ?? 'text';
         if (kind === 'amount' || kind === 'qty' || kind === 'int') return toExcelNumber(v === undefined ? null : String(v ?? ''));
+        // LEDGER-27: a date is a real date cell, not text (exceljs stores dates as UTC serials).
+        if (kind === 'date' && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(`${v}T00:00:00.000Z`);
         return v ?? null;
       }),
     );
     table.columns.forEach((c, i) => {
       const cell = row.getCell(i + 1);
+      if (c.kind === 'date' && cell.value instanceof Date) cell.numFmt = 'yyyy-mm-dd';
       if (c.kind === 'amount') cell.numFmt = '#,##0.000';
       if (c.kind === 'qty') cell.numFmt = '#,##0.######';
       if ((c.kind ?? 'text') === 'text' && i === 0 && r._indent) cell.alignment = { indent: r._indent };

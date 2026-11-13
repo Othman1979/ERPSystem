@@ -2,7 +2,8 @@
  * Aging as of a date (phase 6 open items, ADR-004 §7 update):
  *  - invoices, credit returns and allocations count from their own business
  *    date (an allocation from its voucher's date, never before its invoice);
- *  - cancelled allocations never count;
+ *  - a cancelled allocation counts until the day it is cancelled, in the
+ *    company's timezone (LEDGER-20);
  *  - no asOf = today; a malformed asOf is refused;
  *  - opening balances and manual party entries are aged from their entry
  *    date, oldest settled first, and each party's balance equals its control
@@ -239,11 +240,54 @@ describe('Aging as of a date', () => {
     expect(buckets(row(await aging('CUSTOMER', '2025-02-15'), 'C2'))).toEqual({ d1_30: '3.200' });
   });
 
-  it('a cancelled allocation does not count at any date', async () => {
+  it('a cancelled allocation counts until the day it is cancelled', async () => {
+    // The cancel's business day is the calendar day in the company's zone
+    // (registration default Asia/Amman), which can be a day ahead of UTC.
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Amman' }).format(new Date());
+    // Before the cancel, as of today: 116 − 11.6 (return) − 50 (receipt) = 54.400.
+    const before = row(await aging('CUSTOMER', today), 'C1')!;
+    expect(m3(before.total)).toBe('54.400');
+
     const cancel = await api().post(`/api/v1/allocations/${allocation1}/cancel`).set(auth(token)).set(idem());
     expect(cancel.status).toBe(201);
-    expect(buckets(row(await aging('CUSTOMER', '2025-03-15'), 'C1'))).toEqual({ d31_60: '116.000' });
-    expect(buckets(row(await aging('CUSTOMER', '2025-04-15'), 'C1'))).toEqual({ d61_90: '104.400' });
+    // Cancelled today, so it still counts on the 2025 dates when it was active:
+    // 116 − 50 = 66.000 (34 days past due), then 116 − 11.6 − 50 = 54.400 (65 days).
+    expect(buckets(row(await aging('CUSTOMER', '2025-03-15'), 'C1'))).toEqual({ d31_60: '66.000' });
+    expect(buckets(row(await aging('CUSTOMER', '2025-04-15'), 'C1'))).toEqual({ d61_90: '54.400' });
+    // As of today it no longer counts: the total grows by its 50.000 (54.400 → 104.400).
+    const after = row(await aging('CUSTOMER', today), 'C1')!;
+    expect(m3(after.total)).toBe('104.400');
+    expect(m3(after.total)).toBe(m3(new Decimal(before.total).plus('50.000')));
+    // The receipt is unapplied again; the balance (the ledger) does not move.
+    expect(m3(after.unapplied)).toBe('-50.000');
+    expect(m3(after.balance)).toBe(m3(before.balance));
+  });
+
+  it('a cancelled allocation stops counting at its voucher reversal date when that is earlier', async () => {
+    // Invoice 23.200 (2025-05-01), receipt allocated in full (2025-05-05). Today
+    // the allocation is cancelled and the receipt reversed, dated 2025-05-20.
+    const inv = await sale('C2', '2025-05-01', '10');
+    const r = await receipt('C2', '2025-05-05', '23.200', [
+      { documentType: 'SALES_INVOICE', documentId: inv.id, amount: '23.200' },
+    ]);
+    const before = row(await aging('CUSTOMER', '2025-05-10'), 'C2')!;
+    expect((await api().post(`/api/v1/allocations/${r.allocations[0].id}/cancel`).set(auth(token)).set(idem())).status).toBe(201);
+    const reversed = await api()
+      .post(`/api/v1/receipts/${r.id}/reverse`)
+      .set(auth(token))
+      .set(idem())
+      .send({ reversalDate: '2025-05-20' });
+    expect(reversed.status).toBe(201);
+
+    // Between the receipt and its reversal date the allocation still counts.
+    const during = row(await aging('CUSTOMER', '2025-05-10'), 'C2')!;
+    expect([m3(during.total), m3(during.unapplied)]).toEqual([m3(before.total), m3(before.unapplied)]);
+    // From the reversal date the receipt is gone from the ledger, and so is its
+    // allocation, although it was cancelled later (today).
+    const after = row(await aging('CUSTOMER', '2025-05-25'), 'C2')!;
+    expect(m3(after.total)).toBe(m3(new Decimal(during.total).plus('23.200')));
+    expect(m3(after.unapplied)).toBe(m3(during.unapplied));
+    expect(m3(after.balance)).toBe(m3(new Decimal(during.balance).plus('23.200')));
   });
 
   it('supplier invoices follow the same date rule', async () => {
@@ -338,11 +382,12 @@ describe('Aging as of a date', () => {
   it('unallocated receipts show as unapplied; balances match the ledger', async () => {
     const asOf = '2025-04-15';
     const customers = await aging('CUSTOMER', asOf);
-    // C1: invoice 116 − return 11.6 still open; the 50 receipt is no longer allocated.
+    // C1: invoice 116 − return 11.6 − the 50 receipt, still allocated on this
+    // date (it was cancelled later, LEDGER-20). Today it is unapplied (see above).
     const c1 = row(customers, 'C1')!;
-    expect(buckets(c1)).toEqual({ d61_90: '104.400' });
-    expect(m3(c1.total)).toBe('104.400');
-    expect(m3(c1.unapplied)).toBe('-50.000');
+    expect(buckets(c1)).toEqual({ d61_90: '54.400' });
+    expect(m3(c1.total)).toBe('54.400');
+    expect(m3(c1.unapplied)).toBe('0.000');
     expect(m3(c1.balance)).toBe('54.400');
 
     for (const r of customers.rows) {

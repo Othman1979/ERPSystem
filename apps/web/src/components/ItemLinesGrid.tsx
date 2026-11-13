@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
+import { cellLabel } from './gridA11y';
 
 export interface ItemLineDraft {
   key: number;
@@ -168,6 +169,7 @@ export function ItemLinesGrid({
             <td className="row-no">{row + 1}</td>
             <td {...cellProps(row, COL_ITEM)}>
               <GridSelect
+                aria-label={cellLabel(t, t('items.title'), row)}
                 variant="borderless"
                 placeholder={t('items.title')}
                 options={itemOptions}
@@ -180,6 +182,7 @@ export function ItemLinesGrid({
             </td>
             <td className="num-cell" {...cellProps(row, COL_QTY)}>
               <InputNumber<string>
+                aria-label={cellLabel(t, t('stock.qty'), row)}
                 variant="borderless"
                 stringMode
                 min="0.000001"
@@ -194,6 +197,7 @@ export function ItemLinesGrid({
             {showCost && (
               <td className="num-cell" {...cellProps(row, COL_COST)}>
                 <InputNumber<string>
+                  aria-label={cellLabel(t, t('stock.unitCost'), row)}
                   variant="borderless"
                   stringMode
                   min="0"
@@ -209,6 +213,7 @@ export function ItemLinesGrid({
             {showDescription && (
               <td {...cellProps(row, COL_DESC)}>
                 <Input
+                  aria-label={cellLabel(t, t('common.description'), row)}
                   variant="borderless"
                   placeholder={t('common.description')}
                   maxLength={500}

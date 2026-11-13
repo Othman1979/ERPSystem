@@ -6,9 +6,13 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { FiscalService } from '../accounting/fiscal.service.js';
+import { EXPORT_LIMITS } from '../printing/printing.service.js';
 
 /** Accounts closed into equity at year end (their opening restarts each year). */
 const NOMINAL_TYPES: ReadonlySet<string> = new Set(['REVENUE', 'EXPENSE']);
+
+/** Amount string with 3 decimals, as the statements print them ('100.000'). */
+const amt = (d: Decimal): string => d.toFixed(3);
 
 export interface ReportRange {
   from?: string;
@@ -19,15 +23,15 @@ export type AccountTypeCode = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EX
 
 /**
  * A net debit-minus-credit balance shown on one side: `{prefix}Debit` when
- * positive, `{prefix}Credit` when negative, the other side '0'.
+ * positive, `{prefix}Credit` when negative, the other side '0.000'.
  */
 export function sides<P extends string>(
   prefix: P,
   net: Decimal,
 ): Record<`${P}Debit` | `${P}Credit`, string> {
   return {
-    [`${prefix}Debit`]: (net.gt(0) ? net : new Decimal(0)).toString(),
-    [`${prefix}Credit`]: (net.lt(0) ? net.neg() : new Decimal(0)).toString(),
+    [`${prefix}Debit`]: amt(net.gt(0) ? net : new Decimal(0)),
+    [`${prefix}Credit`]: amt(net.lt(0) ? net.neg() : new Decimal(0)),
   } as Record<`${P}Debit` | `${P}Credit`, string>;
 }
 
@@ -73,6 +77,16 @@ export class ReportsService {
     const from = new Date(range.from);
     const year = await this.fiscal.yearContaining(from);
     return year ? new Date(year.startDate) : null;
+  }
+
+  /** Rejects a range whose `from` is after its `to` (yyyy-mm-dd strings compare in date order). */
+  private assertRange(range: ReportRange) {
+    if (range.from && range.to && range.from > range.to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', {
+        from: range.from,
+        to: range.to,
+      });
+    }
   }
 
   private tenant() {
@@ -230,6 +244,7 @@ export class ReportsService {
    * line dated in the range, opening entries included.
    */
   async trialBalance(range: ReportRange) {
+    this.assertRange(range);
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
     const nominalStart = await this.nominalStart(range);
@@ -279,12 +294,12 @@ export class ReportsService {
           nameEn: a.nameEn,
           accountType: a.accountType,
           normalBalance: a.normalBalance,
-          totalDebit: debit.toString(),
-          totalCredit: credit.toString(),
-          balance: balance.toString(),
+          totalDebit: amt(debit),
+          totalCredit: amt(credit),
+          balance: amt(balance),
           ...sides('opening', openingNet),
-          periodDebit: m.debit.toString(),
-          periodCredit: m.credit.toString(),
+          periodDebit: amt(m.debit),
+          periodCredit: amt(m.credit),
           ...sides('closing', closingNet),
         };
       })
@@ -303,12 +318,12 @@ export class ReportsService {
         nameEn: 'Prior years profit (not closed)',
         accountType: 'EQUITY' as const,
         normalBalance: 'CREDIT' as const,
-        totalDebit: '0',
-        totalCredit: '0',
-        balance: '0',
+        totalDebit: '0.000',
+        totalCredit: '0.000',
+        balance: '0.000',
         ...sides('opening', priorNet),
-        periodDebit: '0',
-        periodCredit: '0',
+        periodDebit: '0.000',
+        periodCredit: '0.000',
         ...sides('closing', priorNet),
       };
       const lastEquity = rows.map((r) => r.accountType).lastIndexOf('EQUITY');
@@ -332,7 +347,7 @@ export class ReportsService {
       rows,
       /** Start of the fiscal year P&L accounts open from (null: no `from` or no year). */
       nominalFrom: nominalStart ? nominalStart.toISOString().slice(0, 10) : null,
-      totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, v.toString()])) as Record<
+      totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, amt(v)])) as Record<
         keyof typeof totals,
         string
       >,
@@ -350,6 +365,7 @@ export class ReportsService {
    * period), the period's other lines with a running balance, the closing.
    */
   async generalLedger(accountId: bigint, range: ReportRange) {
+    this.assertRange(range);
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
 
@@ -362,6 +378,9 @@ export class ReportsService {
         entry: { companyId, status: 'POSTED', ...this.movementEntryWhere(range) },
       },
       orderBy: [{ entry: { entryDate: 'asc' } }, { entry: { id: 'asc' } }, { lineNo: 'asc' }],
+      // LEDGER-19 / DB-14: bounded like the stock item card. One row past the
+      // limit is fetched only to detect that the statement is too large.
+      take: EXPORT_LIMITS.xlsx + 1,
       include: {
         entry: {
           select: {
@@ -375,6 +394,13 @@ export class ReportsService {
         },
       },
     });
+    if (lines.length > EXPORT_LIMITS.xlsx) {
+      throw new DomainError(
+        ErrorCode.REPORT_TOO_LARGE,
+        `The statement has more than ${EXPORT_LIMITS.xlsx} lines. Narrow the period.`,
+        { limit: EXPORT_LIMITS.xlsx },
+      );
+    }
 
     // Opening balance, summed in the database. A P&L account opens from the
     // start of the fiscal year holding `from` (earlier years are not its own).
@@ -407,9 +433,9 @@ export class ReportsService {
         postingKind: l.entry.postingKind,
         partyType: l.partyType,
         partyId: l.partyId?.toString() ?? null,
-        debit: debit.toString(),
-        credit: credit.toString(),
-        balance: running.toString(),
+        debit: amt(debit),
+        credit: amt(credit),
+        balance: amt(running),
       };
     });
 
@@ -421,11 +447,11 @@ export class ReportsService {
         nameEn: account.nameEn,
         normalBalance: account.normalBalance,
       },
-      openingBalance: opening.toString(),
+      openingBalance: amt(opening),
       ...sides('opening', opening),
-      totalDebit: sum(rows.map((r) => r.debit)).toString(),
-      totalCredit: sum(rows.map((r) => r.credit)).toString(),
-      closingBalance: running.toString(),
+      totalDebit: amt(sum(rows.map((r) => r.debit))),
+      totalCredit: amt(sum(rows.map((r) => r.credit))),
+      closingBalance: amt(running),
       ...sides('closing', running),
       rows,
     };
@@ -436,6 +462,7 @@ export class ReportsService {
    * the same opening / movements / closing split as the account statement.
    */
   async partyStatement(partyType: 'CUSTOMER' | 'SUPPLIER', partyId: bigint, range: ReportRange) {
+    this.assertRange(range);
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
 
@@ -446,13 +473,29 @@ export class ReportsService {
         entry: { companyId, status: 'POSTED', ...this.movementEntryWhere(range) },
       },
       orderBy: [{ entry: { entryDate: 'asc' } }, { entry: { id: 'asc' } }, { lineNo: 'asc' }],
+      // LEDGER-19 / DB-14: bounded like the general ledger (see generalLedger).
+      take: EXPORT_LIMITS.xlsx + 1,
       include: {
         entry: {
-          select: { id: true, entryNo: true, entryDate: true, description: true, sourceType: true },
+          select: {
+            id: true,
+            entryNo: true,
+            entryDate: true,
+            description: true,
+            sourceType: true,
+            postingKind: true,
+          },
         },
-        account: { select: { id: true, code: true, nameAr: true } },
+        account: { select: { id: true, code: true, nameAr: true, nameEn: true } },
       },
     });
+    if (lines.length > EXPORT_LIMITS.xlsx) {
+      throw new DomainError(
+        ErrorCode.REPORT_TOO_LARGE,
+        `The statement has more than ${EXPORT_LIMITS.xlsx} lines. Narrow the period.`,
+        { limit: EXPORT_LIMITS.xlsx },
+      );
+    }
 
     const before = await db.journalLine.aggregate({
       where: { partyType, partyId, entry: { companyId, status: 'POSTED', ...this.openingEntryWhere(range) } },
@@ -472,10 +515,13 @@ export class ReportsService {
         entryDate: l.entry.entryDate,
         accountCode: l.account.code,
         accountName: l.account.nameAr,
+        accountNameEn: l.account.nameEn,
+        sourceType: l.entry.sourceType,
+        postingKind: l.entry.postingKind,
         description: l.description ?? l.entry.description,
-        debit: debit.toString(),
-        credit: credit.toString(),
-        balance: running.toString(),
+        debit: amt(debit),
+        credit: amt(credit),
+        balance: amt(running),
       };
     });
 
@@ -485,17 +531,29 @@ export class ReportsService {
     return {
       partyType,
       partyId: partyId.toString(),
-      openingBalance: opening.toString(),
+      openingBalance: amt(opening),
       ...sides('opening', opening),
-      closingBalance: running.toString(),
+      closingBalance: amt(running),
       ...sides('closing', running),
-      totalDebit: totalDebit.toString(),
-      totalCredit: totalCredit.toString(),
+      totalDebit: amt(totalDebit),
+      totalCredit: amt(totalCredit),
       rows,
     };
   }
 
   // ------------------------------------------- aging inputs (treasury, ADR-004)
+
+  /** Entry date of each given journal entry of the company (treasury aging: voucher reversal dates). */
+  async entryDates(ids: bigint[]): Promise<Map<bigint, Date>> {
+    if (ids.length === 0) return new Map();
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const rows = await db.journalEntry.findMany({
+      where: { companyId, id: { in: [...new Set(ids)] } },
+      select: { id: true, entryDate: true },
+    });
+    return new Map(rows.map((r) => [r.id, r.entryDate]));
+  }
 
   /** Lines of this party type on its receivable/payable control accounts. */
   private controlLineWhere(partyType: 'CUSTOMER' | 'SUPPLIER', mappedAccountId?: bigint) {

@@ -49,6 +49,7 @@ pnpm --filter api job:stock-verify       # Cron يومي: stock:verify لكل ا
 pnpm --filter api start:web              # تجربة محلية بشكل الإنتاج: الـ API المبني يقدّم الواجهة المبنية على 3002
 pnpm --filter api job:grant-platform-admin <email> [--revoke] # يدوي: مدير المنصة
 pnpm --filter api job:reset-password <email> # يدوي: كلمة مرور مؤقتة وإخراج الجلسات (ADR-012)
+pnpm --filter api ledger:check               # يدوي، للقراءة فقط: بيانات تخالف قواعد ADR-014؛ قبل migrate deploy
 ```
 
 > حدّث هذا القسم عند إضافة أوامر جديدة.

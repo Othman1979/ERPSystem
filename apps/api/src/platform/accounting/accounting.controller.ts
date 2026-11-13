@@ -6,6 +6,7 @@ import type { RequestContext } from '../../common/cls/cls.types.js';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AccountsService } from './accounts.service.js';
@@ -43,7 +44,7 @@ export class AccountingController {
 
   @Patch('accounts/:id')
   @RequirePermission(PERMISSIONS.ACCOUNT_MANAGE)
-  updateAccount(@Param('id') id: string, @Body() dto: UpdateAccountDto) {
+  updateAccount(@Param('id', ParseIdPipe) id: string, @Body() dto: UpdateAccountDto) {
     return this.accounts.update(BigInt(id), dto);
   }
 

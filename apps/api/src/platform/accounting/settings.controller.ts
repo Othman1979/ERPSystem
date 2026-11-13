@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
+import { ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import {
   CreateTaxCategoryDto,
@@ -30,7 +31,7 @@ export class SettingsController {
 
   @Patch('units/:id')
   @RequirePermission(PERMISSIONS.SETTINGS_MANAGE)
-  updateUnit(@Param('id') id: string, @Body() dto: UpdateLookupDto) {
+  updateUnit(@Param('id', ParseIdPipe) id: string, @Body() dto: UpdateLookupDto) {
     return this.settings.update('unit', BigInt(id), dto);
   }
 
@@ -49,7 +50,7 @@ export class SettingsController {
 
   @Patch('tax-categories/:id')
   @RequirePermission(PERMISSIONS.SETTINGS_MANAGE)
-  updateTaxCategory(@Param('id') id: string, @Body() dto: UpdateTaxCategoryDto) {
+  updateTaxCategory(@Param('id', ParseIdPipe) id: string, @Body() dto: UpdateTaxCategoryDto) {
     return this.settings.update('taxCategory', BigInt(id), dto);
   }
 
@@ -68,7 +69,7 @@ export class SettingsController {
 
   @Patch('payment-methods/:id')
   @RequirePermission(PERMISSIONS.SETTINGS_MANAGE)
-  updatePaymentMethod(@Param('id') id: string, @Body() dto: UpdateLookupDto) {
+  updatePaymentMethod(@Param('id', ParseIdPipe) id: string, @Body() dto: UpdateLookupDto) {
     return this.settings.update('paymentMethod', BigInt(id), dto);
   }
 }
