@@ -7,6 +7,7 @@ import {
   HomeOutlined,
   QuestionCircleOutlined,
   ImportOutlined,
+  KeyOutlined,
   LogoutOutlined,
   MenuOutlined,
   ProfileOutlined,
@@ -41,6 +42,8 @@ import { HelpPage } from './pages/HelpPage';
 import { LegalPage } from './pages/LegalPage';
 import { useCompany } from './components/CompanyProfileForm';
 import { RegisterPage } from './pages/RegisterPage';
+import { ChangePasswordRequiredPage } from './pages/ChangePasswordRequiredPage';
+import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 import { displayName } from './i18n/displayName';
 import { ALL_ROUTES, APP_GROUPS, routeForPath, type AppGroup, type AppRoute } from './routes';
@@ -199,6 +202,7 @@ function AppShell() {
   const isMobile = screens.md === false;
   const [collapsed, setCollapsed] = useState(readSiderCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
 
   const language = i18n.language as AppLanguage;
   const nextLanguage = language === 'ar' ? 'en' : 'ar';
@@ -325,6 +329,16 @@ function AppShell() {
           >
             {t('language.switchTo')}
           </Button>
+          <Tooltip title={t('auth.changePassword')}>
+            <Button
+              size="small"
+              type="text"
+              className="topbar-btn"
+              icon={<KeyOutlined />}
+              aria-label={t('auth.changePassword')}
+              onClick={() => setPasswordOpen(true)}
+            />
+          </Tooltip>
           <Tooltip title={t('auth.logout')}>
             <Button
               size="small"
@@ -404,12 +418,14 @@ function AppShell() {
           {menu}
         </Drawer>
       )}
+
+      <ChangePasswordDialog open={passwordOpen} onClose={() => setPasswordOpen(false)} />
     </Layout>
   );
 }
 
 export function App() {
-  const { status } = useAuth();
+  const { status, me } = useAuth();
   const location = useLocation();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
@@ -434,6 +450,9 @@ export function App() {
       <RegisterPage onSwitchToLogin={() => setAuthMode('login')} />
     );
   }
+
+  // A temporary password must be replaced before anything else is reachable.
+  if (me?.user.mustChangePassword) return <ChangePasswordRequiredPage />;
 
   return <AppShell />;
 }

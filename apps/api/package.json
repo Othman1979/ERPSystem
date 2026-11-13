@@ -13,6 +13,7 @@
     "job:purge-tenant": "node dist/jobs/cli.js purge-tenant",
     "job:preflight": "node dist/jobs/cli.js preflight",
     "job:grant-platform-admin": "node dist/jobs/cli.js grant-platform-admin",
+    "job:reset-password": "node dist/jobs/cli.js reset-password",
     "job:backup": "node dist/jobs/cli.js backup",
     "job:backup-verify": "node dist/jobs/cli.js backup-verify",
     "job:error-digest": "node dist/jobs/cli.js error-digest",

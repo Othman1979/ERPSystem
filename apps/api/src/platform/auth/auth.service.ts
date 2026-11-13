@@ -8,9 +8,9 @@ import type { Env } from '../../common/config/env.validation.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { ChartProvisioningService } from '../accounting/chart-provisioning.service.js';
-import { LoginDto, RegisterDto, SwitchTenantDto } from './dto/auth.dto.js';
+import { ChangePasswordDto, LoginDto, RegisterDto, SwitchTenantDto } from './dto/auth.dto.js';
 import { PasswordService } from './password.service.js';
-import { TokenService } from './token.service.js';
+import { hashToken, TokenService } from './token.service.js';
 
 export interface AuthMeta {
   userAgent?: string;
@@ -207,6 +207,72 @@ export class AuthService {
     return { accessToken, refreshToken: rotated.refreshToken, user };
   }
 
+  /**
+   * Changes the signed-in user's own password (ADR-012). Ends the user's other
+   * sessions: every refresh token outside the caller's own family is revoked,
+   * so the session that made the change stays signed in.
+   */
+  async changePassword(
+    userId: bigint,
+    dto: ChangePasswordDto,
+    rawRefreshCookie: string | undefined,
+  ): Promise<void> {
+    // systemPrisma: users and refresh_tokens are platform-wide tables.
+    const user = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: { id: true, passwordHash: true },
+    });
+    if (!user) throw new DomainError(ErrorCode.UNAUTHORIZED, 'User not found');
+
+    const matches = await this.passwords.verify(user.passwordHash, dto.currentPassword);
+    if (!matches) {
+      throw new DomainError(ErrorCode.INVALID_CURRENT_PASSWORD, 'Current password is incorrect');
+    }
+    if (dto.newPassword === dto.currentPassword) {
+      throw new DomainError(ErrorCode.VALIDATION, 'The new password must differ from the current one');
+    }
+
+    const newHash = await this.passwords.hash(dto.newPassword);
+    const now = new Date();
+
+    await this.prisma.client.$transaction(async (tx) => {
+      // The family of the refresh cookie that made this request: that session stays signed in.
+      const current = rawRefreshCookie
+        ? await tx.refreshToken.findFirst({
+            where: { tokenHash: hashToken(rawRefreshCookie), userId },
+            select: { familyId: true },
+          })
+        : null;
+
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash: newHash,
+          mustChangePassword: false,
+          passwordChangedAt: now,
+        },
+      });
+      const revoked = await tx.refreshToken.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+          ...(current ? { familyId: { not: current.familyId } } : {}),
+        },
+        data: { revokedAt: now },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId: null,
+          userId,
+          action: 'auth.password_change',
+          entityType: 'user',
+          entityId: userId.toString(),
+          afterJson: { otherSessionsRevoked: revoked.count },
+        },
+      });
+    });
+  }
+
   async logout(rawToken: string | undefined): Promise<void> {
     if (rawToken) await this.tokens.revokeToken(rawToken);
   }
@@ -248,7 +314,14 @@ export class AuthService {
       // systemPrisma: users is platform-global; membership scoping done manually.
       this.prisma.client.user.findUnique({
         where: { id: userId },
-        select: { id: true, email: true, fullName: true, locale: true, isPlatformAdmin: true },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          locale: true,
+          isPlatformAdmin: true,
+          mustChangePassword: true,
+        },
       }),
       this.prisma.client.tenantMembership.findMany({
         where: { userId, status: 'ACTIVE' },

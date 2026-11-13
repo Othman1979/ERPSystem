@@ -5,9 +5,11 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Table,
+  Tooltip,
   Tag,
   Typography,
   message,
@@ -18,11 +20,13 @@ import {
   ApiError,
   usersControllerInvite,
   usersControllerList,
+  usersControllerResetPassword,
   usersControllerRoles,
   usersControllerSuspend,
   usersControllerUpdate,
 } from '@erp/api-client';
-import { UserOutlined } from '@ant-design/icons';
+import { KeyOutlined, UserOutlined } from '@ant-design/icons';
+import { useAuth } from '../auth/AuthContext';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
@@ -52,10 +56,15 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function UsersPage() {
   const { t, i18n } = useTranslation();
+  const { me } = useAuth();
   const queryClient = useQueryClient();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm] = Form.useForm();
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  // One modal shows whichever temporary password was just issued (invite or reset).
+  const [tempPassword, setTempPassword] = useState<{
+    value: string;
+    purpose: 'invite' | 'reset';
+  } | null>(null);
   const [search, setSearch] = useState('');
   const [apiMessage, contextHolder] = message.useMessage();
 
@@ -88,7 +97,7 @@ export function UsersPage() {
     onSuccess: (res) => {
       const body = res.data as unknown as Membership;
       if (body.temporaryPassword) {
-        setTempPassword(body.temporaryPassword);
+        setTempPassword({ value: body.temporaryPassword, purpose: 'invite' });
       } else {
         apiMessage.success(t('users.invited'));
         setInviteOpen(false);
@@ -112,8 +121,24 @@ export function UsersPage() {
     onError,
   });
 
+  const resetPassword = useMutation({
+    mutationFn: (membershipId: string) => usersControllerResetPassword(membershipId),
+    onSuccess: (res) => {
+      const body = res.data as unknown as { temporaryPassword: string };
+      setTempPassword({ value: body.temporaryPassword, purpose: 'reset' });
+    },
+    onError,
+  });
+
   const roleName = (_code: string, ar: string, en: string | null) =>
     i18n.language === 'ar' ? ar : (en ?? ar);
+
+  // Mirrors the server refusals in UsersService.resetPassword: no self-reset,
+  // no suspended members, and only an owner may reset an owner.
+  const canResetPassword = (m: Membership) =>
+    m.user.id !== me?.user.id &&
+    m.status !== 'SUSPENDED' &&
+    !(m.role.code === 'OWNER' && me?.currentMembership?.roleCode !== 'OWNER');
 
   const shown = (data ?? []).filter((m) => matchesSearch(search, m.user.fullName, m.user.email));
 
@@ -164,6 +189,24 @@ export function UsersPage() {
                     label: roleName(r.code, r.nameAr, r.nameEn),
                   }))}
                 />
+                {canResetPassword(m) && (
+                  <Popconfirm
+                    title={t('users.resetPasswordConfirm')}
+                    okText={t('common.ok')}
+                    cancelText={t('common.cancel')}
+                    onConfirm={() => resetPassword.mutate(m.membershipId)}
+                  >
+                    {/* Icon only: the actions column stays narrow next to role and suspend. */}
+                    <Tooltip title={t('users.resetPassword')}>
+                      <Button
+                        size="small"
+                        icon={<KeyOutlined />}
+                        aria-label={t('users.resetPassword')}
+                        loading={resetPassword.isPending && resetPassword.variables === m.membershipId}
+                      />
+                    </Tooltip>
+                  </Popconfirm>
+                )}
                 {m.status === 'ACTIVE' && (
                   <Button
                     size="small"
@@ -181,7 +224,7 @@ export function UsersPage() {
 
       <FormDialog
         title={t('users.invite')}
-        open={inviteOpen && !tempPassword}
+        open={inviteOpen && tempPassword === null}
         onCancel={() => setInviteOpen(false)}
         onSave={() => inviteForm.submit()}
         saving={invite.isPending}
@@ -218,7 +261,11 @@ export function UsersPage() {
       </FormDialog>
 
       <Modal
-        title={t('users.tempPasswordTitle')}
+        title={
+          tempPassword?.purpose === 'reset'
+            ? t('users.resetPasswordTitle')
+            : t('users.tempPasswordTitle')
+        }
         open={tempPassword !== null}
         footer={[
           <Button
@@ -234,9 +281,13 @@ export function UsersPage() {
           </Button>,
         ]}
       >
-        <p>{t('users.tempPasswordBody')}</p>
+        <p>
+          {tempPassword?.purpose === 'reset'
+            ? t('users.resetPasswordBody')
+            : t('users.tempPasswordBody')}
+        </p>
         <Typography.Text code copyable>
-          {tempPassword}
+          {tempPassword?.value}
         </Typography.Text>
       </Modal>
       </Card>

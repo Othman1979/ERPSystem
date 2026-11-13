@@ -42,6 +42,17 @@ export class LoginDto {
   tenantId?: string;
 }
 
+export class ChangePasswordDto {
+  @IsString()
+  @MaxLength(128)
+  currentPassword!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  newPassword!: string;
+}
+
 export class SwitchTenantDto {
   @IsString()
   tenantId!: string;

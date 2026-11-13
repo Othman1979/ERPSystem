@@ -10,10 +10,15 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
-import { Public, TenantOptional } from '../../common/decorators/auth.decorators.js';
+import {
+  AllowPendingPasswordChange,
+  CurrentUser,
+  Public,
+  TenantOptional,
+} from '../../common/decorators/auth.decorators.js';
 import { LimitPerAccount } from '../../common/throttle/throttle.js';
 import { AuthService, type AuthMeta } from './auth.service.js';
-import { LoginDto, RegisterDto, SwitchTenantDto } from './dto/auth.dto.js';
+import { ChangePasswordDto, LoginDto, RegisterDto, SwitchTenantDto } from './dto/auth.dto.js';
 
 const REFRESH_COOKIE = 'refresh_token';
 const COOKIE_PATH = '/api/v1/auth';
@@ -93,6 +98,24 @@ export class AuthController {
     await this.auth.logout(req.cookies?.[REFRESH_COOKIE]);
     clearRefreshCookie(res);
   }
+
+  /**
+   * Signed-in user changes their own password (ADR-012). Allowed while a
+   * temporary password is pending. The refresh cookie is read here because it
+   * keeps the current session signed in.
+   */
+  @TenantOptional()
+  @AllowPendingPasswordChange()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('change-password')
+  @HttpCode(204)
+  async changePassword(
+    @CurrentUser() userId: bigint,
+    @Body() dto: ChangePasswordDto,
+    @Req() req: Request,
+  ) {
+    await this.auth.changePassword(userId, dto, req.cookies?.[REFRESH_COOKIE]);
+  }
 }
 
 @ApiTags('me')
@@ -101,12 +124,14 @@ export class MeController {
   constructor(private readonly auth: AuthService) {}
 
   @TenantOptional()
+  @AllowPendingPasswordChange()
   @Get()
   me() {
     return this.auth.me();
   }
 
   @TenantOptional()
+  @AllowPendingPasswordChange()
   @Get('tenants')
   tenants() {
     return this.auth.myTenants();

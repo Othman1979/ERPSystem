@@ -7,6 +7,8 @@ import { PrismaModule } from '../prisma/prisma.module.js';
 import { BackupVerifyService } from './backup/backup-verify.service.js';
 import { BackupService } from './backup/backup.service.js';
 import { ErrorDigestService } from './error-digest.service.js';
+import { PasswordService } from '../platform/auth/password.service.js';
+import { PasswordResetService } from './password-reset.service.js';
 import { PlatformAdminGrantService } from './platform-admin-grant.service.js';
 import { PreflightService } from './preflight.service.js';
 import { TenantPurgeService } from './tenant-purge.service.js';
@@ -25,6 +27,8 @@ import { TenantStatusService } from './tenant-status.service.js';
     StorageService,
     PreflightService,
     PlatformAdminGrantService,
+    PasswordResetService,
+    PasswordService,
     BackupService,
     BackupVerifyService,
     ErrorDigestService,
