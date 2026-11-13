@@ -10,6 +10,7 @@ import type { InvoiceSettlement } from '../shared/invoice-settlement.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { PurchaseInvoicesService } from '../purchases/purchase-invoices.service.js';
 import { SalesInvoicesService } from '../sales/sales-invoices.service.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import type {
   AllocateVoucherDto,
   CreatePaymentDto,
@@ -188,7 +189,7 @@ export class VouchersService {
         });
 
         return { id: receipt.id, receiptNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({
@@ -375,7 +376,7 @@ export class VouchersService {
         }
 
         return { id: payment.id, paymentNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({
@@ -417,7 +418,7 @@ export class VouchersService {
           auto: dto.auto === true,
           userId,
         });
-      }),
+      }, POSTING_TX_OPTIONS),
     );
     await this.audit.log({ action: `${kind}.allocate`, entityType: kind, entityId: id });
     return kind === 'receipt' ? this.getReceipt(id) : this.getPayment(id);
@@ -454,7 +455,7 @@ export class VouchersService {
         return a.receipt
           ? { kind: 'receipt' as const, id: a.receipt.id }
           : { kind: 'payment' as const, id: a.payment!.id };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
     await this.audit.log({ action: 'allocation.cancel', entityType: 'allocation', entityId: id });
     return result.kind === 'receipt' ? this.getReceipt(result.id) : this.getPayment(result.id);
@@ -493,7 +494,7 @@ export class VouchersService {
         const data = { reversedAt: new Date(), reversedBy: userId ?? null, reversalEntryId: reversal.id };
         if (kind === 'receipt') await tx.receipt.update({ where: { id }, data });
         else await tx.payment.update({ where: { id }, data });
-      }),
+      }, POSTING_TX_OPTIONS),
     );
     await this.audit.log({ action: `${kind}.reverse`, entityType: kind, entityId: id });
     return kind === 'receipt' ? this.getReceipt(id) : this.getPayment(id);

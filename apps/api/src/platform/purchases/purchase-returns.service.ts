@@ -19,6 +19,7 @@ import {
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type { CreatePurchaseReturnDto } from './dto/purchases.dto.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 const SOURCE = 'PURCHASE_RETURN';
 
@@ -277,7 +278,7 @@ export class PurchaseReturnsService {
         })),
       });
       return created;
-    });
+    }, POSTING_TX_OPTIONS);
     await this.audit.log({
       action: 'purchase_return.create',
       entityType: 'purchase_return',
@@ -333,6 +334,13 @@ export class PurchaseReturnsService {
 
         const returnDate = new Date(draft.returnDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, returnDate);
+
+        // Lock every (item, warehouse) in the fixed order before any movement.
+        await this.ledger.lockForDocument(
+          tx,
+          companyId,
+          draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
+        );
 
         // Split stock vs service portions for the journal.
         let stockNet = new Decimal(0);
@@ -429,7 +437,7 @@ export class PurchaseReturnsService {
           },
         });
         return { id: draft.id, returnNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({

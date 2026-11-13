@@ -8,6 +8,7 @@ import { DocumentSupportService } from '../shared/document-support.service.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type { CreateGoodsNoteDto } from './dto/goods-notes.dto.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 /**
  * Goods notes — GRN (استلام بضاعة) and GIN (صرف بضاعة): stock movements
@@ -117,7 +118,7 @@ export class GoodsNotesService {
         })),
       });
       return created;
-    });
+    }, POSTING_TX_OPTIONS);
     await this.audit.log({
       action: 'goods_note.create',
       entityType: 'goods_note',
@@ -187,7 +188,7 @@ export class GoodsNotesService {
           unitCost: dto.noteType === 'GRN' ? (l.unitCost ?? null) : null,
         })),
       });
-    });
+    }, POSTING_TX_OPTIONS);
     await this.audit.log({ action: 'goods_note.update', entityType: 'goods_note', entityId: id });
     return this.get(id);
   }
@@ -231,6 +232,13 @@ export class GoodsNotesService {
         const noteDate = new Date(draft.noteDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, noteDate);
         const isGrn = draft.noteType === 'GRN';
+
+        // Lock every (item, warehouse) in the fixed order before any movement.
+        await this.ledger.lockForDocument(
+          tx,
+          companyId,
+          draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
+        );
 
         let totalCost = new Decimal(0);
         for (const line of draft.lines) {
@@ -303,7 +311,7 @@ export class GoodsNotesService {
           },
         });
         return { id: draft.id, docNo };
-      }),
+      }, POSTING_TX_OPTIONS),
     );
 
     await this.audit.log({
