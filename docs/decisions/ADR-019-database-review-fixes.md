@@ -114,10 +114,13 @@
 - **الترتيب في الـ migration:** كل فهرس جديد يُنشأ قبل حذف القديم، فلا يفقد FK فهرسه.
 - **التحقق:** بعد تطبيقها، `prisma migrate diff` بين القاعدة و`schema.prisma` فارغ.
 - **قبل/بعد:** جدول EXPLAIN على 50 ألف حركة في `explain-before-after.md`.
+- **فهرسا `expires_at`** في `idempotency_keys` و`refresh_tokens` هنا، وأمر التنظيف (DB-12) لجلسة المنصة.
+- **مهلات المحرك (PLAT-06):** في `prisma.service.ts`:
+  - `connectTimeout` = 10 ث؛
+  - `socketTimeout` = 60 ث، وهو ضعف مهلة معاملة الترحيل.
 - **ما لم يُضَف من الخطة:**
   - `journal_lines(tenant_id, account_id, party_id)`: قيس ولم يختره أي استعلام، لأن أرصدة الحسابات الرقابية لكل طرف
     تستعمل فهرس الطرف. يبقى كلفة كتابة على أكبر جدول، فحُذف.
-  - `idempotency_keys(expires_at)` و`refresh_tokens(expires_at)`: مع أمر التنظيف DB-12، لجلسة المنصة.
   - `journal_entries(tenant_id, reversal_of_id)`: جلسة المحاسبة تضيف عليه قيداً فريداً يغني عنه.
 
 ## العواقب

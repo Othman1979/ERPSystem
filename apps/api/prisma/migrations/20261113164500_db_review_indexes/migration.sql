@@ -102,6 +102,10 @@ DROP INDEX `stock_transfers_tenant_id_doc_no_key` ON `stock_transfers`;
 CREATE UNIQUE INDEX `stock_counts_tenant_id_company_id_doc_no_key` ON `stock_counts`(`tenant_id`, `company_id`, `doc_no`);
 DROP INDEX `stock_counts_tenant_id_doc_no_key` ON `stock_counts`;
 
+-- DB-12: the purge job (session 2C) deletes expired rows by expires_at.
+CREATE INDEX `idempotency_keys_expires_at_idx` ON `idempotency_keys`(`expires_at`);
+CREATE INDEX `refresh_tokens_expires_at_idx` ON `refresh_tokens`(`expires_at`);
+
 -- DB-21: audit log by entity, tenant first.
 CREATE INDEX `audit_logs_tenant_id_entity_type_entity_id_idx` ON `audit_logs`(`tenant_id`, `entity_type`, `entity_id`);
 DROP INDEX `audit_logs_entity_type_entity_id_idx` ON `audit_logs`;

@@ -1,5 +1,6 @@
 import { validateEnv } from '../common/config/env.validation.js';
 import { DEFAULT_POOL_LIMITS, parseDatabaseUrl, SESSION_INIT_SQL } from './prisma.service.js';
+import { POSTING_TX_OPTIONS } from './transaction-options.js';
 
 describe('database pool settings', () => {
   it('reads DATABASE_URL and runs the session setup on every new connection', () => {
@@ -17,6 +18,13 @@ describe('database pool settings', () => {
   it('sizes the pool from config, with an explicit acquire timeout (DB-07)', () => {
     const config = parseDatabaseUrl('mysql://u:p@db:3306/erp', { size: 4, acquireTimeoutMs: 2_500 });
     expect(config).toMatchObject({ connectionLimit: 4, acquireTimeout: 2_500 });
+  });
+
+  it('fails a silent database instead of hanging: connect 10 s, socket 60 s (PLAT-06)', () => {
+    const config = parseDatabaseUrl('mysql://u:p@db:3306/erp');
+    expect(config).toMatchObject({ connectTimeout: 10_000, socketTimeout: 60_000 });
+    // Longer than a posting transaction may run, so it never cuts one short.
+    expect(config.socketTimeout).toBeGreaterThan(POSTING_TX_OPTIONS.timeout);
   });
 
   it('defaults to the config schema defaults: 10 connections, 10 s to get one', () => {

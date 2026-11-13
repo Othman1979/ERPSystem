@@ -27,6 +27,10 @@ export interface PoolLimits {
   acquireTimeoutMs: number;
 }
 
+/** Driver timeouts (PLAT-06). */
+export const CONNECT_TIMEOUT_MS = 10_000;
+export const SOCKET_TIMEOUT_MS = 60_000;
+
 /** The config schema's defaults (common/config/env.validation.ts). */
 export const DEFAULT_POOL_LIMITS: PoolLimits = { size: 10, acquireTimeoutMs: 10_000 };
 
@@ -44,6 +48,11 @@ export function parseDatabaseUrl(url: string, limits: PoolLimits = DEFAULT_POOL_
     connectionLimit: limits.size,
     // How long a query waits for a free connection before it fails.
     acquireTimeout: limits.acquireTimeoutMs,
+    // PLAT-06: a database that does not answer fails the request instead of
+    // hanging it. Connect: 10 s. A socket silent for 60 s is closed; that is
+    // twice the posting transaction timeout (POSTING_TX_OPTIONS, 30 s).
+    connectTimeout: CONNECT_TIMEOUT_MS,
+    socketTimeout: SOCKET_TIMEOUT_MS,
     initSql: SESSION_INIT_SQL,
   };
 }

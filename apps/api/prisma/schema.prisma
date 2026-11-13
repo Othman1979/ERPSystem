@@ -238,6 +238,8 @@ model RefreshToken {
 
   @@index([userId])
   @@index([familyId])
+  // The purge job deletes by expiry (DB-12).
+  @@index([expiresAt])
   @@map("refresh_tokens")
 }
 
@@ -543,6 +545,8 @@ model IdempotencyKey {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, key])
+  // The purge job deletes by expiry (DB-12).
+  @@index([expiresAt])
   @@map("idempotency_keys")
 }
 
