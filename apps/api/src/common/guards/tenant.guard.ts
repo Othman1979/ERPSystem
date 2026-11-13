@@ -17,6 +17,15 @@ import { ErrorCode } from '../errors/error-codes.js';
 const READ_ONLY_STATUSES = new Set(['SUSPENDED', 'CANCELLED']);
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+/** A TRIAL tenant whose trial end is in the past; a TRIAL with no end date stays writable. */
+function isExpiredTrial(tenant: { status: string; trialEndsAt: Date | null }): boolean {
+  return (
+    tenant.status === 'TRIAL' &&
+    tenant.trialEndsAt !== null &&
+    tenant.trialEndsAt.getTime() < Date.now()
+  );
+}
+
 /**
  * Resolves tenant context: verifies membership is ACTIVE, loads role
  * permissions into CLS, and enforces read-only mode for SUSPENDED/CANCELLED
@@ -59,18 +68,24 @@ export class TenantGuard implements CanActivate {
 
     const tenant = await this.prisma.client.tenant.findUnique({
       where: { id: tenantId },
-      select: { status: true },
+      select: { status: true, trialEndsAt: true },
     });
     if (!tenant) {
       throw new DomainError(ErrorCode.NOT_FOUND, 'Tenant not found');
     }
 
     const request = context.switchToHttp().getRequest<{ method: string }>();
-    if (READ_ONLY_STATUSES.has(tenant.status) && !SAFE_METHODS.has(request.method)) {
-      throw new DomainError(
-        ErrorCode.TENANT_READ_ONLY,
-        `Tenant is ${tenant.status}; write operations are disabled`,
-      );
+    if (!SAFE_METHODS.has(request.method)) {
+      if (READ_ONLY_STATUSES.has(tenant.status)) {
+        throw new DomainError(
+          ErrorCode.TENANT_READ_ONLY,
+          `Tenant is ${tenant.status}; write operations are disabled`,
+        );
+      }
+      // An expired trial is read-only at once, not after the daily status job (PLAT-25).
+      if (isExpiredTrial(tenant)) {
+        throw new DomainError(ErrorCode.TENANT_READ_ONLY, 'Trial ended; write operations are disabled');
+      }
     }
 
     cls.set('membershipId', membership.id);

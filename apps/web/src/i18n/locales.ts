@@ -1134,6 +1134,9 @@ export const ar = {
     INVALID_CURRENT_PASSWORD: 'كلمة المرور الحالية غير صحيحة',
     PASSWORD_CHANGE_REQUIRED: 'غيّر كلمة المرور المؤقتة أولاً',
     PASSWORD_RESET_NOT_ALLOWED: 'لا يمكن إعادة تعيين كلمة مرور هذا المستخدم من هنا: إما حسابك أنت، أو مدير منصة، أو عضو في شركة أخرى، أو مالك ولست مالكاً',
+    LOGIN_LOCKED: 'محاولات دخول خاطئة كثيرة لهذا البريد. انتظر قليلاً ثم حاول مرة أخرى.',
+    PAYLOAD_TOO_LARGE: 'حجم الطلب أكبر من المسموح (2MB). قسّم البيانات على أكثر من مستند.',
+    DOCUMENT_TOO_MANY_LINES: 'المستند فيه أكثر من 500 سطر. قسّمه على أكثر من مستند.',
   },
 };
 
@@ -2273,5 +2276,8 @@ export const en: typeof ar = {
     INVALID_CURRENT_PASSWORD: 'The current password is incorrect',
     PASSWORD_CHANGE_REQUIRED: 'Change your temporary password first',
     PASSWORD_RESET_NOT_ALLOWED: "This user's password cannot be reset here: it is your own account, a platform admin, a member of another company, or an owner while you are not one.",
+    LOGIN_LOCKED: 'Too many wrong passwords for this email. Wait a little and try again.',
+    PAYLOAD_TOO_LARGE: 'The request is larger than allowed (2 MB). Split the data across several documents.',
+    DOCUMENT_TOO_MANY_LINES: 'The document has more than 500 lines. Split it across several documents.',
   },
 };

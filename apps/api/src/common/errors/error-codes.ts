@@ -40,5 +40,11 @@ export enum ErrorCode {
   PASSWORD_CHANGE_REQUIRED = 'PASSWORD_CHANGE_REQUIRED',
   // Password change and reset (ADR-012): this member's password may not be reset here.
   PASSWORD_RESET_NOT_ALLOWED = 'PASSWORD_RESET_NOT_ALLOWED',
+  // Sign-in refused for a while after repeated wrong passwords for this email (ADR-012 §Sign-in protection).
+  LOGIN_LOCKED = 'LOGIN_LOCKED',
+  // 413: the request body is over the JSON limit (2 MB).
+  PAYLOAD_TOO_LARGE = 'PAYLOAD_TOO_LARGE',
+  // A document has more lines than MAX_DOCUMENT_LINES (500).
+  DOCUMENT_TOO_MANY_LINES = 'DOCUMENT_TOO_MANY_LINES',
   INTERNAL = 'INTERNAL',
 }

@@ -28,6 +28,9 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.PASSWORD_CHANGE_REQUIRED]: HttpStatus.FORBIDDEN,
   // Reset refused by the rules in UsersService.resetPassword (ADR-012).
   [ErrorCode.PASSWORD_RESET_NOT_ALLOWED]: HttpStatus.FORBIDDEN,
+  [ErrorCode.LOGIN_LOCKED]: HttpStatus.TOO_MANY_REQUESTS,
+  [ErrorCode.PAYLOAD_TOO_LARGE]: HttpStatus.PAYLOAD_TOO_LARGE,
+  [ErrorCode.DOCUMENT_TOO_MANY_LINES]: HttpStatus.BAD_REQUEST,
   [ErrorCode.UNBALANCED_ENTRY]: HttpStatus.BAD_REQUEST,
   [ErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_INSUFFICIENT]: HttpStatus.CONFLICT,

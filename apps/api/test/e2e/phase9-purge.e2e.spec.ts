@@ -19,6 +19,8 @@ import { promisify } from 'node:util';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
 
+import { addMember } from './support/members.js';
+
 const API_PORT = 3211;
 const BASE = `http://127.0.0.1:${API_PORT}`;
 const RUN = Date.now().toString(36);
@@ -156,7 +158,7 @@ describe('purge-tenant', () => {
       [tokenA, `pg-shared-${RUN}@test.dev`],
       [tokenB, `pg-shared-${RUN}@test.dev`],
     ]) {
-      expect((await api().post('/api/v1/users/invite').set(auth(token)).send({ email, roleCode: 'ACCOUNTANT', password: PASS })).status).toBe(201);
+      await addMember(BASE, token, { email, roleCode: 'ACCOUNTANT', password: PASS });
     }
     await seed(tokenB, 'B');
 
@@ -197,9 +199,33 @@ describe('purge-tenant', () => {
   });
 
   slow('deletes every row, file and sole user of the tenant, and records it', async () => {
+    // The sole users' ids and addresses, read before they are deleted.
+    const soleEmails = [`pg-a-${RUN}@test.dev`, `pg-solo-${RUN}@test.dev`];
+    const soleIds = ((await db.query('SELECT id FROM users WHERE email IN (?, ?)', soleEmails)) as { id: bigint }[]).map((u) =>
+      String(u.id),
+    );
+    expect(soleIds).toHaveLength(2);
+
     const done = await purge(tenantA, '--confirm', nameA);
     expect(done.code).toBe(0);
     expect(done.json).toMatchObject({ purged: true, tenantId: tenantA });
+
+    // No audit row keeps a purged user's id or address (the platform's own rows included).
+    const [kept] = (await db.query(
+      `SELECT COUNT(*) AS n FROM audit_logs
+        WHERE user_id IN (?) OR entity_id IN (?)
+           OR CAST(after_json AS CHAR) LIKE ? OR CAST(after_json AS CHAR) LIKE ?
+           OR CAST(before_json AS CHAR) LIKE ? OR CAST(before_json AS CHAR) LIKE ?`,
+      [
+        soleIds,
+        soleIds,
+        `%${soleEmails[0]}%`,
+        `%${soleEmails[1]}%`,
+        `%${soleEmails[0]}%`,
+        `%${soleEmails[1]}%`,
+      ],
+    )) as { n: bigint }[];
+    expect(Number(kept.n)).toBe(0);
 
     expect(await rowsOf(tenantA)).toEqual({});
     expect(await db.query('SELECT id FROM tenants WHERE id = ?', [tenantA])).toHaveLength(0);

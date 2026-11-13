@@ -18,12 +18,17 @@ export function isSealingKey(base64Key: string | undefined): boolean {
   }
 }
 
-function keyFrom(base64Key: string | undefined): Buffer {
+/** A 32-byte key from its base64 form; `name` is the variable named in the error. Shared with the backup key. */
+export function parseKey32(base64Key: string | undefined, name: string): Buffer {
   const key = base64Key ? Buffer.from(base64Key, 'base64') : Buffer.alloc(0);
   if (key.length !== 32) {
-    throw new Error('EINVOICE_ENC_KEY must be 32 random bytes, base64-encoded');
+    throw new Error(`${name} must be 32 random bytes, base64-encoded`);
   }
   return key;
+}
+
+function keyFrom(base64Key: string | undefined): Buffer {
+  return parseKey32(base64Key, 'EINVOICE_ENC_KEY');
 }
 
 export function sealSecret(plain: string, base64Key: string | undefined): string {

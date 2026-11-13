@@ -34,11 +34,13 @@ describe('production rules (ADR-010 §10.1)', () => {
     JWT_ACCESS_SECRET: 'a'.repeat(32),
     CORS_ORIGIN: 'https://erp.example.jo',
     EINVOICE_ENC_KEY: Buffer.alloc(32, 7).toString('base64'),
+    BACKUP_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString('base64'),
   };
 
   it('accepts a complete production configuration; docs are off, only a local proxy trusted', () => {
     const env = validateEnv(good);
     expect([env.EINVOICE_WORKER, env.TRUST_PROXY, apiDocsEnabled(env)]).toEqual(['off', 'loopback', false]);
+    expect(env.BACKUP_ENCRYPTION_KEY).toBe(good.BACKUP_ENCRYPTION_KEY);
     expect(apiDocsEnabled({ NODE_ENV: 'production', API_DOCS: 'on' })).toBe(true);
     expect(apiDocsEnabled({ NODE_ENV: 'development', API_DOCS: undefined })).toBe(true);
   });
@@ -54,6 +56,9 @@ describe('production rules (ADR-010 §10.1)', () => {
     ['EINVOICE_ENC_KEY', { EINVOICE_ENC_KEY: Buffer.alloc(16).toString('base64') }],
     ['EINVOICE_WORKER', { EINVOICE_WORKER: 'on' }],
     ['TRUST_PROXY', { TRUST_PROXY: 'true' }],
+    ['BACKUP_ENCRYPTION_KEY', { BACKUP_ENCRYPTION_KEY: undefined }],
+    ['BACKUP_ENCRYPTION_KEY', { BACKUP_ENCRYPTION_KEY: '' }],
+    ['BACKUP_ENCRYPTION_KEY', { BACKUP_ENCRYPTION_KEY: Buffer.alloc(16, 9).toString('base64') }],
   ])('refuses to start without a sound %s', (name, change) => {
     expect(() => validateEnv({ ...good, ...change })).toThrow(new RegExp(`${name}: `));
   });

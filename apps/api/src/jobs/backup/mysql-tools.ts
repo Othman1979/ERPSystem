@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 
@@ -43,10 +42,13 @@ function optionValue(v: string): string {
 /**
  * Runs `fn` with a private option file holding the credentials, so the
  * password is never on a command line (visible to other users in `ps`) or
- * in the environment. The file is removed afterwards.
+ * in the environment. The file is removed afterwards, even when `fn` fails.
+ * It is written into `dir`, a folder the caller owns (the partial backup, or
+ * BACKUP_DIR), never the system temp folder: that disk may be the full one,
+ * and a run killed midway must not leave the password in a shared place.
  */
-export async function withOptionFile<T>(target: DbTarget, fn: (file: string) => Promise<T>): Promise<T> {
-  const file = path.join(os.tmpdir(), `erp-db-${randomUUID()}.cnf`);
+export async function withOptionFile<T>(target: DbTarget, fn: (file: string) => Promise<T>, dir: string): Promise<T> {
+  const file = path.join(dir, `.erp-db-${randomUUID()}.cnf`);
   const body = [
     '[client]',
     // TCP to host:port, as the app's driver connects. Without it the tools
@@ -59,7 +61,7 @@ export async function withOptionFile<T>(target: DbTarget, fn: (file: string) => 
     `password=${optionValue(target.password)}`,
     '',
   ].join('\n');
-  await writeFile(file, body, { mode: 0o600 });
+  await writeFile(file, body, { mode: 0o600, flag: 'wx' });
   try {
     return await fn(file);
   } finally {

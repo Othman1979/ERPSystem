@@ -16,6 +16,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import request from 'supertest';
+import { addMember } from './support/members.js';
 
 const API_PORT = 3212;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -117,12 +118,9 @@ describe('Fiscal year rollover', () => {
     expect((await sale('2026-03-10', '50')).status).toBe(201);
     expect((await sale('2026-05-10', '200')).status).toBe(201);
 
-    const invite = await api()
-      .post('/api/v1/users/invite')
-      .set(auth(token))
-      .send({ email: `fr-cash-${RUN}@test.dev`, roleCode: 'CASHIER', password: PASS });
-    expect(invite.status).toBe(201);
-    cashier = (await api().post('/api/v1/auth/login').send({ email: `fr-cash-${RUN}@test.dev`, password: PASS })).body.accessToken;
+    cashier = (
+      await addMember(BASE, token, { email: `fr-cash-${RUN}@test.dev`, roleCode: 'CASHIER', password: PASS })
+    ).token;
   });
 
   it('from the year start: P&L opens at zero, prior profit is one equity row', async () => {

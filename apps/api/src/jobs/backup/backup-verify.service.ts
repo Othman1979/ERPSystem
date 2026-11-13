@@ -1,6 +1,7 @@
 import { createReadStream, existsSync } from 'node:fs';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
 import { Injectable } from '@nestjs/common';
@@ -8,8 +9,18 @@ import { ConfigService } from '@nestjs/config';
 import { unzipSync } from 'fflate';
 import mariadb, { type Connection } from 'mariadb';
 import type { Env } from '../../common/config/env.validation.js';
-import { type BackupManifest, backupTime, DB_FILE, MANIFEST_FILE, sha256File, STORAGE_FILE } from './manifest.js';
-import { allOrFirstError, dbTarget, type DbTarget, firstLine, runTool, sameDatabase, withOptionFile } from './mysql-tools.js';
+import { backupKey, createDecryptStream, decryptFileToBuffer, keyProblem } from './backup-crypto.js';
+import {
+  type BackupManifest,
+  DB_FILE,
+  encryptionOf,
+  MANIFEST_FILE,
+  resolveBackupFolder,
+  sha256File,
+  STORAGE_FILE,
+  storedName,
+} from './manifest.js';
+import { dbTarget, type DbTarget, firstLine, runTool, sameDatabase, withOptionFile } from './mysql-tools.js';
 
 export interface VerifyCheck {
   name: string;
@@ -48,7 +59,8 @@ export class BackupVerifyService {
   constructor(private readonly config: ConfigService<Env, true>) {}
 
   async run(which: string, keep = false): Promise<VerifyResult> {
-    const folder = await this.resolveFolder(which);
+    const root = path.resolve(this.config.get('BACKUP_DIR', { infer: true }));
+    const folder = await resolveBackupFolder(which, root);
     const checks: VerifyCheck[] = [];
     const add = (name: string, ok: boolean, detail: string) => checks.push({ name, ok, detail });
     const result = (restoredInto: string | null, kept: boolean): VerifyResult => ({
@@ -60,7 +72,11 @@ export class BackupVerifyService {
     });
 
     const manifest = JSON.parse(await readFile(path.join(folder, MANIFEST_FILE), 'utf8')) as BackupManifest;
-    if (manifest.format !== 1) throw new Error(`Unknown manifest format ${String(manifest.format)}`);
+    // 1: plaintext backups made before encryption; 2: current (encryption may be null).
+    const format: unknown = manifest.format; // read as unknown: a file from anywhere may hold any value
+    if (format !== 1 && format !== 2) {
+      throw new Error(`Unknown manifest format ${String(format)}`);
+    }
 
     // 1. Checksums: a damaged dump is not loaded at all.
     const damaged: string[] = [];
@@ -73,7 +89,20 @@ export class BackupVerifyService {
     add('files', damaged.length === 0, damaged.length ? `damaged or missing: ${damaged.join(', ')}` : `${manifest.files.length} match the manifest`);
     if (damaged.length) return result(null, false);
 
-    // 2. Restore into the scratch database.
+    // 2. The key: an encrypted backup needs the key it was made with.
+    const enc = encryptionOf(manifest);
+    const key = backupKey(this.config.get('BACKUP_ENCRYPTION_KEY', { infer: true }));
+    if (enc) {
+      const problem = keyProblem(enc.keyId, key);
+      add('key', problem === null, problem ?? `key id ${enc.keyId}`);
+      if (problem) return result(null, false);
+    }
+    const dumpFile = path.join(folder, storedName(DB_FILE, enc !== null));
+    const storageFile = path.join(folder, storedName(STORAGE_FILE, enc !== null));
+    const loadStorage = (): Promise<Buffer> =>
+      enc && key ? decryptFileToBuffer(storageFile, key, STORAGE_FILE) : readFile(storageFile);
+
+    // 3. Restore into the scratch database.
     const url = this.config.get('BACKUP_VERIFY_DATABASE_URL', { infer: true });
     if (!url) {
       add('restore', false, 'set BACKUP_VERIFY_DATABASE_URL to a scratch database whose name contains "restore" or "verify"');
@@ -99,7 +128,8 @@ export class BackupVerifyService {
     }
     let loaded = false;
     try {
-      await this.load(target, path.join(folder, DB_FILE));
+      const dump = enc && key ? await createDecryptStream(dumpFile, key, DB_FILE) : createReadStream(dumpFile);
+      await this.load(target, dump, root);
       loaded = true;
       add('restore', true, `${target.database} loaded in ${Math.round((Date.now() - started) / 1000)} s`);
       const conn = await mariadb.createConnection({
@@ -110,7 +140,7 @@ export class BackupVerifyService {
         database: target.database,
       });
       try {
-        await this.inspect(conn, manifest, path.join(folder, STORAGE_FILE), add);
+        await this.inspect(conn, manifest, loadStorage, add);
       } finally {
         await conn.end();
       }
@@ -129,22 +159,6 @@ export class BackupVerifyService {
       }
     }
     return result(target.database, keep);
-  }
-
-  /** `latest`, a path, or a folder name under BACKUP_DIR. */
-  private async resolveFolder(which: string): Promise<string> {
-    const root = path.resolve(this.config.get('BACKUP_DIR', { infer: true }));
-    if (which === 'latest') {
-      const names = existsSync(root)
-        ? (await readdir(root, { withFileTypes: true })).filter((d) => d.isDirectory() && backupTime(d.name)).map((d) => d.name)
-        : [];
-      const newest = names.sort().at(-1);
-      if (!newest) throw new Error(`No backup in ${root}`);
-      return path.join(root, newest);
-    }
-    const folder = existsSync(which) ? path.resolve(which) : path.join(root, which);
-    if (!existsSync(path.join(folder, MANIFEST_FILE))) throw new Error(`No backup at ${folder} (no ${MANIFEST_FILE})`);
-    return folder;
   }
 
   /**
@@ -176,23 +190,34 @@ export class BackupVerifyService {
     }
   }
 
-  /** gunzip → the mysql client, into the scratch database. */
-  private async load(target: DbTarget, dump: string): Promise<void> {
+  /**
+   * gunzip → the mysql client, into the scratch database. `dump` is the
+   * plaintext-or-decrypting stream of the dump file. A decryption failure is
+   * reported in preference to the client's EPIPE it causes.
+   */
+  private async load(target: DbTarget, dump: Readable, root: string): Promise<void> {
     const bin = this.config.get('MYSQL_PATH', { infer: true });
-    await withOptionFile(target, async (options) => {
-      const { done, stdin } = runTool(
-        bin,
-        [`--defaults-extra-file=${options}`, '--default-character-set=utf8mb4', target.database],
-        { stdin: true },
-      );
-      await allOrFirstError([done, pipeline(createReadStream(dump), createGunzip(), stdin!)]);
-    });
+    await withOptionFile(
+      target,
+      async (options) => {
+        const { done, stdin } = runTool(
+          bin,
+          [`--defaults-extra-file=${options}`, '--default-character-set=utf8mb4', target.database],
+          { stdin: true },
+        );
+        const [client, feed] = await Promise.allSettled([done, pipeline(dump, createGunzip(), stdin!)]);
+        if (feed.status === 'rejected' && (feed.reason as NodeJS.ErrnoException).code !== 'EPIPE') throw feed.reason;
+        if (client.status === 'rejected') throw client.reason;
+        if (feed.status === 'rejected') throw feed.reason;
+      },
+      root,
+    );
   }
 
   private async inspect(
     conn: Connection,
     manifest: BackupManifest,
-    storageZip: string,
+    loadStorage: () => Promise<Buffer>,
     add: (name: string, ok: boolean, detail: string) => void,
   ): Promise<void> {
     const count = async (sql: string): Promise<number> => Number(((await conn.query(sql)) as { n: bigint }[])[0].n);
@@ -234,7 +259,7 @@ export class BackupVerifyService {
     add('stock', mismatched === 0, mismatched ? `${mismatched} stock balances differ from their movements` : 'balances equal the movements');
 
     // Every file the database points to is in the storage zip.
-    const keys = new Set(Object.keys(unzipSync(await readFile(storageZip))));
+    const keys = new Set(Object.keys(unzipSync(await loadStorage())));
     const referenced = (await conn.query('SELECT storage_key FROM attachments')) as { storage_key: string }[];
     const missing = referenced.map((r) => r.storage_key).filter((k) => !keys.has(k));
     add(

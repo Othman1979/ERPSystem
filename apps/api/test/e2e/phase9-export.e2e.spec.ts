@@ -18,6 +18,7 @@ import ExcelJS from 'exceljs';
 import { strFromU8, unzipSync } from 'fflate';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { addMember } from './support/members.js';
 
 const API_PORT = 3210;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -132,12 +133,9 @@ describe('Phase 9.4 — company data export', () => {
     const logo = await api().post('/api/v1/company/logo').set(auth(token)).attach('file', PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(logo.status).toBe(201);
 
-    const invite = await api()
-      .post('/api/v1/users/invite')
-      .set(auth(token))
-      .send({ email: `ex-acc-${RUN}@test.dev`, roleCode: 'ACCOUNTANT', password: PASS });
-    expect(invite.status).toBe(201);
-    accountant = (await api().post('/api/v1/auth/login').send({ email: `ex-acc-${RUN}@test.dev`, password: PASS })).body.accessToken;
+    accountant = (
+      await addMember(BASE, token, { email: `ex-acc-${RUN}@test.dev`, roleCode: 'ACCOUNTANT', password: PASS })
+    ).token;
   });
 
   it('the owner downloads a ZIP of workbooks, the logo and a README', async () => {

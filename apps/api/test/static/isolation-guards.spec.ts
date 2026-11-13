@@ -19,12 +19,13 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/common/guards/auth.guard.ts': 'resolves the signed-in user before any tenant is known',
   'src/common/guards/tenant.guard.ts': "reads the user's membership and the tenant's status to set the tenant",
   'src/common/plan-limits/plan-limits.service.ts': "reads the tenant's plan (platform tables)",
-  'src/health/health.controller.ts': 'SELECT 1 connectivity probe, no table',
+  'src/health/health.controller.ts': 'readiness probe: one platform row written and rolled back, no tenant data',
   'src/jobs/backup/backup.service.ts': 'whole-database backup (migrations list, server version)',
   'src/jobs/error-digest.service.ts': 'platform error table across tenants',
   'src/jobs/platform-admin-grant.service.ts': 'users are platform-wide',
   'src/jobs/password-reset.service.ts': 'users and refresh tokens are platform-wide (CLI reset, ADR-012)',
   'src/jobs/preflight.service.ts': 'server checks: version, migrations, plans, admins, settings',
+  'src/jobs/purge-expired.service.ts': 'expired idempotency keys and refresh tokens across tenants (DB-12)',
   'src/jobs/tenant-purge.service.ts': "deletes one tenant's rows; every statement filters on tenant_id",
   'src/jobs/tenant-status.service.ts': 'subscription lifecycle across tenants',
   'src/platform/admin/admin.service.ts': 'platform console (platform admins only)',
@@ -34,6 +35,7 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/platform/export/tenant-export.service.ts': "reads the CLS tenant's own row of the platform tenants table",
   'src/platform/monitoring/error-events.service.ts': 'platform error table across tenants',
   'src/platform/monitoring/monitoring.service.ts': 'platform error table (platform admins only)',
+  'src/platform/users/invitations.service.ts': "the caller's own invitations across tenants; every query filters on the caller's userId",
   'src/platform/users/users.service.ts': 'users and invitations are platform-wide; memberships are filtered by the tenant',
 };
 

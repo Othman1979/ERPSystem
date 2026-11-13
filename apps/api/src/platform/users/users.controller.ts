@@ -5,18 +5,20 @@ import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { InviteUserDto, UpdateMembershipDto } from './dto/users.dto.js';
 import { UsersService } from './users.service.js';
 
+/** Team management belongs to the owner only (user.manage), including the directory and roles (PLAT-28). */
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 
   @Get('roles')
+  @RequirePermission(PERMISSIONS.USER_MANAGE)
   roles() {
     return this.users.roles();
   }
 
   @Get()
-  @RequirePermission(PERMISSIONS.TENANT_READ)
+  @RequirePermission(PERMISSIONS.USER_MANAGE)
   list() {
     return this.users.list();
   }
@@ -41,6 +43,7 @@ export class UsersController {
     return this.users.resetPassword(BigInt(id));
   }
 
+  /** Suspends a member, or cancels a pending invitation (INVITED). */
   @Delete(':membershipId')
   @RequirePermission(PERMISSIONS.USER_MANAGE)
   suspend(@Param('membershipId') id: string) {

@@ -88,9 +88,12 @@ describe('Phase 9.1 — subscriptions and the platform console', () => {
   const ids: Record<string, string> = {};
   let trialPlanBefore: { max_invoices_per_month: number } | undefined;
 
+  // Registration allows 5 a minute per address (ADR-012): each tenant here comes from its own client address.
+  let registrations = 0;
   async function register(tag: string) {
     const res = await api()
       .post('/api/v1/auth/register')
+      .set('X-Forwarded-For', `198.51.100.${++registrations}`)
       .send({ tenantName: `P9 ${tag} ${RUN}`, ownerName: 'Owner', email: `p9-${tag}-${RUN}@test.dev`, password: PASS });
     expect(res.status).toBe(201);
     const me = await api().get('/api/v1/me').set(auth(res.body.accessToken));

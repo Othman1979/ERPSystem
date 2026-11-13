@@ -5,6 +5,12 @@ import type { RequestContext } from '../cls/cls.types.js';
 
 export interface AuditEntry {
   action: string;
+  /**
+   * Tenant the record belongs to. When given (even null) it replaces the tenant
+   * of the CLS context: platform-admin actions pass null so they never land in
+   * the admin's own company audit (PLAT-12).
+   */
+  tenantId?: bigint | null;
   entityType?: string;
   entityId?: string | bigint;
   before?: unknown;
@@ -30,7 +36,7 @@ export class AuditService {
     // systemPrisma: audit writes span tenants/platform events by design.
     await this.prisma.client.auditLog.create({
       data: {
-        tenantId: cls.get('tenantId') ?? null,
+        tenantId: entry.tenantId !== undefined ? entry.tenantId : (cls.get('tenantId') ?? null),
         userId: cls.get('userId') ?? null,
         action: entry.action,
         entityType: entry.entityType ?? null,

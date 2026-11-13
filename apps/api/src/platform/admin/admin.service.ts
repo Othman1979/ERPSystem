@@ -98,6 +98,7 @@ export class AdminService {
     });
     await this.audit.log({
       action: 'admin.tenant_status',
+      tenantId: null,
       entityType: 'tenant',
       entityId: id,
       before: { status: before },
@@ -119,6 +120,7 @@ export class AdminService {
     await this.prisma.client.tenant.update({ where: { id }, data: { trialEndsAt } });
     await this.audit.log({
       action: 'admin.extend_trial',
+      tenantId: null,
       entityType: 'tenant',
       entityId: id,
       after: { days: dto.days, trialEndsAt },
@@ -164,6 +166,7 @@ export class AdminService {
 
     await this.audit.log({
       action: 'admin.create_subscription',
+      tenantId: null,
       entityType: 'tenant',
       entityId: id,
       before: { status: tenant.status },
@@ -190,6 +193,7 @@ export class AdminService {
     const updated = await this.prisma.client.plan.update({ where: { code }, data: dto });
     await this.audit.log({
       action: 'admin.update_plan',
+      tenantId: null,
       entityType: 'plan',
       entityId: plan.id,
       before: {

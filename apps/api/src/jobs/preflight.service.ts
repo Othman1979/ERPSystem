@@ -1,13 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, statfs, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type Env, trustProxySetting } from '../common/config/env.validation.js';
+import { LOOPBACK_HOSTS } from '../common/net/loopback.js';
 import { overlaps } from '../common/fs/is-inside.js';
+import { probeDatabase } from '../health/db-probe.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { BackupService, PRIVATE_DIR } from './backup/backup.service.js';
+import { backupTime } from './backup/manifest.js';
 import { firstLine, toolVersion } from './backup/mysql-tools.js';
 
 export interface PreflightCheck {
@@ -23,8 +26,19 @@ export interface PreflightResult {
   checks: PreflightCheck[];
 }
 
+type Add = (name: string, ok: boolean, detail: string, level?: PreflightCheck['level']) => void;
+
 /** The plan registration puts a new tenant on (prisma/seed.ts). */
 const TRIAL_PLAN = 'TRIAL';
+const GIB = 1024 ** 3;
+/** Below these free bytes a disk is an error, then a warning. */
+const DISK_ERROR_BYTES = 1 * GIB;
+const DISK_WARN_BYTES = 5 * GIB;
+/** The daily backup runs every 24 h: an older newest backup means one was missed. */
+const BACKUP_STALE_HOURS = 26;
+const HOUR_MS = 60 * 60 * 1000;
+/** The write probe waits this long before the check fails. */
+const DB_WRITE_TIMEOUT_MS = 5000;
 
 /** Migration folders against `_prisma_migrations` rows: what is missing or broken. */
 export function compareMigrations(
@@ -41,9 +55,55 @@ export function compareMigrations(
   };
 }
 
+/** Free space on a filesystem: an error below 1 GiB, a warning below 5 GiB. */
+export function diskLevel(freeBytes: number): 'error' | 'warn' | 'info' {
+  if (freeBytes < DISK_ERROR_BYTES) return 'error';
+  if (freeBytes < DISK_WARN_BYTES) return 'warn';
+  return 'info';
+}
+
+/**
+ * The newest backup's age (ADR-010 §10.2). No backup at all is a warning;
+ * a backup older than BACKUP_STALE_HOURS is an error in production (the
+ * daily Cron is failing), a warning elsewhere.
+ */
+export function backupAgeLevel(
+  newest: Date | null,
+  now: Date,
+  production: boolean,
+): { level: 'error' | 'warn' | 'info'; detail: string } {
+  if (newest === null) return { level: 'warn', detail: 'no backup yet: run job:backup' };
+  const hours = (now.getTime() - newest.getTime()) / HOUR_MS;
+  if (hours > BACKUP_STALE_HOURS) {
+    return {
+      level: production ? 'error' : 'warn',
+      detail: `newest backup is ${hours.toFixed(1)} h old (the daily backup should be under ${BACKUP_STALE_HOURS} h)`,
+    };
+  }
+  return { level: 'info', detail: `newest backup ${hours.toFixed(1)} h old` };
+}
+
+/** The nearest folder that exists: where the free space of a folder not yet created is read. */
+function nearestExisting(folder: string): string {
+  let current = path.resolve(folder);
+  while (!existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return current;
+}
+
+function gigabytes(bytes: number): string {
+  return `${(bytes / GIB).toFixed(1)} GB`;
+}
+
 /**
  * Before and after a deployment (ADR-010 §10.1): is this server ready to
- * take traffic? Reads only; the storage and backup checks write and remove one file each.
+ * take traffic? It writes only where it must prove a write works: the
+ * storage and backup checks write and remove one probe file each, and the
+ * database check writes one row inside a transaction it rolls back. Nothing
+ * is kept.
  * systemPrisma: platform-wide checks, no tenant (allowed in `jobs`).
  */
 @Injectable()
@@ -56,9 +116,9 @@ export class PreflightService {
 
   async run(): Promise<PreflightResult> {
     const checks: PreflightCheck[] = [];
-    const add = (name: string, ok: boolean, detail: string, level: PreflightCheck['level'] = ok ? 'info' : 'error') =>
-      checks.push({ name, ok, level, detail });
+    const add: Add = (name, ok, detail, level = ok ? 'info' : 'error') => checks.push({ name, ok, level, detail });
     const env = this.config.get('NODE_ENV', { infer: true });
+    const production = env === 'production';
 
     // A check that throws (no table yet, no folder) fails itself; the others still run.
     const attempt = async (name: string, check: () => Promise<void>) => {
@@ -70,7 +130,7 @@ export class PreflightService {
     };
 
     // Loading the module already validated the environment (production rules included).
-    add('environment', true, env === 'production' ? 'production' : `${env} (not production)`, env === 'production' ? 'info' : 'warn');
+    add('environment', true, production ? 'production' : `${env} (not production)`, production ? 'info' : 'warn');
     // ADR-011: which proxies may name the client; none trusted behind a proxy
     // means every client shares one rate limit (the API also logs it then).
     const proxies = this.config.get('TRUST_PROXY', { infer: true });
@@ -81,7 +141,7 @@ export class PreflightService {
       none
         ? `TRUST_PROXY=${proxies}: no proxy trusted; behind the host proxy every client shares one rate limit`
         : `TRUST_PROXY=${proxies}`,
-      env === 'production' && none ? 'warn' : 'info',
+      production && none ? 'warn' : 'info',
     );
 
     const db = this.prisma.client;
@@ -93,6 +153,19 @@ export class PreflightService {
     });
 
     if (dbUp) {
+      await attempt('database-write', async () => {
+        // PLAT-31: a database that answers SELECT but cannot write or use its temp directory.
+        const probe = await probeDatabase(db, DB_WRITE_TIMEOUT_MS);
+        if (probe.ok) {
+          add(
+            'database-write',
+            true,
+            `writes and temp tables ${probe.tmpdir === 'ok' ? 'ok' : 'not measured (no sequence table)'}, ${probe.ms} ms`,
+          );
+        } else {
+          add('database-write', false, probe.reason);
+        }
+      });
       await attempt('migrations', () => this.migrations(add));
       await attempt('plans', async () => {
         const trial = await db.plan.findFirst({ where: { code: TRIAL_PLAN }, select: { id: true } });
@@ -129,11 +202,15 @@ export class PreflightService {
     }
 
     await attempt('storage', () => this.storage(add));
-    await attempt('backup', () => this.backupReady(add, env === 'production'));
+    await attempt('backup', () => this.backupReady(add, production));
+    await attempt('disk', () => this.disks(add, dbUp));
+    await attempt('backup-age', () => this.backupAge(add, production));
+    await attempt('restore-tool', () => this.restoreTool(add, production));
+    await attempt('backup-key', async () => this.backupKey(add));
     return { ok: checks.every((c) => c.ok), checks };
   }
 
-  private async migrations(add: (name: string, ok: boolean, detail: string) => void): Promise<void> {
+  private async migrations(add: Add): Promise<void> {
     // dist/jobs → apps/api/prisma/migrations (src/jobs in tests: the same depth).
     const dir = path.resolve(import.meta.dirname, '..', '..', 'prisma', 'migrations');
     if (!existsSync(dir)) {
@@ -160,10 +237,7 @@ export class PreflightService {
   }
 
   /** BACKUP_DIR writable and apart from the uploads and the web folder; the dump tool runs. */
-  private async backupReady(
-    add: (name: string, ok: boolean, detail: string, level?: PreflightCheck['level']) => void,
-    production: boolean,
-  ): Promise<void> {
+  private async backupReady(add: Add, production: boolean): Promise<void> {
     const root = this.backup.backupRoot();
     const probe = path.join(root, `.preflight-${randomUUID()}`);
     // Created private, as the backup itself would (it holds every tenant's data).
@@ -181,7 +255,94 @@ export class PreflightService {
     }
   }
 
-  private async storage(add: (name: string, ok: boolean, detail: string) => void): Promise<void> {
+  /**
+   * Free space where this server writes: the backup, storage and error-log
+   * folders, and (only for a database on this machine) its temp and data
+   * folders. One check per distinct filesystem path, named by that path.
+   */
+  private async disks(add: Add, dbUp: boolean): Promise<void> {
+    const folders = new Set<string>();
+    const attemptFolder = (fn: () => string) => {
+      try {
+        folders.add(nearestExisting(fn()));
+      } catch (err) {
+        add('disk', false, `cannot read a folder: ${firstLine(err)}`);
+      }
+    };
+    attemptFolder(() => this.backup.backupRoot());
+    attemptFolder(() => this.config.get('STORAGE_DIR', { infer: true }));
+    attemptFolder(() => path.dirname(path.resolve(this.config.get('ERROR_LOG_FILE', { infer: true }))));
+
+    if (dbUp && this.databaseIsLocal()) {
+      try {
+        const [row] = await this.prisma.client.$queryRaw<{ t: string; d: string }[]>`SELECT @@tmpdir AS t, @@datadir AS d`;
+        const local = [...row.t.split(path.delimiter), row.d].map((p) => p.trim()).filter((p) => p !== '' && existsSync(p));
+        for (const p of local) folders.add(nearestExisting(p));
+      } catch {
+        // The database check reports a database that does not answer.
+      }
+    }
+
+    for (const folder of folders) {
+      try {
+        const fs = await statfs(folder);
+        const free = Number(fs.bavail) * Number(fs.bsize);
+        const level = diskLevel(free);
+        add('disk', level !== 'error', `${folder} ${gigabytes(free)} free`, level);
+      } catch (err) {
+        add('disk', false, `${folder}: ${firstLine(err)}`);
+      }
+    }
+  }
+
+  /** The database host is this machine (the temp and data folders are then local). */
+  private databaseIsLocal(): boolean {
+    try {
+      return LOOPBACK_HOSTS.has(new URL(this.config.get('DATABASE_URL', { infer: true })).hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  /** The newest complete backup (a folder named by its time, not a partial one) and how old it is. */
+  private async backupAge(add: Add, production: boolean): Promise<void> {
+    const root = this.backup.backupRoot();
+    let entries: { name: string; isDirectory(): boolean }[];
+    try {
+      entries = await readdir(root, { withFileTypes: true });
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'ENOENT') throw err;
+      entries = [];
+    }
+    let newest: Date | null = null;
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const at = backupTime(entry.name);
+      if (at !== null && (newest === null || at > newest)) newest = at;
+    }
+    const { level, detail } = backupAgeLevel(newest, new Date(), production);
+    add('backup-age', level !== 'error', detail, level);
+  }
+
+  /** The MySQL client that backup-verify restores with. */
+  private async restoreTool(add: Add, production: boolean): Promise<void> {
+    const bin = this.config.get('MYSQL_PATH', { infer: true });
+    const version = await toolVersion(bin);
+    if (version) {
+      add('restore-tool', true, `${version} (backup-verify)`);
+    } else {
+      add('restore-tool', !production, `${bin} cannot run: set MYSQL_PATH (backup-verify needs it)`, production ? 'error' : 'warn');
+    }
+  }
+
+  /** Backups are written unencrypted without a key (production refuses to start without one). */
+  private backupKey(add: Add): void {
+    const key = this.config.get('BACKUP_ENCRYPTION_KEY', { infer: true });
+    if (key) add('backup-key', true, 'BACKUP_ENCRYPTION_KEY set');
+    else add('backup-key', true, 'BACKUP_ENCRYPTION_KEY unset: backups are written unencrypted', 'warn');
+  }
+
+  private async storage(add: Add): Promise<void> {
     const root = path.resolve(this.config.get('STORAGE_DIR', { infer: true }));
     const webDir = this.config.get('WEB_DIST_DIR', { infer: true });
     const web = webDir ? path.resolve(webDir) : null;

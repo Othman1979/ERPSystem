@@ -12,11 +12,13 @@
 import 'dotenv/config';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { appendFile, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { gunzipSync } from 'node:zlib';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
 
@@ -38,6 +40,7 @@ let db: Connection;
 let tmp = '';
 let storageDir = '';
 let backupDir = '';
+let firstBackup = '';
 const urlFor = (name: string) => process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, `/${name}$1`);
 
 const api = () => request(BASE);
@@ -46,10 +49,13 @@ const idem = () => ({ 'Idempotency-Key': `bk-${RUN}-${Math.random().toString(36)
 
 /** Runs a command in the API folder; a non-zero exit is returned, not thrown. */
 async function run(file: string, args: string[], env: Record<string, string | undefined> = {}) {
+  // A backup key from the developer's .env must not turn the plaintext tests into encrypted ones.
+  const base: Record<string, string | undefined> = { ...process.env };
+  delete base.BACKUP_ENCRYPTION_KEY;
   try {
     const { stdout, stderr } = await promisify(execFile)(file, args, {
       cwd: API_DIR,
-      env: { ...process.env, NODE_ENV: 'test', ...env },
+      env: { ...base, NODE_ENV: 'test', ...env },
       maxBuffer: 16 * 1024 * 1024,
     });
     return { code: 0, stdout, stderr };
@@ -135,7 +141,6 @@ afterAll(async () => {
 });
 
 describe('Phase 10.2 — backup and restore', () => {
-  let firstBackup = '';
 
   it('setup: a company with a posted sale, opening stock and a logo', async () => {
     const reg = await api()
@@ -178,7 +183,8 @@ describe('Phase 10.2 — backup and restore', () => {
     expect(out.storageFiles).toBe(1);
     const manifest = JSON.parse(readFileSync(path.join(out.folder, 'manifest.json'), 'utf8'));
     const migrationFolders = readdirSync(path.join(API_DIR, 'prisma', 'migrations'), { withFileTypes: true }).filter((d) => d.isDirectory());
-    expect(manifest).toMatchObject({ format: 1, database: { name: SOURCE }, migrations: { count: migrationFolders.length } });
+    // No key in this run: plaintext, which the manifest says as encryption null.
+    expect(manifest).toMatchObject({ format: 2, encryption: null, database: { name: SOURCE }, migrations: { count: migrationFolders.length } });
     expect(manifest.files.map((f: { sha256: string }) => f.sha256.length)).toEqual([64, 64]);
     // Every tenant's data: this account only (Windows has no such modes).
     if (process.platform !== 'win32') {
@@ -251,9 +257,12 @@ describe('Phase 10.2 — backup and restore', () => {
 
   it('reports unbalanced books, stock off its movements and a missing upload', async () => {
     // Corrupt the throwaway source the way a bad import or a lost disk would.
-    await db.query(`UPDATE ${SOURCE}.journal_lines SET debit = debit + 1 WHERE debit > 0 LIMIT 1`);
+    // What is broken here is put back at the end, so the encryption tests below back up sound data.
+    const [line] = await db.query(`SELECT id FROM ${SOURCE}.journal_lines WHERE debit > 0 ORDER BY id LIMIT 1`);
+    await db.query(`UPDATE ${SOURCE}.journal_lines SET debit = debit + 1 WHERE id = ?`, [line.id]);
     await db.query(`UPDATE ${SOURCE}.stock_balances SET qty_on_hand = qty_on_hand + 1`);
     const [logo] = await db.query(`SELECT storage_key FROM ${SOURCE}.attachments LIMIT 1`);
+    const logoBytes = await readFile(path.join(storageDir, logo.storage_key));
     await rm(path.join(storageDir, logo.storage_key));
     await new Promise((r) => setTimeout(r, 1100)); // a new second: a new backup name
 
@@ -268,6 +277,10 @@ describe('Phase 10.2 — backup and restore', () => {
     expect(checks.journal).toMatchObject({ ok: false, detail: '1 posted entries do not balance' });
     expect(checks.stock).toMatchObject({ ok: false, detail: '1 stock balances differ from their movements' });
     expect(checks.storage).toMatchObject({ ok: false, detail: expect.stringContaining(logo.storage_key) });
+
+    await db.query(`UPDATE ${SOURCE}.journal_lines SET debit = debit - 1 WHERE id = ?`, [line.id]);
+    await db.query(`UPDATE ${SOURCE}.stock_balances SET qty_on_hand = qty_on_hand - 1`);
+    await writeFile(path.join(storageDir, logo.storage_key), logoBytes);
   }, 240_000);
 
   it('a failed run leaves nothing; old backups and crashed runs are rotated out, other folders kept', async () => {
@@ -297,4 +310,106 @@ describe('Phase 10.2 — backup and restore', () => {
     expect(existsSync(path.join(storageDir, 'backups'))).toBe(false);
     expect(await readFile(path.join(firstBackup, 'manifest.json'), 'utf8')).toContain(SOURCE);
   }, 60_000);
+});
+
+describe('Phase 10.2 — encryption, decryption and the lock (ADR-010 §10.2)', () => {
+  const KEY = randomBytes(32).toString('base64');
+  const OTHER_KEY = randomBytes(32).toString('base64');
+  /** The key id as the manifest records it: the first 16 hex chars of sha256(key). */
+  const keyIdOf = (base64: string) => createHash('sha256').update(Buffer.from(base64, 'base64')).digest('hex').slice(0, 16);
+  let encrypted = '';
+
+  it('an encrypted backup: .enc files starting with the magic, manifest format 2 with the key id, never the key', async () => {
+    await new Promise((r) => setTimeout(r, 1100)); // a new second: a new backup name
+    const res = await job(['backup'], { BACKUP_ENCRYPTION_KEY: KEY });
+    expect(res.code).toBe(0);
+    encrypted = (JSON.parse(res.stdout) as { folder: string }).folder;
+    expect(readdirSync(encrypted).sort()).toEqual(['database.sql.gz.enc', 'manifest.json', 'storage.zip.enc']);
+    for (const f of ['database.sql.gz.enc', 'storage.zip.enc']) {
+      expect(readFileSync(path.join(encrypted, f)).subarray(0, 6).toString('latin1')).toBe('ERPBK1');
+    }
+    const manifest = JSON.parse(readFileSync(path.join(encrypted, 'manifest.json'), 'utf8'));
+    expect(manifest).toMatchObject({ format: 2, encryption: { algorithm: 'aes-256-gcm', keyId: keyIdOf(KEY) } });
+    expect(manifest.files.map((f: { name: string }) => f.name)).toEqual(['database.sql.gz.enc', 'storage.zip.enc']);
+    expect(res.stdout + res.stderr).not.toContain(KEY);
+  }, 120_000);
+
+  it('backup-verify passes with the key; another key fails on the key check; no key says it is encrypted', async () => {
+    const ok = await job(['backup-verify', path.basename(encrypted)], { BACKUP_ENCRYPTION_KEY: KEY });
+    expect(ok.code).toBe(0);
+    const okOut = JSON.parse(ok.stdout) as { ok: boolean; kept: boolean; checks: Check[] };
+    expect([okOut.ok, okOut.kept]).toEqual([true, false]);
+    expect(okOut.checks.map((c) => c.name)).toEqual(['files', 'key', 'restore', 'migrations', 'journal', 'stock', 'storage', 'rows']);
+    expect(byName(okOut.checks).storage.detail).toBe('1 referenced, 1 in the zip');
+
+    const wrong = await job(['backup-verify', encrypted], { BACKUP_ENCRYPTION_KEY: OTHER_KEY });
+    expect(wrong.code).toBe(1);
+    const wrongOut = JSON.parse(wrong.stdout) as { ok: boolean; restoredInto: string | null; checks: Check[] };
+    expect([wrongOut.ok, wrongOut.restoredInto]).toEqual([false, null]);
+    expect(byName(wrongOut.checks).key).toMatchObject({
+      ok: false,
+      detail: `BACKUP_ENCRYPTION_KEY is not the key this backup was made with (key id ${keyIdOf(OTHER_KEY)}, backup ${keyIdOf(KEY)})`,
+    });
+
+    const none = await job(['backup-verify', encrypted]);
+    expect(none.code).toBe(1);
+    expect(byName((JSON.parse(none.stdout) as { checks: Check[] }).checks).key.detail).toBe(
+      'this backup is encrypted: set BACKUP_ENCRYPTION_KEY',
+    );
+  }, 180_000);
+
+  it('a plaintext backup in the old format (1, no encryption) still verifies without a key', async () => {
+    // The shape of a backup made before encryption existed: same files, format 1, no encryption field.
+    const old = path.join(tmp, 'old-format');
+    await cp(firstBackup, old, { recursive: true });
+    const manifest = JSON.parse(await readFile(path.join(old, 'manifest.json'), 'utf8')) as Record<string, unknown>;
+    delete manifest.encryption;
+    await writeFile(path.join(old, 'manifest.json'), JSON.stringify({ ...manifest, format: 1 }, null, 2));
+    const res = await job(['backup-verify', old]);
+    expect(res.code).toBe(0);
+    const out = JSON.parse(res.stdout) as { ok: boolean; checks: Check[] };
+    expect(out.ok).toBe(true);
+    expect(out.checks.map((c) => c.name)).not.toContain('key');
+  }, 180_000);
+
+  it('backup-decrypt writes the plaintext dump (gunzip-able) and the zip, refuses a key it does not have, and an unsafe folder', async () => {
+    const outDir = path.join(tmp, 'restored-by-hand');
+    const res = await job(['backup-decrypt', path.basename(encrypted), outDir], { BACKUP_ENCRYPTION_KEY: KEY });
+    expect(res.code).toBe(0);
+    expect(readdirSync(outDir).sort()).toEqual(['database.sql.gz', 'manifest.json', 'storage.zip']);
+    expect(gunzipSync(readFileSync(path.join(outDir, 'database.sql.gz'))).toString('utf8')).toMatch(/CREATE TABLE/);
+    if (process.platform !== 'win32') expect(statSync(outDir).mode & 0o777).toBe(0o700);
+
+    // The folder must not exist yet: nothing is overwritten.
+    const again = await job(['backup-decrypt', path.basename(encrypted), outDir], { BACKUP_ENCRYPTION_KEY: KEY });
+    expect(again.code).toBe(1);
+    expect(again.stderr).toMatch(/already exists/);
+
+    const nokey = await job(['backup-decrypt', path.basename(encrypted), path.join(tmp, 'nokey')]);
+    expect(nokey.code).toBe(1);
+    expect(nokey.stderr).toMatch(/this backup is encrypted: set BACKUP_ENCRYPTION_KEY/);
+    expect(existsSync(path.join(tmp, 'nokey'))).toBe(false);
+
+    const inside = await job(['backup-decrypt', path.basename(encrypted), path.join(storageDir, 'plain')], { BACKUP_ENCRYPTION_KEY: KEY });
+    expect(inside.code).toBe(1);
+    expect(inside.stderr).toMatch(/inside STORAGE_DIR/);
+    expect(existsSync(path.join(storageDir, 'plain'))).toBe(false);
+  }, 180_000);
+
+  it('a backup while another runs is refused and the other lock is left alone; a stale lock is taken over', async () => {
+    const lock = path.join(backupDir, '.backup.lock');
+    writeFileSync(lock, JSON.stringify({ pid: 1, startedAt: new Date().toISOString() }));
+    const busy = await job(['backup']);
+    expect(busy.code).toBe(1);
+    expect(busy.stderr).toMatch(/Another backup is running \(lock .*\.backup\.lock since /);
+    expect(existsSync(lock)).toBe(true);
+
+    // Older than six hours: from a killed run.
+    const old = new Date(Date.now() - (6 * 60 + 1) * 60_000);
+    utimesSync(lock, old, old);
+    await new Promise((r) => setTimeout(r, 1100));
+    const ok = await job(['backup']);
+    expect(ok.code).toBe(0);
+    expect(existsSync(lock)).toBe(false);
+  }, 120_000);
 });

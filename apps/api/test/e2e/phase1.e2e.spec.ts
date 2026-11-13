@@ -11,6 +11,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import request from 'supertest';
 import mariadb, { type Connection } from 'mariadb';
+import { addMember } from './support/members.js';
 
 const API_PORT = 3199;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -143,22 +144,21 @@ describe('Phase 1 — platform & tenant isolation (erp_test)', () => {
   });
 
   it('invites a user and enforces role permissions', async () => {
-    const invite = await api()
+    // A password chosen by the inviter is refused: the member sets their own at first sign-in.
+    const refused = await api()
       .post('/api/v1/users/invite')
       .set(auth(tokenA))
-      .send({
-        email: `cashier-a-${RUN}@test.dev`,
-        roleCode: 'CASHIER',
-        password: 'cashier-pass-1',
-      });
-    expect(invite.status).toBe(201);
-    expect(invite.body.temporaryPassword).toBeUndefined();
+      .send({ email: `cashier-a-${RUN}@test.dev`, roleCode: 'CASHIER', password: 'cashier-pass-1' });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.code).toBe('VALIDATION');
 
-    const login = await api()
-      .post('/api/v1/auth/login')
-      .send({ email: `cashier-a-${RUN}@test.dev`, password: 'cashier-pass-1' });
-    expect(login.status).toBe(200);
-    cashierToken = login.body.accessToken;
+    // A new user gets a temporary password; addMember replaces it with the chosen one and signs in.
+    const cashier = await addMember(BASE, tokenA, {
+      email: `cashier-a-${RUN}@test.dev`,
+      roleCode: 'CASHIER',
+      password: 'cashier-pass-1',
+    });
+    cashierToken = cashier.token;
 
     const denied = await api()
       .post('/api/v1/users/invite')
@@ -166,9 +166,14 @@ describe('Phase 1 — platform & tenant isolation (erp_test)', () => {
       .send({ email: `x-${RUN}@test.dev`, roleCode: 'VIEWER' });
     expect(denied.status).toBe(403);
 
+    // user.manage is OWNER-only (decisions.md §Platform): a cashier cannot list members.
     const list = await api().get('/api/v1/users').set(auth(cashierToken));
-    expect(list.status).toBe(200);
-    expect(list.body).toHaveLength(2);
+    expect(list.status).toBe(403);
+    expect(list.body.error.code).toBe('FORBIDDEN');
+
+    const owners = await api().get('/api/v1/users').set(auth(tokenA));
+    expect(owners.status).toBe(200);
+    expect(owners.body).toHaveLength(2);
   });
 
   // Reuse within the 10-second grace window (ADR-012) answers 401 but keeps

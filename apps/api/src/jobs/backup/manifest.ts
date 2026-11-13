@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
 
 /** One backup = one folder `backup-YYYYMMDD-HHmmss` (UTC) under BACKUP_DIR (ADR-010 §10.2). */
 export const BACKUP_NAME = /^backup-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/;
@@ -9,15 +11,25 @@ export const PARTIAL_PREFIX = '.partial-';
 export const DB_FILE = 'database.sql.gz';
 export const STORAGE_FILE = 'storage.zip';
 export const MANIFEST_FILE = 'manifest.json';
+/** Suffix of an encrypted file: `database.sql.gz.enc`. */
+export const ENCRYPTED_SUFFIX = '.enc';
+export const CIPHER = 'aes-256-gcm';
 
 export interface ManifestFile {
+  /** The name in the folder: the logical name, plus ENCRYPTED_SUFFIX when encrypted. */
   name: string;
+  /** Bytes as stored (encrypted size when encrypted). */
   bytes: number;
   sha256: string;
 }
 
-export interface BackupManifest {
-  format: 1;
+export interface ManifestEncryption {
+  algorithm: typeof CIPHER;
+  /** Fingerprint of the key (backup-crypto keyId): never the key. */
+  keyId: string;
+}
+
+interface ManifestCommon {
   name: string;
   createdAt: string;
   database: { name: string; server: string };
@@ -25,6 +37,48 @@ export interface BackupManifest {
   migrations: { count: number; last: string | null };
   storage: { files: number };
   files: ManifestFile[];
+}
+
+/** Backups made before encryption existed (plaintext). Still verifiable. */
+export interface BackupManifestV1 extends ManifestCommon {
+  format: 1;
+}
+
+/** Current format: `encryption` is null for a plaintext backup (development only). */
+export interface BackupManifestV2 extends ManifestCommon {
+  format: 2;
+  encryption: ManifestEncryption | null;
+}
+
+export type BackupManifest = BackupManifestV1 | BackupManifestV2;
+
+/** The encryption of a backup, or null when its files are plaintext. */
+export function encryptionOf(manifest: BackupManifest): ManifestEncryption | null {
+  return manifest.format === 2 ? manifest.encryption : null;
+}
+
+/** The name a logical file has in the folder. */
+export function storedName(logical: string, encrypted: boolean): string {
+  return encrypted ? `${logical}${ENCRYPTED_SUFFIX}` : logical;
+}
+
+/**
+ * The backup folder a command means: `latest`, a path to a folder, or a folder
+ * name under `root` (BACKUP_DIR). Throws when there is no backup there.
+ */
+export async function resolveBackupFolder(which: string, root: string): Promise<string> {
+  const base = path.resolve(root);
+  if (which === 'latest') {
+    const names = existsSync(base)
+      ? (await readdir(base, { withFileTypes: true })).filter((d) => d.isDirectory() && backupTime(d.name)).map((d) => d.name)
+      : [];
+    const newest = names.sort().at(-1);
+    if (!newest) throw new Error(`No backup in ${base}`);
+    return path.join(base, newest);
+  }
+  const folder = existsSync(which) ? path.resolve(which) : path.join(base, which);
+  if (!existsSync(path.join(folder, MANIFEST_FILE))) throw new Error(`No backup at ${folder} (no ${MANIFEST_FILE})`);
+  return folder;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

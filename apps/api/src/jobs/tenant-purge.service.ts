@@ -114,7 +114,7 @@ export class TenantPurgeService {
     if (confirmName !== plan.name) throw new Error('Refused: --confirm must be the exact tenant name');
 
     const tables = await this.tenantTables();
-    const userIds = (await this.soleUsers(tenantId)).map((u) => u.id);
+    const users = await this.soleUsers(tenantId);
     await this.prisma.client.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 0');
@@ -122,9 +122,16 @@ export class TenantPurgeService {
           for (const table of tables) {
             await tx.$executeRawUnsafe(`DELETE FROM \`${table}\` WHERE tenant_id = ?`, tenantId);
           }
-          for (const id of userIds) {
-            await tx.$executeRaw`DELETE FROM refresh_tokens WHERE user_id = ${id}`;
-            await tx.$executeRaw`DELETE FROM users WHERE id = ${id}`;
+          for (const user of users) {
+            // Audit rows that stay (platform rows, failed sign-ins) lose the link to the person and the address.
+            await tx.$executeRaw`UPDATE audit_logs SET user_id = NULL WHERE user_id = ${user.id} AND tenant_id IS NULL`;
+            await tx.$executeRaw`UPDATE audit_logs SET entity_id = NULL
+              WHERE entity_type = 'user' AND entity_id = ${user.id.toString()} AND tenant_id IS NULL`;
+            await tx.$executeRaw`UPDATE audit_logs SET after_json = JSON_SET(after_json, '$.email', '[deleted]')
+              WHERE tenant_id IS NULL AND action IN ('auth.login_failed', 'auth.login_locked')
+                AND LOWER(JSON_UNQUOTE(JSON_EXTRACT(after_json, '$.email'))) = LOWER(${user.email})`;
+            await tx.$executeRaw`DELETE FROM refresh_tokens WHERE user_id = ${user.id}`;
+            await tx.$executeRaw`DELETE FROM users WHERE id = ${user.id}`;
           }
           await tx.$executeRaw`DELETE FROM tenants WHERE id = ${tenantId}`;
         } finally {

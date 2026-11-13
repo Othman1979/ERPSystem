@@ -1,4 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { dbTarget, sameDatabase, withOptionFile } from './mysql-tools.js';
 
 describe('database client helpers (ADR-010 §10.2)', () => {
@@ -26,24 +28,50 @@ describe('database client helpers (ADR-010 §10.2)', () => {
 
   it('keeps the password in a private option file, quoted, removed afterwards', async () => {
     const target = dbTarget('mysql://root:a%5Cb%22c@localhost:3306/erp');
-    let seen = '';
-    const file = await withOptionFile(target, async (f) => {
-      seen = readFileSync(f, 'utf8');
-      return f;
-    });
-    expect(seen).toContain('[client]');
-    // TCP like the app's driver: never the local socket for host=localhost.
-    expect(seen).toContain('protocol=TCP');
-    expect(seen).toContain('password="a\\\\b\\"c"');
-    expect(existsSync(file)).toBe(false);
-    // Removed even when the work fails.
-    let failed = '';
-    await expect(
-      withOptionFile(target, async (f) => {
-        failed = f;
-        throw new Error('boom');
-      }),
-    ).rejects.toThrow('boom');
-    expect(existsSync(failed)).toBe(false);
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'mysql-tools-'));
+    try {
+      let seen = '';
+      let inDir = '';
+      const file = await withOptionFile(
+        target,
+        async (f) => {
+          seen = readFileSync(f, 'utf8');
+          return f;
+        },
+        dir,
+      );
+      expect(seen).toContain('[client]');
+      // TCP like the app's driver: never the local socket for host=localhost.
+      expect(seen).toContain('protocol=TCP');
+      expect(seen).toContain('password="a\\\\b\\"c"');
+      expect(existsSync(file)).toBe(false);
+      // Written into the folder the caller gave, never the system temp folder.
+      await withOptionFile(
+        target,
+        async (f) => {
+          inDir = f;
+          expect(path.dirname(f)).toBe(dir);
+          expect(path.basename(f)).toMatch(/^\.erp-db-[0-9a-f-]+\.cnf$/);
+        },
+        dir,
+      );
+      // Removed even when the work fails.
+      let failed = '';
+      await expect(
+        withOptionFile(
+          target,
+          async (f) => {
+            failed = f;
+            throw new Error('boom');
+          },
+          dir,
+        ),
+      ).rejects.toThrow('boom');
+      expect(existsSync(failed)).toBe(false);
+      expect(existsSync(inDir)).toBe(false);
+      expect(readdirSync(dir)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
