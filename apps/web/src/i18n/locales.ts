@@ -1096,6 +1096,11 @@ export const ar = {
   language: {
     switchTo: 'English',
   },
+  ui: {
+    cellLabel: '{{column}}، السطر {{line}}',
+    userMenu: 'قائمة المستخدم',
+    creditSuffix: 'دائن',
+  },
   health: {
     title: 'فحص الاتصال',
     apiOk: 'الواجهة متصلة بالخادم',
@@ -2234,6 +2239,11 @@ export const en: typeof ar = {
   },
   language: {
     switchTo: 'العربية',
+  },
+  ui: {
+    cellLabel: '{{column}}, line {{line}}',
+    userMenu: 'User menu',
+    creditSuffix: 'Cr',
   },
   health: {
     title: 'Connection Check',
