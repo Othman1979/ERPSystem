@@ -7,6 +7,7 @@ import { formatAmount, sum } from '../format/number';
 import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
 import { Num } from './Num';
+import { cellLabel } from './gridA11y';
 
 export interface InvoiceItemOption {
   id: string;
@@ -181,6 +182,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
               <td className="row-no">{row + 1}</td>
               <td {...cellProps(row, 1)}>
                 <GridSelect
+                  aria-label={cellLabel(t, t('items.title'), row)}
                   variant="borderless"
                   placeholder={t('items.title')}
                   options={itemOptions.map((o) => ({
@@ -202,6 +204,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
               </td>
               <td className="num-cell" {...cellProps(row, 2)}>
                 <InputNumber<string>
+                  aria-label={cellLabel(t, t('stock.qty'), row)}
                   variant="borderless"
                   stringMode
                   min="0.000001"
@@ -214,6 +217,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
               </td>
               <td className="num-cell" {...cellProps(row, 3)}>
                 <InputNumber<string>
+                  aria-label={cellLabel(t, priceLabel ?? t('sales.unitPrice'), row)}
                   variant="borderless"
                   stringMode
                   min="0"
@@ -226,6 +230,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
               </td>
               <td className="num-cell" {...cellProps(row, 4)}>
                 <InputNumber<string>
+                  aria-label={cellLabel(t, t('sales.discountPct'), row)}
                   variant="borderless"
                   stringMode
                   min="0"

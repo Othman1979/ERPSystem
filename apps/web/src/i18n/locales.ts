@@ -1103,6 +1103,13 @@ export const ar = {
     retrying: 'جارٍ الاتصال…',
     autoRetry: 'إعادة المحاولة تلقائياً بعد {{seconds}} ث',
   },
+  ui: {
+    cellLabel: '{{column}}، السطر {{line}}',
+    userMenu: 'قائمة المستخدم',
+    switchCompany: 'المنشأة',
+    openRowHint: 'اضغط Enter لفتح السجل',
+    creditSuffix: 'دائن',
+  },
   health: {
     title: 'فحص الاتصال',
     apiOk: 'الواجهة متصلة بالخادم',
@@ -2252,6 +2259,13 @@ export const en: typeof ar = {
     retryNow: 'Retry now',
     retrying: 'Connecting…',
     autoRetry: 'Retrying automatically in {{seconds}} s',
+  },
+  ui: {
+    cellLabel: '{{column}}, line {{line}}',
+    userMenu: 'User menu',
+    switchCompany: 'Company',
+    openRowHint: 'Press Enter to open',
+    creditSuffix: 'Cr',
   },
   health: {
     title: 'Connection Check',

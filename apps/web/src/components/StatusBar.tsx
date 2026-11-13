@@ -1,10 +1,9 @@
 import { useTranslation } from 'react-i18next';
-import { palette } from '../theme';
 
 /**
- * Odoo-style status bar for documents: Draft → Posted.
- * Rendered as two chips joined by a connector; the current state is
- * highlighted, past states are green, future states are dimmed.
+ * Status bar for documents: Draft → Posted, as two chips joined by an arrow.
+ * The current state is ink, past states success, future states neutral.
+ * Styles: `.status-bar*` in index.css.
  */
 export function StatusBar({ status }: { status: 'DRAFT' | 'POSTED' | string }) {
   const { t, i18n } = useTranslation();
@@ -17,26 +16,17 @@ export function StatusBar({ status }: { status: 'DRAFT' | 'POSTED' | string }) {
   const arrow = i18n.dir() === 'rtl' ? '←' : '→';
 
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+    <div className="status-bar">
       {steps.map((s, i) => {
-        const done = i < currentIdx;
-        const current = i === currentIdx;
+        const state = i < currentIdx ? ' is-done' : i === currentIdx ? ' is-current' : '';
         return (
-          <span key={s.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {i > 0 && <span style={{ color: palette.borderStrong }}>{arrow}</span>}
-            <span
-              style={{
-                padding: '2px 12px',
-                borderRadius: 12,
-                fontSize: 12,
-                fontWeight: current ? 600 : 400,
-                background: current ? palette.primary : done ? palette.successBg : palette.headerBg,
-                color: current ? palette.textOnPrimary : done ? palette.success : palette.textMuted,
-                border: `1px solid ${
-                  current ? palette.primary : done ? palette.successBorder : palette.borderStrong
-                }`,
-              }}
-            >
+          <span key={s.key} className="status-bar-item">
+            {i > 0 && (
+              <span className="status-bar-arrow" aria-hidden="true">
+                {arrow}
+              </span>
+            )}
+            <span className={`status-bar-step${state}`} aria-current={i === currentIdx ? 'step' : undefined}>
               {s.label}
             </span>
           </span>

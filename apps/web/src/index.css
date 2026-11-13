@@ -1,4 +1,11 @@
-/* Global styles */
+/*
+ * Global styles.
+ *
+ * Colours, radii, shadows and fonts come from the `--c-*` and other custom
+ * properties that src/theme.ts writes onto :root (installCssVariables), so
+ * this file never repeats a hex code (UI-20). The one exception is print,
+ * which stays white on purpose: paper is white.
+ */
 
 html,
 body,
@@ -6,42 +13,87 @@ body,
   min-height: 100%;
 }
 
-/* Colour tokens — keep in sync with src/theme.ts (palette). */
-:root {
-  --c-primary: #0078d4;
-  --c-primary-dark: #005a9e;
-  --c-canvas: #f3f3f3;
-  --c-surface: #ffffff;
-  --c-border: #e1e1e1;
-  --c-border-strong: #d1d1d1;
-  --c-row-line: #edebe9;
-  --c-header-bg: #f5f5f5;
-  --c-zebra: #fafafa;
-  --c-hover: #e5f1fb;
-  --c-text: #323130;
-  --c-on-primary: #ffffff;
-  --c-on-primary-muted: rgba(255, 255, 255, 0.72);
-  --topbar-height: 44px;
-  /* Grids and tables (palette.grid) */
-  --c-grid-panel: #eeeeee;
-  --c-grid-panel-hi: #fafafa;
-  --c-grid-bar: #d3dce3;
-  --c-grid-bar-hi: #f2f4f6;
-  --c-grid-bar-text: #1b2a36;
-  --c-grid-line: #c0c0c0;
-  --c-grid-border: #aaaaaa;
-  /* Bars and panels get a soft 3px lighter top edge. */
-  --c-grid-bar-bg: linear-gradient(to bottom, var(--c-grid-bar-hi), var(--c-grid-bar) 3px);
-  --c-grid-panel-bg: linear-gradient(to bottom, var(--c-grid-panel-hi), var(--c-grid-panel) 3px);
-}
-
 body {
   margin: 0;
   background: var(--c-canvas);
+  color: var(--c-text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5715;
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: rgba(0, 120, 212, 0.25);
+  background: var(--c-ink-200);
+  color: var(--c-text);
+}
+
+/* Visible scrollbars: an internal scroll must be noticeable (UI-18). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border-strong) transparent;
+}
+
+/* Links inside running text are underlined, not told apart by colour alone
+   (WCAG 1.4.1). Navigation (menus, tabs, pagination, tiles) is not text. */
+p a,
+label a,
+.ant-typography a,
+a.ant-typography,
+.ant-form-item-extra a,
+.ant-alert a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* --------------------------------------------------------------- focus */
+
+/*
+ * One focus ring for everything a keyboard can reach (UI-05). antd draws a
+ * faint ring of its own (colorPrimaryBorder), so this one wins with !important.
+ * Text fields keep antd's ink border + halo instead of a second ring.
+ */
+:focus-visible {
+  outline: 2px solid var(--c-focus) !important;
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+.ant-select-selection-search-input:focus-visible,
+.ant-picker-input > input:focus-visible,
+.ant-input-number-input:focus-visible {
+  outline: none !important;
+}
+
+/* Radios, checkboxes and radio buttons hide their input; ring the visible part. */
+.ant-radio-button-wrapper:has(input:focus-visible),
+.ant-radio-wrapper:has(input:focus-visible) .ant-radio-inner,
+.ant-checkbox-wrapper:has(input:focus-visible) .ant-checkbox-inner {
+  outline: 2px solid var(--c-focus) !important;
+  outline-offset: 2px;
+}
+
+/* Segmented controls mark keyboard focus with a class, not :focus-visible. */
+.ant-segmented .ant-segmented-item-focused {
+  outline: 2px solid var(--c-focus) !important;
+  outline-offset: 2px;
+}
+
+/*
+ * Selects on the ink top bar (branch, company): antd's ink border and halo
+ * vanish against ink-900, so ring the whole control in the light focus colour.
+ */
+.app-topbar .ant-select:focus-within .ant-select-selector {
+  /* !important: antd's focused-select rule (a long :not() chain) sets outline: 0. */
+  outline: 2px solid var(--c-focus-on-ink) !important;
+  outline-offset: 2px;
+}
+
+/* On the ink top bar the ring turns light. (A primary button's ring sits
+   outside it, on the light surface, so it keeps the standard colour.) */
+.app-topbar :focus-visible {
+  outline-color: var(--c-focus-on-ink) !important;
 }
 
 /* ---------------------------------------------------------------- shell */
@@ -54,27 +106,46 @@ body {
   align-items: center;
   gap: 8px;
   padding: 0 12px;
-  background: var(--c-primary);
-  color: var(--c-on-primary);
+  background: var(--c-ink-900);
+  color: var(--c-on-ink);
 }
 
 .app-topbar .topbar-btn,
 .app-topbar .topbar-btn .anticon {
-  color: var(--c-on-primary) !important;
+  color: var(--c-on-ink) !important;
 }
 
 .app-topbar .topbar-btn:hover {
-  background: rgba(255, 255, 255, 0.14) !important;
+  background: var(--c-on-ink-hover) !important;
+}
+
+/* Language switch: a quiet outlined button, not a white block (UI-17). */
+.app-topbar .topbar-lang.ant-btn {
+  background: transparent;
+  color: var(--c-on-ink);
+  border-color: var(--c-on-ink-muted);
+}
+
+.app-topbar .topbar-lang.ant-btn:hover {
+  background: var(--c-on-ink-hover) !important;
+  color: var(--c-on-ink) !important;
+  border-color: var(--c-on-ink) !important;
+}
+
+.app-topbar .ant-avatar {
+  background: var(--c-ink-500);
+  color: var(--c-on-ink);
 }
 
 .topbar-brand {
   border: 0;
   background: none;
   padding: 0 4px;
+  border-radius: var(--radius);
   font: inherit;
   font-weight: 600;
   font-size: 15px;
-  color: var(--c-on-primary);
+  color: var(--c-on-ink);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -82,11 +153,11 @@ body {
 .topbar-breadcrumb,
 .topbar-breadcrumb li,
 .topbar-breadcrumb .ant-breadcrumb-separator {
-  color: var(--c-on-primary-muted) !important;
+  color: var(--c-on-ink-muted) !important;
 }
 
 .topbar-breadcrumb li:last-child {
-  color: var(--c-on-primary) !important;
+  color: var(--c-on-ink) !important;
   font-weight: 600;
 }
 
@@ -96,14 +167,51 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  flex: 1;
 }
 
 .topbar-user {
-  color: var(--c-on-primary);
+  color: var(--c-on-ink);
   white-space: nowrap;
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The signed-in user's name heading the phone user menu */
+.topbar-menu-user {
+  display: block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-2);
+}
+
+/* Avatar button that opens the user menu on phones */
+.topbar-user-menu {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  cursor: pointer;
+}
+
+/* Top bar for guests (sign-in, registration): brand and language only (UI-15) */
+.guest-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--topbar-height);
+  padding: 0 16px;
+  background: var(--c-ink-900);
+  color: var(--c-on-ink);
+}
+
+.guest-topbar .topbar-brand {
+  cursor: default;
 }
 
 /* Side menu stays in view while the page scrolls */
@@ -111,6 +219,24 @@ body {
   position: sticky !important;
   overflow-y: auto;
   border-inline-end: 1px solid var(--c-border);
+}
+
+/* Active item: ink-100 fill plus a 3px ink marker on the start edge */
+.app-sider .ant-menu-item-selected,
+.app-drawer-menu .ant-menu-item-selected {
+  position: relative;
+  font-weight: 600;
+}
+
+.app-sider .ant-menu-item-selected::before,
+.app-drawer-menu .ant-menu-item-selected::before {
+  content: '';
+  position: absolute;
+  inset-block: 6px;
+  inset-inline-start: 0;
+  width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--c-ink-600);
 }
 
 .app-content {
@@ -123,7 +249,7 @@ body {
   margin-bottom: 14px;
 }
 
-/* Quick actions: one gray bar of everyday "new document" buttons */
+/* Quick actions: one panel bar of everyday "new document" buttons */
 .home-quick {
   display: flex;
   flex-wrap: wrap;
@@ -131,8 +257,8 @@ body {
   gap: 8px;
   padding: 10px 12px;
   margin-bottom: 16px;
-  background: var(--c-grid-panel-bg);
-  border: 1px solid var(--c-grid-border);
+  background: var(--c-panel);
+  border: 1px solid var(--c-border-strong);
 }
 
 .home-quick-title {
@@ -150,7 +276,7 @@ body {
 
 .home-group {
   background: var(--c-surface);
-  border: 1px solid var(--c-grid-border);
+  border: 1px solid var(--c-border-strong);
 }
 
 .home-group-head {
@@ -159,9 +285,9 @@ body {
   gap: 8px;
   padding: 6px 12px;
   font-weight: 600;
-  background: var(--c-grid-bar-bg);
-  color: var(--c-grid-bar-text);
-  border-bottom: 1px solid var(--c-grid-border);
+  background: var(--c-grid-head-bg);
+  color: var(--c-grid-head-text);
+  border-bottom: 1px solid var(--c-border-strong);
 }
 
 .home-group-dot {
@@ -177,7 +303,7 @@ body {
   width: 100%;
   padding: 7px 12px;
   border: 0;
-  border-bottom: 1px solid var(--c-grid-line);
+  border-bottom: 1px solid var(--c-border);
   background: none;
   font: inherit;
   color: var(--c-text);
@@ -191,8 +317,12 @@ body {
 
 .home-link:hover,
 .home-link:focus-visible {
-  background: var(--c-hover);
-  outline: none;
+  background: var(--c-grid-row-hover);
+}
+
+/* Inside a framed list the ring sits within the row */
+.home-link:focus-visible {
+  outline-offset: -2px;
 }
 
 .home-link-icon {
@@ -214,7 +344,7 @@ body {
   flex-direction: column;
   min-width: 0;
   background: var(--c-surface);
-  border: 1px solid var(--c-grid-border);
+  border: 1px solid var(--c-border-strong);
   color: var(--c-text);
   text-decoration: none;
 }
@@ -222,12 +352,7 @@ body {
 .home-stats .home-stat:hover,
 .home-stats .home-stat:focus-visible {
   color: var(--c-text);
-  border-color: var(--c-primary);
-  outline: none;
-}
-
-.home-stats .home-stat:focus-visible {
-  box-shadow: 0 0 0 1px var(--c-primary);
+  border-color: var(--c-ink-600);
 }
 
 .home-stat-head {
@@ -236,9 +361,9 @@ body {
   gap: 8px;
   padding: 6px 12px;
   font-weight: 600;
-  background: var(--c-grid-bar-bg);
-  color: var(--c-grid-bar-text);
-  border-bottom: 1px solid var(--c-grid-border);
+  background: var(--c-grid-head-bg);
+  color: var(--c-grid-head-text);
+  border-bottom: 1px solid var(--c-border-strong);
 }
 
 .home-stat-body {
@@ -255,7 +380,7 @@ body {
 
 .home-stat-sub {
   font-size: 12px;
-  opacity: 0.8;
+  color: var(--c-text-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -272,7 +397,7 @@ body {
   justify-content: space-between;
   gap: 8px;
   padding: 2px 0;
-  border-top: 1px solid var(--c-grid-line);
+  border-top: 1px solid var(--c-border);
 }
 
 .home-stat-list-name {
@@ -283,30 +408,36 @@ body {
 }
 
 .home-stat-more {
-  opacity: 0.75;
+  color: var(--c-text-3);
 }
 
 .home-stats-error {
   margin-bottom: 16px;
   font-size: 12px;
-  opacity: 0.75;
+  color: var(--c-text-2);
 }
 
-/* ---------------------------------------------------------------- phones */
+/* --------------------------------------------------------------- tables */
+
+/*
+ * Wide tables scroll inside their frame at every width, never the page
+ * (UI-01: at 768 px the sider is visible and the page used to overflow by
+ * up to 300 px). On phones columns also keep their natural width instead
+ * of being squeezed into slivers.
+ */
+.ant-table-wrapper .ant-table-content {
+  overflow-x: auto;
+}
+
+.entry-grid-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
 
 @media (max-width: 767px) {
-  /* Wide tables scroll sideways instead of squeezing columns into slivers */
-  .ant-table-wrapper .ant-table-content {
-    overflow-x: auto;
-  }
-
   .ant-table-wrapper .ant-table-content > table {
     width: max-content !important;
     min-width: 100%;
-  }
-
-  .entry-grid-scroll {
-    overflow-x: auto;
   }
 
   .entry-grid {
@@ -314,15 +445,8 @@ body {
   }
 }
 
-.entry-grid-scroll {
-  max-width: 100%;
-}
-
-/* Windows-style window chrome: thin border + subtle shadow on cards */
-.ant-card {
-  border-color: var(--c-border);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-}
+/* Cards sit flat (antd draws no card shadow; colorBorderSecondary is `border`).
+   The only shadow is antd's boxShadow token, --shadow-float, on floating layers (UI-09). */
 
 /* Table cells that must stay on one line (document numbers like JV-FY2026-000030) */
 .nowrap {
@@ -335,30 +459,28 @@ body {
   white-space: nowrap;
 }
 
-/* List tables: blue-gray header bar, framed body */
+/* List tables: neutral blue-gray header bar, framed body */
 .ant-table-wrapper .ant-table-container {
-  border: 1px solid var(--c-grid-border);
+  border: 1px solid var(--c-grid-frame);
 }
 
 .ant-table-thead > tr > th {
-  background: var(--c-grid-bar-bg) !important;
-  border-bottom: 1px solid var(--c-grid-border) !important;
+  border-bottom: 1px solid var(--c-grid-frame) !important;
 }
 
 .ant-table-wrapper .ant-table-summary > tr > td {
-  background: var(--c-grid-panel-bg);
-  border-top: 1px solid var(--c-grid-border);
+  background: var(--c-grid-total-bg);
+  border-top: 1px solid var(--c-grid-frame);
   font-weight: 600;
 }
 
-/* Data-entry grids (invoice / stock / journal lines) — Windows theme. */
+/* Data-entry grids (invoice / stock / journal lines). */
 .entry-grid-frame {
-  border: 1px solid var(--c-grid-border);
+  border: 1px solid var(--c-grid-frame);
   background: var(--c-surface);
 }
 
 .entry-grid {
-  --eg-focus: var(--c-primary);
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
@@ -366,11 +488,11 @@ body {
 }
 
 .entry-grid thead th {
-  background: var(--c-grid-bar-bg);
-  color: var(--c-grid-bar-text);
+  background: var(--c-grid-head-bg);
+  color: var(--c-grid-head-text);
   font-weight: 600;
   padding: 6px 8px;
-  border-bottom: 1px solid var(--c-grid-border);
+  border-bottom: 1px solid var(--c-grid-frame);
   text-align: start;
   white-space: nowrap;
 }
@@ -391,8 +513,7 @@ body {
 
 .entry-grid .row-no {
   width: 32px;
-  color: var(--c-text);
-  opacity: 0.6;
+  color: var(--c-text-3);
 }
 
 /* Number inputs line up with the computed number cells */
@@ -403,23 +524,23 @@ body {
 
 /* The row being edited */
 .entry-grid tbody tr:focus-within td {
-  background: var(--c-hover);
+  background: var(--c-grid-row-selected);
 }
 
 /* The cell that owns keyboard focus */
 .entry-grid tbody td:focus-within {
   background: var(--c-surface);
-  outline: 2px solid var(--eg-focus);
+  outline: 2px solid var(--c-focus);
   outline-offset: -2px;
 }
 
 .entry-grid tfoot td {
   height: 30px;
   padding: 0 8px;
-  background: var(--c-grid-panel-bg);
+  background: var(--c-grid-total-bg);
   color: var(--c-text);
   font-weight: 600;
-  border-top: 1px solid var(--c-grid-border);
+  border-top: 1px solid var(--c-grid-frame);
   border-bottom: 0;
 }
 
@@ -442,25 +563,25 @@ body {
   gap: 16px;
   align-items: flex-start;
   padding: 10px 12px;
-  background: var(--c-grid-panel-bg);
-  border-top: 1px solid var(--c-grid-border);
+  background: var(--c-panel);
+  border-top: 1px solid var(--c-grid-frame);
 }
 
 .entry-grid-hint {
   flex: 1;
   font-size: 12px;
   line-height: 1.9;
-  color: var(--c-text);
-  opacity: 0.75;
+  color: var(--c-text-2);
 }
 
 .entry-grid-hint kbd {
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12px;
   padding: 0 5px;
-  border: 1px solid var(--c-grid-border);
-  border-radius: 2px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-sm);
   background: var(--c-surface);
+  color: var(--c-text);
 }
 
 @media (max-width: 640px) {
@@ -469,7 +590,595 @@ body {
   }
 }
 
-/* Don't break a row across printed pages */
+/* Keyboard shortcut hints mean nothing on a touch screen (UI-19) */
+@media (hover: none) {
+  .doc-kbd,
+  .entry-grid-hint kbd,
+  .entry-grid-hint .grid-hint-keys {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ------------------------------------------------------- list toolbar */
+
+/* Panel bar sitting flush on top of a list table's frame */
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--c-panel);
+  border: 1px solid var(--c-grid-frame);
+  border-bottom: 0;
+}
+
+.list-toolbar-search {
+  width: 240px;
+  max-width: 100%;
+}
+
+.list-toolbar .ant-select {
+  min-width: 150px;
+}
+
+.list-toolbar-count {
+  font-size: 12px;
+  color: var(--c-text-2);
+  white-space: nowrap;
+}
+
+.list-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+@media (max-width: 640px) {
+  .list-toolbar-search {
+    width: 100%;
+  }
+}
+
+/* Page header (PageHeader) */
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.page-header-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.page-header-subtitle {
+  font-size: 13px;
+  color: var(--c-text-2);
+}
+
+/* Report header facts (account, opening balance) between the filter bar and the table */
+.report-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-grid-frame);
+  border-bottom: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Financial statements: section headings, the indented account tree, subtotals and results */
+.stmt-table .ant-table-tbody > tr.stmt-heading > td {
+  background: var(--c-panel);
+  font-weight: 600;
+}
+
+.stmt-table .ant-table-tbody > tr.stmt-group > td {
+  font-weight: 600;
+}
+
+.stmt-table .ant-table-tbody > tr.stmt-subtotal > td {
+  font-weight: 600;
+  border-top: 1px solid var(--c-grid-frame);
+}
+
+.stmt-table .ant-table-tbody > tr.stmt-result > td {
+  background: var(--c-grid-head-bg);
+  color: var(--c-grid-head-text);
+  font-weight: 700;
+  border-top: 1px solid var(--c-grid-frame);
+}
+
+/* Opening / closing balance rows of statements and balances (ADR-008) */
+.ant-table-tbody > tr.report-row-strong > td,
+.ant-table-summary tr.report-row-strong > td {
+  font-weight: 600;
+  background: var(--c-grid-total-bg);
+}
+
+/* "Pick an account first" style hints in place of a report table */
+.report-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--c-text-2);
+  border: 1px solid var(--c-grid-frame);
+  background: var(--c-surface);
+}
+
+/* Balances: amount plus a Cr suffix; red only on the wrong side (Balance.tsx) */
+.balance {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-side {
+  margin-inline-start: 4px;
+  font-size: 12px;
+  color: var(--c-text-2);
+}
+
+.balance-wrong-side,
+.balance-wrong-side .balance-side {
+  color: var(--c-danger);
+}
+
+/* Status tags (StatusTag.tsx) */
+.status-tag.ant-tag {
+  margin-inline-end: 0;
+  font-weight: 500;
+}
+
+/* ------------------------------------------------- document screens */
+
+.doc-layout {
+  background: var(--c-surface);
+  border: 1px solid var(--c-grid-frame);
+}
+
+/* Toolbar stays under the app's top bar while the document scrolls */
+.doc-toolbar {
+  position: sticky;
+  top: var(--topbar-height);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-grid-frame);
+}
+
+.doc-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.doc-no {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--c-text-2);
+  direction: ltr;
+  unicode-bidi: isolate;
+  white-space: nowrap;
+}
+
+.doc-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+/* Shortcut hint inside a toolbar button */
+.doc-kbd {
+  font-size: 11px;
+  line-height: 16px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+  margin-inline-start: 6px;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* Document status (StatusBar): Draft → Posted chips */
+.status-bar,
+.status-bar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-bar-arrow {
+  color: var(--c-text-3);
+}
+
+.status-bar-step {
+  padding: 1px 10px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  color: var(--c-text-2);
+  background: var(--c-panel);
+}
+
+.status-bar-step.is-done {
+  color: var(--c-success);
+  background: var(--c-success-bg);
+  border-color: var(--c-success-border);
+}
+
+.status-bar-step.is-current {
+  font-weight: 600;
+  color: var(--c-on-ink);
+  background: var(--c-ink-600);
+  border-color: var(--c-ink-600);
+}
+
+/* Header fields: panel, responsive grid */
+.doc-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px 14px;
+  padding: 12px;
+  background: var(--c-panel);
+  border-bottom: 1px solid var(--c-grid-frame);
+}
+
+.doc-field {
+  min-width: 0;
+}
+
+/* Controls fill their column (GridSelect wraps its select, so match descendants) */
+.doc-fields .ant-select,
+.doc-fields .ant-picker,
+.doc-fields .ant-input,
+.doc-fields .ant-input-number,
+.doc-field > .ant-radio-group {
+  width: 100%;
+}
+
+/* antd Form.Items placed straight in the field panel (forms with validation rules) */
+.doc-fields .ant-form-item {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.doc-fields .ant-form-item-label {
+  padding-bottom: 3px !important;
+}
+
+.doc-fields .ant-form-item-label > label {
+  height: auto;
+  font-size: 12px;
+  color: var(--c-text-2);
+}
+
+.doc-field > .ant-radio-group {
+  display: flex;
+}
+
+.doc-field > .ant-radio-group .ant-radio-button-wrapper {
+  flex: 1;
+  text-align: center;
+}
+
+.doc-field-wide {
+  grid-column: span 2;
+}
+
+.doc-field-label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12px;
+  color: var(--c-text-2);
+}
+
+.doc-field-req {
+  color: var(--c-danger);
+  margin-inline-start: 3px;
+}
+
+.doc-field-error {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--c-danger);
+}
+
+.doc-field-value {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+/* Lines and totals inside a document sit flush with its frame */
+.doc-layout .entry-grid-frame,
+.doc-layout .ant-table-wrapper .ant-table-container {
+  border: 0;
+}
+
+.doc-section {
+  padding: 12px;
+}
+
+/* Amount inputs in the field panel read like the amounts in the grids */
+.doc-fields .doc-amount .ant-input-number-input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------- master-data dialogs */
+
+.form-dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-section-bar .anticon {
+  color: var(--c-text-2);
+}
+
+.form-section-extra {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+}
+
+.form-section-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+  padding: 10px 14px 14px;
+}
+
+.form-section-grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-section-grid > .span-2 {
+  grid-column: span 2;
+}
+
+/* The grid on a page rather than in a dialog (company profile form) */
+.form-section-grid.is-flush {
+  gap: 12px 16px;
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+.form-section-grid > .span-all {
+  grid-column: 1 / -1;
+}
+
+.form-section-grid .ant-form-item {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.form-section-grid .ant-form-item-label {
+  padding-bottom: 3px !important;
+}
+
+.form-section-grid .ant-form-item-label > label {
+  height: auto;
+  font-size: 12px;
+  color: var(--c-text-2);
+}
+
+.form-section-grid .ant-select,
+.form-section-grid .ant-picker,
+.form-section-grid .ant-input-number,
+.form-section-grid .ant-radio-group {
+  width: 100%;
+}
+
+.form-section-grid .ant-radio-group {
+  display: flex;
+}
+
+.form-section-grid .ant-radio-group .ant-radio-button-wrapper {
+  flex: 1;
+  text-align: center;
+}
+
+/* Amounts and quantities line up on the right, as in the grids */
+.form-section-grid .ant-input-number-input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .form-section-grid,
+  .form-section-grid.cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .form-section-grid > .span-2 {
+    grid-column: auto;
+  }
+}
+
+/* Thin panel bar titling a sub-section of a document (e.g. voucher allocations) */
+.doc-subbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 6px 12px;
+  background: var(--c-panel);
+  border-bottom: 1px solid var(--c-grid-frame);
+}
+
+.doc-subbar-title {
+  font-weight: 600;
+}
+
+.doc-subbar-total {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .doc-field-wide {
+    grid-column: auto;
+  }
+}
+
+/* Invoice totals box (in the grid's footer strip) */
+.invoice-summary {
+  width: 300px;
+  max-width: 100%;
+  margin: 0;
+  margin-inline-start: auto;
+  border: 1px solid var(--c-grid-frame);
+  background: var(--c-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.invoice-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--c-grid-line);
+}
+
+.invoice-summary dt {
+  color: var(--c-text-2);
+}
+
+.invoice-summary dd {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.invoice-summary .invoice-summary-grand {
+  padding: 6px 10px;
+  border-bottom: 0;
+  border-top: 1px solid var(--c-grid-frame);
+  margin-top: -1px;
+  background: var(--c-grid-head-bg);
+  color: var(--c-grid-head-text);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.invoice-summary .invoice-summary-grand dt {
+  color: inherit;
+}
+
+@media (max-width: 640px) {
+  .invoice-summary {
+    width: 100%;
+  }
+}
+
+/* ------------------------------------------- e-invoicing (JoFotara) */
+
+/* Settings tab framed like a dialog body: sections, then a footer bar */
+.settings-panel {
+  background: var(--c-surface);
+  border: 1px solid var(--c-grid-frame);
+}
+
+.settings-panel-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--c-panel);
+  border-top: 1px solid var(--c-grid-frame);
+}
+
+/* "Not accepted by JoFotara yet" marker on a posted document */
+.einvoice-banner {
+  border-bottom: 1px solid var(--c-grid-frame);
+}
+
+.einvoice-banner-title,
+.einvoice-drawer-title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.einvoice-banner-errors {
+  margin: 4px 0 0;
+  padding-inline-start: 18px;
+}
+
+/* QR and identifiers of an accepted e-invoice, under the lines */
+.einvoice-qr-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 12px;
+  border-top: 1px solid var(--c-grid-frame);
+  break-inside: avoid;
+}
+
+.einvoice-qr-facts {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.einvoice-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.einvoice-detail .einvoice-qr-panel {
+  border: 1px solid var(--c-grid-line);
+}
+
+.einvoice-detail h5 {
+  margin-bottom: 6px;
+}
+
+/* Sent XML / raw answer: left-to-right code, scrolls inside its box */
+.einvoice-xml {
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  direction: ltr;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--c-panel);
+  border: 1px solid var(--c-grid-line);
+}
+
+/* ---------------------------------------------------------------- print */
+
+/* Paper is white: print drops the screen surfaces on purpose. */
 @media print {
   .app-topbar,
   .app-sider {
@@ -509,6 +1218,11 @@ body {
     break-inside: avoid;
   }
 
+  .stmt-table .ant-table-tbody > tr.stmt-heading > td,
+  .stmt-table .ant-table-tbody > tr.stmt-result > td {
+    background: #fff;
+  }
+
   /* Hide interactive-only chrome inside cards/tables when printing */
   .ant-btn,
   .ant-pagination,
@@ -516,514 +1230,24 @@ body {
   .entry-grid-hint {
     display: none !important;
   }
-}
 
-/* ------------------------------------------------------- list toolbar */
-
-/* Gray bar sitting flush on top of a list table's frame */
-.list-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: var(--c-grid-panel-bg);
-  border: 1px solid var(--c-grid-border);
-  border-bottom: 0;
-}
-
-.list-toolbar-search {
-  width: 240px;
-  max-width: 100%;
-}
-
-.list-toolbar .ant-select {
-  min-width: 150px;
-}
-
-.list-toolbar-count {
-  font-size: 12px;
-  color: var(--c-text);
-  opacity: 0.75;
-  white-space: nowrap;
-}
-
-.list-toolbar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-inline-start: auto;
-}
-
-@media (max-width: 640px) {
-  .list-toolbar-search {
-    width: 100%;
-  }
-}
-
-/* Report header facts (account, opening balance) between the filter bar and the table */
-.report-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 24px;
-  padding: 6px 10px;
-  font-size: 12px;
-  background: var(--c-surface);
-  border: 1px solid var(--c-grid-border);
-  border-bottom: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Financial statements: section headings, the indented account tree, subtotals and results */
-.stmt-table .ant-table-tbody > tr.stmt-heading > td {
-  background: var(--c-grid-panel-bg);
-  font-weight: 600;
-}
-
-.stmt-table .ant-table-tbody > tr.stmt-group > td {
-  font-weight: 600;
-}
-
-.stmt-table .ant-table-tbody > tr.stmt-subtotal > td {
-  font-weight: 600;
-  border-top: 1px solid var(--c-grid-border);
-}
-
-.stmt-table .ant-table-tbody > tr.stmt-result > td {
-  background: var(--c-grid-bar-bg);
-  color: var(--c-grid-bar-text);
-  font-weight: 700;
-  border-top: 1px solid var(--c-grid-border);
-}
-
-@media print {
-  .stmt-table .ant-table-tbody > tr.stmt-heading > td,
-  .stmt-table .ant-table-tbody > tr.stmt-result > td {
-    background: #fff;
-  }
-}
-
-/* Opening / closing balance rows of statements and balances (ADR-008) */
-.ant-table-tbody > tr.report-row-strong > td,
-.ant-table-summary tr.report-row-strong > td {
-  font-weight: 600;
-  background: var(--c-grid-panel-bg);
-}
-
-/* "Pick an account first" style hints in place of a report table */
-.report-empty {
-  padding: 24px 12px;
-  text-align: center;
-  color: var(--c-text);
-  opacity: 0.7;
-  border: 1px solid var(--c-grid-border);
-  background: var(--c-surface);
-}
-
-/* ------------------------------------------------- document screens */
-
-.doc-layout {
-  background: var(--c-surface);
-  border: 1px solid var(--c-grid-border);
-}
-
-/* Toolbar stays under the app's top bar while the document scrolls */
-.doc-toolbar {
-  position: sticky;
-  top: var(--topbar-height);
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 8px 12px;
-  background: var(--c-surface);
-  border-bottom: 1px solid var(--c-grid-border);
-}
-
-.doc-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.doc-no {
-  font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
-  font-size: 12px;
-  color: var(--c-text);
-  opacity: 0.8;
-  direction: ltr;
-  unicode-bidi: isolate;
-  white-space: nowrap;
-}
-
-.doc-toolbar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-inline-start: auto;
-}
-
-/* Shortcut hint inside a toolbar button */
-.doc-kbd {
-  font-size: 10px;
-  opacity: 0.75;
-  border: 1px solid currentColor;
-  border-radius: 2px;
-  padding: 0 3px;
-  margin-inline-start: 6px;
-  direction: ltr;
-  unicode-bidi: isolate;
-}
-
-/* Header fields: gray panel, responsive grid */
-.doc-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 10px 14px;
-  padding: 12px;
-  background: var(--c-grid-panel-bg);
-  border-bottom: 1px solid var(--c-grid-border);
-}
-
-.doc-field {
-  min-width: 0;
-}
-
-/* Controls fill their column (GridSelect wraps its select, so match descendants) */
-.doc-fields .ant-select,
-.doc-fields .ant-picker,
-.doc-fields .ant-input,
-.doc-fields .ant-input-number,
-.doc-field > .ant-radio-group {
-  width: 100%;
-}
-
-/* antd Form.Items placed straight in the field panel (forms with validation rules) */
-.doc-fields .ant-form-item {
-  margin-bottom: 0;
-  min-width: 0;
-}
-
-.doc-fields .ant-form-item-label {
-  padding-bottom: 3px !important;
-}
-
-.doc-fields .ant-form-item-label > label {
-  height: auto;
-  font-size: 12px;
-  opacity: 0.85;
-}
-
-.doc-field > .ant-radio-group {
-  display: flex;
-}
-
-.doc-field > .ant-radio-group .ant-radio-button-wrapper {
-  flex: 1;
-  text-align: center;
-}
-
-.doc-field-wide {
-  grid-column: span 2;
-}
-
-.doc-field-label {
-  display: block;
-  margin-bottom: 3px;
-  font-size: 12px;
-  color: var(--c-text);
-  opacity: 0.85;
-}
-
-.doc-field-req {
-  color: #c42b1c;
-  margin-inline-start: 3px;
-}
-
-.doc-field-error {
-  margin-top: 2px;
-  font-size: 11px;
-  color: #c42b1c;
-}
-
-.doc-field-value {
-  min-height: 26px;
-  display: flex;
-  align-items: center;
-  font-weight: 600;
-}
-
-/* Lines and totals inside a document sit flush with its frame */
-.doc-layout .entry-grid-frame,
-.doc-layout .ant-table-wrapper .ant-table-container {
-  border: 0;
-}
-
-.doc-section {
-  padding: 12px;
-}
-
-/* Amount inputs in the field panel read like the amounts in the grids */
-.doc-fields .doc-amount .ant-input-number-input {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ------------------------------------------- master-data dialogs */
-
-.form-dialog-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.form-section-bar .anticon {
-  opacity: 0.75;
-}
-
-.form-section-extra {
-  margin-inline-start: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 400;
-}
-
-.form-section-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px 12px;
-  padding: 10px 14px 14px;
-}
-
-.form-section-grid.cols-2 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.form-section-grid > .span-2 {
-  grid-column: span 2;
-}
-
-.form-section-grid > .span-all {
-  grid-column: 1 / -1;
-}
-
-.form-section-grid .ant-form-item {
-  margin-bottom: 0;
-  min-width: 0;
-}
-
-.form-section-grid .ant-form-item-label {
-  padding-bottom: 3px !important;
-}
-
-.form-section-grid .ant-form-item-label > label {
-  height: auto;
-  font-size: 12px;
-}
-
-.form-section-grid .ant-select,
-.form-section-grid .ant-picker,
-.form-section-grid .ant-input-number,
-.form-section-grid .ant-radio-group {
-  width: 100%;
-}
-
-.form-section-grid .ant-radio-group {
-  display: flex;
-}
-
-.form-section-grid .ant-radio-group .ant-radio-button-wrapper {
-  flex: 1;
-  text-align: center;
-}
-
-/* Amounts and quantities line up on the right, as in the grids */
-.form-section-grid .ant-input-number-input {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 640px) {
-  .form-section-grid,
-  .form-section-grid.cols-2 {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .form-section-grid > .span-2 {
-    grid-column: auto;
-  }
-}
-
-/* Thin gray bar titling a sub-section of a document (e.g. voucher allocations) */
-.doc-subbar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding: 6px 12px;
-  background: var(--c-grid-panel-bg);
-  border-bottom: 1px solid var(--c-grid-border);
-}
-
-.doc-subbar-title {
-  font-weight: 600;
-}
-
-.doc-subbar-total {
-  margin-inline-start: auto;
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 640px) {
-  .doc-field-wide {
-    grid-column: auto;
-  }
-}
-
-/* Invoice totals box (in the grid's footer strip) */
-.invoice-summary {
-  width: 300px;
-  max-width: 100%;
-  margin: 0;
-  margin-inline-start: auto;
-  border: 1px solid var(--c-grid-border);
-  background: var(--c-surface);
-  font-variant-numeric: tabular-nums;
-}
-
-.invoice-summary > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 3px 10px;
-  border-bottom: 1px solid var(--c-grid-line);
-}
-
-.invoice-summary dt {
-  color: var(--c-text);
-  opacity: 0.75;
-}
-
-.invoice-summary dd {
-  margin: 0;
-  white-space: nowrap;
-}
-
-.invoice-summary .invoice-summary-grand {
-  padding: 6px 10px;
-  border-bottom: 0;
-  border-top: 1px solid var(--c-grid-border);
-  margin-top: -1px;
-  background: var(--c-grid-bar-bg);
-  color: var(--c-grid-bar-text);
-  font-weight: 700;
-  font-size: 15px;
-}
-
-.invoice-summary .invoice-summary-grand dt {
-  color: inherit;
-  opacity: 1;
-}
-
-@media (max-width: 640px) {
-  .invoice-summary {
-    width: 100%;
-  }
-}
-
-/* ------------------------------------------- e-invoicing (JoFotara) */
-
-/* Settings tab framed like a dialog body: sections, then a footer bar */
-.settings-panel {
-  background: var(--c-surface);
-  border: 1px solid var(--c-grid-border);
-}
-
-.settings-panel-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--c-grid-panel);
-  border-top: 1px solid var(--c-grid-border);
-}
-
-/* "Not accepted by JoFotara yet" marker on a posted document */
-.einvoice-banner {
-  border-bottom: 1px solid var(--c-grid-border);
-}
-
-.einvoice-banner-title,
-.einvoice-drawer-title {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.einvoice-banner-errors {
-  margin: 4px 0 0;
-  padding-inline-start: 18px;
-}
-
-/* QR and identifiers of an accepted e-invoice, under the lines */
-.einvoice-qr-panel {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 20px;
-  padding: 12px;
-  border-top: 1px solid var(--c-grid-border);
-  break-inside: avoid;
-}
-
-.einvoice-qr-facts {
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
-}
-
-.einvoice-detail {
-  display: grid;
-  gap: 16px;
-}
-
-.einvoice-detail .einvoice-qr-panel {
-  border: 1px solid var(--c-grid-line);
-}
-
-.einvoice-detail h5 {
-  margin-bottom: 6px;
-}
-
-/* Sent XML / raw answer: left-to-right code, scrolls inside its box */
-.einvoice-xml {
-  max-height: 360px;
-  overflow: auto;
-  margin: 0;
-  padding: 8px;
-  font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
-  font-size: 11px;
-  direction: ltr;
-  text-align: left;
-  white-space: pre-wrap;
-  word-break: break-all;
-  background: var(--c-grid-panel);
-  border: 1px solid var(--c-grid-line);
-}
-
-@media print {
-  /* Keep the marker's colour and the QR on paper */
-  .einvoice-banner {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
+  /* Keep the e-invoice marker's colour and the QR on paper */
+  .einvoice-banner,
   .einvoice-qr-panel svg {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+}
+
+/* List rows that open a record (rowNav.ts openableRow) */
+.ant-table-tbody > tr.row-openable {
+  cursor: pointer;
+}
+
+.ant-table-tbody > tr.row-openable:focus-visible {
+  outline-offset: -2px;
+}
+
+.ant-table-tbody > tr.row-openable:focus-visible > td {
+  background: var(--c-grid-row-hover);
 }

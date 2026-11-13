@@ -5,7 +5,8 @@ export function GridHint({ lineCount }: { lineCount?: number }) {
   const { t } = useTranslation();
   return (
     <div className="entry-grid-hint">
-      <div>
+      {/* Hidden on touch screens, where there is no keyboard to hint at (UI-19). */}
+      <div className="grid-hint-keys">
         <kbd>Enter</kbd> {t('common.gridNextField')} · <kbd>← → ↑ ↓</kbd>{' '}
         {t('common.gridMoveCells')}
       </div>
