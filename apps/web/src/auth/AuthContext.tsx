@@ -134,16 +134,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const res = await authControllerLogin({ email, password });
     const data = res.data as unknown as { accessToken: string };
+    // Drop every cached query of the previous user/tenant before the new token is used (WEB-01).
+    queryClient.clear();
     setAccessToken(data.accessToken);
     await refreshMe();
-  }, [refreshMe]);
+  }, [refreshMe, queryClient]);
 
   const register = useCallback(async (dto: RegisterDto) => {
     const res = await authControllerRegister(dto);
     const data = res.data as unknown as { accessToken: string };
+    // Drop every cached query of the previous user/tenant before the new token is used (WEB-01).
+    queryClient.clear();
     setAccessToken(data.accessToken);
     await refreshMe();
-  }, [refreshMe]);
+  }, [refreshMe, queryClient]);
 
   const logout = useCallback(async () => {
     try {
@@ -154,8 +158,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setBranchState(null);
       setMe(null);
       setStatus('guest');
+      // The next user on this device must not see this tenant's cached data (WEB-01).
+      queryClient.clear();
     }
-  }, []);
+  }, [queryClient]);
 
   const setBranch = useCallback(
     (id: string) => {
@@ -173,9 +179,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const switchTenant = useCallback(async (tenantId: string) => {
     const res = await meControllerSwitchTenant({ tenantId });
     const data = res.data as unknown as { accessToken: string };
+    // Drop every cached query of the previous user/tenant before the new token is used (WEB-01).
+    queryClient.clear();
     setAccessToken(data.accessToken);
     await refreshMe();
-  }, [refreshMe]);
+  }, [refreshMe, queryClient]);
 
   return (
     <AuthContext.Provider
