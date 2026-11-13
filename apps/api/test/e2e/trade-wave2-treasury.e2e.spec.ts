@@ -12,6 +12,7 @@ import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { addMember } from './support/members.js';
 
 const API_PORT = 3623;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -142,14 +143,11 @@ describe('Trade wave 2 — treasury, units, branches', () => {
     b2Id = String(ins.insertId);
 
     const email = `tw2-cashier-${RUN}@test.dev`;
-    const invite = await api()
-      .post('/api/v1/users/invite')
-      .set(auth(owner))
-      .send({ email, roleCode: 'CASHIER', password: PASS, defaultBranchId: mainId, branchIds: [mainId] });
-    expect(invite.status).toBe(201);
-    const login = await api().post('/api/v1/auth/login').send({ email, password: PASS });
-    expect(login.status).toBe(200);
-    cashier = login.body.accessToken;
+    // The inviter no longer chooses the password (decisions.md §Platform, PLAT-10):
+    // addMember invites, changes the temporary password to PASS and signs in.
+    cashier = (
+      await addMember(BASE, owner, { email, roleCode: 'CASHIER', password: PASS, defaultBranchId: mainId, branchIds: [mainId] })
+    ).token;
 
     const fy = await api()
       .post('/api/v1/fiscal-years')

@@ -16,7 +16,9 @@ const MAX_ID = 9223372036854775807n;
 /**
  * Rejects a malformed numeric id in a route param before it reaches BigInt()
  * (which would otherwise throw a SyntaxError and answer 500 in the old filter).
- * Refused ids answer NOT_FOUND, the same as a missing record.
+ * A malformed id is a client error: VALIDATION (400), as the ledger contract
+ * says (LEDGER-09). A well-formed id that is unknown or another tenant's still
+ * reaches the service and answers NOT_FOUND (404).
  *
  * Only route params are checked: body and query values pass through untouched.
  */
@@ -27,7 +29,7 @@ export class IdParamPipe implements PipeTransform {
     if (!metadata.data || !ID_PARAM_NAME.test(metadata.data)) return value;
 
     if (!DECIMAL_ID.test(value) || BigInt(value) > MAX_ID) {
-      throw new DomainError(ErrorCode.NOT_FOUND, 'Not found', { id: value.slice(0, 32) });
+      throw new DomainError(ErrorCode.VALIDATION, 'Invalid id', { id: value.slice(0, 32) });
     }
     return value;
   }

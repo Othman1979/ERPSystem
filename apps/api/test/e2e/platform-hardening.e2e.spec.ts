@@ -1,7 +1,7 @@
 /**
  * Platform hardening (review PLAT-12, PLAT-17, PLAT-20, PLAT-25, PLAT-29 and the
  * id, body-size and health fixes around them):
- *  - a malformed id answers 404 NOT_FOUND, not 500; a malformed tenantId answers 400 VALIDATION;
+ *  - a malformed id answers 400 VALIDATION, not 500 (an unknown id stays 404); so does a malformed tenantId;
  *  - x-request-id is kept only when short and plain, otherwise a UUID is issued;
  *  - a JSON body over 2 MB is refused with 413 PAYLOAD_TOO_LARGE; a 300 KB one is not;
  *  - a document with more than 500 lines is refused with DOCUMENT_TOO_MANY_LINES;
@@ -117,16 +117,17 @@ describe('Platform hardening', () => {
   });
 
   describe('ids and tenant ids', () => {
-    it('answers 404 NOT_FOUND for a non-numeric party id, not 500', async () => {
+    it('answers 400 VALIDATION for a non-numeric party id, not 500; an unknown id is 404', async () => {
       const res = await api().get('/api/v1/parties/abc').set(auth(a.token));
-      expect(res.status).toBe(404);
-      expect(res.body.error.code).toBe('NOT_FOUND');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION');
+      expect((await api().get('/api/v1/parties/999999999').set(auth(a.token))).status).toBe(404);
     });
 
-    it('answers 404 NOT_FOUND for an id beyond the 64-bit range', async () => {
+    it('answers 400 VALIDATION for an id beyond the 64-bit range', async () => {
       const res = await api().get('/api/v1/parties/99999999999999999999').set(auth(a.token));
-      expect(res.status).toBe(404);
-      expect(res.body.error.code).toBe('NOT_FOUND');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION');
     });
 
     it('refuses a non-numeric tenantId on switch-tenant with VALIDATION', async () => {
@@ -142,14 +143,14 @@ describe('Platform hardening', () => {
         .get('/api/v1/parties/abc')
         .set(auth(a.token))
         .set('x-request-id', 'x'.repeat(3000));
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(400);
       expect(res.body.error.requestId).not.toBe('x'.repeat(3000));
       expect(res.body.error.requestId).toMatch(UUID);
     });
 
     it('echoes a short plain request id', async () => {
       const res = await api().get('/api/v1/parties/abc').set(auth(a.token)).set('x-request-id', 'abc-123');
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(400);
       expect(res.body.error.requestId).toBe('abc-123');
     });
   });

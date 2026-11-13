@@ -7,7 +7,6 @@ import {
   IsString,
   Matches,
   MaxLength,
-  MinLength,
   ValidateIf,
 } from 'class-validator';
 
@@ -45,10 +44,12 @@ export class InviteUserDto {
 
 /** The acceptance code the inviting admin handed over (ADR-012 §PLAT-10). */
 export class AcceptInvitationDto {
+  // Optional here so that someone else's invitation answers 404 before the
+  // code is asked for (isolation); the service refuses a missing code.
+  @IsOptional()
   @IsString()
-  @MinLength(1)
   @MaxLength(32)
-  code!: string;
+  code?: string;
 }
 
 export class UpdateMembershipDto {

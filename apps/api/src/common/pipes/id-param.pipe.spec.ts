@@ -8,32 +8,33 @@ const param = (data: string): ArgumentMetadata => ({ type: 'param', data });
 describe('IdParamPipe: numeric route ids', () => {
   const pipe = new IdParamPipe();
 
-  function expectNotFound(fn: () => unknown): void {
+  function expectInvalid(fn: () => unknown): void {
     try {
       fn();
     } catch (err) {
       expect(err).toBeInstanceOf(DomainError);
-      expect((err as DomainError).code).toBe(ErrorCode.NOT_FOUND);
+      expect((err as DomainError).code).toBe(ErrorCode.VALIDATION);
+      expect((err as DomainError).getStatus()).toBe(400);
       return;
     }
-    throw new Error('expected NOT_FOUND to be thrown');
+    throw new Error('expected VALIDATION to be thrown');
   }
 
-  it('refuses a non-numeric id with NOT_FOUND', () => {
-    expectNotFound(() => pipe.transform('abc', param('id')));
+  it('refuses a non-numeric id with VALIDATION (400, LEDGER-09)', () => {
+    expectInvalid(() => pipe.transform('abc', param('id')));
   });
 
   it('refuses exponent notation and decimals', () => {
-    expectNotFound(() => pipe.transform('1e3', param('id')));
-    expectNotFound(() => pipe.transform('1.5', param('itemId')));
+    expectInvalid(() => pipe.transform('1e3', param('id')));
+    expectInvalid(() => pipe.transform('1.5', param('itemId')));
   });
 
   it('refuses a 20-digit id (above the signed 64-bit range)', () => {
-    expectNotFound(() => pipe.transform('12345678901234567890', param('id')));
+    expectInvalid(() => pipe.transform('12345678901234567890', param('id')));
   });
 
   it('refuses 9223372036854775808, one above the maximum', () => {
-    expectNotFound(() => pipe.transform('9223372036854775808', param('membershipId')));
+    expectInvalid(() => pipe.transform('9223372036854775808', param('membershipId')));
   });
 
   it('accepts the largest 19-digit id unchanged', () => {
@@ -46,7 +47,7 @@ describe('IdParamPipe: numeric route ids', () => {
   });
 
   it('checks every name ending in Id, not only id', () => {
-    expectNotFound(() => pipe.transform('x1', param('membershipId')));
+    expectInvalid(() => pipe.transform('x1', param('membershipId')));
   });
 
   it('leaves a param named code untouched (barcode and plan codes are not numeric)', () => {

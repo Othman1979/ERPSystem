@@ -72,7 +72,7 @@ export class InvitationsService {
    * The row is locked while the code is checked, so parallel guesses are
    * counted one by one; a wrong code's count is committed before the refusal.
    */
-  async accept(membershipId: bigint, code: string) {
+  async accept(membershipId: bigint, code: string | undefined) {
     const userId = this.caller();
     // systemPrisma: the invitation belongs to the caller's userId, not to a tenant context.
     const db = this.prisma.client;
@@ -80,7 +80,15 @@ export class InvitationsService {
       where: { id: membershipId, userId, status: 'INVITED' },
       select: { tenantId: true },
     });
+    // Ownership first: another user's invitation is 404 whatever the body holds.
     if (!found) throw DomainError.notFound('Invitation', membershipId.toString());
+    if (!code || code.trim() === '') {
+      // Not counted as an attempt: nothing was guessed.
+      throw new DomainError(ErrorCode.INVITATION_CODE_INVALID, 'The invitation code is required', {
+        reason: 'CODE_REQUIRED',
+        attemptsLeft: null,
+      });
+    }
     const tenantId = found.tenantId;
 
     const outcome = await db.$transaction(async (tx) => {

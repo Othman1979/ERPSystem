@@ -151,7 +151,8 @@ describe('Invitation acceptance code (ADR-012 §PLAT-10, erp_test)', () => {
   it('the attack chain: holding the account is not enough to join B', async () => {
     const noCode = await accept(tokX, inviteB);
     expect(noCode.status).toBe(400);
-    expect(noCode.body.error.code).toBe('VALIDATION');
+    expect(noCode.body.error.code).toBe('INVITATION_CODE_INVALID');
+    expect(noCode.body.error.details.reason).toBe('CODE_REQUIRED');
 
     const wrong = await accept(tokX, inviteB, 'AAAAA-AAAAA');
     expect(wrong.status).toBe(400);

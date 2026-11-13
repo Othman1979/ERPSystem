@@ -230,9 +230,10 @@ describe('purge-tenant', () => {
     expect(done.json).toMatchObject({ purged: true, tenantId: tenantA });
 
     // No audit row keeps a purged user's id or address (the platform's own rows included).
+    // entity_id is matched for user rows only: another entity may share the numeric id.
     const [kept] = (await db.query(
       `SELECT COUNT(*) AS n FROM audit_logs
-        WHERE user_id IN (?) OR entity_id IN (?)
+        WHERE user_id IN (?) OR (entity_type = 'user' AND entity_id IN (?))
            OR CAST(after_json AS CHAR) LIKE ? OR CAST(after_json AS CHAR) LIKE ?
            OR CAST(before_json AS CHAR) LIKE ? OR CAST(before_json AS CHAR) LIKE ?`,
       [
