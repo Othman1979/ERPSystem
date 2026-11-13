@@ -30,6 +30,7 @@ import { GoodsNotesModule } from './platform/goods-notes/goods-notes.module.js';
 import { TreasuryModule } from './platform/treasury/treasury.module.js';
 import { EInvoiceModule } from './platform/einvoice/einvoice.module.js';
 import { ReportsModule } from './platform/reports/reports.module.js';
+import { ExportModule } from './platform/export/export.module.js';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { ReportsModule } from './platform/reports/reports.module.js';
     TreasuryModule,
     EInvoiceModule,
     ReportsModule,
+    ExportModule,
     AdminModule,
   ],
   providers: [
@@ -66,7 +68,7 @@ import { ReportsModule } from './platform/reports/reports.module.js';
     // are already in wire format.
     { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
     { provide: APP_INTERCEPTOR, useClass: SerializeInterceptor },
-    // AuthGuard first: the throttler counts a signed-in request against its user (ADR-008).
+    // AuthGuard first: the throttler counts a signed-in request against its user (ADR-011).
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: AppThrottlerGuard },
     { provide: APP_GUARD, useClass: TenantGuard },

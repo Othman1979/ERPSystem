@@ -114,11 +114,15 @@ interface LedgerRow {
   totalCost: string;
   balanceQtyAfter: string;
   avgCostAfter: string;
+  /** The opening-position row the screen adds on top (ADR-008). */
+  kind?: 'opening';
 }
 interface LedgerResponse {
   item: { id: string; code: string; nameAr: string; baseUnit?: { code: string } | null };
   rows: LedgerRow[];
   totals: { qtyIn: string; qtyOut: string };
+  opening: { qty: string; value: string };
+  closing: { qty: string; value: string };
   balances: { warehouse: { id: string; code: string; nameAr: string }; qtyOnHand: string }[];
 }
 interface ItemDetail extends Item {
@@ -627,7 +631,28 @@ function LedgerModal({
   });
 
   const unit = data?.item?.baseUnit?.code ?? item?.baseUnit?.code ?? '';
-  const rows = (data?.rows ?? []) as LedgerRow[];
+  // Opening position first (before the start date + opening stock), then the movements.
+  const rows: LedgerRow[] = data
+    ? [
+        {
+          kind: 'opening',
+          id: 'opening',
+          movementDate: '',
+          warehouse: { code: '', nameAr: '' },
+          movementType: '',
+          sourceType: '',
+          sourceId: null,
+          qtyIn: '0',
+          qtyOut: '0',
+          unitCost: '',
+          totalCost: data.opening.value,
+          balanceQtyAfter: data.opening.qty,
+          avgCostAfter: '',
+        },
+        ...(data.rows as LedgerRow[]),
+      ]
+    : [];
+  const positionText = (p: { value: string }) => `${t('reports.value')}: ${formatAmount(p.value)}`;
 
   return (
     <Modal
@@ -668,22 +693,26 @@ function LedgerModal({
         dataSource={rows}
         pagination={{ pageSize: 50 }}
         scroll={{ x: 900 }}
+        rowClassName={(r) => (r.kind === 'opening' ? 'report-row-strong' : '')}
         columns={[
           {
             title: t('items.date'),
             dataIndex: 'movementDate',
             width: 110,
-            render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+            render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : ''),
           },
           {
             title: t('stock.warehouse'),
             width: 130,
-            render: (_: unknown, r: LedgerRow) => codeAndName(r.warehouse),
+            render: (_: unknown, r: LedgerRow) => (r.kind ? '' : codeAndName(r.warehouse)),
           },
           {
             title: t('items.source'),
             width: 170,
-            render: (_: unknown, r: LedgerRow) => `${r.sourceType}${r.sourceId ? ` #${r.sourceId}` : ''}`,
+            render: (_: unknown, r: LedgerRow) =>
+              r.kind
+                ? `${t('reports.openingPeriod')} — ${positionText(data!.opening)}`
+                : `${r.sourceType}${r.sourceId ? ` #${r.sourceId}` : ''}`,
           },
           {
             title: t('items.qtyIn'),
@@ -711,29 +740,43 @@ function LedgerModal({
             dataIndex: 'unitCost',
             width: 100,
             align: 'right' as const,
-            render: unitCostCell,
+            render: (v: string, r: LedgerRow) => (r.kind ? '' : unitCostCell(v)),
           },
           {
             title: t('items.wac'),
             dataIndex: 'avgCostAfter',
             width: 100,
             align: 'right' as const,
-            render: unitCostCell,
+            render: (v: string, r: LedgerRow) => (r.kind ? '' : unitCostCell(v)),
           },
         ]}
         summary={() => (
-          <Table.Summary.Row>
-            <Table.Summary.Cell index={0} colSpan={4}>
-              <Typography.Text strong>{t('items.totals')}</Typography.Text>
-            </Table.Summary.Cell>
-            <Table.Summary.Cell index={1} align="right">
-              <Typography.Text strong>
-                <Num>{formatQty(data?.totals?.qtyIn ?? '0')}</Num> /{' '}
-                <Num>{formatQty(data?.totals?.qtyOut ?? '0')}</Num>
-              </Typography.Text>
-            </Table.Summary.Cell>
-            <Table.Summary.Cell index={2} colSpan={3} />
-          </Table.Summary.Row>
+          <>
+            <Table.Summary.Row>
+              <Table.Summary.Cell index={0} colSpan={4}>
+                <Typography.Text strong>{t('items.totals')}</Typography.Text>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={1} align="right">
+                <Typography.Text strong>
+                  <Num>{formatQty(data?.totals?.qtyIn ?? '0')}</Num> /{' '}
+                  <Num>{formatQty(data?.totals?.qtyOut ?? '0')}</Num>
+                </Typography.Text>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={2} colSpan={3} />
+            </Table.Summary.Row>
+            {data && (
+              <Table.Summary.Row className="report-row-strong">
+                <Table.Summary.Cell index={0} colSpan={3}>
+                  {`${t('reports.closingPeriod')} — ${positionText(data.closing)}`}
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={1} colSpan={2} />
+                <Table.Summary.Cell index={2} align="right">
+                  <Num>{`${formatQty(data.closing.qty)} ${unit}`}</Num>
+                </Table.Summary.Cell>
+                <Table.Summary.Cell index={3} colSpan={2} />
+              </Table.Summary.Row>
+            )}
+          </>
         )}
       />
     </Modal>

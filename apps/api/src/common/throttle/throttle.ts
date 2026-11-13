@@ -4,7 +4,7 @@ import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../cls/cls.types.js';
 
 /**
- * Request limits (ADR-008). Each window is one minute.
+ * Request limits (ADR-011). Each window is one minute.
  *
  * - `default`: per signed-in user, otherwise per client address. An office
  *   behind one public address doesn't share one allowance.

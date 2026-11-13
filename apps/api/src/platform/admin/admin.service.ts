@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import {
   CreateSubscriptionDto,
   ExtendTrialDto,
+  UpdatePlanDto,
   UpdateTenantStatusDto,
 } from './dto/admin.dto.js';
 
@@ -51,6 +52,7 @@ export class AdminService {
         name: t.name,
         status: t.status,
         trialEndsAt: t.trialEndsAt,
+        statusChangedAt: t.statusChangedAt,
         plan: t.plan,
         members: t._count.memberships,
         branches: t._count.branches,
@@ -75,6 +77,7 @@ export class AdminService {
       name: tenant.name,
       status: tenant.status,
       trialEndsAt: tenant.trialEndsAt,
+      statusChangedAt: tenant.statusChangedAt,
       plan: tenant.plan,
       companies: tenant.companies,
       members: tenant._count.memberships,
@@ -90,7 +93,8 @@ export class AdminService {
     const before = tenant.status;
     const updated = await this.prisma.client.tenant.update({
       where: { id },
-      data: { status: dto.status },
+      // Grace and post-cancellation retention count from the change (ADR-009).
+      data: { status: dto.status, ...(dto.status !== before ? { statusChangedAt: new Date() } : {}) },
     });
     await this.audit.log({
       action: 'admin.tenant_status',
@@ -142,12 +146,18 @@ export class AdminService {
           periodStart,
           periodEnd,
           status: 'ACTIVE',
+          amount: dto.amount ?? null,
           notes: dto.notes ?? null,
         },
       });
       await tx.tenant.update({
         where: { id },
-        data: { planId: plan.id, status: 'ACTIVE', trialEndsAt: null },
+        data: {
+          planId: plan.id,
+          status: 'ACTIVE',
+          trialEndsAt: null,
+          ...(tenant.status !== 'ACTIVE' ? { statusChangedAt: new Date() } : {}),
+        },
       });
       return sub;
     });
@@ -156,8 +166,43 @@ export class AdminService {
       action: 'admin.create_subscription',
       entityType: 'tenant',
       entityId: id,
-      after: { planCode: dto.planCode, periodEnd },
+      before: { status: tenant.status },
+      after: { planCode: dto.planCode, periodEnd, amount: dto.amount ?? null, status: 'ACTIVE' },
     });
     return { id: subscription.id.toString(), status: subscription.status };
+  }
+
+  // ---------------------------------------------------------------- plans
+
+  /** Every plan with its limits and prices (ADR-009 §1). */
+  async listPlans() {
+    const plans = await this.prisma.client.plan.findMany({
+      orderBy: { id: 'asc' },
+      include: { _count: { select: { tenants: true } } },
+    });
+    return plans.map(({ _count, ...p }) => ({ ...p, id: p.id.toString(), tenants: _count.tenants }));
+  }
+
+  /** Edits a plan's names, limits or prices; tenants on it get the new limits at once. */
+  async updatePlan(code: string, dto: UpdatePlanDto) {
+    const plan = await this.prisma.client.plan.findUnique({ where: { code } });
+    if (!plan) throw DomainError.notFound('Plan', code);
+    const updated = await this.prisma.client.plan.update({ where: { code }, data: dto });
+    await this.audit.log({
+      action: 'admin.update_plan',
+      entityType: 'plan',
+      entityId: plan.id,
+      before: {
+        maxUsers: plan.maxUsers,
+        maxBranches: plan.maxBranches,
+        maxWarehouses: plan.maxWarehouses,
+        maxInvoicesPerMonth: plan.maxInvoicesPerMonth,
+        priceMonthly: plan.priceMonthly?.toString() ?? null,
+        priceYearly: plan.priceYearly?.toString() ?? null,
+        isActive: plan.isActive,
+      },
+      after: dto,
+    });
+    return { ...updated, id: updated.id.toString() };
   }
 }

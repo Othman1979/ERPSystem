@@ -83,4 +83,23 @@ export class PlanLimitsService {
       );
     }
   }
+
+  /**
+   * Monthly sales-invoice quota (§13.1, ADR-009). `posted` is the number of
+   * sales invoices the tenant already posted in the invoice's calendar month;
+   * the sales module counts its own table and passes it in. Two invoices
+   * posted at the same instant at the limit may both pass: a commercial
+   * limit, not worth serialising every posting of the tenant for.
+   */
+  async assertMonthlyInvoiceQuota(posted: number): Promise<void> {
+    const plan = (await this.planForCurrentTenant())?.plan;
+    if (!plan) return;
+    if (posted >= plan.maxInvoicesPerMonth) {
+      throw new DomainError(
+        ErrorCode.PLAN_LIMIT_EXCEEDED,
+        `Monthly invoice limit reached for plan ${plan.code} (${plan.maxInvoicesPerMonth})`,
+        { limit: plan.maxInvoicesPerMonth, used: posted },
+      );
+    }
+  }
 }

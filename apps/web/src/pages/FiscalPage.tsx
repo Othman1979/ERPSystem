@@ -5,6 +5,7 @@ import {
   DatePicker,
   Form,
   Input,
+  Popconfirm,
   Table,
   Tabs,
   Tag,
@@ -16,11 +17,13 @@ import { useTranslation } from 'react-i18next';
 import {
   ApiError,
   fiscalControllerClosePeriod,
+  fiscalControllerCloseYear,
   fiscalControllerCreateYear,
   fiscalControllerGetYear,
   fiscalControllerListSequences,
   fiscalControllerListYears,
   fiscalControllerOpenPeriod,
+  fiscalControllerOpenYear,
 } from '@erp/api-client';
 import { CalendarOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -110,6 +113,24 @@ export function FiscalPage() {
     },
   });
 
+  // The whole year at once (ADR-008 §7): every period closed or reopened.
+  const toggleYear = useMutation({
+    mutationFn: ({ id, close }: { id: string; close: boolean }) =>
+      close ? fiscalControllerCloseYear(id) : fiscalControllerOpenYear(id),
+    onSuccess: (_, v) => {
+      apiMessage.success(t(v.close ? 'fiscal.yearClosed' : 'fiscal.yearOpened'));
+      void queryClient.invalidateQueries({ queryKey: ['fiscal-years'] });
+      void queryClient.invalidateQueries({ queryKey: ['fiscal-year'] });
+    },
+    onError: (err) => {
+      apiMessage.error(
+        err instanceof ApiError
+          ? t(`errors.${err.code}`, { defaultValue: err.message })
+          : t('errors.INTERNAL'),
+      );
+    },
+  });
+
   const expandedRowRender = (year: FiscalYear) => (
     <YearDetailPanel yearId={year.id} onToggle={togglePeriod.mutate} />
   );
@@ -160,6 +181,24 @@ export function FiscalPage() {
             title: t('fiscal.periods'),
             width: 100,
             render: (_: unknown, y: FiscalYear) => y._count?.periods ?? '—',
+          },
+          {
+            title: '',
+            width: 150,
+            render: (_: unknown, y: FiscalYear) => {
+              const close = y.status === 'OPEN';
+              return (
+                <Popconfirm
+                  title={t(close ? 'fiscal.closeYearConfirm' : 'fiscal.openYearConfirm', { code: y.code })}
+                  description={close ? t('fiscal.closeYearHint') : undefined}
+                  onConfirm={() => toggleYear.mutate({ id: y.id, close })}
+                >
+                  <Button size="small" danger={close} loading={toggleYear.isPending && toggleYear.variables?.id === y.id}>
+                    {t(close ? 'fiscal.closeYear' : 'fiscal.openYear')}
+                  </Button>
+                </Popconfirm>
+              );
+            },
           },
         ]}
       />

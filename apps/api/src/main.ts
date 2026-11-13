@@ -12,7 +12,7 @@ import { trustProxySetting, type Env } from './common/config/env.validation.js';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService<Env, true>);
-  // req.ip is the client's address only behind the proxies named here (request limits, ADR-008).
+  // req.ip is the client's address only behind the proxies named here (request limits, ADR-011).
   app.set('trust proxy', trustProxySetting(config.get('TRUST_PROXY', { infer: true })));
 
   app.setGlobalPrefix('api/v1');
