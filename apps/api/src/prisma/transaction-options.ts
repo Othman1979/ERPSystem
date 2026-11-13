@@ -10,6 +10,6 @@
  * test/static/posting-transactions.spec.ts fails if a posting service opens an
  * interactive transaction without these options.
  */
-// maxWait: time to get one of the pool's 10 connections while other
-// postings hold theirs (PLAT-05).
+// maxWait: time to get one of the pool's connections (DB_POOL_SIZE, 10 by
+// default) while other postings hold theirs (PLAT-05).
 export const POSTING_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;

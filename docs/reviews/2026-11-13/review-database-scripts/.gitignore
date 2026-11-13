@@ -1,0 +1,7 @@
+# Written by the generator scripts: a password and tokens, and run logs.
+creds.json
+setup.json
+reference-dump.json
+summary*.json
+*.log
+*.out

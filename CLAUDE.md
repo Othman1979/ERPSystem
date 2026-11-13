@@ -45,6 +45,7 @@ pnpm --filter api job:preflight          # قبل النشر وبعده: جاه�
 pnpm --filter api job:backup             # Cron يومي: نسخة القاعدة والمرفقات مع تدوير (ADR-010 §10.2)
 pnpm --filter api job:backup-verify <folder|latest> [--keep] # شهري: استعادة في قاعدة مؤقتة وفحصها
 pnpm --filter api job:error-digest       # Cron كل ساعة: تنبيه بالأخطاء الجديدة إلى ALERT_WEBHOOK_URL (ADR-010 §10.3)
+pnpm --filter api job:integrity-check [--tenant <id>] # شهري وبعد كل استعادة: مراجع بلا FK والترتيب (DB-15، DB-18)
 pnpm --filter api start:web              # تجربة محلية بشكل الإنتاج: الـ API المبني يقدّم الواجهة المبنية على 3002
 pnpm --filter api job:grant-platform-admin <email> [--revoke] # يدوي: مدير المنصة
 pnpm --filter api job:reset-password <email> # يدوي: كلمة مرور مؤقتة وإخراج الجلسات (ADR-012)

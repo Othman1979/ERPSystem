@@ -17,6 +17,7 @@
     "job:backup": "node dist/jobs/cli.js backup",
     "job:backup-verify": "node dist/jobs/cli.js backup-verify",
     "job:error-digest": "node dist/jobs/cli.js error-digest",
+    "job:integrity-check": "node dist/jobs/cli.js integrity-check",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",

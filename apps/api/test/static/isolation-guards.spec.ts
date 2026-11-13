@@ -22,6 +22,7 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/health/health.controller.ts': 'SELECT 1 connectivity probe, no table',
   'src/jobs/backup/backup.service.ts': 'whole-database backup (migrations list, server version)',
   'src/jobs/error-digest.service.ts': 'platform error table across tenants',
+  'src/jobs/integrity-check.service.ts': 'read-only orphan and collation checks across tenants (DB-15, DB-18)',
   'src/jobs/platform-admin-grant.service.ts': 'users are platform-wide',
   'src/jobs/password-reset.service.ts': 'users and refresh tokens are platform-wide (CLI reset, ADR-012)',
   'src/jobs/preflight.service.ts': 'server checks: version, migrations, plans, admins, settings',
