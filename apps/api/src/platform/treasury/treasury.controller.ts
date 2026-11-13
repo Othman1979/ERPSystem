@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { RequiresIdempotencyKey } from '../../common/idempotency/requires-idempotency-key.decorator.js';
 import { ExportQueryDto } from '../printing/dto/export.dto.js';
 import { PrintingService } from '../printing/printing.service.js';
 import { voucherPrint } from './treasury.print.js';
@@ -106,6 +107,7 @@ export class TreasuryController {
   }
 
   @Post('receipts')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   createReceipt(@Body() dto: CreateReceiptDto) {
     return this.vouchers.createReceipt(dto);
@@ -133,6 +135,7 @@ export class TreasuryController {
   }
 
   @Post('payments')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   createPayment(@Body() dto: CreatePaymentDto) {
     return this.vouchers.createPayment(dto);
@@ -141,30 +144,35 @@ export class TreasuryController {
   // ------------------------------------- Phase 6: reverse, allocate, cancel
 
   @Post('receipts/:id/reverse')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   reverseReceipt(@Param('id') id: string, @Body() dto: ReverseVoucherDto) {
     return this.vouchers.reverseVoucher('receipt', BigInt(id), dto);
   }
 
   @Post('payments/:id/reverse')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   reversePayment(@Param('id') id: string, @Body() dto: ReverseVoucherDto) {
     return this.vouchers.reverseVoucher('payment', BigInt(id), dto);
   }
 
   @Post('receipts/:id/allocations')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   allocateReceipt(@Param('id') id: string, @Body() dto: AllocateVoucherDto) {
     return this.vouchers.allocateVoucher('receipt', BigInt(id), dto);
   }
 
   @Post('payments/:id/allocations')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   allocatePayment(@Param('id') id: string, @Body() dto: AllocateVoucherDto) {
     return this.vouchers.allocateVoucher('payment', BigInt(id), dto);
   }
 
   @Post('allocations/:id/cancel')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   cancelAllocation(@Param('id') id: string) {
     return this.vouchers.cancelAllocation(BigInt(id));
@@ -185,12 +193,14 @@ export class TreasuryController {
   }
 
   @Post('cash-transfers')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   createCashTransfer(@Body() dto: CreateCashTransferDto) {
     return this.transfers.create(dto);
   }
 
   @Post('cash-transfers/:id/reverse')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   reverseCashTransfer(@Param('id') id: string, @Body() dto: ReverseVoucherDto) {
     return this.transfers.reverse(BigInt(id), dto);

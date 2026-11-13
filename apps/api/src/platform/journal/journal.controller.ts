@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/commo
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { RequiresIdempotencyKey } from '../../common/idempotency/requires-idempotency-key.decorator.js';
 import {
   CreateJournalEntryDto,
   CreateOpeningEntryDto,
@@ -54,12 +55,14 @@ export class JournalController {
   }
 
   @Post('journal-entries/:id/post')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.JOURNAL_POST)
   post(@Param('id') id: string) {
     return this.journal.postDraft(BigInt(id));
   }
 
   @Post('journal-entries/:id/reverse')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.JOURNAL_POST)
   reverse(@Param('id') id: string, @Body() dto: ReverseJournalEntryDto) {
     return this.journal.reverse(BigInt(id), dto);
@@ -67,6 +70,7 @@ export class JournalController {
 
   /** Guided opening-balance entry with OPENING_BALANCE_EQUITY plug (§8.6). */
   @Post('journal-entries/opening')
+  @RequiresIdempotencyKey()
   @RequirePermission(PERMISSIONS.JOURNAL_POST)
   opening(@Body() dto: CreateOpeningEntryDto) {
     return this.journal.createOpening(dto);
