@@ -7,8 +7,8 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   // Database connections per process (DB-07): the API and each Cron command
   // open their own pool. Keep the API's pool plus the Cron pools that can run
-  // at once under the host's max_user_connections. A Cron line can pass a
-  // smaller value: DB_POOL_SIZE=2 node dist/jobs/cli.js ...
+  // at once under the host's max_user_connections. This is the API's; a Cron
+  // command uses 2 unless its own line passes DB_POOL_SIZE (jobs/job-env.ts).
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
   // How long a query waits for a free connection before it fails.
   DB_POOL_ACQUIRE_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(10_000),

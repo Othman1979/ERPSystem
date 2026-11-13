@@ -8,6 +8,7 @@ import { EInvoiceJobsModule } from './einvoice-jobs.module.js';
 import { ErrorDigestService } from './error-digest.service.js';
 import { IntegrityCheckModule } from './integrity-check.module.js';
 import { IntegrityCheckService } from './integrity-check.service.js';
+import { applyJobEnv } from './job-env.js';
 import { JobsModule } from './jobs.module.js';
 import { PasswordResetService } from './password-reset.service.js';
 import { PlatformAdminGrantService } from './platform-admin-grant.service.js';
@@ -120,6 +121,8 @@ async function main(): Promise<void> {
   }
   // A command never starts the in-process e-invoice loop: it runs once and exits.
   process.env.EINVOICE_WORKER = 'off';
+  // A small database pool unless the Cron line passes DB_POOL_SIZE (DB-07).
+  applyJobEnv(process.env);
   const app = await NestFactory.createApplicationContext(job.module, { logger: ['error', 'warn'] });
   try {
     const result = await job.run(app, args);

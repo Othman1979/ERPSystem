@@ -55,6 +55,10 @@ export class IntegrityCheckService {
     // (an `? IS NULL OR` filter would scan every tenant on a --tenant run).
     const lo = tenantId ?? 0n;
     const hi = tenantId ?? MAX_UNSIGNED_BIGINT;
+    // A mistyped id must not pass as "clean".
+    if (tenantId !== undefined && (await db.tenant.count({ where: { id: tenantId } })) === 0) {
+      throw new Error(`Unknown tenant ${tenantId.toString()}`);
+    }
     const checks: IntegrityCheck[] = [];
     const orphans = async (name: string, query: PromiseLike<CountRow>) => {
       checks.push(orphanCheck(name, await count(query)));
@@ -126,6 +130,14 @@ export class IntegrityCheckService {
           OR (x.source_type = 'PURCHASE_RETURN' AND EXISTS (SELECT 1 FROM purchase_returns d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
           OR (x.source_type = 'SALES_INVOICE' AND EXISTS (SELECT 1 FROM sales_invoices d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
           OR (x.source_type = 'SALES_RETURN' AND EXISTS (SELECT 1 FROM sales_returns d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
+          -- ADR-018: a zero-quantity write-off / revaluation keeps the source_id and
+          -- source_line_id (either may be NULL) of the movement it comes with, not
+          -- its document type: it is sound when that movement exists.
+          OR (x.source_type = 'REVALUATION' AND EXISTS (
+            SELECT 1 FROM stock_movements m
+            WHERE m.tenant_id = x.tenant_id AND m.item_id = x.item_id AND m.warehouse_id = x.warehouse_id
+              AND m.source_type <> 'REVALUATION'
+              AND m.source_id <=> x.source_id AND m.source_line_id <=> x.source_line_id))
         ) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
     // A line of a reversal movement belongs to the document it reverses:

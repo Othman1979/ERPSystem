@@ -181,9 +181,68 @@ describe('Integrity check job — references and collation (erp_test)', () => {
     expect(check(r, 'journal_lines.party_id')).toMatchObject({ ok: true, count: 0 });
   }, 60_000);
 
-  it('a malformed --tenant is a usage error', async () => {
+  it('a REVALUATION movement (ADR-018) is sound beside its movement, an orphan alone', async () => {
+    const c = await register('c');
+    const year = new Date().getUTCFullYear();
+    const fy = await api()
+      .post('/api/v1/fiscal-years')
+      .set(auth(c.token))
+      .send({ code: `FY${year}`, startDate: `${year}-01-01`, endDate: `${year}-12-31` });
+    expect(fy.status).toBe(201);
+    const units = await api().get('/api/v1/units').set(auth(c.token));
+    const pcs = (units.body as { id: string; code: string }[]).find((u) => u.code === 'PCS')!.id;
+    const wh = await api().post('/api/v1/warehouses').set(auth(c.token)).send({ code: 'WH1', nameAr: 'المستودع' });
+    expect(wh.status).toBe(201);
+    const item = await api().post('/api/v1/items').set(auth(c.token)).send({ code: 'ITM-1', nameAr: 'صنف', baseUnitId: pcs });
+    expect(item.status).toBe(201);
+    const adj = await api()
+      .post('/api/v1/stock-adjustments')
+      .set(auth(c.token))
+      .send({
+        adjustmentDate: new Date().toISOString().slice(0, 10),
+        adjustmentType: 'OPENING',
+        warehouseId: wh.body.id,
+        lines: [{ itemId: item.body.id, qty: '10', unitCost: '5.000' }],
+      });
+    expect(adj.status).toBe(201);
+    const posted = await api()
+      .post(`/api/v1/stock-adjustments/${adj.body.id}/post`)
+      .set(auth(c.token))
+      .set({ 'Idempotency-Key': `ic-${RUN}-adj` });
+    expect([posted.status, JSON.stringify(posted.body)]).toEqual([201, expect.stringContaining('POSTED')]);
+
+    // As the stock ledger writes it: zero quantity, the source ids of the movement it comes with.
+    const revaluation = (sourceId: string, lineId: string) =>
+      db.query(
+        `INSERT INTO stock_movements (tenant_id, company_id, warehouse_id, item_id, movement_date, movement_type,
+           source_type, source_id, source_line_id, qty_in, qty_out, unit_cost, total_cost, balance_qty_after, avg_cost_after)
+         SELECT tenant_id, company_id, warehouse_id, item_id, movement_date, 'OUT',
+           'REVALUATION', ${sourceId}, ${lineId}, 0, 0, 0, 1.000, balance_qty_after, avg_cost_after
+         FROM stock_movements WHERE tenant_id = ? AND source_type = 'STOCK_ADJUSTMENT'`,
+        [c.tenantId],
+      );
+    await revaluation('source_id', 'source_line_id');
+    const sound = report((await cli(['--tenant', c.tenantId])).stdout);
+    expect(check(sound, 'stock_movements.source')).toMatchObject({ ok: true, count: 0 });
+    expect(check(sound, 'stock_movements.source_line')).toMatchObject({ ok: true, count: 0 });
+    expect(sound.ok).toBe(true);
+
+    // Without a movement to come with, it points at nothing.
+    await revaluation('999999999', 'NULL');
+    const run = await cli(['--tenant', c.tenantId]);
+    expect(run.code).toBe(1);
+    expect(check(report(run.stdout), 'stock_movements.source')).toMatchObject({ ok: false, count: 1 });
+
+    await db.query(`DELETE FROM stock_movements WHERE tenant_id = ? AND source_type = 'REVALUATION'`, [c.tenantId]);
+  }, 60_000);
+
+  it('a malformed --tenant is a usage error, an unknown one is refused', async () => {
     const run = await cli(['--tenant', 'abc']);
     expect(run.code).not.toBe(0);
     expect(run.stderr).toContain('Usage');
+    // A mistyped id must not report a clean tenant.
+    const unknown = await cli(['--tenant', '999999999999']);
+    expect(unknown.code).not.toBe(0);
+    expect(unknown.stderr).toContain('Unknown tenant 999999999999');
   }, 60_000);
 });

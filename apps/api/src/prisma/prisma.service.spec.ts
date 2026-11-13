@@ -20,11 +20,13 @@ describe('database pool settings', () => {
     expect(config).toMatchObject({ connectionLimit: 4, acquireTimeout: 2_500 });
   });
 
-  it('fails a silent database instead of hanging: connect 10 s, socket 60 s (PLAT-06)', () => {
+  it('gives up connecting after 10 s, and never closes a connection for being idle (PLAT-06)', () => {
     const config = parseDatabaseUrl('mysql://u:p@db:3306/erp');
-    expect(config).toMatchObject({ connectTimeout: 10_000, socketTimeout: 60_000 });
-    // Longer than a posting transaction may run, so it never cuts one short.
-    expect(config.socketTimeout).toBeGreaterThan(POSTING_TX_OPTIONS.timeout);
+    expect(config.connectTimeout).toBe(10_000);
+    // The driver's socketTimeout is an idle timer: it would kill pooled
+    // connections and long job statements. Postings are capped by their transaction instead.
+    expect(config.socketTimeout ?? 0).toBe(0);
+    expect(POSTING_TX_OPTIONS.timeout).toBe(30_000);
   });
 
   it('defaults to the config schema defaults: 10 connections, 10 s to get one', () => {

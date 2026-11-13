@@ -100,9 +100,12 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
    - اختبار الاستعادة شهرياً، يدوياً: `node dist/jobs/cli.js backup-verify latest`. التفاصيل في
      `backup-restore.md`.
    - فحص المراجع بلا FK والترتيب شهرياً وبعد كل استعادة: `node dist/jobs/cli.js integrity-check` (ADR-019).
-   - كل أمر Cron يفتح pool اتصالات خاصاً به (`DB_POOL_SIZE`، 10 افتراضياً). مجموع pool التطبيق وأوامر Cron
-     التي قد تعمل معاً يجب أن يبقى تحت `max_user_connections` في الاستضافة. لتصغيره لأمر واحد:
-     `DB_POOL_SIZE=2 node dist/jobs/cli.js backup`.
+   - **اتصالات القاعدة:**
+     - كل عملية تفتح pool خاصاً بها، ويبقي الـ pool كل اتصالاته مفتوحة.
+     - التطبيق يأخذ `DB_POOL_SIZE` (10 افتراضياً)، وكل أمر Cron يأخذ 2، إلا إذا مرّر سطره قيمة:
+       `DB_POOL_SIZE=4 node dist/jobs/cli.js backup`.
+     - مجموع pool التطبيق وأوامر Cron التي قد تعمل معاً يجب أن يبقى تحت `max_user_connections` في الاستضافة.
+       مثال: 10 + 2 × 3 = 16.
 7. **مراقبة التشغيل:** مراقب خارجي مجاني على `https://<النطاق>/api/v1/health`، مثل UptimeRobot، كل 5
    دقائق.
 8. **فحص يدوي سريع:**
@@ -119,11 +122,14 @@ Cron يبدأ. لذلك يجري التحديث في نافذة صيانة قص�
    ```bash
    cd ~/erp && git pull && pnpm install --frozen-lockfile --prod=false && pnpm build
    ```
-3. **الـ migrations:**
+3. **أوقف التطبيق، ثم شغّل الـ migrations:**
    ```bash
    cd apps/api && pnpm prisma migrate deploy
    ```
-4. **`preflight`**، ثم أعد تشغيل التطبيق، **وأعد أوامر Cron.**
+   - التطبيق القديم يقرأ أعمدة قد تحذفها migration جديدة. مثال: `20261113164500_db_review_indexes` تحذف
+     `reversal_of_id`، فتفشل الفواتير وأذون البضاعة عنده حتى إعادة التشغيل. لذلك لا تُطبَّق migration والتطبيق
+     القديم يعمل.
+4. **`preflight`**، ثم شغّل التطبيق، **وأعد أوامر Cron.**
 5. **التحقق:** الإصدار الجديد يظهر في المتصفح فوراً، لأن `index.html` لا يُخزَّن مؤقتاً. من فتح الصفحة أثناء
    البناء يعيد تحميلها.
    - لتحديث بلا انقطاع لاحقاً: ابنِ في مجلد إصدار جديد، ثم بدّل إليه وأعد التشغيل.
