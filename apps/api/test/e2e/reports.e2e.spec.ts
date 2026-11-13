@@ -563,7 +563,7 @@ describe('Phase 8 — reports', () => {
     expect((await api().get(`/api/v1/reports/general-ledger?accountId=${acc['1103']}`).set(auth(tokenB))).status).toBe(404);
     expect((await api().get(`/api/v1/stock/items/${id.i1}/ledger`).set(auth(tokenB))).status).toBe(404);
     const ps = await get(`/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${id.c1}`, tokenB);
-    expect([ps.rows, ps.closingBalance]).toEqual([[], '0']);
+    expect([ps.rows, ps.closingBalance]).toEqual([[], '0.000']); // LEDGER-24: 3 decimals
     expect(await get('/api/v1/stock/valuation', tokenB)).toEqual({ rows: [], totalValue: '0.000' });
   });
 });

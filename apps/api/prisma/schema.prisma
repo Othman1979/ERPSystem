@@ -796,6 +796,9 @@ model JournalEntry {
   // One POST + one REVERSAL per source document (docs/BUILD_PLAN.md §10.3).
   // MySQL treats NULL source_id as distinct — drafts set source_id = own id.
   @@unique([tenantId, sourceType, sourceId, postingKind])
+  // An entry is reversed at most once (D-1, LEDGER-02): "reversed" is derived
+  // from the reversal that points here. NULL (not a reversal) repeats freely.
+  @@unique([tenantId, reversalOfId])
   @@index([tenantId, companyId, entryDate])
   // Reports read posted entries of a company by date (DB-10).
   @@index([tenantId, companyId, status, entryDate])

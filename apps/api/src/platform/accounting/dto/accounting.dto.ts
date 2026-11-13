@@ -3,13 +3,16 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsDateString,
   IsIn,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { DATE_PATTERN, ID_PATTERN } from '../../../common/pipes/parse-id.pipe.js';
 
 const ACCOUNT_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'] as const;
 const NORMAL_BALANCES = ['DEBIT', 'CREDIT'] as const;
@@ -35,6 +38,7 @@ export class CreateAccountDto {
 
   @IsOptional()
   @IsString()
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
   parentId?: string;
 
   @IsIn(ACCOUNT_TYPES)
@@ -85,9 +89,13 @@ export class CreateFiscalYearDto {
   code!: string;
 
   @IsString()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
   startDate!: string;
 
   @IsString()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
   endDate!: string;
 }
 
@@ -101,6 +109,7 @@ export class UpsertMappingDto {
   mappingKey!: string;
 
   @IsString()
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
   accountId!: string;
 }
 

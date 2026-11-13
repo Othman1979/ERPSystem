@@ -1,6 +1,8 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { ar, en } from './locales';
+// Levantine Arabic month names for dayjs and the date pickers.
+import './dayjsLocale';
 
 export const SUPPORTED_LANGUAGES = ['ar', 'en'] as const;
 export type AppLanguage = (typeof SUPPORTED_LANGUAGES)[number];

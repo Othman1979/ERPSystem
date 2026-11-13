@@ -2,7 +2,6 @@ import { ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { Button, Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import i18n from '../i18n';
 
 interface Props {
   title: string;
@@ -14,36 +13,25 @@ interface Props {
 
 /** Odoo-style control panel: title, optional subtitle, actions on the end. */
 export function PageHeader({ title, subtitle, actions, onBack }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        marginBottom: 16,
-        flexWrap: 'wrap',
-      }}
-    >
+    <div className="page-header">
       {onBack && (
         <Button
           type="text"
-          icon={i18n.language === 'ar' ? <ArrowRightOutlined /> : <ArrowLeftOutlined />}
+          icon={i18n.dir() === 'rtl' ? <ArrowRightOutlined /> : <ArrowLeftOutlined />}
           onClick={onBack}
           aria-label={t('common.back')}
         />
       )}
-      <div style={{ minWidth: 0 }}>
+      <div className="page-header-text">
         <Typography.Title level={4} style={{ margin: 0 }} ellipsis>
           {title}
         </Typography.Title>
         {subtitle && (
-          <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-            {subtitle}
-          </Typography.Text>
+          <div className="page-header-subtitle">{subtitle}</div>
         )}
       </div>
-      <div style={{ flex: 1 }} />
       {actions && <div>{actions}</div>}
     </div>
   );

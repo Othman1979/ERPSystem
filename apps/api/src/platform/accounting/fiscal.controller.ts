@@ -1,6 +1,9 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
+import { DomainError } from '../../common/errors/domain.error.js';
+import { ErrorCode } from '../../common/errors/error-codes.js';
+import { ID_PATTERN, ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { CreateFiscalYearDto } from './dto/accounting.dto.js';
 import { FiscalService } from './fiscal.service.js';
@@ -24,39 +27,42 @@ export class FiscalController {
 
   @Get('fiscal-years/:id')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  getYear(@Param('id') id: string) {
+  getYear(@Param('id', ParseIdPipe) id: string) {
     return this.fiscal.getYear(BigInt(id));
   }
 
   /** Closes every period of the year at once (ADR-008 §7). */
   @Post('fiscal-years/:id/close')
   @RequirePermission(PERMISSIONS.FISCAL_CLOSE)
-  closeYear(@Param('id') id: string) {
+  closeYear(@Param('id', ParseIdPipe) id: string) {
     return this.fiscal.setYearStatus(BigInt(id), 'CLOSED');
   }
 
   /** Reopens every period of the year. */
   @Post('fiscal-years/:id/open')
   @RequirePermission(PERMISSIONS.FISCAL_CLOSE)
-  openYear(@Param('id') id: string) {
+  openYear(@Param('id', ParseIdPipe) id: string) {
     return this.fiscal.setYearStatus(BigInt(id), 'OPEN');
   }
 
   @Post('fiscal-periods/:id/close')
   @RequirePermission(PERMISSIONS.FISCAL_CLOSE)
-  closePeriod(@Param('id') id: string) {
+  closePeriod(@Param('id', ParseIdPipe) id: string) {
     return this.fiscal.setPeriodStatus(BigInt(id), 'CLOSED');
   }
 
   @Post('fiscal-periods/:id/open')
   @RequirePermission(PERMISSIONS.FISCAL_CLOSE)
-  openPeriod(@Param('id') id: string) {
+  openPeriod(@Param('id', ParseIdPipe) id: string) {
     return this.fiscal.setPeriodStatus(BigInt(id), 'OPEN');
   }
 
   @Get('document-sequences')
   @RequirePermission(PERMISSIONS.TENANT_READ)
   listSequences(@Query('fiscalYearId') fiscalYearId?: string) {
+    if (fiscalYearId !== undefined && !ID_PATTERN.test(fiscalYearId)) {
+      throw new DomainError(ErrorCode.VALIDATION, 'fiscalYearId must be a positive integer id');
+    }
     return this.fiscal.listSequences(fiscalYearId ? BigInt(fiscalYearId) : undefined);
   }
 }

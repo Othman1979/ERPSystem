@@ -19,24 +19,51 @@ import {
   TeamOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { AccountsPage } from './pages/AccountsPage';
-import { BranchesPage } from './pages/BranchesPage';
-import { EInvoicePage } from './pages/EInvoicePage';
-import { FiscalPage } from './pages/FiscalPage';
-import { GoodsNotesPage } from './pages/GoodsNotesPage';
-import { HealthPage } from './pages/HealthPage';
-import { ItemsPage } from './pages/ItemsPage';
-import { JournalPage } from './pages/JournalPage';
-import { OpeningBalancesPage } from './pages/OpeningBalancesPage';
-import { PartiesPage } from './pages/PartiesPage';
-import { PurchasesPage } from './pages/PurchasesPage';
-import { ReportsPage } from './pages/ReportsPage';
-import { SalesPage } from './pages/SalesPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { StockPage } from './pages/StockPage';
-import { TreasuryPage } from './pages/TreasuryPage';
-import { UsersPage } from './pages/UsersPage';
-import { WarehousesPage } from './pages/WarehousesPage';
+import { lazyPage } from './lazyPage';
+
+/**
+ * Each module's page is its own chunk, loaded when first opened (WEB-10).
+ * Exported for the test that checks every loader resolves to a component.
+ */
+export const PAGE_LOADERS = {
+  accounts: () => import('./pages/AccountsPage').then((m) => m.AccountsPage),
+  journal: () => import('./pages/JournalPage').then((m) => m.JournalPage),
+  openingBalances: () => import('./pages/OpeningBalancesPage').then((m) => m.OpeningBalancesPage),
+  treasury: () => import('./pages/TreasuryPage').then((m) => m.TreasuryPage),
+  reports: () => import('./pages/ReportsPage').then((m) => m.ReportsPage),
+  fiscal: () => import('./pages/FiscalPage').then((m) => m.FiscalPage),
+  sales: () => import('./pages/SalesPage').then((m) => m.SalesPage),
+  einvoice: () => import('./pages/EInvoicePage').then((m) => m.EInvoicePage),
+  purchases: () => import('./pages/PurchasesPage').then((m) => m.PurchasesPage),
+  goodsNotes: () => import('./pages/GoodsNotesPage').then((m) => m.GoodsNotesPage),
+  parties: () => import('./pages/PartiesPage').then((m) => m.PartiesPage),
+  items: () => import('./pages/ItemsPage').then((m) => m.ItemsPage),
+  warehouses: () => import('./pages/WarehousesPage').then((m) => m.WarehousesPage),
+  stock: () => import('./pages/StockPage').then((m) => m.StockPage),
+  users: () => import('./pages/UsersPage').then((m) => m.UsersPage),
+  branches: () => import('./pages/BranchesPage').then((m) => m.BranchesPage),
+  settings: () => import('./pages/SettingsPage').then((m) => m.SettingsPage),
+  health: () => import('./pages/HealthPage').then((m) => m.HealthPage),
+};
+
+const AccountsPage = lazyPage(PAGE_LOADERS.accounts);
+const JournalPage = lazyPage(PAGE_LOADERS.journal);
+const OpeningBalancesPage = lazyPage(PAGE_LOADERS.openingBalances);
+const TreasuryPage = lazyPage(PAGE_LOADERS.treasury);
+const ReportsPage = lazyPage(PAGE_LOADERS.reports);
+const FiscalPage = lazyPage(PAGE_LOADERS.fiscal);
+const SalesPage = lazyPage(PAGE_LOADERS.sales);
+const EInvoicePage = lazyPage(PAGE_LOADERS.einvoice);
+const PurchasesPage = lazyPage(PAGE_LOADERS.purchases);
+const GoodsNotesPage = lazyPage(PAGE_LOADERS.goodsNotes);
+const PartiesPage = lazyPage(PAGE_LOADERS.parties);
+const ItemsPage = lazyPage(PAGE_LOADERS.items);
+const WarehousesPage = lazyPage(PAGE_LOADERS.warehouses);
+const StockPage = lazyPage(PAGE_LOADERS.stock);
+const UsersPage = lazyPage(PAGE_LOADERS.users);
+const BranchesPage = lazyPage(PAGE_LOADERS.branches);
+const SettingsPage = lazyPage(PAGE_LOADERS.settings);
+const HealthPage = lazyPage(PAGE_LOADERS.health);
 
 export interface AppRoute {
   key: string;
