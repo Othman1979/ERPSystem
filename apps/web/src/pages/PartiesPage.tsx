@@ -24,6 +24,7 @@ import {
   partiesControllerUpdate,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { displayName, type Named } from '../i18n/displayName';
@@ -63,13 +64,14 @@ export function PartiesPage() {
   const saveAndNew = useRef(false);
   const [apiMessage, contextHolder] = message.useMessage();
 
-  const { data: parties, isLoading } = useQuery({
+  const partiesQuery = useQuery({
     queryKey: ['parties', typeFilter],
     queryFn: () =>
       partiesControllerList({ partyType: typeFilter ?? '', isActive: '' }).then(
         (r) => r.data as unknown as Party[],
       ),
   });
+  const { data: parties, isLoading } = partiesQuery;
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['parties'] });
   const onError = (err: unknown) =>
@@ -229,6 +231,7 @@ export function PartiesPage() {
         rowKey="id"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(partiesQuery)}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}

@@ -20,6 +20,7 @@ import {
 } from '@erp/api-client';
 import { CompanyProfileForm, useCompany } from '../components/CompanyProfileForm';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { codeAndName, displayName } from '../i18n/displayName';
 
 interface FiscalYear {
@@ -219,6 +220,7 @@ export function SetupWizardPage() {
           size="small"
           pagination={false}
           dataSource={taxes.data ?? []}
+          locale={tableLocale(taxes)}
           columns={[
             { title: t('settings.code'), dataIndex: 'code', width: 100 },
             { title: t('common.name'), render: (_: unknown, r) => displayName(r) },

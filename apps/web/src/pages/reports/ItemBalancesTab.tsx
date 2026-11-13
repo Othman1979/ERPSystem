@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { apiFetchData, warehousesControllerList } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
 import { ListToolbar } from '../../components/ListToolbar';
+import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
 import { amountCell, qtyCell } from '../../format/cells';
 import { formatAmount } from '../../format/number';
@@ -67,10 +68,11 @@ export function ItemBalancesTab({
     queryFn: () => warehousesControllerList().then((r) => r.data as unknown as Warehouse[]),
   });
   const params = { warehouseId, ...range };
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['report-item-balances', warehouseId, range.from, range.to],
     queryFn: () => apiFetchData<ItemBalances>(`/api/v1/stock/item-balances${qs(params)}`),
   });
+  const { data, isLoading } = listQuery;
 
   const pair = (key: 'opening' | 'in' | 'out' | 'closing', title: string) => ({
     title,
@@ -114,6 +116,7 @@ export function ItemBalancesTab({
         bordered
         loading={isLoading}
         dataSource={data?.rows ?? []}
+        locale={tableLocale(listQuery)}
         pagination={false}
         scroll={{ x: 1100 }}
         columns={[

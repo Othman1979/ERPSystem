@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { apiFetchData } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
 import { ListToolbar } from '../../components/ListToolbar';
+import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
 import { amountCell } from '../../format/cells';
 import { formatAmount } from '../../format/number';
@@ -37,11 +38,12 @@ export function AgingTab() {
   // The local calendar date, so "today" is the user's day rather than the server's UTC day.
   const [asOf, setAsOf] = useState<Dayjs>(() => dayjs());
   const asOfParam = asOf.format('YYYY-MM-DD');
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['report-aging', partyType, asOfParam],
     queryFn: () =>
       apiFetchData<AgingResponse>(`/api/v1/reports/aging?partyType=${partyType}&asOf=${asOfParam}`),
   });
+  const { data, isLoading } = listQuery;
 
   return (
     <>
@@ -83,6 +85,7 @@ export function AgingTab() {
         size="small"
         loading={isLoading}
         dataSource={data?.rows ?? []}
+        locale={tableLocale(listQuery)}
         pagination={false}
         scroll={{ x: 'max-content' }}
         columns={[

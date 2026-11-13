@@ -30,6 +30,7 @@ import { useAuth } from '../auth/AuthContext';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { tableLocale } from '../components/QueryState';
 
 interface Membership {
   membershipId: string;
@@ -68,10 +69,11 @@ export function UsersPage() {
   const [search, setSearch] = useState('');
   const [apiMessage, contextHolder] = message.useMessage();
 
-  const { data, isLoading } = useQuery({
+  const usersQuery = useQuery({
     queryKey: ['users'],
     queryFn: () => usersControllerList().then((r) => r.data as unknown as Membership[]),
   });
+  const { data, isLoading } = usersQuery;
 
   const { data: roles } = useQuery({
     queryKey: ['roles'],
@@ -171,6 +173,7 @@ export function UsersPage() {
         rowKey="membershipId"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(usersQuery)}
         pagination={false}
         columns={[
           { title: t('users.name'), render: (_: unknown, m: Membership) => m.user.fullName },

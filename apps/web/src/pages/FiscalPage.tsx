@@ -28,6 +28,7 @@ import {
 import { CalendarOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 
 interface FiscalPeriod {
   id: string;
@@ -70,10 +71,11 @@ export function FiscalPage() {
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
-  const { data: years, isLoading } = useQuery({
+  const yearsQuery = useQuery({
     queryKey: ['fiscal-years'],
     queryFn: () => fiscalControllerListYears().then((r) => r.data as unknown as FiscalYear[]),
   });
+  const { data: years, isLoading } = yearsQuery;
 
   const createYear = useMutation({
     mutationFn: (values: { code: string; range: [Dayjs, Dayjs] }) =>
@@ -151,6 +153,7 @@ export function FiscalPage() {
         rowKey="id"
         loading={isLoading}
         dataSource={years ?? []}
+        locale={tableLocale(yearsQuery)}
         pagination={false}
         expandable={{ expandedRowRender }}
         columns={[
@@ -242,13 +245,14 @@ function YearDetailPanel({
     queryKey: ['fiscal-year', yearId],
     queryFn: () => fiscalControllerGetYear(yearId).then((r) => r.data as unknown as YearDetail),
   });
-  const { data: sequences } = useQuery({
+  const sequencesQuery = useQuery({
     queryKey: ['doc-sequences', yearId],
     queryFn: () =>
       fiscalControllerListSequences({ fiscalYearId: yearId }).then(
         (r) => r.data as unknown as DocSequence[],
       ),
   });
+  const { data: sequences } = sequencesQuery;
 
   return (
     <Tabs
@@ -320,6 +324,7 @@ function YearDetailPanel({
               rowKey="id"
               size="small"
               dataSource={sequences ?? []}
+              locale={tableLocale(sequencesQuery)}
               pagination={false}
               columns={[
                 { title: t('fiscal.documentType'), dataIndex: 'documentType' },

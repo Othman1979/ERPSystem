@@ -33,6 +33,7 @@ import {
 import { SettingOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { displayName } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { formatPercent } from '../format/number';
@@ -80,10 +81,11 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
   const [apiMessage, contextHolder] = message.useMessage();
   const queryKey = ['settings', kind];
 
-  const { data, isLoading } = useQuery({
+  const lookupQuery = useQuery({
     queryKey,
     queryFn: () => LIST_FN[kind]().then((r) => r.data as unknown as LookupRow[]),
   });
+  const { data, isLoading } = lookupQuery;
 
   const showError = (err: unknown) =>
     apiMessage.error(
@@ -171,6 +173,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
         size="small"
         loading={isLoading}
         dataSource={data ?? []}
+        locale={tableLocale(lookupQuery)}
         pagination={false}
         columns={[
           { title: t('settings.code'), dataIndex: 'code', width: 110 },

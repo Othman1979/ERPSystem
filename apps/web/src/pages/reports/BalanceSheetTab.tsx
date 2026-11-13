@@ -36,10 +36,11 @@ export function BalanceSheetTab() {
   // The local calendar date, like the aging report.
   const [asOf, setAsOf] = useState<Dayjs>(() => dayjs());
   const params = { asOf: isoDay(asOf) };
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['report-balance-sheet', params.asOf],
     queryFn: () => apiFetchData<BalanceSheet>(`/api/v1${PATH}${queryString(params)}`),
   });
+  const { data, isLoading } = listQuery;
 
   const lang = i18n.language;
   const lines: StatementLine[] = data
@@ -110,7 +111,7 @@ export function BalanceSheetTab() {
           )}
         </div>
       )}
-      <StatementTable lines={lines} loading={isLoading} />
+      <StatementTable lines={lines} loading={isLoading} query={listQuery} />
     </>
   );
 }

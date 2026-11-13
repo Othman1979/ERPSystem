@@ -39,6 +39,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
@@ -128,7 +129,7 @@ export function GoodsNotesSection({
     return () => cancelAnimationFrame(id);
   }, [headerFocus]);
 
-  const { data: notes, isLoading } = useQuery({
+  const notesQuery = useQuery({
     queryKey: ['goods-notes', typeFilter],
     queryFn: () =>
       goodsNotesControllerList({ status: '', noteType: typeFilter ?? '' }).then(
@@ -136,6 +137,7 @@ export function GoodsNotesSection({
       ),
     enabled: screen === 'list',
   });
+  const { data: notes, isLoading } = notesQuery;
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['goods-note', entryId],
     queryFn: () => goodsNotesControllerGet(entryId!).then((r) => r.data as unknown as GoodsNote),
@@ -339,6 +341,7 @@ export function GoodsNotesSection({
           rowKey="id"
           loading={isLoading}
           dataSource={shown}
+          locale={tableLocale(notesQuery)}
           size="small"
           pagination={{ pageSize: 20 }}
           onRow={(r) => ({ onClick: () => openEntry(r.id), style: { cursor: 'pointer' } })}

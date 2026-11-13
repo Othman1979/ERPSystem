@@ -1,6 +1,7 @@
 import { Table } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Num } from '../../components/Num';
+import { tableLocale, type ListQueryState } from '../../components/QueryState';
 import { dec, formatAmount } from '../../format/number';
 import { displayName } from '../../i18n/displayName';
 import { palette } from '../../theme';
@@ -68,7 +69,16 @@ export function sectionLines(
 const INDENT_PX = 18;
 
 /** Code / account / amount table laid out like a printed financial statement. */
-export function StatementTable({ lines, loading }: { lines: StatementLine[]; loading?: boolean }) {
+export function StatementTable({
+  lines,
+  loading,
+  query,
+}: {
+  lines: StatementLine[];
+  loading?: boolean;
+  /** The query that fetched the statement: its failure shows in the table. */
+  query: ListQueryState;
+}) {
   const { t } = useTranslation();
   // Headings, subtotals and results span the code and name columns.
   const spanLabel = (l: StatementLine) => ({ colSpan: l.kind === 'account' && l.code ? 1 : 2 });
@@ -82,6 +92,7 @@ export function StatementTable({ lines, loading }: { lines: StatementLine[]; loa
       size="small"
       loading={loading}
       dataSource={lines}
+      locale={tableLocale(query)}
       pagination={false}
       rowClassName={(l) =>
         l.kind === 'account' ? (l.isGroup ? 'stmt-group' : 'stmt-account') : `stmt-${l.kind}`

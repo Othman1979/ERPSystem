@@ -47,6 +47,7 @@ import {
 } from '@erp/api-client';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { codeAndName, displayName } from '../i18n/displayName';
@@ -209,10 +210,11 @@ function CashBoxesTab() {
   const [apiMessage, contextHolder] = message.useMessage();
   const lookups = useTreasuryLookups();
 
-  const { data: boxes, isLoading } = useQuery({
+  const boxesQuery = useQuery({
     queryKey: ['cash-boxes'],
     queryFn: () => treasuryControllerListCashBoxes().then((r) => r.data as unknown as CashBox[]),
   });
+  const { data: boxes, isLoading } = boxesQuery;
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['cash-boxes'] });
   const onError = (err: unknown) =>
@@ -299,7 +301,7 @@ function CashBoxesTab() {
         count={shown.length}
         actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newCashBox')}</Button>}
       />
-      <Table rowKey="id" loading={isLoading} dataSource={shown} columns={columns} size="small" pagination={false} />
+      <Table rowKey="id" loading={isLoading} dataSource={shown} locale={tableLocale(boxesQuery)} columns={columns} size="small" pagination={false} />
       <FormDialog open={modalOpen} title={editing ? t('treasury.editCashBox') : t('treasury.newCashBox')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
           <FormSection
@@ -349,10 +351,11 @@ function BankAccountsTab() {
   const [apiMessage, contextHolder] = message.useMessage();
   const lookups = useTreasuryLookups();
 
-  const { data: banks, isLoading } = useQuery({
+  const banksQuery = useQuery({
     queryKey: ['bank-accounts'],
     queryFn: () => treasuryControllerListBankAccounts().then((r) => r.data as unknown as BankAccount[]),
   });
+  const { data: banks, isLoading } = banksQuery;
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['bank-accounts'] });
   const onError = (err: unknown) =>
@@ -456,7 +459,7 @@ function BankAccountsTab() {
         count={shown.length}
         actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newBankAccount')}</Button>}
       />
-      <Table rowKey="id" loading={isLoading} dataSource={shown} columns={columns} size="small" pagination={false} />
+      <Table rowKey="id" loading={isLoading} dataSource={shown} locale={tableLocale(banksQuery)} columns={columns} size="small" pagination={false} />
       <FormDialog open={modalOpen} title={editing ? t('treasury.editBankAccount') : t('treasury.newBankAccount')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
           <FormSection
@@ -508,10 +511,11 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
     ? (id: string) => treasuryControllerGetReceipt(id)
     : (id: string) => treasuryControllerGetPayment(id);
 
-  const { data: vouchers, isLoading } = useQuery({
+  const vouchersQuery = useQuery({
     queryKey: [kind === 'receipt' ? 'receipts' : 'payments'],
     queryFn: () => listFn().then((r) => r.data as unknown as Voucher[]),
   });
+  const { data: vouchers, isLoading } = vouchersQuery;
   const { data: view } = useQuery({
     queryKey: [kind, viewId],
     queryFn: () => getFn(viewId!).then((r: { data: unknown }) => r.data as unknown as Voucher),
@@ -760,6 +764,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
         rowKey="id"
         loading={isLoading}
         dataSource={shown}
+        locale={tableLocale(vouchersQuery)}
         columns={columns}
         size="small"
         pagination={{ pageSize: 20 }}

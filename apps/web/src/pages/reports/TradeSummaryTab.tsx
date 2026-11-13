@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { apiFetchData } from '@erp/api-client';
 import { ExportButtons, queryString } from '../../components/ExportButtons';
 import { ListToolbar } from '../../components/ListToolbar';
+import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
 import { amountCell, qtyCell } from '../../format/cells';
 import { formatAmount, formatQty } from '../../format/number';
@@ -73,10 +74,11 @@ export function TradeSummaryTab({ kind, initial }: { kind: Kind; initial?: Trade
   const [to, setTo] = useState<Dayjs | null>(() => parseDay(initial?.to));
   const path = kind === 'sales' ? '/reports/sales-summary' : '/reports/purchases-summary';
   const params = { from: isoDay(from), to: isoDay(to), groupBy };
-  const { data, isLoading } = useQuery({
+  const listQuery = useQuery({
     queryKey: ['report-trade-summary', kind, params.from, params.to, groupBy],
     queryFn: () => apiFetchData<TradeSummary>(`/api/v1${path}${queryString(params)}`),
   });
+  const { data, isLoading } = listQuery;
 
   const sales = kind === 'sales';
   // The table follows the answer's grouping, so switching never mislabels the old rows.
@@ -167,6 +169,7 @@ export function TradeSummaryTab({ kind, initial }: { kind: Kind; initial?: Trade
         size="small"
         loading={isLoading}
         dataSource={data?.rows ?? []}
+        locale={tableLocale(listQuery)}
         pagination={{ pageSize: 50, hideOnSinglePage: true }}
         scroll={{ x: 'max-content' }}
         columns={columns}
