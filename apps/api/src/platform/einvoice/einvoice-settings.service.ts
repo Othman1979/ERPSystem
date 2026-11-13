@@ -229,9 +229,25 @@ export class EInvoiceSettingsService {
     } catch {
       return null;
     }
+    // A stored sandbox URL is checked again at send time against today's
+    // rules and EINVOICE_SANDBOX_HOSTS (TRADE-24): a host that was allowed
+    // when saved, or saved before the rule, is not posted to.
+    let sandboxUrl = DEFAULT_SANDBOX_URL;
+    if (s.environment !== 'PRODUCTION' && s.baseUrl) {
+      try {
+        sandboxUrl =
+          normalizeSandboxUrl(
+            s.baseUrl,
+            this.config.get('EINVOICE_SANDBOX_HOSTS', { infer: true }),
+            this.config.get('NODE_ENV', { infer: true }),
+          ) ?? DEFAULT_SANDBOX_URL;
+      } catch (err) {
+        throw new DomainError(ErrorCode.EINVOICE_NOT_READY, (err as Error).message);
+      }
+    }
     return {
       environment: s.environment,
-      baseUrl: s.environment === 'PRODUCTION' ? JOFOTARA_PRODUCTION_URL : (s.baseUrl ?? DEFAULT_SANDBOX_URL),
+      baseUrl: s.environment === 'PRODUCTION' ? JOFOTARA_PRODUCTION_URL : sandboxUrl,
       clientId: s.clientId,
       secretKey,
       track: s.track,

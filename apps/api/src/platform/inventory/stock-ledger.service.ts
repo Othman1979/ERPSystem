@@ -6,7 +6,6 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { ReportsService } from '../journal/reports.service.js';
 import { costMovement, type CostState } from './stock-costing.js';
 
 export interface MovementInput {
@@ -72,6 +71,13 @@ export interface TransferResult {
   inMovementId: bigint;
   unitCost: Decimal;
   totalCost: Decimal;
+}
+
+export interface VerifyResult {
+  checked: number;
+  mismatches: VerifyMismatch[];
+  stockValue: string;
+  inventoryAccountBalance: string | null;
 }
 
 /** One difference stock:verify found. */
@@ -146,10 +152,7 @@ export const REVALUATION_SOURCE = 'REVALUATION';
 export class StockLedgerService {
   private readonly states = new WeakMap<object, TxState>();
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly reports: ReportsService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private tenant() {
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
@@ -626,21 +629,27 @@ export class StockLedgerService {
    *  - GL_INVENTORY: Σ item_costs.total_value of the company = balance of its
    *    INVENTORY mapped account (posted journal lines, debit − credit).
    */
-  async verify(): Promise<{
-    checked: number;
-    mismatches: VerifyMismatch[];
-    stockValue: string;
-    inventoryAccountBalance: string | null;
-  }> {
+  async verify(): Promise<VerifyResult> {
     const { tenantId, db } = this.tenant();
+    // One REPEATABLE READ snapshot for every check: a posting committing
+    // between the stock value read and the GL read would otherwise show as a
+    // false GL_INVENTORY difference. Reads only.
+    return db.$transaction((tx) => this.verifyOn(tx, tenantId), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      timeout: 30_000,
+      maxWait: 10_000,
+    });
+  }
+
+  private async verifyOn(tx: Prisma.TransactionClient, tenantId: bigint): Promise<VerifyResult> {
     const mismatches: VerifyMismatch[] = [];
 
-    const [{ pairs }] = await db.$queryRaw<{ pairs: bigint }[]>`
+    const [{ pairs }] = await tx.$queryRaw<{ pairs: bigint }[]>`
       SELECT COUNT(*) AS pairs FROM (
         SELECT 1 FROM stock_movements WHERE tenant_id = ${tenantId} GROUP BY warehouse_id, item_id
       ) p`;
 
-    const qtyRows = await db.$queryRaw<{ warehouse_id: bigint; item_id: bigint; expected: unknown; actual: unknown }[]>`
+    const qtyRows = await tx.$queryRaw<{ warehouse_id: bigint; item_id: bigint; expected: unknown; actual: unknown }[]>`
       SELECT b.warehouse_id, b.item_id, COALESCE(m.q, 0) AS expected, b.qty_on_hand AS actual
         FROM stock_balances b
         LEFT JOIN (
@@ -669,7 +678,7 @@ export class StockLedgerService {
       });
     }
 
-    const costRows = await db.$queryRaw<
+    const costRows = await tx.$queryRaw<
       { company_id: bigint; item_id: bigint; total_qty: unknown; total_value: unknown; q: unknown; v: unknown }[]
     >`
       SELECT c.company_id, c.item_id, c.total_qty, c.total_value, COALESCE(m.q, 0) AS q, COALESCE(m.v, 0) AS v
@@ -701,27 +710,34 @@ export class StockLedgerService {
     }
 
     // GL: the company in context (the one ReportsService reads).
-    const company = await db.company.findFirst({ where: { isActive: true }, orderBy: { id: 'asc' }, select: { id: true } });
+    const company = await tx.company.findFirst({ where: { isActive: true }, orderBy: { id: 'asc' }, select: { id: true } });
     let stockValue = new Decimal(0);
     let inventoryAccountBalance: Decimal | null = null;
     if (company) {
-      const [{ v }] = await db.$queryRaw<{ v: unknown }[]>`
+      const [{ v }] = await tx.$queryRaw<{ v: unknown }[]>`
         SELECT COALESCE(SUM(total_value), 0) AS v FROM item_costs
          WHERE tenant_id = ${tenantId} AND company_id = ${company.id}`;
       stockValue = new Decimal(String(v));
-      const mapping = await db.accountMapping.findFirst({
+      const mapping = await tx.accountMapping.findFirst({
         where: { companyId: company.id, mappingKey: 'INVENTORY' },
         select: { accountId: true },
       });
       if (mapping?.accountId) {
-        const totals = await this.reports.accountTotals();
-        const row = totals.find((t) => t.account.id === mapping.accountId);
-        inventoryAccountBalance = row ? row.debit.minus(row.credit) : new Decimal(0);
+        // Read-only, on this snapshot: the same posted lines ReportsService
+        // .accountTotals adds up (posted entries of the company, every date).
+        const [gl] = await tx.$queryRaw<{ v: unknown }[]>`
+          SELECT COALESCE(SUM(jl.debit - jl.credit), 0) AS v
+            FROM journal_lines jl
+            JOIN journal_entries je ON je.tenant_id = jl.tenant_id AND je.id = jl.journal_entry_id
+           WHERE jl.tenant_id = ${tenantId} AND jl.account_id = ${mapping.accountId}
+             AND je.company_id = ${company.id} AND je.status = 'POSTED'`;
+        inventoryAccountBalance = new Decimal(String(gl.v));
         if (!inventoryAccountBalance.eq(stockValue)) {
+          const account = await tx.account.findFirst({ where: { id: mapping.accountId }, select: { code: true } });
           mismatches.push({
             kind: 'GL_INVENTORY',
             companyId: company.id.toString(),
-            accountCode: row?.account.code ?? null,
+            accountCode: account?.code ?? null,
             expected: stockValue.toString(),
             actual: inventoryAccountBalance.toString(),
           });

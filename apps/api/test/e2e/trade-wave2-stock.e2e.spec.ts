@@ -248,6 +248,74 @@ describe('Trade review fixes — stock and documents', () => {
     await assertConsistent();
   });
 
+  it('TRADE-02 races: saving and posting a GRN-linked draft at once; drafts for two GRNs at once', async () => {
+    const R = await item('GR');
+    const grn = async () =>
+      createAndPost('goods-notes', { noteDate: '2025-01-07', noteType: 'GRN', warehouseId: W1, lines: [{ itemId: R, qty: '10', unitCost: '4' }] });
+    const body = (grnId: string, description: string) => ({
+      invoiceDate: '2025-01-07', supplierId, warehouseId: W1, paymentType: 'CREDIT', receivedGrnId: grnId, description,
+      lines: [{ itemId: R, qty: '10', unitCost: '4.5' }],
+    });
+    for (let i = 0; i < 3; i += 1) {
+      // Save (PUT) and post of the same draft on separate connections: they
+      // queue on the invoice row in one order, so no deadlock, no 500, and a
+      // posted invoice is never rewritten.
+      const g = await grn();
+      const draft = await create('purchase-invoices', body(g.id, 'draft'));
+      const [put, posted] = await Promise.all([
+        api().put(`/api/v1/purchase-invoices/${draft.id}`).set(auth(token)).send(body(g.id, 'saved')),
+        post('purchase-invoices', draft.id),
+      ]);
+      expect([200, 409]).toContain(put.status);
+      expect(posted.status).toBe(201);
+      const after = await api().get(`/api/v1/purchase-invoices/${draft.id}`).set(auth(token));
+      expect(after.body.status).toBe('POSTED');
+      expect(after.body.lines).toHaveLength(1);
+      if (put.status === 409) expect(after.body.description).toBe('draft');
+
+      // Two drafts billing two different GRNs, saved at once: no gap-lock deadlock.
+      const [g1, g2] = [await grn(), await grn()];
+      const both = await Promise.all([
+        api().post('/api/v1/purchase-invoices').set(auth(token)).send(body(g1.id, 'a')),
+        api().post('/api/v1/purchase-invoices').set(auth(token)).send(body(g2.id, 'b')),
+      ]);
+      expect(both.map((r) => r.status)).toEqual([201, 201]);
+    }
+    await assertConsistent();
+  });
+
+  it('TRADE-02/03: a return of a GRN-billed invoice leaves at the received cost and reverses the price difference', async () => {
+    // Hand-computed (ADR-016 §2–3):
+    //  GRN 10 @ 5            → item 10 / 50.000, 2104 Cr 50
+    //  invoice bills it @ 6  → 2104 cleared, INVENTORY_ADJUSTMENT Dr 10.000
+    //  purchase 10 @ 5       → item 20 / 100.000
+    //  return the 10 billed  → OUT at 5 = 50.000 (not 60): item 10 / 50.000, avg 5;
+    //                          INVENTORY_ADJUSTMENT Cr 10.000 (back to where it was)
+    const RG = await item('RG');
+    const adjCode = await mappedCode('INVENTORY_ADJUSTMENT');
+    const adjStart = new Decimal(await balance(adjCode));
+    const grniStart = new Decimal(await balance('2104'));
+    const g = await createAndPost('goods-notes', {
+      noteDate: '2025-01-08', noteType: 'GRN', warehouseId: W1, lines: [{ itemId: RG, qty: '10', unitCost: '5' }],
+    });
+    const billed = await createAndPost('purchase-invoices', {
+      invoiceDate: '2025-01-08', supplierId, warehouseId: W1, paymentType: 'CREDIT', receivedGrnId: g.id,
+      lines: [{ itemId: RG, qty: '10', unitCost: '6' }],
+    });
+    expect(m3(new Decimal(await balance(adjCode)).minus(adjStart))).toBe('10.000');
+    await buy(RG, '10', '5', '2025-01-08');
+    expect(await cost(RG)).toMatchObject({ qty: '20', value: '100.000' });
+    const inv = await api().get(`/api/v1/purchase-invoices/${billed.id}`).set(auth(token));
+    await createAndPost('purchase-returns', {
+      returnDate: '2025-01-09', originalInvoiceId: billed.id, warehouseId: W1, refundType: 'CREDIT',
+      lines: [{ originalLineId: inv.body.lines[0].id, qty: '10' }],
+    });
+    expect(await cost(RG)).toMatchObject({ qty: '10', value: '50.000', avg: '5' });
+    expect(m3(new Decimal(await balance(adjCode)).minus(adjStart))).toBe('0.000');
+    expect(m3(new Decimal(await balance('2104')).minus(grniStart))).toBe('0.000');
+    await assertConsistent();
+  });
+
   it('TRADE-03: a purchase return leaves at the original line cost, stock = GL', async () => {
     const P = await item('P');
     const first = await buy(P, '10', '5', '2025-01-08');

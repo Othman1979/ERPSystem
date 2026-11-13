@@ -228,6 +228,15 @@ export class GoodsNotesService {
     const [locked] = await tx.$queryRaw<{ id: bigint }[]>`
       SELECT id FROM goods_notes WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
     if (!locked) return null;
+    return this.billingSource(tx, id);
+  }
+
+  /**
+   * A GRN's received quantity and value per item, without a lock: a posted
+   * GRN never changes. A purchase return of the invoice that billed it takes
+   * the goods out at this received cost (TRADE-02/03, ADR-016 §3).
+   */
+  async billingSource(tx: Prisma.TransactionClient, id: bigint): Promise<GrnBillingSource | null> {
     const note = await tx.goodsNote.findFirst({ where: { id }, include: { lines: true } });
     if (!note) return null;
     const byItem = new Map<bigint, { qty: Decimal; value: Decimal }>();

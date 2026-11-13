@@ -384,6 +384,18 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
     await this.assertHeader(db, companyId, dto, lines);
 
     await db.$transaction(async (tx) => {
+      // Lock the invoice first and re-check it under the lock, the order
+      // posting follows (invoice, then GRN): a save racing a post of the same
+      // draft queues here instead of deadlocking, and never rewrites a posted
+      // invoice. A locking read, so the GRN lock below is still taken before
+      // this transaction's first plain read (see assertGrnBillable).
+      const [locked] = await tx.$queryRaw<{ status: string; branch_id: bigint | null }[]>`
+        SELECT status, branch_id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      if (!locked) throw DomainError.notFound('PurchaseInvoice', id.toString());
+      if (locked.status !== 'DRAFT') {
+        throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
+      }
+      assertBranchAllowed(locked.branch_id === null ? null : BigInt(locked.branch_id));
       const receivedGrnId = await this.checkDraftGrn(tx, tenantId, id, dto, lines);
       await tx.purchaseInvoiceLine.deleteMany({ where: { invoiceId: id } });
       await tx.purchaseInvoice.update({
@@ -452,10 +464,13 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
-        // Lock the document first (§10.1 step 7). As the first statement it also
-        // makes every later read see the latest committed state, so two
-        // concurrent requests cannot both post or reverse it.
-        await tx.$queryRaw`SELECT id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        // Lock the document first (§10.1 step 7), then the GRN it bills
+        // (TRADE-02), both before the first plain read: every later read then
+        // sees what was committed before both locks (see assertGrnBillable).
+        const [head] = await tx.$queryRaw<{ received_grn_id: bigint | null }[]>`
+          SELECT received_grn_id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        const lockedGrn =
+          head?.received_grn_id != null ? await this.goodsNotes.lockForBilling(tx, BigInt(head.received_grn_id)) : null;
         const draft = await tx.purchaseInvoice.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },
@@ -493,7 +508,7 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
         // stock: the GRN did. Its stock lines clear 2104 at the GRN's value,
         // and the price difference goes to INVENTORY_ADJUSTMENT.
         const grn = draft.receivedGrnId
-          ? await this.lockReceivedGrn(tx, tenantId, draft, stockItems)
+          ? await this.receivedGrnValue(tx, tenantId, draft, lockedGrn, stockItems)
           : null;
 
         // Lock every (item, warehouse) in the fixed order before any movement
@@ -670,18 +685,19 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
   }
 
   /**
-   * At posting: the GRN locked FOR UPDATE (two invoices billing it queue
-   * here), checked again, and the value its billed quantities clear from
-   * 2104 — the GRN's own value per item, pro rata for a partial bill.
+   * At posting: the GRN (locked FOR UPDATE at the start of the transaction,
+   * so two invoices billing it queue there) checked again, and the value its
+   * billed quantities clear from 2104 — the GRN's own value per item, pro
+   * rata for a partial bill.
    */
-  private async lockReceivedGrn(
+  private async receivedGrnValue(
     tx: Prisma.TransactionClient,
     tenantId: bigint,
     draft: { id: bigint; receivedGrnId: bigint | null; warehouseId: bigint | null; lines: { itemId: bigint; qtyBase: { toString(): string } }[] },
+    grn: GrnBillingSource | null,
     stockItems: Set<bigint>,
   ): Promise<{ id: bigint; docNo: string | null; cleared: Decimal }> {
     const grnId = draft.receivedGrnId!;
-    const grn = await this.goodsNotes.lockForBilling(tx, grnId);
     const qtyByItem = new Map<bigint, Decimal>();
     for (const l of draft.lines) {
       if (!stockItems.has(l.itemId)) continue;
@@ -712,13 +728,18 @@ export class PurchaseInvoicesService implements InvoiceSettlement {
     if (warehouseId !== grn.warehouseId) {
       throw new DomainError(ErrorCode.VALIDATION, 'The invoice warehouse must be the warehouse the goods were received in');
     }
-    // A locking read: it sees an invoice that billed the GRN and committed
-    // while this transaction waited for the GRN lock.
-    const billed = await tx.$queryRaw<{ id: bigint }[]>`
-      SELECT id FROM purchase_invoices
-       WHERE tenant_id = ${tenantId} AND received_grn_id = ${grn.id} AND status = 'POSTED'
-         AND id <> ${invoiceId ?? 0n}
-       LIMIT 1 LOCK IN SHARE MODE`;
+    // A plain read, on purpose. Every biller of this GRN holds its row lock
+    // until commit, and each caller takes that lock before its transaction's
+    // first plain read, so the snapshot already holds any invoice that billed
+    // it. A locking read here would take a shared gap lock on
+    // (tenant_id, received_grn_id) when nothing matches — the usual case — and
+    // two drafts saved at once for different GRNs would deadlock on inserting
+    // into that gap.
+    const billed = await tx.purchaseInvoice.findMany({
+      where: { tenantId, receivedGrnId: grn.id, status: 'POSTED', NOT: { id: invoiceId ?? 0n } },
+      select: { id: true },
+      take: 1,
+    });
     if (billed.length > 0) {
       throw new DomainError(ErrorCode.GRN_ALREADY_INVOICED, `Goods receipt ${grn.docNo ?? grn.id} is already invoiced`);
     }

@@ -419,6 +419,13 @@ export class SalesInvoicesService implements InvoiceSettlement {
     await this.assertHeader(db, companyId, dto);
 
     await db.$transaction(async (tx) => {
+      // Lock the invoice and re-check it first: a save racing a post of the
+      // same draft must not delete and rewrite the lines of a posted invoice.
+      const [locked] = await tx.$queryRaw<{ status: string }[]>`
+        SELECT status FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      if (!locked || locked.status !== 'DRAFT') {
+        throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
+      }
       await tx.salesInvoiceLine.deleteMany({ where: { invoiceId: id } });
       await tx.salesInvoice.update({
         where: { id },

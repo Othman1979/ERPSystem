@@ -8,6 +8,32 @@ const str = (a: ReturnType<typeof lineAmounts>) => ({
   total: a.total.toFixed(3),
 });
 
+describe('lineAmounts with prices including tax (ADR-017)', () => {
+  it('extracts the tax: 116 at 16% is 100 + 16, total as typed', () => {
+    expect(str(lineAmounts({ qty: '1', price: '116', taxRate: '16', pricesIncludeTax: true }))).toEqual({
+      discount: '0.000',
+      net: '100.000',
+      tax: '16.000',
+      total: '116.000',
+    });
+  });
+
+  it('rounds like the API: 3 × 9.990 → net 25.836, tax 4.134; discount on the inclusive gross', () => {
+    expect(str(lineAmounts({ qty: '3', price: '9.990', taxRate: '16', pricesIncludeTax: true }))).toEqual({
+      discount: '0.000',
+      net: '25.836',
+      tax: '4.134',
+      total: '29.970',
+    });
+    expect(str(lineAmounts({ qty: '2', price: '58', discountPct: '10', taxRate: '16', pricesIncludeTax: true }))).toEqual({
+      discount: '11.600',
+      net: '90.000',
+      tax: '14.400',
+      total: '104.400',
+    });
+  });
+});
+
 describe('lineAmounts (mirrors the API invoice-math)', () => {
   it('computes net, 16% tax and total', () => {
     expect(str(lineAmounts({ qty: '3', price: '2.8', taxRate: '16' }))).toEqual({

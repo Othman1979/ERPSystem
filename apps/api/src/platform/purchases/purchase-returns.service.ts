@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
+import { Decimal, round3, sum } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -23,6 +23,7 @@ import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { computeReturnLines, returnedByLine } from '../shared/return-lines.js';
 import { assertRefundType } from '../shared/refund-type.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
+import { GoodsNotesService } from '../goods-notes/goods-notes.service.js';
 
 const SOURCE = 'PURCHASE_RETURN';
 
@@ -38,6 +39,7 @@ export class PurchaseReturnsService {
     private readonly posting: PostingService,
     private readonly ledger: StockLedgerService,
     private readonly audit: AuditService,
+    private readonly goodsNotes: GoodsNotesService,
   ) {}
 
   /**
@@ -308,7 +310,12 @@ export class PurchaseReturnsService {
         // A return belongs to its original invoice's branch (ADR-003).
         const original = await tx.purchaseInvoice.findFirst({
           where: { id: draft.originalInvoiceId },
-          select: { branchId: true, paymentType: true, lines: { select: { id: true, lineNo: true, qtyBase: true } } },
+          select: {
+            branchId: true,
+            paymentType: true,
+            receivedGrnId: true,
+            lines: { select: { id: true, lineNo: true, qtyBase: true } },
+          },
         });
         assertBranchAllowed(original?.branchId);
         if (original) assertRefundType(original.paymentType, draft.refundType);
@@ -345,29 +352,49 @@ export class PurchaseReturnsService {
           draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
         );
 
+        // An invoice that billed a GRN received no stock itself: its goods
+        // entered at the GRN's cost and its price difference was booked to
+        // INVENTORY_ADJUSTMENT (ADR-016 §2).
+        const received = original?.receivedGrnId ? await this.goodsNotes.billingSource(tx, original.receivedGrnId) : null;
+
         // Split stock vs service portions for the journal.
         let stockNet = new Decimal(0);
         let serviceNet = new Decimal(0);
         let writeOff = new Decimal(0);
+        let variance = new Decimal(0);
         for (const line of draft.lines) {
           if (stockItems.has(line.itemId)) {
-            // TRADE-03 (§9.5, ADR-016): the goods leave at the original
-            // purchase line's cost, the value the journal takes off
-            // INVENTORY, not at today's average.
+            // TRADE-03 (§9.5, ADR-016 §3): the goods leave at the cost they
+            // entered at, the value the journal takes off INVENTORY, not at
+            // today's average: the original purchase line's cost, or for a
+            // billed GRN the received cost, the line's share of the price
+            // difference going back out of INVENTORY_ADJUSTMENT.
+            const grnItem = received?.byItem.get(line.itemId);
+            const qtyBase = new Decimal(line.qtyBase.toString());
+            const cost = grnItem
+              ? {
+                  unitCost: grnItem.value.div(grnItem.qty),
+                  totalCost: qtyBase.eq(grnItem.qty) ? grnItem.value : round3(grnItem.value.times(qtyBase).div(grnItem.qty)),
+                }
+              : {
+                  unitCost: new Decimal(line.originalLine.netAmount.toString()).div(line.originalLine.qtyBase.toString()),
+                  totalCost: new Decimal(line.netAmount.toString()),
+                };
             const res = await this.ledger.applyMovement(tx, companyId, {
               warehouseId: draft.warehouseId,
               itemId: line.itemId,
               movementDate: returnDate,
               type: 'OUT',
               qty: line.qtyBase.toString(),
-              unitCost: new Decimal(line.originalLine.netAmount.toString()).div(line.originalLine.qtyBase.toString()),
-              totalCost: line.netAmount.toString(),
+              unitCost: cost.unitCost,
+              totalCost: cost.totalCost,
               sourceType: SOURCE,
               sourceId: draft.id,
               sourceLineId: line.id,
               description: `Purchase return ${draft.id}`,
             });
             stockNet = stockNet.plus(res.totalCost);
+            variance = variance.plus(new Decimal(line.netAmount.toString()).minus(res.totalCost));
             writeOff = writeOff.plus(res.writeOff);
           } else {
             serviceNet = serviceNet.plus(line.netAmount);
@@ -403,6 +430,12 @@ export class PurchaseReturnsService {
         }
         if (stockNet.gt(0)) {
           journalLines.push({ accountId: mapping.INVENTORY, credit: stockNet.toString() });
+        }
+        // Return of a billed GRN: the line's price difference reversed.
+        if (variance.gt(0)) {
+          journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, credit: variance.toString(), description: 'Invoice vs goods received' });
+        } else if (variance.lt(0)) {
+          journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, debit: variance.abs().toString(), description: 'Invoice vs goods received' });
         }
         if (serviceNet.gt(0)) {
           journalLines.push({ accountId: mapping.PURCHASES, credit: serviceNet.toString() });
