@@ -1099,6 +1099,8 @@ export const ar = {
   ui: {
     cellLabel: '{{column}}، السطر {{line}}',
     userMenu: 'قائمة المستخدم',
+    switchCompany: 'المنشأة',
+    openRowHint: 'اضغط Enter لفتح السجل',
     creditSuffix: 'دائن',
   },
   health: {
@@ -2243,6 +2245,8 @@ export const en: typeof ar = {
   ui: {
     cellLabel: '{{column}}, line {{line}}',
     userMenu: 'User menu',
+    switchCompany: 'Company',
+    openRowHint: 'Press Enter to open',
     creditSuffix: 'Cr',
   },
   health: {

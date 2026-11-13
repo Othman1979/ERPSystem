@@ -141,8 +141,9 @@ describe('openableRow makes list rows keyboard-operable (UI-05)', () => {
 
   it('is focusable and opens on click, Enter and Space', () => {
     const opened: number[] = [];
-    const props = openableRow<number>((r) => opened.push(r))(7);
+    const props = openableRow<number>((r) => opened.push(r), 'Press Enter to open')(7);
     expect(props.tabIndex).toBe(0);
+    expect(props['aria-description']).toBe('Press Enter to open');
     props.onClick();
     const enter = key('Enter');
     props.onKeyDown(enter as never);
@@ -153,7 +154,7 @@ describe('openableRow makes list rows keyboard-operable (UI-05)', () => {
 
   it('leaves keys pressed inside the row (buttons, inputs) alone', () => {
     const opened: number[] = [];
-    const props = openableRow<number>((r) => opened.push(r))(7);
+    const props = openableRow<number>((r) => opened.push(r), 'Press Enter to open')(7);
     props.onKeyDown(key('Enter', false) as never);
     props.onKeyDown(key('a') as never);
     expect(opened).toEqual([]);

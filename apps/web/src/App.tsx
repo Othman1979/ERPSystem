@@ -219,6 +219,7 @@ function AppShell() {
   const siderCollapsed = isTablet ? !tabletExpanded : collapsed;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const language = i18n.language as AppLanguage;
   const isRtl = language !== 'en';
@@ -284,7 +285,13 @@ function AppShell() {
   // so the page title keeps the top bar's width (UI-10).
   const userMenu: MenuProps = {
     items: [
-      { key: 'user', label: userName, disabled: true },
+      // A heading, not a disabled item: readable (text-2) and not announced as unavailable.
+      {
+        type: 'group',
+        key: 'user',
+        label: <span className="topbar-menu-user">{userName}</span>,
+        children: [],
+      },
       { type: 'divider' },
       { key: 'help', icon: <QuestionCircleOutlined />, label: t('help.title') },
       { key: 'language', icon: <TranslationOutlined />, label: t('language.switchTo') },
@@ -349,11 +356,25 @@ function AppShell() {
               onChange={(v) => void switchTenant(v)}
               options={me.tenants.map((tn) => ({ value: tn.tenantId, label: tn.tenantName }))}
               popupMatchSelectWidth={false}
+              aria-label={t('ui.switchCompany')}
+              title={t('ui.switchCompany')}
             />
           )}
           {isMobile ? (
-            <Dropdown menu={userMenu} trigger={['click']} placement="bottomRight">
-              <button type="button" className="topbar-user-menu" aria-label={t('ui.userMenu')}>
+            <Dropdown
+              menu={userMenu}
+              trigger={['click']}
+              placement="bottomRight"
+              open={userMenuOpen}
+              onOpenChange={setUserMenuOpen}
+            >
+              <button
+                type="button"
+                className="topbar-user-menu"
+                aria-label={t('ui.userMenu')}
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+              >
                 <Avatar size="small" icon={<UserOutlined />} />
               </button>
             </Dropdown>

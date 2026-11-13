@@ -27,8 +27,12 @@ export interface ContrastPair {
   use: string;
   fg: string;
   bg: string;
-  /** 4.5 for text, 3 for large text and non-text (borders, focus rings, icons). */
-  min: 4.5 | 3;
+  /**
+   * 4.5 for text, 3 for large text and non-text (borders, focus rings, icons).
+   * 1 marks a pair recorded for information only, where WCAG asks for no
+   * ratio because something other than colour carries the difference.
+   */
+  min: 4.5 | 3 | 1;
 }
 
 const p = palette;
@@ -44,6 +48,12 @@ export const CONTRAST_PAIRS: ContrastPair[] = [
   { use: 'text on hovered row', fg: p.text, bg: g.rowHover, min: 4.5 },
   { use: 'text on selected row (ink-100)', fg: p.text, bg: g.rowSelected, min: 4.5 },
   { use: 'text on zebra row', fg: p.text, bg: g.zebra, min: 4.5 },
+  { use: 'text on sorted column header', fg: g.headText, bg: g.headSortBg, min: 4.5 },
+  { use: 'text on hovered column header', fg: g.headText, bg: g.headHoverBg, min: 4.5 },
+  // Segmented controls: the selected option is an ink fill on the panel track.
+  { use: 'on-ink on selected segment (ink-600)', fg: p.onInk, bg: p.ink600, min: 4.5 },
+  { use: 'selected segment vs track (panel)', fg: p.ink600, bg: p.panel, min: 3 },
+  { use: 'unselected segment text on track', fg: p.text, bg: p.panel, min: 4.5 },
   { use: 'text-2 on surface', fg: p.text2, bg: p.surface, min: 4.5 },
   { use: 'text-2 on canvas', fg: p.text2, bg: p.canvas, min: 4.5 },
   { use: 'text-2 on panel', fg: p.text2, bg: p.panel, min: 4.5 },
@@ -63,6 +73,9 @@ export const CONTRAST_PAIRS: ContrastPair[] = [
   { use: 'ink-600 on selected menu item (ink-100)', fg: p.ink600, bg: p.ink100, min: 4.5 },
   { use: 'ink-500 (link) on surface', fg: p.ink500, bg: p.surface, min: 4.5 },
   { use: 'ink-500 (link) on panel', fg: p.ink500, bg: p.panel, min: 4.5 },
+  // Links in text are underlined (index.css), so colour need not set them apart (WCAG 1.4.1).
+  { use: 'link vs body text (underlined; info only)', fg: p.ink500, bg: p.text, min: 1 },
+  { use: 'link vs secondary text (underlined; info only)', fg: p.ink500, bg: p.text2, min: 1 },
   // Semantic
   { use: 'success on surface', fg: p.success, bg: p.surface, min: 4.5 },
   { use: 'success on success-bg (tag)', fg: p.success, bg: p.successBg, min: 4.5 },
@@ -74,6 +87,9 @@ export const CONTRAST_PAIRS: ContrastPair[] = [
   { use: 'info on surface', fg: p.info, bg: p.surface, min: 4.5 },
   { use: 'info on info-bg (tag, alert)', fg: p.info, bg: p.infoBg, min: 4.5 },
   { use: 'on-ink on danger button', fg: p.onInk, bg: p.danger, min: 4.5 },
+  { use: 'on-ink on danger button hover', fg: p.onInk, bg: p.dangerHover, min: 4.5 },
+  { use: 'on-ink on danger button pressed', fg: p.onInk, bg: p.dangerActive, min: 4.5 },
+  { use: 'teal (cyan tag) on teal-bg', fg: p.tone.trade, bg: p.tealBg, min: 4.5 },
   { use: 'on-ink on success fill', fg: p.onInk, bg: p.success, min: 4.5 },
   { use: 'text on neutral tag (panel)', fg: p.text, bg: p.panel, min: 4.5 },
   // Module tones (home-screen icons next to their label)

@@ -34,6 +34,18 @@ body {
   scrollbar-color: var(--c-border-strong) transparent;
 }
 
+/* Links inside running text are underlined, not told apart by colour alone
+   (WCAG 1.4.1). Navigation (menus, tabs, pagination, tiles) is not text. */
+p a,
+label a,
+.ant-typography a,
+a.ant-typography,
+.ant-form-item-extra a,
+.ant-alert a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* --------------------------------------------------------------- focus */
 
 /*
@@ -59,6 +71,22 @@ textarea:focus-visible,
 .ant-radio-wrapper:has(input:focus-visible) .ant-radio-inner,
 .ant-checkbox-wrapper:has(input:focus-visible) .ant-checkbox-inner {
   outline: 2px solid var(--c-focus) !important;
+  outline-offset: 2px;
+}
+
+/* Segmented controls mark keyboard focus with a class, not :focus-visible. */
+.ant-segmented .ant-segmented-item-focused {
+  outline: 2px solid var(--c-focus) !important;
+  outline-offset: 2px;
+}
+
+/*
+ * Selects on the ink top bar (branch, company): antd's ink border and halo
+ * vanish against ink-900, so ring the whole control in the light focus colour.
+ */
+.app-topbar .ant-select:focus-within .ant-select-selector {
+  /* !important: antd's focused-select rule (a long :not() chain) sets outline: 0. */
+  outline: 2px solid var(--c-focus-on-ink) !important;
   outline-offset: 2px;
 }
 
@@ -88,7 +116,7 @@ textarea:focus-visible,
 }
 
 .app-topbar .topbar-btn:hover {
-  background: rgba(251, 250, 247, 0.14) !important;
+  background: var(--c-on-ink-hover) !important;
 }
 
 /* Language switch: a quiet outlined button, not a white block (UI-17). */
@@ -99,7 +127,7 @@ textarea:focus-visible,
 }
 
 .app-topbar .topbar-lang.ant-btn:hover {
-  background: rgba(251, 250, 247, 0.14) !important;
+  background: var(--c-on-ink-hover) !important;
   color: var(--c-on-ink) !important;
   border-color: var(--c-on-ink) !important;
 }
@@ -148,6 +176,16 @@ textarea:focus-visible,
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The signed-in user's name heading the phone user menu */
+.topbar-menu-user {
+  display: block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-2);
 }
 
 /* Avatar button that opens the user menu on phones */

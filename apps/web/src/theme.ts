@@ -10,6 +10,12 @@ import type { ThemeConfig } from 'antd';
  * no pure white anywhere on screen (print stays white: paper is white).
  */
 
+/** #rrggbb at the given opacity, so tints derive from tokens instead of copying them. */
+function alpha(hex: string, a: number): string {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
 /** Ink scale. `ink600` is the base (primary buttons, active tab, selection marker). */
 const ink = {
   ink900: '#172c48', // top bar, pressed primary
@@ -48,15 +54,26 @@ const semantic = {
   danger: '#b42318',
   dangerBg: '#fbe9e7',
   dangerBorder: '#efb4ad',
+  dangerHover: '#9a1d13', // danger button hover
+  dangerActive: '#821910', // danger button pressed
   info: '#1f5f99',
   infoBg: '#e7f0f8',
   infoBorder: '#b3cde6',
+  // Teal tint for antd's cyan tag (text is tone.trade).
+  tealBg: '#e3f1f1',
+  tealBorder: '#a6d3d4',
 } as const;
 
 const focus = {
   focus: '#2f6fd0', // focus ring on surface / canvas
   focusOnInk: '#9cc2ff', // focus ring on the top bar and primary buttons
-  focusHalo: 'rgba(47, 111, 208, 0.35)', // antd input halo
+  focusHalo: alpha('#2f6fd0', 0.35), // antd input halo
+} as const;
+
+/** Translucent overlays, derived from the tokens above. */
+const overlay = {
+  onInkHover: alpha(ink.onInk, 0.14), // hover on the top bar
+  inkHover: alpha(ink.ink600, 0.08), // hover of text buttons on light surfaces
 } as const;
 
 export const palette = {
@@ -64,10 +81,13 @@ export const palette = {
   ...neutral,
   ...semantic,
   ...focus,
+  ...overlay,
   /** Tables and data-entry grids. */
   grid: {
     headBg: '#e3e7ec',
     headText: neutral.text,
+    headSortBg: '#d9dee5', // sorted column header
+    headHoverBg: '#dde2e8', // hovered sortable header
     line: neutral.border,
     frame: neutral.borderStrong,
     zebra: '#f7f5f1',
@@ -110,7 +130,7 @@ export const cssVariables: Record<string, string> = (() => {
   vars['--radius-sm'] = '2px';
   vars['--radius-pill'] = '999px';
   // The only shadow: floating layers (dialogs, menus). Cards sit flat (UI-09).
-  vars['--shadow-float'] = '0 6px 16px rgba(23, 44, 72, 0.12), 0 1px 3px rgba(23, 44, 72, 0.08)';
+  vars['--shadow-float'] = `0 6px 16px ${alpha(ink.ink900, 0.12)}, 0 1px 3px ${alpha(ink.ink900, 0.08)}`;
   return vars;
 })();
 
@@ -143,8 +163,8 @@ const presetTagShades = {
   blue1: semantic.infoBg,
   blue3: semantic.infoBorder,
   blue7: semantic.info,
-  cyan1: '#e3f1f1',
-  cyan3: '#a6d3d4',
+  cyan1: semantic.tealBg,
+  cyan3: semantic.tealBorder,
   cyan7: palette.tone.trade,
 } as const;
 
@@ -180,8 +200,8 @@ export const antdTheme: ThemeConfig = {
     colorErrorBg: semantic.dangerBg,
     colorErrorBorder: semantic.dangerBorder,
     colorErrorText: semantic.danger,
-    colorErrorHover: '#9a1d13',
-    colorErrorActive: '#821910',
+    colorErrorHover: semantic.dangerHover,
+    colorErrorActive: semantic.dangerActive,
     colorInfo: semantic.info,
     colorInfoBg: semantic.infoBg,
     colorInfoBorder: semantic.infoBorder,
@@ -250,7 +270,7 @@ export const antdTheme: ThemeConfig = {
       primaryShadow: 'none',
       defaultShadow: 'none',
       dangerShadow: 'none',
-      textHoverBg: 'rgba(31, 58, 95, 0.08)',
+      textHoverBg: overlay.inkHover,
     },
     Card: { headerBg: 'transparent', colorBorderSecondary: neutral.border },
     Table: {
@@ -258,8 +278,8 @@ export const antdTheme: ThemeConfig = {
       headerColor: palette.grid.headText,
       headerSplitColor: palette.grid.frame,
       headerBorderRadius: 0,
-      headerSortActiveBg: '#d9dee5',
-      headerSortHoverBg: '#dde2e8',
+      headerSortActiveBg: palette.grid.headSortBg,
+      headerSortHoverBg: palette.grid.headHoverBg,
       bodySortBg: palette.grid.zebra,
       borderColor: palette.grid.line,
       rowHoverBg: palette.grid.rowHover,
@@ -292,11 +312,15 @@ export const antdTheme: ThemeConfig = {
       optionSelectedColor: neutral.text,
       optionActiveBg: palette.grid.rowHover,
     },
+    // The selected option is a solid ink fill, like solid radio buttons (it was
+    // a near-white chip, 1.16:1 against the track).
     Segmented: {
       trackBg: neutral.panel,
-      itemSelectedBg: neutral.surfaceRaised,
-      itemSelectedColor: ink.ink600,
-      itemColor: neutral.text2,
+      itemSelectedBg: ink.ink600,
+      itemSelectedColor: ink.onInk,
+      itemColor: neutral.text,
+      itemHoverBg: palette.grid.rowHover,
+      itemHoverColor: neutral.text,
     },
     Modal: {
       contentBg: neutral.surfaceRaised,

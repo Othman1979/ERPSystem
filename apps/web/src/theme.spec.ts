@@ -94,8 +94,18 @@ describe('CSS variables are generated from the palette (UI-20)', () => {
     expect(used.filter((name) => !(name in cssVariables))).toEqual([]);
   });
 
-  it('index.css repeats no hex colour outside print', () => {
+  it('index.css repeats no colour literal outside print (hex, rgb or rgba)', () => {
     expect(screenCss.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
+    expect(screenCss.match(/\brgba?\([^)]*\)/gi) ?? []).toEqual([]);
+  });
+
+  it('theme.ts defines every hex colour as a named token, never inline in a mapping', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/theme.ts'), 'utf8');
+    const stray = src
+      .split(/\r?\n/)
+      .filter((line) => /#[0-9a-f]{6}/i.test(line))
+      .filter((line) => !/^\s+[a-zA-Z0-9]+: '#[0-9a-f]{6}',/i.test(line) && !/alpha\(/.test(line));
+    expect(stray).toEqual([]);
   });
 
   it('maps palette keys to kebab-case names', () => {
