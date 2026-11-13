@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import mariadb from 'mariadb';
@@ -45,6 +44,7 @@ function optionValue(v: string): string {
  * Whether the server offers TLS (`have_ssl` = YES). Asked over the app's own
  * driver, which connects without TLS. When the server cannot answer (MySQL
  * without the variable, an unexpected error), the tools keep their defaults.
+ * (Same as session 2D's PR #28, kept identical for the merge.)
  */
 export async function serverOffersTls(target: DbTarget): Promise<boolean> {
   try {
@@ -66,7 +66,6 @@ export async function serverOffersTls(target: DbTarget): Promise<boolean> {
   }
 }
 
-/** The `[client]` option file the tools read (see withOptionFile). */
 export function optionFileBody(target: DbTarget, serverTls: boolean): string {
   return [
     '[client]',
@@ -79,10 +78,9 @@ export function optionFileBody(target: DbTarget, serverTls: boolean): string {
     `user=${optionValue(target.user)}`,
     `password=${optionValue(target.password)}`,
     // MariaDB clients 11.4+ require TLS by default and refuse a server
-    // without it ("SSL is required, but the server does not support it"):
-    // an 11.x client against a 10.11 server, as on the supported range's
-    // floor (ADR-019). Plain only then, as the app's driver connects; a
-    // server that offers TLS keeps the client's TLS and verification.
+    // without it ("SSL is required, but the server does not support it").
+    // Plain only then, as the app's driver connects; a server that offers
+    // TLS keeps the client's TLS and verification.
     // `loose-`: a client that does not know the option ignores it.
     ...(serverTls ? [] : ['loose-skip-ssl']),
     '',
@@ -92,16 +90,20 @@ export function optionFileBody(target: DbTarget, serverTls: boolean): string {
 /**
  * Runs `fn` with a private option file holding the credentials, so the
  * password is never on a command line (visible to other users in `ps`) or
- * in the environment. The file is removed afterwards.
+ * in the environment. The file is removed afterwards, even when `fn` fails.
+ * It is written into `dir`, a folder the caller owns (the partial backup, or
+ * BACKUP_DIR), never the system temp folder: that disk may be the full one,
+ * and a run killed midway must not leave the password in a shared place.
  */
 export async function withOptionFile<T>(
   target: DbTarget,
   fn: (file: string) => Promise<T>,
+  dir: string,
   serverTls?: boolean,
 ): Promise<T> {
-  const file = path.join(os.tmpdir(), `erp-db-${randomUUID()}.cnf`);
+  const file = path.join(dir, `.erp-db-${randomUUID()}.cnf`);
   const body = optionFileBody(target, serverTls ?? (await serverOffersTls(target)));
-  await writeFile(file, body, { mode: 0o600 });
+  await writeFile(file, body, { mode: 0o600, flag: 'wx' });
   try {
     return await fn(file);
   } finally {

@@ -179,6 +179,7 @@ export class BackupVerifyService {
   /** gunzip → the mysql client, into the scratch database. */
   private async load(target: DbTarget, dump: string): Promise<void> {
     const bin = this.config.get('MYSQL_PATH', { infer: true });
+    // The credentials file goes into the backup folder, never the system temp folder.
     await withOptionFile(target, async (options) => {
       const { done, stdin } = runTool(
         bin,
@@ -186,7 +187,7 @@ export class BackupVerifyService {
         { stdin: true },
       );
       await allOrFirstError([done, pipeline(createReadStream(dump), createGunzip(), stdin!)]);
-    });
+    }, path.dirname(dump));
   }
 
   private async inspect(
