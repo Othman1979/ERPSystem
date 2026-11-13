@@ -117,6 +117,7 @@ export class BackupService {
   private async dumpDatabase(file: string): Promise<ManifestFile> {
     const target = dbTarget(this.config.get('DATABASE_URL', { infer: true }));
     const bin = this.config.get('MYSQLDUMP_PATH', { infer: true });
+    // The credentials file goes into the partial backup folder, never the system temp folder.
     return withOptionFile(target, async (options) => {
       const { done, stdout } = runTool(bin, [
         // Must come first: the credentials, never on the command line.
@@ -140,7 +141,7 @@ export class BackupService {
       });
       await allOrFirstError([done, pipeline(stdout, createGzip(), tap, createWriteStream(file, { mode: PRIVATE_FILE }))]);
       return { name: DB_FILE, bytes, sha256: hash.digest('hex') };
-    });
+    }, path.dirname(file));
   }
 
   /** Every uploaded file (STORAGE_DIR), by its key, in one zip. */

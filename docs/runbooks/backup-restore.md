@@ -76,7 +76,10 @@ node dist/jobs/cli.js backup-verify latest
    gunzip -c backup-…/database.sql.gz | mysql --defaults-extra-file=<ملف الخيارات> <القاعدة الجديدة>
    ```
 4. **المرفقات:** انقل `STORAGE_DIR` الحالي جانباً، وفكّ `storage.zip` مكانه.
-5. **غيّر `DATABASE_URL`** إلى القاعدة الجديدة، ثم شغّل `node dist/jobs/cli.js preflight`.
+5. **غيّر `DATABASE_URL`** إلى القاعدة الجديدة، ثم شغّل `node dist/jobs/cli.js preflight`، ثم
+   `node dist/jobs/cli.js integrity-check` (ADR-019): المراجع بلا FK والترتيب. إذا اشتكى من ترتيب القاعدة فقط
+   (`database: …`)، فالقاعدة أُنشئت بترتيب اللوحة الافتراضي، وأصلحه:
+   `ALTER DATABASE <القاعدة الجديدة> CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
 6. **شغّل التطبيق،** وتحقق: الدخول، وميزان المراجعة متوازن لشركة واحدة على الأقل، وظهور الشعار.
 7. **أعد تشغيل أوامر Cron.**
 

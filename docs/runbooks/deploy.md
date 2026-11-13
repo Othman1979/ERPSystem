@@ -5,8 +5,21 @@
 
 ## المتطلبات
 - Node.js 24 LTS وpnpm 10.
-- **MariaDB 10.6 أو أحدث.**
+- **MariaDB بنسخة LTS بين 10.11 و11.8** (ADR-019). CI يختبر طرفي هذا المدى: `mariadb:10.11` و`mariadb:11.8`.
+  - 10.6 انتهى دعمها في تموز 2026، فلم تعد مقبولة.
+  - اكتب نسخة الاستضافة الفعلية (من مخرجات `preflight`، سطر `VERSION()`) في ADR-019 عند أول نشر. إذا كانت خارج
+    المدى، فأضفها إلى مصفوفة CI قبل النشر.
   - على 11.6.2 وما بعده: الإعداد `SESSION_INIT_SQL` يتكفل بـ snapshot isolation، و`preflight` يتحقق منه.
+  - **الترتيب `utf8mb4_unicode_ci`:** الجداول تُنشأ به صراحة، والـ migration `20261113164500_db_review_indexes`
+    تجعله الافتراضي للقاعدة أيضاً (`ALTER DATABASE`). أنشئ القاعدة في اللوحة بـ utf8mb4 إن سمحت بالاختيار.
+  - **صلاحية ALTER على القاعدة:**
+    - مستخدم الـ migrations يحتاجها لهذه الخطوة. لوحات الاستضافة تمنحها عادةً مع كل الصلاحيات على قاعدة المستخدم.
+    - إن فشلت `migrate deploy` بالخطأ 1044، فـ `ALTER DATABASE` أول جملة في الـ migration، ولم يتغير شيء بعد.
+    - اطلب الصلاحية من دعم الاستضافة، ثم:
+      ```bash
+      pnpm prisma migrate resolve --rolled-back 20261113164500_db_review_indexes
+      pnpm prisma migrate deploy
+      ```
 - **الأداتان `mysqldump` و`mysql`** (أو `mariadb-dump` و`mariadb`)، للنسخ الاحتياطي. `preflight` يفحصهما.
 - **نطاق مع SSL** من لوحة الاستضافة، **وCron** للأوامر الدورية.
 - **قاعدتان تُنشآن من لوحة الاستضافة:**
@@ -86,6 +99,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
    ```
    - اختبار الاستعادة شهرياً، يدوياً: `node dist/jobs/cli.js backup-verify latest`. التفاصيل في
      `backup-restore.md`.
+   - فحص المراجع بلا FK والترتيب شهرياً وبعد كل استعادة: `node dist/jobs/cli.js integrity-check` (ADR-019).
+   - **اتصالات القاعدة:**
+     - كل عملية تفتح pool خاصاً بها، ويبقي الـ pool كل اتصالاته مفتوحة.
+     - التطبيق يأخذ `DB_POOL_SIZE` (10 افتراضياً)، وكل أمر Cron يأخذ 2، إلا إذا مرّر سطره قيمة:
+       `DB_POOL_SIZE=4 node dist/jobs/cli.js backup`.
+     - مجموع pool التطبيق وأوامر Cron التي قد تعمل معاً يجب أن يبقى تحت `max_user_connections` في الاستضافة.
+       مثال: 10 + 2 × 3 = 16.
 7. **مراقبة التشغيل:** مراقب خارجي مجاني على `https://<النطاق>/api/v1/health`، مثل UptimeRobot، كل 5
    دقائق.
 8. **فحص يدوي سريع:**
@@ -102,11 +122,14 @@ Cron يبدأ. لذلك يجري التحديث في نافذة صيانة قص�
    ```bash
    cd ~/erp && git pull && pnpm install --frozen-lockfile --prod=false && pnpm build
    ```
-3. **الـ migrations:**
+3. **أوقف التطبيق، ثم شغّل الـ migrations:**
    ```bash
    cd apps/api && pnpm prisma migrate deploy
    ```
-4. **`preflight`**، ثم أعد تشغيل التطبيق، **وأعد أوامر Cron.**
+   - التطبيق القديم يقرأ أعمدة قد تحذفها migration جديدة. مثال: `20261113164500_db_review_indexes` تحذف
+     `reversal_of_id`، فتفشل الفواتير وأذون البضاعة عنده حتى إعادة التشغيل. لذلك لا تُطبَّق migration والتطبيق
+     القديم يعمل.
+4. **`preflight`**، ثم شغّل التطبيق، **وأعد أوامر Cron.**
 5. **التحقق:** الإصدار الجديد يظهر في المتصفح فوراً، لأن `index.html` لا يُخزَّن مؤقتاً. من فتح الصفحة أثناء
    البناء يعيد تحميلها.
    - لتحديث بلا انقطاع لاحقاً: ابنِ في مجلد إصدار جديد، ثم بدّل إليه وأعد التشغيل.

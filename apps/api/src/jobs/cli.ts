@@ -6,6 +6,9 @@ import { BackupVerifyService } from './backup/backup-verify.service.js';
 import { BackupService } from './backup/backup.service.js';
 import { EInvoiceJobsModule } from './einvoice-jobs.module.js';
 import { ErrorDigestService } from './error-digest.service.js';
+import { IntegrityCheckModule } from './integrity-check.module.js';
+import { IntegrityCheckService } from './integrity-check.service.js';
+import { applyJobEnv } from './job-env.js';
 import { JobsModule } from './jobs.module.js';
 import { PasswordResetService } from './password-reset.service.js';
 import { PlatformAdminGrantService } from './platform-admin-grant.service.js';
@@ -26,6 +29,7 @@ import { TenantStatusService } from './tenant-status.service.js';
  *   backup                               daily Cron: database + uploaded files, rotated (ADR-010 §10.2)
  *   backup-verify <folder|latest> [--keep]   monthly: restore into a scratch database and check it
  *   error-digest                         hourly Cron: alert new errors to ALERT_WEBHOOK_URL (ADR-010 §10.3)
+ *   integrity-check [--tenant <id>]       monthly / after a restore: references without a foreign key, collation (DB-15, DB-18)
  *   stock-verify                         daily Cron: stock projections and stock value vs the GL, every tenant (TRADE-20)
  * A Cron command that fails is recorded as a JOB error for the platform console.
  * Prints the result as JSON; exits 1 on failure, refusal or a failed check so Cron mail shows it.
@@ -100,6 +104,15 @@ const JOBS: Record<string, Job> = {
       return app.get(BackupVerifyService).run(which, args.includes('--keep'));
     },
   },
+  'integrity-check': {
+    module: IntegrityCheckModule,
+    run: async (app, args) => {
+      const at = args.indexOf('--tenant');
+      const id = at < 0 ? undefined : args[at + 1];
+      if (at >= 0 && (!id || !/^\d+$/.test(id))) throw new Error('Usage: integrity-check [--tenant <tenantId>]');
+      return app.get(IntegrityCheckService).run(id === undefined ? undefined : BigInt(id));
+    },
+  },
 };
 
 async function main(): Promise<void> {
@@ -112,6 +125,8 @@ async function main(): Promise<void> {
   }
   // A command never starts the in-process e-invoice loop: it runs once and exits.
   process.env.EINVOICE_WORKER = 'off';
+  // A small database pool unless the Cron line passes DB_POOL_SIZE (DB-07).
+  applyJobEnv(process.env);
   const app = await NestFactory.createApplicationContext(job.module, { logger: ['error', 'warn'] });
   try {
     const result = await job.run(app, args);
