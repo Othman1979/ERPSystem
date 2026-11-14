@@ -1,3 +1,4 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -10,6 +11,8 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
+import { DATE_PATTERN, ID_PATTERN } from '../../../common/pipes/parse-id.pipe.js';
+import { PageQueryDto, SortParam, sortValues } from '../../../common/paging/page-query.dto.js';
 
 const PAYMENT_TYPES = ['CASH', 'CREDIT'] as const;
 const DECIMAL = /^\d+(\.\d{1,6})?$/;
@@ -116,4 +119,55 @@ export class CreateSalesReturnDto {
   @ValidateNested({ each: true })
   @Type(() => SalesReturnLineDto)
   lines!: SalesReturnLineDto[];
+}
+
+export const SALES_INVOICE_SORT_KEYS = ['invoiceDate', 'invoiceNo', 'grandTotal'] as const;
+export const SALES_INVOICE_SORTS = sortValues(SALES_INVOICE_SORT_KEYS);
+
+/**
+ * GET /sales-invoices (ADR-022 §2): a numbered page, newest first by default.
+ * `q` matches the invoice number and the customer's code and names.
+ */
+export class ListSalesInvoicesQueryDto extends PageQueryDto {
+  @SortParam(SALES_INVOICE_SORTS, '-invoiceDate')
+  sort?: (typeof SALES_INVOICE_SORTS)[number];
+
+  @ApiPropertyOptional({ enum: ['DRAFT', 'POSTED'] })
+  @IsOptional()
+  @IsIn(['DRAFT', 'POSTED'])
+  status?: 'DRAFT' | 'POSTED';
+
+  @ApiPropertyOptional({ enum: PAYMENT_TYPES })
+  @IsOptional()
+  @IsIn(PAYMENT_TYPES)
+  paymentType?: (typeof PAYMENT_TYPES)[number];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
+  customerId?: string;
+
+  /** Invoice date on or after (yyyy-mm-dd). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  from?: string;
+
+  /** Invoice date on or before (yyyy-mm-dd). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  to?: string;
+
+  /**
+   * `true`: posted credit invoices that still owe something (grand total above
+   * the paid amount), for the allocation picker. An invoice settled only by
+   * credit returns can still be listed, with `outstanding` 0.
+   */
+  @ApiPropertyOptional({ enum: ['true', 'false'] })
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  open?: 'true' | 'false';
 }

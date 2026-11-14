@@ -79,5 +79,9 @@ export enum ErrorCode {
   // DB-15 / ADR-021: a document now references the party, so it can't be
   // deleted; deactivate it instead.
   PARTY_IN_USE = 'PARTY_IN_USE',
+  // ADR-022 §7: a keyset cursor that is malformed, tampered, another read's or tenant's, or for other filters.
+  CURSOR_INVALID = 'CURSOR_INVALID',
+  // ADR-003 §13: a company-wide report needs access to every branch.
+  ALL_BRANCHES_REQUIRED = 'ALL_BRANCHES_REQUIRED',
   INTERNAL = 'INTERNAL',
 }

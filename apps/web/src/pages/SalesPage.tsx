@@ -36,6 +36,8 @@ import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
+import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { useNewFromUrl } from '../useNewFromUrl';
 import {
@@ -254,18 +256,19 @@ function InvoicesTab() {
   });
 
   const [paymentFilter, setPaymentFilter] = useState<string | undefined>(undefined);
-  const [search, setSearch] = useState('');
-  const invoicesQuery = useQuery({
-    queryKey: ['sales-invoices', statusFilter, paymentFilter],
-    queryFn: ({ signal }) =>
-      salesControllerListInvoices({
-        status: statusFilter ?? '',
-        paymentType: paymentFilter ?? '',
-        customerId: '',
-      }, { signal }).then((r) => r.data as unknown as SalesInvoice[]),
+  // Server-paged (ADR-022): search, filters, sort and page go to the API.
+  const list = usePagedQuery<SalesInvoice, { status?: string; paymentType?: string }>({
+    key: ['sales-invoices', 'list'],
+    filters: { status: statusFilter, paymentType: paymentFilter },
+    defaultSort: '-invoiceDate',
+    fetch: (params, signal) =>
+      salesControllerListInvoices(params as Parameters<typeof salesControllerListInvoices>[0], { signal }).then(
+        (r) => r.data as unknown as Page<SalesInvoice>,
+      ),
     enabled: screen === 'list',
   });
-  const { data: invoices, isLoading } = invoicesQuery;
+  const invoicesQuery = list.query;
+  const { isLoading } = invoicesQuery;
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['sales-invoice', invoiceId],
@@ -310,6 +313,9 @@ function InvoicesTab() {
     {
       title: t('sales.invoiceNo'),
       dataIndex: 'invoiceNo',
+      key: 'invoiceNo',
+      sorter: true,
+      sortOrder: list.sortOrderOf('invoiceNo'),
       className: 'nowrap',
       width: 140,
       render: (v: string | null, r: SalesInvoice) => v ?? `#${r.id}`,
@@ -317,6 +323,9 @@ function InvoicesTab() {
     {
       title: t('sales.date'),
       dataIndex: 'invoiceDate',
+      key: 'invoiceDate',
+      sorter: true,
+      sortOrder: list.sortOrderOf('invoiceDate'),
       width: 110,
       render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
     },
@@ -336,6 +345,9 @@ function InvoicesTab() {
     {
       title: t('sales.grandTotal'),
       dataIndex: 'grandTotal',
+      key: 'grandTotal',
+      sorter: true,
+      sortOrder: list.sortOrderOf('grandTotal'),
       width: 120,
       align: 'right' as const,
       render: amountCell,
@@ -394,16 +406,12 @@ function InvoicesTab() {
     );
   }
 
-  const shown = (invoices ?? []).filter((r) =>
-    matchesSearch(search, r.invoiceNo, displayName(r.customer)),
-  );
-
   return (
     <div>
       {contextHolder}
       <ListToolbar
-        search={search}
-        onSearch={setSearch}
+        search={list.search}
+        onSearch={list.setSearch}
         searchPlaceholder={t('sales.searchPlaceholder')}
         filters={
           <>
@@ -429,7 +437,7 @@ function InvoicesTab() {
             />
           </>
         }
-        count={shown.length}
+        count={list.total}
         actions={
           <Button
             type="primary"
@@ -446,11 +454,12 @@ function InvoicesTab() {
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={shown}
+        dataSource={list.rows}
         locale={tableLocale(invoicesQuery)}
         columns={columns}
         size="small"
-        pagination={{ pageSize: 20 }}
+        pagination={list.pagination}
+        onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => { setInvoiceId(r.id); setScreen('view'); }, style: { cursor: 'pointer' } })}
       />
     </div>
@@ -1080,13 +1089,6 @@ function ReturnForm({
   const [qtyByLine, setQtyByLine] = useState<Record<string, string>>({});
 
   const lookups = useSalesLookups();
-  const { data: invoices } = useQuery({
-    queryKey: ['sales-invoices', 'POSTED'],
-    queryFn: ({ signal }) =>
-      salesControllerListInvoices({ status: 'POSTED', paymentType: '', customerId: '' }, { signal }).then(
-        (r) => r.data as unknown as SalesInvoice[],
-      ),
-  });
   const { data: invoice } = useQuery({
     queryKey: ['sales-invoice', invoiceId],
     queryFn: ({ signal }) =>
@@ -1174,14 +1176,20 @@ function ReturnForm({
       {contextHolder}
       <DocFields>
         <DocField label={t('sales.invoice')} required error={invoiceError}>
-          <Select
-            showSearch
-            optionFilterProp="label"
+          {/* Searches posted invoices on the server by number or customer (ADR-022 §8). */}
+          <RemoteSelect
+            queryKey={['sales-invoices', 'pick-posted']}
+            placeholder={t('sales.searchPlaceholder')}
+            fetchOptions={(q, signal) =>
+              salesControllerListInvoices({ status: 'POSTED', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) }, { signal }).then(
+                (r) =>
+                  (r.data as unknown as Page<SalesInvoice>).items.map((i) => ({
+                    value: i.id,
+                    label: `${i.invoiceNo ?? `#${i.id}`} — ${displayName(i.customer) ?? ''} — ${money(i.grandTotal)}`,
+                  })),
+              )
+            }
             status={invoiceError ? 'error' : undefined}
-            options={(invoices ?? []).map((i) => ({
-              value: i.id,
-              label: `${i.invoiceNo ?? `#${i.id}`} — ${displayName(i.customer) ?? ''} — ${money(i.grandTotal)}`,
-            }))}
             value={invoiceId}
             onChange={(v) => {
               setInvoiceId(v);

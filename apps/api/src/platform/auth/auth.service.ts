@@ -403,6 +403,7 @@ export class AuthService {
     // active branches when none are assigned. Tenant-scoped client.
     let branches: { id: string; code: string; nameAr: string; nameEn: string | null }[] = [];
     let permissions: string[] = [];
+    let allBranches = true;
     if (current) {
       const db = this.prisma.forTenant(current.tenantId);
       const [assigned, active, granted] = await Promise.all([
@@ -423,6 +424,7 @@ export class AuthService {
       ]);
       permissions = granted.map((p) => p.permissionCode).sort();
       const allowed = new Set(assigned.map((a) => a.branchId));
+      allBranches = allowed.size === 0;
       branches = active
         .filter((b) => allowed.size === 0 || allowed.has(b.id))
         .map((b) => ({ id: b.id.toString(), code: b.code, nameAr: b.nameAr, nameEn: b.nameEn }));
@@ -456,6 +458,8 @@ export class AuthService {
             permissions,
             defaultBranchId: current.defaultBranchId?.toString() ?? null,
             branches,
+            /** No assigned branch: may open the company-wide reports (ADR-003 §13–§14). */
+            allBranches,
           }
         : null,
     };

@@ -5,7 +5,7 @@ import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { RequiresIdempotencyKey } from '../../common/idempotency/requires-idempotency-key.decorator.js';
 import { SalesInvoicesService } from './sales-invoices.service.js';
 import { SalesReturnsService } from './sales-returns.service.js';
-import { CreateSalesInvoiceDto, CreateSalesReturnDto } from './dto/sales.dto.js';
+import { CreateSalesInvoiceDto, CreateSalesReturnDto, ListSalesInvoicesQueryDto } from './dto/sales.dto.js';
 import { ExportQueryDto } from '../printing/dto/export.dto.js';
 import { PrintingService } from '../printing/printing.service.js';
 import { salesInvoicePrint, salesReturnPrint } from './sales.print.js';
@@ -21,14 +21,11 @@ export class SalesController {
 
   // ------------------------------------------------------- sales invoices
 
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022), the caller's branches only. */
   @Get('sales-invoices')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  listInvoices(
-    @Query('status') status?: string,
-    @Query('paymentType') paymentType?: string,
-    @Query('customerId') customerId?: string,
-  ) {
-    return this.invoices.list(status, paymentType, customerId);
+  listInvoices(@Query() q: ListSalesInvoicesQueryDto) {
+    return this.invoices.list(q);
   }
 
   @Get('sales-invoices/:id')
@@ -37,7 +34,7 @@ export class SalesController {
     return this.invoices.get(BigInt(id));
   }
 
-  /** Printed invoice (BUILD_PLAN §13.7, §15): A4 PDF with the JoFotara QR. */
+  /** Printed invoice (BUILD_PLAN §13.7, §15): A4 PDF with the JoFotara QR; another branch's answers 404 (ADR-003 §11). */
   @Get('sales-invoices/:id/pdf')
   @RequirePermission(PERMISSIONS.TENANT_READ)
   async invoicePdf(@Param('id') id: string, @Query() q: ExportQueryDto) {

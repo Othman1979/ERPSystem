@@ -435,7 +435,13 @@ describe('Phase 8 — reports', () => {
     expect(month.totals.cost).toBe(is.costOfSales.rows[0].amount);
 
     // Against the posted documents themselves.
-    const invoices = (await get('/api/v1/sales-invoices?status=POSTED')) as { invoiceDate: string; netTotal: string; taxTotal: string; grandTotal: string }[];
+    // One page of 100 holds every posted invoice of this tenant (ADR-022).
+    const page = (await get('/api/v1/sales-invoices?status=POSTED&pageSize=100')) as {
+      total: number;
+      items: { invoiceDate: string; netTotal: string; taxTotal: string; grandTotal: string }[];
+    };
+    expect(page.items.length).toBe(page.total);
+    const invoices = page.items;
     const in2026 = invoices.filter((i) => i.invoiceDate.startsWith('2026'));
     const returns = (await get('/api/v1/sales-returns?status=POSTED')) as { netTotal: string; grandTotal: string }[];
     expect(m3(in2026.reduce((s, i) => s.plus(i.netTotal), new Decimal(0)).minus(returns.reduce((s, r) => s.plus(r.netTotal), new Decimal(0))))).toBe('630.000');

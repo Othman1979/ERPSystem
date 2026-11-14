@@ -1,6 +1,13 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
-import { assertBranchAllowed, currentBranchId, assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
+import {
+  assertBranchAllowed,
+  assertWarehouseBranchAllowed,
+  branchWhere,
+  currentBranchId,
+} from '../../common/branch/branch-context.js';
+import { findPage, mapPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -40,7 +47,7 @@ import {
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
-import type { CreateSalesInvoiceDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
+import type { CreateSalesInvoiceDto, ListSalesInvoicesQueryDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 
@@ -304,32 +311,80 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     return new Map(rows.map((r) => [r.id, r.invoiceNo]));
   }
 
-  async list(status?: string, paymentType?: string, customerId?: string) {
+  /**
+   * One numbered page of invoices (ADR-022): the caller's branches only
+   * (ADR-003 §10), newest first unless `sort` says otherwise.
+   */
+  async list(query: ListSalesInvoicesQueryDto) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const rows = await db.salesInvoice.findMany({
-      where: {
-        companyId,
-        ...(status ? { status: status as 'DRAFT' | 'POSTED' } : {}),
-        ...(paymentType ? { paymentType: paymentType as 'CASH' | 'CREDIT' } : {}),
-        ...(customerId ? { customerId: BigInt(customerId) } : {}),
+    if (query.from && query.to && query.from > query.to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', { from: query.from, to: query.to });
+    }
+    const q = query.q;
+    const where: Prisma.SalesInvoiceWhereInput = {
+      companyId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.paymentType ? { paymentType: query.paymentType } : {}),
+      ...(query.customerId ? { customerId: BigInt(query.customerId) } : {}),
+      ...(query.from || query.to
+        ? {
+            invoiceDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+      AND: [
+        branchWhere(),
+        query.open === 'true'
+          ? { status: 'POSTED', paymentType: 'CREDIT', grandTotal: { gt: db.salesInvoice.fields.paidAmount } }
+          : {},
+        q
+          ? {
+              OR: [
+                { invoiceNo: { contains: q } },
+                { customer: { code: { contains: q } } },
+                { customer: { nameAr: { contains: q } } },
+                { customer: { nameEn: { contains: q } } },
+              ],
+            }
+          : {},
+      ],
+    };
+    const orderBy = orderByOf<'invoiceDate' | 'invoiceNo' | 'grandTotal', Prisma.SalesInvoiceOrderByWithRelationInput>(
+      query.sort,
+      '-invoiceDate',
+      {
+        invoiceDate: (dir) => ({ invoiceDate: dir }),
+        invoiceNo: (dir) => ({ invoiceNo: dir }),
+        grandTotal: (dir) => ({ grandTotal: dir }),
       },
-      include: {
-        customer: { select: { id: true, code: true, nameAr: true } },
-        warehouse: { select: { id: true, code: true, nameAr: true } },
-        _count: { select: { lines: true } },
-      },
-      orderBy: [{ invoiceDate: 'desc' }, { id: 'desc' }],
-      take: 300,
+      (dir) => ({ id: dir }),
+    );
+    const page = await findPage(db, pageWindow(query), {
+      rows: (tx, window) =>
+        tx.salesInvoice.findMany({
+          where,
+          include: {
+            customer: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+            warehouse: { select: { id: true, code: true, nameAr: true } },
+            _count: { select: { lines: true } },
+          },
+          orderBy,
+          ...window,
+        }),
+      count: (tx) => tx.salesInvoice.count({ where }),
     });
-    const credited = await this.creditedFor(db, rows.map((r) => r.id));
-    return rows.map((r) => withBalance(r, credited));
+    const credited = await this.creditedFor(db, page.items.map((r) => r.id));
+    return mapPage(page, (rows) => rows.map((r) => withBalance(r, credited)));
   }
 
+  /** One invoice; another branch's answers 404 like another tenant's (ADR-003 §11). */
   async get(id: bigint) {
     const { db } = this.support.tenant();
     const inv = await db.salesInvoice.findFirst({
-      where: { id },
+      where: { id, ...branchWhere() },
       include: {
         customer: true,
         warehouse: true,

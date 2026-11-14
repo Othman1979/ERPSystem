@@ -187,10 +187,62 @@ export type StockReportsControllerValuationParams = {
 };
 
 export type SalesControllerListInvoicesParams = {
-  status: string;
-  paymentType: string;
-  customerId: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: SalesControllerListInvoicesSort;
+  status?: SalesControllerListInvoicesStatus;
+  paymentType?: SalesControllerListInvoicesPaymentType;
+  customerId?: string;
+  from?: string;
+  to?: string;
+  open?: SalesControllerListInvoicesOpen;
 };
+
+export type SalesControllerListInvoicesSort = typeof SalesControllerListInvoicesSort[keyof typeof SalesControllerListInvoicesSort];
+
+
+export const SalesControllerListInvoicesSort = {
+  invoiceDate: 'invoiceDate',
+  '-invoiceDate': '-invoiceDate',
+  invoiceNo: 'invoiceNo',
+  '-invoiceNo': '-invoiceNo',
+  grandTotal: 'grandTotal',
+  '-grandTotal': '-grandTotal',
+} as const;
+
+export type SalesControllerListInvoicesStatus = typeof SalesControllerListInvoicesStatus[keyof typeof SalesControllerListInvoicesStatus];
+
+
+export const SalesControllerListInvoicesStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
+
+export type SalesControllerListInvoicesPaymentType = typeof SalesControllerListInvoicesPaymentType[keyof typeof SalesControllerListInvoicesPaymentType];
+
+
+export const SalesControllerListInvoicesPaymentType = {
+  CASH: 'CASH',
+  CREDIT: 'CREDIT',
+} as const;
+
+export type SalesControllerListInvoicesOpen = typeof SalesControllerListInvoicesOpen[keyof typeof SalesControllerListInvoicesOpen];
+
+
+export const SalesControllerListInvoicesOpen = {
+  true: 'true',
+  false: 'false',
+} as const;
 
 export type SalesControllerListReturnsParams = {
   status: string;
@@ -4557,7 +4609,7 @@ export type salesControllerListInvoicesResponseSuccess = (salesControllerListInv
 
 export type salesControllerListInvoicesResponse = (salesControllerListInvoicesResponseSuccess)
 
-export const getSalesControllerListInvoicesUrl = (params: SalesControllerListInvoicesParams,) => {
+export const getSalesControllerListInvoicesUrl = (params?: SalesControllerListInvoicesParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -4572,7 +4624,7 @@ export const getSalesControllerListInvoicesUrl = (params: SalesControllerListInv
   return stringifiedParams.length > 0 ? `/api/v1/sales-invoices?${stringifiedParams}` : `/api/v1/sales-invoices`
 }
 
-export const salesControllerListInvoices = async (params: SalesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListInvoicesResponse> => {
+export const salesControllerListInvoices = async (params?: SalesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListInvoicesResponse> => {
 
   return apiFetch<salesControllerListInvoicesResponse>(getSalesControllerListInvoicesUrl(params),
   {

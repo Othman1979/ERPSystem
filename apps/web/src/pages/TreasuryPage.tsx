@@ -797,10 +797,15 @@ function VoucherForm({
   const partyOptions = parties.map((p) => ({ value: p.id, label: codeAndName(p) }));
 
   // Open invoices for allocations
+  // The customer's open credit invoices, from the server (ADR-022): at most
+  // one page of 100, oldest first, so allocation starts with the oldest debt.
   const { data: salesInvoices } = useQuery({
-    queryKey: ['sales-invoices', 'POSTED'],
-    queryFn: ({ signal }) => listSalesInvoices({ status: 'POSTED', paymentType: 'CREDIT', customerId: '' }, { signal }).then((r) => r.data as unknown as OpenInvoice[]),
-    enabled: kind === 'receipt',
+    queryKey: ['sales-invoices', 'open', partyId],
+    queryFn: ({ signal }) =>
+      listSalesInvoices({ customerId: partyId!, open: 'true', sort: 'invoiceDate', pageSize: 100 }, { signal }).then(
+        (r) => (r.data as unknown as { items: OpenInvoice[] }).items,
+      ),
+    enabled: kind === 'receipt' && !!partyId && partyType === 'CUSTOMER',
   });
   const { data: purchaseInvoices } = useQuery({
     queryKey: ['purchase-invoices', 'POSTED'],

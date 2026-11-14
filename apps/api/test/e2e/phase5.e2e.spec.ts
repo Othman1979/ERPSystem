@@ -465,7 +465,7 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
     expect((parties.body as unknown[]).length).toBe(0);
 
     const invoices = await api().get('/api/v1/sales-invoices').set(auth(tokenB));
-    expect((invoices.body as unknown[]).length).toBe(0);
+    expect(invoices.body).toMatchObject({ items: [], total: 0 });
 
     const other = await api()
       .get(`/api/v1/sales-invoices/${g.__siId as string}`)
