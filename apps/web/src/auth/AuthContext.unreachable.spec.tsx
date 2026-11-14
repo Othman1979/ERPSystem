@@ -97,10 +97,10 @@ describe('AuthProvider when the server does not answer (WEB-04, WEB-18)', () => 
 
   it('drops the cache and reloads /me when a refresh lands in another session', async () => {
     await mount();
-    client.setQueryData(['accounts-tree'], [{ id: 'A-1' }]);
+    client.setQueryData(['accounts'], [{ id: 'A-1' }]);
     const calls = vi.mocked(meControllerMe).mock.calls.length;
     await act(async () => session.onChange!());
-    expect(client.getQueryData(['accounts-tree'])).toBeUndefined();
+    expect(client.getQueryData(['accounts'])).toBeUndefined();
     expect(vi.mocked(meControllerMe).mock.calls.length).toBe(calls + 1);
     expect(last().status).toBe('authed');
   });

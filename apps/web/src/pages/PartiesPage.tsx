@@ -66,8 +66,8 @@ export function PartiesPage() {
 
   const partiesQuery = useQuery({
     queryKey: ['parties', typeFilter],
-    queryFn: () =>
-      partiesControllerList({ partyType: typeFilter ?? '', isActive: '' }).then(
+    queryFn: ({ signal }) =>
+      partiesControllerList({ partyType: typeFilter ?? '', isActive: '' }, { signal }).then(
         (r) => r.data as unknown as Party[],
       ),
   });

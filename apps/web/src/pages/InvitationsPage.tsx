@@ -66,7 +66,7 @@ export function InvitationsPage() {
 
   const query = useQuery({
     queryKey: ['invitations'],
-    queryFn: () => invitationsControllerList().then((r) => r.data as unknown as Invitation[]),
+    queryFn: ({ signal }) => invitationsControllerList({ signal }).then((r) => r.data as unknown as Invitation[]),
   });
   const { data, isLoading } = query;
 

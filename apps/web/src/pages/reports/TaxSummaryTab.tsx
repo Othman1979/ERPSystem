@@ -61,7 +61,7 @@ export function TaxSummaryTab() {
   const params = { from: isoDay(from), to: isoDay(to) };
   const listQuery = useQuery({
     queryKey: ['report-tax-summary', params.from, params.to],
-    queryFn: () => apiFetchData<TaxSummary>(`/api/v1${PATH}${queryString(params)}`),
+    queryFn: ({ signal }) => apiFetchData<TaxSummary>(`/api/v1${PATH}${queryString(params)}`, { signal }),
   });
   const { data, isLoading } = listQuery;
 

@@ -28,8 +28,8 @@ export function BalancesTab() {
   const navigate = useNavigate();
   const listQuery = useQuery({
     queryKey: ['treasury-balances'],
-    queryFn: () =>
-      treasuryControllerCashBalances().then((r) => r.data as unknown as { rows: BalanceRow[]; total: string }),
+    queryFn: ({ signal }) =>
+      treasuryControllerCashBalances({ signal }).then((r) => r.data as unknown as { rows: BalanceRow[]; total: string }),
   });
   const { data, isLoading } = listQuery;
 

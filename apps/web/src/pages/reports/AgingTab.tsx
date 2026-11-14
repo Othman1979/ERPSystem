@@ -40,8 +40,8 @@ export function AgingTab() {
   const asOfParam = asOf.format('YYYY-MM-DD');
   const listQuery = useQuery({
     queryKey: ['report-aging', partyType, asOfParam],
-    queryFn: () =>
-      apiFetchData<AgingResponse>(`/api/v1/reports/aging?partyType=${partyType}&asOf=${asOfParam}`),
+    queryFn: ({ signal }) =>
+      apiFetchData<AgingResponse>(`/api/v1/reports/aging?partyType=${partyType}&asOf=${asOfParam}`, { signal }),
   });
   const { data, isLoading } = listQuery;
 

@@ -42,7 +42,7 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
 
   const listQuery = useQuery({
     queryKey: ['cash-transfers'],
-    queryFn: () => treasuryControllerListCashTransfers().then((r) => r.data as unknown as Transfer[]),
+    queryFn: ({ signal }) => treasuryControllerListCashTransfers({ signal }).then((r) => r.data as unknown as Transfer[]),
   });
   const { data, isLoading } = listQuery;
 

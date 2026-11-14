@@ -6,7 +6,7 @@
  * runtime helpers plus the few hand-written endpoints needed by Phase 0.
  * After generation, re-export the generated modules here.
  */
-import { apiFetchData } from './runtime';
+import { apiFetchData, type ApiRequestInit } from './runtime';
 
 export {
   ApiError,
@@ -37,6 +37,7 @@ export interface HealthStatus {
   timestamp: string;
 }
 
-export function getHealth(): Promise<HealthStatus> {
-  return apiFetchData<HealthStatus>('/health');
+/** GET /health; `init.signal` cancels it (TanStack Query passes one, WEB-05). */
+export function getHealth(init?: ApiRequestInit): Promise<HealthStatus> {
+  return apiFetchData<HealthStatus>('/health', init);
 }

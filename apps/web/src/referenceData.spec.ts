@@ -1,8 +1,31 @@
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { applyReferenceDataPolicy, invalidateReferenceData, REFERENCE_STALE_MS } from './referenceData';
+import {
+  applyReferenceDataPolicy,
+  invalidateReferenceData,
+  REFERENCE_DATA,
+  REFERENCE_STALE_MS,
+} from './referenceData';
+import { ACCOUNTS_QUERY_KEY, selectCashBank, selectPostable, type AccountRow } from './hooks/useAccounts';
 
 const write = (path: string) => ({ method: 'POST', path, status: 201 });
+
+/** A chart-of-accounts row with neutral defaults; tests override what they check. */
+function account(overrides: Pick<AccountRow, 'id' | 'code'> & Partial<AccountRow>): AccountRow {
+  return {
+    nameAr: 'حساب',
+    nameEn: 'Account',
+    parentId: null,
+    level: 2,
+    accountType: 'ASSET',
+    normalBalance: 'DEBIT',
+    isPostable: true,
+    isControl: false,
+    controlType: null,
+    isActive: true,
+    ...overrides,
+  };
+}
 
 describe('reference-data cache policy (WEB-13)', () => {
   let client: QueryClient;
@@ -22,9 +45,6 @@ describe('reference-data cache policy (WEB-13)', () => {
 
   it.each([
     [['accounts']],
-    [['accounts-postable']],
-    [['accounts-tree']],
-    [['accounts-all']],
     [['warehouses']],
     [['tax-categories']],
     [['branches']],
@@ -46,13 +66,11 @@ describe('reference-data cache policy (WEB-13)', () => {
   }
   const invalidated = (key: string[]) => client.getQueryState(key)?.isInvalidated;
 
-  it('expires every cached copy of the accounts after a cash box is created', async () => {
-    seed(['accounts'], ['accounts-tree'], ['accounts-postable'], ['warehouses']);
+  it('expires the accounts after a cash box is created', async () => {
+    seed(['accounts'], ['warehouses']);
     invalidateReferenceData(client, write('/cash-boxes'));
     await vi.advanceTimersByTimeAsync(500);
     expect(invalidated(['accounts'])).toBe(true);
-    expect(invalidated(['accounts-tree'])).toBe(true);
-    expect(invalidated(['accounts-postable'])).toBe(true);
     expect(invalidated(['warehouses'])).toBe(false);
   });
 
@@ -66,10 +84,10 @@ describe('reference-data cache policy (WEB-13)', () => {
   });
 
   it('expires everything after the setup wizard provisions the chart', async () => {
-    seed(['accounts-tree'], ['warehouses'], ['tax-categories'], ['branches'], ['units']);
+    seed(['accounts'], ['warehouses'], ['tax-categories'], ['branches'], ['units']);
     invalidateReferenceData(client, write('/accounting/setup/provision'));
     await vi.advanceTimersByTimeAsync(500);
-    for (const key of [['accounts-tree'], ['warehouses'], ['tax-categories'], ['branches'], ['units']]) {
+    for (const key of [['accounts'], ['warehouses'], ['tax-categories'], ['branches'], ['units']]) {
       expect(invalidated(key)).toBe(true);
     }
   });
@@ -109,7 +127,7 @@ describe('reference-data cache policy (WEB-13)', () => {
   it('refetches a mounted query that no onSuccess invalidated', async () => {
     let fetches = 0;
     const observer = new QueryObserver(client, {
-      queryKey: ['accounts-tree'],
+      queryKey: ['accounts'],
       queryFn: async () => {
         fetches += 1;
         return [];
@@ -121,5 +139,39 @@ describe('reference-data cache policy (WEB-13)', () => {
     await vi.advanceTimersByTimeAsync(500);
     expect(fetches).toBe(2);
     unsubscribe();
+  });
+
+  it('caches the chart under one key only', () => {
+    expect(REFERENCE_DATA.find((f) => f.name === 'accounts')!.keys).toEqual([['accounts']]);
+  });
+
+  it('shares one cache entry between the all, postable and cash/bank views', async () => {
+    const rows: AccountRow[] = [
+      account({ id: 'cash', code: '1000', controlType: 'CASH' }),
+      // Inactive, so only the cash/bank view keeps it.
+      account({ id: 'old-bank', code: '1100', controlType: 'BANK', isActive: false }),
+      // A header account: not postable, so only the all view keeps it.
+      account({ id: 'header', code: '1', isPostable: false }),
+    ];
+    const queryFn = vi.fn(async () => rows);
+    const all = new QueryObserver(client, { queryKey: ACCOUNTS_QUERY_KEY, queryFn });
+    const postable = new QueryObserver(client, { queryKey: ACCOUNTS_QUERY_KEY, queryFn, select: selectPostable });
+    const cashBank = new QueryObserver(client, { queryKey: ACCOUNTS_QUERY_KEY, queryFn, select: selectCashBank });
+    const unsubscribes = [all, postable, cashBank].map((o) => o.subscribe(() => {}));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(client.getQueryCache().findAll({ queryKey: ['accounts'] })).toHaveLength(1);
+    expect(all.getCurrentResult().data).toEqual(rows);
+    expect(postable.getCurrentResult().data).toEqual([rows[0]]);
+    expect(cashBank.getCurrentResult().data).toEqual([rows[0], rows[1]]);
+    for (const unsubscribe of unsubscribes) unsubscribe();
+  });
+
+  it('expires the shared accounts entry after an account is created', async () => {
+    seed(['accounts']);
+    invalidateReferenceData(client, write('/accounts'));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(invalidated(['accounts'])).toBe(true);
   });
 });

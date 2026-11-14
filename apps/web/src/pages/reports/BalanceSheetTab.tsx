@@ -38,7 +38,7 @@ export function BalanceSheetTab() {
   const params = { asOf: isoDay(asOf) };
   const listQuery = useQuery({
     queryKey: ['report-balance-sheet', params.asOf],
-    queryFn: () => apiFetchData<BalanceSheet>(`/api/v1${PATH}${queryString(params)}`),
+    queryFn: ({ signal }) => apiFetchData<BalanceSheet>(`/api/v1${PATH}${queryString(params)}`, { signal }),
   });
   const { data, isLoading } = listQuery;
 

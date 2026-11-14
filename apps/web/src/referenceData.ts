@@ -9,7 +9,7 @@ export const REFERENCE_STALE_MS = 5 * 60_000;
 
 export interface ReferenceFamily {
   name: string;
-  /** Query-key prefixes that hold this data (several screens cache the same endpoint under their own key). */
+  /** Query-key prefixes that hold this data. */
   keys: QueryKey[];
   /** API paths (under /api/v1) whose successful writes change this data. */
   writes: RegExp;
@@ -21,7 +21,7 @@ const SETUP = 'accounting/setup|company/onboarding';
 export const REFERENCE_DATA: ReferenceFamily[] = [
   {
     name: 'accounts',
-    keys: [['accounts'], ['accounts-postable'], ['accounts-tree'], ['accounts-all']],
+    keys: [['accounts']],
     // Cash boxes and bank accounts create and rename GL accounts too.
     writes: new RegExp(`^/(accounts|cash-boxes|bank-accounts|${SETUP})(/|$)`),
   },

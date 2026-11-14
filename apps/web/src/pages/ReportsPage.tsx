@@ -6,7 +6,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import {
-  accountingControllerListAccounts,
   fiscalControllerListYears,
   apiFetchData,
   partiesControllerList,
@@ -25,12 +24,7 @@ import { TaxSummaryTab } from './reports/TaxSummaryTab';
 import { TradeSummaryTab } from './reports/TradeSummaryTab';
 import { ExportButtons } from '../components/ExportButtons';
 import { formatAmount } from '../format/number';
-
-interface Account {
-  id: string;
-  code: string;
-  nameAr: string;
-}
+import { useAccounts } from '../hooks/useAccounts';
 
 /** Opening / movement / closing, each debit and credit (ADR-008). */
 const TB_COLUMNS = [
@@ -100,10 +94,7 @@ export function ReportsPage() {
   const [partyType, setPartyType] = useState<'CUSTOMER' | 'SUPPLIER' | undefined>(undefined);
   const [partyId, setPartyId] = useState<string | undefined>(undefined);
 
-  const { data: accounts } = useQuery({
-    queryKey: ['accounts-all'],
-    queryFn: () => accountingControllerListAccounts().then((r) => r.data as unknown as Account[]),
-  });
+  const { data: accounts } = useAccounts();
   const accountOptions = (accounts ?? []).map((a) => ({
     value: a.id,
     label: codeAndName(a),
@@ -117,14 +108,14 @@ export function ReportsPage() {
   // The from/to filters above apply to the trial balance too.
   const tbQuery = useQuery({
     queryKey: ['report-tb', range.from, range.to],
-    queryFn: () => apiFetchData<TbResponse>(`/api/v1/reports/trial-balance${qs(range)}`),
+    queryFn: ({ signal }) => apiFetchData<TbResponse>(`/api/v1/reports/trial-balance${qs(range)}`, { signal }),
   });
   const { data: tb, isLoading: tbLoading } = tbQuery;
 
   const { data: parties } = useQuery({
     queryKey: ['parties', partyType],
-    queryFn: () =>
-      partiesControllerList({ partyType: partyType ?? '', isActive: '' }).then(
+    queryFn: ({ signal }) =>
+      partiesControllerList({ partyType: partyType ?? '', isActive: '' }, { signal }).then(
         (r) => r.data as unknown as { id: string; code: string; nameAr: string; nameEn: string | null }[],
       ),
     enabled: !!partyType,
@@ -132,9 +123,10 @@ export function ReportsPage() {
 
   const glQuery = useQuery({
     queryKey: ['report-gl', accountId, range.from, range.to],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetchData<LedgerResponse>(
         `/api/v1/reports/general-ledger${qs({ accountId, ...range })}`,
+        { signal },
       ),
     enabled: !!accountId,
   });
@@ -142,9 +134,10 @@ export function ReportsPage() {
 
   const statementQuery = useQuery({
     queryKey: ['report-statement', partyType, partyId, range.from, range.to],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetchData<LedgerData>(
         `/api/v1/reports/party-statement${qs({ partyType, partyId, ...range })}`,
+        { signal },
       ),
     enabled: !!partyType && !!partyId,
   });
@@ -153,7 +146,7 @@ export function ReportsPage() {
   // A fiscal year fills the date range (the dates stay editable).
   const { data: years } = useQuery({
     queryKey: ['fiscal-years'],
-    queryFn: () => fiscalControllerListYears().then((r) => r.data as unknown as FiscalYearOption[]),
+    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data as unknown as FiscalYearOption[]),
   });
   const selectedYear = (years ?? []).find(
     (y) => range.from === y.startDate.slice(0, 10) && range.to === y.endDate.slice(0, 10),

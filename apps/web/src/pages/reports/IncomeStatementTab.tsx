@@ -40,7 +40,7 @@ export function IncomeStatementTab() {
   const params = { from: isoDay(from), to: isoDay(to) };
   const listQuery = useQuery({
     queryKey: ['report-income-statement', params.from, params.to],
-    queryFn: () => apiFetchData<IncomeStatement>(`/api/v1${PATH}${queryString(params)}`),
+    queryFn: ({ signal }) => apiFetchData<IncomeStatement>(`/api/v1${PATH}${queryString(params)}`, { signal }),
   });
   const { data, isLoading } = listQuery;
 

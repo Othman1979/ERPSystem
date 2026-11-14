@@ -88,13 +88,13 @@ export function UsersPage() {
 
   const usersQuery = useQuery({
     queryKey: ['users'],
-    queryFn: () => usersControllerList().then((r) => r.data as unknown as Membership[]),
+    queryFn: ({ signal }) => usersControllerList({ signal }).then((r) => r.data as unknown as Membership[]),
   });
   const { data, isLoading } = usersQuery;
 
   const { data: roles } = useQuery({
     queryKey: ['roles'],
-    queryFn: () => usersControllerRoles().then((r) => r.data as unknown as Role[]),
+    queryFn: ({ signal }) => usersControllerRoles({ signal }).then((r) => r.data as unknown as Role[]),
   });
 
   const onError = (err: unknown) => {
@@ -195,7 +195,9 @@ export function UsersPage() {
 
   // Mirrors the server refusals in UsersService.update/invite (PLAT-01): no one
   // changes their own role or status, and only an owner grants OWNER or
-  // changes an owner's membership.
+  // changes an owner's membership. A role check, not a permission: the server
+  // compares the caller's role with OWNER (UsersService.callerRoleCode), and no
+  // permission code grants it. The page itself needs user.manage (routes.tsx).
   const isOwner = me?.currentMembership?.roleCode === 'OWNER';
   const canManage = (m: Membership) =>
     m.user.id !== me?.user.id && (isOwner || m.role.code !== 'OWNER');

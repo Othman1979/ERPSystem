@@ -2,6 +2,8 @@ import { Button, Card, Collapse, Space, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 import { PageHeader } from '../components/PageHeader';
+import { useAuth } from '../auth/AuthContext';
+import { canOpenPath } from '../routes';
 
 /** Guide sections (i18n help.<id>.title / .body) and the screen each one opens. */
 export const HELP_SECTIONS: { id: string; path?: string }[] = [
@@ -24,6 +26,7 @@ export const HELP_SECTIONS: { id: string; path?: string }[] = [
 export function HelpPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { can } = useAuth();
   return (
     <div>
       <PageHeader title={t('help.title')} subtitle={t('help.subtitle')} />
@@ -38,7 +41,8 @@ export function HelpPage() {
                 <Typography.Paragraph style={{ whiteSpace: 'pre-line', marginBottom: 0 }}>
                   {t(`help.${s.id}.body`)}
                 </Typography.Paragraph>
-                {s.path && (
+                {/* Only screens this role can open (the rest would show "no access"). */}
+                {s.path && canOpenPath(s.path, can) && (
                   <Button size="small" onClick={() => navigate(s.path!)}>
                     {t('help.open')}
                   </Button>
