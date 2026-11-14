@@ -15,8 +15,15 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 export function GridSelect({
   enterOpens = false,
   onEnterSelect,
+  onRemoteSearch,
   ...props
 }: SelectProps & {
+  /**
+   * Server search (ADR-022 §8): every change of the typed text goes here and
+   * the options are shown as given (no local filtering). The caller fetches
+   * the matches, e.g. with useRemoteOptions.
+   */
+  onRemoteSearch?: (text: string) => void;
   /** Header fields: Enter on an empty field opens the list. */
   enterOpens?: boolean;
   /** Fired when Enter picks an option (grid advance). Without it, the Enter is
@@ -52,19 +59,26 @@ export function GridSelect({
           .join(' ') || undefined}
         open={open}
         showSearch
-        optionFilterProp="label"
+        {...(onRemoteSearch ? { filterOption: false } : { optionFilterProp: 'label' })}
         searchValue={search}
-        onSearch={setSearch}
+        onSearch={(text) => {
+          setSearch(text);
+          onRemoteSearch?.(text);
+        }}
         onDropdownVisibleChange={(v) => {
           if (v && passEnter.current) return; // Enter means "next field" here
           setOpen(v);
-          if (!v) setSearch('');
+          if (!v) {
+            setSearch('');
+            onRemoteSearch?.('');
+          }
         }}
         onBlur={(e) => {
           props.onBlur?.(e);
           // A list must never stay open behind the field that has focus.
           setOpen(false);
           setSearch('');
+          onRemoteSearch?.('');
         }}
         onChange={(v, opt) => {
           const viaEnter = enterPending.current;
@@ -110,6 +124,7 @@ export function GridSelect({
             e.preventDefault();
             e.stopPropagation();
             setSearch(e.key);
+            onRemoteSearch?.(e.key);
             setOpen(true);
           }
         }}

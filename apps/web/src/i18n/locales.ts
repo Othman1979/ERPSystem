@@ -685,6 +685,7 @@ export const ar = {
   reports: {
     priorYearsRow: 'أرباح سنوات سابقة غير مقفلة',
     priorYearsNote: 'الإيرادات والمصروفات تبدأ كل سنة مالية من صفر، وربح السنوات السابقة غير المقفل في سطر واحد ضمن حقوق الملكية.',
+    branchScopedNote: 'تظهر التقارير لفروعك فقط. تقارير الشركة كلها لمن له صلاحية على كل الفروع.',
     title: 'التقارير',
     aging: 'أعمار الديون',
     customers: 'العملاء',
@@ -1082,6 +1083,8 @@ export const ar = {
     search: 'بحث…',
     resultCount: 'عدد النتائج: {{count}}',
     pageRange: '{{from}}–{{to}} من {{total}}',
+    loadMore: 'تحميل المزيد',
+    rowsShown: 'المعروض: {{count}}',
     basicInfo: 'البيانات الأساسية',
     actions: 'إجراءات',
     edit: 'تعديل',
@@ -1912,6 +1915,7 @@ export const en: typeof ar = {
   reports: {
     priorYearsRow: 'Prior years profit (not closed)',
     priorYearsNote: 'Revenue and expenses start each fiscal year at zero; the unclosed profit of earlier years is one line in equity.',
+    branchScopedNote: 'Reports show your branches only. Company-wide reports are for users with access to every branch.',
     title: 'Reports',
     aging: 'Aging',
     customers: 'Customers',
@@ -2309,6 +2313,8 @@ export const en: typeof ar = {
     search: 'Search…',
     resultCount: 'Results: {{count}}',
     pageRange: '{{from}}–{{to}} of {{total}}',
+    loadMore: 'Load more',
+    rowsShown: 'Showing {{count}}',
     basicInfo: 'Basic information',
     actions: 'Actions',
     edit: 'Edit',

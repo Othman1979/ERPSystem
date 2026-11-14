@@ -37,6 +37,7 @@ import {
 } from '@erp/api-client';
 import { ListToolbar } from '../components/ListToolbar';
 import { PageHeader } from '../components/PageHeader';
+import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { tableLocale } from '../components/QueryState';
 import { amountCell } from '../format/cells';
 import { displayName } from '../i18n/displayName';
@@ -141,58 +142,61 @@ function useApiError() {
 function TenantsTab() {
   const { t } = useTranslation();
   const [status, setStatus] = useState<Status | undefined>();
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const tenantsQuery = useQuery({
-    queryKey: ['platform-tenants', status, search, page],
-    queryFn: ({ signal }) =>
-      adminControllerList({ status: status ?? '', search, page: String(page), pageSize: '20' }, { signal }).then(
-        (r) => r.data as unknown as { total: number; items: TenantRow[] },
+  // Server-paged (ADR-022): search (`q`), status filter, sort and page go to the API.
+  const list = usePagedQuery<TenantRow, { status?: string }>({
+    key: ['platform-tenants', 'list'],
+    filters: { status },
+    defaultSort: '-id',
+    fetch: (params, signal) =>
+      adminControllerList(params as Parameters<typeof adminControllerList>[0], { signal }).then(
+        (r) => r.data as unknown as Page<TenantRow>,
       ),
   });
-  const { data, isLoading } = tenantsQuery;
 
   return (
     <>
       <ListToolbar
-        search={search}
-        onSearch={(v) => {
-          setSearch(v);
-          setPage(1);
-        }}
+        search={list.search}
+        onSearch={list.setSearch}
         filters={
           <Select
             allowClear
             placeholder={t('platform.allStatuses')}
             style={{ minWidth: 160 }}
             value={status}
-            onChange={(v) => {
-              setStatus(v);
-              setPage(1);
-            }}
+            onChange={(v) => setStatus(v)}
             options={STATUSES.map((s) => ({ value: s, label: t(`platform.status_${s}`) }))}
           />
         }
-        count={data?.total}
+        count={list.total}
       />
       <Table<TenantRow>
         rowKey="id"
         size="small"
-        loading={isLoading}
-        dataSource={data?.items ?? []}
-        locale={tableLocale(tenantsQuery)}
-        pagination={{ current: page, pageSize: 20, total: data?.total ?? 0, onChange: setPage }}
+        loading={list.query.isLoading}
+        dataSource={list.rows}
+        locale={tableLocale(list.query)}
+        pagination={list.pagination}
+        onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => setOpenId(r.id), style: { cursor: 'pointer' } })}
         columns={[
-          { title: t('platform.tenant'), dataIndex: 'name' },
+          { title: t('platform.tenant'), dataIndex: 'name', key: 'name', sorter: true, sortOrder: list.sortOrderOf('name') },
           { title: t('common.status'), dataIndex: 'status', width: 130, render: (s: Status) => <StatusTag status={s} /> },
           { title: t('platform.plan'), dataIndex: 'plan', width: 130, render: (p: PlanRef | null) => (p ? displayName(p) : '—') },
           { title: t('platform.trialEndsAt'), dataIndex: 'trialEndsAt', width: 120, render: day },
           { title: t('platform.members'), dataIndex: 'members', width: 90, align: 'right' },
           { title: t('platform.branches'), dataIndex: 'branches', width: 80, align: 'right' },
-          { title: t('platform.createdAt'), dataIndex: 'createdAt', width: 120, render: day },
+          {
+            title: t('platform.createdAt'),
+            dataIndex: 'createdAt',
+            key: 'createdAt',
+            sorter: true,
+            sortOrder: list.sortOrderOf('createdAt'),
+            width: 120,
+            render: day,
+          },
         ]}
       />
       <TenantDrawer id={openId} onClose={() => setOpenId(null)} />

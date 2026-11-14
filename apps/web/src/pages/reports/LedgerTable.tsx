@@ -18,8 +18,12 @@ export interface LedgerLine {
   accountName?: string;
 }
 
-/** Statement JSON (account or party): opening, movements, closing (ADR-008). */
-export interface LedgerData {
+/**
+ * Opening, movement and closing totals of a statement (ADR-008). The server
+ * sends them on the first page only (ADR-022 §4); they cover the whole period,
+ * so the footer is right before every page is loaded.
+ */
+export interface LedgerSummary {
   openingBalance: string;
   openingDebit: string;
   openingCredit: string;
@@ -28,7 +32,6 @@ export interface LedgerData {
   closingBalance: string;
   closingDebit: string;
   closingCredit: string;
-  rows: LedgerLine[];
 }
 
 type Row = LedgerLine & { kind?: 'opening' };
@@ -39,23 +42,28 @@ export const sideCell =(v: NumericInput) => (v === undefined || v === null || de
 /**
  * Account / party statement table: an opening-balance row, the period's
  * lines with a running balance, then the movements total and the closing
- * balance — each balance shown in the debit or credit column.
+ * balance — each balance shown in the debit or credit column. `summary` comes
+ * from the first page; `rows` are the lines loaded so far (the caller shows
+ * the "load more" control under the table).
  */
 export function LedgerTable({
-  data,
+  summary,
+  rows: lines,
   loading,
   query,
   withAccount = false,
 }: {
-  data: LedgerData | undefined;
+  summary: LedgerSummary | null | undefined;
+  rows: LedgerLine[];
   loading: boolean;
-  /** The query that fetched `data`: its failure shows in the table, not as an empty ledger. */
+  /** The query that fetched the statement: its failure shows in the table, not as an empty ledger. */
   query: ListQueryState;
   /** Party statements show the control account of each line. */
   withAccount?: boolean;
 }) {
   const { t } = useTranslation();
-  const rows: Row[] = data
+  const s = summary ?? null;
+  const rows: Row[] = s
     ? [
         {
           kind: 'opening',
@@ -63,13 +71,13 @@ export function LedgerTable({
           entryNo: null,
           entryDate: '',
           description: t('reports.openingPeriod'),
-          debit: data.openingDebit,
-          credit: data.openingCredit,
-          balance: data.openingBalance,
+          debit: s.openingDebit,
+          credit: s.openingCredit,
+          balance: s.openingBalance,
         },
-        ...data.rows,
+        ...lines,
       ]
-    : [];
+    : lines;
   const columns: ColumnsType<Row> = [
     { title: t('journal.entryNo'), dataIndex: 'entryNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '' },
     {
@@ -104,21 +112,21 @@ export function LedgerTable({
       loading={loading}
       dataSource={rows}
       locale={tableLocale(query)}
-      pagination={{ pageSize: 50 }}
+      pagination={false}
       columns={columns}
       rowClassName={(r) => (r.kind === 'opening' ? 'report-row-strong' : '')}
       summary={() =>
-        data ? (
+        s ? (
           <>
             <Table.Summary.Row>
               <Table.Summary.Cell index={0} colSpan={labelSpan}>
                 {t('reports.movementsTotal')}
               </Table.Summary.Cell>
               <Table.Summary.Cell index={1} align="right">
-                <Num>{formatAmount(data.totalDebit)}</Num>
+                <Num>{formatAmount(s.totalDebit)}</Num>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={2} align="right">
-                <Num>{formatAmount(data.totalCredit)}</Num>
+                <Num>{formatAmount(s.totalCredit)}</Num>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={3} />
             </Table.Summary.Row>
@@ -127,13 +135,13 @@ export function LedgerTable({
                 {t('reports.closingPeriod')}
               </Table.Summary.Cell>
               <Table.Summary.Cell index={1} align="right">
-                {sideCell(data.closingDebit)}
+                {sideCell(s.closingDebit)}
               </Table.Summary.Cell>
               <Table.Summary.Cell index={2} align="right">
-                {sideCell(data.closingCredit)}
+                {sideCell(s.closingCredit)}
               </Table.Summary.Cell>
               <Table.Summary.Cell index={3} align="right">
-                <Num>{formatAmount(data.closingBalance)}</Num>
+                <Num>{formatAmount(s.closingBalance)}</Num>
               </Table.Summary.Cell>
             </Table.Summary.Row>
           </>

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { IdcardOutlined, PhoneOutlined, PlusOutlined, WalletOutlined } from '@ant-design/icons';
 import {
   Button,
@@ -25,7 +25,8 @@ import {
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
-import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { ListToolbar } from '../components/ListToolbar';
+import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { displayName, type Named } from '../i18n/displayName';
 import { amountCell } from '../format/cells';
@@ -57,21 +58,24 @@ export function PartiesPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
-  const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Party | null>(null);
   const [form] = Form.useForm();
   const saveAndNew = useRef(false);
   const [apiMessage, contextHolder] = message.useMessage();
 
-  const partiesQuery = useQuery({
-    queryKey: ['parties', typeFilter],
-    queryFn: ({ signal }) =>
-      partiesControllerList({ partyType: typeFilter ?? '', isActive: '' }, { signal }).then(
-        (r) => r.data as unknown as Party[],
+  // Server-paged (ADR-022): search, sort and page go to the API.
+  const list = usePagedQuery<Party, { partyType?: string }>({
+    key: ['parties', 'list'],
+    filters: { partyType: typeFilter },
+    defaultSort: 'code',
+    fetch: (params, signal) =>
+      partiesControllerList(params as Parameters<typeof partiesControllerList>[0], { signal }).then(
+        (r) => r.data as unknown as Page<Party>,
       ),
   });
-  const { data: parties, isLoading } = partiesQuery;
+  const partiesQuery = list.query;
+  const { isLoading } = partiesQuery;
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['parties'] });
   const onError = (err: unknown) =>
@@ -153,8 +157,21 @@ export function PartiesPage() {
   });
 
   const columns = [
-    { title: t('parties.code'), dataIndex: 'code', width: 110 },
-    { title: t('common.name'), key: 'name', render: (_: unknown, r: Named) => displayName(r) },
+    {
+      title: t('parties.code'),
+      dataIndex: 'code',
+      key: 'code',
+      sorter: true,
+      sortOrder: list.sortOrderOf('code'),
+      width: 110,
+    },
+    {
+      title: t('common.name'),
+      key: 'nameAr',
+      sorter: true,
+      sortOrder: list.sortOrderOf('nameAr'),
+      render: (_: unknown, r: Named) => displayName(r),
+    },
     {
       title: t('parties.type'),
       dataIndex: 'partyType',
@@ -195,17 +212,13 @@ export function PartiesPage() {
     },
   ];
 
-  const shown = (parties ?? []).filter((p) =>
-    matchesSearch(search, p.code, displayName(p), p.phone, p.taxNumber, p.nationalId),
-  );
-
   return (
     <div>
       {contextHolder}
       <PageHeader title={t('nav.parties')} />
       <ListToolbar
-        search={search}
-        onSearch={setSearch}
+        search={list.search}
+        onSearch={list.setSearch}
         filters={
           <Select
             allowClear
@@ -219,7 +232,7 @@ export function PartiesPage() {
             ]}
           />
         }
-        count={shown.length}
+        count={list.total}
         actions={
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
             {t('parties.new')}
@@ -230,11 +243,12 @@ export function PartiesPage() {
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={shown}
+        dataSource={list.rows}
         locale={tableLocale(partiesQuery)}
         columns={columns}
         size="small"
-        pagination={{ pageSize: 20 }}
+        pagination={list.pagination}
+        onChange={list.onTableChange}
       />
 
       <FormDialog

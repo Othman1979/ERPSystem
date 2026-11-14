@@ -57,6 +57,8 @@ export interface MeData {
     defaultBranchId: string | null;
     /** Branches this member may switch to (all active ones when none are assigned). */
     branches: BranchSummary[];
+    /** No branch assigned: may open the company-wide reports (ADR-003 §13–§14). */
+    allBranches?: boolean;
   } | null;
   /** Company invitations waiting for this user's acceptance (ADR-012 §PLAT-10). */
   pendingInvitations?: number;
@@ -82,6 +84,12 @@ interface AuthState {
    * hides what this is false for; the API still enforces every permission.
    */
   can: (permission: Permission) => boolean;
+  /**
+   * True when the member has every branch (no branch assigned, ADR-003 §13).
+   * The company-wide reports (trial balance, account statement, income
+   * statement, balance sheet) are hidden from others; the API refuses them.
+   */
+  allBranches: boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -89,9 +97,13 @@ const AuthContext = createContext<AuthState | null>(null);
 /** Least time between two /me reloads triggered by a 403 or by the tab coming back into view. */
 export const ME_RELOAD_MIN_MS = 5_000;
 
-/** A 403 for a missing permission (not read-only mode or another refusal with its own code). */
+/** A 403 for a missing permission or branch scope (not read-only mode or another refusal with its own code). */
 function isPermissionRefusal(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 403 && error.code === 'FORBIDDEN';
+  return (
+    error instanceof ApiError &&
+    error.status === 403 &&
+    (error.code === 'FORBIDDEN' || error.code === 'ALL_BRANCHES_REQUIRED')
+  );
 }
 
 const branchStorageKey = (tenantId: string) => `erp.branch.${tenantId}`;
@@ -302,12 +314,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const permissions = useMemo(() => new Set(me?.currentMembership?.permissions ?? []), [me]);
   const can = useCallback((permission: Permission) => permissions.has(permission), [permissions]);
+  // Older APIs did not send the flag: treat it as every branch (the API still refuses).
+  const allBranches = me?.currentMembership?.allBranches ?? true;
 
   // A new object only when something in it changes, so useAuth() consumers do
   // not re-render on every provider render (WEB-18).
   const value = useMemo<AuthState>(
-    () => ({ status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch, can }),
-    [status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch, can],
+    () => ({ status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch, can, allBranches }),
+    [status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch, can, allBranches],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

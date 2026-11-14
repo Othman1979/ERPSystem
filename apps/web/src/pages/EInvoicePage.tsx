@@ -19,10 +19,11 @@ import {
   message,
 } from 'antd';
 import dayjs from 'dayjs';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ApiError, apiFetchData } from '@erp/api-client';
-import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { ApiError, apiFetchData, eInvoiceControllerListSubmissions } from '@erp/api-client';
+import { ListToolbar } from '../components/ListToolbar';
+import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { tableLocale } from '../components/QueryState';
 import { Num } from '../components/Num';
 import { PageHeader } from '../components/PageHeader';
@@ -73,8 +74,8 @@ interface SubmissionDetail extends Submission {
   attempts: Attempt[];
 }
 
-interface SubmissionList {
-  rows: Submission[];
+/** One numbered page of submissions plus the count per status over the same branches (ADR-022 §3). */
+interface SubmissionPage extends Page<Submission> {
   counts: Partial<Record<EInvoiceStatus, number>>;
 }
 
@@ -110,26 +111,35 @@ export function EInvoicePage() {
   const { t } = useTranslation();
   const [statusFilter, setStatusFilter] = useState<EInvoiceStatus | undefined>(undefined);
   const [typeFilter, setTypeFilter] = useState<DocumentType | undefined>(undefined);
-  const [search, setSearch] = useState('');
   // The last opened row stays loaded while the drawer slides shut.
   const [openId, setOpenId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const listQuery = useQuery({
-    queryKey: ['einvoice-submissions', statusFilter, typeFilter],
-    queryFn: ({ signal }) => {
-      const q = new URLSearchParams();
-      if (statusFilter) q.set('status', statusFilter);
-      if (typeFilter) q.set('documentType', typeFilter);
-      return apiFetchData<SubmissionList>(`/api/v1/einvoice/submissions?${q.toString()}`, { signal });
-    },
-    // The worker sends in the background: follow documents still on their way.
-    refetchInterval: (query) => (query.state.data?.rows.some((r) => isInFlight(r.status)) ? 5000 : false),
+  // Server-paged (ADR-022): search, filters, sort and page go to the API.
+  const list = usePagedQuery<Submission, { status?: string; documentType?: string }>({
+    key: ['einvoice-submissions', 'list'],
+    filters: { status: statusFilter, documentType: typeFilter },
+    defaultSort: '-createdAt',
+    fetch: (params, signal) =>
+      eInvoiceControllerListSubmissions(params as Parameters<typeof eInvoiceControllerListSubmissions>[0], {
+        signal,
+      }).then((r) => r.data as unknown as SubmissionPage),
   });
-  const { data, isLoading, isFetching, refetch, error } = listQuery;
+  const { isLoading, isFetching, error } = list.query;
+  // The status summary rides along with the page (ADR-022 §3); usePagedQuery types the page as Page<T>.
+  const counts = (list.query.data as Partial<SubmissionPage> | undefined)?.counts ?? {};
 
-  const counts = data?.counts ?? {};
-  const shown = (data?.rows ?? []).filter((r) => matchesSearch(search, r.documentNo, r.uuid));
+  // The worker sends in the background: while a document on this page is still
+  // on its way, the list is refreshed every 5 seconds.
+  const inFlight = list.rows.some((r) => isInFlight(r.status));
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!inFlight) return;
+    const timer = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: ['einvoice-submissions'] });
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [inFlight, queryClient]);
 
   const columns = [
     {
@@ -141,6 +151,9 @@ export function EInvoicePage() {
     {
       title: t('einvoice.documentNo'),
       dataIndex: 'documentNo',
+      key: 'documentNo',
+      sorter: true,
+      sortOrder: list.sortOrderOf('documentNo'),
       width: 170,
       render: (v: string) => <span className="doc-no">{v}</span>,
     },
@@ -193,8 +206,8 @@ export function EInvoicePage() {
     <div>
       <PageHeader title={t('einvoice.title')} />
       <ListToolbar
-        search={search}
-        onSearch={setSearch}
+        search={list.search}
+        onSearch={list.setSearch}
         searchPlaceholder={t('einvoice.searchPlaceholder')}
         filters={
           <>
@@ -222,9 +235,9 @@ export function EInvoicePage() {
             />
           </>
         }
-        count={shown.length}
+        count={list.total}
         actions={
-          <Button icon={<ReloadOutlined />} loading={isFetching && !isLoading} onClick={() => void refetch()}>
+          <Button icon={<ReloadOutlined />} loading={isFetching && !isLoading} onClick={() => void list.query.refetch()}>
             {t('einvoice.refresh')}
           </Button>
         }
@@ -245,10 +258,11 @@ export function EInvoicePage() {
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={shown}
-        locale={tableLocale(listQuery)}
+        dataSource={list.rows}
+        locale={tableLocale(list.query)}
         columns={columns}
-        pagination={{ pageSize: 20 }}
+        pagination={list.pagination}
+        onChange={list.onTableChange}
         scroll={{ x: 'max-content' }}
         onRow={(r) => ({
           onClick: () => {

@@ -4,14 +4,14 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SEARCH_DEBOUNCE_MS } from '../hooks/usePagedQuery';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { PICKER_PAGE_SIZE } from '../hooks/useRemoteOptions';
 
 export interface RemoteOption {
   value: string;
   label: string;
 }
 
-/** How many matches a picker asks the server for (ADR-022 §8). */
-export const PICKER_PAGE_SIZE = 20;
+export { PICKER_PAGE_SIZE };
 
 /**
  * A picker that searches on the server (ADR-022 §8) instead of loading every
@@ -25,6 +25,7 @@ export function RemoteSelect({
   value,
   onChange,
   enabled = true,
+  selected,
   ...rest
 }: {
   /** Query key prefix, e.g. ['sales-invoices', 'pick']; the search text is appended. */
@@ -33,6 +34,8 @@ export function RemoteSelect({
   value?: string;
   onChange?: (value: string | undefined, option?: RemoteOption) => void;
   enabled?: boolean;
+  /** Label of the current value when it was not picked here (e.g. a saved document's party). */
+  selected?: RemoteOption;
 } & Omit<SelectProps<string>, 'options' | 'onChange' | 'onSearch' | 'filterOption' | 'showSearch' | 'value'>) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
@@ -45,8 +48,8 @@ export function RemoteSelect({
     placeholderData: keepPreviousData,
   });
   const found = query.data ?? [];
-  const options =
-    chosen && chosen.value === value && !found.some((o) => o.value === chosen.value) ? [chosen, ...found] : found;
+  const current = [chosen, selected].find((o) => o !== undefined && o.value === value);
+  const options = current && !found.some((o) => o.value === current.value) ? [current, ...found] : found;
 
   return (
     <Select<string>

@@ -8,6 +8,7 @@ import { tableLocale } from '../../components/QueryState';
 import { amountCell } from '../../format/cells';
 import { formatAmount } from '../../format/number';
 import { codeAndName } from '../../i18n/displayName';
+import { useAuth } from '../../auth/AuthContext';
 
 interface BalanceRow {
   /** ACCOUNT = a cash/bank ledger account no cash box or bank record points at. */
@@ -26,6 +27,8 @@ interface BalanceRow {
 export function BalancesTab() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  // The account statement is company-wide (ADR-003 §13): the link is shown only to members with every branch.
+  const { allBranches } = useAuth();
   const listQuery = useQuery({
     queryKey: ['treasury-balances'],
     queryFn: ({ signal }) =>
@@ -56,11 +59,12 @@ export function BalancesTab() {
         {
           title: '',
           width: 110,
-          render: (_: unknown, r: BalanceRow) => (
-            <Button size="small" onClick={() => navigate(`/reports?tab=gl&accountId=${r.account.id}`)}>
-              {t('reports.accountStatement')}
-            </Button>
-          ),
+          render: (_: unknown, r: BalanceRow) =>
+            allBranches && (
+              <Button size="small" onClick={() => navigate(`/reports?tab=gl&accountId=${r.account.id}`)}>
+                {t('reports.accountStatement')}
+              </Button>
+            ),
         },
       ]}
       summary={() => (

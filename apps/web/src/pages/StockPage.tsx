@@ -51,7 +51,12 @@ import { GoodsNotesSection } from './GoodsNotesPage';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
-import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { ListToolbar } from '../components/ListToolbar';
+import { LoadMore } from '../components/LoadMore';
+import { RemoteSelect } from '../components/RemoteSelect';
+import { useKeysetQuery, type KeysetPage } from '../hooks/useKeysetQuery';
+import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 import { ExportButtons } from '../components/ExportButtons';
 import {
   emptyItemLine,
@@ -153,25 +158,32 @@ function useLookups() {
     queryKey: ['warehouses'],
     queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as Warehouse[]),
   });
-  const items = useQuery({
-    queryKey: ['items-stock'],
-    queryFn: ({ signal }) =>
-      catalogControllerListItems({ search: '', itemKind: 'STOCK', isActive: '' }, { signal }).then(
-        (r) => (r.data as unknown as ItemOpt[]).filter((i) => i.itemKind === 'STOCK'),
-      ),
-  });
   const whOptions = (warehouses.data ?? [])
     .filter((w) => w.isActive)
     .map((w) => ({ value: w.id, label: codeAndName(w) }));
-  const itemOptions = (items.data ?? []).map((i) => ({
-    value: i.id,
-    label: codeAndName(i),
-  }));
   // Report rows only carry the warehouse code; show "code — name" instead.
   const warehouseLabel = (code: string) =>
     codeAndName((warehouses.data ?? []).find((w) => w.code === code)) ?? code;
-  return { warehouses, items, whOptions, itemOptions, warehouseLabel };
+  return { warehouses, whOptions, warehouseLabel };
 }
+
+/**
+ * Stock items for the document grids: searched on the server as the user
+ * types, never the whole catalogue (ADR-022 §8). Chosen rows stay labelled.
+ */
+function useStockItemPicker(enabled: boolean) {
+  return useRemoteOptions<ItemOpt>({
+    key: ['items', 'pick'],
+    enabled,
+    fetch: (q, signal) =>
+      catalogControllerListItems(
+        { pageSize: PICKER_PAGE_SIZE, itemKind: 'STOCK', ...(q ? { q } : {}) },
+        { signal },
+      ).then((r) => (r.data as unknown as Page<ItemOpt>).items),
+  });
+}
+
+const itemOptionsOf = (rows: readonly ItemOpt[]) => rows.map((i) => ({ value: i.id, label: codeAndName(i) }));
 
 const statusTag = (s: string, t: (k: string) => string) =>
   s === 'POSTED' ? <Tag color="green">{t('stock.posted')}</Tag> : <Tag>{t('stock.draft')}</Tag>;
@@ -250,18 +262,24 @@ function AdjustmentsTab() {
   const [reverseTarget, setReverseTarget] = useState<DocRow | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
-  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
-  const { whOptions, itemOptions } = useLookups();
+  const { whOptions } = useLookups();
+  const items = useStockItemPicker(modalOpen);
 
-  const listQuery = useQuery({
-    queryKey: ['stock-adjustments'],
-    queryFn: ({ signal }) =>
-      stockDocumentsControllerListAdjustments({ status: '' }, { signal }).then(
-        (r) => r.data as unknown as DocRow[],
-      ),
+  // Server-paged (ADR-022): search, sort and page go to the API.
+  const list = usePagedQuery<DocRow, Record<string, string | undefined>>({
+    key: ['stock-adjustments', 'list'],
+    filters: {},
+    defaultSort: '-date',
+    fetch: (params, signal) =>
+      stockDocumentsControllerListAdjustments(
+        params as Parameters<typeof stockDocumentsControllerListAdjustments>[0],
+        { signal },
+      ).then((r) => r.data as unknown as Page<DocRow>),
+    enabled: !modalOpen,
   });
-  const { data, isLoading } = listQuery;
+  const listQuery = list.query;
+  const { isLoading } = listQuery;
   const invalidate = () =>
     void queryClient.invalidateQueries({ queryKey: ['stock-adjustments'] });
 
@@ -390,7 +408,8 @@ function AdjustmentsTab() {
               <ItemLinesGrid
                 lines={lines}
                 onChange={setLines}
-                itemOptions={itemOptions}
+                itemOptions={itemOptionsOf(items.withSelected(lines.map((l) => l.itemId)))}
+                onItemSearch={items.onSearch}
                 showCost={needsCost}
                 showDescription
               />
@@ -401,15 +420,13 @@ function AdjustmentsTab() {
     );
   }
 
-  const shown = (data ?? []).filter((r) => matchesSearch(search, r.docNo, displayName(r.warehouse)));
-
   return (
     <>
       {contextHolder}
       <ListToolbar
-        search={search}
-        onSearch={setSearch}
-        count={shown.length}
+        search={list.search}
+        onSearch={list.setSearch}
+        count={list.total}
         actions={
           <Button
             type="primary"
@@ -426,14 +443,27 @@ function AdjustmentsTab() {
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={shown}
+        dataSource={list.rows}
         locale={tableLocale(listQuery)}
-        pagination={{ pageSize: 20 }}
+        pagination={list.pagination}
+        onChange={list.onTableChange}
         columns={[
-          { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
+          {
+            title: t('stock.docNo'),
+            dataIndex: 'docNo',
+            key: 'docNo',
+            sorter: true,
+            sortOrder: list.sortOrderOf('docNo'),
+            width: 150,
+            className: 'nowrap',
+            render: (v: string | null) => v ?? '—',
+          },
           {
             title: t('stock.date'),
             dataIndex: 'adjustmentDate',
+            key: 'date',
+            sorter: true,
+            sortOrder: list.sortOrderOf('date'),
             width: 110,
             render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '—'),
           },
@@ -519,18 +549,24 @@ function TransfersTab() {
   const [reverseTarget, setReverseTarget] = useState<DocRow | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
-  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
-  const { whOptions, itemOptions } = useLookups();
+  const { whOptions } = useLookups();
+  const items = useStockItemPicker(modalOpen);
 
-  const listQuery = useQuery({
-    queryKey: ['stock-transfers'],
-    queryFn: ({ signal }) =>
-      stockDocumentsControllerListTransfers({ status: '' }, { signal }).then(
-        (r) => r.data as unknown as DocRow[],
-      ),
+  // Server-paged (ADR-022): search, sort and page go to the API.
+  const list = usePagedQuery<DocRow, Record<string, string | undefined>>({
+    key: ['stock-transfers', 'list'],
+    filters: {},
+    defaultSort: '-date',
+    fetch: (params, signal) =>
+      stockDocumentsControllerListTransfers(
+        params as Parameters<typeof stockDocumentsControllerListTransfers>[0],
+        { signal },
+      ).then((r) => r.data as unknown as Page<DocRow>),
+    enabled: !modalOpen,
   });
-  const { data, isLoading } = listQuery;
+  const listQuery = list.query;
+  const { isLoading } = listQuery;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['stock-transfers'] });
 
   const create = useMutation({
@@ -640,7 +676,12 @@ function TransfersTab() {
                   <Input maxLength={500} />
                 </Form.Item>
               </DocFields>
-              <ItemLinesGrid lines={lines} onChange={setLines} itemOptions={itemOptions} />
+              <ItemLinesGrid
+                lines={lines}
+                onChange={setLines}
+                itemOptions={itemOptionsOf(items.withSelected(lines.map((l) => l.itemId)))}
+                onItemSearch={items.onSearch}
+              />
             </Form>
           </EnterNav>
         </DocLayout>
@@ -648,15 +689,13 @@ function TransfersTab() {
     );
   }
 
-  const shown = (data ?? []).filter((r) => matchesSearch(search, r.docNo, displayName(r.fromWarehouse), displayName(r.toWarehouse)));
-
   return (
     <>
       {contextHolder}
       <ListToolbar
-        search={search}
-        onSearch={setSearch}
-        count={shown.length}
+        search={list.search}
+        onSearch={list.setSearch}
+        count={list.total}
         actions={
           <Button
             type="primary"
@@ -673,14 +712,27 @@ function TransfersTab() {
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={shown}
+        dataSource={list.rows}
         locale={tableLocale(listQuery)}
-        pagination={{ pageSize: 20 }}
+        pagination={list.pagination}
+        onChange={list.onTableChange}
         columns={[
-          { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
+          {
+            title: t('stock.docNo'),
+            dataIndex: 'docNo',
+            key: 'docNo',
+            sorter: true,
+            sortOrder: list.sortOrderOf('docNo'),
+            width: 150,
+            className: 'nowrap',
+            render: (v: string | null) => v ?? '—',
+          },
           {
             title: t('stock.date'),
             dataIndex: 'transferDate',
+            key: 'date',
+            sorter: true,
+            sortOrder: list.sortOrderOf('date'),
             width: 110,
             render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '—'),
           },
@@ -764,18 +816,23 @@ function CountsTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [detail, setDetail] = useState<CountDetail | null>(null);
   const [counted, setCounted] = useState<Record<string, string | null>>({});
-  const [search, setSearch] = useState('');
   const [form] = Form.useForm();
   const { whOptions } = useLookups();
 
-  const listQuery = useQuery({
-    queryKey: ['stock-counts'],
-    queryFn: ({ signal }) =>
-      stockDocumentsControllerListCounts({ status: '' }, { signal }).then(
-        (r) => r.data as unknown as DocRow[],
-      ),
+  // Server-paged (ADR-022): search, sort and page go to the API.
+  const list = usePagedQuery<DocRow, Record<string, string | undefined>>({
+    key: ['stock-counts', 'list'],
+    filters: {},
+    defaultSort: '-date',
+    fetch: (params, signal) =>
+      stockDocumentsControllerListCounts(
+        params as Parameters<typeof stockDocumentsControllerListCounts>[0],
+        { signal },
+      ).then((r) => r.data as unknown as Page<DocRow>),
+    enabled: !detail,
   });
-  const { data, isLoading } = listQuery;
+  const listQuery = list.query;
+  const { isLoading } = listQuery;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['stock-counts'] });
 
   const create = useMutation({
@@ -937,15 +994,13 @@ function CountsTab() {
     );
   }
 
-  const shown = (data ?? []).filter((r) => matchesSearch(search, r.docNo, displayName(r.warehouse)));
-
   return (
     <>
       {contextHolder}
       <ListToolbar
-        search={search}
-        onSearch={setSearch}
-        count={shown.length}
+        search={list.search}
+        onSearch={list.setSearch}
+        count={list.total}
         actions={
           <Button type="primary" onClick={() => setModalOpen(true)}>
             {t('stock.newCount')}
@@ -956,14 +1011,27 @@ function CountsTab() {
         rowKey="id"
         size="small"
         loading={isLoading}
-        dataSource={shown}
+        dataSource={list.rows}
         locale={tableLocale(listQuery)}
-        pagination={{ pageSize: 20 }}
+        pagination={list.pagination}
+        onChange={list.onTableChange}
         columns={[
-          { title: t('stock.docNo'), dataIndex: 'docNo', width: 150, className: 'nowrap', render: (v: string | null) => v ?? '—' },
+          {
+            title: t('stock.docNo'),
+            dataIndex: 'docNo',
+            key: 'docNo',
+            sorter: true,
+            sortOrder: list.sortOrderOf('docNo'),
+            width: 150,
+            className: 'nowrap',
+            render: (v: string | null) => v ?? '—',
+          },
           {
             title: t('stock.date'),
             dataIndex: 'countDate',
+            key: 'date',
+            sorter: true,
+            sortOrder: list.sortOrderOf('date'),
             width: 110,
             render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '—'),
           },
@@ -1030,33 +1098,46 @@ function MovementsTab() {
   const { t } = useTranslation();
   const [itemId, setItemId] = useState<string | undefined>();
   const [warehouseId, setWarehouseId] = useState<string | undefined>();
-  const { whOptions, itemOptions, warehouseLabel } = useLookups();
-  const listQuery = useQuery({
-    queryKey: ['stock-movements', itemId, warehouseId],
-    queryFn: ({ signal }) =>
-      stockReportsControllerMovements({
-        itemId: itemId ?? '',
-        warehouseId: warehouseId ?? '',
-        sourceType: '',
-        from: '',
-        to: '',
-        page: '1',
-        pageSize: '100',
-      }, { signal }).then((r) => r.data as unknown as { rows: MovementRow[]; total: number }),
+  // Not filtered on screen yet; they stay in the key so that a change restarts the read.
+  const sourceType = '';
+  const from = '';
+  const to = '';
+  const { whOptions, warehouseLabel } = useLookups();
+  // "Load more" read (ADR-022 §4): the filters are part of the key, so a change restarts it.
+  const read = useKeysetQuery<MovementRow>({
+    key: ['stock-movements', warehouseId ?? '', itemId ?? '', sourceType, from, to],
+    fetch: (cursor, signal) =>
+      stockReportsControllerMovements(
+        {
+          limit: 100,
+          ...(cursor ? { cursor } : {}),
+          warehouseId: warehouseId ?? '',
+          itemId: itemId ?? '',
+          sourceType,
+          from,
+          to,
+        },
+        { signal },
+      ).then((r) => r.data as unknown as KeysetPage<MovementRow>),
   });
-  const { data, isLoading } = listQuery;
   return (
     <>
       <ListToolbar
         filters={
           <>
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
+            <RemoteSelect
+              queryKey={['items', 'pick-movements']}
               placeholder={t('items.title')}
-              options={itemOptions}
+              value={itemId}
               onChange={setItemId}
+              fetchOptions={(q, signal) =>
+                catalogControllerListItems(
+                  { pageSize: PICKER_PAGE_SIZE, itemKind: 'STOCK', ...(q ? { q } : {}) },
+                  { signal },
+                ).then((r) =>
+                  (r.data as unknown as Page<ItemOpt>).items.map((i) => ({ value: i.id, label: codeAndName(i) })),
+                )
+              }
             />
             <Select
               allowClear
@@ -1066,15 +1147,15 @@ function MovementsTab() {
             />
           </>
         }
-        count={(data?.rows ?? []).length}
+        count={read.rows.length}
       />
       <Table
         rowKey="id"
         size="small"
-        loading={isLoading}
-        dataSource={data?.rows ?? []}
-        locale={tableLocale(listQuery)}
-        pagination={{ pageSize: 20 }}
+        loading={read.query.isLoading}
+        dataSource={read.rows}
+        locale={tableLocale(read.query)}
+        pagination={false}
         columns={[
           {
             title: t('stock.date'),
@@ -1103,6 +1184,12 @@ function MovementsTab() {
           { title: t('stock.totalCost'), dataIndex: 'totalCost', width: 110, align: 'right' as const, render: amountCell },
           { title: t('stock.balanceAfter'), dataIndex: 'balanceQtyAfter', width: 110, align: 'right' as const, render: qtyCell },
         ]}
+      />
+      <LoadMore
+        hasMore={read.hasMore}
+        loading={read.loadingMore}
+        onLoadMore={read.loadMore}
+        shown={read.rows.length}
       />
     </>
   );

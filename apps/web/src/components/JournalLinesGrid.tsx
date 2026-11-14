@@ -30,6 +30,8 @@ export interface PartyColumn {
   /** Party kind each control account requires; other accounts take no party. */
   kindByAccount: Map<string, PartyKind>;
   options: Record<PartyKind, Option[]>;
+  /** Server search for each kind's picker (ADR-022 §8): every typed text goes here. */
+  onSearch: Record<PartyKind, (text: string) => void>;
 }
 
 /** The party kind an account's control type requires, if any. */
@@ -233,6 +235,7 @@ export function JournalLinesGrid({
                         variant="borderless"
                         placeholder={t(kind === 'CUSTOMER' ? 'journal.pickCustomer' : 'journal.pickSupplier')}
                         options={partyColumn.options[kind]}
+                        onRemoteSearch={partyColumn.onSearch[kind]}
                         value={l.partyId}
                         onChange={(v: string) => update(l.key, { partyId: v })}
                         onEnterSelect={() => advance(row, 5)}

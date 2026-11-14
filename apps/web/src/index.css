@@ -637,6 +637,21 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
+/* Foot of a "load more" list (ADR-022 §8): count on the start side, button on the end. */
+.load-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--c-border);
+}
+
+.load-more-count {
+  font-size: 12px;
+  color: var(--c-text-2);
+}
+
 .list-toolbar-actions {
   display: flex;
   flex-wrap: wrap;

@@ -35,7 +35,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
@@ -55,6 +55,7 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { ExportButtons } from '../components/ExportButtons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { codeAndName, displayName, type Named } from '../i18n/displayName';
@@ -154,13 +155,6 @@ function ItemsTab() {
   const { contextHolder, show } = useApiError();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
-  // The box updates on every keystroke; the API search waits until typing pauses.
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  useEffect(() => {
-    const id = window.setTimeout(() => setSearch(searchInput.trim()), 300);
-    return () => window.clearTimeout(id);
-  }, [searchInput]);
   const [kindFilter, setKindFilter] = useState<string | undefined>();
   const [view, setView] = useState<'table' | 'cards'>('table');
   const [ledgerItem, setLedgerItem] = useState<Item | null>(null);
@@ -168,16 +162,19 @@ function ItemsTab() {
   const [form] = Form.useForm();
   const saveAndNew = useRef(false);
 
-  const itemsQuery = useQuery({
-    queryKey: ['items', search, kindFilter],
-    queryFn: ({ signal }) =>
-      catalogControllerListItems({
-        search: search,
-        itemKind: kindFilter ?? '',
-        isActive: '',
-      }, { signal }).then((r) => r.data as unknown as Item[]),
+  // Server-paged (ADR-022): search, sort and page go to the API.
+  const list = usePagedQuery<Item, { itemKind?: string }>({
+    key: ['items', 'list'],
+    filters: { itemKind: kindFilter },
+    defaultSort: 'code',
+    fetch: (params, signal) =>
+      catalogControllerListItems(params as Parameters<typeof catalogControllerListItems>[0], { signal }).then(
+        (r) => r.data as unknown as Page<Item>,
+      ),
   });
-  const { data: items, isLoading } = itemsQuery;
+  const itemsQuery = list.query;
+  const { isLoading } = itemsQuery;
+  const items = list.rows;
   const { data: units } = useQuery({
     queryKey: ['units'],
     queryFn: ({ signal }) => settingsControllerListUnits({ signal }).then((r) => r.data as unknown as Unit[]),
@@ -295,8 +292,21 @@ function ItemsTab() {
   };
 
   const columns = [
-    { title: t('items.code'), dataIndex: 'code', width: 110 },
-    { title: t('common.name'), key: 'name', render: (_: unknown, r: Named) => displayName(r) },
+    {
+      title: t('items.code'),
+      dataIndex: 'code',
+      key: 'code',
+      sorter: true,
+      sortOrder: list.sortOrderOf('code'),
+      width: 110,
+    },
+    {
+      title: t('common.name'),
+      key: 'nameAr',
+      sorter: true,
+      sortOrder: list.sortOrderOf('nameAr'),
+      render: (_: unknown, r: Named) => displayName(r),
+    },
     {
       title: t('items.kind'),
       dataIndex: 'itemKind',
@@ -387,8 +397,8 @@ function ItemsTab() {
       <Card size="small">
       {contextHolder}
       <ListToolbar
-        search={searchInput}
-        onSearch={setSearchInput}
+        search={list.search}
+        onSearch={list.setSearch}
         searchPlaceholder={t('items.search')}
         filters={
           <>
@@ -411,7 +421,7 @@ function ItemsTab() {
             />
           </>
         }
-        count={(items ?? []).length}
+        count={list.total}
         actions={
           <Button type="primary" onClick={openCreate}>
             {t('items.add')}
@@ -423,14 +433,15 @@ function ItemsTab() {
           rowKey="id"
           size="small"
           loading={isLoading}
-          dataSource={items ?? []}
+          dataSource={items}
           locale={tableLocale(itemsQuery)}
-          pagination={{ pageSize: 20 }}
+          pagination={list.pagination}
+          onChange={list.onTableChange}
           columns={columns}
         />
       ) : (
         <Row gutter={[12, 12]}>
-          {(items ?? []).map((r) => (
+          {items.map((r) => (
             <Col key={r.id} xs={24} sm={12} md={8} lg={6}>
               <Card
                 size="small"
