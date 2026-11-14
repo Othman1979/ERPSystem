@@ -15,6 +15,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
+import { testDatabaseUrl } from './support/test-db.js';
 
 const API_PORT = 3209;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -55,7 +56,7 @@ const storedFiles = () =>
     .flatMap((d) => readdirSync(path.join(STORAGE, d.name)).map((f) => path.join(d.name, f)));
 
 beforeAll(async () => {
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
     env: {

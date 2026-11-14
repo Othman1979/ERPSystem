@@ -19,6 +19,7 @@ import path from 'node:path';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
 import { wholeStatement } from './support/statements.js';
+import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 const API_PORT = 3204;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -46,7 +47,7 @@ function binary(res: unknown, cb: (err: Error | null, body: Buffer) => void) {
 
 beforeAll(async () => {
   if (process.env.RUN_PERF !== '1') return;
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
     env: { ...process.env, DATABASE_URL: databaseUrl, API_PORT: String(API_PORT), NODE_ENV: 'test', EINVOICE_WORKER: 'off' },
@@ -59,7 +60,7 @@ beforeAll(async () => {
     port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
-    database: 'erp_test',
+    database: TEST_DB_NAME,
   });
   const deadline = Date.now() + 30_000;
   for (;;) {

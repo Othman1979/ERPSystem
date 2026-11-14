@@ -16,6 +16,7 @@ import ExcelJS from 'exceljs';
 import request from 'supertest';
 import mariadb, { type Connection } from 'mariadb';
 import { wholeStatement } from './support/statements.js';
+import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 const API_PORT = 3602;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -152,7 +153,7 @@ function firstDateValue(ws: ExcelJS.Worksheet): ExcelJS.CellValue | undefined {
 }
 
 beforeAll(async () => {
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
     env: {
@@ -174,7 +175,7 @@ beforeAll(async () => {
     port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
-    database: 'erp_test',
+    database: TEST_DB_NAME,
   });
 
   await waitForHealth();
@@ -692,13 +693,13 @@ describe('LEDGER-03 race — a child account under P against a posting to P', ()
 
   /** A third connection of the test's own, for holding a lock. */
   async function connect(): Promise<Connection> {
-    const url = new URL(process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1'));
+    const url = new URL(testDatabaseUrl());
     return mariadb.createConnection({
       host: url.hostname,
       port: url.port ? Number(url.port) : 3306,
       user: decodeURIComponent(url.username),
       password: decodeURIComponent(url.password),
-      database: 'erp_test',
+      database: TEST_DB_NAME,
     });
   }
 
@@ -714,7 +715,7 @@ describe('LEDGER-03 race — a child account under P against a posting to P', ()
   async function waiting(pattern: string): Promise<number> {
     return count(
       `SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST
-        WHERE db = 'erp_test' AND id <> CONNECTION_ID() AND time_ms >= ? AND info LIKE ?`,
+        WHERE db = '${TEST_DB_NAME}' AND id <> CONNECTION_ID() AND time_ms >= ? AND info LIKE ?`,
       [QUEUED_AFTER_MS, pattern],
     );
   }

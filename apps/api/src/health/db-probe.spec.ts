@@ -5,9 +5,9 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import { parseDatabaseUrl } from '../prisma/prisma.service.js';
 import { probeDatabase } from './db-probe.js';
 
-/** The real test database: the same server as DATABASE_URL, the erp_test schema. */
+/** The real test database: the same server as DATABASE_URL, schema E2E_DB_NAME (default erp_test). */
 const source = process.env.DATABASE_URL ?? '';
-const testUrl = source.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+const testUrl = source.replace(/\/[^/?]+(\?|$)/, `/${process.env.E2E_DB_NAME?.trim() || 'erp_test'}$1`);
 
 function connect(url: string): { client: PrismaClient; pool: Pool } {
   const pool = mariadb.createPool(parseDatabaseUrl(url));

@@ -9,6 +9,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import path from 'node:path';
 import request from 'supertest';
+import { testDatabaseUrl } from './support/test-db.js';
 
 const API_PORT = 3205;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -21,7 +22,7 @@ const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 const idem = () => ({ 'Idempotency-Key': `pdf-${RUN}-${Math.random().toString(36).slice(2)}` });
 
 beforeAll(async () => {
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
     env: { ...process.env, DATABASE_URL: databaseUrl, API_PORT: String(API_PORT), NODE_ENV: 'test', EINVOICE_WORKER: 'off' },

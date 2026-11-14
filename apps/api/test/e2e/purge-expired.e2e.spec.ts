@@ -11,6 +11,7 @@ import { NestFactory } from '@nestjs/core';
 import { JobsModule } from '../../src/jobs/jobs.module.js';
 import { PurgeExpiredService } from '../../src/jobs/purge-expired.service.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
+import { testDatabaseUrl } from './support/test-db.js';
 
 const RUN = Date.now().toString(36);
 const DAY = 24 * 60 * 60 * 1000;
@@ -29,7 +30,7 @@ const created = {
 describe('purge-expired (DB-12)', () => {
   beforeAll(async () => {
     // The job reads DATABASE_URL when it starts: point it at the test database first.
-    process.env.DATABASE_URL = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+    process.env.DATABASE_URL = testDatabaseUrl();
     app = await NestFactory.createApplicationContext(JobsModule, { logger: false });
   }, 60_000);
 

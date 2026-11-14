@@ -14,6 +14,7 @@ import path from 'node:path';
 import request from 'supertest';
 import { PERMISSIONS, ROLE_PERMISSIONS } from '../../src/common/permissions/permissions.js';
 import { addMember } from './support/members.js';
+import { testDatabaseUrl } from './support/test-db.js';
 
 const API_PORT = 3681;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -42,7 +43,7 @@ async function waitForHealth(timeoutMs = 30_000): Promise<void> {
 }
 
 beforeAll(async () => {
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: API_DIR,
     env: { ...process.env, DATABASE_URL: databaseUrl, API_PORT: String(API_PORT), NODE_ENV: 'test' },

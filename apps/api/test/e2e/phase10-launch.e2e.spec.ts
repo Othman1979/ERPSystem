@@ -20,6 +20,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 const API_PORT = 3213;
 const BAD_PORT = 3214;
@@ -80,7 +81,7 @@ async function cli(args: string[], env: Record<string, string | undefined> = {})
 }
 
 beforeAll(async () => {
-  databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  databaseUrl = testDatabaseUrl();
   tmp = await mkdtemp(path.join(os.tmpdir(), 'erp-p10-'));
   webDir = path.join(tmp, 'web');
   await mkdir(path.join(webDir, 'assets'), { recursive: true });
@@ -100,7 +101,7 @@ beforeAll(async () => {
     port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
-    database: 'erp_test',
+    database: TEST_DB_NAME,
   });
   await waitForHealth();
 }, 60_000);
@@ -245,7 +246,7 @@ describe('Phase 10.1 — preflight and grant-platform-admin', () => {
     await db.query(`CREATE DATABASE ${name}`);
     try {
       const run = await cli(['preflight'], {
-        DATABASE_URL: databaseUrl.replace(/\/erp_test(\?|$)/, `/${name}$1`),
+        DATABASE_URL: databaseUrl.replace(/\/[^/?]+(\?|$)/, `/${name}$1`),
         WEB_DIST_DIR: webDir,
         STORAGE_DIR: path.join(tmp, 'storage'),
       });
