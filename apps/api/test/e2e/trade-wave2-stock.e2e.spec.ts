@@ -330,6 +330,47 @@ describe('Trade review fixes — stock and documents', () => {
     await assertConsistent();
   });
 
+  it("ADR-016 §5: a purchase return leaves from the original invoice's warehouse only", async () => {
+    const Q = await item('Q');
+    // Q is in both warehouses, so only the rule (not a stock shortage) can refuse W2.
+    await buy(Q, '5', '2', '2025-01-08', W2);
+    const inv = await buy(Q, '10', '3', '2025-01-08', W1);
+    const line = (await api().get(`/api/v1/purchase-invoices/${inv.id}`).set(auth(token))).body.lines[0].id as string;
+    const body = (warehouseId: string) => ({
+      returnDate: '2025-01-09', originalInvoiceId: inv.id, warehouseId, refundType: 'CREDIT',
+      lines: [{ originalLineId: line, qty: '2' }],
+    });
+    const returnsOf = async () =>
+      ((await db.query('SELECT COUNT(*) AS n FROM purchase_returns WHERE tenant_id = ? AND original_invoice_id = ?', [tenantId, inv.id])) as { n: bigint }[])[0].n;
+
+    // Another warehouse of the company: refused, nothing saved.
+    const other = await api().post('/api/v1/purchase-returns').set(auth(token)).send(body(W2));
+    expect(other.status).toBe(400);
+    expect(other.body.error.code).toBe('RETURN_WAREHOUSE_MISMATCH');
+    expect(other.body.error.details).toEqual({ warehouseId: W2, invoiceWarehouseId: W1 });
+    expect(await returnsOf()).toBe(0n);
+
+    // A draft that names another warehouse (saved before the rule) is refused at posting, and moves nothing.
+    const draft = await create('purchase-returns', body(W1));
+    await db.query('UPDATE purchase_returns SET warehouse_id = ? WHERE tenant_id = ? AND id = ?', [W2, tenantId, draft.id]);
+    const posted = await post('purchase-returns', draft.id);
+    expect(posted.status).toBe(400);
+    expect(posted.body.error.code).toBe('RETURN_WAREHOUSE_MISMATCH');
+    expect(await onHand(Q, W2)).toBe('5');
+    await db.query('UPDATE purchase_returns SET warehouse_id = ? WHERE tenant_id = ? AND id = ?', [W1, tenantId, draft.id]);
+    expect((await post('purchase-returns', draft.id)).status).toBe(201);
+    expect(await onHand(Q, W1)).toBe('8');
+
+    // Tenant B: A's invoice is not found, with B's own warehouse or with A's.
+    const WB = (await api().post('/api/v1/warehouses').set(auth(tokenB)).send({ code: 'WB', nameAr: 'WB' })).body.id as string;
+    const withOwn = await api().post('/api/v1/purchase-returns').set(auth(tokenB)).send(body(WB));
+    expect(withOwn.status).toBe(404);
+    const withA = await api().post('/api/v1/purchase-returns').set(auth(tokenB)).send(body(W1));
+    expect(withA.status).toBe(404);
+    expect(await returnsOf()).toBe(1n);
+    await assertConsistent();
+  });
+
   it('DB-04 / TRADE-19: a transfer reversal mirrors the original cost; a reversal cannot be reversed', async () => {
     const T = await item('T');
     await buy(T, '10', '7', '2025-01-10');

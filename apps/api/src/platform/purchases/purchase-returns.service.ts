@@ -31,6 +31,22 @@ import { GoodsNotesService } from '../goods-notes/goods-notes.service.js';
 const SOURCE = 'PURCHASE_RETURN';
 
 /**
+ * ADR-016 §5 (owner, 2026-11-14): a purchase return's goods leave from the
+ * original invoice's warehouse, where they came in (a GRN-billed invoice
+ * already names its GRN's warehouse). A service-only invoice has no
+ * warehouse, so nothing is checked there: no goods move.
+ */
+function assertReturnWarehouse(invoiceWarehouseId: bigint | null, warehouseId: bigint): void {
+  if (invoiceWarehouseId !== null && invoiceWarehouseId !== warehouseId) {
+    throw new DomainError(
+      ErrorCode.RETURN_WAREHOUSE_MISMATCH,
+      "A purchase return leaves from the original invoice's warehouse",
+      { warehouseId: warehouseId.toString(), invoiceWarehouseId: invoiceWarehouseId.toString() },
+    );
+  }
+}
+
+/**
  * Purchase returns linked to a posted invoice (§7.7, §8.4, §9.5). Return qty
  * is in BASE units of the original line. Posting: stock OUT at the original
  * purchase cost + journal Dr supplier/cash, Cr inventory/purchases/input-tax.
@@ -264,6 +280,7 @@ export class PurchaseReturnsService {
       }
       // A return belongs to its original invoice's branch (ADR-003, TRADE-11).
       assertBranchAllowed(invoice.branchId);
+      assertReturnWarehouse(invoice.warehouseId, warehouse.id);
       assertRefundType(invoice.paymentType, dto.refundType);
       // Drafts reserve their quantity too.
       const prior = await tx.purchaseReturnLine.findMany({
@@ -375,10 +392,13 @@ export class PurchaseReturnsService {
             branchId: true,
             paymentType: true,
             receivedGrnId: true,
+            warehouseId: true,
             lines: { select: { id: true, lineNo: true, qtyBase: true } },
           },
         });
         assertBranchAllowed(original?.branchId);
+        // Again at posting: a draft saved before the rule may name another warehouse.
+        if (original) assertReturnWarehouse(original.warehouseId, draft.warehouseId);
         if (original) assertRefundType(original.paymentType, draft.refundType);
         // TRADE-01: posted returns of the invoice plus this one stay within each line.
         const posted = await tx.purchaseReturnLine.findMany({
