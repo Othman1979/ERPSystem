@@ -26,6 +26,7 @@ import { Decimal } from 'decimal.js';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
 import { webPayloads } from './support/web-payloads.js';
+import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 const API_PORT = 3621;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -54,7 +55,7 @@ async function waitForHealth(timeoutMs = 30_000): Promise<void> {
 }
 
 beforeAll(async () => {
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
     env: { ...process.env, DATABASE_URL: databaseUrl, API_PORT: String(API_PORT), NODE_ENV: 'test' },
@@ -67,7 +68,7 @@ beforeAll(async () => {
     port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
-    database: 'erp_test',
+    database: TEST_DB_NAME,
   });
   await waitForHealth();
 }, 60_000);
@@ -374,18 +375,6 @@ describe('Trade review fixes — stock and documents', () => {
     const [{ wh }] = (await db.query('SELECT warehouse_id AS wh FROM purchase_returns WHERE tenant_id = ? AND id = ?', [tenantId, defaulted.id])) as { wh: bigint }[];
     expect(String(wh)).toBe(W1);
 
-    // A services-only invoice has no warehouse: the form sends none, and the API says why it cannot record the return.
-    const svc = await item('SVC', { itemKind: 'SERVICE' });
-    const svcInv = await createAndPost('purchase-invoices', {
-      invoiceDate: '2025-01-08', supplierId, paymentType: 'CREDIT', lines: [{ itemId: svc, qty: '1', unitCost: '10' }],
-    });
-    const svcInvoice = (await api().get(`/api/v1/purchase-invoices/${svcInv.id}`).set(auth(token))).body as typeof invoice;
-    expect(svcInvoice.warehouseId).toBeNull();
-    const svcBody = web.purchaseReturnBody(svcInvoice, { returnDate: '2025-01-09', refundType: 'CREDIT', qtyByLine: { [svcInvoice.lines[0].id]: '1' } });
-    const required = await api().post('/api/v1/purchase-returns').set(auth(token)).send(svcBody);
-    expect(required.status).toBe(400);
-    expect(required.body.error.code).toBe('RETURN_WAREHOUSE_REQUIRED');
-
     // Tenant B: A's invoice is not found, with B's own warehouse or with A's.
     const WB = (await api().post('/api/v1/warehouses').set(auth(tokenB)).send({ code: 'WB', nameAr: 'WB' })).body.id as string;
     const withOwn = await api().post('/api/v1/purchase-returns').set(auth(tokenB)).send({ ...formBody('1'), warehouseId: WB });
@@ -393,6 +382,118 @@ describe('Trade review fixes — stock and documents', () => {
     const withA = await api().post('/api/v1/purchase-returns').set(auth(tokenB)).send(formBody('1'));
     expect(withA.status).toBe(404);
     expect(await returnsOf()).toBe(2n);
+    await assertConsistent();
+  });
+
+  it('ADR-016 §5 (owner 2026-11-14): a service-only invoice is returned with no warehouse, financial side only', async () => {
+    const web = await webPayloads();
+    const svc = await item('SVC', { itemKind: 'SERVICE' });
+    const svcInv = await createAndPost('purchase-invoices', {
+      invoiceDate: '2025-01-08', supplierId, paymentType: 'CREDIT', lines: [{ itemId: svc, qty: '2', unitCost: '10' }],
+    });
+    const svcInvoice = (await api().get(`/api/v1/purchase-invoices/${svcInv.id}`).set(auth(token))).body as {
+      id: string;
+      warehouseId: string | null;
+      lines: { id: string }[];
+    };
+    expect(svcInvoice.warehouseId).toBeNull();
+    // The return form's own body sends no warehouse for it.
+    const svcBody = (qty: string) =>
+      web.purchaseReturnBody(svcInvoice, { returnDate: '2025-01-09', refundType: 'CREDIT', qtyByLine: { [svcInvoice.lines[0].id]: qty } });
+    expect(svcBody('1').warehouseId).toBeUndefined();
+
+    // Naming a warehouse for it is refused: the return has none, as its invoice.
+    const named = await api().post('/api/v1/purchase-returns').set(auth(token)).send({ ...svcBody('1'), warehouseId: W1 });
+    expect(named.status).toBe(400);
+    expect(named.body.error.code).toBe('RETURN_WAREHOUSE_MISMATCH');
+    expect(named.body.error.details).toEqual({ warehouseId: W1, invoiceWarehouseId: null });
+
+    const draft = await create('purchase-returns', svcBody('1'));
+    const got = await api().get(`/api/v1/purchase-returns/${draft.id}`).set(auth(token));
+    expect(got.status).toBe(200);
+    expect(got.body.warehouseId).toBeNull();
+    expect(got.body.warehouse).toBeNull();
+
+    // Tenant B: neither sees nor posts A's return.
+    expect((await api().get(`/api/v1/purchase-returns/${draft.id}`).set(auth(tokenB))).status).toBe(404);
+    const crossPost = await api().post(`/api/v1/purchase-returns/${draft.id}/post`).set(auth(tokenB)).set('Idempotency-Key', key());
+    expect(crossPost.status).toBe(404);
+
+    const suppliersBefore = await balance(await mappedCode('SUPPLIERS_CONTROL'));
+    const purchasesBefore = await balance(await mappedCode('PURCHASES'));
+    const posted = await post('purchase-returns', draft.id);
+    expect(posted.status).toBe(201);
+    expect(posted.body.status).toBe('POSTED');
+
+    // No stock movement; a balanced entry: supplier debited, purchases (and input tax) credited.
+    const [{ n }] = (await db.query(
+      "SELECT COUNT(*) AS n FROM stock_movements WHERE tenant_id = ? AND source_type = 'PURCHASE_RETURN' AND source_id = ?",
+      [tenantId, draft.id],
+    )) as { n: bigint }[];
+    expect(n).toBe(0n);
+    const [je] = (await db.query(
+      'SELECT SUM(debit) AS d, SUM(credit) AS c FROM journal_lines WHERE tenant_id = ? AND journal_entry_id = ?',
+      [tenantId, posted.body.journalEntryId],
+    )) as { d: string; c: string }[];
+    expect(m3(je.d)).toBe(m3(je.c));
+    expect(m3(je.d)).toBe(m3(posted.body.grandTotal));
+    expect(await balance(await mappedCode('SUPPLIERS_CONTROL'))).toBe(m3(new Decimal(suppliersBefore).plus(posted.body.grandTotal)));
+    expect(await balance(await mappedCode('PURCHASES'))).toBe(m3(new Decimal(purchasesBefore).minus(posted.body.netTotal)));
+    await assertConsistent();
+  });
+
+  it('ADR-016 §5: create and post refuse the same things for a service-only return (warehouse named, item now stocked)', async () => {
+    const web = await webPayloads();
+    const svc = await item('SVC2', { itemKind: 'SERVICE' });
+    const inv = await createAndPost('purchase-invoices', {
+      invoiceDate: '2025-01-08', supplierId, paymentType: 'CREDIT', lines: [{ itemId: svc, qty: '3', unitCost: '10' }],
+    });
+    const invoice = (await api().get(`/api/v1/purchase-invoices/${inv.id}`).set(auth(token))).body as {
+      id: string;
+      warehouseId: string | null;
+      lines: { id: string }[];
+    };
+    const body = () =>
+      web.purchaseReturnBody(invoice, { returnDate: '2025-01-09', refundType: 'CREDIT', qtyByLine: { [invoice.lines[0].id]: '1' } });
+    const statusOf = async (id: string) =>
+      ((await db.query('SELECT status FROM purchase_returns WHERE tenant_id = ? AND id = ?', [tenantId, id])) as { status: string }[])[0].status;
+    const movementsOf = async (id: string) =>
+      ((await db.query(
+        "SELECT COUNT(*) AS n FROM stock_movements WHERE tenant_id = ? AND source_type = 'PURCHASE_RETURN' AND source_id = ?",
+        [tenantId, id],
+      )) as { n: bigint }[])[0].n;
+
+    // A draft that names a warehouse (saved by an older client) gets create's answer at posting.
+    const named = await create('purchase-returns', body());
+    await db.query('UPDATE purchase_returns SET warehouse_id = ? WHERE tenant_id = ? AND id = ?', [W1, tenantId, named.id]);
+    const namedPost = await post('purchase-returns', named.id);
+    expect(namedPost.status).toBe(400);
+    expect(namedPost.body.error.code).toBe('RETURN_WAREHOUSE_MISMATCH');
+    expect(namedPost.body.error.details).toEqual({ warehouseId: W1, invoiceWarehouseId: null });
+    expect(await statusOf(named.id)).toBe('DRAFT');
+    await db.query('UPDATE purchase_returns SET warehouse_id = NULL WHERE tenant_id = ? AND id = ?', [tenantId, named.id]);
+
+    // The item became stocked after the invoice (no API changes a kind; the data can): no
+    // warehouse to take the goods from, so posting and creating both refuse.
+    await db.query("UPDATE items SET item_kind = 'STOCK' WHERE tenant_id = ? AND id = ?", [tenantId, svc]);
+    try {
+      const atPost = await post('purchase-returns', named.id);
+      expect(atPost.status).toBe(400);
+      expect(atPost.body.error.code).toBe('RETURN_WAREHOUSE_REQUIRED');
+      expect(atPost.body.error.details).toEqual({ itemIds: [svc] });
+      expect(await statusOf(named.id)).toBe('DRAFT');
+      expect(await movementsOf(named.id)).toBe(0n);
+      const atCreate = await api().post('/api/v1/purchase-returns').set(auth(token)).send(body());
+      expect(atCreate.status).toBe(400);
+      expect(atCreate.body.error.code).toBe('RETURN_WAREHOUSE_REQUIRED');
+    } finally {
+      await db.query("UPDATE items SET item_kind = 'SERVICE' WHERE tenant_id = ? AND id = ?", [tenantId, svc]);
+    }
+
+    // Back to a service item, the same draft posts with no warehouse and no movement.
+    const done = await post('purchase-returns', named.id);
+    expect(done.status).toBe(201);
+    expect(await movementsOf(named.id)).toBe(0n);
     await assertConsistent();
   });
 

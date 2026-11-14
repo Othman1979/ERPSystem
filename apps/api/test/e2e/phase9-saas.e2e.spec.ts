@@ -17,6 +17,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 const API_PORT = 3208;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -62,7 +63,7 @@ async function runStatusJob() {
 const sqlDate = (d: Date) => d.toISOString().slice(0, 10);
 
 beforeAll(async () => {
-  databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: API_DIR,
     env: { ...process.env, DATABASE_URL: databaseUrl, API_PORT: String(API_PORT), NODE_ENV: 'test' },
@@ -75,7 +76,7 @@ beforeAll(async () => {
     port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
-    database: 'erp_test',
+    database: TEST_DB_NAME,
   });
   await waitForHealth();
 }, 60_000);

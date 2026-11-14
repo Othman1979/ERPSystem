@@ -57,7 +57,6 @@ import {
   purchasesControllerPostReturn,
   purchasesControllerUpdateInvoice,
   settingsControllerListTaxCategories,
-  type CreatePurchaseInvoiceDto,
   type ItemListItemDto,
   type PurchaseInvoiceDetailDto,
   type PurchaseInvoiceLineViewDto,
@@ -72,6 +71,7 @@ import {
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
+import { purchaseInvoiceBody, purchaseInvoiceFormDefaults } from './purchases/invoicePayload';
 import { purchaseReturnBody } from './purchases/returnPayload';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
@@ -427,16 +427,15 @@ function PurchaseInvoiceForm({
   );
   const [supplierId, setSupplierId] = useState<string | undefined>(invoice?.supplierId);
   const [warehouseId, setWarehouseId] = useState<string | undefined>(invoice?.warehouseId ?? undefined);
-  const [paymentType, setPaymentType] = useState<'CASH' | 'CREDIT'>(
-    invoice?.paymentType ?? 'CREDIT',
-  );
+  const formDefaults = purchaseInvoiceFormDefaults(invoice);
+  const [paymentType, setPaymentType] = useState<'CASH' | 'CREDIT'>(formDefaults.paymentType);
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState<string | undefined>(
-    invoice?.supplierInvoiceNo ?? undefined,
+    formDefaults.supplierInvoiceNo,
   );
   const [supplierInvoiceDate, setSupplierInvoiceDate] = useState<Dayjs | null>(
-    invoice?.supplierInvoiceDate ? dayjs(invoice.supplierInvoiceDate) : null,
+    formDefaults.supplierInvoiceDate ? dayjs(formDefaults.supplierInvoiceDate) : null,
   );
-  const [cashAccountId, setCashAccountId] = useState<string | undefined>();
+  const [cashAccountId, setCashAccountId] = useState<string | undefined>(formDefaults.cashAccountId);
   const [lines, setLines] = useState<InvoiceLineDraft[]>(() => {
     if (invoice?.lines.length) {
       return invoice.lines.map((l, i) => ({
@@ -494,26 +493,20 @@ function PurchaseInvoiceForm({
     mutationFn: async () => {
       // trySave checks the supplier before it saves; this narrows it for the request type.
       if (!supplierId) throw new Error('supplier is required');
-      const payload: CreatePurchaseInvoiceDto = {
-        invoiceDate: invoiceDate.format('YYYY-MM-DD'),
-        dueDate: dueDate?.format('YYYY-MM-DD'),
-        supplierId,
-        warehouseId,
-        paymentType,
-        cashAccountId: paymentType === 'CASH' ? cashAccountId : undefined,
-        lines: lines.flatMap((l) =>
-          l.itemId && l.qty
-            ? [
-                {
-                  itemId: l.itemId,
-                  qty: l.qty,
-                  unitCost: l.price ?? '0',
-                  discountPct: l.discountPct ?? undefined,
-                },
-              ]
-            : [],
-        ),
-      };
+      const payload = purchaseInvoiceBody(
+        {
+          invoiceDate: invoiceDate.format('YYYY-MM-DD'),
+          dueDate: dueDate?.format('YYYY-MM-DD'),
+          supplierId,
+          supplierInvoiceNo,
+          supplierInvoiceDate: supplierInvoiceDate?.format('YYYY-MM-DD'),
+          warehouseId,
+          paymentType,
+          cashAccountId,
+          lines,
+        },
+        invoice,
+      );
       const res = isNew
         ? await purchasesControllerCreateInvoice(payload)
         : await purchasesControllerUpdateInvoice(invoice!.id, payload);

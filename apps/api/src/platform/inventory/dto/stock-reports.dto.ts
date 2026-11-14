@@ -9,6 +9,8 @@ import { ExportQueryDto } from '../../printing/dto/export.dto.js';
 // @ApiPropertyOptional keeps these filters in the OpenAPI document (and so in
 // the generated api-client) now that the routes take a DTO instead of @Query('x').
 const OPTIONAL_ID = /^(\d+)?$/;
+/** One to 100 comma-separated item ids (100 is the largest page size). */
+const ITEM_ID_LIST = /^\d+(,\d+){0,99}$/;
 const OPTIONAL_DATE = /^(\d{4}-\d{2}-\d{2})?$/;
 
 /**
@@ -87,6 +89,13 @@ export class StockBalancesQueryDto extends ExportQueryDto {
   @IsString()
   @Matches(OPTIONAL_ID)
   itemId?: string;
+
+  /** Comma-separated item ids, at most 100 (the largest page size): only those items' balances. */
+  @ApiPropertyOptional({ description: 'Comma-separated item ids (at most 100): only those items\' balances' })
+  @IsOptional()
+  @IsString()
+  @Matches(ITEM_ID_LIST)
+  itemIds?: string;
 
   /** 'true' → only items whose total over all warehouses is below their minimum. */
   @ApiPropertyOptional()

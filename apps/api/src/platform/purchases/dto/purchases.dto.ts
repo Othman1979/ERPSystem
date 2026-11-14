@@ -123,7 +123,8 @@ export class CreatePurchaseReturnDto {
 
   /**
    * The warehouse the goods leave from: the original invoice's (ADR-016 §5).
-   * Omitted, it is taken from the invoice; another one is refused.
+   * Omitted, it is taken from the invoice; another one is refused. A
+   * service-only invoice has none, so its return names none either.
    */
   @IsOptional()
   @IsString()

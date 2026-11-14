@@ -1484,8 +1484,8 @@ export class PurchaseReturnRow {
   originalInvoiceId!: string;
   @ApiProperty({ type: 'string' })
   supplierId!: string;
-  @ApiProperty({ type: 'string' })
-  warehouseId!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  warehouseId!: string | null;
   @ApiProperty({ enum: InvoicePaymentType, enumName: 'InvoicePaymentType' })
   refundType!: InvoicePaymentType;
   @ApiProperty({ type: 'string', nullable: true })

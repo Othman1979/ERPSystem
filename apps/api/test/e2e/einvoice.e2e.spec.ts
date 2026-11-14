@@ -29,6 +29,7 @@ import { promisify } from 'node:util';
 import { createMockServer, validate } from 'jofotara-kit';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 /** Ports are picked free at start-up, so two runs on one machine never meet on a port. */
 let API_PORT = 0;
@@ -90,7 +91,7 @@ async function freePort(): Promise<number> {
 }
 
 function startApi(port: number, worker: 'on' | 'off', workerIntervalMs = WORKER_INTERVAL_MS): ChildProcess {
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   const child = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
     env: {
@@ -117,7 +118,7 @@ function startApi(port: number, worker: 'on' | 'off', workerIntervalMs = WORKER_
 
 /** One run of the Cron command `einvoice-send` against erp_test (ADR-009 §15). */
 async function runSendJob(): Promise<{ runs: number; claimed: number }> {
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   try {
     const { stdout, stderr } = await promisify(execFile)('node', ['dist/jobs/cli.js', 'einvoice-send'], {
       cwd: path.resolve(import.meta.dirname, '..', '..'),
@@ -142,13 +143,13 @@ async function runSendJob(): Promise<{ runs: number; claimed: number }> {
 
 /** A connection of the test's own, for playing a worker that is in the middle of a write. */
 async function newConnection(): Promise<Connection> {
-  const url = new URL(process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1'));
+  const url = new URL(testDatabaseUrl());
   return mariadb.createConnection({
     host: url.hostname,
     port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
-    database: 'erp_test',
+    database: TEST_DB_NAME,
   });
 }
 
@@ -218,14 +219,14 @@ beforeAll(async () => {
   proxyUrl = `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`;
 
   api1 = startApi(API_PORT, 'on');
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   const url = new URL(databaseUrl);
   db = await mariadb.createConnection({
     host: url.hostname,
     port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
-    database: 'erp_test',
+    database: TEST_DB_NAME,
   });
   await waitForHealth(API_PORT);
 }, 60_000);
@@ -819,7 +820,7 @@ describe('Phase 7 — JoFotara', () => {
           finished ||
           (await count(
             `SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST
-              WHERE db = 'erp_test' AND id <> CONNECTION_ID() AND time_ms >= 300 AND info LIKE '%einvoice_submissions%'`,
+              WHERE db = '${TEST_DB_NAME}' AND id <> CONNECTION_ID() AND time_ms >= 300 AND info LIKE '%einvoice_submissions%'`,
             [],
           )) > 0,
         45_000,

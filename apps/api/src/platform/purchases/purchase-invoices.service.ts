@@ -123,6 +123,19 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
    * invoices are not read; those with a positive shift (settled after asOf)
    * are read too, in chunks. Cash invoices are settled at purchase and never appear.
    */
+  /**
+   * The company's posted purchase invoices as a derived table with the columns
+   * `id`, `branch_id` and `doc_date`, for treasury's cross-branch aging
+   * (ADR-003 §21): it joins allocations to their invoice's branch without
+   * naming this module's table (module boundary, ADR-004).
+   */
+  async invoiceRefsSql(): Promise<Prisma.Sql> {
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    return Prisma.sql`(SELECT id, branch_id, invoice_date AS doc_date FROM purchase_invoices
+       WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND status = 'POSTED')`;
+  }
+
   async openCreditInvoicesAsOf(asOf: Date, allocationShift: Map<bigint, Decimal>): Promise<OpenInvoiceAsOf[]> {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);

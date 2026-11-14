@@ -151,10 +151,13 @@ function ItemsTab() {
     queryKey: ['tax-categories'],
     queryFn: ({ signal }) => settingsControllerListTaxCategories({ signal }).then((r) => r.data),
   });
+  // On-hand quantities only for the stock items on this page (not every balance of the company).
+  const pageItemIds = list.rows.filter((r) => r.itemKind === 'STOCK').map((r) => r.id);
   const { data: balances } = useQuery({
-    queryKey: ['stock-balances-all'],
+    queryKey: ['stock-balances', 'items-page', pageItemIds],
+    enabled: pageItemIds.length > 0,
     queryFn: ({ signal }) =>
-      stockReportsControllerBalances({ warehouseId: '', itemId: '', lowStock: '' }, { signal }).then((r) => r.data),
+      stockReportsControllerBalances({ itemIds: pageItemIds.join(',') }, { signal }).then((r) => r.data),
   });
 
   const qtyByItem = new Map<string, Decimal>();

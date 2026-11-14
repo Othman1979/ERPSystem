@@ -18,6 +18,7 @@ import path from 'node:path';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
 import { addMember } from './support/members.js';
+import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 const API_PORT = 3233;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -45,7 +46,7 @@ async function waitForHealth(timeoutMs = 30_000): Promise<void> {
 }
 
 beforeAll(async () => {
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
     env: { ...process.env, DATABASE_URL: databaseUrl, API_PORT: String(API_PORT), NODE_ENV: 'test' },
@@ -58,7 +59,7 @@ beforeAll(async () => {
     port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
-    database: 'erp_test',
+    database: TEST_DB_NAME,
   });
   await waitForHealth();
 }, 60_000);
@@ -148,6 +149,7 @@ describe('Paging and branch-scoped treasury reads (ADR-022, ADR-003)', () => {
   let boxMainId = '';
   let boxB2Id = '';
   let boxNoBranchId = '';
+  let bankRowId = '';
   const receipts: Doc[] = [];
   const payments: Doc[] = [];
   const transfers: Doc[] = [];
@@ -246,20 +248,21 @@ describe('Paging and branch-scoped treasury reads (ADR-022, ADR-003)', () => {
     cash3Id = await cashAccount(`صندوق ${RUN} 3`);
 
     // One cash box per branch and one without a branch (cash boxes are branch-scoped by the column).
-    const box = async (code: string, accountId: string) => {
-      const res = await api().post('/api/v1/cash-boxes').set(auth(owner)).send({ code, name: code, accountId });
+    const box = async (code: string, accountId: string, branchId?: string) => {
+      const res = await api()
+        .post('/api/v1/cash-boxes')
+        .set(auth(owner))
+        .send({ code, name: code, accountId, ...(branchId ? { branchId } : {}) });
       expect(res.status).toBe(201);
+      expect(res.body.branchId).toBe(branchId ?? null);
       return res.body.id as string;
     };
-    boxMainId = await box(`M${RUN}`, cashAccountId);
-    boxB2Id = await box(`B${RUN}`, cash2Id);
+    boxMainId = await box(`M${RUN}`, cashAccountId, mainId);
+    boxB2Id = await box(`B${RUN}`, cash2Id, b2Id);
     boxNoBranchId = await box(`N${RUN}`, cash3Id);
-    await db.query('UPDATE cash_boxes SET branch_id = ? WHERE id = ?', [mainId, boxMainId]);
-    await db.query('UPDATE cash_boxes SET branch_id = ? WHERE id = ?', [b2Id, boxB2Id]);
-    expect(
-      (await api().post('/api/v1/bank-accounts').set(auth(owner)).send({ bankName: `Bank ${RUN}`, accountId: bankAccountId }))
-        .status,
-    ).toBe(201);
+    const bank = await api().post('/api/v1/bank-accounts').set(auth(owner)).send({ bankName: `Bank ${RUN}`, accountId: bankAccountId });
+    expect(bank.status).toBe(201);
+    bankRowId = bank.body.id as string;
 
     // Vouchers: dates repeat (2025-03-01..05), so equal dates test the id tie-break.
     for (let i = 0; i < RECEIPTS; i += 1) {
@@ -596,6 +599,140 @@ describe('Paging and branch-scoped treasury reads (ADR-022, ADR-003)', () => {
       expect(ownerRows.some((r) => r.account.id === cash2Id)).toBe(true);
       // Bank accounts have no branch: everyone sees them.
       expect(accRows.some((r) => r.kind === 'BANK_ACCOUNT')).toBe(true);
+    });
+  });
+
+  describe('PUT /cash-boxes and /bank-accounts (validated bodies, branch)', () => {
+    /** The MAIN branch of tenant B, which tenant A must not reach. */
+    const tenantBBranch = async () => {
+      const [row] = (await db.query(
+        "SELECT id FROM branches WHERE tenant_id = (SELECT id FROM tenants WHERE name = ?) AND code = 'MAIN'",
+        [`Treasury B ${RUN}`],
+      )) as { id: bigint }[];
+      return String(row.id);
+    };
+    const boxIdsOf = async (token: string) =>
+      ((await api().get('/api/v1/treasury/balances').set(auth(token))).body.rows as BalanceRow[])
+        .filter((r) => r.kind === 'CASH_BOX')
+        .map((r) => r.id)
+        .sort();
+
+    it('an unknown field on PUT /cash-boxes/:id → 400 VALIDATION', async () => {
+      const res = await api().put(`/api/v1/cash-boxes/${boxMainId}`).set(auth(owner)).send({ name: 'X', bogus: 1 });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION');
+    });
+
+    it('an unknown field on PUT /bank-accounts/:id → 400 VALIDATION', async () => {
+      const res = await api().put(`/api/v1/bank-accounts/${bankRowId}`).set(auth(owner)).send({ bankName: 'X', bogus: 1 });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION');
+    });
+
+    it('a too-long name on PUT /cash-boxes/:id → 400, and null for a name that cannot be cleared → 400', async () => {
+      const long = await api().put(`/api/v1/cash-boxes/${boxMainId}`).set(auth(owner)).send({ name: 'x'.repeat(192) });
+      expect(long.status).toBe(400);
+      const nulled = await api().put(`/api/v1/cash-boxes/${boxMainId}`).set(auth(owner)).send({ name: null });
+      expect(nulled.status).toBe(400);
+    });
+
+    it("a cash box cannot be created on another tenant's branch → 404", async () => {
+      const res = await api()
+        .post('/api/v1/cash-boxes')
+        .set(auth(owner))
+        .send({ code: `Y${RUN}`, name: 'Y', accountId: cash3Id, branchId: await tenantBBranch() });
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('NOT_FOUND');
+    });
+
+    it("a MAIN-only accountant cannot create a box on B2, nor move B2's box (to MAIN or to no branch) → 403", async () => {
+      const create = await api()
+        .post('/api/v1/cash-boxes')
+        .set(auth(accountant))
+        .send({ code: `X${RUN}`, name: 'X', accountId: cash3Id, branchId: b2Id });
+      expect(create.status).toBe(403);
+      expect(create.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+      for (const branchId of [mainId, null]) {
+        const move = await api().put(`/api/v1/cash-boxes/${boxB2Id}`).set(auth(accountant)).send({ branchId });
+        expect(move.status).toBe(403);
+        expect(move.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+      }
+      const listed = (await api().get('/api/v1/cash-boxes').set(auth(owner))).body as { id: string; branchId: string | null }[];
+      expect(listed.find((b) => b.id === boxB2Id)?.branchId).toBe(b2Id);
+    });
+
+    it("a MAIN-only accountant cannot rename, deactivate, re-link or delete B2's box → 403, and it is unchanged", async () => {
+      for (const body of [{ name: 'Hijack' }, { isActive: false }, { accountId: cash3Id }]) {
+        const res = await api().put(`/api/v1/cash-boxes/${boxB2Id}`).set(auth(accountant)).send(body);
+        expect(res.status).toBe(403);
+        expect(res.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+      }
+      const del = await api().delete(`/api/v1/cash-boxes/${boxB2Id}`).set(auth(accountant));
+      expect(del.status).toBe(403);
+      expect(del.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+      const listed = (await api().get('/api/v1/cash-boxes').set(auth(owner))).body as {
+        id: string;
+        name: string;
+        isActive: boolean;
+        branchId: string | null;
+        account: { id: string };
+      }[];
+      const box = listed.find((b) => b.id === boxB2Id)!;
+      expect(box).toMatchObject({ name: `B${RUN}`, isActive: true, branchId: b2Id });
+      expect(box.account.id).toBe(cash2Id);
+      // Its own branch's box stays writable for the accountant.
+      expect((await api().put(`/api/v1/cash-boxes/${boxMainId}`).set(auth(accountant)).send({ isActive: true })).status).toBe(200);
+    });
+
+    it('only a member with every branch moves a box to or from "no branch" → 403 ALL_BRANCHES_REQUIRED', async () => {
+      const take = await api().put(`/api/v1/cash-boxes/${boxNoBranchId}`).set(auth(accountant)).send({ branchId: mainId });
+      expect(take.status).toBe(403);
+      expect(take.body.error.code).toBe('ALL_BRANCHES_REQUIRED');
+      const share = await api().put(`/api/v1/cash-boxes/${boxMainId}`).set(auth(accountant)).send({ branchId: null });
+      expect(share.status).toBe(403);
+      expect(share.body.error.code).toBe('ALL_BRANCHES_REQUIRED');
+      const listed = (await api().get('/api/v1/cash-boxes').set(auth(owner))).body as { id: string; branchId: string | null }[];
+      expect(listed.find((b) => b.id === boxNoBranchId)?.branchId).toBeNull();
+      expect(listed.find((b) => b.id === boxMainId)?.branchId).toBe(mainId);
+    });
+
+    it('the owner moves a box to B2, then to no branch, then back to MAIN; the accountant sees it accordingly', async () => {
+      const put = (branchId: string | null) => api().put(`/api/v1/cash-boxes/${boxMainId}`).set(auth(owner)).send({ branchId });
+
+      const toB2 = await put(b2Id);
+      expect(toB2.status).toBe(200);
+      expect(toB2.body.branchId).toBe(b2Id);
+      expect(await boxIdsOf(accountant)).toEqual([boxNoBranchId]);
+
+      const toNone = await put(null);
+      expect(toNone.status).toBe(200);
+      expect(toNone.body.branchId).toBeNull();
+      expect(await boxIdsOf(accountant)).toEqual([boxMainId, boxNoBranchId].sort());
+
+      // Restore the state the other tests expect: the box is on MAIN again.
+      const restored = await put(mainId);
+      expect(restored.status).toBe(200);
+      expect(restored.body.branchId).toBe(mainId);
+      expect(await boxIdsOf(accountant)).toEqual([boxMainId, boxNoBranchId].sort());
+    });
+
+    it("tenant B cannot update A's cash box or bank account → 404", async () => {
+      const box = await api().put(`/api/v1/cash-boxes/${boxMainId}`).set(auth(tenantB)).send({ name: 'Hijack' });
+      expect(box.status).toBe(404);
+      const bank = await api().put(`/api/v1/bank-accounts/${bankRowId}`).set(auth(tenantB)).send({ bankName: 'Hijack' });
+      expect(bank.status).toBe(404);
+    });
+
+    it('clears ibanMasked with null', async () => {
+      const iban = 'JO94TEST0000000000000001';
+      const set = await api().put(`/api/v1/bank-accounts/${bankRowId}`).set(auth(owner)).send({ ibanMasked: iban });
+      expect(set.status).toBe(200);
+      expect(set.body.ibanMasked).toBe(iban);
+      const cleared = await api().put(`/api/v1/bank-accounts/${bankRowId}`).set(auth(owner)).send({ ibanMasked: null });
+      expect(cleared.status).toBe(200);
+      expect(cleared.body.ibanMasked).toBeNull();
+      const listed = (await api().get('/api/v1/bank-accounts').set(auth(owner))).body as { id: string; ibanMasked: string | null }[];
+      expect(listed.find((b) => b.id === bankRowId)?.ibanMasked).toBeNull();
     });
   });
 });

@@ -19,6 +19,7 @@ import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import request from 'supertest';
 import { wholeStatement } from './support/statements.js';
+import { testDatabaseUrl } from './support/test-db.js';
 
 const API_PORT = 3206;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -46,7 +47,7 @@ async function waitForHealth(timeoutMs = 30_000): Promise<void> {
 }
 
 beforeAll(async () => {
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
     env: { ...process.env, DATABASE_URL: databaseUrl, API_PORT: String(API_PORT), NODE_ENV: 'test' },

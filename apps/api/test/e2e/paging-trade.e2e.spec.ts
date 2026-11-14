@@ -13,6 +13,7 @@ import path from 'node:path';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
 import { addMember } from './support/members.js';
+import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 const API_PORT = 3232;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -40,7 +41,7 @@ async function waitForHealth(timeoutMs = 30_000): Promise<void> {
 }
 
 beforeAll(async () => {
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
     env: { ...process.env, DATABASE_URL: databaseUrl, API_PORT: String(API_PORT), NODE_ENV: 'test' },
@@ -53,7 +54,7 @@ beforeAll(async () => {
     port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
-    database: 'erp_test',
+    database: TEST_DB_NAME,
   });
   await waitForHealth();
 }, 60_000);
@@ -711,6 +712,40 @@ describe('Paging and branch-scoped trade documents (ADR-022, ADR-003)', () => {
       expect(totals.invoiceCount).toBe(2);
       expect(totals.returnCount).toBe(1);
       expect(Number(totals.grand)).toBeCloseTo(netOf(['pi.m1', 'pi.m2'], ['pr.m1']), 2);
+    });
+  });
+
+  describe('service-only purchase return (ADR-016 §5, owner 2026-11-14) follows its invoice branch', () => {
+    let svcInvoiceId = '';
+    let svcLineId = '';
+    it("a B2 service invoice's return: refused for the MAIN accountant, posted by the owner with no warehouse on B2", async () => {
+      const units = await api().get('/api/v1/units').set(auth(owner));
+      const pcs = (units.body as { id: string; code: string }[]).find((u) => u.code === 'PCS')!.id;
+      const svc = await api().post('/api/v1/items').set(auth(owner)).send({ code: 'SVC', nameAr: 'SVC', baseUnitId: pcs, itemKind: 'SERVICE' });
+      expect(svc.status).toBe(201);
+      const inv = await createAndPost(
+        'pi.svc',
+        'purchase-invoices',
+        { invoiceDate: '2025-03-20', supplierId: supplierBetaId, paymentType: 'CREDIT', lines: [{ itemId: svc.body.id, qty: '1', unitCost: '30.000' }] },
+        b2Id,
+      );
+      svcInvoiceId = inv.id;
+      svcLineId = await firstLineId('purchase-invoices', svcInvoiceId);
+      const body = { returnDate: '2025-03-21', originalInvoiceId: svcInvoiceId, refundType: 'CREDIT', lines: [{ originalLineId: svcLineId, qty: '1' }] };
+
+      const refused = await api().post('/api/v1/purchase-returns').set(auth(accountant)).send(body);
+      expect(refused.status).toBe(403);
+      expect(refused.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+
+      const done = await createAndPost('pr.svc', 'purchase-returns', body);
+      const view = await getDoc(owner, 'purchase-returns', done.id);
+      expect(view.body.warehouseId).toBeNull();
+      expect(view.body.status).toBe('POSTED');
+      const entry = await api().get(`/api/v1/journal-entries/${view.body.journalEntryId}`).set(auth(owner));
+      expect(entry.status).toBe(200);
+      expect(entry.body.branchId).toBe(b2Id);
+      expect((await getDoc(accountant, 'purchase-returns', done.id)).status).toBe(404);
+      expect((await getDoc(tenantB, 'purchase-returns', done.id)).status).toBe(404);
     });
   });
 

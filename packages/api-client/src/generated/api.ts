@@ -922,14 +922,23 @@ export interface CreateBranchDto {
 
 export interface UpdateBranchDto {
   /**
+     * null clears the English name.
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
+  /**
+     * null clears the address.
+     * @maxLength 512
+     * @nullable
+     */
+  address?: string | null;
+  /**
+     * Not nullable: a null is validated (and refused), only an absent field is skipped.
      * @minLength 1
      * @maxLength 191
      */
   nameAr?: string;
-  /** @maxLength 191 */
-  nameEn?: string;
-  /** @maxLength 512 */
-  address?: string;
   isActive?: boolean;
 }
 
@@ -3625,7 +3634,8 @@ export interface PurchaseReturnListItemDto {
   returnDate: string;
   originalInvoiceId: string;
   supplierId: string;
-  warehouseId: string;
+  /** @nullable */
+  warehouseId: string | null;
   refundType: InvoicePaymentType;
   /** @nullable */
   cashAccountId: string | null;
@@ -3720,7 +3730,8 @@ export interface PurchaseReturnDetailDto {
   returnDate: string;
   originalInvoiceId: string;
   supplierId: string;
-  warehouseId: string;
+  /** @nullable */
+  warehouseId: string | null;
   refundType: InvoicePaymentType;
   /** @nullable */
   cashAccountId: string | null;
@@ -3744,7 +3755,11 @@ export interface PurchaseReturnDetailDto {
   updatedBy: string | null;
   supplier: PartyDto;
   originalInvoice: PurchaseReturnOriginalInvoiceDetailDto;
-  warehouse: PurchaseWarehouseRefDto;
+  /**
+     * Null for the return of a service-only invoice (ADR-016 §5).
+     * @nullable
+     */
+  warehouse: PurchaseWarehouseRefDto | null;
   /** @nullable */
   cashAccount: PurchaseCashAccountRefDto | null;
   lines: PurchaseReturnLineViewDto[];
@@ -3770,7 +3785,8 @@ export interface CreatePurchaseReturnDto {
   originalInvoiceId: string;
   /**
      * The warehouse the goods leave from: the original invoice's (ADR-016 §5).
-     * Omitted, it is taken from the invoice; another one is refused.
+     * Omitted, it is taken from the invoice; another one is refused. A
+     * service-only invoice has none, so its return names none either.
      */
   warehouseId?: string;
   refundType: CreatePurchaseReturnDtoRefundType;
@@ -3958,6 +3974,8 @@ export interface CreateCashBoxDto {
      */
   name: string;
   accountId: string;
+  /** The branch the box belongs to; absent = every branch (ADR-003). */
+  branchId?: string;
   isActive?: boolean;
 }
 
@@ -3973,6 +3991,26 @@ export interface CashBoxDto {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UpdateCashBoxDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code?: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  name?: string;
+  accountId?: string;
+  isActive?: boolean;
+  /**
+     * null puts the box on every branch again.
+     * @nullable
+     */
+  branchId?: string | null;
 }
 
 export interface TreasuryAccountDeactivatedDto {
@@ -4023,6 +4061,26 @@ export interface BankAccountDto {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UpdateBankAccountDto {
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  bankName?: string;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  accountNoMasked?: string | null;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  ibanMasked?: string | null;
+  accountId?: string;
+  isActive?: boolean;
 }
 
 export interface TreasuryPartyTypeRefDto {
@@ -5941,6 +5999,8 @@ export const StockDocumentsControllerListCountsStatus = {
 export type StockReportsControllerBalancesParams = {
   warehouseId?: string;
   itemId?: string;
+  /** Comma-separated item ids (at most 100): only those items' balances */
+  itemIds?: string;
   /** 'true' → only items whose total over all warehouses is below their minimum. */
   lowStock?: string;
   format?: StockReportsControllerBalancesFormat;
@@ -13324,14 +13384,29 @@ export const getTreasuryControllerUpdateCashBoxUrl = (id: string,) => {
   return `/api/v1/cash-boxes/${id}`
 }
 
-export const treasuryControllerUpdateCashBox = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerUpdateCashBoxResponseSuccess> => {
+export const treasuryControllerUpdateCashBox = async (id: string,
+    updateCashBoxDto: UpdateCashBoxDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerUpdateCashBoxResponseSuccess> => {
 
-  return apiFetch<treasuryControllerUpdateCashBoxResponseSuccess>(getTreasuryControllerUpdateCashBoxUrl(id),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerUpdateCashBoxResponseSuccess>(getTreasuryControllerUpdateCashBoxUrl(id),
   {
     ...options,
-    method: 'PUT'
-
-
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateCashBoxDto)
   }
 );}
 
@@ -13490,14 +13565,29 @@ export const getTreasuryControllerUpdateBankAccountUrl = (id: string,) => {
   return `/api/v1/bank-accounts/${id}`
 }
 
-export const treasuryControllerUpdateBankAccount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerUpdateBankAccountResponseSuccess> => {
+export const treasuryControllerUpdateBankAccount = async (id: string,
+    updateBankAccountDto: UpdateBankAccountDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerUpdateBankAccountResponseSuccess> => {
 
-  return apiFetch<treasuryControllerUpdateBankAccountResponseSuccess>(getTreasuryControllerUpdateBankAccountUrl(id),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerUpdateBankAccountResponseSuccess>(getTreasuryControllerUpdateBankAccountUrl(id),
   {
     ...options,
-    method: 'PUT'
-
-
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateBankAccountDto)
   }
 );}
 

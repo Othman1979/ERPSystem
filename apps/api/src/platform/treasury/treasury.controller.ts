@@ -24,6 +24,8 @@ import {
   ListPaymentsQueryDto,
   ListReceiptsQueryDto,
   ReverseVoucherDto,
+  UpdateBankAccountDto,
+  UpdateCashBoxDto,
 } from './dto/treasury.dto.js';
 import {
   AgingReportDto,
@@ -72,7 +74,7 @@ export class TreasuryController {
   @Put('cash-boxes/:id')
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   @ApiOkResponse({ type: CashBoxDto })
-  updateCashBox(@Param('id') id: string, @Body() dto: Partial<CreateCashBoxDto>) {
+  updateCashBox(@Param('id') id: string, @Body() dto: UpdateCashBoxDto) {
     return this.cashAccounts.updateCashBox(BigInt(id), dto);
   }
 
@@ -102,7 +104,7 @@ export class TreasuryController {
   @Put('bank-accounts/:id')
   @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
   @ApiOkResponse({ type: BankAccountDto })
-  updateBankAccount(@Param('id') id: string, @Body() dto: Partial<CreateBankAccountDto>) {
+  updateBankAccount(@Param('id') id: string, @Body() dto: UpdateBankAccountDto) {
     return this.cashAccounts.updateBankAccount(BigInt(id), dto);
   }
 

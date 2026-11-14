@@ -15,6 +15,7 @@ import path from 'node:path';
 import request from 'supertest';
 import mariadb, { type Connection } from 'mariadb';
 import { addMember } from './support/members.js';
+import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 const API_PORT = 3501;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -79,7 +80,7 @@ async function waitForHealth(timeoutMs = 30_000): Promise<void> {
 }
 
 beforeAll(async () => {
-  const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
+  const databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: API_DIR,
     env: {
@@ -98,7 +99,7 @@ beforeAll(async () => {
     port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
-    database: 'erp_test',
+    database: TEST_DB_NAME,
   });
 
   await waitForHealth();

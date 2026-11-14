@@ -34,19 +34,18 @@ const SOURCE = 'PURCHASE_RETURN';
  * ADR-016 §5 (owner, 2026-11-14): a purchase return's goods leave from the
  * original invoice's warehouse, where they came in (a GRN-billed invoice
  * already names its GRN's warehouse). Omitted, the warehouse is the
- * invoice's. A service-only invoice has none: then the caller must name one
- * (the column is required), and no goods move.
+ * invoice's. A service-only invoice has none (owner decision 2026-11-14):
+ * its return has none either, moves no goods and is only financial; naming
+ * a warehouse for it is refused like any other mismatch.
  */
 async function returnWarehouse(
   tx: Prisma.TransactionClient,
   companyId: bigint,
   invoiceWarehouseId: bigint | null,
   given: string | undefined,
-): Promise<bigint> {
+): Promise<bigint | null> {
   const id = given !== undefined ? BigInt(given) : invoiceWarehouseId;
-  if (id === null) {
-    throw new DomainError(ErrorCode.RETURN_WAREHOUSE_REQUIRED, 'The original invoice has no warehouse; name the return warehouse');
-  }
+  if (id === null) return null;
   // Exists in this company first: another tenant's id answers 404, as everywhere.
   const warehouse = await tx.warehouse.findFirst({ where: { companyId, id, isActive: true }, select: { id: true } });
   if (!warehouse) throw DomainError.notFound('Warehouse', id.toString());
@@ -54,13 +53,34 @@ async function returnWarehouse(
   return warehouse.id;
 }
 
-/** ADR-016 §5: the return's warehouse must be the invoice's, when the invoice has one. */
-function assertReturnWarehouse(invoiceWarehouseId: bigint | null, warehouseId: bigint): void {
-  if (invoiceWarehouseId !== null && invoiceWarehouseId !== warehouseId) {
+/**
+ * ADR-016 §5: the return's warehouse is the invoice's, and none when the
+ * invoice has none (a service-only invoice). One check for create and post,
+ * so a draft saved before a rule cannot post what create now refuses.
+ */
+function assertReturnWarehouse(invoiceWarehouseId: bigint | null, warehouseId: bigint | null): void {
+  if (invoiceWarehouseId !== warehouseId) {
     throw new DomainError(
       ErrorCode.RETURN_WAREHOUSE_MISMATCH,
-      "A purchase return leaves from the original invoice's warehouse",
-      { warehouseId: warehouseId.toString(), invoiceWarehouseId: invoiceWarehouseId.toString() },
+      invoiceWarehouseId === null
+        ? 'The original invoice has no warehouse, so its return names none'
+        : "A purchase return leaves from the original invoice's warehouse",
+      { warehouseId: warehouseId?.toString() ?? null, invoiceWarehouseId: invoiceWarehouseId?.toString() ?? null },
+    );
+  }
+}
+
+/**
+ * A return without a warehouse moves no goods, so none of its items may be
+ * stocked (a service-only invoice holds service items only; this guards an
+ * item whose kind changed since).
+ */
+function assertNoStockWithoutWarehouse(warehouseId: bigint | null, stockItems: Set<bigint>): void {
+  if (warehouseId === null && stockItems.size > 0) {
+    throw new DomainError(
+      ErrorCode.RETURN_WAREHOUSE_REQUIRED,
+      'A return of stocked items needs the warehouse they leave from',
+      { itemIds: [...stockItems].map(String) },
     );
   }
 }
@@ -301,6 +321,12 @@ export class PurchaseReturnsService {
         select: { originalLineId: true, qtyBase: true, discountAmount: true, netAmount: true, taxAmount: true },
       });
       const resolved = computeReturnLines(invoice.lines, dto.lines, returnedByLine(prior));
+      if (warehouseId === null) {
+        assertNoStockWithoutWarehouse(
+          warehouseId,
+          await this.ledger.stockItemIds(tx, companyId, resolved.map((r) => r.orig.itemId)),
+        );
+      }
       const totals = {
         netTotal: sum(resolved.map((r) => r.netAmount)),
         taxTotal: sum(resolved.map((r) => r.taxAmount)),
@@ -440,11 +466,18 @@ export class PurchaseReturnsService {
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, returnDate);
 
         // Lock every (item, warehouse) in the fixed order before any movement.
-        const stockItems = await this.ledger.lockForDocument(
-          tx,
-          companyId,
-          draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
-        );
+        // Without a warehouse (a service-only invoice's return) nothing moves:
+        // classify only, and refuse a stocked item.
+        const warehouseId = draft.warehouseId;
+        const stockItems =
+          warehouseId === null
+            ? await this.ledger.stockItemIds(tx, companyId, draft.lines.map((l) => l.itemId))
+            : await this.ledger.lockForDocument(
+                tx,
+                companyId,
+                draft.lines.map((l) => ({ itemId: l.itemId, warehouseId })),
+              );
+        assertNoStockWithoutWarehouse(warehouseId, stockItems);
 
         // An invoice that billed a GRN received no stock itself: its goods
         // entered at the GRN's cost and its price difference was booked to
@@ -475,7 +508,8 @@ export class PurchaseReturnsService {
                   totalCost: new Decimal(line.netAmount.toString()),
                 };
             const res = await this.ledger.applyMovement(tx, companyId, {
-              warehouseId: draft.warehouseId,
+              // Not null: assertNoStockWithoutWarehouse refused stock without one.
+              warehouseId: warehouseId!,
               itemId: line.itemId,
               movementDate: returnDate,
               type: 'OUT',

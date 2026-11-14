@@ -169,8 +169,9 @@ export class PurchaseReturnDetailDto extends PurchaseReturnRow {
   @ApiProperty({ type: () => PurchaseReturnOriginalInvoiceDetailDto })
   originalInvoice!: PurchaseReturnOriginalInvoiceDetailDto;
 
-  @ApiProperty({ type: () => PurchaseWarehouseRefDto })
-  warehouse!: PurchaseWarehouseRefDto;
+  /** Null for the return of a service-only invoice (ADR-016 §5). */
+  @ApiProperty({ type: () => PurchaseWarehouseRefDto, nullable: true })
+  warehouse!: PurchaseWarehouseRefDto | null;
 
   @ApiProperty({ type: () => PurchaseCashAccountRefDto, nullable: true })
   cashAccount!: PurchaseCashAccountRefDto | null;

@@ -22,7 +22,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
-  apiFetch,
+  branchesControllerList,
   partiesControllerList,
   purchasesControllerListInvoices as listPurchaseInvoices,
   salesControllerListInvoices as listSalesInvoices,
@@ -43,6 +43,8 @@ import {
   treasuryControllerCancelAllocation,
   treasuryControllerReversePayment,
   treasuryControllerReverseReceipt,
+  treasuryControllerUpdateBankAccount,
+  treasuryControllerUpdateCashBox,
   type AllocationDto,
   type BankAccountListItemDto,
   type CashBoxListItemDto,
@@ -99,6 +101,8 @@ interface CashBoxForm {
   code?: string;
   name: string;
   accountId: string;
+  /** Empty = every branch. */
+  branchId?: string;
   isActive?: boolean;
 }
 /** Form values of the bank account dialog. */
@@ -207,6 +211,13 @@ function CashBoxesTab() {
   });
   const { data: boxes, isLoading } = boxesQuery;
 
+  // Same query key as the Branches page, so the list is shared.
+  const branchesQuery = useQuery({
+    queryKey: ['branches'],
+    queryFn: ({ signal }) => branchesControllerList({ signal }).then((r) => r.data),
+  });
+  const branchOptions = (branchesQuery.data ?? []).map((b) => ({ value: b.id, label: displayName(b) }));
+
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['cash-boxes'] });
   const onError = (err: unknown) =>
     apiMessage.error(err instanceof ApiError ? t(`errors.${err.code}`, { defaultValue: err.message }) : t('errors.INTERNAL'));
@@ -219,20 +230,34 @@ function CashBoxesTab() {
   };
   const openEdit = (b: CashBox) => {
     setEditing(b);
-    form.setFieldsValue({ code: b.code, name: b.name, accountId: undefined, isActive: b.isActive });
+    form.setFieldsValue({
+      code: b.code,
+      name: b.name,
+      accountId: undefined,
+      branchId: b.branchId ?? undefined,
+      isActive: b.isActive,
+    });
     setModalOpen(true);
   };
 
   const save = useMutation({
-    mutationFn: (values: CashBoxForm) => {
+    // Create and update answer different statuses (201, 200): the result is not read, so it is unknown.
+    mutationFn: (values: CashBoxForm): Promise<unknown> => {
       if (editing) {
-        return apiFetch(`/api/v1/cash-boxes/${editing.id}`, { method: 'PUT', body: JSON.stringify({ name: values.name, accountId: values.accountId, isActive: values.isActive }) });
+        // An emptied branch is null: the box goes back to every branch.
+        return treasuryControllerUpdateCashBox(editing.id, {
+          name: values.name,
+          accountId: values.accountId,
+          isActive: values.isActive,
+          branchId: values.branchId ?? null,
+        });
       }
       // The form requires `code` when creating, so it is set here.
       return treasuryControllerCreateCashBox({
         code: values.code!,
         name: values.name,
         accountId: values.accountId,
+        branchId: values.branchId,
         isActive: values.isActive,
       });
     },
@@ -316,6 +341,9 @@ function CashBoxesTab() {
           <Form.Item name="name" label={t('treasury.name')} rules={[{ required: true }]} className="span-2">
             <Input maxLength={191} />
           </Form.Item>
+          <Form.Item name="branchId" label={t('treasury.branch')} className="span-all">
+            <Select allowClear showSearch optionFilterProp="label" placeholder={t('treasury.allBranches')} options={branchOptions} />
+          </Form.Item>
           <Form.Item name="accountId" label={t('treasury.linkedAccount')} rules={[{ required: true }]} extra={editing ? t('treasury.accountLocked') : undefined} className="span-all">
             <Select
               showSearch
@@ -372,17 +400,15 @@ function BankAccountsTab() {
   };
 
   const save = useMutation({
-    mutationFn: (values: BankAccountForm) => {
+    mutationFn: (values: BankAccountForm): Promise<unknown> => {
       if (editing) {
-        return apiFetch(`/api/v1/bank-accounts/${editing.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            bankName: values.bankName,
-            accountNoMasked: values.accountNoMasked,
-            ibanMasked: values.ibanMasked,
-            accountId: values.accountId,
-            isActive: values.isActive,
-          }),
+        // An emptied account number or IBAN is null, which clears it.
+        return treasuryControllerUpdateBankAccount(editing.id, {
+          bankName: values.bankName,
+          accountNoMasked: values.accountNoMasked?.trim() || null,
+          ibanMasked: values.ibanMasked?.trim() || null,
+          accountId: values.accountId,
+          isActive: values.isActive,
         });
       }
       return treasuryControllerCreateBankAccount({
