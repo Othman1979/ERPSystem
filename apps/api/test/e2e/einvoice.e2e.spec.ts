@@ -723,7 +723,7 @@ describe('Phase 7 — JoFotara', () => {
     expect(list.body.counts.REJECTED).toBe(1);
 
     const b = await api().get('/api/v1/einvoice/submissions').set(auth(tokenB));
-    expect(b.body.rows).toEqual([]);
+    expect(b.body.items).toEqual([]);
     expect((await api().get(`/api/v1/einvoice/submissions/${firstSubmission.id}`).set(auth(tokenB))).status).toBe(404);
     expect(
       (await api().post(`/api/v1/einvoice/submissions/${firstSubmission.id}/resend`).set(auth(tokenB)).set(idem())).status,

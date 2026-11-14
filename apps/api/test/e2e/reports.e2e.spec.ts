@@ -25,6 +25,7 @@ import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { statementBody } from './support/statements.js';
 
 const API_PORT = 3202;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -435,9 +436,20 @@ describe('Phase 8 — reports', () => {
     expect(month.totals.cost).toBe(is.costOfSales.rows[0].amount);
 
     // Against the posted documents themselves.
-    const invoices = (await get('/api/v1/sales-invoices?status=POSTED')) as { invoiceDate: string; netTotal: string; taxTotal: string; grandTotal: string }[];
+    // One page of 100 holds every posted invoice of this tenant (ADR-022).
+    const page = (await get('/api/v1/sales-invoices?status=POSTED&pageSize=100')) as {
+      total: number;
+      items: { invoiceDate: string; netTotal: string; taxTotal: string; grandTotal: string }[];
+    };
+    expect(page.items.length).toBe(page.total);
+    const invoices = page.items;
     const in2026 = invoices.filter((i) => i.invoiceDate.startsWith('2026'));
-    const returns = (await get('/api/v1/sales-returns?status=POSTED')) as { netTotal: string; grandTotal: string }[];
+    const returnsPage = (await get('/api/v1/sales-returns?status=POSTED&pageSize=100')) as {
+      total: number;
+      items: { netTotal: string; grandTotal: string }[];
+    };
+    expect(returnsPage.items.length).toBe(returnsPage.total);
+    const returns = returnsPage.items;
     expect(m3(in2026.reduce((s, i) => s.plus(i.netTotal), new Decimal(0)).minus(returns.reduce((s, r) => s.plus(r.netTotal), new Decimal(0))))).toBe('630.000');
     expect(m3(in2026.reduce((s, i) => s.plus(i.grandTotal), new Decimal(0)).minus(returns.reduce((s, r) => s.plus(r.grandTotal), new Decimal(0))))).toBe('718.000');
   });
@@ -529,17 +541,18 @@ describe('Phase 8 — reports', () => {
     expect(all.length).toBe(3); // I1 × 2 warehouses, I2
     expect((await get('/api/v1/dashboard/summary?date=2026-06-02')).belowMinimum.count).toBe(1); // I3 only
 
-    const ledger = await get(`/api/v1/stock/items/${id.i1}/ledger?warehouseId=${id.wh}&from=2026-01-01&to=2026-12-31`);
+    // The item card's JSON comes in keyset pages (ADR-022 §4): read it whole.
+    const ledger = await statementBody(BASE, `/api/v1/stock/items/${id.i1}/ledger?warehouseId=${id.wh}&from=2026-01-01&to=2026-12-31`, token);
     expect(ledger.opening).toEqual({ qty: '90', value: '900.000' }); // 2025: 100 in − 10 out at 10
     expect(ledger.rows.length).toBe(5);
-    const none = await get(`/api/v1/stock/items/${id.i1}/ledger`);
+    const none = await statementBody(BASE, `/api/v1/stock/items/${id.i1}/ledger`, token);
     expect(none.opening).toEqual({ qty: '0', value: '0.000' });
 
     // General ledger / party statement opening balances (DB aggregates).
-    const gl = await get(`/api/v1/reports/general-ledger?accountId=${acc['1103']}&from=2026-01-01`);
+    const gl = await statementBody(BASE, `/api/v1/reports/general-ledger?accountId=${acc['1103']}&from=2026-01-01`, token);
     expect(m3(gl.openingBalance)).toBe('232.000');
     expect(m3(gl.closingBalance)).toBe('776.000');
-    const ps = await get(`/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${id.c1}&from=2026-01-01`);
+    const ps = await statementBody(BASE, `/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${id.c1}&from=2026-01-01`, token);
     expect(m3(ps.openingBalance)).toBe('232.000');
     expect(m3(ps.closingBalance)).toBe('776.000');
   });
@@ -562,7 +575,7 @@ describe('Phase 8 — reports', () => {
 
     expect((await api().get(`/api/v1/reports/general-ledger?accountId=${acc['1103']}`).set(auth(tokenB))).status).toBe(404);
     expect((await api().get(`/api/v1/stock/items/${id.i1}/ledger`).set(auth(tokenB))).status).toBe(404);
-    const ps = await get(`/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${id.c1}`, tokenB);
+    const ps = await statementBody(BASE, `/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${id.c1}`, tokenB);
     expect([ps.rows, ps.closingBalance]).toEqual([[], '0.000']); // LEDGER-24: 3 decimals
     expect(await get('/api/v1/stock/valuation', tokenB)).toEqual({ rows: [], totalValue: '0.000' });
   });

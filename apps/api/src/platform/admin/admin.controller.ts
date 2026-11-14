@@ -5,6 +5,7 @@ import { AdminService } from './admin.service.js';
 import {
   CreateSubscriptionDto,
   ExtendTrialDto,
+  ListTenantsQueryDto,
   UpdateTenantStatusDto,
 } from './dto/admin.dto.js';
 
@@ -16,18 +17,9 @@ export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
   @Get()
-  list(
-    @Query('status') status?: string,
-    @Query('search') search?: string,
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
-  ) {
-    return this.admin.listTenants({
-      status,
-      search,
-      page: page ? Number(page) : undefined,
-      pageSize: pageSize ? Number(pageSize) : undefined,
-    });
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022); `q` searches the tenant name. */
+  list(@Query() q: ListTenantsQueryDto) {
+    return this.admin.listTenants(q);
   }
 
   @Get(':id')

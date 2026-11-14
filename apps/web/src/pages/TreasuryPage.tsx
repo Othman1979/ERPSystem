@@ -62,6 +62,8 @@ import { enterTo, focusNamedField, GridSelect } from '../components/GridSelect';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { amountCell } from '../format/cells';
 import { dec, formatAmount, sum } from '../format/number';
+import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 
 // ------------------------------------------------------------- types
 
@@ -129,22 +131,49 @@ interface OpenInvoice {
 
 // ------------------------------------------------------------- lookups
 
+/** Open invoices are read in pages of this size (the API's maximum). */
+const OPEN_INVOICE_PAGE_SIZE = 100;
+
+/**
+ * Every row of a numbered list, page by page, until the server's total is in.
+ * Stops on an empty page too, so a total that moved cannot loop forever.
+ */
+async function fetchAllOpenInvoices(
+  fetchPage: (page: number, signal: AbortSignal) => Promise<Page<OpenInvoice>>,
+  signal: AbortSignal,
+): Promise<OpenInvoice[]> {
+  const rows: OpenInvoice[] = [];
+  for (let page = 1; ; page += 1) {
+    const res = await fetchPage(page, signal);
+    rows.push(...res.items);
+    if (res.items.length === 0 || rows.length >= res.total) return rows;
+  }
+}
+
 function useTreasuryLookups() {
   const accounts = useAccounts(selectCashBank);
-  const parties = useQuery({
-    queryKey: ['parties', 'all'],
-    queryFn: ({ signal }) => partiesControllerList({ partyType: '', isActive: '' }, { signal }).then((r) => r.data as unknown as Party[]),
-  });
 
   const cashAccounts = useMemo(
     () => (accounts.data ?? []).map((a) => ({ value: a.id, label: codeAndName(a) })),
     [accounts.data],
   );
 
-  return {
-    cashAccounts,
-    parties: parties.data ?? [],
-  };
+  return { cashAccounts };
+}
+
+/**
+ * Parties for a voucher's picker: the side's own parties plus BOTH ones. The API
+ * matches partyType exactly, so this asks twice (a BOTH party can be either side).
+ */
+function pickParties(side: 'CUSTOMER' | 'SUPPLIER', q: string | undefined, signal: AbortSignal): Promise<Party[]> {
+  const types = [side, 'BOTH'] as const;
+  return Promise.all(
+    types.map((partyType) =>
+      partiesControllerList({ partyType, pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) }, { signal }).then(
+        (r) => (r.data as unknown as Page<Party>).items,
+      ),
+    ),
+  ).then((pages) => pages.flat());
 }
 
 // ------------------------------------------------------------- page
@@ -481,24 +510,32 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   useNewFromUrl(() => setModalOpen(true));
-  const [search, setSearch] = useState('');
   const [viewId, setViewId] = useState<string | null>(null);
   const [api, contextHolder] = message.useMessage();
   const onError = (err: unknown) =>
     api.error(err instanceof ApiError ? t(`errors.${err.code}`, { defaultValue: err.message }) : t('errors.INTERNAL'));
 
-  const listFn = kind === 'receipt' ? treasuryControllerListReceipts : treasuryControllerListPayments;
   const getFn = kind === 'receipt'
     ? (id: string, options?: Parameters<typeof treasuryControllerGetReceipt>[1]) =>
         treasuryControllerGetReceipt(id, options)
     : (id: string, options?: Parameters<typeof treasuryControllerGetPayment>[1]) =>
         treasuryControllerGetPayment(id, options);
 
-  const vouchersQuery = useQuery({
-    queryKey: [kind === 'receipt' ? 'receipts' : 'payments'],
-    queryFn: ({ signal }) => listFn({ signal }).then((r) => r.data as unknown as Voucher[]),
+  // Server-paged (ADR-022): search (number, party, cash account, description), sort and page go to the API.
+  const numberKey = kind === 'receipt' ? 'receiptNo' : 'paymentNo';
+  const dateKey = kind === 'receipt' ? 'receiptDate' : 'paymentDate';
+  const list = usePagedQuery<Voucher, Record<string, string | undefined>>({
+    key: [kind === 'receipt' ? 'receipts' : 'payments', 'list'],
+    filters: {},
+    defaultSort: `-${dateKey}`,
+    fetch: (params, signal) =>
+      (kind === 'receipt'
+        ? treasuryControllerListReceipts(params as Parameters<typeof treasuryControllerListReceipts>[0], { signal })
+        : treasuryControllerListPayments(params as Parameters<typeof treasuryControllerListPayments>[0], { signal })
+      ).then((r) => r.data as unknown as Page<Voucher>),
+    enabled: !modalOpen && !viewId,
   });
-  const { data: vouchers, isLoading } = vouchersQuery;
+  const vouchersQuery = list.query;
   const { data: view } = useQuery({
     queryKey: [kind, viewId],
     queryFn: ({ signal }) => getFn(viewId!, { signal }).then((r: { data: unknown }) => r.data as unknown as Voucher),
@@ -553,11 +590,17 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
   const columns = [
     {
       title: kind === 'receipt' ? t('treasury.receiptNo') : t('treasury.paymentNo'),
+      key: numberKey,
+      sorter: true,
+      sortOrder: list.sortOrderOf(numberKey),
       width: 140,
       render: (_: unknown, v: Voucher) => v.receiptNo ?? v.paymentNo ?? `#${v.id}`,
     },
     {
       title: t('treasury.date'),
+      key: dateKey,
+      sorter: true,
+      sortOrder: list.sortOrderOf(dateKey),
       width: 110,
       render: (_: unknown, v: Voucher) => dayjs(v.receiptDate ?? v.paymentDate).format('YYYY-MM-DD'),
     },
@@ -569,7 +612,16 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
       title: t('treasury.cashAccount'),
       render: (_: unknown, v: Voucher) => (v.cashAccount ? codeAndName(v.cashAccount) : '—'),
     },
-    { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'right' as const, render: amountCell },
+    {
+      title: t('treasury.amount'),
+      dataIndex: 'amount',
+      key: 'amount',
+      sorter: true,
+      sortOrder: list.sortOrderOf('amount'),
+      width: 120,
+      align: 'right' as const,
+      render: amountCell,
+    },
     { title: t('common.description'), dataIndex: 'description', ellipsis: true },
     {
       title: t('common.status'),
@@ -719,24 +771,13 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
     );
   }
 
-  const shown = (vouchers ?? []).filter((v) =>
-    matchesSearch(
-      search,
-      v.receiptNo,
-      v.paymentNo,
-      v.party ? codeAndName(v.party) : null,
-      v.cashAccount ? codeAndName(v.cashAccount) : null,
-      v.description,
-    ),
-  );
-
   return (
     <div>
       {contextHolder}
       <ListToolbar
-        search={search}
-        onSearch={setSearch}
-        count={shown.length}
+        search={list.search}
+        onSearch={list.setSearch}
+        count={list.total}
         actions={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
             {kind === 'receipt' ? t('treasury.newReceipt') : t('treasury.newPayment')}
@@ -745,12 +786,13 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
       />
       <Table
         rowKey="id"
-        loading={isLoading}
-        dataSource={shown}
+        loading={vouchersQuery.isLoading}
+        dataSource={list.rows}
         locale={tableLocale(vouchersQuery)}
         columns={columns}
         size="small"
-        pagination={{ pageSize: 20 }}
+        pagination={list.pagination}
+        onChange={list.onTableChange}
         onRow={(v) => ({ onClick: () => setViewId(v.id), style: { cursor: 'pointer' } })}
       />
     </div>
@@ -791,21 +833,42 @@ function VoucherForm({
 
   const lookups = useTreasuryLookups();
 
-  const parties = lookups.parties.filter(
-    (p) => p.partyType === partyType || p.partyType === 'BOTH',
-  );
-  const partyOptions = parties.map((p) => ({ value: p.id, label: codeAndName(p) }));
-
-  // Open invoices for allocations
-  const { data: salesInvoices } = useQuery({
-    queryKey: ['sales-invoices', 'POSTED'],
-    queryFn: ({ signal }) => listSalesInvoices({ status: 'POSTED', paymentType: 'CREDIT', customerId: '' }, { signal }).then((r) => r.data as unknown as OpenInvoice[]),
-    enabled: kind === 'receipt',
+  // The party picker searches on the server (ADR-022 §8); a chosen party stays labelled.
+  const parties = useRemoteOptions<Party>({
+    key: ['parties', 'pick-voucher', partyType],
+    fetch: (q, signal) => pickParties(partyType, q, signal),
   });
+  const partyOptions = parties.withSelected([partyId]).map((p) => ({ value: p.id, label: codeAndName(p) }));
+
+  // Open invoices for allocations: every open credit invoice of the party, oldest
+  // first (the server's order), so a party with more than one page still gets all
+  // of them. The automatic allocation covers the same invoices on the server.
+  const { data: salesInvoices } = useQuery({
+    queryKey: ['sales-invoices', 'open', partyId],
+    queryFn: ({ signal }) =>
+      fetchAllOpenInvoices(
+        (page, s) =>
+          listSalesInvoices(
+            { customerId: partyId!, open: 'true', sort: 'invoiceDate', page, pageSize: OPEN_INVOICE_PAGE_SIZE },
+            { signal: s },
+          ).then((r) => r.data as unknown as Page<OpenInvoice>),
+        signal,
+      ),
+    enabled: kind === 'receipt' && !!partyId && partyType === 'CUSTOMER',
+  });
+  // The supplier's open credit invoices, same shape as the customer's above.
   const { data: purchaseInvoices } = useQuery({
-    queryKey: ['purchase-invoices', 'POSTED'],
-    queryFn: ({ signal }) => listPurchaseInvoices({ status: 'POSTED', paymentType: 'CREDIT', supplierId: '' }, { signal }).then((r) => r.data as unknown as OpenInvoice[]),
-    enabled: kind === 'payment',
+    queryKey: ['purchase-invoices', 'open', partyId],
+    queryFn: ({ signal }) =>
+      fetchAllOpenInvoices(
+        (page, s) =>
+          listPurchaseInvoices(
+            { supplierId: partyId!, open: 'true', sort: 'invoiceDate', page, pageSize: OPEN_INVOICE_PAGE_SIZE },
+            { signal: s },
+          ).then((r) => r.data as unknown as Page<OpenInvoice>),
+        signal,
+      ),
+    enabled: kind === 'payment' && !!partyId && partyType === 'SUPPLIER',
   });
 
   const openInvoices = useMemo(() => {
@@ -921,6 +984,8 @@ function VoucherForm({
             enterOpens
             status={requiredError(missing.party) ? 'error' : undefined}
             options={partyOptions}
+            onRemoteSearch={parties.onSearch}
+            searching={parties.pending}
             value={partyId}
             onChange={(v) => {
               setPartyId(v);
@@ -972,6 +1037,7 @@ function VoucherForm({
             >
               {t('treasury.autoAllocate')}
             </Checkbox>
+            <span>{t('treasury.openInvoicesCount', { count: openInvoices.length })}</span>
             <span className="doc-subbar-total">
               {t('treasury.allocated')}: {amountCell(allocatedSum)}
               {dec(amount).gt(0) && (

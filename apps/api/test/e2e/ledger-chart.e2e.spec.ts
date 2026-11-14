@@ -15,6 +15,7 @@ import { Decimal } from 'decimal.js';
 import ExcelJS from 'exceljs';
 import request from 'supertest';
 import mariadb, { type Connection } from 'mariadb';
+import { wholeStatement } from './support/statements.js';
 
 const API_PORT = 3602;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -159,8 +160,8 @@ beforeAll(async () => {
       DATABASE_URL: databaseUrl,
       API_PORT: String(API_PORT),
       NODE_ENV: 'test',
-      // The general-ledger JSON answers 413 above this many lines (it shares the
-      // XLSX cap in reports.service), so a cap of 5 lets six movement lines hit it.
+      // The general-ledger export answers 413 above this many lines (the XLSX
+      // cap, ADR-022 §6), so a cap of 5 lets six movement lines hit it.
       REPORT_XLSX_MAX_ROWS: '5',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -449,23 +450,25 @@ describe('Ledger review fixes (2026-11-13) — chart, mappings, fiscal years, re
     expect(sumOf('totalCredit').eq(tb.totals.credit)).toBe(true);
 
     // Opening balance of the customer = the 300 of the opening entry.
-    const ps = await get(`/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${customerId}`);
+    const ps = await wholeStatement(BASE, `/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${customerId}`, token);
     expect(ps.status).toBe(200);
     expect((ps.body as { openingBalance: string }).openingBalance).toBe('300.000');
   });
 
-  it('LEDGER-19 / DB-14: the general-ledger JSON is capped at REPORT_XLSX_MAX_ROWS lines', async () => {
+  it('LEDGER-19 / DB-14: the general-ledger export is capped at REPORT_XLSX_MAX_ROWS lines; the JSON is paged', async () => {
     const get = (url: string) => api().get(url).set(auth(token));
 
-    // Six movement lines in February to December: above the cap of 5.
-    const wide = await get(
-      `/api/v1/reports/general-ledger?accountId=${acct('1101')}&from=2025-02-01&to=2025-12-31`,
-    );
-    expectRefused(wide, 413, 'REPORT_TOO_LARGE');
+    // Six movement lines in February to December: above the cap of 5 for an export (ADR-022 §6)...
+    const wide = `/api/v1/reports/general-ledger?accountId=${acct('1101')}&from=2025-02-01&to=2025-12-31`;
+    expectRefused(await get(`${wide}&format=xlsx`), 413, 'REPORT_TOO_LARGE');
+    // ...while the JSON reads them in pages (ADR-022 §4).
+    expect((await wholeStatement(BASE, wide, token)).body.rows).toHaveLength(6);
 
     // Three movement lines in the first three days: under the cap.
-    const narrow = await get(
+    const narrow = await wholeStatement(
+      BASE,
       `/api/v1/reports/general-ledger?accountId=${acct('1101')}&from=2025-02-01&to=2025-02-03`,
+      token,
     );
     expect(narrow.status).toBe(200);
     expect((narrow.body as GlBody).rows).toHaveLength(3);

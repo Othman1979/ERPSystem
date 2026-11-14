@@ -125,33 +125,294 @@ export type CompanyControllerUploadLogoBody = {
 };
 
 export type JournalControllerListParams = {
-  status: string;
-  voucherType: string;
-  sourceType: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: JournalControllerListSort;
+  status?: JournalControllerListStatus;
+  voucherType?: JournalControllerListVoucherType;
+  sourceType?: JournalControllerListSourceType;
+  from?: string;
+  to?: string;
+};
+
+export type JournalControllerListSort = typeof JournalControllerListSort[keyof typeof JournalControllerListSort];
+
+
+export const JournalControllerListSort = {
+  entryDate: 'entryDate',
+  '-entryDate': '-entryDate',
+  entryNo: 'entryNo',
+  '-entryNo': '-entryNo',
+} as const;
+
+export type JournalControllerListStatus = typeof JournalControllerListStatus[keyof typeof JournalControllerListStatus];
+
+
+export const JournalControllerListStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
+
+export type JournalControllerListVoucherType = typeof JournalControllerListVoucherType[keyof typeof JournalControllerListVoucherType];
+
+
+export const JournalControllerListVoucherType = {
+  JOURNAL: 'JOURNAL',
+  RECEIPT_VOUCHER: 'RECEIPT_VOUCHER',
+  PAYMENT_VOUCHER: 'PAYMENT_VOUCHER',
+} as const;
+
+export type JournalControllerListSourceType = typeof JournalControllerListSourceType[keyof typeof JournalControllerListSourceType];
+
+
+export const JournalControllerListSourceType = {
+  MANUAL_JOURNAL: 'MANUAL_JOURNAL',
+  OPENING_ENTRY: 'OPENING_ENTRY',
+} as const;
+
+export type JournalControllerGeneralLedgerParams = {
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+  /** @maxLength 512 */
+  cursor?: string;
+};
+
+export type JournalControllerPartyStatementParams = {
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+  /** @maxLength 512 */
+  cursor?: string;
 };
 
 export type PartiesControllerListParams = {
-  partyType: string;
-  isActive: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: PartiesControllerListSort;
+  partyType?: PartiesControllerListPartyType;
+  isActive?: PartiesControllerListIsActive;
 };
+
+export type PartiesControllerListSort = typeof PartiesControllerListSort[keyof typeof PartiesControllerListSort];
+
+
+export const PartiesControllerListSort = {
+  code: 'code',
+  '-code': '-code',
+  nameAr: 'nameAr',
+  '-nameAr': '-nameAr',
+} as const;
+
+export type PartiesControllerListPartyType = typeof PartiesControllerListPartyType[keyof typeof PartiesControllerListPartyType];
+
+
+export const PartiesControllerListPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+  BOTH: 'BOTH',
+} as const;
+
+export type PartiesControllerListIsActive = typeof PartiesControllerListIsActive[keyof typeof PartiesControllerListIsActive];
+
+
+export const PartiesControllerListIsActive = {
+  true: 'true',
+  false: 'false',
+} as const;
 
 export type CatalogControllerListItemsParams = {
-  search: string;
-  itemKind: string;
-  isActive: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: CatalogControllerListItemsSort;
+  itemKind?: CatalogControllerListItemsItemKind;
+  isActive?: CatalogControllerListItemsIsActive;
 };
+
+export type CatalogControllerListItemsSort = typeof CatalogControllerListItemsSort[keyof typeof CatalogControllerListItemsSort];
+
+
+export const CatalogControllerListItemsSort = {
+  code: 'code',
+  '-code': '-code',
+  nameAr: 'nameAr',
+  '-nameAr': '-nameAr',
+} as const;
+
+export type CatalogControllerListItemsItemKind = typeof CatalogControllerListItemsItemKind[keyof typeof CatalogControllerListItemsItemKind];
+
+
+export const CatalogControllerListItemsItemKind = {
+  STOCK: 'STOCK',
+  SERVICE: 'SERVICE',
+} as const;
+
+export type CatalogControllerListItemsIsActive = typeof CatalogControllerListItemsIsActive[keyof typeof CatalogControllerListItemsIsActive];
+
+
+export const CatalogControllerListItemsIsActive = {
+  true: 'true',
+  false: 'false',
+} as const;
 
 export type StockDocumentsControllerListAdjustmentsParams = {
-  status: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: StockDocumentsControllerListAdjustmentsSort;
+  status?: StockDocumentsControllerListAdjustmentsStatus;
+  from?: string;
+  to?: string;
+  adjustmentType?: StockDocumentsControllerListAdjustmentsAdjustmentType;
+  warehouseId?: string;
 };
+
+export type StockDocumentsControllerListAdjustmentsSort = typeof StockDocumentsControllerListAdjustmentsSort[keyof typeof StockDocumentsControllerListAdjustmentsSort];
+
+
+export const StockDocumentsControllerListAdjustmentsSort = {
+  date: 'date',
+  '-date': '-date',
+  docNo: 'docNo',
+  '-docNo': '-docNo',
+} as const;
+
+export type StockDocumentsControllerListAdjustmentsStatus = typeof StockDocumentsControllerListAdjustmentsStatus[keyof typeof StockDocumentsControllerListAdjustmentsStatus];
+
+
+export const StockDocumentsControllerListAdjustmentsStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
+
+export type StockDocumentsControllerListAdjustmentsAdjustmentType = typeof StockDocumentsControllerListAdjustmentsAdjustmentType[keyof typeof StockDocumentsControllerListAdjustmentsAdjustmentType];
+
+
+export const StockDocumentsControllerListAdjustmentsAdjustmentType = {
+  OPENING: 'OPENING',
+  IN: 'IN',
+  OUT: 'OUT',
+  COUNT_ADJUSTMENT: 'COUNT_ADJUSTMENT',
+} as const;
 
 export type StockDocumentsControllerListTransfersParams = {
-  status: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: StockDocumentsControllerListTransfersSort;
+  status?: StockDocumentsControllerListTransfersStatus;
+  from?: string;
+  to?: string;
+  warehouseId?: string;
 };
 
+export type StockDocumentsControllerListTransfersSort = typeof StockDocumentsControllerListTransfersSort[keyof typeof StockDocumentsControllerListTransfersSort];
+
+
+export const StockDocumentsControllerListTransfersSort = {
+  date: 'date',
+  '-date': '-date',
+  docNo: 'docNo',
+  '-docNo': '-docNo',
+} as const;
+
+export type StockDocumentsControllerListTransfersStatus = typeof StockDocumentsControllerListTransfersStatus[keyof typeof StockDocumentsControllerListTransfersStatus];
+
+
+export const StockDocumentsControllerListTransfersStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
+
 export type StockDocumentsControllerListCountsParams = {
-  status: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: StockDocumentsControllerListCountsSort;
+  status?: StockDocumentsControllerListCountsStatus;
+  from?: string;
+  to?: string;
+  warehouseId?: string;
 };
+
+export type StockDocumentsControllerListCountsSort = typeof StockDocumentsControllerListCountsSort[keyof typeof StockDocumentsControllerListCountsSort];
+
+
+export const StockDocumentsControllerListCountsSort = {
+  date: 'date',
+  '-date': '-date',
+  docNo: 'docNo',
+  '-docNo': '-docNo',
+} as const;
+
+export type StockDocumentsControllerListCountsStatus = typeof StockDocumentsControllerListCountsStatus[keyof typeof StockDocumentsControllerListCountsStatus];
+
+
+export const StockDocumentsControllerListCountsStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
 
 export type StockReportsControllerBalancesParams = {
   warehouseId?: string;
@@ -160,21 +421,63 @@ export type StockReportsControllerBalancesParams = {
 };
 
 export type StockReportsControllerMovementsParams = {
-  warehouseId: string;
-  itemId: string;
-  sourceType: string;
-  from: string;
-  to: string;
-  page: string;
-  pageSize: string;
-};
-
-export type StockReportsControllerItemLedgerParams = {
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+  /** @maxLength 512 */
+  cursor?: string;
   warehouseId?: string;
-  sourceType?: string;
+  itemId?: string;
+  sourceType?: StockReportsControllerMovementsSourceType;
   from?: string;
   to?: string;
 };
+
+export type StockReportsControllerMovementsSourceType = typeof StockReportsControllerMovementsSourceType[keyof typeof StockReportsControllerMovementsSourceType];
+
+
+export const StockReportsControllerMovementsSourceType = {
+  GOODS_RECEIPT: 'GOODS_RECEIPT',
+  GOODS_ISSUE: 'GOODS_ISSUE',
+  PURCHASE_INVOICE: 'PURCHASE_INVOICE',
+  PURCHASE_RETURN: 'PURCHASE_RETURN',
+  REVALUATION: 'REVALUATION',
+  SALES_INVOICE: 'SALES_INVOICE',
+  SALES_RETURN: 'SALES_RETURN',
+  STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT',
+  STOCK_TRANSFER: 'STOCK_TRANSFER',
+} as const;
+
+export type StockReportsControllerItemLedgerParams = {
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+  /** @maxLength 512 */
+  cursor?: string;
+  warehouseId?: string;
+  sourceType?: StockReportsControllerItemLedgerSourceType;
+  from?: string;
+  to?: string;
+};
+
+export type StockReportsControllerItemLedgerSourceType = typeof StockReportsControllerItemLedgerSourceType[keyof typeof StockReportsControllerItemLedgerSourceType];
+
+
+export const StockReportsControllerItemLedgerSourceType = {
+  GOODS_RECEIPT: 'GOODS_RECEIPT',
+  GOODS_ISSUE: 'GOODS_ISSUE',
+  PURCHASE_INVOICE: 'PURCHASE_INVOICE',
+  PURCHASE_RETURN: 'PURCHASE_RETURN',
+  REVALUATION: 'REVALUATION',
+  SALES_INVOICE: 'SALES_INVOICE',
+  SALES_RETURN: 'SALES_RETURN',
+  STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT',
+  STOCK_TRANSFER: 'STOCK_TRANSFER',
+} as const;
 
 export type StockReportsControllerItemBalancesParams = {
   warehouseId?: string;
@@ -187,36 +490,430 @@ export type StockReportsControllerValuationParams = {
 };
 
 export type SalesControllerListInvoicesParams = {
-  status: string;
-  paymentType: string;
-  customerId: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: SalesControllerListInvoicesSort;
+  status?: SalesControllerListInvoicesStatus;
+  paymentType?: SalesControllerListInvoicesPaymentType;
+  customerId?: string;
+  from?: string;
+  to?: string;
+  open?: SalesControllerListInvoicesOpen;
 };
+
+export type SalesControllerListInvoicesSort = typeof SalesControllerListInvoicesSort[keyof typeof SalesControllerListInvoicesSort];
+
+
+export const SalesControllerListInvoicesSort = {
+  invoiceDate: 'invoiceDate',
+  '-invoiceDate': '-invoiceDate',
+  invoiceNo: 'invoiceNo',
+  '-invoiceNo': '-invoiceNo',
+  grandTotal: 'grandTotal',
+  '-grandTotal': '-grandTotal',
+} as const;
+
+export type SalesControllerListInvoicesStatus = typeof SalesControllerListInvoicesStatus[keyof typeof SalesControllerListInvoicesStatus];
+
+
+export const SalesControllerListInvoicesStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
+
+export type SalesControllerListInvoicesPaymentType = typeof SalesControllerListInvoicesPaymentType[keyof typeof SalesControllerListInvoicesPaymentType];
+
+
+export const SalesControllerListInvoicesPaymentType = {
+  CASH: 'CASH',
+  CREDIT: 'CREDIT',
+} as const;
+
+export type SalesControllerListInvoicesOpen = typeof SalesControllerListInvoicesOpen[keyof typeof SalesControllerListInvoicesOpen];
+
+
+export const SalesControllerListInvoicesOpen = {
+  true: 'true',
+  false: 'false',
+} as const;
 
 export type SalesControllerListReturnsParams = {
-  status: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: SalesControllerListReturnsSort;
+  status?: SalesControllerListReturnsStatus;
+  customerId?: string;
+  from?: string;
+  to?: string;
 };
+
+export type SalesControllerListReturnsSort = typeof SalesControllerListReturnsSort[keyof typeof SalesControllerListReturnsSort];
+
+
+export const SalesControllerListReturnsSort = {
+  returnDate: 'returnDate',
+  '-returnDate': '-returnDate',
+  returnNo: 'returnNo',
+  '-returnNo': '-returnNo',
+  grandTotal: 'grandTotal',
+  '-grandTotal': '-grandTotal',
+} as const;
+
+export type SalesControllerListReturnsStatus = typeof SalesControllerListReturnsStatus[keyof typeof SalesControllerListReturnsStatus];
+
+
+export const SalesControllerListReturnsStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
 
 export type PurchasesControllerListInvoicesParams = {
-  status: string;
-  paymentType: string;
-  supplierId: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: PurchasesControllerListInvoicesSort;
+  status?: PurchasesControllerListInvoicesStatus;
+  paymentType?: PurchasesControllerListInvoicesPaymentType;
+  supplierId?: string;
+  from?: string;
+  to?: string;
+  open?: PurchasesControllerListInvoicesOpen;
 };
+
+export type PurchasesControllerListInvoicesSort = typeof PurchasesControllerListInvoicesSort[keyof typeof PurchasesControllerListInvoicesSort];
+
+
+export const PurchasesControllerListInvoicesSort = {
+  invoiceDate: 'invoiceDate',
+  '-invoiceDate': '-invoiceDate',
+  invoiceNo: 'invoiceNo',
+  '-invoiceNo': '-invoiceNo',
+  grandTotal: 'grandTotal',
+  '-grandTotal': '-grandTotal',
+} as const;
+
+export type PurchasesControllerListInvoicesStatus = typeof PurchasesControllerListInvoicesStatus[keyof typeof PurchasesControllerListInvoicesStatus];
+
+
+export const PurchasesControllerListInvoicesStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
+
+export type PurchasesControllerListInvoicesPaymentType = typeof PurchasesControllerListInvoicesPaymentType[keyof typeof PurchasesControllerListInvoicesPaymentType];
+
+
+export const PurchasesControllerListInvoicesPaymentType = {
+  CASH: 'CASH',
+  CREDIT: 'CREDIT',
+} as const;
+
+export type PurchasesControllerListInvoicesOpen = typeof PurchasesControllerListInvoicesOpen[keyof typeof PurchasesControllerListInvoicesOpen];
+
+
+export const PurchasesControllerListInvoicesOpen = {
+  true: 'true',
+  false: 'false',
+} as const;
 
 export type PurchasesControllerListReturnsParams = {
-  status: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: PurchasesControllerListReturnsSort;
+  status?: PurchasesControllerListReturnsStatus;
+  supplierId?: string;
+  from?: string;
+  to?: string;
 };
+
+export type PurchasesControllerListReturnsSort = typeof PurchasesControllerListReturnsSort[keyof typeof PurchasesControllerListReturnsSort];
+
+
+export const PurchasesControllerListReturnsSort = {
+  returnDate: 'returnDate',
+  '-returnDate': '-returnDate',
+  returnNo: 'returnNo',
+  '-returnNo': '-returnNo',
+  grandTotal: 'grandTotal',
+  '-grandTotal': '-grandTotal',
+} as const;
+
+export type PurchasesControllerListReturnsStatus = typeof PurchasesControllerListReturnsStatus[keyof typeof PurchasesControllerListReturnsStatus];
+
+
+export const PurchasesControllerListReturnsStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
 
 export type GoodsNotesControllerListParams = {
-  status: string;
-  noteType: string;
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: GoodsNotesControllerListSort;
+  status?: GoodsNotesControllerListStatus;
+  from?: string;
+  to?: string;
+  noteType?: GoodsNotesControllerListNoteType;
 };
 
-export type AdminControllerListParams = {
-  status: string;
-  search: string;
-  page: string;
-  pageSize: string;
+export type GoodsNotesControllerListSort = typeof GoodsNotesControllerListSort[keyof typeof GoodsNotesControllerListSort];
+
+
+export const GoodsNotesControllerListSort = {
+  date: 'date',
+  '-date': '-date',
+  docNo: 'docNo',
+  '-docNo': '-docNo',
+} as const;
+
+export type GoodsNotesControllerListStatus = typeof GoodsNotesControllerListStatus[keyof typeof GoodsNotesControllerListStatus];
+
+
+export const GoodsNotesControllerListStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
+
+export type GoodsNotesControllerListNoteType = typeof GoodsNotesControllerListNoteType[keyof typeof GoodsNotesControllerListNoteType];
+
+
+export const GoodsNotesControllerListNoteType = {
+  GRN: 'GRN',
+  GIN: 'GIN',
+} as const;
+
+export type TreasuryControllerListReceiptsParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  from?: string;
+  to?: string;
+  sort?: TreasuryControllerListReceiptsSort;
+  partyId?: string;
+  cashAccountId?: string;
 };
+
+export type TreasuryControllerListReceiptsSort = typeof TreasuryControllerListReceiptsSort[keyof typeof TreasuryControllerListReceiptsSort];
+
+
+export const TreasuryControllerListReceiptsSort = {
+  receiptDate: 'receiptDate',
+  '-receiptDate': '-receiptDate',
+  receiptNo: 'receiptNo',
+  '-receiptNo': '-receiptNo',
+  amount: 'amount',
+  '-amount': '-amount',
+} as const;
+
+export type TreasuryControllerListPaymentsParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  from?: string;
+  to?: string;
+  sort?: TreasuryControllerListPaymentsSort;
+  partyId?: string;
+  cashAccountId?: string;
+};
+
+export type TreasuryControllerListPaymentsSort = typeof TreasuryControllerListPaymentsSort[keyof typeof TreasuryControllerListPaymentsSort];
+
+
+export const TreasuryControllerListPaymentsSort = {
+  paymentDate: 'paymentDate',
+  '-paymentDate': '-paymentDate',
+  paymentNo: 'paymentNo',
+  '-paymentNo': '-paymentNo',
+  amount: 'amount',
+  '-amount': '-amount',
+} as const;
+
+export type TreasuryControllerListCashTransfersParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  from?: string;
+  to?: string;
+  sort?: TreasuryControllerListCashTransfersSort;
+};
+
+export type TreasuryControllerListCashTransfersSort = typeof TreasuryControllerListCashTransfersSort[keyof typeof TreasuryControllerListCashTransfersSort];
+
+
+export const TreasuryControllerListCashTransfersSort = {
+  transferDate: 'transferDate',
+  '-transferDate': '-transferDate',
+  transferNo: 'transferNo',
+  '-transferNo': '-transferNo',
+  amount: 'amount',
+  '-amount': '-amount',
+} as const;
+
+export type EInvoiceControllerListSubmissionsParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: EInvoiceControllerListSubmissionsSort;
+  status?: EInvoiceControllerListSubmissionsStatus;
+  documentType?: EInvoiceControllerListSubmissionsDocumentType;
+  from?: string;
+  to?: string;
+};
+
+export type EInvoiceControllerListSubmissionsSort = typeof EInvoiceControllerListSubmissionsSort[keyof typeof EInvoiceControllerListSubmissionsSort];
+
+
+export const EInvoiceControllerListSubmissionsSort = {
+  createdAt: 'createdAt',
+  '-createdAt': '-createdAt',
+  documentNo: 'documentNo',
+  '-documentNo': '-documentNo',
+} as const;
+
+export type EInvoiceControllerListSubmissionsStatus = typeof EInvoiceControllerListSubmissionsStatus[keyof typeof EInvoiceControllerListSubmissionsStatus];
+
+
+export const EInvoiceControllerListSubmissionsStatus = {
+  PENDING: 'PENDING',
+  SENDING: 'SENDING',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  FAILED: 'FAILED',
+  UNKNOWN: 'UNKNOWN',
+} as const;
+
+export type EInvoiceControllerListSubmissionsDocumentType = typeof EInvoiceControllerListSubmissionsDocumentType[keyof typeof EInvoiceControllerListSubmissionsDocumentType];
+
+
+export const EInvoiceControllerListSubmissionsDocumentType = {
+  SALES_INVOICE: 'SALES_INVOICE',
+  SALES_RETURN: 'SALES_RETURN',
+} as const;
+
+export type AdminControllerListParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /** @maxLength 100 */
+  q?: string;
+  sort?: AdminControllerListSort;
+  status?: AdminControllerListStatus;
+};
+
+export type AdminControllerListSort = typeof AdminControllerListSort[keyof typeof AdminControllerListSort];
+
+
+export const AdminControllerListSort = {
+  id: 'id',
+  '-id': '-id',
+  name: 'name',
+  '-name': '-name',
+  createdAt: 'createdAt',
+  '-createdAt': '-createdAt',
+} as const;
+
+export type AdminControllerListStatus = typeof AdminControllerListStatus[keyof typeof AdminControllerListStatus];
+
+
+export const AdminControllerListStatus = {
+  TRIAL: 'TRIAL',
+  ACTIVE: 'ACTIVE',
+  PAST_DUE: 'PAST_DUE',
+  SUSPENDED: 'SUSPENDED',
+  CANCELLED: 'CANCELLED',
+} as const;
 
 export type AdminErrorsControllerListParams = {
   /** open (default), resolved or all */
@@ -2385,7 +3082,7 @@ export type journalControllerListResponseSuccess = (journalControllerListRespons
 
 export type journalControllerListResponse = (journalControllerListResponseSuccess)
 
-export const getJournalControllerListUrl = (params: JournalControllerListParams,) => {
+export const getJournalControllerListUrl = (params?: JournalControllerListParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -2400,7 +3097,7 @@ export const getJournalControllerListUrl = (params: JournalControllerListParams,
   return stringifiedParams.length > 0 ? `/api/v1/journal-entries?${stringifiedParams}` : `/api/v1/journal-entries`
 }
 
-export const journalControllerList = async (params: JournalControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerListResponse> => {
+export const journalControllerList = async (params?: JournalControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerListResponse> => {
 
   return apiFetch<journalControllerListResponse>(getJournalControllerListUrl(params),
   {
@@ -2699,17 +3396,24 @@ export type journalControllerGeneralLedgerResponseSuccess = (journalControllerGe
 
 export type journalControllerGeneralLedgerResponse = (journalControllerGeneralLedgerResponseSuccess)
 
-export const getJournalControllerGeneralLedgerUrl = () => {
+export const getJournalControllerGeneralLedgerUrl = (params?: JournalControllerGeneralLedgerParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/reports/general-ledger`
+  return stringifiedParams.length > 0 ? `/api/v1/reports/general-ledger?${stringifiedParams}` : `/api/v1/reports/general-ledger`
 }
 
-export const journalControllerGeneralLedger = async ( options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerGeneralLedgerResponse> => {
+export const journalControllerGeneralLedger = async (params?: JournalControllerGeneralLedgerParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerGeneralLedgerResponse> => {
 
-  return apiFetch<journalControllerGeneralLedgerResponse>(getJournalControllerGeneralLedgerUrl(),
+  return apiFetch<journalControllerGeneralLedgerResponse>(getJournalControllerGeneralLedgerUrl(params),
   {
     ...options,
     method: 'GET'
@@ -2732,17 +3436,24 @@ export type journalControllerPartyStatementResponseSuccess = (journalControllerP
 
 export type journalControllerPartyStatementResponse = (journalControllerPartyStatementResponseSuccess)
 
-export const getJournalControllerPartyStatementUrl = () => {
+export const getJournalControllerPartyStatementUrl = (params?: JournalControllerPartyStatementParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/reports/party-statement`
+  return stringifiedParams.length > 0 ? `/api/v1/reports/party-statement?${stringifiedParams}` : `/api/v1/reports/party-statement`
 }
 
-export const journalControllerPartyStatement = async ( options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerPartyStatementResponse> => {
+export const journalControllerPartyStatement = async (params?: JournalControllerPartyStatementParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerPartyStatementResponse> => {
 
-  return apiFetch<journalControllerPartyStatementResponse>(getJournalControllerPartyStatementUrl(),
+  return apiFetch<journalControllerPartyStatementResponse>(getJournalControllerPartyStatementUrl(params),
   {
     ...options,
     method: 'GET'
@@ -2765,7 +3476,7 @@ export type partiesControllerListResponseSuccess = (partiesControllerListRespons
 
 export type partiesControllerListResponse = (partiesControllerListResponseSuccess)
 
-export const getPartiesControllerListUrl = (params: PartiesControllerListParams,) => {
+export const getPartiesControllerListUrl = (params?: PartiesControllerListParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -2780,7 +3491,7 @@ export const getPartiesControllerListUrl = (params: PartiesControllerListParams,
   return stringifiedParams.length > 0 ? `/api/v1/parties?${stringifiedParams}` : `/api/v1/parties`
 }
 
-export const partiesControllerList = async (params: PartiesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerListResponse> => {
+export const partiesControllerList = async (params?: PartiesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerListResponse> => {
 
   return apiFetch<partiesControllerListResponse>(getPartiesControllerListUrl(params),
   {
@@ -3094,7 +3805,7 @@ export type catalogControllerListItemsResponseSuccess = (catalogControllerListIt
 
 export type catalogControllerListItemsResponse = (catalogControllerListItemsResponseSuccess)
 
-export const getCatalogControllerListItemsUrl = (params: CatalogControllerListItemsParams,) => {
+export const getCatalogControllerListItemsUrl = (params?: CatalogControllerListItemsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -3109,7 +3820,7 @@ export const getCatalogControllerListItemsUrl = (params: CatalogControllerListIt
   return stringifiedParams.length > 0 ? `/api/v1/items?${stringifiedParams}` : `/api/v1/items`
 }
 
-export const catalogControllerListItems = async (params: CatalogControllerListItemsParams, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerListItemsResponse> => {
+export const catalogControllerListItems = async (params?: CatalogControllerListItemsParams, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerListItemsResponse> => {
 
   return apiFetch<catalogControllerListItemsResponse>(getCatalogControllerListItemsUrl(params),
   {
@@ -3585,7 +4296,7 @@ export type stockDocumentsControllerListAdjustmentsResponseSuccess = (stockDocum
 
 export type stockDocumentsControllerListAdjustmentsResponse = (stockDocumentsControllerListAdjustmentsResponseSuccess)
 
-export const getStockDocumentsControllerListAdjustmentsUrl = (params: StockDocumentsControllerListAdjustmentsParams,) => {
+export const getStockDocumentsControllerListAdjustmentsUrl = (params?: StockDocumentsControllerListAdjustmentsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -3600,7 +4311,7 @@ export const getStockDocumentsControllerListAdjustmentsUrl = (params: StockDocum
   return stringifiedParams.length > 0 ? `/api/v1/stock-adjustments?${stringifiedParams}` : `/api/v1/stock-adjustments`
 }
 
-export const stockDocumentsControllerListAdjustments = async (params: StockDocumentsControllerListAdjustmentsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListAdjustmentsResponse> => {
+export const stockDocumentsControllerListAdjustments = async (params?: StockDocumentsControllerListAdjustmentsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListAdjustmentsResponse> => {
 
   return apiFetch<stockDocumentsControllerListAdjustmentsResponse>(getStockDocumentsControllerListAdjustmentsUrl(params),
   {
@@ -3819,7 +4530,7 @@ export type stockDocumentsControllerListTransfersResponseSuccess = (stockDocumen
 
 export type stockDocumentsControllerListTransfersResponse = (stockDocumentsControllerListTransfersResponseSuccess)
 
-export const getStockDocumentsControllerListTransfersUrl = (params: StockDocumentsControllerListTransfersParams,) => {
+export const getStockDocumentsControllerListTransfersUrl = (params?: StockDocumentsControllerListTransfersParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -3834,7 +4545,7 @@ export const getStockDocumentsControllerListTransfersUrl = (params: StockDocumen
   return stringifiedParams.length > 0 ? `/api/v1/stock-transfers?${stringifiedParams}` : `/api/v1/stock-transfers`
 }
 
-export const stockDocumentsControllerListTransfers = async (params: StockDocumentsControllerListTransfersParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListTransfersResponse> => {
+export const stockDocumentsControllerListTransfers = async (params?: StockDocumentsControllerListTransfersParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListTransfersResponse> => {
 
   return apiFetch<stockDocumentsControllerListTransfersResponse>(getStockDocumentsControllerListTransfersUrl(params),
   {
@@ -4053,7 +4764,7 @@ export type stockDocumentsControllerListCountsResponseSuccess = (stockDocumentsC
 
 export type stockDocumentsControllerListCountsResponse = (stockDocumentsControllerListCountsResponseSuccess)
 
-export const getStockDocumentsControllerListCountsUrl = (params: StockDocumentsControllerListCountsParams,) => {
+export const getStockDocumentsControllerListCountsUrl = (params?: StockDocumentsControllerListCountsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -4068,7 +4779,7 @@ export const getStockDocumentsControllerListCountsUrl = (params: StockDocumentsC
   return stringifiedParams.length > 0 ? `/api/v1/stock-counts?${stringifiedParams}` : `/api/v1/stock-counts`
 }
 
-export const stockDocumentsControllerListCounts = async (params: StockDocumentsControllerListCountsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListCountsResponse> => {
+export const stockDocumentsControllerListCounts = async (params?: StockDocumentsControllerListCountsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListCountsResponse> => {
 
   return apiFetch<stockDocumentsControllerListCountsResponse>(getStockDocumentsControllerListCountsUrl(params),
   {
@@ -4362,7 +5073,7 @@ export type stockReportsControllerMovementsResponseSuccess = (stockReportsContro
 
 export type stockReportsControllerMovementsResponse = (stockReportsControllerMovementsResponseSuccess)
 
-export const getStockReportsControllerMovementsUrl = (params: StockReportsControllerMovementsParams,) => {
+export const getStockReportsControllerMovementsUrl = (params?: StockReportsControllerMovementsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -4377,7 +5088,7 @@ export const getStockReportsControllerMovementsUrl = (params: StockReportsContro
   return stringifiedParams.length > 0 ? `/api/v1/stock/movements?${stringifiedParams}` : `/api/v1/stock/movements`
 }
 
-export const stockReportsControllerMovements = async (params: StockReportsControllerMovementsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerMovementsResponse> => {
+export const stockReportsControllerMovements = async (params?: StockReportsControllerMovementsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerMovementsResponse> => {
 
   return apiFetch<stockReportsControllerMovementsResponse>(getStockReportsControllerMovementsUrl(params),
   {
@@ -4557,7 +5268,7 @@ export type salesControllerListInvoicesResponseSuccess = (salesControllerListInv
 
 export type salesControllerListInvoicesResponse = (salesControllerListInvoicesResponseSuccess)
 
-export const getSalesControllerListInvoicesUrl = (params: SalesControllerListInvoicesParams,) => {
+export const getSalesControllerListInvoicesUrl = (params?: SalesControllerListInvoicesParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -4572,7 +5283,7 @@ export const getSalesControllerListInvoicesUrl = (params: SalesControllerListInv
   return stringifiedParams.length > 0 ? `/api/v1/sales-invoices?${stringifiedParams}` : `/api/v1/sales-invoices`
 }
 
-export const salesControllerListInvoices = async (params: SalesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListInvoicesResponse> => {
+export const salesControllerListInvoices = async (params?: SalesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListInvoicesResponse> => {
 
   return apiFetch<salesControllerListInvoicesResponse>(getSalesControllerListInvoicesUrl(params),
   {
@@ -4824,7 +5535,7 @@ export type salesControllerListReturnsResponseSuccess = (salesControllerListRetu
 
 export type salesControllerListReturnsResponse = (salesControllerListReturnsResponseSuccess)
 
-export const getSalesControllerListReturnsUrl = (params: SalesControllerListReturnsParams,) => {
+export const getSalesControllerListReturnsUrl = (params?: SalesControllerListReturnsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -4839,7 +5550,7 @@ export const getSalesControllerListReturnsUrl = (params: SalesControllerListRetu
   return stringifiedParams.length > 0 ? `/api/v1/sales-returns?${stringifiedParams}` : `/api/v1/sales-returns`
 }
 
-export const salesControllerListReturns = async (params: SalesControllerListReturnsParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListReturnsResponse> => {
+export const salesControllerListReturns = async (params?: SalesControllerListReturnsParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListReturnsResponse> => {
 
   return apiFetch<salesControllerListReturnsResponse>(getSalesControllerListReturnsUrl(params),
   {
@@ -5043,7 +5754,7 @@ export type purchasesControllerListInvoicesResponseSuccess = (purchasesControlle
 
 export type purchasesControllerListInvoicesResponse = (purchasesControllerListInvoicesResponseSuccess)
 
-export const getPurchasesControllerListInvoicesUrl = (params: PurchasesControllerListInvoicesParams,) => {
+export const getPurchasesControllerListInvoicesUrl = (params?: PurchasesControllerListInvoicesParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -5058,7 +5769,7 @@ export const getPurchasesControllerListInvoicesUrl = (params: PurchasesControlle
   return stringifiedParams.length > 0 ? `/api/v1/purchase-invoices?${stringifiedParams}` : `/api/v1/purchase-invoices`
 }
 
-export const purchasesControllerListInvoices = async (params: PurchasesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerListInvoicesResponse> => {
+export const purchasesControllerListInvoices = async (params?: PurchasesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerListInvoicesResponse> => {
 
   return apiFetch<purchasesControllerListInvoicesResponse>(getPurchasesControllerListInvoicesUrl(params),
   {
@@ -5310,7 +6021,7 @@ export type purchasesControllerListReturnsResponseSuccess = (purchasesController
 
 export type purchasesControllerListReturnsResponse = (purchasesControllerListReturnsResponseSuccess)
 
-export const getPurchasesControllerListReturnsUrl = (params: PurchasesControllerListReturnsParams,) => {
+export const getPurchasesControllerListReturnsUrl = (params?: PurchasesControllerListReturnsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -5325,7 +6036,7 @@ export const getPurchasesControllerListReturnsUrl = (params: PurchasesController
   return stringifiedParams.length > 0 ? `/api/v1/purchase-returns?${stringifiedParams}` : `/api/v1/purchase-returns`
 }
 
-export const purchasesControllerListReturns = async (params: PurchasesControllerListReturnsParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerListReturnsResponse> => {
+export const purchasesControllerListReturns = async (params?: PurchasesControllerListReturnsParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerListReturnsResponse> => {
 
   return apiFetch<purchasesControllerListReturnsResponse>(getPurchasesControllerListReturnsUrl(params),
   {
@@ -5496,7 +6207,7 @@ export type goodsNotesControllerListResponseSuccess = (goodsNotesControllerListR
 
 export type goodsNotesControllerListResponse = (goodsNotesControllerListResponseSuccess)
 
-export const getGoodsNotesControllerListUrl = (params: GoodsNotesControllerListParams,) => {
+export const getGoodsNotesControllerListUrl = (params?: GoodsNotesControllerListParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -5511,7 +6222,7 @@ export const getGoodsNotesControllerListUrl = (params: GoodsNotesControllerListP
   return stringifiedParams.length > 0 ? `/api/v1/goods-notes?${stringifiedParams}` : `/api/v1/goods-notes`
 }
 
-export const goodsNotesControllerList = async (params: GoodsNotesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerListResponse> => {
+export const goodsNotesControllerList = async (params?: GoodsNotesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerListResponse> => {
 
   return apiFetch<goodsNotesControllerListResponse>(getGoodsNotesControllerListUrl(params),
   {
@@ -6022,17 +6733,24 @@ export type treasuryControllerListReceiptsResponseSuccess = (treasuryControllerL
 
 export type treasuryControllerListReceiptsResponse = (treasuryControllerListReceiptsResponseSuccess)
 
-export const getTreasuryControllerListReceiptsUrl = () => {
+export const getTreasuryControllerListReceiptsUrl = (params?: TreasuryControllerListReceiptsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/receipts`
+  return stringifiedParams.length > 0 ? `/api/v1/receipts?${stringifiedParams}` : `/api/v1/receipts`
 }
 
-export const treasuryControllerListReceipts = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListReceiptsResponse> => {
+export const treasuryControllerListReceipts = async (params?: TreasuryControllerListReceiptsParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListReceiptsResponse> => {
 
-  return apiFetch<treasuryControllerListReceiptsResponse>(getTreasuryControllerListReceiptsUrl(),
+  return apiFetch<treasuryControllerListReceiptsResponse>(getTreasuryControllerListReceiptsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6168,17 +6886,24 @@ export type treasuryControllerListPaymentsResponseSuccess = (treasuryControllerL
 
 export type treasuryControllerListPaymentsResponse = (treasuryControllerListPaymentsResponseSuccess)
 
-export const getTreasuryControllerListPaymentsUrl = () => {
+export const getTreasuryControllerListPaymentsUrl = (params?: TreasuryControllerListPaymentsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/payments`
+  return stringifiedParams.length > 0 ? `/api/v1/payments?${stringifiedParams}` : `/api/v1/payments`
 }
 
-export const treasuryControllerListPayments = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListPaymentsResponse> => {
+export const treasuryControllerListPayments = async (params?: TreasuryControllerListPaymentsParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListPaymentsResponse> => {
 
-  return apiFetch<treasuryControllerListPaymentsResponse>(getTreasuryControllerListPaymentsUrl(),
+  return apiFetch<treasuryControllerListPaymentsResponse>(getTreasuryControllerListPaymentsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6539,17 +7264,24 @@ export type treasuryControllerListCashTransfersResponseSuccess = (treasuryContro
 
 export type treasuryControllerListCashTransfersResponse = (treasuryControllerListCashTransfersResponseSuccess)
 
-export const getTreasuryControllerListCashTransfersUrl = () => {
+export const getTreasuryControllerListCashTransfersUrl = (params?: TreasuryControllerListCashTransfersParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/cash-transfers`
+  return stringifiedParams.length > 0 ? `/api/v1/cash-transfers?${stringifiedParams}` : `/api/v1/cash-transfers`
 }
 
-export const treasuryControllerListCashTransfers = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListCashTransfersResponse> => {
+export const treasuryControllerListCashTransfers = async (params?: TreasuryControllerListCashTransfersParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListCashTransfersResponse> => {
 
-  return apiFetch<treasuryControllerListCashTransfersResponse>(getTreasuryControllerListCashTransfersUrl(),
+  return apiFetch<treasuryControllerListCashTransfersResponse>(getTreasuryControllerListCashTransfersUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6846,17 +7578,24 @@ export type eInvoiceControllerListSubmissionsResponseSuccess = (eInvoiceControll
 
 export type eInvoiceControllerListSubmissionsResponse = (eInvoiceControllerListSubmissionsResponseSuccess)
 
-export const getEInvoiceControllerListSubmissionsUrl = () => {
+export const getEInvoiceControllerListSubmissionsUrl = (params?: EInvoiceControllerListSubmissionsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/einvoice/submissions`
+  return stringifiedParams.length > 0 ? `/api/v1/einvoice/submissions?${stringifiedParams}` : `/api/v1/einvoice/submissions`
 }
 
-export const eInvoiceControllerListSubmissions = async ( options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerListSubmissionsResponse> => {
+export const eInvoiceControllerListSubmissions = async (params?: EInvoiceControllerListSubmissionsParams, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerListSubmissionsResponse> => {
 
-  return apiFetch<eInvoiceControllerListSubmissionsResponse>(getEInvoiceControllerListSubmissionsUrl(),
+  return apiFetch<eInvoiceControllerListSubmissionsResponse>(getEInvoiceControllerListSubmissionsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7176,7 +7915,7 @@ export type adminControllerListResponseSuccess = (adminControllerListResponse200
 
 export type adminControllerListResponse = (adminControllerListResponseSuccess)
 
-export const getAdminControllerListUrl = (params: AdminControllerListParams,) => {
+export const getAdminControllerListUrl = (params?: AdminControllerListParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -7191,7 +7930,7 @@ export const getAdminControllerListUrl = (params: AdminControllerListParams,) =>
   return stringifiedParams.length > 0 ? `/api/v1/admin/tenants?${stringifiedParams}` : `/api/v1/admin/tenants`
 }
 
-export const adminControllerList = async (params: AdminControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerListResponse> => {
+export const adminControllerList = async (params?: AdminControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerListResponse> => {
 
   return apiFetch<adminControllerListResponse>(getAdminControllerListUrl(params),
   {

@@ -21,6 +21,8 @@ interface Props {
   lines: ItemLineDraft[];
   onChange: (lines: ItemLineDraft[]) => void;
   itemOptions: { value: string; label: string }[];
+  /** Server search of the item picker (ADR-022 §8); without it the options are filtered locally. */
+  onItemSearch?: (text: string) => void;
   /** Show the unit-cost column (adjustments IN/OPENING). */
   showCost?: boolean;
   /** Show the per-line description column. */
@@ -37,6 +39,7 @@ export function ItemLinesGrid({
   lines,
   onChange,
   itemOptions,
+  onItemSearch,
   showCost = false,
   showDescription = false,
   focusSignal,
@@ -173,6 +176,7 @@ export function ItemLinesGrid({
                 variant="borderless"
                 placeholder={t('items.title')}
                 options={itemOptions}
+                onRemoteSearch={onItemSearch}
                 value={l.itemId}
                 onChange={(v) => update(l.key, { itemId: v })}
                 onEnterSelect={() => advance(row, COL_ITEM)}

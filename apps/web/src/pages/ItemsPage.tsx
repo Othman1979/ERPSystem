@@ -35,10 +35,11 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
+  apiFetchData,
   catalogControllerCreateGroup,
   catalogControllerCreateItem,
   catalogControllerGetItem,
@@ -49,12 +50,14 @@ import {
   settingsControllerListTaxCategories,
   settingsControllerListUnits,
   stockReportsControllerBalances,
-  stockReportsControllerItemLedger,
   warehousesControllerList,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { useKeysetQuery } from '../hooks/useKeysetQuery';
+import { LoadMore } from '../components/LoadMore';
 import { ExportButtons } from '../components/ExportButtons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { codeAndName, displayName, type Named } from '../i18n/displayName';
@@ -118,13 +121,18 @@ interface LedgerRow {
   /** The opening-position row the screen adds on top (ADR-008). */
   kind?: 'opening';
 }
-interface LedgerResponse {
-  item: { id: string; code: string; nameAr: string; baseUnit?: { code: string } | null };
-  rows: LedgerRow[];
-  totals: { qtyIn: string; qtyOut: string };
+/** The item card's header, on the first page only (ADR-022 §4). */
+interface LedgerSummary {
   opening: { qty: string; value: string };
+  totals: { qtyIn: string; qtyOut: string; valueIn: string; valueOut: string };
   closing: { qty: string; value: string };
   balances: { warehouse: { id: string; code: string; nameAr: string }; qtyOnHand: string }[];
+}
+interface LedgerPage {
+  item: { id: string; code: string; nameAr: string; baseUnit?: { code: string } | null };
+  summary: LedgerSummary | null;
+  items: LedgerRow[];
+  nextCursor: string | null;
 }
 interface ItemDetail extends Item {
   barcodes?: { id: string; barcode: string; itemUnit?: { unit?: { code: string } } | null }[];
@@ -154,13 +162,6 @@ function ItemsTab() {
   const { contextHolder, show } = useApiError();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
-  // The box updates on every keystroke; the API search waits until typing pauses.
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  useEffect(() => {
-    const id = window.setTimeout(() => setSearch(searchInput.trim()), 300);
-    return () => window.clearTimeout(id);
-  }, [searchInput]);
   const [kindFilter, setKindFilter] = useState<string | undefined>();
   const [view, setView] = useState<'table' | 'cards'>('table');
   const [ledgerItem, setLedgerItem] = useState<Item | null>(null);
@@ -168,16 +169,19 @@ function ItemsTab() {
   const [form] = Form.useForm();
   const saveAndNew = useRef(false);
 
-  const itemsQuery = useQuery({
-    queryKey: ['items', search, kindFilter],
-    queryFn: ({ signal }) =>
-      catalogControllerListItems({
-        search: search,
-        itemKind: kindFilter ?? '',
-        isActive: '',
-      }, { signal }).then((r) => r.data as unknown as Item[]),
+  // Server-paged (ADR-022): search, sort and page go to the API.
+  const list = usePagedQuery<Item, { itemKind?: string }>({
+    key: ['items', 'list'],
+    filters: { itemKind: kindFilter },
+    defaultSort: 'code',
+    fetch: (params, signal) =>
+      catalogControllerListItems(params as Parameters<typeof catalogControllerListItems>[0], { signal }).then(
+        (r) => r.data as unknown as Page<Item>,
+      ),
   });
-  const { data: items, isLoading } = itemsQuery;
+  const itemsQuery = list.query;
+  const { isLoading } = itemsQuery;
+  const items = list.rows;
   const { data: units } = useQuery({
     queryKey: ['units'],
     queryFn: ({ signal }) => settingsControllerListUnits({ signal }).then((r) => r.data as unknown as Unit[]),
@@ -295,8 +299,21 @@ function ItemsTab() {
   };
 
   const columns = [
-    { title: t('items.code'), dataIndex: 'code', width: 110 },
-    { title: t('common.name'), key: 'name', render: (_: unknown, r: Named) => displayName(r) },
+    {
+      title: t('items.code'),
+      dataIndex: 'code',
+      key: 'code',
+      sorter: true,
+      sortOrder: list.sortOrderOf('code'),
+      width: 110,
+    },
+    {
+      title: t('common.name'),
+      key: 'nameAr',
+      sorter: true,
+      sortOrder: list.sortOrderOf('nameAr'),
+      render: (_: unknown, r: Named) => displayName(r),
+    },
     {
       title: t('items.kind'),
       dataIndex: 'itemKind',
@@ -387,8 +404,8 @@ function ItemsTab() {
       <Card size="small">
       {contextHolder}
       <ListToolbar
-        search={searchInput}
-        onSearch={setSearchInput}
+        search={list.search}
+        onSearch={list.setSearch}
         searchPlaceholder={t('items.search')}
         filters={
           <>
@@ -411,7 +428,7 @@ function ItemsTab() {
             />
           </>
         }
-        count={(items ?? []).length}
+        count={list.total}
         actions={
           <Button type="primary" onClick={openCreate}>
             {t('items.add')}
@@ -423,14 +440,15 @@ function ItemsTab() {
           rowKey="id"
           size="small"
           loading={isLoading}
-          dataSource={items ?? []}
+          dataSource={items}
           locale={tableLocale(itemsQuery)}
-          pagination={{ pageSize: 20 }}
+          pagination={list.pagination}
+          onChange={list.onTableChange}
           columns={columns}
         />
       ) : (
         <Row gutter={[12, 12]}>
-          {(items ?? []).map((r) => (
+          {items.map((r) => (
             <Col key={r.id} xs={24} sm={12} md={8} lg={6}>
               <Card
                 size="small"
@@ -607,6 +625,9 @@ function ItemsTab() {
 
 // ------------------------------------------------------------- ledger modal
 
+/** Rows per page of the item card (ADR-022 §4); the server's default. */
+const LEDGER_PAGE_LIMIT = 100;
+
 function LedgerModal({
   item,
   onClose,
@@ -621,22 +642,27 @@ function LedgerModal({
   const [from, setFrom] = useState<Dayjs | null>(null);
   const [to, setTo] = useState<Dayjs | null>(null);
 
-  const ledgerQuery = useQuery({
-    queryKey: ['item-ledger', item?.id, warehouseId, from?.format('YYYY-MM-DD'), to?.format('YYYY-MM-DD')],
-    queryFn: ({ signal }) =>
-      stockReportsControllerItemLedger(item!.id, {
-        warehouseId: warehouseId ?? '',
-        sourceType: '',
-        from: from?.format('YYYY-MM-DD') ?? '',
-        to: to?.format('YYYY-MM-DD') ?? '',
-      }, { signal }).then((r) => r.data as unknown as LedgerResponse),
+  // Keyset read of the card (ADR-022 §4): pages in date order, the summary on the first page.
+  const read = useKeysetQuery<LedgerRow, LedgerSummary>({
+    key: ['item-ledger', item?.id, warehouseId, from?.format('YYYY-MM-DD'), to?.format('YYYY-MM-DD')],
+    fetch: (cursor, signal) =>
+      apiFetchData<LedgerPage>(
+        `/api/v1/stock/items/${item!.id}/ledger${ledgerQuery({
+          warehouseId,
+          from: from?.format('YYYY-MM-DD'),
+          to: to?.format('YYYY-MM-DD'),
+          limit: String(LEDGER_PAGE_LIMIT),
+          cursor,
+        })}`,
+        { signal },
+      ),
     enabled: !!item,
   });
-  const { data, isLoading } = ledgerQuery;
+  const { summary } = read;
 
-  const unit = data?.item?.baseUnit?.code ?? item?.baseUnit?.code ?? '';
+  const unit = item?.baseUnit?.code ?? '';
   // Opening position first (before the start date + opening stock), then the movements.
-  const rows: LedgerRow[] = data
+  const rows: LedgerRow[] = summary
     ? [
         {
           kind: 'opening',
@@ -649,11 +675,11 @@ function LedgerModal({
           qtyIn: '0',
           qtyOut: '0',
           unitCost: '',
-          totalCost: data.opening.value,
-          balanceQtyAfter: data.opening.qty,
+          totalCost: summary.opening.value,
+          balanceQtyAfter: summary.opening.qty,
           avgCostAfter: '',
         },
-        ...(data.rows as LedgerRow[]),
+        ...read.rows,
       ]
     : [];
   const positionText = (p: { value: string }) => `${t('reports.value')}: ${formatAmount(p.value)}`;
@@ -677,10 +703,10 @@ function LedgerModal({
         />
         <DatePicker placeholder={t('items.from')} value={from} onChange={setFrom} />
         <DatePicker placeholder={t('items.to')} value={to} onChange={setTo} />
-        {(data?.balances?.length ?? 0) > 0 && (
+        {(summary?.balances?.length ?? 0) > 0 && (
           <Typography.Text type="secondary">
             {t('items.onHand')}:{' '}
-            {data!.balances.map((b) => `${b.warehouse.code}: ${formatQty(b.qtyOnHand)}`).join(' · ')}
+            {summary!.balances.map((b) => `${b.warehouse.code}: ${formatQty(b.qtyOnHand)}`).join(' · ')}
           </Typography.Text>
         )}
         {item && (
@@ -693,10 +719,10 @@ function LedgerModal({
       <Table
         rowKey="id"
         size="small"
-        loading={isLoading}
+        loading={read.query.isLoading}
         dataSource={rows}
-        locale={tableLocale(ledgerQuery)}
-        pagination={{ pageSize: 50 }}
+        locale={tableLocale(read.query)}
+        pagination={false}
         scroll={{ x: 900 }}
         rowClassName={(r) => (r.kind === 'opening' ? 'report-row-strong' : '')}
         columns={[
@@ -716,7 +742,7 @@ function LedgerModal({
             width: 170,
             render: (_: unknown, r: LedgerRow) =>
               r.kind
-                ? `${t('reports.openingPeriod')} — ${positionText(data!.opening)}`
+                ? `${t('reports.openingPeriod')} — ${positionText(summary!.opening)}`
                 : `${r.sourceType}${r.sourceId ? ` #${r.sourceId}` : ''}`,
           },
           {
@@ -763,20 +789,20 @@ function LedgerModal({
               </Table.Summary.Cell>
               <Table.Summary.Cell index={1} align="right">
                 <Typography.Text strong>
-                  <Num>{formatQty(data?.totals?.qtyIn ?? '0')}</Num> /{' '}
-                  <Num>{formatQty(data?.totals?.qtyOut ?? '0')}</Num>
+                  <Num>{formatQty(summary?.totals.qtyIn ?? '0')}</Num> /{' '}
+                  <Num>{formatQty(summary?.totals.qtyOut ?? '0')}</Num>
                 </Typography.Text>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={2} colSpan={3} />
             </Table.Summary.Row>
-            {data && (
+            {summary && (
               <Table.Summary.Row className="report-row-strong">
                 <Table.Summary.Cell index={0} colSpan={3}>
-                  {`${t('reports.closingPeriod')} — ${positionText(data.closing)}`}
+                  {`${t('reports.closingPeriod')} — ${positionText(summary.closing)}`}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} colSpan={2} />
                 <Table.Summary.Cell index={2} align="right">
-                  <Num>{`${formatQty(data.closing.qty)} ${unit}`}</Num>
+                  <Num>{`${formatQty(summary.closing.qty)} ${unit}`}</Num>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={3} colSpan={2} />
               </Table.Summary.Row>
@@ -784,8 +810,17 @@ function LedgerModal({
           </>
         )}
       />
+      <LoadMore hasMore={read.hasMore} loading={read.loadingMore} onLoadMore={read.loadMore} shown={read.rows.length} />
     </Modal>
   );
+}
+
+/** The item card's query string: empty values are left out (the server reads them as not given). */
+function ledgerQuery(params: Record<string, string | undefined>): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v) p.set(k, v);
+  const s = p.toString();
+  return s ? `?${s}` : '';
 }
 
 // ------------------------------------------------------------- barcode modal

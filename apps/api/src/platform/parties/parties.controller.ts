@@ -3,7 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { PartiesService } from './parties.service.js';
-import { CreatePartyDto, UpdatePartyDto } from './dto/parties.dto.js';
+import { CreatePartyDto, ListPartiesQueryDto, UpdatePartyDto } from './dto/parties.dto.js';
 
 @ApiTags('parties')
 @Controller('parties')
@@ -12,8 +12,9 @@ export class PartiesController {
 
   @Get()
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  list(@Query('partyType') partyType?: string, @Query('isActive') isActive?: string) {
-    return this.parties.list(partyType, isActive);
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022). */
+  list(@Query() q: ListPartiesQueryDto) {
+    return this.parties.list(q);
   }
 
   @Get(':id')

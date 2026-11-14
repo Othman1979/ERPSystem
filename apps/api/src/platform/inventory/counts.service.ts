@@ -3,12 +3,17 @@ import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
+import { branchWhere } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { findPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AdjustmentsService } from './adjustments.service.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import type { CreateStockCountDto, UpdateCountLineDto } from './dto/inventory.dto.js';
+import type { ListStockCountsQueryDto } from './dto/list-queries.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { retryOnLockConflict } from '../shared/document-support.service.js';
 
@@ -43,24 +48,66 @@ export class CountsService {
     return company.id;
   }
 
-  async list(status?: string) {
+  /**
+   * One numbered page of counts (ADR-022), newest first unless `sort` says
+   * otherwise. A count belongs to its warehouse's branch (ADR-003 §10).
+   */
+  async list(query: ListStockCountsQueryDto) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
-    return db.stockCount.findMany({
-      where: { companyId, ...(status ? { status: status as 'DRAFT' | 'POSTED' } : {}) },
-      include: {
-        warehouse: { select: { id: true, code: true, nameAr: true } },
-        _count: { select: { lines: true } },
+    if (query.from && query.to && query.from > query.to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', {
+        from: query.from,
+        to: query.to,
+      });
+    }
+    const q = query.q;
+    const where: Prisma.StockCountWhereInput = {
+      companyId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.warehouseId ? { warehouseId: BigInt(query.warehouseId) } : {}),
+      ...(query.from || query.to
+        ? {
+            countDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+      AND: [
+        { warehouse: branchWhere() },
+        q ? { OR: [{ docNo: { contains: q } }, { description: { contains: q } }] } : {},
+      ],
+    };
+    const orderBy = orderByOf<'date' | 'docNo', Prisma.StockCountOrderByWithRelationInput>(
+      query.sort,
+      '-date',
+      {
+        date: (dir) => ({ countDate: dir }),
+        docNo: (dir) => ({ docNo: dir }),
       },
-      orderBy: [{ countDate: 'desc' }, { id: 'desc' }],
-      take: 200,
+      (dir) => ({ id: dir }),
+    );
+    return findPage(db, pageWindow(query), {
+      rows: (tx, window) =>
+        tx.stockCount.findMany({
+          where,
+          include: {
+            warehouse: { select: { id: true, code: true, nameAr: true } },
+            _count: { select: { lines: true } },
+          },
+          orderBy,
+          ...window,
+        }),
+      count: (tx) => tx.stockCount.count({ where }),
     });
   }
 
+  /** One count; another branch's answers 404 like another tenant's (ADR-003 §11). */
   async get(id: bigint) {
     const { db } = this.tenant();
     const count = await db.stockCount.findFirst({
-      where: { id },
+      where: { id, AND: [{ warehouse: branchWhere() }] },
       include: {
         warehouse: true,
         lines: {

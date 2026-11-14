@@ -9,7 +9,12 @@ import { AuthProvider, ME_RELOAD_MIN_MS, useAuth } from './AuthContext';
 const cacheSizeAtTokenSet: number[] = [];
 let client: QueryClient;
 // Tenant the mocked /me returns; reset before every test.
-const session = vi.hoisted(() => ({ tenant: 'A', permissions: null as string[] | null }));
+const session = vi.hoisted(() => ({
+  tenant: 'A',
+  permissions: null as string[] | null,
+  // What GET /me says about the member's branches; undefined = an API that does not send it.
+  allBranches: undefined as boolean | undefined,
+}));
 
 vi.mock('@erp/api-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@erp/api-client')>();
@@ -25,6 +30,7 @@ vi.mock('@erp/api-client', async (importOriginal) => {
         permissions: session.permissions ?? (tenantId === 'A' ? ['tenant.read', 'user.manage'] : ['tenant.read']),
         defaultBranchId: null,
         branches: [],
+        allBranches: session.allBranches,
       },
     },
   });
@@ -250,5 +256,72 @@ describe('AuthProvider reloads /me when the role may have changed', () => {
     await refusedQuery('users');
     expect(auth!.status).toBe('authed');
     expect(auth!.can('user.manage')).toBe(true);
+  });
+});
+
+describe('AuthProvider allBranches (company-wide reports, fails closed)', () => {
+  let root: Root;
+
+  async function mountAs(allBranches: boolean | undefined) {
+    session.allBranches = allBranches;
+    client = new QueryClient();
+    root = createRoot(document.createElement('div'));
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <AuthProvider>
+            <Probe />
+          </AuthProvider>
+        </QueryClientProvider>,
+      );
+    });
+    expect(auth?.status).toBe('authed');
+  }
+
+  beforeEach(() => {
+    session.tenant = 'A';
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    auth = null;
+    session.allBranches = undefined;
+  });
+
+  it('is true only when GET /me says the member sees every branch', async () => {
+    await mountAs(true);
+    expect(auth!.allBranches).toBe(true);
+  });
+
+  it('is false for a branch-scoped member', async () => {
+    await mountAs(false);
+    expect(auth!.allBranches).toBe(false);
+  });
+
+  it('is false for an API that does not send the flag (fails closed)', async () => {
+    await mountAs(undefined);
+    expect(auth!.allBranches).toBe(false);
+  });
+
+  it('is false on the first render, before /me has answered, even for an all-branch member', () => {
+    session.allBranches = true;
+    // The first render happens before /me resolves: no company-wide report may show then.
+    const seen: boolean[] = [];
+    function Early() {
+      seen.push(useAuth().allBranches);
+      return null;
+    }
+    const early = createRoot(document.createElement('div'));
+    act(() => {
+      early.render(
+        <QueryClientProvider client={new QueryClient()}>
+          <AuthProvider>
+            <Early />
+          </AuthProvider>
+        </QueryClientProvider>,
+      );
+    });
+    expect(seen[0]).toBe(false);
+    act(() => early.unmount());
   });
 });

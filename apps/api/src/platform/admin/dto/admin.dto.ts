@@ -1,3 +1,5 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -12,7 +14,27 @@ import {
   ValidateIf,
 } from 'class-validator';
 
+import { PageQueryDto, SortParam, sortValues } from '../../../common/paging/page-query.dto.js';
+
 const TENANT_STATUSES = ['TRIAL', 'ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED'] as const;
+
+export const ADMIN_TENANT_SORT_KEYS = ['id', 'name', 'createdAt'] as const;
+export const ADMIN_TENANT_SORTS = sortValues(ADMIN_TENANT_SORT_KEYS);
+
+/**
+ * GET /admin/tenants (ADR-022 §2): a numbered page of tenants, newest first by
+ * default. `q` matches the tenant name.
+ */
+export class ListTenantsQueryDto extends PageQueryDto {
+  @SortParam(ADMIN_TENANT_SORTS, '-id')
+  sort?: (typeof ADMIN_TENANT_SORTS)[number];
+
+  @ApiPropertyOptional({ enum: TENANT_STATUSES })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => (value === '' ? undefined : value))
+  @IsIn(TENANT_STATUSES)
+  status?: (typeof TENANT_STATUSES)[number];
+}
 
 /** Amounts as decimal strings, up to 3 decimals (JOD). */
 const AMOUNT = /^\d{1,12}(\.\d{1,3})?$/;

@@ -54,6 +54,7 @@ function signedIn(roleCode: string, permissions: string[]): AuthState {
     setBranch: vi.fn(),
     refreshMe: vi.fn(),
     can: (permission) => permissions.includes(permission),
+    allBranches: true,
   };
 }
 

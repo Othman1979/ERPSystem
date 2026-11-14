@@ -1,6 +1,8 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
-import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
+import { assertBranchAllowed, branchWhere, currentBranchId } from '../../common/branch/branch-context.js';
+import { findPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -15,6 +17,8 @@ import type {
   AllocateVoucherDto,
   CreatePaymentDto,
   CreateReceiptDto,
+  ListPaymentsQueryDto,
+  ListReceiptsQueryDto,
   ReverseVoucherDto,
 } from './dto/treasury.dto.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
@@ -101,25 +105,75 @@ export class VouchersService implements OnModuleInit {
 
   // ------------------------------------------------------------- receipts
 
-  async listReceipts() {
+  /**
+   * One numbered page of receipts (ADR-022): the caller's branches only
+   * (ADR-003 §10), newest first unless `sort` says otherwise.
+   */
+  async listReceipts(query: ListReceiptsQueryDto) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    return db.receipt.findMany({
-      where: { companyId },
-      include: {
-        party: { select: { id: true, code: true, nameAr: true, partyType: true } },
-        cashAccount: { select: { id: true, code: true, nameAr: true } },
-        _count: { select: { allocations: true } },
+    if (query.from && query.to && query.from > query.to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', { from: query.from, to: query.to });
+    }
+    const q = query.q;
+    const where: Prisma.ReceiptWhereInput = {
+      companyId,
+      ...(query.partyId ? { partyId: BigInt(query.partyId) } : {}),
+      ...(query.cashAccountId ? { cashAccountId: BigInt(query.cashAccountId) } : {}),
+      ...(query.from || query.to
+        ? {
+            receiptDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+      AND: [
+        branchWhere(),
+        q
+          ? {
+              OR: [
+                { receiptNo: { contains: q } },
+                { referenceNo: { contains: q } },
+                { party: { code: { contains: q } } },
+                { party: { nameAr: { contains: q } } },
+                { party: { nameEn: { contains: q } } },
+              ],
+            }
+          : {},
+      ],
+    };
+    const orderBy = orderByOf<'receiptDate' | 'receiptNo' | 'amount', Prisma.ReceiptOrderByWithRelationInput>(
+      query.sort,
+      '-receiptDate',
+      {
+        receiptDate: (dir) => ({ receiptDate: dir }),
+        receiptNo: (dir) => ({ receiptNo: dir }),
+        amount: (dir) => ({ amount: dir }),
       },
-      orderBy: [{ receiptDate: 'desc' }, { id: 'desc' }],
-      take: 300,
+      (dir) => ({ id: dir }),
+    );
+    return findPage(db, pageWindow(query), {
+      rows: (tx, window) =>
+        tx.receipt.findMany({
+          where,
+          include: {
+            party: { select: { id: true, code: true, nameAr: true, partyType: true } },
+            cashAccount: { select: { id: true, code: true, nameAr: true } },
+            _count: { select: { allocations: true } },
+          },
+          orderBy,
+          ...window,
+        }),
+      count: (tx) => tx.receipt.count({ where }),
     });
   }
 
+  /** One receipt; another branch's answers 404 like another tenant's (ADR-003 §11). */
   async getReceipt(id: bigint) {
     const { db } = this.support.tenant();
     const r = await db.receipt.findFirst({
-      where: { id },
+      where: { id, AND: [branchWhere()] },
       include: {
         party: true,
         cashAccount: { select: { id: true, code: true, nameAr: true } },
@@ -253,26 +307,77 @@ export class VouchersService implements OnModuleInit {
 
   // ------------------------------------------------------------- payments
 
-  async listPayments() {
+  /**
+   * One numbered page of payments (ADR-022): the caller's branches only
+   * (ADR-003 §10), newest first unless `sort` says otherwise. A direct expense
+   * payment has no party and matches `q` by its number or reference only.
+   */
+  async listPayments(query: ListPaymentsQueryDto) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    return db.payment.findMany({
-      where: { companyId },
-      include: {
-        party: { select: { id: true, code: true, nameAr: true, partyType: true } },
-        cashAccount: { select: { id: true, code: true, nameAr: true } },
-        expenseAccount: { select: { id: true, code: true, nameAr: true } },
-        _count: { select: { allocations: true } },
+    if (query.from && query.to && query.from > query.to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', { from: query.from, to: query.to });
+    }
+    const q = query.q;
+    const where: Prisma.PaymentWhereInput = {
+      companyId,
+      ...(query.partyId ? { partyId: BigInt(query.partyId) } : {}),
+      ...(query.cashAccountId ? { cashAccountId: BigInt(query.cashAccountId) } : {}),
+      ...(query.from || query.to
+        ? {
+            paymentDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+      AND: [
+        branchWhere(),
+        q
+          ? {
+              OR: [
+                { paymentNo: { contains: q } },
+                { referenceNo: { contains: q } },
+                { party: { code: { contains: q } } },
+                { party: { nameAr: { contains: q } } },
+                { party: { nameEn: { contains: q } } },
+              ],
+            }
+          : {},
+      ],
+    };
+    const orderBy = orderByOf<'paymentDate' | 'paymentNo' | 'amount', Prisma.PaymentOrderByWithRelationInput>(
+      query.sort,
+      '-paymentDate',
+      {
+        paymentDate: (dir) => ({ paymentDate: dir }),
+        paymentNo: (dir) => ({ paymentNo: dir }),
+        amount: (dir) => ({ amount: dir }),
       },
-      orderBy: [{ paymentDate: 'desc' }, { id: 'desc' }],
-      take: 300,
+      (dir) => ({ id: dir }),
+    );
+    return findPage(db, pageWindow(query), {
+      rows: (tx, window) =>
+        tx.payment.findMany({
+          where,
+          include: {
+            party: { select: { id: true, code: true, nameAr: true, partyType: true } },
+            cashAccount: { select: { id: true, code: true, nameAr: true } },
+            expenseAccount: { select: { id: true, code: true, nameAr: true } },
+            _count: { select: { allocations: true } },
+          },
+          orderBy,
+          ...window,
+        }),
+      count: (tx) => tx.payment.count({ where }),
     });
   }
 
+  /** One payment; another branch's answers 404 like another tenant's (ADR-003 §11). */
   async getPayment(id: bigint) {
     const { db } = this.support.tenant();
     const p = await db.payment.findFirst({
-      where: { id },
+      where: { id, AND: [branchWhere()] },
       include: {
         party: true,
         cashAccount: { select: { id: true, code: true, nameAr: true } },

@@ -1,3 +1,5 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsIn,
@@ -11,7 +13,12 @@ import {
   MinLength,
 } from 'class-validator';
 
+import { PageQueryDto, SortParam, sortValues } from '../../../common/paging/page-query.dto.js';
+
 const PARTY_TYPES = ['CUSTOMER', 'SUPPLIER', 'BOTH'] as const;
+
+/** An empty filter value (`?partyType=`) counts as "not given", as in the other lists. */
+const blankToUndefined = ({ value }: { value: unknown }) => (value === '' ? undefined : value);
 const MONEY = /^\d+(\.\d{1,3})?$/;
 
 export class CreatePartyDto {
@@ -145,4 +152,30 @@ export class UpdatePartyDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+}
+
+export const PARTY_SORT_KEYS = ['code', 'nameAr'] as const;
+export const PARTY_SORTS = sortValues(PARTY_SORT_KEYS);
+
+/**
+ * GET /parties (ADR-022 §2): a numbered page of the company's parties, by code
+ * unless `sort` says otherwise. Master data: not narrowed by branch.
+ * `q` matches the code, the Arabic and English names, phone and tax number.
+ */
+export class ListPartiesQueryDto extends PageQueryDto {
+  @SortParam(PARTY_SORTS, 'code')
+  sort?: (typeof PARTY_SORTS)[number];
+
+  /** Exact party type: BOTH is listed only by `partyType=BOTH`. */
+  @ApiPropertyOptional({ enum: PARTY_TYPES })
+  @IsOptional()
+  @Transform(blankToUndefined)
+  @IsIn(PARTY_TYPES)
+  partyType?: (typeof PARTY_TYPES)[number];
+
+  @ApiPropertyOptional({ enum: ['true', 'false'] })
+  @IsOptional()
+  @Transform(blankToUndefined)
+  @IsIn(['true', 'false'])
+  isActive?: 'true' | 'false';
 }

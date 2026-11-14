@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../cls/cls.types.js';
-import { IS_PUBLIC_KEY, TENANT_OPTIONAL_KEY } from '../decorators/auth.decorators.js';
+import { IS_PUBLIC_KEY, REQUIRE_ALL_BRANCHES_KEY, TENANT_OPTIONAL_KEY } from '../decorators/auth.decorators.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { DomainError } from '../errors/domain.error.js';
 import { ErrorCode } from '../errors/error-codes.js';
@@ -19,6 +19,8 @@ const byId = (a: bigint, b: bigint) => (a < b ? -1 : a > b ? 1 : 0);
  *  - without the header: the member's default branch if allowed, else the
  *    first allowed branch (MAIN first when all are allowed).
  * The branch is never taken from the request body.
+ * Routes marked @RequireAllBranches() refuse a member with assigned branches
+ * (403 ALL_BRANCHES_REQUIRED, ADR-003 §13).
  */
 @Injectable()
 export class BranchGuard implements CanActivate {
@@ -54,6 +56,14 @@ export class BranchGuard implements CanActivate {
       assigned.length > 0
         ? new Set(assigned.map((a) => a.branchId).filter((id) => activeIds.has(id)))
         : null;
+    // Assigned branches, none of them active: the member has no branch to work on.
+    // Refuse every request rather than let documents be written with no branch (S4).
+    if (allowed !== null && allowed.size === 0) {
+      throw new DomainError(
+        ErrorCode.BRANCH_NOT_ALLOWED,
+        'None of your assigned branches is active; ask an administrator to assign an active branch',
+      );
+    }
     const isAllowed = (id: bigint) => activeIds.has(id) && (allowed === null || allowed.has(id));
 
     const request = context
@@ -82,7 +92,14 @@ export class BranchGuard implements CanActivate {
     }
 
     if (branchId !== undefined) cls.set('branchId', branchId);
-    cls.set('allowedBranchIds', allowed);
+    // ADR-003 §16: always an explicit scope, so the read helpers can fail closed.
+    cls.set('branchScope', allowed ?? 'ALL');
+    if (allowed !== null && this.reflector.getAllAndOverride<boolean>(REQUIRE_ALL_BRANCHES_KEY, targets)) {
+      throw new DomainError(
+        ErrorCode.ALL_BRANCHES_REQUIRED,
+        'This company-wide report is available only to users with access to every branch',
+      );
+    }
     return true;
   }
 }

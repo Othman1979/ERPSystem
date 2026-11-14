@@ -52,7 +52,8 @@ import {
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
-import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { ListToolbar } from '../components/ListToolbar';
+import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
@@ -114,7 +115,6 @@ export function JournalPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
-  const [search, setSearch] = useState('');
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new entry
   const [reverseTarget, setReverseTarget] = useState<JournalEntry | null>(null);
@@ -128,27 +128,32 @@ export function JournalPage() {
   const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
   const [gridFocus, setGridFocus] = useState(0);
 
-  const entriesQuery = useQuery({
-    queryKey: ['journal-entries', statusFilter, typeFilter],
-    queryFn: ({ signal }) =>
-      journalControllerList({
-        status: statusFilter ?? '',
-        voucherType: typeFilter ?? '',
-        sourceType: '',
-      }, { signal }).then((r) => r.data as unknown as JournalEntry[]),
+  // Server-paged (ADR-022): search (entry number, description), filters, sort and page go to the API.
+  const list = usePagedQuery<JournalEntry, { status?: string; voucherType?: string }>({
+    key: ['journal-entries', 'list'],
+    filters: { status: statusFilter, voucherType: typeFilter },
+    defaultSort: '-entryDate',
+    fetch: (params, signal) =>
+      journalControllerList(params as Parameters<typeof journalControllerList>[0], { signal }).then(
+        (r) => r.data as unknown as Page<JournalEntry>,
+      ),
     enabled: screen === 'list',
   });
-  const { data: entries, isLoading } = entriesQuery;
 
   const { data: accounts } = useAccounts();
 
   const accountOptions = selectPostable(accounts ?? []).map((a) => ({ value: a.id, label: codeAndName(a) }));
-  const { partyColumn, partyName } = usePartyColumn(accounts);
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['journal-entry', entryId],
     queryFn: ({ signal }) => journalControllerGet(entryId!, { signal }).then((r) => r.data as unknown as JournalEntry),
     enabled: screen === 'entry' && !!entryId,
+  });
+
+  // The picker and labels follow the lines on screen: the draft's, or a saved entry's.
+  const { partyColumn, partyName } = usePartyColumn(accounts, {
+    shownPartyIds: entryId ? (detail?.lines ?? []).map((l) => l.partyId) : lines.map((l) => l.partyId),
+    enabled: screen === 'entry' && !entryId,
   });
 
   const invalidate = () => {
@@ -281,15 +286,14 @@ export function JournalPage() {
 
   // ============================ LIST VIEW ============================
   if (screen === 'list') {
-    const shown = (entries ?? []).filter((e) => matchesSearch(search, e.entryNo, e.description));
     return (
       <div>
         <PageHeader title={t('journal.title')} />
         <Card>
         {contextHolder}
         <ListToolbar
-          search={search}
-          onSearch={setSearch}
+          search={list.search}
+          onSearch={list.setSearch}
           filters={
             <>
                 <Select
@@ -314,7 +318,7 @@ export function JournalPage() {
                 />
             </>
           }
-          count={shown.length}
+          count={list.total}
           actions={
               <Dropdown.Button
                 type="primary"
@@ -334,15 +338,19 @@ export function JournalPage() {
         />
         <Table
           rowKey="id"
-          loading={isLoading}
-          dataSource={shown}
-        locale={tableLocale(entriesQuery)}
-          pagination={{ pageSize: 20 }}
+          loading={list.query.isLoading}
+          dataSource={list.rows}
+          locale={tableLocale(list.query)}
+          pagination={list.pagination}
+          onChange={list.onTableChange}
           onRow={(e) => ({ onClick: () => openEntry(e.id), style: { cursor: 'pointer' } })}
           columns={[
             {
               title: t('journal.entryNo'),
               dataIndex: 'entryNo',
+              key: 'entryNo',
+              sorter: true,
+              sortOrder: list.sortOrderOf('entryNo'),
               className: 'nowrap',
               width: 160,
               render: (v: string | null) => v ?? '—',
@@ -356,6 +364,9 @@ export function JournalPage() {
             {
               title: t('journal.date'),
               dataIndex: 'entryDate',
+              key: 'entryDate',
+              sorter: true,
+              sortOrder: list.sortOrderOf('entryDate'),
               width: 110,
               render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
             },

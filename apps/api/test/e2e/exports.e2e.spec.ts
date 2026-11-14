@@ -13,6 +13,7 @@ import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import ExcelJS from 'exceljs';
 import request from 'supertest';
+import { statementBody } from './support/statements.js';
 
 const API_PORT = 3203;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -95,6 +96,8 @@ describe('Phase 8 — report exports', () => {
   const id: Record<string, string> = {};
 
   const json = async (url: string) => {
+    // The statements' and item card's JSON come in keyset pages (ADR-022 §4): read them whole.
+    if (/\/reports\/(general-ledger|party-statement)|\/stock\/items\/[^/]+\/ledger/.test(url)) return (await statementBody(BASE, url, token)) as J;
     const res = await api().get(url).set(auth(token));
     expect(res.status).toBe(200);
     return res.body as J;

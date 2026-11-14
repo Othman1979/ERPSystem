@@ -30,6 +30,13 @@ export const REQUIRED_PERMISSIONS_KEY = 'requiredPermissions';
 export const RequirePermission = (...codes: string[]) =>
   SetMetadata(REQUIRED_PERMISSIONS_KEY, codes);
 
+/**
+ * Company-wide report: only a member with every branch (no assigned branch)
+ * may read it; others get 403 ALL_BRANCHES_REQUIRED from BranchGuard (ADR-003 §13).
+ */
+export const REQUIRE_ALL_BRANCHES_KEY = 'requireAllBranches';
+export const RequireAllBranches = () => SetMetadata(REQUIRE_ALL_BRANCHES_KEY, true);
+
 function ctx(): RequestContext {
   return ClsServiceManager.getClsService<RequestContext>().get() ?? {};
 }

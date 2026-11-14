@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PlusOutlined, SwapOutlined } from '@ant-design/icons';
 import { Button, DatePicker, Form, Input, InputNumber, Table, Tag, message } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -13,9 +13,10 @@ import {
 import { EnterNav } from '../../components/EnterNav';
 import { FormDialog, FormSection } from '../../components/FormDialog';
 import { GridSelect } from '../../components/GridSelect';
-import { ListToolbar, matchesSearch } from '../../components/ListToolbar';
+import { ListToolbar } from '../../components/ListToolbar';
 import { tableLocale } from '../../components/QueryState';
 import { ReverseButton } from '../../components/ReverseButton';
+import { usePagedQuery, type Page } from '../../hooks/usePagedQuery';
 import { amountCell } from '../../format/cells';
 import { dec } from '../../format/number';
 import { codeAndName } from '../../i18n/displayName';
@@ -38,13 +39,18 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
   const queryClient = useQueryClient();
   const [api, contextHolder] = message.useMessage();
   const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
 
-  const listQuery = useQuery({
-    queryKey: ['cash-transfers'],
-    queryFn: ({ signal }) => treasuryControllerListCashTransfers({ signal }).then((r) => r.data as unknown as Transfer[]),
+  // Server-paged (ADR-022): search (transfer number, accounts, description), sort and page go to the API.
+  const list = usePagedQuery<Transfer, Record<string, string | undefined>>({
+    key: ['cash-transfers', 'list'],
+    filters: {},
+    defaultSort: '-transferDate',
+    fetch: (params, signal) =>
+      treasuryControllerListCashTransfers(params as Parameters<typeof treasuryControllerListCashTransfers>[0], {
+        signal,
+      }).then((r) => r.data as unknown as Page<Transfer>),
   });
-  const { data, isLoading } = listQuery;
+  const listQuery = list.query;
 
   const onError = (err: unknown) =>
     api.error(err instanceof ApiError ? t(`errors.${err.code}`, { defaultValue: err.message }) : t('errors.INTERNAL'));
@@ -63,17 +69,13 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
     onError,
   });
 
-  const shown = (data ?? []).filter((r) =>
-    matchesSearch(search, r.transferNo, codeAndName(r.fromAccount), codeAndName(r.toAccount), r.description),
-  );
-
   return (
     <div>
       {contextHolder}
       <ListToolbar
-        search={search}
-        onSearch={setSearch}
-        count={shown.length}
+        search={list.search}
+        onSearch={list.setSearch}
+        count={list.total}
         actions={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
             {t('treasury.newTransfer')}
@@ -83,14 +85,18 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
       <Table
         rowKey="id"
         size="small"
-        loading={isLoading}
-        dataSource={shown}
+        loading={listQuery.isLoading}
+        dataSource={list.rows}
         locale={tableLocale(listQuery)}
-        pagination={{ pageSize: 20 }}
+        pagination={list.pagination}
+        onChange={list.onTableChange}
         columns={[
           {
             title: t('treasury.transferNo'),
             dataIndex: 'transferNo',
+            key: 'transferNo',
+            sorter: true,
+            sortOrder: list.sortOrderOf('transferNo'),
             width: 150,
             className: 'nowrap',
             render: (v: string | null, r: Transfer) => v ?? `#${r.id}`,
@@ -98,12 +104,24 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
           {
             title: t('treasury.date'),
             dataIndex: 'transferDate',
+            key: 'transferDate',
+            sorter: true,
+            sortOrder: list.sortOrderOf('transferDate'),
             width: 110,
             render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
           },
           { title: t('treasury.fromAccount'), render: (_: unknown, r: Transfer) => codeAndName(r.fromAccount) },
           { title: t('treasury.toAccount'), render: (_: unknown, r: Transfer) => codeAndName(r.toAccount) },
-          { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'right' as const, render: amountCell },
+          {
+            title: t('treasury.amount'),
+            dataIndex: 'amount',
+            key: 'amount',
+            sorter: true,
+            sortOrder: list.sortOrderOf('amount'),
+            width: 120,
+            align: 'right' as const,
+            render: amountCell,
+          },
           { title: t('common.description'), dataIndex: 'description', ellipsis: true },
           {
             title: t('common.status'),

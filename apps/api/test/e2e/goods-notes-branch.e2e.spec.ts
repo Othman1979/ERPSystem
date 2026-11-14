@@ -258,7 +258,7 @@ describe('Branch on goods notes and voucher entries', () => {
     expect((await api().delete(`/api/v1/goods-notes/${b2Note}`).set(auth(otherTenant))).status).toBe(404);
     expect((await api().post(`/api/v1/goods-notes/${b2Note}/post`).set(auth(otherTenant)).set(idem())).status).toBe(404);
     const list = await api().get('/api/v1/goods-notes').set(auth(otherTenant));
-    expect(list.body).toEqual([]);
+    expect(list.body).toMatchObject({ items: [], total: 0 });
   });
 
   it('the trial balance stays balanced', async () => {

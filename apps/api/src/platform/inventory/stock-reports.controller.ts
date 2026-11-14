@@ -1,12 +1,14 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { RequirePermission } from '../../common/decorators/auth.decorators.js';
+import { RequireAllBranches, RequirePermission } from '../../common/decorators/auth.decorators.js';
+import { ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { PrintingService } from '../printing/printing.service.js';
 import {
   ItemBalancesQueryDto,
   ItemLedgerQueryDto,
   StockBalancesQueryDto,
+  StockMovementsQueryDto,
   StockValuationQueryDto,
 } from './dto/stock-reports.dto.js';
 import { StockLedgerService } from './stock-ledger.service.js';
@@ -36,32 +38,21 @@ export class StockReportsController {
     return this.printing.respond(data, q, (d, lang) => stockBalancesTable(d, lang, wh, q.lowStock === 'true'));
   }
 
+  /** Movement ledger, newest first, read by keyset (ADR-022 §4): `{ items, nextCursor }`. */
   @Get('movements')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  movements(
-    @Query('warehouseId') warehouseId?: string,
-    @Query('itemId') itemId?: string,
-    @Query('sourceType') sourceType?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
-  ) {
-    return this.reports.movements({
-      warehouseId,
-      itemId,
-      sourceType,
-      from,
-      to,
-      page,
-      pageSize,
-    });
+  movements(@Query() q: StockMovementsQueryDto) {
+    return this.reports.movements(q);
   }
 
-  /** Per-item movement ledger with running balance and WAC. */
+  /**
+   * Item card (ADR-022 §4): ascending keyset pages, `{ item, summary, items, nextCursor }`,
+   * `summary` on the first page only. format=pdf|xlsx reads the whole card instead.
+   */
   @Get('items/:itemId/ledger')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  async itemLedger(@Param('itemId') itemId: string, @Query() q: ItemLedgerQueryDto) {
+  async itemLedger(@Param('itemId', ParseIdPipe) itemId: string, @Query() q: ItemLedgerQueryDto) {
+    if (!q.format || q.format === 'json') return this.reports.itemLedgerPage(itemId, q);
     const data = await this.reports.itemLedger(itemId, q);
     const wh = await this.warehouseLabel(q);
     return this.printing.respond(data, q, (d, lang) => itemLedgerTable(d, lang, q, wh));
@@ -88,9 +79,10 @@ export class StockReportsController {
     return this.printing.respond(data, q, (d, lang) => stockValuationTable(d, lang, wh));
   }
 
-  /** Recomputes stock_balances from stock_movements — integrity check. */
+  /** Recomputes stock_balances from stock_movements — integrity check. Company-wide: every branch only (ADR-003 §13). */
   @Get('verify')
   @RequirePermission(PERMISSIONS.TENANT_READ)
+  @RequireAllBranches()
   verify() {
     return this.ledger.verify();
   }

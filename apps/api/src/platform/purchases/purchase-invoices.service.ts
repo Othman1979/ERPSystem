@@ -1,6 +1,14 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { Decimal, round3, sum } from '../../common/decimal/decimal.utils.js';
-import { assertBranchAllowed, currentBranchId, assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
+import {
+  assertBranchAllowed,
+  branchSql,
+  branchWhere,
+  currentBranchId,
+  assertWarehouseBranchAllowed,
+} from '../../common/branch/branch-context.js';
+import { findPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -39,7 +47,11 @@ import {
 } from '../shared/invoice-settlement.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
-import type { CreatePurchaseInvoiceDto, PurchaseInvoiceLineDto } from './dto/purchases.dto.js';
+import type {
+  CreatePurchaseInvoiceDto,
+  ListPurchaseInvoicesQueryDto,
+  PurchaseInvoiceLineDto,
+} from './dto/purchases.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 
@@ -91,10 +103,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
   }
 
   /** Posted credit-return totals for the given invoices (for `outstanding`). */
-  private async creditedFor(
-    db: ReturnType<DocumentSupportService['tenant']>['db'],
-    invoiceIds: bigint[],
-  ) {
+  private async creditedFor(db: Pick<Prisma.TransactionClient, 'purchaseReturn'>, invoiceIds: bigint[]) {
     if (invoiceIds.length === 0) return new Map<string, Decimal>();
     const returns = await db.purchaseReturn.findMany({
       where: { originalInvoiceId: { in: invoiceIds }, status: 'POSTED', refundType: 'CREDIT' },
@@ -131,7 +140,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         ) r ON r.original_invoice_id = i.id
        WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId}
          AND i.status = 'POSTED' AND i.payment_type = 'CREDIT' AND i.invoice_date <= ${day}
-         AND ${which}`;
+         AND ${which}
+         AND ${branchSql(Prisma.raw('i.branch_id'))}`;
     // Open now (owes something on paid_amount)...
     const rows = await query(Prisma.sql`i.grand_total - i.paid_amount - COALESCE(r.credited, 0) > 0`);
     // ...plus those settled now but not yet as of the date. The ids come from
@@ -160,7 +170,13 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
   async summary(range: SummaryRange, groupBy: SummaryGroupBy): Promise<DocumentSummaryRow[]> {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const where = { companyId, status: 'POSTED' as const, invoiceDate: { gte: range.from, lte: range.to } };
+    // Branch of the caller (ADR-003 §12). `where` also filters the line groupBys through `invoice: where`.
+    const where = {
+      companyId,
+      status: 'POSTED' as const,
+      invoiceDate: { gte: range.from, lte: range.to },
+      AND: [branchWhere()],
+    };
     if (groupBy === 'day' || groupBy === 'month') {
       const groups = await db.purchaseInvoice.groupBy({
         by: ['invoiceDate'],
@@ -293,6 +309,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
        WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId} AND i.supplier_id = ${partyId}
          AND i.status = 'POSTED' AND i.payment_type = 'CREDIT'
          AND i.grand_total - i.paid_amount - COALESCE(r.credited, 0) > 0
+         AND ${branchSql(Prisma.raw('i.branch_id'))}
        ORDER BY i.invoice_date, i.id`;
     return rows.map((r) => BigInt(r.id));
   }
@@ -305,31 +322,83 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     return new Map(rows.map((r) => [r.id, r.invoiceNo]));
   }
 
-  async list(status?: string, paymentType?: string, supplierId?: string) {
+  /**
+   * Numbered page of invoices (ADR-022), newest first unless `sort` says otherwise.
+   * `q` matches the invoice number, the supplier's invoice number and the supplier's
+   * code and names. Branch: the invoice's own branch (ADR-003 §10).
+   */
+  async list(query: ListPurchaseInvoicesQueryDto) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const rows = await db.purchaseInvoice.findMany({
-      where: {
-        companyId,
-        ...(status ? { status: status as 'DRAFT' | 'POSTED' } : {}),
-        ...(paymentType ? { paymentType: paymentType as 'CASH' | 'CREDIT' } : {}),
-        ...(supplierId ? { supplierId: BigInt(supplierId) } : {}),
+    if (query.from && query.to && query.from > query.to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', { from: query.from, to: query.to });
+    }
+    const q = query.q;
+    const where: Prisma.PurchaseInvoiceWhereInput = {
+      companyId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.paymentType ? { paymentType: query.paymentType } : {}),
+      ...(query.supplierId ? { supplierId: BigInt(query.supplierId) } : {}),
+      ...(query.from || query.to
+        ? {
+            invoiceDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+      AND: [
+        branchWhere(),
+        query.open === 'true'
+          ? { status: 'POSTED', paymentType: 'CREDIT', grandTotal: { gt: db.purchaseInvoice.fields.paidAmount } }
+          : {},
+        q
+          ? {
+              OR: [
+                { invoiceNo: { contains: q } },
+                { supplierInvoiceNo: { contains: q } },
+                { supplier: { code: { contains: q } } },
+                { supplier: { nameAr: { contains: q } } },
+                { supplier: { nameEn: { contains: q } } },
+              ],
+            }
+          : {},
+      ],
+    };
+    const orderBy = orderByOf<'invoiceDate' | 'invoiceNo' | 'grandTotal', Prisma.PurchaseInvoiceOrderByWithRelationInput>(
+      query.sort,
+      '-invoiceDate',
+      {
+        invoiceDate: (dir) => ({ invoiceDate: dir }),
+        invoiceNo: (dir) => ({ invoiceNo: dir }),
+        grandTotal: (dir) => ({ grandTotal: dir }),
       },
-      include: {
-        supplier: { select: { id: true, code: true, nameAr: true } },
-        _count: { select: { lines: true } },
+      (dir) => ({ id: dir }),
+    );
+    // The rows, their credited returns and the total read on one snapshot (ADR-022 §3).
+    return findPage(db, pageWindow(query), {
+      rows: async (tx, window) => {
+        const rows = await tx.purchaseInvoice.findMany({
+          where,
+          include: {
+            supplier: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+            _count: { select: { lines: true } },
+          },
+          orderBy,
+          ...window,
+        });
+        const credited = await this.creditedFor(tx, rows.map((r) => r.id));
+        return rows.map((r) => withBalance(r, credited));
       },
-      orderBy: [{ invoiceDate: 'desc' }, { id: 'desc' }],
-      take: 300,
+      count: (tx) => tx.purchaseInvoice.count({ where }),
     });
-    const credited = await this.creditedFor(db, rows.map((r) => r.id));
-    return rows.map((r) => withBalance(r, credited));
   }
 
+  /** One invoice; another branch's answers 404 (ADR-003 §11). */
   async get(id: bigint) {
     const { db } = this.support.tenant();
     const inv = await db.purchaseInvoice.findFirst({
-      where: { id },
+      where: { id, AND: [branchWhere()] },
       include: {
         supplier: true,
         warehouse: { select: { id: true, code: true, nameAr: true } },

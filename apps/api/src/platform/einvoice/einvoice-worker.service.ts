@@ -129,6 +129,7 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
            WHERE id = ${row.id} AND claim_token = ${token} AND status = 'SENDING'`;
         await this.cls.run(async () => {
           this.cls.set('tenantId', BigInt(row.tenant_id));
+          this.cls.set('jobContext', true); // no member: every branch (ADR-003 §16)
           try {
             await this.sender.send(BigInt(row.id), token);
           } catch (err) {

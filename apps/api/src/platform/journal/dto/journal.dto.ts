@@ -1,3 +1,4 @@
+import { ApiPropertyOptional, IntersectionType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -12,6 +13,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ExportQueryDto } from '../../printing/dto/export.dto.js';
+import { KeysetQueryDto, PageQueryDto, SortParam, sortValues } from '../../../common/paging/page-query.dto.js';
 import {
   AMOUNT_PATTERN,
   DATE_PATTERN,
@@ -158,4 +160,51 @@ export class ReportQueryDto extends ExportQueryDto {
   @IsOptional()
   @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
   partyId?: string;
+}
+
+/**
+ * Account statement and party statement (ADR-022 §4): the report filters plus
+ * `limit` / `cursor` for the JSON pages. PDF / XLSX ignore `limit` and `cursor`.
+ */
+export class StatementQueryDto extends IntersectionType(ReportQueryDto, KeysetQueryDto) {}
+
+export const JOURNAL_SORT_KEYS = ['entryDate', 'entryNo'] as const;
+export const JOURNAL_SORTS = sortValues(JOURNAL_SORT_KEYS);
+const JOURNAL_SOURCES = ['MANUAL_JOURNAL', 'OPENING_ENTRY'] as const;
+
+/**
+ * GET /journal-entries (ADR-022 §2, LEDGER-08): a numbered page, newest first.
+ * `q` matches the entry number and the description.
+ */
+export class ListJournalEntriesQueryDto extends PageQueryDto {
+  @SortParam(JOURNAL_SORTS, '-entryDate')
+  sort?: (typeof JOURNAL_SORTS)[number];
+
+  @ApiPropertyOptional({ enum: ['DRAFT', 'POSTED'] })
+  @IsOptional()
+  @IsIn(['DRAFT', 'POSTED'])
+  status?: 'DRAFT' | 'POSTED';
+
+  @ApiPropertyOptional({ enum: VOUCHER_TYPES })
+  @IsOptional()
+  @IsIn(VOUCHER_TYPES)
+  voucherType?: (typeof VOUCHER_TYPES)[number];
+
+  /** MANUAL_JOURNAL or OPENING_ENTRY (the opening balances screen). */
+  @ApiPropertyOptional({ enum: JOURNAL_SOURCES })
+  @IsOptional()
+  @IsIn(JOURNAL_SOURCES)
+  sourceType?: (typeof JOURNAL_SOURCES)[number];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  from?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  to?: string;
 }

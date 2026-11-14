@@ -745,7 +745,7 @@ describe('Ledger review — journal engine (erp_test)', () => {
 
       const listB = await api().get('/api/v1/journal-entries').set(auth(B.token));
       expect(listB.status).toBe(200);
-      const idsB = bodyOf<EntryBody[]>(listB).map((e) => e.id);
+      const idsB = bodyOf<{ items: EntryBody[] }>(listB).items.map((e) => e.id);
       expect(idsB).not.toContain(draftId);
       expect(idsB).not.toContain(postedId);
     },

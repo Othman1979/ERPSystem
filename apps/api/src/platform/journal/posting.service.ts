@@ -281,6 +281,8 @@ export class PostingService {
           partyId: n.line.partyId ?? null,
           description: n.line.description ?? null,
           branchId: n.line.branchId ?? params.branchId ?? null,
+          // LEDGER-19: the line keeps its entry's date for the statement indexes.
+          entryDate: params.entryDate,
         })),
       });
 

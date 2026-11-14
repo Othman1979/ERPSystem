@@ -426,7 +426,7 @@ describe('Phase 6 — treasury', () => {
   });
 
   it('tenant isolation for transfers, allocations and treasury reports', async () => {
-    expect(((await api().get('/api/v1/cash-transfers').set(auth(tokenB))).body as unknown[]).length).toBe(0);
+    expect((await api().get('/api/v1/cash-transfers').set(auth(tokenB))).body).toMatchObject({ items: [], total: 0 });
     expect((await api().get(`/api/v1/cash-transfers/${transferId}`).set(auth(tokenB))).status).toBe(404);
     const cancel = await api().post(`/api/v1/allocations/${firstAllocationId}/cancel`).set(auth(tokenB)).set(idem());
     expect(cancel.status).toBe(404);

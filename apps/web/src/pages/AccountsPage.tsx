@@ -33,6 +33,7 @@ import type Decimal from 'decimal.js';
 import { amountCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
 import { ACCOUNTS_QUERY_KEY, useAccounts, type AccountRow } from '../hooks/useAccounts';
+import { useAuth } from '../auth/AuthContext';
 
 export type Account = AccountRow;
 
@@ -96,6 +97,8 @@ export function applyBalances(
 export function AccountsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  // The account statement is company-wide (ADR-003 §13): shown only to members with every branch.
+  const { allBranches } = useAuth();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
@@ -323,7 +326,7 @@ export function AccountsPage() {
                 <Button size="small" onClick={() => openEdit(a)}>
                   {t('common.edit')}
                 </Button>
-                {a.isPostable && (
+                {a.isPostable && allBranches && (
                   <Button size="small" onClick={() => navigate(`/reports?tab=gl&accountId=${a.id}`)}>
                     {t('reports.accountStatement')}
                   </Button>

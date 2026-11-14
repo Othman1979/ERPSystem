@@ -3,13 +3,17 @@ import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
-import { assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
+import { assertWarehouseBranchAllowed, branchWhere, hasAllBranches } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { findPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { PostingService } from '../journal/posting.service.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import type { CreateStockTransferDto } from './dto/inventory.dto.js';
+import type { ListStockTransfersQueryDto } from './dto/list-queries.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { retryOnLockConflict } from '../shared/document-support.service.js';
 
@@ -49,28 +53,78 @@ export class TransfersService {
     return ClsServiceManager.getClsService<RequestContext>().get('userId');
   }
 
-  async list(status?: string) {
+  /**
+   * A transfer is visible when its source OR its destination warehouse is one
+   * of the caller's branches (ADR-003 §10). No restriction for an all-branch member.
+   */
+  private branchScope(): Prisma.StockTransferWhereInput[] {
+    if (hasAllBranches()) return [];
+    return [{ OR: [{ fromWarehouse: branchWhere() }, { toWarehouse: branchWhere() }] }];
+  }
+
+  /**
+   * One numbered page of transfers (ADR-022), newest first unless `sort` says
+   * otherwise. `warehouseId` matches the source or the destination.
+   */
+  async list(query: ListStockTransfersQueryDto) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
-    return db.stockTransfer.findMany({
-      where: {
-        companyId,
-        ...(status ? { status: status as 'DRAFT' | 'POSTED' } : {}),
+    if (query.from && query.to && query.from > query.to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', {
+        from: query.from,
+        to: query.to,
+      });
+    }
+    const q = query.q;
+    const and: Prisma.StockTransferWhereInput[] = [...this.branchScope()];
+    if (query.warehouseId) {
+      const warehouseId = BigInt(query.warehouseId);
+      and.push({ OR: [{ fromWarehouseId: warehouseId }, { toWarehouseId: warehouseId }] });
+    }
+    if (q) and.push({ OR: [{ docNo: { contains: q } }, { description: { contains: q } }] });
+    const where: Prisma.StockTransferWhereInput = {
+      companyId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.from || query.to
+        ? {
+            transferDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+      AND: and,
+    };
+    const orderBy = orderByOf<'date' | 'docNo', Prisma.StockTransferOrderByWithRelationInput>(
+      query.sort,
+      '-date',
+      {
+        date: (dir) => ({ transferDate: dir }),
+        docNo: (dir) => ({ docNo: dir }),
       },
-      include: {
-        fromWarehouse: { select: { id: true, code: true, nameAr: true } },
-        toWarehouse: { select: { id: true, code: true, nameAr: true } },
-        _count: { select: { lines: true } },
-      },
-      orderBy: [{ transferDate: 'desc' }, { id: 'desc' }],
-      take: 200,
+      (dir) => ({ id: dir }),
+    );
+    return findPage(db, pageWindow(query), {
+      rows: (tx, window) =>
+        tx.stockTransfer.findMany({
+          where,
+          include: {
+            fromWarehouse: { select: { id: true, code: true, nameAr: true } },
+            toWarehouse: { select: { id: true, code: true, nameAr: true } },
+            _count: { select: { lines: true } },
+          },
+          orderBy,
+          ...window,
+        }),
+      count: (tx) => tx.stockTransfer.count({ where }),
     });
   }
 
+  /** One transfer; a transfer between two other branches answers 404 (ADR-003 §11). */
   async get(id: bigint) {
     const { db } = this.tenant();
     const t = await db.stockTransfer.findFirst({
-      where: { id },
+      where: { id, AND: this.branchScope() },
       include: {
         fromWarehouse: true,
         toWarehouse: true,

@@ -1,4 +1,8 @@
-import { IsBoolean, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { DATE_PATTERN } from '../../../common/pipes/parse-id.pipe.js';
+import { PageQueryDto, SortParam, sortValues } from '../../../common/paging/page-query.dto.js';
 
 export const EINVOICE_ENVIRONMENTS = ['SANDBOX', 'PRODUCTION'] as const;
 export const EINVOICE_TRACKS = ['INCOME', 'GENERAL_SALES'] as const;
@@ -49,12 +53,46 @@ export class UpdateEInvoiceSettingsDto {
   isEnabled!: boolean;
 }
 
-export class EInvoiceSubmissionsQueryDto {
+export const EINVOICE_SUBMISSION_SORT_KEYS = ['createdAt', 'documentNo'] as const;
+export const EINVOICE_SUBMISSION_SORTS = sortValues(EINVOICE_SUBMISSION_SORT_KEYS);
+
+/** An empty filter value (`?status=`) counts as "not given", as in the other lists. */
+const blankToUndefined = ({ value }: { value: unknown }) => (value === '' ? undefined : value);
+
+/**
+ * GET /einvoice/submissions (ADR-022 §2): a numbered page, newest first by
+ * default. `from`/`to` bound the creation date (yyyy-mm-dd, `to` inclusive);
+ * `q` matches the document number. Branch scope from the member (ADR-003 §10).
+ */
+export class ListEInvoiceSubmissionsQueryDto extends PageQueryDto {
+  @SortParam(EINVOICE_SUBMISSION_SORTS, '-createdAt')
+  sort?: (typeof EINVOICE_SUBMISSION_SORTS)[number];
+
+  @ApiPropertyOptional({ enum: EINVOICE_STATUSES })
   @IsOptional()
+  @Transform(blankToUndefined)
   @IsIn(EINVOICE_STATUSES)
   status?: (typeof EINVOICE_STATUSES)[number];
 
+  @ApiPropertyOptional({ enum: ['SALES_INVOICE', 'SALES_RETURN'] })
   @IsOptional()
+  @Transform(blankToUndefined)
   @IsIn(['SALES_INVOICE', 'SALES_RETURN'])
   documentType?: 'SALES_INVOICE' | 'SALES_RETURN';
+
+  /** Created on or after (yyyy-mm-dd). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(blankToUndefined)
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  from?: string;
+
+  /** Created on or before (yyyy-mm-dd), the whole day included. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(blankToUndefined)
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  to?: string;
 }

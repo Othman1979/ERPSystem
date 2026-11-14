@@ -34,6 +34,7 @@ import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { openingPlug } from './opening/openingPlug';
 import { selectPostable, useAccounts } from '../hooks/useAccounts';
+import { type Page } from '../hooks/usePagedQuery';
 
 interface Mapping {
   mappingKey: string;
@@ -110,8 +111,8 @@ export function OpeningBalancesPage() {
   const entries = useQuery({
     queryKey: ['journal-entries', 'opening'],
     queryFn: ({ signal }) =>
-      journalControllerList({ status: '', voucherType: '', sourceType: 'OPENING_ENTRY' }, { signal }).then(
-        (r) => r.data as unknown as OpeningEntry[],
+      journalControllerList({ sourceType: 'OPENING_ENTRY', pageSize: 100 }, { signal }).then(
+        (r) => (r.data as unknown as Page<OpeningEntry>).items,
       ),
   });
   const accounts = useAccounts();
@@ -128,7 +129,11 @@ export function OpeningBalancesPage() {
     queryFn: ({ signal }) => journalControllerGet(viewId!, { signal }).then((r) => r.data as unknown as OpeningEntry),
     enabled: screen === 'view' && !!viewId,
   });
-  const { partyColumn, partyName } = usePartyColumn(accounts.data);
+  // The picker and labels follow the lines on screen: the draft's, or the saved entry's.
+  const { partyColumn, partyName } = usePartyColumn(accounts.data, {
+    shownPartyIds: screen === 'view' ? (detail.data?.lines ?? []).map((l) => l.partyId) : lines.map((l) => l.partyId),
+    enabled: screen === 'entry',
+  });
 
   const mapped = (key: string) => mappings.data?.find((m) => m.mappingKey === key);
   const equityAccount = mapped('OPENING_BALANCE_EQUITY')?.account ?? null;

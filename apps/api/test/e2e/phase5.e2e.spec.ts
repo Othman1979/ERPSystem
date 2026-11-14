@@ -345,7 +345,7 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
       .get('/api/v1/purchase-invoices')
       .set(auth(token))
       .query({ status: 'POSTED' });
-    const inv = (pinv.body as { id: string; supplierId: string; grandTotal: string }[])[0];
+    const inv = (pinv.body.items as { id: string; supplierId: string; grandTotal: string }[])[0];
 
     const res = await api()
       .post('/api/v1/payments')
@@ -462,10 +462,10 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
   it('tenant isolation: parties/invoices of tenant B are invisible', async () => {
     const parties = await api().get('/api/v1/parties').set(auth(tokenB));
     expect(parties.status).toBe(200);
-    expect((parties.body as unknown[]).length).toBe(0);
+    expect(parties.body).toMatchObject({ items: [], total: 0 });
 
     const invoices = await api().get('/api/v1/sales-invoices').set(auth(tokenB));
-    expect((invoices.body as unknown[]).length).toBe(0);
+    expect(invoices.body).toMatchObject({ items: [], total: 0 });
 
     const other = await api()
       .get(`/api/v1/sales-invoices/${g.__siId as string}`)

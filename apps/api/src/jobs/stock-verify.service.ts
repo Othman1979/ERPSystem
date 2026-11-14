@@ -36,6 +36,7 @@ export class StockVerifyService {
     for (const t of tenants) {
       const result = await this.cls.run(async () => {
         this.cls.set('tenantId', t.id);
+        this.cls.set('jobContext', true); // Cron: every branch (ADR-003 §16)
         return this.ledger.verify();
       });
       if (result.mismatches.length > 0) failing.push({ tenantId: t.id.toString(), mismatches: result.mismatches });

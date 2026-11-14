@@ -35,6 +35,8 @@ interface Props {
   lines: InvoiceLineDraft[];
   onChange: (lines: InvoiceLineDraft[]) => void;
   itemOptions: InvoiceItemOption[];
+  /** Server search of the item picker (ADR-022 §8); without it the options are filtered locally. */
+  onItemSearch?: (text: string) => void;
   /** Column header for the price field (unit price vs unit cost). */
   priceLabel?: string;
   /** Increment to auto-focus the first cell (e.g. when a form opens). */
@@ -57,7 +59,7 @@ function amountsFor(l: InvoiceLineDraft, items: InvoiceItemOption[], pricesInclu
  * net/tax/total computed live (estimate — server computes authoritative
  * totals). Enter moves row-major; last cell of last row appends a line.
  */
-export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, focusSignal }: Props) {
+export function InvoiceLinesGrid({ lines, onChange, itemOptions, onItemSearch, priceLabel, focusSignal }: Props) {
   const { t } = useTranslation();
   const gridRef = useRef<HTMLTableElement>(null);
   const nextKey = useRef(lines.length);
@@ -193,6 +195,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, priceLabel, foc
                     value: o.id,
                     label: `${o.label}${o.price != null ? ` — ${formatAmount(o.price)}` : ''}`,
                   }))}
+                  onRemoteSearch={onItemSearch}
                   value={l.itemId}
                   onChange={(v) => {
                     const item = itemOptions.find((o) => o.id === v);

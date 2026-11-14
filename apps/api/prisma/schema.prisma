@@ -411,6 +411,7 @@ model Branch {
   journalEntries     JournalEntry[]
   warehouses         Warehouse[]
   goodsNotes         GoodsNote[]
+  einvoiceSubmissions EInvoiceSubmission[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -822,6 +823,10 @@ model JournalLine {
   partyId        BigInt?           @map("party_id") @db.UnsignedBigInt
   description    String?           @db.VarChar(500)
   branchId       BigInt?           @map("branch_id") @db.UnsignedBigInt
+  /// Copy of the entry's date (LEDGER-19): an entry's date never changes once
+  /// its lines exist, so statements can seek on the line indexes below.
+  /// Written with the lines (PostingService, draft creation in JournalService).
+  entryDate      DateTime          @map("entry_date") @db.Date
   createdAt      DateTime          @default(now()) @map("created_at") @db.DateTime(3)
 
   entry   JournalEntry @relation(fields: [tenantId, journalEntryId], references: [tenantId, id], onDelete: Cascade)
@@ -834,6 +839,14 @@ model JournalLine {
   @@index([tenantId, accountId, journalEntryId])
   // Party statement and control balances per party (aging).
   @@index([tenantId, partyType, partyId, journalEntryId])
+  // LEDGER-19: covers the per-account sums of the trial balance and the
+  // statements, so dated reports read lines from the index only, driven by
+  // the dated entries (a month no longer costs as much as the whole ledger).
+  @@index([tenantId, journalEntryId, accountId, debit, credit], map: "journal_lines_entry_cover_idx")
+  // ADR-022 §4 / LEDGER-19: an account or party statement page seeks to its
+  // cursor in statement order (entry date, entry id, line no) and reads on.
+  @@index([tenantId, accountId, entryDate, journalEntryId, lineNo], map: "journal_lines_account_seek_idx")
+  @@index([tenantId, partyType, partyId, entryDate, journalEntryId, lineNo], map: "journal_lines_party_seek_idx")
   @@map("journal_lines")
 }
 
@@ -1095,6 +1108,8 @@ model StockAdjustment {
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, docNo])
   @@index([tenantId, status])
+  // ADR-022: the list pages by date, newest first.
+  @@index([tenantId, companyId, adjustmentDate, id])
   @@map("stock_adjustments")
 }
 
@@ -1146,6 +1161,8 @@ model StockTransfer {
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, docNo])
   @@index([tenantId, status])
+  // ADR-022: the list pages by date, newest first.
+  @@index([tenantId, companyId, transferDate, id])
   @@map("stock_transfers")
 }
 
@@ -1190,6 +1207,8 @@ model StockCount {
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, docNo])
   @@index([tenantId, status])
+  // ADR-022: the list pages by date, newest first.
+  @@index([tenantId, companyId, countDate, id])
   @@map("stock_counts")
 }
 
@@ -1826,6 +1845,8 @@ model CashTransfer {
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, transferNo])
   @@index([tenantId, transferDate])
+  // ADR-022: the list pages by date, newest first.
+  @@index([tenantId, companyId, transferDate, id])
   @@map("cash_transfers")
 }
 
@@ -1897,6 +1918,8 @@ model EInvoiceSubmission {
   /// SALES_INVOICE | SALES_RETURN
   documentType         String              @map("document_type") @db.VarChar(30)
   documentId           BigInt              @map("document_id") @db.UnsignedBigInt
+  /// ADR-003 §10: the document's branch (a return's is its invoice's), set at enqueue.
+  branchId             BigInt?             @map("branch_id") @db.UnsignedBigInt
   documentNo           String              @map("document_no") @db.VarChar(50)
   uuid                 String              @db.Char(36)
   icv                  Int
@@ -1925,6 +1948,7 @@ model EInvoiceSubmission {
 
   tenant             Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   company            Company              @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch             Branch?              @relation(fields: [tenantId, branchId], references: [tenantId, id])
   originalSubmission EInvoiceSubmission?  @relation("EInvoiceReturnOf", fields: [tenantId, originalSubmissionId], references: [tenantId, id])
   returnSubmissions  EInvoiceSubmission[] @relation("EInvoiceReturnOf")
   attempts           EInvoiceAttempt[]
@@ -1936,6 +1960,8 @@ model EInvoiceSubmission {
   @@index([claimToken])
   // The worker's stuck-row recovery reads SENDING rows older than a cutoff.
   @@index([status, claimedAt])
+  // ADR-022: the submissions list pages by creation, newest first.
+  @@index([tenantId, companyId, createdAt, id])
   @@map("einvoice_submissions")
 }
 

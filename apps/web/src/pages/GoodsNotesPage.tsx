@@ -14,7 +14,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   emptyItemLine,
@@ -40,7 +40,9 @@ import {
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
-import { ListToolbar, matchesSearch } from '../components/ListToolbar';
+import { ListToolbar } from '../components/ListToolbar';
+import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
 import { qtyCell, unitCostCell } from '../format/cells';
@@ -113,7 +115,6 @@ export function GoodsNotesSection({
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new voucher
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
-  const [search, setSearch] = useState('');
 
   // ---- new-voucher form state ----
   const [newType, setNewType] = useState<NoteType>('GRN');
@@ -129,28 +130,34 @@ export function GoodsNotesSection({
     return () => cancelAnimationFrame(id);
   }, [headerFocus]);
 
-  const notesQuery = useQuery({
-    queryKey: ['goods-notes', typeFilter],
-    queryFn: ({ signal }) =>
-      goodsNotesControllerList({ status: '', noteType: typeFilter ?? '' }, { signal }).then(
-        (r) => r.data as unknown as GoodsNote[],
+  // Server-paged (ADR-022): search, sort and page go to the API.
+  const list = usePagedQuery<GoodsNote, { noteType?: string }>({
+    key: ['goods-notes', 'list'],
+    filters: { noteType: typeFilter },
+    defaultSort: '-date',
+    fetch: (params, signal) =>
+      goodsNotesControllerList(params as Parameters<typeof goodsNotesControllerList>[0], { signal }).then(
+        (r) => r.data as unknown as Page<GoodsNote>,
       ),
     enabled: screen === 'list',
   });
-  const { data: notes, isLoading } = notesQuery;
+  const notesQuery = list.query;
+  const { isLoading } = notesQuery;
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['goods-note', entryId],
     queryFn: ({ signal }) => goodsNotesControllerGet(entryId!, { signal }).then((r) => r.data as unknown as GoodsNote),
     enabled: screen === 'entry' && !!entryId,
   });
 
-  const { data: items } = useQuery({
-    queryKey: ['items'],
-    queryFn: ({ signal }) =>
-      catalogControllerListItems({ search: '', itemKind: '', isActive: '' }, { signal }).then(
-        (r) => r.data as unknown as Item[],
-      ),
+  // Stock items for the new voucher's grid: searched on the server (ADR-022 §8).
+  const items = useRemoteOptions<Item>({
+    key: ['items', 'pick', { itemKind: 'STOCK' }],
     enabled: screen === 'entry' && !entryId,
+    fetch: (q, signal) =>
+      catalogControllerListItems(
+        { pageSize: PICKER_PAGE_SIZE, itemKind: 'STOCK', ...(q ? { q } : {}) },
+        { signal },
+      ).then((r) => (r.data as unknown as Page<Item>).items),
   });
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
@@ -158,13 +165,9 @@ export function GoodsNotesSection({
     enabled: screen === 'entry' && !entryId,
   });
 
-  const itemOptions = useMemo(
-    () =>
-      (items ?? [])
-        .filter((i) => i.itemKind === 'STOCK')
-        .map((i) => ({ value: i.id, label: codeAndName(i) })),
-    [items],
-  );
+  const itemOptions = items
+    .withSelected(lines.map((l) => l.itemId))
+    .map((i) => ({ value: i.id, label: codeAndName(i) }));
   const warehouseOptions = (warehouses ?? []).map((w) => ({
     value: w.id,
     label: codeAndName(w),
@@ -301,15 +304,12 @@ export function GoodsNotesSection({
 
   // ============================ LIST VIEW ============================
   if (screen === 'list') {
-    const shown = (notes ?? []).filter((r) =>
-      matchesSearch(search, r.docNo, r.warehouse ? codeAndName(r.warehouse) : null, r.description),
-    );
     return (
       <div>
         {contextHolder}
         <ListToolbar
-          search={search}
-          onSearch={setSearch}
+          search={list.search}
+          onSearch={list.setSearch}
           filters={
             <Select
               allowClear
@@ -319,7 +319,7 @@ export function GoodsNotesSection({
               options={NOTE_TYPES.map((vt) => ({ value: vt, label: t(TYPE_LABEL[vt]) }))}
             />
           }
-          count={shown.length}
+          count={list.total}
           actions={
           <Dropdown.Button
             type="primary"
@@ -340,15 +340,19 @@ export function GoodsNotesSection({
         <Table
           rowKey="id"
           loading={isLoading}
-          dataSource={shown}
+          dataSource={list.rows}
           locale={tableLocale(notesQuery)}
           size="small"
-          pagination={{ pageSize: 20 }}
+          pagination={list.pagination}
+          onChange={list.onTableChange}
           onRow={(r) => ({ onClick: () => openEntry(r.id), style: { cursor: 'pointer' } })}
           columns={[
             {
               title: t('goods.docNo'),
               dataIndex: 'docNo',
+              key: 'docNo',
+              sorter: true,
+              sortOrder: list.sortOrderOf('docNo'),
               className: 'nowrap',
               width: 150,
               render: (v: string | null, r: GoodsNote) => v ?? `#${r.id}`,
@@ -362,6 +366,9 @@ export function GoodsNotesSection({
             {
               title: t('goods.date'),
               dataIndex: 'noteDate',
+              key: 'date',
+              sorter: true,
+              sortOrder: list.sortOrderOf('date'),
               width: 110,
               render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
             },
@@ -562,6 +569,7 @@ export function GoodsNotesSection({
             lines={lines}
             onChange={setLines}
             itemOptions={itemOptions}
+            onItemSearch={items.onSearch}
             showCost={newType === 'GRN'}
             showDescription
           />

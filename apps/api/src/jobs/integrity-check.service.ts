@@ -81,6 +81,14 @@ export class IntegrityCheckService {
         WHERE x.branch_id IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM branches b WHERE b.tenant_id = x.tenant_id AND b.id = x.branch_id) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
+    // LEDGER-19: journal_lines.entry_date is a copy of its entry's date; the
+    // statements order and page by it, so a drifted copy would misplace lines.
+    await orphans(
+      'journal_lines.entry_date',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM journal_lines x
+        JOIN journal_entries e ON e.tenant_id = x.tenant_id AND e.id = x.journal_entry_id
+        WHERE x.entry_date <> e.entry_date AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
     await orphans(
       'allocations.document',
       db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM allocations x
