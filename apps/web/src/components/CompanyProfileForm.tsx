@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DeleteOutlined, UploadOutlined } from '@ant-design/icons';
-import { App, Button, Form, Image, Input, Space, Switch, Typography, Upload } from 'antd';
+import { App, Button, Form, Image, Input, Select, Space, Switch, Typography, Upload } from 'antd';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../auth/AuthContext';
+import { PERMISSIONS } from '../auth/permissions';
+import { PROCUREMENT_LEVELS } from '../auth/procurementLevel';
 import {
   ApiError,
   type CompanyDto,
@@ -25,31 +28,29 @@ const LOGO_MAX_BYTES = 1024 * 1024;
 
 type FormValues = Pick<
   CompanyDto,
-  | 'legalNameAr'
-  | 'legalNameEn'
-  | 'taxNumber'
-  | 'commercialRegistration'
-  | 'address'
-  | 'phone'
-  | 'pricesIncludeTax'
+  'legalNameAr' | 'legalNameEn' | 'taxNumber' | 'commercialRegistration' | 'address' | 'phone' | 'pricesIncludeTax' | 'procurementLevel'
   | 'costCentersEnabled'
 >;
 
 /**
  * Company name, tax number, address, phone and logo (setup wizard step 1,
- * settings). `withTax` adds the "prices include tax" switch; `onSaved` runs
- * after a successful save (the wizard moves on).
+ * settings). `withTax` adds the "prices include tax" switch; `withProcurement`
+ * the procurement level (ADR-024 §2), which only company.manage may change;
+ * `onSaved` runs after a successful save (the wizard moves on).
  */
 export function CompanyProfileForm({
   withTax = false,
+  withProcurement = false,
   submitLabel,
   onSaved,
 }: {
   withTax?: boolean;
+  withProcurement?: boolean;
   submitLabel?: string;
   onSaved?: () => void;
 }) {
   const { t } = useTranslation();
+  const { can } = useAuth();
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<FormValues>();
@@ -76,7 +77,13 @@ export function CompanyProfileForm({
       refresh();
       onSaved?.();
     },
-    onError,
+    onError: (err) => {
+      // A refused lowering (ADR-024 §2.2): the select goes back to the saved level.
+      if (err instanceof ApiError && err.code === 'PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS' && company.data) {
+        form.setFieldsValue({ procurementLevel: company.data.procurementLevel });
+      }
+      onError(err);
+    },
   });
   const upload = useMutation({
     mutationFn: (file: File) => companyControllerUploadLogo({ file }),
@@ -133,6 +140,19 @@ export function CompanyProfileForm({
           extra={t('costCenters.enableHint')}
         >
           <Switch />
+        </Form.Item>
+      )}
+      {withProcurement && (
+        <Form.Item
+          name="procurementLevel"
+          label={t('company.procurementLevel')}
+          extra={t('company.procurementLevelHint')}
+          style={{ maxWidth: 480 }}
+        >
+          <Select
+            disabled={!can(PERMISSIONS.COMPANY_MANAGE)}
+            options={PROCUREMENT_LEVELS.map((level) => ({ value: level, label: t(`company.procurementLevels.${level}`) }))}
+          />
         </Form.Item>
       )}
 

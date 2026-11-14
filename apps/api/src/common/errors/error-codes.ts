@@ -87,6 +87,9 @@ export enum ErrorCode {
   INVITATION_CODE_INVALID = 'INVITATION_CODE_INVALID',
   // Trade review fixes (ADR-016): a GRN is billed by one purchase invoice only.
   GRN_ALREADY_INVOICED = 'GRN_ALREADY_INVOICED',
+  // ADR-024 §2.2: the procurement level is lowered only when no purchasing
+  // cycle document is open (details.openDocuments counts them by kind).
+  PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS = 'PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS',
   // TRADE-07: a counted line's book balance changed since the count snapshot;
   // refresh the count, then approve again.
   STOCK_COUNT_STALE = 'STOCK_COUNT_STALE',

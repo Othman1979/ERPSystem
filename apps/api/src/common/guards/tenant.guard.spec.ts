@@ -4,6 +4,7 @@ import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../cls/cls.types.js';
 import { DomainError } from '../errors/domain.error.js';
 import { ErrorCode } from '../errors/error-codes.js';
+import { Decimal } from '../decimal/decimal.utils.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { TenantGuard } from './tenant.guard.js';
 
@@ -14,15 +15,24 @@ interface FakeTenant {
   trialEndsAt: Date | null;
 }
 
+interface FakeMembership {
+  roleCode: string;
+  rolePermissions: string[];
+  extraPermissions: { permissionCode: string; amountLimit: Decimal | null }[];
+}
+
+const OWNER_MEMBERSHIP: FakeMembership = { roleCode: 'OWNER', rolePermissions: ['tenant.read'], extraPermissions: [] };
+
 /** A guard wired to a fake system client that holds one active membership and one tenant. */
-function setup(tenant: FakeTenant) {
+function setup(tenant: FakeTenant, member: FakeMembership = OWNER_MEMBERSHIP) {
   const tenantQueries: unknown[] = [];
   const prisma = {
     client: {
       tenantMembership: {
         findFirst: async () => ({
           id: 5n,
-          role: { code: 'OWNER', permissions: [{ permissionCode: 'TENANT_READ' }] },
+          role: { code: member.roleCode, permissions: member.rolePermissions.map((permissionCode) => ({ permissionCode })) },
+          extraPermissions: member.extraPermissions,
         }),
       },
       tenant: {
@@ -52,6 +62,15 @@ function runAs(guard: TenantGuard, method: string): Promise<boolean> {
   return cls.runWith({ tenantId: 7n, userId: 1n } as RequestContext, () =>
     guard.canActivate(context(method)),
   );
+}
+
+/** Runs the guard as runAs does and returns the permission set it left in CLS, sorted. */
+function permissionsAfter(guard: TenantGuard): Promise<string[]> {
+  const cls = ClsServiceManager.getClsService<RequestContext>();
+  return cls.runWith({ tenantId: 7n, userId: 1n } as RequestContext, async () => {
+    await guard.canActivate(context('GET'));
+    return [...(cls.get('permissions') ?? [])].sort();
+  });
 }
 
 async function refusal(promise: Promise<unknown>): Promise<DomainError> {
@@ -98,5 +117,45 @@ describe('TenantGuard: read-only tenants (PLAT-25)', () => {
     const { guard, tenantQueries } = setup({ status: 'ACTIVE', trialEndsAt: null });
     await runAs(guard, 'GET');
     expect(tenantQueries).toEqual([{ where: { id: 7n }, select: { status: true, trialEndsAt: true } }]);
+  });
+});
+
+describe('TenantGuard: purchase permissions per member (ADR-024 §3.4)', () => {
+  const ACTIVE: FakeTenant = { status: 'ACTIVE', trialEndsAt: null };
+
+  it("adds the member's purchase permissions to the role's", async () => {
+    const { guard } = setup(ACTIVE, {
+      roleCode: 'CASHIER',
+      rolePermissions: ['tenant.read', 'purchase.manage'],
+      extraPermissions: [
+        { permissionCode: 'purchase.approve', amountLimit: new Decimal('500') },
+        { permissionCode: 'stock.issue_without_request', amountLimit: null },
+      ],
+    });
+    expect(await permissionsAfter(guard)).toEqual([
+      'purchase.approve',
+      'purchase.manage',
+      'stock.issue_without_request',
+      'tenant.read',
+    ]);
+  });
+
+  it('ignores a stored code outside the three fixed ones', async () => {
+    const { guard } = setup(ACTIVE, {
+      roleCode: 'VIEWER',
+      rolePermissions: ['tenant.read'],
+      extraPermissions: [{ permissionCode: 'user.manage', amountLimit: null }],
+    });
+    expect(await permissionsAfter(guard)).toEqual(['tenant.read']);
+  });
+
+  it('gives an owner all three with nothing stored', async () => {
+    const { guard } = setup(ACTIVE);
+    expect(await permissionsAfter(guard)).toEqual([
+      'purchase.approve',
+      'purchase.direct',
+      'stock.issue_without_request',
+      'tenant.read',
+    ]);
   });
 });

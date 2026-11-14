@@ -13,6 +13,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { DomainError } from '../errors/domain.error.js';
 import { ErrorCode } from '../errors/error-codes.js';
+import { effectiveMemberPermissions } from '../permissions/member-permissions.js';
 
 const READ_ONLY_STATUSES = new Set(['SUSPENDED', 'CANCELLED']);
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -57,10 +58,15 @@ export class TenantGuard implements CanActivate {
       throw new DomainError(ErrorCode.UNAUTHORIZED, 'No tenant selected');
     }
 
-    // systemPrisma: resolving the membership IS the tenant check.
+    // systemPrisma: resolving the membership IS the tenant check. Its purchase
+    // permissions (member_permissions) come through the composite FK
+    // [tenantId, membershipId], so they are this tenant's rows only.
     const membership = await this.prisma.client.tenantMembership.findFirst({
       where: { tenantId, userId, status: 'ACTIVE' },
-      include: { role: { include: { permissions: true } } },
+      include: {
+        role: { include: { permissions: true } },
+        extraPermissions: { select: { permissionCode: true, amountLimit: true } },
+      },
     });
     if (!membership) {
       throw new DomainError(ErrorCode.FORBIDDEN, 'No active membership for this tenant');
@@ -90,9 +96,11 @@ export class TenantGuard implements CanActivate {
 
     cls.set('membershipId', membership.id);
     cls.set('roleCode', membership.role.code);
+    // The role's permissions, plus the member's purchase permissions (ADR-024 §3.4).
+    const extra = effectiveMemberPermissions(membership.role.code, membership.extraPermissions);
     cls.set(
       'permissions',
-      new Set(membership.role.permissions.map((p) => p.permissionCode)),
+      new Set([...membership.role.permissions.map((p) => p.permissionCode), ...extra.codes]),
     );
     return true;
   }

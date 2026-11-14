@@ -7,6 +7,7 @@
 export const PERMISSIONS = {
   TENANT_READ: 'tenant.read',
   USER_MANAGE: 'user.manage',
+  COMPANY_MANAGE: 'company.manage',
   SETTINGS_MANAGE: 'settings.manage',
   JOURNAL_MANAGE: 'journal.manage',
   SALES_MANAGE: 'sales.manage',
@@ -15,6 +16,10 @@ export const PERMISSIONS = {
   EINVOICE_MANAGE: 'einvoice.manage',
   REPORTS_VIEW: 'reports.view',
   COST_CENTER_MANAGE: 'cost_center.manage',
+  // Purchase permissions per member (ADR-024 §3); an owner holds all three.
+  PURCHASE_DIRECT: 'purchase.direct',
+  PURCHASE_APPROVE: 'purchase.approve',
+  STOCK_ISSUE_WITHOUT_REQUEST: 'stock.issue_without_request',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

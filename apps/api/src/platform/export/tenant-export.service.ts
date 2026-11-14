@@ -23,7 +23,20 @@ const CELL_MAX = 32_000;
 const WORKBOOKS: { file: string; models: string[] }[] = [
   {
     file: '01-company.xlsx',
-    models: ['Company', 'Branch', 'Subscription', 'Unit', 'TaxCategory', 'PaymentMethod', 'FiscalYear', 'FiscalPeriod', 'DocumentSequence', 'Attachment'],
+    models: [
+      'Company',
+      'Branch',
+      'Subscription',
+      'Unit',
+      'TaxCategory',
+      'PaymentMethod',
+      'FiscalYear',
+      'FiscalPeriod',
+      'DocumentSequence',
+      'Attachment',
+      // Purchase permissions per member (ADR-024 §3); membershipId matches the Members sheet.
+      'MemberPermission',
+    ],
   },
   { file: '02-accounts.xlsx', models: ['Account', 'AccountMapping', 'CostCenter'] },
   { file: '03-journal.xlsx', models: ['JournalEntry', 'JournalLine'] },

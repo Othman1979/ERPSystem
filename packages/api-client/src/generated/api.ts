@@ -188,8 +188,13 @@ export interface MeBranchDto {
 export interface MeCurrentMembershipDto {
   membershipId: string;
   roleCode: string;
-  /** Permission codes of the role in this tenant, sorted. */
+  /** Permission codes of the role in this tenant plus the member's purchase permissions (ADR-024 §3), sorted. */
   permissions: string[];
+  /**
+     * Highest amount this member approves alone (purchase.approve, ADR-024 §3.3). Null: no limit, or no purchase.approve.
+     * @nullable
+     */
+  approvalLimit: string | null;
   /** @nullable */
   defaultBranchId: string | null;
   branches: MeBranchDto[];
@@ -654,6 +659,18 @@ export interface PaymentMethodDto {
   updatedAt: string;
 }
 
+/**
+ * Purchasing cycle level (ADR-024 §2).
+ */
+export type ProcurementLevel = typeof ProcurementLevel[keyof typeof ProcurementLevel];
+
+
+export const ProcurementLevel = {
+  SIMPLE: 'SIMPLE',
+  MEDIUM: 'MEDIUM',
+  FULL: 'FULL',
+} as const;
+
 export interface CompanyLogoDto {
   id: string;
   fileName: string;
@@ -678,6 +695,8 @@ export interface CompanyDto {
   pricesIncludeTax: boolean;
   /** Cost centres shown and enforced (ADR-024 §1). */
   costCentersEnabled: boolean;
+  /** Purchasing cycle level (ADR-024 §2). */
+  procurementLevel: ProcurementLevel;
   /**
      * Set when the setup wizard is finished.
      * @nullable
@@ -688,6 +707,11 @@ export interface CompanyDto {
 }
 
 export interface UpdateCompanyDto {
+  /**
+     * Purchasing cycle level (ADR-024 §2), needs company.manage. Raised any time;
+     * lowered only with no open cycle documents (PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS).
+     */
+  procurementLevel?: ProcurementLevel;
   /**
      * @minLength 1
      * @maxLength 191
@@ -781,6 +805,24 @@ export interface UserMembershipBranchDto {
   nameAr: string;
 }
 
+export type MemberPermissionCode = typeof MemberPermissionCode[keyof typeof MemberPermissionCode];
+
+
+export const MemberPermissionCode = {
+  purchasedirect: 'purchase.direct',
+  purchaseapprove: 'purchase.approve',
+  stockissue_without_request: 'stock.issue_without_request',
+} as const;
+
+export interface UserPurchasePermissionDto {
+  code: MemberPermissionCode;
+  /**
+     * purchase.approve only: the highest amount approved alone. Null: no limit.
+     * @nullable
+     */
+  amountLimit: string | null;
+}
+
 export interface UserMembershipDto {
   membershipId: string;
   status: MembershipStatus;
@@ -791,6 +833,8 @@ export interface UserMembershipDto {
   /** @nullable */
   defaultBranch: UserMembershipBranchDto | null;
   branches: UserMembershipBranchDto[];
+  /** Purchase permissions the member holds (ADR-024 §3); an owner holds all three, with no limit. */
+  purchasePermissions: UserPurchasePermissionDto[];
 }
 
 export interface InviteUserDto {
@@ -814,6 +858,8 @@ export interface UserInviteResultDto {
   /** @nullable */
   defaultBranch: UserMembershipBranchDto | null;
   branches: UserMembershipBranchDto[];
+  /** Purchase permissions the member holds (ADR-024 §3); an owner holds all three, with no limit. */
+  purchasePermissions: UserPurchasePermissionDto[];
   /** Only for a brand-new account. */
   temporaryPassword?: string;
   /** Only for an existing account (status INVITED). */
@@ -844,6 +890,22 @@ export interface UpdateMembershipDto {
   defaultBranchId?: string | null;
   /** @maxItems 100 */
   branchIds?: string[];
+}
+
+export interface MemberPermissionGrantDto {
+  code: MemberPermissionCode;
+  /**
+     * purchase.approve only: the highest amount the member approves alone, a
+     * decimal string above zero with up to 3 decimals. Absent or null: no
+     * limit (GET users answers null for no limit, so it may be sent back as is).
+     * @nullable
+     */
+  amountLimit?: string | null;
+}
+
+export interface UpdatePurchasePermissionsDto {
+  /** @maxItems 3 */
+  permissions: MemberPermissionGrantDto[];
 }
 
 export interface UserInvitationCodeDto {
@@ -5801,6 +5863,7 @@ export const ErrorCode = {
   DOCUMENT_TOO_MANY_LINES: 'DOCUMENT_TOO_MANY_LINES',
   INVITATION_CODE_INVALID: 'INVITATION_CODE_INVALID',
   GRN_ALREADY_INVOICED: 'GRN_ALREADY_INVOICED',
+  PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS: 'PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS',
   STOCK_COUNT_STALE: 'STOCK_COUNT_STALE',
   PARTY_IN_USE: 'PARTY_IN_USE',
   CURSOR_INVALID: 'CURSOR_INVALID',
@@ -9327,6 +9390,63 @@ export const usersControllerSuspend = async (membershipId: string, options?: Par
     method: 'DELETE'
 
 
+  }
+);}
+
+
+
+export type usersControllerUpdatePurchasePermissionsResponse200 = {
+  data: UserMembershipDto
+  status: 200
+}
+
+export type usersControllerUpdatePurchasePermissionsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type usersControllerUpdatePurchasePermissionsResponseSuccess = (usersControllerUpdatePurchasePermissionsResponse200) & {
+  headers: Headers;
+};
+export type usersControllerUpdatePurchasePermissionsResponseError = (usersControllerUpdatePurchasePermissionsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getUsersControllerUpdatePurchasePermissionsUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/users/${membershipId}/purchase-permissions`
+}
+
+/**
+ * @summary The member's purchase permissions, as a whole set (ADR-024 §3): listed
+codes are granted, the rest revoked. Owner only (checked by the service).
+ */
+export const usersControllerUpdatePurchasePermissions = async (membershipId: string,
+    updatePurchasePermissionsDto: UpdatePurchasePermissionsDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerUpdatePurchasePermissionsResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<usersControllerUpdatePurchasePermissionsResponseSuccess>(getUsersControllerUpdatePurchasePermissionsUrl(membershipId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updatePurchasePermissionsDto)
   }
 );}
 

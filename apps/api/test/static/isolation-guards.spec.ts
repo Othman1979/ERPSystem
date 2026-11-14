@@ -11,7 +11,23 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { TENANT_MODELS } from '../../src/prisma/tenant-prisma.js';
-import { RAW_CALL, rawSql, read, sourceFiles, tenantTables, usesSystemPrisma } from './isolation-scan.js';
+import { API_DIR, RAW_CALL, rawSql, read, sourceFiles, tenantTables, usesSystemPrisma } from './isolation-scan.js';
+
+/**
+ * Models with a tenantId column that the tenant-scoped client leaves alone,
+ * and why (reviewed 2026-11-15). Every other one must be in TENANT_MODELS, so
+ * a new tenant table (member_permissions, ADR-024 §3) is scoped from the start.
+ */
+const PLATFORM_MODELS_WITH_TENANT_ID: Record<string, string> = {
+  RefreshToken: "a user's session; the tenant is the one the token was issued for",
+  ErrorEvent: 'platform error monitor; the tenant is context of the fault (nullable)',
+};
+
+/** Models of schema.prisma that declare a tenantId field. */
+function modelsWithTenantId(): string[] {
+  const schema = readFileSync(path.join(API_DIR, 'prisma', 'schema.prisma'), 'utf8');
+  return [...schema.matchAll(/^model (\w+) \{([\s\S]*?)^\}/gm)].filter((m) => /^\s+tenantId\s/m.test(m[2])).map((m) => m[1]);
+}
 
 /**
  * Files allowed to use systemPrisma, and why (reviewed 2026-11-13). Adding a
@@ -62,20 +78,27 @@ describe('Tenant isolation — static guards (ADR-010 §10.4)', () => {
 
   it('knows the tenant tables', () => {
     expect(tables.size).toBeGreaterThan(40);
-    for (const t of ['journal_entries', 'journal_lines', 'stock_movements', 'sales_invoices', 'parties', 'attachments', 'cost_centers']) {
+    for (const t of [
+      'journal_entries',
+      'journal_lines',
+      'stock_movements',
+      'sales_invoices',
+      'parties',
+      'attachments',
+      'membership_branches',
+      'member_permissions',
+      'cost_centers',
+    ]) {
       expect(tables.has(t)).toBe(true);
     }
   });
 
-  it('every model with a required tenantId is scoped by the tenant client (TENANT_MODELS)', () => {
-    // A model left out of TENANT_MODELS is read unscoped by tenantScopedPrisma
-    // (phase 11A: cost_centers was the case that prompted this guard).
-    const schema = readFileSync(path.join(import.meta.dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
-    const unscoped = [...schema.matchAll(/^model (\w+) \{([\s\S]*?)^\}/gm)]
-      .filter((m) => /^\s+tenantId\s+BigInt\s/m.test(m[2]))
-      .map((m) => m[1])
-      .filter((model) => !(TENANT_MODELS as readonly string[]).includes(model));
-    expect(unscoped).toEqual([]);
+  it('scopes every model with a tenantId, but the reviewed platform ones', () => {
+    const unscoped = modelsWithTenantId().filter(
+      (m) => !(TENANT_MODELS as readonly string[]).includes(m) && !(m in PLATFORM_MODELS_WITH_TENANT_ID),
+    );
+    expect(unscoped).toEqual([]); // a new tenant table: add it to TENANT_MODELS (src/prisma/tenant-prisma.ts)
+    expect(Object.keys(PLATFORM_MODELS_WITH_TENANT_ID).filter((m) => !modelsWithTenantId().includes(m))).toEqual([]);
   });
 
   it('every raw SQL on a tenant table filters on tenant_id', () => {

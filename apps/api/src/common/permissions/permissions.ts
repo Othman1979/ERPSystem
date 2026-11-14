@@ -31,6 +31,11 @@ export const PERMISSIONS = {
   AUDIT_VIEW: 'audit.view',
   IMPORT_EXPORT: 'import_export.manage',
   ONBOARDING_MANAGE: 'onboarding.manage',
+  // Purchase permissions per member (ADR-013 §2, ADR-024 §3): granted by an
+  // owner in member_permissions on top of the role; an owner holds all three.
+  PURCHASE_DIRECT: 'purchase.direct',
+  PURCHASE_APPROVE: 'purchase.approve',
+  STOCK_ISSUE_WITHOUT_REQUEST: 'stock.issue_without_request',
   PLATFORM_ADMIN: 'platform.admin',
 } as const;
 

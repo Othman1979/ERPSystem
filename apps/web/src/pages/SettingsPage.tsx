@@ -344,7 +344,7 @@ export function SettingsPage() {
                 <Button style={{ marginBottom: 16 }} onClick={() => navigate('/setup')}>
                   {t('setup.open')}
                 </Button>
-                <CompanyProfileForm withTax />
+                <CompanyProfileForm withTax withProcurement />
               </>
             ),
           },

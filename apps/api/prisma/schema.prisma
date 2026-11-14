@@ -42,6 +42,13 @@ enum MembershipStatus {
   SUSPENDED
 }
 
+/// How much of the purchasing cycle a company uses (ADR-013 §1, ADR-024 §2).
+enum ProcurementLevel {
+  SIMPLE
+  MEDIUM
+  FULL
+}
+
 enum CostingMethod {
   WEIGHTED_AVERAGE
 }
@@ -352,7 +359,9 @@ model Company {
   costCentersEnabled     Boolean       @default(false) @map("cost_centers_enabled")
   /// Set when the owner finishes the setup wizard (§13.4, ADR-009).
   onboardingCompletedAt  DateTime?     @map("onboarding_completed_at") @db.DateTime(3)
-  isActive               Boolean       @default(true) @map("is_active")
+  /// Purchasing cycle level (ADR-024 §2): raised any time, lowered only with no open cycle documents.
+  procurementLevel       ProcurementLevel @default(SIMPLE) @map("procurement_level")
+  isActive              Boolean       @default(true) @map("is_active")
   createdAt              DateTime      @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt              DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
   createdBy              BigInt?       @map("created_by") @db.UnsignedBigInt
@@ -443,6 +452,7 @@ model TenantMembership {
   role            Role               @relation(fields: [roleId], references: [id])
   defaultBranch   Branch?            @relation("MembershipDefaultBranch", fields: [tenantId, defaultBranchId], references: [tenantId, id])
   allowedBranches MembershipBranch[]
+  extraPermissions MemberPermission[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, userId])
@@ -461,6 +471,26 @@ model MembershipBranch {
 
   @@unique([tenantId, membershipId, branchId])
   @@map("membership_branches")
+}
+
+/// Purchase permissions granted to one member on top of the role (ADR-013 §2,
+/// ADR-024 §3): purchase.direct, purchase.approve (with an optional amount
+/// limit) and stock.issue_without_request. Only an owner grants them.
+model MemberPermission {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt   @map("tenant_id") @db.UnsignedBigInt
+  membershipId   BigInt   @map("membership_id") @db.UnsignedBigInt
+  permissionCode String   @map("permission_code") @db.VarChar(100)
+  /// purchase.approve only: the highest amount this member approves alone; null = no limit.
+  amountLimit    Decimal? @map("amount_limit") @db.Decimal(18, 3)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  membership TenantMembership @relation(fields: [tenantId, membershipId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, membershipId, permissionCode])
+  @@map("member_permissions")
 }
 
 /// Where an error came from (ADR-010 §10.3).
