@@ -19,6 +19,7 @@ import {
   branchesControllerDeactivate,
   branchesControllerList,
   branchesControllerUpdate,
+  type BranchDto,
 } from '@erp/api-client';
 import { ShopOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -27,15 +28,7 @@ import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { tableLocale } from '../components/QueryState';
 import { displayName } from '../i18n/displayName';
 
-interface Branch {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-  address: string | null;
-  isActive: boolean;
-  companyId: string;
-}
+type Branch = BranchDto;
 
 export function BranchesPage() {
   const { t } = useTranslation();
@@ -48,7 +41,7 @@ export function BranchesPage() {
 
   const branchesQuery = useQuery({
     queryKey: ['branches'],
-    queryFn: ({ signal }) => branchesControllerList({ signal }).then((r) => r.data as unknown as Branch[]),
+    queryFn: ({ signal }) => branchesControllerList({ signal }).then((r) => r.data),
   });
   const { data, isLoading } = branchesQuery;
 

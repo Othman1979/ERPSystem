@@ -46,6 +46,19 @@ import {
   stockReportsControllerValuation,
   warehousesControllerList,
 } from '@erp/api-client';
+import type {
+  CreateStockAdjustmentDtoAdjustmentType,
+  ItemListItemDto,
+  StockAdjustmentListItemDto,
+  StockCountDetailDto,
+  StockCountLineDto,
+  StockCountListItemDto,
+  StockReportMovementDto,
+  StockTransferListItemDto,
+  StockDocumentsControllerListAdjustmentsSort,
+  StockDocumentsControllerListCountsSort,
+  StockDocumentsControllerListTransfersSort,
+} from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import { GoodsNotesSection } from './GoodsNotesPage';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -54,8 +67,8 @@ import { tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
 import { LoadMore } from '../components/LoadMore';
 import { RemoteSelect } from '../components/RemoteSelect';
-import { useKeysetQuery, type KeysetPage } from '../hooks/useKeysetQuery';
-import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { useKeysetQuery } from '../hooks/useKeysetQuery';
+import { usePagedQuery } from '../hooks/usePagedQuery';
 import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 import { ExportButtons } from '../components/ExportButtons';
 import {
@@ -71,74 +84,13 @@ import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../co
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { formatAmount, formatQty } from '../format/number';
 
-interface Warehouse {
-  id: string;
-  code: string;
-  nameAr: string;
-  isActive: boolean;
-}
-interface ItemOpt {
-  id: string;
-  code: string;
-  nameAr: string;
-  itemKind: string;
-}
-interface DocRow {
-  id: string;
-  docNo: string | null;
-  status: 'DRAFT' | 'POSTED';
-  adjustmentDate?: string;
-  transferDate?: string;
-  countDate?: string;
-  adjustmentType?: string;
-  warehouse?: { nameAr: string } | null;
-  fromWarehouse?: { nameAr: string } | null;
-  toWarehouse?: { nameAr: string } | null;
-  description: string | null;
-  reversalOfId?: string | null;
-  _count?: { lines: number };
-}
-interface BalanceRow {
-  warehouseId: string;
-  warehouseCode: string;
-  itemId: string;
-  itemCode: string;
-  itemName: string;
-  unit: string;
-  qtyOnHand: string;
-  minStock: string;
-}
-interface MovementRow {
-  id: string;
-  movementDate: string;
-  warehouseCode: string;
-  itemCode: string;
-  itemName: string;
-  movementType: string;
-  sourceType: string;
-  qtyIn: string;
-  qtyOut: string;
-  unitCost: string;
-  totalCost: string;
-  balanceQtyAfter: string;
-}
-interface CountLine {
-  id: string;
-  itemId: string;
-  systemQty: string;
-  countedQty: string | null;
-  differenceQty: string | null;
-  item?: { code: string; nameAr: string };
-}
-interface CountDetail {
-  id: string;
-  docNo?: string | null;
-  countDate?: string;
-  description?: string | null;
-  status: string;
-  warehouseId: string;
-  lines: CountLine[];
-}
+type ItemOpt = ItemListItemDto;
+type AdjustmentRow = StockAdjustmentListItemDto;
+type TransferRow = StockTransferListItemDto;
+type CountRow = StockCountListItemDto;
+type MovementRow = StockReportMovementDto;
+type CountLine = StockCountLineDto;
+type CountDetail = StockCountDetailDto;
 
 function useApiMessage() {
   const { t } = useTranslation();
@@ -156,7 +108,7 @@ function useApiMessage() {
 function useLookups() {
   const warehouses = useQuery({
     queryKey: ['warehouses'],
-    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as Warehouse[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
   });
   const whOptions = (warehouses.data ?? [])
     .filter((w) => w.isActive)
@@ -179,7 +131,7 @@ function useStockItemPicker(enabled: boolean) {
       catalogControllerListItems(
         { pageSize: PICKER_PAGE_SIZE, itemKind: 'STOCK', ...(q ? { q } : {}) },
         { signal },
-      ).then((r) => (r.data as unknown as Page<ItemOpt>).items),
+      ).then((r) => r.data.items),
   });
 }
 
@@ -202,7 +154,7 @@ function BalancesTab() {
         warehouseId: warehouseId ?? '',
         itemId: '',
         lowStock: lowStock ? 'true' : '',
-      }, { signal }).then((r) => r.data as unknown as BalanceRow[]),
+      }, { signal }).then((r) => r.data),
   });
   const { data, isLoading } = listQuery;
   return (
@@ -259,7 +211,7 @@ function AdjustmentsTab() {
   const queryClient = useQueryClient();
   const { contextHolder, show, ok, apiMessage } = useApiMessage();
   const [modalOpen, setModalOpen] = useState(false);
-  const [reverseTarget, setReverseTarget] = useState<DocRow | null>(null);
+  const [reverseTarget, setReverseTarget] = useState<AdjustmentRow | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
   const [form] = Form.useForm();
@@ -267,15 +219,11 @@ function AdjustmentsTab() {
   const items = useStockItemPicker(modalOpen);
 
   // Server-paged (ADR-022): search, sort and page go to the API.
-  const list = usePagedQuery<DocRow, Record<string, string | undefined>>({
+  const list = usePagedQuery<AdjustmentRow, Record<string, string | undefined>, StockDocumentsControllerListAdjustmentsSort>({
     key: ['stock-adjustments', 'list'],
     filters: {},
     defaultSort: '-date',
-    fetch: (params, signal) =>
-      stockDocumentsControllerListAdjustments(
-        params as Parameters<typeof stockDocumentsControllerListAdjustments>[0],
-        { signal },
-      ).then((r) => r.data as unknown as Page<DocRow>),
+    fetch: (params, signal) => stockDocumentsControllerListAdjustments(params, { signal }).then((r) => r.data),
     enabled: !modalOpen,
   });
   const listQuery = list.query;
@@ -286,7 +234,7 @@ function AdjustmentsTab() {
   const create = useMutation({
     mutationFn: (v: {
       adjustmentDate: Dayjs;
-      adjustmentType: string;
+      adjustmentType: CreateStockAdjustmentDtoAdjustmentType;
       warehouseId: string;
       description?: string;
     }) =>
@@ -296,14 +244,14 @@ function AdjustmentsTab() {
         warehouseId: v.warehouseId,
         description: v.description || undefined,
         lines: lines
-          .filter((l) => l.itemId && l.qty != null)
+          .filter((l): l is ItemLineDraft & { itemId: string; qty: string } => !!l.itemId && l.qty != null)
           .map((l) => ({
             itemId: l.itemId,
-            qty: String(l.qty),
-            unitCost: l.unitCost != null ? String(l.unitCost) : undefined,
+            qty: l.qty,
+            unitCost: l.unitCost != null ? l.unitCost : undefined,
             description: l.description || undefined,
           })),
-      } as never),
+      }),
     onSuccess: () => {
       ok('common.saved');
       setModalOpen(false);
@@ -327,7 +275,7 @@ function AdjustmentsTab() {
     mutationFn: (v: { id: string; date: Dayjs }) =>
       stockDocumentsControllerReverseAdjustment(
         v.id,
-        { reversalDate: v.date.format('YYYY-MM-DD') } as never,
+        { reversalDate: v.date.format('YYYY-MM-DD') },
         { headers: idemHeaders() },
       ),
     onSuccess: () => {
@@ -476,9 +424,9 @@ function AdjustmentsTab() {
           {
             title: t('stock.warehouse'),
             width: 140,
-            render: (_: unknown, r: DocRow) => displayName(r.warehouse) ?? '—',
+            render: (_: unknown, r: AdjustmentRow) => displayName(r.warehouse) ?? '—',
           },
-          { title: t('stock.lines'), width: 80, render: (_: unknown, r: DocRow) => r._count?.lines ?? '—' },
+          { title: t('stock.lines'), width: 80, render: (_: unknown, r: AdjustmentRow) => r._count?.lines ?? '—' },
           {
             title: t('common.status'),
             dataIndex: 'status',
@@ -488,7 +436,7 @@ function AdjustmentsTab() {
           {
             title: t('common.actions'),
             width: 260,
-            render: (_: unknown, row: DocRow) => (
+            render: (_: unknown, row: AdjustmentRow) => (
               <Space>
                 {row.status === 'DRAFT' ? (
                   <>
@@ -546,7 +494,7 @@ function TransfersTab() {
   const queryClient = useQueryClient();
   const { contextHolder, show, ok, apiMessage } = useApiMessage();
   const [modalOpen, setModalOpen] = useState(false);
-  const [reverseTarget, setReverseTarget] = useState<DocRow | null>(null);
+  const [reverseTarget, setReverseTarget] = useState<TransferRow | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
   const [form] = Form.useForm();
@@ -554,15 +502,11 @@ function TransfersTab() {
   const items = useStockItemPicker(modalOpen);
 
   // Server-paged (ADR-022): search, sort and page go to the API.
-  const list = usePagedQuery<DocRow, Record<string, string | undefined>>({
+  const list = usePagedQuery<TransferRow, Record<string, string | undefined>, StockDocumentsControllerListTransfersSort>({
     key: ['stock-transfers', 'list'],
     filters: {},
     defaultSort: '-date',
-    fetch: (params, signal) =>
-      stockDocumentsControllerListTransfers(
-        params as Parameters<typeof stockDocumentsControllerListTransfers>[0],
-        { signal },
-      ).then((r) => r.data as unknown as Page<DocRow>),
+    fetch: (params, signal) => stockDocumentsControllerListTransfers(params, { signal }).then((r) => r.data),
     enabled: !modalOpen,
   });
   const listQuery = list.query;
@@ -582,9 +526,9 @@ function TransfersTab() {
         toWarehouseId: v.toWarehouseId,
         description: v.description || undefined,
         lines: lines
-          .filter((l) => l.itemId && l.qty != null)
-          .map((l) => ({ itemId: l.itemId, qty: String(l.qty) })),
-      } as never),
+          .filter((l): l is ItemLineDraft & { itemId: string; qty: string } => !!l.itemId && l.qty != null)
+          .map((l) => ({ itemId: l.itemId, qty: l.qty })),
+      }),
     onSuccess: () => {
       ok('common.saved');
       setModalOpen(false);
@@ -607,7 +551,7 @@ function TransfersTab() {
     mutationFn: (v: { id: string; date: Dayjs }) =>
       stockDocumentsControllerReverseTransfer(
         v.id,
-        { reversalDate: v.date.format('YYYY-MM-DD') } as never,
+        { reversalDate: v.date.format('YYYY-MM-DD') },
         { headers: idemHeaders() },
       ),
     onSuccess: () => {
@@ -739,14 +683,14 @@ function TransfersTab() {
           {
             title: t('stock.from'),
             width: 140,
-            render: (_: unknown, r: DocRow) => displayName(r.fromWarehouse) ?? '—',
+            render: (_: unknown, r: TransferRow) => displayName(r.fromWarehouse) ?? '—',
           },
           {
             title: t('stock.to'),
             width: 140,
-            render: (_: unknown, r: DocRow) => displayName(r.toWarehouse) ?? '—',
+            render: (_: unknown, r: TransferRow) => displayName(r.toWarehouse) ?? '—',
           },
-          { title: t('stock.lines'), width: 80, render: (_: unknown, r: DocRow) => r._count?.lines ?? '—' },
+          { title: t('stock.lines'), width: 80, render: (_: unknown, r: TransferRow) => r._count?.lines ?? '—' },
           {
             title: t('common.status'),
             dataIndex: 'status',
@@ -756,7 +700,7 @@ function TransfersTab() {
           {
             title: t('common.actions'),
             width: 260,
-            render: (_: unknown, row: DocRow) => (
+            render: (_: unknown, row: TransferRow) => (
               <Space>
                 {row.status === 'DRAFT' ? (
                   <>
@@ -820,15 +764,11 @@ function CountsTab() {
   const { whOptions } = useLookups();
 
   // Server-paged (ADR-022): search, sort and page go to the API.
-  const list = usePagedQuery<DocRow, Record<string, string | undefined>>({
+  const list = usePagedQuery<CountRow, Record<string, string | undefined>, StockDocumentsControllerListCountsSort>({
     key: ['stock-counts', 'list'],
     filters: {},
     defaultSort: '-date',
-    fetch: (params, signal) =>
-      stockDocumentsControllerListCounts(
-        params as Parameters<typeof stockDocumentsControllerListCounts>[0],
-        { signal },
-      ).then((r) => r.data as unknown as Page<DocRow>),
+    fetch: (params, signal) => stockDocumentsControllerListCounts(params, { signal }).then((r) => r.data),
     enabled: !detail,
   });
   const listQuery = list.query;
@@ -841,7 +781,7 @@ function CountsTab() {
         countDate: v.countDate.format('YYYY-MM-DD'),
         warehouseId: v.warehouseId,
         description: v.description || undefined,
-      } as never),
+      }),
     onSuccess: () => {
       ok('common.saved');
       setModalOpen(false);
@@ -853,7 +793,7 @@ function CountsTab() {
 
   const openDetail = async (id: string) => {
     const res = await stockDocumentsControllerGetCount(id);
-    const d = res.data as unknown as CountDetail;
+    const d = res.data;
     setDetail(d);
     setCounted(
       Object.fromEntries(
@@ -866,7 +806,7 @@ function CountsTab() {
     mutationFn: (v: { lineId: string; qty: string }) =>
       stockDocumentsControllerUpdateCountLine(detail!.id, v.lineId, {
         countedQty: v.qty,
-      } as never),
+      }),
     onError: show,
   });
 
@@ -1035,7 +975,7 @@ function CountsTab() {
             width: 110,
             render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '—'),
           },
-          { title: t('stock.lines'), width: 80, render: (_: unknown, r: DocRow) => r._count?.lines ?? '—' },
+          { title: t('stock.lines'), width: 80, render: (_: unknown, r: CountRow) => r._count?.lines ?? '—' },
           {
             title: t('common.status'),
             dataIndex: 'status',
@@ -1045,7 +985,7 @@ function CountsTab() {
           {
             title: t('common.actions'),
             width: 200,
-            render: (_: unknown, row: DocRow) => (
+            render: (_: unknown, row: CountRow) => (
               <Space>
                 <Button size="small" onClick={() => void openDetail(row.id)}>
                   {t('stock.countLines')}
@@ -1113,7 +1053,7 @@ function MovementsTab() {
     key: ['stock-movements', filters],
     fetch: (cursor, signal) =>
       stockReportsControllerMovements({ limit: 100, ...(cursor ? { cursor } : {}), ...filters }, { signal }).then(
-        (r) => r.data as unknown as KeysetPage<MovementRow>,
+        (r) => r.data,
       ),
   });
   return (
@@ -1131,7 +1071,7 @@ function MovementsTab() {
                   { pageSize: PICKER_PAGE_SIZE, itemKind: 'STOCK', ...(q ? { q } : {}) },
                   { signal },
                 ).then((r) =>
-                  (r.data as unknown as Page<ItemOpt>).items.map((i) => ({ value: i.id, label: codeAndName(i) })),
+                  r.data.items.map((i) => ({ value: i.id, label: codeAndName(i) })),
                 )
               }
             />
@@ -1197,9 +1137,7 @@ function ValuationTab() {
   const listQuery = useQuery({
     queryKey: ['stock-valuation'],
     queryFn: ({ signal }) =>
-      stockReportsControllerValuation({ warehouseId: '' }, { signal }).then(
-        (r) => r.data as unknown as { rows: { itemId: string; code: string; nameAr: string; qty: string; avgCost: string; value: string }[]; totalValue: string },
-      ),
+      stockReportsControllerValuation({ warehouseId: '' }, { signal }).then((r) => r.data),
   });
   const { data, isLoading } = listQuery;
   return (

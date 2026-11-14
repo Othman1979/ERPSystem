@@ -3,43 +3,16 @@ import { Statistic } from 'antd';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { ApiError, apiFetchData } from '@erp/api-client';
+import {
+  ApiError,
+  reportsControllerDashboardSummary,
+  type DashboardSalesBlockDto,
+} from '@erp/api-client';
 import { apiErrorText, queryString } from '../components/ExportButtons';
 import { Num } from '../components/Num';
 import { dec, formatAmount, formatQty } from '../format/number';
 import { codeAndName } from '../i18n/displayName';
 import { palette } from '../theme';
-
-interface DashboardSales {
-  from: string;
-  to: string;
-  count: number;
-  returnCount: number;
-  net: string;
-  tax: string;
-  grand: string;
-}
-
-interface BelowMinimumItem {
-  itemId: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-  unit: string;
-  qtyOnHand: string;
-  minStock: string;
-  shortage: string;
-}
-
-interface DashboardSummary {
-  date: string;
-  salesToday: DashboardSales;
-  salesMonth: DashboardSales;
-  /** Customer aging as of the day: balance, and the part past its due date. */
-  receivables: { total: string; overdue: string };
-  /** Up to 10 items, largest shortage first; `count` is all of them. */
-  belowMinimum: { count: number; items: BelowMinimumItem[] };
-}
 
 /** Items listed on the card; the rest are counted. */
 const SHOWN_ITEMS = 3;
@@ -78,16 +51,16 @@ export function HomeDashboard() {
   const { t } = useTranslation();
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard-summary'],
-    queryFn: ({ signal }) => apiFetchData<DashboardSummary>('/api/v1/dashboard/summary', { signal }),
+    queryFn: ({ signal }) => reportsControllerDashboardSummary({}, { signal }).then((r) => r.data),
   });
 
   // Without the reports permission the home screen simply has no figures.
   if (error instanceof ApiError && error.status === 403) return null;
   if (error) return <div className="home-stats-error">{apiErrorText(t, error)}</div>;
 
-  const salesLink = (s: DashboardSales | undefined, groupBy: string) =>
+  const salesLink = (s: DashboardSalesBlockDto | undefined, groupBy: string) =>
     `/reports${queryString({ tab: 'sales', from: s?.from, to: s?.to, groupBy })}`;
-  const salesDetail = (s: DashboardSales) => (
+  const salesDetail = (s: DashboardSalesBlockDto) => (
     <div className="home-stat-sub">
       <div>{t('dashboard.docCounts', { invoices: s.count, returns: s.returnCount })}</div>
       <div>

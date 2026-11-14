@@ -31,6 +31,12 @@ import {
   goodsNotesControllerPost,
   warehousesControllerList,
 } from '@erp/api-client';
+import type {
+  GoodsNoteLineWithItemDto,
+  GoodsNoteListItemDto,
+  GoodsNotesControllerListSort,
+  ItemListItemDto,
+} from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import {
   enterTo,
@@ -41,42 +47,14 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
-import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { usePagedQuery } from '../hooks/usePagedQuery';
 import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
 import { qtyCell, unitCostCell } from '../format/cells';
 
-interface GoodsNote {
-  id: string;
-  docNo: string | null;
-  noteDate: string;
-  noteType: 'GRN' | 'GIN';
-  status: 'DRAFT' | 'POSTED';
-  description?: string | null;
-  warehouse?: { code: string; nameAr: string } | null;
-  branch?: { code: string; nameAr: string } | null;
-  lines?: {
-    id: string;
-    lineNo: number;
-    qty: string;
-    unitCost?: string | null;
-    item?: { code: string; nameAr: string } | null;
-  }[];
-  journalEntry?: { entryNo: string | null } | null;
-}
-
-interface Item {
-  id: string;
-  code: string;
-  nameAr: string;
-  itemKind: string;
-}
-interface Warehouse {
-  id: string;
-  code: string;
-  nameAr: string;
-}
+type GoodsNote = GoodsNoteListItemDto;
+type Item = ItemListItemDto;
 
 const NOTE_TYPES = ['GRN', 'GIN'] as const;
 type NoteType = (typeof NOTE_TYPES)[number];
@@ -114,7 +92,7 @@ export function GoodsNotesSection({
   const [apiMessage, contextHolder] = message.useMessage();
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new voucher
-  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+  const [typeFilter, setTypeFilter] = useState<NoteType | undefined>(undefined);
 
   // ---- new-voucher form state ----
   const [newType, setNewType] = useState<NoteType>('GRN');
@@ -131,21 +109,18 @@ export function GoodsNotesSection({
   }, [headerFocus]);
 
   // Server-paged (ADR-022): search, sort and page go to the API.
-  const list = usePagedQuery<GoodsNote, { noteType?: string }>({
+  const list = usePagedQuery<GoodsNote, { noteType?: NoteType }, GoodsNotesControllerListSort>({
     key: ['goods-notes', 'list'],
     filters: { noteType: typeFilter },
     defaultSort: '-date',
-    fetch: (params, signal) =>
-      goodsNotesControllerList(params as Parameters<typeof goodsNotesControllerList>[0], { signal }).then(
-        (r) => r.data as unknown as Page<GoodsNote>,
-      ),
+    fetch: (params, signal) => goodsNotesControllerList(params, { signal }).then((r) => r.data),
     enabled: screen === 'list',
   });
   const notesQuery = list.query;
   const { isLoading } = notesQuery;
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['goods-note', entryId],
-    queryFn: ({ signal }) => goodsNotesControllerGet(entryId!, { signal }).then((r) => r.data as unknown as GoodsNote),
+    queryFn: ({ signal }) => goodsNotesControllerGet(entryId!, { signal }).then((r) => r.data),
     enabled: screen === 'entry' && !!entryId,
   });
 
@@ -157,11 +132,11 @@ export function GoodsNotesSection({
       catalogControllerListItems(
         { pageSize: PICKER_PAGE_SIZE, itemKind: 'STOCK', ...(q ? { q } : {}) },
         { signal },
-      ).then((r) => (r.data as unknown as Page<Item>).items),
+      ).then((r) => r.data.items),
   });
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as Warehouse[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
     enabled: screen === 'entry' && !entryId,
   });
 
@@ -213,23 +188,22 @@ export function GoodsNotesSection({
   }, [requestVoucher]);
 
   const create = useMutation({
-    mutationFn: async (andPost: boolean) => {
+    mutationFn: async ({ andPost, warehouseId }: { andPost: boolean; warehouseId: string }) => {
       const res = await goodsNotesControllerCreate({
         noteDate: newDate.format('YYYY-MM-DD'),
-        warehouseId: newWarehouseId,
+        warehouseId,
         noteType: newType,
         description: newDescription || undefined,
         lines: lines
-          .filter((l) => l.itemId && l.qty)
+          .filter((l): l is ItemLineDraft & { itemId: string; qty: string } => !!l.itemId && !!l.qty)
           .map((l) => ({
             itemId: l.itemId,
-            qty: String(l.qty),
-            unitCost:
-              newType === 'GRN' && l.unitCost != null ? String(l.unitCost) : undefined,
+            qty: l.qty,
+            unitCost: newType === 'GRN' && l.unitCost != null ? l.unitCost : undefined,
           })),
-      } as never);
-      const id = (res as { data?: { id: string } }).data?.id;
-      if (andPost && id) {
+      });
+      const id = res.data.id;
+      if (andPost) {
         await goodsNotesControllerPost(id, { headers: idemHeaders() });
       }
       return id;
@@ -274,13 +248,14 @@ export function GoodsNotesSection({
   const [tried, setTried] = useState(false);
   const saveNew = (andPost: boolean) => {
     if (create.isPending) return;
-    if (!canSave) {
+    // canSave already requires a warehouse; the explicit check narrows the id for the request.
+    if (!canSave || !newWarehouseId) {
       setTried(true);
       if (!newWarehouseId) focusNamedField('warehouse');
       else apiMessage.error(t('errors.VALIDATION'));
       return;
     }
-    create.mutate(andPost);
+    create.mutate({ andPost, warehouseId: newWarehouseId });
   };
 
   // Shortcuts on an open note: Ctrl+S saves a new draft; Ctrl+Enter posts
@@ -584,7 +559,7 @@ export function GoodsNotesSection({
               { title: '#', dataIndex: 'lineNo', width: 50 },
               {
                 title: t('items.title'),
-                render: (_: unknown, l: NonNullable<GoodsNote['lines']>[number]) =>
+                render: (_: unknown, l: GoodsNoteLineWithItemDto) =>
                   l.item ? codeAndName(l.item) : '—',
               },
               {

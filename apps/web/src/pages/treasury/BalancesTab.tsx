@@ -2,7 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Button, Table, Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
-import { treasuryControllerCashBalances } from '@erp/api-client';
+import {
+  treasuryControllerCashBalances,
+  type CashBalanceRowDto,
+  type CashBalanceRowDtoKind,
+} from '@erp/api-client';
 import { Num } from '../../components/Num';
 import { tableLocale } from '../../components/QueryState';
 import { amountCell } from '../../format/cells';
@@ -10,15 +14,7 @@ import { formatAmount } from '../../format/number';
 import { codeAndName } from '../../i18n/displayName';
 import { useAuth } from '../../auth/AuthContext';
 
-interface BalanceRow {
-  /** ACCOUNT = a cash/bank ledger account no cash box or bank record points at. */
-  kind: 'CASH_BOX' | 'BANK_ACCOUNT' | 'ACCOUNT';
-  id: string;
-  name: string;
-  isActive: boolean;
-  account: { id: string; code: string; nameAr: string; nameEn: string | null };
-  balance: string;
-}
+type BalanceRow = CashBalanceRowDto;
 
 /**
  * Phase 6: balance of each cash box and bank account — computed from the same
@@ -32,7 +28,7 @@ export function BalancesTab() {
   const listQuery = useQuery({
     queryKey: ['treasury-balances'],
     queryFn: ({ signal }) =>
-      treasuryControllerCashBalances({ signal }).then((r) => r.data as unknown as { rows: BalanceRow[]; total: string }),
+      treasuryControllerCashBalances({ signal }).then((r) => r.data),
   });
   const { data, isLoading } = listQuery;
 
@@ -49,7 +45,7 @@ export function BalancesTab() {
           title: '',
           dataIndex: 'kind',
           width: 90,
-          render: (k: BalanceRow['kind']) => (
+          render: (k: CashBalanceRowDtoKind) => (
             <Tag color={k === 'CASH_BOX' ? 'green' : k === 'BANK_ACCOUNT' ? 'blue' : 'default'}>{t(`treasury.kind_${k}`)}</Tag>
           ),
         },

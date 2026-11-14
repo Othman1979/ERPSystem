@@ -7,8 +7,11 @@ import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import {
   fiscalControllerListYears,
-  apiFetchData,
+  journalControllerGeneralLedger,
+  journalControllerPartyStatement,
+  journalControllerTrialBalance,
   partiesControllerList,
+  type TrialBalanceRowDto,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
@@ -28,8 +31,7 @@ import { ExportButtons } from '../components/ExportButtons';
 import { formatAmount } from '../format/number';
 import { useAccounts } from '../hooks/useAccounts';
 import { useAuth } from '../auth/AuthContext';
-import { useKeysetQuery, type KeysetPage } from '../hooks/useKeysetQuery';
-import type { Page } from '../hooks/usePagedQuery';
+import { useKeysetQuery } from '../hooks/useKeysetQuery';
 
 /** Opening / movement / closing, each debit and credit (ADR-008). */
 const TB_COLUMNS = [
@@ -40,7 +42,6 @@ const TB_COLUMNS = [
   'closingDebit',
   'closingCredit',
 ] as const;
-type TbColumn = (typeof TB_COLUMNS)[number];
 
 /** Lines per "load more" page of a statement (ADR-022 §4). */
 const STATEMENT_PAGE_LIMIT = 100;
@@ -52,45 +53,6 @@ const STATEMENT_PAGE_LIMIT = 100;
  */
 const COMPANY_WIDE_TABS = new Set(['tb', 'is', 'bs', 'gl']);
 
-interface TbRow extends Record<TbColumn, string> {
-  accountId: string;
-  /** PRIOR_YEARS: the computed "unclosed prior years profit" row (ADR-008 §7). */
-  kind: 'PRIOR_YEARS' | null;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-}
-
-interface FiscalYearOption {
-  id: string;
-  code: string;
-  startDate: string;
-  endDate: string;
-}
-
-interface TbResponse {
-  rows: TbRow[];
-  totals: Record<TbColumn, string>;
-  balanced: boolean;
-}
-
-/** A party row of the party picker (GET /parties, one page). */
-interface PartyRow {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-}
-
-/** One keyset page of a statement: `summary` on the first page only (ADR-022 §4). */
-type StatementPage = KeysetPage<LedgerLine, LedgerSummary>;
-
-function qs(params: Record<string, string | undefined>): string {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) if (v) p.set(k, v);
-  const s = p.toString();
-  return s ? `?${s}` : '';
-}
 
 
 
@@ -132,7 +94,7 @@ export function ReportsPage() {
   // The from/to filters above apply to the trial balance too.
   const tbQuery = useQuery({
     queryKey: ['report-tb', range.from, range.to],
-    queryFn: ({ signal }) => apiFetchData<TbResponse>(`/api/v1/reports/trial-balance${qs(range)}`, { signal }),
+    queryFn: ({ signal }) => journalControllerTrialBalance(range, { signal }).then((r) => r.data),
     enabled: allBranches,
   });
   const { data: tb, isLoading: tbLoading } = tbQuery;
@@ -141,14 +103,8 @@ export function ReportsPage() {
   const glRead = useKeysetQuery<LedgerLine, LedgerSummary>({
     key: ['report-gl', accountId, range.from, range.to],
     fetch: (cursor, signal) =>
-      apiFetchData<StatementPage>(
-        `/api/v1/reports/general-ledger${qs({
-          accountId,
-          ...range,
-          limit: String(STATEMENT_PAGE_LIMIT),
-          cursor,
-        })}`,
-        { signal },
+      journalControllerGeneralLedger({ accountId, ...range, limit: STATEMENT_PAGE_LIMIT, cursor }, { signal }).then(
+        (r) => r.data,
       ),
     enabled: allBranches && !!accountId,
   });
@@ -157,23 +113,17 @@ export function ReportsPage() {
   const statementRead = useKeysetQuery<LedgerLine, LedgerSummary>({
     key: ['report-statement', partyType, partyId, range.from, range.to],
     fetch: (cursor, signal) =>
-      apiFetchData<StatementPage>(
-        `/api/v1/reports/party-statement${qs({
-          partyType,
-          partyId,
-          ...range,
-          limit: String(STATEMENT_PAGE_LIMIT),
-          cursor,
-        })}`,
+      journalControllerPartyStatement(
+        { partyType, partyId, ...range, limit: STATEMENT_PAGE_LIMIT, cursor },
         { signal },
-      ),
+      ).then((r) => r.data),
     enabled: !!partyType && !!partyId,
   });
 
   // A fiscal year fills the date range (the dates stay editable).
   const { data: years } = useQuery({
     queryKey: ['fiscal-years'],
-    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data as unknown as FiscalYearOption[]),
+    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data),
   });
   const selectedYear = (years ?? []).find(
     (y) => range.from === y.startDate.slice(0, 10) && range.to === y.endDate.slice(0, 10),
@@ -240,7 +190,7 @@ export function ReportsPage() {
             <span>{t('reports.openingNote')}</span>
             {tb?.rows.some((r) => r.kind === 'PRIOR_YEARS') && <span>{t('reports.priorYearsNote')}</span>}
           </div>
-          <Table<TbRow>
+          <Table<TrialBalanceRowDto>
             rowKey={(r) => r.accountId || 'prior-years'}
             size="small"
             bordered
@@ -260,7 +210,7 @@ export function ReportsPage() {
               {
                 title: t('common.name'),
                 key: 'name',
-                render: (_: unknown, r: TbRow) => (r.kind ? t('reports.priorYearsRow') : bothNames(r)),
+                render: (_: unknown, r: TrialBalanceRowDto) => (r.kind ? t('reports.priorYearsRow') : bothNames(r)),
               },
               tbGroup('opening', t('reports.openingPeriod')),
               tbGroup('period', t('reports.movements')),
@@ -376,7 +326,7 @@ export function ReportsPage() {
                       { partyType, pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) },
                       { signal },
                     ).then((r) =>
-                      (r.data as unknown as Page<PartyRow>).items.map((p) => ({
+                      r.data.items.map((p) => ({
                         value: p.id,
                         label: codeAndName(p),
                       })),

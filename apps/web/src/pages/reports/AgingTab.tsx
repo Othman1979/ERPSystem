@@ -4,7 +4,7 @@ import { Button, DatePicker, Segmented, Table, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { apiFetchData } from '@erp/api-client';
+import { treasuryControllerAging, type AgingReportRowDto } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
 import { ListToolbar } from '../../components/ListToolbar';
 import { tableLocale } from '../../components/QueryState';
@@ -14,22 +14,9 @@ import { formatAmount } from '../../format/number';
 import { codeAndName } from '../../i18n/displayName';
 
 const BUCKETS = ['notDue', 'd1_30', 'd31_60', 'd61_90', 'd90plus'] as const;
-type Bucket = (typeof BUCKETS)[number];
-
 /** `total` = aged buckets; `balance` = total + unapplied = the party's control-account balance. */
-type AgingAmounts = Record<Bucket | 'total' | 'unapplied' | 'balance', string>;
 const SUMMARY_COLUMNS = [...BUCKETS, 'total', 'unapplied', 'balance'] as const;
-interface AgingRow extends AgingAmounts {
-  partyId: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-}
-interface AgingResponse {
-  asOf: string;
-  rows: AgingRow[];
-  totals: AgingAmounts;
-}
+type AgingRow = AgingReportRowDto;
 
 /** Phase 6: open credit balances by days past due, per customer or supplier, as of a date. */
 export function AgingTab() {
@@ -41,7 +28,7 @@ export function AgingTab() {
   const listQuery = useQuery({
     queryKey: ['report-aging', partyType, asOfParam],
     queryFn: ({ signal }) =>
-      apiFetchData<AgingResponse>(`/api/v1/reports/aging?partyType=${partyType}&asOf=${asOfParam}`, { signal }),
+      treasuryControllerAging({ partyType, asOf: asOfParam }, { signal }).then((r) => r.data),
   });
   const { data, isLoading } = listQuery;
 

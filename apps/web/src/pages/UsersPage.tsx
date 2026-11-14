@@ -19,6 +19,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
+  type UserMembershipDto,
   usersControllerInvite,
   usersControllerList,
   usersControllerReissueInvitationCode,
@@ -34,25 +35,7 @@ import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { tableLocale } from '../components/QueryState';
 
-interface Membership {
-  membershipId: string;
-  status: string;
-  /** Null while an invited user has not accepted yet. */
-  user: { id: string; email: string; fullName: string | null; isActive: boolean };
-  role: { code: string; nameAr: string; nameEn: string | null };
-  defaultBranch: { id: string; code: string; nameAr: string } | null;
-  branches: { id: string; code: string; nameAr: string }[];
-  temporaryPassword?: string;
-  acceptanceCode?: string;
-  acceptanceCodeExpiresAt?: string;
-}
-
-interface Role {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-}
+type Membership = UserMembershipDto;
 
 /** An invitation code shown once; the admin hands it to the person directly. */
 interface IssuedCode {
@@ -88,13 +71,13 @@ export function UsersPage() {
 
   const usersQuery = useQuery({
     queryKey: ['users'],
-    queryFn: ({ signal }) => usersControllerList({ signal }).then((r) => r.data as unknown as Membership[]),
+    queryFn: ({ signal }) => usersControllerList({ signal }).then((r) => r.data),
   });
   const { data, isLoading } = usersQuery;
 
   const { data: roles } = useQuery({
     queryKey: ['roles'],
-    queryFn: ({ signal }) => usersControllerRoles({ signal }).then((r) => r.data as unknown as Role[]),
+    queryFn: ({ signal }) => usersControllerRoles({ signal }).then((r) => r.data),
   });
 
   const onError = (err: unknown) => {
@@ -128,7 +111,8 @@ export function UsersPage() {
         roleCode: values.roleCode,
       }),
     onSuccess: (res) => {
-      const body = res.data as unknown as Membership;
+      // The invite result carries a temporary password for a new account, or an acceptance code for an existing one.
+      const body = res.data;
       if (body.temporaryPassword) {
         setTempPassword({ value: body.temporaryPassword, purpose: 'invite' });
       } else if (body.acceptanceCode && body.acceptanceCodeExpiresAt) {
@@ -144,7 +128,7 @@ export function UsersPage() {
   const reissue = useMutation({
     mutationFn: (membershipId: string) => usersControllerReissueInvitationCode(membershipId),
     onSuccess: (res) => {
-      const body = res.data as unknown as { acceptanceCode: string; acceptanceCodeExpiresAt: string };
+      const body = res.data;
       openIssuedCode({ value: body.acceptanceCode, expiresAt: body.acceptanceCodeExpiresAt });
     },
     onError,
@@ -176,7 +160,7 @@ export function UsersPage() {
   const resetPassword = useMutation({
     mutationFn: (membershipId: string) => usersControllerResetPassword(membershipId),
     onSuccess: (res) => {
-      const body = res.data as unknown as { temporaryPassword: string };
+      const body = res.data;
       setTempPassword({ value: body.temporaryPassword, purpose: 'reset' });
     },
     onError,

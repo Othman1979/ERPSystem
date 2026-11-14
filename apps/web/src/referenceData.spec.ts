@@ -13,6 +13,8 @@ const write = (path: string) => ({ method: 'POST', path, status: 201 });
 /** A chart-of-accounts row with neutral defaults; tests override what they check. */
 function account(overrides: Pick<AccountRow, 'id' | 'code'> & Partial<AccountRow>): AccountRow {
   return {
+    tenantId: '1',
+    companyId: '1',
     nameAr: 'حساب',
     nameEn: 'Account',
     parentId: null,
@@ -23,6 +25,10 @@ function account(overrides: Pick<AccountRow, 'id' | 'code'> & Partial<AccountRow
     isControl: false,
     controlType: null,
     isActive: true,
+    createdAt: '2025-01-01T00:00:00.000Z',
+    updatedAt: '2025-01-01T00:00:00.000Z',
+    createdBy: null,
+    updatedBy: null,
     ...overrides,
   };
 }

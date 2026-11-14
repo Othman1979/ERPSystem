@@ -41,6 +41,13 @@ import {
   journalControllerList,
   journalControllerPost,
   journalControllerReverse,
+  type JournalControllerListSort,
+  type JournalControllerListStatus,
+  type JournalControllerListVoucherType,
+  type JournalEntryDetailDto,
+  type JournalEntryLineDto,
+  type JournalEntryListItemDto,
+  type JournalVoucherType,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
@@ -53,44 +60,27 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
-import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { usePagedQuery } from '../hooks/usePagedQuery';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { amountCell, amountOrBlankCell } from '../format/cells';
 import { formatAmount } from '../format/number';
 
-interface JournalLine {
-  id?: string;
-  accountId: string;
-  debit?: string | null;
-  credit?: string | null;
-  description?: string | null;
-  partyId?: string | null;
-  account?: { code: string; nameAr: string };
-}
+type JournalEntry = JournalEntryDetailDto;
 
-interface JournalEntry {
-  id: string;
-  entryNo: string | null;
-  entryDate: string;
-  description: string | null;
-  status: 'DRAFT' | 'POSTED';
-  voucherType?: 'JOURNAL' | 'RECEIPT_VOUCHER' | 'PAYMENT_VOUCHER';
-  totalDebit: string;
-  totalCredit: string;
-  lines?: JournalLine[];
-  reversalOf?: { entryNo: string | null } | null;
-  /** Who produced the entry: manual journal entries, or a document (invoice, voucher…). */
-  sourceType?: string;
-  reversals?: { entryNo: string | null; status: string }[];
+/** A line of a draft that has its account chosen (the lines the API receives). */
+type FilledLine = JournalLineDraft & { accountId: string };
+
+function filledLines(lines: JournalLineDraft[]): FilledLine[] {
+  return lines.filter((l): l is FilledLine => !!l.accountId);
 }
 
 /** Only manual entries reverse here; document entries reverse through their document. */
 const REVERSIBLE_HERE = new Set(['MANUAL_JOURNAL', 'OPENING_ENTRY']);
 
 const VOUCHER_TYPES = ['JOURNAL', 'RECEIPT_VOUCHER', 'PAYMENT_VOUCHER'] as const;
-type VoucherType = (typeof VOUCHER_TYPES)[number];
+type VoucherType = JournalVoucherType;
 
 const VOUCHER_TYPE_LABEL: Record<VoucherType, string> = {
   JOURNAL: 'journal.typeJournal',
@@ -113,8 +103,8 @@ function VoucherTag({ type }: { type?: VoucherType }) {
 export function JournalPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<JournalControllerListStatus | undefined>(undefined);
+  const [typeFilter, setTypeFilter] = useState<JournalControllerListVoucherType | undefined>(undefined);
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new entry
   const [reverseTarget, setReverseTarget] = useState<JournalEntry | null>(null);
@@ -129,14 +119,15 @@ export function JournalPage() {
   const [gridFocus, setGridFocus] = useState(0);
 
   // Server-paged (ADR-022): search (entry number, description), filters, sort and page go to the API.
-  const list = usePagedQuery<JournalEntry, { status?: string; voucherType?: string }>({
+  const list = usePagedQuery<
+    JournalEntryListItemDto,
+    { status?: JournalControllerListStatus; voucherType?: JournalControllerListVoucherType },
+    JournalControllerListSort
+  >({
     key: ['journal-entries', 'list'],
     filters: { status: statusFilter, voucherType: typeFilter },
     defaultSort: '-entryDate',
-    fetch: (params, signal) =>
-      journalControllerList(params as Parameters<typeof journalControllerList>[0], { signal }).then(
-        (r) => r.data as unknown as Page<JournalEntry>,
-      ),
+    fetch: (params, signal) => journalControllerList(params, { signal }).then((r) => r.data),
     enabled: screen === 'list',
   });
 
@@ -146,7 +137,7 @@ export function JournalPage() {
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['journal-entry', entryId],
-    queryFn: ({ signal }) => journalControllerGet(entryId!, { signal }).then((r) => r.data as unknown as JournalEntry),
+    queryFn: ({ signal }) => journalControllerGet(entryId!, { signal }).then((r) => r.data),
     enabled: screen === 'entry' && !!entryId,
   });
 
@@ -194,37 +185,30 @@ export function JournalPage() {
         entryDate: newDate.format('YYYY-MM-DD'),
         description: newDescription || undefined,
         voucherType: newVoucherType,
-        lines: lines
-          .filter((l) => l.accountId)
-          .map((l) => ({
-            accountId: l.accountId,
-            debit: l.debit != null ? String(l.debit) : undefined,
-            credit: l.credit != null ? String(l.credit) : undefined,
-            description: l.description || undefined,
-            ...partyFields(l, partyColumn),
-          })),
-      } as never),
+        lines: filledLines(lines).map((l) => ({
+          accountId: l.accountId,
+          debit: l.debit ?? undefined,
+          credit: l.credit ?? undefined,
+          description: l.description || undefined,
+          ...partyFields(l, partyColumn),
+        })),
+      }),
     onSuccess: (res) => {
       apiMessage.success(t('common.saved'));
       invalidate();
-      const created = (res as { data?: JournalEntry }).data;
-      if (created?.id) {
-        setEntryId(created.id);
-      } else {
-        backToList();
-      }
+      setEntryId(res.data.id);
     },
     onError,
   });
 
   const saveNew = () => {
-    const filled = lines.filter((l) => l.accountId);
+    const filled = filledLines(lines);
     if (filled.length < 2) {
       apiMessage.error(t('journal.minLines'));
       return;
     }
     const noParty = filled.findIndex(
-      (l) => partyColumn.kindByAccount.has(l.accountId!) && !l.partyId,
+      (l) => partyColumn.kindByAccount.has(l.accountId) && !l.partyId,
     );
     if (noParty >= 0) {
       apiMessage.error(t('journal.partyRequired', { line: lines.indexOf(filled[noParty]) + 1 }));
@@ -246,7 +230,7 @@ export function JournalPage() {
     mutationFn: (v: { id: string; date: Dayjs }) =>
       journalControllerReverse(
         v.id,
-        { reversalDate: v.date.format('YYYY-MM-DD') } as never,
+        { reversalDate: v.date.format('YYYY-MM-DD') },
         { headers: idemHeaders() },
       ),
     onSuccess: () => {
@@ -380,7 +364,7 @@ export function JournalPage() {
               dataIndex: 'status',
               width: 100,
               // BUILD_PLAN §16: fixed colours for draft / posted / reversed.
-              render: (v: string, e: JournalEntry) =>
+              render: (v: string, e: JournalEntryListItemDto) =>
                 v !== 'POSTED' ? (
                   <Tag>{t('journal.draft')}</Tag>
                 ) : e.reversals?.length ? (
@@ -399,7 +383,7 @@ export function JournalPage() {
             {
               title: t('common.actions'),
               width: 160,
-              render: (_: unknown, e: JournalEntry) => (
+              render: (_: unknown, e: JournalEntryListItemDto) => (
                 <Space onClick={(ev) => ev.stopPropagation()}>
                   {e.status === 'DRAFT' && (
                     <>
@@ -566,7 +550,7 @@ export function JournalPage() {
           <div className="doc-section">{t('common.loading')}</div>
         ) : (
           <Table
-            rowKey={(r) => r.id ?? `${r.account?.code}-${r.debit}-${r.credit}`}
+            rowKey="id"
             size="small"
             pagination={false}
             dataSource={entry?.lines ?? []}
@@ -574,16 +558,15 @@ export function JournalPage() {
               {
                 title: '#',
                 width: 50,
-                render: (_: unknown, __: JournalLine, i: number) => i + 1,
+                render: (_: unknown, __: JournalEntryLineDto, i: number) => i + 1,
               },
               {
                 title: t('journal.account'),
-                render: (_: unknown, l: JournalLine) =>
-                  l.account ? codeAndName(l.account) : '—',
+                render: (_: unknown, l: JournalEntryLineDto) => codeAndName(l.account),
               },
               {
                 title: t('journal.party'),
-                render: (_: unknown, l: JournalLine) => partyName(l.partyId) ?? '—',
+                render: (_: unknown, l: JournalEntryLineDto) => partyName(l.partyId) ?? '—',
               },
               {
                 title: t('common.description'),

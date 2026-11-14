@@ -22,20 +22,13 @@ import {
   invitationsControllerAccept,
   invitationsControllerDecline,
   invitationsControllerList,
+  type MyInvitationDto,
 } from '@erp/api-client';
 import { useAuth } from '../auth/AuthContext';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 
-interface Invitation {
-  membershipId: string;
-  tenantId: string;
-  tenantName: string;
-  role: { code: string; nameAr: string; nameEn: string | null };
-  invitedBy: { fullName: string; email: string } | null;
-  invitedAt: string;
-  codeExpiresAt: string;
-}
+type Invitation = MyInvitationDto;
 
 const DATE_FORMAT = 'YYYY-MM-DD HH:mm';
 
@@ -66,7 +59,7 @@ export function InvitationsPage() {
 
   const query = useQuery({
     queryKey: ['invitations'],
-    queryFn: ({ signal }) => invitationsControllerList({ signal }).then((r) => r.data as unknown as Invitation[]),
+    queryFn: ({ signal }) => invitationsControllerList({ signal }).then((r) => r.data),
   });
   const { data, isLoading } = query;
 
@@ -90,10 +83,9 @@ export function InvitationsPage() {
     mutationFn: ({ membershipId, code }: { membershipId: string; code: string }) =>
       invitationsControllerAccept(membershipId, { code }),
     onSuccess: async (res) => {
-      const body = res.data as unknown as { tenantId: string };
       // Same company switch as the selector in the top bar. It remounts the app
       // while the new company loads, so the redirect to home comes after it.
-      await switchTenant(body.tenantId);
+      await switchTenant(res.data.tenantId);
       navigate('/', { replace: true });
     },
     onError: (err) => {
@@ -163,6 +155,8 @@ export function InvitationsPage() {
             {
               title: t('invitations.codeExpires'),
               render: (_: unknown, i: Invitation) => {
+                // Null when no code is pending: there is no expiry to show.
+                if (!i.codeExpiresAt) return '—';
                 const expired = dayjs(i.codeExpiresAt).isBefore(dayjs());
                 return (
                   <Space size={6}>

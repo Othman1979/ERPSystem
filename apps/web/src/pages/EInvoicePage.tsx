@@ -21,9 +21,17 @@ import {
 import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ApiError, apiFetchData, eInvoiceControllerListSubmissions } from '@erp/api-client';
+import {
+  ApiError,
+  type EInvoiceControllerListSubmissionsSort,
+  type EInvoiceSubmissionListItemDto,
+  type EInvoiceSubmissionPageDto,
+  eInvoiceControllerGetSubmission,
+  eInvoiceControllerListSubmissions,
+  eInvoiceControllerResend,
+} from '@erp/api-client';
 import { ListToolbar } from '../components/ListToolbar';
-import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { usePagedQuery } from '../hooks/usePagedQuery';
 import { tableLocale } from '../components/QueryState';
 import { Num } from '../components/Num';
 import { PageHeader } from '../components/PageHeader';
@@ -38,56 +46,20 @@ import {
 
 type DocumentType = 'SALES_INVOICE' | 'SALES_RETURN';
 
-interface Submission {
-  id: string;
-  documentType: DocumentType;
-  documentId: string;
-  documentNo: string;
-  uuid: string;
-  icv: number;
-  environment: 'SANDBOX' | 'PRODUCTION';
-  status: EInvoiceStatus;
-  attemptCount: number;
-  errors: EInvoiceError[] | null;
-  sentAt: string | null;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+type Submission = EInvoiceSubmissionListItemDto;
 
-interface Attempt {
-  attemptNo: number;
-  outcome: 'accepted' | 'rejected' | 'unknown' | 'not-sent';
-  httpStatus: number | null;
-  message: string | null;
-  startedAt: string;
-  finishedAt: string;
-}
-
-interface SubmissionDetail extends Submission {
-  qrPayload: string | null;
-  governmentUuid: string | null;
-  requestXml: string | null;
-  responseCode: number | null;
-  responseBody: string | null;
-  originalSubmission: { id: string; documentNo: string; status: EInvoiceStatus } | null;
-  attempts: Attempt[];
-}
-
-/** One numbered page of submissions plus the count per status over the same branches (ADR-022 §3). */
-interface SubmissionPage extends Page<Submission> {
-  counts: Partial<Record<EInvoiceStatus, number>>;
-}
+/** An attempt's outcome, as the API documents it (the generated field is a plain string). */
+type AttemptOutcome = 'accepted' | 'rejected' | 'unknown' | 'not-sent';
 
 const RESENDABLE: EInvoiceStatus[] = ['REJECTED', 'FAILED', 'UNKNOWN'];
 
-const OUTCOME_COLORS: Record<Attempt['outcome'], string> = {
+const OUTCOME_COLORS: Record<AttemptOutcome, string> = {
   accepted: 'success',
   rejected: 'error',
   unknown: 'warning',
   'not-sent': 'volcano',
 };
-const OUTCOME_KEYS: Record<Attempt['outcome'], string> = {
+const OUTCOME_KEYS: Record<AttemptOutcome, string> = {
   accepted: 'einvoice.outcomes.accepted',
   rejected: 'einvoice.outcomes.rejected',
   unknown: 'einvoice.outcomes.unknown',
@@ -116,18 +88,20 @@ export function EInvoicePage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Server-paged (ADR-022): search, filters, sort and page go to the API.
-  const list = usePagedQuery<Submission, { status?: string; documentType?: string }>({
+  const list = usePagedQuery<
+    Submission,
+    { status?: EInvoiceStatus; documentType?: DocumentType },
+    EInvoiceControllerListSubmissionsSort,
+    EInvoiceSubmissionPageDto
+  >({
     key: ['einvoice-submissions', 'list'],
     filters: { status: statusFilter, documentType: typeFilter },
     defaultSort: '-createdAt',
-    fetch: (params, signal) =>
-      eInvoiceControllerListSubmissions(params as Parameters<typeof eInvoiceControllerListSubmissions>[0], {
-        signal,
-      }).then((r) => r.data as unknown as SubmissionPage),
+    fetch: (params, signal) => eInvoiceControllerListSubmissions(params, { signal }).then((r) => r.data),
   });
   const { isLoading, isFetching, error } = list.query;
-  // The status summary rides along with the page (ADR-022 §3); usePagedQuery types the page as Page<T>.
-  const counts = (list.query.data as Partial<SubmissionPage> | undefined)?.counts ?? {};
+  // The status summary rides along with the page (ADR-022 §3).
+  const counts = list.query.data?.counts ?? {};
 
   // The worker sends in the background: while a document on this page is still
   // on its way, the list is refreshed every 5 seconds.
@@ -182,17 +156,18 @@ export function EInvoicePage() {
       dataIndex: 'errors',
       width: 320,
       ellipsis: { showTitle: false },
-      render: (v: EInvoiceError[] | null) =>
-        v && v.length > 0 ? (
-          <Tooltip title={v.map((e) => e.message).join(' • ')}>
+      render: (errors: EInvoiceError[] | null) => {
+        return errors && errors.length > 0 ? (
+          <Tooltip title={errors.map((e) => e.message).join(' • ')}>
             <span>
-              {v[0].message}
-              {v.length > 1 && ` (+${v.length - 1})`}
+              {errors[0].message}
+              {errors.length > 1 && ` (+${errors.length - 1})`}
             </span>
           </Tooltip>
         ) : (
           '—'
-        ),
+        );
+      },
     },
     {
       title: t('einvoice.sentAt'),
@@ -288,7 +263,8 @@ function SubmissionDrawer({ id, open, onClose }: { id: string | null; open: bool
 
   const { data, isLoading } = useQuery({
     queryKey: ['einvoice-submission', id],
-    queryFn: ({ signal }) => apiFetchData<SubmissionDetail>(`/api/v1/einvoice/submissions/${id}`, { signal }),
+    // queryFn runs only while enabled, which needs an id.
+    queryFn: ({ signal }) => eInvoiceControllerGetSubmission(id!, { signal }).then((r) => r.data),
     // Disabled while closed, so reopening a row fetches it fresh.
     enabled: open && !!id,
     refetchInterval: (query) => (isInFlight(query.state.data?.status) ? 4000 : false),
@@ -296,10 +272,7 @@ function SubmissionDrawer({ id, open, onClose }: { id: string | null; open: bool
 
   const resend = useMutation({
     mutationFn: (subId: string) =>
-      apiFetchData<SubmissionDetail>(`/api/v1/einvoice/submissions/${subId}/resend`, {
-        method: 'POST',
-        headers: idemHeaders(),
-      }),
+      eInvoiceControllerResend(subId, { headers: idemHeaders() }).then((r) => r.data),
     onSuccess: (updated) => {
       setConfirmOpen(false);
       apiMessage.success(t('einvoice.resendQueued'));
@@ -466,7 +439,10 @@ function SubmissionDrawer({ id, open, onClose }: { id: string | null; open: bool
                   title: t('einvoice.outcome'),
                   dataIndex: 'outcome',
                   width: 110,
-                  render: (v: Attempt['outcome']) => <Tag color={OUTCOME_COLORS[v]}>{t(OUTCOME_KEYS[v])}</Tag>,
+                  render: (v: string) => {
+                    const outcome = v as AttemptOutcome;
+                    return <Tag color={OUTCOME_COLORS[outcome]}>{t(OUTCOME_KEYS[outcome])}</Tag>;
+                  },
                 },
                 {
                   title: t('einvoice.httpStatus'),

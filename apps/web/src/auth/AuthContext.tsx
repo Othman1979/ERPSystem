@@ -11,58 +11,13 @@ import {
   onSessionChange,
   setAccessToken,
   setBranchId,
+  type MeResponseDto,
   type RegisterDto,
 } from '@erp/api-client';
 import type { Permission } from './permissions';
 
-export interface TenantSummary {
-  tenantId: string;
-  tenantName: string;
-  status: string;
-  roleCode: string;
-  roleNameAr: string;
-  roleNameEn: string | null;
-  isCurrent: boolean;
-}
-
-export interface BranchSummary {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-}
-
-export interface MeData {
-  user: {
-    id: string;
-    email: string;
-    fullName: string;
-    locale: string;
-    isPlatformAdmin: boolean;
-    /** True while the account still uses a temporary password (ADR-012). */
-    mustChangePassword?: boolean;
-  };
-  tenants: TenantSummary[];
-  currentTenant: {
-    tenantId: string;
-    name: string;
-    status: string;
-    plan: { code: string; nameAr: string; nameEn: string | null } | null;
-  } | null;
-  currentMembership: {
-    membershipId: string;
-    roleCode: string;
-    /** Permission codes of this role in the current tenant (GET /me); see `can`. */
-    permissions: string[];
-    defaultBranchId: string | null;
-    /** Branches this member may switch to (all active ones when none are assigned). */
-    branches: BranchSummary[];
-    /** No branch assigned: may open the company-wide reports (ADR-003 §13–§14). */
-    allBranches?: boolean;
-  } | null;
-  /** Company invitations waiting for this user's acceptance (ADR-012 §PLAT-10). */
-  pendingInvitations?: number;
-}
+/** GET /me response (the generated type; the API is the source of truth). */
+type MeData = MeResponseDto;
 
 interface AuthState {
   /**
@@ -153,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     lastMeReload.current = Date.now();
     try {
       const res = await meControllerMe();
-      const data = res.data as unknown as MeData;
+      const data = res.data;
       const branch = pickBranch(data);
       setBranchId(branch);
       setBranchState(branch);
@@ -188,8 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const reloadMe = useCallback(async () => {
     try {
       const res = await meControllerMe();
-      const data = res.data as unknown as MeData;
-      setMe(data);
+      setMe(res.data);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setAccessToken(null);
@@ -255,19 +209,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await authControllerLogin({ email, password });
-    const data = res.data as unknown as { accessToken: string };
     // Drop every cached query of the previous user/tenant before the new token is used (WEB-01).
     queryClient.clear();
-    setAccessToken(data.accessToken);
+    setAccessToken(res.data.accessToken);
     await refreshMe();
   }, [refreshMe, queryClient]);
 
   const register = useCallback(async (dto: RegisterDto) => {
     const res = await authControllerRegister(dto);
-    const data = res.data as unknown as { accessToken: string };
     // Drop every cached query of the previous user/tenant before the new token is used (WEB-01).
     queryClient.clear();
-    setAccessToken(data.accessToken);
+    setAccessToken(res.data.accessToken);
     await refreshMe();
   }, [refreshMe, queryClient]);
 
@@ -300,7 +252,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const switchTenant = useCallback(async (tenantId: string) => {
     const res = await meControllerSwitchTenant({ tenantId });
-    const data = res.data as unknown as { accessToken: string };
     // Unmount the tenant-A pages first (App shows a spinner while loading), so none of
     // them refetches with the new token and the old branch before /me answers.
     setBranchId(null);
@@ -308,7 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus('loading');
     // Drop every cached query of the previous user/tenant before the new token is used (WEB-01).
     queryClient.clear();
-    setAccessToken(data.accessToken);
+    setAccessToken(res.data.accessToken);
     await refreshMe();
   }, [refreshMe, queryClient]);
 

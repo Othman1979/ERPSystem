@@ -3,7 +3,8 @@ import { Select, Table, Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { apiFetchData, warehousesControllerList } from '@erp/api-client';
+import { stockReportsControllerItemBalances, warehousesControllerList } from '@erp/api-client';
+import type { ItemBalanceRowDto } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
 import { ListToolbar } from '../../components/ListToolbar';
 import { tableLocale } from '../../components/QueryState';
@@ -11,41 +12,6 @@ import { Num } from '../../components/Num';
 import { amountCell, qtyCell } from '../../format/cells';
 import { formatAmount } from '../../format/number';
 import { bothNames, codeAndName } from '../../i18n/displayName';
-
-interface ItemBalanceRow {
-  itemId: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-  unit: { code: string; nameAr: string } | null;
-  openingQty: string;
-  openingValue: string;
-  inQty: string;
-  inValue: string;
-  outQty: string;
-  outValue: string;
-  closingQty: string;
-  closingValue: string;
-}
-
-interface ItemBalances {
-  rows: ItemBalanceRow[];
-  totals: { openingValue: string; inValue: string; outValue: string; closingValue: string };
-}
-
-interface Warehouse {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn?: string | null;
-}
-
-function qs(params: Record<string, string | undefined>): string {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) if (v) p.set(k, v);
-  const s = p.toString();
-  return s ? `?${s}` : '';
-}
 
 /**
  * Items balance (ميزان المواد, ADR-008): per item the opening quantity and
@@ -65,12 +31,13 @@ export function ItemBalancesTab({
   const [warehouseId, setWarehouseId] = useState<string | undefined>(undefined);
   const warehouses = useQuery({
     queryKey: ['warehouses'],
-    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as Warehouse[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
   });
   const params = { warehouseId, ...range };
   const listQuery = useQuery({
     queryKey: ['report-item-balances', warehouseId, range.from, range.to],
-    queryFn: ({ signal }) => apiFetchData<ItemBalances>(`/api/v1/stock/item-balances${qs(params)}`, { signal }),
+    queryFn: ({ signal }) =>
+      stockReportsControllerItemBalances(params, { signal }).then((r) => r.data),
   });
   const { data, isLoading } = listQuery;
 
@@ -110,7 +77,7 @@ export function ItemBalancesTab({
       <div className="report-meta">
         <Typography.Text type="secondary">{t('reports.itemBalancesNote')}</Typography.Text>
       </div>
-      <Table<ItemBalanceRow>
+      <Table<ItemBalanceRowDto>
         rowKey="itemId"
         size="small"
         bordered

@@ -13,12 +13,15 @@ export interface Page<T> {
   total: number;
 }
 
-/** What every numbered list sends (ADR-022 §2), besides its own filters. */
-export interface PageParams {
+/**
+ * What every numbered list sends (ADR-022 §2), besides its own filters.
+ * `S` is the list's sort keys, e.g. the generated `PartiesControllerListSort`.
+ */
+export interface PageParams<S extends string = string> {
   page: number;
   pageSize: number;
   q?: string;
-  sort?: string;
+  sort?: S;
 }
 
 export const PAGE_SIZE_OPTIONS = [20, 50, 100];
@@ -33,8 +36,16 @@ export const SEARCH_DEBOUNCE_MS = 300;
  *  - The previous page stays on screen while the next one loads.
  *  - A page that went past the end (rows deleted meanwhile) moves to the last page.
  * The query key is `[...key, params]`, so invalidating `key` refreshes it.
+ *
+ * Type parameters: `T` the row, `F` the filters, `S` the API's sort keys,
+ * and `P` the page the API answers with (a page with extra keys, e.g. counts).
  */
-export function usePagedQuery<T, F extends Record<string, string | undefined>>({
+export function usePagedQuery<
+  T,
+  F extends Record<string, string | undefined>,
+  S extends string = string,
+  P extends Page<T> = Page<T>,
+>({
   key,
   filters,
   fetch,
@@ -44,7 +55,7 @@ export function usePagedQuery<T, F extends Record<string, string | undefined>>({
 }: {
   key: readonly unknown[];
   filters: F;
-  fetch: (params: PageParams & Partial<F>, signal: AbortSignal) => Promise<Page<T>>;
+  fetch: (params: PageParams<S> & Partial<F>, signal: AbortSignal) => Promise<P>;
   enabled?: boolean;
   /** The API's default sort; the table shows it as the active column. */
   defaultSort?: string;
@@ -74,7 +85,9 @@ export function usePagedQuery<T, F extends Record<string, string | undefined>>({
     pageSize,
     ...(q ? { q } : {}),
     ...(sort ? { sort } : {}),
-  } as PageParams & Partial<F>;
+    // A sortable column's `key` is its API sort key (see onTableChange), so
+    // `sort` only ever holds one of the keys in S.
+  } as PageParams<S> & Partial<F>;
   const query = useQuery({
     queryKey: [...key, params],
     queryFn: ({ signal }) => fetch(params, signal),

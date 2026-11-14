@@ -39,7 +39,6 @@ import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
-  apiFetchData,
   catalogControllerCreateGroup,
   catalogControllerCreateItem,
   catalogControllerGetItem,
@@ -50,12 +49,20 @@ import {
   settingsControllerListTaxCategories,
   settingsControllerListUnits,
   stockReportsControllerBalances,
+  stockReportsControllerItemLedger,
   warehousesControllerList,
+  type CatalogControllerListItemsItemKind,
+  type CatalogControllerListItemsSort,
+  type ItemCardRowDto,
+  type ItemCardSummaryDto,
+  type ItemGroupDto,
+  type ItemListItemDto,
+  type WarehouseListItemDto,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
-import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { usePagedQuery } from '../hooks/usePagedQuery';
 import { useKeysetQuery } from '../hooks/useKeysetQuery';
 import { LoadMore } from '../components/LoadMore';
 import { ExportButtons } from '../components/ExportButtons';
@@ -65,78 +72,27 @@ import { Num } from '../components/Num';
 import type Decimal from 'decimal.js';
 import { amountCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount, formatQty } from '../format/number';
+import { itemCreateBody, itemUpdateBody, type ItemFormValues } from './items/itemPayload';
 
-interface Unit {
-  id: string;
-  code: string;
-  nameAr: string;
-  unEceCode?: string | null;
-}
-interface Group {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-  parentId: string | null;
-  isActive: boolean;
-}
-interface Item {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-  description?: string | null;
-  itemKind: 'STOCK' | 'SERVICE';
-  baseUnit?: { code: string; nameAr: string } | null;
-  itemGroup?: { id: string; code: string; nameAr: string } | null;
-  taxCategory?: { id: string; code: string; nameAr: string } | null;
-  defaultWarehouse?: { id: string; code: string; nameAr: string } | null;
-  salePrice: string | null;
-  purchasePrice: string | null;
-  minStock: string;
-  maxStock: string | null;
-  salePriceIncludesTax: boolean;
-  imageUrl?: string | null;
-  isActive: boolean;
-}
-interface BalanceRow {
-  itemId: string;
-  qtyOnHand: string;
-  warehouseCode: string;
-  warehouseName: string;
-}
-interface LedgerRow {
-  id: string;
-  movementDate: string;
-  warehouse: { code: string; nameAr: string };
-  movementType: string;
-  sourceType: string;
-  sourceId: string | null;
-  qtyIn: string;
-  qtyOut: string;
-  unitCost: string;
-  totalCost: string;
-  balanceQtyAfter: string;
-  avgCostAfter: string;
-  /** The opening-position row the screen adds on top (ADR-008). */
-  kind?: 'opening';
-}
-/** The item card's header, on the first page only (ADR-022 §4). */
-interface LedgerSummary {
-  opening: { qty: string; value: string };
-  totals: { qtyIn: string; qtyOut: string; valueIn: string; valueOut: string };
-  closing: { qty: string; value: string };
-  balances: { warehouse: { id: string; code: string; nameAr: string }; qtyOnHand: string }[];
-}
-interface LedgerPage {
-  item: { id: string; code: string; nameAr: string; baseUnit?: { code: string } | null };
-  summary: LedgerSummary | null;
-  items: LedgerRow[];
-  nextCursor: string | null;
-}
-interface ItemDetail extends Item {
-  barcodes?: { id: string; barcode: string; itemUnit?: { unit?: { code: string } } | null }[];
-}
+type Group = ItemGroupDto;
+type Item = ItemListItemDto;
+type Warehouse = WarehouseListItemDto;
+
+/** Form values of the item dialog (antd gives them untyped). Code and base unit are set on create only. */
+/** A row of the item card: a movement, or the opening position the screen adds on top (ADR-008). */
+type LedgerRow =
+  | (ItemCardRowDto & { kind?: undefined })
+  | {
+      kind: 'opening';
+      id: string;
+      movementDate: string;
+      qtyIn: string;
+      qtyOut: string;
+      unitCost: string;
+      totalCost: string;
+      balanceQtyAfter: string;
+      avgCostAfter: string;
+    };
 
 // API decimals stay strings in forms (InputNumber stringMode); blank becomes undefined.
 const num = (v?: string | null) => v ?? undefined;
@@ -162,7 +118,7 @@ function ItemsTab() {
   const { contextHolder, show } = useApiError();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
-  const [kindFilter, setKindFilter] = useState<string | undefined>();
+  const [kindFilter, setKindFilter] = useState<CatalogControllerListItemsItemKind | undefined>();
   const [view, setView] = useState<'table' | 'cards'>('table');
   const [ledgerItem, setLedgerItem] = useState<Item | null>(null);
   const [barcodeItem, setBarcodeItem] = useState<Item | null>(null);
@@ -170,43 +126,35 @@ function ItemsTab() {
   const saveAndNew = useRef(false);
 
   // Server-paged (ADR-022): search, sort and page go to the API.
-  const list = usePagedQuery<Item, { itemKind?: string }>({
+  const list = usePagedQuery<Item, { itemKind?: CatalogControllerListItemsItemKind }, CatalogControllerListItemsSort>({
     key: ['items', 'list'],
     filters: { itemKind: kindFilter },
     defaultSort: 'code',
-    fetch: (params, signal) =>
-      catalogControllerListItems(params as Parameters<typeof catalogControllerListItems>[0], { signal }).then(
-        (r) => r.data as unknown as Page<Item>,
-      ),
+    fetch: (params, signal) => catalogControllerListItems(params, { signal }).then((r) => r.data),
   });
   const itemsQuery = list.query;
   const { isLoading } = itemsQuery;
   const items = list.rows;
   const { data: units } = useQuery({
     queryKey: ['units'],
-    queryFn: ({ signal }) => settingsControllerListUnits({ signal }).then((r) => r.data as unknown as Unit[]),
+    queryFn: ({ signal }) => settingsControllerListUnits({ signal }).then((r) => r.data),
   });
   const { data: groups } = useQuery({
     queryKey: ['item-groups'],
-    queryFn: ({ signal }) => catalogControllerListGroups({ signal }).then((r) => r.data as unknown as Group[]),
+    queryFn: ({ signal }) => catalogControllerListGroups({ signal }).then((r) => r.data),
   });
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as { id: string; code: string; nameAr: string }[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
   });
   const { data: taxCategories } = useQuery({
     queryKey: ['tax-categories'],
-    queryFn: ({ signal }) =>
-      settingsControllerListTaxCategories({ signal }).then(
-        (r) => r.data as unknown as { id: string; code: string; nameAr: string; rate: string }[],
-      ),
+    queryFn: ({ signal }) => settingsControllerListTaxCategories({ signal }).then((r) => r.data),
   });
   const { data: balances } = useQuery({
     queryKey: ['stock-balances-all'],
     queryFn: ({ signal }) =>
-      stockReportsControllerBalances({ warehouseId: '', itemId: '', lowStock: '' }, { signal }).then(
-        (r) => r.data as unknown as BalanceRow[],
-      ),
+      stockReportsControllerBalances({ warehouseId: '', itemId: '', lowStock: '' }, { signal }).then((r) => r.data),
   });
 
   const qtyByItem = new Map<string, Decimal>();
@@ -217,24 +165,8 @@ function ItemsTab() {
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['items'] });
 
   const save = useMutation({
-    mutationFn: async (v: Record<string, unknown>): Promise<unknown> => {
-      const payload = {
-        ...v,
-        salePrice: v.salePrice ?? undefined,
-        purchasePrice: v.purchasePrice ?? undefined,
-        minStock: v.minStock ?? undefined,
-        maxStock: v.maxStock ?? undefined,
-        itemGroupId: v.itemGroupId || undefined,
-        defaultWarehouseId: v.defaultWarehouseId || undefined,
-        imageUrl: v.imageUrl || undefined,
-        nameEn: v.nameEn || undefined,
-        description: v.description || undefined,
-        taxCategoryId: v.taxCategoryId || undefined,
-      };
-      return editing
-        ? catalogControllerUpdateItem(editing.id, payload as never)
-        : catalogControllerCreateItem(payload as never);
-    },
+    mutationFn: async (v: ItemFormValues) =>
+      editing ? catalogControllerUpdateItem(editing.id, itemUpdateBody(v)) : catalogControllerCreateItem(itemCreateBody(v)),
     onSuccess: () => {
       invalidate();
       form.resetFields();
@@ -252,7 +184,7 @@ function ItemsTab() {
   });
 
   const deactivate = useMutation({
-    mutationFn: (id: string) => catalogControllerUpdateItem(id, { isActive: false } as never),
+    mutationFn: (id: string) => catalogControllerUpdateItem(id, { isActive: false }),
     onSuccess: invalidate,
     onError: show,
   });
@@ -635,7 +567,7 @@ function LedgerModal({
 }: {
   item: Item | null;
   onClose: () => void;
-  warehouses: { id: string; code: string; nameAr: string }[];
+  warehouses: Warehouse[];
 }) {
   const { t } = useTranslation();
   const [warehouseId, setWarehouseId] = useState<string | undefined>();
@@ -643,19 +575,20 @@ function LedgerModal({
   const [to, setTo] = useState<Dayjs | null>(null);
 
   // Keyset read of the card (ADR-022 §4): pages in date order, the summary on the first page.
-  const read = useKeysetQuery<LedgerRow, LedgerSummary>({
+  const read = useKeysetQuery<ItemCardRowDto, ItemCardSummaryDto>({
     key: ['item-ledger', item?.id, warehouseId, from?.format('YYYY-MM-DD'), to?.format('YYYY-MM-DD')],
     fetch: (cursor, signal) =>
-      apiFetchData<LedgerPage>(
-        `/api/v1/stock/items/${item!.id}/ledger${ledgerQuery({
+      stockReportsControllerItemLedger(
+        item!.id,
+        {
           warehouseId,
           from: from?.format('YYYY-MM-DD'),
           to: to?.format('YYYY-MM-DD'),
-          limit: String(LEDGER_PAGE_LIMIT),
+          limit: LEDGER_PAGE_LIMIT,
           cursor,
-        })}`,
+        },
         { signal },
-      ),
+      ).then((r) => r.data),
     enabled: !!item,
   });
   const { summary } = read;
@@ -668,10 +601,6 @@ function LedgerModal({
           kind: 'opening',
           id: 'opening',
           movementDate: '',
-          warehouse: { code: '', nameAr: '' },
-          movementType: '',
-          sourceType: '',
-          sourceId: null,
           qtyIn: '0',
           qtyOut: '0',
           unitCost: '',
@@ -815,21 +744,13 @@ function LedgerModal({
   );
 }
 
-/** The item card's query string: empty values are left out (the server reads them as not given). */
-function ledgerQuery(params: Record<string, string | undefined>): string {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) if (v) p.set(k, v);
-  const s = p.toString();
-  return s ? `?${s}` : '';
-}
-
 // ------------------------------------------------------------- barcode modal
 
 function BarcodeModal({ item, onClose }: { item: Item | null; onClose: () => void }) {
   const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['item-detail', item?.id],
-    queryFn: ({ signal }) => catalogControllerGetItem(item!.id, { signal }).then((r) => r.data as unknown as ItemDetail),
+    queryFn: ({ signal }) => catalogControllerGetItem(item!.id, { signal }).then((r) => r.data),
     enabled: !!item,
   });
 
@@ -891,7 +812,7 @@ function GroupsTab() {
 
   const groupsQuery = useQuery({
     queryKey: ['item-groups'],
-    queryFn: ({ signal }) => catalogControllerListGroups({ signal }).then((r) => r.data as unknown as Group[]),
+    queryFn: ({ signal }) => catalogControllerListGroups({ signal }).then((r) => r.data),
   });
   const { data: groups, isLoading } = groupsQuery;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['item-groups'] });
@@ -902,18 +823,18 @@ function GroupsTab() {
       nameAr: string;
       nameEn?: string;
       parentId?: string;
-    }): Promise<unknown> =>
+    }) =>
       editing
         ? catalogControllerUpdateGroup(editing.id, {
             nameAr: v.nameAr,
             nameEn: v.nameEn || null,
-          } as never)
+          })
         : catalogControllerCreateGroup({
             code: v.code!,
             nameAr: v.nameAr,
             nameEn: v.nameEn || undefined,
             parentId: v.parentId || undefined,
-          } as never),
+          }),
     onSuccess: () => {
       invalidate();
       void queryClient.invalidateQueries({ queryKey: ['items'] });
@@ -925,7 +846,7 @@ function GroupsTab() {
   });
 
   const deactivate = useMutation({
-    mutationFn: (id: string) => catalogControllerUpdateGroup(id, { isActive: false } as never),
+    mutationFn: (id: string) => catalogControllerUpdateGroup(id, { isActive: false }),
     onSuccess: invalidate,
     onError: show,
   });

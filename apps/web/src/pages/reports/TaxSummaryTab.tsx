@@ -3,8 +3,8 @@ import { Select, Table, Tag, Tooltip, Typography } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { apiFetchData } from '@erp/api-client';
-import { ExportButtons, queryString } from '../../components/ExportButtons';
+import { reportsControllerTaxSummary, type TaxSummaryRowDto } from '@erp/api-client';
+import { ExportButtons } from '../../components/ExportButtons';
 import { ListToolbar } from '../../components/ListToolbar';
 import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
@@ -17,38 +17,6 @@ import { bimonthEnd, bimonthPresets, bimonthStart } from './taxPeriods';
 
 const AMOUNT_FIELDS = ['outputBase', 'outputTax', 'inputBase', 'inputTax', 'payable'] as const;
 type AmountField = (typeof AMOUNT_FIELDS)[number];
-type TaxAmounts = Record<
-  | AmountField
-  | 'salesBase'
-  | 'salesTax'
-  | 'salesReturnsBase'
-  | 'salesReturnsTax'
-  | 'purchasesBase'
-  | 'purchasesTax'
-  | 'purchaseReturnsBase'
-  | 'purchaseReturnsTax',
-  string
->;
-
-interface TaxRow extends TaxAmounts {
-  key: string;
-  taxCategoryId: string | null;
-  code: string | null;
-  nameAr: string | null;
-  nameEn: string | null;
-  rate: string;
-  einvoiceCode: string | null;
-}
-
-interface TaxSummary {
-  from: string;
-  to: string;
-  rows: TaxRow[];
-  totals: TaxAmounts;
-  ledger: { output: string; input: string };
-  /** Ledger movement on the OUTPUT_TAX / INPUT_TAX accounts minus the document figures. */
-  ledgerDifference: { output: string; input: string };
-}
 
 const PATH = '/reports/tax-summary';
 
@@ -61,7 +29,7 @@ export function TaxSummaryTab() {
   const params = { from: isoDay(from), to: isoDay(to) };
   const listQuery = useQuery({
     queryKey: ['report-tax-summary', params.from, params.to],
-    queryFn: ({ signal }) => apiFetchData<TaxSummary>(`/api/v1${PATH}${queryString(params)}`, { signal }),
+    queryFn: ({ signal }) => reportsControllerTaxSummary(params, { signal }).then((r) => r.data),
   });
   const { data, isLoading } = listQuery;
 
@@ -137,7 +105,7 @@ export function TaxSummaryTab() {
           </span>
         </div>
       )}
-      <Table<TaxRow>
+      <Table<TaxSummaryRowDto>
         rowKey="key"
         size="small"
         loading={isLoading}

@@ -13,6 +13,10 @@ import {
   journalControllerList,
   journalControllerOpening,
   journalControllerReverse,
+  type AccountMappingSlotDto,
+  type FiscalYearListItemDto,
+  type JournalEntryLineDto,
+  type JournalEntryListItemDto,
 } from '@erp/api-client';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { enterTo, focusFirstGridCell, focusNamedField } from '../components/GridSelect';
@@ -34,48 +38,14 @@ import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { openingPlug } from './opening/openingPlug';
 import { selectPostable, useAccounts } from '../hooks/useAccounts';
-import { type Page } from '../hooks/usePagedQuery';
 
-interface Mapping {
-  mappingKey: string;
-  accountId: string | null;
-  account: { id: string; code: string; nameAr: string; nameEn?: string | null } | null;
-}
-
-interface FiscalYear {
-  id: string;
-  startDate: string;
-  endDate: string;
-  status: string;
-}
-
-interface OpeningLine {
-  id: string;
-  debit: string;
-  credit: string;
-  description: string | null;
-  partyId: string | null;
-  account?: { code: string; nameAr: string; nameEn?: string | null };
-}
-
-interface OpeningEntry {
-  id: string;
-  entryNo: string | null;
-  entryDate: string;
-  description: string | null;
-  status: string;
-  postingKind?: string;
-  totalDebit: string;
-  totalCredit: string;
-  lines?: OpeningLine[];
-  reversalOf?: { entryNo: string | null } | null;
-  reversals?: { entryNo: string | null; status: string }[];
-}
+/** A line of the opening form that has its account chosen (the lines the API receives). */
+type FilledLine = JournalLineDraft & { accountId: string };
 
 const day = (v: string) => v.slice(0, 10);
 
 /** Start of the open fiscal year holding today, else of the earliest open year. */
-function defaultOpeningDate(years: FiscalYear[] | undefined): Dayjs {
+function defaultOpeningDate(years: FiscalYearListItemDto[] | undefined): Dayjs {
   const open = (years ?? [])
     .filter((y) => y.status === 'OPEN')
     .sort((a, b) => day(a.startDate).localeCompare(day(b.startDate)));
@@ -111,22 +81,20 @@ export function OpeningBalancesPage() {
   const entries = useQuery({
     queryKey: ['journal-entries', 'opening'],
     queryFn: ({ signal }) =>
-      journalControllerList({ sourceType: 'OPENING_ENTRY', pageSize: 100 }, { signal }).then(
-        (r) => (r.data as unknown as Page<OpeningEntry>).items,
-      ),
+      journalControllerList({ sourceType: 'OPENING_ENTRY', pageSize: 100 }, { signal }).then((r) => r.data.items),
   });
   const accounts = useAccounts();
   const mappings = useQuery({
     queryKey: ['account-mappings'],
-    queryFn: ({ signal }) => accountingControllerListMappings({ signal }).then((r) => r.data as unknown as Mapping[]),
+    queryFn: ({ signal }) => accountingControllerListMappings({ signal }).then((r) => r.data),
   });
   const years = useQuery({
     queryKey: ['fiscal-years'],
-    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data as unknown as FiscalYear[]),
+    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data),
   });
   const detail = useQuery({
     queryKey: ['journal-entry', viewId],
-    queryFn: ({ signal }) => journalControllerGet(viewId!, { signal }).then((r) => r.data as unknown as OpeningEntry),
+    queryFn: ({ signal }) => journalControllerGet(viewId!, { signal }).then((r) => r.data),
     enabled: screen === 'view' && !!viewId,
   });
   // The picker and labels follow the lines on screen: the draft's, or the saved entry's.
@@ -135,7 +103,7 @@ export function OpeningBalancesPage() {
     enabled: screen === 'entry',
   });
 
-  const mapped = (key: string) => mappings.data?.find((m) => m.mappingKey === key);
+  const mapped = (key: AccountMappingSlotDto['mappingKey']) => mappings.data?.find((m) => m.mappingKey === key);
   const equityAccount = mapped('OPENING_BALANCE_EQUITY')?.account ?? null;
   const inventoryAccountId = mapped('INVENTORY')?.accountId ?? null;
 
@@ -145,7 +113,7 @@ export function OpeningBalancesPage() {
     .filter((a) => a.id !== inventoryAccountId && a.id !== equityAccount?.id)
     .map((a) => ({ value: a.id, label: codeAndName(a) }));
 
-  const filled = lines.filter((l) => l.accountId);
+  const filled = lines.filter((l): l is FilledLine => !!l.accountId);
   const plug = openingPlug(filled);
   const equityLabel = equityAccount ? codeAndName(equityAccount) : t('opening.equityAccount');
   const plugText =
@@ -193,27 +161,26 @@ export function OpeningBalancesPage() {
           description: description || undefined,
           lines: filled.map((l) => ({
             accountId: l.accountId,
-            debit: l.debit != null && l.debit !== '' ? String(l.debit) : undefined,
-            credit: l.credit != null && l.credit !== '' ? String(l.credit) : undefined,
+            debit: l.debit || undefined,
+            credit: l.credit || undefined,
             description: l.description || undefined,
             ...partyFields(l, partyColumn),
           })),
-        } as never,
+        },
         { headers: { 'Idempotency-Key': idemKey } },
       ),
     onSuccess: (res) => {
-      const created = (res as { data?: OpeningEntry }).data;
-      apiMessage.success(t('opening.posted', { entryNo: created?.entryNo ?? '' }));
+      const created = res.data;
+      apiMessage.success(t('opening.posted', { entryNo: created.entryNo ?? '' }));
       invalidate();
-      if (created?.id) openEntry(created.id);
-      else backToList();
+      openEntry(created.id);
     },
     onError,
   });
 
   const reverse = useMutation({
     mutationFn: (v: { id: string; date: string }) =>
-      journalControllerReverse(v.id, { reversalDate: v.date } as never, { headers: idemHeaders() }),
+      journalControllerReverse(v.id, { reversalDate: v.date }, { headers: idemHeaders() }),
     onSuccess: () => {
       apiMessage.success(t('journal.reversed'));
       invalidate();
@@ -315,7 +282,7 @@ export function OpeningBalancesPage() {
               {
                 title: t('common.status'),
                 width: 110,
-                render: (_: unknown, e: OpeningEntry) =>
+                render: (_: unknown, e: JournalEntryListItemDto) =>
                   e.postingKind === 'REVERSAL' ? (
                     <Tag color="orange">{t('opening.reversal')}</Tag>
                   ) : e.reversals?.length ? (
@@ -384,14 +351,14 @@ export function OpeningBalancesPage() {
             pagination={false}
             dataSource={entry?.lines ?? []}
             columns={[
-              { title: '#', width: 50, render: (_: unknown, __: OpeningLine, i: number) => i + 1 },
+              { title: '#', width: 50, render: (_: unknown, __: JournalEntryLineDto, i: number) => i + 1 },
               {
                 title: t('journal.account'),
-                render: (_: unknown, l: OpeningLine) => (l.account ? codeAndName(l.account) : '—'),
+                render: (_: unknown, l: JournalEntryLineDto) => codeAndName(l.account),
               },
               {
                 title: t('journal.party'),
-                render: (_: unknown, l: OpeningLine) => partyName(l.partyId) ?? '—',
+                render: (_: unknown, l: JournalEntryLineDto) => partyName(l.partyId) ?? '—',
               },
               {
                 title: t('common.description'),

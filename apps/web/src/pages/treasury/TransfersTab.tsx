@@ -9,6 +9,8 @@ import {
   treasuryControllerCreateCashTransfer,
   treasuryControllerListCashTransfers,
   treasuryControllerReverseCashTransfer,
+  type CashTransferListItemDto,
+  type TreasuryControllerListCashTransfersSort,
 } from '@erp/api-client';
 import { EnterNav } from '../../components/EnterNav';
 import { FormDialog, FormSection } from '../../components/FormDialog';
@@ -16,22 +18,13 @@ import { GridSelect } from '../../components/GridSelect';
 import { ListToolbar } from '../../components/ListToolbar';
 import { tableLocale } from '../../components/QueryState';
 import { ReverseButton } from '../../components/ReverseButton';
-import { usePagedQuery, type Page } from '../../hooks/usePagedQuery';
+import { usePagedQuery } from '../../hooks/usePagedQuery';
 import { amountCell } from '../../format/cells';
 import { dec } from '../../format/number';
 import { codeAndName } from '../../i18n/displayName';
 import { idemHeaders } from '../../idempotency';
 
-interface Transfer {
-  id: string;
-  transferNo: string | null;
-  transferDate: string;
-  amount: string;
-  description: string | null;
-  reversedAt: string | null;
-  fromAccount: { code: string; nameAr: string; nameEn: string | null };
-  toAccount: { code: string; nameAr: string; nameEn: string | null };
-}
+type Transfer = CashTransferListItemDto;
 
 /** Phase 6: money moved between cash boxes and bank accounts. */
 export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; label: string }[] }) {
@@ -41,14 +34,11 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
   const [open, setOpen] = useState(false);
 
   // Server-paged (ADR-022): search (transfer number, accounts, description), sort and page go to the API.
-  const list = usePagedQuery<Transfer, Record<string, string | undefined>>({
+  const list = usePagedQuery<Transfer, Record<string, string | undefined>, TreasuryControllerListCashTransfersSort>({
     key: ['cash-transfers', 'list'],
     filters: {},
     defaultSort: '-transferDate',
-    fetch: (params, signal) =>
-      treasuryControllerListCashTransfers(params as Parameters<typeof treasuryControllerListCashTransfers>[0], {
-        signal,
-      }).then((r) => r.data as unknown as Page<Transfer>),
+    fetch: (params, signal) => treasuryControllerListCashTransfers(params, { signal }).then((r) => r.data),
   });
   const listQuery = list.query;
 

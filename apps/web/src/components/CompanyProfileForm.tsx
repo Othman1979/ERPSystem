@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
+  type CompanyDto,
   companyControllerGet,
   companyControllerLogo,
   companyControllerRemoveLogo,
@@ -12,31 +13,18 @@ import {
   companyControllerUploadLogo,
 } from '@erp/api-client';
 
-export interface CompanyProfile {
-  id: string;
-  legalNameAr: string;
-  legalNameEn: string | null;
-  taxNumber: string | null;
-  commercialRegistration: string | null;
-  address: string | null;
-  phone: string | null;
-  pricesIncludeTax: boolean;
-  onboardingCompletedAt: string | null;
-  logo: { id: string; fileName: string; mimeType: string } | null;
-}
-
 /** The tenant's company profile (one query shared by the wizard, settings and home). */
 export function useCompany() {
   return useQuery({
     queryKey: ['company'],
-    queryFn: ({ signal }) => companyControllerGet({ signal }).then((r) => r.data as unknown as CompanyProfile),
+    queryFn: ({ signal }) => companyControllerGet({ signal }).then((r) => r.data),
   });
 }
 
 const LOGO_MAX_BYTES = 1024 * 1024;
 
 type FormValues = Pick<
-  CompanyProfile,
+  CompanyDto,
   'legalNameAr' | 'legalNameEn' | 'taxNumber' | 'commercialRegistration' | 'address' | 'phone' | 'pricesIncludeTax'
 >;
 
@@ -62,10 +50,7 @@ export function CompanyProfileForm({
   const logo = useQuery({
     queryKey: ['company-logo', company.data?.logo?.id],
     queryFn: ({ signal }) =>
-      companyControllerLogo({ signal }).then((r) => {
-        const d = r.data as unknown as { mimeType: string; base64: string };
-        return `data:${d.mimeType};base64,${d.base64}`;
-      }),
+      companyControllerLogo({ signal }).then((r) => `data:${r.data.mimeType};base64,${r.data.base64}`),
     enabled: !!company.data?.logo,
   });
 
@@ -78,7 +63,7 @@ export function CompanyProfileForm({
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['company'] });
 
   const save = useMutation({
-    mutationFn: (v: FormValues) => companyControllerUpdate(v as never),
+    mutationFn: (v: FormValues) => companyControllerUpdate(v),
     onSuccess: () => {
       message.success(t('common.saved'));
       refresh();
@@ -87,7 +72,7 @@ export function CompanyProfileForm({
     onError,
   });
   const upload = useMutation({
-    mutationFn: (file: File) => companyControllerUploadLogo({ file } as never),
+    mutationFn: (file: File) => companyControllerUploadLogo({ file }),
     onSuccess: () => {
       message.success(t('company.logoSaved'));
       refresh();
