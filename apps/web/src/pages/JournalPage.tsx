@@ -7,6 +7,7 @@ import {
   SwapOutlined,
 } from '@ant-design/icons';
 import {
+  Alert,
   App,
   Button,
   Card,
@@ -25,12 +26,14 @@ import {
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
   emptyLine,
   JournalLinesGrid,
   partyFields,
   type JournalLineDraft,
 } from '../components/JournalLinesGrid';
+import { firstLineProblem, type LineProblem } from '../components/journalLineChecks';
 import { usePartyColumn } from '../components/usePartyColumn';
 import { selectPostable, useAccounts } from '../hooks/useAccounts';
 import {
@@ -58,7 +61,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
-import { tableLocale } from '../components/QueryState';
+import { queryErrorMessage, tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
@@ -74,6 +77,14 @@ type FilledLine = JournalLineDraft & { accountId: string };
 
 function filledLines(lines: JournalLineDraft[]): FilledLine[] {
   return lines.filter((l): l is FilledLine => !!l.accountId);
+}
+
+/** The message for a row the check before saving refused (journalLineChecks). */
+function lineProblemText(t: TFunction, p: LineProblem): string {
+  if (p.rule === 'ONE_SIDE') return t('journal.oneSide', { line: p.line });
+  if (p.need === 'CUSTOMER') return t('journal.partyRequiredCustomer', { line: p.line });
+  if (p.need === 'SUPPLIER') return t('journal.partyRequiredSupplier', { line: p.line });
+  return t('journal.partyRequired', { line: p.line });
 }
 
 /** Only manual entries reverse here; document entries reverse through their document. */
@@ -116,6 +127,8 @@ export function JournalPage() {
   const [newVoucherType, setNewVoucherType] = useState<VoucherType>('JOURNAL');
   const [newDescription, setNewDescription] = useState('');
   const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
+  // Row whose party cell is marked empty after the check before saving.
+  const [missingParty, setMissingParty] = useState<number | null>(null);
   const [gridFocus, setGridFocus] = useState(0);
 
   // Server-paged (ADR-022): search (entry number, description), filters, sort and page go to the API.
@@ -142,7 +155,7 @@ export function JournalPage() {
   });
 
   // The picker and labels follow the lines on screen: the draft's, or a saved entry's.
-  const { partyColumn, partyName } = usePartyColumn(accounts, {
+  const { partyColumn, partyName, rules: partyRules } = usePartyColumn(accounts, {
     shownPartyIds: entryId ? (detail?.lines ?? []).map((l) => l.partyId) : lines.map((l) => l.partyId),
     enabled: screen === 'entry' && !entryId,
   });
@@ -151,12 +164,15 @@ export function JournalPage() {
     void queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
     void queryClient.invalidateQueries({ queryKey: ['journal-entry'] });
   };
-  const onError = (err: unknown) =>
-    apiMessage.error(
-      err instanceof ApiError
-        ? t(`errors.${err.code}`, { defaultValue: err.message })
-        : t('errors.INTERNAL'),
-    );
+  // The API names the refused line in `details.line` (PostingService.validateLines,
+  // the party checks): say which one. `rowOf` maps it to the row on screen.
+  const errorText = (err: unknown, rowOf?: (line: number) => number | undefined): string => {
+    if (!(err instanceof ApiError)) return t('errors.INTERNAL');
+    const text = t(`errors.${err.code}`, { defaultValue: err.message });
+    const line = err.details?.line;
+    return typeof line === 'number' ? t('journal.lineError', { line: rowOf?.(line) ?? line, error: text }) : text;
+  };
+  const onError = (err: unknown) => apiMessage.error(errorText(err));
 
   const openNew = (voucherType: VoucherType = 'JOURNAL') => {
     setEntryId(null);
@@ -164,6 +180,7 @@ export function JournalPage() {
     setNewVoucherType(voucherType);
     setNewDescription('');
     setLines([emptyLine(1), emptyLine(2)]);
+    setMissingParty(null);
     setGridFocus((g) => g + 1);
     setScreen('entry');
   };
@@ -198,20 +215,29 @@ export function JournalPage() {
       invalidate();
       setEntryId(res.data.id);
     },
-    onError,
+    // The API counts only the rows sent (those with an account); name the row on screen.
+    onError: (err) =>
+      apiMessage.error(
+        errorText(err, (line) => {
+          const sent = filledLines(lines)[line - 1];
+          return sent ? lines.indexOf(sent) + 1 : undefined;
+        }),
+      ),
   });
 
   const saveNew = () => {
+    // The check below is incomplete until the account mappings load (Ctrl+S too).
+    if (!partyRules.ready) return;
     const filled = filledLines(lines);
     if (filled.length < 2) {
       apiMessage.error(t('journal.minLines'));
       return;
     }
-    const noParty = filled.findIndex(
-      (l) => partyColumn.kindByAccount.has(l.accountId) && !l.partyId,
-    );
-    if (noParty >= 0) {
-      apiMessage.error(t('journal.partyRequired', { line: lines.indexOf(filled[noParty]) + 1 }));
+    // A saved draft cannot be edited: catch the rows the API would refuse to post now.
+    const problem = firstLineProblem(lines, partyColumn.kindByAccount, partyColumn.sideOf);
+    setMissingParty(problem?.rule === 'PARTY_REQUIRED' ? lines[problem.index].key : null);
+    if (problem) {
+      apiMessage.error(lineProblemText(t, problem));
       return;
     }
     createDraft.mutate();
@@ -223,7 +249,13 @@ export function JournalPage() {
       apiMessage.success(t('journal.posted'));
       invalidate();
     },
-    onError,
+    // A refused line of a saved draft can only be fixed by entering the entry again.
+    onError: (err) =>
+      apiMessage.error(
+        err instanceof ApiError && typeof err.details?.line === 'number'
+          ? `${errorText(err)} ${t('journal.fixDraftHint')}`
+          : errorText(err),
+      ),
   });
 
   const reverseEntry = useMutation({
@@ -437,6 +469,7 @@ export function JournalPage() {
               type="primary"
               icon={<SaveOutlined />}
               loading={createDraft.isPending}
+              disabled={!partyRules.ready}
               onClick={saveNew}
             >
               {t('journal.saveDraft')}
@@ -538,6 +571,25 @@ export function JournalPage() {
           </DocFields>
         )}
 
+        {isNew && !partyRules.ready && (
+          // Saving waits for the account mappings: without them a legacy
+          // control account would pass the check and fail at posting.
+          <Alert
+            className="doc-section"
+            role={partyRules.failed ? 'alert' : 'status'}
+            type={partyRules.failed ? 'error' : 'info'}
+            showIcon
+            message={partyRules.failed ? t('journal.rulesFailed') : t('journal.rulesLoading')}
+            description={partyRules.failed ? queryErrorMessage(partyRules.error, t) : undefined}
+            action={
+              partyRules.failed && (
+                <Button size="small" loading={partyRules.retrying} onClick={partyRules.retry}>
+                  {t('common.retry')}
+                </Button>
+              )
+            }
+          />
+        )}
         {isNew ? (
           <JournalLinesGrid
             lines={lines}
@@ -545,6 +597,7 @@ export function JournalPage() {
             accountOptions={accountOptions}
             focusSignal={gridFocus}
             partyColumn={partyColumn}
+            missingParty={missingParty}
           />
         ) : detailLoading ? (
           <div className="doc-section">{t('common.loading')}</div>
