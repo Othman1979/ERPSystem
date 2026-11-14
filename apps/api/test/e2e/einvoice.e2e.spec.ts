@@ -20,7 +20,7 @@
  */
 import 'dotenv/config';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import http, { type Server } from 'node:http';
 import net, { type AddressInfo } from 'node:net';
@@ -54,7 +54,9 @@ const logs: string[] = [];
 
 /** What the "JoFotara" side saw: one entry per request, by document UUID. */
 const seen: string[] = [];
-let mode: 'forward' | 'hang' | 'duplicate' = 'forward';
+let mode: 'forward' | 'hang' | 'duplicate' | 'slow' = 'forward';
+/** In 'slow' mode an answer takes this long: a send stays SENDING for that long. */
+const SLOW_ANSWER_MS = 150;
 
 const api = (port = API_PORT) => request(`http://127.0.0.1:${port}`);
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -87,7 +89,7 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-function startApi(port: number, worker: 'on' | 'off'): ChildProcess {
+function startApi(port: number, worker: 'on' | 'off', workerIntervalMs = WORKER_INTERVAL_MS): ChildProcess {
   const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
   const child = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
@@ -98,7 +100,7 @@ function startApi(port: number, worker: 'on' | 'off'): ChildProcess {
       NODE_ENV: 'test',
       EINVOICE_ENC_KEY: ENC_KEY,
       EINVOICE_WORKER: worker,
-      EINVOICE_WORKER_INTERVAL_MS: String(WORKER_INTERVAL_MS),
+      EINVOICE_WORKER_INTERVAL_MS: String(workerIntervalMs),
       EINVOICE_HTTP_TIMEOUT_MS: String(HTTP_TIMEOUT_MS),
       // The unreachable case uses a .invalid host; anything else must be loopback.
       EINVOICE_SANDBOX_HOSTS: 'jofotara-down.invalid',
@@ -138,6 +140,23 @@ async function runSendJob(): Promise<{ runs: number; claimed: number }> {
   }
 }
 
+/** A connection of the test's own, for playing a worker that is in the middle of a write. */
+async function newConnection(): Promise<Connection> {
+  const url = new URL(process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1'));
+  return mariadb.createConnection({
+    host: url.hostname,
+    port: url.port ? Number(url.port) : 3306,
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: 'erp_test',
+  });
+}
+
+async function count(sql: string, params: unknown[]): Promise<number> {
+  const [row] = (await db.query(sql, params)) as { n: bigint | number }[];
+  return Number(row.n);
+}
+
 async function waitForHealth(port: number, timeoutMs = 30_000): Promise<void> {
   await waitFor(
     async () => {
@@ -170,6 +189,7 @@ function startProxy(target: string): Promise<Server> {
     const body = Buffer.concat(chunks).toString('utf8');
     seen.push(uuidOf(body));
     if (mode === 'hang') return; // never answers: the client times out → unknown
+    if (mode === 'slow') await sleep(SLOW_ANSWER_MS);
     const forward = () =>
       fetch(`${target}${req.url}`, {
         method: req.method,
@@ -599,6 +619,37 @@ describe('Phase 7 — JoFotara', () => {
     expect(new Set(icvs).size).toBe(icvs.length);
   }); // boots a second API process inside the test (default timeout: 90 s)
 
+  /**
+   * A smoke test for the claim and the recovery under load, not a reproduction (that is the test after
+   * the Cron one): answers are slow, so many rows are SENDING at any moment, and a second process ticks
+   * every 100 ms (the smallest the API allows) while the first finishes sends. Every document must end
+   * ACCEPTED, with one attempt.
+   */
+  slow('two busy workers: every document ends ACCEPTED, with one attempt', async () => {
+    api2 = startApi(API2_PORT, 'on', 100);
+    await waitForHealth(API2_PORT);
+    mode = 'slow';
+    try {
+      const ids: string[] = [];
+      for (let round = 0; round < 6; round++) {
+        const drafts = await Promise.all([1, 2, 3, 4].map((q) => draftInvoice('TN', String(q))));
+        const posted = await Promise.all(drafts.map((d) => post('sales-invoices', d.id)));
+        expect(posted.map((p) => p.status)).toEqual([201, 201, 201, 201]);
+        for (const d of drafts) ids.push((await waitFor(() => submissionOf('SALES_INVOICE', d.id)))!);
+      }
+      const done = await Promise.all(ids.map((id) => settled(id)));
+      expect(done.map((s) => s.status)).toEqual(Array(ids.length).fill('ACCEPTED'));
+      for (const s of done) expect(seen.filter((u) => u === s.uuid)).toHaveLength(1);
+      const state = await outboxState(ids);
+      expect(state.map((r) => [r.status, r.attemptCount, r.attempts])).toEqual(Array(ids.length).fill(['ACCEPTED', 1, 1]));
+    } finally {
+      mode = 'forward';
+      api2.kill('SIGTERM');
+      await once(api2, 'exit').catch(() => undefined);
+      api2 = undefined;
+    }
+  });
+
   slow('parallel postings each draw their own ICV', async () => {
     const drafts = await Promise.all([1, 2, 3, 4, 5].map((q) => draftInvoice('TN', String(q))));
     const posted = await Promise.all(drafts.map((d) => post('sales-invoices', d.id)));
@@ -725,6 +776,75 @@ describe('Phase 7 — JoFotara', () => {
     expect(await outboxState(ids)).toEqual(sent);
     for (const s of done) expect(seen.filter((u) => u === s.uuid)).toHaveLength(1);
   }, 120_000);
+
+  /**
+   * The deadlock found while repeating this suite, made to happen. A worker's tick used to run
+   * `UPDATE ... WHERE status = 'SENDING' AND claimed_at < ...` (the stuck-row recovery), which scanned, and
+   * so locked, every SENDING row, among them one another worker is finishing. The finish locks the primary
+   * record first and the index entries after; the scan took the index entries first and then wanted the
+   * record: a cycle. InnoDB rolled one of them back, and when that was the write recording JoFotara's
+   * answer the row stayed SENDING and ten minutes later became UNKNOWN, accepted or not.
+   *
+   * Here the finish is played by this test on a third connection, in its two halves: first the record lock
+   * (SELECT ... FOR UPDATE), then, once two Cron runs are going, the update that records ACCEPTED. The
+   * runs must not wait for that row, and the update must go through: the row ends ACCEPTED, no run
+   * reports a failure, and it is never UNKNOWN. (With the old statements the runs queue on the row and
+   * the update deadlocks with them.)
+   */
+  slow('a finish under way is not locked by two Cron runs and their recovery: the row ends ACCEPTED', async () => {
+    const inv = await draftInvoice('TN', '1');
+    expect((await post('sales-invoices', inv.id)).status).toBe(201);
+    const id = (await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!;
+    // The test plays the first worker: it has claimed the row and is sending it.
+    const token = randomUUID();
+    await db.query(
+      "UPDATE einvoice_submissions SET status = 'SENDING', claim_token = ?, claimed_at = UTC_TIMESTAMP(3), sent_at = UTC_TIMESTAMP(3) WHERE tenant_id = ? AND id = ?",
+      [token, tenantId, id],
+    );
+
+    const finisher = await newConnection();
+    try {
+      await finisher.beginTransaction();
+      await finisher.query('SELECT id FROM einvoice_submissions WHERE tenant_id = ? AND id = ? FOR UPDATE', [tenantId, id]);
+
+      // The other workers: two Cron runs, each running the recovery and the claim.
+      let finished = false;
+      const runs = Promise.all([runSendJob(), runSendJob()]).finally(() => {
+        finished = true;
+      });
+      // Wait until the runs are done, or have stopped on the held row (a statement that has been
+      // running for a while on this table: the process list shows it).
+      await waitFor(
+        async () =>
+          finished ||
+          (await count(
+            `SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST
+              WHERE db = 'erp_test' AND id <> CONNECTION_ID() AND time_ms >= 300 AND info LIKE '%einvoice_submissions%'`,
+            [],
+          )) > 0,
+        45_000,
+        'the Cron runs to finish or to wait for the held row',
+      );
+
+      // The second half of the finish: record the answer, guarded by the claim token as the sender does.
+      const written = (await finisher.query(
+        "UPDATE einvoice_submissions SET status = 'ACCEPTED', claim_token = NULL, completed_at = UTC_TIMESTAMP(3), attempt_count = 1 WHERE tenant_id = ? AND id = ? AND claim_token = ?",
+        [tenantId, id, token],
+      )) as { affectedRows: number };
+      expect(written.affectedRows).toBe(1);
+      await finisher.commit();
+      await runs; // a run that failed would throw here
+    } finally {
+      await finisher.rollback().catch(() => undefined);
+      await finisher.end().catch(() => undefined);
+    }
+
+    expect(logs.join('')).not.toMatch(/run failed|deadlock/i);
+    const [row] = (await db.query('SELECT status FROM einvoice_submissions WHERE tenant_id = ? AND id = ?', [tenantId, id])) as {
+      status: string;
+    }[];
+    expect(row.status).toBe('ACCEPTED');
+  });
 
   slow('the secret never reached the logs', async () => {
     expect(logs.join('')).not.toContain(SECRET);

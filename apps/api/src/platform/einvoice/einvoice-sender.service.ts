@@ -6,6 +6,7 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { EInvoiceBuildError, EInvoiceDocumentsService } from './einvoice-documents.service.js';
+import { retryWrite } from './einvoice-retry.js';
 import { EInvoiceSettingsService } from './einvoice-settings.service.js';
 
 /** Automatic attempts while the server cannot be reached (BUILD_PLAN §12.2). */
@@ -70,14 +71,16 @@ export class EInvoiceSenderService {
     if (sub.originalSubmission && sub.originalSubmission.status !== 'ACCEPTED') {
       // Still on its way: look again soon. Stopped (rejected, unknown): look rarely.
       const moving = ['PENDING', 'SENDING', 'FAILED'].includes(sub.originalSubmission.status);
-      await db.eInvoiceSubmission.updateMany({
-        where: { id: sub.id, claimToken },
-        data: {
-          status: 'PENDING',
-          claimToken: null,
-          nextAttemptAt: new Date(Date.now() + (moving ? WAIT_FOR_ORIGINAL_MS : 10 * WAIT_FOR_ORIGINAL_MS)),
-        },
-      });
+      await retryWrite(() =>
+        db.eInvoiceSubmission.updateMany({
+          where: { id: sub.id, claimToken },
+          data: {
+            status: 'PENDING',
+            claimToken: null,
+            nextAttemptAt: new Date(Date.now() + (moving ? WAIT_FOR_ORIGINAL_MS : 10 * WAIT_FOR_ORIGINAL_MS)),
+          },
+        }),
+      );
       return;
     }
 
@@ -134,10 +137,12 @@ export class EInvoiceSenderService {
     const attemptNo = (await db.eInvoiceAttempt.count({ where: { submissionId: sub.id } })) + 1;
     const startedAt = new Date();
     // Saved BEFORE sending, and only while we still hold the claim: no claim, no send.
-    const owned = await db.eInvoiceSubmission.updateMany({
-      where: { id: sub.id, claimToken, status: 'SENDING' },
-      data: { requestXml: xml, sentAt: startedAt },
-    });
+    const owned = await retryWrite(() =>
+      db.eInvoiceSubmission.updateMany({
+        where: { id: sub.id, claimToken, status: 'SENDING' },
+        data: { requestXml: xml, sentAt: startedAt },
+      }),
+    );
     if (owned.count === 0) return;
 
     const client = createClient({
@@ -156,19 +161,22 @@ export class EInvoiceSenderService {
     }
     const finishedAt = new Date();
 
-    await db.eInvoiceAttempt.create({
-      data: {
-        tenantId: sub.tenantId,
-        submissionId: sub.id,
-        attemptNo,
-        outcome: outcome.status,
-        httpStatus: 'httpStatus' in outcome ? (outcome.httpStatus ?? null) : null,
-        responseBody: 'raw' in outcome ? (outcome.raw ?? null) : null,
-        message: summary(outcome).slice(0, 1000),
-        startedAt,
-        finishedAt,
-      },
-    });
+    // JoFotara has answered: from here on, the answer is recorded even if a write loses a deadlock.
+    await retryWrite(() =>
+      db.eInvoiceAttempt.create({
+        data: {
+          tenantId: sub.tenantId,
+          submissionId: sub.id,
+          attemptNo,
+          outcome: outcome.status,
+          httpStatus: 'httpStatus' in outcome ? (outcome.httpStatus ?? null) : null,
+          responseBody: 'raw' in outcome ? (outcome.raw ?? null) : null,
+          message: summary(outcome).slice(0, 1000),
+          startedAt,
+          finishedAt,
+        },
+      }),
+    );
     // Logged without the request, headers or credentials.
     this.log.log(`${sub.documentType} ${sub.documentNo} (icv ${sub.icv}): ${outcome.status}`);
 
@@ -229,17 +237,21 @@ export class EInvoiceSenderService {
     data: FinishData,
   ): Promise<void> {
     const { errors, reuseXml, ...rest } = data;
-    await db.eInvoiceSubmission.updateMany({
-      where: { id, claimToken },
-      data: {
-        ...rest,
-        attemptCount,
-        errors: errors === undefined ? undefined : errors === null ? ([] as Prisma.InputJsonValue) : errors,
-        claimToken: null,
-        ...(reuseXml === undefined ? {} : { reuseXml }),
-        completedAt: data.status === 'FAILED' ? null : new Date(),
-      },
-    });
+    // Retried when it loses a deadlock to the other worker's claim or recovery: a lost answer would
+    // leave the row SENDING until the stuck-row rule turns it UNKNOWN, accepted or not.
+    await retryWrite(() =>
+      db.eInvoiceSubmission.updateMany({
+        where: { id, claimToken },
+        data: {
+          ...rest,
+          attemptCount,
+          errors: errors === undefined ? undefined : errors === null ? ([] as Prisma.InputJsonValue) : errors,
+          claimToken: null,
+          ...(reuseXml === undefined ? {} : { reuseXml }),
+          completedAt: data.status === 'FAILED' ? null : new Date(),
+        },
+      }),
+    );
   }
 }
 
