@@ -28,8 +28,8 @@ const positive = (q: string | undefined) => {
 /**
  * The body of POST /purchase-returns. The goods leave from the original
  * invoice's warehouse (owner, ADR-016 §5): the form has no picker and sends
- * the invoice's. An invoice with no warehouse (services only) sends none, and
- * the API answers with its own, translated, RETURN_WAREHOUSE_REQUIRED.
+ * the invoice's. An invoice with no warehouse (services only) sends none: its
+ * return has none either and moves no stock (owner, 2026-11-14).
  */
 export function purchaseReturnBody(invoice: ReturnedInvoice, form: PurchaseReturnForm): CreatePurchaseReturnDto {
   const body: CreatePurchaseReturnDto = {

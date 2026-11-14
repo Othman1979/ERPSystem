@@ -1585,7 +1585,7 @@ model PurchaseReturn {
   returnDate        DateTime            @map("return_date") @db.Date
   originalInvoiceId BigInt              @map("original_invoice_id") @db.UnsignedBigInt
   supplierId        BigInt              @map("supplier_id") @db.UnsignedBigInt
-  warehouseId       BigInt              @map("warehouse_id") @db.UnsignedBigInt
+  warehouseId       BigInt?             @map("warehouse_id") @db.UnsignedBigInt // NULL: service-only invoice (ADR-016 §5)
   refundType        InvoicePaymentType  @map("refund_type")
   cashAccountId     BigInt?             @map("cash_account_id") @db.UnsignedBigInt
   reason            String?             @db.VarChar(500)
@@ -1605,7 +1605,7 @@ model PurchaseReturn {
   company         Company               @relation(fields: [tenantId, companyId], references: [tenantId, id])
   originalInvoice PurchaseInvoice       @relation(fields: [tenantId, originalInvoiceId], references: [tenantId, id])
   supplier        Party                 @relation(fields: [tenantId, supplierId], references: [tenantId, id])
-  warehouse       Warehouse             @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  warehouse       Warehouse?            @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
   cashAccount     Account?              @relation("PurchaseReturnCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
   journalEntry    JournalEntry?         @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   lines           PurchaseReturnLine[]

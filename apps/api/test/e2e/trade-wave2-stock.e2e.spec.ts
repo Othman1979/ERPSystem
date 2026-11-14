@@ -375,18 +375,6 @@ describe('Trade review fixes — stock and documents', () => {
     const [{ wh }] = (await db.query('SELECT warehouse_id AS wh FROM purchase_returns WHERE tenant_id = ? AND id = ?', [tenantId, defaulted.id])) as { wh: bigint }[];
     expect(String(wh)).toBe(W1);
 
-    // A services-only invoice has no warehouse: the form sends none, and the API says why it cannot record the return.
-    const svc = await item('SVC', { itemKind: 'SERVICE' });
-    const svcInv = await createAndPost('purchase-invoices', {
-      invoiceDate: '2025-01-08', supplierId, paymentType: 'CREDIT', lines: [{ itemId: svc, qty: '1', unitCost: '10' }],
-    });
-    const svcInvoice = (await api().get(`/api/v1/purchase-invoices/${svcInv.id}`).set(auth(token))).body as typeof invoice;
-    expect(svcInvoice.warehouseId).toBeNull();
-    const svcBody = web.purchaseReturnBody(svcInvoice, { returnDate: '2025-01-09', refundType: 'CREDIT', qtyByLine: { [svcInvoice.lines[0].id]: '1' } });
-    const required = await api().post('/api/v1/purchase-returns').set(auth(token)).send(svcBody);
-    expect(required.status).toBe(400);
-    expect(required.body.error.code).toBe('RETURN_WAREHOUSE_REQUIRED');
-
     // Tenant B: A's invoice is not found, with B's own warehouse or with A's.
     const WB = (await api().post('/api/v1/warehouses').set(auth(tokenB)).send({ code: 'WB', nameAr: 'WB' })).body.id as string;
     const withOwn = await api().post('/api/v1/purchase-returns').set(auth(tokenB)).send({ ...formBody('1'), warehouseId: WB });
@@ -394,6 +382,63 @@ describe('Trade review fixes — stock and documents', () => {
     const withA = await api().post('/api/v1/purchase-returns').set(auth(tokenB)).send(formBody('1'));
     expect(withA.status).toBe(404);
     expect(await returnsOf()).toBe(2n);
+    await assertConsistent();
+  });
+
+  it('ADR-016 §5 (owner 2026-11-14): a service-only invoice is returned with no warehouse, financial side only', async () => {
+    const web = await webPayloads();
+    const svc = await item('SVC', { itemKind: 'SERVICE' });
+    const svcInv = await createAndPost('purchase-invoices', {
+      invoiceDate: '2025-01-08', supplierId, paymentType: 'CREDIT', lines: [{ itemId: svc, qty: '2', unitCost: '10' }],
+    });
+    const svcInvoice = (await api().get(`/api/v1/purchase-invoices/${svcInv.id}`).set(auth(token))).body as {
+      id: string;
+      warehouseId: string | null;
+      lines: { id: string }[];
+    };
+    expect(svcInvoice.warehouseId).toBeNull();
+    // The return form's own body sends no warehouse for it.
+    const svcBody = (qty: string) =>
+      web.purchaseReturnBody(svcInvoice, { returnDate: '2025-01-09', refundType: 'CREDIT', qtyByLine: { [svcInvoice.lines[0].id]: qty } });
+    expect(svcBody('1').warehouseId).toBeUndefined();
+
+    // Naming a warehouse for it is refused: the return has none, as its invoice.
+    const named = await api().post('/api/v1/purchase-returns').set(auth(token)).send({ ...svcBody('1'), warehouseId: W1 });
+    expect(named.status).toBe(400);
+    expect(named.body.error.code).toBe('RETURN_WAREHOUSE_MISMATCH');
+    expect(named.body.error.details).toEqual({ warehouseId: W1, invoiceWarehouseId: null });
+
+    const draft = await create('purchase-returns', svcBody('1'));
+    const got = await api().get(`/api/v1/purchase-returns/${draft.id}`).set(auth(token));
+    expect(got.status).toBe(200);
+    expect(got.body.warehouseId).toBeNull();
+    expect(got.body.warehouse).toBeNull();
+
+    // Tenant B: neither sees nor posts A's return.
+    expect((await api().get(`/api/v1/purchase-returns/${draft.id}`).set(auth(tokenB))).status).toBe(404);
+    const crossPost = await api().post(`/api/v1/purchase-returns/${draft.id}/post`).set(auth(tokenB)).set('Idempotency-Key', key());
+    expect(crossPost.status).toBe(404);
+
+    const suppliersBefore = await balance(await mappedCode('SUPPLIERS_CONTROL'));
+    const purchasesBefore = await balance(await mappedCode('PURCHASES'));
+    const posted = await post('purchase-returns', draft.id);
+    expect(posted.status).toBe(201);
+    expect(posted.body.status).toBe('POSTED');
+
+    // No stock movement; a balanced entry: supplier debited, purchases (and input tax) credited.
+    const [{ n }] = (await db.query(
+      "SELECT COUNT(*) AS n FROM stock_movements WHERE tenant_id = ? AND source_type = 'PURCHASE_RETURN' AND source_id = ?",
+      [tenantId, draft.id],
+    )) as { n: bigint }[];
+    expect(n).toBe(0n);
+    const [je] = (await db.query(
+      'SELECT SUM(debit) AS d, SUM(credit) AS c FROM journal_lines WHERE tenant_id = ? AND journal_entry_id = ?',
+      [tenantId, posted.body.journalEntryId],
+    )) as { d: string; c: string }[];
+    expect(m3(je.d)).toBe(m3(je.c));
+    expect(m3(je.d)).toBe(m3(posted.body.grandTotal));
+    expect(await balance(await mappedCode('SUPPLIERS_CONTROL'))).toBe(m3(new Decimal(suppliersBefore).plus(posted.body.grandTotal)));
+    expect(await balance(await mappedCode('PURCHASES'))).toBe(m3(new Decimal(purchasesBefore).minus(posted.body.netTotal)));
     await assertConsistent();
   });
 

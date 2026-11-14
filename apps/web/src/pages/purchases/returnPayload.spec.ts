@@ -27,7 +27,7 @@ describe('purchase return body (ADR-016 §5)', () => {
     expect(purchaseReturnBody(invoice, { ...form, refundType: 'CASH' }).cashAccountId).toBe('77');
   });
 
-  it('sends no warehouse for an invoice without one, so the API answers RETURN_WAREHOUSE_REQUIRED', () => {
+  it('sends no warehouse for an invoice without one (a service-only return has none)', () => {
     const body = JSON.parse(JSON.stringify(purchaseReturnBody({ ...invoice, warehouseId: null }, form))) as Record<string, unknown>;
     expect(body).not.toHaveProperty('warehouseId');
   });
