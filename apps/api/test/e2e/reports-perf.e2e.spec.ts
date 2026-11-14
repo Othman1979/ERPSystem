@@ -10,6 +10,7 @@
  * checked against them (and tenant B's rows never count).
  * Measured times are printed and copied into docs/phase-reports/phase-8.md.
  * Real MariaDB (erp_test) + built API. Run `pnpm build` before `pnpm test`.
+ * Aging (DB-14): 32,500 credit invoices; 12,000 are settled by a receipt dated after the date, so they are re-read in chunks; 500 dated after the date never count.
  */
 import 'dotenv/config';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -26,7 +27,7 @@ const ENTRIES_A = 50_000;
 const ENTRIES_B = 500;
 
 /** Budgets in ms (BUILD_PLAN §17 phase 8). */
-const BUDGET = { statementJson: 2_000, ledgerJson: 2_000, ledgerXlsx: 15_000, statementPdf: 10_000 };
+const BUDGET = { statementJson: 2_000, ledgerJson: 2_000, ledgerXlsx: 15_000, statementPdf: 10_000, agingJson: 2_000 };
 
 let server: ChildProcess;
 let db: Connection;
@@ -195,12 +196,13 @@ const perf = process.env.RUN_PERF === '1' ? describe : describe.skip;
 
 perf('Reports on 100,000 journal lines', () => {
   let A: Tenant;
+  let B: Tenant;
   let expected: Map<string, { dr: bigint; cr: bigint }>;
   let busiest = { id: 0n, code: '' };
 
   it('seeds tenant A with 100k lines and tenant B with 1k', async () => {
     A = await register(`PERF ${RUN}`);
-    const B = await register(`PERF B ${RUN}`);
+    B = await register(`PERF B ${RUN}`);
     expected = await seed(A, ENTRIES_A, 1);
     await seed(B, ENTRIES_B, 2);
     const [{ n }] = (await db.query('SELECT COUNT(*) AS n FROM journal_lines WHERE tenant_id = ?', [A.tenantId])) as { n: bigint }[];
@@ -266,4 +268,124 @@ perf('Reports on 100,000 journal lines', () => {
     expect((pdf.body as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');
     expect(timings.trialBalancePdf).toBeLessThan(BUDGET.statementPdf);
   }, 60_000);
+
+  it('aging (JSON) over 32,500 credit invoices, 12,000 settled after the date, within budget', async () => {
+    const AGING_INVOICES = 20_000; // first set: 19,900 settled, 100 owe 6.000
+    const AGING_SETTLED = 19_900;
+    const LATE_SETTLED = 12_000; // settled now by a receipt dated after asOf
+    const AFTER_DATE = 500; // dated after asOf: never counted
+    const CHUNK = 1_000;
+    const now = new Date();
+
+    // Customer and warehouse for tenant A (company from the seeding test).
+    await db.query(
+      `INSERT INTO parties (tenant_id, company_id, code, name_ar, party_type, national_id_kind, is_cash_customer, is_active, created_at, updated_at)
+       VALUES (?, ?, 'AGE-C', 'Aging customer', 'CUSTOMER', 'NIN', 0, 1, NOW(3), NOW(3))`,
+      [A.tenantId, A.companyId],
+    );
+    await db.query(
+      `INSERT INTO warehouses (tenant_id, company_id, code, name_ar, is_active, created_at, updated_at)
+       VALUES (?, ?, 'AGE-W', 'Aging warehouse', 1, NOW(3), NOW(3))`,
+      [A.tenantId, A.companyId],
+    );
+    const [customer] = (await db.query(`SELECT id FROM parties WHERE tenant_id = ? AND code = 'AGE-C'`, [A.tenantId])) as {
+      id: bigint;
+    }[];
+    const [warehouse] = (await db.query(`SELECT id FROM warehouses WHERE tenant_id = ? AND code = 'AGE-W'`, [A.tenantId])) as {
+      id: bigint;
+    }[];
+
+    // Multi-row INSERTs of POSTED credit invoices (10.000 each, no journal lines).
+    const insertInvoices = async (prefix: string, count: number, dateOf: (n: number) => string, paidOf: (n: number) => string) => {
+      for (let start = 0; start < count; start += CHUNK) {
+        const rows: string[] = [];
+        const params: unknown[] = [];
+        for (let n = start; n < Math.min(start + CHUNK, count); n++) {
+          const day = dateOf(n);
+          rows.push('(?,?,?,?,DATE_ADD(?, INTERVAL 30 DAY),?,?,?,?,?,?,?,?,?,?)');
+          params.push(
+            A.tenantId,
+            A.companyId,
+            `${prefix}${n + 1}`,
+            day,
+            day,
+            customer.id,
+            warehouse.id,
+            'CREDIT',
+            'POSTED',
+            '10.000',
+            '0.000',
+            '10.000',
+            paidOf(n),
+            now,
+            now,
+          );
+        }
+        await db.query(
+          `INSERT INTO sales_invoices (tenant_id, company_id, invoice_no, invoice_date, due_date, customer_id, warehouse_id,
+             payment_type, status, net_total, tax_total, grand_total, paid_amount, created_at, updated_at)
+           VALUES ${rows.join(',')}`,
+          params,
+        );
+      }
+    };
+
+    // Invoice n (0-based) of the 2025 sets is dated 2025-01-01 + (n % 350) days.
+    const date2025 = (n: number) => new Date(Date.UTC(2025, 0, 1 + (n % 350))).toISOString().slice(0, 10);
+
+    // 1) 20,000 invoices: the first 19,900 are fully paid; the last 100 owe 6.000 each.
+    await insertInvoices('AGE-', AGING_INVOICES, date2025, (n) => (n < AGING_SETTLED ? '10.000' : '4.000'));
+    // 2) 12,000 invoices settled now, but by a receipt dated after asOf (step 3).
+    await insertInvoices('AGE-L-', LATE_SETTLED, date2025, () => '10.000');
+    // 3) 500 invoices dated after asOf: never counted at 2025-12-31.
+    await insertInvoices('AGE-F-', AFTER_DATE, () => '2026-01-05', () => '10.000');
+
+    // Receipt dated after asOf (12,500 x 10.000 = 125,000.000).
+    const [cash] = (await db.query(`SELECT id FROM accounts WHERE tenant_id = ? AND company_id = ? LIMIT 1`, [
+      A.tenantId,
+      A.companyId,
+    ])) as { id: bigint }[];
+    await db.query(
+      `INSERT INTO receipts (tenant_id, company_id, receipt_no, receipt_date, party_type, party_id, cash_account_id, amount, status, created_at)
+       VALUES (?, ?, 'AGE-R1', '2026-01-10', 'CUSTOMER', ?, ?, '125000.000', 'POSTED', NOW(3))`,
+      [A.tenantId, A.companyId, customer.id, cash.id],
+    );
+    const [receipt] = (await db.query(`SELECT id FROM receipts WHERE tenant_id = ? AND receipt_no = 'AGE-R1'`, [A.tenantId])) as {
+      id: bigint;
+    }[];
+
+    // One active allocation per new invoice: 10.000 of the receipt against it.
+    const lateInvoices = (await db.query(
+      `SELECT id FROM sales_invoices WHERE tenant_id = ? AND (invoice_no LIKE 'AGE-L-%' OR invoice_no LIKE 'AGE-F-%')`,
+      [A.tenantId],
+    )) as { id: bigint }[];
+    expect(lateInvoices.length).toBe(LATE_SETTLED + AFTER_DATE);
+    for (let start = 0; start < lateInvoices.length; start += CHUNK) {
+      const part = lateInvoices.slice(start, start + CHUNK);
+      await db.query(
+        `INSERT INTO allocations (tenant_id, company_id, receipt_id, party_type, party_id, document_type, document_id, amount, created_at)
+         VALUES ${part.map(() => '(?,?,?,?,?,?,?,?,NOW(3))').join(',')}`,
+        part.flatMap((inv) => [A.tenantId, A.companyId, receipt.id, 'CUSTOMER', customer.id, 'SALES_INVOICE', inv.id, '10.000']),
+      );
+    }
+
+    const res = await timed('agingJson', () => api().get('/api/v1/reports/aging?partyType=CUSTOMER&asOf=2025-12-31').set(auth(A.token)));
+    expect(res.status).toBe(200);
+    expect(timings.agingJson).toBeLessThan(BUDGET.agingJson);
+
+    const rows = res.body.rows as Record<string, string>[];
+    const row = rows.find((r) => r.code === 'AGE-C');
+    expect(row).toBeDefined();
+    expect(row!.total).toBe('120600.000'); // 100 x 6.000 + 12,000 settled after the date x 10.000 (the 500 dated 2026 are excluded)
+    expect(row!.unapplied).toBe('-120600.000'); // no journal lines: the invoices' amount is unapplied
+    expect(row!.balance).toBe('0.000');
+    const buckets = ['notDue', 'd1_30', 'd31_60', 'd61_90', 'd90plus'] as const;
+    const bucketSum = buckets.reduce((s, b) => s + fils(row![b]), 0n);
+    expect(bucketSum).toBe(fils(row!.total));
+
+    // Tenant B never sees tenant A's customer.
+    const other = await api().get('/api/v1/reports/aging?partyType=CUSTOMER&asOf=2025-12-31').set(auth(B.token));
+    expect(other.status).toBe(200);
+    expect((other.body.rows as { code: string }[]).some((r) => r.code === 'AGE-C')).toBe(false);
+  }, 120_000);
 });

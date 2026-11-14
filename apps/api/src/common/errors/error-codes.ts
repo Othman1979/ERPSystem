@@ -76,5 +76,8 @@ export enum ErrorCode {
   // TRADE-07: a counted line's book balance changed since the count snapshot;
   // refresh the count, then approve again.
   STOCK_COUNT_STALE = 'STOCK_COUNT_STALE',
+  // DB-15 / ADR-021: a document now references the party, so it can't be
+  // deleted; deactivate it instead.
+  PARTY_IN_USE = 'PARTY_IN_USE',
   INTERNAL = 'INTERNAL',
 }

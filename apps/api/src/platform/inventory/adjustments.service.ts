@@ -327,19 +327,11 @@ export class AdjustmentsService {
         );
         let entryId: bigint | null = null;
         if (journalLines.length > 0) {
-          const entryNo = await this.posting.allocateEntryNo(
-            tx,
-            tenantId,
-            companyId,
-            'JOURNAL_ENTRY',
-            adjustmentDate,
-          );
           const entry = await this.posting.postEntry(tx, {
             tenantId,
             companyId,
             entryDate: adjustmentDate,
             fiscalPeriodId: period.id,
-            entryNo,
             sourceType: SOURCE,
             sourceId: draft.id,
             // Opening stock is part of the opening balances in reports (§8.6).
@@ -485,13 +477,11 @@ export class AdjustmentsService {
 
         let entryId: bigint | null = null;
         if (journalLines.length > 0) {
-          const entryNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, 'JOURNAL_ENTRY', reversalDate);
           const entry = await this.posting.postEntry(tx, {
             tenantId,
             companyId,
             entryDate: reversalDate,
             fiscalPeriodId: period.id,
-            entryNo,
             sourceType: SOURCE,
             sourceId: reversal.id,
             postingKind: 'REVERSAL',

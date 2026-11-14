@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../../common/cls/cls.types.js';
@@ -20,6 +20,7 @@ import {
   type JournalLineInput,
   type NormalizedLine,
 } from './posting.service.js';
+import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 
 const MANUAL_SOURCE = 'MANUAL_JOURNAL';
 const OPENING_SOURCE = 'OPENING_ENTRY';
@@ -35,25 +36,49 @@ function isRetryable(err: unknown): boolean {
  * opening-balance entry (docs/BUILD_PLAN.md §8.2, §8.3, §8.6).
  */
 @Injectable()
-export class JournalService {
+export class JournalService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly posting: PostingService,
     private readonly audit: AuditService,
     private readonly parties: PartiesService,
+    private readonly partyUsage: PartyUsageRegistry,
   ) {}
+
+  onModuleInit(): void {
+    this.partyUsage.register('journal', (tx, partyId) => this.partyInUse(tx, partyId));
+  }
+
+  /**
+   * DB-15 / ADR-021: the first journal table that references the party in
+   * any status (drafts included), or null, read on the caller's transaction.
+   * A party used here is deactivated, never deleted.
+   */
+  async partyInUse(tx: Prisma.TransactionClient, partyId: bigint): Promise<string | null> {
+    // journal_lines.party_id has no FK to parties: this check is the only guard.
+    const line = await tx.journalLine.findFirst({
+      where: { partyType: { in: ['CUSTOMER', 'SUPPLIER'] }, partyId },
+      select: { id: true },
+    });
+    return line ? 'journal_lines' : null;
+  }
 
   /**
    * Party ids typed by the user (manual and opening entries) must be parties
    * of this company, of the line's kind (a BOTH party fits either). Document
    * entries take their party from the document, so they skip this.
+   * Runs inside the transaction that inserts the lines: the parties are
+   * shared-locked until COMMIT, so a concurrent delete can't orphan a line
+   * (journal_lines.party_id has no FK; ADR-021).
    */
   private async assertParties(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
     lines: { partyType?: 'CUSTOMER' | 'SUPPLIER' | null; partyId?: string | null }[],
   ): Promise<void> {
     const ids = [...new Set(lines.filter((l) => l.partyId).map((l) => BigInt(l.partyId!)))];
     if (ids.length === 0) return;
-    const typeById = new Map((await this.parties.summaries(ids)).map((p) => [p.id, p.partyType]));
+    const typeById = await this.parties.lockForReference(tx, companyId, ids);
     lines.forEach((l, i) => {
       if (!l.partyId) return;
       const type = typeById.get(BigInt(l.partyId));
@@ -163,10 +188,10 @@ export class JournalService {
     const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
     const branchId = currentBranchId();
-    await this.assertParties(dto.lines);
     await this.assertAccountsExist(db, companyId, dto.lines);
 
     const entry = await db.$transaction(async (tx) => {
+      await this.assertParties(tx, companyId, dto.lines);
       const created = await tx.journalEntry.create({
         data: {
           tenantId,
@@ -404,11 +429,11 @@ export class JournalService {
     const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
     const userId = this.userId();
-    await this.assertParties(dto.lines);
     await this.assertAccountsExist(db, companyId, dto.lines);
 
     const result = await this.withRetry(() =>
       db.$transaction(async (tx) => {
+        await this.assertParties(tx, companyId, dto.lines);
         const entryDate = new Date(dto.entryDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, entryDate);
 

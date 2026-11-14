@@ -18,7 +18,6 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/common/audit/audit.service.ts': 'audit rows span tenants and platform events (tenant_id nullable)',
   'src/common/guards/auth.guard.ts': 'resolves the signed-in user before any tenant is known',
   'src/common/guards/tenant.guard.ts': "reads the user's membership and the tenant's status to set the tenant",
-  'src/common/plan-limits/plan-limits.service.ts': "reads the tenant's plan (platform tables)",
   'src/health/health.controller.ts': 'readiness probe: one platform row written and rolled back, no tenant data',
   'src/jobs/backup/backup.service.ts': 'whole-database backup (migrations list, server version)',
   'src/jobs/error-digest.service.ts': 'platform error table across tenants',

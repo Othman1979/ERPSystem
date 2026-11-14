@@ -340,6 +340,118 @@ describe('Ledger review — journal engine (erp_test)', () => {
     T,
   );
 
+  // DB-08 (shared sequence): invoice and receipt posts take their JV number at
+  // the end of the posting transaction, yet all three kinds draw from one
+  // gapless JV sequence under concurrency.
+  it(
+    'DB-08: concurrent sales-invoice, receipt and manual posts share one gapless JV sequence',
+    async () => {
+      const wh = await api().post('/api/v1/warehouses').set(auth(A.token)).send({ code: 'W1', nameAr: 'W1' });
+      expect(wh.status).toBe(201);
+      const warehouseId = bodyOf<{ id: string }>(wh).id;
+
+      const units = await api().get('/api/v1/units').set(auth(A.token));
+      expect(units.status).toBe(200);
+      const pcs = bodyOf<{ id: string; code: string }[]>(units).find((u) => u.code === 'PCS')!.id;
+
+      const svc = await api()
+        .post('/api/v1/items')
+        .set(auth(A.token))
+        .send({ code: 'SV1', nameAr: 'Service', baseUnitId: pcs, itemKind: 'SERVICE' });
+      expect(svc.status).toBe(201);
+      const itemId = bodyOf<{ id: string }>(svc).id;
+
+      // GET /accounts returns a tree; walk it the same way phase6 does.
+      const accounts = await api().get('/api/v1/accounts').set(auth(A.token));
+      expect(accounts.status).toBe(200);
+      const flat: { id: string; controlType?: string | null }[] = [];
+      const walk = (ns: { id: string; controlType?: string | null; children?: unknown[] }[]) => {
+        for (const n of ns) {
+          flat.push(n);
+          if (n.children) walk(n.children as typeof ns);
+        }
+      };
+      walk(accounts.body as never[]);
+      const cashAccountId = flat.find((a) => a.controlType === 'CASH')!.id;
+
+      const box = await api()
+        .post('/api/v1/cash-boxes')
+        .set(auth(A.token))
+        .send({ code: 'CB1', name: 'Main box', accountId: cashAccountId });
+      expect(box.status).toBe(201);
+
+      const invoiceIds: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const inv = await api()
+          .post('/api/v1/sales-invoices')
+          .set(auth(A.token))
+          .send({
+            invoiceDate: '2025-03-20',
+            customerId: A.customerId,
+            warehouseId,
+            paymentType: 'CREDIT',
+            lines: [{ itemId, qty: '1', unitPrice: '10.000' }],
+          });
+        expect(inv.status).toBe(201);
+        invoiceIds.push(bodyOf<{ id: string }>(inv).id);
+      }
+
+      const manualIds: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const draft = await makeDraft(A.token, pair(A, '5202', '1102', '1.000'));
+        expect(draft.status).toBe(201);
+        manualIds.push(bodyOf<EntryBody>(draft).id);
+      }
+
+      const [invoiceRes, receiptRes, manualRes] = await Promise.all([
+        Promise.all(
+          invoiceIds.map((id) => api().post(`/api/v1/sales-invoices/${id}/post`).set(auth(A.token)).set(idem())),
+        ),
+        Promise.all(
+          [0, 1, 2].map(() =>
+            api()
+              .post('/api/v1/receipts')
+              .set(auth(A.token))
+              .set(idem())
+              .send({
+                receiptDate: '2025-03-21',
+                partyType: 'CUSTOMER',
+                partyId: A.customerId,
+                cashAccountId,
+                amount: '2.000',
+              }),
+          ),
+        ),
+        Promise.all(manualIds.map((id) => post(A.token, id))),
+      ]);
+      [...invoiceRes, ...receiptRes, ...manualRes].forEach((r) => expect(r.status).toBe(201));
+
+      const receiptIds = receiptRes.map((r) => bodyOf<{ id: string }>(r).id);
+      const invoiceEntries = await sql<{ entry_no: string }>(
+        'SELECT je.entry_no FROM sales_invoices si JOIN journal_entries je ON je.id = si.journal_entry_id WHERE si.tenant_id = ? AND si.id IN (?, ?, ?, ?)',
+        [A.tenantId, ...invoiceIds],
+      );
+      const receiptEntries = await sql<{ entry_no: string }>(
+        'SELECT je.entry_no FROM receipts rc JOIN journal_entries je ON je.id = rc.journal_entry_id WHERE rc.tenant_id = ? AND rc.id IN (?, ?, ?)',
+        [A.tenantId, ...receiptIds],
+      );
+      expect(invoiceEntries).toHaveLength(4);
+      expect(receiptEntries).toHaveLength(3);
+
+      const numbers: (string | null)[] = [
+        ...invoiceEntries.map((r) => r.entry_no),
+        ...receiptEntries.map((r) => r.entry_no),
+        ...manualRes.map((r) => bodyOf<EntryBody>(r).entryNo),
+      ];
+      expect(numbers).toHaveLength(10);
+      expect(new Set(numbers).size).toBe(10);
+      numbers.forEach((n) => expect(n).toMatch(/^JV-/));
+
+      expectGapless(await postedJvNumbers(A.tenantId));
+    },
+    T,
+  );
+
   // LEDGER-02 / D-1: a concurrent reversal burst yields exactly one reversal.
   it(
     'LEDGER-02 / D-1: concurrent reversals of an opening entry and of a manual entry create exactly one reversal',
