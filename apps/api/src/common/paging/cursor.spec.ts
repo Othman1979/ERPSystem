@@ -145,27 +145,27 @@ describe('CursorCodec', () => {
   const inMember = <T>(store: Partial<RequestContext>, fn: () => T): T => cls.runWith(store as RequestContext, fn);
 
   it('decodes in the same tenant and branch scope what it encoded', () => {
-    const member = { tenantId: 7n, allowedBranchIds: null };
+    const member = { tenantId: 7n, branchScope: 'ALL' as const };
     const cursor = inMember(member, () => codec.encode('general-ledger', filters, state));
     expect(inMember(member, () => codec.decode('general-ledger', filters, cursor))).toEqual(state);
   });
 
   it('refuses the cursor after the branch scope changed', () => {
-    const cursor = inMember({ tenantId: 7n, allowedBranchIds: null }, () =>
+    const cursor = inMember({ tenantId: 7n, branchScope: 'ALL' }, () =>
       codec.encode('general-ledger', filters, state),
     );
     refusedWith(
-      () => inMember({ tenantId: 7n, allowedBranchIds: new Set([1n]) }, () => codec.decode('general-ledger', filters, cursor)),
+      () => inMember({ tenantId: 7n, branchScope: new Set([1n]) }, () => codec.decode('general-ledger', filters, cursor)),
       'filters',
     );
   });
 
   it('refuses the cursor in another tenant', () => {
-    const cursor = inMember({ tenantId: 7n, allowedBranchIds: null }, () =>
+    const cursor = inMember({ tenantId: 7n, branchScope: 'ALL' }, () =>
       codec.encode('general-ledger', filters, state),
     );
     refusedWith(
-      () => inMember({ tenantId: 8n, allowedBranchIds: null }, () => codec.decode('general-ledger', filters, cursor)),
+      () => inMember({ tenantId: 8n, branchScope: 'ALL' }, () => codec.decode('general-ledger', filters, cursor)),
       'signature',
     );
   });

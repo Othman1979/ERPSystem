@@ -20,7 +20,7 @@ const runWithStore = <T>(store: Partial<RequestContext>, fn: () => T): T => cls.
 
 /** Runs fn as a member whose allowed branches are `allowed` (null = all branches). */
 const asMember = <T>(allowed: ReadonlySet<bigint> | null, fn: () => T): T =>
-  runWithStore({ allowedBranchIds: allowed }, fn);
+  runWithStore({ tenantId: 7n, branchScope: allowed ?? 'ALL' }, fn);
 
 /** Asserts that `fn` throws a DomainError with the given code. */
 function refusedWith(fn: () => unknown, code: ErrorCode): void {
@@ -35,8 +35,9 @@ function refusedWith(fn: () => unknown, code: ErrorCode): void {
 }
 
 describe.each([
-  ['allowedBranchIds is null', { allowedBranchIds: null }],
-  ['allowedBranchIds is not set', {}],
+  ['scope ALL on a company request', { tenantId: 7n, branchScope: 'ALL' }],
+  ['a Cron job in a company context', { tenantId: 7n, jobContext: true }],
+  ['no company in context', {}],
 ] as const)('member with every branch (%s)', (_label, store) => {
   const run = <T>(fn: () => T): T => runWithStore(store, fn);
 
@@ -124,5 +125,27 @@ describe('member with no branch', () => {
 
   it('refuses any document that belongs to a branch', () => {
     refusedWith(() => run(() => assertBranchAllowed(2n)), ErrorCode.BRANCH_NOT_ALLOWED);
+  });
+});
+
+describe('fail closed (ADR-003 §16)', () => {
+  it('a company request without a branch scope is refused with INTERNAL, not read unrestricted', () => {
+    const store = { tenantId: 7n, membershipId: 5n };
+    const reads: (() => unknown)[] = [hasAllBranches, allowedBranchIdList, () => branchWhere(), () => branchSql(column), branchScopeKey];
+    for (const read of reads) {
+      refusedWith(() => runWithStore(store, read), ErrorCode.INTERNAL);
+    }
+    refusedWith(() => runWithStore(store, () => assertBranchAllowed(1n)), ErrorCode.INTERNAL);
+  });
+
+  it('a Cron job declares itself and reads every branch', () => {
+    runWithStore({ tenantId: 7n, jobContext: true }, () => {
+      expect(hasAllBranches()).toBe(true);
+      expect(branchWhere()).toEqual({});
+    });
+  });
+
+  it('outside any CLS context nothing is scoped', () => {
+    expect(hasAllBranches()).toBe(true);
   });
 });

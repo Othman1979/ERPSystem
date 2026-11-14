@@ -84,7 +84,8 @@ export class BranchGuard implements CanActivate {
     }
 
     if (branchId !== undefined) cls.set('branchId', branchId);
-    cls.set('allowedBranchIds', allowed);
+    // ADR-003 §16: always an explicit scope, so the read helpers can fail closed.
+    cls.set('branchScope', allowed ?? 'ALL');
     if (allowed !== null && this.reflector.getAllAndOverride<boolean>(REQUIRE_ALL_BRANCHES_KEY, targets)) {
       throw new DomainError(
         ErrorCode.ALL_BRANCHES_REQUIRED,

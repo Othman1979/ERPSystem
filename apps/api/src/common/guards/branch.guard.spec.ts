@@ -34,7 +34,7 @@ function run<T>(fn: () => Promise<T>): Promise<{ result: T; cls: RequestContext 
   const cls = ClsServiceManager.getClsService<RequestContext>();
   return cls.runWith({ tenantId: 7n, membershipId: 5n } as RequestContext, async () => {
     const result = await fn();
-    return { result, cls: { allowedBranchIds: cls.get('allowedBranchIds'), branchId: cls.get('branchId') } as RequestContext };
+    return { result, cls: { branchScope: cls.get('branchScope'), branchId: cls.get('branchId') } as RequestContext };
   });
 }
 
@@ -43,7 +43,7 @@ describe('BranchGuard: @RequireAllBranches() (ADR-003 §13)', () => {
     const { guard, context } = setup([], true);
     const { result, cls } = await run(() => guard.canActivate(context));
     expect(result).toBe(true);
-    expect(cls.allowedBranchIds).toBeNull();
+    expect(cls.branchScope).toBe('ALL');
     expect(cls.branchId).toBe(MAIN.id);
   });
 
@@ -61,6 +61,6 @@ describe('BranchGuard: @RequireAllBranches() (ADR-003 §13)', () => {
     const { guard, context } = setup([MAIN.id], false);
     const { result, cls } = await run(() => guard.canActivate(context));
     expect(result).toBe(true);
-    expect([...(cls.allowedBranchIds ?? [])]).toEqual([MAIN.id]);
+    expect([...(cls.branchScope as ReadonlySet<bigint>)]).toEqual([MAIN.id]);
   });
 });

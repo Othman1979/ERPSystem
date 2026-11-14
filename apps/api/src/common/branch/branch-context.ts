@@ -1,12 +1,30 @@
+import { Logger } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
 import { Prisma } from '../../generated/prisma/client.js';
 import type { RequestContext } from '../cls/cls.types.js';
 import { DomainError } from '../errors/domain.error.js';
 import { ErrorCode } from '../errors/error-codes.js';
 
+const log = new Logger('BranchScope');
+
+/**
+ * The member's branches, or null for every branch (ADR-003 §9, §16). Fails
+ * closed: a company request whose scope BranchGuard did not set (a route that
+ * skipped the guard, a guard-order mistake) is refused with INTERNAL instead
+ * of reading every branch. Cron work declares itself with `jobContext`.
+ */
 function allowedBranches(): ReadonlySet<bigint> | null {
-  // undefined outside a guarded request (Cron jobs): not restricted, as for writes.
-  return ClsServiceManager.getClsService<RequestContext>().get('allowedBranchIds') ?? null;
+  const cls = ClsServiceManager.getClsService<RequestContext>();
+  const scope = cls.isActive() ? cls.get('branchScope') : undefined;
+  if (scope === 'ALL') return null;
+  if (scope !== undefined) return scope;
+  if (cls.isActive() && cls.get('jobContext') === true) return null;
+  // No company in context: nothing is scoped (tenant-scoped reads refuse it anyway).
+  if (!cls.isActive() || cls.get('tenantId') === undefined) return null;
+  log.error(
+    `Branch scope missing on a company request (tenant ${String(cls.get('tenantId'))}, request ${String(cls.get('requestId') ?? '?')}): BranchGuard did not run`,
+  );
+  throw new DomainError(ErrorCode.INTERNAL, 'Branch scope is missing for this request');
 }
 
 const byId = (a: bigint, b: bigint) => (a < b ? -1 : a > b ? 1 : 0);

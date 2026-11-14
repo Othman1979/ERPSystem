@@ -17,6 +17,15 @@ export interface RequestContext {
   permissions?: ReadonlySet<string>;
   /** Branch of this request (X-Branch-Id or the default), set by BranchGuard. */
   branchId?: bigint;
-  /** Branches the member may use; null = all branches of the company (none assigned). */
-  allowedBranchIds?: ReadonlySet<bigint> | null;
+  /**
+   * Branches the member may read and write (ADR-003 §9, §16), set by BranchGuard
+   * on every company request: 'ALL' (no branch assigned) or the allowed set.
+   * Never left unset on a company request: the branch helpers refuse that.
+   */
+  branchScope?: 'ALL' | ReadonlySet<bigint>;
+  /**
+   * Set by Cron work that runs in a company's context without a member
+   * (stock-verify, the e-invoice sender): every branch, explicitly.
+   */
+  jobContext?: boolean;
 }
