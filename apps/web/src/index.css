@@ -527,6 +527,13 @@ textarea:focus-visible,
   background: var(--c-grid-row-selected);
 }
 
+/* A required cell left empty (the party of a control-account line); the
+   inset border stays while the row is being edited */
+.entry-grid tbody td.cell-missing {
+  background: var(--c-danger-bg);
+  box-shadow: inset 0 0 0 1px var(--c-danger);
+}
+
 /* The cell that owns keyboard focus */
 .entry-grid tbody td:focus-within {
   background: var(--c-surface);

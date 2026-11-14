@@ -7,6 +7,7 @@ import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
 import { Num } from './Num';
 import { cellLabel } from './gridA11y';
+import type { PartyKind, PartyNeed } from './journalLineChecks';
 
 export interface JournalLineDraft {
   key: number;
@@ -21,24 +22,19 @@ export interface JournalLineDraft {
 
 export const emptyLine = (key: number): JournalLineDraft => ({ key });
 
-export type PartyKind = 'CUSTOMER' | 'SUPPLIER';
-
 type Option = { value: string; label: string };
 
 /** Party column: control-account lines (customers / suppliers) need a party. */
 export interface PartyColumn {
-  /** Party kind each control account requires; other accounts take no party. */
-  kindByAccount: Map<string, PartyKind>;
-  options: Record<PartyKind, Option[]>;
-  /** Server search for each kind's picker (ADR-022 §8): every typed text goes here. */
-  onSearch: Record<PartyKind, (text: string) => void>;
-}
-
-/** The party kind an account's control type requires, if any. */
-export function partyKindOf(controlType: string | null | undefined): PartyKind | undefined {
-  if (controlType === 'CUSTOMERS') return 'CUSTOMER';
-  if (controlType === 'SUPPLIERS') return 'SUPPLIER';
-  return undefined;
+  /** The party each control account needs (decision D-2); other accounts take no party. */
+  kindByAccount: ReadonlyMap<string, PartyNeed>;
+  options: Record<PartyNeed, Option[]>;
+  /** Server search for each picker (ADR-022 §8): every typed text goes here. */
+  onSearch: Record<PartyNeed, (text: string) => void>;
+  /** A picker's matches are still on their way: no stale row is offered meanwhile. */
+  searching?: Partial<Record<PartyNeed, boolean>>;
+  /** The side a party takes on a control account of no side ('ANY'). */
+  sideOf?: (partyId: string) => PartyKind | undefined;
 }
 
 /** partyType / partyId of a line for the API (control-account lines only). */
@@ -46,8 +42,10 @@ export function partyFields(
   line: JournalLineDraft,
   column: PartyColumn | undefined,
 ): { partyType?: PartyKind; partyId?: string } {
-  const kind = line.accountId ? column?.kindByAccount.get(line.accountId) : undefined;
-  return kind && line.partyId ? { partyType: kind, partyId: line.partyId } : {};
+  const need = line.accountId ? column?.kindByAccount.get(line.accountId) : undefined;
+  if (!need || !line.partyId) return {};
+  const partyType = need === 'ANY' ? column?.sideOf?.(line.partyId) : need;
+  return partyType ? { partyType, partyId: line.partyId } : {};
 }
 
 interface Props {
@@ -60,11 +58,19 @@ interface Props {
   partyColumn?: PartyColumn;
   /** Replaces the balanced / unbalanced note in the footer. */
   footerNote?: ReactNode;
+  /** Key of a line to mark as missing its party (after the check before saving). */
+  missingParty?: number | null;
 }
 
 // Column ids: account (1), debit (2), credit (3), description (4), party (5).
 const NAV_COLS = [1, 2, 3, 4];
 const NAV_COLS_WITH_PARTY = [1, 5, 2, 3, 4];
+
+const PARTY_PLACEHOLDER: Record<PartyNeed, string> = {
+  CUSTOMER: 'journal.pickCustomer',
+  SUPPLIER: 'journal.pickSupplier',
+  ANY: 'journal.pickParty',
+};
 
 /**
  * Excel-like journal lines grid: Enter on the last row appends a new line,
@@ -77,6 +83,7 @@ export function JournalLinesGrid({
   focusSignal,
   partyColumn,
   footerNote,
+  missingParty,
 }: Props) {
   const { t } = useTranslation();
   const gridRef = useRef<HTMLTableElement>(null);
@@ -205,6 +212,7 @@ export function JournalLinesGrid({
         <tbody>
           {lines.map((l, row) => {
             const kind = kindOf(l.accountId);
+            const missing = !!kind && !l.partyId && missingParty === l.key;
             return (
               <tr key={l.key}>
                 <td className="row-no">{row + 1}</td>
@@ -228,14 +236,19 @@ export function JournalLinesGrid({
                   />
                 </td>
                 {partyColumn && (
-                  <td {...cellProps(row, 5)}>
+                  <td
+                    className={missing ? 'cell-missing' : undefined}
+                    {...cellProps(row, 5)}
+                  >
                     {kind ? (
                       <GridSelect
                         aria-label={cellLabel(t, t('journal.party'), row)}
+                        aria-invalid={missing || undefined}
                         variant="borderless"
-                        placeholder={t(kind === 'CUSTOMER' ? 'journal.pickCustomer' : 'journal.pickSupplier')}
+                        placeholder={t(PARTY_PLACEHOLDER[kind])}
                         options={partyColumn.options[kind]}
                         onRemoteSearch={partyColumn.onSearch[kind]}
+                        searching={partyColumn.searching?.[kind]}
                         value={l.partyId}
                         onChange={(v: string) => update(l.key, { partyId: v })}
                         onEnterSelect={() => advance(row, 5)}
