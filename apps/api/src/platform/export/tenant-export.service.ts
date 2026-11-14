@@ -25,7 +25,7 @@ const WORKBOOKS: { file: string; models: string[] }[] = [
     file: '01-company.xlsx',
     models: ['Company', 'Branch', 'Subscription', 'Unit', 'TaxCategory', 'PaymentMethod', 'FiscalYear', 'FiscalPeriod', 'DocumentSequence', 'Attachment'],
   },
-  { file: '02-accounts.xlsx', models: ['Account', 'AccountMapping'] },
+  { file: '02-accounts.xlsx', models: ['Account', 'AccountMapping', 'CostCenter'] },
   { file: '03-journal.xlsx', models: ['JournalEntry', 'JournalLine'] },
   { file: '04-items.xlsx', models: ['ItemGroup', 'Item', 'ItemUnit', 'ItemBarcode', 'Warehouse'] },
   {

@@ -9,6 +9,7 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
 import {
+  CostCenterStatementQueryDto,
   CreateJournalEntryDto,
   CreateOpeningEntryDto,
   ListJournalEntriesQueryDto,
@@ -17,6 +18,7 @@ import {
   StatementQueryDto,
 } from './dto/journal.dto.js';
 import {
+  CostCenterStatementPageDto,
   GeneralLedgerPageDto,
   JournalEntryDetailDto,
   JournalEntryListItemDto,
@@ -27,8 +29,9 @@ import {
 import { PartiesService } from '../parties/parties.service.js';
 import { PrintingService } from '../printing/printing.service.js';
 import { JournalService } from './journal.service.js';
-import { generalLedgerTable, partyStatementTable, trialBalanceTable } from './reports.table.js';
+import { costCenterStatementTable, generalLedgerTable, partyStatementTable, trialBalanceTable } from './reports.table.js';
 import { ReportsService } from './reports.service.js';
+import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 
 @ApiTags('journal')
 @Controller()
@@ -38,6 +41,7 @@ export class JournalController {
     private readonly reports: ReportsService,
     private readonly printing: PrintingService,
     private readonly parties: PartiesService,
+    private readonly costCenters: CostCentersService,
   ) {}
 
   /** Numbered page `{ items, page, pageSize, total }` (ADR-022, LEDGER-08), the caller's branches only. */
@@ -146,5 +150,26 @@ export class JournalController {
     const data = await this.reports.partyStatement(q.partyType, partyId, q);
     const party = q.format && q.format !== 'json' ? ((await this.parties.summaries([partyId]))[0] ?? null) : null;
     return this.printing.respond(data, q, (d, lang) => partyStatementTable(d, lang, q, party));
+  }
+
+  /**
+   * Cost-centre statement (ADR-024 §1.9): the centre's posted lines with a
+   * running Dr − Cr balance from zero. JSON: one keyset page (ADR-022 §4);
+   * PDF / XLSX: the whole statement, capped. Company-wide (ADR-003 §13).
+   */
+  @Get('reports/cost-center-statement')
+  @RequirePermission(PERMISSIONS.REPORTS_VIEW)
+  @RequireAllBranches()
+  @ApiFileResponse(REPORT_FILE_TYPES, CostCenterStatementPageDto)
+  async costCenterStatement(@Query() q: CostCenterStatementQueryDto) {
+    const costCenterId = BigInt(q.costCenterId);
+    // 404 for another company's or tenant's centre, before any line is read.
+    const costCenter = await this.costCenters.header(costCenterId);
+    if ((q.format ?? 'json') === 'json') {
+      const page = await this.reports.costCenterStatementPage(costCenterId, q, { limit: keysetLimit(q), cursor: q.cursor });
+      return { costCenter, ...page };
+    }
+    const data = await this.reports.costCenterStatement(costCenterId, q);
+    return this.printing.respond(data, q, (d, lang) => costCenterStatementTable(d, lang, q, costCenter));
   }
 }

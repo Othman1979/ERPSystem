@@ -59,7 +59,7 @@ describe('Tenant isolation — static guards (ADR-010 §10.4)', () => {
 
   it('knows the tenant tables', () => {
     expect(tables.size).toBeGreaterThan(40);
-    for (const t of ['journal_entries', 'journal_lines', 'stock_movements', 'sales_invoices', 'parties', 'attachments']) {
+    for (const t of ['journal_entries', 'journal_lines', 'stock_movements', 'sales_invoices', 'parties', 'attachments', 'cost_centers']) {
       expect(tables.has(t)).toBe(true);
     }
   });

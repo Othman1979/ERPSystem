@@ -59,6 +59,11 @@ export class CreateAccountDto {
   @IsOptional()
   @IsIn(CONTROL_TYPES)
   controlType?: (typeof CONTROL_TYPES)[number] | null;
+
+  /** Lines need a cost centre while centres are enabled; REVENUE / EXPENSE accounts only (ADR-024 §1.1). */
+  @IsOptional()
+  @IsBoolean()
+  costCenterRequired?: boolean;
 }
 
 export class UpdateAccountDto {
@@ -80,6 +85,11 @@ export class UpdateAccountDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /** REVENUE / EXPENSE accounts only (ADR-024 §1.1); kept when centres are switched off. */
+  @IsOptional()
+  @IsBoolean()
+  costCenterRequired?: boolean;
 }
 
 export class CreateFiscalYearDto {

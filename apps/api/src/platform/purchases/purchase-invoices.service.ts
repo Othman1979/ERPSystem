@@ -55,6 +55,8 @@ import type {
 } from './dto/purchases.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
+import { CostCentersService } from '../cost-centers/cost-centers.service.js';
+import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 
 const SOURCE = 'PURCHASE_INVOICE';
 
@@ -82,10 +84,20 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     private readonly audit: AuditService,
     private readonly goodsNotes: GoodsNotesService,
     private readonly partyUsage: PartyUsageRegistry,
+    private readonly costCenters: CostCentersService,
+    private readonly costCenterUsage: CostCenterUsageRegistry,
   ) {}
 
   onModuleInit(): void {
     this.partyUsage.register('purchases', (tx, partyId) => this.partyInUse(tx, partyId));
+    this.costCenterUsage.register('purchases', (tx, id) => this.costCenterInUse(tx, id));
+  }
+
+  /** ADR-024 §1.7: the first purchases table whose header references the cost centre, drafts included. */
+  async costCenterInUse(tx: Prisma.TransactionClient, costCenterId: bigint): Promise<string | null> {
+    if (await tx.purchaseInvoice.findFirst({ where: { costCenterId }, select: { id: true } })) return 'purchase_invoices';
+    if (await tx.purchaseReturn.findFirst({ where: { costCenterId }, select: { id: true } })) return 'purchase_returns';
+    return null;
   }
 
   /**
@@ -459,6 +471,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           warehouseId: dto.warehouseId ? BigInt(dto.warehouseId) : null,
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
+          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
           description: dto.description ?? null,
           pricesIncludeTax,
           receivedGrnId,
@@ -535,6 +548,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           warehouseId: dto.warehouseId ? BigInt(dto.warehouseId) : null,
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
+          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
           description: dto.description ?? null,
           pricesIncludeTax,
           receivedGrnId,
@@ -747,6 +761,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           description: draft.description ?? `Purchase invoice ${invoiceNo}`,
           lines: journalLines,
           postedBy: userId ?? null,
+          // ADR-024 §1.2: onto every income-statement line (expenses, cost, adjustments).
+          costCenterId: draft.costCenterId,
         });
 
         await tx.purchaseInvoice.update({
@@ -926,6 +942,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId must be an active cash/bank account');
       }
     }
+    if (dto.costCenterId) await this.costCenters.assertUsable(db, companyId, BigInt(dto.costCenterId));
   }
 
   private async resolveLines(

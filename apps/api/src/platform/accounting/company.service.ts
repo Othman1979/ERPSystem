@@ -72,6 +72,7 @@ export class CompanyService {
       address: c.address,
       phone: c.phone,
       pricesIncludeTax: c.pricesIncludeTax,
+      costCentersEnabled: c.costCentersEnabled,
       onboardingCompletedAt: c.onboardingCompletedAt,
       logo: c.logoAttachment
         ? {
@@ -95,6 +96,7 @@ export class CompanyService {
       address: blankToNull(dto.address),
       phone: blankToNull(dto.phone),
       ...(dto.pricesIncludeTax !== undefined ? { pricesIncludeTax: dto.pricesIncludeTax } : {}),
+      ...(dto.costCentersEnabled !== undefined ? { costCentersEnabled: dto.costCentersEnabled } : {}),
     };
     await db.company.update({ where: { id: c.id }, data });
     await this.audit.log({
@@ -106,6 +108,7 @@ export class CompanyService {
         taxNumber: c.taxNumber,
         address: c.address,
         pricesIncludeTax: c.pricesIncludeTax,
+        costCentersEnabled: c.costCentersEnabled,
       },
       after: dto,
     });

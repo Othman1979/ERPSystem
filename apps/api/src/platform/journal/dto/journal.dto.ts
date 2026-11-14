@@ -53,6 +53,11 @@ export class JournalLineDto {
   @MaxLength(500)
   description?: string;
 
+  /** Income-statement lines only (ADR-024 §1.2); required on a flagged account while centres are on. */
+  @IsOptional()
+  @IsString()
+  @Matches(ID_PATTERN, { message: 'costCenterId must be a positive integer id' })
+  costCenterId?: string;
 }
 
 export class CreateJournalEntryDto {
@@ -118,6 +123,12 @@ export class OpeningLineDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  /** Income-statement lines only (ADR-024 §1.2). */
+  @IsOptional()
+  @IsString()
+  @Matches(ID_PATTERN, { message: 'costCenterId must be a positive integer id' })
+  costCenterId?: string;
 }
 
 export class CreateOpeningEntryDto {
@@ -167,6 +178,25 @@ export class ReportQueryDto extends ExportQueryDto {
  * `limit` / `cursor` for the JSON pages. PDF / XLSX ignore `limit` and `cursor`.
  */
 export class StatementQueryDto extends IntersectionType(ReportQueryDto, KeysetQueryDto) {}
+
+/** Filters of the cost-centre statement (ADR-024 §1.9): one centre, an optional period. */
+export class CostCenterStatementFilterDto extends ExportQueryDto {
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
+  costCenterId!: string;
+
+  @IsOptional()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  from?: string;
+
+  @IsOptional()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  to?: string;
+}
+
+/** GET /reports/cost-center-statement: the filters plus `limit` / `cursor` (ADR-022 §4); PDF / XLSX ignore them. */
+export class CostCenterStatementQueryDto extends IntersectionType(CostCenterStatementFilterDto, KeysetQueryDto) {}
 
 export const JOURNAL_SORT_KEYS = ['entryDate', 'entryNo'] as const;
 export const JOURNAL_SORTS = sortValues(JOURNAL_SORT_KEYS);

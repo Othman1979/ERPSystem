@@ -44,4 +44,9 @@ export class UpdateCompanyDto {
   @IsOptional()
   @IsBoolean()
   pricesIncludeTax?: boolean;
+
+  /** Cost centres shown and enforced (ADR-024 §1.6). Off keeps posted lines and account flags as they are. */
+  @IsOptional()
+  @IsBoolean()
+  costCentersEnabled?: boolean;
 }

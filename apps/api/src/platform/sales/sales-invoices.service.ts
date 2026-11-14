@@ -52,6 +52,8 @@ import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesInvoiceDto, ListSalesInvoicesQueryDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
+import { CostCentersService } from '../cost-centers/cost-centers.service.js';
+import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 
 const SOURCE = 'SALES_INVOICE';
 
@@ -77,10 +79,20 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     private readonly einvoice: EInvoiceOutboxService,
     private readonly limits: PlanLimitsService,
     private readonly partyUsage: PartyUsageRegistry,
+    private readonly costCenters: CostCentersService,
+    private readonly costCenterUsage: CostCenterUsageRegistry,
   ) {}
 
   onModuleInit(): void {
     this.partyUsage.register('sales', (tx, partyId) => this.partyInUse(tx, partyId));
+    this.costCenterUsage.register('sales', (tx, id) => this.costCenterInUse(tx, id));
+  }
+
+  /** ADR-024 §1.7: the first sales table whose header references the cost centre, drafts included. */
+  async costCenterInUse(tx: Prisma.TransactionClient, costCenterId: bigint): Promise<string | null> {
+    if (await tx.salesInvoice.findFirst({ where: { costCenterId }, select: { id: true } })) return 'sales_invoices';
+    if (await tx.salesReturn.findFirst({ where: { costCenterId }, select: { id: true } })) return 'sales_returns';
+    return null;
   }
 
   /**
@@ -490,6 +502,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           warehouseId: BigInt(dto.warehouseId),
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
+          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
           description: dto.description ?? null,
           pricesIncludeTax,
           ...this.totals(lines),
@@ -557,6 +570,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           warehouseId: BigInt(dto.warehouseId),
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
+          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
           description: dto.description ?? null,
           pricesIncludeTax,
           ...this.totals(lines),
@@ -772,6 +786,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           description: draft.description ?? `Sales invoice ${invoiceNo}`,
           lines: journalLines,
           postedBy: userId ?? null,
+          // ADR-024 §1.2: onto the revenue and cost lines (income statement).
+          costCenterId: draft.costCenterId,
         });
 
         await tx.salesInvoice.update({
@@ -834,6 +850,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     });
     if (!warehouse) throw DomainError.notFound('Warehouse', dto.warehouseId);
     assertBranchAllowed(warehouse.branchId);
+    if (dto.costCenterId) await this.costCenters.assertUsable(db, companyId, BigInt(dto.costCenterId));
     if (dto.paymentType === 'CASH') {
       if (!dto.cashAccountId) {
         throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');

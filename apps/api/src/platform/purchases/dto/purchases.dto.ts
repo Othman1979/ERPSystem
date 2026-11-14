@@ -81,6 +81,15 @@ export class CreatePurchaseInvoiceDto {
   @Matches(INT_STRING)
   cashAccountId?: string;
 
+  /**
+   * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
+   * copied onto every income-statement line of its entry.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  costCenterId?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(500)
@@ -138,6 +147,15 @@ export class CreatePurchaseReturnDto {
   @IsString()
   @Matches(INT_STRING)
   cashAccountId?: string;
+
+  /**
+   * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
+   * copied onto every income-statement line of its entry.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  costCenterId?: string;
 
   @IsOptional()
   @IsString()

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AccountingModule } from '../accounting/accounting.module.js';
+import { CostCentersModule } from '../cost-centers/cost-centers.module.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
 import { JournalModule } from '../journal/journal.module.js';
 import { PrintingModule } from '../printing/printing.module.js';
@@ -29,6 +30,8 @@ import { TradeSummaryService } from './trade-summary.service.js';
     PurchasesModule,
     TreasuryModule,
     InventoryModule,
+    // The centres named by the income statement by cost centre (ADR-024 §1.9).
+    CostCentersModule,
   ],
   controllers: [ReportsController],
   providers: [ReportPeriods, FinancialStatementsService, TaxSummaryService, TradeSummaryService, DashboardService],

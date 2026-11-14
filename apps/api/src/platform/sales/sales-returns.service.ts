@@ -28,6 +28,7 @@ import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { computeReturnLines, returnedByLine } from '../shared/return-lines.js';
 import { assertRefundType } from '../shared/refund-type.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
+import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 
 const SOURCE = 'SALES_RETURN';
 
@@ -45,6 +46,7 @@ export class SalesReturnsService {
     private readonly ledger: StockLedgerService,
     private readonly audit: AuditService,
     private readonly einvoice: EInvoiceOutboxService,
+    private readonly costCenters: CostCentersService,
   ) {}
 
   /**
@@ -306,6 +308,7 @@ export class SalesReturnsService {
         throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId must be an active cash/bank account');
       }
     }
+    if (dto.costCenterId) await this.costCenters.assertUsable(db, companyId, BigInt(dto.costCenterId));
 
     const { ret, invoiceId } = await db.$transaction(async (tx) => {
       // TRADE-01: lock the original invoice first. Every return of it is
@@ -344,6 +347,7 @@ export class SalesReturnsService {
           warehouseId: invoice.warehouseId,
           refundType: dto.refundType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
+          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
           reason: dto.reason ?? null,
           ...totals,
           createdBy: this.support.userId() ?? null,
@@ -544,6 +548,8 @@ export class SalesReturnsService {
           description: draft.reason ?? `Sales return ${returnNo}`,
           lines: journalLines,
           postedBy: userId ?? null,
+          // ADR-024 §1.2: onto the returns and cost lines (income statement).
+          costCenterId: draft.costCenterId,
         });
 
         await tx.salesReturn.update({

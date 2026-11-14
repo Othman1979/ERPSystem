@@ -110,6 +110,87 @@ export class IncomeStatementDto {
   netProfit!: string;
 }
 
+/** A column of the income statement by cost centre: a centre, or "no centre" when every field is null. */
+export class CostCenterColumnDto {
+  @ApiProperty({ type: 'string', nullable: true, description: 'Null for the "no centre" column (always last).' })
+  costCenterId!: string | null;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  code!: string | null;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  nameAr!: string | null;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  nameEn!: string | null;
+}
+
+/** One account of the income statement by cost centre. */
+export class CostCenterStatementRowDto {
+  @ApiProperty({ type: 'string' })
+  accountId!: string;
+
+  @ApiProperty({ type: 'string' })
+  code!: string;
+
+  @ApiProperty({ type: 'string' })
+  nameAr!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  nameEn!: string | null;
+
+  @ApiProperty({ type: 'string', format: 'decimal', isArray: true, description: 'One per column, in column order.' })
+  amounts!: string[];
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  total!: string;
+}
+
+/** Revenue or expenses of the income statement by cost centre. */
+export class CostCenterSectionDto {
+  @ApiProperty({ type: () => CostCenterStatementRowDto, isArray: true })
+  rows!: CostCenterStatementRowDto[];
+
+  @ApiProperty({ type: 'string', format: 'decimal', isArray: true, description: 'One per column.' })
+  totals!: string[];
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  total!: string;
+}
+
+/** Net profit per column and in total. */
+export class CostCenterNetProfitDto {
+  @ApiProperty({ type: 'string', format: 'decimal', isArray: true })
+  amounts!: string[];
+
+  @ApiProperty({ type: 'string', format: 'decimal', description: "Equals the income statement's netProfit." })
+  total!: string;
+}
+
+/** The income statement by cost centre as JSON (ADR-024 §1.9). */
+export class IncomeStatementByCostCenterDto {
+  @ApiProperty({ type: 'string', format: 'date' })
+  from!: string;
+
+  @ApiProperty({ type: 'string', format: 'date' })
+  to!: string;
+
+  @ApiProperty({ type: () => StatementFiscalYearRefDto, nullable: true })
+  fiscalYear!: StatementFiscalYearRefDto | null;
+
+  @ApiProperty({ type: () => CostCenterColumnDto, isArray: true })
+  columns!: CostCenterColumnDto[];
+
+  @ApiProperty({ type: () => CostCenterSectionDto })
+  revenue!: CostCenterSectionDto;
+
+  @ApiProperty({ type: () => CostCenterSectionDto, description: 'Every EXPENSE account, cost of sales included.' })
+  expenses!: CostCenterSectionDto;
+
+  @ApiProperty({ type: () => CostCenterNetProfitDto })
+  netProfit!: CostCenterNetProfitDto;
+}
+
 /** The balance sheet as JSON (`format=json`, the default). */
 export class BalanceSheetDto {
   @ApiProperty({ type: 'string', format: 'date' })

@@ -15,6 +15,7 @@ import {
 import {
   BalanceSheetDto,
   DashboardSummaryDto,
+  IncomeStatementByCostCenterDto,
   IncomeStatementDto,
   PurchasesSummaryDto,
   REPORT_FILE_TYPES,
@@ -22,7 +23,7 @@ import {
   TaxSummaryDto,
 } from './dto/reports-response.dto.js';
 import { FinancialStatementsService } from './financial-statements.service.js';
-import { balanceSheetTable, incomeStatementTable } from './financial-statements.table.js';
+import { balanceSheetTable, incomeByCostCenterTable, incomeStatementTable } from './financial-statements.table.js';
 import { TaxSummaryService } from './tax-summary.service.js';
 import { taxSummaryTable } from './tax-summary.table.js';
 import { TradeSummaryService } from './trade-summary.service.js';
@@ -47,6 +48,15 @@ export class ReportsController {
   @ApiFileResponse(REPORT_FILE_TYPES, IncomeStatementDto)
   async incomeStatement(@Query() q: PeriodQueryDto) {
     return this.printing.respond(await this.statements.incomeStatement(q), q, incomeStatementTable);
+  }
+
+  /** By cost centre, with a "no centre" column (ADR-024 §1.9); company-wide (ADR-003 §13). */
+  @Get('reports/income-statement-by-cost-center')
+  @RequirePermission(PERMISSIONS.REPORTS_VIEW)
+  @RequireAllBranches()
+  @ApiFileResponse(REPORT_FILE_TYPES, IncomeStatementByCostCenterDto)
+  async incomeStatementByCostCenter(@Query() q: PeriodQueryDto) {
+    return this.printing.respond(await this.statements.incomeStatementByCostCenter(q), q, incomeByCostCenterTable);
   }
 
   /** Company-wide: only for members with every branch (ADR-003 §13). */

@@ -45,6 +45,9 @@ export class CompanyDto {
   @ApiProperty({ type: 'boolean' })
   pricesIncludeTax!: boolean;
 
+  @ApiProperty({ type: 'boolean', description: 'Cost centres shown and enforced (ADR-024 §1).' })
+  costCentersEnabled!: boolean;
+
   @ApiProperty({ type: 'string', format: 'date-time', nullable: true, description: 'Set when the setup wizard is finished.' })
   onboardingCompletedAt!: string | null;
 

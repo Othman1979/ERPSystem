@@ -22,6 +22,8 @@ import type {
   ReverseVoucherDto,
 } from './dto/treasury.dto.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
+import { CostCentersService } from '../cost-centers/cost-centers.service.js';
+import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 
 type VoucherKind = 'receipt' | 'payment';
 
@@ -80,10 +82,20 @@ export class VouchersService implements OnModuleInit {
     private readonly sales: SalesInvoicesService,
     private readonly purchases: PurchaseInvoicesService,
     private readonly partyUsage: PartyUsageRegistry,
+    private readonly costCenters: CostCentersService,
+    private readonly costCenterUsage: CostCenterUsageRegistry,
   ) {}
 
   onModuleInit(): void {
     this.partyUsage.register('treasury', (tx, partyId) => this.partyInUse(tx, partyId));
+    this.costCenterUsage.register('treasury', (tx, id) => this.costCenterInUse(tx, id));
+  }
+
+  /** ADR-024 §1.7: the first voucher table whose header references the cost centre. */
+  async costCenterInUse(tx: Prisma.TransactionClient, costCenterId: bigint): Promise<string | null> {
+    if (await tx.receipt.findFirst({ where: { costCenterId }, select: { id: true } })) return 'receipts';
+    if (await tx.payment.findFirst({ where: { costCenterId }, select: { id: true } })) return 'payments';
+    return null;
   }
 
   /**
@@ -200,6 +212,7 @@ export class VouchersService implements OnModuleInit {
       db.$transaction(async (tx) => {
         await this.assertReceiptParty(tx, tenantId, companyId, dto);
         await this.assertCashAccount(tx, companyId, dto.cashAccountId);
+        if (dto.costCenterId) await this.costCenters.assertUsable(tx, companyId, BigInt(dto.costCenterId));
         const period = await this.posting.resolveOpenPeriod(
           tx, tenantId, companyId, new Date(dto.receiptDate),
         );
@@ -229,6 +242,7 @@ export class VouchersService implements OnModuleInit {
             partyType: dto.partyType,
             partyId: BigInt(dto.partyId),
             cashAccountId: BigInt(dto.cashAccountId),
+            costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
             amount,
             paymentMethodId: dto.paymentMethodId ? BigInt(dto.paymentMethodId) : null,
             referenceNo: dto.referenceNo ?? null,
@@ -264,6 +278,8 @@ export class VouchersService implements OnModuleInit {
             },
           ],
           postedBy: userId ?? null,
+          // ADR-024 §1.2: onto the income-statement lines (a payment's expense line).
+          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
         });
 
         await tx.receipt.update({ where: { id: receipt.id }, data: { journalEntryId: entry.id } });
@@ -410,6 +426,7 @@ export class VouchersService implements OnModuleInit {
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         await this.assertCashAccount(tx, companyId, dto.cashAccountId);
+        if (dto.costCenterId) await this.costCenters.assertUsable(tx, companyId, BigInt(dto.costCenterId));
         if (dto.partyId) {
           await this.assertPaymentParty(tx, tenantId, companyId, dto);
         } else {
@@ -457,6 +474,7 @@ export class VouchersService implements OnModuleInit {
             partyId: dto.partyId ? BigInt(dto.partyId) : null,
             expenseAccountId: dto.expenseAccountId ? BigInt(dto.expenseAccountId) : null,
             cashAccountId: BigInt(dto.cashAccountId),
+            costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
             amount,
             paymentMethodId: dto.paymentMethodId ? BigInt(dto.paymentMethodId) : null,
             referenceNo: dto.referenceNo ?? null,
@@ -501,6 +519,8 @@ export class VouchersService implements OnModuleInit {
             { accountId: BigInt(dto.cashAccountId), credit: amount.toString() },
           ],
           postedBy: userId ?? null,
+          // ADR-024 §1.2: onto the income-statement lines (a payment's expense line).
+          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
         });
 
         await tx.payment.update({ where: { id: payment.id }, data: { journalEntryId: entry.id } });

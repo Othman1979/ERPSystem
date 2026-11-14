@@ -16,6 +16,7 @@ type Lang = 'ar' | 'en';
 type TrialBalance = Awaited<ReturnType<ReportsService['trialBalance']>>;
 type GeneralLedger = Awaited<ReturnType<ReportsService['generalLedger']>>;
 type PartyStatement = Awaited<ReturnType<ReportsService['partyStatement']>>;
+type CostCenterStatement = Awaited<ReturnType<ReportsService['costCenterStatement']>>;
 
 /**
  * Trial balance JSON → export table: per account the opening balance, the
@@ -66,9 +67,9 @@ export function trialBalanceTable(data: TrialBalance, lang: Lang, range: ReportR
 
 /** Opening row, movements, totals and closing row shared by the two statements. */
 function statementRows(
-  data: GeneralLedger | PartyStatement,
+  data: GeneralLedger | PartyStatement | CostCenterStatement,
   lang: Lang,
-  line: (r: (GeneralLedger | PartyStatement)['rows'][number]) => Record<string, string>,
+  line: (r: (GeneralLedger | PartyStatement | CostCenterStatement)['rows'][number]) => Record<string, string>,
 ): Pick<ReportTable, 'rows' | 'totals'> {
   const t = (ar: string, en: string) => L({ lang }, ar, en);
   return {
@@ -150,6 +151,37 @@ export function partyStatementTable(
     ...statementRows(data, lang, (r) => ({
       account:
         'accountCode' in r ? `${r.accountCode} ${localName(lang, r.accountName, r.accountNameEn)}` : '',
+    })),
+  };
+}
+
+/** Cost-centre statement JSON → export table (ADR-024 §1.9): opening zero, each line with its account. */
+export function costCenterStatementTable(
+  data: CostCenterStatement,
+  lang: Lang,
+  range: ReportRange,
+  centre: { code: string; nameAr: string; nameEn: string | null },
+): ReportTable {
+  const t = (ar: string, en: string) => L({ lang }, ar, en);
+  return {
+    title: t('كشف مركز كلفة', 'Cost centre statement'),
+    meta: [
+      `${t('مركز الكلفة', 'Cost centre')}: ${centre.code} ${localName(lang, centre.nameAr, centre.nameEn)}`,
+      periodMeta(lang, range.from, range.to),
+    ],
+    fileName: `cost-center-statement-${centre.code}`,
+    orientation: 'landscape',
+    columns: [
+      { key: 'date', label: t('التاريخ', 'Date'), kind: 'date' },
+      { key: 'entryNo', label: t('رقم القيد', 'Entry no.'), width: 80 },
+      { key: 'account', label: t('الحساب', 'Account'), width: 150 },
+      { key: 'description', label: t('البيان', 'Description') },
+      { key: 'debit', label: t('مدين', 'Debit'), kind: 'amount' },
+      { key: 'credit', label: t('دائن', 'Credit'), kind: 'amount' },
+      { key: 'balance', label: t('الرصيد', 'Balance'), kind: 'amount' },
+    ],
+    ...statementRows(data, lang, (r) => ({
+      account: 'accountCode' in r ? `${r.accountCode} ${localName(lang, r.accountName, r.accountNameEn)}` : '',
     })),
   };
 }

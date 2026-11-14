@@ -236,6 +236,8 @@ export class CompanyRow {
   allowNegativeStock!: boolean;
   @ApiProperty({ type: 'boolean' })
   pricesIncludeTax!: boolean;
+  @ApiProperty({ type: 'boolean', description: "ADR-024 §1: cost centres shown and enforced. Off hides them; posted lines keep theirs." })
+  costCentersEnabled!: boolean;
   @ApiProperty({ type: 'string', format: 'date-time', nullable: true, description: "Set when the owner finishes the setup wizard (§13.4, ADR-009)." })
   onboardingCompletedAt!: string | null;
   @ApiProperty({ type: 'boolean' })
@@ -574,6 +576,8 @@ export class AccountRow {
   isControl!: boolean;
   @ApiProperty({ enum: ControlType, enumName: 'ControlType', nullable: true })
   controlType!: ControlType | null;
+  @ApiProperty({ type: 'boolean', description: "ADR-024 §1.3: a posting line needs a cost centre while centres are enabled. Income-statement accounts (REVENUE, EXPENSE) only." })
+  costCenterRequired!: boolean;
   @ApiProperty({ type: 'boolean' })
   isActive!: boolean;
   @ApiProperty({ type: 'string', format: 'date-time' })
@@ -698,10 +702,42 @@ export class JournalLineRow {
   description!: string | null;
   @ApiProperty({ type: 'string', nullable: true })
   branchId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, description: "ADR-024 §1.7: no foreign key, like party_id and branch_id. A used centre is deactivated, never deleted (CostCentersService), and job:integrity-check counts orphans. Income-statement lines only." })
+  costCenterId!: string | null;
   @ApiProperty({ type: 'string', format: 'date-time', description: "Copy of the entry's date (LEDGER-19): an entry's date never changes once its lines exist, so statements can seek on the line indexes below. Written with the lines (PostingService, draft creation in JournalService)." })
   entryDate!: string;
   @ApiProperty({ type: 'string', format: 'date-time' })
   createdAt!: string;
+}
+
+/** Scalar columns of the Prisma model `CostCenter`, as JSON. */
+export class CostCenterRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  companyId!: string;
+  @ApiProperty({ type: 'string' })
+  code!: string;
+  @ApiProperty({ type: 'string' })
+  nameAr!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  nameEn!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  parentId!: string | null;
+  @ApiProperty({ type: 'boolean', description: "False once the centre has a child (a group takes no lines)." })
+  isPostable!: boolean;
+  @ApiProperty({ type: 'boolean' })
+  isActive!: boolean;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  createdAt!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  updatedAt!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  createdBy!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  updatedBy!: string | null;
 }
 
 /** Scalar columns of the Prisma model `ItemGroup`, as JSON. */
@@ -1206,6 +1242,8 @@ export class SalesInvoiceRow {
   pricesIncludeTax!: boolean;
   @ApiProperty({ type: 'string', nullable: true })
   cashAccountId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, description: "ADR-024 §1.2: copied onto every income-statement line of the document's entry." })
+  costCenterId!: string | null;
   @ApiProperty({ enum: DocumentStatus, enumName: 'DocumentStatus' })
   status!: DocumentStatus;
   @ApiProperty({ type: 'string', nullable: true })
@@ -1308,6 +1346,8 @@ export class PurchaseInvoiceRow {
   pricesIncludeTax!: boolean;
   @ApiProperty({ type: 'string', nullable: true })
   cashAccountId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, description: "ADR-024 §1.2: copied onto every income-statement line of the document's entry." })
+  costCenterId!: string | null;
   @ApiProperty({ enum: DocumentStatus, enumName: 'DocumentStatus' })
   status!: DocumentStatus;
   @ApiProperty({ type: 'string', nullable: true })
@@ -1398,6 +1438,8 @@ export class SalesReturnRow {
   refundType!: InvoicePaymentType;
   @ApiProperty({ type: 'string', nullable: true })
   cashAccountId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, description: "ADR-024 §1.2: copied onto every income-statement line of the document's entry." })
+  costCenterId!: string | null;
   @ApiProperty({ type: 'string', nullable: true })
   reason!: string | null;
   @ApiProperty({ enum: DocumentStatus, enumName: 'DocumentStatus' })
@@ -1490,6 +1532,8 @@ export class PurchaseReturnRow {
   refundType!: InvoicePaymentType;
   @ApiProperty({ type: 'string', nullable: true })
   cashAccountId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, description: "ADR-024 §1.2: copied onto every income-statement line of the document's entry." })
+  costCenterId!: string | null;
   @ApiProperty({ type: 'string', nullable: true })
   reason!: string | null;
   @ApiProperty({ enum: DocumentStatus, enumName: 'DocumentStatus' })
@@ -1626,6 +1670,8 @@ export class ReceiptRow {
   partyId!: string;
   @ApiProperty({ type: 'string' })
   cashAccountId!: string;
+  @ApiProperty({ type: 'string', nullable: true, description: "ADR-024 §1.2: copied onto every income-statement line of the document's entry." })
+  costCenterId!: string | null;
   @ApiProperty({ type: 'string', format: 'decimal' })
   amount!: string;
   @ApiProperty({ type: 'string', nullable: true })
@@ -1672,6 +1718,8 @@ export class PaymentRow {
   expenseAccountId!: string | null;
   @ApiProperty({ type: 'string' })
   cashAccountId!: string;
+  @ApiProperty({ type: 'string', nullable: true, description: "ADR-024 §1.2: copied onto every income-statement line of the document's entry." })
+  costCenterId!: string | null;
   @ApiProperty({ type: 'string', format: 'decimal' })
   amount!: string;
   @ApiProperty({ type: 'string', nullable: true })

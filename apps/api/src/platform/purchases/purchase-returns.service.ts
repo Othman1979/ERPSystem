@@ -28,6 +28,7 @@ import { computeReturnLines, returnedByLine } from '../shared/return-lines.js';
 import { assertRefundType } from '../shared/refund-type.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import { GoodsNotesService } from '../goods-notes/goods-notes.service.js';
+import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 
 const SOURCE = 'PURCHASE_RETURN';
 
@@ -99,6 +100,7 @@ export class PurchaseReturnsService {
     private readonly ledger: StockLedgerService,
     private readonly audit: AuditService,
     private readonly goodsNotes: GoodsNotesService,
+    private readonly costCenters: CostCentersService,
   ) {}
 
   /**
@@ -302,6 +304,7 @@ export class PurchaseReturnsService {
         throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId must be an active cash/bank account');
       }
     }
+    if (dto.costCenterId) await this.costCenters.assertUsable(db, companyId, BigInt(dto.costCenterId));
 
     const { ret, invoiceId } = await db.$transaction(async (tx) => {
       // TRADE-01: lock the original invoice first. Every return of it is
@@ -347,6 +350,7 @@ export class PurchaseReturnsService {
           warehouseId,
           refundType: dto.refundType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
+          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
           reason: dto.reason ?? null,
           ...totals,
           createdBy: this.support.userId() ?? null,
@@ -594,6 +598,8 @@ export class PurchaseReturnsService {
           description: draft.reason ?? `Purchase return ${returnNo}`,
           lines: journalLines,
           postedBy: userId ?? null,
+          // ADR-024 §1.2: onto every income-statement line (expenses, cost, adjustments).
+          costCenterId: draft.costCenterId,
         });
 
         await tx.purchaseReturn.update({

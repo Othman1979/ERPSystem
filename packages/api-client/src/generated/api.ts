@@ -265,6 +265,8 @@ export interface AccountDto {
   isPostable: boolean;
   isControl: boolean;
   controlType: ControlType | null;
+  /** ADR-024 §1.3: a posting line needs a cost centre while centres are enabled. Income-statement accounts (REVENUE, EXPENSE) only. */
+  costCenterRequired: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -327,6 +329,8 @@ export interface CreateAccountDto {
   isControl?: boolean;
   /** @nullable */
   controlType?: CreateAccountDtoControlType;
+  /** Lines need a cost centre while centres are enabled; REVENUE / EXPENSE accounts only (ADR-024 §1.1). */
+  costCenterRequired?: boolean;
 }
 
 export interface UpdateAccountDto {
@@ -342,6 +346,8 @@ export interface UpdateAccountDto {
   nameEn?: string | null;
   isPostable?: boolean;
   isActive?: boolean;
+  /** REVENUE / EXPENSE accounts only (ADR-024 §1.1); kept when centres are switched off. */
+  costCenterRequired?: boolean;
 }
 
 export interface AccountMappingAccountRefDto {
@@ -670,6 +676,8 @@ export interface CompanyDto {
   /** @nullable */
   phone: string | null;
   pricesIncludeTax: boolean;
+  /** Cost centres shown and enforced (ADR-024 §1). */
+  costCentersEnabled: boolean;
   /**
      * Set when the setup wizard is finished.
      * @nullable
@@ -712,6 +720,8 @@ export interface UpdateCompanyDto {
   phone?: string | null;
   /** Prices typed on documents include the tax (§8.4). */
   pricesIncludeTax?: boolean;
+  /** Cost centres shown and enforced (ADR-024 §1.6). Off keeps posted lines and account flags as they are. */
+  costCentersEnabled?: boolean;
 }
 
 export interface CompanyLogoBase64Dto {
@@ -942,6 +952,61 @@ export interface UpdateBranchDto {
   isActive?: boolean;
 }
 
+export interface CostCenterDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  parentId: string | null;
+  /** False once the centre has a child (a group takes no lines). */
+  isPostable: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+}
+
+export interface CreateCostCenterDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  parentId?: string;
+}
+
+export interface UpdateCostCenterDto {
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr?: string;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
+  isActive?: boolean;
+}
+
+export interface DeletedDto {
+  deleted: true;
+}
+
 export type JournalPostingKind = typeof JournalPostingKind[keyof typeof JournalPostingKind];
 
 
@@ -1049,6 +1114,8 @@ export interface JournalLineDto {
   partyId?: string;
   /** @maxLength 500 */
   description?: string;
+  /** Income-statement lines only (ADR-024 §1.2); required on a flagged account while centres are on. */
+  costCenterId?: string;
 }
 
 /**
@@ -1107,6 +1174,11 @@ export interface JournalEntryLineDto {
   description: string | null;
   /** @nullable */
   branchId: string | null;
+  /**
+     * ADR-024 §1.7: no foreign key, like party_id and branch_id. A used centre is deactivated, never deleted (CostCentersService), and job:integrity-check counts orphans. Income-statement lines only.
+     * @nullable
+     */
+  costCenterId: string | null;
   /** Copy of the entry's date (LEDGER-19): an entry's date never changes once its lines exist, so statements can seek on the line indexes below. Written with the lines (PostingService, draft creation in JournalService). */
   entryDate: string;
   createdAt: string;
@@ -1166,10 +1238,6 @@ export interface JournalEntryDetailDto {
   reversals: JournalEntryReversalDto[];
 }
 
-export interface DeletedDto {
-  deleted: true;
-}
-
 export interface ReverseJournalEntryDto {
   reversalDate: string;
   /** @maxLength 500 */
@@ -1196,6 +1264,8 @@ export interface OpeningLineDto {
   partyId?: string;
   /** @maxLength 500 */
   description?: string;
+  /** Income-statement lines only (ADR-024 §1.2). */
+  costCenterId?: string;
 }
 
 export interface CreateOpeningEntryDto {
@@ -1360,6 +1430,49 @@ export interface PartyStatementPageDto {
   summary: JournalStatementSummaryDto | null;
   partyType: JournalPartyType;
   partyId: string;
+}
+
+export interface CostCenterStatementItemDto {
+  lineId: string;
+  entryId: string;
+  /** @nullable */
+  entryNo: string | null;
+  entryDate: string;
+  accountCode: string;
+  accountName: string;
+  /** @nullable */
+  accountNameEn: string | null;
+  sourceType: string;
+  postingKind: JournalPostingKind;
+  /** @nullable */
+  description: string | null;
+  debit: string;
+  credit: string;
+  /** Running balance after this line. */
+  balance: string;
+}
+
+export interface CostCenterRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface CostCenterStatementPageDto {
+  items: CostCenterStatementItemDto[];
+  /**
+     * Opaque cursor of the next page; null on the last page.
+     * @nullable
+     */
+  nextCursor: string | null;
+  /**
+     * Null after the first page.
+     * @nullable
+     */
+  summary: JournalStatementSummaryDto | null;
+  costCenter: CostCenterRefDto;
 }
 
 export type PartyType = typeof PartyType[keyof typeof PartyType];
@@ -2883,6 +2996,11 @@ export interface SalesInvoiceListItemDto {
   pricesIncludeTax: boolean;
   /** @nullable */
   cashAccountId: string | null;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   status: DocumentStatus;
   /** @nullable */
   description: string | null;
@@ -3095,6 +3213,11 @@ export interface SalesInvoiceDetailDto {
   pricesIncludeTax: boolean;
   /** @nullable */
   cashAccountId: string | null;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   status: DocumentStatus;
   /** @nullable */
   description: string | null;
@@ -3157,6 +3280,11 @@ export interface CreateSalesInvoiceDto {
   warehouseId: string;
   paymentType: CreateSalesInvoiceDtoPaymentType;
   cashAccountId?: string;
+  /**
+     * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
+     * copied onto every income-statement line of its entry.
+     */
+  costCenterId?: string;
   /** @maxLength 500 */
   description?: string;
   /** @minItems 1 */
@@ -3182,6 +3310,11 @@ export interface SalesReturnListItemDto {
   refundType: InvoicePaymentType;
   /** @nullable */
   cashAccountId: string | null;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   /** @nullable */
   reason: string | null;
   status: DocumentStatus;
@@ -3291,6 +3424,11 @@ export interface SalesReturnDetailDto {
   refundType: InvoicePaymentType;
   /** @nullable */
   cashAccountId: string | null;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   /** @nullable */
   reason: string | null;
   status: DocumentStatus;
@@ -3343,6 +3481,11 @@ export interface CreateSalesReturnDto {
   originalInvoiceId: string;
   refundType: CreateSalesReturnDtoRefundType;
   cashAccountId?: string;
+  /**
+     * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
+     * copied onto every income-statement line of its entry.
+     */
+  costCenterId?: string;
   /** @maxLength 500 */
   reason?: string;
   /** @minItems 1 */
@@ -3384,6 +3527,11 @@ export interface PurchaseInvoiceListItemDto {
   pricesIncludeTax: boolean;
   /** @nullable */
   cashAccountId: string | null;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   status: DocumentStatus;
   /** @nullable */
   description: string | null;
@@ -3540,6 +3688,11 @@ export interface PurchaseInvoiceDetailDto {
   pricesIncludeTax: boolean;
   /** @nullable */
   cashAccountId: string | null;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   status: DocumentStatus;
   /** @nullable */
   description: string | null;
@@ -3607,6 +3760,11 @@ export interface CreatePurchaseInvoiceDto {
   warehouseId?: string;
   paymentType: CreatePurchaseInvoiceDtoPaymentType;
   cashAccountId?: string;
+  /**
+     * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
+     * copied onto every income-statement line of its entry.
+     */
+  costCenterId?: string;
   /** @maxLength 500 */
   description?: string;
   /** @minItems 1 */
@@ -3639,6 +3797,11 @@ export interface PurchaseReturnListItemDto {
   refundType: InvoicePaymentType;
   /** @nullable */
   cashAccountId: string | null;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   /** @nullable */
   reason: string | null;
   status: DocumentStatus;
@@ -3735,6 +3898,11 @@ export interface PurchaseReturnDetailDto {
   refundType: InvoicePaymentType;
   /** @nullable */
   cashAccountId: string | null;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   /** @nullable */
   reason: string | null;
   status: DocumentStatus;
@@ -3791,6 +3959,11 @@ export interface CreatePurchaseReturnDto {
   warehouseId?: string;
   refundType: CreatePurchaseReturnDtoRefundType;
   cashAccountId?: string;
+  /**
+     * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
+     * copied onto every income-statement line of its entry.
+     */
+  costCenterId?: string;
   /** @maxLength 500 */
   reason?: string;
   /** @minItems 1 */
@@ -4104,6 +4277,11 @@ export interface ReceiptListItemDto {
   partyType: JournalPartyType;
   partyId: string;
   cashAccountId: string;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   amount: string;
   /** @nullable */
   paymentMethodId: string | null;
@@ -4242,6 +4420,11 @@ export interface ReceiptDetailDto {
   partyType: JournalPartyType;
   partyId: string;
   cashAccountId: string;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   amount: string;
   /** @nullable */
   paymentMethodId: string | null;
@@ -4311,6 +4494,11 @@ export interface CreateReceiptDto {
   partyType: CreateReceiptDtoPartyType;
   partyId: string;
   cashAccountId: string;
+  /**
+     * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
+     * copied onto every income-statement line of its entry.
+     */
+  costCenterId?: string;
   amount: string;
   paymentMethodId?: string;
   /** @maxLength 100 */
@@ -4339,6 +4527,11 @@ export interface PaymentListItemDto {
   /** @nullable */
   expenseAccountId: string | null;
   cashAccountId: string;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   amount: string;
   /** @nullable */
   paymentMethodId: string | null;
@@ -4406,6 +4599,11 @@ export interface PaymentDetailDto {
   /** @nullable */
   expenseAccountId: string | null;
   cashAccountId: string;
+  /**
+     * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+     * @nullable
+     */
+  costCenterId: string | null;
   amount: string;
   /** @nullable */
   paymentMethodId: string | null;
@@ -4468,6 +4666,11 @@ export interface CreatePaymentDto {
   /** Required when no party (direct expense payment). */
   expenseAccountId?: string;
   cashAccountId: string;
+  /**
+     * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
+     * copied onto every income-statement line of its entry.
+     */
+  costCenterId?: string;
   amount: string;
   paymentMethodId?: string;
   /** @maxLength 100 */
@@ -4931,6 +5134,56 @@ export interface IncomeStatementDto {
   grossProfit: string;
   expenses: FinancialStatementSectionDto;
   netProfit: string;
+}
+
+export interface CostCenterColumnDto {
+  /**
+     * Null for the "no centre" column (always last).
+     * @nullable
+     */
+  costCenterId: string | null;
+  /** @nullable */
+  code: string | null;
+  /** @nullable */
+  nameAr: string | null;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface CostCenterStatementRowDto {
+  accountId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** One per column, in column order. */
+  amounts: string[];
+  total: string;
+}
+
+export interface CostCenterSectionDto {
+  rows: CostCenterStatementRowDto[];
+  /** One per column. */
+  totals: string[];
+  total: string;
+}
+
+export interface CostCenterNetProfitDto {
+  amounts: string[];
+  /** Equals the income statement's netProfit. */
+  total: string;
+}
+
+export interface IncomeStatementByCostCenterDto {
+  from: string;
+  to: string;
+  /** @nullable */
+  fiscalYear: StatementFiscalYearRefDto | null;
+  columns: CostCenterColumnDto[];
+  revenue: CostCenterSectionDto;
+  /** Every EXPENSE account, cost of sales included. */
+  expenses: CostCenterSectionDto;
+  netProfit: CostCenterNetProfitDto;
 }
 
 export interface BalanceSheetDto {
@@ -5521,6 +5774,12 @@ export const ErrorCode = {
   ACCOUNT_IN_USE: 'ACCOUNT_IN_USE',
   ACCOUNT_HAS_CHILDREN: 'ACCOUNT_HAS_CHILDREN',
   ACCOUNT_TYPE_MISMATCH: 'ACCOUNT_TYPE_MISMATCH',
+  COST_CENTER_REQUIRED: 'COST_CENTER_REQUIRED',
+  COST_CENTER_NOT_ALLOWED: 'COST_CENTER_NOT_ALLOWED',
+  COST_CENTER_INACTIVE: 'COST_CENTER_INACTIVE',
+  COST_CENTER_NOT_POSTABLE: 'COST_CENTER_NOT_POSTABLE',
+  COST_CENTER_HAS_CHILDREN: 'COST_CENTER_HAS_CHILDREN',
+  COST_CENTER_IN_USE: 'COST_CENTER_IN_USE',
   PARTY_REQUIRED: 'PARTY_REQUIRED',
   PARTY_TYPE_MISMATCH: 'PARTY_TYPE_MISMATCH',
   PARTY_ON_NON_CONTROL_ACCOUNT: 'PARTY_ON_NON_CONTROL_ACCOUNT',
@@ -5758,6 +6017,41 @@ export type JournalControllerPartyStatementPartyType = typeof JournalControllerP
 export const JournalControllerPartyStatementPartyType = {
   CUSTOMER: 'CUSTOMER',
   SUPPLIER: 'SUPPLIER',
+} as const;
+
+export type JournalControllerCostCenterStatementParams = {
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+  /**
+   * Opaque `nextCursor` of the previous page; omit for the first page.
+   * @maxLength 512
+   */
+  cursor?: string;
+  format?: JournalControllerCostCenterStatementFormat;
+  lang?: JournalControllerCostCenterStatementLang;
+  costCenterId: string;
+  from?: string;
+  to?: string;
+};
+
+export type JournalControllerCostCenterStatementFormat = typeof JournalControllerCostCenterStatementFormat[keyof typeof JournalControllerCostCenterStatementFormat];
+
+
+export const JournalControllerCostCenterStatementFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type JournalControllerCostCenterStatementLang = typeof JournalControllerCostCenterStatementLang[keyof typeof JournalControllerCostCenterStatementLang];
+
+
+export const JournalControllerCostCenterStatementLang = {
+  ar: 'ar',
+  en: 'en',
 } as const;
 
 export type PartiesControllerListParams = {
@@ -6766,6 +7060,30 @@ export type ReportsControllerIncomeStatementLang = typeof ReportsControllerIncom
 
 
 export const ReportsControllerIncomeStatementLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type ReportsControllerIncomeStatementByCostCenterParams = {
+  format?: ReportsControllerIncomeStatementByCostCenterFormat;
+  lang?: ReportsControllerIncomeStatementByCostCenterLang;
+  from?: string;
+  to?: string;
+};
+
+export type ReportsControllerIncomeStatementByCostCenterFormat = typeof ReportsControllerIncomeStatementByCostCenterFormat[keyof typeof ReportsControllerIncomeStatementByCostCenterFormat];
+
+
+export const ReportsControllerIncomeStatementByCostCenterFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ReportsControllerIncomeStatementByCostCenterLang = typeof ReportsControllerIncomeStatementByCostCenterLang[keyof typeof ReportsControllerIncomeStatementByCostCenterLang];
+
+
+export const ReportsControllerIncomeStatementByCostCenterLang = {
   ar: 'ar',
   en: 'en',
 } as const;
@@ -9409,6 +9727,196 @@ export const branchesControllerDeactivate = async (id: string, options?: Paramet
 
 
 
+export type costCentersControllerListResponse200 = {
+  data: CostCenterDto[]
+  status: 200
+}
+
+export type costCentersControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type costCentersControllerListResponseSuccess = (costCentersControllerListResponse200) & {
+  headers: Headers;
+};
+export type costCentersControllerListResponseError = (costCentersControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getCostCentersControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/cost-centers`
+}
+
+/**
+ * @summary Flat, by code (inactive ones too); the web builds the tree.
+ */
+export const costCentersControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerListResponseSuccess> => {
+
+  return apiFetch<costCentersControllerListResponseSuccess>(getCostCentersControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type costCentersControllerCreateResponse201 = {
+  data: CostCenterDto
+  status: 201
+}
+
+export type costCentersControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type costCentersControllerCreateResponseSuccess = (costCentersControllerCreateResponse201) & {
+  headers: Headers;
+};
+export type costCentersControllerCreateResponseError = (costCentersControllerCreateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getCostCentersControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/cost-centers`
+}
+
+export const costCentersControllerCreate = async (createCostCenterDto: CreateCostCenterDto, options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerCreateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<costCentersControllerCreateResponseSuccess>(getCostCentersControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createCostCenterDto)
+  }
+);}
+
+
+
+export type costCentersControllerUpdateResponse200 = {
+  data: CostCenterDto
+  status: 200
+}
+
+export type costCentersControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type costCentersControllerUpdateResponseSuccess = (costCentersControllerUpdateResponse200) & {
+  headers: Headers;
+};
+export type costCentersControllerUpdateResponseError = (costCentersControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getCostCentersControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cost-centers/${id}`
+}
+
+/**
+ * @summary Names, and `isActive: false` to deactivate a used centre.
+ */
+export const costCentersControllerUpdate = async (id: string,
+    updateCostCenterDto: UpdateCostCenterDto, options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerUpdateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<costCentersControllerUpdateResponseSuccess>(getCostCentersControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateCostCenterDto)
+  }
+);}
+
+
+
+export type costCentersControllerRemoveResponse200 = {
+  data: DeletedDto
+  status: 200
+}
+
+export type costCentersControllerRemoveResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type costCentersControllerRemoveResponseSuccess = (costCentersControllerRemoveResponse200) & {
+  headers: Headers;
+};
+export type costCentersControllerRemoveResponseError = (costCentersControllerRemoveResponseDefault) & {
+  headers: Headers;
+};
+
+export const getCostCentersControllerRemoveUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cost-centers/${id}`
+}
+
+/**
+ * @summary An unused leaf only; a used centre answers COST_CENTER_IN_USE (deactivate it instead).
+ */
+export const costCentersControllerRemove = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerRemoveResponseSuccess> => {
+
+  return apiFetch<costCentersControllerRemoveResponseSuccess>(getCostCentersControllerRemoveUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
 export type journalControllerListResponse200 = {
   data: JournalEntryListItemDtoPage
   status: 200
@@ -9865,6 +10373,56 @@ page (ADR-022 §4); PDF / XLSX: the whole statement, capped.
 export const journalControllerPartyStatement = async (params?: JournalControllerPartyStatementParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerPartyStatementResponseSuccess> => {
 
   return apiFetch<journalControllerPartyStatementResponseSuccess>(getJournalControllerPartyStatementUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type journalControllerCostCenterStatementResponse200 = {
+  data: CostCenterStatementPageDto
+  status: 200
+}
+
+export type journalControllerCostCenterStatementResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type journalControllerCostCenterStatementResponseSuccess = (journalControllerCostCenterStatementResponse200) & {
+  headers: Headers;
+};
+export type journalControllerCostCenterStatementResponseError = (journalControllerCostCenterStatementResponseDefault) & {
+  headers: Headers;
+};
+
+export const getJournalControllerCostCenterStatementUrl = (params: JournalControllerCostCenterStatementParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/reports/cost-center-statement?${stringifiedParams}` : `/api/v1/reports/cost-center-statement`
+}
+
+/**
+ * @summary Cost-centre statement (ADR-024 §1.9): the centre's posted lines with a
+running Dr − Cr balance from zero. JSON: one keyset page (ADR-022 §4);
+PDF / XLSX: the whole statement, capped. Company-wide (ADR-003 §13).
+ */
+export const journalControllerCostCenterStatement = async (params: JournalControllerCostCenterStatementParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerCostCenterStatementResponseSuccess> => {
+
+  return apiFetch<journalControllerCostCenterStatementResponseSuccess>(getJournalControllerCostCenterStatementUrl(params),
   {
     ...options,
     method: 'GET'
@@ -14765,6 +15323,54 @@ export const getReportsControllerIncomeStatementUrl = (params?: ReportsControlle
 export const reportsControllerIncomeStatement = async (params?: ReportsControllerIncomeStatementParams, options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerIncomeStatementResponseSuccess> => {
 
   return apiFetch<reportsControllerIncomeStatementResponseSuccess>(getReportsControllerIncomeStatementUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type reportsControllerIncomeStatementByCostCenterResponse200 = {
+  data: IncomeStatementByCostCenterDto
+  status: 200
+}
+
+export type reportsControllerIncomeStatementByCostCenterResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type reportsControllerIncomeStatementByCostCenterResponseSuccess = (reportsControllerIncomeStatementByCostCenterResponse200) & {
+  headers: Headers;
+};
+export type reportsControllerIncomeStatementByCostCenterResponseError = (reportsControllerIncomeStatementByCostCenterResponseDefault) & {
+  headers: Headers;
+};
+
+export const getReportsControllerIncomeStatementByCostCenterUrl = (params?: ReportsControllerIncomeStatementByCostCenterParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/reports/income-statement-by-cost-center?${stringifiedParams}` : `/api/v1/reports/income-statement-by-cost-center`
+}
+
+/**
+ * @summary By cost centre, with a "no centre" column (ADR-024 §1.9); company-wide (ADR-003 §13).
+ */
+export const reportsControllerIncomeStatementByCostCenter = async (params?: ReportsControllerIncomeStatementByCostCenterParams, options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerIncomeStatementByCostCenterResponseSuccess> => {
+
+  return apiFetch<reportsControllerIncomeStatementByCostCenterResponseSuccess>(getReportsControllerIncomeStatementByCostCenterUrl(params),
   {
     ...options,
     method: 'GET'

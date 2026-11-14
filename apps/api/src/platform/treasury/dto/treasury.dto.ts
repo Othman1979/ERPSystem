@@ -173,6 +173,15 @@ export class CreateReceiptDto {
   @Matches(INT_STRING)
   cashAccountId!: string;
 
+  /**
+   * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
+   * copied onto every income-statement line of its entry.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  costCenterId?: string;
+
   @Matches(MONEY)
   amount!: string;
 
@@ -225,6 +234,15 @@ export class CreatePaymentDto {
   @IsString()
   @Matches(INT_STRING)
   cashAccountId!: string;
+
+  /**
+   * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
+   * copied onto every income-statement line of its entry.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  costCenterId?: string;
 
   @Matches(MONEY)
   amount!: string;
