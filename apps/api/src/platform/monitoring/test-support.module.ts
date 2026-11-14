@@ -1,4 +1,4 @@
-import { Controller, Get, Module } from '@nestjs/common';
+import { Controller, Get, Headers, Module } from '@nestjs/common';
 import { ApiExcludeController, ApiOkResponse, ApiProperty, ApiTags } from '@nestjs/swagger';
 
 /**
@@ -44,11 +44,16 @@ class TestContractController {
     return { amount: '1.500' };
   }
 
+  /**
+   * Answers wrongly only when the caller asks (the x-contract-mismatch
+   * header, left out of the document): the isolation sweep calls every
+   * documented GET, and must get a correct answer here.
+   */
   @Get('mismatch')
   @ApiOkResponse({ type: TestSupportAmountDto })
-  mismatch() {
+  mismatch(@Headers('x-contract-mismatch') wrong?: string) {
     // A number where a string is declared, and a key that is not declared.
-    return { amount: 1.5, extra: true };
+    return wrong === 'yes' ? { amount: 1.5, extra: true } : { amount: '1.500' };
   }
 }
 

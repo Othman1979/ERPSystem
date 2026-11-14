@@ -466,7 +466,9 @@ describe('Real answers match their declared schemas', () => {
     // Test-only routes (NODE_ENV=test, monitoring/test-support.module.ts): one answers
     // what it declares, one answers a number and an extra key, one is not in the document.
     await call('GET', '/__test/contract/match', { token });
-    expect((await api().get('/api/v1/__test/contract/mismatch').set(auth(token))).status).toBe(200);
+    // Without the header it answers correctly (the isolation sweep calls it too); with it, wrongly.
+    await call('GET', '/__test/contract/mismatch', { token });
+    expect((await api().get('/api/v1/__test/contract/mismatch').set(auth(token)).set('x-contract-mismatch', 'yes')).status).toBe(200);
     expect((await api().get('/api/v1/__test/undocumented').set(auth(token))).status).toBe(200);
     // The audit writes on 'finish', after the answer: give it a moment.
     await new Promise((r) => setTimeout(r, 200));
