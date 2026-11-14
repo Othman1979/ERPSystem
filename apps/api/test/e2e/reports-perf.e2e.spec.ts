@@ -18,6 +18,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { wholeStatement } from './support/statements.js';
 
 const API_PORT = 3204;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -236,13 +237,21 @@ perf('Reports on 100,000 journal lines', () => {
   }, 60_000);
 
   it('general ledger of the busiest account: JSON and XLSX within budget', async () => {
-    const json = await timed('ledgerJson', () =>
-      api().get(`/api/v1/reports/general-ledger?accountId=${busiest.id}&from=2025-01-01&to=2025-12-31`).set(auth(A.token)),
-    );
+    // The screen's first page (ADR-022 §4: keyset, with the period summary)...
+    const url = `/api/v1/reports/general-ledger?accountId=${busiest.id}&from=2025-01-01&to=2025-12-31`;
+    const json = await timed('ledgerJson', () => api().get(url).set(auth(A.token)));
     expect(json.status).toBe(200);
     expect(timings.ledgerJson).toBeLessThan(BUDGET.ledgerJson);
-    const rowsCount = (json.body.rows as unknown[]).length;
+    // ...and the next page, which continues from the cursor's carried balance.
+    const next = await timed('ledgerJsonNextPage', () =>
+      api().get(`${url}&cursor=${encodeURIComponent(json.body.nextCursor)}`).set(auth(A.token)),
+    );
+    expect(next.status).toBe(200);
+    expect(timings.ledgerJsonNextPage).toBeLessThan(BUDGET.ledgerJson);
+    const whole = await wholeStatement(BASE, url, A.token);
+    const rowsCount = (whole.body.rows as unknown[]).length;
     expect(rowsCount).toBeGreaterThan(1_000);
+    expect(whole.body.closingBalance).toBe(json.body.summary.closingBalance);
     timings.ledgerRows = rowsCount;
 
     const xlsx = await timed('ledgerXlsx', () =>
