@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
@@ -17,6 +17,12 @@ import {
   UpdateAccountDto,
   UpsertMappingDto,
 } from './dto/accounting.dto.js';
+import {
+  AccountDto,
+  AccountMappingDto,
+  AccountMappingSlotDto,
+  ChartProvisionResultDto,
+} from './dto/accounting-response.dto.js';
 import { MappingsService } from './mappings.service.js';
 
 @ApiTags('accounts')
@@ -32,36 +38,42 @@ export class AccountingController {
 
   @Get('accounts')
   @RequirePermission(PERMISSIONS.TENANT_READ)
+  @ApiOkResponse({ type: AccountDto, isArray: true })
   listAccounts() {
     return this.accounts.list();
   }
 
   @Post('accounts')
   @RequirePermission(PERMISSIONS.ACCOUNT_MANAGE)
+  @ApiCreatedResponse({ type: AccountDto })
   createAccount(@Body() dto: CreateAccountDto) {
     return this.accounts.create(dto);
   }
 
   @Patch('accounts/:id')
   @RequirePermission(PERMISSIONS.ACCOUNT_MANAGE)
+  @ApiOkResponse({ type: AccountDto })
   updateAccount(@Param('id', ParseIdPipe) id: string, @Body() dto: UpdateAccountDto) {
     return this.accounts.update(BigInt(id), dto);
   }
 
   @Get('account-mappings')
   @RequirePermission(PERMISSIONS.TENANT_READ)
+  @ApiOkResponse({ type: AccountMappingSlotDto, isArray: true })
   listMappings() {
     return this.mappings.list();
   }
 
   @Post('account-mappings')
   @RequirePermission(PERMISSIONS.ACCOUNT_MANAGE)
+  @ApiCreatedResponse({ type: AccountMappingDto })
   upsertMapping(@Body() dto: UpsertMappingDto) {
     return this.mappings.upsert(dto);
   }
 
   @Post('account-mappings/bulk')
   @RequirePermission(PERMISSIONS.ACCOUNT_MANAGE)
+  @ApiCreatedResponse({ type: AccountMappingDto, isArray: true })
   bulkMappings(@Body() dto: BulkMappingsDto) {
     return this.mappings.bulk(dto);
   }
@@ -73,6 +85,7 @@ export class AccountingController {
    */
   @Post('accounting/setup/provision')
   @RequirePermission(PERMISSIONS.ONBOARDING_MANAGE)
+  @ApiCreatedResponse({ type: ChartProvisionResultDto })
   async provision() {
     const cls = ClsServiceManager.getClsService<RequestContext>();
     const tenantId = cls.get('tenantId');

@@ -78,7 +78,8 @@ export class CreatePartyDto {
   @IsInt()
   @Min(0)
   @Max(3650)
-  paymentTermsDays?: number;
+  /** Null clears it (no terms). */
+  paymentTermsDays?: number | null;
 
   @IsOptional()
   @IsBoolean()
@@ -143,7 +144,8 @@ export class UpdatePartyDto {
   @IsInt()
   @Min(0)
   @Max(3650)
-  paymentTermsDays?: number;
+  /** Null clears it (no terms). */
+  paymentTermsDays?: number | null;
 
   @IsOptional()
   @IsBoolean()

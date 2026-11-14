@@ -8,7 +8,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import {
@@ -21,6 +21,7 @@ import type { Env } from '../../common/config/env.validation.js';
 import { LimitPerAccount, LimitSignup } from '../../common/throttle/throttle.js';
 import { AuthService, type AuthMeta } from './auth.service.js';
 import { ChangePasswordDto, LoginDto, RegisterDto, SwitchTenantDto } from './dto/auth.dto.js';
+import { AuthAccessTokenDto, AuthLoginResponseDto, AuthRefreshResponseDto, MeResponseDto, MyTenantDto } from './dto/auth-response.dto.js';
 
 const REFRESH_COOKIE = 'refresh_token';
 const COOKIE_PATH = '/api/v1/auth';
@@ -64,6 +65,7 @@ export class AuthController {
   @LimitSignup()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('register')
+  @ApiCreatedResponse({ type: AuthAccessTokenDto })
   async register(
     @Body() dto: RegisterDto,
     @Req() req: Request,
@@ -81,6 +83,7 @@ export class AuthController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('login')
   @HttpCode(200)
+  @ApiOkResponse({ type: AuthLoginResponseDto })
   async login(
     @Body() dto: LoginDto,
     @Req() req: Request,
@@ -95,6 +98,7 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(200)
+  @ApiOkResponse({ type: AuthRefreshResponseDto })
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.refresh(req.cookies?.[REFRESH_COOKIE], meta(req));
     setRefreshCookie(res, result.refreshToken, this.config);
@@ -105,6 +109,7 @@ export class AuthController {
   @Public()
   @Post('logout')
   @HttpCode(204)
+  @ApiNoContentResponse()
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(req.cookies?.[REFRESH_COOKIE]);
     clearRefreshCookie(res);
@@ -119,6 +124,7 @@ export class AuthController {
   @AllowPendingPasswordChange()
   @Post('logout-all')
   @HttpCode(204)
+  @ApiNoContentResponse()
   async logoutAll(
     @CurrentUser() userId: bigint,
     @Req() req: Request,
@@ -138,6 +144,7 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('change-password')
   @HttpCode(204)
+  @ApiNoContentResponse()
   async changePassword(
     @CurrentUser() userId: bigint,
     @Body() dto: ChangePasswordDto,
@@ -158,6 +165,7 @@ export class MeController {
   @TenantOptional()
   @AllowPendingPasswordChange()
   @Get()
+  @ApiOkResponse({ type: MeResponseDto })
   me() {
     return this.auth.me();
   }
@@ -165,6 +173,7 @@ export class MeController {
   @TenantOptional()
   @AllowPendingPasswordChange()
   @Get('tenants')
+  @ApiOkResponse({ type: MyTenantDto, isArray: true })
   tenants() {
     return this.auth.myTenants();
   }
@@ -172,6 +181,7 @@ export class MeController {
   @TenantOptional()
   @Post('switch-tenant')
   @HttpCode(200)
+  @ApiOkResponse({ type: AuthAccessTokenDto })
   async switchTenant(
     @Body() dto: SwitchTenantDto,
     @Req() req: Request,

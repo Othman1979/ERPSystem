@@ -62,8 +62,22 @@ jobs:
         timeout-minutes: 2
       - name: test (api)
         # --forceExit: a suite that leaves a handle open must not keep the job alive.
+        # Every API an e2e suite spawns checks its 2xx answers against the OpenAPI
+        # document and appends mismatches here (PLAT-15, ADR-023).
+        env:
+          OPENAPI_RESPONSE_AUDIT: ${{ runner.temp }}/openapi-audit.jsonl
         run: pnpm --filter api test --forceExit
         timeout-minutes: 20
+      - name: OpenAPI response audit (PLAT-15)
+        if: ${{ !cancelled() }}
+        run: |
+          file="${{ runner.temp }}/openapi-audit.jsonl"
+          if [ -s "$file" ]; then
+            echo "Answers that do not match their declared OpenAPI schema:"
+            sort -u "$file"
+            exit 1
+          fi
+          echo "No mismatch."
       - name: test (other packages)
         if: matrix.mariadb == '11.8'
         run: pnpm -r --filter '!api' run test

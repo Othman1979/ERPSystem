@@ -3,13 +3,15 @@ import cookieParser from 'cookie-parser';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { AppModule } from './app.module.js';
 import { apiDocsEnabled, trustProxySetting, type Env } from './common/config/env.validation.js';
 import { redact } from './common/errors/error-events.util.js';
+import { buildApiDocument } from './common/openapi/document.js';
+import { responseAudit } from './common/openapi/response-audit.js';
 import { DocumentSizePipe } from './common/pipes/document-size.pipe.js';
 import { IdParamPipe } from './common/pipes/id-param.pipe.js';
 import { apiCompression } from './common/web/compression.js';
@@ -88,18 +90,20 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
+  // Tests only: check every 2xx answer against its declared schema (PLAT-15). Before
+  // the routes, so it sees each answer; it never changes one.
+  const auditFile = config.get('OPENAPI_RESPONSE_AUDIT', { infer: true });
+  let document: OpenAPIObject | null = null;
+  if (auditFile && !production) {
+    document = buildApiDocument(app);
+    app.use(responseAudit(document, auditFile));
+  }
+
   const webDir = config.get('WEB_DIST_DIR', { infer: true });
   if (webDir) serveWebApp(app, webDir);
 
   if (apiDocsEnabled({ API_DOCS: config.get('API_DOCS', { infer: true }), NODE_ENV: config.get('NODE_ENV', { infer: true }) })) {
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('ERP Cloud API')
-      .setDescription('Accounting & inventory SaaS API')
-      .setVersion('0.1.0')
-      .addBearerAuth()
-      .build();
-    const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup('api/docs', app, document);
+    SwaggerModule.setup('api/docs', app, document ?? buildApiDocument(app));
   }
 
   const port = config.get('API_PORT', { infer: true });

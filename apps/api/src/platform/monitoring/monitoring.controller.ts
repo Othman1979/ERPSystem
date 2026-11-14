@@ -1,9 +1,10 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { PlatformAdmin, TenantOptional } from '../../common/decorators/auth.decorators.js';
 import { ClientErrorDto, ListErrorsQueryDto } from './dto/monitoring.dto.js';
+import { AdminErrorDetailDto, AdminErrorRowDto } from './dto/monitoring-response.dto.js';
 import { MonitoringService } from './monitoring.service.js';
 
 /**
@@ -27,6 +28,7 @@ export class ClientErrorsController {
 
   @Post()
   @HttpCode(204)
+  @ApiNoContentResponse()
   @Throttle({ default: { limit: 60, ttl: 3_600_000 } })
   async report(@Body() dto: ClientErrorDto): Promise<void> {
     await this.monitoring.reportClientError(dto);
@@ -42,21 +44,25 @@ export class AdminErrorsController {
   constructor(private readonly monitoring: MonitoringService) {}
 
   @Get()
+  @ApiOkResponse({ type: AdminErrorRowDto, isArray: true })
   list(@Query() q: ListErrorsQueryDto) {
     return this.monitoring.list(q);
   }
 
   @Get(':id')
+  @ApiOkResponse({ type: AdminErrorDetailDto })
   get(@Param('id') id: string) {
     return this.monitoring.get(errorId(id));
   }
 
   @Post(':id/resolve')
+  @ApiCreatedResponse({ type: AdminErrorDetailDto })
   resolve(@Param('id') id: string) {
     return this.monitoring.setResolved(errorId(id), true);
   }
 
   @Post(':id/reopen')
+  @ApiCreatedResponse({ type: AdminErrorDetailDto })
   reopen(@Param('id') id: string) {
     return this.monitoring.setResolved(errorId(id), false);
   }

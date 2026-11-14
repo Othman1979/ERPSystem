@@ -1,9 +1,18 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { RequireAllBranches, RequirePermission } from '../../common/decorators/auth.decorators.js';
+import { ApiFileResponse, ApiKeysetResponse } from '../../common/openapi/responses.js';
 import { ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { PrintingService } from '../printing/printing.service.js';
+import {
+  ItemBalancesReportDto,
+  ItemLedgerPageDto,
+  StockReportBalanceDto,
+  StockReportMovementDto,
+  StockValuationReportDto,
+  StockVerifyResultDto,
+} from './dto/inventory-response.dto.js';
 import {
   ItemBalancesQueryDto,
   ItemLedgerQueryDto,
@@ -32,6 +41,11 @@ export class StockReportsController {
 
   @Get('balances')
   @RequirePermission(PERMISSIONS.TENANT_READ)
+  @ApiFileResponse(
+    ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    { type: StockReportBalanceDto, isArray: true },
+    'JSON array of on-hand rows; a PDF or xlsx file with format=pdf|xlsx.',
+  )
   async balances(@Query() q: StockBalancesQueryDto) {
     const data = await this.reports.balances(q);
     const wh = await this.warehouseLabel(q);
@@ -41,6 +55,7 @@ export class StockReportsController {
   /** Movement ledger, newest first, read by keyset (ADR-022 §4): `{ items, nextCursor }`. */
   @Get('movements')
   @RequirePermission(PERMISSIONS.TENANT_READ)
+  @ApiKeysetResponse(StockReportMovementDto)
   movements(@Query() q: StockMovementsQueryDto) {
     return this.reports.movements(q);
   }
@@ -51,6 +66,11 @@ export class StockReportsController {
    */
   @Get('items/:itemId/ledger')
   @RequirePermission(PERMISSIONS.TENANT_READ)
+  @ApiFileResponse(
+    ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    ItemLedgerPageDto,
+    'Item card page as JSON; a PDF or xlsx file with format=pdf|xlsx.',
+  )
   async itemLedger(@Param('itemId', ParseIdPipe) itemId: string, @Query() q: ItemLedgerQueryDto) {
     if (!q.format || q.format === 'json') return this.reports.itemLedgerPage(itemId, q);
     const data = await this.reports.itemLedger(itemId, q);
@@ -61,6 +81,11 @@ export class StockReportsController {
   /** Items balance (ميزان المواد): opening, ins, outs, closing per item (ADR-008). */
   @Get('item-balances')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
+  @ApiFileResponse(
+    ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    ItemBalancesReportDto,
+    'Item balances as JSON; a PDF or xlsx file with format=pdf|xlsx.',
+  )
   async itemBalances(@Query() q: ItemBalancesQueryDto) {
     const data = await this.reports.itemBalances({
       warehouseId: q.warehouseId || undefined,
@@ -73,6 +98,11 @@ export class StockReportsController {
 
   @Get('valuation')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
+  @ApiFileResponse(
+    ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    StockValuationReportDto,
+    'Valuation as JSON; a PDF or xlsx file with format=pdf|xlsx.',
+  )
   async valuation(@Query() q: StockValuationQueryDto) {
     const data = await this.reports.valuation(q.warehouseId || undefined);
     const wh = await this.warehouseLabel(q);
@@ -83,6 +113,7 @@ export class StockReportsController {
   @Get('verify')
   @RequirePermission(PERMISSIONS.TENANT_READ)
   @RequireAllBranches()
+  @ApiOkResponse({ type: StockVerifyResultDto })
   verify() {
     return this.ledger.verify();
   }

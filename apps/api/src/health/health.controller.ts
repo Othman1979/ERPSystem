@@ -1,10 +1,11 @@
 import { Controller, Get, Logger } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../common/decorators/auth.decorators.js';
 import { DomainError } from '../common/errors/domain.error.js';
 import { ErrorCode } from '../common/errors/error-codes.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { type DbProbeResult, probeDatabase } from './db-probe.js';
+import { HealthLiveDto, HealthReportDto } from './health-response.dto.js';
 
 /** Longest the readiness check may take: a load balancer gives up around there. */
 const PROBE_TIMEOUT_MS = 2000;
@@ -34,6 +35,7 @@ export class HealthController {
   @Public()
   @Get('health')
   @ApiOperation({ summary: 'Readiness: the database can write and use its temp directory' })
+  @ApiOkResponse({ type: HealthReportDto })
   async health(): Promise<{
     status: string;
     db: string;
@@ -59,6 +61,7 @@ export class HealthController {
   @Public()
   @Get('health/live')
   @ApiOperation({ summary: 'Liveness: the process answers (no database access)' })
+  @ApiOkResponse({ type: HealthLiveDto })
   live(): { status: string; timestamp: string } {
     return { status: 'ok', timestamp: new Date().toISOString() };
   }

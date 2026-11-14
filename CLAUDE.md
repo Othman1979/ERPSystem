@@ -37,7 +37,8 @@ pnpm typecheck
 pnpm lint
 pnpm --filter api prisma migrate dev --name <name>
 pnpm --filter api prisma db seed
-pnpm api-client:generate # يولد packages/api-client من OpenAPI
+pnpm api-client:generate # يولد packages/api-client من OpenAPI (OPENAPI_INPUT=<url|file> لمصدر غير :3001)
+pnpm --filter api openapi:models # بعد تغيير schema.prisma: يعيد توليد common/openapi/prisma-models.ts (ADR-023)
 pnpm --filter api job:tenant-status # Cron يومي: دورة حالات الاشتراك (ADR-009)، بعد pnpm build
 pnpm --filter api job:einvoice-send # Cron كل دقيقة: إرسال الفوترة الإلكترونية (ADR-009 §15)
 pnpm --filter api job:purge-tenant <id> [--confirm "<name>"] # يدوي: حذف مستأجر ملغى بعد الاحتفاظ (§14)
