@@ -1,43 +1,62 @@
-import { useQueries } from '@tanstack/react-query';
-import { partiesControllerGet, partiesControllerList, type PartyDto } from '@erp/api-client';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import {
+  accountingControllerListMappings,
+  partiesControllerGet,
+  partiesControllerList,
+  type AccountDto,
+  type PartyDto,
+} from '@erp/api-client';
 import { codeAndName } from '../i18n/displayName';
 import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
-import { partyKindOf, type PartyColumn, type PartyKind } from './JournalLinesGrid';
+import type { PartyColumn } from './JournalLinesGrid';
+import { partyNeedByAccount, sideOfPartyType, type PartyKind, type PartyNeed } from './journalLineChecks';
 
 type Party = PartyDto;
 
-interface AccountLike {
-  id: string;
-  controlType?: string | null;
+/** Load state of the data the party rule needs beyond the chart (the account mappings). */
+export interface PartyRulesState {
+  ready: boolean;
+  failed: boolean;
+  error: unknown;
+  retrying: boolean;
+  retry: () => void;
 }
 
+type AccountLike = Pick<AccountDto, 'id' | 'isControl' | 'controlType'>;
+
+/** The one cache key of the account mappings (shared with the opening balances screen). */
+const MAPPINGS_QUERY_KEY = ['account-mappings'] as const;
+
 /**
- * Parties of one side for the picker: the side's own parties plus BOTH ones.
- * The API matches partyType exactly, so this asks twice (ADR-022 §8).
+ * Parties for one picker. A side's picker lists that side's parties plus BOTH
+ * ones; the API matches partyType exactly, so this asks twice (ADR-022 §8).
+ * 'ANY' (a control account of no side) lists every party in one request.
  */
-function pickParties(kind: PartyKind, q: string | undefined, signal: AbortSignal): Promise<Party[]> {
-  const types = [kind, 'BOTH'] as const;
+function pickParties(need: PartyNeed, q: string | undefined, signal: AbortSignal): Promise<Party[]> {
+  const base = { isActive: 'true', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) } as const;
+  if (need === 'ANY') {
+    return partiesControllerList(base, { signal }).then((r) => r.data.items);
+  }
+  const types = [need, 'BOTH'] as const;
   return Promise.all(
     types.map((partyType) =>
-      partiesControllerList(
-        { partyType, isActive: 'true', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) },
-        { signal },
-      ).then((r) => r.data.items),
+      partiesControllerList({ ...base, partyType }, { signal }).then((r) => r.data.items),
     ),
   ).then((pages) => pages.flat());
 }
 
 /**
- * Party column for JournalLinesGrid: which accounts are customer / supplier
- * control accounts, and the parties to pick from. The picker searches on the
- * server (ADR-022 §8); `partyName` labels any party shown on a line, including
- * inactive ones, and fetches the ones not seen yet (a saved entry carries ids only).
+ * Party column for JournalLinesGrid: which accounts need a customer or a
+ * supplier (decision D-2, `partyNeedByAccount`), and the parties to pick from.
+ * The picker searches on the server (ADR-022 §8); `partyName` labels any party
+ * shown on a line, including inactive ones, and fetches the ones not seen yet
+ * (a saved entry carries ids only).
  *
  * `shownPartyIds`: the party ids on the lines on screen, so a chosen party keeps its label.
  * `enabled`: fetch the picker options (false while no grid is shown).
  */
 export function usePartyColumn(
-  accounts: AccountLike[] | undefined,
+  accounts: readonly AccountLike[] | undefined,
   {
     shownPartyIds,
     enabled = true,
@@ -45,7 +64,24 @@ export function usePartyColumn(
 ): {
   partyColumn: PartyColumn;
   partyName: (partyId: string | null | undefined) => string | undefined;
+  /**
+   * Whether the party rule is complete: until the account mappings load, a
+   * legacy-mapped control account looks like a plain one, so a line on it
+   * would pass the check before saving and then fail at posting.
+   */
+  rules: PartyRulesState;
 } {
+  // A legacy chart maps CUSTOMERS_CONTROL / SUPPLIERS_CONTROL to an account
+  // without control flags; the mappings say which one needs a party. Only
+  // the grid needs this (a saved entry's lines already carry their party).
+  const mappings = useQuery({
+    queryKey: MAPPINGS_QUERY_KEY,
+    queryFn: ({ signal }) => accountingControllerListMappings({ signal }).then((r) => r.data),
+    enabled,
+  });
+  const kindByAccount = partyNeedByAccount(accounts, mappings.data);
+  const anyNeeded = [...kindByAccount.values()].includes('ANY');
+
   const customers = useRemoteOptions<Party>({
     key: ['parties', 'pick-journal', 'CUSTOMER'],
     fetch: (q, signal) => pickParties('CUSTOMER', q, signal),
@@ -56,15 +92,16 @@ export function usePartyColumn(
     fetch: (q, signal) => pickParties('SUPPLIER', q, signal),
     enabled,
   });
-
-  const kindByAccount = new Map<string, PartyKind>();
-  for (const a of accounts ?? []) {
-    const kind = partyKindOf(a.controlType);
-    if (kind) kindByAccount.set(a.id, kind);
-  }
+  // Only charts with a control account of no side need this list.
+  const either = useRemoteOptions<Party>({
+    key: ['parties', 'pick-journal', 'ANY'],
+    fetch: (q, signal) => pickParties('ANY', q, signal),
+    enabled: enabled && anyNeeded,
+  });
+  const pickers = { CUSTOMER: customers, SUPPLIER: suppliers, ANY: either } as const;
 
   const rememberedParty = (id: string | null | undefined): Party | undefined =>
-    customers.byId(id) ?? suppliers.byId(id);
+    customers.byId(id) ?? suppliers.byId(id) ?? either.byId(id);
   // Parties on screen that no search has returned yet (e.g. a saved entry): one GET each.
   const unknownIds = [...new Set(shownPartyIds.filter((id): id is string => !!id))].filter(
     (id) => !rememberedParty(id),
@@ -81,22 +118,34 @@ export function usePartyColumn(
     const row = fetched[i]?.data;
     if (row) fetchedById.set(id, row);
   });
+  const partyOf = (id: string | null | undefined) =>
+    id ? (rememberedParty(id) ?? fetchedById.get(id)) : undefined;
 
-  const optionsOf = (kind: PartyKind) =>
-    (kind === 'CUSTOMER' ? customers : suppliers)
-      .withSelected(shownPartyIds)
-      .map((p) => ({ value: p.id, label: codeAndName(p) }));
+  const optionsOf = (need: PartyNeed) =>
+    pickers[need].withSelected(shownPartyIds).map((p) => ({ value: p.id, label: codeAndName(p) }));
 
   return {
     partyColumn: {
       kindByAccount,
-      options: { CUSTOMER: optionsOf('CUSTOMER'), SUPPLIER: optionsOf('SUPPLIER') },
-      onSearch: { CUSTOMER: customers.onSearch, SUPPLIER: suppliers.onSearch },
+      options: { CUSTOMER: optionsOf('CUSTOMER'), SUPPLIER: optionsOf('SUPPLIER'), ANY: optionsOf('ANY') },
+      onSearch: { CUSTOMER: customers.onSearch, SUPPLIER: suppliers.onSearch, ANY: either.onSearch },
+      searching: { CUSTOMER: customers.pending, SUPPLIER: suppliers.pending, ANY: either.pending },
+      // On an account of no side the line takes the party's own side; a BOTH party counts as a customer.
+      sideOf: (partyId): PartyKind | undefined => {
+        const party = partyOf(partyId);
+        return party ? sideOfPartyType(party.partyType) : undefined;
+      },
     },
     partyName: (partyId) => {
-      if (!partyId) return undefined;
-      const party = rememberedParty(partyId) ?? fetchedById.get(partyId);
+      const party = partyOf(partyId);
       return party ? codeAndName(party) : undefined;
+    },
+    rules: {
+      ready: mappings.isSuccess,
+      failed: mappings.isError,
+      error: mappings.error,
+      retrying: mappings.isFetching,
+      retry: () => void mappings.refetch(),
     },
   };
 }
