@@ -73,7 +73,7 @@ export function FiscalPage() {
 
   const yearsQuery = useQuery({
     queryKey: ['fiscal-years'],
-    queryFn: () => fiscalControllerListYears().then((r) => r.data as unknown as FiscalYear[]),
+    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data as unknown as FiscalYear[]),
   });
   const { data: years, isLoading } = yearsQuery;
 
@@ -243,12 +243,12 @@ function YearDetailPanel({
   const { t } = useTranslation();
   const { data: year, isLoading } = useQuery({
     queryKey: ['fiscal-year', yearId],
-    queryFn: () => fiscalControllerGetYear(yearId).then((r) => r.data as unknown as YearDetail),
+    queryFn: ({ signal }) => fiscalControllerGetYear(yearId, { signal }).then((r) => r.data as unknown as YearDetail),
   });
   const sequencesQuery = useQuery({
     queryKey: ['doc-sequences', yearId],
-    queryFn: () =>
-      fiscalControllerListSequences({ fiscalYearId: yearId }).then(
+    queryFn: ({ signal }) =>
+      fiscalControllerListSequences({ fiscalYearId: yearId }, { signal }).then(
         (r) => r.data as unknown as DocSequence[],
       ),
   });

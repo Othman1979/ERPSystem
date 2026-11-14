@@ -402,16 +402,26 @@ export class AuthService {
     // Branches this member may switch between (ADR-003): assigned ones, or all
     // active branches when none are assigned. Tenant-scoped client.
     let branches: { id: string; code: string; nameAr: string; nameEn: string | null }[] = [];
+    let permissions: string[] = [];
     if (current) {
       const db = this.prisma.forTenant(current.tenantId);
-      const [assigned, active] = await Promise.all([
+      const [assigned, active, granted] = await Promise.all([
         db.membershipBranch.findMany({ where: { membershipId: current.id }, select: { branchId: true } }),
         db.branch.findMany({
           where: { isActive: true },
           select: { id: true, code: true, nameAr: true, nameEn: true },
           orderBy: { code: 'asc' },
         }),
+        // systemPrisma: role_permissions is the global role catalog (no tenant_id).
+        // Scoped by `current`, the ACTIVE membership in the token's tenant: the
+        // same row TenantGuard loads permissions from, so the web shows exactly
+        // what the guards enforce in this tenant.
+        this.prisma.client.rolePermission.findMany({
+          where: { roleId: current.roleId },
+          select: { permissionCode: true },
+        }),
       ]);
+      permissions = granted.map((p) => p.permissionCode).sort();
       const allowed = new Set(assigned.map((a) => a.branchId));
       branches = active
         .filter((b) => allowed.size === 0 || allowed.has(b.id))
@@ -442,6 +452,8 @@ export class AuthService {
         ? {
             membershipId: current.id.toString(),
             roleCode: current.role.code,
+            /** Permission codes of this role in this tenant (common/permissions), for the web to hide what it cannot use. */
+            permissions,
             defaultBranchId: current.defaultBranchId?.toString() ?? null,
             branches,
           }

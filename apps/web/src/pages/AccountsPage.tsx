@@ -18,7 +18,6 @@ import { useNavigate } from 'react-router';
 import {
   ApiError,
   accountingControllerCreateAccount,
-  accountingControllerListAccounts,
   accountingControllerUpdateAccount,
   journalControllerTrialBalance,
 } from '@erp/api-client';
@@ -33,21 +32,9 @@ import { Num } from '../components/Num';
 import type Decimal from 'decimal.js';
 import { amountCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
+import { ACCOUNTS_QUERY_KEY, useAccounts, type AccountRow } from '../hooks/useAccounts';
 
-export interface Account {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-  parentId: string | null;
-  level: number;
-  accountType: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
-  normalBalance: 'DEBIT' | 'CREDIT';
-  isPostable: boolean;
-  isControl: boolean;
-  controlType: string | null;
-  isActive: boolean;
-}
+export type Account = AccountRow;
 
 export interface TreeNode extends Account {
   children?: TreeNode[];
@@ -116,16 +103,13 @@ export function AccountsPage() {
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
-  const accountsQuery = useQuery({
-    queryKey: ['accounts'],
-    queryFn: () => accountingControllerListAccounts().then((r) => r.data as unknown as Account[]),
-  });
+  const accountsQuery = useAccounts();
   const { data, isLoading } = accountsQuery;
 
   const { data: trial, isError: trialError } = useQuery({
     queryKey: ['trial-balance'],
-    queryFn: () =>
-      journalControllerTrialBalance().then(
+    queryFn: ({ signal }) =>
+      journalControllerTrialBalance({ signal }).then(
         (r) => r.data as unknown as { rows: TrialRow[] },
       ),
     retry: false,
@@ -194,7 +178,7 @@ export function AccountsPage() {
       setModalOpen(false);
       setEditing(null);
       form.resetFields();
-      void queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      void queryClient.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
     },
     onError: (err) => {
       apiMessage.error(
@@ -208,7 +192,7 @@ export function AccountsPage() {
   const deactivate = useMutation({
     mutationFn: (id: string) =>
       accountingControllerUpdateAccount(id, { isActive: false }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['accounts'] }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY }),
     onError: (err) => {
       apiMessage.error(
         err instanceof ApiError

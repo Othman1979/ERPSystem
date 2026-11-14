@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import {
   ApiError,
-  accountingControllerListAccounts,
   accountingControllerListMappings,
   fiscalControllerListYears,
   journalControllerGet,
@@ -34,16 +33,7 @@ import { codeAndName } from '../i18n/displayName';
 import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { openingPlug } from './opening/openingPlug';
-
-interface Account {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn?: string | null;
-  isPostable: boolean;
-  isActive: boolean;
-  controlType?: string | null;
-}
+import { selectPostable, useAccounts } from '../hooks/useAccounts';
 
 interface Mapping {
   mappingKey: string;
@@ -119,26 +109,23 @@ export function OpeningBalancesPage() {
 
   const entries = useQuery({
     queryKey: ['journal-entries', 'opening'],
-    queryFn: () =>
-      journalControllerList({ status: '', voucherType: '', sourceType: 'OPENING_ENTRY' }).then(
+    queryFn: ({ signal }) =>
+      journalControllerList({ status: '', voucherType: '', sourceType: 'OPENING_ENTRY' }, { signal }).then(
         (r) => r.data as unknown as OpeningEntry[],
       ),
   });
-  const accounts = useQuery({
-    queryKey: ['accounts-postable'],
-    queryFn: () => accountingControllerListAccounts().then((r) => r.data as unknown as Account[]),
-  });
+  const accounts = useAccounts();
   const mappings = useQuery({
     queryKey: ['account-mappings'],
-    queryFn: () => accountingControllerListMappings().then((r) => r.data as unknown as Mapping[]),
+    queryFn: ({ signal }) => accountingControllerListMappings({ signal }).then((r) => r.data as unknown as Mapping[]),
   });
   const years = useQuery({
     queryKey: ['fiscal-years'],
-    queryFn: () => fiscalControllerListYears().then((r) => r.data as unknown as FiscalYear[]),
+    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data as unknown as FiscalYear[]),
   });
   const detail = useQuery({
     queryKey: ['journal-entry', viewId],
-    queryFn: () => journalControllerGet(viewId!).then((r) => r.data as unknown as OpeningEntry),
+    queryFn: ({ signal }) => journalControllerGet(viewId!, { signal }).then((r) => r.data as unknown as OpeningEntry),
     enabled: screen === 'view' && !!viewId,
   });
   const { partyColumn, partyName } = usePartyColumn(accounts.data);
@@ -149,8 +136,7 @@ export function OpeningBalancesPage() {
 
   // The plug account is added by the server, and the inventory account is
   // fed by the opening stock adjustment — neither is typed here.
-  const accountOptions = (accounts.data ?? [])
-    .filter((a) => a.isActive && a.isPostable)
+  const accountOptions = selectPostable(accounts.data ?? [])
     .filter((a) => a.id !== inventoryAccountId && a.id !== equityAccount?.id)
     .map((a) => ({ value: a.id, label: codeAndName(a) }));
 

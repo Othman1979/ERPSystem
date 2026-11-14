@@ -170,37 +170,37 @@ function ItemsTab() {
 
   const itemsQuery = useQuery({
     queryKey: ['items', search, kindFilter],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       catalogControllerListItems({
         search: search,
         itemKind: kindFilter ?? '',
         isActive: '',
-      }).then((r) => r.data as unknown as Item[]),
+      }, { signal }).then((r) => r.data as unknown as Item[]),
   });
   const { data: items, isLoading } = itemsQuery;
   const { data: units } = useQuery({
     queryKey: ['units'],
-    queryFn: () => settingsControllerListUnits().then((r) => r.data as unknown as Unit[]),
+    queryFn: ({ signal }) => settingsControllerListUnits({ signal }).then((r) => r.data as unknown as Unit[]),
   });
   const { data: groups } = useQuery({
     queryKey: ['item-groups'],
-    queryFn: () => catalogControllerListGroups().then((r) => r.data as unknown as Group[]),
+    queryFn: ({ signal }) => catalogControllerListGroups({ signal }).then((r) => r.data as unknown as Group[]),
   });
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
-    queryFn: () => warehousesControllerList().then((r) => r.data as unknown as { id: string; code: string; nameAr: string }[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as { id: string; code: string; nameAr: string }[]),
   });
   const { data: taxCategories } = useQuery({
     queryKey: ['tax-categories'],
-    queryFn: () =>
-      settingsControllerListTaxCategories().then(
+    queryFn: ({ signal }) =>
+      settingsControllerListTaxCategories({ signal }).then(
         (r) => r.data as unknown as { id: string; code: string; nameAr: string; rate: string }[],
       ),
   });
   const { data: balances } = useQuery({
     queryKey: ['stock-balances-all'],
-    queryFn: () =>
-      stockReportsControllerBalances({ warehouseId: '', itemId: '', lowStock: '' }).then(
+    queryFn: ({ signal }) =>
+      stockReportsControllerBalances({ warehouseId: '', itemId: '', lowStock: '' }, { signal }).then(
         (r) => r.data as unknown as BalanceRow[],
       ),
   });
@@ -623,13 +623,13 @@ function LedgerModal({
 
   const ledgerQuery = useQuery({
     queryKey: ['item-ledger', item?.id, warehouseId, from?.format('YYYY-MM-DD'), to?.format('YYYY-MM-DD')],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       stockReportsControllerItemLedger(item!.id, {
         warehouseId: warehouseId ?? '',
         sourceType: '',
         from: from?.format('YYYY-MM-DD') ?? '',
         to: to?.format('YYYY-MM-DD') ?? '',
-      }).then((r) => r.data as unknown as LedgerResponse),
+      }, { signal }).then((r) => r.data as unknown as LedgerResponse),
     enabled: !!item,
   });
   const { data, isLoading } = ledgerQuery;
@@ -794,7 +794,7 @@ function BarcodeModal({ item, onClose }: { item: Item | null; onClose: () => voi
   const { t } = useTranslation();
   const { data, isLoading } = useQuery({
     queryKey: ['item-detail', item?.id],
-    queryFn: () => catalogControllerGetItem(item!.id).then((r) => r.data as unknown as ItemDetail),
+    queryFn: ({ signal }) => catalogControllerGetItem(item!.id, { signal }).then((r) => r.data as unknown as ItemDetail),
     enabled: !!item,
   });
 
@@ -856,7 +856,7 @@ function GroupsTab() {
 
   const groupsQuery = useQuery({
     queryKey: ['item-groups'],
-    queryFn: () => catalogControllerListGroups().then((r) => r.data as unknown as Group[]),
+    queryFn: ({ signal }) => catalogControllerListGroups({ signal }).then((r) => r.data as unknown as Group[]),
   });
   const { data: groups, isLoading } = groupsQuery;
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['item-groups'] });

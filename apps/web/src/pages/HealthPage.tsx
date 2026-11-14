@@ -8,7 +8,7 @@ export function HealthPage() {
   const { t } = useTranslation();
   const { data, isLoading, isError, error, dataUpdatedAt } = useQuery({
     queryKey: ['health'],
-    queryFn: getHealth,
+    queryFn: ({ signal }) => getHealth({ signal }),
     refetchInterval: 30_000,
   });
 

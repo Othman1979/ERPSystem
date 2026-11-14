@@ -48,7 +48,7 @@ export function BranchesPage() {
 
   const branchesQuery = useQuery({
     queryKey: ['branches'],
-    queryFn: () => branchesControllerList().then((r) => r.data as unknown as Branch[]),
+    queryFn: ({ signal }) => branchesControllerList({ signal }).then((r) => r.data as unknown as Branch[]),
   });
   const { data, isLoading } = branchesQuery;
 

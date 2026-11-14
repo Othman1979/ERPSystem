@@ -38,6 +38,8 @@ import { displayName } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { formatPercent } from '../format/number';
 import { EInvoiceSettingsTab } from './einvoice/EInvoiceSettingsTab';
+import { useAuth } from '../auth/AuthContext';
+import { PERMISSIONS } from '../auth/permissions';
 
 /** JoFotara tax category codes (0005 §6). */
 type EInvoiceCode = 'S' | 'Z' | 'O';
@@ -83,7 +85,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
 
   const lookupQuery = useQuery({
     queryKey,
-    queryFn: () => LIST_FN[kind]().then((r) => r.data as unknown as LookupRow[]),
+    queryFn: ({ signal }) => LIST_FN[kind]({ signal }).then((r) => r.data as unknown as LookupRow[]),
   });
   const { data, isLoading } = lookupQuery;
 
@@ -296,6 +298,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
 export function SettingsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { can } = useAuth();
   return (
     <div>
       <PageHeader title={t('settings.title')} />
@@ -325,7 +328,10 @@ export function SettingsPage() {
             label: t('settings.paymentMethods'),
             children: <LookupTable kind="paymentMethod" title={t('settings.paymentMethods')} />,
           },
-          { key: 'einvoice', label: t('settings.einvoice'), children: <EInvoiceSettingsTab /> },
+          // E-invoicing settings need their own permission (GET /einvoice/settings).
+          ...(can(PERMISSIONS.EINVOICE_MANAGE)
+            ? [{ key: 'einvoice', label: t('settings.einvoice'), children: <EInvoiceSettingsTab /> }]
+            : []),
           { key: 'data', label: t('dataExport.title'), children: <DataExportCard /> },
         ]}
       />

@@ -117,11 +117,11 @@ export function EInvoicePage() {
 
   const listQuery = useQuery({
     queryKey: ['einvoice-submissions', statusFilter, typeFilter],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const q = new URLSearchParams();
       if (statusFilter) q.set('status', statusFilter);
       if (typeFilter) q.set('documentType', typeFilter);
-      return apiFetchData<SubmissionList>(`/api/v1/einvoice/submissions?${q.toString()}`);
+      return apiFetchData<SubmissionList>(`/api/v1/einvoice/submissions?${q.toString()}`, { signal });
     },
     // The worker sends in the background: follow documents still on their way.
     refetchInterval: (query) => (query.state.data?.rows.some((r) => isInFlight(r.status)) ? 5000 : false),
@@ -274,7 +274,7 @@ function SubmissionDrawer({ id, open, onClose }: { id: string | null; open: bool
 
   const { data, isLoading } = useQuery({
     queryKey: ['einvoice-submission', id],
-    queryFn: () => apiFetchData<SubmissionDetail>(`/api/v1/einvoice/submissions/${id}`),
+    queryFn: ({ signal }) => apiFetchData<SubmissionDetail>(`/api/v1/einvoice/submissions/${id}`, { signal }),
     // Disabled while closed, so reopening a row fetches it fresh.
     enabled: open && !!id,
     refetchInterval: (query) => (isInFlight(query.state.data?.status) ? 4000 : false),

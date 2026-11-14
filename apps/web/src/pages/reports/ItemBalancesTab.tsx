@@ -65,12 +65,12 @@ export function ItemBalancesTab({
   const [warehouseId, setWarehouseId] = useState<string | undefined>(undefined);
   const warehouses = useQuery({
     queryKey: ['warehouses'],
-    queryFn: () => warehousesControllerList().then((r) => r.data as unknown as Warehouse[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as Warehouse[]),
   });
   const params = { warehouseId, ...range };
   const listQuery = useQuery({
     queryKey: ['report-item-balances', warehouseId, range.from, range.to],
-    queryFn: () => apiFetchData<ItemBalances>(`/api/v1/stock/item-balances${qs(params)}`),
+    queryFn: ({ signal }) => apiFetchData<ItemBalances>(`/api/v1/stock/item-balances${qs(params)}`, { signal }),
   });
   const { data, isLoading } = listQuery;
 

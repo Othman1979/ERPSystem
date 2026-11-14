@@ -147,8 +147,8 @@ function TenantsTab() {
 
   const tenantsQuery = useQuery({
     queryKey: ['platform-tenants', status, search, page],
-    queryFn: () =>
-      adminControllerList({ status: status ?? '', search, page: String(page), pageSize: '20' }).then(
+    queryFn: ({ signal }) =>
+      adminControllerList({ status: status ?? '', search, page: String(page), pageSize: '20' }, { signal }).then(
         (r) => r.data as unknown as { total: number; items: TenantRow[] },
       ),
   });
@@ -212,12 +212,12 @@ function TenantDrawer({ id, onClose }: { id: string | null; onClose: () => void 
 
   const { data: tenant } = useQuery({
     queryKey: ['platform-tenant', id],
-    queryFn: () => adminControllerGet(id!).then((r) => r.data as unknown as TenantDetail),
+    queryFn: ({ signal }) => adminControllerGet(id!, { signal }).then((r) => r.data as unknown as TenantDetail),
     enabled: !!id,
   });
   const { data: plans } = useQuery({
     queryKey: ['platform-plans'],
-    queryFn: () => adminPlansControllerList().then((r) => r.data as unknown as Plan[]),
+    queryFn: ({ signal }) => adminPlansControllerList({ signal }).then((r) => r.data as unknown as Plan[]),
     enabled: !!id,
   });
 
@@ -379,7 +379,7 @@ function PlansTab() {
 
   const plansQuery = useQuery({
     queryKey: ['platform-plans'],
-    queryFn: () => adminPlansControllerList().then((r) => r.data as unknown as Plan[]),
+    queryFn: ({ signal }) => adminPlansControllerList({ signal }).then((r) => r.data as unknown as Plan[]),
   });
   const { data, isLoading } = plansQuery;
   const save = useMutation({
@@ -505,12 +505,12 @@ function ErrorsTab() {
 
   const errorsQuery = useQuery({
     queryKey: ['platform-errors', status, source],
-    queryFn: () => adminErrorsControllerList({ status, ...(source ? { source } : {}) }).then((r) => r.data as unknown as ErrorEvent[]),
+    queryFn: ({ signal }) => adminErrorsControllerList({ status, ...(source ? { source } : {}) }, { signal }).then((r) => r.data as unknown as ErrorEvent[]),
   });
   const { data, isLoading } = errorsQuery;
   const { data: detail } = useQuery({
     queryKey: ['platform-error', openId],
-    queryFn: () => adminErrorsControllerGet(openId!).then((r) => r.data as unknown as ErrorEvent),
+    queryFn: ({ signal }) => adminErrorsControllerGet(openId!, { signal }).then((r) => r.data as unknown as ErrorEvent),
     enabled: !!openId,
   });
   const toggle = useMutation({

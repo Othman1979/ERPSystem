@@ -42,12 +42,12 @@ export function WarehousesPage() {
 
   const warehousesQuery = useQuery({
     queryKey: ['warehouses'],
-    queryFn: () => warehousesControllerList().then((r) => r.data as unknown as Warehouse[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as Warehouse[]),
   });
   const { data: warehouses, isLoading } = warehousesQuery;
   const { data: branches } = useQuery({
     queryKey: ['branches'],
-    queryFn: () => branchesControllerList().then((r) => r.data as unknown as Branch[]),
+    queryFn: ({ signal }) => branchesControllerList({ signal }).then((r) => r.data as unknown as Branch[]),
   });
 
   const showError = (err: unknown) =>
