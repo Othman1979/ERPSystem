@@ -64,15 +64,11 @@ describe('invalidateStock', () => {
     for (const [head] of STOCK_QUERY_KEYS as string[][]) expect({ head, cached: heads.has(head) }).toEqual({ head, cached: true });
   });
 
-  it.each(['pages/SalesPage.tsx', 'pages/PurchasesPage.tsx', 'pages/GoodsNotesPage.tsx', 'pages/StockPage.tsx'])(
-    '%s refreshes stock through invalidateStock',
-    (file) => {
-      expect(sources[`./${file}`]).toContain('invalidateStock(queryClient)');
-    },
-  );
+  // That posting on a screen runs this is checked by rendering the screens: pages/stockRefresh.spec.tsx.
 });
 
-describe('query invalidations', () => {
+// Smoke check by text search (literal keys only, not keys built at run time).
+describe('query invalidations (smoke check)', () => {
   it('finds the source files and their invalidations', () => {
     expect(Object.keys(sources).length).toBeGreaterThan(10);
     expect(invalidatedKeyHeads().length).toBeGreaterThan(10);
