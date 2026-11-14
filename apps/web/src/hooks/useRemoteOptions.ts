@@ -21,7 +21,11 @@ export function useRemoteOptions<T extends { id: string }>({
   fetch,
   enabled = true,
 }: {
-  /** Query key prefix, e.g. ['items', 'pick']; the search text is appended. */
+  /**
+   * Query key prefix, e.g. ['items', 'pick', { isActive: 'true' }]; the search text is
+   * appended. Put every request filter in it: two pickers that differ only by a
+   * filter must not share cached results.
+   */
   key: readonly unknown[];
   fetch: (q: string | undefined, signal: AbortSignal) => Promise<T[]>;
   enabled?: boolean;
@@ -35,6 +39,11 @@ export function useRemoteOptions<T extends { id: string }>({
     enabled,
     placeholderData: keepPreviousData,
   });
+  // The list does not answer the text on screen yet: the debounce has not caught
+  // up with it, or the query for it has not settled (keepPreviousData still shows
+  // the last search). Until then no match is offered, so Enter cannot pick a row
+  // that the new text would not show.
+  const pending = search.trim() !== (q ?? '') || query.isPlaceholderData;
 
   const remember = useCallback((rows: readonly T[]) => {
     if (rows.length === 0) return;
@@ -49,7 +58,7 @@ export function useRemoteOptions<T extends { id: string }>({
     if (query.data) remember(query.data);
   }, [query.data, remember]);
 
-  const results = useMemo(() => query.data ?? [], [query.data]);
+  const results = useMemo(() => (pending ? [] : (query.data ?? [])), [pending, query.data]);
   const byId = useCallback((id: string | undefined | null) => (id ? known.get(id) : undefined), [known]);
   /** Current matches, then any of `ids` that are not among them (chosen rows stay pickable and labelled). */
   const withSelected = useCallback(
@@ -68,5 +77,16 @@ export function useRemoteOptions<T extends { id: string }>({
     [results, known],
   );
 
-  return { results, byId, withSelected, remember, onSearch: setSearch, search, loading: query.isFetching, query };
+  return {
+    results,
+    byId,
+    withSelected,
+    remember,
+    onSearch: setSearch,
+    search,
+    /** The search is still being answered; `results` is empty meanwhile. */
+    pending,
+    loading: query.isFetching,
+    query,
+  };
 }

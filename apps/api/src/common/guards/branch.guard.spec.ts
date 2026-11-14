@@ -11,12 +11,15 @@ import { BranchGuard } from './branch.guard.js';
 const MAIN = { id: 1n, code: 'MAIN' };
 const B2 = { id: 2n, code: 'B2' };
 
-/** A guard over one company with MAIN and B2; `assigned` = the member's membership_branches. */
-function setup(assigned: bigint[], requireAllBranches: boolean) {
+/**
+ * A guard over one company; `assigned` = the member's membership_branches,
+ * `active` = the company's active branches (MAIN and B2 unless a test says otherwise).
+ */
+function setup(assigned: bigint[], requireAllBranches: boolean, active: { id: bigint; code: string }[] = [MAIN, B2]) {
   const db = {
     tenantMembership: { findFirst: async () => ({ defaultBranchId: null }) },
     membershipBranch: { findMany: async () => assigned.map((branchId) => ({ branchId })) },
-    branch: { findMany: async () => [MAIN, B2] },
+    branch: { findMany: async () => active },
   };
   const prisma = { forTenant: () => db } as unknown as PrismaService;
   const reflector = {
@@ -53,6 +56,17 @@ describe('BranchGuard: @RequireAllBranches() (ADR-003 §13)', () => {
       const err = await run(() => guard.canActivate(context)).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(DomainError);
       expect((err as DomainError).code).toBe(ErrorCode.ALL_BRANCHES_REQUIRED);
+      expect((err as DomainError).getStatus()).toBe(403);
+    }
+  });
+
+  it('refuses every request of a member whose assigned branches are all inactive (BRANCH_NOT_ALLOWED, S4)', async () => {
+    // B2 is assigned but no longer active; MAIN is active but not assigned to the member.
+    for (const requireAll of [false, true]) {
+      const { guard, context } = setup([B2.id], requireAll, [MAIN]);
+      const err = await run(() => guard.canActivate(context)).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(DomainError);
+      expect((err as DomainError).code).toBe(ErrorCode.BRANCH_NOT_ALLOWED);
       expect((err as DomainError).getStatus()).toBe(403);
     }
   });

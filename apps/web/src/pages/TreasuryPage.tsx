@@ -131,6 +131,25 @@ interface OpenInvoice {
 
 // ------------------------------------------------------------- lookups
 
+/** Open invoices are read in pages of this size (the API's maximum). */
+const OPEN_INVOICE_PAGE_SIZE = 100;
+
+/**
+ * Every row of a numbered list, page by page, until the server's total is in.
+ * Stops on an empty page too, so a total that moved cannot loop forever.
+ */
+async function fetchAllOpenInvoices(
+  fetchPage: (page: number, signal: AbortSignal) => Promise<Page<OpenInvoice>>,
+  signal: AbortSignal,
+): Promise<OpenInvoice[]> {
+  const rows: OpenInvoice[] = [];
+  for (let page = 1; ; page += 1) {
+    const res = await fetchPage(page, signal);
+    rows.push(...res.items);
+    if (res.items.length === 0 || rows.length >= res.total) return rows;
+  }
+}
+
 function useTreasuryLookups() {
   const accounts = useAccounts(selectCashBank);
 
@@ -821,14 +840,19 @@ function VoucherForm({
   });
   const partyOptions = parties.withSelected([partyId]).map((p) => ({ value: p.id, label: codeAndName(p) }));
 
-  // Open invoices for allocations
-  // The customer's open credit invoices, from the server (ADR-022): at most
-  // one page of 100, oldest first, so allocation starts with the oldest debt.
+  // Open invoices for allocations: every open credit invoice of the party, oldest
+  // first (the server's order), so a party with more than one page still gets all
+  // of them. The automatic allocation covers the same invoices on the server.
   const { data: salesInvoices } = useQuery({
     queryKey: ['sales-invoices', 'open', partyId],
     queryFn: ({ signal }) =>
-      listSalesInvoices({ customerId: partyId!, open: 'true', sort: 'invoiceDate', pageSize: 100 }, { signal }).then(
-        (r) => (r.data as unknown as { items: OpenInvoice[] }).items,
+      fetchAllOpenInvoices(
+        (page, s) =>
+          listSalesInvoices(
+            { customerId: partyId!, open: 'true', sort: 'invoiceDate', page, pageSize: OPEN_INVOICE_PAGE_SIZE },
+            { signal: s },
+          ).then((r) => r.data as unknown as Page<OpenInvoice>),
+        signal,
       ),
     enabled: kind === 'receipt' && !!partyId && partyType === 'CUSTOMER',
   });
@@ -836,8 +860,13 @@ function VoucherForm({
   const { data: purchaseInvoices } = useQuery({
     queryKey: ['purchase-invoices', 'open', partyId],
     queryFn: ({ signal }) =>
-      listPurchaseInvoices({ supplierId: partyId!, open: 'true', sort: 'invoiceDate', pageSize: 100 }, { signal }).then(
-        (r) => (r.data as unknown as { items: OpenInvoice[] }).items,
+      fetchAllOpenInvoices(
+        (page, s) =>
+          listPurchaseInvoices(
+            { supplierId: partyId!, open: 'true', sort: 'invoiceDate', page, pageSize: OPEN_INVOICE_PAGE_SIZE },
+            { signal: s },
+          ).then((r) => r.data as unknown as Page<OpenInvoice>),
+        signal,
       ),
     enabled: kind === 'payment' && !!partyId && partyType === 'SUPPLIER',
   });
@@ -956,6 +985,7 @@ function VoucherForm({
             status={requiredError(missing.party) ? 'error' : undefined}
             options={partyOptions}
             onRemoteSearch={parties.onSearch}
+            searching={parties.pending}
             value={partyId}
             onChange={(v) => {
               setPartyId(v);
@@ -1007,6 +1037,7 @@ function VoucherForm({
             >
               {t('treasury.autoAllocate')}
             </Checkbox>
+            <span>{t('treasury.openInvoicesCount', { count: openInvoices.length })}</span>
             <span className="doc-subbar-total">
               {t('treasury.allocated')}: {amountCell(allocatedSum)}
               {dec(amount).gt(0) && (

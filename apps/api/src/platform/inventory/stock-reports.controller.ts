@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { RequireAllBranches, RequirePermission } from '../../common/decorators/auth.decorators.js';
+import { ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { PrintingService } from '../printing/printing.service.js';
 import {
@@ -44,10 +45,14 @@ export class StockReportsController {
     return this.reports.movements(q);
   }
 
-  /** Per-item movement ledger with running balance and WAC. */
+  /**
+   * Item card (ADR-022 §4): ascending keyset pages, `{ item, summary, items, nextCursor }`,
+   * `summary` on the first page only. format=pdf|xlsx reads the whole card instead.
+   */
   @Get('items/:itemId/ledger')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  async itemLedger(@Param('itemId') itemId: string, @Query() q: ItemLedgerQueryDto) {
+  async itemLedger(@Param('itemId', ParseIdPipe) itemId: string, @Query() q: ItemLedgerQueryDto) {
+    if (!q.format || q.format === 'json') return this.reports.itemLedgerPage(itemId, q);
     const data = await this.reports.itemLedger(itemId, q);
     const wh = await this.warehouseLabel(q);
     return this.printing.respond(data, q, (d, lang) => itemLedgerTable(d, lang, q, wh));

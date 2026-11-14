@@ -56,6 +56,14 @@ export class BranchGuard implements CanActivate {
       assigned.length > 0
         ? new Set(assigned.map((a) => a.branchId).filter((id) => activeIds.has(id)))
         : null;
+    // Assigned branches, none of them active: the member has no branch to work on.
+    // Refuse every request rather than let documents be written with no branch (S4).
+    if (allowed !== null && allowed.size === 0) {
+      throw new DomainError(
+        ErrorCode.BRANCH_NOT_ALLOWED,
+        'None of your assigned branches is active; ask an administrator to assign an active branch',
+      );
+    }
     const isAllowed = (id: bigint) => activeIds.has(id) && (allowed === null || allowed.has(id));
 
     const request = context

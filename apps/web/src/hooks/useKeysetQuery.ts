@@ -4,6 +4,22 @@ import { App } from 'antd';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+/**
+ * A cursor is only valid for the data it was issued on. Refetching every loaded
+ * page on each window focus would ask with cursors the data may have moved past,
+ * so reads are not refetched on focus and stay fresh for a few minutes.
+ */
+export const KEYSET_STALE_MS = 5 * 60_000;
+
+/**
+ * Retries a failed page once, except for a refusal (4xx): the same request
+ * gets the same answer, e.g. a CURSOR_INVALID or a forbidden branch.
+ */
+export function keysetRetry(failureCount: number, error: Error): boolean {
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
+  return failureCount < 1;
+}
+
 /** One page of a keyset read (ADR-022 §4). `summary` comes on the first page only. */
 export interface KeysetPage<T, S = undefined> {
   items: T[];
@@ -37,6 +53,9 @@ export function useKeysetQuery<T, S = undefined>({
     queryFn: ({ pageParam, signal }) => fetch(pageParam, signal),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled,
+    staleTime: KEYSET_STALE_MS,
+    refetchOnWindowFocus: false,
+    retry: keysetRetry,
   });
 
   const cursorRefused = query.error instanceof ApiError && query.error.code === 'CURSOR_INVALID';

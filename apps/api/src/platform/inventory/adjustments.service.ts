@@ -274,7 +274,8 @@ export class AdjustmentsService {
           include: { lines: { orderBy: { lineNo: 'asc' } } },
         });
         if (!draft) throw DomainError.notFound('StockAdjustment', id.toString());
-        await assertWarehouseBranchAllowed(tx, draft.warehouseId);
+        // The entry carries the warehouse's branch (ADR-003; S1 of the wave-3E review).
+        const branchId = await assertWarehouseBranchAllowed(tx, draft.warehouseId);
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Adjustment is not a draft');
         }
@@ -375,6 +376,7 @@ export class AdjustmentsService {
             companyId,
             entryDate: adjustmentDate,
             fiscalPeriodId: period.id,
+            branchId,
             sourceType: SOURCE,
             sourceId: draft.id,
             // Opening stock is part of the opening balances in reports (§8.6).
@@ -416,7 +418,7 @@ export class AdjustmentsService {
           include: { lines: { orderBy: { lineNo: 'asc' } } },
         });
         if (!original) throw DomainError.notFound('StockAdjustment', id.toString());
-        await assertWarehouseBranchAllowed(tx, original.warehouseId);
+        const branchId = await assertWarehouseBranchAllowed(tx, original.warehouseId);
         if (original.status !== 'POSTED') {
           throw new DomainError(ErrorCode.CONFLICT, 'Only posted adjustments can be reversed');
         }
@@ -525,6 +527,7 @@ export class AdjustmentsService {
             companyId,
             entryDate: reversalDate,
             fiscalPeriodId: period.id,
+            branchId,
             sourceType: SOURCE,
             sourceId: reversal.id,
             postingKind: 'REVERSAL',

@@ -515,7 +515,7 @@ function PurchaseInvoiceForm({
 
   // Items are searched on the server; the lines' own items stay labelled and priced.
   const items = useRemoteOptions<ItemRow>({
-    key: ['items', 'pick'],
+    key: ['items', 'pick', { isActive: 'true' }],
     fetch: (q, signal) =>
       catalogControllerListItems(
         { pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}), isActive: 'true' },

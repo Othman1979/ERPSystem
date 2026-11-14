@@ -75,17 +75,18 @@ export class EInvoiceSubmissionsService {
       },
       (dir) => ({ id: dir }),
     );
-    const [page, counts] = await Promise.all([
-      findPage(db, pageWindow(q), {
-        rows: (tx, window) => tx.eInvoiceSubmission.findMany({ where, select: LIST_SELECT, orderBy, ...window }),
-        count: (tx) => tx.eInvoiceSubmission.count({ where }),
-      }),
-      db.eInvoiceSubmission.groupBy({ by: ['status'], where: scope, _count: { _all: true } }),
-    ]);
-    return {
-      ...page,
-      counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
-    };
+    // The rows, the total and the status counts read on one snapshot (ADR-022 §3).
+    let counts: Record<string, number> = {};
+    const page = await findPage(db, pageWindow(q), {
+      rows: async (tx, window) => {
+        const rows = await tx.eInvoiceSubmission.findMany({ where, select: LIST_SELECT, orderBy, ...window });
+        const byStatus = await tx.eInvoiceSubmission.groupBy({ by: ['status'], where: scope, _count: { _all: true } });
+        counts = Object.fromEntries(byStatus.map((c) => [c.status, c._count._all]));
+        return rows;
+      },
+      count: (tx) => tx.eInvoiceSubmission.count({ where }),
+    });
+    return { ...page, counts };
   }
 
   /** One submission; another branch's answers 404 like another tenant's (ADR-003 §11). */

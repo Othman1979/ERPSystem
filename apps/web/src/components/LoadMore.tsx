@@ -38,7 +38,9 @@ export function LoadMore({
   if (!hasMore) return null;
   return (
     <div ref={sentinel} className="load-more">
-      <span className="load-more-count">{t('common.rowsShown', { count: shown })}</span>
+      <span className="load-more-count" aria-live="polite">
+        {t('common.rowsShown', { count: shown })}
+      </span>
       <Button onClick={onLoadMore} loading={loading}>
         {t('common.loadMore')}
       </Button>

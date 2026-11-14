@@ -47,9 +47,13 @@ export function RemoteSelect({
     enabled,
     placeholderData: keepPreviousData,
   });
-  const found = query.data ?? [];
+  // The matches do not answer the text on screen yet (debounce or a settling
+  // query): no match is offered meanwhile, so Enter cannot pick a stale row.
+  const pending = search.trim() !== (q ?? '') || query.isPlaceholderData;
+  const found = pending ? [] : (query.data ?? []);
   const current = [chosen, selected].find((o) => o !== undefined && o.value === value);
   const options = current && !found.some((o) => o.value === current.value) ? [current, ...found] : found;
+  const loading = pending || query.isFetching;
 
   return (
     <Select<string>
@@ -58,9 +62,15 @@ export function RemoteSelect({
       allowClear
       filterOption={false}
       value={value}
-      loading={query.isFetching}
-      notFoundContent={query.isFetching ? t('common.loading') : undefined}
+      searchValue={search}
+      loading={loading}
+      notFoundContent={loading ? t('common.loading') : undefined}
       onSearch={setSearch}
+      onDropdownVisibleChange={(open) => {
+        rest.onDropdownVisibleChange?.(open);
+        // As GridSelect does: a closed list starts again with no search text.
+        if (!open) setSearch('');
+      }}
       options={options}
       onChange={(v) => {
         const option = options.find((o) => o.value === v);

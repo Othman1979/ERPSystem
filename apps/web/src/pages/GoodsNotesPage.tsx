@@ -151,7 +151,7 @@ export function GoodsNotesSection({
 
   // Stock items for the new voucher's grid: searched on the server (ADR-022 §8).
   const items = useRemoteOptions<Item>({
-    key: ['items', 'pick'],
+    key: ['items', 'pick', { itemKind: 'STOCK' }],
     enabled: screen === 'entry' && !entryId,
     fetch: (q, signal) =>
       catalogControllerListItems(

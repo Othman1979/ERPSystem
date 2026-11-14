@@ -314,8 +314,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const permissions = useMemo(() => new Set(me?.currentMembership?.permissions ?? []), [me]);
   const can = useCallback((permission: Permission) => permissions.has(permission), [permissions]);
-  // Older APIs did not send the flag: treat it as every branch (the API still refuses).
-  const allBranches = me?.currentMembership?.allBranches ?? true;
+  // Fails closed: until /me has loaded, and for an API that does not send the
+  // flag, the member is treated as branch-scoped. Company-wide reports (trial
+  // balance, statements, income statement, balance sheet) are shown only when
+  // /me says so; the API refuses them to a branch-scoped member anyway.
+  const allBranches = me?.currentMembership?.allBranches === true;
 
   // A new object only when something in it changes, so useAuth() consumers do
   // not re-render on every provider render (WEB-18).

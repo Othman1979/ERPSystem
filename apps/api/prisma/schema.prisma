@@ -823,6 +823,10 @@ model JournalLine {
   partyId        BigInt?           @map("party_id") @db.UnsignedBigInt
   description    String?           @db.VarChar(500)
   branchId       BigInt?           @map("branch_id") @db.UnsignedBigInt
+  /// Copy of the entry's date (LEDGER-19): an entry's date never changes once
+  /// its lines exist, so statements can seek on the line indexes below.
+  /// Written with the lines (PostingService, draft creation in JournalService).
+  entryDate      DateTime          @map("entry_date") @db.Date
   createdAt      DateTime          @default(now()) @map("created_at") @db.DateTime(3)
 
   entry   JournalEntry @relation(fields: [tenantId, journalEntryId], references: [tenantId, id], onDelete: Cascade)
@@ -839,6 +843,10 @@ model JournalLine {
   // statements, so dated reports read lines from the index only, driven by
   // the dated entries (a month no longer costs as much as the whole ledger).
   @@index([tenantId, journalEntryId, accountId, debit, credit], map: "journal_lines_entry_cover_idx")
+  // ADR-022 §4 / LEDGER-19: an account or party statement page seeks to its
+  // cursor in statement order (entry date, entry id, line no) and reads on.
+  @@index([tenantId, accountId, entryDate, journalEntryId, lineNo], map: "journal_lines_account_seek_idx")
+  @@index([tenantId, partyType, partyId, entryDate, journalEntryId, lineNo], map: "journal_lines_party_seek_idx")
   @@map("journal_lines")
 }
 

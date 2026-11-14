@@ -430,17 +430,54 @@ export type StockReportsControllerMovementsParams = {
   cursor?: string;
   warehouseId?: string;
   itemId?: string;
-  sourceType?: string;
+  sourceType?: StockReportsControllerMovementsSourceType;
   from?: string;
   to?: string;
 };
 
+export type StockReportsControllerMovementsSourceType = typeof StockReportsControllerMovementsSourceType[keyof typeof StockReportsControllerMovementsSourceType];
+
+
+export const StockReportsControllerMovementsSourceType = {
+  GOODS_RECEIPT: 'GOODS_RECEIPT',
+  GOODS_ISSUE: 'GOODS_ISSUE',
+  PURCHASE_INVOICE: 'PURCHASE_INVOICE',
+  PURCHASE_RETURN: 'PURCHASE_RETURN',
+  REVALUATION: 'REVALUATION',
+  SALES_INVOICE: 'SALES_INVOICE',
+  SALES_RETURN: 'SALES_RETURN',
+  STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT',
+  STOCK_TRANSFER: 'STOCK_TRANSFER',
+} as const;
+
 export type StockReportsControllerItemLedgerParams = {
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+  /** @maxLength 512 */
+  cursor?: string;
   warehouseId?: string;
-  sourceType?: string;
+  sourceType?: StockReportsControllerItemLedgerSourceType;
   from?: string;
   to?: string;
 };
+
+export type StockReportsControllerItemLedgerSourceType = typeof StockReportsControllerItemLedgerSourceType[keyof typeof StockReportsControllerItemLedgerSourceType];
+
+
+export const StockReportsControllerItemLedgerSourceType = {
+  GOODS_RECEIPT: 'GOODS_RECEIPT',
+  GOODS_ISSUE: 'GOODS_ISSUE',
+  PURCHASE_INVOICE: 'PURCHASE_INVOICE',
+  PURCHASE_RETURN: 'PURCHASE_RETURN',
+  REVALUATION: 'REVALUATION',
+  SALES_INVOICE: 'SALES_INVOICE',
+  SALES_RETURN: 'SALES_RETURN',
+  STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT',
+  STOCK_TRANSFER: 'STOCK_TRANSFER',
+} as const;
 
 export type StockReportsControllerItemBalancesParams = {
   warehouseId?: string;

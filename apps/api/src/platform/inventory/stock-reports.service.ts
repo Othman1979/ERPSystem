@@ -10,7 +10,7 @@ import { keysetLimit } from '../../common/paging/page-query.dto.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { EXPORT_LIMITS } from '../printing/printing.service.js';
-import type { StockMovementsQueryDto } from './dto/stock-reports.dto.js';
+import type { ItemLedgerQueryDto, StockMovementsQueryDto } from './dto/stock-reports.dto.js';
 
 const ADJUSTMENT_SOURCE = 'STOCK_ADJUSTMENT';
 const TRANSFER_SOURCE = 'STOCK_TRANSFER';
@@ -31,6 +31,44 @@ function warehouseScope(): { warehouse?: ReturnType<typeof branchWhere> } {
 function afterMovement(key: { date: Date; id: bigint }): Prisma.StockMovementWhereInput {
   return {
     OR: [{ movementDate: { lt: key.date } }, { movementDate: key.date, id: { lt: key.id } }],
+  };
+}
+
+/** An item card continues in ascending order: after the (date, id) of its last row (ADR-022 §4). */
+function afterMovementAscending(key: { date: Date; id: bigint }): Prisma.StockMovementWhereInput {
+  return {
+    OR: [{ movementDate: { gt: key.date } }, { movementDate: key.date, id: { gt: key.id } }],
+  };
+}
+
+/** The item card's filters (the item itself comes from the path). */
+interface CardQuery {
+  warehouseId?: string;
+  sourceType?: string;
+  from?: string;
+  to?: string;
+}
+
+/** A card row: the movement with the warehouse it was posted to. */
+type CardMovement = Prisma.StockMovementGetPayload<{
+  include: { warehouse: { select: { id: true; code: true; nameAr: true } } };
+}>;
+
+/** One item-card row; its balance and average cost after the movement are stored columns. */
+function cardRow(m: CardMovement) {
+  return {
+    id: m.id.toString(),
+    movementDate: m.movementDate,
+    warehouse: m.warehouse,
+    movementType: m.movementType,
+    sourceType: m.sourceType,
+    sourceId: m.sourceId?.toString() ?? null,
+    qtyIn: m.qtyIn.toString(),
+    qtyOut: m.qtyOut.toString(),
+    unitCost: m.unitCost.toString(),
+    totalCost: m.totalCost.toString(),
+    balanceQtyAfter: m.balanceQtyAfter.toString(),
+    avgCostAfter: m.avgCostAfter.toString(),
   };
 }
 
@@ -91,10 +129,7 @@ export class StockReportsService {
    * stock adjustments (and their reversals) dated in the period; the period
    * part is the rest of the period.
    */
-  private async periodWhere(
-    db: ReturnType<PrismaService['forTenant']>,
-    range: { from?: string; to?: string },
-  ) {
+  private async periodWhere(db: Prisma.TransactionClient, range: { from?: string; to?: string }) {
     const openingDocs = await db.stockAdjustment.findMany({
       where: { adjustmentType: 'OPENING' },
       select: { id: true },
@@ -398,13 +433,17 @@ export class StockReportsService {
     };
   }
 
-  /** Per-item movement ledger (Fawateer-style item card): ascending movements
-   *  with running balance & WAC, plus totals and current balances. */
-  async itemLedger(
-    itemId: string,
-    query?: { warehouseId?: string; sourceType?: string; from?: string; to?: string },
-  ) {
-    const { db } = this.tenant();
+  /** The card's movements: the item in the caller's warehouses, with the warehouse filter and the period. */
+  private cardScope(itemId: string, query: CardQuery) {
+    return {
+      itemId: BigInt(itemId),
+      ...(query.warehouseId ? { warehouseId: BigInt(query.warehouseId) } : {}),
+      ...warehouseScope(),
+    };
+  }
+
+  /** The card's item, 404 if unknown (read in the caller's snapshot on the first page). */
+  private async cardItem(db: Prisma.TransactionClient, itemId: string) {
     const item = await db.item.findFirst({
       where: { id: BigInt(itemId) },
       select: {
@@ -417,40 +456,48 @@ export class StockReportsService {
       },
     });
     if (!item) throw DomainError.notFound('Item', itemId);
+    return item;
+  }
 
-    // Scope, opening sums and footer balances all use the caller's warehouses (ADR-003 §12).
-    const scope = {
-      itemId: BigInt(itemId),
-      ...(query?.warehouseId ? { warehouseId: BigInt(query.warehouseId) } : {}),
-      ...warehouseScope(),
-    };
+  /** The card's scope, its movements (the period and sourceType filter applied) and the opening part. */
+  private async cardParts(db: Prisma.TransactionClient, itemId: string, query: CardQuery) {
     // Opening stock is the opening position, not a row (ADR-008).
-    const parts = await this.periodWhere(db, { from: query?.from, to: query?.to });
-    const where = {
-      AND: [scope, query?.sourceType ? { sourceType: query.sourceType } : {}, parts.period],
+    const parts = await this.periodWhere(db, { from: query.from, to: query.to });
+    const scope = this.cardScope(itemId, query);
+    const where: Prisma.StockMovementWhereInput = {
+      AND: [scope, query.sourceType ? { sourceType: query.sourceType } : {}, parts.period],
     };
-    const count = await db.stockMovement.count({ where });
-    if (count > EXPORT_LIMITS.xlsx) throw tooLarge(count);
-    const [rows, balances, before] = await Promise.all([
-      db.stockMovement.findMany({
-        where,
-        include: {
-          warehouse: { select: { id: true, code: true, nameAr: true } },
-        },
-        orderBy: [{ movementDate: 'asc' }, { id: 'asc' }],
-      }),
+    return { scope, opening: parts.opening, where };
+  }
+
+  /**
+   * The card's header (ADR-022 §4 summary): the opening position (before the
+   * period plus its opening stock), the totals of the rows, the closing, and
+   * the footer balances. Summed in the database, so it does not depend on how
+   * many rows are read.
+   */
+  private async cardSummary(
+    db: Prisma.TransactionClient,
+    itemId: string,
+    scope: Prisma.StockMovementWhereInput,
+    opening: Prisma.StockMovementWhereInput,
+    where: Prisma.StockMovementWhereInput,
+  ) {
+    const sumsByType = (part: Prisma.StockMovementWhereInput) =>
+      db.stockMovement.groupBy({
+        by: ['movementType'],
+        where: part,
+        _sum: { qtyIn: true, qtyOut: true, totalCost: true },
+      });
+    const [before, inPeriod, balances] = await Promise.all([
+      sumsByType({ AND: [scope, opening] }),
+      sumsByType(where),
       db.stockBalance.findMany({
         where: { itemId: BigInt(itemId), qtyOnHand: { not: 0 }, ...warehouseScope() },
         include: { warehouse: { select: { id: true, code: true, nameAr: true } } },
       }),
-      // Opening position: movements of the item (warehouse filter kept)
-      // before `from`, plus the period's opening stock.
-      db.stockMovement.groupBy({
-        by: ['movementType'],
-        where: { AND: [scope, parts.opening] },
-        _sum: { qtyIn: true, qtyOut: true, totalCost: true },
-      }),
     ]);
+
     let openingQty = new Decimal(0);
     let openingValue = new Decimal(0);
     for (const g of before) {
@@ -458,43 +505,26 @@ export class StockReportsService {
       const cost = new Decimal(g._sum.totalCost?.toString() ?? 0);
       openingValue = g.movementType === 'IN' ? openingValue.plus(cost) : openingValue.minus(cost);
     }
-
     let qtyIn = new Decimal(0);
     let qtyOut = new Decimal(0);
     let valueIn = new Decimal(0);
     let valueOut = new Decimal(0);
-    const mapped = rows.map((m) => {
-      qtyIn = qtyIn.plus(m.qtyIn.toString());
-      qtyOut = qtyOut.plus(m.qtyOut.toString());
-      if (m.movementType === 'IN') valueIn = valueIn.plus(m.totalCost.toString());
-      else valueOut = valueOut.plus(m.totalCost.toString());
-      return {
-        id: m.id.toString(),
-        movementDate: m.movementDate,
-        warehouse: m.warehouse,
-        movementType: m.movementType,
-        sourceType: m.sourceType,
-        sourceId: m.sourceId?.toString() ?? null,
-        qtyIn: m.qtyIn.toString(),
-        qtyOut: m.qtyOut.toString(),
-        unitCost: m.unitCost.toString(),
-        totalCost: m.totalCost.toString(),
-        balanceQtyAfter: m.balanceQtyAfter.toString(),
-        avgCostAfter: m.avgCostAfter.toString(),
-      };
-    });
-
+    for (const g of inPeriod) {
+      qtyIn = qtyIn.plus(g._sum.qtyIn?.toString() ?? 0);
+      qtyOut = qtyOut.plus(g._sum.qtyOut?.toString() ?? 0);
+      const cost = new Decimal(g._sum.totalCost?.toString() ?? 0);
+      if (g.movementType === 'IN') valueIn = valueIn.plus(cost);
+      else valueOut = valueOut.plus(cost);
+    }
     return {
-      item,
       opening: { qty: openingQty.toString(), value: openingValue.toFixed(3) },
-      rows: mapped,
       totals: {
         qtyIn: qtyIn.toString(),
         qtyOut: qtyOut.toString(),
         valueIn: valueIn.toFixed(3),
         valueOut: valueOut.toFixed(3),
       },
-      // Opening + the rows shown (with a sourceType filter, of those rows only).
+      // Opening + the movements of the card (with a sourceType filter, of those only).
       closing: {
         qty: openingQty.plus(qtyIn).minus(qtyOut).toString(),
         value: openingValue.plus(valueIn).minus(valueOut).toFixed(3),
@@ -503,6 +533,75 @@ export class StockReportsService {
         warehouse: b.warehouse,
         qtyOnHand: b.qtyOnHand.toString(),
       })),
+    };
+  }
+
+  /**
+   * Item card, whole (ADR-022 §6): every movement of the card, for the PDF and
+   * XLSX export only. Above the export row limit the answer is REPORT_TOO_LARGE.
+   * The JSON screen reads it page by page (itemLedgerPage).
+   */
+  async itemLedger(itemId: string, query: CardQuery = {}) {
+    const { db } = this.tenant();
+    const item = await this.cardItem(db, itemId);
+    const { scope, opening, where } = await this.cardParts(db, itemId, query);
+    const count = await db.stockMovement.count({ where });
+    if (count > EXPORT_LIMITS.xlsx) throw tooLarge(count);
+    const [rows, summary] = await Promise.all([
+      db.stockMovement.findMany({
+        where,
+        include: { warehouse: { select: { id: true, code: true, nameAr: true } } },
+        orderBy: [{ movementDate: 'asc' }, { id: 'asc' }],
+      }),
+      this.cardSummary(db, itemId, scope, opening, where),
+    ]);
+    return { item, ...summary, rows: rows.map(cardRow) };
+  }
+
+  /**
+   * Item card, one keyset page (ADR-022 §4): `limit` movements in ascending
+   * (date, id) order after the cursor. The first page also carries `summary`,
+   * read in one snapshot with its rows; later pages carry the position only,
+   * since every row's balance after the movement is a stored column.
+   */
+  async itemLedgerPage(itemId: string, query: ItemLedgerQueryDto) {
+    const { db } = this.tenant();
+    const limit = keysetLimit(query);
+    // Filters as the cursor fingerprints them: an empty value is "not given".
+    const filters = {
+      itemId,
+      warehouseId: query.warehouseId || undefined,
+      sourceType: query.sourceType || undefined,
+      from: query.from || undefined,
+      to: query.to || undefined,
+    };
+    const at = query.cursor ? movementKey(this.cursors.decode('item-ledger', filters, query.cursor)) : null;
+
+    const load = async (tx: Prisma.TransactionClient) => {
+      const item = await this.cardItem(tx, itemId);
+      const { scope, opening, where } = await this.cardParts(tx, itemId, filters);
+      const rows = await tx.stockMovement.findMany({
+        where: at ? { AND: [where, afterMovementAscending(at)] } : where,
+        include: { warehouse: { select: { id: true, code: true, nameAr: true } } },
+        orderBy: [{ movementDate: 'asc' }, { id: 'asc' }],
+        take: limit + 1,
+      });
+      const summary = at ? null : await this.cardSummary(tx, itemId, scope, opening, where);
+      return { item, summary, rows };
+    };
+    const { item, summary, rows } = at ? await load(db) : await db.$transaction((tx) => load(tx));
+
+    const more = rows.length > limit;
+    if (more) rows.pop();
+    const last = rows[rows.length - 1];
+    return {
+      item,
+      summary,
+      items: rows.map(cardRow),
+      nextCursor:
+        more && last
+          ? this.cursors.encode('item-ledger', filters, { keys: [dayOf(last.movementDate), last.id.toString()], carry: {} })
+          : null,
     };
   }
 

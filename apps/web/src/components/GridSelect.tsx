@@ -1,5 +1,6 @@
 import { Select, type SelectProps } from 'antd';
 import { useRef, useState, type KeyboardEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Select tuned for keyboard data entry (header fields and line grids):
@@ -16,6 +17,7 @@ export function GridSelect({
   enterOpens = false,
   onEnterSelect,
   onRemoteSearch,
+  searching = false,
   ...props
 }: SelectProps & {
   /**
@@ -24,12 +26,19 @@ export function GridSelect({
    * the matches, e.g. with useRemoteOptions.
    */
   onRemoteSearch?: (text: string) => void;
+  /**
+   * The matches for the typed text are still on their way (useRemoteOptions'
+   * `pending`). The list then shows only the chosen option, as loading, so
+   * Enter cannot pick a row from the previous search.
+   */
+  searching?: boolean;
   /** Header fields: Enter on an empty field opens the list. */
   enterOpens?: boolean;
   /** Fired when Enter picks an option (grid advance). Without it, the Enter is
    *  re-sent to the surrounding field handler so header chains move on. */
   onEnterSelect?: (value: unknown, option: unknown) => void;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   // Set (capture phase) when Enter is pressed on the open list; read by onChange.
@@ -58,6 +67,11 @@ export function GridSelect({
           .filter(Boolean)
           .join(' ') || undefined}
         open={open}
+        loading={searching || props.loading}
+        notFoundContent={searching ? t('common.loading') : props.notFoundContent}
+        options={
+          searching ? (props.options ?? []).filter((o) => o.value === props.value) : props.options
+        }
         showSearch
         {...(onRemoteSearch ? { filterOption: false } : { optionFilterProp: 'label' })}
         searchValue={search}

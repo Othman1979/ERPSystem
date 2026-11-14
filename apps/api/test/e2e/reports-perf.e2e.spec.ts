@@ -148,7 +148,7 @@ async function seed(t: Tenant, count: number, seedNo: number) {
   for (let start = 0; start < count; start += BATCH) {
     const n = Math.min(BATCH, count - start);
     const entries: unknown[] = [];
-    const plan: { no: string; a: number; b: number; amt: bigint }[] = [];
+    const plan: { no: string; a: number; b: number; amt: bigint; date: string }[] = [];
     for (let k = 0; k < n; k++) {
       const i = start + k;
       const month = i % 12;
@@ -161,7 +161,7 @@ async function seed(t: Tenant, count: number, seedNo: number) {
       const date = `2025-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const money = `${amt / 1000n}.${String(amt % 1000n).padStart(3, '0')}`;
       entries.push(t.tenantId, t.companyId, no, date, periods[month].id, 'MANUAL_JOURNAL', 'POST', 'POSTED', 'perf', money, money, now, now, now, 'JOURNAL');
-      plan.push({ no, a, b, amt });
+      plan.push({ no, a, b, amt, date });
     }
     await db.query(
       `INSERT INTO journal_entries (tenant_id, company_id, entry_no, entry_date, fiscal_period_id, source_type, posting_kind,
@@ -178,14 +178,15 @@ async function seed(t: Tenant, count: number, seedNo: number) {
     for (const p of plan) {
       const money = `${p.amt / 1000n}.${String(p.amt % 1000n).padStart(3, '0')}`;
       const id = idOf.get(p.no)!;
-      lines.push(t.tenantId, id, 1, t.accounts[p.a].id, money, '0', now);
-      lines.push(t.tenantId, id, 2, t.accounts[p.b].id, '0', money, now);
+      // entry_date: the line's copy of its entry's date (LEDGER-19).
+      lines.push(t.tenantId, id, 1, t.accounts[p.a].id, money, '0', p.date, now);
+      lines.push(t.tenantId, id, 2, t.accounts[p.b].id, '0', money, p.date, now);
       add(t.accounts[p.a].code, p.amt, 0n);
       add(t.accounts[p.b].code, 0n, p.amt);
     }
     await db.query(
-      `INSERT INTO journal_lines (tenant_id, journal_entry_id, line_no, account_id, debit, credit, created_at)
-       VALUES ${plan.flatMap(() => ['(?,?,?,?,?,?,?)', '(?,?,?,?,?,?,?)']).join(',')}`,
+      `INSERT INTO journal_lines (tenant_id, journal_entry_id, line_no, account_id, debit, credit, entry_date, created_at)
+       VALUES ${plan.flatMap(() => ['(?,?,?,?,?,?,?,?)', '(?,?,?,?,?,?,?,?)']).join(',')}`,
       lines,
     );
   }
@@ -248,6 +249,17 @@ perf('Reports on 100,000 journal lines', () => {
     );
     expect(next.status).toBe(200);
     expect(timings.ledgerJsonNextPage).toBeLessThan(BUDGET.ledgerJson);
+    // Page N: 4,900 lines in, the page still seeks in the line index (LEDGER-19).
+    let cursor: string = next.body.nextCursor;
+    for (let n = 3; n < 50; n += 1) {
+      cursor = (await api().get(`${url}&cursor=${encodeURIComponent(cursor)}`).set(auth(A.token))).body.nextCursor;
+    }
+    const deep = await timed('ledgerJsonPage50', () =>
+      api().get(`${url}&cursor=${encodeURIComponent(cursor)}`).set(auth(A.token)),
+    );
+    expect(deep.status).toBe(200);
+    expect(deep.body.items).toHaveLength(100);
+    expect(timings.ledgerJsonPage50).toBeLessThan(BUDGET.ledgerJson);
     const whole = await wholeStatement(BASE, url, A.token);
     const rowsCount = (whole.body.rows as unknown[]).length;
     expect(rowsCount).toBeGreaterThan(1_000);

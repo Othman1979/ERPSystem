@@ -295,7 +295,7 @@ describe('Opening / movement / closing columns', () => {
   });
 
   it('item movement: opening stock is the opening position, not a row', async () => {
-    const ledger = await get(`/api/v1/stock/items/${itemId}/ledger?from=2025-01-01&to=2025-12-31`);
+    const ledger = await statementBody(BASE, `/api/v1/stock/items/${itemId}/ledger?from=2025-01-01&to=2025-12-31`, token);
     expect(ledger.opening).toEqual({ qty: '10', value: '45.000' });
     // IN, OUT, transfer out, transfer in.
     expect(ledger.rows).toHaveLength(4);

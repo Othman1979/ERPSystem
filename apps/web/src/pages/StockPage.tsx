@@ -173,7 +173,7 @@ function useLookups() {
  */
 function useStockItemPicker(enabled: boolean) {
   return useRemoteOptions<ItemOpt>({
-    key: ['items', 'pick'],
+    key: ['items', 'pick', { itemKind: 'STOCK' }],
     enabled,
     fetch: (q, signal) =>
       catalogControllerListItems(
@@ -1098,27 +1098,23 @@ function MovementsTab() {
   const { t } = useTranslation();
   const [itemId, setItemId] = useState<string | undefined>();
   const [warehouseId, setWarehouseId] = useState<string | undefined>();
-  // Not filtered on screen yet; they stay in the key so that a change restarts the read.
-  const sourceType = '';
-  const from = '';
-  const to = '';
+  const [from, setFrom] = useState<Dayjs | null>(null);
+  const [to, setTo] = useState<Dayjs | null>(null);
   const { whOptions, warehouseLabel } = useLookups();
-  // "Load more" read (ADR-022 §4): the filters are part of the key, so a change restarts it.
+  // The request's own filters: a change of any of them restarts the read (the key holds only what is sent).
+  const filters = {
+    warehouseId: warehouseId || undefined,
+    itemId: itemId || undefined,
+    from: from?.format('YYYY-MM-DD'),
+    to: to?.format('YYYY-MM-DD'),
+  };
+  // "Load more" read (ADR-022 §4).
   const read = useKeysetQuery<MovementRow>({
-    key: ['stock-movements', warehouseId ?? '', itemId ?? '', sourceType, from, to],
+    key: ['stock-movements', filters],
     fetch: (cursor, signal) =>
-      stockReportsControllerMovements(
-        {
-          limit: 100,
-          ...(cursor ? { cursor } : {}),
-          warehouseId: warehouseId ?? '',
-          itemId: itemId ?? '',
-          sourceType,
-          from,
-          to,
-        },
-        { signal },
-      ).then((r) => r.data as unknown as KeysetPage<MovementRow>),
+      stockReportsControllerMovements({ limit: 100, ...(cursor ? { cursor } : {}), ...filters }, { signal }).then(
+        (r) => r.data as unknown as KeysetPage<MovementRow>,
+      ),
   });
   return (
     <>
@@ -1126,7 +1122,7 @@ function MovementsTab() {
         filters={
           <>
             <RemoteSelect
-              queryKey={['items', 'pick-movements']}
+              queryKey={['items', 'pick-movements', { itemKind: 'STOCK' }]}
               placeholder={t('items.title')}
               value={itemId}
               onChange={setItemId}
@@ -1145,9 +1141,10 @@ function MovementsTab() {
               options={whOptions}
               onChange={setWarehouseId}
             />
+            <DatePicker placeholder={t('stock.from')} value={from} onChange={setFrom} />
+            <DatePicker placeholder={t('stock.to')} value={to} onChange={setTo} />
           </>
         }
-        count={read.rows.length}
       />
       <Table
         rowKey="id"

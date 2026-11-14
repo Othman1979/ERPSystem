@@ -184,6 +184,7 @@ export function ReportsPage() {
     <>
       <Select
         allowClear
+        aria-label={t('reports.fiscalYear')}
         placeholder={t('reports.fiscalYear')}
         style={{ minWidth: 130 }}
         value={selectedYear?.id}
@@ -297,6 +298,7 @@ export function ReportsPage() {
                   showSearch
                   allowClear
                   optionFilterProp="label"
+                  aria-label={t('reports.account')}
                   placeholder={t('reports.account')}
                   style={{ minWidth: 280 }}
                   value={accountId}
@@ -354,6 +356,7 @@ export function ReportsPage() {
               <>
                 <Select
                   allowClear
+                  aria-label={t('reports.partyType')}
                   placeholder={t('reports.partyType')}
                   value={partyType}
                   onChange={(v) => {
@@ -380,6 +383,7 @@ export function ReportsPage() {
                     )
                   }
                   disabled={!partyType}
+                  aria-label={t('reports.party')}
                   placeholder={t('reports.party')}
                   style={{ minWidth: 240 }}
                   value={partyId}

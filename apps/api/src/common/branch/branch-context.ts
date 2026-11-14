@@ -96,10 +96,12 @@ export function currentBranchId(): bigint | null {
 export async function assertWarehouseBranchAllowed(
   db: Pick<Prisma.TransactionClient, 'warehouse'>,
   warehouseId: bigint | null | undefined,
-): Promise<void> {
-  if (warehouseId == null) return;
+): Promise<bigint | null> {
+  if (warehouseId == null) return null;
   const wh = await db.warehouse.findFirst({ where: { id: warehouseId }, select: { branchId: true } });
   assertBranchAllowed(wh?.branchId);
+  // The warehouse's branch: a stock document's journal entry carries it (ADR-003).
+  return wh?.branchId ?? null;
 }
 
 /**

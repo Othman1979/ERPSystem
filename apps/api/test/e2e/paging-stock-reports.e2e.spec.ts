@@ -78,6 +78,21 @@ interface KeysetBody {
   items: MovementRow[];
   nextCursor: string | null;
 }
+interface CardRow extends MovementRow {
+  warehouse: { id: string; code: string; nameAr: string };
+}
+interface CardBody {
+  item: { id: string; code: string };
+  summary: {
+    opening: { qty: string; value: string };
+    totals: { qtyIn: string; qtyOut: string; valueIn: string; valueOut: string };
+    closing: { qty: string; value: string };
+    balances: { warehouse: { id: string; code: string; nameAr: string }; qtyOnHand: string }[];
+  } | null;
+  items: CardRow[];
+  nextCursor: string | null;
+}
+
 
 describe('Stock reports: keyset movements and branch scope (ADR-022 §4, ADR-003 §12–§13)', () => {
   let owner = '';
@@ -131,6 +146,28 @@ describe('Stock reports: keyset movements and branch scope (ADR-022 §4, ADR-003
 
   /** A stock report under /stock (raw response, so status and error code can be checked). */
   const get = (token: string, path: string) => api().get(`/api/v1/stock${path}`).set(auth(token));
+
+  /** One page of the item card (ADR-022 §4); throws unless it answers 200. */
+  const cardPage = async (token: string, itemId: string, params: Record<string, string | number> = {}) => {
+    const query = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString();
+    const res = await get(token, `/items/${itemId}/ledger${query ? `?${query}` : ''}`);
+    if (res.status !== 200) throw new Error(`item card: ${res.status} ${JSON.stringify(res.body)}`);
+    return res.body as CardBody;
+  };
+
+  /** Every row of the item card, `limit` at a time, following nextCursor to the end. */
+  const allCardRows = async (token: string, itemId: string, params: Record<string, string>, limit: number) => {
+    const rows: CardRow[] = [];
+    let cursor: string | undefined;
+    for (let guard = 0; guard < 1000; guard += 1) {
+      const body = await cardPage(token, itemId, { ...params, limit, ...(cursor ? { cursor } : {}) });
+      rows.push(...body.items);
+      if (body.nextCursor === null) return rows;
+      cursor = body.nextCursor;
+    }
+    throw new Error('the item card read did not end');
+  };
+
 
   beforeAll(async () => {
     const reg = await api()
@@ -363,6 +400,93 @@ describe('Stock reports: keyset movements and branch scope (ADR-022 §4, ADR-003
     });
   });
 
+  describe('GET /stock/items/:itemId/ledger (item card, keyset, ADR-022 §4)', () => {
+    it('pages of 2 give the same rows, running figures and order as one read of 500', async () => {
+      const one = await cardPage(owner, itemI, { limit: 500 });
+      expect(one.nextCursor).toBeNull();
+      expect(one.items.length).toBeGreaterThan(3);
+      const paged = await allCardRows(owner, itemI, {}, 2);
+      expect(paged).toEqual(one.items);
+      expect(new Set(paged.map((r) => r.id)).size).toBe(paged.length);
+    });
+
+    it('the summary is on the first page only; later pages carry items and nextCursor', async () => {
+      const one = await cardPage(owner, itemI, { limit: 500 });
+      expect(one.summary).not.toBeNull();
+      const first = await cardPage(owner, itemI, { limit: 2 });
+      expect(first.items).toHaveLength(2);
+      expect(first.nextCursor).not.toBeNull();
+      expect(first.summary).toEqual(one.summary);
+      const second = await cardPage(owner, itemI, { limit: 2, cursor: first.nextCursor! });
+      expect(second.summary).toBeNull();
+      expect(Object.keys(second).sort()).toEqual(['item', 'items', 'nextCursor', 'summary']);
+    });
+
+    it('oldest first: date ascending, then id ascending', async () => {
+      const rows = (await cardPage(owner, itemI, { limit: 500 })).items;
+      for (let i = 1; i < rows.length; i += 1) {
+        const [a, b] = [rows[i - 1], rows[i]];
+        const [da, db2] = [a.movementDate.slice(0, 10), b.movementDate.slice(0, 10)];
+        expect(da <= db2).toBe(true);
+        if (da === db2) expect(BigInt(a.id) < BigInt(b.id)).toBe(true);
+      }
+    });
+
+    it('a filter narrows the card, and paging with the filter reads the same rows as one read', async () => {
+      const one = await cardPage(owner, itemI, { limit: 500, sourceType: 'STOCK_TRANSFER' });
+      expect(one.items.length).toBeGreaterThan(0);
+      expect(one.items.every((r) => r.sourceType === 'STOCK_TRANSFER')).toBe(true);
+      expect(await allCardRows(owner, itemI, { sourceType: 'STOCK_TRANSFER' }, 1)).toEqual(one.items);
+    });
+
+    it('the MAIN-only accountant reads W1 rows in pages, the same as the owner reads for W1', async () => {
+      const ownerW1 = await allCardRows(owner, itemI, { warehouseId: w1 }, 500);
+      expect(ownerW1.length).toBeGreaterThan(0);
+      expect(await allCardRows(accountant, itemI, {}, 2)).toEqual(ownerW1);
+    });
+
+    it('a tampered cursor is refused with CURSOR_INVALID (400)', async () => {
+      const cursor = (await cardPage(owner, itemI, { limit: 2 })).nextCursor!;
+      const i = cursor.indexOf('.') + 4;
+      const tampered = cursor.slice(0, i) + (cursor[i] === 'A' ? 'B' : 'A') + cursor.slice(i + 1);
+      const res = await get(owner, `/items/${itemI}/ledger?limit=2&cursor=${encodeURIComponent(tampered)}`);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('CURSOR_INVALID');
+    });
+
+    it("a cursor of one item is refused on another item's card", async () => {
+      const cursor = (await cardPage(owner, itemI, { limit: 2 })).nextCursor!;
+      const res = await get(owner, `/items/${itemJ}/ledger?limit=2&cursor=${encodeURIComponent(cursor)}`);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('CURSOR_INVALID');
+    });
+
+    it('pdf and xlsx still read the whole card (ADR-022 §6)', async () => {
+      const xlsx = await get(owner, `/items/${itemI}/ledger?format=xlsx`);
+      expect(xlsx.status).toBe(200);
+    });
+
+    it.each([
+      ['sourceType=BOGUS'],
+      ['sourceType=stock_transfer'],
+      ['limit=0'],
+      ['limit=501'],
+      ['from=2025-3-1'],
+      ['page=2'],
+      ['itemId=1'],
+    ])('bad item card parameter %s → 400 VALIDATION', async (query) => {
+      const res = await get(owner, `/items/${itemI}/ledger?${query}`);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION');
+    });
+
+    it('bad sourceType on the movement ledger → 400 VALIDATION', async () => {
+      const res = await api().get('/api/v1/stock/movements?sourceType=BOGUS').set(auth(owner));
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION');
+    });
+  });
+
   describe('branch scope (ADR-003 §12–§13)', () => {
     it("the MAIN-only accountant's movements are W1's rows only, read by pages", async () => {
       const ownerW1 = (await movementPage(owner, { warehouseId: w1, limit: 500 })).items;
@@ -400,28 +524,27 @@ describe('Stock reports: keyset movements and branch scope (ADR-022 §4, ADR-003
     });
 
     it('the item card shows W1 only: rows, opening, totals, closing and footer balances', async () => {
-      const ownerW1 = (await get(owner, `/items/${itemI}/ledger?warehouseId=${w1}`)).body;
-      const acct = (await get(accountant, `/items/${itemI}/ledger`)).body;
-      expect(acct.rows.length).toBeGreaterThan(0);
-      expect(acct.rows.map((r: { id: string }) => r.id)).toEqual(ownerW1.rows.map((r: { id: string }) => r.id));
-      expect(acct.rows.every((r: { warehouse: { code: string } }) => r.warehouse.code === 'W1')).toBe(true);
-      expect(acct.opening).toEqual(ownerW1.opening);
-      expect(acct.totals).toEqual(ownerW1.totals);
-      expect(acct.closing).toEqual(ownerW1.closing);
-      const ownerFooter = (await get(owner, `/items/${itemI}/ledger`)).body.balances.filter(
-        (b: { warehouse: { code: string } }) => b.warehouse.code === 'W1',
-      );
-      expect(acct.balances).toEqual(ownerFooter);
-      expect(acct.balances.every((b: { warehouse: { code: string } }) => b.warehouse.code === 'W1')).toBe(true);
+      const ownerW1 = (await get(owner, `/items/${itemI}/ledger?warehouseId=${w1}`)).body as CardBody;
+      const acct = (await get(accountant, `/items/${itemI}/ledger`)).body as CardBody;
+      expect(acct.items.length).toBeGreaterThan(0);
+      expect(acct.items.map((r) => r.id)).toEqual(ownerW1.items.map((r) => r.id));
+      expect(acct.items.every((r) => r.warehouse.code === 'W1')).toBe(true);
+      expect(acct.summary!.opening).toEqual(ownerW1.summary!.opening);
+      expect(acct.summary!.totals).toEqual(ownerW1.summary!.totals);
+      expect(acct.summary!.closing).toEqual(ownerW1.summary!.closing);
+      const ownerBody = (await get(owner, `/items/${itemI}/ledger`)).body as CardBody;
+      const ownerFooter = ownerBody.summary!.balances.filter((b) => b.warehouse.code === 'W1');
+      expect(acct.summary!.balances).toEqual(ownerFooter);
+      expect(acct.summary!.balances.every((b) => b.warehouse.code === 'W1')).toBe(true);
     });
 
     it("the item card answers nothing from another branch's warehouse", async () => {
       const res = await get(accountant, `/items/${itemI}/ledger?warehouseId=${w2}`);
       expect(res.status).toBe(200);
-      expect(res.body.rows).toEqual([]);
+      expect(res.body.items).toEqual([]);
       // The footer lists the item's balances in the caller's warehouses (it always
       // ignored the warehouse filter): W1 only, never W2.
-      expect(res.body.balances.map((b: { warehouse: { code: string } }) => b.warehouse.code)).toEqual(['W1']);
+      expect(res.body.summary.balances.map((b: { warehouse: { code: string } }) => b.warehouse.code)).toEqual(['W1']);
     });
 
     it('valuation for the accountant is W1 quantity at average cost, not the company figure', async () => {

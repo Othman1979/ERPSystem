@@ -99,7 +99,7 @@ export function usePagedQuery<T, F extends Record<string, string | undefined>>({
     current: page,
     pageSize,
     total: data?.total ?? 0,
-    showSizeChanger: true,
+    showSizeChanger: { 'aria-label': t('common.pageSize') },
     pageSizeOptions: PAGE_SIZE_OPTIONS,
     showTotal: (total, [from, to]) => t('common.pageRange', { from, to, total }),
     size: 'small',

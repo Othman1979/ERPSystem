@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { branchWhere } from '../../common/branch/branch-context.js';
+import { branchWhere, hasAllBranches } from '../../common/branch/branch-context.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { calendarDateIn, DocumentSupportService } from '../shared/document-support.service.js';
 import { ReportsService } from '../journal/reports.service.js';
@@ -293,7 +293,8 @@ export class TreasuryReportsService {
       db.cashBox.findMany({ where: { companyId }, select: { accountId: true } }),
     ]);
     const linked = new Set([...allBoxes, ...banks].map((x) => x.accountId));
-    const unlinked = cashAccounts.filter((a) => !linked.has(a.id));
+    // Company-wide accounts with no box or bank behind them: only a member with every branch sees them (ADR-003 §10).
+    const unlinked = hasAllBranches() ? cashAccounts.filter((a) => !linked.has(a.id)) : [];
     // Balances are computed for the rows shown only. Each balance is the account's whole
     // balance: journal lines are not filtered by branch (a box's balance stays complete).
     const accountIds = [...boxes, ...banks].map((x) => x.accountId).concat(unlinked.map((a) => a.id));

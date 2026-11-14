@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
+import { hasAllBranches } from '../../common/branch/branch-context.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
@@ -272,8 +273,9 @@ export class AccountsService {
     });
     const net = new Decimal(posted._sum.debit?.toString() ?? 0).minus(posted._sum.credit?.toString() ?? 0);
     if (!net.isZero()) {
+      // The balance is company-wide (all branches): only a member with every branch sees it.
       throw new DomainError(ErrorCode.ACCOUNT_HAS_BALANCE, 'Cannot deactivate an account with a balance', {
-        balance: net.toFixed(3),
+        ...(hasAllBranches() ? { balance: net.toFixed(3) } : {}),
         ...(from ? { from: from.toISOString().slice(0, 10) } : {}),
       });
     }

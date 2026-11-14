@@ -541,10 +541,11 @@ describe('Phase 8 — reports', () => {
     expect(all.length).toBe(3); // I1 × 2 warehouses, I2
     expect((await get('/api/v1/dashboard/summary?date=2026-06-02')).belowMinimum.count).toBe(1); // I3 only
 
-    const ledger = await get(`/api/v1/stock/items/${id.i1}/ledger?warehouseId=${id.wh}&from=2026-01-01&to=2026-12-31`);
+    // The item card's JSON comes in keyset pages (ADR-022 §4): read it whole.
+    const ledger = await statementBody(BASE, `/api/v1/stock/items/${id.i1}/ledger?warehouseId=${id.wh}&from=2026-01-01&to=2026-12-31`, token);
     expect(ledger.opening).toEqual({ qty: '90', value: '900.000' }); // 2025: 100 in − 10 out at 10
     expect(ledger.rows.length).toBe(5);
-    const none = await get(`/api/v1/stock/items/${id.i1}/ledger`);
+    const none = await statementBody(BASE, `/api/v1/stock/items/${id.i1}/ledger`, token);
     expect(none.opening).toEqual({ qty: '0', value: '0.000' });
 
     // General ledger / party statement opening balances (DB aggregates).

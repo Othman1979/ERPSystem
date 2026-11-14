@@ -255,6 +255,8 @@ export class JournalService implements OnModuleInit {
           partyId: l.partyId ? BigInt(l.partyId) : null,
           description: l.description ?? null,
           branchId,
+          // LEDGER-19: the line keeps its entry's date (a draft's date never changes).
+          entryDate: created.entryDate,
         })),
       });
       return created;

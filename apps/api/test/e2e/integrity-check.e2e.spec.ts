@@ -25,6 +25,7 @@ const CHECKS = [
   'journal_lines.party_id',
   'journal_lines.party_type',
   'journal_lines.branch_id',
+  'journal_lines.entry_date',
   'allocations.document',
   'einvoice_submissions.document',
   'journal_entries.source',
@@ -168,6 +169,27 @@ describe('Integrity check job — references and collation (erp_test)', () => {
     await db.query(`UPDATE journal_lines SET party_type = NULL, party_id = NULL WHERE tenant_id = ? AND party_id = 999999999`, [
       tenantA.tenantId,
     ]);
+    expect((await cli(['--tenant', tenantA.tenantId])).code).toBe(0);
+  }, 60_000);
+
+  it("a journal line whose entry_date drifted from its entry's fails the check (LEDGER-19)", async () => {
+    const upd = await db.query(
+      'UPDATE journal_lines SET entry_date = DATE_ADD(entry_date, INTERVAL 1 DAY) WHERE tenant_id = ? LIMIT 1',
+      [tenantA.tenantId],
+    );
+    expect(upd.affectedRows).toBe(1);
+    try {
+      const run = await cli(['--tenant', tenantA.tenantId]);
+      expect(run.code).toBe(1);
+      expect(check(report(run.stdout), 'journal_lines.entry_date')).toMatchObject({ ok: false, count: 1 });
+    } finally {
+      // Back to the entry's date, so erp_test stays clean.
+      await db.query(
+        `UPDATE journal_lines l JOIN journal_entries e ON e.tenant_id = l.tenant_id AND e.id = l.journal_entry_id
+            SET l.entry_date = e.entry_date WHERE l.tenant_id = ? AND l.entry_date <> e.entry_date`,
+        [tenantA.tenantId],
+      );
+    }
     expect((await cli(['--tenant', tenantA.tenantId])).code).toBe(0);
   }, 60_000);
 

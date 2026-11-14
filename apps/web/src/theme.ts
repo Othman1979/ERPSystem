@@ -293,6 +293,18 @@ export const antdTheme: ThemeConfig = {
       cellPaddingBlockMD: 5,
       cellPaddingBlockSM: 4,
     },
+    // antd defaults the page items to white (colorBgContainer) and the active
+    // page to a primary-coloured white chip; here the active page is an ink chip.
+    Pagination: {
+      itemBg: neutral.surface,
+      itemLinkBg: neutral.surface,
+      itemInputBg: neutral.surface,
+      itemActiveBg: ink.ink100,
+      itemActiveColor: ink.ink900,
+      itemActiveColorHover: ink.ink600,
+      itemActiveBgDisabled: neutral.panel,
+      itemActiveColorDisabled: neutral.text3,
+    },
     Tabs: {
       itemColor: neutral.text2,
       itemHoverColor: ink.ink500,

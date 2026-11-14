@@ -96,8 +96,8 @@ describe('Phase 8 — report exports', () => {
   const id: Record<string, string> = {};
 
   const json = async (url: string) => {
-    // The statements' JSON comes in keyset pages (ADR-022 §4): read them whole.
-    if (/\/reports\/(general-ledger|party-statement)/.test(url)) return (await statementBody(BASE, url, token)) as J;
+    // The statements' and item card's JSON come in keyset pages (ADR-022 §4): read them whole.
+    if (/\/reports\/(general-ledger|party-statement)|\/stock\/items\/[^/]+\/ledger/.test(url)) return (await statementBody(BASE, url, token)) as J;
     const res = await api().get(url).set(auth(token));
     expect(res.status).toBe(200);
     return res.body as J;

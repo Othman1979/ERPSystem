@@ -7,7 +7,7 @@ import {
   branchWhere,
   currentBranchId,
 } from '../../common/branch/branch-context.js';
-import { findPage, mapPage } from '../../common/paging/find-page.js';
+import { findPage } from '../../common/paging/find-page.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -98,10 +98,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
   }
 
   /** Posted credit-return totals for the given invoices (for `outstanding`). */
-  private async creditedFor(
-    db: ReturnType<DocumentSupportService['tenant']>['db'],
-    invoiceIds: bigint[],
-  ) {
+  private async creditedFor(db: Pick<Prisma.TransactionClient, 'salesReturn'>, invoiceIds: bigint[]) {
     if (invoiceIds.length === 0) return new Map<string, Decimal>();
     const returns = await db.salesReturn.findMany({
       where: { originalInvoiceId: { in: invoiceIds }, status: 'POSTED', refundType: 'CREDIT' },
@@ -295,6 +292,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     partyId: bigint,
   ): Promise<bigint[]> {
     const { tenantId } = this.support.tenant();
+    // Only the caller's branches (ADR-003 §10): auto-allocation must not reach another branch's invoice.
     const rows = await tx.$queryRaw<{ id: bigint }[]>`
       SELECT i.id
         FROM sales_invoices i
@@ -307,6 +305,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
        WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId} AND i.customer_id = ${partyId}
          AND i.status = 'POSTED' AND i.payment_type = 'CREDIT'
          AND i.grand_total - i.paid_amount - COALESCE(r.credited, 0) > 0
+         AND ${branchSql(Prisma.raw('i.branch_id'))}
        ORDER BY i.invoice_date, i.id`;
     return rows.map((r) => BigInt(r.id));
   }
@@ -370,9 +369,10 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       },
       (dir) => ({ id: dir }),
     );
-    const page = await findPage(db, pageWindow(query), {
-      rows: (tx, window) =>
-        tx.salesInvoice.findMany({
+    // The rows, their credited returns and the total read on one snapshot (ADR-022 §3).
+    return findPage(db, pageWindow(query), {
+      rows: async (tx, window) => {
+        const rows = await tx.salesInvoice.findMany({
           where,
           include: {
             customer: { select: { id: true, code: true, nameAr: true, nameEn: true } },
@@ -381,11 +381,12 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           },
           orderBy,
           ...window,
-        }),
+        });
+        const credited = await this.creditedFor(tx, rows.map((r) => r.id));
+        return rows.map((r) => withBalance(r, credited));
+      },
       count: (tx) => tx.salesInvoice.count({ where }),
     });
-    const credited = await this.creditedFor(db, page.items.map((r) => r.id));
-    return mapPage(page, (rows) => rows.map((r) => withBalance(r, credited)));
   }
 
   /** One invoice; another branch's answers 404 like another tenant's (ADR-003 §11). */
