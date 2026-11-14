@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { ApiOneOfResponse } from '../../common/openapi/responses.js';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
-import { InviteUserDto, UpdateMembershipDto } from './dto/users.dto.js';
+import { ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
+import { InviteUserDto, UpdateMembershipDto, UpdatePurchasePermissionsDto } from './dto/users.dto.js';
 import {
   UserInvitationCancelledDto,
   UserInvitationCodeDto,
@@ -46,6 +47,17 @@ export class UsersController {
   @ApiOkResponse({ type: UserMembershipDto })
   update(@Param('membershipId') id: string, @Body() dto: UpdateMembershipDto) {
     return this.users.update(BigInt(id), dto);
+  }
+
+  /**
+   * The member's purchase permissions, as a whole set (ADR-024 §3): listed
+   * codes are granted, the rest revoked. Owner only (checked by the service).
+   */
+  @Put(':membershipId/purchase-permissions')
+  @RequirePermission(PERMISSIONS.USER_MANAGE)
+  @ApiOkResponse({ type: UserMembershipDto })
+  updatePurchasePermissions(@Param('membershipId', ParseIdPipe) id: string, @Body() dto: UpdatePurchasePermissionsDto) {
+    return this.users.updatePurchasePermissions(BigInt(id), dto);
   }
 
   /** A new acceptance code for a pending invitation; the old one stops working (ADR-012 §PLAT-10). */

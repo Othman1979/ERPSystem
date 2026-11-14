@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 import { PageHeader } from '../components/PageHeader';
 import { useAuth } from '../auth/AuthContext';
+import { useProcurementLevel } from '../auth/procurementLevel';
 import { canOpenPath } from '../routes';
 
 /** Guide sections (i18n help.<id>.title / .body) and the screen each one opens. */
@@ -26,7 +27,8 @@ export const HELP_SECTIONS: { id: string; path?: string }[] = [
 export function HelpPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { can, me } = useAuth();
+  const level = useProcurementLevel(!!me?.currentTenant);
   return (
     <div>
       <PageHeader title={t('help.title')} subtitle={t('help.subtitle')} />
@@ -42,7 +44,7 @@ export function HelpPage() {
                   {t(`help.${s.id}.body`)}
                 </Typography.Paragraph>
                 {/* Only screens this role can open (the rest would show "no access"). */}
-                {s.path && canOpenPath(s.path, can) && (
+                {s.path && canOpenPath(s.path, can, level) && (
                   <Button size="small" onClick={() => navigate(s.path!)}>
                     {t('help.open')}
                   </Button>

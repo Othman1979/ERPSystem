@@ -160,7 +160,13 @@ describe('purge-tenant', () => {
       [tokenA, `pg-shared-${RUN}@test.dev`],
       [tokenB, `pg-shared-${RUN}@test.dev`],
     ]) {
-      await addMember(BASE, token, { email, roleCode: 'ACCOUNTANT', password: PASS });
+      const { membershipId } = await addMember(BASE, token, { email, roleCode: 'ACCOUNTANT', password: PASS });
+      // A purchase permission per member (member_permissions, ADR-024 §3): purged with A, kept in B.
+      const granted = await api()
+        .put(`/api/v1/users/${membershipId}/purchase-permissions`)
+        .set(auth(token))
+        .send({ permissions: [{ code: 'purchase.approve', amountLimit: '250.000' }] });
+      expect(granted.status).toBe(200);
     }
     await seed(tokenB, 'B');
     // The declined-invitation case: invited to B, the invitation declined (B's membership goes, the audit row
@@ -183,6 +189,7 @@ describe('purge-tenant', () => {
     ]);
 
     expect(Object.keys(await rowsOf(tenantA)).length).toBeGreaterThan(10);
+    expect((await rowsOf(tenantA)).member_permissions).toBe(2);
     expect(existsSync(path.join(STORAGE, `t${tenantA}`))).toBe(true);
     rowsB = await rowsOf(tenantB);
     tbB = JSON.stringify((await api().get('/api/v1/reports/trial-balance').set(auth(tokenB))).body.totals);

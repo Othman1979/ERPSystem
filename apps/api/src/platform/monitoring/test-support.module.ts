@@ -1,5 +1,16 @@
-import { Controller, Get, Headers, Module } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Injectable, Module, type OnModuleInit, Put } from '@nestjs/common';
 import { ApiExcludeController, ApiOkResponse, ApiProperty, ApiTags } from '@nestjs/swagger';
+import { IsInt, Min } from 'class-validator';
+import { ClsServiceManager } from 'nestjs-cls';
+import type { RequestContext } from '../../common/cls/cls.types.js';
+import { RequirePermission } from '../../common/decorators/auth.decorators.js';
+import { DomainError } from '../../common/errors/domain.error.js';
+import { ErrorCode } from '../../common/errors/error-codes.js';
+import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import {
+  type OpenCycleDocumentsCounter,
+  ProcurementCycleRegistry,
+} from '../../common/procurement/procurement-level.js';
 
 /**
  * A route that fails on purpose, so the e2e tests can watch a real server
@@ -57,5 +68,70 @@ class TestContractController {
   }
 }
 
-@Module({ controllers: [TestSupportController, TestContractController] })
+/**
+ * A test-only open cycle documents counter (ADR-024 §2.2): the registry ships
+ * empty in phase 11, so the e2e suite sets a count per tenant here to prove a
+ * lowering is refused, and that tenant B is not affected by A's count.
+ */
+@Injectable()
+export class TestOpenCycleCounter implements OpenCycleDocumentsCounter, OnModuleInit {
+  readonly key = 'testDocuments';
+  private readonly byTenant = new Map<bigint, number>();
+
+  constructor(private readonly registry: ProcurementCycleRegistry) {}
+
+  onModuleInit(): void {
+    this.registry.register(this);
+  }
+
+  set(tenantId: bigint, count: number): void {
+    this.byTenant.set(tenantId, count);
+  }
+
+  count(): Promise<number> {
+    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
+    return Promise.resolve(tenantId === undefined ? 0 : (this.byTenant.get(tenantId) ?? 0));
+  }
+}
+
+class TestOpenDocumentsDto {
+  @IsInt()
+  @Min(0)
+  count!: number;
+}
+
+/**
+ * Procurement test routes (NODE_ENV=test only, left out of the document so
+ * the isolation sweep and the contract suite never see them; the response
+ * audit records their answers, which phase11-procurement checks): the
+ * open-documents count of the caller's tenant (from CLS, never from the
+ * body), and a route guarded by purchase.approve that proves TenantGuard
+ * unions member permissions.
+ */
+@ApiExcludeController()
+@Controller('__test/procurement')
+class TestProcurementController {
+  constructor(private readonly counter: TestOpenCycleCounter) {}
+
+  /** settings.manage, as the level change it stands in for (an owner holds it). */
+  @Put('open-documents')
+  @RequirePermission(PERMISSIONS.SETTINGS_MANAGE)
+  setOpenDocuments(@Body() dto: TestOpenDocumentsDto) {
+    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
+    if (tenantId === undefined) throw new DomainError(ErrorCode.FORBIDDEN, 'No tenant selected');
+    this.counter.set(tenantId, dto.count);
+    return { count: dto.count };
+  }
+
+  @Get('approve-check')
+  @RequirePermission(PERMISSIONS.PURCHASE_APPROVE)
+  approveCheck() {
+    return { ok: true as const };
+  }
+}
+
+@Module({
+  controllers: [TestSupportController, TestContractController, TestProcurementController],
+  providers: [TestOpenCycleCounter],
+})
 export class TestSupportModule {}

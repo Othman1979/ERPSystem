@@ -22,6 +22,7 @@ import {
 } from '@ant-design/icons';
 import { lazyPage } from './lazyPage';
 import { PERMISSIONS, type Permission } from './auth/permissions';
+import { meetsProcurementLevel, type ProcurementLevel } from './auth/procurementLevel';
 
 /**
  * Each module's page is its own chunk, loaded when first opened (WEB-10).
@@ -85,6 +86,12 @@ export interface AppRoute {
    * of a request that fails with 403. Absent: no company permission needed.
    */
   permission?: Permission;
+  /**
+   * Lowest procurement level whose cycle uses the screen (ADR-024 §2.3): below
+   * it the entry is hidden and the URL shows "no access". For the purchase
+   * request, order and issue screens of phases 12–13; no screen sets it yet.
+   */
+  minProcurementLevel?: ProcurementLevel;
 }
 
 export interface AppGroup {
@@ -172,26 +179,37 @@ export const APP_GROUPS: AppGroup[] = [
 
 export const ALL_ROUTES: AppRoute[] = APP_GROUPS.flatMap((g) => g.routes);
 
-/** True when a role with `can` may open `route` (the permission it names, if any). */
-export function allowedRoute(route: AppRoute, can: (permission: Permission) => boolean): boolean {
-  return !route.permission || can(route.permission);
+/**
+ * True when a role with `can`, in a company at procurement `level`, may open
+ * `route`: the permission it names, if any, and its minimum level, if any.
+ */
+export function allowedRoute(
+  route: AppRoute,
+  can: (permission: Permission) => boolean,
+  level?: ProcurementLevel,
+): boolean {
+  return (!route.permission || can(route.permission)) && meetsProcurementLevel(level, route.minProcurementLevel);
 }
 
 /**
  * True when a role with `can` may open `path` (a module, its nested paths or
  * the setup wizard). Paths that need no company permission (help, legal) are open.
  */
-export function canOpenPath(path: string, can: (permission: Permission) => boolean): boolean {
+export function canOpenPath(path: string, can: (permission: Permission) => boolean, level?: ProcurementLevel): boolean {
   const bare = path.split('?')[0];
   if (bare === SETUP_PATH || bare.startsWith(`${SETUP_PATH}/`)) return can(SETUP_PERMISSION);
   const route = routeForPath(bare);
-  return !route || allowedRoute(route, can);
+  return !route || allowedRoute(route, can, level);
 }
 
-/** `groups` with only the routes the role may open; groups left empty are dropped. */
-export function allowedGroups(groups: AppGroup[], can: (permission: Permission) => boolean): AppGroup[] {
+/** `groups` with only the routes the role may open at `level`; groups left empty are dropped. */
+export function allowedGroups(
+  groups: AppGroup[],
+  can: (permission: Permission) => boolean,
+  level?: ProcurementLevel,
+): AppGroup[] {
   return groups
-    .map((g) => ({ ...g, routes: g.routes.filter((r) => allowedRoute(r, can)) }))
+    .map((g) => ({ ...g, routes: g.routes.filter((r) => allowedRoute(r, can, level)) }))
     .filter((g) => g.routes.length > 0);
 }
 

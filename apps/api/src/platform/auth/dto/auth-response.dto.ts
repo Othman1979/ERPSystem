@@ -143,8 +143,20 @@ export class MeCurrentMembershipDto {
   @ApiProperty({ type: 'string' })
   roleCode!: string;
 
-  @ApiProperty({ type: 'string', isArray: true, description: 'Permission codes of the role in this tenant, sorted.' })
+  @ApiProperty({
+    type: 'string',
+    isArray: true,
+    description: "Permission codes of the role in this tenant plus the member's purchase permissions (ADR-024 §3), sorted.",
+  })
   permissions!: string[];
+
+  @ApiProperty({
+    type: 'string',
+    format: 'decimal',
+    nullable: true,
+    description: 'Highest amount this member approves alone (purchase.approve, ADR-024 §3.3). Null: no limit, or no purchase.approve.',
+  })
+  approvalLimit!: string | null;
 
   @ApiProperty({ type: 'string', nullable: true })
   defaultBranchId!: string | null;

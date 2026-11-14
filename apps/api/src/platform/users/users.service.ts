@@ -9,7 +9,14 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PasswordService } from '../auth/password.service.js';
 import { generateTemporaryPassword, temporaryPasswordWrites } from '../auth/temporary-password.js';
-import { InviteUserDto, UpdateMembershipDto } from './dto/users.dto.js';
+import { round3 } from '../../common/decimal/decimal.utils.js';
+import {
+  effectiveMemberPermissions,
+  LIMITED_MEMBER_PERMISSION,
+  type MemberPermissionGrant,
+  OWNER_ROLE,
+} from '../../common/permissions/member-permissions.js';
+import { InviteUserDto, UpdateMembershipDto, UpdatePurchasePermissionsDto } from './dto/users.dto.js';
 import { issueInvitationCode } from './invitation-code.js';
 
 const membershipInclude = {
@@ -17,6 +24,7 @@ const membershipInclude = {
   role: { select: { code: true, nameAr: true, nameEn: true } },
   defaultBranch: { select: { id: true, code: true, nameAr: true } },
   allowedBranches: { include: { branch: { select: { id: true, code: true, nameAr: true } } } },
+  extraPermissions: { select: { permissionCode: true, amountLimit: true } },
 } as const;
 
 function serialize(m: {
@@ -28,7 +36,10 @@ function serialize(m: {
   role: { code: string; nameAr: string; nameEn: string | null };
   defaultBranch: { id: bigint; code: string; nameAr: string } | null;
   allowedBranches: { branch: { id: bigint; code: string; nameAr: string } }[];
+  extraPermissions: MemberPermissionGrant[];
 }) {
+  // What the member holds (an owner: all three, no limit), as the guard sees it.
+  const purchase = effectiveMemberPermissions(m.role.code, m.extraPermissions);
   return {
     membershipId: m.id.toString(),
     status: m.status,
@@ -48,8 +59,15 @@ function serialize(m: {
       ...b.branch,
       id: b.branch.id.toString(),
     })),
+    purchasePermissions: purchase.codes.map((code) => ({
+      code,
+      amountLimit: code === LIMITED_MEMBER_PERMISSION ? purchase.approvalLimit : null,
+    })),
   };
 }
+
+/** A stored grant compared by value: its code and its limit as a 3-decimal string. */
+const limitText = (limit: MemberPermissionGrant['amountLimit']) => (limit ? limit.toFixed(3) : null);
 
 @Injectable()
 export class UsersService {
@@ -256,11 +274,13 @@ export class UsersService {
     // not removing an owner.
     const activeOwner = membership.role.code === 'OWNER' && membership.status === 'ACTIVE';
     let removesOwner = false;
+    let newRoleId: bigint | undefined;
     if (dto.roleCode !== undefined) {
       const role = await this.prisma.client.role.findUnique({ where: { code: dto.roleCode } });
       if (!role) throw DomainError.notFound('Role', dto.roleCode);
       removesOwner ||= activeOwner && role.code !== 'OWNER';
       data.roleId = role.id;
+      newRoleId = role.id;
     }
     if (dto.status !== undefined) {
       removesOwner ||= activeOwner && dto.status === 'SUSPENDED';
@@ -276,12 +296,12 @@ export class UsersService {
       }
     }
 
-    await prisma.$transaction(async (tx) => {
+    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
+    const roleChangeRevokes = await prisma.$transaction(async (tx) => {
       if (removesOwner) {
         // Never remove the last active OWNER. The tenant row lock comes first
         // so two owners demoting each other at once cannot both pass the
         // count (the count's snapshot is taken after the lock).
-        const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
         await tx.$queryRaw`SELECT id FROM tenants WHERE id = ${tenantId} FOR UPDATE`;
         // Only ACTIVE owners count: an OWNER invitation not yet accepted protects nothing.
         const ownerCount = await tx.tenantMembership.count({
@@ -294,8 +314,34 @@ export class UsersService {
           );
         }
       }
+      // A new role clears the purchase permissions (ADR-024 §3, amendment
+      // 2026-11-15): grants made for one role are not carried into another.
+      // The member row lock orders this with PUT …/purchase-permissions.
+      let revokes: { permissionCode: string; amountLimit: MemberPermissionGrant['amountLimit'] }[] = [];
+      if (newRoleId !== undefined) {
+        const [locked] = await tx.$queryRaw<{ role_id: bigint }[]>`SELECT role_id FROM tenant_memberships WHERE tenant_id = ${tenantId} AND id = ${membershipId} FOR UPDATE`;
+        if (locked && BigInt(locked.role_id) !== newRoleId) {
+          revokes = await tx.memberPermission.findMany({
+            where: { membershipId },
+            select: { permissionCode: true, amountLimit: true },
+            orderBy: { id: 'asc' },
+          });
+          if (revokes.length > 0) await tx.memberPermission.deleteMany({ where: { membershipId } });
+        }
+      }
       await tx.tenantMembership.update({ where: { id: membershipId }, data });
+      return revokes;
     });
+
+    for (const g of roleChangeRevokes) {
+      await this.audit.log({
+        action: 'user.purchase_permission_revoke',
+        entityType: 'tenant_membership',
+        entityId: membershipId,
+        before: { code: g.permissionCode, amountLimit: limitText(g.amountLimit) },
+        after: { reason: 'role_change', roleCode: dto.roleCode },
+      });
+    }
 
     if (dto.branchIds !== undefined) {
       const branchIds = dto.branchIds.map(BigInt);
@@ -305,7 +351,6 @@ export class UsersService {
           throw new DomainError(ErrorCode.VALIDATION, 'One or more branches are invalid');
         }
       }
-      const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
       await prisma.membershipBranch.deleteMany({ where: { membershipId } });
       if (branchIds.length > 0) {
         await prisma.membershipBranch.createMany({
@@ -321,6 +366,117 @@ export class UsersService {
       before: { roleCode: membership.role.code, status: membership.status },
       after: dto,
     });
+
+    const refreshed = await prisma.tenantMembership.findFirstOrThrow({
+      where: { id: membershipId },
+      include: membershipInclude,
+    });
+    return serialize(refreshed);
+  }
+
+  /**
+   * Sets a member's purchase permissions (ADR-013 §2, ADR-024 §3): the codes
+   * listed are granted, the others revoked. Only an owner may, and an owner's
+   * own membership holds all three already. Each grant, revoke and limit
+   * change is one audit row. Phase 11 stores them only: no route needs them yet.
+   */
+  async updatePurchasePermissions(membershipId: bigint, dto: UpdatePurchasePermissionsDto) {
+    if ((await this.callerRoleCode()) !== OWNER_ROLE) {
+      throw new DomainError(ErrorCode.FORBIDDEN, 'Only an owner can grant or revoke purchase permissions');
+    }
+    const prisma = this.tenant();
+    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
+
+    const wanted = new Map<string, string | null>();
+    for (const g of dto.permissions) {
+      // Null is "no limit", as GET users shows it; on any code it means nothing to store.
+      if (g.amountLimit === undefined || g.amountLimit === null) {
+        wanted.set(g.code, null);
+        continue;
+      }
+      if (g.code !== LIMITED_MEMBER_PERMISSION) {
+        throw new DomainError(ErrorCode.VALIDATION, `Only ${LIMITED_MEMBER_PERMISSION} takes an amount limit`, {
+          field: 'amountLimit',
+        });
+      }
+      const limit = round3(g.amountLimit);
+      if (!limit.greaterThan(0)) {
+        throw new DomainError(ErrorCode.VALIDATION, 'amountLimit must be greater than zero', { field: 'amountLimit' });
+      }
+      wanted.set(g.code, limit.toFixed(3));
+    }
+
+    const changes = await prisma.$transaction(async (tx) => {
+      // One writer per member at a time (this PUT, or a role change in update()):
+      // the role and the grants read below stay current until commit.
+      const locked = await tx.$queryRaw<{ id: bigint }[]>`SELECT id FROM tenant_memberships WHERE tenant_id = ${tenantId} AND id = ${membershipId} FOR UPDATE`;
+      // Tenant-scoped: another company's membership id matches nothing (404).
+      const membership =
+        locked.length === 0
+          ? null
+          : await tx.tenantMembership.findFirst({ where: { id: membershipId }, select: { status: true, role: { select: { code: true } } } });
+      if (!membership) throw DomainError.notFound('Membership', membershipId.toString());
+      // Decided on the role as of the lock. Any status may hold grants: an
+      // invitee's are ready when they accept, a suspended member cannot sign in.
+      if (membership.role.code === OWNER_ROLE) {
+        throw new DomainError(ErrorCode.VALIDATION, 'An owner holds every purchase permission already', {
+          field: 'membershipId',
+        });
+      }
+      const stored = await tx.memberPermission.findMany({
+        where: { membershipId },
+        select: { permissionCode: true, amountLimit: true },
+        orderBy: { id: 'asc' },
+      });
+      const current = new Map(stored.map((g) => [g.permissionCode, limitText(g.amountLimit)]));
+
+      const revoked = [...current.keys()].filter((code) => !wanted.has(code));
+      const granted = [...wanted.keys()].filter((code) => !current.has(code));
+      const relimited = [...wanted.keys()].filter((code) => current.has(code) && current.get(code) !== wanted.get(code));
+
+      if (revoked.length > 0) {
+        await tx.memberPermission.deleteMany({ where: { membershipId, permissionCode: { in: revoked } } });
+      }
+      for (const code of relimited) {
+        await tx.memberPermission.updateMany({ where: { membershipId, permissionCode: code }, data: { amountLimit: wanted.get(code) } });
+      }
+      if (granted.length > 0) {
+        await tx.memberPermission.createMany({
+          data: granted.map((code) => ({ tenantId, membershipId, permissionCode: code, amountLimit: wanted.get(code) })),
+        });
+      }
+      return {
+        revoked: revoked.map((code) => ({ code, amountLimit: current.get(code) ?? null })),
+        granted: granted.map((code) => ({ code, amountLimit: wanted.get(code) ?? null })),
+        relimited: relimited.map((code) => ({ code, before: current.get(code) ?? null, after: wanted.get(code) ?? null })),
+      };
+    });
+
+    for (const g of changes.granted) {
+      await this.audit.log({
+        action: 'user.purchase_permission_grant',
+        entityType: 'tenant_membership',
+        entityId: membershipId,
+        after: g,
+      });
+    }
+    for (const g of changes.revoked) {
+      await this.audit.log({
+        action: 'user.purchase_permission_revoke',
+        entityType: 'tenant_membership',
+        entityId: membershipId,
+        before: g,
+      });
+    }
+    for (const g of changes.relimited) {
+      await this.audit.log({
+        action: 'user.purchase_permission_limit',
+        entityType: 'tenant_membership',
+        entityId: membershipId,
+        before: { code: g.code, amountLimit: g.before },
+        after: { code: g.code, amountLimit: g.after },
+      });
+    }
 
     const refreshed = await prisma.tenantMembership.findFirstOrThrow({
       where: { id: membershipId },

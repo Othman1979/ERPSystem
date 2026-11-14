@@ -28,9 +28,12 @@ import {
   usersControllerSuspend,
   usersControllerUpdate,
 } from '@erp/api-client';
-import { CheckOutlined, CopyOutlined, KeyOutlined, UserOutlined } from '@ant-design/icons';
+import { CheckOutlined, CopyOutlined, EditOutlined, KeyOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '../auth/AuthContext';
 import { FormDialog, FormSection } from '../components/FormDialog';
+import { formatAmount } from '../format/number';
+import { PurchasePermissionsDialog } from './users/PurchasePermissionsDialog';
+import { APPROVE_CODE, PURCHASE_PERMISSIONS } from './users/purchasePermissions';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { tableLocale } from '../components/QueryState';
@@ -48,6 +51,33 @@ const STATUS_COLORS: Record<string, string> = {
   INVITED: 'orange',
   SUSPENDED: 'red',
 };
+
+/** A member's purchase permissions as tags; the approval tag carries its limit (ADR-024 §3). */
+export function PurchasePermissionTags({ member }: { member: Membership }) {
+  const { t } = useTranslation();
+  if (member.role.code === 'OWNER') return <Tag>{t('users.purchaseOwnerAll')}</Tag>;
+  if (member.purchasePermissions.length === 0) {
+    return <Typography.Text type="secondary">{t('users.purchaseNone')}</Typography.Text>;
+  }
+  return (
+    <>
+      {PURCHASE_PERMISSIONS.filter((p) => member.purchasePermissions.some((h) => h.code === p.code)).map((p) => {
+        const limit = member.purchasePermissions.find((h) => h.code === p.code)?.amountLimit ?? null;
+        return (
+          <Tag key={p.code}>
+            {t(`users.purchaseCodes.${p.key}`)}
+            {p.code === APPROVE_CODE && (
+              <>
+                {' · '}
+                {limit ? t('users.limitUpTo', { amount: formatAmount(limit) }) : t('users.noLimit')}
+              </>
+            )}
+          </Tag>
+        );
+      })}
+    </>
+  );
+}
 
 const DATE_FORMAT = 'YYYY-MM-DD HH:mm';
 const CODE_FONT = "Consolas, 'Cascadia Mono', 'Courier New', monospace";
@@ -67,6 +97,8 @@ export function UsersPage() {
   const [issuedCode, setIssuedCode] = useState<IssuedCode | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
   const [search, setSearch] = useState('');
+  // The member whose purchase permissions the owner is editing.
+  const [purchaseMember, setPurchaseMember] = useState<Membership | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
 
   const usersQuery = useQuery({
@@ -236,6 +268,25 @@ export function UsersPage() {
             render: (s: string) => <Tag color={STATUS_COLORS[s]}>{t(`users.status.${s}`)}</Tag>,
           },
           {
+            title: t('users.purchase'),
+            render: (_: unknown, m: Membership) => (
+              <Space size={4} wrap>
+                <PurchasePermissionTags member={m} />
+                {/* Only an owner grants them, and an owner holds them all (ADR-024 §3.2). */}
+                {isOwner && m.role.code !== 'OWNER' && (
+                  <Tooltip title={t('users.purchaseEdit')}>
+                    <Button
+                      size="small"
+                      icon={<EditOutlined />}
+                      aria-label={t('users.purchaseEdit')}
+                      onClick={() => setPurchaseMember(m)}
+                    />
+                  </Tooltip>
+                )}
+              </Space>
+            ),
+          },
+          {
             title: t('users.actions'),
             render: (_: unknown, m: Membership) => (
               <Space wrap>
@@ -312,6 +363,8 @@ export function UsersPage() {
           },
         ]}
       />
+
+      <PurchasePermissionsDialog member={purchaseMember} onClose={() => setPurchaseMember(null)} />
 
       <FormDialog
         title={t('users.invite')}

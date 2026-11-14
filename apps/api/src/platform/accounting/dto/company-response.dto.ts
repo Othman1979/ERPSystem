@@ -3,6 +3,7 @@
  * CompanyService returns today; nothing here changes a body.
  */
 import { ApiProperty } from '@nestjs/swagger';
+import { ProcurementLevel } from '../../../generated/prisma/enums.js';
 
 /** The logo as CompanyService.get shows it: attachment metadata, no bytes. */
 export class CompanyLogoDto {
@@ -44,6 +45,9 @@ export class CompanyDto {
 
   @ApiProperty({ type: 'boolean' })
   pricesIncludeTax!: boolean;
+
+  @ApiProperty({ enum: ProcurementLevel, enumName: 'ProcurementLevel', description: 'Purchasing cycle level (ADR-024 §2).' })
+  procurementLevel!: ProcurementLevel;
 
   @ApiProperty({ type: 'string', format: 'date-time', nullable: true, description: 'Set when the setup wizard is finished.' })
   onboardingCompletedAt!: string | null;
