@@ -5,6 +5,7 @@ import type { RequestContext } from '../../common/cls/cls.types.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, branchWhere, currentBranchId } from '../../common/branch/branch-context.js';
 import { findPage } from '../../common/paging/find-page.js';
+import { withLineCounts } from '../../common/paging/line-counts.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -191,19 +192,10 @@ export class JournalService implements OnModuleInit {
           include: { reversals: { select: { id: true, entryNo: true } } },
           ...window,
         });
-        // Line counts of this page only. Prisma's `_count` include joins a
-        // GROUP BY over every tenant's journal_lines (WHERE 1=1): ~3.4 s on
-        // 750k lines, whatever the page (Wave 4A). This reads ≤ pageSize
-        // entries' lines through (tenant_id, journal_entry_id, line_no).
-        const counts = entries.length
-          ? await tx.journalLine.groupBy({
-              by: ['journalEntryId'],
-              where: { journalEntryId: { in: entries.map((e) => e.id) } },
-              _count: { _all: true },
-            })
-          : [];
-        const byEntry = new Map(counts.map((c) => [c.journalEntryId, c._count._all]));
-        return entries.map((e) => ({ ...e, _count: { lines: byEntry.get(e.id) ?? 0 } }));
+        // Line counts of this page only (the `_count` include took ~3.4 s on 750k lines, Wave 4A).
+        return withLineCounts(entries, 'journalEntryId', (ids) =>
+          tx.journalLine.groupBy({ by: ['journalEntryId'], where: { journalEntryId: { in: ids } }, _count: { _all: true } }),
+        );
       },
       count: (tx) => tx.journalEntry.count({ where }),
     });

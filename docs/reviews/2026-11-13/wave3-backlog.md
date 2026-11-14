@@ -1,6 +1,6 @@
 # Backlog from the 2026-11-13 reviews: status
 
-Every item from the 2026-11-13 reviews has been fixed and merged (waves 1–3, PRs #21–#36), except the one deferred item at the end. The follow-ups that #35 and #36 left are in wave 4 (PRs 4A and 4B).
+Every item from the 2026-11-13 reviews has been fixed and merged (waves 1–3, PRs #21–#36), except the one deferred item at the end. The follow-ups that #35 and #36 left are in wave 4 (PRs 4A and 4B), and those #39 left are in wave 5A. One performance item is still open (aging cross-branch scan, wave 5A section).
 
 ## Deferred or partly fixed after wave 2: all done
 
@@ -37,6 +37,12 @@ Every item from the 2026-11-13 reviews has been fixed and merged (waves 1–3, P
 - The Items screen loads stock for the visible page only.
 
 PR #9 (journal party picker) is brought up to date in wave 4B.
+
+## Follow-ups from #39: wave 5A
+
+- The 8 other document lists (sales and purchase invoices and returns, goods notes, stock adjustments, counts and transfers) count lines for the page only, like the journal list (`withLineCounts`).
+- Posting a sale, purchase, return, goods note or stock document refreshes every on-hand figure in the web (`invalidateStock`). The old `['stock']` key matched no query.
+- **Still open: the one remaining performance item.** A branch-restricted aging (`crossBranchAllocationsAsOf`) still reads all of the company's allocations up to the report date: about 440 ms on 60,000 allocations. The query is unchanged, because pushing the branch filter down was slower. A bounded fix needs a migration and an owner decision (ADR-003 §21, performance note).
 
 ## Deployment notes
 

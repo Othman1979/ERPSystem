@@ -75,6 +75,7 @@ import { idemHeaders } from '../idempotency';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
+import { invalidateStockDocument } from '../stockQueries';
 import {
   EInvoiceNotice,
   EInvoiceQrPanel,
@@ -217,11 +218,7 @@ function InvoicesTab() {
     refetchInterval: (query) => (screen === 'view' && isInFlight(query.state.data?.einvoice?.status) ? 4000 : false),
   });
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
-    void queryClient.invalidateQueries({ queryKey: ['sales-invoice'] });
-    void queryClient.invalidateQueries({ queryKey: ['stock'] });
-  };
+  const invalidate = () => invalidateStockDocument(queryClient, 'salesInvoice');
   const onError = (err: unknown) =>
     apiMessage.error(
       err instanceof ApiError
@@ -836,11 +833,7 @@ function ReturnsTab() {
     refetchInterval: (query) => (isInFlight(query.state.data?.einvoice?.status) ? 4000 : false),
   });
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ['sales-returns'] });
-    void queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
-    void queryClient.invalidateQueries({ queryKey: ['stock'] });
-  };
+  const invalidate = () => invalidateStockDocument(queryClient, 'salesReturn');
   const onError = (err: unknown) =>
     apiMessage.error(
       err instanceof ApiError

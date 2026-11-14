@@ -7,6 +7,7 @@ import { branchWhere } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { findPage } from '../../common/paging/find-page.js';
+import { withLineCounts } from '../../common/paging/line-counts.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -89,16 +90,20 @@ export class CountsService {
       (dir) => ({ id: dir }),
     );
     return findPage(db, pageWindow(query), {
-      rows: (tx, window) =>
-        tx.stockCount.findMany({
-          where,
-          include: {
-            warehouse: { select: { id: true, code: true, nameAr: true } },
-            _count: { select: { lines: true } },
-          },
-          orderBy,
-          ...window,
-        }),
+      rows: async (tx, window) =>
+        withLineCounts(
+          await tx.stockCount.findMany({
+            where,
+            include: {
+              warehouse: { select: { id: true, code: true, nameAr: true } },
+            },
+            orderBy,
+            ...window,
+          }),
+          'countId',
+          // Line counts of this page only (see withLineCounts).
+          (ids) => tx.stockCountLine.groupBy({ by: ['countId'], where: { countId: { in: ids } }, _count: { _all: true } }),
+        ),
       count: (tx) => tx.stockCount.count({ where }),
     });
   }
