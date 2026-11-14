@@ -630,14 +630,19 @@ describe('LEDGER-03 race — a child account under P against a posting to P', ()
     return Number(row.n);
   }
 
-  /** One race on a fresh P; returns who won and checks the invariant in the database. */
-  async function race(side: Side, round: number): Promise<'posting' | 'child'> {
+  type Who = 'posting' | 'child';
+
+  /**
+   * A fresh postable P, the two requests run by `run`, then the database says who won.
+   * The invariant is checked whoever it was: never both.
+   */
+  async function race(
+    side: Side,
+    where: string,
+    run: (parentId: string) => Promise<[request.Response, request.Response]>,
+  ): Promise<Who> {
     const parentId = await newParent(side);
-    const [childDelay, postDelay] = STAGGER[round % STAGGER.length];
-    const [child, posting] = await Promise.all([
-      fire(childDelay, () => createChild(side, parentId)),
-      fire(postDelay, () => postTo(side, parentId)),
-    ]);
+    const [child, posting] = await run(parentId);
 
     const lines = await count('SELECT COUNT(*) AS n FROM journal_lines WHERE tenant_id = ? AND account_id = ?', [
       side.tenantId,
@@ -651,7 +656,6 @@ describe('LEDGER-03 race — a child account under P against a posting to P', ()
       side.tenantId,
       parentId,
     ]);
-    const where = `tenant ${side.label}, round ${round}`;
 
     // Never both: a used account must not gain a child, and a group must not hold a line.
     expect({ where, stranded: lines > 0 && children > 0 }).toEqual({ where, stranded: false });
@@ -668,18 +672,111 @@ describe('LEDGER-03 race — a child account under P against a posting to P', ()
     return 'child';
   }
 
-  it('exactly one wins every round, in both tenants at once; tenant B cannot touch A\'s account', async () => {
-    const a = await setupSide('A');
-    const b = await setupSide('B');
-    const won = { posting: 0, child: 0 };
+  /** A third connection of the test's own, for holding a lock. */
+  async function connect(): Promise<Connection> {
+    const url = new URL(process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1'));
+    return mariadb.createConnection({
+      host: url.hostname,
+      port: url.port ? Number(url.port) : 3306,
+      user: decodeURIComponent(url.username),
+      password: decodeURIComponent(url.password),
+      database: 'erp_test',
+    });
+  }
 
-    for (let round = 0; round < ROUNDS; round++) {
-      const [ra, rb] = await Promise.all([race(a, round), race(b, round + 3)]);
-      won[ra] += 1;
-      won[rb] += 1;
+  /** A lock read that has not come back after this long is queued behind the held lock. */
+  const QUEUED_AFTER_MS = 150;
+
+  /**
+   * How many statements that look like `pattern` have been running for a while. A lock read on one
+   * indexed row returns at once unless it waits for a lock, and the only lock held on P is ours.
+   * (INNODB_TRX does not list a transaction that has done nothing but wait, on MariaDB 10.4, so the
+   * process list is used; TIME_MS exists on every MariaDB.)
+   */
+  async function waiting(pattern: string): Promise<number> {
+    return count(
+      `SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST
+        WHERE db = 'erp_test' AND id <> CONNECTION_ID() AND time_ms >= ? AND info LIKE ?`,
+      [QUEUED_AFTER_MS, pattern],
+    );
+  }
+
+  async function until(condition: () => Promise<boolean>, what: string, timeoutMs = 20_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!(await condition())) {
+      if (Date.now() > deadline) throw new Error(`timed out after ${timeoutMs} ms waiting for ${what}`);
+      await sleep(10);
     }
-    // Which side wins is up to the scheduler; every round must have had exactly one winner.
-    expect(won.posting + won.child).toBe(ROUNDS * 2);
+  }
+
+  /** The child creation takes P FOR UPDATE; the posting reads its accounts LOCK IN SHARE MODE. */
+  const CHILD_WAIT = '%FROM accounts WHERE tenant_id = ? AND id = ? FOR UPDATE%';
+  const POSTING_WAIT = '%FROM accounts%LOCK IN SHARE MODE%';
+
+  /**
+   * The contention is made, not hoped for: a third connection holds P FOR UPDATE, the request that
+   * must win is fired first and waited for until the database shows it queued on P, then the other
+   * is fired and waited for the same way, and only then is the lock released. Both sit in the lock
+   * queue in a known order, so the first one in is the one that has to win.
+   */
+  async function heldRace(side: Side, parentId: string, first: Who): Promise<[request.Response, request.Response]> {
+    const lock = await connect();
+    try {
+      await lock.beginTransaction();
+      await lock.query('SELECT id FROM accounts WHERE tenant_id = ? AND id = ? FOR UPDATE', [side.tenantId, parentId]);
+      const patterns = { child: CHILD_WAIT, posting: POSTING_WAIT };
+      const send = {
+        child: async () => createChild(side, parentId),
+        posting: async () => postTo(side, parentId),
+      };
+      const responses = {} as Record<Who, Promise<request.Response>>;
+      for (const who of first === 'child' ? (['child', 'posting'] as const) : (['posting', 'child'] as const)) {
+        const before = await waiting(patterns[who]);
+        responses[who] = send[who]();
+        await until(async () => (await waiting(patterns[who])) > before, `the ${who} request to queue on P`);
+      }
+      await lock.commit();
+      const [child, posting] = await Promise.all([responses.child, responses.posting]);
+      return [child, posting];
+    } finally {
+      await lock.rollback().catch(() => undefined);
+      await lock.end().catch(() => undefined);
+    }
+  }
+
+  let a: Side;
+  let b: Side;
+
+  it('sets up two tenants with a fiscal year each', async () => {
+    a = await setupSide('A');
+    b = await setupSide('B');
+  });
+
+  it('held lock, both orders, both tenants: the request queued first wins, the other is refused', async () => {
+    for (const side of [a, b]) {
+      for (const first of ['child', 'posting', 'posting', 'child'] as const) {
+        const where = `tenant ${side.label}, ${first} first`;
+        const won = await race(side, where, (parentId) => heldRace(side, parentId, first));
+        expect({ where, won }).toEqual({ where, won: first });
+      }
+    }
+  }, 120_000);
+
+  it('free race: exactly one wins every round, in both tenants at once; tenant B cannot touch A\'s account', async () => {
+    // No lock is held here: the real scheduler decides who wins, and "never both" must hold anyway.
+    // (The deterministic test above is what proves both outcomes happen.)
+    for (let round = 0; round < ROUNDS; round++) {
+      const [childDelay, postDelay] = STAGGER[round % STAGGER.length];
+      const run = (side: Side) => (parentId: string) =>
+        Promise.all([
+          fire(childDelay, () => createChild(side, parentId)),
+          fire(postDelay, () => postTo(side, parentId)),
+        ]);
+      await Promise.all([
+        race(a, `tenant A, round ${round}`, run(a)),
+        race(b, `tenant B, round ${round}`, run(b)),
+      ]);
+    }
 
     // Tenant B never reaches tenant A's accounts, with or without a race.
     const parentA = await newParent(a);

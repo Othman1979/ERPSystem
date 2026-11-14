@@ -309,6 +309,23 @@ describe('Phase 7 — JoFotara', () => {
     return get(id);
   }
 
+  /** What the outbox rows of this tenant look like now: status, last write, attempts counted and recorded. */
+  async function outboxState(ids: string[]) {
+    const rows = (await db.query(
+      `SELECT s.id, s.status, s.updated_at, s.attempt_count,
+              (SELECT COUNT(*) FROM einvoice_attempts a WHERE a.tenant_id = s.tenant_id AND a.submission_id = s.id) AS attempts
+         FROM einvoice_submissions s WHERE s.tenant_id = ? AND s.id IN (?) ORDER BY s.id`,
+      [tenantId, ids],
+    )) as { id: bigint; status: string; updated_at: Date; attempt_count: number; attempts: bigint | number }[];
+    return rows.map((r) => ({
+      id: String(r.id),
+      status: r.status,
+      updatedAt: new Date(r.updated_at).getTime(),
+      attemptCount: Number(r.attempt_count),
+      attempts: Number(r.attempts),
+    }));
+  }
+
   /**
    * Proof that the outbox worker has run since "now", without sleeping: a new
    * invoice is posted and waited for until it is ACCEPTED. A worker run that
@@ -335,6 +352,15 @@ describe('Phase 7 — JoFotara', () => {
       .send({ tenantName: `EI B ${RUN}`, ownerName: 'Owner B', email: `eib-${RUN}@test.dev`, password: PASS });
     tokenB = regB.body.accessToken;
     tenantId = ((await db.query('SELECT id FROM tenants WHERE name = ?', [`EI ${RUN}`])) as { id: bigint }[])[0].id;
+    // A plan of its own: the shared TRIAL plan's monthly invoice limit is lowered for a while by
+    // other suites (phase9-saas) on the same erp_test, which answered this suite's postings with 402.
+    const plan = (await db.query(
+      `INSERT INTO plans (code, name_ar, name_en, max_users, max_branches, max_warehouses,
+                          max_invoices_per_month, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, 50, 50, 50, 100000, 1, NOW(3), NOW(3))`,
+      [`E2E-EI-${RUN}`, `E2E EI ${RUN}`, `E2E EI ${RUN}`],
+    )) as { insertId: bigint };
+    await db.query('UPDATE tenants SET plan_id = ? WHERE name IN (?, ?)', [plan.insertId, `EI ${RUN}`, `EI B ${RUN}`]);
 
     await api()
       .post('/api/v1/fiscal-years')
@@ -509,6 +535,13 @@ describe('Phase 7 — JoFotara', () => {
     const id = (await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!;
     const unknown = await settled(id);
     expect(unknown.status).toBe('UNKNOWN');
+    // The client gave up after its timeout, not later: a 30 s default would still settle within the wait above.
+    const [attempt] = (await db.query(
+      'SELECT TIMESTAMPDIFF(MICROSECOND, started_at, finished_at) / 1000 AS ms FROM einvoice_attempts WHERE tenant_id = ? AND submission_id = ? ORDER BY attempt_no',
+      [tenantId, id],
+    )) as { ms: string | number }[];
+    expect(Number(attempt.ms)).toBeGreaterThanOrEqual(HTTP_TIMEOUT_MS - 250);
+    expect(Number(attempt.ms)).toBeLessThan(HTTP_TIMEOUT_MS + 3000);
     mode = 'forward'; // from here an automatic resend would be answered, and seen
     await afterWorkerPass(); // a worker run after the timeout: it must not have taken it again
     expect(seen.filter((u) => u === unknown.uuid)).toHaveLength(1);
@@ -665,11 +698,13 @@ describe('Phase 7 — JoFotara', () => {
       expect((await post('sales-invoices', inv.id)).status).toBe(201);
       ids.push((await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!);
     }
+    const queued = await outboxState(ids);
+    expect(queued.map((r) => [r.status, r.attemptCount, r.attempts])).toEqual(Array(4).fill(['PENDING', 0, 0]));
     // Nothing to wait for here: that nothing happens can only be watched for. Four
     // worker intervals would have been four chances for an in-process loop to send.
     await sleep(WORKER_INTERVAL_MS * 4);
-    const waiting = (await db.query('SELECT status FROM einvoice_submissions WHERE id IN (?)', [ids])) as { status: string }[];
-    expect(waiting.map((r) => r.status)).toEqual(Array(4).fill('PENDING'));
+    // Still PENDING, and not touched at all: same last write, no attempt counted or recorded.
+    expect(await outboxState(ids)).toEqual(queued);
 
     const [a, b] = await Promise.all([runSendJob(), runSendJob()]);
     // erp_test is shared and the command is cross-tenant: it also takes other tenants' rows
@@ -681,13 +716,13 @@ describe('Phase 7 — JoFotara', () => {
       expect(s.status).toBe('ACCEPTED');
       expect(seen.filter((u) => u === s.uuid)).toHaveLength(1);
     }
-    // Nothing of ours is left: another run finds none of our documents to send, and none is sent a second time.
+    // Each of our documents was claimed once: one attempt recorded, one counted.
+    const sent = await outboxState(ids);
+    expect(sent.map((r) => [r.status, r.attemptCount, r.attempts])).toEqual(Array(4).fill(['ACCEPTED', 1, 1]));
+    // Nothing of ours is left: another run takes none of our rows. Not one is written again
+    // (same last write, same attempts) and none is sent a second time.
     expect((await runSendJob()).runs).toBeGreaterThanOrEqual(1);
-    const [{ n }] = (await db.query(
-      "SELECT COUNT(*) AS n FROM einvoice_submissions WHERE tenant_id = ? AND status IN ('PENDING', 'SENDING')",
-      [tenantId],
-    )) as { n: bigint | number }[];
-    expect(Number(n)).toBe(0);
+    expect(await outboxState(ids)).toEqual(sent);
     for (const s of done) expect(seen.filter((u) => u === s.uuid)).toHaveLength(1);
   }, 120_000);
 
