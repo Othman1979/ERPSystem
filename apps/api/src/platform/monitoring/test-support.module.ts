@@ -95,34 +95,27 @@ export class TestOpenCycleCounter implements OpenCycleDocumentsCounter, OnModule
 }
 
 class TestOpenDocumentsDto {
-  @ApiProperty({ type: 'integer', minimum: 0 })
   @IsInt()
   @Min(0)
   count!: number;
 }
 
-class TestOpenDocumentsResultDto {
-  @ApiProperty({ type: 'integer', minimum: 0 })
-  count!: number;
-}
-
-class TestPermissionCheckDto {
-  @ApiProperty({ type: 'boolean', enum: [true] })
-  ok!: true;
-}
-
 /**
- * Procurement test routes (NODE_ENV=test only): the open-documents count of
- * the caller's tenant (from CLS, never from the body), and a route guarded by
- * purchase.approve that proves TenantGuard unions member permissions.
+ * Procurement test routes (NODE_ENV=test only, left out of the document so
+ * the isolation sweep and the contract suite never see them; the response
+ * audit records their answers, which phase11-procurement checks): the
+ * open-documents count of the caller's tenant (from CLS, never from the
+ * body), and a route guarded by purchase.approve that proves TenantGuard
+ * unions member permissions.
  */
-@ApiTags('test-support')
+@ApiExcludeController()
 @Controller('__test/procurement')
 class TestProcurementController {
   constructor(private readonly counter: TestOpenCycleCounter) {}
 
+  /** settings.manage, as the level change it stands in for (an owner holds it). */
   @Put('open-documents')
-  @ApiOkResponse({ type: TestOpenDocumentsResultDto })
+  @RequirePermission(PERMISSIONS.SETTINGS_MANAGE)
   setOpenDocuments(@Body() dto: TestOpenDocumentsDto) {
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
     if (tenantId === undefined) throw new DomainError(ErrorCode.FORBIDDEN, 'No tenant selected');
@@ -132,7 +125,6 @@ class TestProcurementController {
 
   @Get('approve-check')
   @RequirePermission(PERMISSIONS.PURCHASE_APPROVE)
-  @ApiOkResponse({ type: TestPermissionCheckDto })
   approveCheck() {
     return { ok: true as const };
   }

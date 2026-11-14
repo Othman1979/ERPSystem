@@ -12,6 +12,8 @@
 import 'dotenv/config';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
@@ -24,6 +26,7 @@ const BASE = `http://127.0.0.1:${API_PORT}`;
 const API_DIR = path.resolve(import.meta.dirname, '..', '..');
 const RUN = Date.now().toString(36);
 const PASS = 'test-password-123';
+const AUDIT_FILE = path.join(os.tmpdir(), `p11-audit-${RUN}.jsonl`);
 
 let server: ChildProcess;
 let db: Connection;
@@ -49,7 +52,16 @@ beforeAll(async () => {
   const databaseUrl = testDatabaseUrl();
   server = spawn('node', ['dist/main.js'], {
     cwd: API_DIR,
-    env: { ...process.env, DATABASE_URL: databaseUrl, API_PORT: String(API_PORT), NODE_ENV: 'test', EINVOICE_WORKER: 'off' },
+    // Its own response audit file: the test routes here are undocumented on purpose,
+    // so the last test checks that they are the only findings (ADR-023).
+    env: {
+      ...process.env,
+      DATABASE_URL: databaseUrl,
+      API_PORT: String(API_PORT),
+      NODE_ENV: 'test',
+      EINVOICE_WORKER: 'off',
+      OPENAPI_RESPONSE_AUDIT: AUDIT_FILE,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stderr?.on('data', (d) => process.stderr.write(`[api] ${d}`));
@@ -68,6 +80,7 @@ afterAll(async () => {
   server?.kill('SIGTERM');
   await once(server, 'exit').catch(() => undefined);
   await db?.end();
+  rmSync(AUDIT_FILE, { force: true });
 });
 
 /** JSON columns come back as text or as objects, by driver version. */
@@ -289,6 +302,23 @@ describe('Phase 11B — procurement level and purchase permissions', () => {
       expect(await grantsOf(tenantA)).toBe(0);
     });
 
+    it('takes a null limit as no limit, as GET users shows it, on any code', async () => {
+      const res = await setPermissions(ownerA, xMembership, [
+        { code: 'purchase.approve', amountLimit: null },
+        { code: 'purchase.direct', amountLimit: null },
+      ]);
+      expect(res.status).toBe(200);
+      expect(res.body.purchasePermissions).toEqual([
+        { code: 'purchase.direct', amountLimit: null },
+        { code: 'purchase.approve', amountLimit: null },
+      ]);
+      expect((await me(xA)).approvalLimit).toBeNull();
+      // What GET users answers can be sent back unchanged.
+      const back = await setPermissions(ownerA, xMembership, res.body.purchasePermissions as object[]);
+      expect([back.status, back.body.purchasePermissions]).toEqual([200, res.body.purchasePermissions]);
+      expect((await setPermissions(ownerA, xMembership, [])).status).toBe(200);
+    });
+
     it('a non-owner cannot grant, not even to themself', async () => {
       const res = await setPermissions(xA, xMembership, [{ code: 'purchase.direct' }]);
       expect([res.status, res.body.error.code]).toEqual([403, 'FORBIDDEN']);
@@ -330,5 +360,64 @@ describe('Phase 11B — procurement level and purchase permissions', () => {
       expect(await grantsOf(tenantA, id)).toBe(0);
       expect(await grantsOf(tenantA, xMembership)).toBe(1);
     });
+
+    it('a role change clears the grants, each revoke audited (ADR-024 §3.6)', async () => {
+      const setRole = (roleCode: string) =>
+        api().patch(`/api/v1/users/${xMembership}`).set(auth(ownerA)).send({ roleCode });
+
+      // ACCOUNTANT → CASHIER: the approval granted to the accountant goes.
+      expect((await setRole('CASHIER')).status).toBe(200);
+      expect(await grantsOf(tenantA, xMembership)).toBe(0);
+
+      // A cashier with purchase.approve, demoted to VIEWER, has none afterwards.
+      expect((await setPermissions(ownerA, xMembership, [{ code: 'purchase.approve', amountLimit: '500' }])).status).toBe(200);
+      expect((await approveCheck(xA)).status).toBe(200);
+      const viewer = await setRole('VIEWER');
+      expect([viewer.status, viewer.body.purchasePermissions]).toEqual([200, []]);
+      expect(await grantsOf(tenantA, xMembership)).toBe(0);
+      expect((await approveCheck(xA)).status).toBe(403);
+      const x = await me(xA);
+      expect([x.permissions, x.approvalLimit]).toEqual([sorted(ROLE_PERMISSIONS.VIEWER!), null]);
+
+      // The same role again is not a change: the grant stays.
+      expect((await setPermissions(ownerA, xMembership, [{ code: 'purchase.direct' }])).status).toBe(200);
+      expect((await setRole('VIEWER')).status).toBe(200);
+      expect(await grantsOf(tenantA, xMembership)).toBe(1);
+
+      // Promoted to OWNER, then demoted: nothing is left.
+      expect((await setRole('OWNER')).status).toBe(200);
+      expect(await grantsOf(tenantA, xMembership)).toBe(0);
+      expect((await setRole('VIEWER')).status).toBe(200);
+      expect(await grantsOf(tenantA, xMembership)).toBe(0);
+      expect((await me(xA)).permissions).toEqual(sorted(ROLE_PERMISSIONS.VIEWER!));
+
+      const rows = (await db.query(
+        "SELECT before_json, after_json FROM audit_logs WHERE tenant_id = ? AND entity_id = ? AND action = 'user.purchase_permission_revoke' AND CAST(after_json AS CHAR) LIKE '%role_change%' ORDER BY id",
+        [tenantA, xMembership],
+      )) as { before_json: unknown; after_json: unknown }[];
+      expect(rows.map((r) => [json(r.before_json), json(r.after_json)])).toEqual([
+        [{ code: 'purchase.approve', amountLimit: '99.000' }, { reason: 'role_change', roleCode: 'CASHIER' }],
+        [{ code: 'purchase.approve', amountLimit: '500.000' }, { reason: 'role_change', roleCode: 'VIEWER' }],
+        [{ code: 'purchase.direct', amountLimit: null }, { reason: 'role_change', roleCode: 'OWNER' }],
+      ]);
+    });
+
+    it('the test counter route needs settings.manage', async () => {
+      const res = await openDocuments(xA, 1); // X is a viewer now
+      expect([res.status, res.body.error.code]).toEqual([403, 'FORBIDDEN']);
+    });
+  });
+
+  it('response audit: only the undocumented test routes are recorded', () => {
+    const findings = existsSync(AUDIT_FILE)
+      ? readFileSync(AUDIT_FILE, 'utf8')
+          .split('\n')
+          .filter(Boolean)
+          .map((l) => JSON.parse(l) as { route: string; problems: string[] })
+      : [];
+    const isTestRoute = (f: { route: string }) => f.route.startsWith('/api/v1/__test/procurement/');
+    expect(findings.filter((f) => !isTestRoute(f))).toEqual([]);
+    expect(findings.length).toBeGreaterThan(0); // the audit ran
+    for (const f of findings) expect(f.problems).toEqual([expect.stringMatching(/^no operation (GET|PUT) \/api\/v1\/__test\/procurement\//)]);
   });
 });

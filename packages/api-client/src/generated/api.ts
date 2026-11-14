@@ -886,9 +886,11 @@ export interface MemberPermissionGrantDto {
   code: MemberPermissionCode;
   /**
      * purchase.approve only: the highest amount the member approves alone, a
-     * positive decimal string with up to 3 decimals. Absent: no limit.
+     * decimal string above zero with up to 3 decimals. Absent or null: no
+     * limit (GET users answers null for no limit, so it may be sent back as is).
+     * @nullable
      */
-  amountLimit?: string;
+  amountLimit?: string | null;
 }
 
 export interface UpdatePurchasePermissionsDto {

@@ -7,6 +7,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { ProcurementCycleRegistry } from '../../common/procurement/procurement-level.js';
 import { StorageService } from '../../common/storage/storage.service.js';
+import type { ProcurementLevel } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { UpdateCompanyDto } from './dto/company.dto.js';
 
@@ -105,16 +106,20 @@ export class CompanyService {
       ...(dto.pricesIncludeTax !== undefined ? { pricesIncludeTax: dto.pricesIncludeTax } : {}),
       ...(levelChange ? { procurementLevel: dto.procurementLevel } : {}),
     };
-    await db.$transaction(async (tx) => {
+    const levelBefore = await db.$transaction(async (tx) => {
+      let from = c.procurementLevel;
       if (levelChange) {
         // The company row lock orders the open-documents check with the cycle
-        // documents created from phase 12 on (ADR-024 §2.2).
-        await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${c.id} FOR UPDATE`;
-        // The level as of the lock: a concurrent change may have moved it since `c` was read.
-        const { procurementLevel: from } = await tx.company.findFirstOrThrow({ where: { id: c.id }, select: { procurementLevel: true } });
+        // documents created from phase 12 on (ADR-024 §2.2). The level is read
+        // by the locking query itself: a concurrent change may have moved it
+        // since `c` was read.
+        const [locked] = await tx.$queryRaw<{ procurement_level: ProcurementLevel }[]>`
+          SELECT procurement_level FROM companies WHERE tenant_id = ${tenantId} AND id = ${c.id} FOR UPDATE`;
+        from = locked.procurement_level;
         await this.procurementCycle.assertLevelChange(tx, from, dto.procurementLevel!);
       }
       await tx.company.update({ where: { id: c.id }, data });
+      return from;
     });
     await this.audit.log({
       action: 'company.update',
@@ -125,7 +130,7 @@ export class CompanyService {
         taxNumber: c.taxNumber,
         address: c.address,
         pricesIncludeTax: c.pricesIncludeTax,
-        procurementLevel: c.procurementLevel,
+        procurementLevel: levelBefore,
       },
       after: dto,
     });

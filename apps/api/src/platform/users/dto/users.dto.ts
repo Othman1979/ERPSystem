@@ -56,13 +56,14 @@ export class MemberPermissionGrantDto {
 
   /**
    * purchase.approve only: the highest amount the member approves alone, a
-   * positive decimal string with up to 3 decimals. Absent: no limit.
+   * decimal string above zero with up to 3 decimals. Absent or null: no
+   * limit (GET users answers null for no limit, so it may be sent back as is).
    */
-  @ApiPropertyOptional({ type: 'string', format: 'decimal', example: '1500.000' })
+  @ApiPropertyOptional({ type: 'string', format: 'decimal', nullable: true, example: '1500.000' })
   @IsOptional()
   @IsString()
   @Matches(AMOUNT_PATTERN, { message: 'amountLimit must be a decimal string with up to 3 decimals' })
-  amountLimit?: string;
+  amountLimit?: string | null;
 }
 
 /**
