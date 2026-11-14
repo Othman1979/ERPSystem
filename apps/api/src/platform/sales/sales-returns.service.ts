@@ -497,6 +497,7 @@ export class SalesReturnsService {
           documentType: 'SALES_RETURN',
           documentId: draft.id,
           documentNo: returnNo,
+          branchId: original?.branchId ?? null,
           originalInvoiceId: draft.originalInvoiceId,
         });
         return { id: draft.id, returnNo };

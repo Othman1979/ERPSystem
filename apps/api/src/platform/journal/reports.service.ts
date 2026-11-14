@@ -4,9 +4,13 @@ import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { branchWhere } from '../../common/branch/branch-context.js';
+import { CursorCodec } from '../../common/paging/cursor.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { FiscalService } from '../accounting/fiscal.service.js';
 import { EXPORT_LIMITS } from '../printing/printing.service.js';
+import { afterLine, LINE_ORDER, lineCursor, lineState, type StatementPageQuery } from './statement-cursor.js';
 
 /** Accounts closed into equity at year end (their opening restarts each year). */
 const NOMINAL_TYPES: ReadonlySet<string> = new Set(['REVENUE', 'EXPENSE']);
@@ -64,6 +68,7 @@ export class ReportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly fiscal: FiscalService,
+    private readonly cursors: CursorCodec,
   ) {}
 
   /**
@@ -359,55 +364,33 @@ export class ReportsService {
     };
   }
 
-  /**
-   * Account statement (كشف حساب / general ledger) for one account: the
-   * opening balance (ADR-008: before `from` plus the opening entries of the
-   * period), the period's other lines with a running balance, the closing.
-   */
-  async generalLedger(accountId: bigint, range: ReportRange) {
-    this.assertRange(range);
-    const { db } = this.tenant();
-    const companyId = await this.companyId(db);
-
+  /** The account, or 404 if it is not the company's. */
+  private async ledgerAccount(db: ReturnType<PrismaService['forTenant']>, companyId: bigint, accountId: bigint) {
     const account = await db.account.findFirst({ where: { id: accountId, companyId } });
     if (!account) throw DomainError.notFound('Account', accountId.toString());
+    return account;
+  }
 
-    const lines = await db.journalLine.findMany({
-      where: {
-        accountId,
-        entry: { companyId, status: 'POSTED', ...this.movementEntryWhere(range) },
-      },
-      orderBy: [{ entry: { entryDate: 'asc' } }, { entry: { id: 'asc' } }, { lineNo: 'asc' }],
-      // LEDGER-19 / DB-14: bounded like the stock item card. One row past the
-      // limit is fetched only to detect that the statement is too large.
-      take: EXPORT_LIMITS.xlsx + 1,
-      include: {
-        entry: {
-          select: {
-            id: true,
-            entryNo: true,
-            entryDate: true,
-            description: true,
-            sourceType: true,
-            postingKind: true,
-          },
-        },
-      },
-    });
-    if (lines.length > EXPORT_LIMITS.xlsx) {
-      throw new DomainError(
-        ErrorCode.REPORT_TOO_LARGE,
-        `The statement has more than ${EXPORT_LIMITS.xlsx} lines. Narrow the period.`,
-        { limit: EXPORT_LIMITS.xlsx },
-      );
-    }
+  /** Lines of an account statement: the period's movements on the account. */
+  private ledgerWhere(companyId: bigint, accountId: bigint, range: ReportRange): Prisma.JournalLineWhereInput {
+    return { accountId, entry: { companyId, status: 'POSTED', ...this.movementEntryWhere(range) } };
+  }
 
-    // Opening balance, summed in the database. A P&L account opens from the
-    // start of the fiscal year holding `from` (earlier years are not its own).
+  /**
+   * Opening balance of an account statement, summed in the database
+   * (ADR-008: before `from` plus the opening entries of the period). A P&L
+   * account opens from the start of the fiscal year holding `from`.
+   */
+  private async ledgerOpening(
+    db: ReturnType<PrismaService['forTenant']>,
+    companyId: bigint,
+    account: { id: bigint; accountType: string },
+    range: ReportRange,
+  ): Promise<Decimal> {
     const nominalStart = NOMINAL_TYPES.has(account.accountType) ? await this.nominalStart(range) : null;
     const before = await db.journalLine.aggregate({
       where: {
-        accountId,
+        accountId: account.id,
         entry: {
           companyId,
           status: 'POSTED',
@@ -416,78 +399,100 @@ export class ReportsService {
       },
       _sum: { debit: true, credit: true },
     });
-    const opening = new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
+    return new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
+  }
 
-    let running = opening;
-    const rows = lines.map((l) => {
-      const debit = new Decimal(l.debit.toString());
-      const credit = new Decimal(l.credit.toString());
-      running = running.plus(debit).minus(credit);
-      return {
-        lineId: l.id.toString(),
-        entryId: l.entry.id.toString(),
-        entryNo: l.entry.entryNo,
-        entryDate: l.entry.entryDate,
-        description: l.description ?? l.entry.description,
-        sourceType: l.entry.sourceType,
-        postingKind: l.entry.postingKind,
-        partyType: l.partyType,
-        partyId: l.partyId?.toString() ?? null,
-        debit: amt(debit),
-        credit: amt(credit),
-        balance: amt(running),
-      };
-    });
+  private static readonly LEDGER_LINE_INCLUDE = {
+    entry: {
+      select: { id: true, entryNo: true, entryDate: true, description: true, sourceType: true, postingKind: true },
+    },
+  } as const;
 
+  /** A statement line with the running balance after it. */
+  private static ledgerRow(
+    l: Prisma.JournalLineGetPayload<{ include: typeof ReportsService.LEDGER_LINE_INCLUDE }>,
+    balance: Decimal,
+  ) {
     return {
-      account: {
-        id: account.id.toString(),
-        code: account.code,
-        nameAr: account.nameAr,
-        nameEn: account.nameEn,
-        normalBalance: account.normalBalance,
-      },
+      lineId: l.id.toString(),
+      entryId: l.entry.id.toString(),
+      entryNo: l.entry.entryNo,
+      entryDate: l.entry.entryDate,
+      description: l.description ?? l.entry.description,
+      sourceType: l.entry.sourceType,
+      postingKind: l.entry.postingKind,
+      partyType: l.partyType,
+      partyId: l.partyId?.toString() ?? null,
+      debit: amt(new Decimal(l.debit.toString())),
+      credit: amt(new Decimal(l.credit.toString())),
+      balance: amt(balance),
+    };
+  }
+
+  /** Header of a statement: the account (or party) and its period figures (ADR-008). */
+  private static statementSummary(opening: Decimal, debit: Decimal, credit: Decimal) {
+    const closing = opening.plus(debit).minus(credit);
+    return {
       openingBalance: amt(opening),
       ...sides('opening', opening),
-      totalDebit: amt(sum(rows.map((r) => r.debit))),
-      totalCredit: amt(sum(rows.map((r) => r.credit))),
-      closingBalance: amt(running),
-      ...sides('closing', running),
-      rows,
+      totalDebit: amt(debit),
+      totalCredit: amt(credit),
+      closingBalance: amt(closing),
+      ...sides('closing', closing),
+    };
+  }
+
+  /** Lines with a running balance from `start`; returns the rows and the balance after the last. */
+  private static withRunning<L extends { debit: unknown; credit: unknown }, R>(
+    lines: L[],
+    start: Decimal,
+    row: (l: L, balance: Decimal) => R,
+  ): { rows: R[]; balance: Decimal } {
+    let running = start;
+    const rows = lines.map((l) => {
+      running = running.plus(new Decimal(String(l.debit))).minus(new Decimal(String(l.credit)));
+      return row(l, running);
+    });
+    return { rows, balance: running };
+  }
+
+  private static accountHeader(account: {
+    id: bigint;
+    code: string;
+    nameAr: string;
+    nameEn: string | null;
+    normalBalance: string;
+  }) {
+    return {
+      id: account.id.toString(),
+      code: account.code,
+      nameAr: account.nameAr,
+      nameEn: account.nameEn,
+      normalBalance: account.normalBalance,
     };
   }
 
   /**
-   * Party statement: control-account lines for one customer/supplier, with
-   * the same opening / movements / closing split as the account statement.
+   * Account statement (كشف حساب / general ledger) for one account, whole:
+   * the opening balance (ADR-008: before `from` plus the opening entries of
+   * the period), the period's other lines with a running balance, the
+   * closing. Used by the PDF / XLSX export (ADR-022 §6), capped at the XLSX
+   * limit (REPORT_TOO_LARGE). The JSON screen reads it page by page
+   * (generalLedgerPage).
    */
-  async partyStatement(partyType: 'CUSTOMER' | 'SUPPLIER', partyId: bigint, range: ReportRange) {
+  async generalLedger(accountId: bigint, range: ReportRange) {
     this.assertRange(range);
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
+    const account = await this.ledgerAccount(db, companyId, accountId);
 
     const lines = await db.journalLine.findMany({
-      where: {
-        partyType,
-        partyId,
-        entry: { companyId, status: 'POSTED', ...this.movementEntryWhere(range) },
-      },
-      orderBy: [{ entry: { entryDate: 'asc' } }, { entry: { id: 'asc' } }, { lineNo: 'asc' }],
-      // LEDGER-19 / DB-14: bounded like the general ledger (see generalLedger).
+      where: this.ledgerWhere(companyId, accountId, range),
+      orderBy: LINE_ORDER,
+      // LEDGER-19 / DB-14: bounded like the stock item card. One row past the
+      // limit is fetched only to detect that the statement is too large.
       take: EXPORT_LIMITS.xlsx + 1,
-      include: {
-        entry: {
-          select: {
-            id: true,
-            entryNo: true,
-            entryDate: true,
-            description: true,
-            sourceType: true,
-            postingKind: true,
-          },
-        },
-        account: { select: { id: true, code: true, nameAr: true, nameEn: true } },
-      },
+      include: ReportsService.LEDGER_LINE_INCLUDE,
     });
     if (lines.length > EXPORT_LIMITS.xlsx) {
       throw new DomainError(
@@ -496,48 +501,217 @@ export class ReportsService {
         { limit: EXPORT_LIMITS.xlsx },
       );
     }
+    const opening = await this.ledgerOpening(db, companyId, account, range);
+    const { rows } = ReportsService.withRunning(lines, opening, ReportsService.ledgerRow);
+    return {
+      account: ReportsService.accountHeader(account),
+      ...ReportsService.statementSummary(
+        opening,
+        sum(rows.map((r) => r.debit)),
+        sum(rows.map((r) => r.credit)),
+      ),
+      rows,
+    };
+  }
 
+  /**
+   * One page of an account statement (ADR-022 §4, LEDGER-19): `limit`
+   * lines in statement order after the cursor, each with its running
+   * balance. The first page (no cursor) also carries `summary` — opening,
+   * period totals and closing, summed in the database — and starts the
+   * balance from the opening; later pages continue from the balance the
+   * cursor carries, so reading in pages gives the same balances as reading
+   * the statement whole.
+   */
+  async generalLedgerPage(accountId: bigint, range: ReportRange, page: StatementPageQuery) {
+    this.assertRange(range);
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const account = await this.ledgerAccount(db, companyId, accountId);
+    const filters = { accountId: accountId.toString(), from: range.from, to: range.to };
+    const at = page.cursor ? lineCursor(this.cursors.decode('general-ledger', filters, page.cursor)) : null;
+    const where = this.ledgerWhere(companyId, accountId, range);
+
+    const lines = await db.journalLine.findMany({
+      where: at ? { AND: [where, afterLine(at.key)] } : where,
+      orderBy: LINE_ORDER,
+      take: page.limit + 1,
+      include: ReportsService.LEDGER_LINE_INCLUDE,
+    });
+    const more = lines.length > page.limit;
+    if (more) lines.pop();
+
+    let summary: ReturnType<typeof ReportsService.statementSummary> | null = null;
+    let start: Decimal;
+    if (at) {
+      start = at.balance;
+    } else {
+      const [opening, totals] = await Promise.all([
+        this.ledgerOpening(db, companyId, account, range),
+        db.journalLine.aggregate({ where, _sum: { debit: true, credit: true } }),
+      ]);
+      summary = ReportsService.statementSummary(
+        opening,
+        new Decimal(totals._sum.debit?.toString() ?? 0),
+        new Decimal(totals._sum.credit?.toString() ?? 0),
+      );
+      start = opening;
+    }
+    const { rows, balance } = ReportsService.withRunning(lines, start, ReportsService.ledgerRow);
+    const last = lines[lines.length - 1];
+    return {
+      account: ReportsService.accountHeader(account),
+      summary,
+      items: rows,
+      nextCursor: more && last ? this.cursors.encode('general-ledger', filters, lineState(last, balance)) : null,
+    };
+  }
+
+  /**
+   * Lines of a party statement: control-account lines of the party in the
+   * period, on the caller's branches only (ADR-003 §12: the line's branch).
+   */
+  private partyWhere(
+    companyId: bigint,
+    partyType: 'CUSTOMER' | 'SUPPLIER',
+    partyId: bigint,
+    entryWhere: Prisma.JournalEntryWhereInput,
+  ): Prisma.JournalLineWhereInput {
+    return {
+      partyType,
+      partyId,
+      entry: { companyId, status: 'POSTED', ...entryWhere },
+      AND: [branchWhere()],
+    };
+  }
+
+  /** Opening balance of a party statement, on the caller's branches. */
+  private async partyOpening(
+    db: ReturnType<PrismaService['forTenant']>,
+    companyId: bigint,
+    partyType: 'CUSTOMER' | 'SUPPLIER',
+    partyId: bigint,
+    range: ReportRange,
+  ): Promise<Decimal> {
     const before = await db.journalLine.aggregate({
-      where: { partyType, partyId, entry: { companyId, status: 'POSTED', ...this.openingEntryWhere(range) } },
+      where: this.partyWhere(companyId, partyType, partyId, this.openingEntryWhere(range)),
       _sum: { debit: true, credit: true },
     });
-    const opening = new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
+    return new Decimal(before._sum.debit?.toString() ?? 0).minus(before._sum.credit?.toString() ?? 0);
+  }
 
-    let running = opening;
-    const rows = lines.map((l) => {
-      const debit = new Decimal(l.debit.toString());
-      const credit = new Decimal(l.credit.toString());
-      running = running.plus(debit).minus(credit);
-      return {
-        lineId: l.id.toString(),
-        entryId: l.entry.id.toString(),
-        entryNo: l.entry.entryNo,
-        entryDate: l.entry.entryDate,
-        accountCode: l.account.code,
-        accountName: l.account.nameAr,
-        accountNameEn: l.account.nameEn,
-        sourceType: l.entry.sourceType,
-        postingKind: l.entry.postingKind,
-        description: l.description ?? l.entry.description,
-        debit: amt(debit),
-        credit: amt(credit),
-        balance: amt(running),
-      };
+  private static readonly PARTY_LINE_INCLUDE = {
+    ...ReportsService.LEDGER_LINE_INCLUDE,
+    account: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+  } as const;
+
+  private static partyRow(
+    l: Prisma.JournalLineGetPayload<{ include: typeof ReportsService.PARTY_LINE_INCLUDE }>,
+    balance: Decimal,
+  ) {
+    return {
+      lineId: l.id.toString(),
+      entryId: l.entry.id.toString(),
+      entryNo: l.entry.entryNo,
+      entryDate: l.entry.entryDate,
+      accountCode: l.account.code,
+      accountName: l.account.nameAr,
+      accountNameEn: l.account.nameEn,
+      sourceType: l.entry.sourceType,
+      postingKind: l.entry.postingKind,
+      description: l.description ?? l.entry.description,
+      debit: amt(new Decimal(l.debit.toString())),
+      credit: amt(new Decimal(l.credit.toString())),
+      balance: amt(balance),
+    };
+  }
+
+  /**
+   * Party statement, whole: control-account lines for one customer/supplier,
+   * with the same opening / movements / closing split as the account
+   * statement, on the caller's branches (ADR-003 §12). Used by the PDF /
+   * XLSX export; the JSON screen reads it page by page (partyStatementPage).
+   */
+  async partyStatement(partyType: 'CUSTOMER' | 'SUPPLIER', partyId: bigint, range: ReportRange) {
+    this.assertRange(range);
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+
+    const lines = await db.journalLine.findMany({
+      where: this.partyWhere(companyId, partyType, partyId, this.movementEntryWhere(range)),
+      orderBy: LINE_ORDER,
+      // LEDGER-19 / DB-14: bounded like the general ledger (see generalLedger).
+      take: EXPORT_LIMITS.xlsx + 1,
+      include: ReportsService.PARTY_LINE_INCLUDE,
     });
-
-    const totalDebit = sum(rows.map((r) => r.debit));
-    const totalCredit = sum(rows.map((r) => r.credit));
-
+    if (lines.length > EXPORT_LIMITS.xlsx) {
+      throw new DomainError(
+        ErrorCode.REPORT_TOO_LARGE,
+        `The statement has more than ${EXPORT_LIMITS.xlsx} lines. Narrow the period.`,
+        { limit: EXPORT_LIMITS.xlsx },
+      );
+    }
+    const opening = await this.partyOpening(db, companyId, partyType, partyId, range);
+    const { rows } = ReportsService.withRunning(lines, opening, ReportsService.partyRow);
     return {
       partyType,
       partyId: partyId.toString(),
-      openingBalance: amt(opening),
-      ...sides('opening', opening),
-      closingBalance: amt(running),
-      ...sides('closing', running),
-      totalDebit: amt(totalDebit),
-      totalCredit: amt(totalCredit),
+      ...ReportsService.statementSummary(
+        opening,
+        sum(rows.map((r) => r.debit)),
+        sum(rows.map((r) => r.credit)),
+      ),
       rows,
+    };
+  }
+
+  /** One page of a party statement (ADR-022 §4), like generalLedgerPage. */
+  async partyStatementPage(
+    partyType: 'CUSTOMER' | 'SUPPLIER',
+    partyId: bigint,
+    range: ReportRange,
+    page: StatementPageQuery,
+  ) {
+    this.assertRange(range);
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const filters = { partyType, partyId: partyId.toString(), from: range.from, to: range.to };
+    const at = page.cursor ? lineCursor(this.cursors.decode('party-statement', filters, page.cursor)) : null;
+    const where = this.partyWhere(companyId, partyType, partyId, this.movementEntryWhere(range));
+
+    const lines = await db.journalLine.findMany({
+      where: at ? { AND: [where, afterLine(at.key)] } : where,
+      orderBy: LINE_ORDER,
+      take: page.limit + 1,
+      include: ReportsService.PARTY_LINE_INCLUDE,
+    });
+    const more = lines.length > page.limit;
+    if (more) lines.pop();
+
+    let summary: ReturnType<typeof ReportsService.statementSummary> | null = null;
+    let start: Decimal;
+    if (at) {
+      start = at.balance;
+    } else {
+      const [opening, totals] = await Promise.all([
+        this.partyOpening(db, companyId, partyType, partyId, range),
+        db.journalLine.aggregate({ where, _sum: { debit: true, credit: true } }),
+      ]);
+      summary = ReportsService.statementSummary(
+        opening,
+        new Decimal(totals._sum.debit?.toString() ?? 0),
+        new Decimal(totals._sum.credit?.toString() ?? 0),
+      );
+      start = opening;
+    }
+    const { rows, balance } = ReportsService.withRunning(lines, start, ReportsService.partyRow);
+    const last = lines[lines.length - 1];
+    return {
+      partyType,
+      partyId: partyId.toString(),
+      summary,
+      items: rows,
+      nextCursor: more && last ? this.cursors.encode('party-statement', filters, lineState(last, balance)) : null,
     };
   }
 

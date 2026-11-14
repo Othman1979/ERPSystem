@@ -107,6 +107,8 @@ export class EInvoiceOutboxService {
       documentType: EInvoiceDocumentType;
       documentId: bigint;
       documentNo: string;
+      /** The document's branch (a return's is its invoice's), for branch-scoped lists (ADR-003 §10). */
+      branchId: bigint | null;
       originalInvoiceId?: bigint;
     },
   ): Promise<{ id: bigint } | null> {
@@ -133,6 +135,7 @@ export class EInvoiceOutboxService {
         documentType: input.documentType,
         documentId: input.documentId,
         documentNo: input.documentNo,
+        branchId: input.branchId,
         uuid: randomUUID(),
         icv: Number(counter.next_icv),
         environment: counter.environment,

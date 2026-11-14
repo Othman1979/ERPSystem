@@ -765,6 +765,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           documentType: 'SALES_INVOICE',
           documentId: draft.id,
           documentNo: invoiceNo,
+          branchId: draft.branchId,
         });
         return { id: draft.id, invoiceNo };
       }, POSTING_TX_OPTIONS),
