@@ -54,6 +54,8 @@ import {
   APP_GROUPS,
   INVITATIONS_PATH,
   routeForPath,
+  SETUP_PATH,
+  SETUP_PERMISSION,
   type AppGroup,
   type AppRoute,
 } from './routes';
@@ -184,21 +186,25 @@ function HomeScreen() {
   // Only what the role can use: the API would refuse the rest with 403.
   const quickActions = QUICK_ACTIONS.filter((a) => can(a.permission));
   const groups = allowedGroups(APP_GROUPS, can);
+  const canSetUp = can(SETUP_PERMISSION);
   const navigate = useNavigate();
   const company = useCompany();
   return (
     <>
       {company.data && !company.data.onboardingCompletedAt && (
-        // Until the setup wizard is finished (§13.4).
+        // Until the setup wizard is finished (§13.4). Roles that cannot run it are
+        // told who can, instead of a button into a wizard that answers 403.
         <Alert
           type="info"
           showIcon
-          message={t('setup.bannerTitle')}
-          description={t('setup.bannerText')}
+          message={canSetUp ? t('setup.bannerTitle') : t('setup.pendingTitle')}
+          description={canSetUp ? t('setup.bannerText') : t('setup.askOwner')}
           action={
-            <Button type="primary" onClick={() => navigate('/setup')}>
-              {t('setup.open')}
-            </Button>
+            canSetUp ? (
+              <Button type="primary" onClick={() => navigate(SETUP_PATH)}>
+                {t('setup.open')}
+              </Button>
+            ) : undefined
           }
           style={{ marginBottom: 16 }}
         />
@@ -529,10 +535,10 @@ function AppShell() {
               />
               {!noCompany && (
                 <Route
-                  path="/setup"
+                  path={SETUP_PATH}
                   element={
                     <ViewErrorBoundary key="setup">
-                      <SetupWizardPage />
+                      {can(SETUP_PERMISSION) ? <SetupWizardPage /> : <NoAccess />}
                     </ViewErrorBoundary>
                   }
                 />

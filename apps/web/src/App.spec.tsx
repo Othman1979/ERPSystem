@@ -85,6 +85,15 @@ function stubFetch(): void {
     vi.fn((url: string, init?: RequestInit) => {
       requested.push(url);
       signals.set(url, init?.signal);
+      // The company profile answers: setup not finished yet (the home banner shows).
+      if (url === '/api/v1/company') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: '1', nameAr: 'A Co', onboardingCompletedAt: null }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      }
       return new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
       });
@@ -200,6 +209,56 @@ describe('screens follow the role permissions from GET /me', () => {
     await mount('/');
     await until(() => expect(quickActions().length).toBe(5));
     expect(quickActions()).toContain(i18n.t('sales.newInvoice'));
+  });
+});
+
+describe('the setup wizard follows settings.manage', () => {
+  beforeEach(() => setViewport(1280));
+
+  const banner = () => container.querySelector('.ant-alert');
+  const buttonLabelled = (label: string) =>
+    [...container.querySelectorAll('button')].find((b) => b.textContent === label);
+
+  it('offers the owner the wizard from the home banner', async () => {
+    session.state = signedIn('OWNER', OWNER);
+    await mount('/');
+    await until(() => expect(banner()).not.toBeNull());
+    expect(banner()!.textContent).toContain(i18n.t('setup.bannerTitle'));
+    await act(async () => buttonLabelled(i18n.t('setup.open'))!.click());
+    expect(pathname).toBe('/setup');
+  });
+
+  it('tells a viewer who can finish setup, without a button into the wizard', async () => {
+    session.state = signedIn('VIEWER', VIEWER);
+    await mount('/');
+    await until(() => expect(banner()).not.toBeNull());
+    expect(banner()!.textContent).toContain(i18n.t('setup.pendingTitle'));
+    expect(banner()!.textContent).toContain(i18n.t('setup.askOwner'));
+    expect(buttonLabelled(i18n.t('setup.open'))).toBeUndefined();
+  });
+
+  it('shows a viewer "no access" on /setup, without asking the API', async () => {
+    session.state = signedIn('VIEWER', VIEWER);
+    await mount('/setup');
+    await until(() => expect(text()).toContain(i18n.t('access.title')));
+    expect(requested.some((u) => u.includes('/tax-categories'))).toBe(false);
+  });
+
+  it('links help sections only to screens the role can open', async () => {
+    const helpLinks = async () => {
+      await until(() => expect(text()).toContain(i18n.t('help.start.title')));
+      return [...container.querySelectorAll('button')].filter((b) => b.textContent === i18n.t('help.open')).length;
+    };
+    session.state = signedIn('VIEWER', VIEWER);
+    await mount('/help');
+    // Only the open "start" section renders its body: the wizard is not for a viewer.
+    expect(await helpLinks()).toBe(0);
+    act(() => root.unmount());
+    container.remove();
+
+    session.state = signedIn('OWNER', OWNER);
+    await mount('/help');
+    expect(await helpLinks()).toBe(1);
   });
 });
 

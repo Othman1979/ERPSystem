@@ -98,6 +98,11 @@ export interface AppGroup {
 /** Invitations are reachable without a company (ADR-012 §PLAT-10). */
 export const INVITATIONS_PATH = '/invitations';
 
+/** The setup wizard (§13.4), outside the module groups. */
+export const SETUP_PATH = '/setup';
+/** The wizard reads /tax-categories and finishes with POST /company/onboarding/complete: both need this. */
+export const SETUP_PERMISSION: Permission = PERMISSIONS.SETTINGS_MANAGE;
+
 /** Every module, grouped as on the home screen and in the side menu. */
 export const APP_GROUPS: AppGroup[] = [
   {
@@ -170,6 +175,17 @@ export const ALL_ROUTES: AppRoute[] = APP_GROUPS.flatMap((g) => g.routes);
 /** True when a role with `can` may open `route` (the permission it names, if any). */
 export function allowedRoute(route: AppRoute, can: (permission: Permission) => boolean): boolean {
   return !route.permission || can(route.permission);
+}
+
+/**
+ * True when a role with `can` may open `path` (a module, its nested paths or
+ * the setup wizard). Paths that need no company permission (help, legal) are open.
+ */
+export function canOpenPath(path: string, can: (permission: Permission) => boolean): boolean {
+  const bare = path.split('?')[0];
+  if (bare === SETUP_PATH || bare.startsWith(`${SETUP_PATH}/`)) return can(SETUP_PERMISSION);
+  const route = routeForPath(bare);
+  return !route || allowedRoute(route, can);
 }
 
 /** `groups` with only the routes the role may open; groups left empty are dropped. */

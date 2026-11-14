@@ -1,4 +1,4 @@
-import { createContext, Fragment, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ApiError,
@@ -86,6 +86,14 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+/** Least time between two /me reloads triggered by a 403 or by the tab coming back into view. */
+export const ME_RELOAD_MIN_MS = 5_000;
+
+/** A 403 for a missing permission (not read-only mode or another refusal with its own code). */
+function isPermissionRefusal(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 403 && error.code === 'FORBIDDEN';
+}
+
 const branchStorageKey = (tenantId: string) => `erp.branch.${tenantId}`;
 
 function readStoredBranch(tenantId: string): string | null {
@@ -121,8 +129,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthState['status']>('loading');
   const [me, setMe] = useState<MeData | null>(null);
   const [branchId, setBranchState] = useState<string | null>(null);
+  // For the /me reloads below: when /me last loaded, a reload waiting for its turn, and the current status.
+  const lastMeReload = useRef(0);
+  const pendingMeReload = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusRef = useRef(status);
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const refreshMe = useCallback(async () => {
+    lastMeReload.current = Date.now();
     try {
       const res = await meControllerMe();
       const data = res.data as unknown as MeData;
@@ -151,6 +167,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshMe();
   }, [refreshMe]);
+
+  // Roles change while people work: an admin downgrades someone (their menus
+  // now answer 403) or upgrades them (they still see "no access"). Reload /me
+  // when the API refuses a permission and when the tab comes back into view,
+  // at most once per ME_RELOAD_MIN_MS; a call inside that window runs once at
+  // its end. A failed reload keeps the session as it is, except on 401.
+  const reloadMe = useCallback(async () => {
+    try {
+      const res = await meControllerMe();
+      const data = res.data as unknown as MeData;
+      setMe(data);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setAccessToken(null);
+        setMe(null);
+        setStatus('guest');
+      }
+    }
+  }, []);
+
+  const reloadMeSoon = useCallback(() => {
+    if (statusRef.current !== 'authed' || pendingMeReload.current) return;
+    const wait = lastMeReload.current + ME_RELOAD_MIN_MS - Date.now();
+    const run = () => {
+      pendingMeReload.current = null;
+      if (statusRef.current !== 'authed') return;
+      lastMeReload.current = Date.now();
+      void reloadMe();
+    };
+    if (wait <= 0) run();
+    else pendingMeReload.current = setTimeout(run, wait);
+  }, [reloadMe]);
+
+  useEffect(() => {
+    const onError = (error: unknown) => {
+      if (isPermissionRefusal(error)) reloadMeSoon();
+    };
+    const offQueries = queryClient.getQueryCache().subscribe((event) => {
+      if (event.type === 'updated' && event.action.type === 'error') onError(event.action.error);
+    });
+    const offMutations = queryClient.getMutationCache().subscribe((event) => {
+      if (event.type === 'updated' && event.action.type === 'error') onError(event.action.error);
+    });
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') reloadMeSoon();
+    };
+    window.addEventListener('focus', reloadMeSoon);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      offQueries();
+      offMutations();
+      window.removeEventListener('focus', reloadMeSoon);
+      document.removeEventListener('visibilitychange', onVisible);
+      if (pendingMeReload.current) clearTimeout(pendingMeReload.current);
+      pendingMeReload.current = null;
+    };
+  }, [queryClient, reloadMeSoon]);
 
   // Another tab switched tenant or signed in as someone else, and this tab's
   // token refresh followed the shared cookie into that session: drop this

@@ -2,13 +2,14 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthProvider, useAuth } from './AuthContext';
+import { ApiError, meControllerMe } from '@erp/api-client';
+import { AuthProvider, ME_RELOAD_MIN_MS, useAuth } from './AuthContext';
 
 // Cache size observed at the moment each new access token is installed.
 const cacheSizeAtTokenSet: number[] = [];
 let client: QueryClient;
 // Tenant the mocked /me returns; reset before every test.
-const session = vi.hoisted(() => ({ tenant: 'A' }));
+const session = vi.hoisted(() => ({ tenant: 'A', permissions: null as string[] | null }));
 
 vi.mock('@erp/api-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@erp/api-client')>();
@@ -21,7 +22,7 @@ vi.mock('@erp/api-client', async (importOriginal) => {
         membershipId: 'm1',
         roleCode: tenantId === 'A' ? 'OWNER' : 'VIEWER',
         // Each tenant's own role permissions, as GET /me lists them.
-        permissions: tenantId === 'A' ? ['tenant.read', 'user.manage'] : ['tenant.read'],
+        permissions: session.permissions ?? (tenantId === 'A' ? ['tenant.read', 'user.manage'] : ['tenant.read']),
         defaultBranchId: null,
         branches: [],
       },
@@ -146,5 +147,108 @@ describe('AuthProvider can() follows the current tenant role', () => {
   it('allows nothing once signed out', async () => {
     await act(() => auth!.logout());
     expect(auth!.can('tenant.read')).toBe(false);
+  });
+});
+
+describe('AuthProvider reloads /me when the role may have changed', () => {
+  let root: Root;
+  const meCalls = () => vi.mocked(meControllerMe).mock.calls.length;
+  const settle = (ms = 0) => act(async () => vi.advanceTimersByTimeAsync(ms));
+
+  /** A query that the API refuses with `status` / `code`, as a page's list would be. */
+  async function refusedQuery(key: string, status = 403, code = 'FORBIDDEN') {
+    await client
+      .fetchQuery({ queryKey: [key], queryFn: () => Promise.reject(new ApiError(status, code, 'refused')), retry: false })
+      .catch(() => undefined);
+    await settle();
+  }
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    session.tenant = 'A';
+    session.permissions = null;
+    client = new QueryClient();
+    root = createRoot(document.createElement('div'));
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <AuthProvider>
+            <Probe />
+          </AuthProvider>
+        </QueryClientProvider>,
+      );
+    });
+    await settle();
+    expect(auth?.status).toBe('authed');
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    auth = null;
+    session.permissions = null;
+    vi.useRealTimers();
+  });
+
+  it('picks up a downgrade after a 403 for a missing permission', async () => {
+    expect(auth!.can('user.manage')).toBe(true);
+    // An admin takes user.manage away; the next call to /users answers 403.
+    session.permissions = ['tenant.read'];
+    await settle(ME_RELOAD_MIN_MS);
+    const before = meCalls();
+    await refusedQuery('users');
+    expect(meCalls()).toBe(before + 1);
+    expect(auth!.can('user.manage')).toBe(false);
+    expect(auth!.status).toBe('authed');
+  });
+
+  it('reloads at most once per window, once more at its end, however many 403s arrive', async () => {
+    await settle(ME_RELOAD_MIN_MS);
+    const before = meCalls();
+    await refusedQuery('a');
+    await refusedQuery('b');
+    await refusedQuery('c');
+    // The first reloads at once; b and c fall inside its window.
+    expect(meCalls()).toBe(before + 1);
+    // They are served by one reload at the end of the window, not one each.
+    await settle(ME_RELOAD_MIN_MS);
+    expect(meCalls()).toBe(before + 2);
+    await settle(ME_RELOAD_MIN_MS);
+    expect(meCalls()).toBe(before + 2);
+  });
+
+  it('waits out the window when a 403 comes right after sign-in', async () => {
+    const before = meCalls();
+    session.permissions = ['tenant.read'];
+    await refusedQuery('users');
+    expect(meCalls()).toBe(before);
+    await settle(ME_RELOAD_MIN_MS);
+    expect(meCalls()).toBe(before + 1);
+    expect(auth!.can('user.manage')).toBe(false);
+  });
+
+  it('ignores refusals that are not about permissions', async () => {
+    await settle(ME_RELOAD_MIN_MS);
+    const before = meCalls();
+    await refusedQuery('posting', 403, 'TENANT_READ_ONLY');
+    await refusedQuery('missing', 404, 'NOT_FOUND');
+    expect(meCalls()).toBe(before);
+  });
+
+  it('picks up an upgrade when the tab comes back into focus', async () => {
+    session.permissions = ['tenant.read', 'user.manage', 'settings.manage'];
+    await settle(ME_RELOAD_MIN_MS);
+    const before = meCalls();
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    await settle();
+    expect(meCalls()).toBe(before + 1);
+    expect(auth!.can('settings.manage')).toBe(true);
+  });
+
+  it('keeps the session when the reload fails on a server error', async () => {
+    await settle(ME_RELOAD_MIN_MS);
+    vi.mocked(meControllerMe).mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'boom'));
+    await refusedQuery('users');
+    expect(auth!.status).toBe('authed');
+    expect(auth!.can('user.manage')).toBe(true);
   });
 });
