@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
-import { PrismaService } from '../../prisma/prisma.service.js';
 import type { RequestContext } from '../cls/cls.types.js';
 import { DomainError } from '../errors/domain.error.js';
 import { ErrorCode } from '../errors/error-codes.js';
@@ -12,18 +11,6 @@ import type { Plan, Prisma } from '../../generated/prisma/client.js';
  */
 @Injectable()
 export class PlanLimitsService {
-  constructor(private readonly prisma: PrismaService) {}
-
-  private async planForCurrentTenant() {
-    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
-    if (!tenantId) return null;
-    // systemPrisma: plan lookup by tenant id only.
-    return this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { plan: true },
-    });
-  }
-
   /**
    * Locks the tenant row, then reads its plan and counts `model` rows, all in
    * the caller's transaction (PLAT-04). Concurrent creations of the same
@@ -87,9 +74,16 @@ export class PlanLimitsService {
    * tenants, so every insert takes a shared lock on that row, and an
    * exclusive lock taken mid-posting would deadlock with concurrent postings
    * that hold item locks (PLAT-04).
+   *
+   * The plan is read through the caller's `tx`, never another client: a
+   * second pool connection taken while the posting transaction holds one
+   * deadlocks the pool once DB_POOL_SIZE postings run at once (each holds a
+   * connection and waits for another), and they all fail with 503.
    */
-  async assertMonthlyInvoiceQuota(posted: number): Promise<void> {
-    const plan = (await this.planForCurrentTenant())?.plan;
+  async assertMonthlyInvoiceQuota(tx: Prisma.TransactionClient, posted: number): Promise<void> {
+    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
+    if (!tenantId) return;
+    const plan = (await tx.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } }))?.plan;
     if (!plan) return;
     if (posted >= plan.maxInvoicesPerMonth) {
       throw new DomainError(

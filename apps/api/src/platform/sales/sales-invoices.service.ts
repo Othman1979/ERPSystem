@@ -568,6 +568,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         const monthStart = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth(), 1));
         const nextMonth = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth() + 1, 1));
         await this.limits.assertMonthlyInvoiceQuota(
+          tx,
           await tx.salesInvoice.count({
             where: { companyId, status: 'POSTED', invoiceDate: { gte: monthStart, lt: nextMonth } },
           }),
