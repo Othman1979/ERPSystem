@@ -1507,22 +1507,41 @@ export interface UpdatePartyDto {
      * @maxLength 191
      */
   nameAr?: string;
-  /** @maxLength 191 */
-  nameEn?: string;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
   partyType?: UpdatePartyDtoPartyType;
-  /** @maxLength 50 */
-  taxNumber?: string;
-  /** @maxLength 50 */
-  nationalId?: string;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  taxNumber?: string | null;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  nationalId?: string | null;
   /** JoFotara buyer scheme for nationalId (0005 §5): NIN Jordanian, PN non-Jordanian. */
   nationalIdKind?: UpdatePartyDtoNationalIdKind;
-  /** @maxLength 50 */
-  phone?: string;
-  /** @maxLength 512 */
-  address?: string;
-  /** @maxLength 100 */
-  city?: string;
-  creditLimit?: string;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  phone?: string | null;
+  /**
+     * @maxLength 512
+     * @nullable
+     */
+  address?: string | null;
+  /**
+     * @maxLength 100
+     * @nullable
+     */
+  city?: string | null;
+  /** @nullable */
+  creditLimit?: string | null;
   /**
      * @minimum 0
      * @maximum 3650
@@ -3749,7 +3768,11 @@ export const CreatePurchaseReturnDtoRefundType = {
 export interface CreatePurchaseReturnDto {
   returnDate: string;
   originalInvoiceId: string;
-  warehouseId: string;
+  /**
+     * The warehouse the goods leave from: the original invoice's (ADR-016 §5).
+     * Omitted, it is taken from the invoice; another one is refused.
+     */
+  warehouseId?: string;
   refundType: CreatePurchaseReturnDtoRefundType;
   cashAccountId?: string;
   /** @maxLength 500 */
@@ -4730,16 +4753,25 @@ export interface EInvoiceSubmissionOriginalDto {
   status: EInvoiceStatus;
 }
 
+export type EInvoiceAttemptOutcome = typeof EInvoiceAttemptOutcome[keyof typeof EInvoiceAttemptOutcome];
+
+
+export const EInvoiceAttemptOutcome = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+  unknown: 'unknown',
+  'not-sent': 'not-sent',
+} as const;
+
 export interface EInvoiceSubmissionAttemptDto {
   attemptNo: number;
-  /** accepted | rejected | unknown | not-sent */
-  outcome: string;
   /** @nullable */
   httpStatus: number | null;
   /** @nullable */
   message: string | null;
   startedAt: string;
   finishedAt: string;
+  outcome: EInvoiceAttemptOutcome;
 }
 
 export interface EInvoiceSubmissionDetailDto {
@@ -5440,6 +5472,8 @@ export const ErrorCode = {
   FISCAL_YEAR_TOO_LONG: 'FISCAL_YEAR_TOO_LONG',
   DUPLICATE_CODE: 'DUPLICATE_CODE',
   INVALID_DATE_RANGE: 'INVALID_DATE_RANGE',
+  RETURN_WAREHOUSE_MISMATCH: 'RETURN_WAREHOUSE_MISMATCH',
+  RETURN_WAREHOUSE_REQUIRED: 'RETURN_WAREHOUSE_REQUIRED',
   REPORT_TOO_LARGE: 'REPORT_TOO_LARGE',
   RATE_LIMITED: 'RATE_LIMITED',
   INVALID_CURRENT_PASSWORD: 'INVALID_CURRENT_PASSWORD',
@@ -12040,17 +12074,22 @@ export const salesControllerDeleteInvoice = async (id: string, options?: Paramet
 
 
 
-export type salesControllerInvoicePdfResponseDefault = {
-  data: ErrorResponseDto
-  status: number
+export type salesControllerInvoicePdfResponse200 = {
+  data: Blob
+  status: 200
 }
 
-;
+export type salesControllerInvoicePdfResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesControllerInvoicePdfResponseSuccess = (salesControllerInvoicePdfResponse200) & {
+  headers: Headers;
+};
 export type salesControllerInvoicePdfResponseError = (salesControllerInvoicePdfResponseDefault) & {
   headers: Headers;
 };
-
-export type salesControllerInvoicePdfResponse = (salesControllerInvoicePdfResponseError)
 
 export const getSalesControllerInvoicePdfUrl = (id: string,
     params?: SalesControllerInvoicePdfParams,) => {
@@ -12072,9 +12111,9 @@ export const getSalesControllerInvoicePdfUrl = (id: string,
  * @summary Printed invoice (BUILD_PLAN §13.7, §15): A4 PDF with the JoFotara QR; another branch's answers 404 (ADR-003 §11).
  */
 export const salesControllerInvoicePdf = async (id: string,
-    params?: SalesControllerInvoicePdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerInvoicePdfResponse> => {
+    params?: SalesControllerInvoicePdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerInvoicePdfResponseSuccess> => {
 
-  return apiFetch<salesControllerInvoicePdfResponse>(getSalesControllerInvoicePdfUrl(id,params),
+  return apiFetch<salesControllerInvoicePdfResponseSuccess>(getSalesControllerInvoicePdfUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -12296,17 +12335,22 @@ export const salesControllerDeleteReturn = async (id: string, options?: Paramete
 
 
 
-export type salesControllerReturnPdfResponseDefault = {
-  data: ErrorResponseDto
-  status: number
+export type salesControllerReturnPdfResponse200 = {
+  data: Blob
+  status: 200
 }
 
-;
+export type salesControllerReturnPdfResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesControllerReturnPdfResponseSuccess = (salesControllerReturnPdfResponse200) & {
+  headers: Headers;
+};
 export type salesControllerReturnPdfResponseError = (salesControllerReturnPdfResponseDefault) & {
   headers: Headers;
 };
-
-export type salesControllerReturnPdfResponse = (salesControllerReturnPdfResponseError)
 
 export const getSalesControllerReturnPdfUrl = (id: string,
     params?: SalesControllerReturnPdfParams,) => {
@@ -12325,9 +12369,9 @@ export const getSalesControllerReturnPdfUrl = (id: string,
 }
 
 export const salesControllerReturnPdf = async (id: string,
-    params?: SalesControllerReturnPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerReturnPdfResponse> => {
+    params?: SalesControllerReturnPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerReturnPdfResponseSuccess> => {
 
-  return apiFetch<salesControllerReturnPdfResponse>(getSalesControllerReturnPdfUrl(id,params),
+  return apiFetch<salesControllerReturnPdfResponseSuccess>(getSalesControllerReturnPdfUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -12602,17 +12646,22 @@ export const purchasesControllerDeleteInvoice = async (id: string, options?: Par
 
 
 
-export type purchasesControllerInvoicePdfResponseDefault = {
-  data: ErrorResponseDto
-  status: number
+export type purchasesControllerInvoicePdfResponse200 = {
+  data: Blob
+  status: 200
 }
 
-;
+export type purchasesControllerInvoicePdfResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type purchasesControllerInvoicePdfResponseSuccess = (purchasesControllerInvoicePdfResponse200) & {
+  headers: Headers;
+};
 export type purchasesControllerInvoicePdfResponseError = (purchasesControllerInvoicePdfResponseDefault) & {
   headers: Headers;
 };
-
-export type purchasesControllerInvoicePdfResponse = (purchasesControllerInvoicePdfResponseError)
 
 export const getPurchasesControllerInvoicePdfUrl = (id: string,
     params?: PurchasesControllerInvoicePdfParams,) => {
@@ -12631,9 +12680,9 @@ export const getPurchasesControllerInvoicePdfUrl = (id: string,
 }
 
 export const purchasesControllerInvoicePdf = async (id: string,
-    params?: PurchasesControllerInvoicePdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerInvoicePdfResponse> => {
+    params?: PurchasesControllerInvoicePdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerInvoicePdfResponseSuccess> => {
 
-  return apiFetch<purchasesControllerInvoicePdfResponse>(getPurchasesControllerInvoicePdfUrl(id,params),
+  return apiFetch<purchasesControllerInvoicePdfResponseSuccess>(getPurchasesControllerInvoicePdfUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -13627,17 +13676,22 @@ export const treasuryControllerGetReceipt = async (id: string, options?: Paramet
 
 
 
-export type treasuryControllerReceiptPdfResponseDefault = {
-  data: ErrorResponseDto
-  status: number
+export type treasuryControllerReceiptPdfResponse200 = {
+  data: Blob
+  status: 200
 }
 
-;
+export type treasuryControllerReceiptPdfResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type treasuryControllerReceiptPdfResponseSuccess = (treasuryControllerReceiptPdfResponse200) & {
+  headers: Headers;
+};
 export type treasuryControllerReceiptPdfResponseError = (treasuryControllerReceiptPdfResponseDefault) & {
   headers: Headers;
 };
-
-export type treasuryControllerReceiptPdfResponse = (treasuryControllerReceiptPdfResponseError)
 
 export const getTreasuryControllerReceiptPdfUrl = (id: string,
     params?: TreasuryControllerReceiptPdfParams,) => {
@@ -13656,9 +13710,9 @@ export const getTreasuryControllerReceiptPdfUrl = (id: string,
 }
 
 export const treasuryControllerReceiptPdf = async (id: string,
-    params?: TreasuryControllerReceiptPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReceiptPdfResponse> => {
+    params?: TreasuryControllerReceiptPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReceiptPdfResponseSuccess> => {
 
-  return apiFetch<treasuryControllerReceiptPdfResponse>(getTreasuryControllerReceiptPdfUrl(id,params),
+  return apiFetch<treasuryControllerReceiptPdfResponseSuccess>(getTreasuryControllerReceiptPdfUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -13804,17 +13858,22 @@ export const treasuryControllerGetPayment = async (id: string, options?: Paramet
 
 
 
-export type treasuryControllerPaymentPdfResponseDefault = {
-  data: ErrorResponseDto
-  status: number
+export type treasuryControllerPaymentPdfResponse200 = {
+  data: Blob
+  status: 200
 }
 
-;
+export type treasuryControllerPaymentPdfResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type treasuryControllerPaymentPdfResponseSuccess = (treasuryControllerPaymentPdfResponse200) & {
+  headers: Headers;
+};
 export type treasuryControllerPaymentPdfResponseError = (treasuryControllerPaymentPdfResponseDefault) & {
   headers: Headers;
 };
-
-export type treasuryControllerPaymentPdfResponse = (treasuryControllerPaymentPdfResponseError)
 
 export const getTreasuryControllerPaymentPdfUrl = (id: string,
     params?: TreasuryControllerPaymentPdfParams,) => {
@@ -13833,9 +13892,9 @@ export const getTreasuryControllerPaymentPdfUrl = (id: string,
 }
 
 export const treasuryControllerPaymentPdf = async (id: string,
-    params?: TreasuryControllerPaymentPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerPaymentPdfResponse> => {
+    params?: TreasuryControllerPaymentPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerPaymentPdfResponseSuccess> => {
 
-  return apiFetch<treasuryControllerPaymentPdfResponse>(getTreasuryControllerPaymentPdfUrl(id,params),
+  return apiFetch<treasuryControllerPaymentPdfResponseSuccess>(getTreasuryControllerPaymentPdfUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -14854,17 +14913,22 @@ export const reportsControllerDashboardSummary = async (params?: ReportsControll
 
 
 
-export type tenantExportControllerTenantDataResponseDefault = {
-  data: ErrorResponseDto
-  status: number
+export type tenantExportControllerTenantDataResponse200 = {
+  data: Blob
+  status: 200
 }
 
-;
+export type tenantExportControllerTenantDataResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type tenantExportControllerTenantDataResponseSuccess = (tenantExportControllerTenantDataResponse200) & {
+  headers: Headers;
+};
 export type tenantExportControllerTenantDataResponseError = (tenantExportControllerTenantDataResponseDefault) & {
   headers: Headers;
 };
-
-export type tenantExportControllerTenantDataResponse = (tenantExportControllerTenantDataResponseError)
 
 export const getTenantExportControllerTenantDataUrl = () => {
 
@@ -14874,9 +14938,9 @@ export const getTenantExportControllerTenantDataUrl = () => {
   return `/api/v1/export/tenant-data`
 }
 
-export const tenantExportControllerTenantData = async ( options?: Parameters<typeof apiFetch>[1]): Promise<tenantExportControllerTenantDataResponse> => {
+export const tenantExportControllerTenantData = async ( options?: Parameters<typeof apiFetch>[1]): Promise<tenantExportControllerTenantDataResponseSuccess> => {
 
-  return apiFetch<tenantExportControllerTenantDataResponse>(getTenantExportControllerTenantDataUrl(),
+  return apiFetch<tenantExportControllerTenantDataResponseSuccess>(getTenantExportControllerTenantDataUrl(),
   {
     ...options,
     method: 'GET'

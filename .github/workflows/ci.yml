@@ -56,6 +56,18 @@ jobs:
         if: matrix.mariadb == '11.8'
       # The e2e suites spawn the built API (apps/api/dist/main.js).
       - run: pnpm --filter api build
+      # The committed api-client must be what the API's document generates (PLAT-15, ADR-023):
+      # write the document from the built app (no server), regenerate, and fail on any diff.
+      - name: api-client matches the OpenAPI document
+        if: matrix.mariadb == '11.8'
+        run: |
+          pnpm --filter api openapi:document "${{ runner.temp }}/openapi.json"
+          OPENAPI_INPUT="${{ runner.temp }}/openapi.json" pnpm api-client:generate
+          git diff --exit-code -- packages/api-client || {
+            echo "packages/api-client is stale: run pnpm --filter api build, then"
+            echo "  pnpm --filter api openapi:document openapi.json && OPENAPI_INPUT=openapi.json pnpm api-client:generate"
+            exit 1
+          }
       - run: pnpm --filter api exec prisma migrate deploy
       # Plans, currencies, countries and system roles; sign-up needs the TRIAL plan and OWNER role.
       - run: pnpm --filter api seed

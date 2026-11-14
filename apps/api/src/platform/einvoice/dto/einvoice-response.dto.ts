@@ -131,15 +131,23 @@ export class EInvoiceSubmissionPageDto extends PageOf(EInvoiceSubmissionListItem
 /** The submission this one was rebuilt from (resend keeps the UUID and ICV). */
 export class EInvoiceSubmissionOriginalDto extends PickType(EInvoiceSubmissionRow, ['id', 'documentNo', 'status'] as const) {}
 
+/**
+ * What one send attempt ended in: the jofotara-kit submit outcome the sender
+ * writes (einvoice-sender.service.ts, `outcome.status`).
+ */
+export const EINVOICE_ATTEMPT_OUTCOMES = ['accepted', 'rejected', 'unknown', 'not-sent'] as const;
+
 /** One send attempt of a submission (EInvoiceSubmissionsService.get; the response body is not selected). */
 export class EInvoiceSubmissionAttemptDto extends PickType(EInvoiceAttemptRow, [
   'attemptNo',
-  'outcome',
   'httpStatus',
   'message',
   'startedAt',
   'finishedAt',
-] as const) {}
+] as const) {
+  @ApiProperty({ type: 'string', enum: EINVOICE_ATTEMPT_OUTCOMES, enumName: 'EInvoiceAttemptOutcome' })
+  outcome!: (typeof EINVOICE_ATTEMPT_OUTCOMES)[number];
+}
 
 /** One submission with what JoFotara answered and its attempts (EInvoiceSubmissionsService.get). */
 export class EInvoiceSubmissionDetailDto extends PickType(EInvoiceSubmissionRow, [

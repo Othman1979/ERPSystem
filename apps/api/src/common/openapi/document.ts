@@ -2,6 +2,9 @@ import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, getSchemaPath, type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import { ErrorBodyDto, ErrorResponseDto } from './responses.js';
 
+/** Every API route is under /api/v1 (main.ts, and the document script for CI). */
+export const API_GLOBAL_PREFIX = 'api/v1';
+
 const METHODS = ['get', 'put', 'post', 'delete', 'patch', 'options', 'head'] as const;
 
 /**

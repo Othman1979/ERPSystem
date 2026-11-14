@@ -54,6 +54,8 @@ export enum ErrorCode {
   INVALID_DATE_RANGE = 'INVALID_DATE_RANGE',
   // ADR-016 §5: a purchase return's goods leave from the original invoice's warehouse.
   RETURN_WAREHOUSE_MISMATCH = 'RETURN_WAREHOUSE_MISMATCH',
+  // ADR-016 §5: the original invoice has no warehouse (services only), and none was given.
+  RETURN_WAREHOUSE_REQUIRED = 'RETURN_WAREHOUSE_REQUIRED',
   // Phase 8 — reports
   REPORT_TOO_LARGE = 'REPORT_TOO_LARGE',
   // 429: too many requests in a minute (ADR-011)

@@ -89,6 +89,15 @@ export function applyBalances(
   return { debit, credit };
 }
 
+/**
+ * The trial balance for the balances column: no filters, and the query's
+ * signal as the request option, so leaving the page cancels it. (It used to
+ * pass `{ signal }` as the query params, which sent nothing cancellable.)
+ */
+export function fetchTrialBalance(signal: AbortSignal) {
+  return journalControllerTrialBalance({}, { signal }).then((r) => r.data);
+}
+
 export function AccountsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -106,7 +115,7 @@ export function AccountsPage() {
 
   const { data: trial, isError: trialError } = useQuery({
     queryKey: ['trial-balance'],
-    queryFn: ({ signal }) => journalControllerTrialBalance({}, { signal }).then((r) => r.data),
+    queryFn: ({ signal }) => fetchTrialBalance(signal),
     retry: false,
   });
 

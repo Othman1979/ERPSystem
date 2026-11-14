@@ -22,11 +22,9 @@ import {
   partiesControllerDeactivate,
   partiesControllerList,
   partiesControllerUpdate,
-  type NationalIdKind,
   type PartiesControllerListPartyType,
   type PartiesControllerListSort,
   type PartyDto,
-  type PartyType,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
@@ -35,25 +33,11 @@ import { usePagedQuery } from '../hooks/usePagedQuery';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { displayName, type Named } from '../i18n/displayName';
 import { amountCell } from '../format/cells';
+import { partyCreateBody, partyUpdateBody, type PartyFormValues } from './parties/partyPayload';
 
 type Party = PartyDto;
 
 /** The party form's values (antd gives them untyped). Code is set on create only. */
-interface PartyFormValues {
-  code: string;
-  nameAr: string;
-  nameEn?: string;
-  partyType: PartyType;
-  taxNumber?: string;
-  nationalId?: string;
-  nationalIdKind: NationalIdKind;
-  phone?: string;
-  creditLimit?: string | null;
-  paymentTermsDays?: number | null;
-  isCashCustomer: boolean;
-  isActive: boolean;
-}
-
 const TYPE_COLORS: Record<string, string> = {
   CUSTOMER: 'blue',
   SUPPLIER: 'orange',
@@ -114,25 +98,8 @@ export function PartiesPage() {
   };
 
   const save = useMutation({
-    mutationFn: async (values: PartyFormValues) => {
-      const payload = {
-        nameAr: values.nameAr,
-        nameEn: values.nameEn,
-        partyType: values.partyType,
-        taxNumber: values.taxNumber,
-        nationalId: values.nationalId,
-        nationalIdKind: values.nationalIdKind,
-        phone: values.phone,
-        creditLimit: values.creditLimit ?? undefined,
-        // Null clears the terms on an edit (the field was emptied).
-        paymentTermsDays: values.paymentTermsDays,
-        isCashCustomer: values.isCashCustomer,
-        isActive: values.isActive,
-      };
-      return editing
-        ? partiesControllerUpdate(editing.id, payload)
-        : partiesControllerCreate({ code: values.code, ...payload });
-    },
+    mutationFn: async (values: PartyFormValues) =>
+      editing ? partiesControllerUpdate(editing.id, partyUpdateBody(values)) : partiesControllerCreate(partyCreateBody(values)),
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
       invalidate();

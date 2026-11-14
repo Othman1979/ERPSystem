@@ -72,6 +72,7 @@ import {
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
+import { purchaseReturnBody } from './purchases/returnPayload';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
@@ -1098,22 +1099,17 @@ function PurchaseReturnForm({
   });
 
   const create = useMutation({
-    mutationFn: async () => {
-      // The API takes the warehouse the goods go back to: the invoice's own warehouse.
-      const warehouseId = invoice?.warehouseId;
-      if (!invoiceId || !warehouseId) throw new Error('return needs an invoice with a warehouse');
-      return purchasesControllerCreateReturn({
-        returnDate: returnDate.format('YYYY-MM-DD'),
-        originalInvoiceId: invoiceId,
-        warehouseId,
-        refundType,
-        cashAccountId: refundType === 'CASH' ? cashAccountId : undefined,
-        reason: reason || undefined,
-        lines: (invoice?.lines ?? [])
-          .filter((l) => dec(qtyByLine[l.id]).gt(0))
-          .map((l) => ({ originalLineId: l.id, qty: qtyByLine[l.id] })),
-      });
-    },
+    // Save needs a quantity on a line, and the lines come from the loaded invoice.
+    mutationFn: async () =>
+      purchasesControllerCreateReturn(
+        purchaseReturnBody(invoice!, {
+          returnDate: returnDate.format('YYYY-MM-DD'),
+          refundType,
+          cashAccountId,
+          reason,
+          qtyByLine,
+        }),
+      ),
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
       onCreated();

@@ -10,7 +10,7 @@ import type { Server } from 'node:http';
 import { AppModule } from './app.module.js';
 import { apiDocsEnabled, trustProxySetting, type Env } from './common/config/env.validation.js';
 import { redact } from './common/errors/error-events.util.js';
-import { buildApiDocument } from './common/openapi/document.js';
+import { API_GLOBAL_PREFIX, buildApiDocument } from './common/openapi/document.js';
 import { responseAudit } from './common/openapi/response-audit.js';
 import { DocumentSizePipe } from './common/pipes/document-size.pipe.js';
 import { IdParamPipe } from './common/pipes/id-param.pipe.js';
@@ -42,7 +42,7 @@ async function bootstrap(): Promise<void> {
   // Close the database pool when the host restarts the app.
   app.enableShutdownHooks();
 
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix(API_GLOBAL_PREFIX);
   app.useGlobalPipes(
     new DocumentSizePipe(),
     new IdParamPipe(),

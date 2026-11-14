@@ -25,6 +25,7 @@ import request from 'supertest';
 import type { OpenAPIObject } from '@nestjs/swagger';
 import { auditAnswer } from '../../src/common/openapi/response-audit.js';
 import type { SchemaDocument, SchemaObject } from '../../src/common/openapi/schema-check.js';
+import { webPayloads, type WebPayloads } from './support/web-payloads.js';
 
 const API_PORT = 3691;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -50,6 +51,8 @@ const METHODS = ['get', 'put', 'post', 'delete', 'patch'] as const;
 let server: ChildProcess;
 let db: Connection;
 let doc: OpenAPIObject;
+/** The web pages' own body builders (support/web-payloads.ts). */
+let web: WebPayloads;
 
 const api = () => request(BASE);
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -96,6 +99,7 @@ beforeAll(async () => {
   const res = await api().get('/api/docs-json');
   expect(res.status).toBe(200);
   doc = res.body as OpenAPIObject;
+  web = await webPayloads();
 }, 60_000);
 
 afterAll(async () => {
@@ -294,20 +298,24 @@ describe('Real answers match their declared schemas', () => {
     ).id;
     await call('GET', '/items', { token });
     await call('GET', '/items/{id}', { token, params: { id: itemId } });
-    // The Items page's edit body (apps/web/src/pages/items/itemPayload.ts, itemUpdateBody):
-    // only UpdateItemDto fields. The page used to spread the form values, whose disabled
-    // code, kind and base unit made every edit fail with 400; that body is still refused.
-    await call('PATCH', '/items/{id}', {
-      token,
-      params: { id: itemId },
-      body: { nameAr: 'الصنف أ', description: 'Note', taxCategoryId: tax.id, salePrice: '8.000', minStock: '0', salePriceIncludesTax: false },
-    });
-    const oldBody = await api()
-      .patch(`/api/v1/items/${itemId}`)
-      .set(auth(token))
-      .send({ code: 'A', itemKind: 'STOCK', baseUnitId: units.find((u) => u.code === 'PCS')!.id, nameAr: 'الصنف أ' });
-    expect(oldBody.status).toBe(400);
-    expect(oldBody.body.error.code).toBe('VALIDATION');
+    // The Items page's edit, through its own body builder (itemUpdateBody), with what
+    // antd hands over: the disabled code, kind and base unit included. The page used to
+    // spread these values, and every edit failed with 400; the spread body is still refused.
+    const pcsId = units.find((u) => u.code === 'PCS')!.id;
+    const editValues = {
+      code: 'A', itemKind: 'STOCK', baseUnitId: pcsId, nameAr: 'الصنف أ', nameEn: 'Item A', description: 'Note',
+      taxCategoryId: tax.id, salePrice: '8.000', purchasePrice: '5.000', minStock: '0', maxStock: '50', salePriceIncludesTax: false,
+    };
+    const edited = await call<Record<string, unknown>>('PATCH', '/items/{id}', { token, params: { id: itemId }, body: web.itemUpdateBody(editValues) });
+    expect(edited).toMatchObject({ nameEn: 'Item A', description: 'Note', taxCategoryId: tax.id });
+    expect(edited.salePrice).not.toBeNull();
+    // Emptied fields clear (null), they are not left as they were.
+    const emptied = { ...editValues, nameEn: '', description: '', taxCategoryId: undefined, salePrice: null, purchasePrice: null, maxStock: null };
+    const clearedItem = await call<Record<string, unknown>>('PATCH', '/items/{id}', { token, params: { id: itemId }, body: web.itemUpdateBody(emptied) });
+    expect(clearedItem).toMatchObject({ nameEn: null, description: null, taxCategoryId: null, salePrice: null, purchasePrice: null, maxStock: null });
+    const spread = await api().patch(`/api/v1/items/${itemId}`).set(auth(token)).send(editValues);
+    expect(spread.status).toBe(400);
+    expect(spread.body.error.code).toBe('VALIDATION');
     await call('GET', '/item-groups', { token });
     customerId = (await call<{ id: string }>('POST', '/parties', { token, body: { code: 'C', nameAr: 'عميل', partyType: 'CUSTOMER' } })).id;
     supplierId = (await call<{ id: string }>('POST', '/parties', { token, body: { code: 'S', nameAr: 'مورد', partyType: 'SUPPLIER' } })).id;
@@ -316,6 +324,19 @@ describe('Real answers match their declared schemas', () => {
     const spare = await call<{ id: string }>('POST', '/parties', { token, body: { code: 'X', nameAr: 'مؤقت', partyType: 'BOTH' } });
     // Unused, so deleted: one variant of the oneOf answer.
     await call('PATCH', '/parties/{id}/deactivate', { token, params: { id: spare.id } });
+    // The Parties page's edit, through its own builders: emptied fields clear (null),
+    // including the credit limit, which the API could not clear before.
+    const partyValues = {
+      code: 'P2', nameAr: 'طرف', nameEn: 'Party', partyType: 'CUSTOMER', taxNumber: 'T-1', nationalId: undefined,
+      nationalIdKind: 'NIN', phone: '0790000000', creditLimit: '500.000', paymentTermsDays: 30, isCashCustomer: false, isActive: true,
+    };
+    const party = await call<{ id: string }>('POST', '/parties', { token, body: web.partyCreateBody(partyValues) });
+    const clearedParty = await call<Record<string, unknown>>('PUT', '/parties/{id}', {
+      token,
+      params: { id: party.id },
+      body: web.partyUpdateBody({ ...partyValues, nameEn: '', taxNumber: '', phone: '', creditLimit: null, paymentTermsDays: null }),
+    });
+    expect(clearedParty).toMatchObject({ nameEn: null, taxNumber: null, phone: null, creditLimit: null, paymentTermsDays: null });
   });
 
   it('purchases and sales: draft, post, detail, list, pdf', async () => {
@@ -329,17 +350,14 @@ describe('Real answers match their declared schemas', () => {
       params: { id: purchase.id },
     });
     await call('GET', '/purchase-invoices', { token });
-    // The purchase return form's body (PurchasesPage): the invoice's warehouse is required.
-    // Before PLAT-15 the form never sent warehouseId, and every return was refused with 400.
+    // The purchase return form, through its own body builder: the invoice's warehouse
+    // (ADR-016 §5). Before PLAT-15 the form never sent a warehouse, and every return got 400.
     const ret = await call<{ id: string }>('POST', '/purchase-returns', {
       token,
-      body: {
-        returnDate: '2025-01-05',
-        originalInvoiceId: purchase.id,
-        warehouseId: purchased.warehouseId,
-        refundType: 'CREDIT',
-        lines: [{ originalLineId: purchased.lines[0].id, qty: '1' }],
-      },
+      body: web.purchaseReturnBody(
+        { id: purchase.id, warehouseId: purchased.warehouseId, lines: purchased.lines },
+        { returnDate: '2025-01-05', refundType: 'CREDIT', qtyByLine: { [purchased.lines[0].id]: '1' } },
+      ),
     });
     await call('GET', '/purchase-returns/{id}', { token, params: { id: ret.id } });
 
@@ -444,8 +462,25 @@ describe('Real answers match their declared schemas', () => {
     await call('GET', '/parties/{id}', { token: tokenB, params: { id: customerId }, status: 404 });
   });
 
-  it('the response audit recorded no mismatch', () => {
-    const findings = existsSync(AUDIT_FILE) ? readFileSync(AUDIT_FILE, 'utf8').trim() : '';
-    expect(findings).toBe('');
+  it('the response audit recorded nothing but the two answers that are wrong on purpose', async () => {
+    // Test-only routes (NODE_ENV=test, monitoring/test-support.module.ts): one answers
+    // what it declares, one answers a number and an extra key, one is not in the document.
+    await call('GET', '/__test/contract/match', { token });
+    expect((await api().get('/api/v1/__test/contract/mismatch').set(auth(token))).status).toBe(200);
+    expect((await api().get('/api/v1/__test/undocumented').set(auth(token))).status).toBe(200);
+    // The audit writes on 'finish', after the answer: give it a moment.
+    await new Promise((r) => setTimeout(r, 200));
+    const findings = (existsSync(AUDIT_FILE) ? readFileSync(AUDIT_FILE, 'utf8').trim().split('\n') : [])
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { method: string; route: string; status: number; problems: string[] });
+    expect(findings).toEqual([
+      {
+        method: 'GET',
+        route: '/api/v1/__test/contract/mismatch',
+        status: 200,
+        problems: ['$.amount: expected string, got number 1.5', '$.extra: not declared in the schema'],
+      },
+      { method: 'GET', route: '/api/v1/__test/undocumented', status: 200, problems: ['no operation GET /api/v1/__test/undocumented in the document'] },
+    ]);
   });
 });

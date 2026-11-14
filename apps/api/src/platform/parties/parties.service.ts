@@ -128,7 +128,7 @@ export class PartiesService {
         ...(dto.address !== undefined ? { address: dto.address } : {}),
         ...(dto.city !== undefined ? { city: dto.city } : {}),
         ...(dto.creditLimit !== undefined
-          ? { creditLimit: new Decimal(dto.creditLimit) }
+          ? { creditLimit: dto.creditLimit === null ? null : new Decimal(dto.creditLimit) }
           : {}),
         ...(dto.paymentTermsDays !== undefined
           ? { paymentTermsDays: dto.paymentTermsDays }

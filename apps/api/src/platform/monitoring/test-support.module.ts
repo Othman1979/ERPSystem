@@ -1,5 +1,5 @@
 import { Controller, Get, Module } from '@nestjs/common';
-import { ApiExcludeController } from '@nestjs/swagger';
+import { ApiExcludeController, ApiOkResponse, ApiProperty, ApiTags } from '@nestjs/swagger';
 
 /**
  * A route that fails on purpose, so the e2e tests can watch a real server
@@ -15,7 +15,42 @@ class TestSupportController {
     // A secret-looking value, to prove the monitor redacts before storing.
     throw new TypeError('boom password=hunter2 for invoice 42');
   }
+
+  /** 200 from a route the OpenAPI document leaves out: the response audit must record it. */
+  @Get('undocumented')
+  undocumented() {
+    return { ok: true };
+  }
 }
 
-@Module({ controllers: [TestSupportController] })
+/** The shape the contract-mismatch route declares (an amount as a decimal string). */
+class TestSupportAmountDto {
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  amount!: string;
+}
+
+/**
+ * Documented test routes (NODE_ENV=test only, so they appear in that
+ * server's document and never in the generated client): one answers what it
+ * declares, one does not, so the e2e contract suite can prove the response
+ * audit catches a wrong declaration (PLAT-15).
+ */
+@ApiTags('test-support')
+@Controller('__test/contract')
+class TestContractController {
+  @Get('match')
+  @ApiOkResponse({ type: TestSupportAmountDto })
+  match() {
+    return { amount: '1.500' };
+  }
+
+  @Get('mismatch')
+  @ApiOkResponse({ type: TestSupportAmountDto })
+  mismatch() {
+    // A number where a string is declared, and a key that is not declared.
+    return { amount: 1.5, extra: true };
+  }
+}
+
+@Module({ controllers: [TestSupportController, TestContractController] })
 export class TestSupportModule {}

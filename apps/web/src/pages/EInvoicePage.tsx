@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ApiError,
   type EInvoiceControllerListSubmissionsSort,
+  type EInvoiceAttemptOutcome,
   type EInvoiceSubmissionListItemDto,
   type EInvoiceSubmissionPageDto,
   eInvoiceControllerGetSubmission,
@@ -48,8 +49,8 @@ type DocumentType = 'SALES_INVOICE' | 'SALES_RETURN';
 
 type Submission = EInvoiceSubmissionListItemDto;
 
-/** An attempt's outcome, as the API documents it (the generated field is a plain string). */
-type AttemptOutcome = 'accepted' | 'rejected' | 'unknown' | 'not-sent';
+/** An attempt's outcome (the API's EInvoiceAttemptOutcome enum). */
+type AttemptOutcome = EInvoiceAttemptOutcome;
 
 const RESENDABLE: EInvoiceStatus[] = ['REJECTED', 'FAILED', 'UNKNOWN'];
 
@@ -439,10 +440,9 @@ function SubmissionDrawer({ id, open, onClose }: { id: string | null; open: bool
                   title: t('einvoice.outcome'),
                   dataIndex: 'outcome',
                   width: 110,
-                  render: (v: string) => {
-                    const outcome = v as AttemptOutcome;
-                    return <Tag color={OUTCOME_COLORS[outcome]}>{t(OUTCOME_KEYS[outcome])}</Tag>;
-                  },
+                  render: (outcome: AttemptOutcome) => (
+                    <Tag color={OUTCOME_COLORS[outcome]}>{t(OUTCOME_KEYS[outcome])}</Tag>
+                  ),
                 },
                 {
                   title: t('einvoice.httpStatus'),

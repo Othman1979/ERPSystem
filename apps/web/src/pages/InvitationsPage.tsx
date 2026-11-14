@@ -13,7 +13,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -46,6 +46,16 @@ const CODE_FONT = "Consolas, 'Cascadia Mono', 'Courier New', monospace";
  * The signed-in user's own company invitations (ADR-012 §PLAT-10). Makes no
  * tenant-scoped requests, so it also works for a user with no company yet.
  */
+/**
+ * The code-expiry cell of an invitation: null when no code is pending
+ * (`codeExpiresAt` is null; it used to render "Invalid Date"), so the cell
+ * shows a dash; else the expiry and whether it has passed.
+ */
+export function codeExpiry(codeExpiresAt: string | null, now: Dayjs = dayjs()): { at: string; expired: boolean } | null {
+  if (!codeExpiresAt) return null;
+  return { at: codeExpiresAt, expired: dayjs(codeExpiresAt).isBefore(now) };
+}
+
 export function InvitationsPage() {
   const { t, i18n } = useTranslation();
   const { switchTenant, refreshMe } = useAuth();
@@ -155,13 +165,12 @@ export function InvitationsPage() {
             {
               title: t('invitations.codeExpires'),
               render: (_: unknown, i: Invitation) => {
-                // Null when no code is pending: there is no expiry to show.
-                if (!i.codeExpiresAt) return '—';
-                const expired = dayjs(i.codeExpiresAt).isBefore(dayjs());
+                const expiry = codeExpiry(i.codeExpiresAt);
+                if (!expiry) return '—';
                 return (
                   <Space size={6}>
-                    <LtrDate value={i.codeExpiresAt} />
-                    {expired && <Tag color="red">{t('invitations.expired')}</Tag>}
+                    <LtrDate value={expiry.at} />
+                    {expiry.expired && <Tag color="red">{t('invitations.expired')}</Tag>}
                   </Space>
                 );
               },
