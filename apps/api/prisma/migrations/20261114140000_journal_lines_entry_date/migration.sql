@@ -28,6 +28,10 @@ CREATE INDEX `journal_lines_party_seek_idx` ON `journal_lines`(`tenant_id`, `par
 -- 3. S1: stock adjustment (and stock count) entries were posted without a
 --    branch. Give them their warehouse's branch, entry and lines, where the
 --    branch is still NULL (ADR-003: an existing branch is never changed).
+--    These rows are POSTED: this is a one-time exception to "no update on
+--    POSTED", approved by the owner on 2026-11-14 and recorded in ADR-003 §17.
+--    Only a missing branch_id is filled; amounts, dates, accounts and statuses
+--    are untouched. Not a precedent.
 UPDATE `journal_entries` e
   JOIN `stock_adjustments` a ON a.`tenant_id` = e.`tenant_id` AND a.`id` = e.`source_id`
   JOIN `warehouses` w ON w.`tenant_id` = a.`tenant_id` AND w.`id` = a.`warehouse_id`
