@@ -6,118 +6,5477 @@
  * OpenAPI spec version: 0.1.0
  */
 import { apiFetch } from '../runtime';
-export interface RegisterDto { [key: string]: unknown }
+export type HealthChecksDtoWrite = typeof HealthChecksDtoWrite[keyof typeof HealthChecksDtoWrite];
 
-export interface LoginDto { [key: string]: unknown }
 
-export interface ChangePasswordDto { [key: string]: unknown }
+export const HealthChecksDtoWrite = {
+  ok: 'ok',
+} as const;
 
-export interface SwitchTenantDto { [key: string]: unknown }
+/**
+ * 'skipped' when the database host has no temp directory to test.
+ */
+export type HealthChecksDtoTmpdir = typeof HealthChecksDtoTmpdir[keyof typeof HealthChecksDtoTmpdir];
 
-export interface CreateAccountDto { [key: string]: unknown }
 
-export interface UpdateAccountDto { [key: string]: unknown }
+export const HealthChecksDtoTmpdir = {
+  ok: 'ok',
+  skipped: 'skipped',
+} as const;
 
-export interface UpsertMappingDto { [key: string]: unknown }
+export interface HealthChecksDto {
+  write: HealthChecksDtoWrite;
+  /** 'skipped' when the database host has no temp directory to test. */
+  tmpdir: HealthChecksDtoTmpdir;
+}
 
-export interface BulkMappingsDto { [key: string]: unknown }
+export type HealthReportDtoStatus = typeof HealthReportDtoStatus[keyof typeof HealthReportDtoStatus];
 
-export interface CreateFiscalYearDto { [key: string]: unknown }
 
-export interface CreateUnitDto { [key: string]: unknown }
+export const HealthReportDtoStatus = {
+  ok: 'ok',
+} as const;
 
-export interface UpdateLookupDto { [key: string]: unknown }
+export type HealthReportDtoDb = typeof HealthReportDtoDb[keyof typeof HealthReportDtoDb];
 
-export interface CreateTaxCategoryDto { [key: string]: unknown }
 
-export interface UpdateTaxCategoryDto { [key: string]: unknown }
+export const HealthReportDtoDb = {
+  up: 'up',
+} as const;
 
-export interface UpdateCompanyDto { [key: string]: unknown }
+export interface HealthReportDto {
+  status: HealthReportDtoStatus;
+  db: HealthReportDtoDb;
+  timestamp: string;
+  checks: HealthChecksDto;
+}
 
-export interface InviteUserDto { [key: string]: unknown }
+export type HealthLiveDtoStatus = typeof HealthLiveDtoStatus[keyof typeof HealthLiveDtoStatus];
 
-export interface UpdateMembershipDto { [key: string]: unknown }
 
-export interface AcceptInvitationDto { [key: string]: unknown }
+export const HealthLiveDtoStatus = {
+  ok: 'ok',
+} as const;
 
-export interface CreateBranchDto { [key: string]: unknown }
+export interface HealthLiveDto {
+  status: HealthLiveDtoStatus;
+  timestamp: string;
+}
 
-export interface UpdateBranchDto { [key: string]: unknown }
+export interface RegisterDto {
+  /**
+     * @minLength 2
+     * @maxLength 191
+     */
+  tenantName: string;
+  /**
+     * @minLength 2
+     * @maxLength 191
+     */
+  ownerName: string;
+  email: string;
+  /**
+     * @minLength 8
+     * @maxLength 128
+     */
+  password: string;
+  /** @maxLength 191 */
+  companyNameAr?: string;
+  /** @maxLength 10 */
+  locale?: string;
+}
 
-export interface CreateJournalEntryDto { [key: string]: unknown }
+export interface AuthAccessTokenDto {
+  accessToken: string;
+}
 
-export interface ReverseJournalEntryDto { [key: string]: unknown }
+export interface LoginDto {
+  email: string;
+  password: string;
+  /** @pattern ^\d{1,19}$ */
+  tenantId?: string;
+}
 
-export interface CreateOpeningEntryDto { [key: string]: unknown }
+export type TenantStatus = typeof TenantStatus[keyof typeof TenantStatus];
 
-export interface CreatePartyDto { [key: string]: unknown }
 
-export interface UpdatePartyDto { [key: string]: unknown }
+export const TenantStatus = {
+  TRIAL: 'TRIAL',
+  ACTIVE: 'ACTIVE',
+  PAST_DUE: 'PAST_DUE',
+  SUSPENDED: 'SUSPENDED',
+  CANCELLED: 'CANCELLED',
+} as const;
 
-export interface CreateItemGroupDto { [key: string]: unknown }
+export interface AuthLoginTenantDto {
+  tenantId: string;
+  name: string;
+  status: TenantStatus;
+}
 
-export interface UpdateItemGroupDto { [key: string]: unknown }
+export interface AuthLoginResponseDto {
+  accessToken: string;
+  tenants: AuthLoginTenantDto[];
+  /** @minimum 0 */
+  pendingInvitations: number;
+}
 
-export interface CreateItemDto { [key: string]: unknown }
+export interface AuthRefreshUserDto {
+  id: string;
+  email: string;
+}
 
-export interface UpdateItemDto { [key: string]: unknown }
+export interface AuthRefreshResponseDto {
+  accessToken: string;
+  user: AuthRefreshUserDto;
+}
 
-export interface SetItemUnitsDto { [key: string]: unknown }
+export interface ChangePasswordDto {
+  /** @maxLength 128 */
+  currentPassword: string;
+  /**
+     * @minLength 8
+     * @maxLength 128
+     */
+  newPassword: string;
+}
 
-export interface BarcodeDto { [key: string]: unknown }
+export interface MeUserDto {
+  id: string;
+  email: string;
+  fullName: string;
+  /** UI language; a free code, "ar" by default. */
+  locale: string;
+  isPlatformAdmin: boolean;
+  mustChangePassword: boolean;
+}
 
-export interface CreateWarehouseDto { [key: string]: unknown }
+export interface MeTenantListItemDto {
+  tenantId: string;
+  tenantName: string;
+  status: TenantStatus;
+  roleCode: string;
+  roleNameAr: string;
+  /** @nullable */
+  roleNameEn: string | null;
+  isCurrent: boolean;
+}
 
-export interface UpdateWarehouseDto { [key: string]: unknown }
+export interface MePlanRefDto {
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
 
-export interface CreateStockAdjustmentDto { [key: string]: unknown }
+export interface MeCurrentTenantDto {
+  tenantId: string;
+  name: string;
+  status: TenantStatus;
+  /** @nullable */
+  plan: MePlanRefDto | null;
+}
 
-export interface ReverseStockDocumentDto { [key: string]: unknown }
+export interface MeBranchDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
 
-export interface CreateStockTransferDto { [key: string]: unknown }
+export interface MeCurrentMembershipDto {
+  membershipId: string;
+  roleCode: string;
+  /** Permission codes of the role in this tenant, sorted. */
+  permissions: string[];
+  /** @nullable */
+  defaultBranchId: string | null;
+  branches: MeBranchDto[];
+  /** True when no branch is assigned: company-wide access. */
+  allBranches: boolean;
+}
 
-export interface CreateStockCountDto { [key: string]: unknown }
+export interface MeResponseDto {
+  user: MeUserDto;
+  /** @minimum 0 */
+  pendingInvitations: number;
+  tenants: MeTenantListItemDto[];
+  /** @nullable */
+  currentTenant: MeCurrentTenantDto | null;
+  /** @nullable */
+  currentMembership: MeCurrentMembershipDto | null;
+}
 
-export interface UpdateCountLineDto { [key: string]: unknown }
+export interface MyTenantDto {
+  tenantId: string;
+  name: string;
+  status: TenantStatus;
+  roleCode: string;
+}
 
-export interface CreateSalesInvoiceDto { [key: string]: unknown }
+export interface SwitchTenantDto {
+  /** @pattern ^\d{1,19}$ */
+  tenantId: string;
+}
 
-export interface CreateSalesReturnDto { [key: string]: unknown }
+export type AccountType = typeof AccountType[keyof typeof AccountType];
 
-export interface CreatePurchaseInvoiceDto { [key: string]: unknown }
 
-export interface CreatePurchaseReturnDto { [key: string]: unknown }
+export const AccountType = {
+  ASSET: 'ASSET',
+  LIABILITY: 'LIABILITY',
+  EQUITY: 'EQUITY',
+  REVENUE: 'REVENUE',
+  EXPENSE: 'EXPENSE',
+} as const;
 
-export interface CreateGoodsNoteDto { [key: string]: unknown }
+export type NormalBalance = typeof NormalBalance[keyof typeof NormalBalance];
 
-export interface CreateCashBoxDto { [key: string]: unknown }
 
-export interface CreateBankAccountDto { [key: string]: unknown }
+export const NormalBalance = {
+  DEBIT: 'DEBIT',
+  CREDIT: 'CREDIT',
+} as const;
 
-export interface CreateReceiptDto { [key: string]: unknown }
+export type ControlType = typeof ControlType[keyof typeof ControlType];
 
-export interface CreatePaymentDto { [key: string]: unknown }
 
-export interface ReverseVoucherDto { [key: string]: unknown }
+export const ControlType = {
+  CUSTOMERS: 'CUSTOMERS',
+  SUPPLIERS: 'SUPPLIERS',
+  CASH: 'CASH',
+  BANK: 'BANK',
+} as const;
 
-export interface AllocateVoucherDto { [key: string]: unknown }
+export interface AccountDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  parentId: string | null;
+  level: number;
+  accountType: AccountType;
+  normalBalance: NormalBalance;
+  isPostable: boolean;
+  isControl: boolean;
+  controlType: ControlType | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+}
 
-export interface CreateCashTransferDto { [key: string]: unknown }
+export type CreateAccountDtoAccountType = typeof CreateAccountDtoAccountType[keyof typeof CreateAccountDtoAccountType];
 
-export interface UpdateEInvoiceSettingsDto { [key: string]: unknown }
 
-export interface UpdateTenantStatusDto { [key: string]: unknown }
+export const CreateAccountDtoAccountType = {
+  ASSET: 'ASSET',
+  LIABILITY: 'LIABILITY',
+  EQUITY: 'EQUITY',
+  REVENUE: 'REVENUE',
+  EXPENSE: 'EXPENSE',
+} as const;
 
-export interface ExtendTrialDto { [key: string]: unknown }
+export type CreateAccountDtoNormalBalance = typeof CreateAccountDtoNormalBalance[keyof typeof CreateAccountDtoNormalBalance];
 
-export interface CreateSubscriptionDto { [key: string]: unknown }
 
-export interface UpdatePlanDto { [key: string]: unknown }
+export const CreateAccountDtoNormalBalance = {
+  DEBIT: 'DEBIT',
+  CREDIT: 'CREDIT',
+} as const;
 
-export interface ClientErrorDto { [key: string]: unknown }
+/**
+ * @nullable
+ */
+export type CreateAccountDtoControlType = typeof CreateAccountDtoControlType[keyof typeof CreateAccountDtoControlType] | null;
+
+
+export const CreateAccountDtoControlType = {
+  CUSTOMERS: 'CUSTOMERS',
+  SUPPLIERS: 'SUPPLIERS',
+  CASH: 'CASH',
+  BANK: 'BANK',
+} as const;
+
+export interface CreateAccountDto {
+  /**
+     * Optional when parentId is set — the server auto-generates `parent-NN`.
+     * @minLength 1
+     * @maxLength 50
+     */
+  code?: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  parentId?: string;
+  accountType: CreateAccountDtoAccountType;
+  normalBalance?: CreateAccountDtoNormalBalance;
+  isPostable?: boolean;
+  isControl?: boolean;
+  /** @nullable */
+  controlType?: CreateAccountDtoControlType;
+}
+
+export interface UpdateAccountDto {
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr?: string;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
+  isPostable?: boolean;
+  isActive?: boolean;
+}
+
+export interface AccountMappingAccountRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export type AccountMappingSlotDtoMappingKey = typeof AccountMappingSlotDtoMappingKey[keyof typeof AccountMappingSlotDtoMappingKey];
+
+
+export const AccountMappingSlotDtoMappingKey = {
+  SALES: 'SALES',
+  SALES_RETURNS: 'SALES_RETURNS',
+  SALES_DISCOUNTS: 'SALES_DISCOUNTS',
+  INVENTORY: 'INVENTORY',
+  COGS: 'COGS',
+  INVENTORY_ADJUSTMENT: 'INVENTORY_ADJUSTMENT',
+  OUTPUT_TAX: 'OUTPUT_TAX',
+  INPUT_TAX: 'INPUT_TAX',
+  CUSTOMERS_CONTROL: 'CUSTOMERS_CONTROL',
+  SUPPLIERS_CONTROL: 'SUPPLIERS_CONTROL',
+  ROUNDING: 'ROUNDING',
+  OPENING_BALANCE_EQUITY: 'OPENING_BALANCE_EQUITY',
+  RETAINED_EARNINGS: 'RETAINED_EARNINGS',
+  PURCHASES: 'PURCHASES',
+  GOODS_RECEIVED_NOT_INVOICED: 'GOODS_RECEIVED_NOT_INVOICED',
+} as const;
+
+export interface AccountMappingSlotDto {
+  mappingKey: AccountMappingSlotDtoMappingKey;
+  /** @nullable */
+  accountId: string | null;
+  /** @nullable */
+  account: AccountMappingAccountRefDto | null;
+}
+
+export interface UpsertMappingDto {
+  mappingKey: string;
+  accountId: string;
+}
+
+export interface AccountMappingDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  mappingKey: string;
+  accountId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BulkMappingsDto {
+  /** @maxItems 100 */
+  mappings: UpsertMappingDto[];
+}
+
+export interface ChartProvisionResultDto {
+  /** Newly created accounts only. */
+  accounts: number;
+  /** Mappings written, new or already existing. */
+  mappings: number;
+  /** Units written, new or already existing. */
+  units: number;
+  /** Tax categories written, new or already existing. */
+  taxCategories: number;
+  /** Payment methods written, new or already existing. */
+  paymentMethods: number;
+}
+
+export type FiscalStatus = typeof FiscalStatus[keyof typeof FiscalStatus];
+
+
+export const FiscalStatus = {
+  OPEN: 'OPEN',
+  CLOSED: 'CLOSED',
+} as const;
+
+export interface FiscalYearCountDto {
+  periods: number;
+}
+
+export interface FiscalYearListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  startDate: string;
+  endDate: string;
+  status: FiscalStatus;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  _count: FiscalYearCountDto;
+}
+
+export interface CreateFiscalYearDto {
+  /**
+     * @minLength 1
+     * @maxLength 20
+     */
+  code: string;
+  startDate: string;
+  endDate: string;
+}
+
+export interface FiscalPeriodDto {
+  id: string;
+  tenantId: string;
+  fiscalYearId: string;
+  periodNo: number;
+  startDate: string;
+  endDate: string;
+  status: FiscalStatus;
+  /** @nullable */
+  closedAt: string | null;
+  /** @nullable */
+  closedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FiscalYearDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  startDate: string;
+  endDate: string;
+  status: FiscalStatus;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  periods: FiscalPeriodDto[];
+  _count: FiscalYearCountDto;
+}
+
+export interface DocumentSequenceDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  documentType: string;
+  fiscalYearId: string;
+  prefix: string;
+  nextNumber: number;
+  padding: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UnitDto {
+  id: string;
+  tenantId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  unEceCode: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateUnitDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  /**
+     * UN/ECE Rec.20 code used by JoFotara/ZATCA e-invoicing (e.g. PCE, KGM, LTR).
+     * @maxLength 10
+     */
+  unEceCode?: string;
+}
+
+export interface UpdateLookupDto {
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr?: string;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
+  /**
+     * @maxLength 10
+     * @nullable
+     */
+  unEceCode?: string | null;
+  isActive?: boolean;
+}
+
+export interface TaxCategoryDto {
+  id: string;
+  tenantId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  rate: string;
+  /** @nullable */
+  einvoiceCode: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * JoFotara tax category (0005 §6): S taxed, Z exempt, O zero-rated.
+ */
+export type CreateTaxCategoryDtoEinvoiceCode = typeof CreateTaxCategoryDtoEinvoiceCode[keyof typeof CreateTaxCategoryDtoEinvoiceCode];
+
+
+export const CreateTaxCategoryDtoEinvoiceCode = {
+  S: 'S',
+  Z: 'Z',
+  O: 'O',
+} as const;
+
+export interface CreateTaxCategoryDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  /**
+     * UN/ECE Rec.20 code used by JoFotara/ZATCA e-invoicing (e.g. PCE, KGM, LTR).
+     * @maxLength 10
+     */
+  unEceCode?: string;
+  rate: string;
+  /** JoFotara tax category (0005 §6): S taxed, Z exempt, O zero-rated. */
+  einvoiceCode?: CreateTaxCategoryDtoEinvoiceCode;
+  isDefault?: boolean;
+}
+
+/**
+ * @nullable
+ */
+export type UpdateTaxCategoryDtoEinvoiceCode = typeof UpdateTaxCategoryDtoEinvoiceCode[keyof typeof UpdateTaxCategoryDtoEinvoiceCode] | null;
+
+
+export const UpdateTaxCategoryDtoEinvoiceCode = {
+  S: 'S',
+  Z: 'Z',
+  O: 'O',
+} as const;
+
+export interface UpdateTaxCategoryDto {
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr?: string;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
+  /**
+     * @maxLength 10
+     * @nullable
+     */
+  unEceCode?: string | null;
+  isActive?: boolean;
+  rate?: string;
+  /** @nullable */
+  einvoiceCode?: UpdateTaxCategoryDtoEinvoiceCode;
+  isDefault?: boolean;
+}
+
+export interface PaymentMethodDto {
+  id: string;
+  tenantId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompanyLogoDto {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  /** @nullable */
+  sizeBytes: string | null;
+}
+
+export interface CompanyDto {
+  id: string;
+  legalNameAr: string;
+  /** @nullable */
+  legalNameEn: string | null;
+  /** @nullable */
+  taxNumber: string | null;
+  /** @nullable */
+  commercialRegistration: string | null;
+  /** @nullable */
+  address: string | null;
+  /** @nullable */
+  phone: string | null;
+  pricesIncludeTax: boolean;
+  /**
+     * Set when the setup wizard is finished.
+     * @nullable
+     */
+  onboardingCompletedAt: string | null;
+  /** @nullable */
+  logo: CompanyLogoDto | null;
+}
+
+export interface UpdateCompanyDto {
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  legalNameAr?: string;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  legalNameEn?: string | null;
+  /**
+     * @nullable
+     * @pattern ^\d{1,50}$
+     */
+  taxNumber?: string | null;
+  /**
+     * @maxLength 100
+     * @nullable
+     */
+  commercialRegistration?: string | null;
+  /**
+     * @maxLength 512
+     * @nullable
+     */
+  address?: string | null;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  phone?: string | null;
+  /** Prices typed on documents include the tax (§8.4). */
+  pricesIncludeTax?: boolean;
+}
+
+export interface CompanyLogoBase64Dto {
+  mimeType: string;
+  /** Base64 of the image bytes. */
+  base64: string;
+}
+
+export interface UserRolePermissionDto {
+  permissionCode: string;
+}
+
+export interface UserRoleDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  description: string | null;
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+  permissions: UserRolePermissionDto[];
+}
+
+export type MembershipStatus = typeof MembershipStatus[keyof typeof MembershipStatus];
+
+
+export const MembershipStatus = {
+  INVITED: 'INVITED',
+  ACTIVE: 'ACTIVE',
+  SUSPENDED: 'SUSPENDED',
+} as const;
+
+export interface UserMembershipUserDto {
+  id: string;
+  email: string;
+  /**
+     * Null while the membership is INVITED.
+     * @nullable
+     */
+  fullName: string | null;
+  isActive: boolean;
+}
+
+export interface UserMembershipRoleDto {
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface UserMembershipBranchDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface UserMembershipDto {
+  membershipId: string;
+  status: MembershipStatus;
+  createdAt: string;
+  updatedAt: string;
+  user: UserMembershipUserDto;
+  role: UserMembershipRoleDto;
+  /** @nullable */
+  defaultBranch: UserMembershipBranchDto | null;
+  branches: UserMembershipBranchDto[];
+}
+
+export interface InviteUserDto {
+  email: string;
+  /** @maxLength 191 */
+  fullName?: string;
+  /** @maxLength 50 */
+  roleCode: string;
+  defaultBranchId?: string;
+  /** @maxItems 100 */
+  branchIds?: string[];
+}
+
+export interface UserInviteResultDto {
+  membershipId: string;
+  status: MembershipStatus;
+  createdAt: string;
+  updatedAt: string;
+  user: UserMembershipUserDto;
+  role: UserMembershipRoleDto;
+  /** @nullable */
+  defaultBranch: UserMembershipBranchDto | null;
+  branches: UserMembershipBranchDto[];
+  /** Only for a brand-new account. */
+  temporaryPassword?: string;
+  /** Only for an existing account (status INVITED). */
+  acceptanceCode?: string;
+  acceptanceCodeExpiresAt?: string;
+}
+
+/**
+ * INVITED is never set by an admin: only the invitee accepts (or the inviter cancels).
+ */
+export type UpdateMembershipDtoStatus = typeof UpdateMembershipDtoStatus[keyof typeof UpdateMembershipDtoStatus];
+
+
+export const UpdateMembershipDtoStatus = {
+  ACTIVE: 'ACTIVE',
+  SUSPENDED: 'SUSPENDED',
+} as const;
+
+export interface UpdateMembershipDto {
+  /** @maxLength 50 */
+  roleCode?: string;
+  /** INVITED is never set by an admin: only the invitee accepts (or the inviter cancels). */
+  status?: UpdateMembershipDtoStatus;
+  /**
+     * null clears the default branch; a string must be a branch id.
+     * @nullable
+     */
+  defaultBranchId?: string | null;
+  /** @maxItems 100 */
+  branchIds?: string[];
+}
+
+export interface UserInvitationCodeDto {
+  membershipId: string;
+  acceptanceCode: string;
+  acceptanceCodeExpiresAt: string;
+}
+
+export interface UserTemporaryPasswordDto {
+  temporaryPassword: string;
+}
+
+export interface UserInvitationCancelledDto {
+  membershipId: string;
+  cancelled: true;
+}
+
+export interface MyInvitationRoleDto {
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface MyInvitationInviterDto {
+  fullName: string;
+  email: string;
+}
+
+export interface MyInvitationDto {
+  membershipId: string;
+  tenantId: string;
+  tenantName: string;
+  role: MyInvitationRoleDto;
+  /** @nullable */
+  invitedBy: MyInvitationInviterDto | null;
+  invitedAt: string;
+  /**
+     * Null when no code is pending.
+     * @nullable
+     */
+  codeExpiresAt: string | null;
+}
+
+export interface AcceptInvitationDto {
+  /** @maxLength 32 */
+  code?: string;
+}
+
+export interface MyInvitationAcceptedDto {
+  membershipId: string;
+  tenantId: string;
+  tenantName: string;
+}
+
+export interface BranchDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  address: string | null;
+  isActive: boolean;
+  companyId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateBranchDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  /** @maxLength 512 */
+  address?: string;
+}
+
+export interface UpdateBranchDto {
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr?: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  /** @maxLength 512 */
+  address?: string;
+  isActive?: boolean;
+}
+
+export type JournalPostingKind = typeof JournalPostingKind[keyof typeof JournalPostingKind];
+
+
+export const JournalPostingKind = {
+  POST: 'POST',
+  REVERSAL: 'REVERSAL',
+} as const;
+
+export type JournalVoucherType = typeof JournalVoucherType[keyof typeof JournalVoucherType];
+
+
+export const JournalVoucherType = {
+  JOURNAL: 'JOURNAL',
+  RECEIPT_VOUCHER: 'RECEIPT_VOUCHER',
+  PAYMENT_VOUCHER: 'PAYMENT_VOUCHER',
+} as const;
+
+export type JournalEntryStatus = typeof JournalEntryStatus[keyof typeof JournalEntryStatus];
+
+
+export const JournalEntryStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
+
+export interface JournalEntryCountDto {
+  lines: number;
+}
+
+export interface JournalEntryReversalRefDto {
+  id: string;
+  /** @nullable */
+  entryNo: string | null;
+}
+
+export interface JournalEntryListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  /** @nullable */
+  entryNo: string | null;
+  entryDate: string;
+  /** @nullable */
+  fiscalPeriodId: string | null;
+  sourceType: string;
+  /** @nullable */
+  sourceId: string | null;
+  postingKind: JournalPostingKind;
+  voucherType: JournalVoucherType;
+  status: JournalEntryStatus;
+  /** @nullable */
+  description: string | null;
+  totalDebit: string;
+  totalCredit: string;
+  /** @nullable */
+  reversalOfId: string | null;
+  /** Opening balances (§8.6, ADR-008): the opening entry and the entries of OPENING stock adjustments, and their reversals. Reports show these lines as the opening balance of a period, not as movements. */
+  isOpening: boolean;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count: JournalEntryCountDto;
+  reversals: JournalEntryReversalRefDto[];
+}
+
+export interface JournalEntryListItemDtoPage {
+  items: JournalEntryListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+/**
+ * @nullable
+ */
+export type JournalLineDtoPartyType = typeof JournalLineDtoPartyType[keyof typeof JournalLineDtoPartyType] | null;
+
+
+export const JournalLineDtoPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+} as const;
+
+export interface JournalLineDto {
+  accountId: string;
+  /** Debit amount (string decimal, e.g. "10.500"). Exactly one of debit/credit > 0. */
+  debit?: string;
+  credit?: string;
+  /** @nullable */
+  partyType?: JournalLineDtoPartyType;
+  partyId?: string;
+  /** @maxLength 500 */
+  description?: string;
+}
+
+/**
+ * JOURNAL = plain journal; RECEIPT/PAYMENT = cash-bank vouchers (سند قبض/صرف).
+ */
+export type CreateJournalEntryDtoVoucherType = typeof CreateJournalEntryDtoVoucherType[keyof typeof CreateJournalEntryDtoVoucherType];
+
+
+export const CreateJournalEntryDtoVoucherType = {
+  JOURNAL: 'JOURNAL',
+  RECEIPT_VOUCHER: 'RECEIPT_VOUCHER',
+  PAYMENT_VOUCHER: 'PAYMENT_VOUCHER',
+} as const;
+
+export interface CreateJournalEntryDto {
+  entryDate: string;
+  /** JOURNAL = plain journal; RECEIPT/PAYMENT = cash-bank vouchers (سند قبض/صرف). */
+  voucherType?: CreateJournalEntryDtoVoucherType;
+  /** @maxLength 500 */
+  description?: string;
+  /**
+     * @minItems 2
+     * @maxItems 200
+     */
+  lines: JournalLineDto[];
+}
+
+export type JournalPartyType = typeof JournalPartyType[keyof typeof JournalPartyType];
+
+
+export const JournalPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+} as const;
+
+export interface JournalAccountRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface JournalEntryLineDto {
+  id: string;
+  tenantId: string;
+  journalEntryId: string;
+  lineNo: number;
+  accountId: string;
+  debit: string;
+  credit: string;
+  partyType: JournalPartyType | null;
+  /** @nullable */
+  partyId: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  branchId: string | null;
+  /** Copy of the entry's date (LEDGER-19): an entry's date never changes once its lines exist, so statements can seek on the line indexes below. Written with the lines (PostingService, draft creation in JournalService). */
+  entryDate: string;
+  createdAt: string;
+  account: JournalAccountRefDto;
+}
+
+export interface JournalEntryReversalOfDto {
+  id: string;
+  /** @nullable */
+  entryNo: string | null;
+  entryDate: string;
+}
+
+export interface JournalEntryReversalDto {
+  id: string;
+  /** @nullable */
+  entryNo: string | null;
+  entryDate: string;
+  status: JournalEntryStatus;
+}
+
+export interface JournalEntryDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  /** @nullable */
+  entryNo: string | null;
+  entryDate: string;
+  /** @nullable */
+  fiscalPeriodId: string | null;
+  sourceType: string;
+  /** @nullable */
+  sourceId: string | null;
+  postingKind: JournalPostingKind;
+  voucherType: JournalVoucherType;
+  status: JournalEntryStatus;
+  /** @nullable */
+  description: string | null;
+  totalDebit: string;
+  totalCredit: string;
+  /** @nullable */
+  reversalOfId: string | null;
+  /** Opening balances (§8.6, ADR-008): the opening entry and the entries of OPENING stock adjustments, and their reversals. Reports show these lines as the opening balance of a period, not as movements. */
+  isOpening: boolean;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Ordered by lineNo. */
+  lines: JournalEntryLineDto[];
+  /** @nullable */
+  reversalOf: JournalEntryReversalOfDto | null;
+  reversals: JournalEntryReversalDto[];
+}
+
+export interface DeletedDto {
+  deleted: true;
+}
+
+export interface ReverseJournalEntryDto {
+  reversalDate: string;
+  /** @maxLength 500 */
+  description?: string;
+}
+
+/**
+ * @nullable
+ */
+export type OpeningLineDtoPartyType = typeof OpeningLineDtoPartyType[keyof typeof OpeningLineDtoPartyType] | null;
+
+
+export const OpeningLineDtoPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+} as const;
+
+export interface OpeningLineDto {
+  accountId: string;
+  debit?: string;
+  credit?: string;
+  /** @nullable */
+  partyType?: OpeningLineDtoPartyType;
+  partyId?: string;
+  /** @maxLength 500 */
+  description?: string;
+}
+
+export interface CreateOpeningEntryDto {
+  entryDate: string;
+  /** @maxLength 500 */
+  description?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines: OpeningLineDto[];
+}
+
+/**
+ * Null on an ordinary account.
+ * @nullable
+ */
+export type TrialBalanceRowDtoKind = typeof TrialBalanceRowDtoKind[keyof typeof TrialBalanceRowDtoKind] | null;
+
+
+export const TrialBalanceRowDtoKind = {
+  PRIOR_YEARS: 'PRIOR_YEARS',
+} as const;
+
+export interface TrialBalanceRowDto {
+  /** Empty string on the PRIOR_YEARS row. */
+  accountId: string;
+  /**
+     * Null on an ordinary account.
+     * @nullable
+     */
+  kind: TrialBalanceRowDtoKind;
+  /** Empty string on the PRIOR_YEARS row. */
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  accountType: AccountType;
+  normalBalance: NormalBalance;
+  totalDebit: string;
+  totalCredit: string;
+  /** May be negative. */
+  balance: string;
+  openingDebit: string;
+  openingCredit: string;
+  periodDebit: string;
+  periodCredit: string;
+  closingDebit: string;
+  closingCredit: string;
+}
+
+export interface TrialBalanceTotalsDto {
+  debit: string;
+  credit: string;
+  openingDebit: string;
+  openingCredit: string;
+  periodDebit: string;
+  periodCredit: string;
+  closingDebit: string;
+  closingCredit: string;
+}
+
+export interface TrialBalanceDto {
+  rows: TrialBalanceRowDto[];
+  /**
+     * The first day of the nominal period, if any.
+     * @nullable
+     */
+  nominalFrom: string | null;
+  totals: TrialBalanceTotalsDto;
+  balanced: boolean;
+}
+
+export interface GeneralLedgerItemDto {
+  lineId: string;
+  entryId: string;
+  /** @nullable */
+  entryNo: string | null;
+  entryDate: string;
+  /**
+     * Line description, or the entry description when the line has none.
+     * @nullable
+     */
+  description: string | null;
+  sourceType: string;
+  postingKind: JournalPostingKind;
+  partyType: JournalPartyType | null;
+  /** @nullable */
+  partyId: string | null;
+  debit: string;
+  credit: string;
+  /** Running balance after this line. */
+  balance: string;
+}
+
+export interface JournalStatementSummaryDto {
+  openingBalance: string;
+  openingDebit: string;
+  openingCredit: string;
+  totalDebit: string;
+  totalCredit: string;
+  closingBalance: string;
+  closingDebit: string;
+  closingCredit: string;
+}
+
+export interface GeneralLedgerAccountDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  normalBalance: NormalBalance;
+}
+
+export interface GeneralLedgerPageDto {
+  items: GeneralLedgerItemDto[];
+  /**
+     * Opaque cursor of the next page; null on the last page.
+     * @nullable
+     */
+  nextCursor: string | null;
+  /**
+     * Null after the first page.
+     * @nullable
+     */
+  summary: JournalStatementSummaryDto | null;
+  account: GeneralLedgerAccountDto;
+}
+
+export interface PartyStatementItemDto {
+  lineId: string;
+  entryId: string;
+  /** @nullable */
+  entryNo: string | null;
+  entryDate: string;
+  accountCode: string;
+  accountName: string;
+  /** @nullable */
+  accountNameEn: string | null;
+  sourceType: string;
+  postingKind: JournalPostingKind;
+  /** @nullable */
+  description: string | null;
+  debit: string;
+  credit: string;
+  /** Running balance after this line. */
+  balance: string;
+}
+
+export interface PartyStatementPageDto {
+  items: PartyStatementItemDto[];
+  /**
+     * Opaque cursor of the next page; null on the last page.
+     * @nullable
+     */
+  nextCursor: string | null;
+  /**
+     * Null after the first page.
+     * @nullable
+     */
+  summary: JournalStatementSummaryDto | null;
+  partyType: JournalPartyType;
+  partyId: string;
+}
+
+export type PartyType = typeof PartyType[keyof typeof PartyType];
+
+
+export const PartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+  BOTH: 'BOTH',
+} as const;
+
+/**
+ * JoFotara buyer scheme for national_id (0005 §5): NIN Jordanian, PN non-Jordanian.
+ */
+export type NationalIdKind = typeof NationalIdKind[keyof typeof NationalIdKind];
+
+
+export const NationalIdKind = {
+  NIN: 'NIN',
+  PN: 'PN',
+} as const;
+
+export interface PartyDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  partyType: PartyType;
+  /** @nullable */
+  taxNumber: string | null;
+  /** @nullable */
+  nationalId: string | null;
+  /** JoFotara buyer scheme for national_id (0005 §5): NIN Jordanian, PN non-Jordanian. */
+  nationalIdKind: NationalIdKind;
+  /** @nullable */
+  phone: string | null;
+  /** @nullable */
+  address: string | null;
+  /** @nullable */
+  city: string | null;
+  /** @nullable */
+  creditLimit: string | null;
+  /** @nullable */
+  paymentTermsDays: number | null;
+  isCashCustomer: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+}
+
+export interface PartyDtoPage {
+  items: PartyDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export type CreatePartyDtoPartyType = typeof CreatePartyDtoPartyType[keyof typeof CreatePartyDtoPartyType];
+
+
+export const CreatePartyDtoPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+  BOTH: 'BOTH',
+} as const;
+
+/**
+ * JoFotara buyer scheme for nationalId (0005 §5): NIN Jordanian, PN non-Jordanian.
+ */
+export type CreatePartyDtoNationalIdKind = typeof CreatePartyDtoNationalIdKind[keyof typeof CreatePartyDtoNationalIdKind];
+
+
+export const CreatePartyDtoNationalIdKind = {
+  NIN: 'NIN',
+  PN: 'PN',
+} as const;
+
+export interface CreatePartyDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  partyType: CreatePartyDtoPartyType;
+  /** @maxLength 50 */
+  taxNumber?: string;
+  /** @maxLength 50 */
+  nationalId?: string;
+  /** JoFotara buyer scheme for nationalId (0005 §5): NIN Jordanian, PN non-Jordanian. */
+  nationalIdKind?: CreatePartyDtoNationalIdKind;
+  /** @maxLength 50 */
+  phone?: string;
+  /** @maxLength 512 */
+  address?: string;
+  /** @maxLength 100 */
+  city?: string;
+  creditLimit?: string;
+  /**
+     * @minimum 0
+     * @maximum 3650
+     * @nullable
+     */
+  paymentTermsDays?: number | null;
+  isCashCustomer?: boolean;
+  isActive?: boolean;
+}
+
+export type UpdatePartyDtoPartyType = typeof UpdatePartyDtoPartyType[keyof typeof UpdatePartyDtoPartyType];
+
+
+export const UpdatePartyDtoPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+  BOTH: 'BOTH',
+} as const;
+
+/**
+ * JoFotara buyer scheme for nationalId (0005 §5): NIN Jordanian, PN non-Jordanian.
+ */
+export type UpdatePartyDtoNationalIdKind = typeof UpdatePartyDtoNationalIdKind[keyof typeof UpdatePartyDtoNationalIdKind];
+
+
+export const UpdatePartyDtoNationalIdKind = {
+  NIN: 'NIN',
+  PN: 'PN',
+} as const;
+
+export interface UpdatePartyDto {
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr?: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  partyType?: UpdatePartyDtoPartyType;
+  /** @maxLength 50 */
+  taxNumber?: string;
+  /** @maxLength 50 */
+  nationalId?: string;
+  /** JoFotara buyer scheme for nationalId (0005 §5): NIN Jordanian, PN non-Jordanian. */
+  nationalIdKind?: UpdatePartyDtoNationalIdKind;
+  /** @maxLength 50 */
+  phone?: string;
+  /** @maxLength 512 */
+  address?: string;
+  /** @maxLength 100 */
+  city?: string;
+  creditLimit?: string;
+  /**
+     * @minimum 0
+     * @maximum 3650
+     * @nullable
+     */
+  paymentTermsDays?: number | null;
+  isCashCustomer?: boolean;
+  isActive?: boolean;
+}
+
+export interface DeactivatedDto {
+  deactivated: true;
+}
+
+export interface ItemGroupDto {
+  id: string;
+  tenantId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  parentId: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateItemGroupDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  parentId?: string;
+}
+
+export interface UpdateItemGroupDto {
+  /** @maxLength 191 */
+  nameAr?: string;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
+  isActive?: boolean;
+}
+
+export type ItemKind = typeof ItemKind[keyof typeof ItemKind];
+
+
+export const ItemKind = {
+  STOCK: 'STOCK',
+  SERVICE: 'SERVICE',
+} as const;
+
+export interface CatalogRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface WarehouseRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface ItemCountDto {
+  barcodes: number;
+  units: number;
+}
+
+export interface ItemListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  itemGroupId: string | null;
+  itemKind: ItemKind;
+  baseUnitId: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  /** @nullable */
+  salePrice: string | null;
+  /** @nullable */
+  purchasePrice: string | null;
+  minStock: string;
+  /** @nullable */
+  maxStock: string | null;
+  /** @nullable */
+  defaultWarehouseId: string | null;
+  salePriceIncludesTax: boolean;
+  /** @nullable */
+  imageUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  baseUnit: CatalogRefDto;
+  /** @nullable */
+  itemGroup: CatalogRefDto | null;
+  /** @nullable */
+  taxCategory: CatalogRefDto | null;
+  /** @nullable */
+  defaultWarehouse: WarehouseRefDto | null;
+  _count: ItemCountDto;
+}
+
+export interface ItemListItemDtoPage {
+  items: ItemListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface UnitCodeNameDto {
+  code: string;
+  nameAr: string;
+}
+
+export interface ItemUnitLookupDto {
+  id: string;
+  tenantId: string;
+  itemId: string;
+  unitId: string;
+  factorToBase: string;
+  isDefaultSale: boolean;
+  isDefaultPurchase: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  unit: UnitCodeNameDto;
+}
+
+export interface ItemByBarcodeDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  itemGroupId: string | null;
+  itemKind: ItemKind;
+  baseUnitId: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  /** @nullable */
+  salePrice: string | null;
+  /** @nullable */
+  purchasePrice: string | null;
+  minStock: string;
+  /** @nullable */
+  maxStock: string | null;
+  /** @nullable */
+  defaultWarehouseId: string | null;
+  salePriceIncludesTax: boolean;
+  /** @nullable */
+  imageUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  baseUnit: UnitCodeNameDto;
+  units: ItemUnitLookupDto[];
+}
+
+export interface UnitRow {
+  id: string;
+  tenantId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  unEceCode: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ItemGroupRow {
+  id: string;
+  tenantId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  parentId: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaxCategoryRow {
+  id: string;
+  tenantId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  rate: string;
+  /** @nullable */
+  einvoiceCode: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ItemUnitWithUnitDto {
+  id: string;
+  tenantId: string;
+  itemId: string;
+  unitId: string;
+  factorToBase: string;
+  isDefaultSale: boolean;
+  isDefaultPurchase: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  unit: UnitRow;
+}
+
+export interface ItemBarcodeWithItemUnitDto {
+  id: string;
+  tenantId: string;
+  itemId: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  barcode: string;
+  createdAt: string;
+  /** @nullable */
+  itemUnit: ItemUnitWithUnitDto | null;
+}
+
+export interface ItemCostRow {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  itemId: string;
+  totalQty: string;
+  totalValue: string;
+  avgCost: string;
+  /** @nullable */
+  lastMovementDate: string | null;
+  updatedAt: string;
+}
+
+export interface ItemDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  itemGroupId: string | null;
+  itemKind: ItemKind;
+  baseUnitId: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  /** @nullable */
+  salePrice: string | null;
+  /** @nullable */
+  purchasePrice: string | null;
+  minStock: string;
+  /** @nullable */
+  maxStock: string | null;
+  /** @nullable */
+  defaultWarehouseId: string | null;
+  salePriceIncludesTax: boolean;
+  /** @nullable */
+  imageUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  baseUnit: UnitRow;
+  /** @nullable */
+  itemGroup: ItemGroupRow | null;
+  /** @nullable */
+  taxCategory: TaxCategoryRow | null;
+  units: ItemUnitWithUnitDto[];
+  barcodes: ItemBarcodeWithItemUnitDto[];
+  /** Normally zero or one row (per company). */
+  costs: ItemCostRow[];
+  /** @nullable */
+  defaultWarehouse: WarehouseRefDto | null;
+}
+
+export interface ItemUnitInputDto {
+  unitId: string;
+  /**
+     * Units of this unit per ONE base unit (e.g. BOX=12 for PCS base).
+     * @pattern ^[0-9]+(\.[0-9]+)?$
+     */
+  factorToBase: string;
+  isDefaultSale?: boolean;
+  isDefaultPurchase?: boolean;
+}
+
+export type CreateItemDtoItemKind = typeof CreateItemDtoItemKind[keyof typeof CreateItemDtoItemKind];
+
+
+export const CreateItemDtoItemKind = {
+  STOCK: 'STOCK',
+  SERVICE: 'SERVICE',
+} as const;
+
+export interface CreateItemDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  /** @maxLength 500 */
+  description?: string;
+  itemGroupId?: string;
+  itemKind?: CreateItemDtoItemKind;
+  baseUnitId: string;
+  taxCategoryId?: string;
+  /** @pattern ^[0-9]+(\.[0-9]+)?$ */
+  salePrice?: string;
+  /** @pattern ^[0-9]+(\.[0-9]+)?$ */
+  purchasePrice?: string;
+  /** @pattern ^[0-9]+(\.[0-9]+)?$ */
+  minStock?: string;
+  /** @pattern ^[0-9]+(\.[0-9]+)?$ */
+  maxStock?: string;
+  defaultWarehouseId?: string;
+  salePriceIncludesTax?: boolean;
+  /** @maxLength 512 */
+  imageUrl?: string;
+  units?: ItemUnitInputDto[];
+}
+
+export interface UpdateItemDto {
+  /** @maxLength 191 */
+  nameAr?: string;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  description?: string | null;
+  /** @nullable */
+  itemGroupId?: string | null;
+  /** @nullable */
+  taxCategoryId?: string | null;
+  /**
+     * @nullable
+     * @pattern ^[0-9]+(\.[0-9]+)?$
+     */
+  salePrice?: string | null;
+  /**
+     * @nullable
+     * @pattern ^[0-9]+(\.[0-9]+)?$
+     */
+  purchasePrice?: string | null;
+  /** @pattern ^[0-9]+(\.[0-9]+)?$ */
+  minStock?: string;
+  /**
+     * @nullable
+     * @pattern ^[0-9]+(\.[0-9]+)?$
+     */
+  maxStock?: string | null;
+  /** @nullable */
+  defaultWarehouseId?: string | null;
+  salePriceIncludesTax?: boolean;
+  /**
+     * @maxLength 512
+     * @nullable
+     */
+  imageUrl?: string | null;
+  isActive?: boolean;
+}
+
+export interface ItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  itemGroupId: string | null;
+  itemKind: ItemKind;
+  baseUnitId: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  /** @nullable */
+  salePrice: string | null;
+  /** @nullable */
+  purchasePrice: string | null;
+  minStock: string;
+  /** @nullable */
+  maxStock: string | null;
+  /** @nullable */
+  defaultWarehouseId: string | null;
+  salePriceIncludesTax: boolean;
+  /** @nullable */
+  imageUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+}
+
+export interface SetItemUnitsDto {
+  /** @minItems 1 */
+  units: ItemUnitInputDto[];
+}
+
+export interface BarcodeDto {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  barcode: string;
+  itemUnitId?: string;
+}
+
+export interface ItemBarcodeDto {
+  id: string;
+  tenantId: string;
+  itemId: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  barcode: string;
+  createdAt: string;
+}
+
+export interface BranchRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface WarehouseCountDto {
+  balances: number;
+}
+
+export interface WarehouseListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  address: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  /** @nullable */
+  branch: BranchRefDto | null;
+  _count: WarehouseCountDto;
+}
+
+export interface BranchRow {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  address: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+}
+
+export interface WarehouseDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  address: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  /** @nullable */
+  branch: BranchRow | null;
+}
+
+export interface CreateWarehouseDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  branchId?: string;
+  /** @maxLength 512 */
+  address?: string;
+}
+
+export interface WarehouseDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  address: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+}
+
+export interface UpdateWarehouseDto {
+  /** @maxLength 191 */
+  nameAr?: string;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
+  /** @nullable */
+  branchId?: string | null;
+  /**
+     * @maxLength 512
+     * @nullable
+     */
+  address?: string | null;
+  isActive?: boolean;
+}
+
+export type StockAdjustmentType = typeof StockAdjustmentType[keyof typeof StockAdjustmentType];
+
+
+export const StockAdjustmentType = {
+  OPENING: 'OPENING',
+  IN: 'IN',
+  OUT: 'OUT',
+  COUNT_ADJUSTMENT: 'COUNT_ADJUSTMENT',
+} as const;
+
+export type DocumentStatus = typeof DocumentStatus[keyof typeof DocumentStatus];
+
+
+export const DocumentStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
+
+export interface StockDocumentWarehouseRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface StockDocumentLineCountDto {
+  lines: number;
+}
+
+export interface StockAdjustmentListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  warehouseId: string;
+  adjustmentDate: string;
+  adjustmentType: StockAdjustmentType;
+  status: DocumentStatus;
+  /** @nullable */
+  docNo: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  reversalOfId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  warehouse: StockDocumentWarehouseRefDto;
+  _count: StockDocumentLineCountDto;
+}
+
+export interface StockAdjustmentListItemDtoPage {
+  items: StockAdjustmentListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface AdjustmentLineDto {
+  itemId: string;
+  /**
+     * Base-unit qty for IN lines; for OUT lines this is qty issued.
+     * @pattern ^[0-9]+(\.[0-9]+)?$
+     */
+  qty: string;
+  /**
+     * Required for IN/OPENING lines; ignored for OUT.
+     * @pattern ^[0-9]+(\.[0-9]+)?$
+     */
+  unitCost?: string;
+  /** @maxLength 500 */
+  description?: string;
+}
+
+export type CreateStockAdjustmentDtoAdjustmentType = typeof CreateStockAdjustmentDtoAdjustmentType[keyof typeof CreateStockAdjustmentDtoAdjustmentType];
+
+
+export const CreateStockAdjustmentDtoAdjustmentType = {
+  OPENING: 'OPENING',
+  IN: 'IN',
+  OUT: 'OUT',
+  COUNT_ADJUSTMENT: 'COUNT_ADJUSTMENT',
+} as const;
+
+export interface CreateStockAdjustmentDto {
+  adjustmentDate: string;
+  adjustmentType: CreateStockAdjustmentDtoAdjustmentType;
+  warehouseId: string;
+  /** @maxLength 500 */
+  description?: string;
+  /** @minItems 1 */
+  lines: AdjustmentLineDto[];
+}
+
+export interface StockDocumentWarehouseDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  address: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+}
+
+export interface StockDocumentItemBaseUnitRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  baseUnitId: string;
+}
+
+export interface StockAdjustmentLineDto {
+  id: string;
+  tenantId: string;
+  adjustmentId: string;
+  lineNo: number;
+  itemId: string;
+  qtyIn: string;
+  qtyOut: string;
+  /** @nullable */
+  unitCost: string | null;
+  /** @nullable */
+  description: string | null;
+  createdAt: string;
+  item: StockDocumentItemBaseUnitRefDto;
+}
+
+export interface StockAdjustmentJournalEntryRefDto {
+  id: string;
+  /** @nullable */
+  entryNo: string | null;
+}
+
+export interface StockAdjustmentRefDto {
+  id: string;
+  /** @nullable */
+  docNo: string | null;
+}
+
+export interface StockAdjustmentReversalDto {
+  id: string;
+  status: DocumentStatus;
+  /** @nullable */
+  docNo: string | null;
+}
+
+export interface StockAdjustmentDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  warehouseId: string;
+  adjustmentDate: string;
+  adjustmentType: StockAdjustmentType;
+  status: DocumentStatus;
+  /** @nullable */
+  docNo: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  reversalOfId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  warehouse: StockDocumentWarehouseDto;
+  lines: StockAdjustmentLineDto[];
+  /** @nullable */
+  journalEntry: StockAdjustmentJournalEntryRefDto | null;
+  /** @nullable */
+  reversalOf: StockAdjustmentRefDto | null;
+  reversals: StockAdjustmentReversalDto[];
+}
+
+export interface ReverseStockDocumentDto {
+  reversalDate: string;
+}
+
+export interface StockTransferListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  transferDate: string;
+  fromWarehouseId: string;
+  toWarehouseId: string;
+  status: DocumentStatus;
+  /** @nullable */
+  docNo: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  reversalOfId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  fromWarehouse: StockDocumentWarehouseRefDto;
+  toWarehouse: StockDocumentWarehouseRefDto;
+  _count: StockDocumentLineCountDto;
+}
+
+export interface StockTransferListItemDtoPage {
+  items: StockTransferListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface TransferLineDto {
+  itemId: string;
+  /** @pattern ^[0-9]+(\.[0-9]+)?$ */
+  qty: string;
+}
+
+export interface CreateStockTransferDto {
+  transferDate: string;
+  fromWarehouseId: string;
+  toWarehouseId: string;
+  /** @maxLength 500 */
+  description?: string;
+  /** @minItems 1 */
+  lines: TransferLineDto[];
+}
+
+export interface StockDocumentItemRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface StockTransferLineDto {
+  id: string;
+  tenantId: string;
+  transferId: string;
+  lineNo: number;
+  itemId: string;
+  qty: string;
+  createdAt: string;
+  item: StockDocumentItemRefDto;
+}
+
+export interface StockTransferRefDto {
+  id: string;
+  /** @nullable */
+  docNo: string | null;
+}
+
+export interface StockTransferReversalDto {
+  id: string;
+  status: DocumentStatus;
+  /** @nullable */
+  docNo: string | null;
+}
+
+export interface StockTransferDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  transferDate: string;
+  fromWarehouseId: string;
+  toWarehouseId: string;
+  status: DocumentStatus;
+  /** @nullable */
+  docNo: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  reversalOfId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  fromWarehouse: StockDocumentWarehouseDto;
+  toWarehouse: StockDocumentWarehouseDto;
+  lines: StockTransferLineDto[];
+  /** @nullable */
+  reversalOf: StockTransferRefDto | null;
+  reversals: StockTransferReversalDto[];
+}
+
+export interface StockCountListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  warehouseId: string;
+  countDate: string;
+  status: DocumentStatus;
+  /** @nullable */
+  docNo: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  adjustmentId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  warehouse: StockDocumentWarehouseRefDto;
+  _count: StockDocumentLineCountDto;
+}
+
+export interface StockCountListItemDtoPage {
+  items: StockCountListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface CountLineInputDto {
+  itemId: string;
+  /** @pattern ^[0-9]+(\.[0-9]+)?$ */
+  countedQty: string;
+}
+
+export interface CreateStockCountDto {
+  countDate: string;
+  warehouseId: string;
+  /** @maxLength 500 */
+  description?: string;
+  /** Optional explicit lines; when omitted all warehouse items are captured. */
+  lines?: CountLineInputDto[];
+}
+
+export interface StockCountLineDto {
+  id: string;
+  tenantId: string;
+  countId: string;
+  itemId: string;
+  systemQty: string;
+  /** @nullable */
+  countedQty: string | null;
+  /** @nullable */
+  differenceQty: string | null;
+  createdAt: string;
+  updatedAt: string;
+  item: StockDocumentItemBaseUnitRefDto;
+}
+
+export interface StockCountDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  warehouseId: string;
+  countDate: string;
+  status: DocumentStatus;
+  /** @nullable */
+  docNo: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  adjustmentId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  warehouse: StockDocumentWarehouseDto;
+  lines: StockCountLineDto[];
+}
+
+export interface UpdateCountLineDto {
+  /** @pattern ^[0-9]+(\.[0-9]+)?$ */
+  countedQty: string;
+}
+
+export interface StockCountLineRow {
+  id: string;
+  tenantId: string;
+  countId: string;
+  itemId: string;
+  systemQty: string;
+  /** @nullable */
+  countedQty: string | null;
+  /** @nullable */
+  differenceQty: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StockReportBalanceDto {
+  warehouseId: string;
+  warehouseCode: string;
+  /** Warehouse name in Arabic. */
+  warehouseName: string;
+  itemId: string;
+  itemCode: string;
+  /** Item name in Arabic. */
+  itemName: string;
+  /** Code of the base unit. */
+  unit: string;
+  qtyOnHand: string;
+  minStock: string;
+  /** @nullable */
+  lastMovementDate: string | null;
+}
+
+export type StockMovementType = typeof StockMovementType[keyof typeof StockMovementType];
+
+
+export const StockMovementType = {
+  IN: 'IN',
+  OUT: 'OUT',
+} as const;
+
+export interface StockReportMovementDto {
+  id: string;
+  /** Movement date (a DATE column, so 00:00 UTC). */
+  movementDate: string;
+  warehouseCode: string;
+  itemCode: string;
+  /** Item name in Arabic. */
+  itemName: string;
+  movementType: StockMovementType;
+  /** Free text naming the source document, e.g. STOCK_ADJUSTMENT. */
+  sourceType: string;
+  /** @nullable */
+  sourceId: string | null;
+  qtyIn: string;
+  qtyOut: string;
+  unitCost: string;
+  totalCost: string;
+  balanceQtyAfter: string;
+  avgCostAfter: string;
+}
+
+export interface StockReportMovementDtoKeyset {
+  items: StockReportMovementDto[];
+  /**
+     * Opaque cursor of the next page; null on the last page.
+     * @nullable
+     */
+  nextCursor: string | null;
+}
+
+export interface ItemCardRowDto {
+  id: string;
+  movementDate: string;
+  warehouse: WarehouseRefDto;
+  movementType: StockMovementType;
+  sourceType: string;
+  /** @nullable */
+  sourceId: string | null;
+  qtyIn: string;
+  qtyOut: string;
+  unitCost: string;
+  totalCost: string;
+  balanceQtyAfter: string;
+  avgCostAfter: string;
+}
+
+export interface ItemCardQtyValueDto {
+  qty: string;
+  /** Fixed 3 decimal places. */
+  value: string;
+}
+
+export interface ItemCardTotalsDto {
+  qtyIn: string;
+  qtyOut: string;
+  /** Fixed 3 decimal places. */
+  valueIn: string;
+  /** Fixed 3 decimal places. */
+  valueOut: string;
+}
+
+export interface ItemCardBalanceDto {
+  warehouse: WarehouseRefDto;
+  qtyOnHand: string;
+}
+
+export interface ItemCardSummaryDto {
+  opening: ItemCardQtyValueDto;
+  totals: ItemCardTotalsDto;
+  closing: ItemCardQtyValueDto;
+  balances: ItemCardBalanceDto[];
+}
+
+export interface ItemCardItemDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  itemKind: ItemKind;
+  baseUnit: UnitCodeNameDto;
+}
+
+export interface ItemLedgerPageDto {
+  items: ItemCardRowDto[];
+  /**
+     * Opaque cursor of the next page; null on the last page.
+     * @nullable
+     */
+  nextCursor: string | null;
+  /**
+     * Null after the first page.
+     * @nullable
+     */
+  summary: ItemCardSummaryDto | null;
+  item: ItemCardItemDto;
+}
+
+export interface ItemBalanceRowDto {
+  itemId: string;
+  code: string;
+  /** Item name in Arabic. */
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  unit: UnitCodeNameDto;
+  openingQty: string;
+  /** Fixed 3 decimal places. */
+  openingValue: string;
+  inQty: string;
+  /** Fixed 3 decimal places. */
+  inValue: string;
+  outQty: string;
+  /** Fixed 3 decimal places. */
+  outValue: string;
+  closingQty: string;
+  /** Fixed 3 decimal places. */
+  closingValue: string;
+}
+
+export interface ItemBalanceTotalsDto {
+  openingValue: string;
+  inValue: string;
+  outValue: string;
+  closingValue: string;
+}
+
+export interface ItemBalancesReportDto {
+  rows: ItemBalanceRowDto[];
+  totals: ItemBalanceTotalsDto;
+}
+
+export interface StockValuationRowDto {
+  itemId: string;
+  code: string;
+  /** Item name in Arabic. */
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  qty: string;
+  avgCost: string;
+  /** Fixed 3 decimal places. */
+  value: string;
+}
+
+export interface StockValuationReportDto {
+  rows: StockValuationRowDto[];
+  /** Fixed 3 decimal places. */
+  totalValue: string;
+}
+
+export type StockVerifyQtyMismatchDtoKind = typeof StockVerifyQtyMismatchDtoKind[keyof typeof StockVerifyQtyMismatchDtoKind];
+
+
+export const StockVerifyQtyMismatchDtoKind = {
+  QTY: 'QTY',
+} as const;
+
+export interface StockVerifyQtyMismatchDto {
+  kind: StockVerifyQtyMismatchDtoKind;
+  warehouseId: string;
+  itemId: string;
+  expected: string;
+  actual: string;
+}
+
+export type StockVerifyCostMismatchDtoKind = typeof StockVerifyCostMismatchDtoKind[keyof typeof StockVerifyCostMismatchDtoKind];
+
+
+export const StockVerifyCostMismatchDtoKind = {
+  COST_QTY: 'COST_QTY',
+  COST_VALUE: 'COST_VALUE',
+} as const;
+
+export interface StockVerifyCostMismatchDto {
+  kind: StockVerifyCostMismatchDtoKind;
+  companyId: string;
+  itemId: string;
+  expected: string;
+  actual: string;
+}
+
+export type StockVerifyGlMismatchDtoKind = typeof StockVerifyGlMismatchDtoKind[keyof typeof StockVerifyGlMismatchDtoKind];
+
+
+export const StockVerifyGlMismatchDtoKind = {
+  GL_INVENTORY: 'GL_INVENTORY',
+} as const;
+
+export interface StockVerifyGlMismatchDto {
+  kind: StockVerifyGlMismatchDtoKind;
+  companyId: string;
+  /** @nullable */
+  accountCode: string | null;
+  expected: string;
+  actual: string;
+}
+
+export interface StockVerifyResultDto {
+  /** Number of (warehouse, item) and (company, item) pairs checked. */
+  checked: number;
+  mismatches: (StockVerifyQtyMismatchDto | StockVerifyCostMismatchDto | StockVerifyGlMismatchDto)[];
+  /** Stock value rounded to 3 decimal places. */
+  stockValue: string;
+  /**
+     * Null when no inventory account is mapped.
+     * @nullable
+     */
+  inventoryAccountBalance: string | null;
+}
+
+export type InvoicePaymentType = typeof InvoicePaymentType[keyof typeof InvoicePaymentType];
+
+
+export const InvoicePaymentType = {
+  CASH: 'CASH',
+  CREDIT: 'CREDIT',
+} as const;
+
+export interface SalesCustomerRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface SalesWarehouseRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface SalesLineCountDto {
+  lines: number;
+}
+
+export interface SalesInvoiceListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  /** @nullable */
+  invoiceNo: string | null;
+  invoiceDate: string;
+  /** @nullable */
+  dueDate: string | null;
+  customerId: string;
+  warehouseId: string;
+  paymentType: InvoicePaymentType;
+  /** ADR-017: line prices were entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  /** @nullable */
+  cashAccountId: string | null;
+  status: DocumentStatus;
+  /** @nullable */
+  description: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  paidAmount: string;
+  costTotal: string;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  customer: SalesCustomerRefDto;
+  warehouse: SalesWarehouseRefDto;
+  _count: SalesLineCountDto;
+  creditedAmount: string;
+  outstanding: string;
+}
+
+export interface SalesInvoiceListItemDtoPage {
+  items: SalesInvoiceListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface WarehouseRow {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  address: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+}
+
+export interface SalesCashAccountRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface SalesInvoiceItemRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  itemKind: ItemKind;
+  baseUnitId: string;
+}
+
+export interface SalesUnitRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface SalesInvoiceItemUnitDto {
+  id: string;
+  tenantId: string;
+  itemId: string;
+  unitId: string;
+  factorToBase: string;
+  isDefaultSale: boolean;
+  isDefaultPurchase: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  unit: SalesUnitRefDto;
+}
+
+export interface SalesInvoiceLineViewDto {
+  id: string;
+  tenantId: string;
+  invoiceId: string;
+  lineNo: number;
+  itemId: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  qty: string;
+  qtyBase: string;
+  unitPrice: string;
+  discountPct: string;
+  discountAmount: string;
+  netAmount: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  taxRate: string;
+  taxAmount: string;
+  lineTotal: string;
+  /** @nullable */
+  unitCost: string | null;
+  costTotal: string;
+  createdAt: string;
+  item: SalesInvoiceItemRefDto;
+  /** @nullable */
+  itemUnit: SalesInvoiceItemUnitDto | null;
+}
+
+export interface SalesJournalRefDto {
+  id: string;
+  /** @nullable */
+  entryNo: string | null;
+  status: JournalEntryStatus;
+}
+
+export interface SalesInvoiceReturnRefDto {
+  id: string;
+  /** @nullable */
+  returnNo: string | null;
+  status: DocumentStatus;
+  grandTotal: string;
+}
+
+export type EInvoiceEnvironment = typeof EInvoiceEnvironment[keyof typeof EInvoiceEnvironment];
+
+
+export const EInvoiceEnvironment = {
+  SANDBOX: 'SANDBOX',
+  PRODUCTION: 'PRODUCTION',
+} as const;
+
+export type EInvoiceStatus = typeof EInvoiceStatus[keyof typeof EInvoiceStatus];
+
+
+export const EInvoiceStatus = {
+  PENDING: 'PENDING',
+  SENDING: 'SENDING',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  FAILED: 'FAILED',
+  UNKNOWN: 'UNKNOWN',
+} as const;
+
+export type EInvoiceErrorDtoSource = typeof EInvoiceErrorDtoSource[keyof typeof EInvoiceErrorDtoSource];
+
+
+export const EInvoiceErrorDtoSource = {
+  jofotara: 'jofotara',
+  local: 'local',
+} as const;
+
+export interface EInvoiceErrorDto {
+  code: string;
+  message: string;
+  source: EInvoiceErrorDtoSource;
+  /** JoFotara's category of a warning, when it sends one. */
+  category?: string;
+}
+
+export interface EInvoiceStateDto {
+  id: string;
+  uuid: string;
+  icv: number;
+  environment: EInvoiceEnvironment;
+  status: EInvoiceStatus;
+  /** @nullable */
+  qrPayload: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  /**
+     * Null when there is nothing to report.
+     * @nullable
+     */
+  errors: EInvoiceErrorDto[] | null;
+}
+
+export interface SalesInvoiceDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  /** @nullable */
+  invoiceNo: string | null;
+  invoiceDate: string;
+  /** @nullable */
+  dueDate: string | null;
+  customerId: string;
+  warehouseId: string;
+  paymentType: InvoicePaymentType;
+  /** ADR-017: line prices were entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  /** @nullable */
+  cashAccountId: string | null;
+  status: DocumentStatus;
+  /** @nullable */
+  description: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  paidAmount: string;
+  costTotal: string;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  customer: PartyDto;
+  warehouse: WarehouseRow;
+  /** @nullable */
+  cashAccount: SalesCashAccountRefDto | null;
+  lines: SalesInvoiceLineViewDto[];
+  /** @nullable */
+  journalEntry: SalesJournalRefDto | null;
+  returns: SalesInvoiceReturnRefDto[];
+  creditedAmount: string;
+  outstanding: string;
+  /**
+     * Null when the invoice was never queued for e-invoicing.
+     * @nullable
+     */
+  einvoice: EInvoiceStateDto | null;
+}
+
+export interface SalesInvoiceLineDto {
+  itemId: string;
+  itemUnitId?: string;
+  qty: string;
+  unitPrice: string;
+  /** @pattern ^\d+(\.\d{1,4})?$ */
+  discountPct?: string;
+  taxCategoryId?: string;
+}
+
+export type CreateSalesInvoiceDtoPaymentType = typeof CreateSalesInvoiceDtoPaymentType[keyof typeof CreateSalesInvoiceDtoPaymentType];
+
+
+export const CreateSalesInvoiceDtoPaymentType = {
+  CASH: 'CASH',
+  CREDIT: 'CREDIT',
+} as const;
+
+export interface CreateSalesInvoiceDto {
+  invoiceDate: string;
+  dueDate?: string;
+  customerId: string;
+  warehouseId: string;
+  paymentType: CreateSalesInvoiceDtoPaymentType;
+  cashAccountId?: string;
+  /** @maxLength 500 */
+  description?: string;
+  /** @minItems 1 */
+  lines: SalesInvoiceLineDto[];
+}
+
+export interface SalesReturnOriginalInvoiceRefDto {
+  id: string;
+  /** @nullable */
+  invoiceNo: string | null;
+}
+
+export interface SalesReturnListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  returnNo: string | null;
+  returnDate: string;
+  originalInvoiceId: string;
+  customerId: string;
+  warehouseId: string;
+  refundType: InvoicePaymentType;
+  /** @nullable */
+  cashAccountId: string | null;
+  /** @nullable */
+  reason: string | null;
+  status: DocumentStatus;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  costTotal: string;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  customer: SalesCustomerRefDto;
+  originalInvoice: SalesReturnOriginalInvoiceRefDto;
+  _count: SalesLineCountDto;
+}
+
+export interface SalesReturnListItemDtoPage {
+  items: SalesReturnListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface SalesReturnOriginalInvoiceDetailDto {
+  id: string;
+  /** @nullable */
+  invoiceNo: string | null;
+  invoiceDate: string;
+}
+
+export interface SalesReturnItemRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface SalesReturnUnitNameDto {
+  nameAr: string;
+}
+
+export interface SalesReturnOriginalLineItemUnitDto {
+  unit: SalesReturnUnitNameDto;
+}
+
+export interface SalesReturnOriginalLineDto {
+  id: string;
+  lineNo: number;
+  qty: string;
+  qtyBase: string;
+  /** @nullable */
+  itemUnit: SalesReturnOriginalLineItemUnitDto | null;
+}
+
+export interface SalesReturnLineViewDto {
+  id: string;
+  tenantId: string;
+  returnId: string;
+  lineNo: number;
+  originalLineId: string;
+  itemId: string;
+  qty: string;
+  qtyBase: string;
+  unitPrice: string;
+  discountPct: string;
+  discountAmount: string;
+  netAmount: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  taxRate: string;
+  taxAmount: string;
+  lineTotal: string;
+  /** @nullable */
+  unitCost: string | null;
+  costTotal: string;
+  createdAt: string;
+  item: SalesReturnItemRefDto;
+  originalLine: SalesReturnOriginalLineDto;
+}
+
+export interface SalesReturnDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  returnNo: string | null;
+  returnDate: string;
+  originalInvoiceId: string;
+  customerId: string;
+  warehouseId: string;
+  refundType: InvoicePaymentType;
+  /** @nullable */
+  cashAccountId: string | null;
+  /** @nullable */
+  reason: string | null;
+  status: DocumentStatus;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  costTotal: string;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  customer: PartyDto;
+  originalInvoice: SalesReturnOriginalInvoiceDetailDto;
+  warehouse: SalesWarehouseRefDto;
+  /** @nullable */
+  cashAccount: SalesCashAccountRefDto | null;
+  lines: SalesReturnLineViewDto[];
+  /** @nullable */
+  journalEntry: SalesJournalRefDto | null;
+  /**
+     * Null when the return was never queued for e-invoicing.
+     * @nullable
+     */
+  einvoice: EInvoiceStateDto | null;
+}
+
+export interface SalesReturnLineDto {
+  originalLineId: string;
+  qty: string;
+}
+
+export type CreateSalesReturnDtoRefundType = typeof CreateSalesReturnDtoRefundType[keyof typeof CreateSalesReturnDtoRefundType];
+
+
+export const CreateSalesReturnDtoRefundType = {
+  CASH: 'CASH',
+  CREDIT: 'CREDIT',
+} as const;
+
+export interface CreateSalesReturnDto {
+  returnDate: string;
+  originalInvoiceId: string;
+  refundType: CreateSalesReturnDtoRefundType;
+  cashAccountId?: string;
+  /** @maxLength 500 */
+  reason?: string;
+  /** @minItems 1 */
+  lines: SalesReturnLineDto[];
+}
+
+export interface PurchaseSupplierRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface PurchaseLineCountDto {
+  lines: number;
+}
+
+export interface PurchaseInvoiceListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  /** @nullable */
+  invoiceNo: string | null;
+  invoiceDate: string;
+  /** @nullable */
+  dueDate: string | null;
+  supplierId: string;
+  /** @nullable */
+  supplierInvoiceNo: string | null;
+  /** @nullable */
+  supplierInvoiceDate: string | null;
+  /** @nullable */
+  warehouseId: string | null;
+  paymentType: InvoicePaymentType;
+  /** ADR-017: line costs were entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  /** @nullable */
+  cashAccountId: string | null;
+  status: DocumentStatus;
+  /** @nullable */
+  description: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  paidAmount: string;
+  /** @nullable */
+  journalEntryId: string | null;
+  /**
+     * TRADE-02: the posted GRN this invoice bills; its stock lines clear 2104 instead of moving stock again.
+     * @nullable
+     */
+  receivedGrnId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  supplier: PurchaseSupplierRefDto;
+  _count: PurchaseLineCountDto;
+  creditedAmount: string;
+  outstanding: string;
+}
+
+export interface PurchaseInvoiceListItemDtoPage {
+  items: PurchaseInvoiceListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface PurchaseWarehouseRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface PurchaseCashAccountRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface PurchaseInvoiceItemRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  itemKind: ItemKind;
+  baseUnitId: string;
+}
+
+export interface PurchaseUnitRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface PurchaseInvoiceItemUnitDto {
+  id: string;
+  tenantId: string;
+  itemId: string;
+  unitId: string;
+  factorToBase: string;
+  isDefaultSale: boolean;
+  isDefaultPurchase: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  unit: PurchaseUnitRefDto;
+}
+
+export interface PurchaseInvoiceLineViewDto {
+  id: string;
+  tenantId: string;
+  invoiceId: string;
+  lineNo: number;
+  itemId: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  qty: string;
+  qtyBase: string;
+  unitCost: string;
+  discountPct: string;
+  discountAmount: string;
+  netAmount: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  taxRate: string;
+  taxAmount: string;
+  lineTotal: string;
+  createdAt: string;
+  item: PurchaseInvoiceItemRefDto;
+  /** @nullable */
+  itemUnit: PurchaseInvoiceItemUnitDto | null;
+}
+
+export interface PurchaseJournalRefDto {
+  id: string;
+  /** @nullable */
+  entryNo: string | null;
+  status: JournalEntryStatus;
+}
+
+export interface PurchaseInvoiceReturnRefDto {
+  id: string;
+  /** @nullable */
+  returnNo: string | null;
+  status: DocumentStatus;
+  grandTotal: string;
+}
+
+export interface PurchaseInvoiceGoodsNoteRefDto {
+  id: string;
+  noteDate: string;
+  /** @nullable */
+  docNo: string | null;
+}
+
+export interface PurchaseInvoiceDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  /** @nullable */
+  invoiceNo: string | null;
+  invoiceDate: string;
+  /** @nullable */
+  dueDate: string | null;
+  supplierId: string;
+  /** @nullable */
+  supplierInvoiceNo: string | null;
+  /** @nullable */
+  supplierInvoiceDate: string | null;
+  /** @nullable */
+  warehouseId: string | null;
+  paymentType: InvoicePaymentType;
+  /** ADR-017: line costs were entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  /** @nullable */
+  cashAccountId: string | null;
+  status: DocumentStatus;
+  /** @nullable */
+  description: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  paidAmount: string;
+  /** @nullable */
+  journalEntryId: string | null;
+  /**
+     * TRADE-02: the posted GRN this invoice bills; its stock lines clear 2104 instead of moving stock again.
+     * @nullable
+     */
+  receivedGrnId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  supplier: PartyDto;
+  /** @nullable */
+  warehouse: PurchaseWarehouseRefDto | null;
+  /** @nullable */
+  cashAccount: PurchaseCashAccountRefDto | null;
+  lines: PurchaseInvoiceLineViewDto[];
+  /** @nullable */
+  journalEntry: PurchaseJournalRefDto | null;
+  returns: PurchaseInvoiceReturnRefDto[];
+  /** @nullable */
+  receivedGrn: PurchaseInvoiceGoodsNoteRefDto | null;
+  creditedAmount: string;
+  outstanding: string;
+}
+
+export interface PurchaseInvoiceLineDto {
+  itemId: string;
+  itemUnitId?: string;
+  qty: string;
+  unitCost: string;
+  /** @pattern ^\d+(\.\d{1,4})?$ */
+  discountPct?: string;
+  taxCategoryId?: string;
+}
+
+export type CreatePurchaseInvoiceDtoPaymentType = typeof CreatePurchaseInvoiceDtoPaymentType[keyof typeof CreatePurchaseInvoiceDtoPaymentType];
+
+
+export const CreatePurchaseInvoiceDtoPaymentType = {
+  CASH: 'CASH',
+  CREDIT: 'CREDIT',
+} as const;
+
+export interface CreatePurchaseInvoiceDto {
+  invoiceDate: string;
+  dueDate?: string;
+  supplierId: string;
+  /** @maxLength 100 */
+  supplierInvoiceNo?: string;
+  supplierInvoiceDate?: string;
+  warehouseId?: string;
+  paymentType: CreatePurchaseInvoiceDtoPaymentType;
+  cashAccountId?: string;
+  /** @maxLength 500 */
+  description?: string;
+  /** @minItems 1 */
+  lines: PurchaseInvoiceLineDto[];
+  /**
+     * A posted goods receipt note (GRN) this invoice bills (TRADE-02, ADR-016):
+     * its stock lines then clear account 2104 instead of receiving the goods a
+     * second time. A GRN is billed by one invoice only.
+     */
+  receivedGrnId?: string;
+}
+
+export interface PurchaseReturnOriginalInvoiceRefDto {
+  id: string;
+  /** @nullable */
+  invoiceNo: string | null;
+}
+
+export interface PurchaseReturnListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  returnNo: string | null;
+  returnDate: string;
+  originalInvoiceId: string;
+  supplierId: string;
+  warehouseId: string;
+  refundType: InvoicePaymentType;
+  /** @nullable */
+  cashAccountId: string | null;
+  /** @nullable */
+  reason: string | null;
+  status: DocumentStatus;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  supplier: PurchaseSupplierRefDto;
+  originalInvoice: PurchaseReturnOriginalInvoiceRefDto;
+  _count: PurchaseLineCountDto;
+}
+
+export interface PurchaseReturnListItemDtoPage {
+  items: PurchaseReturnListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface PurchaseReturnOriginalInvoiceDetailDto {
+  id: string;
+  /** @nullable */
+  invoiceNo: string | null;
+  invoiceDate: string;
+}
+
+export interface PurchaseReturnItemRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface PurchaseReturnOriginalLineDto {
+  id: string;
+  lineNo: number;
+  qty: string;
+  qtyBase: string;
+}
+
+export interface PurchaseReturnLineViewDto {
+  id: string;
+  tenantId: string;
+  returnId: string;
+  lineNo: number;
+  originalLineId: string;
+  itemId: string;
+  qty: string;
+  qtyBase: string;
+  unitCost: string;
+  discountPct: string;
+  discountAmount: string;
+  netAmount: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  taxRate: string;
+  taxAmount: string;
+  lineTotal: string;
+  createdAt: string;
+  item: PurchaseReturnItemRefDto;
+  originalLine: PurchaseReturnOriginalLineDto;
+}
+
+export interface PurchaseReturnDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  returnNo: string | null;
+  returnDate: string;
+  originalInvoiceId: string;
+  supplierId: string;
+  warehouseId: string;
+  refundType: InvoicePaymentType;
+  /** @nullable */
+  cashAccountId: string | null;
+  /** @nullable */
+  reason: string | null;
+  status: DocumentStatus;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  supplier: PartyDto;
+  originalInvoice: PurchaseReturnOriginalInvoiceDetailDto;
+  warehouse: PurchaseWarehouseRefDto;
+  /** @nullable */
+  cashAccount: PurchaseCashAccountRefDto | null;
+  lines: PurchaseReturnLineViewDto[];
+  /** @nullable */
+  journalEntry: PurchaseJournalRefDto | null;
+}
+
+export interface PurchaseReturnLineDto {
+  originalLineId: string;
+  qty: string;
+}
+
+export type CreatePurchaseReturnDtoRefundType = typeof CreatePurchaseReturnDtoRefundType[keyof typeof CreatePurchaseReturnDtoRefundType];
+
+
+export const CreatePurchaseReturnDtoRefundType = {
+  CASH: 'CASH',
+  CREDIT: 'CREDIT',
+} as const;
+
+export interface CreatePurchaseReturnDto {
+  returnDate: string;
+  originalInvoiceId: string;
+  warehouseId: string;
+  refundType: CreatePurchaseReturnDtoRefundType;
+  cashAccountId?: string;
+  /** @maxLength 500 */
+  reason?: string;
+  /** @minItems 1 */
+  lines: PurchaseReturnLineDto[];
+}
+
+export type GoodsNoteType = typeof GoodsNoteType[keyof typeof GoodsNoteType];
+
+
+export const GoodsNoteType = {
+  GRN: 'GRN',
+  GIN: 'GIN',
+} as const;
+
+export interface GoodsNoteCountDto {
+  lines: number;
+}
+
+export interface GoodsNoteListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  warehouseId: string;
+  /**
+     * ADR-003: branch of the note's warehouse (the request branch if the warehouse has none).
+     * @nullable
+     */
+  branchId: string | null;
+  noteDate: string;
+  noteType: GoodsNoteType;
+  status: DocumentStatus;
+  /** @nullable */
+  docNo: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  warehouse: WarehouseRefDto;
+  /** @nullable */
+  branch: BranchRefDto | null;
+  _count: GoodsNoteCountDto;
+}
+
+export interface GoodsNoteListItemDtoPage {
+  items: GoodsNoteListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface GoodsNoteItemRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface GoodsNoteLineWithItemDto {
+  id: string;
+  tenantId: string;
+  noteId: string;
+  lineNo: number;
+  itemId: string;
+  qty: string;
+  /** @nullable */
+  unitCost: string | null;
+  createdAt: string;
+  item: GoodsNoteItemRefDto;
+}
+
+export interface GoodsNoteJournalEntryRefDto {
+  id: string;
+  /** @nullable */
+  entryNo: string | null;
+  status: JournalEntryStatus;
+}
+
+export interface GoodsNoteDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  warehouseId: string;
+  /**
+     * ADR-003: branch of the note's warehouse (the request branch if the warehouse has none).
+     * @nullable
+     */
+  branchId: string | null;
+  noteDate: string;
+  noteType: GoodsNoteType;
+  status: DocumentStatus;
+  /** @nullable */
+  docNo: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  /** @nullable */
+  postedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  warehouse: WarehouseRow;
+  /** @nullable */
+  branch: BranchRefDto | null;
+  lines: GoodsNoteLineWithItemDto[];
+  /** @nullable */
+  journalEntry: GoodsNoteJournalEntryRefDto | null;
+}
+
+export interface GoodsNoteLineDto {
+  itemId: string;
+  /** Base-unit quantity. */
+  qty: string;
+  /** Required for GRN (receipt cost per base unit); ignored for GIN. */
+  unitCost?: string;
+}
+
+export type CreateGoodsNoteDtoNoteType = typeof CreateGoodsNoteDtoNoteType[keyof typeof CreateGoodsNoteDtoNoteType];
+
+
+export const CreateGoodsNoteDtoNoteType = {
+  GRN: 'GRN',
+  GIN: 'GIN',
+} as const;
+
+export interface CreateGoodsNoteDto {
+  noteDate: string;
+  warehouseId: string;
+  noteType: CreateGoodsNoteDtoNoteType;
+  /** @maxLength 500 */
+  description?: string;
+  /** @minItems 1 */
+  lines: GoodsNoteLineDto[];
+}
+
+export interface TreasuryAccountRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface CashBoxListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  code: string;
+  name: string;
+  accountId: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  account: TreasuryAccountRefDto;
+}
+
+export interface CreateCashBoxDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  name: string;
+  accountId: string;
+  isActive?: boolean;
+}
+
+export interface CashBoxDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  branchId: string | null;
+  code: string;
+  name: string;
+  accountId: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TreasuryAccountDeactivatedDto {
+  deleted: false;
+  deactivated: true;
+}
+
+export interface BankAccountListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  bankName: string;
+  /** @nullable */
+  accountNoMasked: string | null;
+  /** @nullable */
+  ibanMasked: string | null;
+  accountId: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  account: TreasuryAccountRefDto;
+}
+
+export interface CreateBankAccountDto {
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  bankName: string;
+  /** @maxLength 50 */
+  accountNoMasked?: string;
+  /** @maxLength 50 */
+  ibanMasked?: string;
+  accountId: string;
+  isActive?: boolean;
+}
+
+export interface BankAccountDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  bankName: string;
+  /** @nullable */
+  accountNoMasked: string | null;
+  /** @nullable */
+  ibanMasked: string | null;
+  accountId: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TreasuryPartyTypeRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  partyType: PartyType;
+}
+
+export interface ReceiptCountDto {
+  allocations: number;
+}
+
+export interface ReceiptListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  receiptNo: string | null;
+  receiptDate: string;
+  partyType: JournalPartyType;
+  partyId: string;
+  cashAccountId: string;
+  amount: string;
+  /** @nullable */
+  paymentMethodId: string | null;
+  /** @nullable */
+  referenceNo: string | null;
+  /** @nullable */
+  description: string | null;
+  status: DocumentStatus;
+  /** @nullable */
+  journalEntryId: string | null;
+  /**
+     * ADR-003: branch from the request context at creation.
+     * @nullable
+     */
+  branchId: string | null;
+  /**
+     * Reversal (Phase 6): set once; the original stays POSTED and immutable.
+     * @nullable
+     */
+  reversedAt: string | null;
+  /** @nullable */
+  reversedBy: string | null;
+  /** @nullable */
+  reversalEntryId: string | null;
+  createdAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  party: TreasuryPartyTypeRefDto;
+  cashAccount: TreasuryAccountRefDto;
+  _count: ReceiptCountDto;
+}
+
+export interface ReceiptListItemDtoPage {
+  items: ReceiptListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface PartyRow {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  partyType: PartyType;
+  /** @nullable */
+  taxNumber: string | null;
+  /** @nullable */
+  nationalId: string | null;
+  /** JoFotara buyer scheme for national_id (0005 §5): NIN Jordanian, PN non-Jordanian. */
+  nationalIdKind: NationalIdKind;
+  /** @nullable */
+  phone: string | null;
+  /** @nullable */
+  address: string | null;
+  /** @nullable */
+  city: string | null;
+  /** @nullable */
+  creditLimit: string | null;
+  /** @nullable */
+  paymentTermsDays: number | null;
+  isCashCustomer: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+}
+
+export interface TreasuryPaymentMethodRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface TreasuryJournalEntryRefDto {
+  id: string;
+  /** @nullable */
+  entryNo: string | null;
+  status: JournalEntryStatus;
+}
+
+export interface TreasuryPartyRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface TreasuryAllocationDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  receiptId: string | null;
+  /** @nullable */
+  paymentId: string | null;
+  partyType: JournalPartyType;
+  partyId: string;
+  documentType: string;
+  documentId: string;
+  amount: string;
+  createdAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /**
+     * Cancelled allocations are kept for history; only active ones count.
+     * @nullable
+     */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  party: TreasuryPartyRefDto;
+}
+
+export interface ReceiptDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  receiptNo: string | null;
+  receiptDate: string;
+  partyType: JournalPartyType;
+  partyId: string;
+  cashAccountId: string;
+  amount: string;
+  /** @nullable */
+  paymentMethodId: string | null;
+  /** @nullable */
+  referenceNo: string | null;
+  /** @nullable */
+  description: string | null;
+  status: DocumentStatus;
+  /** @nullable */
+  journalEntryId: string | null;
+  /**
+     * ADR-003: branch from the request context at creation.
+     * @nullable
+     */
+  branchId: string | null;
+  /**
+     * Reversal (Phase 6): set once; the original stays POSTED and immutable.
+     * @nullable
+     */
+  reversedAt: string | null;
+  /** @nullable */
+  reversedBy: string | null;
+  /** @nullable */
+  reversalEntryId: string | null;
+  createdAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** The full party row. */
+  party: PartyRow;
+  cashAccount: TreasuryAccountRefDto;
+  /** @nullable */
+  paymentMethod: TreasuryPaymentMethodRefDto | null;
+  /** @nullable */
+  journalEntry: TreasuryJournalEntryRefDto | null;
+  /** Cancelled allocations included. */
+  allocations: TreasuryAllocationDto[];
+  /** Active allocations only, to 3 decimals. */
+  allocatedAmount: string;
+  /** Amount minus the allocated amount, to 3 decimals. */
+  unallocatedAmount: string;
+}
+
+export type AllocationDtoDocumentType = typeof AllocationDtoDocumentType[keyof typeof AllocationDtoDocumentType];
+
+
+export const AllocationDtoDocumentType = {
+  SALES_INVOICE: 'SALES_INVOICE',
+  PURCHASE_INVOICE: 'PURCHASE_INVOICE',
+} as const;
+
+export interface AllocationDto {
+  documentType: AllocationDtoDocumentType;
+  documentId: string;
+  amount: string;
+}
+
+export type CreateReceiptDtoPartyType = typeof CreateReceiptDtoPartyType[keyof typeof CreateReceiptDtoPartyType];
+
+
+export const CreateReceiptDtoPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+} as const;
+
+export interface CreateReceiptDto {
+  receiptDate: string;
+  partyType: CreateReceiptDtoPartyType;
+  partyId: string;
+  cashAccountId: string;
+  amount: string;
+  paymentMethodId?: string;
+  /** @maxLength 100 */
+  referenceNo?: string;
+  /** @maxLength 500 */
+  description?: string;
+  allocations?: AllocationDto[];
+  /** Allocate to the party's oldest open invoices (ignored when `allocations` is given). */
+  autoAllocate?: boolean;
+}
+
+export interface PaymentCountDto {
+  allocations: number;
+}
+
+export interface PaymentListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  paymentNo: string | null;
+  paymentDate: string;
+  partyType: JournalPartyType | null;
+  /** @nullable */
+  partyId: string | null;
+  /** @nullable */
+  expenseAccountId: string | null;
+  cashAccountId: string;
+  amount: string;
+  /** @nullable */
+  paymentMethodId: string | null;
+  /** @nullable */
+  referenceNo: string | null;
+  /** @nullable */
+  description: string | null;
+  status: DocumentStatus;
+  /** @nullable */
+  journalEntryId: string | null;
+  /**
+     * ADR-003: branch from the request context at creation.
+     * @nullable
+     */
+  branchId: string | null;
+  /**
+     * Reversal (Phase 6): set once; the original stays POSTED and immutable.
+     * @nullable
+     */
+  reversedAt: string | null;
+  /** @nullable */
+  reversedBy: string | null;
+  /** @nullable */
+  reversalEntryId: string | null;
+  createdAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /**
+     * Null on a direct expense payment.
+     * @nullable
+     */
+  party: TreasuryPartyTypeRefDto | null;
+  cashAccount: TreasuryAccountRefDto;
+  /** @nullable */
+  expenseAccount: TreasuryAccountRefDto | null;
+  _count: PaymentCountDto;
+}
+
+export interface PaymentListItemDtoPage {
+  items: PaymentListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface PaymentDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /** @nullable */
+  paymentNo: string | null;
+  paymentDate: string;
+  partyType: JournalPartyType | null;
+  /** @nullable */
+  partyId: string | null;
+  /** @nullable */
+  expenseAccountId: string | null;
+  cashAccountId: string;
+  amount: string;
+  /** @nullable */
+  paymentMethodId: string | null;
+  /** @nullable */
+  referenceNo: string | null;
+  /** @nullable */
+  description: string | null;
+  status: DocumentStatus;
+  /** @nullable */
+  journalEntryId: string | null;
+  /**
+     * ADR-003: branch from the request context at creation.
+     * @nullable
+     */
+  branchId: string | null;
+  /**
+     * Reversal (Phase 6): set once; the original stays POSTED and immutable.
+     * @nullable
+     */
+  reversedAt: string | null;
+  /** @nullable */
+  reversedBy: string | null;
+  /** @nullable */
+  reversalEntryId: string | null;
+  createdAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /**
+     * The full party row; null on a direct expense payment.
+     * @nullable
+     */
+  party: PartyRow | null;
+  cashAccount: TreasuryAccountRefDto;
+  /** @nullable */
+  expenseAccount: TreasuryAccountRefDto | null;
+  /** @nullable */
+  paymentMethod: TreasuryPaymentMethodRefDto | null;
+  /** @nullable */
+  journalEntry: TreasuryJournalEntryRefDto | null;
+  /** Cancelled allocations included. */
+  allocations: TreasuryAllocationDto[];
+  /** Active allocations only, to 3 decimals. */
+  allocatedAmount: string;
+  /** Amount minus the allocated amount, to 3 decimals. */
+  unallocatedAmount: string;
+}
+
+export type CreatePaymentDtoPartyType = typeof CreatePaymentDtoPartyType[keyof typeof CreatePaymentDtoPartyType];
+
+
+export const CreatePaymentDtoPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+} as const;
+
+export interface CreatePaymentDto {
+  paymentDate: string;
+  partyType?: CreatePaymentDtoPartyType;
+  partyId?: string;
+  /** Required when no party (direct expense payment). */
+  expenseAccountId?: string;
+  cashAccountId: string;
+  amount: string;
+  paymentMethodId?: string;
+  /** @maxLength 100 */
+  referenceNo?: string;
+  /** @maxLength 500 */
+  description?: string;
+  allocations?: AllocationDto[];
+  /** Allocate to the party's oldest open invoices (ignored when `allocations` is given). */
+  autoAllocate?: boolean;
+}
+
+export interface ReverseVoucherDto {
+  reversalDate: string;
+  /** @maxLength 500 */
+  description?: string;
+}
+
+export interface AllocateVoucherDto {
+  allocations?: AllocationDto[];
+  /** Oldest open invoices first, up to the unallocated amount. */
+  auto?: boolean;
+}
+
+export interface TreasuryAccountRefBilingualDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface CashTransferListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * ADR-003: branch from the request context at creation.
+     * @nullable
+     */
+  branchId: string | null;
+  /** @nullable */
+  transferNo: string | null;
+  transferDate: string;
+  fromAccountId: string;
+  toAccountId: string;
+  amount: string;
+  /** @nullable */
+  referenceNo: string | null;
+  /** @nullable */
+  description: string | null;
+  status: DocumentStatus;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  reversedAt: string | null;
+  /** @nullable */
+  reversedBy: string | null;
+  /** @nullable */
+  reversalEntryId: string | null;
+  createdAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  fromAccount: TreasuryAccountRefBilingualDto;
+  toAccount: TreasuryAccountRefBilingualDto;
+}
+
+export interface CashTransferListItemDtoPage {
+  items: CashTransferListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface CashTransferDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * ADR-003: branch from the request context at creation.
+     * @nullable
+     */
+  branchId: string | null;
+  /** @nullable */
+  transferNo: string | null;
+  transferDate: string;
+  fromAccountId: string;
+  toAccountId: string;
+  amount: string;
+  /** @nullable */
+  referenceNo: string | null;
+  /** @nullable */
+  description: string | null;
+  status: DocumentStatus;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  reversedAt: string | null;
+  /** @nullable */
+  reversedBy: string | null;
+  /** @nullable */
+  reversalEntryId: string | null;
+  createdAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  fromAccount: TreasuryAccountRefBilingualDto;
+  toAccount: TreasuryAccountRefBilingualDto;
+  /** @nullable */
+  journalEntry: TreasuryJournalEntryRefDto | null;
+}
+
+export interface CreateCashTransferDto {
+  transferDate: string;
+  /** Cash/bank account money leaves. */
+  fromAccountId: string;
+  /** Cash/bank account money arrives. */
+  toAccountId: string;
+  amount: string;
+  /** @maxLength 100 */
+  referenceNo?: string;
+  /** @maxLength 500 */
+  description?: string;
+}
+
+export interface AgingReportRowDto {
+  partyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  notDue: string;
+  d1_30: string;
+  d31_60: string;
+  d61_90: string;
+  d90plus: string;
+  total: string;
+  /** May be negative. */
+  unapplied: string;
+  /** May be negative. */
+  balance: string;
+}
+
+export interface AgingReportTotalsDto {
+  notDue: string;
+  d1_30: string;
+  d31_60: string;
+  d61_90: string;
+  d90plus: string;
+  total: string;
+  unapplied: string;
+  balance: string;
+}
+
+export interface AgingReportDto {
+  partyType: JournalPartyType;
+  /** The day the balances are aged to. */
+  asOf: string;
+  rows: AgingReportRowDto[];
+  totals: AgingReportTotalsDto;
+}
+
+export type CashBalanceRowDtoKind = typeof CashBalanceRowDtoKind[keyof typeof CashBalanceRowDtoKind];
+
+
+export const CashBalanceRowDtoKind = {
+  CASH_BOX: 'CASH_BOX',
+  BANK_ACCOUNT: 'BANK_ACCOUNT',
+  ACCOUNT: 'ACCOUNT',
+} as const;
+
+export interface CashBalanceRowDto {
+  kind: CashBalanceRowDtoKind;
+  /** Cash box, bank account or account id, by kind. */
+  id: string;
+  name: string;
+  isActive: boolean;
+  account: TreasuryAccountRefBilingualDto;
+  /** May be negative. */
+  balance: string;
+}
+
+export interface CashBalancesDto {
+  rows: CashBalanceRowDto[];
+  total: string;
+}
+
+export type EInvoiceTrack = typeof EInvoiceTrack[keyof typeof EInvoiceTrack];
+
+
+export const EInvoiceTrack = {
+  INCOME: 'INCOME',
+  GENERAL_SALES: 'GENERAL_SALES',
+} as const;
+
+export interface EInvoiceSettingsViewDto {
+  /** @nullable */
+  sellerTaxNumber: string | null;
+  /**
+     * Legal name of the company (Arabic).
+     * @nullable
+     */
+  sellerName: string | null;
+  environment: EInvoiceEnvironment;
+  /** @nullable */
+  baseUrl: string | null;
+  /** The sandbox URL used when no base URL is set. */
+  defaultSandboxUrl: string;
+  /** @nullable */
+  clientId: string | null;
+  /** Whether a client secret is stored (the value is never returned). */
+  hasSecret: boolean;
+  /** @nullable */
+  incomeSourceSequence: string | null;
+  track: EInvoiceTrack;
+  /**
+     * The ICV the next invoice will receive.
+     * @minimum 1
+     */
+  nextIcv: number;
+  isEnabled: boolean;
+  /** @nullable */
+  enabledAt: string | null;
+  /** Whether the server has an encryption key for the stored secret. */
+  encryptionKeySet: boolean;
+}
+
+export type UpdateEInvoiceSettingsDtoEnvironment = typeof UpdateEInvoiceSettingsDtoEnvironment[keyof typeof UpdateEInvoiceSettingsDtoEnvironment];
+
+
+export const UpdateEInvoiceSettingsDtoEnvironment = {
+  SANDBOX: 'SANDBOX',
+  PRODUCTION: 'PRODUCTION',
+} as const;
+
+export type UpdateEInvoiceSettingsDtoTrack = typeof UpdateEInvoiceSettingsDtoTrack[keyof typeof UpdateEInvoiceSettingsDtoTrack];
+
+
+export const UpdateEInvoiceSettingsDtoTrack = {
+  INCOME: 'INCOME',
+  GENERAL_SALES: 'GENERAL_SALES',
+} as const;
+
+export interface UpdateEInvoiceSettingsDto {
+  /**
+     * Seller tax number (companies.tax_number, manual p.13): digits.
+     * @pattern ^\d{1,50}$
+     */
+  sellerTaxNumber?: string;
+  /**
+     * Seller name as registered with ISTD (companies.legal_name_ar).
+     * @minLength 2
+     * @maxLength 191
+     */
+  sellerName?: string;
+  environment: UpdateEInvoiceSettingsDtoEnvironment;
+  /**
+     * SANDBOX only: the local mock, e.g. http://127.0.0.1:8080. Empty = that default.
+     * @maxLength 255
+     * @nullable
+     */
+  baseUrl?: string | null;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  clientId?: string | null;
+  /**
+     * Write-only. Empty or missing keeps the stored one; it is never returned.
+     * @maxLength 255
+     */
+  secretKey?: string;
+  /**
+     * Income source sequence from the portal (manual p.16): digits.
+     * @nullable
+     * @pattern ^\d{0,50}$
+     */
+  incomeSourceSequence?: string | null;
+  track: UpdateEInvoiceSettingsDtoTrack;
+  isEnabled: boolean;
+}
+
+export interface EInvoiceSubmissionListItemDto {
+  id: string;
+  /** SALES_INVOICE | SALES_RETURN */
+  documentType: string;
+  documentId: string;
+  documentNo: string;
+  uuid: string;
+  icv: number;
+  environment: EInvoiceEnvironment;
+  status: EInvoiceStatus;
+  /** Automatic attempts since the last manual resend (at most 5 while FAILED). */
+  attemptCount: number;
+  /** @nullable */
+  sentAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /**
+     * Null when there is nothing to report.
+     * @nullable
+     */
+  errors: EInvoiceErrorDto[] | null;
+}
+
+/**
+ * Submissions per status over the caller's branches, ignoring the status filter. Only statuses with rows appear.
+ */
+export type EInvoiceSubmissionPageDtoCounts = {[key: string]: number};
+
+export interface EInvoiceSubmissionPageDto {
+  items: EInvoiceSubmissionListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+  /** Submissions per status over the caller's branches, ignoring the status filter. Only statuses with rows appear. */
+  counts: EInvoiceSubmissionPageDtoCounts;
+}
+
+export interface EInvoiceSubmissionOriginalDto {
+  id: string;
+  documentNo: string;
+  status: EInvoiceStatus;
+}
+
+export interface EInvoiceSubmissionAttemptDto {
+  attemptNo: number;
+  /** accepted | rejected | unknown | not-sent */
+  outcome: string;
+  /** @nullable */
+  httpStatus: number | null;
+  /** @nullable */
+  message: string | null;
+  startedAt: string;
+  finishedAt: string;
+}
+
+export interface EInvoiceSubmissionDetailDto {
+  id: string;
+  /** SALES_INVOICE | SALES_RETURN */
+  documentType: string;
+  documentId: string;
+  documentNo: string;
+  uuid: string;
+  icv: number;
+  environment: EInvoiceEnvironment;
+  status: EInvoiceStatus;
+  /** Automatic attempts since the last manual resend (at most 5 while FAILED). */
+  attemptCount: number;
+  /**
+     * The XML sent (no credentials in it).
+     * @nullable
+     */
+  requestXml: string | null;
+  /** @nullable */
+  responseCode: number | null;
+  /** @nullable */
+  responseBody: string | null;
+  /** @nullable */
+  qrPayload: string | null;
+  /** @nullable */
+  governmentUuid: string | null;
+  /** @nullable */
+  sentAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /**
+     * Null when there is nothing to report.
+     * @nullable
+     */
+  errors: EInvoiceErrorDto[] | null;
+  /** @nullable */
+  originalSubmission: EInvoiceSubmissionOriginalDto | null;
+  /** Ordered by attemptNo ascending. */
+  attempts: EInvoiceSubmissionAttemptDto[];
+}
+
+export interface StatementFiscalYearRefDto {
+  id: string;
+  code: string;
+}
+
+export interface FinancialStatementRowDto {
+  accountId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** Depth in the chart of accounts. */
+  depth: number;
+  isGroup: boolean;
+  /** May be negative. */
+  amount: string;
+}
+
+export interface FinancialStatementSectionDto {
+  rows: FinancialStatementRowDto[];
+  total: string;
+}
+
+export type IncomeStatementCostRowDtoKind = typeof IncomeStatementCostRowDtoKind[keyof typeof IncomeStatementCostRowDtoKind];
+
+
+export const IncomeStatementCostRowDtoKind = {
+  COGS: 'COGS',
+  INVENTORY_ADJUSTMENT: 'INVENTORY_ADJUSTMENT',
+} as const;
+
+export interface IncomeStatementCostRowDto {
+  kind: IncomeStatementCostRowDtoKind;
+  accountId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** May be negative. */
+  amount: string;
+}
+
+export interface IncomeStatementCostOfSalesDto {
+  rows: IncomeStatementCostRowDto[];
+  total: string;
+}
+
+export interface IncomeStatementDto {
+  from: string;
+  to: string;
+  /** @nullable */
+  fiscalYear: StatementFiscalYearRefDto | null;
+  revenue: FinancialStatementSectionDto;
+  costOfSales: IncomeStatementCostOfSalesDto;
+  grossProfit: string;
+  expenses: FinancialStatementSectionDto;
+  netProfit: string;
+}
+
+export interface BalanceSheetDto {
+  asOf: string;
+  yearStart: string;
+  /** @nullable */
+  fiscalYear: StatementFiscalYearRefDto | null;
+  assets: FinancialStatementSectionDto;
+  liabilities: FinancialStatementSectionDto;
+  equity: FinancialStatementSectionDto;
+  priorYears: string;
+  yearProfit: string;
+  totalLiabilitiesAndEquity: string;
+  difference: string;
+  balanced: boolean;
+}
+
+export interface TaxSummaryRowDto {
+  salesBase: string;
+  salesTax: string;
+  salesReturnsBase: string;
+  salesReturnsTax: string;
+  outputBase: string;
+  outputTax: string;
+  purchasesBase: string;
+  purchasesTax: string;
+  purchaseReturnsBase: string;
+  purchaseReturnsTax: string;
+  inputBase: string;
+  inputTax: string;
+  payable: string;
+  key: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  /** @nullable */
+  code: string | null;
+  /** @nullable */
+  nameAr: string | null;
+  /** @nullable */
+  nameEn: string | null;
+  /** Decimal.toString() of the rate, e.g. "16". */
+  rate: string;
+  /** @nullable */
+  einvoiceCode: string | null;
+}
+
+export interface TaxSummaryAmountsDto {
+  salesBase: string;
+  salesTax: string;
+  salesReturnsBase: string;
+  salesReturnsTax: string;
+  outputBase: string;
+  outputTax: string;
+  purchasesBase: string;
+  purchasesTax: string;
+  purchaseReturnsBase: string;
+  purchaseReturnsTax: string;
+  inputBase: string;
+  inputTax: string;
+  payable: string;
+}
+
+export interface TaxLedgerAmountsDto {
+  output: string;
+  input: string;
+}
+
+export interface TaxSummaryDto {
+  from: string;
+  to: string;
+  rows: TaxSummaryRowDto[];
+  totals: TaxSummaryAmountsDto;
+  ledger: TaxLedgerAmountsDto;
+  ledgerDifference: TaxLedgerAmountsDto;
+}
+
+export interface SalesSummaryRowDto {
+  /**
+     * Null when grouped by item.
+     * @nullable
+     */
+  invoiceCount: number | null;
+  /**
+     * Null when grouped by item.
+     * @nullable
+     */
+  returnCount: number | null;
+  /** Sent only when grouped by item. */
+  qty?: string;
+  net: string;
+  tax: string;
+  grand: string;
+  cost: string;
+  margin: string;
+  key: string;
+  /**
+     * Null when grouped by day or month.
+     * @nullable
+     */
+  code: string | null;
+  /** @nullable */
+  nameAr: string | null;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface SalesSummaryTotalsDto {
+  /**
+     * Null when grouped by item.
+     * @nullable
+     */
+  invoiceCount: number | null;
+  /**
+     * Null when grouped by item.
+     * @nullable
+     */
+  returnCount: number | null;
+  /** Sent only when grouped by item. */
+  qty?: string;
+  net: string;
+  tax: string;
+  grand: string;
+  cost: string;
+  margin: string;
+}
+
+export type SalesSummaryDtoGroupBy = typeof SalesSummaryDtoGroupBy[keyof typeof SalesSummaryDtoGroupBy];
+
+
+export const SalesSummaryDtoGroupBy = {
+  day: 'day',
+  month: 'month',
+  customer: 'customer',
+  supplier: 'supplier',
+  item: 'item',
+} as const;
+
+export interface SalesSummaryDto {
+  from: string;
+  to: string;
+  groupBy: SalesSummaryDtoGroupBy;
+  rows: SalesSummaryRowDto[];
+  totals: SalesSummaryTotalsDto;
+}
+
+export interface PurchasesSummaryRowDto {
+  /**
+     * Null when grouped by item.
+     * @nullable
+     */
+  invoiceCount: number | null;
+  /**
+     * Null when grouped by item.
+     * @nullable
+     */
+  returnCount: number | null;
+  /** Sent only when grouped by item. */
+  qty?: string;
+  net: string;
+  tax: string;
+  grand: string;
+  key: string;
+  /**
+     * Null when grouped by day or month.
+     * @nullable
+     */
+  code: string | null;
+  /** @nullable */
+  nameAr: string | null;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface TradeSummaryAmountsDto {
+  /**
+     * Null when grouped by item.
+     * @nullable
+     */
+  invoiceCount: number | null;
+  /**
+     * Null when grouped by item.
+     * @nullable
+     */
+  returnCount: number | null;
+  /** Sent only when grouped by item. */
+  qty?: string;
+  net: string;
+  tax: string;
+  grand: string;
+}
+
+export type PurchasesSummaryDtoGroupBy = typeof PurchasesSummaryDtoGroupBy[keyof typeof PurchasesSummaryDtoGroupBy];
+
+
+export const PurchasesSummaryDtoGroupBy = {
+  day: 'day',
+  month: 'month',
+  customer: 'customer',
+  supplier: 'supplier',
+  item: 'item',
+} as const;
+
+export interface PurchasesSummaryDto {
+  from: string;
+  to: string;
+  groupBy: PurchasesSummaryDtoGroupBy;
+  rows: PurchasesSummaryRowDto[];
+  totals: TradeSummaryAmountsDto;
+}
+
+export interface DashboardSalesBlockDto {
+  from: string;
+  to: string;
+  /** Null coalesced to 0. */
+  count: number;
+  /** Null coalesced to 0. */
+  returnCount: number;
+  net: string;
+  tax: string;
+  grand: string;
+}
+
+export interface DashboardReceivablesDto {
+  total: string;
+  overdue: string;
+}
+
+export interface DashboardBelowMinimumItemDto {
+  itemId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  unit: string;
+  qtyOnHand: string;
+  minStock: string;
+  shortage: string;
+}
+
+export interface DashboardBelowMinimumDto {
+  count: number;
+  /** At most 10. */
+  items: DashboardBelowMinimumItemDto[];
+}
+
+export interface DashboardSummaryDto {
+  date: string;
+  salesToday: DashboardSalesBlockDto;
+  salesMonth: DashboardSalesBlockDto;
+  receivables: DashboardReceivablesDto;
+  belowMinimum: DashboardBelowMinimumDto;
+}
+
+export interface AdminTenantPlanRefDto {
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface AdminTenantListItemDto {
+  id: string;
+  name: string;
+  status: TenantStatus;
+  /** @nullable */
+  trialEndsAt: string | null;
+  /** @nullable */
+  statusChangedAt: string | null;
+  /** @nullable */
+  plan: AdminTenantPlanRefDto | null;
+  /**
+     * Memberships of the tenant (all statuses).
+     * @minimum 0
+     */
+  members: number;
+  /** @minimum 0 */
+  branches: number;
+  createdAt: string;
+}
+
+export interface AdminTenantListItemDtoPage {
+  items: AdminTenantListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface AdminPlanDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  maxUsers: number;
+  maxBranches: number;
+  maxWarehouses: number;
+  maxInvoicesPerMonth: number;
+  /** @nullable */
+  priceMonthly: string | null;
+  /** @nullable */
+  priceYearly: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminTenantCompanyDto {
+  id: string;
+  legalNameAr: string;
+  isActive: boolean;
+}
+
+export type SubscriptionStatus = typeof SubscriptionStatus[keyof typeof SubscriptionStatus];
+
+
+export const SubscriptionStatus = {
+  ACTIVE: 'ACTIVE',
+  PAST_DUE: 'PAST_DUE',
+  SUSPENDED: 'SUSPENDED',
+  CANCELLED: 'CANCELLED',
+  EXPIRED: 'EXPIRED',
+} as const;
+
+export interface AdminSubscriptionDto {
+  id: string;
+  tenantId: string;
+  planId: string;
+  periodStart: string;
+  periodEnd: string;
+  status: SubscriptionStatus;
+  /** @nullable */
+  amount: string | null;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminTenantDetailDto {
+  id: string;
+  name: string;
+  status: TenantStatus;
+  /** @nullable */
+  trialEndsAt: string | null;
+  /** @nullable */
+  statusChangedAt: string | null;
+  /** @nullable */
+  plan: AdminPlanDto | null;
+  companies: AdminTenantCompanyDto[];
+  /** @minimum 0 */
+  members: number;
+  /** @minimum 0 */
+  branches: number;
+  /** Up to 12, newest first. */
+  subscriptions: AdminSubscriptionDto[];
+  createdAt: string;
+}
+
+export type UpdateTenantStatusDtoStatus = typeof UpdateTenantStatusDtoStatus[keyof typeof UpdateTenantStatusDtoStatus];
+
+
+export const UpdateTenantStatusDtoStatus = {
+  TRIAL: 'TRIAL',
+  ACTIVE: 'ACTIVE',
+  PAST_DUE: 'PAST_DUE',
+  SUSPENDED: 'SUSPENDED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export interface UpdateTenantStatusDto {
+  status: UpdateTenantStatusDtoStatus;
+  /** @maxLength 500 */
+  reason?: string;
+}
+
+export interface AdminTenantStatusDto {
+  id: string;
+  status: TenantStatus;
+}
+
+export interface ExtendTrialDto {
+  /**
+     * @minimum 1
+     * @maximum 365
+     */
+  days: number;
+}
+
+export interface AdminTrialExtendedDto {
+  id: string;
+  trialEndsAt: string;
+}
+
+export interface CreateSubscriptionDto {
+  planCode: string;
+  periodStart?: string;
+  periodEnd: string;
+  /** Amount received for the period. */
+  amount?: string;
+  /** @maxLength 500 */
+  notes?: string;
+}
+
+export interface AdminSubscriptionCreatedDto {
+  id: string;
+  status: SubscriptionStatus;
+}
+
+export interface AdminPlanListItemDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  maxUsers: number;
+  maxBranches: number;
+  maxWarehouses: number;
+  maxInvoicesPerMonth: number;
+  /** @nullable */
+  priceMonthly: string | null;
+  /** @nullable */
+  priceYearly: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @minimum 0 */
+  tenants: number;
+}
+
+export interface UpdatePlanDto {
+  /** @maxLength 191 */
+  nameAr?: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  /**
+     * @minimum 1
+     * @maximum 10000
+     */
+  maxUsers?: number;
+  /**
+     * @minimum 1
+     * @maximum 10000
+     */
+  maxBranches?: number;
+  /**
+     * @minimum 1
+     * @maximum 10000
+     */
+  maxWarehouses?: number;
+  /**
+     * @minimum 1
+     * @maximum 10000000
+     */
+  maxInvoicesPerMonth?: number;
+  /**
+     * null clears the price (e.g. the trial plan).
+     * @nullable
+     */
+  priceMonthly?: string | null;
+  /** @nullable */
+  priceYearly?: string | null;
+  isActive?: boolean;
+}
+
+export interface ClientErrorDto {
+  /** @maxLength 191 */
+  name?: string;
+  /** @maxLength 2000 */
+  message: string;
+  /** @maxLength 16000 */
+  stack?: string;
+  /**
+     * location.pathname of the page; no query string is stored.
+     * @maxLength 500
+     */
+  page?: string;
+}
+
+export type ErrorSource = typeof ErrorSource[keyof typeof ErrorSource];
+
+
+export const ErrorSource = {
+  API: 'API',
+  WEB: 'WEB',
+  JOB: 'JOB',
+} as const;
+
+export interface AdminErrorRowDto {
+  id: string;
+  source: ErrorSource;
+  name: string;
+  message: string;
+  /** @nullable */
+  method: string | null;
+  /** @nullable */
+  path: string | null;
+  /** @nullable */
+  status: number | null;
+  /** @nullable */
+  tenantId: string | null;
+  /** @nullable */
+  userId: string | null;
+  /** @nullable */
+  requestId: string | null;
+  count: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  /**
+     * Set from the console; a new occurrence reopens it.
+     * @nullable
+     */
+  resolvedAt: string | null;
+}
+
+export interface AdminErrorDetailDto {
+  id: string;
+  source: ErrorSource;
+  name: string;
+  message: string;
+  /** @nullable */
+  method: string | null;
+  /** @nullable */
+  path: string | null;
+  /** @nullable */
+  status: number | null;
+  /** @nullable */
+  tenantId: string | null;
+  /** @nullable */
+  userId: string | null;
+  /** @nullable */
+  requestId: string | null;
+  count: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  /**
+     * Set from the console; a new occurrence reopens it.
+     * @nullable
+     */
+  resolvedAt: string | null;
+  /** @nullable */
+  stack: string | null;
+}
+
+export type ErrorCode = typeof ErrorCode[keyof typeof ErrorCode];
+
+
+export const ErrorCode = {
+  VALIDATION: 'VALIDATION',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
+  NOT_FOUND: 'NOT_FOUND',
+  CONFLICT: 'CONFLICT',
+  PLAN_LIMIT_EXCEEDED: 'PLAN_LIMIT_EXCEEDED',
+  DB_UNAVAILABLE: 'DB_UNAVAILABLE',
+  IDEMPOTENCY_KEY_REUSED: 'IDEMPOTENCY_KEY_REUSED',
+  TENANT_READ_ONLY: 'TENANT_READ_ONLY',
+  UNBALANCED_ENTRY: 'UNBALANCED_ENTRY',
+  PERIOD_CLOSED: 'PERIOD_CLOSED',
+  STOCK_INSUFFICIENT: 'STOCK_INSUFFICIENT',
+  BACKDATED_STOCK_POSTING: 'BACKDATED_STOCK_POSTING',
+  BRANCH_NOT_ALLOWED: 'BRANCH_NOT_ALLOWED',
+  REVERSE_VIA_DOCUMENT: 'REVERSE_VIA_DOCUMENT',
+  VOUCHER_HAS_ALLOCATIONS: 'VOUCHER_HAS_ALLOCATIONS',
+  OPENING_INVENTORY_VIA_STOCK: 'OPENING_INVENTORY_VIA_STOCK',
+  UPLOAD_TOO_LARGE: 'UPLOAD_TOO_LARGE',
+  UPLOAD_TYPE_NOT_ALLOWED: 'UPLOAD_TYPE_NOT_ALLOWED',
+  EINVOICE_BUYER_REQUIRED: 'EINVOICE_BUYER_REQUIRED',
+  EINVOICE_REASON_REQUIRED: 'EINVOICE_REASON_REQUIRED',
+  EINVOICE_NOT_READY: 'EINVOICE_NOT_READY',
+  ENTRY_NOT_DRAFT: 'ENTRY_NOT_DRAFT',
+  ENTRY_NOT_POSTED: 'ENTRY_NOT_POSTED',
+  ENTRY_ALREADY_REVERSED: 'ENTRY_ALREADY_REVERSED',
+  REVERSAL_NOT_REVERSIBLE: 'REVERSAL_NOT_REVERSIBLE',
+  REVERSAL_BEFORE_ORIGINAL: 'REVERSAL_BEFORE_ORIGINAL',
+  OPENING_DATE_NOT_YEAR_START: 'OPENING_DATE_NOT_YEAR_START',
+  ACCOUNT_NOT_POSTABLE: 'ACCOUNT_NOT_POSTABLE',
+  ACCOUNT_INACTIVE: 'ACCOUNT_INACTIVE',
+  ACCOUNT_HAS_BALANCE: 'ACCOUNT_HAS_BALANCE',
+  ACCOUNT_IN_USE: 'ACCOUNT_IN_USE',
+  ACCOUNT_HAS_CHILDREN: 'ACCOUNT_HAS_CHILDREN',
+  ACCOUNT_TYPE_MISMATCH: 'ACCOUNT_TYPE_MISMATCH',
+  PARTY_REQUIRED: 'PARTY_REQUIRED',
+  PARTY_TYPE_MISMATCH: 'PARTY_TYPE_MISMATCH',
+  PARTY_ON_NON_CONTROL_ACCOUNT: 'PARTY_ON_NON_CONTROL_ACCOUNT',
+  MAPPING_ACCOUNT_INVALID: 'MAPPING_ACCOUNT_INVALID',
+  MAPPING_LOCKED: 'MAPPING_LOCKED',
+  FISCAL_YEAR_OVERLAP: 'FISCAL_YEAR_OVERLAP',
+  FISCAL_YEAR_TOO_LONG: 'FISCAL_YEAR_TOO_LONG',
+  DUPLICATE_CODE: 'DUPLICATE_CODE',
+  INVALID_DATE_RANGE: 'INVALID_DATE_RANGE',
+  REPORT_TOO_LARGE: 'REPORT_TOO_LARGE',
+  RATE_LIMITED: 'RATE_LIMITED',
+  INVALID_CURRENT_PASSWORD: 'INVALID_CURRENT_PASSWORD',
+  PASSWORD_CHANGE_REQUIRED: 'PASSWORD_CHANGE_REQUIRED',
+  PASSWORD_RESET_NOT_ALLOWED: 'PASSWORD_RESET_NOT_ALLOWED',
+  LOGIN_LOCKED: 'LOGIN_LOCKED',
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
+  DOCUMENT_TOO_MANY_LINES: 'DOCUMENT_TOO_MANY_LINES',
+  INVITATION_CODE_INVALID: 'INVITATION_CODE_INVALID',
+  GRN_ALREADY_INVOICED: 'GRN_ALREADY_INVOICED',
+  STOCK_COUNT_STALE: 'STOCK_COUNT_STALE',
+  PARTY_IN_USE: 'PARTY_IN_USE',
+  CURSOR_INVALID: 'CURSOR_INVALID',
+  ALL_BRANCHES_REQUIRED: 'ALL_BRANCHES_REQUIRED',
+  INTERNAL: 'INTERNAL',
+} as const;
+
+/**
+ * Facts about the error for the client, e.g. the fields at fault or retryAfterSeconds.
+ */
+export type ErrorBodyDtoDetails = { [key: string]: unknown };
+
+export interface ErrorBodyDto {
+  code: ErrorCode;
+  message: string;
+  /** Facts about the error for the client, e.g. the fields at fault or retryAfterSeconds. */
+  details?: ErrorBodyDtoDetails;
+  /** The x-request-id of the request, for support. */
+  requestId: string;
+}
+
+export interface ErrorResponseDto {
+  error: ErrorBodyDto;
+}
 
 export type FiscalControllerListSequencesParams = {
-  fiscalYearId: string;
+  fiscalYearId?: string;
 };
 
 export type CompanyControllerUploadLogoBody = {
@@ -135,11 +5494,15 @@ export type JournalControllerListParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: JournalControllerListSort;
   status?: JournalControllerListStatus;
   voucherType?: JournalControllerListVoucherType;
+  /** MANUAL_JOURNAL or OPENING_ENTRY (the opening balances screen). */
   sourceType?: JournalControllerListSourceType;
   from?: string;
   to?: string;
@@ -180,15 +5543,85 @@ export const JournalControllerListSourceType = {
   OPENING_ENTRY: 'OPENING_ENTRY',
 } as const;
 
+export type JournalControllerTrialBalanceParams = {
+  from?: string;
+  to?: string;
+  accountId?: string;
+  partyType?: JournalControllerTrialBalancePartyType;
+  partyId?: string;
+  format?: JournalControllerTrialBalanceFormat;
+  lang?: JournalControllerTrialBalanceLang;
+};
+
+export type JournalControllerTrialBalancePartyType = typeof JournalControllerTrialBalancePartyType[keyof typeof JournalControllerTrialBalancePartyType];
+
+
+export const JournalControllerTrialBalancePartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+} as const;
+
+export type JournalControllerTrialBalanceFormat = typeof JournalControllerTrialBalanceFormat[keyof typeof JournalControllerTrialBalanceFormat];
+
+
+export const JournalControllerTrialBalanceFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type JournalControllerTrialBalanceLang = typeof JournalControllerTrialBalanceLang[keyof typeof JournalControllerTrialBalanceLang];
+
+
+export const JournalControllerTrialBalanceLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
 export type JournalControllerGeneralLedgerParams = {
   /**
    * @minimum 1
    * @maximum 500
    */
   limit?: number;
-  /** @maxLength 512 */
+  /**
+   * Opaque `nextCursor` of the previous page; omit for the first page.
+   * @maxLength 512
+   */
   cursor?: string;
+  format?: JournalControllerGeneralLedgerFormat;
+  lang?: JournalControllerGeneralLedgerLang;
+  from?: string;
+  to?: string;
+  accountId?: string;
+  partyType?: JournalControllerGeneralLedgerPartyType;
+  partyId?: string;
 };
+
+export type JournalControllerGeneralLedgerFormat = typeof JournalControllerGeneralLedgerFormat[keyof typeof JournalControllerGeneralLedgerFormat];
+
+
+export const JournalControllerGeneralLedgerFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type JournalControllerGeneralLedgerLang = typeof JournalControllerGeneralLedgerLang[keyof typeof JournalControllerGeneralLedgerLang];
+
+
+export const JournalControllerGeneralLedgerLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type JournalControllerGeneralLedgerPartyType = typeof JournalControllerGeneralLedgerPartyType[keyof typeof JournalControllerGeneralLedgerPartyType];
+
+
+export const JournalControllerGeneralLedgerPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+} as const;
 
 export type JournalControllerPartyStatementParams = {
   /**
@@ -196,9 +5629,44 @@ export type JournalControllerPartyStatementParams = {
    * @maximum 500
    */
   limit?: number;
-  /** @maxLength 512 */
+  /**
+   * Opaque `nextCursor` of the previous page; omit for the first page.
+   * @maxLength 512
+   */
   cursor?: string;
+  format?: JournalControllerPartyStatementFormat;
+  lang?: JournalControllerPartyStatementLang;
+  from?: string;
+  to?: string;
+  accountId?: string;
+  partyType?: JournalControllerPartyStatementPartyType;
+  partyId?: string;
 };
+
+export type JournalControllerPartyStatementFormat = typeof JournalControllerPartyStatementFormat[keyof typeof JournalControllerPartyStatementFormat];
+
+
+export const JournalControllerPartyStatementFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type JournalControllerPartyStatementLang = typeof JournalControllerPartyStatementLang[keyof typeof JournalControllerPartyStatementLang];
+
+
+export const JournalControllerPartyStatementLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type JournalControllerPartyStatementPartyType = typeof JournalControllerPartyStatementPartyType[keyof typeof JournalControllerPartyStatementPartyType];
+
+
+export const JournalControllerPartyStatementPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+} as const;
 
 export type PartiesControllerListParams = {
   /**
@@ -211,9 +5679,13 @@ export type PartiesControllerListParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: PartiesControllerListSort;
+  /** Exact party type: BOTH is listed only by `partyType=BOTH`. */
   partyType?: PartiesControllerListPartyType;
   isActive?: PartiesControllerListIsActive;
 };
@@ -256,7 +5728,10 @@ export type CatalogControllerListItemsParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: CatalogControllerListItemsSort;
   itemKind?: CatalogControllerListItemsItemKind;
@@ -300,11 +5775,16 @@ export type StockDocumentsControllerListAdjustmentsParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: StockDocumentsControllerListAdjustmentsSort;
   status?: StockDocumentsControllerListAdjustmentsStatus;
+  /** Document date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Document date on or before (yyyy-mm-dd). */
   to?: string;
   adjustmentType?: StockDocumentsControllerListAdjustmentsAdjustmentType;
   warehouseId?: string;
@@ -349,11 +5829,16 @@ export type StockDocumentsControllerListTransfersParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: StockDocumentsControllerListTransfersSort;
   status?: StockDocumentsControllerListTransfersStatus;
+  /** Document date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Document date on or before (yyyy-mm-dd). */
   to?: string;
   warehouseId?: string;
 };
@@ -387,11 +5872,16 @@ export type StockDocumentsControllerListCountsParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: StockDocumentsControllerListCountsSort;
   status?: StockDocumentsControllerListCountsStatus;
+  /** Document date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Document date on or before (yyyy-mm-dd). */
   to?: string;
   warehouseId?: string;
 };
@@ -417,8 +5907,28 @@ export const StockDocumentsControllerListCountsStatus = {
 export type StockReportsControllerBalancesParams = {
   warehouseId?: string;
   itemId?: string;
+  /** 'true' → only items whose total over all warehouses is below their minimum. */
   lowStock?: string;
+  format?: StockReportsControllerBalancesFormat;
+  lang?: StockReportsControllerBalancesLang;
 };
+
+export type StockReportsControllerBalancesFormat = typeof StockReportsControllerBalancesFormat[keyof typeof StockReportsControllerBalancesFormat];
+
+
+export const StockReportsControllerBalancesFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type StockReportsControllerBalancesLang = typeof StockReportsControllerBalancesLang[keyof typeof StockReportsControllerBalancesLang];
+
+
+export const StockReportsControllerBalancesLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
 
 export type StockReportsControllerMovementsParams = {
   /**
@@ -426,12 +5936,17 @@ export type StockReportsControllerMovementsParams = {
    * @maximum 500
    */
   limit?: number;
-  /** @maxLength 512 */
+  /**
+   * Opaque `nextCursor` of the previous page; omit for the first page.
+   * @maxLength 512
+   */
   cursor?: string;
   warehouseId?: string;
   itemId?: string;
   sourceType?: StockReportsControllerMovementsSourceType;
+  /** Movement date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Movement date on or before (yyyy-mm-dd). */
   to?: string;
 };
 
@@ -456,12 +5971,19 @@ export type StockReportsControllerItemLedgerParams = {
    * @maximum 500
    */
   limit?: number;
-  /** @maxLength 512 */
+  /**
+   * Opaque `nextCursor` of the previous page; omit for the first page.
+   * @maxLength 512
+   */
   cursor?: string;
   warehouseId?: string;
   sourceType?: StockReportsControllerItemLedgerSourceType;
+  /** Movement date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Movement date on or before (yyyy-mm-dd). */
   to?: string;
+  format?: StockReportsControllerItemLedgerFormat;
+  lang?: StockReportsControllerItemLedgerLang;
 };
 
 export type StockReportsControllerItemLedgerSourceType = typeof StockReportsControllerItemLedgerSourceType[keyof typeof StockReportsControllerItemLedgerSourceType];
@@ -479,15 +6001,70 @@ export const StockReportsControllerItemLedgerSourceType = {
   STOCK_TRANSFER: 'STOCK_TRANSFER',
 } as const;
 
+export type StockReportsControllerItemLedgerFormat = typeof StockReportsControllerItemLedgerFormat[keyof typeof StockReportsControllerItemLedgerFormat];
+
+
+export const StockReportsControllerItemLedgerFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type StockReportsControllerItemLedgerLang = typeof StockReportsControllerItemLedgerLang[keyof typeof StockReportsControllerItemLedgerLang];
+
+
+export const StockReportsControllerItemLedgerLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
 export type StockReportsControllerItemBalancesParams = {
   warehouseId?: string;
   from?: string;
   to?: string;
+  format?: StockReportsControllerItemBalancesFormat;
+  lang?: StockReportsControllerItemBalancesLang;
 };
+
+export type StockReportsControllerItemBalancesFormat = typeof StockReportsControllerItemBalancesFormat[keyof typeof StockReportsControllerItemBalancesFormat];
+
+
+export const StockReportsControllerItemBalancesFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type StockReportsControllerItemBalancesLang = typeof StockReportsControllerItemBalancesLang[keyof typeof StockReportsControllerItemBalancesLang];
+
+
+export const StockReportsControllerItemBalancesLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
 
 export type StockReportsControllerValuationParams = {
   warehouseId?: string;
+  format?: StockReportsControllerValuationFormat;
+  lang?: StockReportsControllerValuationLang;
 };
+
+export type StockReportsControllerValuationFormat = typeof StockReportsControllerValuationFormat[keyof typeof StockReportsControllerValuationFormat];
+
+
+export const StockReportsControllerValuationFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type StockReportsControllerValuationLang = typeof StockReportsControllerValuationLang[keyof typeof StockReportsControllerValuationLang];
+
+
+export const StockReportsControllerValuationLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
 
 export type SalesControllerListInvoicesParams = {
   /**
@@ -500,14 +6077,24 @@ export type SalesControllerListInvoicesParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: SalesControllerListInvoicesSort;
   status?: SalesControllerListInvoicesStatus;
   paymentType?: SalesControllerListInvoicesPaymentType;
   customerId?: string;
+  /** Invoice date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Invoice date on or before (yyyy-mm-dd). */
   to?: string;
+  /**
+   * `true`: posted credit invoices that still owe something (grand total above
+   * the paid amount), for the allocation picker. An invoice settled only by
+   * credit returns can still be listed, with `outstanding` 0.
+   */
   open?: SalesControllerListInvoicesOpen;
 };
 
@@ -547,6 +6134,28 @@ export const SalesControllerListInvoicesOpen = {
   false: 'false',
 } as const;
 
+export type SalesControllerInvoicePdfParams = {
+  format?: SalesControllerInvoicePdfFormat;
+  lang?: SalesControllerInvoicePdfLang;
+};
+
+export type SalesControllerInvoicePdfFormat = typeof SalesControllerInvoicePdfFormat[keyof typeof SalesControllerInvoicePdfFormat];
+
+
+export const SalesControllerInvoicePdfFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type SalesControllerInvoicePdfLang = typeof SalesControllerInvoicePdfLang[keyof typeof SalesControllerInvoicePdfLang];
+
+
+export const SalesControllerInvoicePdfLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
 export type SalesControllerListReturnsParams = {
   /**
    * @minimum 1
@@ -558,12 +6167,17 @@ export type SalesControllerListReturnsParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: SalesControllerListReturnsSort;
   status?: SalesControllerListReturnsStatus;
   customerId?: string;
+  /** Return date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Return date on or before (yyyy-mm-dd). */
   to?: string;
 };
 
@@ -587,6 +6201,28 @@ export const SalesControllerListReturnsStatus = {
   POSTED: 'POSTED',
 } as const;
 
+export type SalesControllerReturnPdfParams = {
+  format?: SalesControllerReturnPdfFormat;
+  lang?: SalesControllerReturnPdfLang;
+};
+
+export type SalesControllerReturnPdfFormat = typeof SalesControllerReturnPdfFormat[keyof typeof SalesControllerReturnPdfFormat];
+
+
+export const SalesControllerReturnPdfFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type SalesControllerReturnPdfLang = typeof SalesControllerReturnPdfLang[keyof typeof SalesControllerReturnPdfLang];
+
+
+export const SalesControllerReturnPdfLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
 export type PurchasesControllerListInvoicesParams = {
   /**
    * @minimum 1
@@ -598,14 +6234,23 @@ export type PurchasesControllerListInvoicesParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: PurchasesControllerListInvoicesSort;
   status?: PurchasesControllerListInvoicesStatus;
   paymentType?: PurchasesControllerListInvoicesPaymentType;
   supplierId?: string;
+  /** Invoice date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Invoice date on or before (yyyy-mm-dd). */
   to?: string;
+  /**
+   * `true`: posted credit invoices that still owe something (grand total above
+   * the paid amount), for the allocation picker.
+   */
   open?: PurchasesControllerListInvoicesOpen;
 };
 
@@ -645,6 +6290,28 @@ export const PurchasesControllerListInvoicesOpen = {
   false: 'false',
 } as const;
 
+export type PurchasesControllerInvoicePdfParams = {
+  format?: PurchasesControllerInvoicePdfFormat;
+  lang?: PurchasesControllerInvoicePdfLang;
+};
+
+export type PurchasesControllerInvoicePdfFormat = typeof PurchasesControllerInvoicePdfFormat[keyof typeof PurchasesControllerInvoicePdfFormat];
+
+
+export const PurchasesControllerInvoicePdfFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type PurchasesControllerInvoicePdfLang = typeof PurchasesControllerInvoicePdfLang[keyof typeof PurchasesControllerInvoicePdfLang];
+
+
+export const PurchasesControllerInvoicePdfLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
 export type PurchasesControllerListReturnsParams = {
   /**
    * @minimum 1
@@ -656,12 +6323,17 @@ export type PurchasesControllerListReturnsParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: PurchasesControllerListReturnsSort;
   status?: PurchasesControllerListReturnsStatus;
   supplierId?: string;
+  /** Return date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Return date on or before (yyyy-mm-dd). */
   to?: string;
 };
 
@@ -696,11 +6368,16 @@ export type GoodsNotesControllerListParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: GoodsNotesControllerListSort;
   status?: GoodsNotesControllerListStatus;
+  /** Document date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Document date on or before (yyyy-mm-dd). */
   to?: string;
   noteType?: GoodsNotesControllerListNoteType;
 };
@@ -742,9 +6419,14 @@ export type TreasuryControllerListReceiptsParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
+  /** Voucher date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Voucher date on or before (yyyy-mm-dd). */
   to?: string;
   sort?: TreasuryControllerListReceiptsSort;
   partyId?: string;
@@ -763,6 +6445,28 @@ export const TreasuryControllerListReceiptsSort = {
   '-amount': '-amount',
 } as const;
 
+export type TreasuryControllerReceiptPdfParams = {
+  format?: TreasuryControllerReceiptPdfFormat;
+  lang?: TreasuryControllerReceiptPdfLang;
+};
+
+export type TreasuryControllerReceiptPdfFormat = typeof TreasuryControllerReceiptPdfFormat[keyof typeof TreasuryControllerReceiptPdfFormat];
+
+
+export const TreasuryControllerReceiptPdfFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type TreasuryControllerReceiptPdfLang = typeof TreasuryControllerReceiptPdfLang[keyof typeof TreasuryControllerReceiptPdfLang];
+
+
+export const TreasuryControllerReceiptPdfLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
 export type TreasuryControllerListPaymentsParams = {
   /**
    * @minimum 1
@@ -774,9 +6478,14 @@ export type TreasuryControllerListPaymentsParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
+  /** Voucher date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Voucher date on or before (yyyy-mm-dd). */
   to?: string;
   sort?: TreasuryControllerListPaymentsSort;
   partyId?: string;
@@ -795,6 +6504,28 @@ export const TreasuryControllerListPaymentsSort = {
   '-amount': '-amount',
 } as const;
 
+export type TreasuryControllerPaymentPdfParams = {
+  format?: TreasuryControllerPaymentPdfFormat;
+  lang?: TreasuryControllerPaymentPdfLang;
+};
+
+export type TreasuryControllerPaymentPdfFormat = typeof TreasuryControllerPaymentPdfFormat[keyof typeof TreasuryControllerPaymentPdfFormat];
+
+
+export const TreasuryControllerPaymentPdfFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type TreasuryControllerPaymentPdfLang = typeof TreasuryControllerPaymentPdfLang[keyof typeof TreasuryControllerPaymentPdfLang];
+
+
+export const TreasuryControllerPaymentPdfLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
 export type TreasuryControllerListCashTransfersParams = {
   /**
    * @minimum 1
@@ -806,9 +6537,14 @@ export type TreasuryControllerListCashTransfersParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
+  /** Voucher date on or after (yyyy-mm-dd). */
   from?: string;
+  /** Voucher date on or before (yyyy-mm-dd). */
   to?: string;
   sort?: TreasuryControllerListCashTransfersSort;
 };
@@ -825,6 +6561,42 @@ export const TreasuryControllerListCashTransfersSort = {
   '-amount': '-amount',
 } as const;
 
+export type TreasuryControllerAgingParams = {
+  format?: TreasuryControllerAgingFormat;
+  lang?: TreasuryControllerAgingLang;
+  partyType: TreasuryControllerAgingPartyType;
+  /**
+   * yyyy-mm-dd, inclusive; defaults to today (UTC).
+   * @pattern ^\d{4}-\d{2}-\d{2}$
+   */
+  asOf?: string;
+};
+
+export type TreasuryControllerAgingFormat = typeof TreasuryControllerAgingFormat[keyof typeof TreasuryControllerAgingFormat];
+
+
+export const TreasuryControllerAgingFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type TreasuryControllerAgingLang = typeof TreasuryControllerAgingLang[keyof typeof TreasuryControllerAgingLang];
+
+
+export const TreasuryControllerAgingLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type TreasuryControllerAgingPartyType = typeof TreasuryControllerAgingPartyType[keyof typeof TreasuryControllerAgingPartyType];
+
+
+export const TreasuryControllerAgingPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+} as const;
+
 export type EInvoiceControllerListSubmissionsParams = {
   /**
    * @minimum 1
@@ -836,12 +6608,17 @@ export type EInvoiceControllerListSubmissionsParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: EInvoiceControllerListSubmissionsSort;
   status?: EInvoiceControllerListSubmissionsStatus;
   documentType?: EInvoiceControllerListSubmissionsDocumentType;
+  /** Created on or after (yyyy-mm-dd). */
   from?: string;
+  /** Created on or before (yyyy-mm-dd), the whole day included. */
   to?: string;
 };
 
@@ -875,6 +6652,153 @@ export const EInvoiceControllerListSubmissionsDocumentType = {
   SALES_RETURN: 'SALES_RETURN',
 } as const;
 
+export type ReportsControllerIncomeStatementParams = {
+  format?: ReportsControllerIncomeStatementFormat;
+  lang?: ReportsControllerIncomeStatementLang;
+  from?: string;
+  to?: string;
+};
+
+export type ReportsControllerIncomeStatementFormat = typeof ReportsControllerIncomeStatementFormat[keyof typeof ReportsControllerIncomeStatementFormat];
+
+
+export const ReportsControllerIncomeStatementFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ReportsControllerIncomeStatementLang = typeof ReportsControllerIncomeStatementLang[keyof typeof ReportsControllerIncomeStatementLang];
+
+
+export const ReportsControllerIncomeStatementLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type ReportsControllerBalanceSheetParams = {
+  format?: ReportsControllerBalanceSheetFormat;
+  lang?: ReportsControllerBalanceSheetLang;
+  /** yyyy-mm-dd, inclusive; defaults to today in the company's timezone. */
+  asOf?: string;
+};
+
+export type ReportsControllerBalanceSheetFormat = typeof ReportsControllerBalanceSheetFormat[keyof typeof ReportsControllerBalanceSheetFormat];
+
+
+export const ReportsControllerBalanceSheetFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ReportsControllerBalanceSheetLang = typeof ReportsControllerBalanceSheetLang[keyof typeof ReportsControllerBalanceSheetLang];
+
+
+export const ReportsControllerBalanceSheetLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type ReportsControllerTaxSummaryParams = {
+  format?: ReportsControllerTaxSummaryFormat;
+  lang?: ReportsControllerTaxSummaryLang;
+  from?: string;
+  to?: string;
+};
+
+export type ReportsControllerTaxSummaryFormat = typeof ReportsControllerTaxSummaryFormat[keyof typeof ReportsControllerTaxSummaryFormat];
+
+
+export const ReportsControllerTaxSummaryFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ReportsControllerTaxSummaryLang = typeof ReportsControllerTaxSummaryLang[keyof typeof ReportsControllerTaxSummaryLang];
+
+
+export const ReportsControllerTaxSummaryLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type ReportsControllerSalesSummaryParams = {
+  format?: ReportsControllerSalesSummaryFormat;
+  lang?: ReportsControllerSalesSummaryLang;
+  from?: string;
+  to?: string;
+  groupBy?: ReportsControllerSalesSummaryGroupBy;
+};
+
+export type ReportsControllerSalesSummaryFormat = typeof ReportsControllerSalesSummaryFormat[keyof typeof ReportsControllerSalesSummaryFormat];
+
+
+export const ReportsControllerSalesSummaryFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ReportsControllerSalesSummaryLang = typeof ReportsControllerSalesSummaryLang[keyof typeof ReportsControllerSalesSummaryLang];
+
+
+export const ReportsControllerSalesSummaryLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type ReportsControllerSalesSummaryGroupBy = typeof ReportsControllerSalesSummaryGroupBy[keyof typeof ReportsControllerSalesSummaryGroupBy];
+
+
+export const ReportsControllerSalesSummaryGroupBy = {
+  day: 'day',
+  month: 'month',
+  customer: 'customer',
+  item: 'item',
+} as const;
+
+export type ReportsControllerPurchasesSummaryParams = {
+  format?: ReportsControllerPurchasesSummaryFormat;
+  lang?: ReportsControllerPurchasesSummaryLang;
+  from?: string;
+  to?: string;
+  groupBy?: ReportsControllerPurchasesSummaryGroupBy;
+};
+
+export type ReportsControllerPurchasesSummaryFormat = typeof ReportsControllerPurchasesSummaryFormat[keyof typeof ReportsControllerPurchasesSummaryFormat];
+
+
+export const ReportsControllerPurchasesSummaryFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ReportsControllerPurchasesSummaryLang = typeof ReportsControllerPurchasesSummaryLang[keyof typeof ReportsControllerPurchasesSummaryLang];
+
+
+export const ReportsControllerPurchasesSummaryLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type ReportsControllerPurchasesSummaryGroupBy = typeof ReportsControllerPurchasesSummaryGroupBy[keyof typeof ReportsControllerPurchasesSummaryGroupBy];
+
+
+export const ReportsControllerPurchasesSummaryGroupBy = {
+  day: 'day',
+  month: 'month',
+  supplier: 'supplier',
+  item: 'item',
+} as const;
+
+export type ReportsControllerDashboardSummaryParams = {
+  /** yyyy-mm-dd; defaults to today in the company's timezone. */
+  date?: string;
+};
+
 export type AdminControllerListParams = {
   /**
    * @minimum 1
@@ -886,7 +6810,10 @@ export type AdminControllerListParams = {
    * @maximum 100
    */
   pageSize?: number;
-  /** @maxLength 100 */
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
   q?: string;
   sort?: AdminControllerListSort;
   status?: AdminControllerListStatus;
@@ -939,17 +6866,29 @@ export const AdminErrorsControllerListSource = {
   JOB: 'JOB',
 } as const;
 
+export type HTTPStatusCode1xx = 100 | 101 | 102 | 103;
+export type HTTPStatusCode2xx = 200 | 201 | 202 | 203 | 204 | 205 | 206 | 207;
+export type HTTPStatusCode3xx = 300 | 301 | 302 | 303 | 304 | 305 | 307 | 308;
+export type HTTPStatusCode4xx = 400 | 401 | 402 | 403 | 404 | 405 | 406 | 407 | 408 | 409 | 410 | 411 | 412 | 413 | 414 | 415 | 416 | 417 | 418 | 419 | 420 | 421 | 422 | 423 | 424 | 426 | 428 | 429 | 431 | 451;
+export type HTTPStatusCode5xx = 500 | 501 | 502 | 503 | 504 | 505 | 507 | 511;
+export type HTTPStatusCodes = HTTPStatusCode1xx | HTTPStatusCode2xx | HTTPStatusCode3xx | HTTPStatusCode4xx | HTTPStatusCode5xx;
+
 export type healthControllerHealthResponse200 = {
-  data: void
+  data: HealthReportDto
   status: 200
+}
+
+export type healthControllerHealthResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type healthControllerHealthResponseSuccess = (healthControllerHealthResponse200) & {
   headers: Headers;
 };
-;
-
-export type healthControllerHealthResponse = (healthControllerHealthResponseSuccess)
+export type healthControllerHealthResponseError = (healthControllerHealthResponseDefault) & {
+  headers: Headers;
+};
 
 export const getHealthControllerHealthUrl = () => {
 
@@ -962,9 +6901,9 @@ export const getHealthControllerHealthUrl = () => {
 /**
  * @summary Readiness: the database can write and use its temp directory
  */
-export const healthControllerHealth = async ( options?: Parameters<typeof apiFetch>[1]): Promise<healthControllerHealthResponse> => {
+export const healthControllerHealth = async ( options?: Parameters<typeof apiFetch>[1]): Promise<healthControllerHealthResponseSuccess> => {
 
-  return apiFetch<healthControllerHealthResponse>(getHealthControllerHealthUrl(),
+  return apiFetch<healthControllerHealthResponseSuccess>(getHealthControllerHealthUrl(),
   {
     ...options,
     method: 'GET'
@@ -976,16 +6915,21 @@ export const healthControllerHealth = async ( options?: Parameters<typeof apiFet
 
 
 export type healthControllerLiveResponse200 = {
-  data: void
+  data: HealthLiveDto
   status: 200
+}
+
+export type healthControllerLiveResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type healthControllerLiveResponseSuccess = (healthControllerLiveResponse200) & {
   headers: Headers;
 };
-;
-
-export type healthControllerLiveResponse = (healthControllerLiveResponseSuccess)
+export type healthControllerLiveResponseError = (healthControllerLiveResponseDefault) & {
+  headers: Headers;
+};
 
 export const getHealthControllerLiveUrl = () => {
 
@@ -998,9 +6942,9 @@ export const getHealthControllerLiveUrl = () => {
 /**
  * @summary Liveness: the process answers (no database access)
  */
-export const healthControllerLive = async ( options?: Parameters<typeof apiFetch>[1]): Promise<healthControllerLiveResponse> => {
+export const healthControllerLive = async ( options?: Parameters<typeof apiFetch>[1]): Promise<healthControllerLiveResponseSuccess> => {
 
-  return apiFetch<healthControllerLiveResponse>(getHealthControllerLiveUrl(),
+  return apiFetch<healthControllerLiveResponseSuccess>(getHealthControllerLiveUrl(),
   {
     ...options,
     method: 'GET'
@@ -1012,16 +6956,21 @@ export const healthControllerLive = async ( options?: Parameters<typeof apiFetch
 
 
 export type authControllerRegisterResponse201 = {
-  data: void
+  data: AuthAccessTokenDto
   status: 201
+}
+
+export type authControllerRegisterResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type authControllerRegisterResponseSuccess = (authControllerRegisterResponse201) & {
   headers: Headers;
 };
-;
-
-export type authControllerRegisterResponse = (authControllerRegisterResponseSuccess)
+export type authControllerRegisterResponseError = (authControllerRegisterResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAuthControllerRegisterUrl = () => {
 
@@ -1031,7 +6980,7 @@ export const getAuthControllerRegisterUrl = () => {
   return `/api/v1/auth/register`
 }
 
-export const authControllerRegister = async (registerDto: RegisterDto, options?: Parameters<typeof apiFetch>[1]): Promise<authControllerRegisterResponse> => {
+export const authControllerRegister = async (registerDto: RegisterDto, options?: Parameters<typeof apiFetch>[1]): Promise<authControllerRegisterResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1047,7 +6996,7 @@ export const authControllerRegister = async (registerDto: RegisterDto, options?:
     }
     return headers;
   };
-return apiFetch<authControllerRegisterResponse>(getAuthControllerRegisterUrl(),
+return apiFetch<authControllerRegisterResponseSuccess>(getAuthControllerRegisterUrl(),
   {
     ...options,
     method: 'POST',
@@ -1059,16 +7008,21 @@ return apiFetch<authControllerRegisterResponse>(getAuthControllerRegisterUrl(),
 
 
 export type authControllerLoginResponse200 = {
-  data: void
+  data: AuthLoginResponseDto
   status: 200
+}
+
+export type authControllerLoginResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type authControllerLoginResponseSuccess = (authControllerLoginResponse200) & {
   headers: Headers;
 };
-;
-
-export type authControllerLoginResponse = (authControllerLoginResponseSuccess)
+export type authControllerLoginResponseError = (authControllerLoginResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAuthControllerLoginUrl = () => {
 
@@ -1078,7 +7032,7 @@ export const getAuthControllerLoginUrl = () => {
   return `/api/v1/auth/login`
 }
 
-export const authControllerLogin = async (loginDto: LoginDto, options?: Parameters<typeof apiFetch>[1]): Promise<authControllerLoginResponse> => {
+export const authControllerLogin = async (loginDto: LoginDto, options?: Parameters<typeof apiFetch>[1]): Promise<authControllerLoginResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1094,7 +7048,7 @@ export const authControllerLogin = async (loginDto: LoginDto, options?: Paramete
     }
     return headers;
   };
-return apiFetch<authControllerLoginResponse>(getAuthControllerLoginUrl(),
+return apiFetch<authControllerLoginResponseSuccess>(getAuthControllerLoginUrl(),
   {
     ...options,
     method: 'POST',
@@ -1106,16 +7060,21 @@ return apiFetch<authControllerLoginResponse>(getAuthControllerLoginUrl(),
 
 
 export type authControllerRefreshResponse200 = {
-  data: void
+  data: AuthRefreshResponseDto
   status: 200
+}
+
+export type authControllerRefreshResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type authControllerRefreshResponseSuccess = (authControllerRefreshResponse200) & {
   headers: Headers;
 };
-;
-
-export type authControllerRefreshResponse = (authControllerRefreshResponseSuccess)
+export type authControllerRefreshResponseError = (authControllerRefreshResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAuthControllerRefreshUrl = () => {
 
@@ -1125,9 +7084,9 @@ export const getAuthControllerRefreshUrl = () => {
   return `/api/v1/auth/refresh`
 }
 
-export const authControllerRefresh = async ( options?: Parameters<typeof apiFetch>[1]): Promise<authControllerRefreshResponse> => {
+export const authControllerRefresh = async ( options?: Parameters<typeof apiFetch>[1]): Promise<authControllerRefreshResponseSuccess> => {
 
-  return apiFetch<authControllerRefreshResponse>(getAuthControllerRefreshUrl(),
+  return apiFetch<authControllerRefreshResponseSuccess>(getAuthControllerRefreshUrl(),
   {
     ...options,
     method: 'POST'
@@ -1143,12 +7102,17 @@ export type authControllerLogoutResponse204 = {
   status: 204
 }
 
+export type authControllerLogoutResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 204>
+}
+
 export type authControllerLogoutResponseSuccess = (authControllerLogoutResponse204) & {
   headers: Headers;
 };
-;
-
-export type authControllerLogoutResponse = (authControllerLogoutResponseSuccess)
+export type authControllerLogoutResponseError = (authControllerLogoutResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAuthControllerLogoutUrl = () => {
 
@@ -1158,9 +7122,9 @@ export const getAuthControllerLogoutUrl = () => {
   return `/api/v1/auth/logout`
 }
 
-export const authControllerLogout = async ( options?: Parameters<typeof apiFetch>[1]): Promise<authControllerLogoutResponse> => {
+export const authControllerLogout = async ( options?: Parameters<typeof apiFetch>[1]): Promise<authControllerLogoutResponseSuccess> => {
 
-  return apiFetch<authControllerLogoutResponse>(getAuthControllerLogoutUrl(),
+  return apiFetch<authControllerLogoutResponseSuccess>(getAuthControllerLogoutUrl(),
   {
     ...options,
     method: 'POST'
@@ -1176,12 +7140,17 @@ export type authControllerLogoutAllResponse204 = {
   status: 204
 }
 
+export type authControllerLogoutAllResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 204>
+}
+
 export type authControllerLogoutAllResponseSuccess = (authControllerLogoutAllResponse204) & {
   headers: Headers;
 };
-;
-
-export type authControllerLogoutAllResponse = (authControllerLogoutAllResponseSuccess)
+export type authControllerLogoutAllResponseError = (authControllerLogoutAllResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAuthControllerLogoutAllUrl = () => {
 
@@ -1191,9 +7160,14 @@ export const getAuthControllerLogoutAllUrl = () => {
   return `/api/v1/auth/logout-all`
 }
 
-export const authControllerLogoutAll = async ( options?: Parameters<typeof apiFetch>[1]): Promise<authControllerLogoutAllResponse> => {
+/**
+ * @summary Ends every session of the signed-in user, on every device (PLAT-22). The
+current session's cookie is cleared too; its access token stays valid until
+it expires.
+ */
+export const authControllerLogoutAll = async ( options?: Parameters<typeof apiFetch>[1]): Promise<authControllerLogoutAllResponseSuccess> => {
 
-  return apiFetch<authControllerLogoutAllResponse>(getAuthControllerLogoutAllUrl(),
+  return apiFetch<authControllerLogoutAllResponseSuccess>(getAuthControllerLogoutAllUrl(),
   {
     ...options,
     method: 'POST'
@@ -1209,12 +7183,17 @@ export type authControllerChangePasswordResponse204 = {
   status: 204
 }
 
+export type authControllerChangePasswordResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 204>
+}
+
 export type authControllerChangePasswordResponseSuccess = (authControllerChangePasswordResponse204) & {
   headers: Headers;
 };
-;
-
-export type authControllerChangePasswordResponse = (authControllerChangePasswordResponseSuccess)
+export type authControllerChangePasswordResponseError = (authControllerChangePasswordResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAuthControllerChangePasswordUrl = () => {
 
@@ -1224,7 +7203,12 @@ export const getAuthControllerChangePasswordUrl = () => {
   return `/api/v1/auth/change-password`
 }
 
-export const authControllerChangePassword = async (changePasswordDto: ChangePasswordDto, options?: Parameters<typeof apiFetch>[1]): Promise<authControllerChangePasswordResponse> => {
+/**
+ * @summary Signed-in user changes their own password (ADR-012). Allowed while a
+temporary password is pending. The refresh cookie is read here because it
+keeps the current session signed in.
+ */
+export const authControllerChangePassword = async (changePasswordDto: ChangePasswordDto, options?: Parameters<typeof apiFetch>[1]): Promise<authControllerChangePasswordResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1240,7 +7224,7 @@ export const authControllerChangePassword = async (changePasswordDto: ChangePass
     }
     return headers;
   };
-return apiFetch<authControllerChangePasswordResponse>(getAuthControllerChangePasswordUrl(),
+return apiFetch<authControllerChangePasswordResponseSuccess>(getAuthControllerChangePasswordUrl(),
   {
     ...options,
     method: 'POST',
@@ -1252,16 +7236,21 @@ return apiFetch<authControllerChangePasswordResponse>(getAuthControllerChangePas
 
 
 export type meControllerMeResponse200 = {
-  data: void
+  data: MeResponseDto
   status: 200
+}
+
+export type meControllerMeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type meControllerMeResponseSuccess = (meControllerMeResponse200) & {
   headers: Headers;
 };
-;
-
-export type meControllerMeResponse = (meControllerMeResponseSuccess)
+export type meControllerMeResponseError = (meControllerMeResponseDefault) & {
+  headers: Headers;
+};
 
 export const getMeControllerMeUrl = () => {
 
@@ -1271,9 +7260,9 @@ export const getMeControllerMeUrl = () => {
   return `/api/v1/me`
 }
 
-export const meControllerMe = async ( options?: Parameters<typeof apiFetch>[1]): Promise<meControllerMeResponse> => {
+export const meControllerMe = async ( options?: Parameters<typeof apiFetch>[1]): Promise<meControllerMeResponseSuccess> => {
 
-  return apiFetch<meControllerMeResponse>(getMeControllerMeUrl(),
+  return apiFetch<meControllerMeResponseSuccess>(getMeControllerMeUrl(),
   {
     ...options,
     method: 'GET'
@@ -1285,16 +7274,21 @@ export const meControllerMe = async ( options?: Parameters<typeof apiFetch>[1]):
 
 
 export type meControllerTenantsResponse200 = {
-  data: void
+  data: MyTenantDto[]
   status: 200
+}
+
+export type meControllerTenantsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type meControllerTenantsResponseSuccess = (meControllerTenantsResponse200) & {
   headers: Headers;
 };
-;
-
-export type meControllerTenantsResponse = (meControllerTenantsResponseSuccess)
+export type meControllerTenantsResponseError = (meControllerTenantsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getMeControllerTenantsUrl = () => {
 
@@ -1304,9 +7298,9 @@ export const getMeControllerTenantsUrl = () => {
   return `/api/v1/me/tenants`
 }
 
-export const meControllerTenants = async ( options?: Parameters<typeof apiFetch>[1]): Promise<meControllerTenantsResponse> => {
+export const meControllerTenants = async ( options?: Parameters<typeof apiFetch>[1]): Promise<meControllerTenantsResponseSuccess> => {
 
-  return apiFetch<meControllerTenantsResponse>(getMeControllerTenantsUrl(),
+  return apiFetch<meControllerTenantsResponseSuccess>(getMeControllerTenantsUrl(),
   {
     ...options,
     method: 'GET'
@@ -1318,16 +7312,21 @@ export const meControllerTenants = async ( options?: Parameters<typeof apiFetch>
 
 
 export type meControllerSwitchTenantResponse200 = {
-  data: void
+  data: AuthAccessTokenDto
   status: 200
+}
+
+export type meControllerSwitchTenantResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type meControllerSwitchTenantResponseSuccess = (meControllerSwitchTenantResponse200) & {
   headers: Headers;
 };
-;
-
-export type meControllerSwitchTenantResponse = (meControllerSwitchTenantResponseSuccess)
+export type meControllerSwitchTenantResponseError = (meControllerSwitchTenantResponseDefault) & {
+  headers: Headers;
+};
 
 export const getMeControllerSwitchTenantUrl = () => {
 
@@ -1337,7 +7336,7 @@ export const getMeControllerSwitchTenantUrl = () => {
   return `/api/v1/me/switch-tenant`
 }
 
-export const meControllerSwitchTenant = async (switchTenantDto: SwitchTenantDto, options?: Parameters<typeof apiFetch>[1]): Promise<meControllerSwitchTenantResponse> => {
+export const meControllerSwitchTenant = async (switchTenantDto: SwitchTenantDto, options?: Parameters<typeof apiFetch>[1]): Promise<meControllerSwitchTenantResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1353,7 +7352,7 @@ export const meControllerSwitchTenant = async (switchTenantDto: SwitchTenantDto,
     }
     return headers;
   };
-return apiFetch<meControllerSwitchTenantResponse>(getMeControllerSwitchTenantUrl(),
+return apiFetch<meControllerSwitchTenantResponseSuccess>(getMeControllerSwitchTenantUrl(),
   {
     ...options,
     method: 'POST',
@@ -1365,16 +7364,21 @@ return apiFetch<meControllerSwitchTenantResponse>(getMeControllerSwitchTenantUrl
 
 
 export type accountingControllerListAccountsResponse200 = {
-  data: void
+  data: AccountDto[]
   status: 200
+}
+
+export type accountingControllerListAccountsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type accountingControllerListAccountsResponseSuccess = (accountingControllerListAccountsResponse200) & {
   headers: Headers;
 };
-;
-
-export type accountingControllerListAccountsResponse = (accountingControllerListAccountsResponseSuccess)
+export type accountingControllerListAccountsResponseError = (accountingControllerListAccountsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAccountingControllerListAccountsUrl = () => {
 
@@ -1384,9 +7388,9 @@ export const getAccountingControllerListAccountsUrl = () => {
   return `/api/v1/accounts`
 }
 
-export const accountingControllerListAccounts = async ( options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerListAccountsResponse> => {
+export const accountingControllerListAccounts = async ( options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerListAccountsResponseSuccess> => {
 
-  return apiFetch<accountingControllerListAccountsResponse>(getAccountingControllerListAccountsUrl(),
+  return apiFetch<accountingControllerListAccountsResponseSuccess>(getAccountingControllerListAccountsUrl(),
   {
     ...options,
     method: 'GET'
@@ -1398,16 +7402,21 @@ export const accountingControllerListAccounts = async ( options?: Parameters<typ
 
 
 export type accountingControllerCreateAccountResponse201 = {
-  data: void
+  data: AccountDto
   status: 201
+}
+
+export type accountingControllerCreateAccountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type accountingControllerCreateAccountResponseSuccess = (accountingControllerCreateAccountResponse201) & {
   headers: Headers;
 };
-;
-
-export type accountingControllerCreateAccountResponse = (accountingControllerCreateAccountResponseSuccess)
+export type accountingControllerCreateAccountResponseError = (accountingControllerCreateAccountResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAccountingControllerCreateAccountUrl = () => {
 
@@ -1417,7 +7426,7 @@ export const getAccountingControllerCreateAccountUrl = () => {
   return `/api/v1/accounts`
 }
 
-export const accountingControllerCreateAccount = async (createAccountDto: CreateAccountDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerCreateAccountResponse> => {
+export const accountingControllerCreateAccount = async (createAccountDto: CreateAccountDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerCreateAccountResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1433,7 +7442,7 @@ export const accountingControllerCreateAccount = async (createAccountDto: Create
     }
     return headers;
   };
-return apiFetch<accountingControllerCreateAccountResponse>(getAccountingControllerCreateAccountUrl(),
+return apiFetch<accountingControllerCreateAccountResponseSuccess>(getAccountingControllerCreateAccountUrl(),
   {
     ...options,
     method: 'POST',
@@ -1445,16 +7454,21 @@ return apiFetch<accountingControllerCreateAccountResponse>(getAccountingControll
 
 
 export type accountingControllerUpdateAccountResponse200 = {
-  data: void
+  data: AccountDto
   status: 200
+}
+
+export type accountingControllerUpdateAccountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type accountingControllerUpdateAccountResponseSuccess = (accountingControllerUpdateAccountResponse200) & {
   headers: Headers;
 };
-;
-
-export type accountingControllerUpdateAccountResponse = (accountingControllerUpdateAccountResponseSuccess)
+export type accountingControllerUpdateAccountResponseError = (accountingControllerUpdateAccountResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAccountingControllerUpdateAccountUrl = (id: string,) => {
 
@@ -1465,7 +7479,7 @@ export const getAccountingControllerUpdateAccountUrl = (id: string,) => {
 }
 
 export const accountingControllerUpdateAccount = async (id: string,
-    updateAccountDto: UpdateAccountDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerUpdateAccountResponse> => {
+    updateAccountDto: UpdateAccountDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerUpdateAccountResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1481,7 +7495,7 @@ export const accountingControllerUpdateAccount = async (id: string,
     }
     return headers;
   };
-return apiFetch<accountingControllerUpdateAccountResponse>(getAccountingControllerUpdateAccountUrl(id),
+return apiFetch<accountingControllerUpdateAccountResponseSuccess>(getAccountingControllerUpdateAccountUrl(id),
   {
     ...options,
     method: 'PATCH',
@@ -1493,16 +7507,21 @@ return apiFetch<accountingControllerUpdateAccountResponse>(getAccountingControll
 
 
 export type accountingControllerListMappingsResponse200 = {
-  data: void
+  data: AccountMappingSlotDto[]
   status: 200
+}
+
+export type accountingControllerListMappingsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type accountingControllerListMappingsResponseSuccess = (accountingControllerListMappingsResponse200) & {
   headers: Headers;
 };
-;
-
-export type accountingControllerListMappingsResponse = (accountingControllerListMappingsResponseSuccess)
+export type accountingControllerListMappingsResponseError = (accountingControllerListMappingsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAccountingControllerListMappingsUrl = () => {
 
@@ -1512,9 +7531,9 @@ export const getAccountingControllerListMappingsUrl = () => {
   return `/api/v1/account-mappings`
 }
 
-export const accountingControllerListMappings = async ( options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerListMappingsResponse> => {
+export const accountingControllerListMappings = async ( options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerListMappingsResponseSuccess> => {
 
-  return apiFetch<accountingControllerListMappingsResponse>(getAccountingControllerListMappingsUrl(),
+  return apiFetch<accountingControllerListMappingsResponseSuccess>(getAccountingControllerListMappingsUrl(),
   {
     ...options,
     method: 'GET'
@@ -1526,16 +7545,21 @@ export const accountingControllerListMappings = async ( options?: Parameters<typ
 
 
 export type accountingControllerUpsertMappingResponse201 = {
-  data: void
+  data: AccountMappingDto
   status: 201
+}
+
+export type accountingControllerUpsertMappingResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type accountingControllerUpsertMappingResponseSuccess = (accountingControllerUpsertMappingResponse201) & {
   headers: Headers;
 };
-;
-
-export type accountingControllerUpsertMappingResponse = (accountingControllerUpsertMappingResponseSuccess)
+export type accountingControllerUpsertMappingResponseError = (accountingControllerUpsertMappingResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAccountingControllerUpsertMappingUrl = () => {
 
@@ -1545,7 +7569,7 @@ export const getAccountingControllerUpsertMappingUrl = () => {
   return `/api/v1/account-mappings`
 }
 
-export const accountingControllerUpsertMapping = async (upsertMappingDto: UpsertMappingDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerUpsertMappingResponse> => {
+export const accountingControllerUpsertMapping = async (upsertMappingDto: UpsertMappingDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerUpsertMappingResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1561,7 +7585,7 @@ export const accountingControllerUpsertMapping = async (upsertMappingDto: Upsert
     }
     return headers;
   };
-return apiFetch<accountingControllerUpsertMappingResponse>(getAccountingControllerUpsertMappingUrl(),
+return apiFetch<accountingControllerUpsertMappingResponseSuccess>(getAccountingControllerUpsertMappingUrl(),
   {
     ...options,
     method: 'POST',
@@ -1573,16 +7597,21 @@ return apiFetch<accountingControllerUpsertMappingResponse>(getAccountingControll
 
 
 export type accountingControllerBulkMappingsResponse201 = {
-  data: void
+  data: AccountMappingDto[]
   status: 201
+}
+
+export type accountingControllerBulkMappingsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type accountingControllerBulkMappingsResponseSuccess = (accountingControllerBulkMappingsResponse201) & {
   headers: Headers;
 };
-;
-
-export type accountingControllerBulkMappingsResponse = (accountingControllerBulkMappingsResponseSuccess)
+export type accountingControllerBulkMappingsResponseError = (accountingControllerBulkMappingsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAccountingControllerBulkMappingsUrl = () => {
 
@@ -1592,7 +7621,7 @@ export const getAccountingControllerBulkMappingsUrl = () => {
   return `/api/v1/account-mappings/bulk`
 }
 
-export const accountingControllerBulkMappings = async (bulkMappingsDto: BulkMappingsDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerBulkMappingsResponse> => {
+export const accountingControllerBulkMappings = async (bulkMappingsDto: BulkMappingsDto, options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerBulkMappingsResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1608,7 +7637,7 @@ export const accountingControllerBulkMappings = async (bulkMappingsDto: BulkMapp
     }
     return headers;
   };
-return apiFetch<accountingControllerBulkMappingsResponse>(getAccountingControllerBulkMappingsUrl(),
+return apiFetch<accountingControllerBulkMappingsResponseSuccess>(getAccountingControllerBulkMappingsUrl(),
   {
     ...options,
     method: 'POST',
@@ -1620,16 +7649,21 @@ return apiFetch<accountingControllerBulkMappingsResponse>(getAccountingControlle
 
 
 export type accountingControllerProvisionResponse201 = {
-  data: void
+  data: ChartProvisionResultDto
   status: 201
+}
+
+export type accountingControllerProvisionResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type accountingControllerProvisionResponseSuccess = (accountingControllerProvisionResponse201) & {
   headers: Headers;
 };
-;
-
-export type accountingControllerProvisionResponse = (accountingControllerProvisionResponseSuccess)
+export type accountingControllerProvisionResponseError = (accountingControllerProvisionResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAccountingControllerProvisionUrl = () => {
 
@@ -1639,9 +7673,14 @@ export const getAccountingControllerProvisionUrl = () => {
   return `/api/v1/accounting/setup/provision`
 }
 
-export const accountingControllerProvision = async ( options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerProvisionResponse> => {
+/**
+ * @summary Provisions the default chart + mappings + lookups for the tenant's
+company. Idempotent — safe to re-run (e.g. for companies created before
+Phase 2 or after manual cleanup).
+ */
+export const accountingControllerProvision = async ( options?: Parameters<typeof apiFetch>[1]): Promise<accountingControllerProvisionResponseSuccess> => {
 
-  return apiFetch<accountingControllerProvisionResponse>(getAccountingControllerProvisionUrl(),
+  return apiFetch<accountingControllerProvisionResponseSuccess>(getAccountingControllerProvisionUrl(),
   {
     ...options,
     method: 'POST'
@@ -1653,16 +7692,21 @@ export const accountingControllerProvision = async ( options?: Parameters<typeof
 
 
 export type fiscalControllerListYearsResponse200 = {
-  data: void
+  data: FiscalYearListItemDto[]
   status: 200
+}
+
+export type fiscalControllerListYearsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type fiscalControllerListYearsResponseSuccess = (fiscalControllerListYearsResponse200) & {
   headers: Headers;
 };
-;
-
-export type fiscalControllerListYearsResponse = (fiscalControllerListYearsResponseSuccess)
+export type fiscalControllerListYearsResponseError = (fiscalControllerListYearsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getFiscalControllerListYearsUrl = () => {
 
@@ -1672,9 +7716,9 @@ export const getFiscalControllerListYearsUrl = () => {
   return `/api/v1/fiscal-years`
 }
 
-export const fiscalControllerListYears = async ( options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerListYearsResponse> => {
+export const fiscalControllerListYears = async ( options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerListYearsResponseSuccess> => {
 
-  return apiFetch<fiscalControllerListYearsResponse>(getFiscalControllerListYearsUrl(),
+  return apiFetch<fiscalControllerListYearsResponseSuccess>(getFiscalControllerListYearsUrl(),
   {
     ...options,
     method: 'GET'
@@ -1686,16 +7730,21 @@ export const fiscalControllerListYears = async ( options?: Parameters<typeof api
 
 
 export type fiscalControllerCreateYearResponse201 = {
-  data: void
+  data: FiscalYearDetailDto
   status: 201
+}
+
+export type fiscalControllerCreateYearResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type fiscalControllerCreateYearResponseSuccess = (fiscalControllerCreateYearResponse201) & {
   headers: Headers;
 };
-;
-
-export type fiscalControllerCreateYearResponse = (fiscalControllerCreateYearResponseSuccess)
+export type fiscalControllerCreateYearResponseError = (fiscalControllerCreateYearResponseDefault) & {
+  headers: Headers;
+};
 
 export const getFiscalControllerCreateYearUrl = () => {
 
@@ -1705,7 +7754,7 @@ export const getFiscalControllerCreateYearUrl = () => {
   return `/api/v1/fiscal-years`
 }
 
-export const fiscalControllerCreateYear = async (createFiscalYearDto: CreateFiscalYearDto, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerCreateYearResponse> => {
+export const fiscalControllerCreateYear = async (createFiscalYearDto: CreateFiscalYearDto, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerCreateYearResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1721,7 +7770,7 @@ export const fiscalControllerCreateYear = async (createFiscalYearDto: CreateFisc
     }
     return headers;
   };
-return apiFetch<fiscalControllerCreateYearResponse>(getFiscalControllerCreateYearUrl(),
+return apiFetch<fiscalControllerCreateYearResponseSuccess>(getFiscalControllerCreateYearUrl(),
   {
     ...options,
     method: 'POST',
@@ -1733,16 +7782,21 @@ return apiFetch<fiscalControllerCreateYearResponse>(getFiscalControllerCreateYea
 
 
 export type fiscalControllerGetYearResponse200 = {
-  data: void
+  data: FiscalYearDetailDto
   status: 200
+}
+
+export type fiscalControllerGetYearResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type fiscalControllerGetYearResponseSuccess = (fiscalControllerGetYearResponse200) & {
   headers: Headers;
 };
-;
-
-export type fiscalControllerGetYearResponse = (fiscalControllerGetYearResponseSuccess)
+export type fiscalControllerGetYearResponseError = (fiscalControllerGetYearResponseDefault) & {
+  headers: Headers;
+};
 
 export const getFiscalControllerGetYearUrl = (id: string,) => {
 
@@ -1752,9 +7806,9 @@ export const getFiscalControllerGetYearUrl = (id: string,) => {
   return `/api/v1/fiscal-years/${id}`
 }
 
-export const fiscalControllerGetYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerGetYearResponse> => {
+export const fiscalControllerGetYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerGetYearResponseSuccess> => {
 
-  return apiFetch<fiscalControllerGetYearResponse>(getFiscalControllerGetYearUrl(id),
+  return apiFetch<fiscalControllerGetYearResponseSuccess>(getFiscalControllerGetYearUrl(id),
   {
     ...options,
     method: 'GET'
@@ -1766,16 +7820,21 @@ export const fiscalControllerGetYear = async (id: string, options?: Parameters<t
 
 
 export type fiscalControllerCloseYearResponse201 = {
-  data: void
+  data: FiscalYearDetailDto
   status: 201
+}
+
+export type fiscalControllerCloseYearResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type fiscalControllerCloseYearResponseSuccess = (fiscalControllerCloseYearResponse201) & {
   headers: Headers;
 };
-;
-
-export type fiscalControllerCloseYearResponse = (fiscalControllerCloseYearResponseSuccess)
+export type fiscalControllerCloseYearResponseError = (fiscalControllerCloseYearResponseDefault) & {
+  headers: Headers;
+};
 
 export const getFiscalControllerCloseYearUrl = (id: string,) => {
 
@@ -1785,9 +7844,12 @@ export const getFiscalControllerCloseYearUrl = (id: string,) => {
   return `/api/v1/fiscal-years/${id}/close`
 }
 
-export const fiscalControllerCloseYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerCloseYearResponse> => {
+/**
+ * @summary Closes every period of the year at once (ADR-008 §7).
+ */
+export const fiscalControllerCloseYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerCloseYearResponseSuccess> => {
 
-  return apiFetch<fiscalControllerCloseYearResponse>(getFiscalControllerCloseYearUrl(id),
+  return apiFetch<fiscalControllerCloseYearResponseSuccess>(getFiscalControllerCloseYearUrl(id),
   {
     ...options,
     method: 'POST'
@@ -1799,16 +7861,21 @@ export const fiscalControllerCloseYear = async (id: string, options?: Parameters
 
 
 export type fiscalControllerOpenYearResponse201 = {
-  data: void
+  data: FiscalYearDetailDto
   status: 201
+}
+
+export type fiscalControllerOpenYearResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type fiscalControllerOpenYearResponseSuccess = (fiscalControllerOpenYearResponse201) & {
   headers: Headers;
 };
-;
-
-export type fiscalControllerOpenYearResponse = (fiscalControllerOpenYearResponseSuccess)
+export type fiscalControllerOpenYearResponseError = (fiscalControllerOpenYearResponseDefault) & {
+  headers: Headers;
+};
 
 export const getFiscalControllerOpenYearUrl = (id: string,) => {
 
@@ -1818,9 +7885,12 @@ export const getFiscalControllerOpenYearUrl = (id: string,) => {
   return `/api/v1/fiscal-years/${id}/open`
 }
 
-export const fiscalControllerOpenYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerOpenYearResponse> => {
+/**
+ * @summary Reopens every period of the year.
+ */
+export const fiscalControllerOpenYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerOpenYearResponseSuccess> => {
 
-  return apiFetch<fiscalControllerOpenYearResponse>(getFiscalControllerOpenYearUrl(id),
+  return apiFetch<fiscalControllerOpenYearResponseSuccess>(getFiscalControllerOpenYearUrl(id),
   {
     ...options,
     method: 'POST'
@@ -1832,16 +7902,21 @@ export const fiscalControllerOpenYear = async (id: string, options?: Parameters<
 
 
 export type fiscalControllerClosePeriodResponse201 = {
-  data: void
+  data: FiscalPeriodDto
   status: 201
+}
+
+export type fiscalControllerClosePeriodResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type fiscalControllerClosePeriodResponseSuccess = (fiscalControllerClosePeriodResponse201) & {
   headers: Headers;
 };
-;
-
-export type fiscalControllerClosePeriodResponse = (fiscalControllerClosePeriodResponseSuccess)
+export type fiscalControllerClosePeriodResponseError = (fiscalControllerClosePeriodResponseDefault) & {
+  headers: Headers;
+};
 
 export const getFiscalControllerClosePeriodUrl = (id: string,) => {
 
@@ -1851,9 +7926,9 @@ export const getFiscalControllerClosePeriodUrl = (id: string,) => {
   return `/api/v1/fiscal-periods/${id}/close`
 }
 
-export const fiscalControllerClosePeriod = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerClosePeriodResponse> => {
+export const fiscalControllerClosePeriod = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerClosePeriodResponseSuccess> => {
 
-  return apiFetch<fiscalControllerClosePeriodResponse>(getFiscalControllerClosePeriodUrl(id),
+  return apiFetch<fiscalControllerClosePeriodResponseSuccess>(getFiscalControllerClosePeriodUrl(id),
   {
     ...options,
     method: 'POST'
@@ -1865,16 +7940,21 @@ export const fiscalControllerClosePeriod = async (id: string, options?: Paramete
 
 
 export type fiscalControllerOpenPeriodResponse201 = {
-  data: void
+  data: FiscalPeriodDto
   status: 201
+}
+
+export type fiscalControllerOpenPeriodResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type fiscalControllerOpenPeriodResponseSuccess = (fiscalControllerOpenPeriodResponse201) & {
   headers: Headers;
 };
-;
-
-export type fiscalControllerOpenPeriodResponse = (fiscalControllerOpenPeriodResponseSuccess)
+export type fiscalControllerOpenPeriodResponseError = (fiscalControllerOpenPeriodResponseDefault) & {
+  headers: Headers;
+};
 
 export const getFiscalControllerOpenPeriodUrl = (id: string,) => {
 
@@ -1884,9 +7964,9 @@ export const getFiscalControllerOpenPeriodUrl = (id: string,) => {
   return `/api/v1/fiscal-periods/${id}/open`
 }
 
-export const fiscalControllerOpenPeriod = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerOpenPeriodResponse> => {
+export const fiscalControllerOpenPeriod = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerOpenPeriodResponseSuccess> => {
 
-  return apiFetch<fiscalControllerOpenPeriodResponse>(getFiscalControllerOpenPeriodUrl(id),
+  return apiFetch<fiscalControllerOpenPeriodResponseSuccess>(getFiscalControllerOpenPeriodUrl(id),
   {
     ...options,
     method: 'POST'
@@ -1898,18 +7978,23 @@ export const fiscalControllerOpenPeriod = async (id: string, options?: Parameter
 
 
 export type fiscalControllerListSequencesResponse200 = {
-  data: void
+  data: DocumentSequenceDto[]
   status: 200
+}
+
+export type fiscalControllerListSequencesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type fiscalControllerListSequencesResponseSuccess = (fiscalControllerListSequencesResponse200) & {
   headers: Headers;
 };
-;
+export type fiscalControllerListSequencesResponseError = (fiscalControllerListSequencesResponseDefault) & {
+  headers: Headers;
+};
 
-export type fiscalControllerListSequencesResponse = (fiscalControllerListSequencesResponseSuccess)
-
-export const getFiscalControllerListSequencesUrl = (params: FiscalControllerListSequencesParams,) => {
+export const getFiscalControllerListSequencesUrl = (params?: FiscalControllerListSequencesParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -1924,9 +8009,9 @@ export const getFiscalControllerListSequencesUrl = (params: FiscalControllerList
   return stringifiedParams.length > 0 ? `/api/v1/document-sequences?${stringifiedParams}` : `/api/v1/document-sequences`
 }
 
-export const fiscalControllerListSequences = async (params: FiscalControllerListSequencesParams, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerListSequencesResponse> => {
+export const fiscalControllerListSequences = async (params?: FiscalControllerListSequencesParams, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerListSequencesResponseSuccess> => {
 
-  return apiFetch<fiscalControllerListSequencesResponse>(getFiscalControllerListSequencesUrl(params),
+  return apiFetch<fiscalControllerListSequencesResponseSuccess>(getFiscalControllerListSequencesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -1938,16 +8023,21 @@ export const fiscalControllerListSequences = async (params: FiscalControllerList
 
 
 export type settingsControllerListUnitsResponse200 = {
-  data: void
+  data: UnitDto[]
   status: 200
+}
+
+export type settingsControllerListUnitsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type settingsControllerListUnitsResponseSuccess = (settingsControllerListUnitsResponse200) & {
   headers: Headers;
 };
-;
-
-export type settingsControllerListUnitsResponse = (settingsControllerListUnitsResponseSuccess)
+export type settingsControllerListUnitsResponseError = (settingsControllerListUnitsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSettingsControllerListUnitsUrl = () => {
 
@@ -1957,9 +8047,9 @@ export const getSettingsControllerListUnitsUrl = () => {
   return `/api/v1/units`
 }
 
-export const settingsControllerListUnits = async ( options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerListUnitsResponse> => {
+export const settingsControllerListUnits = async ( options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerListUnitsResponseSuccess> => {
 
-  return apiFetch<settingsControllerListUnitsResponse>(getSettingsControllerListUnitsUrl(),
+  return apiFetch<settingsControllerListUnitsResponseSuccess>(getSettingsControllerListUnitsUrl(),
   {
     ...options,
     method: 'GET'
@@ -1971,16 +8061,21 @@ export const settingsControllerListUnits = async ( options?: Parameters<typeof a
 
 
 export type settingsControllerCreateUnitResponse201 = {
-  data: void
+  data: UnitDto
   status: 201
+}
+
+export type settingsControllerCreateUnitResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type settingsControllerCreateUnitResponseSuccess = (settingsControllerCreateUnitResponse201) & {
   headers: Headers;
 };
-;
-
-export type settingsControllerCreateUnitResponse = (settingsControllerCreateUnitResponseSuccess)
+export type settingsControllerCreateUnitResponseError = (settingsControllerCreateUnitResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSettingsControllerCreateUnitUrl = () => {
 
@@ -1990,7 +8085,7 @@ export const getSettingsControllerCreateUnitUrl = () => {
   return `/api/v1/units`
 }
 
-export const settingsControllerCreateUnit = async (createUnitDto: CreateUnitDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerCreateUnitResponse> => {
+export const settingsControllerCreateUnit = async (createUnitDto: CreateUnitDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerCreateUnitResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -2006,7 +8101,7 @@ export const settingsControllerCreateUnit = async (createUnitDto: CreateUnitDto,
     }
     return headers;
   };
-return apiFetch<settingsControllerCreateUnitResponse>(getSettingsControllerCreateUnitUrl(),
+return apiFetch<settingsControllerCreateUnitResponseSuccess>(getSettingsControllerCreateUnitUrl(),
   {
     ...options,
     method: 'POST',
@@ -2018,16 +8113,21 @@ return apiFetch<settingsControllerCreateUnitResponse>(getSettingsControllerCreat
 
 
 export type settingsControllerUpdateUnitResponse200 = {
-  data: void
+  data: UnitDto
   status: 200
+}
+
+export type settingsControllerUpdateUnitResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type settingsControllerUpdateUnitResponseSuccess = (settingsControllerUpdateUnitResponse200) & {
   headers: Headers;
 };
-;
-
-export type settingsControllerUpdateUnitResponse = (settingsControllerUpdateUnitResponseSuccess)
+export type settingsControllerUpdateUnitResponseError = (settingsControllerUpdateUnitResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSettingsControllerUpdateUnitUrl = (id: string,) => {
 
@@ -2038,7 +8138,7 @@ export const getSettingsControllerUpdateUnitUrl = (id: string,) => {
 }
 
 export const settingsControllerUpdateUnit = async (id: string,
-    updateLookupDto: UpdateLookupDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerUpdateUnitResponse> => {
+    updateLookupDto: UpdateLookupDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerUpdateUnitResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -2054,7 +8154,7 @@ export const settingsControllerUpdateUnit = async (id: string,
     }
     return headers;
   };
-return apiFetch<settingsControllerUpdateUnitResponse>(getSettingsControllerUpdateUnitUrl(id),
+return apiFetch<settingsControllerUpdateUnitResponseSuccess>(getSettingsControllerUpdateUnitUrl(id),
   {
     ...options,
     method: 'PATCH',
@@ -2066,16 +8166,21 @@ return apiFetch<settingsControllerUpdateUnitResponse>(getSettingsControllerUpdat
 
 
 export type settingsControllerListTaxCategoriesResponse200 = {
-  data: void
+  data: TaxCategoryDto[]
   status: 200
+}
+
+export type settingsControllerListTaxCategoriesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type settingsControllerListTaxCategoriesResponseSuccess = (settingsControllerListTaxCategoriesResponse200) & {
   headers: Headers;
 };
-;
-
-export type settingsControllerListTaxCategoriesResponse = (settingsControllerListTaxCategoriesResponseSuccess)
+export type settingsControllerListTaxCategoriesResponseError = (settingsControllerListTaxCategoriesResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSettingsControllerListTaxCategoriesUrl = () => {
 
@@ -2085,9 +8190,9 @@ export const getSettingsControllerListTaxCategoriesUrl = () => {
   return `/api/v1/tax-categories`
 }
 
-export const settingsControllerListTaxCategories = async ( options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerListTaxCategoriesResponse> => {
+export const settingsControllerListTaxCategories = async ( options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerListTaxCategoriesResponseSuccess> => {
 
-  return apiFetch<settingsControllerListTaxCategoriesResponse>(getSettingsControllerListTaxCategoriesUrl(),
+  return apiFetch<settingsControllerListTaxCategoriesResponseSuccess>(getSettingsControllerListTaxCategoriesUrl(),
   {
     ...options,
     method: 'GET'
@@ -2099,16 +8204,21 @@ export const settingsControllerListTaxCategories = async ( options?: Parameters<
 
 
 export type settingsControllerCreateTaxCategoryResponse201 = {
-  data: void
+  data: TaxCategoryDto
   status: 201
+}
+
+export type settingsControllerCreateTaxCategoryResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type settingsControllerCreateTaxCategoryResponseSuccess = (settingsControllerCreateTaxCategoryResponse201) & {
   headers: Headers;
 };
-;
-
-export type settingsControllerCreateTaxCategoryResponse = (settingsControllerCreateTaxCategoryResponseSuccess)
+export type settingsControllerCreateTaxCategoryResponseError = (settingsControllerCreateTaxCategoryResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSettingsControllerCreateTaxCategoryUrl = () => {
 
@@ -2118,7 +8228,7 @@ export const getSettingsControllerCreateTaxCategoryUrl = () => {
   return `/api/v1/tax-categories`
 }
 
-export const settingsControllerCreateTaxCategory = async (createTaxCategoryDto: CreateTaxCategoryDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerCreateTaxCategoryResponse> => {
+export const settingsControllerCreateTaxCategory = async (createTaxCategoryDto: CreateTaxCategoryDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerCreateTaxCategoryResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -2134,7 +8244,7 @@ export const settingsControllerCreateTaxCategory = async (createTaxCategoryDto: 
     }
     return headers;
   };
-return apiFetch<settingsControllerCreateTaxCategoryResponse>(getSettingsControllerCreateTaxCategoryUrl(),
+return apiFetch<settingsControllerCreateTaxCategoryResponseSuccess>(getSettingsControllerCreateTaxCategoryUrl(),
   {
     ...options,
     method: 'POST',
@@ -2146,16 +8256,21 @@ return apiFetch<settingsControllerCreateTaxCategoryResponse>(getSettingsControll
 
 
 export type settingsControllerUpdateTaxCategoryResponse200 = {
-  data: void
+  data: TaxCategoryDto
   status: 200
+}
+
+export type settingsControllerUpdateTaxCategoryResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type settingsControllerUpdateTaxCategoryResponseSuccess = (settingsControllerUpdateTaxCategoryResponse200) & {
   headers: Headers;
 };
-;
-
-export type settingsControllerUpdateTaxCategoryResponse = (settingsControllerUpdateTaxCategoryResponseSuccess)
+export type settingsControllerUpdateTaxCategoryResponseError = (settingsControllerUpdateTaxCategoryResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSettingsControllerUpdateTaxCategoryUrl = (id: string,) => {
 
@@ -2166,7 +8281,7 @@ export const getSettingsControllerUpdateTaxCategoryUrl = (id: string,) => {
 }
 
 export const settingsControllerUpdateTaxCategory = async (id: string,
-    updateTaxCategoryDto: UpdateTaxCategoryDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerUpdateTaxCategoryResponse> => {
+    updateTaxCategoryDto: UpdateTaxCategoryDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerUpdateTaxCategoryResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -2182,7 +8297,7 @@ export const settingsControllerUpdateTaxCategory = async (id: string,
     }
     return headers;
   };
-return apiFetch<settingsControllerUpdateTaxCategoryResponse>(getSettingsControllerUpdateTaxCategoryUrl(id),
+return apiFetch<settingsControllerUpdateTaxCategoryResponseSuccess>(getSettingsControllerUpdateTaxCategoryUrl(id),
   {
     ...options,
     method: 'PATCH',
@@ -2194,16 +8309,21 @@ return apiFetch<settingsControllerUpdateTaxCategoryResponse>(getSettingsControll
 
 
 export type settingsControllerListPaymentMethodsResponse200 = {
-  data: void
+  data: PaymentMethodDto[]
   status: 200
+}
+
+export type settingsControllerListPaymentMethodsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type settingsControllerListPaymentMethodsResponseSuccess = (settingsControllerListPaymentMethodsResponse200) & {
   headers: Headers;
 };
-;
-
-export type settingsControllerListPaymentMethodsResponse = (settingsControllerListPaymentMethodsResponseSuccess)
+export type settingsControllerListPaymentMethodsResponseError = (settingsControllerListPaymentMethodsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSettingsControllerListPaymentMethodsUrl = () => {
 
@@ -2213,9 +8333,9 @@ export const getSettingsControllerListPaymentMethodsUrl = () => {
   return `/api/v1/payment-methods`
 }
 
-export const settingsControllerListPaymentMethods = async ( options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerListPaymentMethodsResponse> => {
+export const settingsControllerListPaymentMethods = async ( options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerListPaymentMethodsResponseSuccess> => {
 
-  return apiFetch<settingsControllerListPaymentMethodsResponse>(getSettingsControllerListPaymentMethodsUrl(),
+  return apiFetch<settingsControllerListPaymentMethodsResponseSuccess>(getSettingsControllerListPaymentMethodsUrl(),
   {
     ...options,
     method: 'GET'
@@ -2227,16 +8347,21 @@ export const settingsControllerListPaymentMethods = async ( options?: Parameters
 
 
 export type settingsControllerCreatePaymentMethodResponse201 = {
-  data: void
+  data: PaymentMethodDto
   status: 201
+}
+
+export type settingsControllerCreatePaymentMethodResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type settingsControllerCreatePaymentMethodResponseSuccess = (settingsControllerCreatePaymentMethodResponse201) & {
   headers: Headers;
 };
-;
-
-export type settingsControllerCreatePaymentMethodResponse = (settingsControllerCreatePaymentMethodResponseSuccess)
+export type settingsControllerCreatePaymentMethodResponseError = (settingsControllerCreatePaymentMethodResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSettingsControllerCreatePaymentMethodUrl = () => {
 
@@ -2246,7 +8371,7 @@ export const getSettingsControllerCreatePaymentMethodUrl = () => {
   return `/api/v1/payment-methods`
 }
 
-export const settingsControllerCreatePaymentMethod = async (createUnitDto: CreateUnitDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerCreatePaymentMethodResponse> => {
+export const settingsControllerCreatePaymentMethod = async (createUnitDto: CreateUnitDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerCreatePaymentMethodResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -2262,7 +8387,7 @@ export const settingsControllerCreatePaymentMethod = async (createUnitDto: Creat
     }
     return headers;
   };
-return apiFetch<settingsControllerCreatePaymentMethodResponse>(getSettingsControllerCreatePaymentMethodUrl(),
+return apiFetch<settingsControllerCreatePaymentMethodResponseSuccess>(getSettingsControllerCreatePaymentMethodUrl(),
   {
     ...options,
     method: 'POST',
@@ -2274,16 +8399,21 @@ return apiFetch<settingsControllerCreatePaymentMethodResponse>(getSettingsContro
 
 
 export type settingsControllerUpdatePaymentMethodResponse200 = {
-  data: void
+  data: PaymentMethodDto
   status: 200
+}
+
+export type settingsControllerUpdatePaymentMethodResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type settingsControllerUpdatePaymentMethodResponseSuccess = (settingsControllerUpdatePaymentMethodResponse200) & {
   headers: Headers;
 };
-;
-
-export type settingsControllerUpdatePaymentMethodResponse = (settingsControllerUpdatePaymentMethodResponseSuccess)
+export type settingsControllerUpdatePaymentMethodResponseError = (settingsControllerUpdatePaymentMethodResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSettingsControllerUpdatePaymentMethodUrl = (id: string,) => {
 
@@ -2294,7 +8424,7 @@ export const getSettingsControllerUpdatePaymentMethodUrl = (id: string,) => {
 }
 
 export const settingsControllerUpdatePaymentMethod = async (id: string,
-    updateLookupDto: UpdateLookupDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerUpdatePaymentMethodResponse> => {
+    updateLookupDto: UpdateLookupDto, options?: Parameters<typeof apiFetch>[1]): Promise<settingsControllerUpdatePaymentMethodResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -2310,7 +8440,7 @@ export const settingsControllerUpdatePaymentMethod = async (id: string,
     }
     return headers;
   };
-return apiFetch<settingsControllerUpdatePaymentMethodResponse>(getSettingsControllerUpdatePaymentMethodUrl(id),
+return apiFetch<settingsControllerUpdatePaymentMethodResponseSuccess>(getSettingsControllerUpdatePaymentMethodUrl(id),
   {
     ...options,
     method: 'PATCH',
@@ -2322,16 +8452,21 @@ return apiFetch<settingsControllerUpdatePaymentMethodResponse>(getSettingsContro
 
 
 export type companyControllerGetResponse200 = {
-  data: void
+  data: CompanyDto
   status: 200
+}
+
+export type companyControllerGetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type companyControllerGetResponseSuccess = (companyControllerGetResponse200) & {
   headers: Headers;
 };
-;
-
-export type companyControllerGetResponse = (companyControllerGetResponseSuccess)
+export type companyControllerGetResponseError = (companyControllerGetResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCompanyControllerGetUrl = () => {
 
@@ -2341,9 +8476,9 @@ export const getCompanyControllerGetUrl = () => {
   return `/api/v1/company`
 }
 
-export const companyControllerGet = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerGetResponse> => {
+export const companyControllerGet = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerGetResponseSuccess> => {
 
-  return apiFetch<companyControllerGetResponse>(getCompanyControllerGetUrl(),
+  return apiFetch<companyControllerGetResponseSuccess>(getCompanyControllerGetUrl(),
   {
     ...options,
     method: 'GET'
@@ -2355,16 +8490,21 @@ export const companyControllerGet = async ( options?: Parameters<typeof apiFetch
 
 
 export type companyControllerUpdateResponse200 = {
-  data: void
+  data: CompanyDto
   status: 200
+}
+
+export type companyControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type companyControllerUpdateResponseSuccess = (companyControllerUpdateResponse200) & {
   headers: Headers;
 };
-;
-
-export type companyControllerUpdateResponse = (companyControllerUpdateResponseSuccess)
+export type companyControllerUpdateResponseError = (companyControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCompanyControllerUpdateUrl = () => {
 
@@ -2374,7 +8514,7 @@ export const getCompanyControllerUpdateUrl = () => {
   return `/api/v1/company`
 }
 
-export const companyControllerUpdate = async (updateCompanyDto: UpdateCompanyDto, options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerUpdateResponse> => {
+export const companyControllerUpdate = async (updateCompanyDto: UpdateCompanyDto, options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerUpdateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -2390,7 +8530,7 @@ export const companyControllerUpdate = async (updateCompanyDto: UpdateCompanyDto
     }
     return headers;
   };
-return apiFetch<companyControllerUpdateResponse>(getCompanyControllerUpdateUrl(),
+return apiFetch<companyControllerUpdateResponseSuccess>(getCompanyControllerUpdateUrl(),
   {
     ...options,
     method: 'PATCH',
@@ -2402,16 +8542,21 @@ return apiFetch<companyControllerUpdateResponse>(getCompanyControllerUpdateUrl()
 
 
 export type companyControllerLogoResponse200 = {
-  data: void
+  data: CompanyLogoBase64Dto
   status: 200
+}
+
+export type companyControllerLogoResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type companyControllerLogoResponseSuccess = (companyControllerLogoResponse200) & {
   headers: Headers;
 };
-;
-
-export type companyControllerLogoResponse = (companyControllerLogoResponseSuccess)
+export type companyControllerLogoResponseError = (companyControllerLogoResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCompanyControllerLogoUrl = () => {
 
@@ -2421,9 +8566,9 @@ export const getCompanyControllerLogoUrl = () => {
   return `/api/v1/company/logo`
 }
 
-export const companyControllerLogo = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerLogoResponse> => {
+export const companyControllerLogo = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerLogoResponseSuccess> => {
 
-  return apiFetch<companyControllerLogoResponse>(getCompanyControllerLogoUrl(),
+  return apiFetch<companyControllerLogoResponseSuccess>(getCompanyControllerLogoUrl(),
   {
     ...options,
     method: 'GET'
@@ -2435,16 +8580,21 @@ export const companyControllerLogo = async ( options?: Parameters<typeof apiFetc
 
 
 export type companyControllerUploadLogoResponse201 = {
-  data: void
+  data: CompanyDto
   status: 201
+}
+
+export type companyControllerUploadLogoResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type companyControllerUploadLogoResponseSuccess = (companyControllerUploadLogoResponse201) & {
   headers: Headers;
 };
-;
-
-export type companyControllerUploadLogoResponse = (companyControllerUploadLogoResponseSuccess)
+export type companyControllerUploadLogoResponseError = (companyControllerUploadLogoResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCompanyControllerUploadLogoUrl = () => {
 
@@ -2454,11 +8604,14 @@ export const getCompanyControllerUploadLogoUrl = () => {
   return `/api/v1/company/logo`
 }
 
-export const companyControllerUploadLogo = async (companyControllerUploadLogoBody: CompanyControllerUploadLogoBody, options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerUploadLogoResponse> => {
+/**
+ * @summary multipart/form-data with `file`: PNG or JPEG up to 1 MB (5 MB hard cap on the request).
+ */
+export const companyControllerUploadLogo = async (companyControllerUploadLogoBody: CompanyControllerUploadLogoBody, options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerUploadLogoResponseSuccess> => {
     const formData = new FormData();
 formData.append(`file`, companyControllerUploadLogoBody.file);
 
-  return apiFetch<companyControllerUploadLogoResponse>(getCompanyControllerUploadLogoUrl(),
+  return apiFetch<companyControllerUploadLogoResponseSuccess>(getCompanyControllerUploadLogoUrl(),
   {
     ...options,
     method: 'POST'
@@ -2470,16 +8623,21 @@ formData.append(`file`, companyControllerUploadLogoBody.file);
 
 
 export type companyControllerRemoveLogoResponse200 = {
-  data: void
+  data: CompanyDto
   status: 200
+}
+
+export type companyControllerRemoveLogoResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type companyControllerRemoveLogoResponseSuccess = (companyControllerRemoveLogoResponse200) & {
   headers: Headers;
 };
-;
-
-export type companyControllerRemoveLogoResponse = (companyControllerRemoveLogoResponseSuccess)
+export type companyControllerRemoveLogoResponseError = (companyControllerRemoveLogoResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCompanyControllerRemoveLogoUrl = () => {
 
@@ -2489,9 +8647,9 @@ export const getCompanyControllerRemoveLogoUrl = () => {
   return `/api/v1/company/logo`
 }
 
-export const companyControllerRemoveLogo = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerRemoveLogoResponse> => {
+export const companyControllerRemoveLogo = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerRemoveLogoResponseSuccess> => {
 
-  return apiFetch<companyControllerRemoveLogoResponse>(getCompanyControllerRemoveLogoUrl(),
+  return apiFetch<companyControllerRemoveLogoResponseSuccess>(getCompanyControllerRemoveLogoUrl(),
   {
     ...options,
     method: 'DELETE'
@@ -2503,16 +8661,21 @@ export const companyControllerRemoveLogo = async ( options?: Parameters<typeof a
 
 
 export type companyControllerCompleteOnboardingResponse201 = {
-  data: void
+  data: CompanyDto
   status: 201
+}
+
+export type companyControllerCompleteOnboardingResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type companyControllerCompleteOnboardingResponseSuccess = (companyControllerCompleteOnboardingResponse201) & {
   headers: Headers;
 };
-;
-
-export type companyControllerCompleteOnboardingResponse = (companyControllerCompleteOnboardingResponseSuccess)
+export type companyControllerCompleteOnboardingResponseError = (companyControllerCompleteOnboardingResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCompanyControllerCompleteOnboardingUrl = () => {
 
@@ -2522,9 +8685,9 @@ export const getCompanyControllerCompleteOnboardingUrl = () => {
   return `/api/v1/company/onboarding/complete`
 }
 
-export const companyControllerCompleteOnboarding = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerCompleteOnboardingResponse> => {
+export const companyControllerCompleteOnboarding = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companyControllerCompleteOnboardingResponseSuccess> => {
 
-  return apiFetch<companyControllerCompleteOnboardingResponse>(getCompanyControllerCompleteOnboardingUrl(),
+  return apiFetch<companyControllerCompleteOnboardingResponseSuccess>(getCompanyControllerCompleteOnboardingUrl(),
   {
     ...options,
     method: 'POST'
@@ -2536,16 +8699,21 @@ export const companyControllerCompleteOnboarding = async ( options?: Parameters<
 
 
 export type usersControllerRolesResponse200 = {
-  data: void
+  data: UserRoleDto[]
   status: 200
+}
+
+export type usersControllerRolesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type usersControllerRolesResponseSuccess = (usersControllerRolesResponse200) & {
   headers: Headers;
 };
-;
-
-export type usersControllerRolesResponse = (usersControllerRolesResponseSuccess)
+export type usersControllerRolesResponseError = (usersControllerRolesResponseDefault) & {
+  headers: Headers;
+};
 
 export const getUsersControllerRolesUrl = () => {
 
@@ -2555,9 +8723,9 @@ export const getUsersControllerRolesUrl = () => {
   return `/api/v1/users/roles`
 }
 
-export const usersControllerRoles = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerRolesResponse> => {
+export const usersControllerRoles = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerRolesResponseSuccess> => {
 
-  return apiFetch<usersControllerRolesResponse>(getUsersControllerRolesUrl(),
+  return apiFetch<usersControllerRolesResponseSuccess>(getUsersControllerRolesUrl(),
   {
     ...options,
     method: 'GET'
@@ -2569,16 +8737,21 @@ export const usersControllerRoles = async ( options?: Parameters<typeof apiFetch
 
 
 export type usersControllerListResponse200 = {
-  data: void
+  data: UserMembershipDto[]
   status: 200
+}
+
+export type usersControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type usersControllerListResponseSuccess = (usersControllerListResponse200) & {
   headers: Headers;
 };
-;
-
-export type usersControllerListResponse = (usersControllerListResponseSuccess)
+export type usersControllerListResponseError = (usersControllerListResponseDefault) & {
+  headers: Headers;
+};
 
 export const getUsersControllerListUrl = () => {
 
@@ -2588,9 +8761,9 @@ export const getUsersControllerListUrl = () => {
   return `/api/v1/users`
 }
 
-export const usersControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerListResponse> => {
+export const usersControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerListResponseSuccess> => {
 
-  return apiFetch<usersControllerListResponse>(getUsersControllerListUrl(),
+  return apiFetch<usersControllerListResponseSuccess>(getUsersControllerListUrl(),
   {
     ...options,
     method: 'GET'
@@ -2602,16 +8775,21 @@ export const usersControllerList = async ( options?: Parameters<typeof apiFetch>
 
 
 export type usersControllerInviteResponse201 = {
-  data: void
+  data: UserInviteResultDto
   status: 201
+}
+
+export type usersControllerInviteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type usersControllerInviteResponseSuccess = (usersControllerInviteResponse201) & {
   headers: Headers;
 };
-;
-
-export type usersControllerInviteResponse = (usersControllerInviteResponseSuccess)
+export type usersControllerInviteResponseError = (usersControllerInviteResponseDefault) & {
+  headers: Headers;
+};
 
 export const getUsersControllerInviteUrl = () => {
 
@@ -2621,7 +8799,7 @@ export const getUsersControllerInviteUrl = () => {
   return `/api/v1/users/invite`
 }
 
-export const usersControllerInvite = async (inviteUserDto: InviteUserDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerInviteResponse> => {
+export const usersControllerInvite = async (inviteUserDto: InviteUserDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerInviteResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -2637,7 +8815,7 @@ export const usersControllerInvite = async (inviteUserDto: InviteUserDto, option
     }
     return headers;
   };
-return apiFetch<usersControllerInviteResponse>(getUsersControllerInviteUrl(),
+return apiFetch<usersControllerInviteResponseSuccess>(getUsersControllerInviteUrl(),
   {
     ...options,
     method: 'POST',
@@ -2649,16 +8827,21 @@ return apiFetch<usersControllerInviteResponse>(getUsersControllerInviteUrl(),
 
 
 export type usersControllerUpdateResponse200 = {
-  data: void
+  data: UserMembershipDto
   status: 200
+}
+
+export type usersControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type usersControllerUpdateResponseSuccess = (usersControllerUpdateResponse200) & {
   headers: Headers;
 };
-;
-
-export type usersControllerUpdateResponse = (usersControllerUpdateResponseSuccess)
+export type usersControllerUpdateResponseError = (usersControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getUsersControllerUpdateUrl = (membershipId: string,) => {
 
@@ -2669,7 +8852,7 @@ export const getUsersControllerUpdateUrl = (membershipId: string,) => {
 }
 
 export const usersControllerUpdate = async (membershipId: string,
-    updateMembershipDto: UpdateMembershipDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerUpdateResponse> => {
+    updateMembershipDto: UpdateMembershipDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerUpdateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -2685,7 +8868,7 @@ export const usersControllerUpdate = async (membershipId: string,
     }
     return headers;
   };
-return apiFetch<usersControllerUpdateResponse>(getUsersControllerUpdateUrl(membershipId),
+return apiFetch<usersControllerUpdateResponseSuccess>(getUsersControllerUpdateUrl(membershipId),
   {
     ...options,
     method: 'PATCH',
@@ -2697,16 +8880,21 @@ return apiFetch<usersControllerUpdateResponse>(getUsersControllerUpdateUrl(membe
 
 
 export type usersControllerSuspendResponse200 = {
-  data: void
+  data: UserInvitationCancelledDto | UserMembershipDto
   status: 200
+}
+
+export type usersControllerSuspendResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type usersControllerSuspendResponseSuccess = (usersControllerSuspendResponse200) & {
   headers: Headers;
 };
-;
-
-export type usersControllerSuspendResponse = (usersControllerSuspendResponseSuccess)
+export type usersControllerSuspendResponseError = (usersControllerSuspendResponseDefault) & {
+  headers: Headers;
+};
 
 export const getUsersControllerSuspendUrl = (membershipId: string,) => {
 
@@ -2716,9 +8904,12 @@ export const getUsersControllerSuspendUrl = (membershipId: string,) => {
   return `/api/v1/users/${membershipId}`
 }
 
-export const usersControllerSuspend = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerSuspendResponse> => {
+/**
+ * @summary Suspends a member, or cancels a pending invitation (INVITED).
+ */
+export const usersControllerSuspend = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerSuspendResponseSuccess> => {
 
-  return apiFetch<usersControllerSuspendResponse>(getUsersControllerSuspendUrl(membershipId),
+  return apiFetch<usersControllerSuspendResponseSuccess>(getUsersControllerSuspendUrl(membershipId),
   {
     ...options,
     method: 'DELETE'
@@ -2730,16 +8921,21 @@ export const usersControllerSuspend = async (membershipId: string, options?: Par
 
 
 export type usersControllerReissueInvitationCodeResponse200 = {
-  data: void
+  data: UserInvitationCodeDto
   status: 200
+}
+
+export type usersControllerReissueInvitationCodeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type usersControllerReissueInvitationCodeResponseSuccess = (usersControllerReissueInvitationCodeResponse200) & {
   headers: Headers;
 };
-;
-
-export type usersControllerReissueInvitationCodeResponse = (usersControllerReissueInvitationCodeResponseSuccess)
+export type usersControllerReissueInvitationCodeResponseError = (usersControllerReissueInvitationCodeResponseDefault) & {
+  headers: Headers;
+};
 
 export const getUsersControllerReissueInvitationCodeUrl = (membershipId: string,) => {
 
@@ -2749,9 +8945,12 @@ export const getUsersControllerReissueInvitationCodeUrl = (membershipId: string,
   return `/api/v1/users/${membershipId}/invitation-code`
 }
 
-export const usersControllerReissueInvitationCode = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerReissueInvitationCodeResponse> => {
+/**
+ * @summary A new acceptance code for a pending invitation; the old one stops working (ADR-012 §PLAT-10).
+ */
+export const usersControllerReissueInvitationCode = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerReissueInvitationCodeResponseSuccess> => {
 
-  return apiFetch<usersControllerReissueInvitationCodeResponse>(getUsersControllerReissueInvitationCodeUrl(membershipId),
+  return apiFetch<usersControllerReissueInvitationCodeResponseSuccess>(getUsersControllerReissueInvitationCodeUrl(membershipId),
   {
     ...options,
     method: 'POST'
@@ -2763,16 +8962,21 @@ export const usersControllerReissueInvitationCode = async (membershipId: string,
 
 
 export type usersControllerResetPasswordResponse200 = {
-  data: void
+  data: UserTemporaryPasswordDto
   status: 200
+}
+
+export type usersControllerResetPasswordResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type usersControllerResetPasswordResponseSuccess = (usersControllerResetPasswordResponse200) & {
   headers: Headers;
 };
-;
-
-export type usersControllerResetPasswordResponse = (usersControllerResetPasswordResponseSuccess)
+export type usersControllerResetPasswordResponseError = (usersControllerResetPasswordResponseDefault) & {
+  headers: Headers;
+};
 
 export const getUsersControllerResetPasswordUrl = (membershipId: string,) => {
 
@@ -2782,9 +8986,12 @@ export const getUsersControllerResetPasswordUrl = (membershipId: string,) => {
   return `/api/v1/users/${membershipId}/reset-password`
 }
 
-export const usersControllerResetPassword = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerResetPasswordResponse> => {
+/**
+ * @summary Replaces the member's password with a temporary one (ADR-012).
+ */
+export const usersControllerResetPassword = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerResetPasswordResponseSuccess> => {
 
-  return apiFetch<usersControllerResetPasswordResponse>(getUsersControllerResetPasswordUrl(membershipId),
+  return apiFetch<usersControllerResetPasswordResponseSuccess>(getUsersControllerResetPasswordUrl(membershipId),
   {
     ...options,
     method: 'POST'
@@ -2796,16 +9003,21 @@ export const usersControllerResetPassword = async (membershipId: string, options
 
 
 export type invitationsControllerListResponse200 = {
-  data: void
+  data: MyInvitationDto[]
   status: 200
+}
+
+export type invitationsControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type invitationsControllerListResponseSuccess = (invitationsControllerListResponse200) & {
   headers: Headers;
 };
-;
-
-export type invitationsControllerListResponse = (invitationsControllerListResponseSuccess)
+export type invitationsControllerListResponseError = (invitationsControllerListResponseDefault) & {
+  headers: Headers;
+};
 
 export const getInvitationsControllerListUrl = () => {
 
@@ -2815,9 +9027,9 @@ export const getInvitationsControllerListUrl = () => {
   return `/api/v1/me/invitations`
 }
 
-export const invitationsControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerListResponse> => {
+export const invitationsControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerListResponseSuccess> => {
 
-  return apiFetch<invitationsControllerListResponse>(getInvitationsControllerListUrl(),
+  return apiFetch<invitationsControllerListResponseSuccess>(getInvitationsControllerListUrl(),
   {
     ...options,
     method: 'GET'
@@ -2829,16 +9041,21 @@ export const invitationsControllerList = async ( options?: Parameters<typeof api
 
 
 export type invitationsControllerAcceptResponse200 = {
-  data: void
+  data: MyInvitationAcceptedDto
   status: 200
+}
+
+export type invitationsControllerAcceptResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type invitationsControllerAcceptResponseSuccess = (invitationsControllerAcceptResponse200) & {
   headers: Headers;
 };
-;
-
-export type invitationsControllerAcceptResponse = (invitationsControllerAcceptResponseSuccess)
+export type invitationsControllerAcceptResponseError = (invitationsControllerAcceptResponseDefault) & {
+  headers: Headers;
+};
 
 export const getInvitationsControllerAcceptUrl = (membershipId: string,) => {
 
@@ -2848,8 +9065,11 @@ export const getInvitationsControllerAcceptUrl = (membershipId: string,) => {
   return `/api/v1/me/invitations/${membershipId}/accept`
 }
 
+/**
+ * @summary Needs the acceptance code; 10 tries a minute per user on top of the per-code limit.
+ */
 export const invitationsControllerAccept = async (membershipId: string,
-    acceptInvitationDto: AcceptInvitationDto, options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerAcceptResponse> => {
+    acceptInvitationDto: AcceptInvitationDto, options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerAcceptResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -2865,7 +9085,7 @@ export const invitationsControllerAccept = async (membershipId: string,
     }
     return headers;
   };
-return apiFetch<invitationsControllerAcceptResponse>(getInvitationsControllerAcceptUrl(membershipId),
+return apiFetch<invitationsControllerAcceptResponseSuccess>(getInvitationsControllerAcceptUrl(membershipId),
   {
     ...options,
     method: 'POST',
@@ -2881,12 +9101,17 @@ export type invitationsControllerDeclineResponse204 = {
   status: 204
 }
 
+export type invitationsControllerDeclineResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 204>
+}
+
 export type invitationsControllerDeclineResponseSuccess = (invitationsControllerDeclineResponse204) & {
   headers: Headers;
 };
-;
-
-export type invitationsControllerDeclineResponse = (invitationsControllerDeclineResponseSuccess)
+export type invitationsControllerDeclineResponseError = (invitationsControllerDeclineResponseDefault) & {
+  headers: Headers;
+};
 
 export const getInvitationsControllerDeclineUrl = (membershipId: string,) => {
 
@@ -2896,9 +9121,9 @@ export const getInvitationsControllerDeclineUrl = (membershipId: string,) => {
   return `/api/v1/me/invitations/${membershipId}/decline`
 }
 
-export const invitationsControllerDecline = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerDeclineResponse> => {
+export const invitationsControllerDecline = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerDeclineResponseSuccess> => {
 
-  return apiFetch<invitationsControllerDeclineResponse>(getInvitationsControllerDeclineUrl(membershipId),
+  return apiFetch<invitationsControllerDeclineResponseSuccess>(getInvitationsControllerDeclineUrl(membershipId),
   {
     ...options,
     method: 'POST'
@@ -2910,16 +9135,21 @@ export const invitationsControllerDecline = async (membershipId: string, options
 
 
 export type branchesControllerListResponse200 = {
-  data: void
+  data: BranchDto[]
   status: 200
+}
+
+export type branchesControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type branchesControllerListResponseSuccess = (branchesControllerListResponse200) & {
   headers: Headers;
 };
-;
-
-export type branchesControllerListResponse = (branchesControllerListResponseSuccess)
+export type branchesControllerListResponseError = (branchesControllerListResponseDefault) & {
+  headers: Headers;
+};
 
 export const getBranchesControllerListUrl = () => {
 
@@ -2929,9 +9159,9 @@ export const getBranchesControllerListUrl = () => {
   return `/api/v1/branches`
 }
 
-export const branchesControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerListResponse> => {
+export const branchesControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerListResponseSuccess> => {
 
-  return apiFetch<branchesControllerListResponse>(getBranchesControllerListUrl(),
+  return apiFetch<branchesControllerListResponseSuccess>(getBranchesControllerListUrl(),
   {
     ...options,
     method: 'GET'
@@ -2943,16 +9173,21 @@ export const branchesControllerList = async ( options?: Parameters<typeof apiFet
 
 
 export type branchesControllerCreateResponse201 = {
-  data: void
+  data: BranchDto
   status: 201
+}
+
+export type branchesControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type branchesControllerCreateResponseSuccess = (branchesControllerCreateResponse201) & {
   headers: Headers;
 };
-;
-
-export type branchesControllerCreateResponse = (branchesControllerCreateResponseSuccess)
+export type branchesControllerCreateResponseError = (branchesControllerCreateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getBranchesControllerCreateUrl = () => {
 
@@ -2962,7 +9197,7 @@ export const getBranchesControllerCreateUrl = () => {
   return `/api/v1/branches`
 }
 
-export const branchesControllerCreate = async (createBranchDto: CreateBranchDto, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerCreateResponse> => {
+export const branchesControllerCreate = async (createBranchDto: CreateBranchDto, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerCreateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -2978,7 +9213,7 @@ export const branchesControllerCreate = async (createBranchDto: CreateBranchDto,
     }
     return headers;
   };
-return apiFetch<branchesControllerCreateResponse>(getBranchesControllerCreateUrl(),
+return apiFetch<branchesControllerCreateResponseSuccess>(getBranchesControllerCreateUrl(),
   {
     ...options,
     method: 'POST',
@@ -2990,16 +9225,21 @@ return apiFetch<branchesControllerCreateResponse>(getBranchesControllerCreateUrl
 
 
 export type branchesControllerUpdateResponse200 = {
-  data: void
+  data: BranchDto
   status: 200
+}
+
+export type branchesControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type branchesControllerUpdateResponseSuccess = (branchesControllerUpdateResponse200) & {
   headers: Headers;
 };
-;
-
-export type branchesControllerUpdateResponse = (branchesControllerUpdateResponseSuccess)
+export type branchesControllerUpdateResponseError = (branchesControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getBranchesControllerUpdateUrl = (id: string,) => {
 
@@ -3010,7 +9250,7 @@ export const getBranchesControllerUpdateUrl = (id: string,) => {
 }
 
 export const branchesControllerUpdate = async (id: string,
-    updateBranchDto: UpdateBranchDto, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerUpdateResponse> => {
+    updateBranchDto: UpdateBranchDto, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerUpdateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -3026,7 +9266,7 @@ export const branchesControllerUpdate = async (id: string,
     }
     return headers;
   };
-return apiFetch<branchesControllerUpdateResponse>(getBranchesControllerUpdateUrl(id),
+return apiFetch<branchesControllerUpdateResponseSuccess>(getBranchesControllerUpdateUrl(id),
   {
     ...options,
     method: 'PATCH',
@@ -3038,16 +9278,21 @@ return apiFetch<branchesControllerUpdateResponse>(getBranchesControllerUpdateUrl
 
 
 export type branchesControllerDeactivateResponse200 = {
-  data: void
+  data: BranchDto
   status: 200
+}
+
+export type branchesControllerDeactivateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type branchesControllerDeactivateResponseSuccess = (branchesControllerDeactivateResponse200) & {
   headers: Headers;
 };
-;
-
-export type branchesControllerDeactivateResponse = (branchesControllerDeactivateResponseSuccess)
+export type branchesControllerDeactivateResponseError = (branchesControllerDeactivateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getBranchesControllerDeactivateUrl = (id: string,) => {
 
@@ -3057,9 +9302,9 @@ export const getBranchesControllerDeactivateUrl = (id: string,) => {
   return `/api/v1/branches/${id}`
 }
 
-export const branchesControllerDeactivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerDeactivateResponse> => {
+export const branchesControllerDeactivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerDeactivateResponseSuccess> => {
 
-  return apiFetch<branchesControllerDeactivateResponse>(getBranchesControllerDeactivateUrl(id),
+  return apiFetch<branchesControllerDeactivateResponseSuccess>(getBranchesControllerDeactivateUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -3071,16 +9316,21 @@ export const branchesControllerDeactivate = async (id: string, options?: Paramet
 
 
 export type journalControllerListResponse200 = {
-  data: void
+  data: JournalEntryListItemDtoPage
   status: 200
+}
+
+export type journalControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type journalControllerListResponseSuccess = (journalControllerListResponse200) & {
   headers: Headers;
 };
-;
-
-export type journalControllerListResponse = (journalControllerListResponseSuccess)
+export type journalControllerListResponseError = (journalControllerListResponseDefault) & {
+  headers: Headers;
+};
 
 export const getJournalControllerListUrl = (params?: JournalControllerListParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -3097,9 +9347,12 @@ export const getJournalControllerListUrl = (params?: JournalControllerListParams
   return stringifiedParams.length > 0 ? `/api/v1/journal-entries?${stringifiedParams}` : `/api/v1/journal-entries`
 }
 
-export const journalControllerList = async (params?: JournalControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerListResponse> => {
+/**
+ * @summary Numbered page `{ items, page, pageSize, total }` (ADR-022, LEDGER-08), the caller's branches only.
+ */
+export const journalControllerList = async (params?: JournalControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerListResponseSuccess> => {
 
-  return apiFetch<journalControllerListResponse>(getJournalControllerListUrl(params),
+  return apiFetch<journalControllerListResponseSuccess>(getJournalControllerListUrl(params),
   {
     ...options,
     method: 'GET'
@@ -3111,16 +9364,21 @@ export const journalControllerList = async (params?: JournalControllerListParams
 
 
 export type journalControllerCreateDraftResponse201 = {
-  data: void
+  data: JournalEntryDetailDto
   status: 201
+}
+
+export type journalControllerCreateDraftResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type journalControllerCreateDraftResponseSuccess = (journalControllerCreateDraftResponse201) & {
   headers: Headers;
 };
-;
-
-export type journalControllerCreateDraftResponse = (journalControllerCreateDraftResponseSuccess)
+export type journalControllerCreateDraftResponseError = (journalControllerCreateDraftResponseDefault) & {
+  headers: Headers;
+};
 
 export const getJournalControllerCreateDraftUrl = () => {
 
@@ -3130,7 +9388,7 @@ export const getJournalControllerCreateDraftUrl = () => {
   return `/api/v1/journal-entries`
 }
 
-export const journalControllerCreateDraft = async (createJournalEntryDto: CreateJournalEntryDto, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerCreateDraftResponse> => {
+export const journalControllerCreateDraft = async (createJournalEntryDto: CreateJournalEntryDto, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerCreateDraftResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -3146,7 +9404,7 @@ export const journalControllerCreateDraft = async (createJournalEntryDto: Create
     }
     return headers;
   };
-return apiFetch<journalControllerCreateDraftResponse>(getJournalControllerCreateDraftUrl(),
+return apiFetch<journalControllerCreateDraftResponseSuccess>(getJournalControllerCreateDraftUrl(),
   {
     ...options,
     method: 'POST',
@@ -3158,16 +9416,21 @@ return apiFetch<journalControllerCreateDraftResponse>(getJournalControllerCreate
 
 
 export type journalControllerGetResponse200 = {
-  data: void
+  data: JournalEntryDetailDto
   status: 200
+}
+
+export type journalControllerGetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type journalControllerGetResponseSuccess = (journalControllerGetResponse200) & {
   headers: Headers;
 };
-;
-
-export type journalControllerGetResponse = (journalControllerGetResponseSuccess)
+export type journalControllerGetResponseError = (journalControllerGetResponseDefault) & {
+  headers: Headers;
+};
 
 export const getJournalControllerGetUrl = (id: string,) => {
 
@@ -3177,9 +9440,9 @@ export const getJournalControllerGetUrl = (id: string,) => {
   return `/api/v1/journal-entries/${id}`
 }
 
-export const journalControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerGetResponse> => {
+export const journalControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerGetResponseSuccess> => {
 
-  return apiFetch<journalControllerGetResponse>(getJournalControllerGetUrl(id),
+  return apiFetch<journalControllerGetResponseSuccess>(getJournalControllerGetUrl(id),
   {
     ...options,
     method: 'GET'
@@ -3191,16 +9454,21 @@ export const journalControllerGet = async (id: string, options?: Parameters<type
 
 
 export type journalControllerDeleteDraftResponse200 = {
-  data: void
+  data: DeletedDto
   status: 200
+}
+
+export type journalControllerDeleteDraftResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type journalControllerDeleteDraftResponseSuccess = (journalControllerDeleteDraftResponse200) & {
   headers: Headers;
 };
-;
-
-export type journalControllerDeleteDraftResponse = (journalControllerDeleteDraftResponseSuccess)
+export type journalControllerDeleteDraftResponseError = (journalControllerDeleteDraftResponseDefault) & {
+  headers: Headers;
+};
 
 export const getJournalControllerDeleteDraftUrl = (id: string,) => {
 
@@ -3210,9 +9478,9 @@ export const getJournalControllerDeleteDraftUrl = (id: string,) => {
   return `/api/v1/journal-entries/${id}`
 }
 
-export const journalControllerDeleteDraft = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerDeleteDraftResponse> => {
+export const journalControllerDeleteDraft = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerDeleteDraftResponseSuccess> => {
 
-  return apiFetch<journalControllerDeleteDraftResponse>(getJournalControllerDeleteDraftUrl(id),
+  return apiFetch<journalControllerDeleteDraftResponseSuccess>(getJournalControllerDeleteDraftUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -3224,16 +9492,21 @@ export const journalControllerDeleteDraft = async (id: string, options?: Paramet
 
 
 export type journalControllerPostResponse201 = {
-  data: void
+  data: JournalEntryDetailDto
   status: 201
+}
+
+export type journalControllerPostResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type journalControllerPostResponseSuccess = (journalControllerPostResponse201) & {
   headers: Headers;
 };
-;
-
-export type journalControllerPostResponse = (journalControllerPostResponseSuccess)
+export type journalControllerPostResponseError = (journalControllerPostResponseDefault) & {
+  headers: Headers;
+};
 
 export const getJournalControllerPostUrl = (id: string,) => {
 
@@ -3243,9 +9516,9 @@ export const getJournalControllerPostUrl = (id: string,) => {
   return `/api/v1/journal-entries/${id}/post`
 }
 
-export const journalControllerPost = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerPostResponse> => {
+export const journalControllerPost = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerPostResponseSuccess> => {
 
-  return apiFetch<journalControllerPostResponse>(getJournalControllerPostUrl(id),
+  return apiFetch<journalControllerPostResponseSuccess>(getJournalControllerPostUrl(id),
   {
     ...options,
     method: 'POST'
@@ -3257,16 +9530,21 @@ export const journalControllerPost = async (id: string, options?: Parameters<typ
 
 
 export type journalControllerReverseResponse201 = {
-  data: void
+  data: JournalEntryDetailDto
   status: 201
+}
+
+export type journalControllerReverseResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type journalControllerReverseResponseSuccess = (journalControllerReverseResponse201) & {
   headers: Headers;
 };
-;
-
-export type journalControllerReverseResponse = (journalControllerReverseResponseSuccess)
+export type journalControllerReverseResponseError = (journalControllerReverseResponseDefault) & {
+  headers: Headers;
+};
 
 export const getJournalControllerReverseUrl = (id: string,) => {
 
@@ -3277,7 +9555,7 @@ export const getJournalControllerReverseUrl = (id: string,) => {
 }
 
 export const journalControllerReverse = async (id: string,
-    reverseJournalEntryDto: ReverseJournalEntryDto, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerReverseResponse> => {
+    reverseJournalEntryDto: ReverseJournalEntryDto, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerReverseResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -3293,7 +9571,7 @@ export const journalControllerReverse = async (id: string,
     }
     return headers;
   };
-return apiFetch<journalControllerReverseResponse>(getJournalControllerReverseUrl(id),
+return apiFetch<journalControllerReverseResponseSuccess>(getJournalControllerReverseUrl(id),
   {
     ...options,
     method: 'POST',
@@ -3305,16 +9583,21 @@ return apiFetch<journalControllerReverseResponse>(getJournalControllerReverseUrl
 
 
 export type journalControllerOpeningResponse201 = {
-  data: void
+  data: JournalEntryDetailDto
   status: 201
+}
+
+export type journalControllerOpeningResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type journalControllerOpeningResponseSuccess = (journalControllerOpeningResponse201) & {
   headers: Headers;
 };
-;
-
-export type journalControllerOpeningResponse = (journalControllerOpeningResponseSuccess)
+export type journalControllerOpeningResponseError = (journalControllerOpeningResponseDefault) & {
+  headers: Headers;
+};
 
 export const getJournalControllerOpeningUrl = () => {
 
@@ -3324,7 +9607,10 @@ export const getJournalControllerOpeningUrl = () => {
   return `/api/v1/journal-entries/opening`
 }
 
-export const journalControllerOpening = async (createOpeningEntryDto: CreateOpeningEntryDto, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerOpeningResponse> => {
+/**
+ * @summary Guided opening-balance entry with OPENING_BALANCE_EQUITY plug (§8.6).
+ */
+export const journalControllerOpening = async (createOpeningEntryDto: CreateOpeningEntryDto, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerOpeningResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -3340,7 +9626,7 @@ export const journalControllerOpening = async (createOpeningEntryDto: CreateOpen
     }
     return headers;
   };
-return apiFetch<journalControllerOpeningResponse>(getJournalControllerOpeningUrl(),
+return apiFetch<journalControllerOpeningResponseSuccess>(getJournalControllerOpeningUrl(),
   {
     ...options,
     method: 'POST',
@@ -3352,28 +9638,40 @@ return apiFetch<journalControllerOpeningResponse>(getJournalControllerOpeningUrl
 
 
 export type journalControllerTrialBalanceResponse200 = {
-  data: void
+  data: TrialBalanceDto
   status: 200
+}
+
+export type journalControllerTrialBalanceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type journalControllerTrialBalanceResponseSuccess = (journalControllerTrialBalanceResponse200) & {
   headers: Headers;
 };
-;
+export type journalControllerTrialBalanceResponseError = (journalControllerTrialBalanceResponseDefault) & {
+  headers: Headers;
+};
 
-export type journalControllerTrialBalanceResponse = (journalControllerTrialBalanceResponseSuccess)
+export const getJournalControllerTrialBalanceUrl = (params?: JournalControllerTrialBalanceParams,) => {
+  const normalizedParams = new URLSearchParams();
 
-export const getJournalControllerTrialBalanceUrl = () => {
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-
-  return `/api/v1/reports/trial-balance`
+  return stringifiedParams.length > 0 ? `/api/v1/reports/trial-balance?${stringifiedParams}` : `/api/v1/reports/trial-balance`
 }
 
-export const journalControllerTrialBalance = async ( options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerTrialBalanceResponse> => {
+export const journalControllerTrialBalance = async (params?: JournalControllerTrialBalanceParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerTrialBalanceResponseSuccess> => {
 
-  return apiFetch<journalControllerTrialBalanceResponse>(getJournalControllerTrialBalanceUrl(),
+  return apiFetch<journalControllerTrialBalanceResponseSuccess>(getJournalControllerTrialBalanceUrl(params),
   {
     ...options,
     method: 'GET'
@@ -3385,16 +9683,21 @@ export const journalControllerTrialBalance = async ( options?: Parameters<typeof
 
 
 export type journalControllerGeneralLedgerResponse200 = {
-  data: void
+  data: GeneralLedgerPageDto
   status: 200
+}
+
+export type journalControllerGeneralLedgerResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type journalControllerGeneralLedgerResponseSuccess = (journalControllerGeneralLedgerResponse200) & {
   headers: Headers;
 };
-;
-
-export type journalControllerGeneralLedgerResponse = (journalControllerGeneralLedgerResponseSuccess)
+export type journalControllerGeneralLedgerResponseError = (journalControllerGeneralLedgerResponseDefault) & {
+  headers: Headers;
+};
 
 export const getJournalControllerGeneralLedgerUrl = (params?: JournalControllerGeneralLedgerParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -3411,9 +9714,14 @@ export const getJournalControllerGeneralLedgerUrl = (params?: JournalControllerG
   return stringifiedParams.length > 0 ? `/api/v1/reports/general-ledger?${stringifiedParams}` : `/api/v1/reports/general-ledger`
 }
 
-export const journalControllerGeneralLedger = async (params?: JournalControllerGeneralLedgerParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerGeneralLedgerResponse> => {
+/**
+ * @summary Account statement. JSON: one keyset page (ADR-022 §4) — `{ account,
+summary (first page), items, nextCursor }`. PDF / XLSX: the whole
+statement, capped (REPORT_TOO_LARGE). Company-wide (ADR-003 §13).
+ */
+export const journalControllerGeneralLedger = async (params?: JournalControllerGeneralLedgerParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerGeneralLedgerResponseSuccess> => {
 
-  return apiFetch<journalControllerGeneralLedgerResponse>(getJournalControllerGeneralLedgerUrl(params),
+  return apiFetch<journalControllerGeneralLedgerResponseSuccess>(getJournalControllerGeneralLedgerUrl(params),
   {
     ...options,
     method: 'GET'
@@ -3425,16 +9733,21 @@ export const journalControllerGeneralLedger = async (params?: JournalControllerG
 
 
 export type journalControllerPartyStatementResponse200 = {
-  data: void
+  data: PartyStatementPageDto
   status: 200
+}
+
+export type journalControllerPartyStatementResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type journalControllerPartyStatementResponseSuccess = (journalControllerPartyStatementResponse200) & {
   headers: Headers;
 };
-;
-
-export type journalControllerPartyStatementResponse = (journalControllerPartyStatementResponseSuccess)
+export type journalControllerPartyStatementResponseError = (journalControllerPartyStatementResponseDefault) & {
+  headers: Headers;
+};
 
 export const getJournalControllerPartyStatementUrl = (params?: JournalControllerPartyStatementParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -3451,9 +9764,13 @@ export const getJournalControllerPartyStatementUrl = (params?: JournalController
   return stringifiedParams.length > 0 ? `/api/v1/reports/party-statement?${stringifiedParams}` : `/api/v1/reports/party-statement`
 }
 
-export const journalControllerPartyStatement = async (params?: JournalControllerPartyStatementParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerPartyStatementResponse> => {
+/**
+ * @summary Party statement, on the caller's branches (ADR-003 §12). JSON: one keyset
+page (ADR-022 §4); PDF / XLSX: the whole statement, capped.
+ */
+export const journalControllerPartyStatement = async (params?: JournalControllerPartyStatementParams, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerPartyStatementResponseSuccess> => {
 
-  return apiFetch<journalControllerPartyStatementResponse>(getJournalControllerPartyStatementUrl(params),
+  return apiFetch<journalControllerPartyStatementResponseSuccess>(getJournalControllerPartyStatementUrl(params),
   {
     ...options,
     method: 'GET'
@@ -3465,16 +9782,21 @@ export const journalControllerPartyStatement = async (params?: JournalController
 
 
 export type partiesControllerListResponse200 = {
-  data: void
+  data: PartyDtoPage
   status: 200
+}
+
+export type partiesControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type partiesControllerListResponseSuccess = (partiesControllerListResponse200) & {
   headers: Headers;
 };
-;
-
-export type partiesControllerListResponse = (partiesControllerListResponseSuccess)
+export type partiesControllerListResponseError = (partiesControllerListResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPartiesControllerListUrl = (params?: PartiesControllerListParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -3491,9 +9813,9 @@ export const getPartiesControllerListUrl = (params?: PartiesControllerListParams
   return stringifiedParams.length > 0 ? `/api/v1/parties?${stringifiedParams}` : `/api/v1/parties`
 }
 
-export const partiesControllerList = async (params?: PartiesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerListResponse> => {
+export const partiesControllerList = async (params?: PartiesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerListResponseSuccess> => {
 
-  return apiFetch<partiesControllerListResponse>(getPartiesControllerListUrl(params),
+  return apiFetch<partiesControllerListResponseSuccess>(getPartiesControllerListUrl(params),
   {
     ...options,
     method: 'GET'
@@ -3505,16 +9827,21 @@ export const partiesControllerList = async (params?: PartiesControllerListParams
 
 
 export type partiesControllerCreateResponse201 = {
-  data: void
+  data: PartyDto
   status: 201
+}
+
+export type partiesControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type partiesControllerCreateResponseSuccess = (partiesControllerCreateResponse201) & {
   headers: Headers;
 };
-;
-
-export type partiesControllerCreateResponse = (partiesControllerCreateResponseSuccess)
+export type partiesControllerCreateResponseError = (partiesControllerCreateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPartiesControllerCreateUrl = () => {
 
@@ -3524,7 +9851,7 @@ export const getPartiesControllerCreateUrl = () => {
   return `/api/v1/parties`
 }
 
-export const partiesControllerCreate = async (createPartyDto: CreatePartyDto, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerCreateResponse> => {
+export const partiesControllerCreate = async (createPartyDto: CreatePartyDto, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerCreateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -3540,7 +9867,7 @@ export const partiesControllerCreate = async (createPartyDto: CreatePartyDto, op
     }
     return headers;
   };
-return apiFetch<partiesControllerCreateResponse>(getPartiesControllerCreateUrl(),
+return apiFetch<partiesControllerCreateResponseSuccess>(getPartiesControllerCreateUrl(),
   {
     ...options,
     method: 'POST',
@@ -3552,16 +9879,21 @@ return apiFetch<partiesControllerCreateResponse>(getPartiesControllerCreateUrl()
 
 
 export type partiesControllerGetResponse200 = {
-  data: void
+  data: PartyDto
   status: 200
+}
+
+export type partiesControllerGetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type partiesControllerGetResponseSuccess = (partiesControllerGetResponse200) & {
   headers: Headers;
 };
-;
-
-export type partiesControllerGetResponse = (partiesControllerGetResponseSuccess)
+export type partiesControllerGetResponseError = (partiesControllerGetResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPartiesControllerGetUrl = (id: string,) => {
 
@@ -3571,9 +9903,9 @@ export const getPartiesControllerGetUrl = (id: string,) => {
   return `/api/v1/parties/${id}`
 }
 
-export const partiesControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerGetResponse> => {
+export const partiesControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerGetResponseSuccess> => {
 
-  return apiFetch<partiesControllerGetResponse>(getPartiesControllerGetUrl(id),
+  return apiFetch<partiesControllerGetResponseSuccess>(getPartiesControllerGetUrl(id),
   {
     ...options,
     method: 'GET'
@@ -3585,16 +9917,21 @@ export const partiesControllerGet = async (id: string, options?: Parameters<type
 
 
 export type partiesControllerUpdateResponse200 = {
-  data: void
+  data: PartyDto
   status: 200
+}
+
+export type partiesControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type partiesControllerUpdateResponseSuccess = (partiesControllerUpdateResponse200) & {
   headers: Headers;
 };
-;
-
-export type partiesControllerUpdateResponse = (partiesControllerUpdateResponseSuccess)
+export type partiesControllerUpdateResponseError = (partiesControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPartiesControllerUpdateUrl = (id: string,) => {
 
@@ -3605,7 +9942,7 @@ export const getPartiesControllerUpdateUrl = (id: string,) => {
 }
 
 export const partiesControllerUpdate = async (id: string,
-    updatePartyDto: UpdatePartyDto, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerUpdateResponse> => {
+    updatePartyDto: UpdatePartyDto, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerUpdateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -3621,7 +9958,7 @@ export const partiesControllerUpdate = async (id: string,
     }
     return headers;
   };
-return apiFetch<partiesControllerUpdateResponse>(getPartiesControllerUpdateUrl(id),
+return apiFetch<partiesControllerUpdateResponseSuccess>(getPartiesControllerUpdateUrl(id),
   {
     ...options,
     method: 'PUT',
@@ -3633,16 +9970,21 @@ return apiFetch<partiesControllerUpdateResponse>(getPartiesControllerUpdateUrl(i
 
 
 export type partiesControllerDeactivateResponse200 = {
-  data: void
+  data: DeactivatedDto | DeletedDto
   status: 200
+}
+
+export type partiesControllerDeactivateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type partiesControllerDeactivateResponseSuccess = (partiesControllerDeactivateResponse200) & {
   headers: Headers;
 };
-;
-
-export type partiesControllerDeactivateResponse = (partiesControllerDeactivateResponseSuccess)
+export type partiesControllerDeactivateResponseError = (partiesControllerDeactivateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPartiesControllerDeactivateUrl = (id: string,) => {
 
@@ -3652,9 +9994,9 @@ export const getPartiesControllerDeactivateUrl = (id: string,) => {
   return `/api/v1/parties/${id}/deactivate`
 }
 
-export const partiesControllerDeactivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerDeactivateResponse> => {
+export const partiesControllerDeactivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<partiesControllerDeactivateResponseSuccess> => {
 
-  return apiFetch<partiesControllerDeactivateResponse>(getPartiesControllerDeactivateUrl(id),
+  return apiFetch<partiesControllerDeactivateResponseSuccess>(getPartiesControllerDeactivateUrl(id),
   {
     ...options,
     method: 'PATCH'
@@ -3666,16 +10008,21 @@ export const partiesControllerDeactivate = async (id: string, options?: Paramete
 
 
 export type catalogControllerListGroupsResponse200 = {
-  data: void
+  data: ItemGroupDto[]
   status: 200
+}
+
+export type catalogControllerListGroupsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type catalogControllerListGroupsResponseSuccess = (catalogControllerListGroupsResponse200) & {
   headers: Headers;
 };
-;
-
-export type catalogControllerListGroupsResponse = (catalogControllerListGroupsResponseSuccess)
+export type catalogControllerListGroupsResponseError = (catalogControllerListGroupsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCatalogControllerListGroupsUrl = () => {
 
@@ -3685,9 +10032,9 @@ export const getCatalogControllerListGroupsUrl = () => {
   return `/api/v1/item-groups`
 }
 
-export const catalogControllerListGroups = async ( options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerListGroupsResponse> => {
+export const catalogControllerListGroups = async ( options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerListGroupsResponseSuccess> => {
 
-  return apiFetch<catalogControllerListGroupsResponse>(getCatalogControllerListGroupsUrl(),
+  return apiFetch<catalogControllerListGroupsResponseSuccess>(getCatalogControllerListGroupsUrl(),
   {
     ...options,
     method: 'GET'
@@ -3699,16 +10046,21 @@ export const catalogControllerListGroups = async ( options?: Parameters<typeof a
 
 
 export type catalogControllerCreateGroupResponse201 = {
-  data: void
+  data: ItemGroupDto
   status: 201
+}
+
+export type catalogControllerCreateGroupResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type catalogControllerCreateGroupResponseSuccess = (catalogControllerCreateGroupResponse201) & {
   headers: Headers;
 };
-;
-
-export type catalogControllerCreateGroupResponse = (catalogControllerCreateGroupResponseSuccess)
+export type catalogControllerCreateGroupResponseError = (catalogControllerCreateGroupResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCatalogControllerCreateGroupUrl = () => {
 
@@ -3718,7 +10070,7 @@ export const getCatalogControllerCreateGroupUrl = () => {
   return `/api/v1/item-groups`
 }
 
-export const catalogControllerCreateGroup = async (createItemGroupDto: CreateItemGroupDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerCreateGroupResponse> => {
+export const catalogControllerCreateGroup = async (createItemGroupDto: CreateItemGroupDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerCreateGroupResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -3734,7 +10086,7 @@ export const catalogControllerCreateGroup = async (createItemGroupDto: CreateIte
     }
     return headers;
   };
-return apiFetch<catalogControllerCreateGroupResponse>(getCatalogControllerCreateGroupUrl(),
+return apiFetch<catalogControllerCreateGroupResponseSuccess>(getCatalogControllerCreateGroupUrl(),
   {
     ...options,
     method: 'POST',
@@ -3746,16 +10098,21 @@ return apiFetch<catalogControllerCreateGroupResponse>(getCatalogControllerCreate
 
 
 export type catalogControllerUpdateGroupResponse200 = {
-  data: void
+  data: ItemGroupDto
   status: 200
+}
+
+export type catalogControllerUpdateGroupResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type catalogControllerUpdateGroupResponseSuccess = (catalogControllerUpdateGroupResponse200) & {
   headers: Headers;
 };
-;
-
-export type catalogControllerUpdateGroupResponse = (catalogControllerUpdateGroupResponseSuccess)
+export type catalogControllerUpdateGroupResponseError = (catalogControllerUpdateGroupResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCatalogControllerUpdateGroupUrl = (id: string,) => {
 
@@ -3766,7 +10123,7 @@ export const getCatalogControllerUpdateGroupUrl = (id: string,) => {
 }
 
 export const catalogControllerUpdateGroup = async (id: string,
-    updateItemGroupDto: UpdateItemGroupDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerUpdateGroupResponse> => {
+    updateItemGroupDto: UpdateItemGroupDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerUpdateGroupResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -3782,7 +10139,7 @@ export const catalogControllerUpdateGroup = async (id: string,
     }
     return headers;
   };
-return apiFetch<catalogControllerUpdateGroupResponse>(getCatalogControllerUpdateGroupUrl(id),
+return apiFetch<catalogControllerUpdateGroupResponseSuccess>(getCatalogControllerUpdateGroupUrl(id),
   {
     ...options,
     method: 'PATCH',
@@ -3794,16 +10151,21 @@ return apiFetch<catalogControllerUpdateGroupResponse>(getCatalogControllerUpdate
 
 
 export type catalogControllerListItemsResponse200 = {
-  data: void
+  data: ItemListItemDtoPage
   status: 200
+}
+
+export type catalogControllerListItemsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type catalogControllerListItemsResponseSuccess = (catalogControllerListItemsResponse200) & {
   headers: Headers;
 };
-;
-
-export type catalogControllerListItemsResponse = (catalogControllerListItemsResponseSuccess)
+export type catalogControllerListItemsResponseError = (catalogControllerListItemsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCatalogControllerListItemsUrl = (params?: CatalogControllerListItemsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -3820,9 +10182,9 @@ export const getCatalogControllerListItemsUrl = (params?: CatalogControllerListI
   return stringifiedParams.length > 0 ? `/api/v1/items?${stringifiedParams}` : `/api/v1/items`
 }
 
-export const catalogControllerListItems = async (params?: CatalogControllerListItemsParams, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerListItemsResponse> => {
+export const catalogControllerListItems = async (params?: CatalogControllerListItemsParams, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerListItemsResponseSuccess> => {
 
-  return apiFetch<catalogControllerListItemsResponse>(getCatalogControllerListItemsUrl(params),
+  return apiFetch<catalogControllerListItemsResponseSuccess>(getCatalogControllerListItemsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -3834,16 +10196,21 @@ export const catalogControllerListItems = async (params?: CatalogControllerListI
 
 
 export type catalogControllerCreateItemResponse201 = {
-  data: void
+  data: ItemDetailDto
   status: 201
+}
+
+export type catalogControllerCreateItemResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type catalogControllerCreateItemResponseSuccess = (catalogControllerCreateItemResponse201) & {
   headers: Headers;
 };
-;
-
-export type catalogControllerCreateItemResponse = (catalogControllerCreateItemResponseSuccess)
+export type catalogControllerCreateItemResponseError = (catalogControllerCreateItemResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCatalogControllerCreateItemUrl = () => {
 
@@ -3853,7 +10220,7 @@ export const getCatalogControllerCreateItemUrl = () => {
   return `/api/v1/items`
 }
 
-export const catalogControllerCreateItem = async (createItemDto: CreateItemDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerCreateItemResponse> => {
+export const catalogControllerCreateItem = async (createItemDto: CreateItemDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerCreateItemResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -3869,7 +10236,7 @@ export const catalogControllerCreateItem = async (createItemDto: CreateItemDto, 
     }
     return headers;
   };
-return apiFetch<catalogControllerCreateItemResponse>(getCatalogControllerCreateItemUrl(),
+return apiFetch<catalogControllerCreateItemResponseSuccess>(getCatalogControllerCreateItemUrl(),
   {
     ...options,
     method: 'POST',
@@ -3881,16 +10248,21 @@ return apiFetch<catalogControllerCreateItemResponse>(getCatalogControllerCreateI
 
 
 export type catalogControllerFindByBarcodeResponse200 = {
-  data: void
+  data: ItemByBarcodeDto
   status: 200
+}
+
+export type catalogControllerFindByBarcodeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type catalogControllerFindByBarcodeResponseSuccess = (catalogControllerFindByBarcodeResponse200) & {
   headers: Headers;
 };
-;
-
-export type catalogControllerFindByBarcodeResponse = (catalogControllerFindByBarcodeResponseSuccess)
+export type catalogControllerFindByBarcodeResponseError = (catalogControllerFindByBarcodeResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCatalogControllerFindByBarcodeUrl = (code: string,) => {
 
@@ -3900,9 +10272,9 @@ export const getCatalogControllerFindByBarcodeUrl = (code: string,) => {
   return `/api/v1/items/barcode/${code}`
 }
 
-export const catalogControllerFindByBarcode = async (code: string, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerFindByBarcodeResponse> => {
+export const catalogControllerFindByBarcode = async (code: string, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerFindByBarcodeResponseSuccess> => {
 
-  return apiFetch<catalogControllerFindByBarcodeResponse>(getCatalogControllerFindByBarcodeUrl(code),
+  return apiFetch<catalogControllerFindByBarcodeResponseSuccess>(getCatalogControllerFindByBarcodeUrl(code),
   {
     ...options,
     method: 'GET'
@@ -3914,16 +10286,21 @@ export const catalogControllerFindByBarcode = async (code: string, options?: Par
 
 
 export type catalogControllerGetItemResponse200 = {
-  data: void
+  data: ItemDetailDto
   status: 200
+}
+
+export type catalogControllerGetItemResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type catalogControllerGetItemResponseSuccess = (catalogControllerGetItemResponse200) & {
   headers: Headers;
 };
-;
-
-export type catalogControllerGetItemResponse = (catalogControllerGetItemResponseSuccess)
+export type catalogControllerGetItemResponseError = (catalogControllerGetItemResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCatalogControllerGetItemUrl = (id: string,) => {
 
@@ -3933,9 +10310,9 @@ export const getCatalogControllerGetItemUrl = (id: string,) => {
   return `/api/v1/items/${id}`
 }
 
-export const catalogControllerGetItem = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerGetItemResponse> => {
+export const catalogControllerGetItem = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerGetItemResponseSuccess> => {
 
-  return apiFetch<catalogControllerGetItemResponse>(getCatalogControllerGetItemUrl(id),
+  return apiFetch<catalogControllerGetItemResponseSuccess>(getCatalogControllerGetItemUrl(id),
   {
     ...options,
     method: 'GET'
@@ -3947,16 +10324,21 @@ export const catalogControllerGetItem = async (id: string, options?: Parameters<
 
 
 export type catalogControllerUpdateItemResponse200 = {
-  data: void
+  data: ItemDto
   status: 200
+}
+
+export type catalogControllerUpdateItemResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type catalogControllerUpdateItemResponseSuccess = (catalogControllerUpdateItemResponse200) & {
   headers: Headers;
 };
-;
-
-export type catalogControllerUpdateItemResponse = (catalogControllerUpdateItemResponseSuccess)
+export type catalogControllerUpdateItemResponseError = (catalogControllerUpdateItemResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCatalogControllerUpdateItemUrl = (id: string,) => {
 
@@ -3967,7 +10349,7 @@ export const getCatalogControllerUpdateItemUrl = (id: string,) => {
 }
 
 export const catalogControllerUpdateItem = async (id: string,
-    updateItemDto: UpdateItemDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerUpdateItemResponse> => {
+    updateItemDto: UpdateItemDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerUpdateItemResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -3983,7 +10365,7 @@ export const catalogControllerUpdateItem = async (id: string,
     }
     return headers;
   };
-return apiFetch<catalogControllerUpdateItemResponse>(getCatalogControllerUpdateItemUrl(id),
+return apiFetch<catalogControllerUpdateItemResponseSuccess>(getCatalogControllerUpdateItemUrl(id),
   {
     ...options,
     method: 'PATCH',
@@ -3995,16 +10377,21 @@ return apiFetch<catalogControllerUpdateItemResponse>(getCatalogControllerUpdateI
 
 
 export type catalogControllerSetItemUnitsResponse200 = {
-  data: void
+  data: ItemDetailDto
   status: 200
+}
+
+export type catalogControllerSetItemUnitsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type catalogControllerSetItemUnitsResponseSuccess = (catalogControllerSetItemUnitsResponse200) & {
   headers: Headers;
 };
-;
-
-export type catalogControllerSetItemUnitsResponse = (catalogControllerSetItemUnitsResponseSuccess)
+export type catalogControllerSetItemUnitsResponseError = (catalogControllerSetItemUnitsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCatalogControllerSetItemUnitsUrl = (id: string,) => {
 
@@ -4015,7 +10402,7 @@ export const getCatalogControllerSetItemUnitsUrl = (id: string,) => {
 }
 
 export const catalogControllerSetItemUnits = async (id: string,
-    setItemUnitsDto: SetItemUnitsDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerSetItemUnitsResponse> => {
+    setItemUnitsDto: SetItemUnitsDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerSetItemUnitsResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4031,7 +10418,7 @@ export const catalogControllerSetItemUnits = async (id: string,
     }
     return headers;
   };
-return apiFetch<catalogControllerSetItemUnitsResponse>(getCatalogControllerSetItemUnitsUrl(id),
+return apiFetch<catalogControllerSetItemUnitsResponseSuccess>(getCatalogControllerSetItemUnitsUrl(id),
   {
     ...options,
     method: 'PUT',
@@ -4043,16 +10430,21 @@ return apiFetch<catalogControllerSetItemUnitsResponse>(getCatalogControllerSetIt
 
 
 export type catalogControllerAddBarcodeResponse201 = {
-  data: void
+  data: ItemBarcodeDto
   status: 201
+}
+
+export type catalogControllerAddBarcodeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type catalogControllerAddBarcodeResponseSuccess = (catalogControllerAddBarcodeResponse201) & {
   headers: Headers;
 };
-;
-
-export type catalogControllerAddBarcodeResponse = (catalogControllerAddBarcodeResponseSuccess)
+export type catalogControllerAddBarcodeResponseError = (catalogControllerAddBarcodeResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCatalogControllerAddBarcodeUrl = (id: string,) => {
 
@@ -4063,7 +10455,7 @@ export const getCatalogControllerAddBarcodeUrl = (id: string,) => {
 }
 
 export const catalogControllerAddBarcode = async (id: string,
-    barcodeDto: BarcodeDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerAddBarcodeResponse> => {
+    barcodeDto: BarcodeDto, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerAddBarcodeResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4079,7 +10471,7 @@ export const catalogControllerAddBarcode = async (id: string,
     }
     return headers;
   };
-return apiFetch<catalogControllerAddBarcodeResponse>(getCatalogControllerAddBarcodeUrl(id),
+return apiFetch<catalogControllerAddBarcodeResponseSuccess>(getCatalogControllerAddBarcodeUrl(id),
   {
     ...options,
     method: 'POST',
@@ -4091,16 +10483,21 @@ return apiFetch<catalogControllerAddBarcodeResponse>(getCatalogControllerAddBarc
 
 
 export type catalogControllerRemoveBarcodeResponse200 = {
-  data: void
+  data: DeletedDto
   status: 200
+}
+
+export type catalogControllerRemoveBarcodeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type catalogControllerRemoveBarcodeResponseSuccess = (catalogControllerRemoveBarcodeResponse200) & {
   headers: Headers;
 };
-;
-
-export type catalogControllerRemoveBarcodeResponse = (catalogControllerRemoveBarcodeResponseSuccess)
+export type catalogControllerRemoveBarcodeResponseError = (catalogControllerRemoveBarcodeResponseDefault) & {
+  headers: Headers;
+};
 
 export const getCatalogControllerRemoveBarcodeUrl = (id: string,) => {
 
@@ -4110,9 +10507,9 @@ export const getCatalogControllerRemoveBarcodeUrl = (id: string,) => {
   return `/api/v1/item-barcodes/${id}`
 }
 
-export const catalogControllerRemoveBarcode = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerRemoveBarcodeResponse> => {
+export const catalogControllerRemoveBarcode = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<catalogControllerRemoveBarcodeResponseSuccess> => {
 
-  return apiFetch<catalogControllerRemoveBarcodeResponse>(getCatalogControllerRemoveBarcodeUrl(id),
+  return apiFetch<catalogControllerRemoveBarcodeResponseSuccess>(getCatalogControllerRemoveBarcodeUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -4124,16 +10521,21 @@ export const catalogControllerRemoveBarcode = async (id: string, options?: Param
 
 
 export type warehousesControllerListResponse200 = {
-  data: void
+  data: WarehouseListItemDto[]
   status: 200
+}
+
+export type warehousesControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type warehousesControllerListResponseSuccess = (warehousesControllerListResponse200) & {
   headers: Headers;
 };
-;
-
-export type warehousesControllerListResponse = (warehousesControllerListResponseSuccess)
+export type warehousesControllerListResponseError = (warehousesControllerListResponseDefault) & {
+  headers: Headers;
+};
 
 export const getWarehousesControllerListUrl = () => {
 
@@ -4143,9 +10545,9 @@ export const getWarehousesControllerListUrl = () => {
   return `/api/v1/warehouses`
 }
 
-export const warehousesControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerListResponse> => {
+export const warehousesControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerListResponseSuccess> => {
 
-  return apiFetch<warehousesControllerListResponse>(getWarehousesControllerListUrl(),
+  return apiFetch<warehousesControllerListResponseSuccess>(getWarehousesControllerListUrl(),
   {
     ...options,
     method: 'GET'
@@ -4157,16 +10559,21 @@ export const warehousesControllerList = async ( options?: Parameters<typeof apiF
 
 
 export type warehousesControllerCreateResponse201 = {
-  data: void
+  data: WarehouseDto
   status: 201
+}
+
+export type warehousesControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type warehousesControllerCreateResponseSuccess = (warehousesControllerCreateResponse201) & {
   headers: Headers;
 };
-;
-
-export type warehousesControllerCreateResponse = (warehousesControllerCreateResponseSuccess)
+export type warehousesControllerCreateResponseError = (warehousesControllerCreateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getWarehousesControllerCreateUrl = () => {
 
@@ -4176,7 +10583,7 @@ export const getWarehousesControllerCreateUrl = () => {
   return `/api/v1/warehouses`
 }
 
-export const warehousesControllerCreate = async (createWarehouseDto: CreateWarehouseDto, options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerCreateResponse> => {
+export const warehousesControllerCreate = async (createWarehouseDto: CreateWarehouseDto, options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerCreateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4192,7 +10599,7 @@ export const warehousesControllerCreate = async (createWarehouseDto: CreateWareh
     }
     return headers;
   };
-return apiFetch<warehousesControllerCreateResponse>(getWarehousesControllerCreateUrl(),
+return apiFetch<warehousesControllerCreateResponseSuccess>(getWarehousesControllerCreateUrl(),
   {
     ...options,
     method: 'POST',
@@ -4204,16 +10611,21 @@ return apiFetch<warehousesControllerCreateResponse>(getWarehousesControllerCreat
 
 
 export type warehousesControllerGetResponse200 = {
-  data: void
+  data: WarehouseDetailDto
   status: 200
+}
+
+export type warehousesControllerGetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type warehousesControllerGetResponseSuccess = (warehousesControllerGetResponse200) & {
   headers: Headers;
 };
-;
-
-export type warehousesControllerGetResponse = (warehousesControllerGetResponseSuccess)
+export type warehousesControllerGetResponseError = (warehousesControllerGetResponseDefault) & {
+  headers: Headers;
+};
 
 export const getWarehousesControllerGetUrl = (id: string,) => {
 
@@ -4223,9 +10635,9 @@ export const getWarehousesControllerGetUrl = (id: string,) => {
   return `/api/v1/warehouses/${id}`
 }
 
-export const warehousesControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerGetResponse> => {
+export const warehousesControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerGetResponseSuccess> => {
 
-  return apiFetch<warehousesControllerGetResponse>(getWarehousesControllerGetUrl(id),
+  return apiFetch<warehousesControllerGetResponseSuccess>(getWarehousesControllerGetUrl(id),
   {
     ...options,
     method: 'GET'
@@ -4237,16 +10649,21 @@ export const warehousesControllerGet = async (id: string, options?: Parameters<t
 
 
 export type warehousesControllerUpdateResponse200 = {
-  data: void
+  data: WarehouseDto
   status: 200
+}
+
+export type warehousesControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type warehousesControllerUpdateResponseSuccess = (warehousesControllerUpdateResponse200) & {
   headers: Headers;
 };
-;
-
-export type warehousesControllerUpdateResponse = (warehousesControllerUpdateResponseSuccess)
+export type warehousesControllerUpdateResponseError = (warehousesControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getWarehousesControllerUpdateUrl = (id: string,) => {
 
@@ -4257,7 +10674,7 @@ export const getWarehousesControllerUpdateUrl = (id: string,) => {
 }
 
 export const warehousesControllerUpdate = async (id: string,
-    updateWarehouseDto: UpdateWarehouseDto, options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerUpdateResponse> => {
+    updateWarehouseDto: UpdateWarehouseDto, options?: Parameters<typeof apiFetch>[1]): Promise<warehousesControllerUpdateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4273,7 +10690,7 @@ export const warehousesControllerUpdate = async (id: string,
     }
     return headers;
   };
-return apiFetch<warehousesControllerUpdateResponse>(getWarehousesControllerUpdateUrl(id),
+return apiFetch<warehousesControllerUpdateResponseSuccess>(getWarehousesControllerUpdateUrl(id),
   {
     ...options,
     method: 'PATCH',
@@ -4285,16 +10702,21 @@ return apiFetch<warehousesControllerUpdateResponse>(getWarehousesControllerUpdat
 
 
 export type stockDocumentsControllerListAdjustmentsResponse200 = {
-  data: void
+  data: StockAdjustmentListItemDtoPage
   status: 200
+}
+
+export type stockDocumentsControllerListAdjustmentsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockDocumentsControllerListAdjustmentsResponseSuccess = (stockDocumentsControllerListAdjustmentsResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerListAdjustmentsResponse = (stockDocumentsControllerListAdjustmentsResponseSuccess)
+export type stockDocumentsControllerListAdjustmentsResponseError = (stockDocumentsControllerListAdjustmentsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerListAdjustmentsUrl = (params?: StockDocumentsControllerListAdjustmentsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -4311,9 +10733,9 @@ export const getStockDocumentsControllerListAdjustmentsUrl = (params?: StockDocu
   return stringifiedParams.length > 0 ? `/api/v1/stock-adjustments?${stringifiedParams}` : `/api/v1/stock-adjustments`
 }
 
-export const stockDocumentsControllerListAdjustments = async (params?: StockDocumentsControllerListAdjustmentsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListAdjustmentsResponse> => {
+export const stockDocumentsControllerListAdjustments = async (params?: StockDocumentsControllerListAdjustmentsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListAdjustmentsResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerListAdjustmentsResponse>(getStockDocumentsControllerListAdjustmentsUrl(params),
+  return apiFetch<stockDocumentsControllerListAdjustmentsResponseSuccess>(getStockDocumentsControllerListAdjustmentsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -4325,16 +10747,21 @@ export const stockDocumentsControllerListAdjustments = async (params?: StockDocu
 
 
 export type stockDocumentsControllerCreateAdjustmentResponse201 = {
-  data: void
+  data: StockAdjustmentDetailDto
   status: 201
+}
+
+export type stockDocumentsControllerCreateAdjustmentResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type stockDocumentsControllerCreateAdjustmentResponseSuccess = (stockDocumentsControllerCreateAdjustmentResponse201) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerCreateAdjustmentResponse = (stockDocumentsControllerCreateAdjustmentResponseSuccess)
+export type stockDocumentsControllerCreateAdjustmentResponseError = (stockDocumentsControllerCreateAdjustmentResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerCreateAdjustmentUrl = () => {
 
@@ -4344,7 +10771,7 @@ export const getStockDocumentsControllerCreateAdjustmentUrl = () => {
   return `/api/v1/stock-adjustments`
 }
 
-export const stockDocumentsControllerCreateAdjustment = async (createStockAdjustmentDto: CreateStockAdjustmentDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerCreateAdjustmentResponse> => {
+export const stockDocumentsControllerCreateAdjustment = async (createStockAdjustmentDto: CreateStockAdjustmentDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerCreateAdjustmentResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4360,7 +10787,7 @@ export const stockDocumentsControllerCreateAdjustment = async (createStockAdjust
     }
     return headers;
   };
-return apiFetch<stockDocumentsControllerCreateAdjustmentResponse>(getStockDocumentsControllerCreateAdjustmentUrl(),
+return apiFetch<stockDocumentsControllerCreateAdjustmentResponseSuccess>(getStockDocumentsControllerCreateAdjustmentUrl(),
   {
     ...options,
     method: 'POST',
@@ -4372,16 +10799,21 @@ return apiFetch<stockDocumentsControllerCreateAdjustmentResponse>(getStockDocume
 
 
 export type stockDocumentsControllerGetAdjustmentResponse200 = {
-  data: void
+  data: StockAdjustmentDetailDto
   status: 200
+}
+
+export type stockDocumentsControllerGetAdjustmentResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockDocumentsControllerGetAdjustmentResponseSuccess = (stockDocumentsControllerGetAdjustmentResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerGetAdjustmentResponse = (stockDocumentsControllerGetAdjustmentResponseSuccess)
+export type stockDocumentsControllerGetAdjustmentResponseError = (stockDocumentsControllerGetAdjustmentResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerGetAdjustmentUrl = (id: string,) => {
 
@@ -4391,9 +10823,9 @@ export const getStockDocumentsControllerGetAdjustmentUrl = (id: string,) => {
   return `/api/v1/stock-adjustments/${id}`
 }
 
-export const stockDocumentsControllerGetAdjustment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerGetAdjustmentResponse> => {
+export const stockDocumentsControllerGetAdjustment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerGetAdjustmentResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerGetAdjustmentResponse>(getStockDocumentsControllerGetAdjustmentUrl(id),
+  return apiFetch<stockDocumentsControllerGetAdjustmentResponseSuccess>(getStockDocumentsControllerGetAdjustmentUrl(id),
   {
     ...options,
     method: 'GET'
@@ -4405,16 +10837,21 @@ export const stockDocumentsControllerGetAdjustment = async (id: string, options?
 
 
 export type stockDocumentsControllerDeleteAdjustmentResponse200 = {
-  data: void
+  data: DeletedDto
   status: 200
+}
+
+export type stockDocumentsControllerDeleteAdjustmentResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockDocumentsControllerDeleteAdjustmentResponseSuccess = (stockDocumentsControllerDeleteAdjustmentResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerDeleteAdjustmentResponse = (stockDocumentsControllerDeleteAdjustmentResponseSuccess)
+export type stockDocumentsControllerDeleteAdjustmentResponseError = (stockDocumentsControllerDeleteAdjustmentResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerDeleteAdjustmentUrl = (id: string,) => {
 
@@ -4424,9 +10861,9 @@ export const getStockDocumentsControllerDeleteAdjustmentUrl = (id: string,) => {
   return `/api/v1/stock-adjustments/${id}`
 }
 
-export const stockDocumentsControllerDeleteAdjustment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerDeleteAdjustmentResponse> => {
+export const stockDocumentsControllerDeleteAdjustment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerDeleteAdjustmentResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerDeleteAdjustmentResponse>(getStockDocumentsControllerDeleteAdjustmentUrl(id),
+  return apiFetch<stockDocumentsControllerDeleteAdjustmentResponseSuccess>(getStockDocumentsControllerDeleteAdjustmentUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -4438,16 +10875,21 @@ export const stockDocumentsControllerDeleteAdjustment = async (id: string, optio
 
 
 export type stockDocumentsControllerPostAdjustmentResponse201 = {
-  data: void
+  data: StockAdjustmentDetailDto
   status: 201
+}
+
+export type stockDocumentsControllerPostAdjustmentResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type stockDocumentsControllerPostAdjustmentResponseSuccess = (stockDocumentsControllerPostAdjustmentResponse201) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerPostAdjustmentResponse = (stockDocumentsControllerPostAdjustmentResponseSuccess)
+export type stockDocumentsControllerPostAdjustmentResponseError = (stockDocumentsControllerPostAdjustmentResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerPostAdjustmentUrl = (id: string,) => {
 
@@ -4457,9 +10899,9 @@ export const getStockDocumentsControllerPostAdjustmentUrl = (id: string,) => {
   return `/api/v1/stock-adjustments/${id}/post`
 }
 
-export const stockDocumentsControllerPostAdjustment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerPostAdjustmentResponse> => {
+export const stockDocumentsControllerPostAdjustment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerPostAdjustmentResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerPostAdjustmentResponse>(getStockDocumentsControllerPostAdjustmentUrl(id),
+  return apiFetch<stockDocumentsControllerPostAdjustmentResponseSuccess>(getStockDocumentsControllerPostAdjustmentUrl(id),
   {
     ...options,
     method: 'POST'
@@ -4471,16 +10913,21 @@ export const stockDocumentsControllerPostAdjustment = async (id: string, options
 
 
 export type stockDocumentsControllerReverseAdjustmentResponse201 = {
-  data: void
+  data: StockAdjustmentDetailDto
   status: 201
+}
+
+export type stockDocumentsControllerReverseAdjustmentResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type stockDocumentsControllerReverseAdjustmentResponseSuccess = (stockDocumentsControllerReverseAdjustmentResponse201) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerReverseAdjustmentResponse = (stockDocumentsControllerReverseAdjustmentResponseSuccess)
+export type stockDocumentsControllerReverseAdjustmentResponseError = (stockDocumentsControllerReverseAdjustmentResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerReverseAdjustmentUrl = (id: string,) => {
 
@@ -4491,7 +10938,7 @@ export const getStockDocumentsControllerReverseAdjustmentUrl = (id: string,) => 
 }
 
 export const stockDocumentsControllerReverseAdjustment = async (id: string,
-    reverseStockDocumentDto: ReverseStockDocumentDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerReverseAdjustmentResponse> => {
+    reverseStockDocumentDto: ReverseStockDocumentDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerReverseAdjustmentResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4507,7 +10954,7 @@ export const stockDocumentsControllerReverseAdjustment = async (id: string,
     }
     return headers;
   };
-return apiFetch<stockDocumentsControllerReverseAdjustmentResponse>(getStockDocumentsControllerReverseAdjustmentUrl(id),
+return apiFetch<stockDocumentsControllerReverseAdjustmentResponseSuccess>(getStockDocumentsControllerReverseAdjustmentUrl(id),
   {
     ...options,
     method: 'POST',
@@ -4519,16 +10966,21 @@ return apiFetch<stockDocumentsControllerReverseAdjustmentResponse>(getStockDocum
 
 
 export type stockDocumentsControllerListTransfersResponse200 = {
-  data: void
+  data: StockTransferListItemDtoPage
   status: 200
+}
+
+export type stockDocumentsControllerListTransfersResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockDocumentsControllerListTransfersResponseSuccess = (stockDocumentsControllerListTransfersResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerListTransfersResponse = (stockDocumentsControllerListTransfersResponseSuccess)
+export type stockDocumentsControllerListTransfersResponseError = (stockDocumentsControllerListTransfersResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerListTransfersUrl = (params?: StockDocumentsControllerListTransfersParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -4545,9 +10997,9 @@ export const getStockDocumentsControllerListTransfersUrl = (params?: StockDocume
   return stringifiedParams.length > 0 ? `/api/v1/stock-transfers?${stringifiedParams}` : `/api/v1/stock-transfers`
 }
 
-export const stockDocumentsControllerListTransfers = async (params?: StockDocumentsControllerListTransfersParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListTransfersResponse> => {
+export const stockDocumentsControllerListTransfers = async (params?: StockDocumentsControllerListTransfersParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListTransfersResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerListTransfersResponse>(getStockDocumentsControllerListTransfersUrl(params),
+  return apiFetch<stockDocumentsControllerListTransfersResponseSuccess>(getStockDocumentsControllerListTransfersUrl(params),
   {
     ...options,
     method: 'GET'
@@ -4559,16 +11011,21 @@ export const stockDocumentsControllerListTransfers = async (params?: StockDocume
 
 
 export type stockDocumentsControllerCreateTransferResponse201 = {
-  data: void
+  data: StockTransferDetailDto
   status: 201
+}
+
+export type stockDocumentsControllerCreateTransferResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type stockDocumentsControllerCreateTransferResponseSuccess = (stockDocumentsControllerCreateTransferResponse201) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerCreateTransferResponse = (stockDocumentsControllerCreateTransferResponseSuccess)
+export type stockDocumentsControllerCreateTransferResponseError = (stockDocumentsControllerCreateTransferResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerCreateTransferUrl = () => {
 
@@ -4578,7 +11035,7 @@ export const getStockDocumentsControllerCreateTransferUrl = () => {
   return `/api/v1/stock-transfers`
 }
 
-export const stockDocumentsControllerCreateTransfer = async (createStockTransferDto: CreateStockTransferDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerCreateTransferResponse> => {
+export const stockDocumentsControllerCreateTransfer = async (createStockTransferDto: CreateStockTransferDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerCreateTransferResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4594,7 +11051,7 @@ export const stockDocumentsControllerCreateTransfer = async (createStockTransfer
     }
     return headers;
   };
-return apiFetch<stockDocumentsControllerCreateTransferResponse>(getStockDocumentsControllerCreateTransferUrl(),
+return apiFetch<stockDocumentsControllerCreateTransferResponseSuccess>(getStockDocumentsControllerCreateTransferUrl(),
   {
     ...options,
     method: 'POST',
@@ -4606,16 +11063,21 @@ return apiFetch<stockDocumentsControllerCreateTransferResponse>(getStockDocument
 
 
 export type stockDocumentsControllerGetTransferResponse200 = {
-  data: void
+  data: StockTransferDetailDto
   status: 200
+}
+
+export type stockDocumentsControllerGetTransferResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockDocumentsControllerGetTransferResponseSuccess = (stockDocumentsControllerGetTransferResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerGetTransferResponse = (stockDocumentsControllerGetTransferResponseSuccess)
+export type stockDocumentsControllerGetTransferResponseError = (stockDocumentsControllerGetTransferResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerGetTransferUrl = (id: string,) => {
 
@@ -4625,9 +11087,9 @@ export const getStockDocumentsControllerGetTransferUrl = (id: string,) => {
   return `/api/v1/stock-transfers/${id}`
 }
 
-export const stockDocumentsControllerGetTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerGetTransferResponse> => {
+export const stockDocumentsControllerGetTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerGetTransferResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerGetTransferResponse>(getStockDocumentsControllerGetTransferUrl(id),
+  return apiFetch<stockDocumentsControllerGetTransferResponseSuccess>(getStockDocumentsControllerGetTransferUrl(id),
   {
     ...options,
     method: 'GET'
@@ -4639,16 +11101,21 @@ export const stockDocumentsControllerGetTransfer = async (id: string, options?: 
 
 
 export type stockDocumentsControllerDeleteTransferResponse200 = {
-  data: void
+  data: DeletedDto
   status: 200
+}
+
+export type stockDocumentsControllerDeleteTransferResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockDocumentsControllerDeleteTransferResponseSuccess = (stockDocumentsControllerDeleteTransferResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerDeleteTransferResponse = (stockDocumentsControllerDeleteTransferResponseSuccess)
+export type stockDocumentsControllerDeleteTransferResponseError = (stockDocumentsControllerDeleteTransferResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerDeleteTransferUrl = (id: string,) => {
 
@@ -4658,9 +11125,9 @@ export const getStockDocumentsControllerDeleteTransferUrl = (id: string,) => {
   return `/api/v1/stock-transfers/${id}`
 }
 
-export const stockDocumentsControllerDeleteTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerDeleteTransferResponse> => {
+export const stockDocumentsControllerDeleteTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerDeleteTransferResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerDeleteTransferResponse>(getStockDocumentsControllerDeleteTransferUrl(id),
+  return apiFetch<stockDocumentsControllerDeleteTransferResponseSuccess>(getStockDocumentsControllerDeleteTransferUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -4672,16 +11139,21 @@ export const stockDocumentsControllerDeleteTransfer = async (id: string, options
 
 
 export type stockDocumentsControllerPostTransferResponse201 = {
-  data: void
+  data: StockTransferDetailDto
   status: 201
+}
+
+export type stockDocumentsControllerPostTransferResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type stockDocumentsControllerPostTransferResponseSuccess = (stockDocumentsControllerPostTransferResponse201) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerPostTransferResponse = (stockDocumentsControllerPostTransferResponseSuccess)
+export type stockDocumentsControllerPostTransferResponseError = (stockDocumentsControllerPostTransferResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerPostTransferUrl = (id: string,) => {
 
@@ -4691,9 +11163,9 @@ export const getStockDocumentsControllerPostTransferUrl = (id: string,) => {
   return `/api/v1/stock-transfers/${id}/post`
 }
 
-export const stockDocumentsControllerPostTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerPostTransferResponse> => {
+export const stockDocumentsControllerPostTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerPostTransferResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerPostTransferResponse>(getStockDocumentsControllerPostTransferUrl(id),
+  return apiFetch<stockDocumentsControllerPostTransferResponseSuccess>(getStockDocumentsControllerPostTransferUrl(id),
   {
     ...options,
     method: 'POST'
@@ -4705,16 +11177,21 @@ export const stockDocumentsControllerPostTransfer = async (id: string, options?:
 
 
 export type stockDocumentsControllerReverseTransferResponse201 = {
-  data: void
+  data: StockTransferDetailDto
   status: 201
+}
+
+export type stockDocumentsControllerReverseTransferResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type stockDocumentsControllerReverseTransferResponseSuccess = (stockDocumentsControllerReverseTransferResponse201) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerReverseTransferResponse = (stockDocumentsControllerReverseTransferResponseSuccess)
+export type stockDocumentsControllerReverseTransferResponseError = (stockDocumentsControllerReverseTransferResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerReverseTransferUrl = (id: string,) => {
 
@@ -4725,7 +11202,7 @@ export const getStockDocumentsControllerReverseTransferUrl = (id: string,) => {
 }
 
 export const stockDocumentsControllerReverseTransfer = async (id: string,
-    reverseStockDocumentDto: ReverseStockDocumentDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerReverseTransferResponse> => {
+    reverseStockDocumentDto: ReverseStockDocumentDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerReverseTransferResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4741,7 +11218,7 @@ export const stockDocumentsControllerReverseTransfer = async (id: string,
     }
     return headers;
   };
-return apiFetch<stockDocumentsControllerReverseTransferResponse>(getStockDocumentsControllerReverseTransferUrl(id),
+return apiFetch<stockDocumentsControllerReverseTransferResponseSuccess>(getStockDocumentsControllerReverseTransferUrl(id),
   {
     ...options,
     method: 'POST',
@@ -4753,16 +11230,21 @@ return apiFetch<stockDocumentsControllerReverseTransferResponse>(getStockDocumen
 
 
 export type stockDocumentsControllerListCountsResponse200 = {
-  data: void
+  data: StockCountListItemDtoPage
   status: 200
+}
+
+export type stockDocumentsControllerListCountsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockDocumentsControllerListCountsResponseSuccess = (stockDocumentsControllerListCountsResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerListCountsResponse = (stockDocumentsControllerListCountsResponseSuccess)
+export type stockDocumentsControllerListCountsResponseError = (stockDocumentsControllerListCountsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerListCountsUrl = (params?: StockDocumentsControllerListCountsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -4779,9 +11261,9 @@ export const getStockDocumentsControllerListCountsUrl = (params?: StockDocuments
   return stringifiedParams.length > 0 ? `/api/v1/stock-counts?${stringifiedParams}` : `/api/v1/stock-counts`
 }
 
-export const stockDocumentsControllerListCounts = async (params?: StockDocumentsControllerListCountsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListCountsResponse> => {
+export const stockDocumentsControllerListCounts = async (params?: StockDocumentsControllerListCountsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerListCountsResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerListCountsResponse>(getStockDocumentsControllerListCountsUrl(params),
+  return apiFetch<stockDocumentsControllerListCountsResponseSuccess>(getStockDocumentsControllerListCountsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -4793,16 +11275,21 @@ export const stockDocumentsControllerListCounts = async (params?: StockDocuments
 
 
 export type stockDocumentsControllerCreateCountResponse201 = {
-  data: void
+  data: StockCountDetailDto
   status: 201
+}
+
+export type stockDocumentsControllerCreateCountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type stockDocumentsControllerCreateCountResponseSuccess = (stockDocumentsControllerCreateCountResponse201) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerCreateCountResponse = (stockDocumentsControllerCreateCountResponseSuccess)
+export type stockDocumentsControllerCreateCountResponseError = (stockDocumentsControllerCreateCountResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerCreateCountUrl = () => {
 
@@ -4812,7 +11299,7 @@ export const getStockDocumentsControllerCreateCountUrl = () => {
   return `/api/v1/stock-counts`
 }
 
-export const stockDocumentsControllerCreateCount = async (createStockCountDto: CreateStockCountDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerCreateCountResponse> => {
+export const stockDocumentsControllerCreateCount = async (createStockCountDto: CreateStockCountDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerCreateCountResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4828,7 +11315,7 @@ export const stockDocumentsControllerCreateCount = async (createStockCountDto: C
     }
     return headers;
   };
-return apiFetch<stockDocumentsControllerCreateCountResponse>(getStockDocumentsControllerCreateCountUrl(),
+return apiFetch<stockDocumentsControllerCreateCountResponseSuccess>(getStockDocumentsControllerCreateCountUrl(),
   {
     ...options,
     method: 'POST',
@@ -4840,16 +11327,21 @@ return apiFetch<stockDocumentsControllerCreateCountResponse>(getStockDocumentsCo
 
 
 export type stockDocumentsControllerGetCountResponse200 = {
-  data: void
+  data: StockCountDetailDto
   status: 200
+}
+
+export type stockDocumentsControllerGetCountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockDocumentsControllerGetCountResponseSuccess = (stockDocumentsControllerGetCountResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerGetCountResponse = (stockDocumentsControllerGetCountResponseSuccess)
+export type stockDocumentsControllerGetCountResponseError = (stockDocumentsControllerGetCountResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerGetCountUrl = (id: string,) => {
 
@@ -4859,9 +11351,9 @@ export const getStockDocumentsControllerGetCountUrl = (id: string,) => {
   return `/api/v1/stock-counts/${id}`
 }
 
-export const stockDocumentsControllerGetCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerGetCountResponse> => {
+export const stockDocumentsControllerGetCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerGetCountResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerGetCountResponse>(getStockDocumentsControllerGetCountUrl(id),
+  return apiFetch<stockDocumentsControllerGetCountResponseSuccess>(getStockDocumentsControllerGetCountUrl(id),
   {
     ...options,
     method: 'GET'
@@ -4873,16 +11365,21 @@ export const stockDocumentsControllerGetCount = async (id: string, options?: Par
 
 
 export type stockDocumentsControllerDeleteCountResponse200 = {
-  data: void
+  data: DeletedDto
   status: 200
+}
+
+export type stockDocumentsControllerDeleteCountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockDocumentsControllerDeleteCountResponseSuccess = (stockDocumentsControllerDeleteCountResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerDeleteCountResponse = (stockDocumentsControllerDeleteCountResponseSuccess)
+export type stockDocumentsControllerDeleteCountResponseError = (stockDocumentsControllerDeleteCountResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerDeleteCountUrl = (id: string,) => {
 
@@ -4892,9 +11389,9 @@ export const getStockDocumentsControllerDeleteCountUrl = (id: string,) => {
   return `/api/v1/stock-counts/${id}`
 }
 
-export const stockDocumentsControllerDeleteCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerDeleteCountResponse> => {
+export const stockDocumentsControllerDeleteCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerDeleteCountResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerDeleteCountResponse>(getStockDocumentsControllerDeleteCountUrl(id),
+  return apiFetch<stockDocumentsControllerDeleteCountResponseSuccess>(getStockDocumentsControllerDeleteCountUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -4906,16 +11403,21 @@ export const stockDocumentsControllerDeleteCount = async (id: string, options?: 
 
 
 export type stockDocumentsControllerUpdateCountLineResponse200 = {
-  data: void
+  data: StockCountLineRow
   status: 200
+}
+
+export type stockDocumentsControllerUpdateCountLineResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockDocumentsControllerUpdateCountLineResponseSuccess = (stockDocumentsControllerUpdateCountLineResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerUpdateCountLineResponse = (stockDocumentsControllerUpdateCountLineResponseSuccess)
+export type stockDocumentsControllerUpdateCountLineResponseError = (stockDocumentsControllerUpdateCountLineResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerUpdateCountLineUrl = (id: string,
     lineId: string,) => {
@@ -4928,7 +11430,7 @@ export const getStockDocumentsControllerUpdateCountLineUrl = (id: string,
 
 export const stockDocumentsControllerUpdateCountLine = async (id: string,
     lineId: string,
-    updateCountLineDto: UpdateCountLineDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerUpdateCountLineResponse> => {
+    updateCountLineDto: UpdateCountLineDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerUpdateCountLineResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4944,7 +11446,7 @@ export const stockDocumentsControllerUpdateCountLine = async (id: string,
     }
     return headers;
   };
-return apiFetch<stockDocumentsControllerUpdateCountLineResponse>(getStockDocumentsControllerUpdateCountLineUrl(id,lineId),
+return apiFetch<stockDocumentsControllerUpdateCountLineResponseSuccess>(getStockDocumentsControllerUpdateCountLineUrl(id,lineId),
   {
     ...options,
     method: 'PUT',
@@ -4956,16 +11458,21 @@ return apiFetch<stockDocumentsControllerUpdateCountLineResponse>(getStockDocumen
 
 
 export type stockDocumentsControllerRefreshCountResponse201 = {
-  data: void
+  data: StockCountDetailDto
   status: 201
+}
+
+export type stockDocumentsControllerRefreshCountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type stockDocumentsControllerRefreshCountResponseSuccess = (stockDocumentsControllerRefreshCountResponse201) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerRefreshCountResponse = (stockDocumentsControllerRefreshCountResponseSuccess)
+export type stockDocumentsControllerRefreshCountResponseError = (stockDocumentsControllerRefreshCountResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerRefreshCountUrl = (id: string,) => {
 
@@ -4975,9 +11482,12 @@ export const getStockDocumentsControllerRefreshCountUrl = (id: string,) => {
   return `/api/v1/stock-counts/${id}/refresh`
 }
 
-export const stockDocumentsControllerRefreshCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerRefreshCountResponse> => {
+/**
+ * @summary Re-takes the book-balance snapshot of a draft count (after STOCK_COUNT_STALE).
+ */
+export const stockDocumentsControllerRefreshCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerRefreshCountResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerRefreshCountResponse>(getStockDocumentsControllerRefreshCountUrl(id),
+  return apiFetch<stockDocumentsControllerRefreshCountResponseSuccess>(getStockDocumentsControllerRefreshCountUrl(id),
   {
     ...options,
     method: 'POST'
@@ -4989,16 +11499,21 @@ export const stockDocumentsControllerRefreshCount = async (id: string, options?:
 
 
 export type stockDocumentsControllerApproveCountResponse201 = {
-  data: void
+  data: StockCountDetailDto
   status: 201
+}
+
+export type stockDocumentsControllerApproveCountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type stockDocumentsControllerApproveCountResponseSuccess = (stockDocumentsControllerApproveCountResponse201) & {
   headers: Headers;
 };
-;
-
-export type stockDocumentsControllerApproveCountResponse = (stockDocumentsControllerApproveCountResponseSuccess)
+export type stockDocumentsControllerApproveCountResponseError = (stockDocumentsControllerApproveCountResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockDocumentsControllerApproveCountUrl = (id: string,) => {
 
@@ -5008,9 +11523,9 @@ export const getStockDocumentsControllerApproveCountUrl = (id: string,) => {
   return `/api/v1/stock-counts/${id}/approve`
 }
 
-export const stockDocumentsControllerApproveCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerApproveCountResponse> => {
+export const stockDocumentsControllerApproveCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerApproveCountResponseSuccess> => {
 
-  return apiFetch<stockDocumentsControllerApproveCountResponse>(getStockDocumentsControllerApproveCountUrl(id),
+  return apiFetch<stockDocumentsControllerApproveCountResponseSuccess>(getStockDocumentsControllerApproveCountUrl(id),
   {
     ...options,
     method: 'POST'
@@ -5022,16 +11537,21 @@ export const stockDocumentsControllerApproveCount = async (id: string, options?:
 
 
 export type stockReportsControllerBalancesResponse200 = {
-  data: void
+  data: StockReportBalanceDto[]
   status: 200
+}
+
+export type stockReportsControllerBalancesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockReportsControllerBalancesResponseSuccess = (stockReportsControllerBalancesResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockReportsControllerBalancesResponse = (stockReportsControllerBalancesResponseSuccess)
+export type stockReportsControllerBalancesResponseError = (stockReportsControllerBalancesResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockReportsControllerBalancesUrl = (params?: StockReportsControllerBalancesParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -5048,9 +11568,9 @@ export const getStockReportsControllerBalancesUrl = (params?: StockReportsContro
   return stringifiedParams.length > 0 ? `/api/v1/stock/balances?${stringifiedParams}` : `/api/v1/stock/balances`
 }
 
-export const stockReportsControllerBalances = async (params?: StockReportsControllerBalancesParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerBalancesResponse> => {
+export const stockReportsControllerBalances = async (params?: StockReportsControllerBalancesParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerBalancesResponseSuccess> => {
 
-  return apiFetch<stockReportsControllerBalancesResponse>(getStockReportsControllerBalancesUrl(params),
+  return apiFetch<stockReportsControllerBalancesResponseSuccess>(getStockReportsControllerBalancesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -5062,16 +11582,21 @@ export const stockReportsControllerBalances = async (params?: StockReportsContro
 
 
 export type stockReportsControllerMovementsResponse200 = {
-  data: void
+  data: StockReportMovementDtoKeyset
   status: 200
+}
+
+export type stockReportsControllerMovementsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockReportsControllerMovementsResponseSuccess = (stockReportsControllerMovementsResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockReportsControllerMovementsResponse = (stockReportsControllerMovementsResponseSuccess)
+export type stockReportsControllerMovementsResponseError = (stockReportsControllerMovementsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockReportsControllerMovementsUrl = (params?: StockReportsControllerMovementsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -5088,9 +11613,12 @@ export const getStockReportsControllerMovementsUrl = (params?: StockReportsContr
   return stringifiedParams.length > 0 ? `/api/v1/stock/movements?${stringifiedParams}` : `/api/v1/stock/movements`
 }
 
-export const stockReportsControllerMovements = async (params?: StockReportsControllerMovementsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerMovementsResponse> => {
+/**
+ * @summary Movement ledger, newest first, read by keyset (ADR-022 §4): `{ items, nextCursor }`.
+ */
+export const stockReportsControllerMovements = async (params?: StockReportsControllerMovementsParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerMovementsResponseSuccess> => {
 
-  return apiFetch<stockReportsControllerMovementsResponse>(getStockReportsControllerMovementsUrl(params),
+  return apiFetch<stockReportsControllerMovementsResponseSuccess>(getStockReportsControllerMovementsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -5102,16 +11630,21 @@ export const stockReportsControllerMovements = async (params?: StockReportsContr
 
 
 export type stockReportsControllerItemLedgerResponse200 = {
-  data: void
+  data: ItemLedgerPageDto
   status: 200
+}
+
+export type stockReportsControllerItemLedgerResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockReportsControllerItemLedgerResponseSuccess = (stockReportsControllerItemLedgerResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockReportsControllerItemLedgerResponse = (stockReportsControllerItemLedgerResponseSuccess)
+export type stockReportsControllerItemLedgerResponseError = (stockReportsControllerItemLedgerResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockReportsControllerItemLedgerUrl = (itemId: string,
     params?: StockReportsControllerItemLedgerParams,) => {
@@ -5129,10 +11662,14 @@ export const getStockReportsControllerItemLedgerUrl = (itemId: string,
   return stringifiedParams.length > 0 ? `/api/v1/stock/items/${itemId}/ledger?${stringifiedParams}` : `/api/v1/stock/items/${itemId}/ledger`
 }
 
+/**
+ * @summary Item card (ADR-022 §4): ascending keyset pages, `{ item, summary, items, nextCursor }`,
+`summary` on the first page only. format=pdf|xlsx reads the whole card instead.
+ */
 export const stockReportsControllerItemLedger = async (itemId: string,
-    params?: StockReportsControllerItemLedgerParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerItemLedgerResponse> => {
+    params?: StockReportsControllerItemLedgerParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerItemLedgerResponseSuccess> => {
 
-  return apiFetch<stockReportsControllerItemLedgerResponse>(getStockReportsControllerItemLedgerUrl(itemId,params),
+  return apiFetch<stockReportsControllerItemLedgerResponseSuccess>(getStockReportsControllerItemLedgerUrl(itemId,params),
   {
     ...options,
     method: 'GET'
@@ -5144,16 +11681,21 @@ export const stockReportsControllerItemLedger = async (itemId: string,
 
 
 export type stockReportsControllerItemBalancesResponse200 = {
-  data: void
+  data: ItemBalancesReportDto
   status: 200
+}
+
+export type stockReportsControllerItemBalancesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockReportsControllerItemBalancesResponseSuccess = (stockReportsControllerItemBalancesResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockReportsControllerItemBalancesResponse = (stockReportsControllerItemBalancesResponseSuccess)
+export type stockReportsControllerItemBalancesResponseError = (stockReportsControllerItemBalancesResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockReportsControllerItemBalancesUrl = (params?: StockReportsControllerItemBalancesParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -5170,9 +11712,12 @@ export const getStockReportsControllerItemBalancesUrl = (params?: StockReportsCo
   return stringifiedParams.length > 0 ? `/api/v1/stock/item-balances?${stringifiedParams}` : `/api/v1/stock/item-balances`
 }
 
-export const stockReportsControllerItemBalances = async (params?: StockReportsControllerItemBalancesParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerItemBalancesResponse> => {
+/**
+ * @summary Items balance (ميزان المواد): opening, ins, outs, closing per item (ADR-008).
+ */
+export const stockReportsControllerItemBalances = async (params?: StockReportsControllerItemBalancesParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerItemBalancesResponseSuccess> => {
 
-  return apiFetch<stockReportsControllerItemBalancesResponse>(getStockReportsControllerItemBalancesUrl(params),
+  return apiFetch<stockReportsControllerItemBalancesResponseSuccess>(getStockReportsControllerItemBalancesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -5184,16 +11729,21 @@ export const stockReportsControllerItemBalances = async (params?: StockReportsCo
 
 
 export type stockReportsControllerValuationResponse200 = {
-  data: void
+  data: StockValuationReportDto
   status: 200
+}
+
+export type stockReportsControllerValuationResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockReportsControllerValuationResponseSuccess = (stockReportsControllerValuationResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockReportsControllerValuationResponse = (stockReportsControllerValuationResponseSuccess)
+export type stockReportsControllerValuationResponseError = (stockReportsControllerValuationResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockReportsControllerValuationUrl = (params?: StockReportsControllerValuationParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -5210,9 +11760,9 @@ export const getStockReportsControllerValuationUrl = (params?: StockReportsContr
   return stringifiedParams.length > 0 ? `/api/v1/stock/valuation?${stringifiedParams}` : `/api/v1/stock/valuation`
 }
 
-export const stockReportsControllerValuation = async (params?: StockReportsControllerValuationParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerValuationResponse> => {
+export const stockReportsControllerValuation = async (params?: StockReportsControllerValuationParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerValuationResponseSuccess> => {
 
-  return apiFetch<stockReportsControllerValuationResponse>(getStockReportsControllerValuationUrl(params),
+  return apiFetch<stockReportsControllerValuationResponseSuccess>(getStockReportsControllerValuationUrl(params),
   {
     ...options,
     method: 'GET'
@@ -5224,16 +11774,21 @@ export const stockReportsControllerValuation = async (params?: StockReportsContr
 
 
 export type stockReportsControllerVerifyResponse200 = {
-  data: void
+  data: StockVerifyResultDto
   status: 200
+}
+
+export type stockReportsControllerVerifyResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type stockReportsControllerVerifyResponseSuccess = (stockReportsControllerVerifyResponse200) & {
   headers: Headers;
 };
-;
-
-export type stockReportsControllerVerifyResponse = (stockReportsControllerVerifyResponseSuccess)
+export type stockReportsControllerVerifyResponseError = (stockReportsControllerVerifyResponseDefault) & {
+  headers: Headers;
+};
 
 export const getStockReportsControllerVerifyUrl = () => {
 
@@ -5243,9 +11798,12 @@ export const getStockReportsControllerVerifyUrl = () => {
   return `/api/v1/stock/verify`
 }
 
-export const stockReportsControllerVerify = async ( options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerVerifyResponse> => {
+/**
+ * @summary Recomputes stock_balances from stock_movements — integrity check. Company-wide: every branch only (ADR-003 §13).
+ */
+export const stockReportsControllerVerify = async ( options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerVerifyResponseSuccess> => {
 
-  return apiFetch<stockReportsControllerVerifyResponse>(getStockReportsControllerVerifyUrl(),
+  return apiFetch<stockReportsControllerVerifyResponseSuccess>(getStockReportsControllerVerifyUrl(),
   {
     ...options,
     method: 'GET'
@@ -5257,16 +11815,21 @@ export const stockReportsControllerVerify = async ( options?: Parameters<typeof 
 
 
 export type salesControllerListInvoicesResponse200 = {
-  data: void
+  data: SalesInvoiceListItemDtoPage
   status: 200
+}
+
+export type salesControllerListInvoicesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type salesControllerListInvoicesResponseSuccess = (salesControllerListInvoicesResponse200) & {
   headers: Headers;
 };
-;
-
-export type salesControllerListInvoicesResponse = (salesControllerListInvoicesResponseSuccess)
+export type salesControllerListInvoicesResponseError = (salesControllerListInvoicesResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSalesControllerListInvoicesUrl = (params?: SalesControllerListInvoicesParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -5283,9 +11846,9 @@ export const getSalesControllerListInvoicesUrl = (params?: SalesControllerListIn
   return stringifiedParams.length > 0 ? `/api/v1/sales-invoices?${stringifiedParams}` : `/api/v1/sales-invoices`
 }
 
-export const salesControllerListInvoices = async (params?: SalesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListInvoicesResponse> => {
+export const salesControllerListInvoices = async (params?: SalesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListInvoicesResponseSuccess> => {
 
-  return apiFetch<salesControllerListInvoicesResponse>(getSalesControllerListInvoicesUrl(params),
+  return apiFetch<salesControllerListInvoicesResponseSuccess>(getSalesControllerListInvoicesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -5297,16 +11860,21 @@ export const salesControllerListInvoices = async (params?: SalesControllerListIn
 
 
 export type salesControllerCreateInvoiceResponse201 = {
-  data: void
+  data: SalesInvoiceDetailDto
   status: 201
+}
+
+export type salesControllerCreateInvoiceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type salesControllerCreateInvoiceResponseSuccess = (salesControllerCreateInvoiceResponse201) & {
   headers: Headers;
 };
-;
-
-export type salesControllerCreateInvoiceResponse = (salesControllerCreateInvoiceResponseSuccess)
+export type salesControllerCreateInvoiceResponseError = (salesControllerCreateInvoiceResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSalesControllerCreateInvoiceUrl = () => {
 
@@ -5316,7 +11884,7 @@ export const getSalesControllerCreateInvoiceUrl = () => {
   return `/api/v1/sales-invoices`
 }
 
-export const salesControllerCreateInvoice = async (createSalesInvoiceDto: CreateSalesInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerCreateInvoiceResponse> => {
+export const salesControllerCreateInvoice = async (createSalesInvoiceDto: CreateSalesInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerCreateInvoiceResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -5332,7 +11900,7 @@ export const salesControllerCreateInvoice = async (createSalesInvoiceDto: Create
     }
     return headers;
   };
-return apiFetch<salesControllerCreateInvoiceResponse>(getSalesControllerCreateInvoiceUrl(),
+return apiFetch<salesControllerCreateInvoiceResponseSuccess>(getSalesControllerCreateInvoiceUrl(),
   {
     ...options,
     method: 'POST',
@@ -5344,16 +11912,21 @@ return apiFetch<salesControllerCreateInvoiceResponse>(getSalesControllerCreateIn
 
 
 export type salesControllerGetInvoiceResponse200 = {
-  data: void
+  data: SalesInvoiceDetailDto
   status: 200
+}
+
+export type salesControllerGetInvoiceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type salesControllerGetInvoiceResponseSuccess = (salesControllerGetInvoiceResponse200) & {
   headers: Headers;
 };
-;
-
-export type salesControllerGetInvoiceResponse = (salesControllerGetInvoiceResponseSuccess)
+export type salesControllerGetInvoiceResponseError = (salesControllerGetInvoiceResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSalesControllerGetInvoiceUrl = (id: string,) => {
 
@@ -5363,9 +11936,9 @@ export const getSalesControllerGetInvoiceUrl = (id: string,) => {
   return `/api/v1/sales-invoices/${id}`
 }
 
-export const salesControllerGetInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerGetInvoiceResponse> => {
+export const salesControllerGetInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerGetInvoiceResponseSuccess> => {
 
-  return apiFetch<salesControllerGetInvoiceResponse>(getSalesControllerGetInvoiceUrl(id),
+  return apiFetch<salesControllerGetInvoiceResponseSuccess>(getSalesControllerGetInvoiceUrl(id),
   {
     ...options,
     method: 'GET'
@@ -5377,16 +11950,21 @@ export const salesControllerGetInvoice = async (id: string, options?: Parameters
 
 
 export type salesControllerUpdateInvoiceResponse200 = {
-  data: void
+  data: SalesInvoiceDetailDto
   status: 200
+}
+
+export type salesControllerUpdateInvoiceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type salesControllerUpdateInvoiceResponseSuccess = (salesControllerUpdateInvoiceResponse200) & {
   headers: Headers;
 };
-;
-
-export type salesControllerUpdateInvoiceResponse = (salesControllerUpdateInvoiceResponseSuccess)
+export type salesControllerUpdateInvoiceResponseError = (salesControllerUpdateInvoiceResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSalesControllerUpdateInvoiceUrl = (id: string,) => {
 
@@ -5397,7 +11975,7 @@ export const getSalesControllerUpdateInvoiceUrl = (id: string,) => {
 }
 
 export const salesControllerUpdateInvoice = async (id: string,
-    createSalesInvoiceDto: CreateSalesInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerUpdateInvoiceResponse> => {
+    createSalesInvoiceDto: CreateSalesInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerUpdateInvoiceResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -5413,7 +11991,7 @@ export const salesControllerUpdateInvoice = async (id: string,
     }
     return headers;
   };
-return apiFetch<salesControllerUpdateInvoiceResponse>(getSalesControllerUpdateInvoiceUrl(id),
+return apiFetch<salesControllerUpdateInvoiceResponseSuccess>(getSalesControllerUpdateInvoiceUrl(id),
   {
     ...options,
     method: 'PUT',
@@ -5425,16 +12003,21 @@ return apiFetch<salesControllerUpdateInvoiceResponse>(getSalesControllerUpdateIn
 
 
 export type salesControllerDeleteInvoiceResponse200 = {
-  data: void
+  data: DeletedDto
   status: 200
+}
+
+export type salesControllerDeleteInvoiceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type salesControllerDeleteInvoiceResponseSuccess = (salesControllerDeleteInvoiceResponse200) & {
   headers: Headers;
 };
-;
-
-export type salesControllerDeleteInvoiceResponse = (salesControllerDeleteInvoiceResponseSuccess)
+export type salesControllerDeleteInvoiceResponseError = (salesControllerDeleteInvoiceResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSalesControllerDeleteInvoiceUrl = (id: string,) => {
 
@@ -5444,9 +12027,9 @@ export const getSalesControllerDeleteInvoiceUrl = (id: string,) => {
   return `/api/v1/sales-invoices/${id}`
 }
 
-export const salesControllerDeleteInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerDeleteInvoiceResponse> => {
+export const salesControllerDeleteInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerDeleteInvoiceResponseSuccess> => {
 
-  return apiFetch<salesControllerDeleteInvoiceResponse>(getSalesControllerDeleteInvoiceUrl(id),
+  return apiFetch<salesControllerDeleteInvoiceResponseSuccess>(getSalesControllerDeleteInvoiceUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -5457,29 +12040,41 @@ export const salesControllerDeleteInvoice = async (id: string, options?: Paramet
 
 
 
-export type salesControllerInvoicePdfResponse200 = {
-  data: void
-  status: 200
+export type salesControllerInvoicePdfResponseDefault = {
+  data: ErrorResponseDto
+  status: number
 }
 
-export type salesControllerInvoicePdfResponseSuccess = (salesControllerInvoicePdfResponse200) & {
+;
+export type salesControllerInvoicePdfResponseError = (salesControllerInvoicePdfResponseDefault) & {
   headers: Headers;
 };
-;
 
-export type salesControllerInvoicePdfResponse = (salesControllerInvoicePdfResponseSuccess)
+export type salesControllerInvoicePdfResponse = (salesControllerInvoicePdfResponseError)
 
-export const getSalesControllerInvoicePdfUrl = (id: string,) => {
+export const getSalesControllerInvoicePdfUrl = (id: string,
+    params?: SalesControllerInvoicePdfParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/sales-invoices/${id}/pdf`
+  return stringifiedParams.length > 0 ? `/api/v1/sales-invoices/${id}/pdf?${stringifiedParams}` : `/api/v1/sales-invoices/${id}/pdf`
 }
 
-export const salesControllerInvoicePdf = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerInvoicePdfResponse> => {
+/**
+ * @summary Printed invoice (BUILD_PLAN §13.7, §15): A4 PDF with the JoFotara QR; another branch's answers 404 (ADR-003 §11).
+ */
+export const salesControllerInvoicePdf = async (id: string,
+    params?: SalesControllerInvoicePdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerInvoicePdfResponse> => {
 
-  return apiFetch<salesControllerInvoicePdfResponse>(getSalesControllerInvoicePdfUrl(id),
+  return apiFetch<salesControllerInvoicePdfResponse>(getSalesControllerInvoicePdfUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -5491,16 +12086,21 @@ export const salesControllerInvoicePdf = async (id: string, options?: Parameters
 
 
 export type salesControllerPostInvoiceResponse201 = {
-  data: void
+  data: SalesInvoiceDetailDto
   status: 201
+}
+
+export type salesControllerPostInvoiceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type salesControllerPostInvoiceResponseSuccess = (salesControllerPostInvoiceResponse201) & {
   headers: Headers;
 };
-;
-
-export type salesControllerPostInvoiceResponse = (salesControllerPostInvoiceResponseSuccess)
+export type salesControllerPostInvoiceResponseError = (salesControllerPostInvoiceResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSalesControllerPostInvoiceUrl = (id: string,) => {
 
@@ -5510,9 +12110,9 @@ export const getSalesControllerPostInvoiceUrl = (id: string,) => {
   return `/api/v1/sales-invoices/${id}/post`
 }
 
-export const salesControllerPostInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerPostInvoiceResponse> => {
+export const salesControllerPostInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerPostInvoiceResponseSuccess> => {
 
-  return apiFetch<salesControllerPostInvoiceResponse>(getSalesControllerPostInvoiceUrl(id),
+  return apiFetch<salesControllerPostInvoiceResponseSuccess>(getSalesControllerPostInvoiceUrl(id),
   {
     ...options,
     method: 'POST'
@@ -5524,16 +12124,21 @@ export const salesControllerPostInvoice = async (id: string, options?: Parameter
 
 
 export type salesControllerListReturnsResponse200 = {
-  data: void
+  data: SalesReturnListItemDtoPage
   status: 200
+}
+
+export type salesControllerListReturnsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type salesControllerListReturnsResponseSuccess = (salesControllerListReturnsResponse200) & {
   headers: Headers;
 };
-;
-
-export type salesControllerListReturnsResponse = (salesControllerListReturnsResponseSuccess)
+export type salesControllerListReturnsResponseError = (salesControllerListReturnsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSalesControllerListReturnsUrl = (params?: SalesControllerListReturnsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -5550,9 +12155,9 @@ export const getSalesControllerListReturnsUrl = (params?: SalesControllerListRet
   return stringifiedParams.length > 0 ? `/api/v1/sales-returns?${stringifiedParams}` : `/api/v1/sales-returns`
 }
 
-export const salesControllerListReturns = async (params?: SalesControllerListReturnsParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListReturnsResponse> => {
+export const salesControllerListReturns = async (params?: SalesControllerListReturnsParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerListReturnsResponseSuccess> => {
 
-  return apiFetch<salesControllerListReturnsResponse>(getSalesControllerListReturnsUrl(params),
+  return apiFetch<salesControllerListReturnsResponseSuccess>(getSalesControllerListReturnsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -5564,16 +12169,21 @@ export const salesControllerListReturns = async (params?: SalesControllerListRet
 
 
 export type salesControllerCreateReturnResponse201 = {
-  data: void
+  data: SalesReturnDetailDto
   status: 201
+}
+
+export type salesControllerCreateReturnResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type salesControllerCreateReturnResponseSuccess = (salesControllerCreateReturnResponse201) & {
   headers: Headers;
 };
-;
-
-export type salesControllerCreateReturnResponse = (salesControllerCreateReturnResponseSuccess)
+export type salesControllerCreateReturnResponseError = (salesControllerCreateReturnResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSalesControllerCreateReturnUrl = () => {
 
@@ -5583,7 +12193,7 @@ export const getSalesControllerCreateReturnUrl = () => {
   return `/api/v1/sales-returns`
 }
 
-export const salesControllerCreateReturn = async (createSalesReturnDto: CreateSalesReturnDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerCreateReturnResponse> => {
+export const salesControllerCreateReturn = async (createSalesReturnDto: CreateSalesReturnDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerCreateReturnResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -5599,7 +12209,7 @@ export const salesControllerCreateReturn = async (createSalesReturnDto: CreateSa
     }
     return headers;
   };
-return apiFetch<salesControllerCreateReturnResponse>(getSalesControllerCreateReturnUrl(),
+return apiFetch<salesControllerCreateReturnResponseSuccess>(getSalesControllerCreateReturnUrl(),
   {
     ...options,
     method: 'POST',
@@ -5611,16 +12221,21 @@ return apiFetch<salesControllerCreateReturnResponse>(getSalesControllerCreateRet
 
 
 export type salesControllerGetReturnResponse200 = {
-  data: void
+  data: SalesReturnDetailDto
   status: 200
+}
+
+export type salesControllerGetReturnResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type salesControllerGetReturnResponseSuccess = (salesControllerGetReturnResponse200) & {
   headers: Headers;
 };
-;
-
-export type salesControllerGetReturnResponse = (salesControllerGetReturnResponseSuccess)
+export type salesControllerGetReturnResponseError = (salesControllerGetReturnResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSalesControllerGetReturnUrl = (id: string,) => {
 
@@ -5630,9 +12245,9 @@ export const getSalesControllerGetReturnUrl = (id: string,) => {
   return `/api/v1/sales-returns/${id}`
 }
 
-export const salesControllerGetReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerGetReturnResponse> => {
+export const salesControllerGetReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerGetReturnResponseSuccess> => {
 
-  return apiFetch<salesControllerGetReturnResponse>(getSalesControllerGetReturnUrl(id),
+  return apiFetch<salesControllerGetReturnResponseSuccess>(getSalesControllerGetReturnUrl(id),
   {
     ...options,
     method: 'GET'
@@ -5644,16 +12259,21 @@ export const salesControllerGetReturn = async (id: string, options?: Parameters<
 
 
 export type salesControllerDeleteReturnResponse200 = {
-  data: void
+  data: DeletedDto
   status: 200
+}
+
+export type salesControllerDeleteReturnResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type salesControllerDeleteReturnResponseSuccess = (salesControllerDeleteReturnResponse200) & {
   headers: Headers;
 };
-;
-
-export type salesControllerDeleteReturnResponse = (salesControllerDeleteReturnResponseSuccess)
+export type salesControllerDeleteReturnResponseError = (salesControllerDeleteReturnResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSalesControllerDeleteReturnUrl = (id: string,) => {
 
@@ -5663,9 +12283,9 @@ export const getSalesControllerDeleteReturnUrl = (id: string,) => {
   return `/api/v1/sales-returns/${id}`
 }
 
-export const salesControllerDeleteReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerDeleteReturnResponse> => {
+export const salesControllerDeleteReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerDeleteReturnResponseSuccess> => {
 
-  return apiFetch<salesControllerDeleteReturnResponse>(getSalesControllerDeleteReturnUrl(id),
+  return apiFetch<salesControllerDeleteReturnResponseSuccess>(getSalesControllerDeleteReturnUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -5676,29 +12296,38 @@ export const salesControllerDeleteReturn = async (id: string, options?: Paramete
 
 
 
-export type salesControllerReturnPdfResponse200 = {
-  data: void
-  status: 200
+export type salesControllerReturnPdfResponseDefault = {
+  data: ErrorResponseDto
+  status: number
 }
 
-export type salesControllerReturnPdfResponseSuccess = (salesControllerReturnPdfResponse200) & {
+;
+export type salesControllerReturnPdfResponseError = (salesControllerReturnPdfResponseDefault) & {
   headers: Headers;
 };
-;
 
-export type salesControllerReturnPdfResponse = (salesControllerReturnPdfResponseSuccess)
+export type salesControllerReturnPdfResponse = (salesControllerReturnPdfResponseError)
 
-export const getSalesControllerReturnPdfUrl = (id: string,) => {
+export const getSalesControllerReturnPdfUrl = (id: string,
+    params?: SalesControllerReturnPdfParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/sales-returns/${id}/pdf`
+  return stringifiedParams.length > 0 ? `/api/v1/sales-returns/${id}/pdf?${stringifiedParams}` : `/api/v1/sales-returns/${id}/pdf`
 }
 
-export const salesControllerReturnPdf = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerReturnPdfResponse> => {
+export const salesControllerReturnPdf = async (id: string,
+    params?: SalesControllerReturnPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerReturnPdfResponse> => {
 
-  return apiFetch<salesControllerReturnPdfResponse>(getSalesControllerReturnPdfUrl(id),
+  return apiFetch<salesControllerReturnPdfResponse>(getSalesControllerReturnPdfUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -5710,16 +12339,21 @@ export const salesControllerReturnPdf = async (id: string, options?: Parameters<
 
 
 export type salesControllerPostReturnResponse201 = {
-  data: void
+  data: SalesReturnDetailDto
   status: 201
+}
+
+export type salesControllerPostReturnResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type salesControllerPostReturnResponseSuccess = (salesControllerPostReturnResponse201) & {
   headers: Headers;
 };
-;
-
-export type salesControllerPostReturnResponse = (salesControllerPostReturnResponseSuccess)
+export type salesControllerPostReturnResponseError = (salesControllerPostReturnResponseDefault) & {
+  headers: Headers;
+};
 
 export const getSalesControllerPostReturnUrl = (id: string,) => {
 
@@ -5729,9 +12363,9 @@ export const getSalesControllerPostReturnUrl = (id: string,) => {
   return `/api/v1/sales-returns/${id}/post`
 }
 
-export const salesControllerPostReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerPostReturnResponse> => {
+export const salesControllerPostReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerPostReturnResponseSuccess> => {
 
-  return apiFetch<salesControllerPostReturnResponse>(getSalesControllerPostReturnUrl(id),
+  return apiFetch<salesControllerPostReturnResponseSuccess>(getSalesControllerPostReturnUrl(id),
   {
     ...options,
     method: 'POST'
@@ -5743,16 +12377,21 @@ export const salesControllerPostReturn = async (id: string, options?: Parameters
 
 
 export type purchasesControllerListInvoicesResponse200 = {
-  data: void
+  data: PurchaseInvoiceListItemDtoPage
   status: 200
+}
+
+export type purchasesControllerListInvoicesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type purchasesControllerListInvoicesResponseSuccess = (purchasesControllerListInvoicesResponse200) & {
   headers: Headers;
 };
-;
-
-export type purchasesControllerListInvoicesResponse = (purchasesControllerListInvoicesResponseSuccess)
+export type purchasesControllerListInvoicesResponseError = (purchasesControllerListInvoicesResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPurchasesControllerListInvoicesUrl = (params?: PurchasesControllerListInvoicesParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -5769,9 +12408,9 @@ export const getPurchasesControllerListInvoicesUrl = (params?: PurchasesControll
   return stringifiedParams.length > 0 ? `/api/v1/purchase-invoices?${stringifiedParams}` : `/api/v1/purchase-invoices`
 }
 
-export const purchasesControllerListInvoices = async (params?: PurchasesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerListInvoicesResponse> => {
+export const purchasesControllerListInvoices = async (params?: PurchasesControllerListInvoicesParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerListInvoicesResponseSuccess> => {
 
-  return apiFetch<purchasesControllerListInvoicesResponse>(getPurchasesControllerListInvoicesUrl(params),
+  return apiFetch<purchasesControllerListInvoicesResponseSuccess>(getPurchasesControllerListInvoicesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -5783,16 +12422,21 @@ export const purchasesControllerListInvoices = async (params?: PurchasesControll
 
 
 export type purchasesControllerCreateInvoiceResponse201 = {
-  data: void
+  data: PurchaseInvoiceDetailDto
   status: 201
+}
+
+export type purchasesControllerCreateInvoiceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type purchasesControllerCreateInvoiceResponseSuccess = (purchasesControllerCreateInvoiceResponse201) & {
   headers: Headers;
 };
-;
-
-export type purchasesControllerCreateInvoiceResponse = (purchasesControllerCreateInvoiceResponseSuccess)
+export type purchasesControllerCreateInvoiceResponseError = (purchasesControllerCreateInvoiceResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPurchasesControllerCreateInvoiceUrl = () => {
 
@@ -5802,7 +12446,7 @@ export const getPurchasesControllerCreateInvoiceUrl = () => {
   return `/api/v1/purchase-invoices`
 }
 
-export const purchasesControllerCreateInvoice = async (createPurchaseInvoiceDto: CreatePurchaseInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerCreateInvoiceResponse> => {
+export const purchasesControllerCreateInvoice = async (createPurchaseInvoiceDto: CreatePurchaseInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerCreateInvoiceResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -5818,7 +12462,7 @@ export const purchasesControllerCreateInvoice = async (createPurchaseInvoiceDto:
     }
     return headers;
   };
-return apiFetch<purchasesControllerCreateInvoiceResponse>(getPurchasesControllerCreateInvoiceUrl(),
+return apiFetch<purchasesControllerCreateInvoiceResponseSuccess>(getPurchasesControllerCreateInvoiceUrl(),
   {
     ...options,
     method: 'POST',
@@ -5830,16 +12474,21 @@ return apiFetch<purchasesControllerCreateInvoiceResponse>(getPurchasesController
 
 
 export type purchasesControllerGetInvoiceResponse200 = {
-  data: void
+  data: PurchaseInvoiceDetailDto
   status: 200
+}
+
+export type purchasesControllerGetInvoiceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type purchasesControllerGetInvoiceResponseSuccess = (purchasesControllerGetInvoiceResponse200) & {
   headers: Headers;
 };
-;
-
-export type purchasesControllerGetInvoiceResponse = (purchasesControllerGetInvoiceResponseSuccess)
+export type purchasesControllerGetInvoiceResponseError = (purchasesControllerGetInvoiceResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPurchasesControllerGetInvoiceUrl = (id: string,) => {
 
@@ -5849,9 +12498,9 @@ export const getPurchasesControllerGetInvoiceUrl = (id: string,) => {
   return `/api/v1/purchase-invoices/${id}`
 }
 
-export const purchasesControllerGetInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerGetInvoiceResponse> => {
+export const purchasesControllerGetInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerGetInvoiceResponseSuccess> => {
 
-  return apiFetch<purchasesControllerGetInvoiceResponse>(getPurchasesControllerGetInvoiceUrl(id),
+  return apiFetch<purchasesControllerGetInvoiceResponseSuccess>(getPurchasesControllerGetInvoiceUrl(id),
   {
     ...options,
     method: 'GET'
@@ -5863,16 +12512,21 @@ export const purchasesControllerGetInvoice = async (id: string, options?: Parame
 
 
 export type purchasesControllerUpdateInvoiceResponse200 = {
-  data: void
+  data: PurchaseInvoiceDetailDto
   status: 200
+}
+
+export type purchasesControllerUpdateInvoiceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type purchasesControllerUpdateInvoiceResponseSuccess = (purchasesControllerUpdateInvoiceResponse200) & {
   headers: Headers;
 };
-;
-
-export type purchasesControllerUpdateInvoiceResponse = (purchasesControllerUpdateInvoiceResponseSuccess)
+export type purchasesControllerUpdateInvoiceResponseError = (purchasesControllerUpdateInvoiceResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPurchasesControllerUpdateInvoiceUrl = (id: string,) => {
 
@@ -5883,7 +12537,7 @@ export const getPurchasesControllerUpdateInvoiceUrl = (id: string,) => {
 }
 
 export const purchasesControllerUpdateInvoice = async (id: string,
-    createPurchaseInvoiceDto: CreatePurchaseInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerUpdateInvoiceResponse> => {
+    createPurchaseInvoiceDto: CreatePurchaseInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerUpdateInvoiceResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -5899,7 +12553,7 @@ export const purchasesControllerUpdateInvoice = async (id: string,
     }
     return headers;
   };
-return apiFetch<purchasesControllerUpdateInvoiceResponse>(getPurchasesControllerUpdateInvoiceUrl(id),
+return apiFetch<purchasesControllerUpdateInvoiceResponseSuccess>(getPurchasesControllerUpdateInvoiceUrl(id),
   {
     ...options,
     method: 'PUT',
@@ -5911,16 +12565,21 @@ return apiFetch<purchasesControllerUpdateInvoiceResponse>(getPurchasesController
 
 
 export type purchasesControllerDeleteInvoiceResponse200 = {
-  data: void
+  data: DeletedDto
   status: 200
+}
+
+export type purchasesControllerDeleteInvoiceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type purchasesControllerDeleteInvoiceResponseSuccess = (purchasesControllerDeleteInvoiceResponse200) & {
   headers: Headers;
 };
-;
-
-export type purchasesControllerDeleteInvoiceResponse = (purchasesControllerDeleteInvoiceResponseSuccess)
+export type purchasesControllerDeleteInvoiceResponseError = (purchasesControllerDeleteInvoiceResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPurchasesControllerDeleteInvoiceUrl = (id: string,) => {
 
@@ -5930,9 +12589,9 @@ export const getPurchasesControllerDeleteInvoiceUrl = (id: string,) => {
   return `/api/v1/purchase-invoices/${id}`
 }
 
-export const purchasesControllerDeleteInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerDeleteInvoiceResponse> => {
+export const purchasesControllerDeleteInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerDeleteInvoiceResponseSuccess> => {
 
-  return apiFetch<purchasesControllerDeleteInvoiceResponse>(getPurchasesControllerDeleteInvoiceUrl(id),
+  return apiFetch<purchasesControllerDeleteInvoiceResponseSuccess>(getPurchasesControllerDeleteInvoiceUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -5943,29 +12602,38 @@ export const purchasesControllerDeleteInvoice = async (id: string, options?: Par
 
 
 
-export type purchasesControllerInvoicePdfResponse200 = {
-  data: void
-  status: 200
+export type purchasesControllerInvoicePdfResponseDefault = {
+  data: ErrorResponseDto
+  status: number
 }
 
-export type purchasesControllerInvoicePdfResponseSuccess = (purchasesControllerInvoicePdfResponse200) & {
+;
+export type purchasesControllerInvoicePdfResponseError = (purchasesControllerInvoicePdfResponseDefault) & {
   headers: Headers;
 };
-;
 
-export type purchasesControllerInvoicePdfResponse = (purchasesControllerInvoicePdfResponseSuccess)
+export type purchasesControllerInvoicePdfResponse = (purchasesControllerInvoicePdfResponseError)
 
-export const getPurchasesControllerInvoicePdfUrl = (id: string,) => {
+export const getPurchasesControllerInvoicePdfUrl = (id: string,
+    params?: PurchasesControllerInvoicePdfParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/purchase-invoices/${id}/pdf`
+  return stringifiedParams.length > 0 ? `/api/v1/purchase-invoices/${id}/pdf?${stringifiedParams}` : `/api/v1/purchase-invoices/${id}/pdf`
 }
 
-export const purchasesControllerInvoicePdf = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerInvoicePdfResponse> => {
+export const purchasesControllerInvoicePdf = async (id: string,
+    params?: PurchasesControllerInvoicePdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerInvoicePdfResponse> => {
 
-  return apiFetch<purchasesControllerInvoicePdfResponse>(getPurchasesControllerInvoicePdfUrl(id),
+  return apiFetch<purchasesControllerInvoicePdfResponse>(getPurchasesControllerInvoicePdfUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -5977,16 +12645,21 @@ export const purchasesControllerInvoicePdf = async (id: string, options?: Parame
 
 
 export type purchasesControllerPostInvoiceResponse201 = {
-  data: void
+  data: PurchaseInvoiceDetailDto
   status: 201
+}
+
+export type purchasesControllerPostInvoiceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type purchasesControllerPostInvoiceResponseSuccess = (purchasesControllerPostInvoiceResponse201) & {
   headers: Headers;
 };
-;
-
-export type purchasesControllerPostInvoiceResponse = (purchasesControllerPostInvoiceResponseSuccess)
+export type purchasesControllerPostInvoiceResponseError = (purchasesControllerPostInvoiceResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPurchasesControllerPostInvoiceUrl = (id: string,) => {
 
@@ -5996,9 +12669,9 @@ export const getPurchasesControllerPostInvoiceUrl = (id: string,) => {
   return `/api/v1/purchase-invoices/${id}/post`
 }
 
-export const purchasesControllerPostInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerPostInvoiceResponse> => {
+export const purchasesControllerPostInvoice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerPostInvoiceResponseSuccess> => {
 
-  return apiFetch<purchasesControllerPostInvoiceResponse>(getPurchasesControllerPostInvoiceUrl(id),
+  return apiFetch<purchasesControllerPostInvoiceResponseSuccess>(getPurchasesControllerPostInvoiceUrl(id),
   {
     ...options,
     method: 'POST'
@@ -6010,16 +12683,21 @@ export const purchasesControllerPostInvoice = async (id: string, options?: Param
 
 
 export type purchasesControllerListReturnsResponse200 = {
-  data: void
+  data: PurchaseReturnListItemDtoPage
   status: 200
+}
+
+export type purchasesControllerListReturnsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type purchasesControllerListReturnsResponseSuccess = (purchasesControllerListReturnsResponse200) & {
   headers: Headers;
 };
-;
-
-export type purchasesControllerListReturnsResponse = (purchasesControllerListReturnsResponseSuccess)
+export type purchasesControllerListReturnsResponseError = (purchasesControllerListReturnsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPurchasesControllerListReturnsUrl = (params?: PurchasesControllerListReturnsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -6036,9 +12714,9 @@ export const getPurchasesControllerListReturnsUrl = (params?: PurchasesControlle
   return stringifiedParams.length > 0 ? `/api/v1/purchase-returns?${stringifiedParams}` : `/api/v1/purchase-returns`
 }
 
-export const purchasesControllerListReturns = async (params?: PurchasesControllerListReturnsParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerListReturnsResponse> => {
+export const purchasesControllerListReturns = async (params?: PurchasesControllerListReturnsParams, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerListReturnsResponseSuccess> => {
 
-  return apiFetch<purchasesControllerListReturnsResponse>(getPurchasesControllerListReturnsUrl(params),
+  return apiFetch<purchasesControllerListReturnsResponseSuccess>(getPurchasesControllerListReturnsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6050,16 +12728,21 @@ export const purchasesControllerListReturns = async (params?: PurchasesControlle
 
 
 export type purchasesControllerCreateReturnResponse201 = {
-  data: void
+  data: PurchaseReturnDetailDto
   status: 201
+}
+
+export type purchasesControllerCreateReturnResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type purchasesControllerCreateReturnResponseSuccess = (purchasesControllerCreateReturnResponse201) & {
   headers: Headers;
 };
-;
-
-export type purchasesControllerCreateReturnResponse = (purchasesControllerCreateReturnResponseSuccess)
+export type purchasesControllerCreateReturnResponseError = (purchasesControllerCreateReturnResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPurchasesControllerCreateReturnUrl = () => {
 
@@ -6069,7 +12752,7 @@ export const getPurchasesControllerCreateReturnUrl = () => {
   return `/api/v1/purchase-returns`
 }
 
-export const purchasesControllerCreateReturn = async (createPurchaseReturnDto: CreatePurchaseReturnDto, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerCreateReturnResponse> => {
+export const purchasesControllerCreateReturn = async (createPurchaseReturnDto: CreatePurchaseReturnDto, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerCreateReturnResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -6085,7 +12768,7 @@ export const purchasesControllerCreateReturn = async (createPurchaseReturnDto: C
     }
     return headers;
   };
-return apiFetch<purchasesControllerCreateReturnResponse>(getPurchasesControllerCreateReturnUrl(),
+return apiFetch<purchasesControllerCreateReturnResponseSuccess>(getPurchasesControllerCreateReturnUrl(),
   {
     ...options,
     method: 'POST',
@@ -6097,16 +12780,21 @@ return apiFetch<purchasesControllerCreateReturnResponse>(getPurchasesControllerC
 
 
 export type purchasesControllerGetReturnResponse200 = {
-  data: void
+  data: PurchaseReturnDetailDto
   status: 200
+}
+
+export type purchasesControllerGetReturnResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type purchasesControllerGetReturnResponseSuccess = (purchasesControllerGetReturnResponse200) & {
   headers: Headers;
 };
-;
-
-export type purchasesControllerGetReturnResponse = (purchasesControllerGetReturnResponseSuccess)
+export type purchasesControllerGetReturnResponseError = (purchasesControllerGetReturnResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPurchasesControllerGetReturnUrl = (id: string,) => {
 
@@ -6116,9 +12804,9 @@ export const getPurchasesControllerGetReturnUrl = (id: string,) => {
   return `/api/v1/purchase-returns/${id}`
 }
 
-export const purchasesControllerGetReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerGetReturnResponse> => {
+export const purchasesControllerGetReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerGetReturnResponseSuccess> => {
 
-  return apiFetch<purchasesControllerGetReturnResponse>(getPurchasesControllerGetReturnUrl(id),
+  return apiFetch<purchasesControllerGetReturnResponseSuccess>(getPurchasesControllerGetReturnUrl(id),
   {
     ...options,
     method: 'GET'
@@ -6130,16 +12818,21 @@ export const purchasesControllerGetReturn = async (id: string, options?: Paramet
 
 
 export type purchasesControllerDeleteReturnResponse200 = {
-  data: void
+  data: DeletedDto
   status: 200
+}
+
+export type purchasesControllerDeleteReturnResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type purchasesControllerDeleteReturnResponseSuccess = (purchasesControllerDeleteReturnResponse200) & {
   headers: Headers;
 };
-;
-
-export type purchasesControllerDeleteReturnResponse = (purchasesControllerDeleteReturnResponseSuccess)
+export type purchasesControllerDeleteReturnResponseError = (purchasesControllerDeleteReturnResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPurchasesControllerDeleteReturnUrl = (id: string,) => {
 
@@ -6149,9 +12842,9 @@ export const getPurchasesControllerDeleteReturnUrl = (id: string,) => {
   return `/api/v1/purchase-returns/${id}`
 }
 
-export const purchasesControllerDeleteReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerDeleteReturnResponse> => {
+export const purchasesControllerDeleteReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerDeleteReturnResponseSuccess> => {
 
-  return apiFetch<purchasesControllerDeleteReturnResponse>(getPurchasesControllerDeleteReturnUrl(id),
+  return apiFetch<purchasesControllerDeleteReturnResponseSuccess>(getPurchasesControllerDeleteReturnUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -6163,16 +12856,21 @@ export const purchasesControllerDeleteReturn = async (id: string, options?: Para
 
 
 export type purchasesControllerPostReturnResponse201 = {
-  data: void
+  data: PurchaseReturnDetailDto
   status: 201
+}
+
+export type purchasesControllerPostReturnResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type purchasesControllerPostReturnResponseSuccess = (purchasesControllerPostReturnResponse201) & {
   headers: Headers;
 };
-;
-
-export type purchasesControllerPostReturnResponse = (purchasesControllerPostReturnResponseSuccess)
+export type purchasesControllerPostReturnResponseError = (purchasesControllerPostReturnResponseDefault) & {
+  headers: Headers;
+};
 
 export const getPurchasesControllerPostReturnUrl = (id: string,) => {
 
@@ -6182,9 +12880,9 @@ export const getPurchasesControllerPostReturnUrl = (id: string,) => {
   return `/api/v1/purchase-returns/${id}/post`
 }
 
-export const purchasesControllerPostReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerPostReturnResponse> => {
+export const purchasesControllerPostReturn = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerPostReturnResponseSuccess> => {
 
-  return apiFetch<purchasesControllerPostReturnResponse>(getPurchasesControllerPostReturnUrl(id),
+  return apiFetch<purchasesControllerPostReturnResponseSuccess>(getPurchasesControllerPostReturnUrl(id),
   {
     ...options,
     method: 'POST'
@@ -6196,16 +12894,21 @@ export const purchasesControllerPostReturn = async (id: string, options?: Parame
 
 
 export type goodsNotesControllerListResponse200 = {
-  data: void
+  data: GoodsNoteListItemDtoPage
   status: 200
+}
+
+export type goodsNotesControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type goodsNotesControllerListResponseSuccess = (goodsNotesControllerListResponse200) & {
   headers: Headers;
 };
-;
-
-export type goodsNotesControllerListResponse = (goodsNotesControllerListResponseSuccess)
+export type goodsNotesControllerListResponseError = (goodsNotesControllerListResponseDefault) & {
+  headers: Headers;
+};
 
 export const getGoodsNotesControllerListUrl = (params?: GoodsNotesControllerListParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -6222,9 +12925,12 @@ export const getGoodsNotesControllerListUrl = (params?: GoodsNotesControllerList
   return stringifiedParams.length > 0 ? `/api/v1/goods-notes?${stringifiedParams}` : `/api/v1/goods-notes`
 }
 
-export const goodsNotesControllerList = async (params?: GoodsNotesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerListResponse> => {
+/**
+ * @summary Numbered page `{ items, page, pageSize, total }` (ADR-022), the caller's branches only.
+ */
+export const goodsNotesControllerList = async (params?: GoodsNotesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerListResponseSuccess> => {
 
-  return apiFetch<goodsNotesControllerListResponse>(getGoodsNotesControllerListUrl(params),
+  return apiFetch<goodsNotesControllerListResponseSuccess>(getGoodsNotesControllerListUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6236,16 +12942,21 @@ export const goodsNotesControllerList = async (params?: GoodsNotesControllerList
 
 
 export type goodsNotesControllerCreateResponse201 = {
-  data: void
+  data: GoodsNoteDetailDto
   status: 201
+}
+
+export type goodsNotesControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type goodsNotesControllerCreateResponseSuccess = (goodsNotesControllerCreateResponse201) & {
   headers: Headers;
 };
-;
-
-export type goodsNotesControllerCreateResponse = (goodsNotesControllerCreateResponseSuccess)
+export type goodsNotesControllerCreateResponseError = (goodsNotesControllerCreateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getGoodsNotesControllerCreateUrl = () => {
 
@@ -6255,7 +12966,7 @@ export const getGoodsNotesControllerCreateUrl = () => {
   return `/api/v1/goods-notes`
 }
 
-export const goodsNotesControllerCreate = async (createGoodsNoteDto: CreateGoodsNoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerCreateResponse> => {
+export const goodsNotesControllerCreate = async (createGoodsNoteDto: CreateGoodsNoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerCreateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -6271,7 +12982,7 @@ export const goodsNotesControllerCreate = async (createGoodsNoteDto: CreateGoods
     }
     return headers;
   };
-return apiFetch<goodsNotesControllerCreateResponse>(getGoodsNotesControllerCreateUrl(),
+return apiFetch<goodsNotesControllerCreateResponseSuccess>(getGoodsNotesControllerCreateUrl(),
   {
     ...options,
     method: 'POST',
@@ -6283,16 +12994,21 @@ return apiFetch<goodsNotesControllerCreateResponse>(getGoodsNotesControllerCreat
 
 
 export type goodsNotesControllerGetResponse200 = {
-  data: void
+  data: GoodsNoteDetailDto
   status: 200
+}
+
+export type goodsNotesControllerGetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type goodsNotesControllerGetResponseSuccess = (goodsNotesControllerGetResponse200) & {
   headers: Headers;
 };
-;
-
-export type goodsNotesControllerGetResponse = (goodsNotesControllerGetResponseSuccess)
+export type goodsNotesControllerGetResponseError = (goodsNotesControllerGetResponseDefault) & {
+  headers: Headers;
+};
 
 export const getGoodsNotesControllerGetUrl = (id: string,) => {
 
@@ -6302,9 +13018,9 @@ export const getGoodsNotesControllerGetUrl = (id: string,) => {
   return `/api/v1/goods-notes/${id}`
 }
 
-export const goodsNotesControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerGetResponse> => {
+export const goodsNotesControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerGetResponseSuccess> => {
 
-  return apiFetch<goodsNotesControllerGetResponse>(getGoodsNotesControllerGetUrl(id),
+  return apiFetch<goodsNotesControllerGetResponseSuccess>(getGoodsNotesControllerGetUrl(id),
   {
     ...options,
     method: 'GET'
@@ -6316,16 +13032,21 @@ export const goodsNotesControllerGet = async (id: string, options?: Parameters<t
 
 
 export type goodsNotesControllerUpdateResponse200 = {
-  data: void
+  data: GoodsNoteDetailDto
   status: 200
+}
+
+export type goodsNotesControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type goodsNotesControllerUpdateResponseSuccess = (goodsNotesControllerUpdateResponse200) & {
   headers: Headers;
 };
-;
-
-export type goodsNotesControllerUpdateResponse = (goodsNotesControllerUpdateResponseSuccess)
+export type goodsNotesControllerUpdateResponseError = (goodsNotesControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getGoodsNotesControllerUpdateUrl = (id: string,) => {
 
@@ -6336,7 +13057,7 @@ export const getGoodsNotesControllerUpdateUrl = (id: string,) => {
 }
 
 export const goodsNotesControllerUpdate = async (id: string,
-    createGoodsNoteDto: CreateGoodsNoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerUpdateResponse> => {
+    createGoodsNoteDto: CreateGoodsNoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerUpdateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -6352,7 +13073,7 @@ export const goodsNotesControllerUpdate = async (id: string,
     }
     return headers;
   };
-return apiFetch<goodsNotesControllerUpdateResponse>(getGoodsNotesControllerUpdateUrl(id),
+return apiFetch<goodsNotesControllerUpdateResponseSuccess>(getGoodsNotesControllerUpdateUrl(id),
   {
     ...options,
     method: 'PUT',
@@ -6364,16 +13085,21 @@ return apiFetch<goodsNotesControllerUpdateResponse>(getGoodsNotesControllerUpdat
 
 
 export type goodsNotesControllerDeleteResponse200 = {
-  data: void
+  data: DeletedDto
   status: 200
+}
+
+export type goodsNotesControllerDeleteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type goodsNotesControllerDeleteResponseSuccess = (goodsNotesControllerDeleteResponse200) & {
   headers: Headers;
 };
-;
-
-export type goodsNotesControllerDeleteResponse = (goodsNotesControllerDeleteResponseSuccess)
+export type goodsNotesControllerDeleteResponseError = (goodsNotesControllerDeleteResponseDefault) & {
+  headers: Headers;
+};
 
 export const getGoodsNotesControllerDeleteUrl = (id: string,) => {
 
@@ -6383,9 +13109,9 @@ export const getGoodsNotesControllerDeleteUrl = (id: string,) => {
   return `/api/v1/goods-notes/${id}`
 }
 
-export const goodsNotesControllerDelete = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerDeleteResponse> => {
+export const goodsNotesControllerDelete = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerDeleteResponseSuccess> => {
 
-  return apiFetch<goodsNotesControllerDeleteResponse>(getGoodsNotesControllerDeleteUrl(id),
+  return apiFetch<goodsNotesControllerDeleteResponseSuccess>(getGoodsNotesControllerDeleteUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -6397,16 +13123,21 @@ export const goodsNotesControllerDelete = async (id: string, options?: Parameter
 
 
 export type goodsNotesControllerPostResponse201 = {
-  data: void
+  data: GoodsNoteDetailDto
   status: 201
+}
+
+export type goodsNotesControllerPostResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type goodsNotesControllerPostResponseSuccess = (goodsNotesControllerPostResponse201) & {
   headers: Headers;
 };
-;
-
-export type goodsNotesControllerPostResponse = (goodsNotesControllerPostResponseSuccess)
+export type goodsNotesControllerPostResponseError = (goodsNotesControllerPostResponseDefault) & {
+  headers: Headers;
+};
 
 export const getGoodsNotesControllerPostUrl = (id: string,) => {
 
@@ -6416,9 +13147,9 @@ export const getGoodsNotesControllerPostUrl = (id: string,) => {
   return `/api/v1/goods-notes/${id}/post`
 }
 
-export const goodsNotesControllerPost = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerPostResponse> => {
+export const goodsNotesControllerPost = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<goodsNotesControllerPostResponseSuccess> => {
 
-  return apiFetch<goodsNotesControllerPostResponse>(getGoodsNotesControllerPostUrl(id),
+  return apiFetch<goodsNotesControllerPostResponseSuccess>(getGoodsNotesControllerPostUrl(id),
   {
     ...options,
     method: 'POST'
@@ -6430,16 +13161,21 @@ export const goodsNotesControllerPost = async (id: string, options?: Parameters<
 
 
 export type treasuryControllerListCashBoxesResponse200 = {
-  data: void
+  data: CashBoxListItemDto[]
   status: 200
+}
+
+export type treasuryControllerListCashBoxesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerListCashBoxesResponseSuccess = (treasuryControllerListCashBoxesResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerListCashBoxesResponse = (treasuryControllerListCashBoxesResponseSuccess)
+export type treasuryControllerListCashBoxesResponseError = (treasuryControllerListCashBoxesResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerListCashBoxesUrl = () => {
 
@@ -6449,9 +13185,9 @@ export const getTreasuryControllerListCashBoxesUrl = () => {
   return `/api/v1/cash-boxes`
 }
 
-export const treasuryControllerListCashBoxes = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListCashBoxesResponse> => {
+export const treasuryControllerListCashBoxes = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListCashBoxesResponseSuccess> => {
 
-  return apiFetch<treasuryControllerListCashBoxesResponse>(getTreasuryControllerListCashBoxesUrl(),
+  return apiFetch<treasuryControllerListCashBoxesResponseSuccess>(getTreasuryControllerListCashBoxesUrl(),
   {
     ...options,
     method: 'GET'
@@ -6463,16 +13199,21 @@ export const treasuryControllerListCashBoxes = async ( options?: Parameters<type
 
 
 export type treasuryControllerCreateCashBoxResponse201 = {
-  data: void
+  data: CashBoxDto
   status: 201
+}
+
+export type treasuryControllerCreateCashBoxResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type treasuryControllerCreateCashBoxResponseSuccess = (treasuryControllerCreateCashBoxResponse201) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerCreateCashBoxResponse = (treasuryControllerCreateCashBoxResponseSuccess)
+export type treasuryControllerCreateCashBoxResponseError = (treasuryControllerCreateCashBoxResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerCreateCashBoxUrl = () => {
 
@@ -6482,7 +13223,7 @@ export const getTreasuryControllerCreateCashBoxUrl = () => {
   return `/api/v1/cash-boxes`
 }
 
-export const treasuryControllerCreateCashBox = async (createCashBoxDto: CreateCashBoxDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateCashBoxResponse> => {
+export const treasuryControllerCreateCashBox = async (createCashBoxDto: CreateCashBoxDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateCashBoxResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -6498,7 +13239,7 @@ export const treasuryControllerCreateCashBox = async (createCashBoxDto: CreateCa
     }
     return headers;
   };
-return apiFetch<treasuryControllerCreateCashBoxResponse>(getTreasuryControllerCreateCashBoxUrl(),
+return apiFetch<treasuryControllerCreateCashBoxResponseSuccess>(getTreasuryControllerCreateCashBoxUrl(),
   {
     ...options,
     method: 'POST',
@@ -6510,16 +13251,21 @@ return apiFetch<treasuryControllerCreateCashBoxResponse>(getTreasuryControllerCr
 
 
 export type treasuryControllerUpdateCashBoxResponse200 = {
-  data: void
+  data: CashBoxDto
   status: 200
+}
+
+export type treasuryControllerUpdateCashBoxResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerUpdateCashBoxResponseSuccess = (treasuryControllerUpdateCashBoxResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerUpdateCashBoxResponse = (treasuryControllerUpdateCashBoxResponseSuccess)
+export type treasuryControllerUpdateCashBoxResponseError = (treasuryControllerUpdateCashBoxResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerUpdateCashBoxUrl = (id: string,) => {
 
@@ -6529,9 +13275,9 @@ export const getTreasuryControllerUpdateCashBoxUrl = (id: string,) => {
   return `/api/v1/cash-boxes/${id}`
 }
 
-export const treasuryControllerUpdateCashBox = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerUpdateCashBoxResponse> => {
+export const treasuryControllerUpdateCashBox = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerUpdateCashBoxResponseSuccess> => {
 
-  return apiFetch<treasuryControllerUpdateCashBoxResponse>(getTreasuryControllerUpdateCashBoxUrl(id),
+  return apiFetch<treasuryControllerUpdateCashBoxResponseSuccess>(getTreasuryControllerUpdateCashBoxUrl(id),
   {
     ...options,
     method: 'PUT'
@@ -6543,16 +13289,21 @@ export const treasuryControllerUpdateCashBox = async (id: string, options?: Para
 
 
 export type treasuryControllerDeleteCashBoxResponse200 = {
-  data: void
+  data: TreasuryAccountDeactivatedDto | DeletedDto
   status: 200
+}
+
+export type treasuryControllerDeleteCashBoxResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerDeleteCashBoxResponseSuccess = (treasuryControllerDeleteCashBoxResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerDeleteCashBoxResponse = (treasuryControllerDeleteCashBoxResponseSuccess)
+export type treasuryControllerDeleteCashBoxResponseError = (treasuryControllerDeleteCashBoxResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerDeleteCashBoxUrl = (id: string,) => {
 
@@ -6562,9 +13313,9 @@ export const getTreasuryControllerDeleteCashBoxUrl = (id: string,) => {
   return `/api/v1/cash-boxes/${id}`
 }
 
-export const treasuryControllerDeleteCashBox = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerDeleteCashBoxResponse> => {
+export const treasuryControllerDeleteCashBox = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerDeleteCashBoxResponseSuccess> => {
 
-  return apiFetch<treasuryControllerDeleteCashBoxResponse>(getTreasuryControllerDeleteCashBoxUrl(id),
+  return apiFetch<treasuryControllerDeleteCashBoxResponseSuccess>(getTreasuryControllerDeleteCashBoxUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -6576,16 +13327,21 @@ export const treasuryControllerDeleteCashBox = async (id: string, options?: Para
 
 
 export type treasuryControllerListBankAccountsResponse200 = {
-  data: void
+  data: BankAccountListItemDto[]
   status: 200
+}
+
+export type treasuryControllerListBankAccountsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerListBankAccountsResponseSuccess = (treasuryControllerListBankAccountsResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerListBankAccountsResponse = (treasuryControllerListBankAccountsResponseSuccess)
+export type treasuryControllerListBankAccountsResponseError = (treasuryControllerListBankAccountsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerListBankAccountsUrl = () => {
 
@@ -6595,9 +13351,9 @@ export const getTreasuryControllerListBankAccountsUrl = () => {
   return `/api/v1/bank-accounts`
 }
 
-export const treasuryControllerListBankAccounts = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListBankAccountsResponse> => {
+export const treasuryControllerListBankAccounts = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListBankAccountsResponseSuccess> => {
 
-  return apiFetch<treasuryControllerListBankAccountsResponse>(getTreasuryControllerListBankAccountsUrl(),
+  return apiFetch<treasuryControllerListBankAccountsResponseSuccess>(getTreasuryControllerListBankAccountsUrl(),
   {
     ...options,
     method: 'GET'
@@ -6609,16 +13365,21 @@ export const treasuryControllerListBankAccounts = async ( options?: Parameters<t
 
 
 export type treasuryControllerCreateBankAccountResponse201 = {
-  data: void
+  data: BankAccountDto
   status: 201
+}
+
+export type treasuryControllerCreateBankAccountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type treasuryControllerCreateBankAccountResponseSuccess = (treasuryControllerCreateBankAccountResponse201) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerCreateBankAccountResponse = (treasuryControllerCreateBankAccountResponseSuccess)
+export type treasuryControllerCreateBankAccountResponseError = (treasuryControllerCreateBankAccountResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerCreateBankAccountUrl = () => {
 
@@ -6628,7 +13389,7 @@ export const getTreasuryControllerCreateBankAccountUrl = () => {
   return `/api/v1/bank-accounts`
 }
 
-export const treasuryControllerCreateBankAccount = async (createBankAccountDto: CreateBankAccountDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateBankAccountResponse> => {
+export const treasuryControllerCreateBankAccount = async (createBankAccountDto: CreateBankAccountDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateBankAccountResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -6644,7 +13405,7 @@ export const treasuryControllerCreateBankAccount = async (createBankAccountDto: 
     }
     return headers;
   };
-return apiFetch<treasuryControllerCreateBankAccountResponse>(getTreasuryControllerCreateBankAccountUrl(),
+return apiFetch<treasuryControllerCreateBankAccountResponseSuccess>(getTreasuryControllerCreateBankAccountUrl(),
   {
     ...options,
     method: 'POST',
@@ -6656,16 +13417,21 @@ return apiFetch<treasuryControllerCreateBankAccountResponse>(getTreasuryControll
 
 
 export type treasuryControllerUpdateBankAccountResponse200 = {
-  data: void
+  data: BankAccountDto
   status: 200
+}
+
+export type treasuryControllerUpdateBankAccountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerUpdateBankAccountResponseSuccess = (treasuryControllerUpdateBankAccountResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerUpdateBankAccountResponse = (treasuryControllerUpdateBankAccountResponseSuccess)
+export type treasuryControllerUpdateBankAccountResponseError = (treasuryControllerUpdateBankAccountResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerUpdateBankAccountUrl = (id: string,) => {
 
@@ -6675,9 +13441,9 @@ export const getTreasuryControllerUpdateBankAccountUrl = (id: string,) => {
   return `/api/v1/bank-accounts/${id}`
 }
 
-export const treasuryControllerUpdateBankAccount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerUpdateBankAccountResponse> => {
+export const treasuryControllerUpdateBankAccount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerUpdateBankAccountResponseSuccess> => {
 
-  return apiFetch<treasuryControllerUpdateBankAccountResponse>(getTreasuryControllerUpdateBankAccountUrl(id),
+  return apiFetch<treasuryControllerUpdateBankAccountResponseSuccess>(getTreasuryControllerUpdateBankAccountUrl(id),
   {
     ...options,
     method: 'PUT'
@@ -6689,16 +13455,21 @@ export const treasuryControllerUpdateBankAccount = async (id: string, options?: 
 
 
 export type treasuryControllerDeleteBankAccountResponse200 = {
-  data: void
+  data: TreasuryAccountDeactivatedDto | DeletedDto
   status: 200
+}
+
+export type treasuryControllerDeleteBankAccountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerDeleteBankAccountResponseSuccess = (treasuryControllerDeleteBankAccountResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerDeleteBankAccountResponse = (treasuryControllerDeleteBankAccountResponseSuccess)
+export type treasuryControllerDeleteBankAccountResponseError = (treasuryControllerDeleteBankAccountResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerDeleteBankAccountUrl = (id: string,) => {
 
@@ -6708,9 +13479,9 @@ export const getTreasuryControllerDeleteBankAccountUrl = (id: string,) => {
   return `/api/v1/bank-accounts/${id}`
 }
 
-export const treasuryControllerDeleteBankAccount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerDeleteBankAccountResponse> => {
+export const treasuryControllerDeleteBankAccount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerDeleteBankAccountResponseSuccess> => {
 
-  return apiFetch<treasuryControllerDeleteBankAccountResponse>(getTreasuryControllerDeleteBankAccountUrl(id),
+  return apiFetch<treasuryControllerDeleteBankAccountResponseSuccess>(getTreasuryControllerDeleteBankAccountUrl(id),
   {
     ...options,
     method: 'DELETE'
@@ -6722,16 +13493,21 @@ export const treasuryControllerDeleteBankAccount = async (id: string, options?: 
 
 
 export type treasuryControllerListReceiptsResponse200 = {
-  data: void
+  data: ReceiptListItemDtoPage
   status: 200
+}
+
+export type treasuryControllerListReceiptsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerListReceiptsResponseSuccess = (treasuryControllerListReceiptsResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerListReceiptsResponse = (treasuryControllerListReceiptsResponseSuccess)
+export type treasuryControllerListReceiptsResponseError = (treasuryControllerListReceiptsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerListReceiptsUrl = (params?: TreasuryControllerListReceiptsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -6748,9 +13524,9 @@ export const getTreasuryControllerListReceiptsUrl = (params?: TreasuryController
   return stringifiedParams.length > 0 ? `/api/v1/receipts?${stringifiedParams}` : `/api/v1/receipts`
 }
 
-export const treasuryControllerListReceipts = async (params?: TreasuryControllerListReceiptsParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListReceiptsResponse> => {
+export const treasuryControllerListReceipts = async (params?: TreasuryControllerListReceiptsParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListReceiptsResponseSuccess> => {
 
-  return apiFetch<treasuryControllerListReceiptsResponse>(getTreasuryControllerListReceiptsUrl(params),
+  return apiFetch<treasuryControllerListReceiptsResponseSuccess>(getTreasuryControllerListReceiptsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6762,16 +13538,21 @@ export const treasuryControllerListReceipts = async (params?: TreasuryController
 
 
 export type treasuryControllerCreateReceiptResponse201 = {
-  data: void
+  data: ReceiptDetailDto
   status: 201
+}
+
+export type treasuryControllerCreateReceiptResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type treasuryControllerCreateReceiptResponseSuccess = (treasuryControllerCreateReceiptResponse201) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerCreateReceiptResponse = (treasuryControllerCreateReceiptResponseSuccess)
+export type treasuryControllerCreateReceiptResponseError = (treasuryControllerCreateReceiptResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerCreateReceiptUrl = () => {
 
@@ -6781,7 +13562,7 @@ export const getTreasuryControllerCreateReceiptUrl = () => {
   return `/api/v1/receipts`
 }
 
-export const treasuryControllerCreateReceipt = async (createReceiptDto: CreateReceiptDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateReceiptResponse> => {
+export const treasuryControllerCreateReceipt = async (createReceiptDto: CreateReceiptDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateReceiptResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -6797,7 +13578,7 @@ export const treasuryControllerCreateReceipt = async (createReceiptDto: CreateRe
     }
     return headers;
   };
-return apiFetch<treasuryControllerCreateReceiptResponse>(getTreasuryControllerCreateReceiptUrl(),
+return apiFetch<treasuryControllerCreateReceiptResponseSuccess>(getTreasuryControllerCreateReceiptUrl(),
   {
     ...options,
     method: 'POST',
@@ -6809,16 +13590,21 @@ return apiFetch<treasuryControllerCreateReceiptResponse>(getTreasuryControllerCr
 
 
 export type treasuryControllerGetReceiptResponse200 = {
-  data: void
+  data: ReceiptDetailDto
   status: 200
+}
+
+export type treasuryControllerGetReceiptResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerGetReceiptResponseSuccess = (treasuryControllerGetReceiptResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerGetReceiptResponse = (treasuryControllerGetReceiptResponseSuccess)
+export type treasuryControllerGetReceiptResponseError = (treasuryControllerGetReceiptResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerGetReceiptUrl = (id: string,) => {
 
@@ -6828,9 +13614,9 @@ export const getTreasuryControllerGetReceiptUrl = (id: string,) => {
   return `/api/v1/receipts/${id}`
 }
 
-export const treasuryControllerGetReceipt = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerGetReceiptResponse> => {
+export const treasuryControllerGetReceipt = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerGetReceiptResponseSuccess> => {
 
-  return apiFetch<treasuryControllerGetReceiptResponse>(getTreasuryControllerGetReceiptUrl(id),
+  return apiFetch<treasuryControllerGetReceiptResponseSuccess>(getTreasuryControllerGetReceiptUrl(id),
   {
     ...options,
     method: 'GET'
@@ -6841,29 +13627,38 @@ export const treasuryControllerGetReceipt = async (id: string, options?: Paramet
 
 
 
-export type treasuryControllerReceiptPdfResponse200 = {
-  data: void
-  status: 200
+export type treasuryControllerReceiptPdfResponseDefault = {
+  data: ErrorResponseDto
+  status: number
 }
 
-export type treasuryControllerReceiptPdfResponseSuccess = (treasuryControllerReceiptPdfResponse200) & {
+;
+export type treasuryControllerReceiptPdfResponseError = (treasuryControllerReceiptPdfResponseDefault) & {
   headers: Headers;
 };
-;
 
-export type treasuryControllerReceiptPdfResponse = (treasuryControllerReceiptPdfResponseSuccess)
+export type treasuryControllerReceiptPdfResponse = (treasuryControllerReceiptPdfResponseError)
 
-export const getTreasuryControllerReceiptPdfUrl = (id: string,) => {
+export const getTreasuryControllerReceiptPdfUrl = (id: string,
+    params?: TreasuryControllerReceiptPdfParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/receipts/${id}/pdf`
+  return stringifiedParams.length > 0 ? `/api/v1/receipts/${id}/pdf?${stringifiedParams}` : `/api/v1/receipts/${id}/pdf`
 }
 
-export const treasuryControllerReceiptPdf = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReceiptPdfResponse> => {
+export const treasuryControllerReceiptPdf = async (id: string,
+    params?: TreasuryControllerReceiptPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReceiptPdfResponse> => {
 
-  return apiFetch<treasuryControllerReceiptPdfResponse>(getTreasuryControllerReceiptPdfUrl(id),
+  return apiFetch<treasuryControllerReceiptPdfResponse>(getTreasuryControllerReceiptPdfUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -6875,16 +13670,21 @@ export const treasuryControllerReceiptPdf = async (id: string, options?: Paramet
 
 
 export type treasuryControllerListPaymentsResponse200 = {
-  data: void
+  data: PaymentListItemDtoPage
   status: 200
+}
+
+export type treasuryControllerListPaymentsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerListPaymentsResponseSuccess = (treasuryControllerListPaymentsResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerListPaymentsResponse = (treasuryControllerListPaymentsResponseSuccess)
+export type treasuryControllerListPaymentsResponseError = (treasuryControllerListPaymentsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerListPaymentsUrl = (params?: TreasuryControllerListPaymentsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -6901,9 +13701,9 @@ export const getTreasuryControllerListPaymentsUrl = (params?: TreasuryController
   return stringifiedParams.length > 0 ? `/api/v1/payments?${stringifiedParams}` : `/api/v1/payments`
 }
 
-export const treasuryControllerListPayments = async (params?: TreasuryControllerListPaymentsParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListPaymentsResponse> => {
+export const treasuryControllerListPayments = async (params?: TreasuryControllerListPaymentsParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListPaymentsResponseSuccess> => {
 
-  return apiFetch<treasuryControllerListPaymentsResponse>(getTreasuryControllerListPaymentsUrl(params),
+  return apiFetch<treasuryControllerListPaymentsResponseSuccess>(getTreasuryControllerListPaymentsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -6915,16 +13715,21 @@ export const treasuryControllerListPayments = async (params?: TreasuryController
 
 
 export type treasuryControllerCreatePaymentResponse201 = {
-  data: void
+  data: PaymentDetailDto
   status: 201
+}
+
+export type treasuryControllerCreatePaymentResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type treasuryControllerCreatePaymentResponseSuccess = (treasuryControllerCreatePaymentResponse201) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerCreatePaymentResponse = (treasuryControllerCreatePaymentResponseSuccess)
+export type treasuryControllerCreatePaymentResponseError = (treasuryControllerCreatePaymentResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerCreatePaymentUrl = () => {
 
@@ -6934,7 +13739,7 @@ export const getTreasuryControllerCreatePaymentUrl = () => {
   return `/api/v1/payments`
 }
 
-export const treasuryControllerCreatePayment = async (createPaymentDto: CreatePaymentDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreatePaymentResponse> => {
+export const treasuryControllerCreatePayment = async (createPaymentDto: CreatePaymentDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreatePaymentResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -6950,7 +13755,7 @@ export const treasuryControllerCreatePayment = async (createPaymentDto: CreatePa
     }
     return headers;
   };
-return apiFetch<treasuryControllerCreatePaymentResponse>(getTreasuryControllerCreatePaymentUrl(),
+return apiFetch<treasuryControllerCreatePaymentResponseSuccess>(getTreasuryControllerCreatePaymentUrl(),
   {
     ...options,
     method: 'POST',
@@ -6962,16 +13767,21 @@ return apiFetch<treasuryControllerCreatePaymentResponse>(getTreasuryControllerCr
 
 
 export type treasuryControllerGetPaymentResponse200 = {
-  data: void
+  data: PaymentDetailDto
   status: 200
+}
+
+export type treasuryControllerGetPaymentResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerGetPaymentResponseSuccess = (treasuryControllerGetPaymentResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerGetPaymentResponse = (treasuryControllerGetPaymentResponseSuccess)
+export type treasuryControllerGetPaymentResponseError = (treasuryControllerGetPaymentResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerGetPaymentUrl = (id: string,) => {
 
@@ -6981,9 +13791,9 @@ export const getTreasuryControllerGetPaymentUrl = (id: string,) => {
   return `/api/v1/payments/${id}`
 }
 
-export const treasuryControllerGetPayment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerGetPaymentResponse> => {
+export const treasuryControllerGetPayment = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerGetPaymentResponseSuccess> => {
 
-  return apiFetch<treasuryControllerGetPaymentResponse>(getTreasuryControllerGetPaymentUrl(id),
+  return apiFetch<treasuryControllerGetPaymentResponseSuccess>(getTreasuryControllerGetPaymentUrl(id),
   {
     ...options,
     method: 'GET'
@@ -6994,29 +13804,38 @@ export const treasuryControllerGetPayment = async (id: string, options?: Paramet
 
 
 
-export type treasuryControllerPaymentPdfResponse200 = {
-  data: void
-  status: 200
+export type treasuryControllerPaymentPdfResponseDefault = {
+  data: ErrorResponseDto
+  status: number
 }
 
-export type treasuryControllerPaymentPdfResponseSuccess = (treasuryControllerPaymentPdfResponse200) & {
+;
+export type treasuryControllerPaymentPdfResponseError = (treasuryControllerPaymentPdfResponseDefault) & {
   headers: Headers;
 };
-;
 
-export type treasuryControllerPaymentPdfResponse = (treasuryControllerPaymentPdfResponseSuccess)
+export type treasuryControllerPaymentPdfResponse = (treasuryControllerPaymentPdfResponseError)
 
-export const getTreasuryControllerPaymentPdfUrl = (id: string,) => {
+export const getTreasuryControllerPaymentPdfUrl = (id: string,
+    params?: TreasuryControllerPaymentPdfParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/payments/${id}/pdf`
+  return stringifiedParams.length > 0 ? `/api/v1/payments/${id}/pdf?${stringifiedParams}` : `/api/v1/payments/${id}/pdf`
 }
 
-export const treasuryControllerPaymentPdf = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerPaymentPdfResponse> => {
+export const treasuryControllerPaymentPdf = async (id: string,
+    params?: TreasuryControllerPaymentPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerPaymentPdfResponse> => {
 
-  return apiFetch<treasuryControllerPaymentPdfResponse>(getTreasuryControllerPaymentPdfUrl(id),
+  return apiFetch<treasuryControllerPaymentPdfResponse>(getTreasuryControllerPaymentPdfUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -7028,16 +13847,21 @@ export const treasuryControllerPaymentPdf = async (id: string, options?: Paramet
 
 
 export type treasuryControllerReverseReceiptResponse201 = {
-  data: void
+  data: ReceiptDetailDto
   status: 201
+}
+
+export type treasuryControllerReverseReceiptResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type treasuryControllerReverseReceiptResponseSuccess = (treasuryControllerReverseReceiptResponse201) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerReverseReceiptResponse = (treasuryControllerReverseReceiptResponseSuccess)
+export type treasuryControllerReverseReceiptResponseError = (treasuryControllerReverseReceiptResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerReverseReceiptUrl = (id: string,) => {
 
@@ -7048,7 +13872,7 @@ export const getTreasuryControllerReverseReceiptUrl = (id: string,) => {
 }
 
 export const treasuryControllerReverseReceipt = async (id: string,
-    reverseVoucherDto: ReverseVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReverseReceiptResponse> => {
+    reverseVoucherDto: ReverseVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReverseReceiptResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -7064,7 +13888,7 @@ export const treasuryControllerReverseReceipt = async (id: string,
     }
     return headers;
   };
-return apiFetch<treasuryControllerReverseReceiptResponse>(getTreasuryControllerReverseReceiptUrl(id),
+return apiFetch<treasuryControllerReverseReceiptResponseSuccess>(getTreasuryControllerReverseReceiptUrl(id),
   {
     ...options,
     method: 'POST',
@@ -7076,16 +13900,21 @@ return apiFetch<treasuryControllerReverseReceiptResponse>(getTreasuryControllerR
 
 
 export type treasuryControllerReversePaymentResponse201 = {
-  data: void
+  data: PaymentDetailDto
   status: 201
+}
+
+export type treasuryControllerReversePaymentResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type treasuryControllerReversePaymentResponseSuccess = (treasuryControllerReversePaymentResponse201) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerReversePaymentResponse = (treasuryControllerReversePaymentResponseSuccess)
+export type treasuryControllerReversePaymentResponseError = (treasuryControllerReversePaymentResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerReversePaymentUrl = (id: string,) => {
 
@@ -7096,7 +13925,7 @@ export const getTreasuryControllerReversePaymentUrl = (id: string,) => {
 }
 
 export const treasuryControllerReversePayment = async (id: string,
-    reverseVoucherDto: ReverseVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReversePaymentResponse> => {
+    reverseVoucherDto: ReverseVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReversePaymentResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -7112,7 +13941,7 @@ export const treasuryControllerReversePayment = async (id: string,
     }
     return headers;
   };
-return apiFetch<treasuryControllerReversePaymentResponse>(getTreasuryControllerReversePaymentUrl(id),
+return apiFetch<treasuryControllerReversePaymentResponseSuccess>(getTreasuryControllerReversePaymentUrl(id),
   {
     ...options,
     method: 'POST',
@@ -7124,16 +13953,21 @@ return apiFetch<treasuryControllerReversePaymentResponse>(getTreasuryControllerR
 
 
 export type treasuryControllerAllocateReceiptResponse201 = {
-  data: void
+  data: ReceiptDetailDto
   status: 201
+}
+
+export type treasuryControllerAllocateReceiptResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type treasuryControllerAllocateReceiptResponseSuccess = (treasuryControllerAllocateReceiptResponse201) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerAllocateReceiptResponse = (treasuryControllerAllocateReceiptResponseSuccess)
+export type treasuryControllerAllocateReceiptResponseError = (treasuryControllerAllocateReceiptResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerAllocateReceiptUrl = (id: string,) => {
 
@@ -7144,7 +13978,7 @@ export const getTreasuryControllerAllocateReceiptUrl = (id: string,) => {
 }
 
 export const treasuryControllerAllocateReceipt = async (id: string,
-    allocateVoucherDto: AllocateVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerAllocateReceiptResponse> => {
+    allocateVoucherDto: AllocateVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerAllocateReceiptResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -7160,7 +13994,7 @@ export const treasuryControllerAllocateReceipt = async (id: string,
     }
     return headers;
   };
-return apiFetch<treasuryControllerAllocateReceiptResponse>(getTreasuryControllerAllocateReceiptUrl(id),
+return apiFetch<treasuryControllerAllocateReceiptResponseSuccess>(getTreasuryControllerAllocateReceiptUrl(id),
   {
     ...options,
     method: 'POST',
@@ -7172,16 +14006,21 @@ return apiFetch<treasuryControllerAllocateReceiptResponse>(getTreasuryController
 
 
 export type treasuryControllerAllocatePaymentResponse201 = {
-  data: void
+  data: PaymentDetailDto
   status: 201
+}
+
+export type treasuryControllerAllocatePaymentResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type treasuryControllerAllocatePaymentResponseSuccess = (treasuryControllerAllocatePaymentResponse201) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerAllocatePaymentResponse = (treasuryControllerAllocatePaymentResponseSuccess)
+export type treasuryControllerAllocatePaymentResponseError = (treasuryControllerAllocatePaymentResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerAllocatePaymentUrl = (id: string,) => {
 
@@ -7192,7 +14031,7 @@ export const getTreasuryControllerAllocatePaymentUrl = (id: string,) => {
 }
 
 export const treasuryControllerAllocatePayment = async (id: string,
-    allocateVoucherDto: AllocateVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerAllocatePaymentResponse> => {
+    allocateVoucherDto: AllocateVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerAllocatePaymentResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -7208,7 +14047,7 @@ export const treasuryControllerAllocatePayment = async (id: string,
     }
     return headers;
   };
-return apiFetch<treasuryControllerAllocatePaymentResponse>(getTreasuryControllerAllocatePaymentUrl(id),
+return apiFetch<treasuryControllerAllocatePaymentResponseSuccess>(getTreasuryControllerAllocatePaymentUrl(id),
   {
     ...options,
     method: 'POST',
@@ -7220,16 +14059,21 @@ return apiFetch<treasuryControllerAllocatePaymentResponse>(getTreasuryController
 
 
 export type treasuryControllerCancelAllocationResponse201 = {
-  data: void
+  data: ReceiptDetailDto | PaymentDetailDto
   status: 201
+}
+
+export type treasuryControllerCancelAllocationResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type treasuryControllerCancelAllocationResponseSuccess = (treasuryControllerCancelAllocationResponse201) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerCancelAllocationResponse = (treasuryControllerCancelAllocationResponseSuccess)
+export type treasuryControllerCancelAllocationResponseError = (treasuryControllerCancelAllocationResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerCancelAllocationUrl = (id: string,) => {
 
@@ -7239,9 +14083,9 @@ export const getTreasuryControllerCancelAllocationUrl = (id: string,) => {
   return `/api/v1/allocations/${id}/cancel`
 }
 
-export const treasuryControllerCancelAllocation = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCancelAllocationResponse> => {
+export const treasuryControllerCancelAllocation = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCancelAllocationResponseSuccess> => {
 
-  return apiFetch<treasuryControllerCancelAllocationResponse>(getTreasuryControllerCancelAllocationUrl(id),
+  return apiFetch<treasuryControllerCancelAllocationResponseSuccess>(getTreasuryControllerCancelAllocationUrl(id),
   {
     ...options,
     method: 'POST'
@@ -7253,16 +14097,21 @@ export const treasuryControllerCancelAllocation = async (id: string, options?: P
 
 
 export type treasuryControllerListCashTransfersResponse200 = {
-  data: void
+  data: CashTransferListItemDtoPage
   status: 200
+}
+
+export type treasuryControllerListCashTransfersResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerListCashTransfersResponseSuccess = (treasuryControllerListCashTransfersResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerListCashTransfersResponse = (treasuryControllerListCashTransfersResponseSuccess)
+export type treasuryControllerListCashTransfersResponseError = (treasuryControllerListCashTransfersResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerListCashTransfersUrl = (params?: TreasuryControllerListCashTransfersParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -7279,9 +14128,9 @@ export const getTreasuryControllerListCashTransfersUrl = (params?: TreasuryContr
   return stringifiedParams.length > 0 ? `/api/v1/cash-transfers?${stringifiedParams}` : `/api/v1/cash-transfers`
 }
 
-export const treasuryControllerListCashTransfers = async (params?: TreasuryControllerListCashTransfersParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListCashTransfersResponse> => {
+export const treasuryControllerListCashTransfers = async (params?: TreasuryControllerListCashTransfersParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerListCashTransfersResponseSuccess> => {
 
-  return apiFetch<treasuryControllerListCashTransfersResponse>(getTreasuryControllerListCashTransfersUrl(params),
+  return apiFetch<treasuryControllerListCashTransfersResponseSuccess>(getTreasuryControllerListCashTransfersUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7293,16 +14142,21 @@ export const treasuryControllerListCashTransfers = async (params?: TreasuryContr
 
 
 export type treasuryControllerCreateCashTransferResponse201 = {
-  data: void
+  data: CashTransferDetailDto
   status: 201
+}
+
+export type treasuryControllerCreateCashTransferResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type treasuryControllerCreateCashTransferResponseSuccess = (treasuryControllerCreateCashTransferResponse201) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerCreateCashTransferResponse = (treasuryControllerCreateCashTransferResponseSuccess)
+export type treasuryControllerCreateCashTransferResponseError = (treasuryControllerCreateCashTransferResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerCreateCashTransferUrl = () => {
 
@@ -7312,7 +14166,7 @@ export const getTreasuryControllerCreateCashTransferUrl = () => {
   return `/api/v1/cash-transfers`
 }
 
-export const treasuryControllerCreateCashTransfer = async (createCashTransferDto: CreateCashTransferDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateCashTransferResponse> => {
+export const treasuryControllerCreateCashTransfer = async (createCashTransferDto: CreateCashTransferDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCreateCashTransferResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -7328,7 +14182,7 @@ export const treasuryControllerCreateCashTransfer = async (createCashTransferDto
     }
     return headers;
   };
-return apiFetch<treasuryControllerCreateCashTransferResponse>(getTreasuryControllerCreateCashTransferUrl(),
+return apiFetch<treasuryControllerCreateCashTransferResponseSuccess>(getTreasuryControllerCreateCashTransferUrl(),
   {
     ...options,
     method: 'POST',
@@ -7340,16 +14194,21 @@ return apiFetch<treasuryControllerCreateCashTransferResponse>(getTreasuryControl
 
 
 export type treasuryControllerGetCashTransferResponse200 = {
-  data: void
+  data: CashTransferDetailDto
   status: 200
+}
+
+export type treasuryControllerGetCashTransferResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerGetCashTransferResponseSuccess = (treasuryControllerGetCashTransferResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerGetCashTransferResponse = (treasuryControllerGetCashTransferResponseSuccess)
+export type treasuryControllerGetCashTransferResponseError = (treasuryControllerGetCashTransferResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerGetCashTransferUrl = (id: string,) => {
 
@@ -7359,9 +14218,9 @@ export const getTreasuryControllerGetCashTransferUrl = (id: string,) => {
   return `/api/v1/cash-transfers/${id}`
 }
 
-export const treasuryControllerGetCashTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerGetCashTransferResponse> => {
+export const treasuryControllerGetCashTransfer = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerGetCashTransferResponseSuccess> => {
 
-  return apiFetch<treasuryControllerGetCashTransferResponse>(getTreasuryControllerGetCashTransferUrl(id),
+  return apiFetch<treasuryControllerGetCashTransferResponseSuccess>(getTreasuryControllerGetCashTransferUrl(id),
   {
     ...options,
     method: 'GET'
@@ -7373,16 +14232,21 @@ export const treasuryControllerGetCashTransfer = async (id: string, options?: Pa
 
 
 export type treasuryControllerReverseCashTransferResponse201 = {
-  data: void
+  data: CashTransferDetailDto
   status: 201
+}
+
+export type treasuryControllerReverseCashTransferResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type treasuryControllerReverseCashTransferResponseSuccess = (treasuryControllerReverseCashTransferResponse201) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerReverseCashTransferResponse = (treasuryControllerReverseCashTransferResponseSuccess)
+export type treasuryControllerReverseCashTransferResponseError = (treasuryControllerReverseCashTransferResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerReverseCashTransferUrl = (id: string,) => {
 
@@ -7393,7 +14257,7 @@ export const getTreasuryControllerReverseCashTransferUrl = (id: string,) => {
 }
 
 export const treasuryControllerReverseCashTransfer = async (id: string,
-    reverseVoucherDto: ReverseVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReverseCashTransferResponse> => {
+    reverseVoucherDto: ReverseVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerReverseCashTransferResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -7409,7 +14273,7 @@ export const treasuryControllerReverseCashTransfer = async (id: string,
     }
     return headers;
   };
-return apiFetch<treasuryControllerReverseCashTransferResponse>(getTreasuryControllerReverseCashTransferUrl(id),
+return apiFetch<treasuryControllerReverseCashTransferResponseSuccess>(getTreasuryControllerReverseCashTransferUrl(id),
   {
     ...options,
     method: 'POST',
@@ -7421,28 +14285,40 @@ return apiFetch<treasuryControllerReverseCashTransferResponse>(getTreasuryContro
 
 
 export type treasuryControllerAgingResponse200 = {
-  data: void
+  data: AgingReportDto
   status: 200
+}
+
+export type treasuryControllerAgingResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerAgingResponseSuccess = (treasuryControllerAgingResponse200) & {
   headers: Headers;
 };
-;
+export type treasuryControllerAgingResponseError = (treasuryControllerAgingResponseDefault) & {
+  headers: Headers;
+};
 
-export type treasuryControllerAgingResponse = (treasuryControllerAgingResponseSuccess)
+export const getTreasuryControllerAgingUrl = (params: TreasuryControllerAgingParams,) => {
+  const normalizedParams = new URLSearchParams();
 
-export const getTreasuryControllerAgingUrl = () => {
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-
-  return `/api/v1/reports/aging`
+  return stringifiedParams.length > 0 ? `/api/v1/reports/aging?${stringifiedParams}` : `/api/v1/reports/aging`
 }
 
-export const treasuryControllerAging = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerAgingResponse> => {
+export const treasuryControllerAging = async (params: TreasuryControllerAgingParams, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerAgingResponseSuccess> => {
 
-  return apiFetch<treasuryControllerAgingResponse>(getTreasuryControllerAgingUrl(),
+  return apiFetch<treasuryControllerAgingResponseSuccess>(getTreasuryControllerAgingUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7454,16 +14330,21 @@ export const treasuryControllerAging = async ( options?: Parameters<typeof apiFe
 
 
 export type treasuryControllerCashBalancesResponse200 = {
-  data: void
+  data: CashBalancesDto
   status: 200
+}
+
+export type treasuryControllerCashBalancesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type treasuryControllerCashBalancesResponseSuccess = (treasuryControllerCashBalancesResponse200) & {
   headers: Headers;
 };
-;
-
-export type treasuryControllerCashBalancesResponse = (treasuryControllerCashBalancesResponseSuccess)
+export type treasuryControllerCashBalancesResponseError = (treasuryControllerCashBalancesResponseDefault) & {
+  headers: Headers;
+};
 
 export const getTreasuryControllerCashBalancesUrl = () => {
 
@@ -7473,9 +14354,9 @@ export const getTreasuryControllerCashBalancesUrl = () => {
   return `/api/v1/treasury/balances`
 }
 
-export const treasuryControllerCashBalances = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCashBalancesResponse> => {
+export const treasuryControllerCashBalances = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCashBalancesResponseSuccess> => {
 
-  return apiFetch<treasuryControllerCashBalancesResponse>(getTreasuryControllerCashBalancesUrl(),
+  return apiFetch<treasuryControllerCashBalancesResponseSuccess>(getTreasuryControllerCashBalancesUrl(),
   {
     ...options,
     method: 'GET'
@@ -7487,16 +14368,21 @@ export const treasuryControllerCashBalances = async ( options?: Parameters<typeo
 
 
 export type eInvoiceControllerGetSettingsResponse200 = {
-  data: void
+  data: EInvoiceSettingsViewDto
   status: 200
+}
+
+export type eInvoiceControllerGetSettingsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type eInvoiceControllerGetSettingsResponseSuccess = (eInvoiceControllerGetSettingsResponse200) & {
   headers: Headers;
 };
-;
-
-export type eInvoiceControllerGetSettingsResponse = (eInvoiceControllerGetSettingsResponseSuccess)
+export type eInvoiceControllerGetSettingsResponseError = (eInvoiceControllerGetSettingsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getEInvoiceControllerGetSettingsUrl = () => {
 
@@ -7506,9 +14392,9 @@ export const getEInvoiceControllerGetSettingsUrl = () => {
   return `/api/v1/einvoice/settings`
 }
 
-export const eInvoiceControllerGetSettings = async ( options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerGetSettingsResponse> => {
+export const eInvoiceControllerGetSettings = async ( options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerGetSettingsResponseSuccess> => {
 
-  return apiFetch<eInvoiceControllerGetSettingsResponse>(getEInvoiceControllerGetSettingsUrl(),
+  return apiFetch<eInvoiceControllerGetSettingsResponseSuccess>(getEInvoiceControllerGetSettingsUrl(),
   {
     ...options,
     method: 'GET'
@@ -7520,16 +14406,21 @@ export const eInvoiceControllerGetSettings = async ( options?: Parameters<typeof
 
 
 export type eInvoiceControllerUpdateSettingsResponse200 = {
-  data: void
+  data: EInvoiceSettingsViewDto
   status: 200
+}
+
+export type eInvoiceControllerUpdateSettingsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type eInvoiceControllerUpdateSettingsResponseSuccess = (eInvoiceControllerUpdateSettingsResponse200) & {
   headers: Headers;
 };
-;
-
-export type eInvoiceControllerUpdateSettingsResponse = (eInvoiceControllerUpdateSettingsResponseSuccess)
+export type eInvoiceControllerUpdateSettingsResponseError = (eInvoiceControllerUpdateSettingsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getEInvoiceControllerUpdateSettingsUrl = () => {
 
@@ -7539,7 +14430,7 @@ export const getEInvoiceControllerUpdateSettingsUrl = () => {
   return `/api/v1/einvoice/settings`
 }
 
-export const eInvoiceControllerUpdateSettings = async (updateEInvoiceSettingsDto: UpdateEInvoiceSettingsDto, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerUpdateSettingsResponse> => {
+export const eInvoiceControllerUpdateSettings = async (updateEInvoiceSettingsDto: UpdateEInvoiceSettingsDto, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerUpdateSettingsResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -7555,7 +14446,7 @@ export const eInvoiceControllerUpdateSettings = async (updateEInvoiceSettingsDto
     }
     return headers;
   };
-return apiFetch<eInvoiceControllerUpdateSettingsResponse>(getEInvoiceControllerUpdateSettingsUrl(),
+return apiFetch<eInvoiceControllerUpdateSettingsResponseSuccess>(getEInvoiceControllerUpdateSettingsUrl(),
   {
     ...options,
     method: 'PUT',
@@ -7567,16 +14458,21 @@ return apiFetch<eInvoiceControllerUpdateSettingsResponse>(getEInvoiceControllerU
 
 
 export type eInvoiceControllerListSubmissionsResponse200 = {
-  data: void
+  data: EInvoiceSubmissionPageDto
   status: 200
+}
+
+export type eInvoiceControllerListSubmissionsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type eInvoiceControllerListSubmissionsResponseSuccess = (eInvoiceControllerListSubmissionsResponse200) & {
   headers: Headers;
 };
-;
-
-export type eInvoiceControllerListSubmissionsResponse = (eInvoiceControllerListSubmissionsResponseSuccess)
+export type eInvoiceControllerListSubmissionsResponseError = (eInvoiceControllerListSubmissionsResponseDefault) & {
+  headers: Headers;
+};
 
 export const getEInvoiceControllerListSubmissionsUrl = (params?: EInvoiceControllerListSubmissionsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -7593,9 +14489,9 @@ export const getEInvoiceControllerListSubmissionsUrl = (params?: EInvoiceControl
   return stringifiedParams.length > 0 ? `/api/v1/einvoice/submissions?${stringifiedParams}` : `/api/v1/einvoice/submissions`
 }
 
-export const eInvoiceControllerListSubmissions = async (params?: EInvoiceControllerListSubmissionsParams, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerListSubmissionsResponse> => {
+export const eInvoiceControllerListSubmissions = async (params?: EInvoiceControllerListSubmissionsParams, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerListSubmissionsResponseSuccess> => {
 
-  return apiFetch<eInvoiceControllerListSubmissionsResponse>(getEInvoiceControllerListSubmissionsUrl(params),
+  return apiFetch<eInvoiceControllerListSubmissionsResponseSuccess>(getEInvoiceControllerListSubmissionsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7607,16 +14503,21 @@ export const eInvoiceControllerListSubmissions = async (params?: EInvoiceControl
 
 
 export type eInvoiceControllerGetSubmissionResponse200 = {
-  data: void
+  data: EInvoiceSubmissionDetailDto
   status: 200
+}
+
+export type eInvoiceControllerGetSubmissionResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type eInvoiceControllerGetSubmissionResponseSuccess = (eInvoiceControllerGetSubmissionResponse200) & {
   headers: Headers;
 };
-;
-
-export type eInvoiceControllerGetSubmissionResponse = (eInvoiceControllerGetSubmissionResponseSuccess)
+export type eInvoiceControllerGetSubmissionResponseError = (eInvoiceControllerGetSubmissionResponseDefault) & {
+  headers: Headers;
+};
 
 export const getEInvoiceControllerGetSubmissionUrl = (id: string,) => {
 
@@ -7626,9 +14527,9 @@ export const getEInvoiceControllerGetSubmissionUrl = (id: string,) => {
   return `/api/v1/einvoice/submissions/${id}`
 }
 
-export const eInvoiceControllerGetSubmission = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerGetSubmissionResponse> => {
+export const eInvoiceControllerGetSubmission = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerGetSubmissionResponseSuccess> => {
 
-  return apiFetch<eInvoiceControllerGetSubmissionResponse>(getEInvoiceControllerGetSubmissionUrl(id),
+  return apiFetch<eInvoiceControllerGetSubmissionResponseSuccess>(getEInvoiceControllerGetSubmissionUrl(id),
   {
     ...options,
     method: 'GET'
@@ -7640,16 +14541,21 @@ export const eInvoiceControllerGetSubmission = async (id: string, options?: Para
 
 
 export type eInvoiceControllerResendResponse201 = {
-  data: void
+  data: EInvoiceSubmissionDetailDto
   status: 201
+}
+
+export type eInvoiceControllerResendResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type eInvoiceControllerResendResponseSuccess = (eInvoiceControllerResendResponse201) & {
   headers: Headers;
 };
-;
-
-export type eInvoiceControllerResendResponse = (eInvoiceControllerResendResponseSuccess)
+export type eInvoiceControllerResendResponseError = (eInvoiceControllerResendResponseDefault) & {
+  headers: Headers;
+};
 
 export const getEInvoiceControllerResendUrl = (id: string,) => {
 
@@ -7659,9 +14565,9 @@ export const getEInvoiceControllerResendUrl = (id: string,) => {
   return `/api/v1/einvoice/submissions/${id}/resend`
 }
 
-export const eInvoiceControllerResend = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerResendResponse> => {
+export const eInvoiceControllerResend = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<eInvoiceControllerResendResponseSuccess> => {
 
-  return apiFetch<eInvoiceControllerResendResponse>(getEInvoiceControllerResendUrl(id),
+  return apiFetch<eInvoiceControllerResendResponseSuccess>(getEInvoiceControllerResendUrl(id),
   {
     ...options,
     method: 'POST'
@@ -7673,28 +14579,43 @@ export const eInvoiceControllerResend = async (id: string, options?: Parameters<
 
 
 export type reportsControllerIncomeStatementResponse200 = {
-  data: void
+  data: IncomeStatementDto
   status: 200
+}
+
+export type reportsControllerIncomeStatementResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type reportsControllerIncomeStatementResponseSuccess = (reportsControllerIncomeStatementResponse200) & {
   headers: Headers;
 };
-;
+export type reportsControllerIncomeStatementResponseError = (reportsControllerIncomeStatementResponseDefault) & {
+  headers: Headers;
+};
 
-export type reportsControllerIncomeStatementResponse = (reportsControllerIncomeStatementResponseSuccess)
+export const getReportsControllerIncomeStatementUrl = (params?: ReportsControllerIncomeStatementParams,) => {
+  const normalizedParams = new URLSearchParams();
 
-export const getReportsControllerIncomeStatementUrl = () => {
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-
-  return `/api/v1/reports/income-statement`
+  return stringifiedParams.length > 0 ? `/api/v1/reports/income-statement?${stringifiedParams}` : `/api/v1/reports/income-statement`
 }
 
-export const reportsControllerIncomeStatement = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerIncomeStatementResponse> => {
+/**
+ * @summary Company-wide: only for members with every branch (ADR-003 §13).
+ */
+export const reportsControllerIncomeStatement = async (params?: ReportsControllerIncomeStatementParams, options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerIncomeStatementResponseSuccess> => {
 
-  return apiFetch<reportsControllerIncomeStatementResponse>(getReportsControllerIncomeStatementUrl(),
+  return apiFetch<reportsControllerIncomeStatementResponseSuccess>(getReportsControllerIncomeStatementUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7706,28 +14627,43 @@ export const reportsControllerIncomeStatement = async ( options?: Parameters<typ
 
 
 export type reportsControllerBalanceSheetResponse200 = {
-  data: void
+  data: BalanceSheetDto
   status: 200
+}
+
+export type reportsControllerBalanceSheetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type reportsControllerBalanceSheetResponseSuccess = (reportsControllerBalanceSheetResponse200) & {
   headers: Headers;
 };
-;
+export type reportsControllerBalanceSheetResponseError = (reportsControllerBalanceSheetResponseDefault) & {
+  headers: Headers;
+};
 
-export type reportsControllerBalanceSheetResponse = (reportsControllerBalanceSheetResponseSuccess)
+export const getReportsControllerBalanceSheetUrl = (params?: ReportsControllerBalanceSheetParams,) => {
+  const normalizedParams = new URLSearchParams();
 
-export const getReportsControllerBalanceSheetUrl = () => {
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-
-  return `/api/v1/reports/balance-sheet`
+  return stringifiedParams.length > 0 ? `/api/v1/reports/balance-sheet?${stringifiedParams}` : `/api/v1/reports/balance-sheet`
 }
 
-export const reportsControllerBalanceSheet = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerBalanceSheetResponse> => {
+/**
+ * @summary Company-wide: only for members with every branch (ADR-003 §13).
+ */
+export const reportsControllerBalanceSheet = async (params?: ReportsControllerBalanceSheetParams, options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerBalanceSheetResponseSuccess> => {
 
-  return apiFetch<reportsControllerBalanceSheetResponse>(getReportsControllerBalanceSheetUrl(),
+  return apiFetch<reportsControllerBalanceSheetResponseSuccess>(getReportsControllerBalanceSheetUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7739,28 +14675,40 @@ export const reportsControllerBalanceSheet = async ( options?: Parameters<typeof
 
 
 export type reportsControllerTaxSummaryResponse200 = {
-  data: void
+  data: TaxSummaryDto
   status: 200
+}
+
+export type reportsControllerTaxSummaryResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type reportsControllerTaxSummaryResponseSuccess = (reportsControllerTaxSummaryResponse200) & {
   headers: Headers;
 };
-;
+export type reportsControllerTaxSummaryResponseError = (reportsControllerTaxSummaryResponseDefault) & {
+  headers: Headers;
+};
 
-export type reportsControllerTaxSummaryResponse = (reportsControllerTaxSummaryResponseSuccess)
+export const getReportsControllerTaxSummaryUrl = (params?: ReportsControllerTaxSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
 
-export const getReportsControllerTaxSummaryUrl = () => {
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-
-  return `/api/v1/reports/tax-summary`
+  return stringifiedParams.length > 0 ? `/api/v1/reports/tax-summary?${stringifiedParams}` : `/api/v1/reports/tax-summary`
 }
 
-export const reportsControllerTaxSummary = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerTaxSummaryResponse> => {
+export const reportsControllerTaxSummary = async (params?: ReportsControllerTaxSummaryParams, options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerTaxSummaryResponseSuccess> => {
 
-  return apiFetch<reportsControllerTaxSummaryResponse>(getReportsControllerTaxSummaryUrl(),
+  return apiFetch<reportsControllerTaxSummaryResponseSuccess>(getReportsControllerTaxSummaryUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7772,28 +14720,40 @@ export const reportsControllerTaxSummary = async ( options?: Parameters<typeof a
 
 
 export type reportsControllerSalesSummaryResponse200 = {
-  data: void
+  data: SalesSummaryDto
   status: 200
+}
+
+export type reportsControllerSalesSummaryResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type reportsControllerSalesSummaryResponseSuccess = (reportsControllerSalesSummaryResponse200) & {
   headers: Headers;
 };
-;
+export type reportsControllerSalesSummaryResponseError = (reportsControllerSalesSummaryResponseDefault) & {
+  headers: Headers;
+};
 
-export type reportsControllerSalesSummaryResponse = (reportsControllerSalesSummaryResponseSuccess)
+export const getReportsControllerSalesSummaryUrl = (params?: ReportsControllerSalesSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
 
-export const getReportsControllerSalesSummaryUrl = () => {
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-
-  return `/api/v1/reports/sales-summary`
+  return stringifiedParams.length > 0 ? `/api/v1/reports/sales-summary?${stringifiedParams}` : `/api/v1/reports/sales-summary`
 }
 
-export const reportsControllerSalesSummary = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerSalesSummaryResponse> => {
+export const reportsControllerSalesSummary = async (params?: ReportsControllerSalesSummaryParams, options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerSalesSummaryResponseSuccess> => {
 
-  return apiFetch<reportsControllerSalesSummaryResponse>(getReportsControllerSalesSummaryUrl(),
+  return apiFetch<reportsControllerSalesSummaryResponseSuccess>(getReportsControllerSalesSummaryUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7805,28 +14765,40 @@ export const reportsControllerSalesSummary = async ( options?: Parameters<typeof
 
 
 export type reportsControllerPurchasesSummaryResponse200 = {
-  data: void
+  data: PurchasesSummaryDto
   status: 200
+}
+
+export type reportsControllerPurchasesSummaryResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type reportsControllerPurchasesSummaryResponseSuccess = (reportsControllerPurchasesSummaryResponse200) & {
   headers: Headers;
 };
-;
+export type reportsControllerPurchasesSummaryResponseError = (reportsControllerPurchasesSummaryResponseDefault) & {
+  headers: Headers;
+};
 
-export type reportsControllerPurchasesSummaryResponse = (reportsControllerPurchasesSummaryResponseSuccess)
+export const getReportsControllerPurchasesSummaryUrl = (params?: ReportsControllerPurchasesSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
 
-export const getReportsControllerPurchasesSummaryUrl = () => {
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-
-  return `/api/v1/reports/purchases-summary`
+  return stringifiedParams.length > 0 ? `/api/v1/reports/purchases-summary?${stringifiedParams}` : `/api/v1/reports/purchases-summary`
 }
 
-export const reportsControllerPurchasesSummary = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerPurchasesSummaryResponse> => {
+export const reportsControllerPurchasesSummary = async (params?: ReportsControllerPurchasesSummaryParams, options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerPurchasesSummaryResponseSuccess> => {
 
-  return apiFetch<reportsControllerPurchasesSummaryResponse>(getReportsControllerPurchasesSummaryUrl(),
+  return apiFetch<reportsControllerPurchasesSummaryResponseSuccess>(getReportsControllerPurchasesSummaryUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7838,28 +14810,40 @@ export const reportsControllerPurchasesSummary = async ( options?: Parameters<ty
 
 
 export type reportsControllerDashboardSummaryResponse200 = {
-  data: void
+  data: DashboardSummaryDto
   status: 200
+}
+
+export type reportsControllerDashboardSummaryResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type reportsControllerDashboardSummaryResponseSuccess = (reportsControllerDashboardSummaryResponse200) & {
   headers: Headers;
 };
-;
+export type reportsControllerDashboardSummaryResponseError = (reportsControllerDashboardSummaryResponseDefault) & {
+  headers: Headers;
+};
 
-export type reportsControllerDashboardSummaryResponse = (reportsControllerDashboardSummaryResponseSuccess)
+export const getReportsControllerDashboardSummaryUrl = (params?: ReportsControllerDashboardSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
 
-export const getReportsControllerDashboardSummaryUrl = () => {
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-
-  return `/api/v1/dashboard/summary`
+  return stringifiedParams.length > 0 ? `/api/v1/dashboard/summary?${stringifiedParams}` : `/api/v1/dashboard/summary`
 }
 
-export const reportsControllerDashboardSummary = async ( options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerDashboardSummaryResponse> => {
+export const reportsControllerDashboardSummary = async (params?: ReportsControllerDashboardSummaryParams, options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerDashboardSummaryResponseSuccess> => {
 
-  return apiFetch<reportsControllerDashboardSummaryResponse>(getReportsControllerDashboardSummaryUrl(),
+  return apiFetch<reportsControllerDashboardSummaryResponseSuccess>(getReportsControllerDashboardSummaryUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7870,17 +14854,17 @@ export const reportsControllerDashboardSummary = async ( options?: Parameters<ty
 
 
 
-export type tenantExportControllerTenantDataResponse200 = {
-  data: void
-  status: 200
+export type tenantExportControllerTenantDataResponseDefault = {
+  data: ErrorResponseDto
+  status: number
 }
 
-export type tenantExportControllerTenantDataResponseSuccess = (tenantExportControllerTenantDataResponse200) & {
+;
+export type tenantExportControllerTenantDataResponseError = (tenantExportControllerTenantDataResponseDefault) & {
   headers: Headers;
 };
-;
 
-export type tenantExportControllerTenantDataResponse = (tenantExportControllerTenantDataResponseSuccess)
+export type tenantExportControllerTenantDataResponse = (tenantExportControllerTenantDataResponseError)
 
 export const getTenantExportControllerTenantDataUrl = () => {
 
@@ -7904,16 +14888,21 @@ export const tenantExportControllerTenantData = async ( options?: Parameters<typ
 
 
 export type adminControllerListResponse200 = {
-  data: void
+  data: AdminTenantListItemDtoPage
   status: 200
+}
+
+export type adminControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type adminControllerListResponseSuccess = (adminControllerListResponse200) & {
   headers: Headers;
 };
-;
-
-export type adminControllerListResponse = (adminControllerListResponseSuccess)
+export type adminControllerListResponseError = (adminControllerListResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAdminControllerListUrl = (params?: AdminControllerListParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -7930,9 +14919,9 @@ export const getAdminControllerListUrl = (params?: AdminControllerListParams,) =
   return stringifiedParams.length > 0 ? `/api/v1/admin/tenants?${stringifiedParams}` : `/api/v1/admin/tenants`
 }
 
-export const adminControllerList = async (params?: AdminControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerListResponse> => {
+export const adminControllerList = async (params?: AdminControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerListResponseSuccess> => {
 
-  return apiFetch<adminControllerListResponse>(getAdminControllerListUrl(params),
+  return apiFetch<adminControllerListResponseSuccess>(getAdminControllerListUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7944,16 +14933,21 @@ export const adminControllerList = async (params?: AdminControllerListParams, op
 
 
 export type adminControllerGetResponse200 = {
-  data: void
+  data: AdminTenantDetailDto
   status: 200
+}
+
+export type adminControllerGetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type adminControllerGetResponseSuccess = (adminControllerGetResponse200) & {
   headers: Headers;
 };
-;
-
-export type adminControllerGetResponse = (adminControllerGetResponseSuccess)
+export type adminControllerGetResponseError = (adminControllerGetResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAdminControllerGetUrl = (id: string,) => {
 
@@ -7963,9 +14957,9 @@ export const getAdminControllerGetUrl = (id: string,) => {
   return `/api/v1/admin/tenants/${id}`
 }
 
-export const adminControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerGetResponse> => {
+export const adminControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerGetResponseSuccess> => {
 
-  return apiFetch<adminControllerGetResponse>(getAdminControllerGetUrl(id),
+  return apiFetch<adminControllerGetResponseSuccess>(getAdminControllerGetUrl(id),
   {
     ...options,
     method: 'GET'
@@ -7977,16 +14971,21 @@ export const adminControllerGet = async (id: string, options?: Parameters<typeof
 
 
 export type adminControllerUpdateStatusResponse200 = {
-  data: void
+  data: AdminTenantStatusDto
   status: 200
+}
+
+export type adminControllerUpdateStatusResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type adminControllerUpdateStatusResponseSuccess = (adminControllerUpdateStatusResponse200) & {
   headers: Headers;
 };
-;
-
-export type adminControllerUpdateStatusResponse = (adminControllerUpdateStatusResponseSuccess)
+export type adminControllerUpdateStatusResponseError = (adminControllerUpdateStatusResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAdminControllerUpdateStatusUrl = (id: string,) => {
 
@@ -7997,7 +14996,7 @@ export const getAdminControllerUpdateStatusUrl = (id: string,) => {
 }
 
 export const adminControllerUpdateStatus = async (id: string,
-    updateTenantStatusDto: UpdateTenantStatusDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerUpdateStatusResponse> => {
+    updateTenantStatusDto: UpdateTenantStatusDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerUpdateStatusResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -8013,7 +15012,7 @@ export const adminControllerUpdateStatus = async (id: string,
     }
     return headers;
   };
-return apiFetch<adminControllerUpdateStatusResponse>(getAdminControllerUpdateStatusUrl(id),
+return apiFetch<adminControllerUpdateStatusResponseSuccess>(getAdminControllerUpdateStatusUrl(id),
   {
     ...options,
     method: 'PATCH',
@@ -8025,16 +15024,21 @@ return apiFetch<adminControllerUpdateStatusResponse>(getAdminControllerUpdateSta
 
 
 export type adminControllerExtendTrialResponse201 = {
-  data: void
+  data: AdminTrialExtendedDto
   status: 201
+}
+
+export type adminControllerExtendTrialResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type adminControllerExtendTrialResponseSuccess = (adminControllerExtendTrialResponse201) & {
   headers: Headers;
 };
-;
-
-export type adminControllerExtendTrialResponse = (adminControllerExtendTrialResponseSuccess)
+export type adminControllerExtendTrialResponseError = (adminControllerExtendTrialResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAdminControllerExtendTrialUrl = (id: string,) => {
 
@@ -8045,7 +15049,7 @@ export const getAdminControllerExtendTrialUrl = (id: string,) => {
 }
 
 export const adminControllerExtendTrial = async (id: string,
-    extendTrialDto: ExtendTrialDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerExtendTrialResponse> => {
+    extendTrialDto: ExtendTrialDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerExtendTrialResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -8061,7 +15065,7 @@ export const adminControllerExtendTrial = async (id: string,
     }
     return headers;
   };
-return apiFetch<adminControllerExtendTrialResponse>(getAdminControllerExtendTrialUrl(id),
+return apiFetch<adminControllerExtendTrialResponseSuccess>(getAdminControllerExtendTrialUrl(id),
   {
     ...options,
     method: 'POST',
@@ -8073,16 +15077,21 @@ return apiFetch<adminControllerExtendTrialResponse>(getAdminControllerExtendTria
 
 
 export type adminControllerCreateSubscriptionResponse201 = {
-  data: void
+  data: AdminSubscriptionCreatedDto
   status: 201
+}
+
+export type adminControllerCreateSubscriptionResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type adminControllerCreateSubscriptionResponseSuccess = (adminControllerCreateSubscriptionResponse201) & {
   headers: Headers;
 };
-;
-
-export type adminControllerCreateSubscriptionResponse = (adminControllerCreateSubscriptionResponseSuccess)
+export type adminControllerCreateSubscriptionResponseError = (adminControllerCreateSubscriptionResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAdminControllerCreateSubscriptionUrl = (id: string,) => {
 
@@ -8093,7 +15102,7 @@ export const getAdminControllerCreateSubscriptionUrl = (id: string,) => {
 }
 
 export const adminControllerCreateSubscription = async (id: string,
-    createSubscriptionDto: CreateSubscriptionDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerCreateSubscriptionResponse> => {
+    createSubscriptionDto: CreateSubscriptionDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminControllerCreateSubscriptionResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -8109,7 +15118,7 @@ export const adminControllerCreateSubscription = async (id: string,
     }
     return headers;
   };
-return apiFetch<adminControllerCreateSubscriptionResponse>(getAdminControllerCreateSubscriptionUrl(id),
+return apiFetch<adminControllerCreateSubscriptionResponseSuccess>(getAdminControllerCreateSubscriptionUrl(id),
   {
     ...options,
     method: 'POST',
@@ -8121,16 +15130,21 @@ return apiFetch<adminControllerCreateSubscriptionResponse>(getAdminControllerCre
 
 
 export type adminPlansControllerListResponse200 = {
-  data: void
+  data: AdminPlanListItemDto[]
   status: 200
+}
+
+export type adminPlansControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type adminPlansControllerListResponseSuccess = (adminPlansControllerListResponse200) & {
   headers: Headers;
 };
-;
-
-export type adminPlansControllerListResponse = (adminPlansControllerListResponseSuccess)
+export type adminPlansControllerListResponseError = (adminPlansControllerListResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAdminPlansControllerListUrl = () => {
 
@@ -8140,9 +15154,9 @@ export const getAdminPlansControllerListUrl = () => {
   return `/api/v1/admin/plans`
 }
 
-export const adminPlansControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<adminPlansControllerListResponse> => {
+export const adminPlansControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<adminPlansControllerListResponseSuccess> => {
 
-  return apiFetch<adminPlansControllerListResponse>(getAdminPlansControllerListUrl(),
+  return apiFetch<adminPlansControllerListResponseSuccess>(getAdminPlansControllerListUrl(),
   {
     ...options,
     method: 'GET'
@@ -8154,16 +15168,21 @@ export const adminPlansControllerList = async ( options?: Parameters<typeof apiF
 
 
 export type adminPlansControllerUpdateResponse200 = {
-  data: void
+  data: AdminPlanDto
   status: 200
+}
+
+export type adminPlansControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type adminPlansControllerUpdateResponseSuccess = (adminPlansControllerUpdateResponse200) & {
   headers: Headers;
 };
-;
-
-export type adminPlansControllerUpdateResponse = (adminPlansControllerUpdateResponseSuccess)
+export type adminPlansControllerUpdateResponseError = (adminPlansControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAdminPlansControllerUpdateUrl = (code: string,) => {
 
@@ -8174,7 +15193,7 @@ export const getAdminPlansControllerUpdateUrl = (code: string,) => {
 }
 
 export const adminPlansControllerUpdate = async (code: string,
-    updatePlanDto: UpdatePlanDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminPlansControllerUpdateResponse> => {
+    updatePlanDto: UpdatePlanDto, options?: Parameters<typeof apiFetch>[1]): Promise<adminPlansControllerUpdateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -8190,7 +15209,7 @@ export const adminPlansControllerUpdate = async (code: string,
     }
     return headers;
   };
-return apiFetch<adminPlansControllerUpdateResponse>(getAdminPlansControllerUpdateUrl(code),
+return apiFetch<adminPlansControllerUpdateResponseSuccess>(getAdminPlansControllerUpdateUrl(code),
   {
     ...options,
     method: 'PATCH',
@@ -8206,12 +15225,17 @@ export type clientErrorsControllerReportResponse204 = {
   status: 204
 }
 
+export type clientErrorsControllerReportResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 204>
+}
+
 export type clientErrorsControllerReportResponseSuccess = (clientErrorsControllerReportResponse204) & {
   headers: Headers;
 };
-;
-
-export type clientErrorsControllerReportResponse = (clientErrorsControllerReportResponseSuccess)
+export type clientErrorsControllerReportResponseError = (clientErrorsControllerReportResponseDefault) & {
+  headers: Headers;
+};
 
 export const getClientErrorsControllerReportUrl = () => {
 
@@ -8221,7 +15245,7 @@ export const getClientErrorsControllerReportUrl = () => {
   return `/api/v1/client-errors`
 }
 
-export const clientErrorsControllerReport = async (clientErrorDto: ClientErrorDto, options?: Parameters<typeof apiFetch>[1]): Promise<clientErrorsControllerReportResponse> => {
+export const clientErrorsControllerReport = async (clientErrorDto: ClientErrorDto, options?: Parameters<typeof apiFetch>[1]): Promise<clientErrorsControllerReportResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -8237,7 +15261,7 @@ export const clientErrorsControllerReport = async (clientErrorDto: ClientErrorDt
     }
     return headers;
   };
-return apiFetch<clientErrorsControllerReportResponse>(getClientErrorsControllerReportUrl(),
+return apiFetch<clientErrorsControllerReportResponseSuccess>(getClientErrorsControllerReportUrl(),
   {
     ...options,
     method: 'POST',
@@ -8249,16 +15273,21 @@ return apiFetch<clientErrorsControllerReportResponse>(getClientErrorsControllerR
 
 
 export type adminErrorsControllerListResponse200 = {
-  data: void
+  data: AdminErrorRowDto[]
   status: 200
+}
+
+export type adminErrorsControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type adminErrorsControllerListResponseSuccess = (adminErrorsControllerListResponse200) & {
   headers: Headers;
 };
-;
-
-export type adminErrorsControllerListResponse = (adminErrorsControllerListResponseSuccess)
+export type adminErrorsControllerListResponseError = (adminErrorsControllerListResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAdminErrorsControllerListUrl = (params?: AdminErrorsControllerListParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -8275,9 +15304,9 @@ export const getAdminErrorsControllerListUrl = (params?: AdminErrorsControllerLi
   return stringifiedParams.length > 0 ? `/api/v1/admin/errors?${stringifiedParams}` : `/api/v1/admin/errors`
 }
 
-export const adminErrorsControllerList = async (params?: AdminErrorsControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerListResponse> => {
+export const adminErrorsControllerList = async (params?: AdminErrorsControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerListResponseSuccess> => {
 
-  return apiFetch<adminErrorsControllerListResponse>(getAdminErrorsControllerListUrl(params),
+  return apiFetch<adminErrorsControllerListResponseSuccess>(getAdminErrorsControllerListUrl(params),
   {
     ...options,
     method: 'GET'
@@ -8289,16 +15318,21 @@ export const adminErrorsControllerList = async (params?: AdminErrorsControllerLi
 
 
 export type adminErrorsControllerGetResponse200 = {
-  data: void
+  data: AdminErrorDetailDto
   status: 200
+}
+
+export type adminErrorsControllerGetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
 }
 
 export type adminErrorsControllerGetResponseSuccess = (adminErrorsControllerGetResponse200) & {
   headers: Headers;
 };
-;
-
-export type adminErrorsControllerGetResponse = (adminErrorsControllerGetResponseSuccess)
+export type adminErrorsControllerGetResponseError = (adminErrorsControllerGetResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAdminErrorsControllerGetUrl = (id: string,) => {
 
@@ -8308,9 +15342,9 @@ export const getAdminErrorsControllerGetUrl = (id: string,) => {
   return `/api/v1/admin/errors/${id}`
 }
 
-export const adminErrorsControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerGetResponse> => {
+export const adminErrorsControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerGetResponseSuccess> => {
 
-  return apiFetch<adminErrorsControllerGetResponse>(getAdminErrorsControllerGetUrl(id),
+  return apiFetch<adminErrorsControllerGetResponseSuccess>(getAdminErrorsControllerGetUrl(id),
   {
     ...options,
     method: 'GET'
@@ -8322,16 +15356,21 @@ export const adminErrorsControllerGet = async (id: string, options?: Parameters<
 
 
 export type adminErrorsControllerResolveResponse201 = {
-  data: void
+  data: AdminErrorDetailDto
   status: 201
+}
+
+export type adminErrorsControllerResolveResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type adminErrorsControllerResolveResponseSuccess = (adminErrorsControllerResolveResponse201) & {
   headers: Headers;
 };
-;
-
-export type adminErrorsControllerResolveResponse = (adminErrorsControllerResolveResponseSuccess)
+export type adminErrorsControllerResolveResponseError = (adminErrorsControllerResolveResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAdminErrorsControllerResolveUrl = (id: string,) => {
 
@@ -8341,9 +15380,9 @@ export const getAdminErrorsControllerResolveUrl = (id: string,) => {
   return `/api/v1/admin/errors/${id}/resolve`
 }
 
-export const adminErrorsControllerResolve = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerResolveResponse> => {
+export const adminErrorsControllerResolve = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerResolveResponseSuccess> => {
 
-  return apiFetch<adminErrorsControllerResolveResponse>(getAdminErrorsControllerResolveUrl(id),
+  return apiFetch<adminErrorsControllerResolveResponseSuccess>(getAdminErrorsControllerResolveUrl(id),
   {
     ...options,
     method: 'POST'
@@ -8355,16 +15394,21 @@ export const adminErrorsControllerResolve = async (id: string, options?: Paramet
 
 
 export type adminErrorsControllerReopenResponse201 = {
-  data: void
+  data: AdminErrorDetailDto
   status: 201
+}
+
+export type adminErrorsControllerReopenResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
 }
 
 export type adminErrorsControllerReopenResponseSuccess = (adminErrorsControllerReopenResponse201) & {
   headers: Headers;
 };
-;
-
-export type adminErrorsControllerReopenResponse = (adminErrorsControllerReopenResponseSuccess)
+export type adminErrorsControllerReopenResponseError = (adminErrorsControllerReopenResponseDefault) & {
+  headers: Headers;
+};
 
 export const getAdminErrorsControllerReopenUrl = (id: string,) => {
 
@@ -8374,9 +15418,9 @@ export const getAdminErrorsControllerReopenUrl = (id: string,) => {
   return `/api/v1/admin/errors/${id}/reopen`
 }
 
-export const adminErrorsControllerReopen = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerReopenResponse> => {
+export const adminErrorsControllerReopen = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<adminErrorsControllerReopenResponseSuccess> => {
 
-  return apiFetch<adminErrorsControllerReopenResponse>(getAdminErrorsControllerReopenUrl(id),
+  return apiFetch<adminErrorsControllerReopenResponseSuccess>(getAdminErrorsControllerReopenUrl(id),
   {
     ...options,
     method: 'POST'
