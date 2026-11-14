@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { partyFields, type PartyColumn } from './JournalLinesGrid';
-import { firstLineProblem, partyKindOf, partyNeedByAccount, type PartyNeed } from './journalLineChecks';
+import {
+  firstLineProblem,
+  lineParty,
+  partyKindOf,
+  partyNeedByAccount,
+  sideOfPartyType,
+  type PartyNeed,
+} from './journalLineChecks';
 
 type Flags = { id: string; isControl: boolean; controlType: 'CUSTOMERS' | 'SUPPLIERS' | 'CASH' | 'BANK' | null };
 
@@ -167,5 +174,40 @@ describe('partyFields (what a line sends)', () => {
   it('sends no party on other accounts, even one left over from an earlier account', () => {
     expect(partyFields({ key: 1, accountId: 'exp', partyId: 'c1' }, column)).toEqual({});
     expect(partyFields({ key: 1, accountId: 'ar' }, column)).toEqual({});
+  });
+});
+
+describe('a party on a control account of no side (ANY)', () => {
+  const needs = new Map<string, PartyNeed>([
+    ['ctl', 'ANY'],
+    ['exp', 'CUSTOMER'],
+  ]);
+  const lines = [
+    { accountId: 'ctl', debit: '5', partyId: 'p1' },
+    { accountId: 'exp', credit: '5', partyId: 'c1' },
+  ];
+
+  it('counts only once its side is known, the same condition partyFields sends on', () => {
+    // Side unknown (party not loaded): partyFields would send no party, so the check refuses the row.
+    expect(firstLineProblem(lines, needs, () => undefined)).toMatchObject({
+      line: 1,
+      rule: 'PARTY_REQUIRED',
+      need: 'ANY',
+    });
+    expect(firstLineProblem(lines, needs)).toMatchObject({ line: 1, rule: 'PARTY_REQUIRED' });
+    expect(firstLineProblem(lines, needs, () => 'SUPPLIER')).toBeNull();
+  });
+
+  it('lineParty sends the side of the account, or of the party on an ANY account', () => {
+    expect(lineParty('CUSTOMER', 'c1')).toEqual({ partyType: 'CUSTOMER', partyId: 'c1' });
+    expect(lineParty('ANY', 'p1', () => 'SUPPLIER')).toEqual({ partyType: 'SUPPLIER', partyId: 'p1' });
+    expect(lineParty('ANY', 'p1', () => undefined)).toBeUndefined();
+    expect(lineParty('SUPPLIER', null)).toBeUndefined();
+  });
+
+  it('gives a BOTH party the customer side', () => {
+    expect(sideOfPartyType('BOTH')).toBe('CUSTOMER');
+    expect(sideOfPartyType('CUSTOMER')).toBe('CUSTOMER');
+    expect(sideOfPartyType('SUPPLIER')).toBe('SUPPLIER');
   });
 });

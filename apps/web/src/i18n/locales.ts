@@ -368,6 +368,8 @@ export const ar = {
     oneSide: 'السطر {{line}}: أدخل مبلغاً في المدين أو في الدائن، لا في كليهما',
     lineError: 'السطر {{line}}: {{error}}',
     fixDraftHint: 'المسودة لا تُعدَّل: احذفها وأدخل القيد من جديد.',
+    rulesLoading: 'جارٍ تحميل ربط الحسابات؛ يُتاح الحفظ بعد اكتماله.',
+    rulesFailed: 'تعذّر تحميل ربط الحسابات، فلا يمكن التحقق من سطور العملاء والموردين قبل الحفظ.',
   },
   opening: {
     title: 'الأرصدة الافتتاحية',
@@ -1608,6 +1610,8 @@ export const en: typeof ar = {
     oneSide: 'Line {{line}}: enter an amount in debit or in credit, not both',
     lineError: 'Line {{line}}: {{error}}',
     fixDraftHint: "A draft can't be edited: delete it and enter the entry again.",
+    rulesLoading: 'Loading the account mappings; you can save once they are in.',
+    rulesFailed: "The account mappings didn't load, so customer and supplier lines can't be checked before saving.",
   },
   opening: {
     title: 'Opening Balances',

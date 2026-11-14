@@ -7,7 +7,7 @@ import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
 import { Num } from './Num';
 import { cellLabel } from './gridA11y';
-import type { PartyKind, PartyNeed } from './journalLineChecks';
+import { lineParty, type PartyKind, type PartyNeed } from './journalLineChecks';
 
 export interface JournalLineDraft {
   key: number;
@@ -43,9 +43,7 @@ export function partyFields(
   column: PartyColumn | undefined,
 ): { partyType?: PartyKind; partyId?: string } {
   const need = line.accountId ? column?.kindByAccount.get(line.accountId) : undefined;
-  if (!need || !line.partyId) return {};
-  const partyType = need === 'ANY' ? column?.sideOf?.(line.partyId) : need;
-  return partyType ? { partyType, partyId: line.partyId } : {};
+  return (need && lineParty(need, line.partyId, column?.sideOf)) || {};
 }
 
 interface Props {

@@ -22,6 +22,7 @@ window.matchMedia ??= (query: string) =>
   }) as MediaQueryList;
 
 const createDraft = vi.fn();
+const listMappings = vi.fn();
 const ok = <T,>(data: T) => Promise.resolve({ data, status: 200, headers: new Headers() });
 
 const account = (id: string, code: string, flags: { isControl?: boolean; controlType?: string | null } = {}) => ({
@@ -49,13 +50,14 @@ const ACCOUNTS = [
   account('13', '1103', { isControl: true, controlType: 'CUSTOMERS' }),
   account('21', '2101', { isControl: true, controlType: 'SUPPLIERS' }),
   account('41', '4101'),
+  account('19', '1109'), // plain flags: a legacy chart maps it as CUSTOMERS_CONTROL in one test
 ];
 const CUSTOMER = { id: '7', code: 'C-7', nameAr: 'cust7', nameEn: 'cust7', partyType: 'CUSTOMER', isActive: true };
 
 vi.mock('@erp/api-client', async (original) => ({
   ...(await original<typeof import('@erp/api-client')>()),
   accountingControllerListAccounts: () => ok(ACCOUNTS),
-  accountingControllerListMappings: () => ok([]),
+  accountingControllerListMappings: () => listMappings(),
   journalControllerList: () => ok({ items: [], total: 0, page: 1, pageSize: 25 }),
   partiesControllerList: (params: { partyType?: string }) =>
     ok({ items: params.partyType === 'CUSTOMER' ? [CUSTOMER] : [], total: 0, page: 1, pageSize: 20 }),
@@ -74,6 +76,8 @@ beforeAll(async () => {
 beforeEach(() => {
   createDraft.mockReset();
   createDraft.mockReturnValue(new Promise(() => {})); // the save itself is not under test
+  listMappings.mockReset();
+  listMappings.mockImplementation(() => ok([]));
 });
 afterEach(() => {
   act(() => root?.unmount());
@@ -199,5 +203,42 @@ describe('JournalPage: party picker on control-account lines (D-2)', () => {
     await settle(50);
     expect(createDraft).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain(i18n.t('journal.oneSide', { line: 1 }));
+  });
+});
+
+describe('JournalPage: saving waits for the account mappings', () => {
+  const saveButton = () =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent?.includes(i18n.t('journal.saveDraft')))!;
+
+  it('keeps save disabled, with a hint, while the mappings load', async () => {
+    listMappings.mockImplementation(() => new Promise(() => {}));
+    await openNewEntry();
+    expect(saveButton().disabled).toBe(true);
+    expect(host.textContent).toContain(i18n.t('journal.rulesLoading'));
+  });
+
+  it('shows the failure with a retry, then applies the legacy mapping once loaded', async () => {
+    listMappings.mockImplementationOnce(() => Promise.reject(new Error('offline')));
+    listMappings.mockImplementation(() => ok([{ mappingKey: 'CUSTOMERS_CONTROL', accountId: '19', account: null }]));
+    await openNewEntry();
+    expect(saveButton().disabled).toBe(true);
+    expect(host.textContent).toContain(i18n.t('journal.rulesFailed'));
+
+    const retry = [...host.querySelectorAll('button')].find((b) => b.textContent?.includes(i18n.t('common.retry')))!;
+    act(() => retry.click());
+    await settle();
+    expect(saveButton().disabled).toBe(false);
+    expect(host.textContent).not.toContain(i18n.t('journal.rulesFailed'));
+
+    // The mapped account now asks for a customer, and saving without one is blocked.
+    await pick(field('journal.account', 0)!, '1109');
+    expect(field('journal.party', 0)!.closest('.ant-select')?.textContent).toContain(i18n.t('journal.pickCustomer'));
+    type(field('journal.debit', 0)!, '10');
+    await pick(field('journal.account', 1)!, '4101');
+    type(field('journal.credit', 1)!, '10');
+    clickSave();
+    await settle(50);
+    expect(createDraft).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain(i18n.t('journal.partyRequiredCustomer', { line: 1 }));
   });
 });

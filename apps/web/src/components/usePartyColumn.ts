@@ -9,9 +9,18 @@ import {
 import { codeAndName } from '../i18n/displayName';
 import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 import type { PartyColumn } from './JournalLinesGrid';
-import { partyNeedByAccount, type PartyKind, type PartyNeed } from './journalLineChecks';
+import { partyNeedByAccount, sideOfPartyType, type PartyKind, type PartyNeed } from './journalLineChecks';
 
 type Party = PartyDto;
+
+/** Load state of the data the party rule needs beyond the chart (the account mappings). */
+export interface PartyRulesState {
+  ready: boolean;
+  failed: boolean;
+  error: unknown;
+  retrying: boolean;
+  retry: () => void;
+}
 
 type AccountLike = Pick<AccountDto, 'id' | 'isControl' | 'controlType'>;
 
@@ -55,6 +64,12 @@ export function usePartyColumn(
 ): {
   partyColumn: PartyColumn;
   partyName: (partyId: string | null | undefined) => string | undefined;
+  /**
+   * Whether the party rule is complete: until the account mappings load, a
+   * legacy-mapped control account looks like a plain one, so a line on it
+   * would pass the check before saving and then fail at posting.
+   */
+  rules: PartyRulesState;
 } {
   // A legacy chart maps CUSTOMERS_CONTROL / SUPPLIERS_CONTROL to an account
   // without control flags; the mappings say which one needs a party. Only
@@ -118,13 +133,19 @@ export function usePartyColumn(
       // On an account of no side the line takes the party's own side; a BOTH party counts as a customer.
       sideOf: (partyId): PartyKind | undefined => {
         const party = partyOf(partyId);
-        if (!party) return undefined;
-        return party.partyType === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER';
+        return party ? sideOfPartyType(party.partyType) : undefined;
       },
     },
     partyName: (partyId) => {
       const party = partyOf(partyId);
       return party ? codeAndName(party) : undefined;
+    },
+    rules: {
+      ready: mappings.isSuccess,
+      failed: mappings.isError,
+      error: mappings.error,
+      retrying: mappings.isFetching,
+      retry: () => void mappings.refetch(),
     },
   };
 }

@@ -7,6 +7,7 @@ import {
   SwapOutlined,
 } from '@ant-design/icons';
 import {
+  Alert,
   App,
   Button,
   Card,
@@ -60,7 +61,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
-import { tableLocale } from '../components/QueryState';
+import { queryErrorMessage, tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
@@ -154,7 +155,7 @@ export function JournalPage() {
   });
 
   // The picker and labels follow the lines on screen: the draft's, or a saved entry's.
-  const { partyColumn, partyName } = usePartyColumn(accounts, {
+  const { partyColumn, partyName, rules: partyRules } = usePartyColumn(accounts, {
     shownPartyIds: entryId ? (detail?.lines ?? []).map((l) => l.partyId) : lines.map((l) => l.partyId),
     enabled: screen === 'entry' && !entryId,
   });
@@ -225,13 +226,15 @@ export function JournalPage() {
   });
 
   const saveNew = () => {
+    // The check below is incomplete until the account mappings load (Ctrl+S too).
+    if (!partyRules.ready) return;
     const filled = filledLines(lines);
     if (filled.length < 2) {
       apiMessage.error(t('journal.minLines'));
       return;
     }
     // A saved draft cannot be edited: catch the rows the API would refuse to post now.
-    const problem = firstLineProblem(lines, partyColumn.kindByAccount);
+    const problem = firstLineProblem(lines, partyColumn.kindByAccount, partyColumn.sideOf);
     setMissingParty(problem?.rule === 'PARTY_REQUIRED' ? lines[problem.index].key : null);
     if (problem) {
       apiMessage.error(lineProblemText(t, problem));
@@ -466,6 +469,7 @@ export function JournalPage() {
               type="primary"
               icon={<SaveOutlined />}
               loading={createDraft.isPending}
+              disabled={!partyRules.ready}
               onClick={saveNew}
             >
               {t('journal.saveDraft')}
@@ -567,6 +571,25 @@ export function JournalPage() {
           </DocFields>
         )}
 
+        {isNew && !partyRules.ready && (
+          // Saving waits for the account mappings: without them a legacy
+          // control account would pass the check and fail at posting.
+          <Alert
+            className="doc-section"
+            role={partyRules.failed ? 'alert' : 'status'}
+            type={partyRules.failed ? 'error' : 'info'}
+            showIcon
+            message={partyRules.failed ? t('journal.rulesFailed') : t('journal.rulesLoading')}
+            description={partyRules.failed ? queryErrorMessage(partyRules.error, t) : undefined}
+            action={
+              partyRules.failed && (
+                <Button size="small" loading={partyRules.retrying} onClick={partyRules.retry}>
+                  {t('common.retry')}
+                </Button>
+              )
+            }
+          />
+        )}
         {isNew ? (
           <JournalLinesGrid
             lines={lines}

@@ -51,6 +51,27 @@ export function partyNeedByAccount(
   return needs;
 }
 
+/** The side a party of this type takes on a control account of no side: a BOTH party counts as a customer. */
+export function sideOfPartyType(partyType: 'CUSTOMER' | 'SUPPLIER' | 'BOTH'): PartyKind {
+  return partyType === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER';
+}
+
+/**
+ * partyType / partyId a line sends, or undefined when it sends no party: no
+ * party chosen, or (on an 'ANY' account) a party whose side is not known.
+ * The check before saving and the request both use this, so a line the check
+ * accepts always carries its party.
+ */
+export function lineParty(
+  need: PartyNeed,
+  partyId: string | null | undefined,
+  sideOf?: (partyId: string) => PartyKind | undefined,
+): { partyType: PartyKind; partyId: string } | undefined {
+  if (!partyId) return undefined;
+  const partyType = need === 'ANY' ? sideOf?.(partyId) : need;
+  return partyType ? { partyType, partyId } : undefined;
+}
+
 export interface CheckedLine {
   accountId?: string;
   debit?: string | null;
@@ -80,18 +101,20 @@ const positive = (v?: string | null) => {
  * The first row the API would refuse to post, in the API's order: debit XOR
  * credit, then the party. Checked before saving, because a saved draft cannot
  * be edited: a row the API rejects at posting means deleting the draft.
- * Rows without an account are skipped (they are not sent).
+ * Rows without an account are skipped (they are not sent). `sideOf` as in
+ * PartyColumn: a party on an 'ANY' account counts only once its side is known.
  */
 export function firstLineProblem(
   lines: readonly CheckedLine[],
   needByAccount: ReadonlyMap<string, PartyNeed>,
+  sideOf?: (partyId: string) => PartyKind | undefined,
 ): LineProblem | null {
   for (const [index, l] of lines.entries()) {
     if (!l.accountId) continue;
     const base = { line: index + 1, index };
     if (positive(l.debit) === positive(l.credit)) return { ...base, rule: 'ONE_SIDE' };
     const need = needByAccount.get(l.accountId);
-    if (need && !l.partyId) return { ...base, rule: 'PARTY_REQUIRED', need };
+    if (need && !lineParty(need, l.partyId, sideOf)) return { ...base, rule: 'PARTY_REQUIRED', need };
   }
   return null;
 }
