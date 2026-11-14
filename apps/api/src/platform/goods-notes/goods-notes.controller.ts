@@ -5,16 +5,18 @@ import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { RequiresIdempotencyKey } from '../../common/idempotency/requires-idempotency-key.decorator.js';
 import { GoodsNotesService } from './goods-notes.service.js';
 import { CreateGoodsNoteDto } from './dto/goods-notes.dto.js';
+import { ListGoodsNotesQueryDto } from '../inventory/dto/list-queries.dto.js';
 
 @ApiTags('goods-notes')
 @Controller('goods-notes')
 export class GoodsNotesController {
   constructor(private readonly notes: GoodsNotesService) {}
 
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022), the caller's branches only. */
   @Get()
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  list(@Query('status') status?: string, @Query('noteType') noteType?: string) {
-    return this.notes.list(status, noteType);
+  list(@Query() q: ListGoodsNotesQueryDto) {
+    return this.notes.list(q);
   }
 
   @Get(':id')

@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
-import { EInvoiceSubmissionsQueryDto, UpdateEInvoiceSettingsDto } from './dto/einvoice.dto.js';
+import { ListEInvoiceSubmissionsQueryDto, UpdateEInvoiceSettingsDto } from './dto/einvoice.dto.js';
 import { EInvoiceSettingsService } from './einvoice-settings.service.js';
 import { EInvoiceSubmissionsService } from './einvoice-submissions.service.js';
 
@@ -29,7 +29,8 @@ export class EInvoiceController {
 
   @Get('submissions')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
-  listSubmissions(@Query() q: EInvoiceSubmissionsQueryDto) {
+  /** Numbered page `{ items, page, pageSize, total, counts }` (ADR-022), the caller's branches only. */
+  listSubmissions(@Query() q: ListEInvoiceSubmissionsQueryDto) {
     return this.submissions.list(q);
   }
 

@@ -19,6 +19,9 @@ import {
   CreateCashTransferDto,
   CreatePaymentDto,
   CreateReceiptDto,
+  ListCashTransfersQueryDto,
+  ListPaymentsQueryDto,
+  ListReceiptsQueryDto,
   ReverseVoucherDto,
 } from './dto/treasury.dto.js';
 
@@ -87,10 +90,11 @@ export class TreasuryController {
 
   // -------------------------------------------------------------- receipts
 
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022), the caller's branches only. */
   @Get('receipts')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  listReceipts() {
-    return this.vouchers.listReceipts();
+  listReceipts(@Query() q: ListReceiptsQueryDto) {
+    return this.vouchers.listReceipts(q);
   }
 
   @Get('receipts/:id')
@@ -115,10 +119,11 @@ export class TreasuryController {
 
   // -------------------------------------------------------------- payments
 
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022), the caller's branches only. */
   @Get('payments')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  listPayments() {
-    return this.vouchers.listPayments();
+  listPayments(@Query() q: ListPaymentsQueryDto) {
+    return this.vouchers.listPayments(q);
   }
 
   @Get('payments/:id')
@@ -180,10 +185,11 @@ export class TreasuryController {
 
   // --------------------------------------------------------- cash transfers
 
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022), the caller's branches only. */
   @Get('cash-transfers')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  listCashTransfers() {
-    return this.transfers.list();
+  listCashTransfers(@Query() q: ListCashTransfersQueryDto) {
+    return this.transfers.list(q);
   }
 
   @Get('cash-transfers/:id')

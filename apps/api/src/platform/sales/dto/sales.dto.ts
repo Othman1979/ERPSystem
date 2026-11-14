@@ -171,3 +171,39 @@ export class ListSalesInvoicesQueryDto extends PageQueryDto {
   @IsIn(['true', 'false'])
   open?: 'true' | 'false';
 }
+
+export const SALES_RETURN_SORT_KEYS = ['returnDate', 'returnNo', 'grandTotal'] as const;
+export const SALES_RETURN_SORTS = sortValues(SALES_RETURN_SORT_KEYS);
+
+/**
+ * GET /sales-returns (ADR-022 §2): a numbered page, newest first by default.
+ * `q` matches the return number, the original invoice number and the customer's code and names.
+ */
+export class ListSalesReturnsQueryDto extends PageQueryDto {
+  @SortParam(SALES_RETURN_SORTS, '-returnDate')
+  sort?: (typeof SALES_RETURN_SORTS)[number];
+
+  @ApiPropertyOptional({ enum: ['DRAFT', 'POSTED'] })
+  @IsOptional()
+  @IsIn(['DRAFT', 'POSTED'])
+  status?: 'DRAFT' | 'POSTED';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
+  customerId?: string;
+
+  /** Return date on or after (yyyy-mm-dd). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  from?: string;
+
+  /** Return date on or before (yyyy-mm-dd). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  to?: string;
+}

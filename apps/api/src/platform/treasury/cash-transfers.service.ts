@@ -1,13 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
+import { assertBranchAllowed, branchWhere, currentBranchId } from '../../common/branch/branch-context.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { AuditService } from '../../common/audit/audit.service.js';
+import { findPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { PostingService } from '../journal/posting.service.js';
-import type { CreateCashTransferDto, ReverseVoucherDto } from './dto/treasury.dto.js';
+import type {
+  CreateCashTransferDto,
+  ListCashTransfersQueryDto,
+  ReverseVoucherDto,
+} from './dto/treasury.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 const SOURCE = 'CASH_TRANSFER';
@@ -26,21 +32,67 @@ export class CashTransfersService {
     private readonly audit: AuditService,
   ) {}
 
-  async list() {
+  /**
+   * One numbered page of cash transfers (ADR-022): the caller's branches only
+   * (ADR-003 §10), newest first unless `sort` says otherwise.
+   */
+  async list(query: ListCashTransfersQueryDto) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    return db.cashTransfer.findMany({
-      where: { companyId },
-      include: { fromAccount: ACCOUNT_SELECT, toAccount: ACCOUNT_SELECT },
-      orderBy: [{ transferDate: 'desc' }, { id: 'desc' }],
-      take: 300,
+    if (query.from && query.to && query.from > query.to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', { from: query.from, to: query.to });
+    }
+    const q = query.q;
+    const where: Prisma.CashTransferWhereInput = {
+      companyId,
+      ...(query.from || query.to
+        ? {
+            transferDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+      AND: [
+        branchWhere(),
+        q
+          ? {
+              OR: [
+                { transferNo: { contains: q } },
+                { referenceNo: { contains: q } },
+                { description: { contains: q } },
+              ],
+            }
+          : {},
+      ],
+    };
+    const orderBy = orderByOf<'transferDate' | 'transferNo' | 'amount', Prisma.CashTransferOrderByWithRelationInput>(
+      query.sort,
+      '-transferDate',
+      {
+        transferDate: (dir) => ({ transferDate: dir }),
+        transferNo: (dir) => ({ transferNo: dir }),
+        amount: (dir) => ({ amount: dir }),
+      },
+      (dir) => ({ id: dir }),
+    );
+    return findPage(db, pageWindow(query), {
+      rows: (tx, window) =>
+        tx.cashTransfer.findMany({
+          where,
+          include: { fromAccount: ACCOUNT_SELECT, toAccount: ACCOUNT_SELECT },
+          orderBy,
+          ...window,
+        }),
+      count: (tx) => tx.cashTransfer.count({ where }),
     });
   }
 
+  /** One transfer; another branch's answers 404 like another tenant's (ADR-003 §11). */
   async get(id: bigint) {
     const { db } = this.support.tenant();
     const t = await db.cashTransfer.findFirst({
-      where: { id },
+      where: { id, AND: [branchWhere()] },
       include: {
         fromAccount: ACCOUNT_SELECT,
         toAccount: ACCOUNT_SELECT,

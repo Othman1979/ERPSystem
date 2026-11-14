@@ -3,7 +3,9 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
-import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
+import { assertBranchAllowed, branchWhere, currentBranchId } from '../../common/branch/branch-context.js';
+import { findPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -13,6 +15,7 @@ import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import {
   CreateJournalEntryDto,
   CreateOpeningEntryDto,
+  type ListJournalEntriesQueryDto,
   ReverseJournalEntryDto,
 } from './dto/journal.dto.js';
 import {
@@ -144,30 +147,59 @@ export class JournalService implements OnModuleInit {
     return ClsServiceManager.getClsService<RequestContext>().get('userId');
   }
 
-  async list(status?: string, voucherType?: string, sourceType?: string) {
+  /**
+   * One numbered page of journal entries (ADR-022, LEDGER-08): the caller's
+   * branches only (ADR-003 §10), newest first unless `sort` says otherwise.
+   */
+  async list(query: ListJournalEntriesQueryDto) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
-    if (sourceType && sourceType !== MANUAL_SOURCE && sourceType !== OPENING_SOURCE) {
-      throw new DomainError(ErrorCode.VALIDATION, `Unsupported sourceType filter: ${sourceType}`);
+    if (query.from && query.to && query.from > query.to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', { from: query.from, to: query.to });
     }
-    return db.journalEntry.findMany({
-      where: {
-        companyId,
-        ...(status ? { status: status as 'DRAFT' | 'POSTED' } : {}),
-        ...(voucherType ? { voucherType: voucherType as 'JOURNAL' | 'RECEIPT_VOUCHER' | 'PAYMENT_VOUCHER' } : {}),
-        ...(sourceType ? { sourceType } : {}),
-      },
-      orderBy: [{ entryDate: 'desc' }, { id: 'desc' }],
-      // reversals: lets the list tag reversed entries.
-      include: { _count: { select: { lines: true } }, reversals: { select: { id: true, entryNo: true } } },
-      take: 200,
+    const q = query.q;
+    const where: Prisma.JournalEntryWhereInput = {
+      companyId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.voucherType ? { voucherType: query.voucherType } : {}),
+      ...(query.sourceType ? { sourceType: query.sourceType } : {}),
+      ...(query.from || query.to
+        ? {
+            entryDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+      AND: [
+        branchWhere(),
+        q ? { OR: [{ entryNo: { contains: q } }, { description: { contains: q } }] } : {},
+      ],
+    };
+    const orderBy = orderByOf<'entryDate' | 'entryNo', Prisma.JournalEntryOrderByWithRelationInput>(
+      query.sort,
+      '-entryDate',
+      { entryDate: (dir) => ({ entryDate: dir }), entryNo: (dir) => ({ entryNo: dir }) },
+      (dir) => ({ id: dir }),
+    );
+    return findPage(db, pageWindow(query), {
+      rows: (tx, window) =>
+        tx.journalEntry.findMany({
+          where,
+          orderBy,
+          // reversals: lets the list tag reversed entries.
+          include: { _count: { select: { lines: true } }, reversals: { select: { id: true, entryNo: true } } },
+          ...window,
+        }),
+      count: (tx) => tx.journalEntry.count({ where }),
     });
   }
 
+  /** One entry; another branch's answers 404 like another tenant's (ADR-003 §11). */
   async get(id: bigint) {
     const { db } = this.tenant();
     const entry = await db.journalEntry.findFirst({
-      where: { id },
+      where: { id, ...branchWhere() },
       include: {
         lines: {
           orderBy: { lineNo: 'asc' },

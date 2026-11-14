@@ -19,6 +19,7 @@ import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { statementBody } from './support/statements.js';
 
 const API_PORT = 3207;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -214,7 +215,7 @@ describe('Opening / movement / closing columns', () => {
 
   it('flags the opening entry and the opening stock entry, not other entries', async () => {
     expect((await get(`/api/v1/journal-entries/${openingId}`)).isOpening).toBe(true);
-    const adjustments = (await get('/api/v1/stock-adjustments')) as { adjustmentType: string; journalEntryId: string }[];
+    const adjustments = ((await get('/api/v1/stock-adjustments?pageSize=100')) as { items: { adjustmentType: string; journalEntryId: string }[] }).items;
     for (const a of adjustments) {
       const entry = await get(`/api/v1/journal-entries/${a.journalEntryId}`);
       expect([a.adjustmentType, entry.isOpening]).toEqual([a.adjustmentType, a.adjustmentType === 'OPENING']);
@@ -250,17 +251,17 @@ describe('Opening / movement / closing columns', () => {
   });
 
   it('account statement: opening row, movements, closing — the opening entry is not a row', async () => {
-    const gl = await get(`/api/v1/reports/general-ledger?accountId=${acc['1101']}&from=2025-01-01&to=2025-12-31`);
+    const gl = await statementBody(BASE, `/api/v1/reports/general-ledger?accountId=${acc['1101']}&from=2025-01-01&to=2025-12-31`, token);
     expect([m3(gl.openingDebit), m3(gl.openingCredit), m3(gl.openingBalance)]).toEqual(['1500.000', '0.000', '1500.000']);
     expect(gl.rows).toHaveLength(1);
     expect([m3(gl.rows[0].credit), m3(gl.rows[0].balance)]).toEqual(['300.000', '1200.000']);
     expect([m3(gl.totalDebit), m3(gl.totalCredit)]).toEqual(['0.000', '300.000']);
     expect([m3(gl.closingDebit), m3(gl.closingCredit), m3(gl.closingBalance)]).toEqual(['1200.000', '0.000', '1200.000']);
 
-    const later = await get(`/api/v1/reports/general-ledger?accountId=${acc['1101']}&from=2025-02-11`);
+    const later = await statementBody(BASE, `/api/v1/reports/general-ledger?accountId=${acc['1101']}&from=2025-02-11`, token);
     expect([m3(later.openingBalance), later.rows.length, m3(later.closingBalance)]).toEqual(['1200.000', 0, '1200.000']);
 
-    const ps = await get(`/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${customerId}`);
+    const ps = await statementBody(BASE, `/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${customerId}`, token);
     expect([m3(ps.openingDebit), ps.rows.length, m3(ps.closingDebit)]).toEqual(['700.000', 0, '700.000']);
   });
 

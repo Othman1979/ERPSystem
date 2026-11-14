@@ -223,7 +223,7 @@ describe('Phase 4 — inventory (erp_test)', () => {
     const movements = await api()
       .get(`/api/v1/stock/movements?itemId=${itemId}`)
       .set(auth(token));
-    const outMove = (movements.body.rows as { movementType: string; totalCost: string }[]).find(
+    const outMove = (movements.body.items as { movementType: string; totalCost: string }[]).find(
       (m) => m.movementType === 'OUT',
     )!;
     expect(Number(outMove.totalCost)).toBeCloseTo(30);
@@ -306,14 +306,14 @@ describe('Phase 4 — inventory (erp_test)', () => {
       .get(`/api/v1/stock/movements?itemId=${itemId}&sourceType=STOCK_TRANSFER`)
       .set(auth(token));
     const costs = new Set(
-      (moves.body.rows as { unitCost: string }[]).map((m) => Number(m.unitCost)),
+      (moves.body.items as { unitCost: string }[]).map((m) => Number(m.unitCost)),
     );
     expect(costs.size).toBe(1);
   });
 
   it('reverses a transfer → balances restored', async () => {
     const list = await api().get('/api/v1/stock-transfers?status=POSTED').set(auth(token));
-    const posted = (list.body as { id: string; reversalOfId: string | null }[]).find(
+    const posted = (list.body.items as { id: string; reversalOfId: string | null }[]).find(
       (t) => !t.reversalOfId,
     )!;
     const rev = await api()

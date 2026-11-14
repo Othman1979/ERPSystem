@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { branchWhere } from '../../common/branch/branch-context.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { calendarDateIn, DocumentSupportService } from '../shared/document-support.service.js';
 import { ReportsService } from '../journal/reports.service.js';
@@ -274,18 +275,28 @@ export class TreasuryReportsService {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const accountSelect = { select: { id: true, code: true, nameAr: true, nameEn: true } } as const;
-    const [boxes, banks, cashAccounts] = await Promise.all([
-      db.cashBox.findMany({ where: { companyId }, include: { account: accountSelect }, orderBy: { code: 'asc' } }),
+    const [boxes, banks, cashAccounts, allBoxes] = await Promise.all([
+      // Cash boxes follow the caller's branches (ADR-003 §10); a box without a branch stays visible.
+      db.cashBox.findMany({
+        where: { companyId, AND: [branchWhere()] },
+        include: { account: accountSelect },
+        orderBy: { code: 'asc' },
+      }),
       db.bankAccount.findMany({ where: { companyId }, include: { account: accountSelect }, orderBy: { bankName: 'asc' } }),
       db.account.findMany({
         where: { companyId, isPostable: true, controlType: { in: ['CASH', 'BANK'] } },
         select: { id: true, code: true, nameAr: true, nameEn: true, isActive: true },
         orderBy: { code: 'asc' },
       }),
+      // Every box's ledger account, including other branches' boxes: such an account is
+      // linked to a box and must not show up here as an "unlinked" account.
+      db.cashBox.findMany({ where: { companyId }, select: { accountId: true } }),
     ]);
-    const linked = new Set([...boxes, ...banks].map((x) => x.accountId));
+    const linked = new Set([...allBoxes, ...banks].map((x) => x.accountId));
     const unlinked = cashAccounts.filter((a) => !linked.has(a.id));
-    const accountIds = [...linked, ...unlinked.map((a) => a.id)];
+    // Balances are computed for the rows shown only. Each balance is the account's whole
+    // balance: journal lines are not filtered by branch (a box's balance stays complete).
+    const accountIds = [...boxes, ...banks].map((x) => x.accountId).concat(unlinked.map((a) => a.id));
     const sums = accountIds.length
       ? await db.journalLine.groupBy({
           by: ['accountId'],

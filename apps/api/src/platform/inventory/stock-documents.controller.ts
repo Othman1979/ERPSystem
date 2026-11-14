@@ -13,6 +13,11 @@ import {
   ReverseStockDocumentDto,
   UpdateCountLineDto,
 } from './dto/inventory.dto.js';
+import {
+  ListStockAdjustmentsQueryDto,
+  ListStockCountsQueryDto,
+  ListStockTransfersQueryDto,
+} from './dto/list-queries.dto.js';
 
 @ApiTags('stock')
 @Controller()
@@ -27,8 +32,9 @@ export class StockDocumentsController {
 
   @Get('stock-adjustments')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  listAdjustments(@Query('status') status?: string) {
-    return this.adjustments.list(status);
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022), the caller's branches only. */
+  listAdjustments(@Query() q: ListStockAdjustmentsQueryDto) {
+    return this.adjustments.list(q);
   }
 
   @Post('stock-adjustments')
@@ -67,8 +73,9 @@ export class StockDocumentsController {
 
   @Get('stock-transfers')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  listTransfers(@Query('status') status?: string) {
-    return this.transfers.list(status);
+  /** Numbered page (ADR-022); a transfer shows when its source or destination is in the caller's branches. */
+  listTransfers(@Query() q: ListStockTransfersQueryDto) {
+    return this.transfers.list(q);
   }
 
   @Post('stock-transfers')
@@ -107,8 +114,9 @@ export class StockDocumentsController {
 
   @Get('stock-counts')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  listCounts(@Query('status') status?: string) {
-    return this.counts.list(status);
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022), the caller's branches only. */
+  listCounts(@Query() q: ListStockCountsQueryDto) {
+    return this.counts.list(q);
   }
 
   @Post('stock-counts')

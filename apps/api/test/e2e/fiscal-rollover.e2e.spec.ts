@@ -17,6 +17,7 @@ import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import request from 'supertest';
 import { addMember } from './support/members.js';
+import { wholeStatement } from './support/statements.js';
 
 const API_PORT = 3212;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -155,13 +156,13 @@ describe('Fiscal year rollover', () => {
   });
 
   it('account statements: a P&L account restarts, a cash account carries over', async () => {
-    const revenue = await api().get(`/api/v1/reports/general-ledger?accountId=${acc['4101']}&from=2026-01-01`).set(auth(token));
+    const revenue = await wholeStatement(BASE, `/api/v1/reports/general-ledger?accountId=${acc['4101']}&from=2026-01-01`, token);
     expect([m3(revenue.body.openingBalance), revenue.body.rows.length, m3(revenue.body.closingBalance)]).toEqual([
       '0.000',
       2,
       '-250.000',
     ]);
-    const cash = await api().get(`/api/v1/reports/general-ledger?accountId=${acc['1101']}&from=2026-01-01`).set(auth(token));
+    const cash = await wholeStatement(BASE, `/api/v1/reports/general-ledger?accountId=${acc['1101']}&from=2026-01-01`, token);
     expect(m3(cash.body.openingBalance)).toBe('700.000');
   });
 

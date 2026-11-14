@@ -19,6 +19,7 @@ import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { wholeStatement } from './support/statements.js';
 
 const API_PORT = 3196;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -391,9 +392,7 @@ describe('Aging as of a date', () => {
     expect(m3(c1.balance)).toBe('54.400');
 
     for (const r of customers.rows) {
-      const st = await api()
-        .get(`/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${r.partyId}&to=${asOf}`)
-        .set(auth(token));
+      const st = await wholeStatement(BASE, `/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${r.partyId}&to=${asOf}`, token);
       expect(st.status).toBe(200);
       expect(m3(r.balance)).toBe(m3(st.body.closingBalance));
       expect(m3(new Decimal(r.total).plus(r.unapplied))).toBe(m3(r.balance));

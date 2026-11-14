@@ -2,10 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { findPage, mapPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import {
   CreateSubscriptionDto,
   ExtendTrialDto,
+  ListTenantsQueryDto,
   UpdatePlanDto,
   UpdateTenantStatusDto,
 } from './dto/admin.dto.js';
@@ -21,33 +25,40 @@ export class AdminService {
     private readonly audit: AuditService,
   ) {}
 
-  async listTenants(query: { status?: string; search?: string; page?: number; pageSize?: number }) {
-    const page = Math.max(1, query.page ?? 1);
-    const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 20));
-    const where = {
-      ...(query.status ? { status: query.status as never } : {}),
-      ...(query.search
-        ? { name: { contains: query.search } }
-        : {}),
+  /**
+   * One numbered page of tenants (ADR-022). Tenants are not branch-scoped:
+   * this is platform administration, not a company read.
+   */
+  async listTenants(query: ListTenantsQueryDto) {
+    const where: Prisma.TenantWhereInput = {
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.q ? { name: { contains: query.q } } : {}),
     };
-    const [total, rows] = await Promise.all([
-      this.prisma.client.tenant.count({ where }),
-      this.prisma.client.tenant.findMany({
-        where,
-        include: {
-          plan: { select: { code: true, nameAr: true, nameEn: true } },
-          _count: { select: { memberships: true, branches: true } },
-        },
-        orderBy: { id: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-    ]);
-    return {
-      total,
-      page,
-      pageSize,
-      items: rows.map((t) => ({
+    const orderBy = orderByOf<'id' | 'name' | 'createdAt', Prisma.TenantOrderByWithRelationInput>(
+      query.sort,
+      '-id',
+      {
+        id: (dir) => ({ id: dir }),
+        name: (dir) => ({ name: dir }),
+        createdAt: (dir) => ({ createdAt: dir }),
+      },
+      (dir) => ({ id: dir }),
+    );
+    const page = await findPage(this.prisma.client, pageWindow(query), {
+      rows: (tx, window) =>
+        tx.tenant.findMany({
+          where,
+          include: {
+            plan: { select: { code: true, nameAr: true, nameEn: true } },
+            _count: { select: { memberships: true, branches: true } },
+          },
+          orderBy,
+          ...window,
+        }),
+      count: (tx) => tx.tenant.count({ where }),
+    });
+    return mapPage(page, (rows) =>
+      rows.map((t) => ({
         id: t.id.toString(),
         name: t.name,
         status: t.status,
@@ -58,7 +69,7 @@ export class AdminService {
         branches: t._count.branches,
         createdAt: t.createdAt,
       })),
-    };
+    );
   }
 
   async getTenant(id: bigint) {

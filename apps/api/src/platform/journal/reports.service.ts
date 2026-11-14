@@ -190,9 +190,11 @@ export class ReportsService {
    * (both ends inclusive, either optional), for the company in CLS. The one
    * query behind the trial balance, income statement, balance sheet and
    * dashboard, so their figures agree by construction. Accounts without
-   * lines in the range are absent.
+   * lines in the range are absent. `branchScoped`: only lines of the
+   * caller's branches (the tax summary, ADR-003 §12); the statements stay
+   * company-wide and are for all-branch members only (§13).
    */
-  async accountTotals(range: ReportRange = {}): Promise<AccountTotal[]> {
+  async accountTotals(range: ReportRange = {}, opts: { branchScoped?: boolean } = {}): Promise<AccountTotal[]> {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
     const dateWhere = this.dateWhere(range);
@@ -205,6 +207,7 @@ export class ReportsService {
           status: 'POSTED',
           ...(Object.keys(dateWhere).length ? { entryDate: dateWhere } : {}),
         },
+        ...(opts.branchScoped ? { AND: [branchWhere()] } : {}),
       },
       _sum: { debit: true, credit: true },
     });
@@ -761,6 +764,8 @@ export class ReportsService {
       where: {
         ...this.controlLineWhere(partyType, mappedAccountId),
         entry: { companyId, status: 'POSTED', entryDate: { lte: asOf } },
+        // Aging is per branch for a restricted member (ADR-003 §12): the line's branch.
+        AND: [branchWhere()],
       },
       _sum: { debit: true, credit: true },
     });
@@ -800,6 +805,7 @@ export class ReportsService {
           entryDate: { lte: asOf },
           reversals: { none: { status: 'POSTED', entryDate: { lte: asOf } } },
         },
+        AND: [branchWhere()],
       },
       select: { partyId: true, debit: true, credit: true, entry: { select: { entryDate: true } } },
       orderBy: [{ entry: { entryDate: 'asc' } }, { entry: { id: 'asc' } }, { lineNo: 'asc' }],

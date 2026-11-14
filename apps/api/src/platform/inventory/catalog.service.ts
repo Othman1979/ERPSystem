@@ -5,6 +5,8 @@ import type { RequestContext } from '../../common/cls/cls.types.js';
 import { Decimal, round6 } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { findPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import {
@@ -15,6 +17,7 @@ import {
   UpdateItemDto,
   UpdateItemGroupDto,
 } from './dto/inventory.dto.js';
+import type { ListItemsQueryDto } from './dto/list-queries.dto.js';
 
 /**
  * Item catalog: groups, items, item units and barcodes (§7.4).
@@ -99,33 +102,54 @@ export class CatalogService {
 
   // -------------------------------------------------------------------- items
 
-  async listItems(query?: { search?: string; itemKind?: string; isActive?: string }) {
+  /**
+   * One numbered page of items (ADR-022). Master data: not limited to the
+   * caller's branches (ADR-003 §10). `q` matches the code and both names.
+   */
+  async listItems(query: ListItemsQueryDto) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
-    return db.item.findMany({
-      where: {
-        companyId,
-        ...(query?.search
-          ? {
-              OR: [
-                { code: { contains: query.search } },
-                { nameAr: { contains: query.search } },
-                { nameEn: { contains: query.search } },
-              ],
-            }
-          : {}),
-        ...(query?.itemKind ? { itemKind: query.itemKind as 'STOCK' | 'SERVICE' } : {}),
-        ...(query?.isActive ? { isActive: query.isActive === 'true' } : {}),
+    const q = query.q;
+    const where: Prisma.ItemWhereInput = {
+      companyId,
+      ...(query.itemKind ? { itemKind: query.itemKind } : {}),
+      ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
+      ...(q
+        ? {
+            OR: [
+              { code: { contains: q } },
+              { nameAr: { contains: q } },
+              { nameEn: { contains: q } },
+              // A scanned barcode finds its item (the pickers, ADR-022 §8).
+              { barcodes: { some: { barcode: q } } },
+            ],
+          }
+        : {}),
+    };
+    const orderBy = orderByOf<'code' | 'nameAr', Prisma.ItemOrderByWithRelationInput>(
+      query.sort,
+      'code',
+      {
+        code: (dir) => ({ code: dir }),
+        nameAr: (dir) => ({ nameAr: dir }),
       },
-      include: {
-        baseUnit: { select: { id: true, code: true, nameAr: true } },
-        itemGroup: { select: { id: true, code: true, nameAr: true } },
-        taxCategory: { select: { id: true, code: true, nameAr: true } },
-        defaultWarehouse: { select: { id: true, code: true, nameAr: true } },
-        _count: { select: { barcodes: true, units: true } },
-      },
-      orderBy: { code: 'asc' },
-      take: 500,
+      (dir) => ({ id: dir }),
+    );
+    return findPage(db, pageWindow(query), {
+      rows: (tx, window) =>
+        tx.item.findMany({
+          where,
+          include: {
+            baseUnit: { select: { id: true, code: true, nameAr: true } },
+            itemGroup: { select: { id: true, code: true, nameAr: true } },
+            taxCategory: { select: { id: true, code: true, nameAr: true } },
+            defaultWarehouse: { select: { id: true, code: true, nameAr: true } },
+            _count: { select: { barcodes: true, units: true } },
+          },
+          orderBy,
+          ...window,
+        }),
+      count: (tx) => tx.item.count({ where }),
     });
   }
 

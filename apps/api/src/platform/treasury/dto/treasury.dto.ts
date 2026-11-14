@@ -11,6 +11,9 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { DATE_PATTERN, ID_PATTERN } from '../../../common/pipes/parse-id.pipe.js';
+import { PageQueryDto, SortParam, sortValues } from '../../../common/paging/page-query.dto.js';
 import { ExportQueryDto } from '../../printing/dto/export.dto.js';
 
 const INT_STRING = /^\d+$/;
@@ -234,4 +237,75 @@ export class AgingQueryDto extends ExportQueryDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   @IsDateString({ strict: true })
   asOf?: string;
+}
+
+export const RECEIPT_SORT_KEYS = ['receiptDate', 'receiptNo', 'amount'] as const;
+export const RECEIPT_SORTS = sortValues(RECEIPT_SORT_KEYS);
+export const PAYMENT_SORT_KEYS = ['paymentDate', 'paymentNo', 'amount'] as const;
+export const PAYMENT_SORTS = sortValues(PAYMENT_SORT_KEYS);
+export const CASH_TRANSFER_SORT_KEYS = ['transferDate', 'transferNo', 'amount'] as const;
+export const CASH_TRANSFER_SORTS = sortValues(CASH_TRANSFER_SORT_KEYS);
+
+/** Date range on a voucher's date (yyyy-mm-dd, inclusive) plus the numbered-page parameters. */
+export class VoucherDateRangeQueryDto extends PageQueryDto {
+  /** Voucher date on or after (yyyy-mm-dd). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  from?: string;
+
+  /** Voucher date on or before (yyyy-mm-dd). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  to?: string;
+}
+
+/**
+ * GET /receipts (ADR-022 §2): a numbered page, newest first by default. `q`
+ * matches the receipt number, the reference and the party's code and names.
+ */
+export class ListReceiptsQueryDto extends VoucherDateRangeQueryDto {
+  @SortParam(RECEIPT_SORTS, '-receiptDate')
+  sort?: (typeof RECEIPT_SORTS)[number];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
+  partyId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
+  cashAccountId?: string;
+}
+
+/**
+ * GET /payments (ADR-022 §2): a numbered page, newest first by default. `q`
+ * matches the payment number, the reference and the party's code and names.
+ */
+export class ListPaymentsQueryDto extends VoucherDateRangeQueryDto {
+  @SortParam(PAYMENT_SORTS, '-paymentDate')
+  sort?: (typeof PAYMENT_SORTS)[number];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
+  partyId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
+  cashAccountId?: string;
+}
+
+/**
+ * GET /cash-transfers (ADR-022 §2): a numbered page, newest first by default.
+ * `q` matches the transfer number, the reference and the description.
+ */
+export class ListCashTransfersQueryDto extends VoucherDateRangeQueryDto {
+  @SortParam(CASH_TRANSFER_SORTS, '-transferDate')
+  sort?: (typeof CASH_TRANSFER_SORTS)[number];
 }

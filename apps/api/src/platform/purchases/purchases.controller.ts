@@ -8,7 +8,12 @@ import { PrintingService } from '../printing/printing.service.js';
 import { purchaseInvoicePrint } from './purchases.print.js';
 import { PurchaseInvoicesService } from './purchase-invoices.service.js';
 import { PurchaseReturnsService } from './purchase-returns.service.js';
-import { CreatePurchaseInvoiceDto, CreatePurchaseReturnDto } from './dto/purchases.dto.js';
+import {
+  CreatePurchaseInvoiceDto,
+  CreatePurchaseReturnDto,
+  ListPurchaseInvoicesQueryDto,
+  ListPurchaseReturnsQueryDto,
+} from './dto/purchases.dto.js';
 
 @ApiTags('purchases')
 @Controller()
@@ -21,14 +26,11 @@ export class PurchasesController {
 
   // ---------------------------------------------------- purchase invoices
 
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022), the caller's branches only. */
   @Get('purchase-invoices')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  listInvoices(
-    @Query('status') status?: string,
-    @Query('paymentType') paymentType?: string,
-    @Query('supplierId') supplierId?: string,
-  ) {
-    return this.invoices.list(status, paymentType, supplierId);
+  listInvoices(@Query() q: ListPurchaseInvoicesQueryDto) {
+    return this.invoices.list(q);
   }
 
   @Get('purchase-invoices/:id')
@@ -71,10 +73,11 @@ export class PurchasesController {
 
   // ------------------------------------------------------ purchase returns
 
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022), the caller's branches only. */
   @Get('purchase-returns')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  listReturns(@Query('status') status?: string) {
-    return this.returns.list(status);
+  listReturns(@Query() q: ListPurchaseReturnsQueryDto) {
+    return this.returns.list(q);
   }
 
   @Get('purchase-returns/:id')

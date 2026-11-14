@@ -1,13 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
-import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
+import { assertBranchAllowed, branchWhere, currentBranchId } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { AuditService } from '../../common/audit/audit.service.js';
+import { findPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type { CreateGoodsNoteDto } from './dto/goods-notes.dto.js';
+import type { ListGoodsNotesQueryDto } from '../inventory/dto/list-queries.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
@@ -40,29 +43,67 @@ export class GoodsNotesService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(status?: string, noteType?: string) {
+  /**
+   * One numbered page of goods notes (ADR-022), newest first unless `sort` says
+   * otherwise. A note belongs to its own branch (ADR-003 §10).
+   */
+  async list(query: ListGoodsNotesQueryDto) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    return db.goodsNote.findMany({
-      where: {
-        companyId,
-        ...(status ? { status: status as 'DRAFT' | 'POSTED' } : {}),
-        ...(noteType ? { noteType: noteType as 'GRN' | 'GIN' } : {}),
+    if (query.from && query.to && query.from > query.to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', {
+        from: query.from,
+        to: query.to,
+      });
+    }
+    const q = query.q;
+    const where: Prisma.GoodsNoteWhereInput = {
+      companyId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.noteType ? { noteType: query.noteType } : {}),
+      ...(query.from || query.to
+        ? {
+            noteDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+      AND: [
+        branchWhere(),
+        q ? { OR: [{ docNo: { contains: q } }, { description: { contains: q } }] } : {},
+      ],
+    };
+    const orderBy = orderByOf<'date' | 'docNo', Prisma.GoodsNoteOrderByWithRelationInput>(
+      query.sort,
+      '-date',
+      {
+        date: (dir) => ({ noteDate: dir }),
+        docNo: (dir) => ({ docNo: dir }),
       },
-      include: {
-        warehouse: { select: { id: true, code: true, nameAr: true } },
-        branch: { select: { id: true, code: true, nameAr: true } },
-        _count: { select: { lines: true } },
-      },
-      orderBy: [{ noteDate: 'desc' }, { id: 'desc' }],
-      take: 300,
+      (dir) => ({ id: dir }),
+    );
+    return findPage(db, pageWindow(query), {
+      rows: (tx, window) =>
+        tx.goodsNote.findMany({
+          where,
+          include: {
+            warehouse: { select: { id: true, code: true, nameAr: true } },
+            branch: { select: { id: true, code: true, nameAr: true } },
+            _count: { select: { lines: true } },
+          },
+          orderBy,
+          ...window,
+        }),
+      count: (tx) => tx.goodsNote.count({ where }),
     });
   }
 
+  /** One note; another branch's answers 404 like another tenant's (ADR-003 §11). */
   async get(id: bigint) {
     const { db } = this.support.tenant();
     const note = await db.goodsNote.findFirst({
-      where: { id },
+      where: { id, AND: [branchWhere()] },
       include: {
         warehouse: true,
         branch: { select: { id: true, code: true, nameAr: true } },

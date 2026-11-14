@@ -16,6 +16,7 @@ import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { wholeStatement } from './support/statements.js';
 
 const API_PORT = 3195;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -301,8 +302,8 @@ describe('Golden scenarios S1–S11 (BUILD_PLAN §18)', () => {
       lines: [{ itemId: A, qty: '14' }],
     });
     expect(posted.status).toBe(201);
-    const moves = await api().get(`/api/v1/stock/movements?itemId=${A}&pageSize=100`).set(auth(token));
-    const out = (moves.body.rows as { movementType: string; sourceType: string; qtyOut: string; totalCost: string }[]).find(
+    const moves = await api().get(`/api/v1/stock/movements?itemId=${A}&limit=500`).set(auth(token));
+    const out = (moves.body.items as { movementType: string; sourceType: string; qtyOut: string; totalCost: string }[]).find(
       (r) => r.movementType === 'OUT' && new Decimal(r.qtyOut).eq(14),
     )!;
     expect(m3(out.totalCost)).toBe('78.125'); // not 14 × 5.580357 = 78.124998
@@ -340,9 +341,10 @@ describe('Golden scenarios S1–S11 (BUILD_PLAN §18)', () => {
       ((await api().get('/api/v1/document-sequences').set(auth(token))).body as { prefix: string; nextNumber: number }[])
         .filter((s) => s.prefix === 'SI')
         .map((s) => s.nextNumber);
-    const entries = async () => (await api().get('/api/v1/journal-entries').set(auth(token))).body.length as number;
+    // Counts read the lists' totals (ADR-022): the figures compared are unchanged.
+    const entries = async () => (await api().get('/api/v1/journal-entries').set(auth(token))).body.total as number;
     const moves = async () =>
-      (await api().get(`/api/v1/stock/movements?itemId=${A}&pageSize=100`).set(auth(token))).body.total as number;
+      (await api().get(`/api/v1/stock/movements?itemId=${A}&limit=500`).set(auth(token))).body.items.length as number;
     const [seqBefore, entriesBefore, movesBefore] = [await seq(), await entries(), await moves()];
 
     const { posted } = await createAndPost('sales-invoices', {
@@ -398,9 +400,7 @@ describe('Golden scenarios S1–S11 (BUILD_PLAN §18)', () => {
     const after = await api().get(`/api/v1/sales-invoices/${s2InvoiceId}`).set(auth(token));
     expect(m3(after.body.outstanding)).toBe('7.840');
 
-    const st = await api()
-      .get(`/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${customerId}`)
-      .set(auth(token));
+    const st = await wholeStatement(BASE, `/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${customerId}`, token);
     expect(m3(st.body.closingBalance)).toBe('7.840');
 
     const tb = await api().get('/api/v1/reports/trial-balance').set(auth(token));

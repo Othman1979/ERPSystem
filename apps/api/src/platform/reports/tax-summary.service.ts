@@ -62,7 +62,8 @@ export class TaxSummaryService {
       this.salesReturns.summary(range, 'tax'),
       this.purchases.summary(range, 'tax'),
       this.purchaseReturns.summary(range, 'tax'),
-      this.ledger.accountTotals({ from: period.from, to: period.to }),
+      // The tax accounts' ledger figure on the caller's branches, like the documents above (ADR-003 §12).
+      this.ledger.accountTotals({ from: period.from, to: period.to }, { branchScoped: true }),
       this.support.mappingAccounts(db, tenantId, companyId, ['OUTPUT_TAX', 'INPUT_TAX']),
     ]);
 

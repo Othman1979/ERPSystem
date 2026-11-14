@@ -10,6 +10,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import request from 'supertest';
 import mariadb, { type Connection } from 'mariadb';
+import { wholeStatement } from './support/statements.js';
 
 const API_PORT = 3197;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -345,10 +346,7 @@ describe('Phase 3 — journal engine (erp_test)', () => {
   });
 
   it('general ledger shows running balance for an account', async () => {
-    const gl = await api()
-      .get('/api/v1/reports/general-ledger')
-      .query({ accountId: acct('5204'), from: '2025-01-01', to: '2025-12-31' })
-      .set(auth(token));
+    const gl = await wholeStatement(BASE, `/api/v1/reports/general-ledger?accountId=${acct('5204')}&from=2025-01-01&to=2025-12-31`, token);
     expect(gl.status).toBe(200);
     expect(gl.body.account.code).toBe('5204');
     // 5204 got: +50 (post), +30 then reversal -30 → net 50... plus opening? no.
@@ -357,10 +355,7 @@ describe('Phase 3 — journal engine (erp_test)', () => {
   });
 
   it('party statement matches control-account balance', async () => {
-    const ps = await api()
-      .get('/api/v1/reports/party-statement')
-      .query({ partyType: 'CUSTOMER', partyId: customerId })
-      .set(auth(token));
+    const ps = await wholeStatement(BASE, `/api/v1/reports/party-statement?partyType=CUSTOMER&partyId=${customerId}`, token);
     expect(ps.status).toBe(200);
     expect(Number(ps.body.closingBalance)).toBeCloseTo(500, 3);
 
@@ -483,15 +478,15 @@ describe('Phase 3 — journal engine (erp_test)', () => {
       .query({ voucherType: 'RECEIPT_VOUCHER' })
       .set(auth(token));
     expect(receipts.status).toBe(200);
-    expect(receipts.body.length).toBeGreaterThan(0);
-    for (const e of receipts.body) {
+    expect(receipts.body.items.length).toBeGreaterThan(0);
+    for (const e of receipts.body.items) {
       expect(e.voucherType).toBe('RECEIPT_VOUCHER');
     }
     const payments = await api()
       .get('/api/v1/journal-entries')
       .query({ voucherType: 'PAYMENT_VOUCHER' })
       .set(auth(token));
-    for (const e of payments.body) {
+    for (const e of payments.body.items) {
       expect(e.voucherType).toBe('PAYMENT_VOUCHER');
     }
   });
@@ -508,7 +503,7 @@ describe('Phase 3 — journal engine (erp_test)', () => {
     expect(regB.status).toBe(201);
     const tokenB = regB.body.accessToken;
     const listB = await api().get('/api/v1/journal-entries').set(auth(tokenB));
-    expect(listB.body).toHaveLength(0);
+    expect(listB.body).toMatchObject({ items: [], total: 0 });
     const tbB = await api()
       .get('/api/v1/reports/trial-balance')
       .set(auth(tokenB));

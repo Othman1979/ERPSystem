@@ -18,6 +18,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import request from 'supertest';
+import { wholeStatement } from './support/statements.js';
 
 const API_PORT = 3206;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -97,9 +98,9 @@ describe('Opening balances', () => {
       .send({ entryDate: '2025-01-01', description: 'opening', lines });
 
   async function openingEntries(t = token) {
-    const res = await api().get('/api/v1/journal-entries?sourceType=OPENING_ENTRY').set(auth(t));
+    const res = await api().get('/api/v1/journal-entries?sourceType=OPENING_ENTRY&pageSize=100').set(auth(t));
     expect(res.status).toBe(200);
-    return res.body as Entry[];
+    return (res.body as { items: Entry[] }).items;
   }
 
   async function trialBalance() {
@@ -118,9 +119,7 @@ describe('Opening balances', () => {
   };
 
   async function statement(partyType: 'CUSTOMER' | 'SUPPLIER', code: string) {
-    const res = await api()
-      .get(`/api/v1/reports/party-statement?partyType=${partyType}&partyId=${party[code]}`)
-      .set(auth(token));
+    const res = await wholeStatement(BASE, `/api/v1/reports/party-statement?partyType=${partyType}&partyId=${party[code]}`, token);
     expect(res.status).toBe(200);
     return m3(res.body.closingBalance);
   }
@@ -275,7 +274,7 @@ describe('Opening balances', () => {
   it('filters the list by sourceType and refuses unknown filters', async () => {
     const manual = await api().get('/api/v1/journal-entries?sourceType=MANUAL_JOURNAL').set(auth(token));
     expect(manual.status).toBe(200);
-    expect(manual.body).toEqual([]);
+    expect(manual.body).toMatchObject({ items: [], total: 0 });
     const bad = await api().get('/api/v1/journal-entries?sourceType=SALES_INVOICE').set(auth(token));
     expect(bad.status).toBe(400);
   });

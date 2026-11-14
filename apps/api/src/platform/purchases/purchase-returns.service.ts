@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal, round3, sum } from '../../common/decimal/decimal.utils.js';
-import { assertBranchAllowed, assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
+import { assertBranchAllowed, assertWarehouseBranchAllowed, branchWhere } from '../../common/branch/branch-context.js';
+import { findPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { AuditService } from '../../common/audit/audit.service.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import {
   dayKey,
@@ -18,7 +21,7 @@ import {
 } from '../shared/document-summary.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
-import type { CreatePurchaseReturnDto } from './dto/purchases.dto.js';
+import type { CreatePurchaseReturnDto, ListPurchaseReturnsQueryDto } from './dto/purchases.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { computeReturnLines, returnedByLine } from '../shared/return-lines.js';
 import { assertRefundType } from '../shared/refund-type.js';
@@ -52,7 +55,14 @@ export class PurchaseReturnsService {
   async summary(range: SummaryRange, groupBy: SummaryGroupBy): Promise<DocumentSummaryRow[]> {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const where = { companyId, status: 'POSTED' as const, returnDate: { gte: range.from, lte: range.to } };
+    // A return belongs to its original invoice's branch (ADR-003 §12). `where` also
+    // filters the line groupBys through `purchaseReturn: where`, if any.
+    const where = {
+      companyId,
+      status: 'POSTED' as const,
+      returnDate: { gte: range.from, lte: range.to },
+      AND: [{ originalInvoice: branchWhere() }],
+    };
     if (groupBy === 'day' || groupBy === 'month') {
       const groups = await db.purchaseReturn.groupBy({
         by: ['returnDate'],
@@ -121,25 +131,76 @@ export class PurchaseReturnsService {
     );
   }
 
-  async list(status?: string) {
+  /**
+   * Numbered page of returns (ADR-022), newest first unless `sort` says otherwise.
+   * `q` matches the return number, the original invoice number and the supplier's
+   * code and names. The caller's branches are those of the original invoice (ADR-003 §10).
+   */
+  async list(query: ListPurchaseReturnsQueryDto) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    return db.purchaseReturn.findMany({
-      where: { companyId, ...(status ? { status: status as 'DRAFT' | 'POSTED' } : {}) },
-      include: {
-        supplier: { select: { id: true, code: true, nameAr: true } },
-        originalInvoice: { select: { id: true, invoiceNo: true } },
-        _count: { select: { lines: true } },
+    if (query.from && query.to && query.from > query.to) {
+      throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', { from: query.from, to: query.to });
+    }
+    const q = query.q;
+    const where: Prisma.PurchaseReturnWhereInput = {
+      companyId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.supplierId ? { supplierId: BigInt(query.supplierId) } : {}),
+      ...(query.from || query.to
+        ? {
+            returnDate: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+      AND: [
+        { originalInvoice: branchWhere() },
+        q
+          ? {
+              OR: [
+                { returnNo: { contains: q } },
+                { originalInvoice: { invoiceNo: { contains: q } } },
+                { supplier: { code: { contains: q } } },
+                { supplier: { nameAr: { contains: q } } },
+                { supplier: { nameEn: { contains: q } } },
+              ],
+            }
+          : {},
+      ],
+    };
+    const orderBy = orderByOf<'returnDate' | 'returnNo' | 'grandTotal', Prisma.PurchaseReturnOrderByWithRelationInput>(
+      query.sort,
+      '-returnDate',
+      {
+        returnDate: (dir) => ({ returnDate: dir }),
+        returnNo: (dir) => ({ returnNo: dir }),
+        grandTotal: (dir) => ({ grandTotal: dir }),
       },
-      orderBy: [{ returnDate: 'desc' }, { id: 'desc' }],
-      take: 300,
+      (dir) => ({ id: dir }),
+    );
+    return findPage(db, pageWindow(query), {
+      rows: (tx, window) =>
+        tx.purchaseReturn.findMany({
+          where,
+          include: {
+            supplier: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+            originalInvoice: { select: { id: true, invoiceNo: true } },
+            _count: { select: { lines: true } },
+          },
+          orderBy,
+          ...window,
+        }),
+      count: (tx) => tx.purchaseReturn.count({ where }),
     });
   }
 
+  /** One return; a return of another branch's invoice answers 404 (ADR-003 §11). */
   async get(id: bigint) {
     const { db } = this.support.tenant();
     const ret = await db.purchaseReturn.findFirst({
-      where: { id },
+      where: { id, AND: [{ originalInvoice: branchWhere() }] },
       include: {
         supplier: true,
         originalInvoice: { select: { id: true, invoiceNo: true, invoiceDate: true } },

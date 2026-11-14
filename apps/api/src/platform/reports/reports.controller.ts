@@ -1,6 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { RequirePermission } from '../../common/decorators/auth.decorators.js';
+import { RequireAllBranches, RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { PrintingService } from '../printing/printing.service.js';
 import { DashboardService } from './dashboard.service.js';
@@ -30,14 +30,18 @@ export class ReportsController {
     private readonly printing: PrintingService,
   ) {}
 
+  /** Company-wide: only for members with every branch (ADR-003 §13). */
   @Get('reports/income-statement')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
+  @RequireAllBranches()
   async incomeStatement(@Query() q: PeriodQueryDto) {
     return this.printing.respond(await this.statements.incomeStatement(q), q, incomeStatementTable);
   }
 
+  /** Company-wide: only for members with every branch (ADR-003 §13). */
   @Get('reports/balance-sheet')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
+  @RequireAllBranches()
   async balanceSheet(@Query() q: AsOfQueryDto) {
     return this.printing.respond(await this.statements.balanceSheet(q), q, balanceSheetTable);
   }

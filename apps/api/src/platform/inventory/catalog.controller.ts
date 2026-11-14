@@ -11,6 +11,7 @@ import {
   UpdateItemDto,
   UpdateItemGroupDto,
 } from './dto/inventory.dto.js';
+import { ListItemsQueryDto } from './dto/list-queries.dto.js';
 
 @ApiTags('inventory-catalog')
 @Controller()
@@ -41,12 +42,9 @@ export class CatalogController {
 
   @Get('items')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  listItems(
-    @Query('search') search?: string,
-    @Query('itemKind') itemKind?: string,
-    @Query('isActive') isActive?: string,
-  ) {
-    return this.catalog.listItems({ search, itemKind, isActive });
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022); `q` replaces the old `search`. */
+  listItems(@Query() q: ListItemsQueryDto) {
+    return this.catalog.listItems(q);
   }
 
   @Get('items/barcode/:code')

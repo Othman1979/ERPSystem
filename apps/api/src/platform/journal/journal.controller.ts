@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { RequirePermission } from '../../common/decorators/auth.decorators.js';
+import { RequireAllBranches, RequirePermission } from '../../common/decorators/auth.decorators.js';
+import { keysetLimit } from '../../common/paging/page-query.dto.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { RequiresIdempotencyKey } from '../../common/idempotency/requires-idempotency-key.decorator.js';
 import { DomainError } from '../../common/errors/domain.error.js';
@@ -9,8 +10,10 @@ import { ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
 import {
   CreateJournalEntryDto,
   CreateOpeningEntryDto,
+  ListJournalEntriesQueryDto,
   ReportQueryDto,
   ReverseJournalEntryDto,
+  StatementQueryDto,
 } from './dto/journal.dto.js';
 import { PartiesService } from '../parties/parties.service.js';
 import { PrintingService } from '../printing/printing.service.js';
@@ -28,15 +31,11 @@ export class JournalController {
     private readonly parties: PartiesService,
   ) {}
 
+  /** Numbered page `{ items, page, pageSize, total }` (ADR-022, LEDGER-08), the caller's branches only. */
   @Get('journal-entries')
   @RequirePermission(PERMISSIONS.TENANT_READ)
-  list(
-    @Query('status') status?: string,
-    @Query('voucherType') voucherType?: string,
-    /** MANUAL_JOURNAL or OPENING_ENTRY (the opening balances screen). */
-    @Query('sourceType') sourceType?: string,
-  ) {
-    return this.journal.list(status, voucherType, sourceType);
+  list(@Query() q: ListJournalEntriesQueryDto) {
+    return this.journal.list(q);
   }
 
   @Post('journal-entries')
@@ -81,31 +80,50 @@ export class JournalController {
 
   // ---- reports (?format=json|pdf|xlsx&lang=ar|en) ----
 
+  /** Company-wide: only for members with every branch (ADR-003 §13). */
   @Get('reports/trial-balance')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
+  @RequireAllBranches()
   async trialBalance(@Query() q: ReportQueryDto) {
     return this.printing.respond(await this.reports.trialBalance(q), q, (d, lang) => trialBalanceTable(d, lang, q));
   }
 
+  /**
+   * Account statement. JSON: one keyset page (ADR-022 §4) — `{ account,
+   * summary (first page), items, nextCursor }`. PDF / XLSX: the whole
+   * statement, capped (REPORT_TOO_LARGE). Company-wide (ADR-003 §13).
+   */
   @Get('reports/general-ledger')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
-  async generalLedger(@Query() q: ReportQueryDto) {
+  @RequireAllBranches()
+  async generalLedger(@Query() q: StatementQueryDto) {
     if (!q.accountId) {
       throw new DomainError(ErrorCode.VALIDATION, 'accountId is required', { field: 'accountId' });
     }
-    const data = await this.reports.generalLedger(BigInt(q.accountId), q);
+    const accountId = BigInt(q.accountId);
+    if ((q.format ?? 'json') === 'json') {
+      return this.reports.generalLedgerPage(accountId, q, { limit: keysetLimit(q), cursor: q.cursor });
+    }
+    const data = await this.reports.generalLedger(accountId, q);
     return this.printing.respond(data, q, (d, lang) => generalLedgerTable(d, lang, q));
   }
 
+  /**
+   * Party statement, on the caller's branches (ADR-003 §12). JSON: one keyset
+   * page (ADR-022 §4); PDF / XLSX: the whole statement, capped.
+   */
   @Get('reports/party-statement')
   @RequirePermission(PERMISSIONS.REPORTS_VIEW)
-  async partyStatement(@Query() q: ReportQueryDto) {
+  async partyStatement(@Query() q: StatementQueryDto) {
     if (!q.partyId || !q.partyType) {
       throw new DomainError(ErrorCode.VALIDATION, 'partyType and partyId are required', {
         field: !q.partyType ? 'partyType' : 'partyId',
       });
     }
     const partyId = BigInt(q.partyId);
+    if ((q.format ?? 'json') === 'json') {
+      return this.reports.partyStatementPage(q.partyType, partyId, q, { limit: keysetLimit(q), cursor: q.cursor });
+    }
     const data = await this.reports.partyStatement(q.partyType, partyId, q);
     const party = q.format && q.format !== 'json' ? ((await this.parties.summaries([partyId]))[0] ?? null) : null;
     return this.printing.respond(data, q, (d, lang) => partyStatementTable(d, lang, q, party));

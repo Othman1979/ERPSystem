@@ -3,6 +3,7 @@ import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
 import {
   assertBranchAllowed,
   assertWarehouseBranchAllowed,
+  branchSql,
   branchWhere,
   currentBranchId,
 } from '../../common/branch/branch-context.js';
@@ -137,7 +138,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         ) r ON r.original_invoice_id = i.id
        WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId}
          AND i.status = 'POSTED' AND i.payment_type = 'CREDIT' AND i.invoice_date <= ${day}
-         AND ${which}`;
+         AND ${which}
+         AND ${branchSql(Prisma.raw('i.branch_id'))}`;
     // Open now (owes something on paid_amount)...
     const rows = await query(Prisma.sql`i.grand_total - i.paid_amount - COALESCE(r.credited, 0) > 0`);
     // ...plus those settled now but not yet as of the date. The ids come from
@@ -166,7 +168,13 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
   async summary(range: SummaryRange, groupBy: SummaryGroupBy): Promise<DocumentSummaryRow[]> {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const where = { companyId, status: 'POSTED' as const, invoiceDate: { gte: range.from, lte: range.to } };
+    // Branch of the caller (ADR-003 §12). `where` also filters the line groupBys through `invoice: where`.
+    const where = {
+      companyId,
+      status: 'POSTED' as const,
+      invoiceDate: { gte: range.from, lte: range.to },
+      AND: [branchWhere()],
+    };
     if (groupBy === 'day' || groupBy === 'month') {
       const groups = await db.salesInvoice.groupBy({
         by: ['invoiceDate'],

@@ -5,7 +5,9 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { isForeignKeyViolation } from '../../common/errors/db-errors.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
-import type { CreatePartyDto, UpdatePartyDto } from './dto/parties.dto.js';
+import { findPage } from '../../common/paging/find-page.js';
+import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
+import type { CreatePartyDto, ListPartiesQueryDto, UpdatePartyDto } from './dto/parties.dto.js';
 import { PartyUsageRegistry } from './party-usage.registry.js';
 import { Prisma, type PartyType } from '../../generated/prisma/client.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
@@ -19,17 +21,42 @@ export class PartiesService {
     private readonly usage: PartyUsageRegistry,
   ) {}
 
-  async list(partyType?: string, isActive?: string) {
+  /**
+   * One numbered page of the company's parties (ADR-022). Master data, so no
+   * branch filter: parties are company master data. `partyType` is an exact match.
+   */
+  async list(query: ListPartiesQueryDto) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    return db.party.findMany({
-      where: {
-        companyId,
-        ...(partyType ? { partyType: partyType as 'CUSTOMER' | 'SUPPLIER' | 'BOTH' } : {}),
-        ...(isActive ? { isActive: isActive === 'true' } : {}),
+    const q = query.q;
+    const where: Prisma.PartyWhereInput = {
+      companyId,
+      ...(query.partyType ? { partyType: query.partyType } : {}),
+      ...(query.isActive ? { isActive: query.isActive === 'true' } : {}),
+      ...(q
+        ? {
+            OR: [
+              { code: { contains: q } },
+              { nameAr: { contains: q } },
+              { nameEn: { contains: q } },
+              { phone: { contains: q } },
+              { taxNumber: { contains: q } },
+            ],
+          }
+        : {}),
+    };
+    const orderBy = orderByOf<'code' | 'nameAr', Prisma.PartyOrderByWithRelationInput>(
+      query.sort,
+      'code',
+      {
+        code: (dir) => ({ code: dir }),
+        nameAr: (dir) => ({ nameAr: dir }),
       },
-      orderBy: { code: 'asc' },
-      take: 500,
+      (dir) => ({ id: dir }),
+    );
+    return findPage(db, pageWindow(query), {
+      rows: (tx, window) => tx.party.findMany({ where, orderBy, ...window }),
+      count: (tx) => tx.party.count({ where }),
     });
   }
 
