@@ -643,6 +643,12 @@ describe('LEDGER-03 race — a child account under P against a posting to P', ()
   ): Promise<Who> {
     const parentId = await newParent(side);
     const [child, posting] = await run(parentId);
+    // A deadlock or lock wait timeout is neither of the two outcomes: say what InnoDB saw.
+    for (const [who, res] of [['child', child], ['posting', posting]] as const) {
+      if (res.status >= 400 && errorOf(res).code === 'CONFLICT') {
+        throw new Error(`${where}: the ${who} request got CONFLICT (a lock conflict)\n${await lastDeadlock()}`);
+      }
+    }
 
     const lines = await count('SELECT COUNT(*) AS n FROM journal_lines WHERE tenant_id = ? AND account_id = ?', [
       side.tenantId,
@@ -670,6 +676,15 @@ describe('LEDGER-03 race — a child account under P against a posting to P', ()
     expectRefused(posting, 400, 'ACCOUNT_NOT_POSTABLE');
     expect({ where, lines, children, postable }).toEqual({ where, lines: 0, children: 1, postable: 0 });
     return 'child';
+  }
+
+  /** InnoDB's report of the latest deadlock it rolled back, for a failure message. */
+  async function lastDeadlock(): Promise<string> {
+    const [row] = (await db.query('SHOW ENGINE INNODB STATUS')) as { Status: string }[];
+    const text = row.Status;
+    const from = text.indexOf('LATEST DETECTED DEADLOCK');
+    const to = text.indexOf('\n------------\nTRANSACTIONS');
+    return from < 0 ? 'no deadlock recorded' : text.slice(from, to > from ? to : from + 6000);
   }
 
   /** A third connection of the test's own, for holding a lock. */
