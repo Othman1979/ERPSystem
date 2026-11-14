@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, currentBranchId, assertWarehouseBranchAllowed } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
@@ -21,7 +21,15 @@ import {
 } from '../shared/document-summary.js';
 import { computeLineAmounts } from '../shared/invoice-math.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
-import { creditedByInvoice, withBalance } from '../shared/invoice-balance.js';
+import {
+  creditedByInvoice,
+  chunks,
+  IN_LIST_CHUNK,
+  owedAsOf,
+  withBalance,
+  type OpenInvoiceAsOf,
+  type OpenInvoiceRow,
+} from '../shared/invoice-balance.js';
 import {
   lockOrder,
   toSettlementState,
@@ -34,6 +42,7 @@ import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesInvoiceDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
+import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 
 const SOURCE = 'SALES_INVOICE';
 
@@ -50,7 +59,7 @@ interface ResolvedLine {
 
 /** Sales invoices: draft CRUD + post → stock OUT + COGS/revenue journal (§8.4). */
 @Injectable()
-export class SalesInvoicesService implements InvoiceSettlement {
+export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
   constructor(
     private readonly support: DocumentSupportService,
     private readonly posting: PostingService,
@@ -58,7 +67,27 @@ export class SalesInvoicesService implements InvoiceSettlement {
     private readonly audit: AuditService,
     private readonly einvoice: EInvoiceOutboxService,
     private readonly limits: PlanLimitsService,
+    private readonly partyUsage: PartyUsageRegistry,
   ) {}
+
+  onModuleInit(): void {
+    this.partyUsage.register('sales', (tx, partyId) => this.partyInUse(tx, partyId));
+  }
+
+  /**
+   * DB-15 / ADR-021: the first sales table that references the party in
+   * any status (drafts included), or null, read on the caller's transaction.
+   * A party used here is deactivated, never deleted.
+   */
+  async partyInUse(tx: Prisma.TransactionClient, partyId: bigint): Promise<string | null> {
+    if (await tx.salesInvoice.findFirst({ where: { customerId: partyId }, select: { id: true } })) {
+      return 'sales_invoices';
+    }
+    if (await tx.salesReturn.findFirst({ where: { customerId: partyId }, select: { id: true } })) {
+      return 'sales_returns';
+    }
+    return null;
+  }
 
   /** Posted credit-return totals for the given invoices (for `outstanding`). */
   private async creditedFor(
@@ -74,39 +103,50 @@ export class SalesInvoicesService implements InvoiceSettlement {
   }
 
   /**
-   * Aging as of a date (Phase 6): posted credit invoices dated on or before
-   * `asOf`, with the posted credit returns dated on or before it. Voucher
-   * allocations are treasury's and are subtracted there. Cash invoices are
-   * settled at sale and never appear.
+   * Aging as of a date (Phase 6, DB-14): the posted credit invoices dated on
+   * or before `asOf` that still owe something then, oldest first.
+   * owed = grand_total − allocations counted as of asOf − posted CREDIT
+   * returns dated on or before asOf. Allocations are treasury's: it passes
+   * `allocationShift` = paid_amount − allocations counted as of asOf, per
+   * invoice (non-zero only for vouchers dated after asOf and cancellations
+   * that still count then). The filter runs in SQL on paid_amount, so settled
+   * invoices are not read; those with a positive shift (settled after asOf)
+   * are read too, in chunks. Cash invoices are settled at sale and never appear.
    */
-  async creditInvoicesAsOf(asOf: Date) {
-    const { db } = this.support.tenant();
+  async openCreditInvoicesAsOf(asOf: Date, allocationShift: Map<bigint, Decimal>): Promise<OpenInvoiceAsOf[]> {
+    const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const [rows, returns] = await Promise.all([
-      db.salesInvoice.findMany({
-        where: { companyId, status: 'POSTED', paymentType: 'CREDIT', invoiceDate: { lte: asOf } },
-        select: {
-          id: true,
-          invoiceNo: true,
-          invoiceDate: true,
-          dueDate: true,
-          grandTotal: true,
-          customer: { select: { id: true, code: true, nameAr: true, nameEn: true } },
-        },
-        orderBy: [{ invoiceDate: 'asc' }, { id: 'asc' }],
-      }),
-      db.salesReturn.groupBy({
-        by: ['originalInvoiceId'],
-        where: { companyId, status: 'POSTED', refundType: 'CREDIT', returnDate: { lte: asOf } },
-        _sum: { grandTotal: true },
-      }),
-    ]);
-    const credited = new Map(returns.map((r) => [r.originalInvoiceId, r._sum.grandTotal?.toString() ?? '0']));
-    return rows.map(({ customer: party, ...r }) => ({
-      ...r,
-      party,
-      creditedAmount: new Decimal(credited.get(r.id) ?? '0'),
-    }));
+    const day = asOf.toISOString().slice(0, 10);
+    const query = (which: Prisma.Sql) => db.$queryRaw<OpenInvoiceRow[]>`
+      SELECT i.id, i.invoice_no, i.invoice_date, i.due_date, i.customer_id AS party_id,
+             i.grand_total, i.paid_amount, COALESCE(r.credited, 0) AS credited
+        FROM sales_invoices i
+        LEFT JOIN (
+          SELECT original_invoice_id, SUM(grand_total) AS credited
+            FROM sales_returns
+           WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
+             AND status = 'POSTED' AND refund_type = 'CREDIT' AND return_date <= ${day}
+           GROUP BY original_invoice_id
+        ) r ON r.original_invoice_id = i.id
+       WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId}
+         AND i.status = 'POSTED' AND i.payment_type = 'CREDIT' AND i.invoice_date <= ${day}
+         AND ${which}`;
+    // Open now (owes something on paid_amount)...
+    const rows = await query(Prisma.sql`i.grand_total - i.paid_amount - COALESCE(r.credited, 0) > 0`);
+    // ...plus those settled now but not yet as of the date. The ids come from
+    // treasury and may include invoices dated after asOf (dropped here by the
+    // date filter); they are read in chunks to stay far below the 65,535
+    // placeholders of a prepared statement.
+    const settledLater = [...allocationShift].filter(([, shift]) => shift.gt(0)).map(([id]) => id);
+    for (const ids of chunks(settledLater, IN_LIST_CHUNK)) {
+      rows.push(
+        ...(await query(
+          Prisma.sql`i.grand_total - i.paid_amount - COALESCE(r.credited, 0) <= 0 AND i.id IN (${Prisma.join(ids)})`,
+        )),
+      );
+    }
+    rows.sort((x, y) => x.invoice_date.getTime() - y.invoice_date.getTime() || (BigInt(x.id) < BigInt(y.id) ? -1 : 1));
+    return owedAsOf(rows, allocationShift);
   }
 
   /**
@@ -541,6 +581,7 @@ export class SalesInvoicesService implements InvoiceSettlement {
         const monthStart = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth(), 1));
         const nextMonth = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth() + 1, 1));
         await this.limits.assertMonthlyInvoiceQuota(
+          tx,
           await tx.salesInvoice.count({
             where: { companyId, status: 'POSTED', invoiceDate: { gte: monthStart, lt: nextMonth } },
           }),
@@ -573,12 +614,24 @@ export class SalesInvoicesService implements InvoiceSettlement {
           costTotal = costTotal.plus(res.totalCost);
           writeOff = writeOff.plus(res.writeOff);
         }
-        // Persist per-line cost snapshot.
-        for (const [lineId, c] of costByLine) {
-          await tx.salesInvoiceLine.update({
-            where: { id: lineId },
-            data: { unitCost: c.unitCost, costTotal: c.totalCost },
-          });
+        // Persist the per-line cost snapshot in one statement (TRADE-21 / DB-09),
+        // not one UPDATE per line inside the posting transaction.
+        if (costByLine.size > 0) {
+          const costs = [...costByLine];
+          const unitCase = Prisma.join(
+            costs.map(([lineId, c]) => Prisma.sql`WHEN ${lineId} THEN CAST(${c.unitCost.toString()} AS DECIMAL(18,6))`),
+            ' ',
+          );
+          const totalCase = Prisma.join(
+            costs.map(([lineId, c]) => Prisma.sql`WHEN ${lineId} THEN CAST(${c.totalCost.toString()} AS DECIMAL(18,3))`),
+            ' ',
+          );
+          await tx.$executeRaw`
+            UPDATE sales_invoice_lines
+               SET unit_cost = CASE id ${unitCase} END,
+                   cost_total = CASE id ${totalCase} END
+             WHERE tenant_id = ${tenantId} AND invoice_id = ${draft.id}
+               AND id IN (${Prisma.join(costs.map(([lineId]) => lineId))})`;
         }
 
         const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
@@ -627,16 +680,12 @@ export class SalesInvoicesService implements InvoiceSettlement {
         const invoiceNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'SALES_INVOICE', invoiceDate,
         );
-        const entryNo = await this.posting.allocateEntryNo(
-          tx, tenantId, companyId, 'JOURNAL_ENTRY', invoiceDate,
-        );
         const entry = await this.posting.postEntry(tx, {
           tenantId,
           companyId,
           branchId: draft.branchId,
           entryDate: invoiceDate,
           fiscalPeriodId: period.id,
-          entryNo,
           sourceType: SOURCE,
           sourceId: draft.id,
           description: draft.description ?? `Sales invoice ${invoiceNo}`,

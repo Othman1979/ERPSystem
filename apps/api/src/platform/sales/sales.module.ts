@@ -7,9 +7,10 @@ import { PrintingModule } from '../printing/printing.module.js';
 import { SalesController } from './sales.controller.js';
 import { SalesInvoicesService } from './sales-invoices.service.js';
 import { SalesReturnsService } from './sales-returns.service.js';
+import { PartiesModule } from '../parties/parties.module.js';
 
 @Module({
-  imports: [SharedModule, JournalModule, InventoryModule, EInvoiceOutboxModule, PrintingModule],
+  imports: [PartiesModule, SharedModule, JournalModule, InventoryModule, EInvoiceOutboxModule, PrintingModule],
   controllers: [SalesController],
   providers: [SalesInvoicesService, SalesReturnsService],
   // Treasury reads open credit invoices for aging through this service (module boundary).

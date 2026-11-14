@@ -50,3 +50,60 @@ export function withBalance<
     outstanding: outstanding.toFixed(3),
   };
 }
+
+/** A credit invoice that still owes something as of a date (aging, DB-14). */
+export interface OpenInvoiceAsOf {
+  id: bigint;
+  invoiceNo: string | null;
+  invoiceDate: Date;
+  dueDate: Date | null;
+  partyId: bigint;
+  /** grand_total − allocations counted as of the date − credit returns dated on or before it. */
+  owed: Decimal;
+}
+
+/** Row shape of the sales / purchases `openCreditInvoicesAsOf` queries. */
+export interface OpenInvoiceRow {
+  id: bigint | number;
+  invoice_no: string | null;
+  invoice_date: Date;
+  due_date: Date | null;
+  party_id: bigint | number;
+  grand_total: DecimalLike;
+  paid_amount: DecimalLike;
+  credited: DecimalLike;
+}
+
+/**
+ * What each row still owes as of the date: paid_amount counts every active
+ * allocation, so the allocations not counted then (`allocationShift`, from
+ * treasury) are added back. Rows that owe nothing are dropped.
+ */
+export function owedAsOf(rows: OpenInvoiceRow[], allocationShift: Map<bigint, Decimal>): OpenInvoiceAsOf[] {
+  const open: OpenInvoiceAsOf[] = [];
+  for (const r of rows) {
+    const id = BigInt(r.id);
+    const allocated = new Decimal(r.paid_amount.toString()).minus(allocationShift.get(id) ?? 0);
+    const owed = outstandingAmount(r.grand_total, allocated, r.credited);
+    if (owed.lte(0)) continue;
+    open.push({
+      id,
+      invoiceNo: r.invoice_no,
+      invoiceDate: r.invoice_date,
+      dueDate: r.due_date,
+      partyId: BigInt(r.party_id),
+      owed,
+    });
+  }
+  return open;
+}
+
+/** Ids per `IN (…)` list: far below MariaDB's 65,535 placeholders per prepared statement. */
+export const IN_LIST_CHUNK = 5_000;
+
+/** Splits a list into consecutive chunks of at most `size` items. */
+export function chunks<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}

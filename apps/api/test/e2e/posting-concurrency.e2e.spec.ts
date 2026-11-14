@@ -8,6 +8,10 @@
  *  - first movement: two purchase invoices on a brand-new item, posted at
  *    the same time. Both used to create the item_costs / stock_balances rows
  *    and the second failed with a unique violation (500).
+ *  - pool (3D finding): 12 invoices posted at once with the default pool of 10
+ *    connections all succeed; the plan quota read used a second connection
+ *    inside the posting transaction and deadlocked the pool (503);
+ *  - cost snapshot (TRADE-21): a 120-line invoice writes each line's unit/total cost in one batched UPDATE; each matches its stock movement.
  * After each scenario stock:verify finds no difference and the trial
  * balance is balanced. Tenant B sees none of tenant A's documents.
  *
@@ -54,7 +58,9 @@ beforeAll(async () => {
   const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
   server = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
-    env: { ...process.env, DATABASE_URL: databaseUrl, API_PORT: String(API_PORT), NODE_ENV: 'test' },
+    // DB_POOL_SIZE pinned to its default (10): the pool test below posts more
+    // invoices at once than the pool has connections.
+    env: { ...process.env, DATABASE_URL: databaseUrl, API_PORT: String(API_PORT), NODE_ENV: 'test', DB_POOL_SIZE: '10' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stderr?.on('data', (d) => process.stderr.write(`[api] ${d}`));
@@ -192,6 +198,92 @@ describe('Posting concurrency — sorted stock locks, race-safe first movement',
     expect(Number(balances[0].n)).toBe(LINES);
     expect(new Decimal(balances[0].lo).toFixed(6)).toBe('98.000000');
     expect(new Decimal(balances[0].hi).toFixed(6)).toBe('98.000000');
+    await assertLedgersConsistent();
+  }, 120_000);
+
+  it("TRADE-21: a 120-line invoice writes every line's cost snapshot from its own stock movement", async () => {
+    // Varied quantities (1..9) so every line has a different cost total.
+    const lines = itemIds.map((itemId, i) => ({ itemId, qty: String((i % 9) + 1), unitPrice: '5.000' }));
+    const res = await api()
+      .post('/api/v1/sales-invoices')
+      .set(auth(token))
+      .send({ invoiceDate: '2025-02-12', customerId, warehouseId, paymentType: 'CREDIT', lines });
+    expect(res.status).toBe(201);
+    const invoiceId = res.body.id as string;
+
+    const posted = await post('sales-invoices', invoiceId);
+    expect(posted.status).toBe(201);
+    expect(posted.body.status).toBe('POSTED');
+
+    const rows = (await db.query(
+      `SELECT l.id, l.unit_cost, l.cost_total, m.unit_cost AS m_unit, m.total_cost AS m_total
+         FROM sales_invoice_lines l
+         JOIN stock_movements m ON m.tenant_id = l.tenant_id AND m.source_type = 'SALES_INVOICE' AND m.source_line_id = l.id
+        WHERE l.tenant_id = ? AND l.invoice_id = ?`,
+      [tenantId, invoiceId],
+    )) as { id: bigint; unit_cost: string; cost_total: string; m_unit: string; m_total: string }[];
+    expect(rows).toHaveLength(LINES);
+
+    // Opening cost is 2.000, so every snapshot unit cost is 2.000000.
+    expect(rows.map((r) => new Decimal(r.unit_cost).toFixed(6))).toEqual(rows.map(() => '2.000000'));
+    // Each line's snapshot matches the movement written for that same line.
+    const snapshot = rows.map((r) => [String(r.id), new Decimal(r.unit_cost).toFixed(6), new Decimal(r.cost_total).toFixed(3)]);
+    const fromMovement = rows.map((r) => [String(r.id), new Decimal(r.m_unit).toFixed(6), new Decimal(r.m_total).toFixed(3)]);
+    expect(snapshot).toEqual(fromMovement);
+
+    // Invoice total = sum of line totals = Σ(qty × 2.000) over the 120 lines.
+    const sumLines = rows.reduce<Decimal>((acc, r) => acc.plus(r.cost_total), new Decimal(0));
+    let expected = new Decimal(0);
+    for (let i = 0; i < LINES; i += 1) expected = expected.plus(new Decimal((i % 9) + 1).times(2));
+    const [header] = (await db.query('SELECT cost_total FROM sales_invoices WHERE tenant_id = ? AND id = ?', [
+      tenantId,
+      invoiceId,
+    ])) as { cost_total: string }[];
+    expect(sumLines.toFixed(3)).toBe(expected.toFixed(3));
+    expect(new Decimal(header.cost_total).toFixed(3)).toBe(expected.toFixed(3));
+
+    await assertLedgersConsistent();
+  }, 120_000);
+
+  it('12 invoices posted at once with the default pool (10) all succeed with consecutive numbers', async () => {
+    // Each posting holds one connection for its transaction. Any read through
+    // another client inside it (the plan quota did) needs a second one, so 10+
+    // postings at once used to wait on each other until the acquire timeout.
+    const ids: string[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const res = await api()
+        .post('/api/v1/sales-invoices')
+        .set(auth(token))
+        .send({
+          invoiceDate: '2025-02-14',
+          customerId,
+          warehouseId,
+          paymentType: 'CREDIT',
+          lines: [{ itemId: itemIds[i], qty: '1', unitPrice: '5.000' }],
+        });
+      expect(res.status).toBe(201);
+      ids.push(res.body.id as string);
+    }
+
+    const results = await Promise.all(ids.map((id) => post('sales-invoices', id)));
+    expect(results.map((r) => r.status)).toEqual(ids.map(() => 201));
+
+    const suffix = (no: string) => Number(no.split('-').pop());
+    const consecutive = (nos: string[]) => {
+      const n = nos.map(suffix).sort((a, b) => a - b);
+      return n.every((v, i) => i === 0 || v === n[i - 1] + 1);
+    };
+    const invoiceNos = results.map((r) => r.body.invoiceNo as string);
+    expect(new Set(invoiceNos).size).toBe(12);
+    expect(consecutive(invoiceNos)).toBe(true);
+
+    const entries = (await db.query(
+      `SELECT je.entry_no FROM sales_invoices si JOIN journal_entries je ON je.tenant_id = si.tenant_id AND je.id = si.journal_entry_id
+        WHERE si.tenant_id = ? AND si.id IN (?)`,
+      [tenantId, ids],
+    )) as { entry_no: string }[];
+    expect(entries).toHaveLength(12);
+    expect(consecutive(entries.map((e) => e.entry_no))).toBe(true);
     await assertLedgersConsistent();
   }, 120_000);
 

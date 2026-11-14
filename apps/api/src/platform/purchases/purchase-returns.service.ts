@@ -450,16 +450,12 @@ export class PurchaseReturnsService {
         const returnNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'PURCHASE_RETURN', returnDate,
         );
-        const entryNo = await this.posting.allocateEntryNo(
-          tx, tenantId, companyId, 'JOURNAL_ENTRY', returnDate,
-        );
         const entry = await this.posting.postEntry(tx, {
           tenantId,
           companyId,
           branchId: original?.branchId ?? null,
           entryDate: returnDate,
           fiscalPeriodId: period.id,
-          entryNo,
           sourceType: SOURCE,
           sourceId: draft.id,
           description: draft.reason ?? `Purchase return ${returnNo}`,

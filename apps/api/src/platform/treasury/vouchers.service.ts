@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, currentBranchId } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
@@ -17,6 +17,7 @@ import type {
   CreateReceiptDto,
   ReverseVoucherDto,
 } from './dto/treasury.dto.js';
+import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 
 type VoucherKind = 'receipt' | 'payment';
 
@@ -67,14 +68,31 @@ function branchAllowed(branchId: bigint | null): boolean {
  * updated only through the invoice services (module boundary, ADR-004).
  */
 @Injectable()
-export class VouchersService {
+export class VouchersService implements OnModuleInit {
   constructor(
     private readonly support: DocumentSupportService,
     private readonly posting: PostingService,
     private readonly audit: AuditService,
     private readonly sales: SalesInvoicesService,
     private readonly purchases: PurchaseInvoicesService,
+    private readonly partyUsage: PartyUsageRegistry,
   ) {}
+
+  onModuleInit(): void {
+    this.partyUsage.register('treasury', (tx, partyId) => this.partyInUse(tx, partyId));
+  }
+
+  /**
+   * DB-15 / ADR-021: the first treasury table that references the party in
+   * any status (drafts included), or null, read on the caller's transaction.
+   * A party used here is deactivated, never deleted.
+   */
+  async partyInUse(tx: Prisma.TransactionClient, partyId: bigint): Promise<string | null> {
+    if (await tx.receipt.findFirst({ where: { partyId }, select: { id: true } })) return 'receipts';
+    if (await tx.payment.findFirst({ where: { partyId }, select: { id: true } })) return 'payments';
+    if (await tx.allocation.findFirst({ where: { partyId }, select: { id: true } })) return 'allocations';
+    return null;
+  }
 
   /** The invoice service that owns the given document type. */
   private settlement(documentType: InvoiceDocType): InvoiceSettlement {
@@ -165,10 +183,6 @@ export class VouchersService {
             createdBy: userId ?? null,
           },
         });
-        const entryNo = await this.posting.allocateEntryNo(
-          tx, tenantId, companyId, 'JOURNAL_ENTRY', new Date(dto.receiptDate),
-        );
-
         const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
           'CUSTOMERS_CONTROL',
           'SUPPLIERS_CONTROL',
@@ -181,7 +195,6 @@ export class VouchersService {
           companyId,
           entryDate: new Date(dto.receiptDate),
           fiscalPeriodId: period.id,
-          entryNo,
           sourceType: 'RECEIPT',
           sourceId: receipt.id,
           branchId, // ADR-003: the entry carries its voucher's branch
@@ -347,10 +360,6 @@ export class VouchersService {
             createdBy: userId ?? null,
           },
         });
-        const entryNo = await this.posting.allocateEntryNo(
-          tx, tenantId, companyId, 'JOURNAL_ENTRY', new Date(dto.paymentDate),
-        );
-
         const debitLines: JournalLineInput[] = [];
         if (dto.partyId) {
           const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
@@ -377,7 +386,6 @@ export class VouchersService {
           companyId,
           entryDate: new Date(dto.paymentDate),
           fiscalPeriodId: period.id,
-          entryNo,
           sourceType: 'PAYMENT',
           sourceId: payment.id,
           branchId, // ADR-003: the entry carries its voucher's branch
