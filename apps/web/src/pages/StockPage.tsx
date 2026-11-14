@@ -151,12 +151,12 @@ function useApiMessage() {
 function useLookups() {
   const warehouses = useQuery({
     queryKey: ['warehouses'],
-    queryFn: () => warehousesControllerList().then((r) => r.data as unknown as Warehouse[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as Warehouse[]),
   });
   const items = useQuery({
     queryKey: ['items-stock'],
-    queryFn: () =>
-      catalogControllerListItems({ search: '', itemKind: 'STOCK', isActive: '' }).then(
+    queryFn: ({ signal }) =>
+      catalogControllerListItems({ search: '', itemKind: 'STOCK', isActive: '' }, { signal }).then(
         (r) => (r.data as unknown as ItemOpt[]).filter((i) => i.itemKind === 'STOCK'),
       ),
   });
@@ -185,12 +185,12 @@ function BalancesTab() {
   const { whOptions, warehouseLabel } = useLookups();
   const listQuery = useQuery({
     queryKey: ['stock-balances', warehouseId, lowStock],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       stockReportsControllerBalances({
         warehouseId: warehouseId ?? '',
         itemId: '',
         lowStock: lowStock ? 'true' : '',
-      }).then((r) => r.data as unknown as BalanceRow[]),
+      }, { signal }).then((r) => r.data as unknown as BalanceRow[]),
   });
   const { data, isLoading } = listQuery;
   return (
@@ -256,8 +256,8 @@ function AdjustmentsTab() {
 
   const listQuery = useQuery({
     queryKey: ['stock-adjustments'],
-    queryFn: () =>
-      stockDocumentsControllerListAdjustments({ status: '' }).then(
+    queryFn: ({ signal }) =>
+      stockDocumentsControllerListAdjustments({ status: '' }, { signal }).then(
         (r) => r.data as unknown as DocRow[],
       ),
   });
@@ -525,8 +525,8 @@ function TransfersTab() {
 
   const listQuery = useQuery({
     queryKey: ['stock-transfers'],
-    queryFn: () =>
-      stockDocumentsControllerListTransfers({ status: '' }).then(
+    queryFn: ({ signal }) =>
+      stockDocumentsControllerListTransfers({ status: '' }, { signal }).then(
         (r) => r.data as unknown as DocRow[],
       ),
   });
@@ -770,8 +770,8 @@ function CountsTab() {
 
   const listQuery = useQuery({
     queryKey: ['stock-counts'],
-    queryFn: () =>
-      stockDocumentsControllerListCounts({ status: '' }).then(
+    queryFn: ({ signal }) =>
+      stockDocumentsControllerListCounts({ status: '' }, { signal }).then(
         (r) => r.data as unknown as DocRow[],
       ),
   });
@@ -1033,7 +1033,7 @@ function MovementsTab() {
   const { whOptions, itemOptions, warehouseLabel } = useLookups();
   const listQuery = useQuery({
     queryKey: ['stock-movements', itemId, warehouseId],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       stockReportsControllerMovements({
         itemId: itemId ?? '',
         warehouseId: warehouseId ?? '',
@@ -1042,7 +1042,7 @@ function MovementsTab() {
         to: '',
         page: '1',
         pageSize: '100',
-      }).then((r) => r.data as unknown as { rows: MovementRow[]; total: number }),
+      }, { signal }).then((r) => r.data as unknown as { rows: MovementRow[]; total: number }),
   });
   const { data, isLoading } = listQuery;
   return (
@@ -1112,8 +1112,8 @@ function ValuationTab() {
   const { t } = useTranslation();
   const listQuery = useQuery({
     queryKey: ['stock-valuation'],
-    queryFn: () =>
-      stockReportsControllerValuation({ warehouseId: '' }).then(
+    queryFn: ({ signal }) =>
+      stockReportsControllerValuation({ warehouseId: '' }, { signal }).then(
         (r) => r.data as unknown as { rows: { itemId: string; code: string; nameAr: string; qty: string; avgCost: string; value: string }[]; totalValue: string },
       ),
   });

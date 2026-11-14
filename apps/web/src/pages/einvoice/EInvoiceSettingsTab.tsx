@@ -78,7 +78,7 @@ export function EInvoiceSettingsTab() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: QUERY_KEY,
-    queryFn: () => apiFetchData<EInvoiceSettings>('/api/v1/einvoice/settings'),
+    queryFn: ({ signal }) => apiFetchData<EInvoiceSettings>('/api/v1/einvoice/settings', { signal }),
     retry: (count, err) => !(err instanceof ApiError && err.status === 403) && count < 1,
   });
 

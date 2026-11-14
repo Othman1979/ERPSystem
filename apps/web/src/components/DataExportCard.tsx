@@ -16,6 +16,8 @@ export function DataExportCard() {
   const { me } = useAuth();
   const { message } = App.useApp();
   const [busy, setBusy] = useState(false);
+  // A role check, not a permission: TenantExportService refuses any role but
+  // OWNER (import_export.manage alone is not enough), so mirror that.
   const isOwner = me?.currentMembership?.roleCode === 'OWNER';
 
   const download = async () => {

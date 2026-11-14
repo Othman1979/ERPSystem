@@ -29,7 +29,7 @@ export interface CompanyProfile {
 export function useCompany() {
   return useQuery({
     queryKey: ['company'],
-    queryFn: () => companyControllerGet().then((r) => r.data as unknown as CompanyProfile),
+    queryFn: ({ signal }) => companyControllerGet({ signal }).then((r) => r.data as unknown as CompanyProfile),
   });
 }
 
@@ -61,8 +61,8 @@ export function CompanyProfileForm({
   const company = useCompany();
   const logo = useQuery({
     queryKey: ['company-logo', company.data?.logo?.id],
-    queryFn: () =>
-      companyControllerLogo().then((r) => {
+    queryFn: ({ signal }) =>
+      companyControllerLogo({ signal }).then((r) => {
         const d = r.data as unknown as { mimeType: string; base64: string };
         return `data:${d.mimeType};base64,${d.base64}`;
       }),

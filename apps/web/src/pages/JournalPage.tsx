@@ -32,9 +32,9 @@ import {
   type JournalLineDraft,
 } from '../components/JournalLinesGrid';
 import { usePartyColumn } from '../components/usePartyColumn';
+import { selectPostable, useAccounts } from '../hooks/useAccounts';
 import {
   ApiError,
-  accountingControllerListAccounts,
   journalControllerCreateDraft,
   journalControllerDeleteDraft,
   journalControllerGet,
@@ -58,15 +58,6 @@ import { codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { amountCell, amountOrBlankCell } from '../format/cells';
 import { formatAmount } from '../format/number';
-
-interface Account {
-  id: string;
-  code: string;
-  nameAr: string;
-  isPostable: boolean;
-  isActive: boolean;
-  controlType?: string | null;
-}
 
 interface JournalLine {
   id?: string;
@@ -139,29 +130,24 @@ export function JournalPage() {
 
   const entriesQuery = useQuery({
     queryKey: ['journal-entries', statusFilter, typeFilter],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       journalControllerList({
         status: statusFilter ?? '',
         voucherType: typeFilter ?? '',
         sourceType: '',
-      }).then((r) => r.data as unknown as JournalEntry[]),
+      }, { signal }).then((r) => r.data as unknown as JournalEntry[]),
     enabled: screen === 'list',
   });
   const { data: entries, isLoading } = entriesQuery;
 
-  const { data: accounts } = useQuery({
-    queryKey: ['accounts-postable'],
-    queryFn: () => accountingControllerListAccounts().then((r) => r.data as unknown as Account[]),
-  });
+  const { data: accounts } = useAccounts();
 
-  const accountOptions = (accounts ?? [])
-    .filter((a) => a.isActive && a.isPostable)
-    .map((a) => ({ value: a.id, label: codeAndName(a) }));
+  const accountOptions = selectPostable(accounts ?? []).map((a) => ({ value: a.id, label: codeAndName(a) }));
   const { partyColumn, partyName } = usePartyColumn(accounts);
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['journal-entry', entryId],
-    queryFn: () => journalControllerGet(entryId!).then((r) => r.data as unknown as JournalEntry),
+    queryFn: ({ signal }) => journalControllerGet(entryId!, { signal }).then((r) => r.data as unknown as JournalEntry),
     enabled: screen === 'entry' && !!entryId,
   });
 

@@ -564,6 +564,8 @@ export const ar = {
     open: 'معالج الإعداد',
     bannerTitle: 'أكمل إعداد شركتك',
     bannerText: 'السنة المالية، المستودع والصندوق الرئيسيان، والأرصدة الافتتاحية — قبل أول فاتورة.',
+    pendingTitle: 'لم يكتمل إعداد الشركة بعد',
+    askOwner: 'يحتاج الإعداد إلى صلاحية إدارة الإعدادات، فاطلب من مالك الحساب أو المحاسب إكماله قبل أول فاتورة.',
     stepCompany: 'الشركة',
     stepYear: 'السنة المالية',
     stepTax: 'الضريبة',
@@ -1132,6 +1134,11 @@ export const ar = {
     retryNow: 'أعد المحاولة الآن',
     retrying: 'جارٍ الاتصال…',
     autoRetry: 'إعادة المحاولة تلقائياً بعد {{seconds}} ث',
+  },
+  access: {
+    title: 'لا تملك صلاحية فتح هذه الشاشة',
+    text: 'دورك في هذه الشركة ({{role}}) لا يشمل هذه الشاشة. إذا احتجت إليها فاطلب الصلاحية من مالك الحساب.',
+    home: 'العودة إلى الرئيسية',
   },
   ui: {
     cellLabel: '{{column}}، السطر {{line}}',
@@ -1780,6 +1787,8 @@ export const en: typeof ar = {
     open: 'Setup wizard',
     bannerTitle: 'Finish setting up your company',
     bannerText: 'Fiscal year, main warehouse and cash box, opening balances — before the first invoice.',
+    pendingTitle: 'Company setup is not finished yet',
+    askOwner: 'Setup needs the settings permission. Ask the account owner or the accountant to finish it before the first invoice.',
     stepCompany: 'Company',
     stepYear: 'Fiscal year',
     stepTax: 'Tax',
@@ -2348,6 +2357,11 @@ export const en: typeof ar = {
     retryNow: 'Retry now',
     retrying: 'Connecting…',
     autoRetry: 'Retrying automatically in {{seconds}} s',
+  },
+  access: {
+    title: 'You do not have access to this screen',
+    text: 'Your role in this company ({{role}}) does not include this screen. If you need it, ask the account owner for access.',
+    home: 'Back to home',
   },
   ui: {
     cellLabel: '{{column}}, line {{line}}',

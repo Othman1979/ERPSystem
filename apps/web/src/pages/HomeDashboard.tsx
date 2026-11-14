@@ -78,7 +78,7 @@ export function HomeDashboard() {
   const { t } = useTranslation();
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard-summary'],
-    queryFn: () => apiFetchData<DashboardSummary>('/api/v1/dashboard/summary'),
+    queryFn: ({ signal }) => apiFetchData<DashboardSummary>('/api/v1/dashboard/summary', { signal }),
   });
 
   // Without the reports permission the home screen simply has no figures.

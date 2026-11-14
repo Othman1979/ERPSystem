@@ -18,6 +18,7 @@ import {
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
+import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { useTranslation } from 'react-i18next';
 import {
   emptyInvoiceLine,
@@ -38,7 +39,6 @@ import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import {
   ApiError,
-  accountingControllerListAccounts,
   catalogControllerListItems,
   warehousesControllerList,
   partiesControllerList,
@@ -86,14 +86,6 @@ interface TaxCategory {
   id: string;
   rate: string;
   isDefault?: boolean;
-}
-interface AccountNode {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn?: string | null;
-  controlType?: string | null;
-  children?: AccountNode[];
 }
 interface InvoiceLine {
   id: string;
@@ -178,31 +170,27 @@ export function PurchasesPage() {
 function usePurchaseLookups() {
   const parties = useQuery({
     queryKey: ['parties', 'purchases'],
-    queryFn: () =>
-      partiesControllerList({ partyType: 'SUPPLIER', isActive: '' }).then(
+    queryFn: ({ signal }) =>
+      partiesControllerList({ partyType: 'SUPPLIER', isActive: '' }, { signal }).then(
         (r) => r.data as unknown as Party[],
       ),
   });
   const warehouses = useQuery({
     queryKey: ['warehouses'],
-    queryFn: () =>
-      warehousesControllerList().then((r) => r.data as unknown as Warehouse[]),
+    queryFn: ({ signal }) =>
+      warehousesControllerList({ signal }).then((r) => r.data as unknown as Warehouse[]),
   });
   const items = useQuery({
     queryKey: ['items'],
-    queryFn: () =>
-      catalogControllerListItems({ search: '', itemKind: '', isActive: '' }).then((r) => r.data as unknown as Item[]),
+    queryFn: ({ signal }) =>
+      catalogControllerListItems({ search: '', itemKind: '', isActive: '' }, { signal }).then((r) => r.data as unknown as Item[]),
   });
   const taxes = useQuery({
     queryKey: ['tax-categories'],
-    queryFn: () =>
-      settingsControllerListTaxCategories().then((r) => r.data as unknown as TaxCategory[]),
+    queryFn: ({ signal }) =>
+      settingsControllerListTaxCategories({ signal }).then((r) => r.data as unknown as TaxCategory[]),
   });
-  const accounts = useQuery({
-    queryKey: ['accounts-tree'],
-    queryFn: () =>
-      accountingControllerListAccounts().then((r) => r.data as unknown as AccountNode[]),
-  });
+  const accounts = useAccounts(selectCashBank);
 
   const taxRateById = useMemo(() => {
     const m = new Map<string, string>();
@@ -228,19 +216,10 @@ function usePurchaseLookups() {
     [items.data, taxRateById, defaultTaxId],
   );
 
-  const cashAccountOptions = useMemo(() => {
-    const flat: { id: string; code: string; nameAr: string; nameEn?: string | null }[] = [];
-    const walk = (ns: AccountNode[]) => {
-      for (const n of ns) {
-        if (n.controlType === 'CASH' || n.controlType === 'BANK') {
-          flat.push({ id: n.id, code: n.code, nameAr: n.nameAr, nameEn: n.nameEn });
-        }
-        if (n.children) walk(n.children);
-      }
-    };
-    walk(accounts.data ?? []);
-    return flat.map((a) => ({ value: a.id, label: codeAndName(a) }));
-  }, [accounts.data]);
+  const cashAccountOptions = useMemo(
+    () => (accounts.data ?? []).map((a) => ({ value: a.id, label: codeAndName(a) })),
+    [accounts.data],
+  );
 
   return {
     parties: parties.data ?? [],
@@ -268,8 +247,8 @@ function PurchaseInvoicesTab() {
 
   const invoicesQuery = useQuery({
     queryKey: ['purchase-invoices', statusFilter],
-    queryFn: () =>
-      purchasesControllerListInvoices({ status: statusFilter ?? '', paymentType: '', supplierId: '' }).then(
+    queryFn: ({ signal }) =>
+      purchasesControllerListInvoices({ status: statusFilter ?? '', paymentType: '', supplierId: '' }, { signal }).then(
         (r) => r.data as unknown as PurchaseInvoice[],
       ),
     enabled: screen === 'list',
@@ -278,8 +257,8 @@ function PurchaseInvoicesTab() {
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['purchase-invoice', invoiceId],
-    queryFn: () =>
-      purchasesControllerGetInvoice(invoiceId!).then((r) => r.data as unknown as PurchaseInvoice),
+    queryFn: ({ signal }) =>
+      purchasesControllerGetInvoice(invoiceId!, { signal }).then((r) => r.data as unknown as PurchaseInvoice),
     enabled: (screen === 'view' || screen === 'form') && !!invoiceId,
   });
 
@@ -843,16 +822,16 @@ function PurchaseReturnsTab() {
 
   const returnsQuery = useQuery({
     queryKey: ['purchase-returns', statusFilter],
-    queryFn: () =>
-      purchasesControllerListReturns({ status: statusFilter ?? '' }).then(
+    queryFn: ({ signal }) =>
+      purchasesControllerListReturns({ status: statusFilter ?? '' }, { signal }).then(
         (r) => r.data as unknown as PurchaseReturn[],
       ),
   });
   const { data: returns, isLoading } = returnsQuery;
   const { data: view } = useQuery({
     queryKey: ['purchase-return', viewId],
-    queryFn: () =>
-      purchasesControllerGetReturn(viewId!).then((r) => r.data as unknown as PurchaseReturn),
+    queryFn: ({ signal }) =>
+      purchasesControllerGetReturn(viewId!, { signal }).then((r) => r.data as unknown as PurchaseReturn),
     enabled: !!viewId,
   });
 
@@ -1089,15 +1068,15 @@ function PurchaseReturnForm({
   const lookups = usePurchaseLookups();
   const { data: invoices } = useQuery({
     queryKey: ['purchase-invoices', 'POSTED'],
-    queryFn: () =>
-      purchasesControllerListInvoices({ status: 'POSTED', paymentType: '', supplierId: '' }).then(
+    queryFn: ({ signal }) =>
+      purchasesControllerListInvoices({ status: 'POSTED', paymentType: '', supplierId: '' }, { signal }).then(
         (r) => r.data as unknown as PurchaseInvoice[],
       ),
   });
   const { data: invoice } = useQuery({
     queryKey: ['purchase-invoice', invoiceId],
-    queryFn: () =>
-      purchasesControllerGetInvoice(invoiceId!).then((r) => r.data as unknown as PurchaseInvoice),
+    queryFn: ({ signal }) =>
+      purchasesControllerGetInvoice(invoiceId!, { signal }).then((r) => r.data as unknown as PurchaseInvoice),
     enabled: !!invoiceId,
   });
 

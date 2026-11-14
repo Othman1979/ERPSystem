@@ -29,8 +29,8 @@ export function usePartyColumn(accounts: AccountLike[] | undefined): {
 } {
   const parties = useQuery({
     queryKey: ['parties', 'all'],
-    queryFn: () =>
-      partiesControllerList({ partyType: '', isActive: '' }).then((r) => r.data as unknown as Party[]),
+    queryFn: ({ signal }) =>
+      partiesControllerList({ partyType: '', isActive: '' }, { signal }).then((r) => r.data as unknown as Party[]),
   });
 
   return useMemo(() => {

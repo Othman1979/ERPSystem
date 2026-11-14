@@ -23,7 +23,6 @@ import { useTranslation } from 'react-i18next';
 import {
   ApiError,
   apiFetch,
-  accountingControllerListAccounts,
   partiesControllerList,
   purchasesControllerListInvoices as listPurchaseInvoices,
   salesControllerListInvoices as listSalesInvoices,
@@ -56,6 +55,7 @@ import { ReverseButton } from '../components/ReverseButton';
 import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { useSearchParams } from 'react-router';
+import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { BalancesTab } from './treasury/BalancesTab';
 import { TransfersTab } from './treasury/TransfersTab';
 import { enterTo, focusNamedField, GridSelect } from '../components/GridSelect';
@@ -70,13 +70,6 @@ interface Party {
   code: string;
   nameAr: string;
   partyType: string;
-}
-interface AccountNode {
-  id: string;
-  code: string;
-  nameAr: string;
-  controlType?: string | null;
-  children?: AccountNode[];
 }
 interface CashBox {
   id: string;
@@ -137,28 +130,16 @@ interface OpenInvoice {
 // ------------------------------------------------------------- lookups
 
 function useTreasuryLookups() {
-  const accounts = useQuery({
-    queryKey: ['accounts-tree'],
-    queryFn: () => accountingControllerListAccounts().then((r) => r.data as unknown as AccountNode[]),
-  });
+  const accounts = useAccounts(selectCashBank);
   const parties = useQuery({
     queryKey: ['parties', 'all'],
-    queryFn: () => partiesControllerList({ partyType: '', isActive: '' }).then((r) => r.data as unknown as Party[]),
+    queryFn: ({ signal }) => partiesControllerList({ partyType: '', isActive: '' }, { signal }).then((r) => r.data as unknown as Party[]),
   });
 
-  const cashAccounts = useMemo(() => {
-    const flat: { value: string; label: string }[] = [];
-    const walk = (ns: AccountNode[]) => {
-      for (const n of ns) {
-        if ((n.controlType === 'CASH' || n.controlType === 'BANK') && !n.children?.length) {
-          flat.push({ value: n.id, label: codeAndName(n) });
-        }
-        if (n.children) walk(n.children);
-      }
-    };
-    walk(accounts.data ?? []);
-    return flat;
-  }, [accounts.data]);
+  const cashAccounts = useMemo(
+    () => (accounts.data ?? []).map((a) => ({ value: a.id, label: codeAndName(a) })),
+    [accounts.data],
+  );
 
   return {
     cashAccounts,
@@ -212,7 +193,7 @@ function CashBoxesTab() {
 
   const boxesQuery = useQuery({
     queryKey: ['cash-boxes'],
-    queryFn: () => treasuryControllerListCashBoxes().then((r) => r.data as unknown as CashBox[]),
+    queryFn: ({ signal }) => treasuryControllerListCashBoxes({ signal }).then((r) => r.data as unknown as CashBox[]),
   });
   const { data: boxes, isLoading } = boxesQuery;
 
@@ -353,7 +334,7 @@ function BankAccountsTab() {
 
   const banksQuery = useQuery({
     queryKey: ['bank-accounts'],
-    queryFn: () => treasuryControllerListBankAccounts().then((r) => r.data as unknown as BankAccount[]),
+    queryFn: ({ signal }) => treasuryControllerListBankAccounts({ signal }).then((r) => r.data as unknown as BankAccount[]),
   });
   const { data: banks, isLoading } = banksQuery;
 
@@ -508,17 +489,19 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
 
   const listFn = kind === 'receipt' ? treasuryControllerListReceipts : treasuryControllerListPayments;
   const getFn = kind === 'receipt'
-    ? (id: string) => treasuryControllerGetReceipt(id)
-    : (id: string) => treasuryControllerGetPayment(id);
+    ? (id: string, options?: Parameters<typeof treasuryControllerGetReceipt>[1]) =>
+        treasuryControllerGetReceipt(id, options)
+    : (id: string, options?: Parameters<typeof treasuryControllerGetPayment>[1]) =>
+        treasuryControllerGetPayment(id, options);
 
   const vouchersQuery = useQuery({
     queryKey: [kind === 'receipt' ? 'receipts' : 'payments'],
-    queryFn: () => listFn().then((r) => r.data as unknown as Voucher[]),
+    queryFn: ({ signal }) => listFn({ signal }).then((r) => r.data as unknown as Voucher[]),
   });
   const { data: vouchers, isLoading } = vouchersQuery;
   const { data: view } = useQuery({
     queryKey: [kind, viewId],
-    queryFn: () => getFn(viewId!).then((r: { data: unknown }) => r.data as unknown as Voucher),
+    queryFn: ({ signal }) => getFn(viewId!, { signal }).then((r: { data: unknown }) => r.data as unknown as Voucher),
     enabled: !!viewId,
   });
 
@@ -816,12 +799,12 @@ function VoucherForm({
   // Open invoices for allocations
   const { data: salesInvoices } = useQuery({
     queryKey: ['sales-invoices', 'POSTED'],
-    queryFn: () => listSalesInvoices({ status: 'POSTED', paymentType: 'CREDIT', customerId: '' }).then((r) => r.data as unknown as OpenInvoice[]),
+    queryFn: ({ signal }) => listSalesInvoices({ status: 'POSTED', paymentType: 'CREDIT', customerId: '' }, { signal }).then((r) => r.data as unknown as OpenInvoice[]),
     enabled: kind === 'receipt',
   });
   const { data: purchaseInvoices } = useQuery({
     queryKey: ['purchase-invoices', 'POSTED'],
-    queryFn: () => listPurchaseInvoices({ status: 'POSTED', paymentType: 'CREDIT', supplierId: '' }).then((r) => r.data as unknown as OpenInvoice[]),
+    queryFn: ({ signal }) => listPurchaseInvoices({ status: 'POSTED', paymentType: 'CREDIT', supplierId: '' }, { signal }).then((r) => r.data as unknown as OpenInvoice[]),
     enabled: kind === 'payment',
   });
 
