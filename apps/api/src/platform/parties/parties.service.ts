@@ -7,6 +7,8 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import type { CreatePartyDto, UpdatePartyDto } from './dto/parties.dto.js';
 import { PartyUsageRegistry } from './party-usage.registry.js';
+import { Prisma, type PartyType } from '../../generated/prisma/client.js';
+import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 
 /** Unified customers/suppliers (docs/BUILD_PLAN.md §7.5, partyType BOTH ok). */
 @Injectable()
@@ -121,48 +123,78 @@ export class PartiesService {
   }
 
   /**
+   * Shared-locks the given parties of the company in the caller's
+   * transaction and returns their types (ADR-021). A writer that attaches a
+   * party without a foreign key (journal lines) calls this before inserting:
+   * a concurrent deactivate then waits for its COMMIT and sees the new line,
+   * or the writer waits for the delete and finds the party gone. Rows with a
+   * foreign key to parties get the same shared lock from InnoDB.
+   */
+  async lockForReference(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    ids: bigint[],
+  ): Promise<Map<bigint, PartyType>> {
+    if (ids.length === 0) return new Map();
+    const { tenantId } = this.support.tenant();
+    const rows = await tx.$queryRaw<{ id: bigint; party_type: PartyType }[]>`
+      SELECT id, party_type FROM parties
+       WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id IN (${Prisma.join(ids)})
+       ORDER BY id LOCK IN SHARE MODE`;
+    return new Map(rows.map((r) => [BigInt(r.id), r.party_type]));
+  }
+
+  /**
    * Deactivates a party that is referenced anywhere, deletes one that is not
    * (DB-15, ADR-021). "Anywhere" is any draft or posted document, voucher,
    * allocation or journal line: each owning module answers through the
-   * PartyUsageRegistry (module boundary). Journal lines have no FK to
-   * parties, so a delete must never rely on the database to refuse it.
+   * PartyUsageRegistry (module boundary). The party row is locked FOR UPDATE
+   * first, and the checks and the delete run in that one transaction:
+   * writers that reference the party hold a shared lock on it (a foreign key,
+   * or lockForReference for journal lines), so none can slip in between.
    */
   async deactivate(id: bigint) {
-    const { db } = this.support.tenant();
-    const party = await db.party.findFirst({ where: { id } });
-    if (!party) throw DomainError.notFound('Party', id.toString());
-    const usedBy = await this.usage.usage(id);
-    if (usedBy.length > 0) {
-      // Keep history intact — deactivate instead of delete.
-      await db.party.update({
-        where: { id },
-        data: { isActive: false, updatedBy: this.support.userId() ?? null },
-      });
+    const { tenantId, db } = this.support.tenant();
+    const userId = this.support.userId() ?? null;
+    const result = await this.support.withRetry(() =>
+      db.$transaction(async (tx) => {
+        const [party] = await tx.$queryRaw<{ code: string; party_type: PartyType }[]>`
+          SELECT code, party_type FROM parties WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        if (!party) throw DomainError.notFound('Party', id.toString());
+        const usedBy = await this.usage.usage(tx, id);
+        if (usedBy.length > 0) {
+          // Keep history intact — deactivate instead of delete.
+          await tx.party.update({ where: { id }, data: { isActive: false, updatedBy: userId } });
+          return { deactivated: true as const, code: party.code, usedBy };
+        }
+        try {
+          await tx.party.delete({ where: { id } });
+        } catch (err) {
+          // Defence in depth: the lock above should make this unreachable.
+          if (isForeignKeyViolation(err)) {
+            throw new DomainError(ErrorCode.PARTY_IN_USE, 'The party is in use; deactivate it instead', {
+              partyId: id.toString(),
+            });
+          }
+          throw err;
+        }
+        return { deleted: true as const, code: party.code, partyType: party.party_type };
+      }, POSTING_TX_OPTIONS),
+    );
+    if ('deactivated' in result) {
       await this.audit.log({
         action: 'party.deactivate',
         entityType: 'party',
         entityId: id,
-        after: { code: party.code, usedBy },
+        after: { code: result.code, usedBy: result.usedBy },
       });
       return { deactivated: true };
-    }
-    try {
-      await db.party.delete({ where: { id } });
-    } catch (err) {
-      // A document referencing the party was saved between the check and
-      // the delete; its foreign key refused the delete.
-      if (isForeignKeyViolation(err)) {
-        throw new DomainError(ErrorCode.PARTY_IN_USE, 'The party is in use; deactivate it instead', {
-          partyId: id.toString(),
-        });
-      }
-      throw err;
     }
     await this.audit.log({
       action: 'party.delete',
       entityType: 'party',
       entityId: id,
-      before: { code: party.code, partyType: party.partyType },
+      before: { code: result.code, partyType: result.partyType },
     });
     return { deleted: true };
   }

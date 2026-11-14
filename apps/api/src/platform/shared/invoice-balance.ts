@@ -97,3 +97,13 @@ export function owedAsOf(rows: OpenInvoiceRow[], allocationShift: Map<bigint, De
   }
   return open;
 }
+
+/** Ids per `IN (…)` list: far below MariaDB's 65,535 placeholders per prepared statement. */
+export const IN_LIST_CHUNK = 5_000;
+
+/** Splits a list into consecutive chunks of at most `size` items. */
+export function chunks<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}

@@ -241,9 +241,13 @@ export class TreasuryReportsService {
     // A voucher is reversed only once its allocations are cancelled, but its
     // reversal may be dated before the cancel: from that date the payment is
     // gone from the ledger, so its allocation stops counting too (review of PR #26).
-    const reversalIds = cancelled
-      .map((a) => a.receipt?.reversalEntryId ?? a.payment?.reversalEntryId ?? null)
-      .filter((id): id is bigint => id !== null);
+    const reversalIds = [
+      ...new Set(
+        cancelled
+          .map((a) => a.receipt?.reversalEntryId ?? a.payment?.reversalEntryId ?? null)
+          .filter((id): id is bigint => id !== null),
+      ),
+    ];
     const reversalDates = await this.ledger.entryDates(reversalIds);
 
     const shift = new Map<bigint, Decimal>(

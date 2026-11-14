@@ -79,19 +79,18 @@ export class VouchersService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.partyUsage.register('treasury', (partyId) => this.partyInUse(partyId));
+    this.partyUsage.register('treasury', (tx, partyId) => this.partyInUse(tx, partyId));
   }
 
   /**
    * DB-15 / ADR-021: the first treasury table that references the party in
-   * any status (drafts included), or null. A party used here is deactivated,
-   * never deleted.
+   * any status (drafts included), or null, read on the caller's transaction.
+   * A party used here is deactivated, never deleted.
    */
-  async partyInUse(partyId: bigint): Promise<string | null> {
-    const { db } = this.support.tenant();
-    if (await db.receipt.findFirst({ where: { partyId }, select: { id: true } })) return 'receipts';
-    if (await db.payment.findFirst({ where: { partyId }, select: { id: true } })) return 'payments';
-    if (await db.allocation.findFirst({ where: { partyId }, select: { id: true } })) return 'allocations';
+  async partyInUse(tx: Prisma.TransactionClient, partyId: bigint): Promise<string | null> {
+    if (await tx.receipt.findFirst({ where: { partyId }, select: { id: true } })) return 'receipts';
+    if (await tx.payment.findFirst({ where: { partyId }, select: { id: true } })) return 'payments';
+    if (await tx.allocation.findFirst({ where: { partyId }, select: { id: true } })) return 'allocations';
     return null;
   }
 

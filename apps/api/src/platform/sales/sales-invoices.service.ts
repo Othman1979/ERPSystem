@@ -23,6 +23,8 @@ import { computeLineAmounts } from '../shared/invoice-math.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import {
   creditedByInvoice,
+  chunks,
+  IN_LIST_CHUNK,
   owedAsOf,
   withBalance,
   type OpenInvoiceAsOf,
@@ -69,20 +71,19 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
   ) {}
 
   onModuleInit(): void {
-    this.partyUsage.register('sales', (partyId) => this.partyInUse(partyId));
+    this.partyUsage.register('sales', (tx, partyId) => this.partyInUse(tx, partyId));
   }
 
   /**
    * DB-15 / ADR-021: the first sales table that references the party in
-   * any status (drafts included), or null. A party used here is deactivated,
-   * never deleted.
+   * any status (drafts included), or null, read on the caller's transaction.
+   * A party used here is deactivated, never deleted.
    */
-  async partyInUse(partyId: bigint): Promise<string | null> {
-    const { db } = this.support.tenant();
-    if (await db.salesInvoice.findFirst({ where: { customerId: partyId }, select: { id: true } })) {
+  async partyInUse(tx: Prisma.TransactionClient, partyId: bigint): Promise<string | null> {
+    if (await tx.salesInvoice.findFirst({ where: { customerId: partyId }, select: { id: true } })) {
       return 'sales_invoices';
     }
-    if (await db.salesReturn.findFirst({ where: { customerId: partyId }, select: { id: true } })) {
+    if (await tx.salesReturn.findFirst({ where: { customerId: partyId }, select: { id: true } })) {
       return 'sales_returns';
     }
     return null;
@@ -110,14 +111,13 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
    * invoice (non-zero only for vouchers dated after asOf and cancellations
    * that still count then). The filter runs in SQL on paid_amount, so settled
    * invoices are not read; those with a positive shift (settled after asOf)
-   * are read too. Cash invoices are settled at sale and never appear.
+   * are read too, in chunks. Cash invoices are settled at sale and never appear.
    */
   async openCreditInvoicesAsOf(asOf: Date, allocationShift: Map<bigint, Decimal>): Promise<OpenInvoiceAsOf[]> {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const day = asOf.toISOString().slice(0, 10);
-    const settledLater = [...allocationShift].filter(([, shift]) => shift.gt(0)).map(([id]) => id);
-    const rows = await db.$queryRaw<OpenInvoiceRow[]>`
+    const query = (which: Prisma.Sql) => db.$queryRaw<OpenInvoiceRow[]>`
       SELECT i.id, i.invoice_no, i.invoice_date, i.due_date, i.customer_id AS party_id,
              i.grand_total, i.paid_amount, COALESCE(r.credited, 0) AS credited
         FROM sales_invoices i
@@ -130,9 +130,22 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         ) r ON r.original_invoice_id = i.id
        WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId}
          AND i.status = 'POSTED' AND i.payment_type = 'CREDIT' AND i.invoice_date <= ${day}
-         AND (i.grand_total - i.paid_amount - COALESCE(r.credited, 0) > 0
-              ${settledLater.length ? Prisma.sql`OR i.id IN (${Prisma.join(settledLater)})` : Prisma.empty})
-       ORDER BY i.invoice_date, i.id`;
+         AND ${which}`;
+    // Open now (owes something on paid_amount)...
+    const rows = await query(Prisma.sql`i.grand_total - i.paid_amount - COALESCE(r.credited, 0) > 0`);
+    // ...plus those settled now but not yet as of the date. The ids come from
+    // treasury and may include invoices dated after asOf (dropped here by the
+    // date filter); they are read in chunks to stay far below the 65,535
+    // placeholders of a prepared statement.
+    const settledLater = [...allocationShift].filter(([, shift]) => shift.gt(0)).map(([id]) => id);
+    for (const ids of chunks(settledLater, IN_LIST_CHUNK)) {
+      rows.push(
+        ...(await query(
+          Prisma.sql`i.grand_total - i.paid_amount - COALESCE(r.credited, 0) <= 0 AND i.id IN (${Prisma.join(ids)})`,
+        )),
+      );
+    }
+    rows.sort((x, y) => x.invoice_date.getTime() - y.invoice_date.getTime() || (BigInt(x.id) < BigInt(y.id) ? -1 : 1));
     return owedAsOf(rows, allocationShift);
   }
 
