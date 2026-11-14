@@ -7,6 +7,7 @@ import { assertWarehouseBranchAllowed, branchWhere, hasAllBranches } from '../..
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { findPage } from '../../common/paging/find-page.js';
+import { withLineCounts } from '../../common/paging/line-counts.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -105,17 +106,22 @@ export class TransfersService {
       (dir) => ({ id: dir }),
     );
     return findPage(db, pageWindow(query), {
-      rows: (tx, window) =>
-        tx.stockTransfer.findMany({
-          where,
-          include: {
-            fromWarehouse: { select: { id: true, code: true, nameAr: true } },
-            toWarehouse: { select: { id: true, code: true, nameAr: true } },
-            _count: { select: { lines: true } },
-          },
-          orderBy,
-          ...window,
-        }),
+      rows: async (tx, window) =>
+        withLineCounts(
+          await tx.stockTransfer.findMany({
+            where,
+            include: {
+              fromWarehouse: { select: { id: true, code: true, nameAr: true } },
+              toWarehouse: { select: { id: true, code: true, nameAr: true } },
+            },
+            orderBy,
+            ...window,
+          }),
+          'transferId',
+          // Line counts of this page only (see withLineCounts).
+          (ids) =>
+            tx.stockTransferLine.groupBy({ by: ['transferId'], where: { transferId: { in: ids } }, _count: { _all: true } }),
+        ),
       count: (tx) => tx.stockTransfer.count({ where }),
     });
   }

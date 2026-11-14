@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Decimal, round3, sum } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, assertWarehouseBranchAllowed, branchWhere } from '../../common/branch/branch-context.js';
 import { findPage } from '../../common/paging/find-page.js';
+import { withLineCounts } from '../../common/paging/line-counts.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -197,17 +198,21 @@ export class SalesReturnsService {
       (dir) => ({ id: dir }),
     );
     return findPage(db, pageWindow(query), {
-      rows: (tx, window) =>
-        tx.salesReturn.findMany({
-          where,
-          include: {
-            customer: { select: { id: true, code: true, nameAr: true, nameEn: true } },
-            originalInvoice: { select: { id: true, invoiceNo: true } },
-            _count: { select: { lines: true } },
-          },
-          orderBy,
-          ...window,
-        }),
+      rows: async (tx, window) =>
+        withLineCounts(
+          await tx.salesReturn.findMany({
+            where,
+            include: {
+              customer: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+              originalInvoice: { select: { id: true, invoiceNo: true } },
+            },
+            orderBy,
+            ...window,
+          }),
+          'returnId',
+          // Line counts of this page only (see withLineCounts).
+          (ids) => tx.salesReturnLine.groupBy({ by: ['returnId'], where: { returnId: { in: ids } }, _count: { _all: true } }),
+        ),
       count: (tx) => tx.salesReturn.count({ where }),
     });
   }

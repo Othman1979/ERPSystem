@@ -83,6 +83,7 @@ import { GridSelect } from '../components/GridSelect';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { formatAmount, formatQty } from '../format/number';
+import { invalidateStock } from '../stockQueries';
 
 type ItemOpt = ItemListItemDto;
 type AdjustmentRow = StockAdjustmentListItemDto;
@@ -267,7 +268,7 @@ function AdjustmentsTab() {
     onSuccess: () => {
       ok('journal.posted');
       invalidate();
-      void queryClient.invalidateQueries({ queryKey: ['stock-balances'] });
+      invalidateStock(queryClient);
     },
     onError: show,
   });
@@ -282,6 +283,7 @@ function AdjustmentsTab() {
       ok('journal.reversed');
       setReverseTarget(null);
       invalidate();
+      invalidateStock(queryClient);
     },
     onError: show,
   });
@@ -543,7 +545,7 @@ function TransfersTab() {
     onSuccess: () => {
       ok('journal.posted');
       invalidate();
-      void queryClient.invalidateQueries({ queryKey: ['stock-balances'] });
+      invalidateStock(queryClient);
     },
     onError: show,
   });
@@ -558,6 +560,7 @@ function TransfersTab() {
       ok('journal.reversed');
       setReverseTarget(null);
       invalidate();
+      invalidateStock(queryClient);
     },
     onError: show,
   });
@@ -828,7 +831,7 @@ function CountsTab() {
       ok('common.saved');
       setDetail(null);
       invalidate();
-      void queryClient.invalidateQueries({ queryKey: ['stock-balances'] });
+      invalidateStock(queryClient);
     },
     onError: show,
   });

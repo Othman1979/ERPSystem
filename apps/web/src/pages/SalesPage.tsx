@@ -75,6 +75,7 @@ import { idemHeaders } from '../idempotency';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
+import { invalidateStock } from '../stockQueries';
 import {
   EInvoiceNotice,
   EInvoiceQrPanel,
@@ -220,7 +221,7 @@ function InvoicesTab() {
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
     void queryClient.invalidateQueries({ queryKey: ['sales-invoice'] });
-    void queryClient.invalidateQueries({ queryKey: ['stock'] });
+    invalidateStock(queryClient);
   };
   const onError = (err: unknown) =>
     apiMessage.error(
@@ -839,7 +840,7 @@ function ReturnsTab() {
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['sales-returns'] });
     void queryClient.invalidateQueries({ queryKey: ['sales-invoices'] });
-    void queryClient.invalidateQueries({ queryKey: ['stock'] });
+    invalidateStock(queryClient);
   };
   const onError = (err: unknown) =>
     apiMessage.error(

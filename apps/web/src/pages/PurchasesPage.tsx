@@ -76,6 +76,7 @@ import { purchaseReturnBody } from './purchases/returnPayload';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
+import { invalidateStock } from '../stockQueries';
 
 // ------------------------------------------------------------------ types
 
@@ -211,7 +212,7 @@ function PurchaseInvoicesTab() {
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['purchase-invoices'] });
     void queryClient.invalidateQueries({ queryKey: ['purchase-invoice'] });
-    void queryClient.invalidateQueries({ queryKey: ['stock'] });
+    invalidateStock(queryClient);
   };
   const onError = (err: unknown) =>
     apiMessage.error(
@@ -844,7 +845,7 @@ function PurchaseReturnsTab() {
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['purchase-returns'] });
     void queryClient.invalidateQueries({ queryKey: ['purchase-invoices'] });
-    void queryClient.invalidateQueries({ queryKey: ['stock'] });
+    invalidateStock(queryClient);
   };
   const onError = (err: unknown) =>
     apiMessage.error(

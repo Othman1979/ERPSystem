@@ -52,6 +52,7 @@ import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
 import { qtyCell, unitCostCell } from '../format/cells';
+import { invalidateStock } from '../stockQueries';
 
 type GoodsNote = GoodsNoteListItemDto;
 type Item = ItemListItemDto;
@@ -150,7 +151,7 @@ export function GoodsNotesSection({
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['goods-notes'] });
-    void queryClient.invalidateQueries({ queryKey: ['stock'] });
+    invalidateStock(queryClient);
   };
   const onError = (err: unknown) =>
     apiMessage.error(

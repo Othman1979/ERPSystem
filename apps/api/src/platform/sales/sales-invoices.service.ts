@@ -8,6 +8,7 @@ import {
   currentBranchId,
 } from '../../common/branch/branch-context.js';
 import { findPage } from '../../common/paging/find-page.js';
+import { withLineCounts } from '../../common/paging/line-counts.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -385,16 +386,19 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     // The rows, their credited returns and the total read on one snapshot (ADR-022 §3).
     return findPage(db, pageWindow(query), {
       rows: async (tx, window) => {
-        const rows = await tx.salesInvoice.findMany({
+        const page = await tx.salesInvoice.findMany({
           where,
           include: {
             customer: { select: { id: true, code: true, nameAr: true, nameEn: true } },
             warehouse: { select: { id: true, code: true, nameAr: true } },
-            _count: { select: { lines: true } },
           },
           orderBy,
           ...window,
         });
+        // Line counts of this page only (see withLineCounts).
+        const rows = await withLineCounts(page, 'invoiceId', (ids) =>
+          tx.salesInvoiceLine.groupBy({ by: ['invoiceId'], where: { invoiceId: { in: ids } }, _count: { _all: true } }),
+        );
         const credited = await this.creditedFor(tx, rows.map((r) => r.id));
         return rows.map((r) => withBalance(r, credited));
       },

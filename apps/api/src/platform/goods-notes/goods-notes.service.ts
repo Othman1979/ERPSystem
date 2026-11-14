@@ -5,6 +5,7 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { findPage } from '../../common/paging/find-page.js';
+import { withLineCounts } from '../../common/paging/line-counts.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
@@ -84,17 +85,21 @@ export class GoodsNotesService {
       (dir) => ({ id: dir }),
     );
     return findPage(db, pageWindow(query), {
-      rows: (tx, window) =>
-        tx.goodsNote.findMany({
-          where,
-          include: {
-            warehouse: { select: { id: true, code: true, nameAr: true } },
-            branch: { select: { id: true, code: true, nameAr: true } },
-            _count: { select: { lines: true } },
-          },
-          orderBy,
-          ...window,
-        }),
+      rows: async (tx, window) =>
+        withLineCounts(
+          await tx.goodsNote.findMany({
+            where,
+            include: {
+              warehouse: { select: { id: true, code: true, nameAr: true } },
+              branch: { select: { id: true, code: true, nameAr: true } },
+            },
+            orderBy,
+            ...window,
+          }),
+          'noteId',
+          // Line counts of this page only (see withLineCounts).
+          (ids) => tx.goodsNoteLine.groupBy({ by: ['noteId'], where: { noteId: { in: ids } }, _count: { _all: true } }),
+        ),
       count: (tx) => tx.goodsNote.count({ where }),
     });
   }
