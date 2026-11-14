@@ -325,4 +325,35 @@ describe('Branch access (BranchGuard, ADR-003)', () => {
     // The owner may.
     expect((await api().post(`/api/v1/stock-adjustments/${adj.body.id}/post`).set(auth(owner)).set(idem())).status).toBe(201);
   });
+
+  // ------------------------------------------ branch edit: clearing text fields
+
+  it('PATCH /branches/:id clears nameEn and address with null; a null nameAr is refused', async () => {
+    const set = await api().patch(`/api/v1/branches/${b2Id}`).set(auth(owner)).send({ nameEn: 'X', address: 'Y' });
+    expect(set.status).toBe(200);
+    expect(set.body).toMatchObject({ nameEn: 'X', address: 'Y' });
+
+    const cleared = await api().patch(`/api/v1/branches/${b2Id}`).set(auth(owner)).send({ nameEn: null, address: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body).toMatchObject({ nameEn: null, address: null });
+
+    const listed = (await api().get('/api/v1/branches').set(auth(owner))).body as {
+      id: string;
+      nameEn: string | null;
+      address: string | null;
+    }[];
+    const b2 = listed.find((b) => b.id === b2Id);
+    expect(b2?.nameEn).toBeNull();
+    expect(b2?.address).toBeNull();
+
+    const refused = await api().patch(`/api/v1/branches/${b2Id}`).set(auth(owner)).send({ nameAr: null });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.code).toBe('VALIDATION');
+  });
+
+  it("tenant B cannot update A's branch: 404 NOT_FOUND, as for any other missing row", async () => {
+    const res = await api().patch(`/api/v1/branches/${mainId}`).set(auth(otherTenant)).send({ nameEn: 'Hijack' });
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
 });

@@ -9,6 +9,7 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -36,9 +37,52 @@ export class CreateCashBoxDto {
   @Matches(INT_STRING)
   accountId!: string;
 
+  /** The branch the box belongs to; absent = every branch (ADR-003). */
+  @IsOptional()
+  @Matches(INT_STRING)
+  branchId?: string;
+
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+}
+
+/**
+ * Update body (PUT /cash-boxes/:id): every field is optional, and an absent
+ * field is unchanged. A null is refused for a field that cannot be cleared.
+ */
+export class UpdateCashBoxDto {
+  @ApiPropertyOptional()
+  @ValidateIf((_o, value: unknown) => value !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50)
+  code?: string;
+
+  @ApiPropertyOptional()
+  @ValidateIf((_o, value: unknown) => value !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(191)
+  name?: string;
+
+  @ApiPropertyOptional()
+  @ValidateIf((_o, value: unknown) => value !== undefined)
+  @IsString()
+  @Matches(INT_STRING)
+  accountId?: string;
+
+  @ApiPropertyOptional()
+  @ValidateIf((_o, value: unknown) => value !== undefined)
+  @IsBoolean()
+  isActive?: boolean;
+
+  /** null puts the box on every branch again. */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  branchId?: string | null;
 }
 
 export class CreateBankAccountDto {
@@ -62,6 +106,42 @@ export class CreateBankAccountDto {
   accountId!: string;
 
   @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+/**
+ * Update body (PUT /bank-accounts/:id). A null clears accountNoMasked or
+ * ibanMasked; the other fields cannot be cleared, so a null is refused.
+ */
+export class UpdateBankAccountDto {
+  @ApiPropertyOptional()
+  @ValidateIf((_o, value: unknown) => value !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(191)
+  bankName?: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  accountNoMasked?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  ibanMasked?: string | null;
+
+  @ApiPropertyOptional()
+  @ValidateIf((_o, value: unknown) => value !== undefined)
+  @IsString()
+  @Matches(INT_STRING)
+  accountId?: string;
+
+  @ApiPropertyOptional()
+  @ValidateIf((_o, value: unknown) => value !== undefined)
   @IsBoolean()
   isActive?: boolean;
 }

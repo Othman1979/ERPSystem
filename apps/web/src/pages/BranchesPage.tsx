@@ -27,6 +27,7 @@ import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { tableLocale } from '../components/QueryState';
 import { displayName } from '../i18n/displayName';
+import { branchCreateBody, branchUpdateBody, type BranchFormValues } from './branches/branchPayload';
 
 type Branch = BranchDto;
 
@@ -46,20 +47,11 @@ export function BranchesPage() {
   const { data, isLoading } = branchesQuery;
 
   const save = useMutation({
-    mutationFn: async (values: { code?: string; nameAr: string; nameEn?: string; address?: string }) => {
+    mutationFn: async (values: BranchFormValues) => {
       if (editing) {
-        return branchesControllerUpdate(editing.id, {
-          nameAr: values.nameAr,
-          nameEn: values.nameEn || undefined,
-          address: values.address || undefined,
-        });
+        return branchesControllerUpdate(editing.id, branchUpdateBody(values));
       }
-      return branchesControllerCreate({
-        code: values.code!,
-        nameAr: values.nameAr,
-        nameEn: values.nameEn || undefined,
-        address: values.address || undefined,
-      });
+      return branchesControllerCreate(branchCreateBody(values));
     },
     onSuccess: () => {
       apiMessage.success(t('common.saved'));

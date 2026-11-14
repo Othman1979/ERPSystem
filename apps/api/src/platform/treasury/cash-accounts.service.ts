@@ -2,9 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { AuditService } from '../../common/audit/audit.service.js';
+import { assertBranchAllowed } from '../../common/branch/branch-context.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
-import type { CreateBankAccountDto, CreateCashBoxDto } from './dto/treasury.dto.js';
+import type {
+  CreateBankAccountDto,
+  CreateCashBoxDto,
+  UpdateBankAccountDto,
+  UpdateCashBoxDto,
+} from './dto/treasury.dto.js';
 
 /** Cash boxes (الصناديق) and bank accounts (الحسابات البنكية) → GL accounts. */
 @Injectable()
@@ -30,10 +36,13 @@ export class CashAccountsService {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     await this.assertCashAccount(db, companyId, dto.accountId, 'CASH');
+    // No branch = every branch (the box is not restricted, as for documents).
+    const branchId = dto.branchId != null ? await this.assertBoxBranch(db, companyId, dto.branchId) : null;
     const created = await db.cashBox.create({
       data: {
         tenantId,
         companyId,
+        branchId,
         code: dto.code,
         name: dto.name,
         accountId: BigInt(dto.accountId),
@@ -44,7 +53,7 @@ export class CashAccountsService {
     return created;
   }
 
-  async updateCashBox(id: bigint, dto: Partial<CreateCashBoxDto>) {
+  async updateCashBox(id: bigint, dto: UpdateCashBoxDto) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const box = await db.cashBox.findFirst({ where: { id, companyId } });
@@ -53,6 +62,15 @@ export class CashAccountsService {
     if (dto.accountId && BigInt(dto.accountId) !== box.accountId) {
       await this.assertNoJournalLines(db, box.accountId);
     }
+    // Moving a box takes rights on both branches: the one it leaves and the one it joins.
+    let branchId: bigint | null | undefined;
+    if (dto.branchId !== undefined) {
+      const next = dto.branchId === null ? null : await this.assertBoxBranch(db, companyId, dto.branchId);
+      if (next !== box.branchId) {
+        assertBranchAllowed(box.branchId);
+        branchId = next;
+      }
+    }
     return db.cashBox.update({
       where: { id },
       data: {
@@ -60,6 +78,7 @@ export class CashAccountsService {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.accountId !== undefined ? { accountId: BigInt(dto.accountId) } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        ...(branchId !== undefined ? { branchId } : {}),
       },
     });
   }
@@ -109,7 +128,7 @@ export class CashAccountsService {
     return created;
   }
 
-  async updateBankAccount(id: bigint, dto: Partial<CreateBankAccountDto>) {
+  async updateBankAccount(id: bigint, dto: UpdateBankAccountDto) {
     const { db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const acc = await db.bankAccount.findFirst({ where: { id, companyId } });
@@ -165,6 +184,25 @@ export class CashAccountsService {
         'The account has journal lines; it cannot be re-linked',
       );
     }
+  }
+
+  /**
+   * The active branch of the company a cash box is put on. Throws NOT_FOUND
+   * for another company's or an unknown branch, and BRANCH_NOT_ALLOWED when
+   * the caller may not use it (ADR-003).
+   */
+  private async assertBoxBranch(
+    db: ReturnType<PrismaService['forTenant']>,
+    companyId: bigint,
+    branchId: string,
+  ): Promise<bigint> {
+    const branch = await db.branch.findFirst({
+      where: { id: BigInt(branchId), companyId, isActive: true },
+      select: { id: true },
+    });
+    if (!branch) throw DomainError.notFound('Branch', branchId);
+    assertBranchAllowed(branch.id);
+    return branch.id;
   }
 
   private async assertCashAccount(
