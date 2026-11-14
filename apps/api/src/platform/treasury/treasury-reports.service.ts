@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { branchWhere, hasAllBranches } from '../../common/branch/branch-context.js';
+import { branchSql, branchWhere, hasAllBranches } from '../../common/branch/branch-context.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { calendarDateIn, DocumentSupportService } from '../shared/document-support.service.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { ReportsService } from '../journal/reports.service.js';
 import { PartiesService } from '../parties/parties.service.js';
 import { SalesInvoicesService } from '../sales/sales-invoices.service.js';
@@ -104,13 +105,19 @@ export class TreasuryReportsService {
     const controlAccountId = Object.values(mapping)[0];
     const documentType = partyType === 'CUSTOMER' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
     const shift = await this.allocationShiftAsOf(documentType, asOf);
-    const [openInvoices, balances, items] = await Promise.all([
+    const [openInvoices, balances, items, moved] = await Promise.all([
       partyType === 'CUSTOMER'
         ? this.sales.openCreditInvoicesAsOf(asOf, shift)
         : this.purchases.openCreditInvoicesAsOf(asOf, shift),
       this.ledger.controlBalancesByParty(partyType, asOf, controlAccountId),
       this.ledger.openingAndManualItemsByParty(partyType, asOf, controlAccountId),
+      this.crossBranchAllocationsAsOf(documentType, asOf),
     ]);
+    // ADR-003 §21: an allocation settles its invoice's branch, whatever the
+    // voucher's branch; the ledger balance (by line branch) is moved to match.
+    for (const [partyId, delta] of moved) {
+      balances.set(partyId, (balances.get(partyId) ?? new Decimal(0)).plus(delta));
+    }
 
     type PartyInfo = { id: bigint; code: string; nameAr: string; nameEn: string | null };
     const byParty = new Map<bigint, { party?: PartyInfo; buckets: Buckets; invoiced: Decimal }>();
@@ -178,6 +185,75 @@ export class TreasuryReportsService {
         })),
       totals: fmt(totals.buckets, totals.unapplied, totals.balance),
     };
+  }
+
+  /**
+   * ADR-003 §21 (owner, 2026-11-14): an allocation reduces the aging of its
+   * INVOICE's branch, whatever branch its receipt or payment is on. The
+   * control balance a restricted member sees is summed by journal-line
+   * branch, where the voucher's whole amount sits on the voucher's branch.
+   * For each allocation counted as of `asOf` whose voucher and invoice fall
+   * on different sides of the caller's scope, its amount moves: back into
+   * the balance when only the voucher is in scope (it settled an invoice the
+   * caller does not see), out of it when only the invoice is. The
+   * unallocated rest of a voucher stays on the voucher's branch.
+   * Per party, in the balance's own sign (customers debit − credit,
+   * suppliers credit − debit: either way a voucher lowers it). Empty for an
+   * all-branch caller. "Counted as of" is `allocationShiftAsOf`'s rule, and
+   * the invoice must be dated on or before `asOf` (an advance counts from
+   * the later of the two dates).
+   */
+  private async crossBranchAllocationsAsOf(
+    documentType: 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    asOf: Date,
+  ): Promise<Map<bigint, Decimal>> {
+    const moved = new Map<bigint, Decimal>();
+    if (hasAllBranches()) return moved;
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const company = await db.company.findFirst({ where: { id: companyId }, select: { timezone: true } });
+    const timeZone = company?.timezone || 'Asia/Amman';
+    const asOfIso = asOf.toISOString().slice(0, 10);
+    const invoices =
+      documentType === 'SALES_INVOICE' ? await this.sales.invoiceRefsSql() : await this.purchases.invoiceRefsSql();
+    const rows = await db.$queryRaw<
+      { party_id: bigint; amount: Prisma.Decimal; cancelled_at: Date | null; reversal_entry_id: bigint | null; voucher_in: number | bigint }[]
+    >`
+      SELECT x.party_id, x.amount, x.cancelled_at, x.reversal_entry_id, ${branchSql(Prisma.raw('x.voucher_branch'))} AS voucher_in
+        FROM (
+          SELECT a.party_id, a.amount, a.cancelled_at,
+                 CASE WHEN a.receipt_id IS NOT NULL THEN r.branch_id ELSE p.branch_id END AS voucher_branch,
+                 CASE WHEN a.receipt_id IS NOT NULL THEN r.reversal_entry_id ELSE p.reversal_entry_id END AS reversal_entry_id,
+                 d.branch_id AS invoice_branch
+            FROM allocations a
+            JOIN ${invoices} d ON d.id = a.document_id
+            LEFT JOIN receipts r ON r.tenant_id = a.tenant_id AND r.id = a.receipt_id
+            LEFT JOIN payments p ON p.tenant_id = a.tenant_id AND p.id = a.payment_id
+           WHERE a.tenant_id = ${tenantId} AND a.company_id = ${companyId}
+             AND a.document_type = ${documentType}
+             AND d.doc_date <= ${asOfIso}
+             AND COALESCE(r.receipt_date, p.payment_date) <= ${asOfIso}
+             AND (a.cancelled_at IS NULL OR a.cancelled_at >= ${new Date(asOf.getTime() - DAY_MS)})
+        ) x
+       WHERE ${branchSql(Prisma.raw('x.voucher_branch'))} <> ${branchSql(Prisma.raw('x.invoice_branch'))}`;
+    const cancelled = rows.filter((a) => a.cancelled_at !== null);
+    const reversalDates = await this.ledger.entryDates([
+      ...new Set(cancelled.map((a) => a.reversal_entry_id).filter((id): id is bigint => id !== null)),
+    ]);
+    for (const a of rows) {
+      if (a.cancelled_at) {
+        // Same rule as allocationShiftAsOf: cancelled (or its voucher reversed) by asOf → not counted.
+        if (calendarDateIn(timeZone, a.cancelled_at) <= asOfIso) continue;
+        const reversedOn = a.reversal_entry_id !== null ? reversalDates.get(a.reversal_entry_id) : undefined;
+        if (reversedOn && reversedOn.getTime() <= asOf.getTime()) continue;
+      }
+      const amount = new Decimal(a.amount.toString());
+      // Voucher in scope, invoice not: its line lowered this balance, add it back. Otherwise take it off.
+      const delta = BigInt(a.voucher_in) === 1n ? amount : amount.negated();
+      const partyId = BigInt(a.party_id);
+      moved.set(partyId, (moved.get(partyId) ?? new Decimal(0)).plus(delta));
+    }
+    return moved;
   }
 
   /**

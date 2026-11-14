@@ -475,4 +475,114 @@ describe('Review fixes: branch scope of the reports, exports and stock journal e
       expect(money(valuation.totalValue)).toBe('0.000');
     });
   });
+
+  describe("cross-branch allocations reduce the invoice's branch (ADR-003 §21, owner 2026-11-14)", () => {
+    let b2Member = '';
+    type Row = { partyId: string; total: string; unapplied: string; balance: string };
+    const agingOf = async (token: string, partyType: 'CUSTOMER' | 'SUPPLIER', asOf = AS_OF) =>
+      getJson<{ rows: Row[]; totals: { total: string; unapplied: string; balance: string } }>(
+        token,
+        `/api/v1/reports/aging?partyType=${partyType}&asOf=${asOf}`,
+      );
+
+    it('setup: a B2-only member; a B2 receipt of 15 allocates 10 to the MAIN sale; a MAIN payment allocates 5 to the B2 purchase', async () => {
+      b2Member = (
+        await addMember(BASE, owner, {
+          email: `review-b2-${RUN}@test.dev`,
+          roleCode: 'ACCOUNTANT',
+          password: PASS,
+          defaultBranchId: b2Id,
+          branchIds: [b2Id],
+        })
+      ).token;
+      type Acc = { id: string; controlType: string | null; children?: Acc[] };
+      const flat: Acc[] = [];
+      const walk = (list: Acc[]) => list.forEach((a) => (flat.push(a), walk(a.children ?? [])));
+      walk(await getJson<Acc[]>(owner, '/api/v1/accounts'));
+      const cash = flat.find((a) => a.controlType === 'CASH')!.id;
+      const receipt = await api()
+        .post('/api/v1/receipts')
+        .set(auth(owner))
+        .set('X-Branch-Id', b2Id)
+        .set(idem())
+        .send({
+          receiptDate: '2025-03-10',
+          partyType: 'CUSTOMER',
+          partyId: customerId,
+          cashAccountId: cash,
+          amount: '15.000',
+          allocations: [{ documentType: 'SALES_INVOICE', documentId: sales.main.id, amount: '10.000' }],
+        });
+      expect(receipt.status).toBe(201);
+      expect(receipt.body.branchId).toBe(b2Id);
+      const payment = await api()
+        .post('/api/v1/payments')
+        .set(auth(owner))
+        .set('X-Branch-Id', mainId)
+        .set(idem())
+        .send({
+          paymentDate: '2025-03-10',
+          partyType: 'SUPPLIER',
+          partyId: supplierId,
+          cashAccountId: cash,
+          amount: '5.000',
+          allocations: [{ documentType: 'PURCHASE_INVOICE', documentId: purchases.b2.id, amount: '5.000' }],
+        });
+      expect(payment.status).toBe(201);
+      expect(payment.body.branchId).toBe(mainId);
+    });
+
+    it("customers: MAIN's sale owes 10 less with nothing unapplied; B2 keeps only the receipt's unallocated 5", async () => {
+      const mainOwed = new Decimal(sales.main.grandTotal).minus(10);
+      const mine = await agingOf(accountant, 'CUSTOMER');
+      expect(mine.rows).toHaveLength(1);
+      expect(money(mine.rows[0].total)).toBe(money(mainOwed));
+      expect(money(mine.rows[0].unapplied)).toBe('0.000');
+      expect(money(mine.totals.balance)).toBe(money(mainOwed));
+
+      const theirs = await agingOf(b2Member, 'CUSTOMER');
+      expect(theirs.rows).toHaveLength(1);
+      expect(money(theirs.rows[0].total)).toBe(money(sales.b2.grandTotal));
+      expect(money(theirs.rows[0].unapplied)).toBe('-5.000');
+      expect(money(theirs.totals.balance)).toBe(money(new Decimal(sales.b2.grandTotal).minus(5)));
+
+      // The owner (every branch) is the ledger: both sales less the whole receipt.
+      const all = await agingOf(owner, 'CUSTOMER');
+      expect(money(all.totals.balance)).toBe(money(total([sales.main, sales.b2], 'grandTotal').minus(15)));
+      // Restricted views add up to the company's when the two branches are all there is.
+      expect(money(new Decimal(mine.totals.balance).plus(theirs.totals.balance))).toBe(money(all.totals.balance));
+    });
+
+    it("suppliers: B2's purchase owes 5 less; MAIN's aging is unchanged by its payment", async () => {
+      const mine = await agingOf(accountant, 'SUPPLIER');
+      expect(mine.rows).toHaveLength(1);
+      expect(money(mine.rows[0].total)).toBe(money(purchases.main.grandTotal));
+      expect(money(mine.rows[0].unapplied)).toBe('0.000');
+      expect(money(mine.totals.balance)).toBe(money(purchases.main.grandTotal));
+
+      const theirs = await agingOf(b2Member, 'SUPPLIER');
+      expect(money(theirs.rows[0].total)).toBe(money(new Decimal(purchases.b2.grandTotal).minus(5)));
+      expect(money(theirs.rows[0].unapplied)).toBe('0.000');
+    });
+
+    it('as of a date before the vouchers, nothing moves', async () => {
+      const mine = await agingOf(accountant, 'CUSTOMER', '2025-03-07');
+      expect(money(mine.totals.balance)).toBe(money(sales.main.grandTotal));
+      expect(money(mine.rows[0].unapplied)).toBe('0.000');
+      const theirs = await agingOf(b2Member, 'CUSTOMER', '2025-03-07');
+      expect(money(theirs.totals.balance)).toBe(money(sales.b2.grandTotal));
+    });
+
+    it("the dashboard's receivables follow the same rule", async () => {
+      const mine = await getJson<DashboardBody>(accountant, `/api/v1/dashboard/summary?date=${AS_OF}`);
+      expect(money(mine.receivables.total)).toBe(money(new Decimal(sales.main.grandTotal).minus(10)));
+      const theirs = await getJson<DashboardBody>(b2Member, `/api/v1/dashboard/summary?date=${AS_OF}`);
+      expect(money(theirs.receivables.total)).toBe(money(new Decimal(sales.b2.grandTotal).minus(5)));
+    });
+
+    it("tenant B still sees none of it", async () => {
+      const aging = await agingOf(tenantB, 'CUSTOMER');
+      expect(aging.rows).toEqual([]);
+    });
+  });
 });
