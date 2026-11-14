@@ -260,11 +260,14 @@ export class StockReportsService {
    * limit the answer is REPORT_TOO_LARGE. `lowStock=true` keeps the rows of
    * items whose total over the caller's warehouses is below their minimum stock.
    */
-  async balances(query?: { warehouseId?: string; itemId?: string; lowStock?: string }) {
+  async balances(query?: { warehouseId?: string; itemId?: string; itemIds?: string; lowStock?: string }) {
     const { db } = this.tenant();
+    // itemIds is a second item filter: it sits in its own AND so it holds together with itemId.
+    const itemIds = query?.itemIds ? [...new Set(query.itemIds.split(','))].map((id) => BigInt(id)) : undefined;
     const where = {
       ...(query?.warehouseId ? { warehouseId: BigInt(query.warehouseId) } : {}),
       ...(query?.itemId ? { itemId: BigInt(query.itemId) } : {}),
+      ...(itemIds ? { AND: [{ itemId: { in: itemIds } }] } : {}),
       ...warehouseScope(),
     };
     const count = await db.stockBalance.count({ where });

@@ -41,6 +41,7 @@ import { usePagedQuery } from '../hooks/usePagedQuery';
 import { useRemoteOptions } from '../hooks/useRemoteOptions';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { useNewFromUrl } from '../useNewFromUrl';
+import { salesInvoiceBody, salesInvoiceFormDefaults } from './sales/invoicePayload';
 import {
   ApiError,
   catalogControllerListItems,
@@ -58,7 +59,6 @@ import {
   salesControllerPostReturn,
   salesControllerUpdateInvoice,
   settingsControllerListTaxCategories,
-  type CreateSalesInvoiceDto,
   type ItemListItemDto,
   type SalesControllerListInvoicesPaymentType,
   type SalesControllerListInvoicesSort,
@@ -437,10 +437,9 @@ function InvoiceForm({
   );
   const [customerId, setCustomerId] = useState<string | undefined>(invoice?.customerId);
   const [warehouseId, setWarehouseId] = useState<string | undefined>(invoice?.warehouseId);
-  const [paymentType, setPaymentType] = useState<'CASH' | 'CREDIT'>(
-    invoice?.paymentType ?? 'CREDIT',
-  );
-  const [cashAccountId, setCashAccountId] = useState<string | undefined>();
+  const formDefaults = salesInvoiceFormDefaults(invoice);
+  const [paymentType, setPaymentType] = useState<'CASH' | 'CREDIT'>(formDefaults.paymentType);
+  const [cashAccountId, setCashAccountId] = useState<string | undefined>(formDefaults.cashAccountId);
   const [lines, setLines] = useState<InvoiceLineDraft[]>(() => {
     if (invoice?.lines.length) {
       return invoice.lines.map((l, i) => ({
@@ -498,26 +497,18 @@ function InvoiceForm({
     mutationFn: async () => {
       // trySave checks these before it saves; this narrows them for the request type.
       if (!customerId || !warehouseId) throw new Error('customer and warehouse are required');
-      const payload: CreateSalesInvoiceDto = {
-        invoiceDate: invoiceDate.format('YYYY-MM-DD'),
-        dueDate: dueDate?.format('YYYY-MM-DD'),
-        customerId,
-        warehouseId,
-        paymentType,
-        cashAccountId: paymentType === 'CASH' ? cashAccountId : undefined,
-        lines: lines.flatMap((l) =>
-          l.itemId && l.qty
-            ? [
-                {
-                  itemId: l.itemId,
-                  qty: l.qty,
-                  unitPrice: l.price ?? '0',
-                  discountPct: l.discountPct ?? undefined,
-                },
-              ]
-            : [],
-        ),
-      };
+      const payload = salesInvoiceBody(
+        {
+          invoiceDate: invoiceDate.format('YYYY-MM-DD'),
+          dueDate: dueDate?.format('YYYY-MM-DD'),
+          customerId,
+          warehouseId,
+          paymentType,
+          cashAccountId,
+          lines,
+        },
+        invoice,
+      );
       const res = isNew
         ? await salesControllerCreateInvoice(payload)
         : await salesControllerUpdateInvoice(invoice!.id, payload);

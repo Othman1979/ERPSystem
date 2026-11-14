@@ -15,6 +15,8 @@ import {
   journalControllerReverse,
   type AccountMappingSlotDto,
   type FiscalYearListItemDto,
+  type JournalControllerListSort,
+  type JournalControllerListSourceType,
   type JournalEntryLineDto,
   type JournalEntryListItemDto,
 } from '@erp/api-client';
@@ -38,6 +40,7 @@ import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { openingPlug } from './opening/openingPlug';
 import { selectPostable, useAccounts } from '../hooks/useAccounts';
+import { usePagedQuery } from '../hooks/usePagedQuery';
 
 /** A line of the opening form that has its account chosen (the lines the API receives). */
 type FilledLine = JournalLineDraft & { accountId: string };
@@ -78,10 +81,17 @@ export function OpeningBalancesPage() {
   // replays the same entry instead of posting a second one.
   const idemKey = useMemo(() => crypto.randomUUID(), [formSeq]);
 
-  const entries = useQuery({
-    queryKey: ['journal-entries', 'opening'],
-    queryFn: ({ signal }) =>
-      journalControllerList({ sourceType: 'OPENING_ENTRY', pageSize: 100 }, { signal }).then((r) => r.data.items),
+  // Server-paged (ADR-022): the opening entries only, newest first, one page at a time.
+  const list = usePagedQuery<
+    JournalEntryListItemDto,
+    { sourceType?: JournalControllerListSourceType },
+    JournalControllerListSort
+  >({
+    key: ['journal-entries', 'opening'],
+    filters: { sourceType: 'OPENING_ENTRY' },
+    defaultSort: '-entryDate',
+    fetch: (params, signal) => journalControllerList(params, { signal }).then((r) => r.data),
+    enabled: screen === 'list',
   });
   const accounts = useAccounts();
   const mappings = useQuery({
@@ -255,10 +265,11 @@ export function OpeningBalancesPage() {
         <Card>
           <Table
             rowKey="id"
-            loading={entries.isLoading}
-            dataSource={entries.data ?? []}
-            pagination={{ pageSize: 20 }}
-            locale={tableLocale(entries, t('opening.empty'))}
+            loading={list.query.isLoading}
+            dataSource={list.rows}
+            pagination={list.pagination}
+            onChange={list.onTableChange}
+            locale={tableLocale(list.query, t('opening.empty'))}
             onRow={(e) => ({ onClick: () => openEntry(e.id), style: { cursor: 'pointer' } })}
             columns={[
               {
@@ -271,6 +282,9 @@ export function OpeningBalancesPage() {
               {
                 title: t('journal.date'),
                 dataIndex: 'entryDate',
+                key: 'entryDate',
+                sorter: true,
+                sortOrder: list.sortOrderOf('entryDate'),
                 width: 120,
                 render: (v: string) => day(v),
               },

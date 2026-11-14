@@ -578,4 +578,47 @@ describe('Stock reports: keyset movements and branch scope (ADR-022 §4, ADR-003
       expect((await get(tenantB, `/items/${itemI}/ledger`)).status).toBe(404);
     });
   });
+
+  describe('GET /stock/balances?itemIds (the items page reads only its own rows)', () => {
+    it('answers only the rows of the listed items, the same rows as itemId reads one by one', async () => {
+      const both = await get(owner, `/balances?itemIds=${itemI},${itemJ}`);
+      expect(both.status).toBe(200);
+      const ids = new Set((both.body as { itemId: string }[]).map((r) => r.itemId));
+      expect(ids).toEqual(new Set([itemI, itemJ]));
+
+      const onlyJ = await get(owner, `/balances?itemIds=${itemJ}`);
+      expect(onlyJ.status).toBe(200);
+      expect(onlyJ.body.length).toBeGreaterThan(0);
+      expect(onlyJ.body).toEqual((await get(owner, `/balances?itemId=${itemJ}`)).body);
+    });
+
+    it('a repeated id is read once; an itemId and an itemIds that do not overlap answer nothing', async () => {
+      const dup = await get(owner, `/balances?itemIds=${itemJ},${itemJ}`);
+      expect(dup.body).toEqual((await get(owner, `/balances?itemIds=${itemJ}`)).body);
+      const both = await get(owner, `/balances?itemId=${itemI}&itemIds=${itemJ}`);
+      expect(both.status).toBe(200);
+      expect(both.body).toEqual([]);
+    });
+
+    it('a malformed list is refused with VALIDATION (400)', async () => {
+      for (const query of ['itemIds=abc', `itemIds=${itemI},`, `itemIds=,${itemI}`, 'itemIds=']) {
+        const res = await get(owner, `/balances?${query}`);
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION');
+      }
+    });
+
+    it('more than 100 ids is refused with VALIDATION (400)', async () => {
+      const ids = Array.from({ length: 101 }, (_, i) => String(i + 1)).join(',');
+      const res = await get(owner, `/balances?itemIds=${ids}`);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION');
+    });
+
+    it("tenant B sees none of A's balances when it asks for A's item ids", async () => {
+      const res = await get(tenantB, `/balances?itemIds=${itemI},${itemJ}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
+  });
 });
