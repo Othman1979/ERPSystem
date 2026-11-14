@@ -13,7 +13,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -22,20 +22,13 @@ import {
   invitationsControllerAccept,
   invitationsControllerDecline,
   invitationsControllerList,
+  type MyInvitationDto,
 } from '@erp/api-client';
 import { useAuth } from '../auth/AuthContext';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 
-interface Invitation {
-  membershipId: string;
-  tenantId: string;
-  tenantName: string;
-  role: { code: string; nameAr: string; nameEn: string | null };
-  invitedBy: { fullName: string; email: string } | null;
-  invitedAt: string;
-  codeExpiresAt: string;
-}
+type Invitation = MyInvitationDto;
 
 const DATE_FORMAT = 'YYYY-MM-DD HH:mm';
 
@@ -53,6 +46,16 @@ const CODE_FONT = "Consolas, 'Cascadia Mono', 'Courier New', monospace";
  * The signed-in user's own company invitations (ADR-012 §PLAT-10). Makes no
  * tenant-scoped requests, so it also works for a user with no company yet.
  */
+/**
+ * The code-expiry cell of an invitation: null when no code is pending
+ * (`codeExpiresAt` is null; it used to render "Invalid Date"), so the cell
+ * shows a dash; else the expiry and whether it has passed.
+ */
+export function codeExpiry(codeExpiresAt: string | null, now: Dayjs = dayjs()): { at: string; expired: boolean } | null {
+  if (!codeExpiresAt) return null;
+  return { at: codeExpiresAt, expired: dayjs(codeExpiresAt).isBefore(now) };
+}
+
 export function InvitationsPage() {
   const { t, i18n } = useTranslation();
   const { switchTenant, refreshMe } = useAuth();
@@ -66,7 +69,7 @@ export function InvitationsPage() {
 
   const query = useQuery({
     queryKey: ['invitations'],
-    queryFn: ({ signal }) => invitationsControllerList({ signal }).then((r) => r.data as unknown as Invitation[]),
+    queryFn: ({ signal }) => invitationsControllerList({ signal }).then((r) => r.data),
   });
   const { data, isLoading } = query;
 
@@ -90,10 +93,9 @@ export function InvitationsPage() {
     mutationFn: ({ membershipId, code }: { membershipId: string; code: string }) =>
       invitationsControllerAccept(membershipId, { code }),
     onSuccess: async (res) => {
-      const body = res.data as unknown as { tenantId: string };
       // Same company switch as the selector in the top bar. It remounts the app
       // while the new company loads, so the redirect to home comes after it.
-      await switchTenant(body.tenantId);
+      await switchTenant(res.data.tenantId);
       navigate('/', { replace: true });
     },
     onError: (err) => {
@@ -163,11 +165,12 @@ export function InvitationsPage() {
             {
               title: t('invitations.codeExpires'),
               render: (_: unknown, i: Invitation) => {
-                const expired = dayjs(i.codeExpiresAt).isBefore(dayjs());
+                const expiry = codeExpiry(i.codeExpiresAt);
+                if (!expiry) return '—';
                 return (
                   <Space size={6}>
-                    <LtrDate value={i.codeExpiresAt} />
-                    {expired && <Tag color="red">{t('invitations.expired')}</Tag>}
+                    <LtrDate value={expiry.at} />
+                    {expiry.expired && <Tag color="red">{t('invitations.expired')}</Tag>}
                   </Space>
                 );
               },

@@ -224,6 +224,19 @@ function isEnvelope(data: unknown): data is ApiErrorBody {
 }
 
 /** `text` as JSON, or `undefined` for an empty body; `{ ok: false }` when it is not JSON. */
+/** The file types the API answers with (printouts, exports): a generated call resolves them as a Blob. */
+const FILE_CONTENT_TYPES = [
+  'application/pdf',
+  'application/zip',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/octet-stream',
+];
+
+function isFileResponse(response: Response): boolean {
+  const type = (response.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+  return FILE_CONTENT_TYPES.includes(type);
+}
+
 function parseJson(text: string): { ok: true; data: unknown } | { ok: false } {
   if (!text) return { ok: true, data: undefined };
   try {
@@ -388,6 +401,13 @@ export async function apiFetch<T>(path: string, init: ApiRequestInit = {}): Prom
     if (response.status === 204) {
       if (method !== 'GET' && method !== 'HEAD') notifyWrite(method, url, 204);
       return { data: undefined, status: 204, headers: response.headers } as T;
+    }
+
+    // A file (the OpenAPI document types these routes as Blob). Downloads with a
+    // file name still go through apiFetchBlob; this keeps generated calls honest.
+    if (response.ok && isFileResponse(response)) {
+      if (method !== 'GET' && method !== 'HEAD') notifyWrite(method, url, response.status);
+      return { data: await response.blob(), status: response.status, headers: response.headers } as T;
     }
 
     const parsed = parseJson(await response.text());

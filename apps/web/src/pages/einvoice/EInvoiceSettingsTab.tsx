@@ -4,39 +4,29 @@ import { Alert, App, Button, ConfigProvider, Form, Input, Radio, Skeleton, Switc
 import dayjs from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ApiError, apiFetchData } from '@erp/api-client';
+import {
+  ApiError,
+  type EInvoiceSettingsViewDto,
+  type UpdateEInvoiceSettingsDto,
+  eInvoiceControllerGetSettings,
+  eInvoiceControllerUpdateSettings,
+} from '@erp/api-client';
 import { fieldPanelTheme } from '../../components/DocLayout';
 import { FormSection } from '../../components/FormDialog';
 import { Num } from '../../components/Num';
 
-type Environment = 'SANDBOX' | 'PRODUCTION';
-type Track = 'INCOME' | 'GENERAL_SALES';
+type EInvoiceSettings = EInvoiceSettingsViewDto;
 
-interface EInvoiceSettings {
-  sellerTaxNumber: string | null;
-  sellerName: string | null;
-  environment: Environment;
-  baseUrl: string | null;
-  defaultSandboxUrl: string;
-  clientId: string | null;
-  hasSecret: boolean;
-  incomeSourceSequence: string | null;
-  track: Track;
-  nextIcv: number;
-  isEnabled: boolean;
-  enabledAt: string | null;
-  encryptionKeySet: boolean;
-}
-
+/** The settings form: the write body's fields, with the empty inputs as strings. */
 interface SettingsForm {
   sellerTaxNumber?: string;
   sellerName?: string;
-  environment: Environment;
+  environment: UpdateEInvoiceSettingsDto['environment'];
   baseUrl?: string;
   clientId?: string;
   secretKey?: string;
   incomeSourceSequence?: string;
-  track: Track;
+  track: UpdateEInvoiceSettingsDto['track'];
   isEnabled: boolean;
 }
 
@@ -78,28 +68,25 @@ export function EInvoiceSettingsTab() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: QUERY_KEY,
-    queryFn: ({ signal }) => apiFetchData<EInvoiceSettings>('/api/v1/einvoice/settings', { signal }),
+    queryFn: ({ signal }) => eInvoiceControllerGetSettings({ signal }).then((r) => r.data),
     retry: (count, err) => !(err instanceof ApiError && err.status === 403) && count < 1,
   });
 
   const save = useMutation({
     mutationFn: (v: SettingsForm) =>
-      apiFetchData<EInvoiceSettings>('/api/v1/einvoice/settings', {
-        method: 'PUT',
-        body: JSON.stringify({
-          // Empty seller fields keep what is stored (the API rejects blanks).
-          sellerTaxNumber: v.sellerTaxNumber?.trim() || undefined,
-          sellerName: v.sellerName?.trim() || undefined,
-          environment: v.environment,
-          ...(v.environment === 'SANDBOX' ? { baseUrl: v.baseUrl?.trim() || null } : {}),
-          clientId: v.clientId?.trim() || null,
-          // Omitted when empty: the stored secret stays.
-          ...(v.secretKey ? { secretKey: v.secretKey } : {}),
-          incomeSourceSequence: v.incomeSourceSequence?.trim() || null,
-          track: v.track,
-          isEnabled: v.isEnabled,
-        }),
-      }),
+      eInvoiceControllerUpdateSettings({
+        // Empty seller fields keep what is stored (the API rejects blanks).
+        sellerTaxNumber: v.sellerTaxNumber?.trim() || undefined,
+        sellerName: v.sellerName?.trim() || undefined,
+        environment: v.environment,
+        ...(v.environment === 'SANDBOX' ? { baseUrl: v.baseUrl?.trim() || null } : {}),
+        clientId: v.clientId?.trim() || null,
+        // Omitted when empty: the stored secret stays.
+        ...(v.secretKey ? { secretKey: v.secretKey } : {}),
+        incomeSourceSequence: v.incomeSourceSequence?.trim() || null,
+        track: v.track,
+        isEnabled: v.isEnabled,
+      }).then((r) => r.data),
     onSuccess: (saved) => {
       setNotReady(null);
       queryClient.setQueryData(QUERY_KEY, saved);

@@ -23,6 +23,15 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
+  type AdminControllerListSort,
+  type AdminControllerListStatus,
+  type AdminErrorDetailDto,
+  type AdminErrorRowDto,
+  type AdminPlanListItemDto,
+  type AdminSubscriptionDto,
+  type AdminTenantListItemDto,
+  type AdminTenantPlanRefDto,
+  type UpdatePlanDto,
   adminControllerCreateSubscription,
   adminControllerExtendTrial,
   adminControllerGet,
@@ -37,7 +46,7 @@ import {
 } from '@erp/api-client';
 import { ListToolbar } from '../components/ListToolbar';
 import { PageHeader } from '../components/PageHeader';
-import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { usePagedQuery } from '../hooks/usePagedQuery';
 import { tableLocale } from '../components/QueryState';
 import { amountCell } from '../format/cells';
 import { displayName } from '../i18n/displayName';
@@ -53,49 +62,10 @@ const STATUS_COLOR: Record<Status, string> = {
   CANCELLED: 'default',
 };
 
-interface PlanRef {
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-}
-
-interface TenantRow {
-  id: string;
-  name: string;
-  status: Status;
-  trialEndsAt: string | null;
-  statusChangedAt: string | null;
-  plan: PlanRef | null;
-  members: number;
-  branches: number;
-  createdAt: string;
-}
-
-interface Subscription {
-  id: string;
-  periodStart: string;
-  periodEnd: string;
-  status: string;
-  amount: string | null;
-  notes: string | null;
-}
-
-interface TenantDetail extends TenantRow {
-  companies: { id: string; legalNameAr: string; isActive: boolean }[];
-  subscriptions: Subscription[];
-}
-
-interface Plan extends PlanRef {
-  id: string;
-  maxUsers: number;
-  maxBranches: number;
-  maxWarehouses: number;
-  maxInvoicesPerMonth: number;
-  priceMonthly: string | null;
-  priceYearly: string | null;
-  isActive: boolean;
-  tenants: number;
-}
+type PlanRef = AdminTenantPlanRefDto;
+type TenantRow = AdminTenantListItemDto;
+type Subscription = AdminSubscriptionDto;
+type Plan = AdminPlanListItemDto;
 
 const day = (v: string | null | undefined) => (v ? dayjs(v).format('YYYY-MM-DD') : '—');
 
@@ -145,14 +115,11 @@ function TenantsTab() {
   const [openId, setOpenId] = useState<string | null>(null);
 
   // Server-paged (ADR-022): search (`q`), status filter, sort and page go to the API.
-  const list = usePagedQuery<TenantRow, { status?: string }>({
+  const list = usePagedQuery<TenantRow, { status?: AdminControllerListStatus }, AdminControllerListSort>({
     key: ['platform-tenants', 'list'],
     filters: { status },
     defaultSort: '-id',
-    fetch: (params, signal) =>
-      adminControllerList(params as Parameters<typeof adminControllerList>[0], { signal }).then(
-        (r) => r.data as unknown as Page<TenantRow>,
-      ),
+    fetch: (params, signal) => adminControllerList(params, { signal }).then((r) => r.data),
   });
 
   return (
@@ -216,12 +183,12 @@ function TenantDrawer({ id, onClose }: { id: string | null; onClose: () => void 
 
   const { data: tenant } = useQuery({
     queryKey: ['platform-tenant', id],
-    queryFn: ({ signal }) => adminControllerGet(id!, { signal }).then((r) => r.data as unknown as TenantDetail),
+    queryFn: ({ signal }) => adminControllerGet(id!, { signal }).then((r) => r.data),
     enabled: !!id,
   });
   const { data: plans } = useQuery({
     queryKey: ['platform-plans'],
-    queryFn: ({ signal }) => adminPlansControllerList({ signal }).then((r) => r.data as unknown as Plan[]),
+    queryFn: ({ signal }) => adminPlansControllerList({ signal }).then((r) => r.data),
     enabled: !!id,
   });
 
@@ -235,7 +202,8 @@ function TenantDrawer({ id, onClose }: { id: string | null; onClose: () => void 
   };
 
   const changeStatus = useMutation({
-    mutationFn: () => adminControllerUpdateStatus(id!, { status: newStatus!, reason: reason || undefined } as never),
+    // newStatus is set: the confirm dialog only opens from the enabled button (no status = disabled).
+    mutationFn: () => adminControllerUpdateStatus(id!, { status: newStatus!, reason: reason || undefined }),
     onSuccess: () => {
       setNewStatus(undefined);
       setReason('');
@@ -244,7 +212,8 @@ function TenantDrawer({ id, onClose }: { id: string | null; onClose: () => void 
     onError,
   });
   const extendTrial = useMutation({
-    mutationFn: () => adminControllerExtendTrial(id!, { days: trialDays } as never),
+    // trialDays is set: the button is disabled while the field is empty.
+    mutationFn: () => adminControllerExtendTrial(id!, { days: trialDays! }),
     onSuccess: done,
     onError,
   });
@@ -256,7 +225,7 @@ function TenantDrawer({ id, onClose }: { id: string | null; onClose: () => void 
         periodEnd: v.period[1].format('YYYY-MM-DD'),
         amount: v.amount || undefined,
         notes: v.notes || undefined,
-      } as never),
+      }),
     onSuccess: () => {
       payment.resetFields();
       done();
@@ -383,16 +352,17 @@ function PlansTab() {
 
   const plansQuery = useQuery({
     queryKey: ['platform-plans'],
-    queryFn: ({ signal }) => adminPlansControllerList({ signal }).then((r) => r.data as unknown as Plan[]),
+    queryFn: ({ signal }) => adminPlansControllerList({ signal }).then((r) => r.data),
   });
   const { data, isLoading } = plansQuery;
   const save = useMutation({
-    mutationFn: (v: Record<string, unknown>) =>
+    mutationFn: (v: UpdatePlanDto) =>
       adminPlansControllerUpdate(editing!.code, {
         ...v,
-        priceMonthly: v.priceMonthly ? String(v.priceMonthly) : null,
-        priceYearly: v.priceYearly ? String(v.priceYearly) : null,
-      } as never),
+        // An empty price clears it (null); the price inputs send strings (stringMode).
+        priceMonthly: v.priceMonthly || null,
+        priceYearly: v.priceYearly || null,
+      }),
     onSuccess: () => {
       message.success(t('common.saved'));
       setEditing(null);
@@ -477,23 +447,7 @@ function PlansTab() {
 
 // -------------------------------------------------------------------- errors
 
-interface ErrorEvent {
-  id: string;
-  source: 'API' | 'WEB' | 'JOB';
-  name: string;
-  message: string;
-  method: string | null;
-  path: string | null;
-  status: number | null;
-  tenantId: string | null;
-  userId: string | null;
-  requestId: string | null;
-  count: number;
-  firstSeenAt: string;
-  lastSeenAt: string;
-  resolvedAt: string | null;
-  stack?: string | null;
-}
+type ErrorEvent = AdminErrorRowDto;
 
 const ERROR_FILTERS = ['open', 'resolved', 'all'] as const;
 const ERROR_SOURCES = ['API', 'WEB', 'JOB'] as const;
@@ -509,12 +463,12 @@ function ErrorsTab() {
 
   const errorsQuery = useQuery({
     queryKey: ['platform-errors', status, source],
-    queryFn: ({ signal }) => adminErrorsControllerList({ status, ...(source ? { source } : {}) }, { signal }).then((r) => r.data as unknown as ErrorEvent[]),
+    queryFn: ({ signal }) => adminErrorsControllerList({ status, ...(source ? { source } : {}) }, { signal }).then((r) => r.data),
   });
   const { data, isLoading } = errorsQuery;
-  const { data: detail } = useQuery({
+  const { data: detail } = useQuery<AdminErrorDetailDto>({
     queryKey: ['platform-error', openId],
-    queryFn: ({ signal }) => adminErrorsControllerGet(openId!, { signal }).then((r) => r.data as unknown as ErrorEvent),
+    queryFn: ({ signal }) => adminErrorsControllerGet(openId!, { signal }).then((r) => r.data),
     enabled: !!openId,
   });
   const toggle = useMutation({

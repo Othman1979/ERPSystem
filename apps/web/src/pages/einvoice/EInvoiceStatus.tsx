@@ -1,29 +1,18 @@
+import { EInvoiceStatus as EINVOICE_STATUS, type EInvoiceErrorDto, type EInvoiceStateDto } from '@erp/api-client';
 import { Alert, QRCode, Tag, Tooltip } from 'antd';
 import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { Num } from '../../components/Num';
 
-/** JoFotara submission states (Phase 7, docs/decisions/0005 §13). */
-export const EINVOICE_STATUSES = ['PENDING', 'SENDING', 'ACCEPTED', 'REJECTED', 'FAILED', 'UNKNOWN'] as const;
+/** JoFotara submission states (Phase 7, docs/decisions/0005 §13), in the API's order. */
+export const EINVOICE_STATUSES = Object.values(EINVOICE_STATUS);
 export type EInvoiceStatus = (typeof EINVOICE_STATUSES)[number];
 
-export interface EInvoiceError {
-  code: string;
-  message: string;
-  source: 'jofotara' | 'local';
-}
+/** One error or warning of a submission. */
+export type EInvoiceError = EInvoiceErrorDto;
 
 /** The `einvoice` block on a sales invoice or return; null = not e-invoiced. */
-export interface EInvoiceState {
-  id: string;
-  status: EInvoiceStatus;
-  uuid: string;
-  icv: number;
-  environment: 'SANDBOX' | 'PRODUCTION';
-  qrPayload: string | null;
-  errors: EInvoiceError[] | null;
-  completedAt: string | null;
-}
+export type EInvoiceState = EInvoiceStateDto;
 
 export const STATUS_COLORS: Record<EInvoiceStatus, string> = {
   PENDING: 'default',

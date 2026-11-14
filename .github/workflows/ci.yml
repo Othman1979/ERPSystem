@@ -56,14 +56,40 @@ jobs:
         if: matrix.mariadb == '11.8'
       # The e2e suites spawn the built API (apps/api/dist/main.js).
       - run: pnpm --filter api build
+      # The committed api-client must be what the API's document generates (PLAT-15, ADR-023):
+      # write the document from the built app (no server), regenerate, and fail on any diff.
+      - name: api-client matches the OpenAPI document
+        if: matrix.mariadb == '11.8'
+        run: |
+          pnpm --filter api openapi:document "${{ runner.temp }}/openapi.json"
+          OPENAPI_INPUT="${{ runner.temp }}/openapi.json" pnpm api-client:generate
+          git diff --exit-code -- packages/api-client || {
+            echo "packages/api-client is stale: run pnpm --filter api build, then"
+            echo "  pnpm --filter api openapi:document openapi.json && OPENAPI_INPUT=openapi.json pnpm api-client:generate"
+            exit 1
+          }
       - run: pnpm --filter api exec prisma migrate deploy
       # Plans, currencies, countries and system roles; sign-up needs the TRIAL plan and OWNER role.
       - run: pnpm --filter api seed
         timeout-minutes: 2
       - name: test (api)
         # --forceExit: a suite that leaves a handle open must not keep the job alive.
+        # Every API an e2e suite spawns checks its 2xx answers against the OpenAPI
+        # document and appends mismatches here (PLAT-15, ADR-023).
+        env:
+          OPENAPI_RESPONSE_AUDIT: ${{ runner.temp }}/openapi-audit.jsonl
         run: pnpm --filter api test --forceExit
         timeout-minutes: 20
+      - name: OpenAPI response audit (PLAT-15)
+        if: ${{ !cancelled() }}
+        run: |
+          file="${{ runner.temp }}/openapi-audit.jsonl"
+          if [ -s "$file" ]; then
+            echo "Answers that do not match their declared OpenAPI schema:"
+            sort -u "$file"
+            exit 1
+          fi
+          echo "No mismatch."
       - name: test (other packages)
         if: matrix.mariadb == '11.8'
         run: pnpm -r --filter '!api' run test

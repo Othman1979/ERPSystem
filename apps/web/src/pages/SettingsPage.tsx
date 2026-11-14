@@ -20,6 +20,10 @@ import { CompanyProfileForm } from '../components/CompanyProfileForm';
 import { DataExportCard } from '../components/DataExportCard';
 import {
   ApiError,
+  type CreateTaxCategoryDtoEinvoiceCode,
+  type CreateUnitDto,
+  type PaymentMethodDto,
+  type UpdateLookupDto,
   settingsControllerCreatePaymentMethod,
   settingsControllerCreateTaxCategory,
   settingsControllerCreateUnit,
@@ -41,38 +45,89 @@ import { EInvoiceSettingsTab } from './einvoice/EInvoiceSettingsTab';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 
-/** JoFotara tax category codes (0005 §6). */
-type EInvoiceCode = 'S' | 'Z' | 'O';
+/** JoFotara tax category codes (0005 §6), from the generated enum. */
+type EInvoiceCode = CreateTaxCategoryDtoEinvoiceCode;
 
 type LookupKind = 'unit' | 'taxCategory' | 'paymentMethod';
 
-interface LookupRow {
-  id: string;
-  code: string;
+/**
+ * One row of any lookup list. Every kind has the PaymentMethodDto fields; the
+ * unit and tax-category lists add their own, which are optional here because
+ * the table shows them only for the kind that has them.
+ */
+type LookupRow = PaymentMethodDto & {
+  unEceCode?: string | null;
+  rate?: string;
+  isDefault?: boolean;
+  einvoiceCode?: string | null;
+};
+
+/** The form values of every lookup kind. */
+interface LookupForm {
+  code?: string;
   nameAr: string;
-  nameEn: string | null;
-  isActive: boolean;
+  nameEn?: string;
   rate?: string;
   isDefault?: boolean;
   einvoiceCode?: EInvoiceCode | null;
-  unEceCode?: string | null;
+  unEceCode?: string;
 }
 
-const LIST_FN = {
-  unit: settingsControllerListUnits,
-  taxCategory: settingsControllerListTaxCategories,
-  paymentMethod: settingsControllerListPaymentMethods,
-} as const;
-const CREATE_FN = {
-  unit: settingsControllerCreateUnit,
-  taxCategory: settingsControllerCreateTaxCategory,
-  paymentMethod: settingsControllerCreatePaymentMethod,
-} as const;
-const UPDATE_FN = {
-  unit: settingsControllerUpdateUnit,
-  taxCategory: settingsControllerUpdateTaxCategory,
-  paymentMethod: settingsControllerUpdatePaymentMethod,
-} as const;
+async function listLookups(kind: LookupKind, signal: AbortSignal): Promise<LookupRow[]> {
+  switch (kind) {
+    case 'unit':
+      return (await settingsControllerListUnits({ signal })).data;
+    case 'taxCategory':
+      return (await settingsControllerListTaxCategories({ signal })).data;
+    case 'paymentMethod':
+      return (await settingsControllerListPaymentMethods({ signal })).data;
+  }
+}
+
+/**
+ * Creates or updates one lookup row. Each kind has its own generated body:
+ * on update, an empty optional field is sent as null (cleared); on create it is omitted.
+ */
+function writeLookup(kind: LookupKind, editing: LookupRow | null, v: LookupForm): Promise<unknown> {
+  if (kind === 'taxCategory') {
+    if (editing) {
+      return settingsControllerUpdateTaxCategory(editing.id, {
+        nameAr: v.nameAr,
+        nameEn: v.nameEn || null,
+        rate: v.rate,
+        isDefault: v.isDefault,
+        einvoiceCode: v.einvoiceCode || null,
+      });
+    }
+    return settingsControllerCreateTaxCategory({
+      code: v.code!,
+      nameAr: v.nameAr,
+      nameEn: v.nameEn || undefined,
+      rate: v.rate ?? '0',
+      isDefault: v.isDefault,
+      einvoiceCode: v.einvoiceCode || undefined,
+    });
+  }
+  if (editing) {
+    const body: UpdateLookupDto = { nameAr: v.nameAr, nameEn: v.nameEn || null, unEceCode: v.unEceCode || null };
+    return kind === 'unit'
+      ? settingsControllerUpdateUnit(editing.id, body)
+      : settingsControllerUpdatePaymentMethod(editing.id, body);
+  }
+  const body: CreateUnitDto = {
+    code: v.code!,
+    nameAr: v.nameAr,
+    nameEn: v.nameEn || undefined,
+    unEceCode: v.unEceCode || undefined,
+  };
+  return kind === 'unit' ? settingsControllerCreateUnit(body) : settingsControllerCreatePaymentMethod(body);
+}
+
+function deactivateLookup(kind: LookupKind, id: string): Promise<unknown> {
+  if (kind === 'taxCategory') return settingsControllerUpdateTaxCategory(id, { isActive: false });
+  const body: UpdateLookupDto = { isActive: false };
+  return kind === 'unit' ? settingsControllerUpdateUnit(id, body) : settingsControllerUpdatePaymentMethod(id, body);
+}
 
 function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
   const { t } = useTranslation();
@@ -85,7 +140,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
 
   const lookupQuery = useQuery({
     queryKey,
-    queryFn: ({ signal }) => LIST_FN[kind]({ signal }).then((r) => r.data as unknown as LookupRow[]),
+    queryFn: ({ signal }) => listLookups(kind, signal),
   });
   const { data, isLoading } = lookupQuery;
 
@@ -97,32 +152,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
     );
 
   const save = useMutation({
-    mutationFn: async (v: {
-      code?: string;
-      nameAr: string;
-      nameEn?: string;
-      rate?: string;
-      isDefault?: boolean;
-      einvoiceCode?: EInvoiceCode | null;
-      unEceCode?: string;
-    }) => {
-      const base = {
-        nameAr: v.nameAr,
-        nameEn: v.nameEn || null,
-      };
-      if (editing) {
-        const upd =
-          kind === 'taxCategory'
-            ? { ...base, rate: v.rate, isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || null }
-            : { ...base, unEceCode: v.unEceCode || null };
-        return UPDATE_FN[kind](editing.id, upd as never);
-      }
-      const create =
-        kind === 'taxCategory'
-          ? { code: v.code!, ...base, rate: v.rate ?? '0', isDefault: v.isDefault, einvoiceCode: v.einvoiceCode || null }
-          : { code: v.code!, ...base, unEceCode: v.unEceCode || undefined };
-      return CREATE_FN[kind](create as never);
-    },
+    mutationFn: (v: LookupForm) => writeLookup(kind, editing, v),
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
       setModalOpen(false);
@@ -134,7 +164,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
   });
 
   const deactivate = useMutation({
-    mutationFn: (id: string) => UPDATE_FN[kind](id, { isActive: false } as never),
+    mutationFn: (id: string) => deactivateLookup(kind, id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey }),
     onError: showError,
   });

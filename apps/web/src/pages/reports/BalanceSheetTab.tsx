@@ -3,30 +3,14 @@ import { DatePicker, Tag } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { apiFetchData } from '@erp/api-client';
-import { ExportButtons, queryString } from '../../components/ExportButtons';
+import { reportsControllerBalanceSheet } from '@erp/api-client';
+import { ExportButtons } from '../../components/ExportButtons';
 import { ListToolbar } from '../../components/ListToolbar';
 import { Num } from '../../components/Num';
 import { dec, formatAmount } from '../../format/number';
 import { palette } from '../../theme';
 import { isoDay, ScreenPrintButton } from './PeriodFilters';
-import { sectionLines, StatementTable, type StatementLine, type StatementSection } from './StatementTable';
-
-interface BalanceSheet {
-  asOf: string;
-  yearStart: string;
-  fiscalYear: { id: string; code: string } | null;
-  assets: StatementSection;
-  liabilities: StatementSection;
-  equity: StatementSection;
-  /** Σ (Cr − Dr) of revenue + expenses before the fiscal year (no closing entries). */
-  priorYears: string;
-  /** The same from the fiscal year's start to asOf. */
-  yearProfit: string;
-  totalLiabilitiesAndEquity: string;
-  difference: string;
-  balanced: boolean;
-}
+import { sectionLines, StatementTable, type StatementLine } from './StatementTable';
 
 const PATH = '/reports/balance-sheet';
 
@@ -38,7 +22,7 @@ export function BalanceSheetTab() {
   const params = { asOf: isoDay(asOf) };
   const listQuery = useQuery({
     queryKey: ['report-balance-sheet', params.asOf],
-    queryFn: ({ signal }) => apiFetchData<BalanceSheet>(`/api/v1${PATH}${queryString(params)}`, { signal }),
+    queryFn: ({ signal }) => reportsControllerBalanceSheet(params, { signal }).then((r) => r.data),
   });
   const { data, isLoading } = listQuery;
 

@@ -55,6 +55,8 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.FISCAL_YEAR_TOO_LONG]: HttpStatus.BAD_REQUEST,
   [ErrorCode.DUPLICATE_CODE]: HttpStatus.CONFLICT,
   [ErrorCode.INVALID_DATE_RANGE]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.RETURN_WAREHOUSE_MISMATCH]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.RETURN_WAREHOUSE_REQUIRED]: HttpStatus.BAD_REQUEST,
   [ErrorCode.UNBALANCED_ENTRY]: HttpStatus.BAD_REQUEST,
   [ErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_INSUFFICIENT]: HttpStatus.CONFLICT,

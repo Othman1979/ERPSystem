@@ -31,6 +31,41 @@ import { GoodsNotesService } from '../goods-notes/goods-notes.service.js';
 const SOURCE = 'PURCHASE_RETURN';
 
 /**
+ * ADR-016 §5 (owner, 2026-11-14): a purchase return's goods leave from the
+ * original invoice's warehouse, where they came in (a GRN-billed invoice
+ * already names its GRN's warehouse). Omitted, the warehouse is the
+ * invoice's. A service-only invoice has none: then the caller must name one
+ * (the column is required), and no goods move.
+ */
+async function returnWarehouse(
+  tx: Prisma.TransactionClient,
+  companyId: bigint,
+  invoiceWarehouseId: bigint | null,
+  given: string | undefined,
+): Promise<bigint> {
+  const id = given !== undefined ? BigInt(given) : invoiceWarehouseId;
+  if (id === null) {
+    throw new DomainError(ErrorCode.RETURN_WAREHOUSE_REQUIRED, 'The original invoice has no warehouse; name the return warehouse');
+  }
+  // Exists in this company first: another tenant's id answers 404, as everywhere.
+  const warehouse = await tx.warehouse.findFirst({ where: { companyId, id, isActive: true }, select: { id: true } });
+  if (!warehouse) throw DomainError.notFound('Warehouse', id.toString());
+  assertReturnWarehouse(invoiceWarehouseId, warehouse.id);
+  return warehouse.id;
+}
+
+/** ADR-016 §5: the return's warehouse must be the invoice's, when the invoice has one. */
+function assertReturnWarehouse(invoiceWarehouseId: bigint | null, warehouseId: bigint): void {
+  if (invoiceWarehouseId !== null && invoiceWarehouseId !== warehouseId) {
+    throw new DomainError(
+      ErrorCode.RETURN_WAREHOUSE_MISMATCH,
+      "A purchase return leaves from the original invoice's warehouse",
+      { warehouseId: warehouseId.toString(), invoiceWarehouseId: invoiceWarehouseId.toString() },
+    );
+  }
+}
+
+/**
  * Purchase returns linked to a posted invoice (§7.7, §8.4, §9.5). Return qty
  * is in BASE units of the original line. Posting: stock OUT at the original
  * purchase cost + journal Dr supplier/cash, Cr inventory/purchases/input-tax.
@@ -224,12 +259,6 @@ export class PurchaseReturnsService {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
 
-    const warehouse = await db.warehouse.findFirst({
-      where: { companyId, id: BigInt(dto.warehouseId), isActive: true },
-      select: { id: true },
-    });
-    if (!warehouse) throw DomainError.notFound('Warehouse', dto.warehouseId);
-
     if (dto.refundType === 'CASH' && !dto.cashAccountId) {
       throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash refunds');
     }
@@ -264,6 +293,7 @@ export class PurchaseReturnsService {
       }
       // A return belongs to its original invoice's branch (ADR-003, TRADE-11).
       assertBranchAllowed(invoice.branchId);
+      const warehouseId = await returnWarehouse(tx, companyId, invoice.warehouseId, dto.warehouseId);
       assertRefundType(invoice.paymentType, dto.refundType);
       // Drafts reserve their quantity too.
       const prior = await tx.purchaseReturnLine.findMany({
@@ -283,7 +313,7 @@ export class PurchaseReturnsService {
           returnDate: new Date(dto.returnDate),
           originalInvoiceId: invoice.id,
           supplierId: invoice.supplierId,
-          warehouseId: warehouse.id,
+          warehouseId,
           refundType: dto.refundType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
           reason: dto.reason ?? null,
@@ -375,10 +405,13 @@ export class PurchaseReturnsService {
             branchId: true,
             paymentType: true,
             receivedGrnId: true,
+            warehouseId: true,
             lines: { select: { id: true, lineNo: true, qtyBase: true } },
           },
         });
         assertBranchAllowed(original?.branchId);
+        // Again at posting: a draft saved before the rule may name another warehouse.
+        if (original) assertReturnWarehouse(original.warehouseId, draft.warehouseId);
         if (original) assertRefundType(original.paymentType, draft.refundType);
         // TRADE-01: posted returns of the invoice plus this one stay within each line.
         const posted = await tx.purchaseReturnLine.findMany({

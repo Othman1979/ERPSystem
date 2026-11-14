@@ -119,6 +119,14 @@ describe('api-client runtime: error classification (WEB-06)', () => {
     });
   });
 
+  it('resolves a file answer (a printout) as a Blob, as its generated type says', async () => {
+    handler = () => new Response('%PDF-1.4', { status: 200, headers: { 'Content-Type': 'application/pdf' } });
+    const res = (await apiFetch('/sales-invoices/1/pdf')) as { data: unknown; status: number };
+    expect(res.status).toBe(200);
+    expect(res.data).toBeInstanceOf(Blob);
+    expect(await (res.data as Blob).text()).toBe('%PDF-1.4');
+  });
+
   it('still resolves 204 and empty bodies', async () => {
     handler = () => new Response(null, { status: 204 });
     await expect(apiFetch('/branches/1', { method: 'DELETE' })).resolves.toMatchObject({ status: 204 });

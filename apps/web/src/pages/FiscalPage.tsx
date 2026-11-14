@@ -16,6 +16,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
+  type FiscalPeriodDto,
+  type FiscalYearListItemDto,
   fiscalControllerClosePeriod,
   fiscalControllerCloseYear,
   fiscalControllerCreateYear,
@@ -30,35 +32,9 @@ import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 
-interface FiscalPeriod {
-  id: string;
-  periodNo: number;
-  startDate: string;
-  endDate: string;
-  status: 'OPEN' | 'CLOSED';
-  closedAt: string | null;
-}
+type FiscalPeriod = FiscalPeriodDto;
 
-interface FiscalYear {
-  id: string;
-  code: string;
-  startDate: string;
-  endDate: string;
-  status: string;
-  _count?: { periods: number };
-}
-
-interface YearDetail extends FiscalYear {
-  periods: FiscalPeriod[];
-}
-
-interface DocSequence {
-  id: string;
-  documentType: string;
-  prefix: string;
-  nextNumber: number;
-  padding: number;
-}
+type FiscalYear = FiscalYearListItemDto;
 
 function fmtDate(v: string): string {
   return v ? v.slice(0, 10) : '';
@@ -73,7 +49,7 @@ export function FiscalPage() {
 
   const yearsQuery = useQuery({
     queryKey: ['fiscal-years'],
-    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data as unknown as FiscalYear[]),
+    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data),
   });
   const { data: years, isLoading } = yearsQuery;
 
@@ -183,7 +159,7 @@ export function FiscalPage() {
           {
             title: t('fiscal.periods'),
             width: 100,
-            render: (_: unknown, y: FiscalYear) => y._count?.periods ?? '—',
+            render: (_: unknown, y: FiscalYear) => y._count.periods,
           },
           {
             title: '',
@@ -243,14 +219,12 @@ function YearDetailPanel({
   const { t } = useTranslation();
   const { data: year, isLoading } = useQuery({
     queryKey: ['fiscal-year', yearId],
-    queryFn: ({ signal }) => fiscalControllerGetYear(yearId, { signal }).then((r) => r.data as unknown as YearDetail),
+    queryFn: ({ signal }) => fiscalControllerGetYear(yearId, { signal }).then((r) => r.data),
   });
   const sequencesQuery = useQuery({
     queryKey: ['doc-sequences', yearId],
     queryFn: ({ signal }) =>
-      fiscalControllerListSequences({ fiscalYearId: yearId }, { signal }).then(
-        (r) => r.data as unknown as DocSequence[],
-      ),
+      fiscalControllerListSequences({ fiscalYearId: yearId }, { signal }).then((r) => r.data),
   });
   const { data: sequences } = sequencesQuery;
 

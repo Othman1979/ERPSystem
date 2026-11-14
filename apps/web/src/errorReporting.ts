@@ -41,7 +41,7 @@ export function reportError(error: unknown): void {
       message: message.slice(0, 2000),
       ...(stack ? { stack: stack.slice(0, 16000) } : {}),
       page: window.location.pathname.slice(0, 500),
-    } as never).catch(() => undefined);
+    }).catch(() => undefined);
   } catch {
     // Reporting must never add an error of its own.
   }

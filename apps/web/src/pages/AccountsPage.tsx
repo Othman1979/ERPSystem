@@ -20,6 +20,7 @@ import {
   accountingControllerCreateAccount,
   accountingControllerUpdateAccount,
   journalControllerTrialBalance,
+  type AccountType,
 } from '@erp/api-client';
 import { BookOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -43,12 +44,6 @@ export interface TreeNode extends Account {
   balDebit: Decimal;
   balCredit: Decimal;
   balBalance: Decimal;
-}
-
-interface TrialRow {
-  accountId: string;
-  totalDebit: string;
-  totalCredit: string;
 }
 
 export function buildTree(accounts: Account[]): TreeNode[] {
@@ -94,6 +89,15 @@ export function applyBalances(
   return { debit, credit };
 }
 
+/**
+ * The trial balance for the balances column: no filters, and the query's
+ * signal as the request option, so leaving the page cancels it. (It used to
+ * pass `{ signal }` as the query params, which sent nothing cancellable.)
+ */
+export function fetchTrialBalance(signal: AbortSignal) {
+  return journalControllerTrialBalance({}, { signal }).then((r) => r.data);
+}
+
 export function AccountsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -111,10 +115,7 @@ export function AccountsPage() {
 
   const { data: trial, isError: trialError } = useQuery({
     queryKey: ['trial-balance'],
-    queryFn: ({ signal }) =>
-      journalControllerTrialBalance({ signal }).then(
-        (r) => r.data as unknown as { rows: TrialRow[] },
-      ),
+    queryFn: ({ signal }) => fetchTrialBalance(signal),
     retry: false,
   });
 
@@ -157,7 +158,7 @@ export function AccountsPage() {
       nameAr: string;
       nameEn?: string;
       parentId?: string;
-      accountType: Account['accountType'];
+      accountType: AccountType;
       isPostable?: boolean;
     }) => {
       if (editing) {
@@ -271,7 +272,7 @@ export function AccountsPage() {
             title: t('accounts.type'),
             dataIndex: 'accountType',
             width: 110,
-            render: (v: Account['accountType']) => t(`accounts.types.${v}`),
+            render: (v: AccountType) => t(`accounts.types.${v}`),
           },
           {
             title: t('accounts.postable'),

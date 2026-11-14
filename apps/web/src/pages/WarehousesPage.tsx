@@ -9,6 +9,7 @@ import {
   warehousesControllerList,
   warehousesControllerUpdate,
 } from '@erp/api-client';
+import type { UpdateWarehouseDto, WarehouseListItemDto } from '@erp/api-client';
 import { ContainerOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
@@ -16,20 +17,7 @@ import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { tableLocale } from '../components/QueryState';
 import { codeAndName, displayName } from '../i18n/displayName';
 
-interface Warehouse {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-  address: string | null;
-  isActive: boolean;
-  branch?: { id: string; code: string; nameAr: string } | null;
-}
-interface Branch {
-  id: string;
-  code: string;
-  nameAr: string;
-}
+type Warehouse = WarehouseListItemDto;
 
 export function WarehousesPage() {
   const { t } = useTranslation();
@@ -42,12 +30,12 @@ export function WarehousesPage() {
 
   const warehousesQuery = useQuery({
     queryKey: ['warehouses'],
-    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as Warehouse[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
   });
   const { data: warehouses, isLoading } = warehousesQuery;
   const { data: branches } = useQuery({
     queryKey: ['branches'],
-    queryFn: ({ signal }) => branchesControllerList({ signal }).then((r) => r.data as unknown as Branch[]),
+    queryFn: ({ signal }) => branchesControllerList({ signal }).then((r) => r.data),
   });
 
   const showError = (err: unknown) =>
@@ -66,15 +54,23 @@ export function WarehousesPage() {
       branchId?: string;
       address?: string;
     }): Promise<unknown> => {
-      const payload = {
+      // Update accepts null to clear optional fields; create takes them as omitted (optional, non-null).
+      if (editing) {
+        const payload: UpdateWarehouseDto = {
+          nameAr: v.nameAr,
+          nameEn: v.nameEn || null,
+          branchId: v.branchId || null,
+          address: v.address || null,
+        };
+        return warehousesControllerUpdate(editing.id, payload);
+      }
+      return warehousesControllerCreate({
+        code: v.code!,
         nameAr: v.nameAr,
-        nameEn: v.nameEn || null,
-        branchId: v.branchId || null,
-        address: v.address || null,
-      };
-      return editing
-        ? warehousesControllerUpdate(editing.id, payload as never)
-        : warehousesControllerCreate({ code: v.code!, ...payload } as never);
+        nameEn: v.nameEn || undefined,
+        branchId: v.branchId || undefined,
+        address: v.address || undefined,
+      });
     },
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
@@ -87,7 +83,7 @@ export function WarehousesPage() {
   });
 
   const deactivate = useMutation({
-    mutationFn: (id: string) => warehousesControllerUpdate(id, { isActive: false } as never),
+    mutationFn: (id: string) => warehousesControllerUpdate(id, { isActive: false }),
     onSuccess: invalidate,
     onError: showError,
   });

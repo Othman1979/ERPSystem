@@ -49,6 +49,9 @@ export const envSchema = z.object({
   WEB_DIST_DIR: z.string().min(1).optional(),
   // OpenAPI pages at /api/docs. Unset: on, except in production (ADR-010 §5).
   API_DOCS: z.enum(['on', 'off']).optional(),
+  // Tests only (PLAT-15): every 2xx answer that does not match its OpenAPI
+  // response schema is appended to this file. Ignored in production.
+  OPENAPI_RESPONSE_AUDIT: z.string().min(1).optional(),
   // Daily backups (ADR-010 §10.2, docs/runbooks/backup-restore.md): the folder
   // (outside the web root, apart from STORAGE_DIR), how many days to keep, the
   // client tools (mysqldump / mariadb-dump, mysql / mariadb), and the scratch

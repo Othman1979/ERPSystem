@@ -30,7 +30,14 @@ function signedIn(roleCode: string, permissions: string[]): AuthState {
   return {
     status: 'authed',
     me: {
-      user: { id: 'u1', email: 'rana@a.test', fullName: 'Rana Haddad', locale: 'ar', isPlatformAdmin: false },
+      user: {
+        id: 'u1',
+        email: 'rana@a.test',
+        fullName: 'Rana Haddad',
+        locale: 'ar',
+        isPlatformAdmin: false,
+        mustChangePassword: false,
+      },
       tenants: [
         {
           tenantId: 't1',
@@ -43,7 +50,14 @@ function signedIn(roleCode: string, permissions: string[]): AuthState {
         },
       ],
       currentTenant: { tenantId: 't1', name: 'A Co', status: 'ACTIVE', plan: null },
-      currentMembership: { membershipId: 'm1', roleCode, permissions, defaultBranchId: null, branches: [] },
+      currentMembership: {
+        membershipId: 'm1',
+        roleCode,
+        permissions,
+        defaultBranchId: null,
+        allBranches: true,
+        branches: [],
+      },
       pendingInvitations: 0,
     },
     login: vi.fn(),

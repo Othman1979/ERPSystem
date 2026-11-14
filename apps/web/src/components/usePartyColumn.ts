@@ -1,18 +1,10 @@
 import { useQueries } from '@tanstack/react-query';
-import { partiesControllerGet, partiesControllerList } from '@erp/api-client';
+import { partiesControllerGet, partiesControllerList, type PartyDto } from '@erp/api-client';
 import { codeAndName } from '../i18n/displayName';
-import { type Page } from '../hooks/usePagedQuery';
 import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 import { partyKindOf, type PartyColumn, type PartyKind } from './JournalLinesGrid';
 
-interface Party {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn?: string | null;
-  partyType: PartyKind | 'BOTH';
-  isActive?: boolean;
-}
+type Party = PartyDto;
 
 interface AccountLike {
   id: string;
@@ -30,7 +22,7 @@ function pickParties(kind: PartyKind, q: string | undefined, signal: AbortSignal
       partiesControllerList(
         { partyType, isActive: 'true', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) },
         { signal },
-      ).then((r) => (r.data as unknown as Page<Party>).items),
+      ).then((r) => r.data.items),
     ),
   ).then((pages) => pages.flat());
 }
@@ -81,7 +73,7 @@ export function usePartyColumn(
     queries: unknownIds.map((id) => ({
       queryKey: ['parties', 'detail', id],
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        partiesControllerGet(id, { signal }).then((r) => r.data as unknown as Party),
+        partiesControllerGet(id, { signal }).then((r) => r.data),
     })),
   });
   const fetchedById = new Map<string, Party>();

@@ -121,9 +121,14 @@ export class CreatePurchaseReturnDto {
   @Matches(INT_STRING)
   originalInvoiceId!: string;
 
+  /**
+   * The warehouse the goods leave from: the original invoice's (ADR-016 §5).
+   * Omitted, it is taken from the invoice; another one is refused.
+   */
+  @IsOptional()
   @IsString()
   @Matches(INT_STRING)
-  warehouseId!: string;
+  warehouseId?: string;
 
   @IsIn(PAYMENT_TYPES)
   refundType!: (typeof PAYMENT_TYPES)[number];

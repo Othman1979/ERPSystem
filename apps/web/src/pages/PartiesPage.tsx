@@ -22,32 +22,22 @@ import {
   partiesControllerDeactivate,
   partiesControllerList,
   partiesControllerUpdate,
+  type PartiesControllerListPartyType,
+  type PartiesControllerListSort,
+  type PartyDto,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
-import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { usePagedQuery } from '../hooks/usePagedQuery';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { displayName, type Named } from '../i18n/displayName';
 import { amountCell } from '../format/cells';
+import { partyCreateBody, partyUpdateBody, type PartyFormValues } from './parties/partyPayload';
 
-interface Party {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn?: string | null;
-  partyType: 'CUSTOMER' | 'SUPPLIER' | 'BOTH';
-  taxNumber?: string | null;
-  nationalId?: string | null;
-  /** JoFotara buyer scheme for nationalId: NIN Jordanian, PN non-Jordanian. */
-  nationalIdKind?: 'NIN' | 'PN';
-  phone?: string | null;
-  creditLimit?: string | null;
-  paymentTermsDays?: number | null;
-  isCashCustomer?: boolean;
-  isActive: boolean;
-}
+type Party = PartyDto;
 
+/** The party form's values (antd gives them untyped). Code is set on create only. */
 const TYPE_COLORS: Record<string, string> = {
   CUSTOMER: 'blue',
   SUPPLIER: 'orange',
@@ -57,7 +47,7 @@ const TYPE_COLORS: Record<string, string> = {
 export function PartiesPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+  const [typeFilter, setTypeFilter] = useState<PartiesControllerListPartyType | undefined>(undefined);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Party | null>(null);
   const [form] = Form.useForm();
@@ -65,14 +55,11 @@ export function PartiesPage() {
   const [apiMessage, contextHolder] = message.useMessage();
 
   // Server-paged (ADR-022): search, sort and page go to the API.
-  const list = usePagedQuery<Party, { partyType?: string }>({
+  const list = usePagedQuery<Party, { partyType?: PartiesControllerListPartyType }, PartiesControllerListSort>({
     key: ['parties', 'list'],
     filters: { partyType: typeFilter },
     defaultSort: 'code',
-    fetch: (params, signal) =>
-      partiesControllerList(params as Parameters<typeof partiesControllerList>[0], { signal }).then(
-        (r) => r.data as unknown as Page<Party>,
-      ),
+    fetch: (params, signal) => partiesControllerList(params, { signal }).then((r) => r.data),
   });
   const partiesQuery = list.query;
   const { isLoading } = partiesQuery;
@@ -111,25 +98,8 @@ export function PartiesPage() {
   };
 
   const save = useMutation({
-    mutationFn: async (values: Record<string, unknown>) => {
-      const payload = {
-        nameAr: values.nameAr,
-        nameEn: values.nameEn,
-        partyType: values.partyType,
-        taxNumber: values.taxNumber,
-        nationalId: values.nationalId,
-        nationalIdKind: values.nationalIdKind,
-        phone: values.phone,
-        creditLimit: values.creditLimit ?? undefined,
-        paymentTermsDays: values.paymentTermsDays,
-        isCashCustomer: values.isCashCustomer,
-        isActive: values.isActive,
-      };
-      const res = editing
-        ? await partiesControllerUpdate(editing.id, payload as never)
-        : await partiesControllerCreate({ code: values.code, ...payload } as never);
-      return res as never;
-    },
+    mutationFn: async (values: PartyFormValues) =>
+      editing ? partiesControllerUpdate(editing.id, partyUpdateBody(values)) : partiesControllerCreate(partyCreateBody(values)),
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
       invalidate();

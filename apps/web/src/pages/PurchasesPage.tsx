@@ -37,7 +37,7 @@ import { tableLocale } from '../components/QueryState';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { ListToolbar } from '../components/ListToolbar';
 import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
-import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
+import { usePagedQuery } from '../hooks/usePagedQuery';
 import { useRemoteOptions } from '../hooks/useRemoteOptions';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import {
@@ -57,96 +57,40 @@ import {
   purchasesControllerPostReturn,
   purchasesControllerUpdateInvoice,
   settingsControllerListTaxCategories,
+  type CreatePurchaseInvoiceDto,
+  type ItemListItemDto,
+  type PurchaseInvoiceDetailDto,
+  type PurchaseInvoiceLineViewDto,
+  type PurchaseInvoiceListItemDto,
+  type PurchaseReturnLineViewDto,
+  type PurchaseReturnListItemDto,
+  type PurchasesControllerListInvoicesPaymentType,
+  type PurchasesControllerListInvoicesSort,
+  type PurchasesControllerListInvoicesStatus,
+  type PurchasesControllerListReturnsSort,
+  type PurchasesControllerListReturnsStatus,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
+import { purchaseReturnBody } from './purchases/returnPayload';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
 
 // ------------------------------------------------------------------ types
 
-interface Party {
-  id: string;
-  code: string;
-  nameAr: string;
-  partyType: string;
-}
-interface Warehouse {
-  id: string;
-  code: string;
-  nameAr: string;
-}
-interface Item {
-  id: string;
-  code: string;
-  nameAr: string;
-  itemKind: 'STOCK' | 'SERVICE';
-  purchasePrice?: string | null;
-  taxCategoryId?: string | null;
-}
-interface TaxCategory {
-  id: string;
-  rate: string;
-  isDefault?: boolean;
-}
-interface InvoiceLine {
-  id: string;
-  lineNo: number;
-  itemId: string;
-  qtyBase: string;
-  unitCost: string;
-  discountPct: string;
-  netAmount: string;
-  taxAmount: string;
-  /** Tax rate this line was taxed at (percent, decimal string). */
-  taxRate: string;
-  lineTotal: string;
-  item?: { code: string; nameAr: string; itemKind: 'STOCK' | 'SERVICE' };
-}
-interface PurchaseInvoice {
-  id: string;
-  invoiceNo: string | null;
-  invoiceDate: string;
-  dueDate?: string | null;
-  supplierId: string;
-  supplierInvoiceNo?: string | null;
-  supplierInvoiceDate?: string | null;
-  warehouseId: string;
-  paymentType: 'CASH' | 'CREDIT';
-  status: 'DRAFT' | 'POSTED';
-  netTotal: string;
-  taxTotal: string;
-  grandTotal: string;
-  paidAmount: string;
-  costTotal?: string;
-  supplier?: Party;
-  warehouse?: Warehouse;
-  lines?: InvoiceLine[];
-  journalEntry?: { entryNo: string | null } | null;
-}
-interface ReturnLine {
-  id: string;
-  originalLineId: string;
-  itemId: string;
-  qtyBase: string;
-  lineTotal: string;
-  item?: { code: string; nameAr: string };
-  originalLine?: { lineNo: number };
-}
-interface PurchaseReturn {
-  id: string;
-  returnNo: string | null;
-  returnDate: string;
-  originalInvoiceId: string;
-  refundType: 'CASH' | 'CREDIT';
-  status: 'DRAFT' | 'POSTED';
-  grandTotal: string;
-  reason?: string | null;
-  supplier?: Party;
-  originalInvoice?: { invoiceNo: string | null };
-  lines?: ReturnLine[];
-}
+/** Lines as the detail endpoints return them. */
+type InvoiceLine = PurchaseInvoiceLineViewDto;
+type ReturnLine = PurchaseReturnLineViewDto;
+
+/**
+ * An item as the item picker holds it: a search result, or a line taken from a saved
+ * invoice (which carries its own tax rate; the search response does not).
+ */
+type ItemRow = Pick<
+  ItemListItemDto,
+  'id' | 'code' | 'nameAr' | 'nameEn' | 'itemKind' | 'purchasePrice' | 'taxCategoryId'
+> & { taxRate?: string };
 
 const money = (v?: string | null) => formatAmount(v);
 
@@ -172,9 +116,6 @@ export function PurchasesPage() {
 
 // ------------------------------------------------------------- shared data
 
-/** An item as the item picker holds it. `taxRate` is set only for a row taken from a saved line. */
-type ItemRow = Item & { taxRate?: string };
-
 /** Picker option for an item row; without its own rate, the item's tax category's, then the default's. */
 function itemOption(
   row: ItemRow,
@@ -199,12 +140,12 @@ function usePurchaseLookups() {
   const warehouses = useQuery({
     queryKey: ['warehouses'],
     queryFn: ({ signal }) =>
-      warehousesControllerList({ signal }).then((r) => r.data as unknown as Warehouse[]),
+      warehousesControllerList({ signal }).then((r) => r.data),
   });
   const taxes = useQuery({
     queryKey: ['tax-categories'],
     queryFn: ({ signal }) =>
-      settingsControllerListTaxCategories({ signal }).then((r) => r.data as unknown as TaxCategory[]),
+      settingsControllerListTaxCategories({ signal }).then((r) => r.data),
   });
   const accounts = useAccounts(selectCashBank);
 
@@ -236,8 +177,8 @@ function usePurchaseLookups() {
 function PurchaseInvoicesTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  const [paymentFilter, setPaymentFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<PurchasesControllerListInvoicesStatus | undefined>(undefined);
+  const [paymentFilter, setPaymentFilter] = useState<PurchasesControllerListInvoicesPaymentType | undefined>(undefined);
   const [screen, setScreen] = useState<'list' | 'form' | 'view'>('list');
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
@@ -248,21 +189,22 @@ function PurchaseInvoicesTab() {
   });
 
   // Server-paged (ADR-022): search, filters, sort and page go to the API.
-  const list = usePagedQuery<PurchaseInvoice, { status?: string; paymentType?: string }>({
+  const list = usePagedQuery<
+    PurchaseInvoiceListItemDto,
+    { status?: PurchasesControllerListInvoicesStatus; paymentType?: PurchasesControllerListInvoicesPaymentType },
+    PurchasesControllerListInvoicesSort
+  >({
     key: ['purchase-invoices', 'list'],
     filters: { status: statusFilter, paymentType: paymentFilter },
     defaultSort: '-invoiceDate',
-    fetch: (params, signal) =>
-      purchasesControllerListInvoices(params as Parameters<typeof purchasesControllerListInvoices>[0], { signal }).then(
-        (r) => r.data as unknown as Page<PurchaseInvoice>,
-      ),
+    fetch: (params, signal) => purchasesControllerListInvoices(params, { signal }).then((r) => r.data),
     enabled: screen === 'list',
   });
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['purchase-invoice', invoiceId],
     queryFn: ({ signal }) =>
-      purchasesControllerGetInvoice(invoiceId!, { signal }).then((r) => r.data as unknown as PurchaseInvoice),
+      purchasesControllerGetInvoice(invoiceId!, { signal }).then((r) => r.data),
     enabled: (screen === 'view' || screen === 'form') && !!invoiceId,
   });
 
@@ -305,7 +247,7 @@ function PurchaseInvoicesTab() {
       sortOrder: list.sortOrderOf('invoiceNo'),
       className: 'nowrap',
       width: 140,
-      render: (v: string | null, r: PurchaseInvoice) => v ?? `#${r.id}`,
+      render: (v: string | null, r: PurchaseInvoiceListItemDto) => v ?? `#${r.id}`,
     },
     {
       title: t('purchases.date'),
@@ -319,7 +261,7 @@ function PurchaseInvoicesTab() {
     {
       title: t('purchases.supplier'),
       dataIndex: 'supplier',
-      render: (_: unknown, r: PurchaseInvoice) => displayName(r.supplier) ?? '—',
+      render: (_: unknown, r: PurchaseInvoiceListItemDto) => displayName(r.supplier) ?? '—',
     },
     {
       title: t('purchases.paymentType'),
@@ -463,7 +405,7 @@ function PurchaseInvoiceForm({
   onSaved,
 }: {
   lookups: ReturnType<typeof usePurchaseLookups>;
-  invoice?: PurchaseInvoice;
+  invoice?: PurchaseInvoiceDetailDto;
   loading: boolean;
   isNew: boolean;
   onBack: () => void;
@@ -484,7 +426,7 @@ function PurchaseInvoiceForm({
     invoice?.dueDate ? dayjs(invoice.dueDate) : null,
   );
   const [supplierId, setSupplierId] = useState<string | undefined>(invoice?.supplierId);
-  const [warehouseId, setWarehouseId] = useState<string | undefined>(invoice?.warehouseId);
+  const [warehouseId, setWarehouseId] = useState<string | undefined>(invoice?.warehouseId ?? undefined);
   const [paymentType, setPaymentType] = useState<'CASH' | 'CREDIT'>(
     invoice?.paymentType ?? 'CREDIT',
   );
@@ -496,7 +438,7 @@ function PurchaseInvoiceForm({
   );
   const [cashAccountId, setCashAccountId] = useState<string | undefined>();
   const [lines, setLines] = useState<InvoiceLineDraft[]>(() => {
-    if (invoice?.lines?.length) {
+    if (invoice?.lines.length) {
       return invoice.lines.map((l, i) => ({
         key: i + 1,
         itemId: l.itemId,
@@ -520,11 +462,11 @@ function PurchaseInvoiceForm({
       catalogControllerListItems(
         { pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}), isActive: 'true' },
         { signal },
-      ).then((r) => (r.data as unknown as Page<Item>).items),
+      ).then((r) => r.data.items),
   });
   const { remember: rememberItems } = items;
   useEffect(() => {
-    if (!invoice?.lines) return;
+    if (!invoice) return;
     rememberItems(
       invoice.lines.flatMap((l): ItemRow[] =>
         l.item
@@ -533,6 +475,7 @@ function PurchaseInvoiceForm({
                 id: l.itemId,
                 code: l.item.code,
                 nameAr: l.item.nameAr,
+                nameEn: null,
                 itemKind: l.item.itemKind,
                 purchasePrice: l.unitCost,
                 taxCategoryId: null,
@@ -549,31 +492,36 @@ function PurchaseInvoiceForm({
 
   const save = useMutation({
     mutationFn: async () => {
-      const payload = {
+      // trySave checks the supplier before it saves; this narrows it for the request type.
+      if (!supplierId) throw new Error('supplier is required');
+      const payload: CreatePurchaseInvoiceDto = {
         invoiceDate: invoiceDate.format('YYYY-MM-DD'),
         dueDate: dueDate?.format('YYYY-MM-DD'),
         supplierId,
         warehouseId,
         paymentType,
         cashAccountId: paymentType === 'CASH' ? cashAccountId : undefined,
-        lines: lines
-          .filter((l) => l.itemId && l.qty)
-          .map((l) => ({
-            itemId: l.itemId,
-            qty: String(l.qty),
-            unitCost: l.price ?? '0',
-            discountPct: l.discountPct ?? undefined,
-          })),
-      } as never;
+        lines: lines.flatMap((l) =>
+          l.itemId && l.qty
+            ? [
+                {
+                  itemId: l.itemId,
+                  qty: l.qty,
+                  unitCost: l.price ?? '0',
+                  discountPct: l.discountPct ?? undefined,
+                },
+              ]
+            : [],
+        ),
+      };
       const res = isNew
         ? await purchasesControllerCreateInvoice(payload)
         : await purchasesControllerUpdateInvoice(invoice!.id, payload);
-      return res as never;
+      return res;
     },
     onSuccess: (res) => {
       apiMessage.success(t('common.saved'));
-      const data = (res as { data?: { id: string } }).data;
-      onSaved(data?.id ?? invoice?.id ?? '');
+      onSaved(res.data.id);
     },
     onError: (err) =>
       apiMessage.error(
@@ -637,7 +585,7 @@ function PurchaseInvoiceForm({
                 { partyType: 'SUPPLIER', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) },
                 { signal },
               ).then((r) =>
-                (r.data as unknown as Page<Party>).items.map((p) => ({ value: p.id, label: codeAndName(p) })),
+                r.data.items.map((p) => ({ value: p.id, label: codeAndName(p) })),
               )
             }
             selected={
@@ -758,7 +706,7 @@ function PurchaseInvoiceView({
   onDelete,
   posting,
 }: {
-  invoice?: PurchaseInvoice;
+  invoice?: PurchaseInvoiceDetailDto;
   loading: boolean;
   onBack: () => void;
   onEdit: () => void;
@@ -845,11 +793,6 @@ function PurchaseInvoiceView({
             </Typography.Text>
           </DocValue>
         </DocField>
-        {dec(invoice.costTotal).gt(0) && (
-          <DocField label={t('purchases.costTotal')}>
-            <DocValue>{amountCell(invoice.costTotal)}</DocValue>
-          </DocField>
-        )}
       </DocFields>
       <Table
         rowKey="id"
@@ -880,27 +823,28 @@ function PurchaseInvoiceView({
 function PurchaseReturnsTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<PurchasesControllerListReturnsStatus | undefined>(undefined);
   const [modalOpen, setModalOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
 
   // Server-paged (ADR-022): search, status filter, sort and page go to the API.
-  const list = usePagedQuery<PurchaseReturn, { status?: string }>({
+  const list = usePagedQuery<
+    PurchaseReturnListItemDto,
+    { status?: PurchasesControllerListReturnsStatus },
+    PurchasesControllerListReturnsSort
+  >({
     key: ['purchase-returns', 'list'],
     filters: { status: statusFilter },
     defaultSort: '-returnDate',
-    fetch: (params, signal) =>
-      purchasesControllerListReturns(params as Parameters<typeof purchasesControllerListReturns>[0], { signal }).then(
-        (r) => r.data as unknown as Page<PurchaseReturn>,
-      ),
+    fetch: (params, signal) => purchasesControllerListReturns(params, { signal }).then((r) => r.data),
     enabled: !modalOpen && !viewId,
   });
 
   const { data: view } = useQuery({
     queryKey: ['purchase-return', viewId],
     queryFn: ({ signal }) =>
-      purchasesControllerGetReturn(viewId!, { signal }).then((r) => r.data as unknown as PurchaseReturn),
+      purchasesControllerGetReturn(viewId!, { signal }).then((r) => r.data),
     enabled: !!viewId,
   });
 
@@ -942,7 +886,7 @@ function PurchaseReturnsTab() {
       sortOrder: list.sortOrderOf('returnNo'),
       className: 'nowrap',
       width: 140,
-      render: (v: string | null, r: PurchaseReturn) => v ?? `#${r.id}`,
+      render: (v: string | null, r: PurchaseReturnListItemDto) => v ?? `#${r.id}`,
     },
     {
       title: t('purchases.date'),
@@ -956,12 +900,12 @@ function PurchaseReturnsTab() {
     {
       title: t('purchases.invoice'),
       dataIndex: 'originalInvoice',
-      render: (_: unknown, r: PurchaseReturn) => r.originalInvoice?.invoiceNo ?? `#${r.originalInvoiceId}`,
+      render: (_: unknown, r: PurchaseReturnListItemDto) => r.originalInvoice?.invoiceNo ?? `#${r.originalInvoiceId}`,
     },
     {
       title: t('purchases.supplier'),
       dataIndex: 'supplier',
-      render: (_: unknown, r: PurchaseReturn) => displayName(r.supplier) ?? '—',
+      render: (_: unknown, r: PurchaseReturnListItemDto) => displayName(r.supplier) ?? '—',
     },
     {
       title: t('purchases.refundType'),
@@ -990,7 +934,7 @@ function PurchaseReturnsTab() {
     {
       title: '',
       width: 200,
-      render: (_: unknown, r: PurchaseReturn) => (
+      render: (_: unknown, r: PurchaseReturnListItemDto) => (
         <Space>
           <Button size="small" onClick={() => setViewId(r.id)}>{t('common.view')}</Button>
           {r.status === 'DRAFT' && (
@@ -1072,7 +1016,7 @@ function PurchaseReturnsTab() {
                 pagination={false}
                 dataSource={view.lines ?? []}
                 columns={[
-                  { title: '#', width: 50, render: (_: unknown, l: ReturnLine) => l.originalLine?.lineNo },
+                  { title: '#', width: 50, render: (_: unknown, l: ReturnLine) => l.originalLine.lineNo },
                   {
                     title: t('items.title'),
                     render: (_: unknown, l: ReturnLine) =>
@@ -1150,22 +1094,22 @@ function PurchaseReturnForm({
   const { data: invoice } = useQuery({
     queryKey: ['purchase-invoice', invoiceId],
     queryFn: ({ signal }) =>
-      purchasesControllerGetInvoice(invoiceId!, { signal }).then((r) => r.data as unknown as PurchaseInvoice),
+      purchasesControllerGetInvoice(invoiceId!, { signal }).then((r) => r.data),
     enabled: !!invoiceId,
   });
 
   const create = useMutation({
-    mutationFn: () =>
-      purchasesControllerCreateReturn({
-        returnDate: returnDate.format('YYYY-MM-DD'),
-        originalInvoiceId: invoiceId,
-        refundType,
-        cashAccountId: refundType === 'CASH' ? cashAccountId : undefined,
-        reason: reason || undefined,
-        lines: (invoice?.lines ?? [])
-          .filter((l) => dec(qtyByLine[l.id]).gt(0))
-          .map((l) => ({ originalLineId: l.id, qty: qtyByLine[l.id] })),
-      } as never),
+    // Save needs a quantity on a line, and the lines come from the loaded invoice.
+    mutationFn: async () =>
+      purchasesControllerCreateReturn(
+        purchaseReturnBody(invoice!, {
+          returnDate: returnDate.format('YYYY-MM-DD'),
+          refundType,
+          cashAccountId,
+          reason,
+          qtyByLine,
+        }),
+      ),
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
       onCreated();
@@ -1181,9 +1125,7 @@ function PurchaseReturnForm({
   const postCreated = useMutation({
     mutationFn: async () => {
       const created = await create.mutateAsync();
-      const id = (created as { data?: { id: string } }).data?.id;
-      if (!id) throw new Error('no id');
-      await purchasesControllerPostReturn(id, { headers: idemHeaders() });
+      await purchasesControllerPostReturn(created.data.id, { headers: idemHeaders() });
     },
     onSuccess: () => {
       apiMessage.success(t('common.done'));
@@ -1242,7 +1184,7 @@ function PurchaseReturnForm({
                 { status: 'POSTED', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) },
                 { signal },
               ).then((r) =>
-                (r.data as unknown as Page<PurchaseInvoice>).items.map((i) => ({
+                r.data.items.map((i) => ({
                   value: i.id,
                   label: `${i.invoiceNo ?? `#${i.id}`} — ${displayName(i.supplier) ?? ''} — ${money(i.grandTotal)}`,
                 })),

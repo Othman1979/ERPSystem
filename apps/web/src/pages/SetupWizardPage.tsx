@@ -12,6 +12,7 @@ import {
   fiscalControllerCreateYear,
   fiscalControllerListYears,
   settingsControllerListTaxCategories,
+  type TaxCategoryDto,
   treasuryControllerCreateCashBox,
   treasuryControllerListCashBoxes,
   warehousesControllerCreate,
@@ -23,28 +24,7 @@ import { tableLocale } from '../components/QueryState';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { useAccounts } from '../hooks/useAccounts';
 
-interface FiscalYear {
-  id: string;
-  code: string;
-  startDate: string;
-  endDate: string;
-  status: string;
-}
-interface Named {
-  id: string;
-  code: string;
-  nameAr: string;
-  nameEn?: string | null;
-}
-interface TaxCategory extends Named {
-  rate: string;
-  isDefault?: boolean;
-}
-interface CashBox {
-  id: string;
-  code: string;
-  name: string;
-}
+type TaxCategory = TaxCategoryDto;
 
 const day = (v: string) => v.slice(0, 10);
 
@@ -74,24 +54,24 @@ export function SetupWizardPage() {
 
   const years = useQuery({
     queryKey: ['fiscal-years'],
-    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data as unknown as FiscalYear[]),
+    queryFn: ({ signal }) => fiscalControllerListYears({ signal }).then((r) => r.data),
   });
   const taxes = useQuery({
     queryKey: ['tax-categories'],
-    queryFn: ({ signal }) => settingsControllerListTaxCategories({ signal }).then((r) => r.data as unknown as TaxCategory[]),
+    queryFn: ({ signal }) => settingsControllerListTaxCategories({ signal }).then((r) => r.data),
   });
   const accounts = useAccounts();
   const branches = useQuery({
     queryKey: ['branches'],
-    queryFn: ({ signal }) => branchesControllerList({ signal }).then((r) => r.data as unknown as Named[]),
+    queryFn: ({ signal }) => branchesControllerList({ signal }).then((r) => r.data),
   });
   const warehouses = useQuery({
     queryKey: ['warehouses'],
-    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data as unknown as Named[]),
+    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
   });
   const cashBoxes = useQuery({
     queryKey: ['cash-boxes'],
-    queryFn: ({ signal }) => treasuryControllerListCashBoxes({ signal }).then((r) => r.data as unknown as CashBox[]),
+    queryFn: ({ signal }) => treasuryControllerListCashBoxes({ signal }).then((r) => r.data),
   });
 
   // --- step 2: fiscal year (default 1 January of this year, §13.4)
@@ -104,7 +84,7 @@ export function SetupWizardPage() {
         code,
         startDate: fyStart.format('YYYY-MM-DD'),
         endDate: end.format('YYYY-MM-DD'),
-      } as never);
+      });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['fiscal-years'] });
@@ -117,14 +97,14 @@ export function SetupWizardPage() {
   const [warehouseForm] = Form.useForm<{ nameAr: string }>();
   const [cashForm] = Form.useForm<{ name: string }>();
   const createWarehouse = useMutation({
-    mutationFn: (v: { nameAr: string }) => warehousesControllerCreate({ code: '1', nameAr: v.nameAr } as never),
+    mutationFn: (v: { nameAr: string }) => warehousesControllerCreate({ code: '1', nameAr: v.nameAr }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['warehouses'] }),
     onError,
   });
   const cashAccount = (accounts.data ?? []).find((a) => a.controlType === 'CASH' && a.isPostable && a.isActive);
   const createCashBox = useMutation({
     mutationFn: (v: { name: string }) =>
-      treasuryControllerCreateCashBox({ code: '1', name: v.name, accountId: cashAccount!.id } as never),
+      treasuryControllerCreateCashBox({ code: '1', name: v.name, accountId: cashAccount!.id }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['cash-boxes'] }),
     onError,
   });

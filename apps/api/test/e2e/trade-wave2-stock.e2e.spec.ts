@@ -25,6 +25,7 @@ import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { webPayloads } from './support/web-payloads.js';
 
 const API_PORT = 3621;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -327,6 +328,71 @@ describe('Trade review fixes — stock and documents', () => {
       lines: [{ originalLineId: firstInv.body.lines[0].id, qty: '5' }],
     });
     expect(await cost(P)).toMatchObject({ qty: '15', value: '175.000' }); // 200 − 5 × 5, not − 5 × 10
+    await assertConsistent();
+  });
+
+  it("ADR-016 §5: a purchase return leaves from the original invoice's warehouse only", async () => {
+    const web = await webPayloads();
+    const Q = await item('Q');
+    // Q is in both warehouses, so only the rule (not a stock shortage) can refuse W2.
+    await buy(Q, '5', '2', '2025-01-08', W2);
+    const inv = await buy(Q, '10', '3', '2025-01-08', W1);
+    const invoice = (await api().get(`/api/v1/purchase-invoices/${inv.id}`).set(auth(token))).body as {
+      id: string;
+      warehouseId: string | null;
+      lines: { id: string }[];
+    };
+    const line = invoice.lines[0].id;
+    // The return form's own body (apps/web/src/pages/purchases/returnPayload.ts).
+    const formBody = (qty: string) =>
+      web.purchaseReturnBody(invoice, { returnDate: '2025-01-09', refundType: 'CREDIT', qtyByLine: { [line]: qty } });
+    const returnsOf = async () =>
+      ((await db.query('SELECT COUNT(*) AS n FROM purchase_returns WHERE tenant_id = ? AND original_invoice_id = ?', [tenantId, inv.id])) as { n: bigint }[])[0].n;
+    expect(formBody('2').warehouseId).toBe(W1);
+
+    // Another warehouse of the company (a client other than the form): refused, nothing saved.
+    const other = await api().post('/api/v1/purchase-returns').set(auth(token)).send({ ...formBody('2'), warehouseId: W2 });
+    expect(other.status).toBe(400);
+    expect(other.body.error.code).toBe('RETURN_WAREHOUSE_MISMATCH');
+    expect(other.body.error.details).toEqual({ warehouseId: W2, invoiceWarehouseId: W1 });
+    expect(await returnsOf()).toBe(0n);
+
+    // A draft that names another warehouse (saved before the rule) is refused at posting, and moves nothing.
+    const draft = await create('purchase-returns', formBody('2'));
+    await db.query('UPDATE purchase_returns SET warehouse_id = ? WHERE tenant_id = ? AND id = ?', [W2, tenantId, draft.id]);
+    const posted = await post('purchase-returns', draft.id);
+    expect(posted.status).toBe(400);
+    expect(posted.body.error.code).toBe('RETURN_WAREHOUSE_MISMATCH');
+    expect(await onHand(Q, W2)).toBe('5');
+    await db.query('UPDATE purchase_returns SET warehouse_id = ? WHERE tenant_id = ? AND id = ?', [W1, tenantId, draft.id]);
+    expect((await post('purchase-returns', draft.id)).status).toBe(201);
+    expect(await onHand(Q, W1)).toBe('8');
+
+    // No warehouse in the body: the invoice's is taken.
+    const { warehouseId: _omit, ...withoutWarehouse } = formBody('1');
+    const defaulted = await create('purchase-returns', withoutWarehouse);
+    const [{ wh }] = (await db.query('SELECT warehouse_id AS wh FROM purchase_returns WHERE tenant_id = ? AND id = ?', [tenantId, defaulted.id])) as { wh: bigint }[];
+    expect(String(wh)).toBe(W1);
+
+    // A services-only invoice has no warehouse: the form sends none, and the API says why it cannot record the return.
+    const svc = await item('SVC', { itemKind: 'SERVICE' });
+    const svcInv = await createAndPost('purchase-invoices', {
+      invoiceDate: '2025-01-08', supplierId, paymentType: 'CREDIT', lines: [{ itemId: svc, qty: '1', unitCost: '10' }],
+    });
+    const svcInvoice = (await api().get(`/api/v1/purchase-invoices/${svcInv.id}`).set(auth(token))).body as typeof invoice;
+    expect(svcInvoice.warehouseId).toBeNull();
+    const svcBody = web.purchaseReturnBody(svcInvoice, { returnDate: '2025-01-09', refundType: 'CREDIT', qtyByLine: { [svcInvoice.lines[0].id]: '1' } });
+    const required = await api().post('/api/v1/purchase-returns').set(auth(token)).send(svcBody);
+    expect(required.status).toBe(400);
+    expect(required.body.error.code).toBe('RETURN_WAREHOUSE_REQUIRED');
+
+    // Tenant B: A's invoice is not found, with B's own warehouse or with A's.
+    const WB = (await api().post('/api/v1/warehouses').set(auth(tokenB)).send({ code: 'WB', nameAr: 'WB' })).body.id as string;
+    const withOwn = await api().post('/api/v1/purchase-returns').set(auth(tokenB)).send({ ...formBody('1'), warehouseId: WB });
+    expect(withOwn.status).toBe(404);
+    const withA = await api().post('/api/v1/purchase-returns').set(auth(tokenB)).send(formBody('1'));
+    expect(withA.status).toBe(404);
+    expect(await returnsOf()).toBe(2n);
     await assertConsistent();
   });
 

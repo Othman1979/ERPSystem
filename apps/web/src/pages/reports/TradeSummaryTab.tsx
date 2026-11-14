@@ -3,7 +3,14 @@ import { Segmented, Table, Typography } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { apiFetchData } from '@erp/api-client';
+import {
+  apiFetchData,
+  type PurchasesSummaryDto,
+  type SalesSummaryDto,
+  type SalesSummaryDtoGroupBy,
+  type SalesSummaryRowDto,
+  type SalesSummaryTotalsDto,
+} from '@erp/api-client';
 import { ExportButtons, queryString } from '../../components/ExportButtons';
 import { ListToolbar } from '../../components/ListToolbar';
 import { tableLocale } from '../../components/QueryState';
@@ -14,36 +21,11 @@ import { codeAndName } from '../../i18n/displayName';
 import { isoDay, PeriodMeta, PeriodPickers, ScreenPrintButton } from './PeriodFilters';
 
 type Kind = 'sales' | 'purchases';
-export type TradeGroupBy = 'day' | 'month' | 'customer' | 'supplier' | 'item';
+export type TradeGroupBy = SalesSummaryDtoGroupBy;
 
-/** Invoices − returns; counts are documents (null when grouped by item, which has `qty`). */
-interface TradeAmounts {
-  invoiceCount: number | null;
-  returnCount: number | null;
-  qty?: string;
-  net: string;
-  tax: string;
-  grand: string;
-  /** Sales only. */
-  cost?: string;
-  margin?: string;
-}
-
-interface TradeRow extends TradeAmounts {
-  /** yyyy-mm-dd, yyyy-mm, or the party / item id. */
-  key: string;
-  code: string | null;
-  nameAr: string | null;
-  nameEn: string | null;
-}
-
-interface TradeSummary {
-  from: string;
-  to: string;
-  groupBy: TradeGroupBy;
-  rows: TradeRow[];
-  totals: TradeAmounts;
-}
+/** Invoices − returns. The sales answer adds cost and margin; the purchases answer does not. */
+type TradeRow = Omit<SalesSummaryRowDto, 'cost' | 'margin'> & Partial<Pick<SalesSummaryRowDto, 'cost' | 'margin'>>;
+type TradeAmounts = Omit<SalesSummaryTotalsDto, 'cost' | 'margin'> & Partial<Pick<SalesSummaryTotalsDto, 'cost' | 'margin'>>;
 
 const GROUPS: Record<Kind, TradeGroupBy[]> = {
   sales: ['day', 'month', 'customer', 'item'],
@@ -76,7 +58,10 @@ export function TradeSummaryTab({ kind, initial }: { kind: Kind; initial?: Trade
   const params = { from: isoDay(from), to: isoDay(to), groupBy };
   const listQuery = useQuery({
     queryKey: ['report-trade-summary', kind, params.from, params.to, groupBy],
-    queryFn: ({ signal }) => apiFetchData<TradeSummary>(`/api/v1${path}${queryString(params)}`, { signal }),
+    // Not the generated functions: their `groupBy` enums differ (sales has no supplier, purchases no customer),
+    // so one shared `groupBy` does not fit both calls.
+    queryFn: ({ signal }) =>
+      apiFetchData<SalesSummaryDto | PurchasesSummaryDto>(`/api/v1${path}${queryString(params)}`, { signal }),
   });
   const { data, isLoading } = listQuery;
 
@@ -125,7 +110,7 @@ export function TradeSummaryTab({ kind, initial }: { kind: Kind; initial?: Trade
     ...(sales ? [amount('cost', t('reports.cost')), amount('margin', t('reports.margin'))] : []),
   ];
 
-  const totals = data?.totals;
+  const totals: TradeAmounts | undefined = data?.totals;
   const totalCells: ReactNode[] = totals
     ? [
         ...(byItem

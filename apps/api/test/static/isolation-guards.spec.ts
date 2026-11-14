@@ -108,7 +108,8 @@ describe('Tenant isolation — static guards (ADR-010 §10.4)', () => {
 
   it('no DTO takes a tenantId, but sign-in among the user\'s own memberships', () => {
     const fields = files
-      .filter((f) => /\/dto\//.test(f) && /^\s+tenantId[?!]?:/m.test(read(f)))
+      // Request DTOs only: a response DTO (*-response.dto.ts) describes output, where rows already carry their tenantId.
+      .filter((f) => /\/dto\//.test(f) && !f.endsWith('-response.dto.ts') && /^\s+tenantId[?!]?:/m.test(read(f)))
       .filter((f) => !(f in TENANT_ID_FIELDS));
     expect(fields).toEqual([]);
   });

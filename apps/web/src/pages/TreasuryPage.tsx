@@ -43,6 +43,19 @@ import {
   treasuryControllerCancelAllocation,
   treasuryControllerReversePayment,
   treasuryControllerReverseReceipt,
+  type AllocationDto,
+  type BankAccountListItemDto,
+  type CashBoxListItemDto,
+  type PartyDto,
+  type PaymentDetailDto,
+  type PaymentListItemDto,
+  type PurchaseInvoiceListItemDto,
+  type ReceiptDetailDto,
+  type ReceiptListItemDto,
+  type SalesInvoiceListItemDto,
+  type TreasuryAllocationDto,
+  type TreasuryControllerListPaymentsSort,
+  type TreasuryControllerListReceiptsSort,
 } from '@erp/api-client';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
@@ -67,66 +80,34 @@ import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 
 // ------------------------------------------------------------- types
 
-interface Party {
-  id: string;
-  code: string;
-  nameAr: string;
-  partyType: string;
-}
-interface CashBox {
-  id: string;
-  code: string;
+type Party = PartyDto;
+type CashBox = CashBoxListItemDto;
+type BankAccount = BankAccountListItemDto;
+/** A receipt or a payment in the list. */
+type Voucher = ReceiptListItemDto | PaymentListItemDto;
+/** A receipt or a payment with its allocations. */
+type VoucherDetail = ReceiptDetailDto | PaymentDetailDto;
+/** An open invoice to allocate against: a sales invoice for a receipt, a purchase invoice for a payment. */
+type OpenInvoice = SalesInvoiceListItemDto | PurchaseInvoiceListItemDto;
+
+/** Receipts and payments name their number and date fields differently. */
+const voucherNoOf = (v: Voucher | VoucherDetail) => ('receiptNo' in v ? v.receiptNo : v.paymentNo);
+const voucherDateOf = (v: Voucher | VoucherDetail) => ('receiptDate' in v ? v.receiptDate : v.paymentDate);
+
+/** Form values of the cash box dialog. `code` is only shown when creating. */
+interface CashBoxForm {
+  code?: string;
   name: string;
-  isActive: boolean;
-  account?: { code: string; nameAr: string };
+  accountId: string;
+  isActive?: boolean;
 }
-interface BankAccount {
-  id: string;
+/** Form values of the bank account dialog. */
+interface BankAccountForm {
   bankName: string;
-  accountNoMasked?: string | null;
-  ibanMasked?: string | null;
-  isActive: boolean;
-  account?: { code: string; nameAr: string };
-}
-interface Voucher {
-  id: string;
-  receiptNo?: string | null;
-  paymentNo?: string | null;
-  receiptDate?: string;
-  paymentDate?: string;
-  amount: string;
-  referenceNo?: string | null;
-  description?: string | null;
-  party?: { code: string; nameAr: string; partyType: string } | null;
-  /** The side the voucher was made for (a BOTH party can be either). */
-  partyType?: 'CUSTOMER' | 'SUPPLIER' | null;
-  cashAccount?: { code: string; nameAr: string };
-  status?: string;
-  /** Set once the voucher is reversed (Phase 6); it then stays read-only. */
-  reversedAt?: string | null;
-  allocations?: {
-    id: string;
-    amount: string;
-    documentType: string;
-    documentId: string;
-    cancelledAt: string | null;
-  }[];
-  /** Active allocations only (cancelled ones are history). */
-  allocatedAmount?: string;
-  unallocatedAmount?: string;
-}
-interface OpenInvoice {
-  id: string;
-  invoiceNo: string | null;
-  invoiceDate: string;
-  grandTotal: string;
-  paidAmount: string;
-  /** grand − paid − posted credit returns, computed by the API. */
-  outstanding: string;
-  /** Cash invoices are settled at sale and take no allocations. */
-  paymentType: 'CASH' | 'CREDIT';
-  customerId?: string;
-  supplierId?: string;
+  accountNoMasked?: string;
+  ibanMasked?: string;
+  accountId: string;
+  isActive?: boolean;
 }
 
 // ------------------------------------------------------------- lookups
@@ -138,11 +119,11 @@ const OPEN_INVOICE_PAGE_SIZE = 100;
  * Every row of a numbered list, page by page, until the server's total is in.
  * Stops on an empty page too, so a total that moved cannot loop forever.
  */
-async function fetchAllOpenInvoices(
-  fetchPage: (page: number, signal: AbortSignal) => Promise<Page<OpenInvoice>>,
+async function fetchAllOpenInvoices<T extends OpenInvoice>(
+  fetchPage: (page: number, signal: AbortSignal) => Promise<Page<T>>,
   signal: AbortSignal,
-): Promise<OpenInvoice[]> {
-  const rows: OpenInvoice[] = [];
+): Promise<T[]> {
+  const rows: T[] = [];
   for (let page = 1; ; page += 1) {
     const res = await fetchPage(page, signal);
     rows.push(...res.items);
@@ -170,7 +151,7 @@ function pickParties(side: 'CUSTOMER' | 'SUPPLIER', q: string | undefined, signa
   return Promise.all(
     types.map((partyType) =>
       partiesControllerList({ partyType, pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) }, { signal }).then(
-        (r) => (r.data as unknown as Page<Party>).items,
+        (r) => r.data.items,
       ),
     ),
   ).then((pages) => pages.flat());
@@ -222,7 +203,7 @@ function CashBoxesTab() {
 
   const boxesQuery = useQuery({
     queryKey: ['cash-boxes'],
-    queryFn: ({ signal }) => treasuryControllerListCashBoxes({ signal }).then((r) => r.data as unknown as CashBox[]),
+    queryFn: ({ signal }) => treasuryControllerListCashBoxes({ signal }).then((r) => r.data),
   });
   const { data: boxes, isLoading } = boxesQuery;
 
@@ -243,16 +224,17 @@ function CashBoxesTab() {
   };
 
   const save = useMutation({
-    mutationFn: (values: Record<string, unknown>) => {
-      const payload = {
-        code: values.code,
+    mutationFn: (values: CashBoxForm) => {
+      if (editing) {
+        return apiFetch(`/api/v1/cash-boxes/${editing.id}`, { method: 'PUT', body: JSON.stringify({ name: values.name, accountId: values.accountId, isActive: values.isActive }) });
+      }
+      // The form requires `code` when creating, so it is set here.
+      return treasuryControllerCreateCashBox({
+        code: values.code!,
         name: values.name,
         accountId: values.accountId,
         isActive: values.isActive,
-      } as never;
-      return editing
-        ? apiFetch(`/api/v1/cash-boxes/${editing.id}`, { method: 'PUT', body: JSON.stringify({ name: values.name, accountId: values.accountId, isActive: values.isActive }) })
-        : treasuryControllerCreateCashBox(payload);
+      });
     },
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
@@ -363,7 +345,7 @@ function BankAccountsTab() {
 
   const banksQuery = useQuery({
     queryKey: ['bank-accounts'],
-    queryFn: ({ signal }) => treasuryControllerListBankAccounts({ signal }).then((r) => r.data as unknown as BankAccount[]),
+    queryFn: ({ signal }) => treasuryControllerListBankAccounts({ signal }).then((r) => r.data),
   });
   const { data: banks, isLoading } = banksQuery;
 
@@ -390,7 +372,7 @@ function BankAccountsTab() {
   };
 
   const save = useMutation({
-    mutationFn: (values: Record<string, unknown>) => {
+    mutationFn: (values: BankAccountForm) => {
       if (editing) {
         return apiFetch(`/api/v1/bank-accounts/${editing.id}`, {
           method: 'PUT',
@@ -409,7 +391,7 @@ function BankAccountsTab() {
         ibanMasked: values.ibanMasked,
         accountId: values.accountId,
         isActive: values.isActive,
-      } as never);
+      });
     },
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
@@ -515,30 +497,45 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
   const onError = (err: unknown) =>
     api.error(err instanceof ApiError ? t(`errors.${err.code}`, { defaultValue: err.message }) : t('errors.INTERNAL'));
 
-  const getFn = kind === 'receipt'
-    ? (id: string, options?: Parameters<typeof treasuryControllerGetReceipt>[1]) =>
-        treasuryControllerGetReceipt(id, options)
-    : (id: string, options?: Parameters<typeof treasuryControllerGetPayment>[1]) =>
-        treasuryControllerGetPayment(id, options);
-
   // Server-paged (ADR-022): search (number, party, cash account, description), sort and page go to the API.
   const numberKey = kind === 'receipt' ? 'receiptNo' : 'paymentNo';
   const dateKey = kind === 'receipt' ? 'receiptDate' : 'paymentDate';
-  const list = usePagedQuery<Voucher, Record<string, string | undefined>>({
+  const list = usePagedQuery<
+    Voucher,
+    Record<string, string | undefined>,
+    TreasuryControllerListReceiptsSort | TreasuryControllerListPaymentsSort
+  >({
     key: [kind === 'receipt' ? 'receipts' : 'payments', 'list'],
     filters: {},
     defaultSort: `-${dateKey}`,
-    fetch: (params, signal) =>
-      (kind === 'receipt'
-        ? treasuryControllerListReceipts(params as Parameters<typeof treasuryControllerListReceipts>[0], { signal })
-        : treasuryControllerListPayments(params as Parameters<typeof treasuryControllerListPayments>[0], { signal })
-      ).then((r) => r.data as unknown as Page<Voucher>),
+    fetch: async (params, signal) => {
+      // The hook's `sort` is the union of both kinds' keys; each branch narrows it to its own enum.
+      const sort = params.sort;
+      const res =
+        kind === 'receipt'
+          ? await treasuryControllerListReceipts(
+              { ...params, sort: sort as TreasuryControllerListReceiptsSort | undefined },
+              { signal },
+            )
+          : await treasuryControllerListPayments(
+              { ...params, sort: sort as TreasuryControllerListPaymentsSort | undefined },
+              { signal },
+            );
+      return res.data;
+    },
     enabled: !modalOpen && !viewId,
   });
   const vouchersQuery = list.query;
   const { data: view } = useQuery({
     queryKey: [kind, viewId],
-    queryFn: ({ signal }) => getFn(viewId!, { signal }).then((r: { data: unknown }) => r.data as unknown as Voucher),
+    queryFn: async ({ signal }) => {
+      // Enabled only while a voucher is open, so the id is set.
+      const res =
+        kind === 'receipt'
+          ? await treasuryControllerGetReceipt(viewId!, { signal })
+          : await treasuryControllerGetPayment(viewId!, { signal });
+      return res.data;
+    },
     enabled: !!viewId,
   });
 
@@ -552,12 +549,11 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
 
   // Phase 6: reverse, allocate the remainder (oldest first), cancel an allocation.
   const reverse = useMutation({
-    mutationFn: (v: { id: string; reversalDate: string }) =>
-      (kind === 'receipt' ? treasuryControllerReverseReceipt : treasuryControllerReversePayment)(
-        v.id,
-        { reversalDate: v.reversalDate },
-        { headers: idemHeaders() },
-      ),
+    mutationFn: async (v: { id: string; reversalDate: string }) => {
+      const reverseFn = kind === 'receipt' ? treasuryControllerReverseReceipt : treasuryControllerReversePayment;
+      const res = await reverseFn(v.id, { reversalDate: v.reversalDate }, { headers: idemHeaders() });
+      return res.data;
+    },
     onSuccess: () => {
       api.success(t('treasury.reversed'));
       invalidate();
@@ -565,12 +561,11 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
     onError,
   });
   const allocateRest = useMutation({
-    mutationFn: (id: string) =>
-      (kind === 'receipt' ? treasuryControllerAllocateReceipt : treasuryControllerAllocatePayment)(
-        id,
-        { auto: true },
-        { headers: idemHeaders() },
-      ),
+    mutationFn: async (id: string) => {
+      const allocateFn = kind === 'receipt' ? treasuryControllerAllocateReceipt : treasuryControllerAllocatePayment;
+      const res = await allocateFn(id, { auto: true }, { headers: idemHeaders() });
+      return res.data;
+    },
     onSuccess: () => {
       api.success(t('common.saved'));
       invalidate();
@@ -594,7 +589,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
       sorter: true,
       sortOrder: list.sortOrderOf(numberKey),
       width: 140,
-      render: (_: unknown, v: Voucher) => v.receiptNo ?? v.paymentNo ?? `#${v.id}`,
+      render: (_: unknown, v: Voucher) => voucherNoOf(v) ?? `#${v.id}`,
     },
     {
       title: t('treasury.date'),
@@ -602,7 +597,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
       sorter: true,
       sortOrder: list.sortOrderOf(dateKey),
       width: 110,
-      render: (_: unknown, v: Voucher) => dayjs(v.receiptDate ?? v.paymentDate).format('YYYY-MM-DD'),
+      render: (_: unknown, v: Voucher) => dayjs(voucherDateOf(v)).format('YYYY-MM-DD'),
     },
     {
       title: t('parties.name'),
@@ -662,7 +657,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
         {contextHolder}
         <DocLayout
           title={voucherTitle}
-          docNo={view?.receiptNo ?? view?.paymentNo ?? `#${viewId}`}
+          docNo={(view && voucherNoOf(view)) ?? `#${viewId}`}
           status={view ? 'POSTED' : undefined}
           onBack={() => setViewId(null)}
           actions={
@@ -693,7 +688,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
             <>
               <DocFields>
                 <DocField label={t('treasury.date')}>
-                  <DocValue>{dayjs(view.receiptDate ?? view.paymentDate).format('YYYY-MM-DD')}</DocValue>
+                  <DocValue>{dayjs(voucherDateOf(view)).format('YYYY-MM-DD')}</DocValue>
                 </DocField>
                 <DocField label={t('parties.name')}>
                   <DocValue>{view.party ? displayName(view.party) : '—'}</DocValue>
@@ -737,13 +732,13 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                   {
                     title: t('treasury.documentType'),
                     width: 200,
-                    render: (_: unknown, a: NonNullable<Voucher['allocations']>[number]) =>
+                    render: (_: unknown, a: TreasuryAllocationDto) =>
                       `${t(`treasury.doc_${a.documentType}`, { defaultValue: a.documentType })} #${a.documentId}`,
                   },
                   { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'right' as const, render: amountCell },
                   {
                     title: '',
-                    render: (_: unknown, a: NonNullable<Voucher['allocations']>[number]) =>
+                    render: (_: unknown, a: TreasuryAllocationDto) =>
                       a.cancelledAt ? (
                         <Tag>{t('treasury.cancelled')}</Tag>
                       ) : view.reversedAt ? null : (
@@ -851,7 +846,7 @@ function VoucherForm({
           listSalesInvoices(
             { customerId: partyId!, open: 'true', sort: 'invoiceDate', page, pageSize: OPEN_INVOICE_PAGE_SIZE },
             { signal: s },
-          ).then((r) => r.data as unknown as Page<OpenInvoice>),
+          ).then((r) => r.data),
         signal,
       ),
     enabled: kind === 'receipt' && !!partyId && partyType === 'CUSTOMER',
@@ -865,21 +860,19 @@ function VoucherForm({
           listPurchaseInvoices(
             { supplierId: partyId!, open: 'true', sort: 'invoiceDate', page, pageSize: OPEN_INVOICE_PAGE_SIZE },
             { signal: s },
-          ).then((r) => r.data as unknown as Page<OpenInvoice>),
+          ).then((r) => r.data),
         signal,
       ),
     enabled: kind === 'payment' && !!partyId && partyType === 'SUPPLIER',
   });
 
-  const openInvoices = useMemo(() => {
+  const openInvoices = useMemo((): OpenInvoice[] => {
     // Only a receipt from a customer or a payment to a supplier settles invoices;
     // a refund the other way raises the balance instead (ADR-004).
     if (!partyId || partyType !== (kind === 'receipt' ? 'CUSTOMER' : 'SUPPLIER')) return [];
-    const src = kind === 'receipt' ? salesInvoices ?? [] : purchaseInvoices ?? [];
-    return src.filter((i) => {
-      const pid = kind === 'receipt' ? i.customerId : i.supplierId;
-      return pid === partyId && i.paymentType === 'CREDIT' && dec(i.outstanding).gt(0);
-    });
+    const isOpen = (i: OpenInvoice) => i.paymentType === 'CREDIT' && dec(i.outstanding).gt(0);
+    if (kind === 'receipt') return (salesInvoices ?? []).filter((i) => i.customerId === partyId && isOpen(i));
+    return (purchaseInvoices ?? []).filter((i) => i.supplierId === partyId && isOpen(i));
   }, [kind, salesInvoices, purchaseInvoices, partyId, partyType]);
 
   const invoiceOptions = openInvoices.map((i) => ({
@@ -890,25 +883,31 @@ function VoucherForm({
   const docType = kind === 'receipt' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
 
   const create = useMutation({
-    mutationFn: () => {
-      const base = {
-        [kind === 'receipt' ? 'receiptDate' : 'paymentDate']: voucherDate.format('YYYY-MM-DD'),
+    mutationFn: async () => {
+      // trySave blocks the save until party, cash account and amount are set, so they are present here.
+      const body = {
         partyType,
-        partyId,
-        cashAccountId,
-        amount: amount ?? undefined,
+        partyId: partyId!,
+        cashAccountId: cashAccountId!,
+        amount: amount!,
         referenceNo: referenceNo || undefined,
         description: description || undefined,
-        allocations: allocations
-          .filter((a) => a.documentId && dec(a.amount).gt(0))
-          .map((a) => ({ documentType: docType, documentId: a.documentId, amount: a.amount as string })),
+        allocations: allocations.flatMap((a): AllocationDto[] =>
+          a.documentId && a.amount && dec(a.amount).gt(0)
+            ? [{ documentType: docType, documentId: a.documentId, amount: a.amount }]
+            : [],
+        ),
         // Only while the allocation section is shown: a refund the other way takes none.
         autoAllocate:
           autoAllocate && openInvoices.length > 0 && !allocations.some((a) => a.documentId) ? true : undefined,
       };
-      return kind === 'receipt'
-        ? treasuryControllerCreateReceipt(base as never, { headers: { 'Idempotency-Key': idemKey } })
-        : treasuryControllerCreatePayment(base as never, { headers: { 'Idempotency-Key': idemKey } });
+      const headers = { headers: { 'Idempotency-Key': idemKey } };
+      const date = voucherDate.format('YYYY-MM-DD');
+      const res =
+        kind === 'receipt'
+          ? await treasuryControllerCreateReceipt({ receiptDate: date, ...body }, headers)
+          : await treasuryControllerCreatePayment({ paymentDate: date, ...body }, headers);
+      return res.data;
     },
     onSuccess: () => {
       apiMessage.success(t('common.saved'));

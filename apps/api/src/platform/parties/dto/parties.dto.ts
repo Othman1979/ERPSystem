@@ -78,7 +78,8 @@ export class CreatePartyDto {
   @IsInt()
   @Min(0)
   @Max(3650)
-  paymentTermsDays?: number;
+  /** Null clears it (no terms). */
+  paymentTermsDays?: number | null;
 
   @IsOptional()
   @IsBoolean()
@@ -99,7 +100,8 @@ export class UpdatePartyDto {
   @IsOptional()
   @IsString()
   @MaxLength(191)
-  nameEn?: string;
+  /** Null clears it. */
+  nameEn?: string | null;
 
   @IsOptional()
   @IsIn(PARTY_TYPES)
@@ -108,12 +110,14 @@ export class UpdatePartyDto {
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  taxNumber?: string;
+  /** Null clears it. */
+  taxNumber?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  nationalId?: string;
+  /** Null clears it. */
+  nationalId?: string | null;
 
   /** JoFotara buyer scheme for nationalId (0005 §5): NIN Jordanian, PN non-Jordanian. */
   @IsOptional()
@@ -123,27 +127,32 @@ export class UpdatePartyDto {
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  phone?: string;
+  /** Null clears it. */
+  phone?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(512)
-  address?: string;
+  /** Null clears it. */
+  address?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  city?: string;
+  /** Null clears it. */
+  city?: string | null;
 
   @IsOptional()
   @Matches(MONEY)
-  creditLimit?: string;
+  /** Null clears it (no limit). */
+  creditLimit?: string | null;
 
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(3650)
-  paymentTermsDays?: number;
+  /** Null clears it (no terms). */
+  paymentTermsDays?: number | null;
 
   @IsOptional()
   @IsBoolean()

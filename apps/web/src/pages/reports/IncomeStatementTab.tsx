@@ -2,32 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import type { Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { apiFetchData } from '@erp/api-client';
-import { ExportButtons, queryString } from '../../components/ExportButtons';
+import { reportsControllerIncomeStatement } from '@erp/api-client';
+import { ExportButtons } from '../../components/ExportButtons';
 import { ListToolbar } from '../../components/ListToolbar';
 import { displayName } from '../../i18n/displayName';
 import { isoDay, PeriodMeta, PeriodPickers, ScreenPrintButton } from './PeriodFilters';
-import { sectionLines, StatementTable, type StatementLine, type StatementSection } from './StatementTable';
-
-interface CostOfSalesRow {
-  kind: 'COGS' | 'INVENTORY_ADJUSTMENT';
-  accountId: string;
-  code: string;
-  nameAr: string;
-  nameEn: string | null;
-  amount: string;
-}
-
-interface IncomeStatement {
-  from: string;
-  to: string;
-  fiscalYear: { id: string; code: string } | null;
-  revenue: StatementSection;
-  costOfSales: { rows: CostOfSalesRow[]; total: string };
-  grossProfit: string;
-  expenses: StatementSection;
-  netProfit: string;
-}
+import { sectionLines, StatementTable, type StatementLine } from './StatementTable';
 
 const PATH = '/reports/income-statement';
 
@@ -40,7 +20,7 @@ export function IncomeStatementTab() {
   const params = { from: isoDay(from), to: isoDay(to) };
   const listQuery = useQuery({
     queryKey: ['report-income-statement', params.from, params.to],
-    queryFn: ({ signal }) => apiFetchData<IncomeStatement>(`/api/v1${PATH}${queryString(params)}`, { signal }),
+    queryFn: ({ signal }) => reportsControllerIncomeStatement(params, { signal }).then((r) => r.data),
   });
   const { data, isLoading } = listQuery;
 

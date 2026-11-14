@@ -2,6 +2,7 @@ import { Controller, Get, StreamableFile } from '@nestjs/common';
 import { ApiProduces, ApiTags } from '@nestjs/swagger';
 import { RequireAllBranches, RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { ApiFileResponse } from '../../common/openapi/responses.js';
 import { TenantExportService } from './tenant-export.service.js';
 
 /**
@@ -19,6 +20,7 @@ export class TenantExportController {
   // The archive covers the whole company, so a branch-limited member is refused (ADR-003 §13).
   @RequireAllBranches()
   @ApiProduces('application/zip')
+  @ApiFileResponse(['application/zip'])
   async tenantData(): Promise<StreamableFile> {
     const { zip, fileName } = await this.exporter.export();
     return new StreamableFile(zip, {

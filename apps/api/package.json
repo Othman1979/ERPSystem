@@ -28,6 +28,8 @@
     "seed": "tsx prisma/seed.ts",
     "demo:seed": "tsx scripts/demo-seed.mts",
     "ledger:check": "tsx scripts/ledger-check.mts",
+    "openapi:models": "tsx test/static/prisma-models-render.ts",
+    "openapi:document": "node scripts/openapi-document.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
