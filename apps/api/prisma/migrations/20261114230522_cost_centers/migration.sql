@@ -2,7 +2,9 @@
 -- Every new column is nullable or has a default and is added at the end of its table, so
 -- MariaDB 10.11 adds it instantly (no table copy), journal_lines included; no backfill.
 -- The one new journal_lines index (journal_lines_cost_center_seek_idx) is built online but
--- reads the whole table: on a large journal_lines run this migration in a quiet window.
+-- reads the whole table, and the six document-header foreign keys (sales / purchase invoices
+-- and returns, receipts, payments) copy those header tables (MariaDB adds a checked foreign
+-- key with ALGORITHM=COPY): on a large tenant base run this migration in a quiet window.
 -- journal_lines.cost_center_id has no foreign key, like party_id and branch_id (ADR-024 §1.7):
 -- job:integrity-check counts the orphans.
 

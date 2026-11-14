@@ -238,6 +238,40 @@ perf('Reports on 100,000 journal lines', () => {
     expect(bs.body.balanced).toBe(true);
   }, 60_000);
 
+  it('income statement by cost centre (JSON) adds up to the income statement, within budget (ADR-024 §1.8)', async () => {
+    // Five centres spread over the income-statement lines, one line in six without a centre.
+    expect((await api().patch('/api/v1/company').set(auth(A.token)).send({ costCentersEnabled: true })).status).toBe(200);
+    const centres: string[] = [];
+    for (const code of ['CC1', 'CC2', 'CC3', 'CC4', 'CC5']) {
+      const res = await api().post('/api/v1/cost-centers').set(auth(A.token)).send({ code, nameAr: code });
+      expect(res.status).toBe(201);
+      centres.push(String(res.body.id));
+    }
+    await db.query(
+      `UPDATE journal_lines jl JOIN accounts a ON a.tenant_id = jl.tenant_id AND a.id = jl.account_id
+          SET jl.cost_center_id = ELT(MOD(jl.id, 6) + 1, NULL, ?, ?, ?, ?, ?)
+        WHERE jl.tenant_id = ? AND a.tenant_id = ? AND a.account_type IN ('REVENUE', 'EXPENSE')`,
+      [...centres, A.tenantId, A.tenantId],
+    );
+    const is = await api().get('/api/v1/reports/income-statement?from=2025-01-01&to=2025-12-31').set(auth(A.token));
+    const by = await timed('incomeByCostCenterJson', () =>
+      api().get('/api/v1/reports/income-statement-by-cost-center?from=2025-01-01&to=2025-12-31').set(auth(A.token)),
+    );
+    expect(by.status).toBe(200);
+    expect(timings.incomeByCostCenterJson).toBeLessThan(BUDGET.statementJson);
+    expect(by.body.columns).toHaveLength(6);
+    expect(by.body.netProfit.total).toBe(is.body.netProfit);
+    const columnSum = (by.body.netProfit.amounts as string[]).reduce((s, a) => s + fils(a), 0n);
+    expect(columnSum).toBe(fils(is.body.netProfit));
+
+    const statement = await timed('costCenterStatementJson', () =>
+      api().get(`/api/v1/reports/cost-center-statement?costCenterId=${centres[0]}&from=2025-01-01&to=2025-12-31`).set(auth(A.token)),
+    );
+    expect(statement.status).toBe(200);
+    expect(statement.body.items).toHaveLength(100);
+    expect(timings.costCenterStatementJson).toBeLessThan(BUDGET.ledgerJson);
+  }, 120_000);
+
   it('general ledger of the busiest account: JSON and XLSX within budget', async () => {
     // The screen's first page (ADR-022 §4: keyset, with the period summary)...
     const url = `/api/v1/reports/general-ledger?accountId=${busiest.id}&from=2025-01-01&to=2025-12-31`;

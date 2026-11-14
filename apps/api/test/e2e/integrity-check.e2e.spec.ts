@@ -26,6 +26,7 @@ const CHECKS = [
   'journal_lines.party_id',
   'journal_lines.party_type',
   'journal_lines.branch_id',
+  'journal_lines.cost_center_id',
   'journal_lines.entry_date',
   'allocations.document',
   'einvoice_submissions.document',

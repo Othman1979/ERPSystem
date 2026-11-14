@@ -8,6 +8,9 @@
  *  - no DTO or route parameter takes a tenantId, except choosing among the
  *    user's own memberships at sign-in.
  */
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { TENANT_MODELS } from '../../src/prisma/tenant-prisma.js';
 import { RAW_CALL, rawSql, read, sourceFiles, tenantTables, usesSystemPrisma } from './isolation-scan.js';
 
 /**
@@ -62,6 +65,17 @@ describe('Tenant isolation — static guards (ADR-010 §10.4)', () => {
     for (const t of ['journal_entries', 'journal_lines', 'stock_movements', 'sales_invoices', 'parties', 'attachments', 'cost_centers']) {
       expect(tables.has(t)).toBe(true);
     }
+  });
+
+  it('every model with a required tenantId is scoped by the tenant client (TENANT_MODELS)', () => {
+    // A model left out of TENANT_MODELS is read unscoped by tenantScopedPrisma
+    // (phase 11A: cost_centers was the case that prompted this guard).
+    const schema = readFileSync(path.join(import.meta.dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
+    const unscoped = [...schema.matchAll(/^model (\w+) \{([\s\S]*?)^\}/gm)]
+      .filter((m) => /^\s+tenantId\s+BigInt\s/m.test(m[2]))
+      .map((m) => m[1])
+      .filter((model) => !(TENANT_MODELS as readonly string[]).includes(model));
+    expect(unscoped).toEqual([]);
   });
 
   it('every raw SQL on a tenant table filters on tenant_id', () => {
