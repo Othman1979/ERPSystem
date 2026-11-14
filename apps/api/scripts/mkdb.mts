@@ -1,10 +1,10 @@
 import 'dotenv/config';
 import mariadb from 'mariadb';
+import { testDbName } from '../test/e2e/support/test-db.js';
 async function main() {
   const url = new URL(process.env.DATABASE_URL!);
-  // The e2e schema: E2E_DB_NAME (default erp_test), same rule as test/e2e/support/test-db.ts.
-  const name = process.env.E2E_DB_NAME?.trim() || 'erp_test';
-  if (!/^[A-Za-z0-9_]+$/.test(name)) throw new Error(`E2E_DB_NAME must be letters, digits or "_" (got "${name}")`);
+  // The e2e schema: E2E_DB_NAME (default erp_test), checked as the suites check it (must contain "test").
+  const name = testDbName();
   const conn = await mariadb.createConnection({
     host: url.hostname, port: url.port ? Number(url.port) : 3306,
     user: decodeURIComponent(url.username), password: decodeURIComponent(url.password),

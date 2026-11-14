@@ -4,10 +4,10 @@ import mariadb, { type Pool } from 'mariadb';
 import { PrismaClient } from '../generated/prisma/client.js';
 import { parseDatabaseUrl } from '../prisma/prisma.service.js';
 import { probeDatabase } from './db-probe.js';
+import { testDatabaseUrl } from '../../test/e2e/support/test-db.js';
 
-/** The real test database: the same server as DATABASE_URL, schema E2E_DB_NAME (default erp_test). */
-const source = process.env.DATABASE_URL ?? '';
-const testUrl = source.replace(/\/[^/?]+(\?|$)/, `/${process.env.E2E_DB_NAME?.trim() || 'erp_test'}$1`);
+/** The real test database: the same server as DATABASE_URL, the e2e schema (test/e2e/support/test-db.ts). */
+const testUrl = testDatabaseUrl();
 
 function connect(url: string): { client: PrismaClient; pool: Pool } {
   const pool = mariadb.createPool(parseDatabaseUrl(url));

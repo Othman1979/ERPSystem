@@ -45,7 +45,8 @@ export class UpdateBranchDto {
   @MaxLength(512)
   address?: string | null;
 
-  @IsOptional()
+  // null is refused (400), not passed to Prisma.
+  @ValidateIf((_o, value: unknown) => value !== undefined)
   @IsBoolean()
   isActive?: boolean;
 }

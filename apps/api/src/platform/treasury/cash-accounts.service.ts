@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { AuditService } from '../../common/audit/audit.service.js';
-import { assertBranchAllowed } from '../../common/branch/branch-context.js';
+import { assertBranchAllowed, hasAllBranches } from '../../common/branch/branch-context.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import type {
@@ -58,16 +58,25 @@ export class CashAccountsService {
     const companyId = await this.support.companyId(db);
     const box = await db.cashBox.findFirst({ where: { id, companyId } });
     if (!box) throw DomainError.notFound('CashBox', id.toString());
+    // A write on another branch's box is refused, as on its documents (ADR-003 §3, §11).
+    assertBranchAllowed(box.branchId);
     if (dto.accountId) await this.assertCashAccount(db, companyId, dto.accountId, 'CASH');
     if (dto.accountId && BigInt(dto.accountId) !== box.accountId) {
       await this.assertNoJournalLines(db, box.accountId);
     }
-    // Moving a box takes rights on both branches: the one it leaves and the one it joins.
+    // Moving a box takes rights on both branches: the one it leaves (checked
+    // above) and the one it joins. A box without a branch serves every branch,
+    // so taking it onto one branch, or making a box shared, needs all branches.
     let branchId: bigint | null | undefined;
     if (dto.branchId !== undefined) {
       const next = dto.branchId === null ? null : await this.assertBoxBranch(db, companyId, dto.branchId);
       if (next !== box.branchId) {
-        assertBranchAllowed(box.branchId);
+        if ((box.branchId === null || next === null) && !hasAllBranches()) {
+          throw new DomainError(
+            ErrorCode.ALL_BRANCHES_REQUIRED,
+            'Only a member with every branch may move a cash box to or from all branches',
+          );
+        }
         branchId = next;
       }
     }
@@ -88,6 +97,7 @@ export class CashAccountsService {
     const companyId = await this.support.companyId(db);
     const box = await db.cashBox.findFirst({ where: { id, companyId } });
     if (!box) throw DomainError.notFound('CashBox', id.toString());
+    assertBranchAllowed(box.branchId);
     if (await this.hasJournalLines(db, box.accountId)) {
       // History exists on the GL account: deactivate instead of hard delete (TRADE-25).
       await db.cashBox.update({ where: { id }, data: { isActive: false } });

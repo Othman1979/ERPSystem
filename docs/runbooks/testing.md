@@ -15,7 +15,9 @@ separate schema:
 | `E2E_DB_NAME` | `erp_test` | Schema the e2e suites, their spawned API and jobs connect to |
 
 The rule lives in `apps/api/test/e2e/support/test-db.ts` (`TEST_DB_NAME`, `testDatabaseUrl()`);
-new suites import it instead of writing the name. The name must be letters, digits or `_`.
+new suites import it instead of writing the name. The name must be letters, digits or `_`,
+and must contain `test`: `E2E_DB_NAME=erp_dev` is refused, since the suites purge tenants and run
+cross-tenant jobs.
 
 A private schema helps when the shared `erp_test` is busy (several sessions, perf data of
 hundreds of thousands of rows): counts in shared tables and slow lists stop leaking between runs.

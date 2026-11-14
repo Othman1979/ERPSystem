@@ -661,6 +661,41 @@ describe('Paging and branch-scoped treasury reads (ADR-022, ADR-003)', () => {
       expect(listed.find((b) => b.id === boxB2Id)?.branchId).toBe(b2Id);
     });
 
+    it("a MAIN-only accountant cannot rename, deactivate, re-link or delete B2's box → 403, and it is unchanged", async () => {
+      for (const body of [{ name: 'Hijack' }, { isActive: false }, { accountId: cash3Id }]) {
+        const res = await api().put(`/api/v1/cash-boxes/${boxB2Id}`).set(auth(accountant)).send(body);
+        expect(res.status).toBe(403);
+        expect(res.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+      }
+      const del = await api().delete(`/api/v1/cash-boxes/${boxB2Id}`).set(auth(accountant));
+      expect(del.status).toBe(403);
+      expect(del.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+      const listed = (await api().get('/api/v1/cash-boxes').set(auth(owner))).body as {
+        id: string;
+        name: string;
+        isActive: boolean;
+        branchId: string | null;
+        account: { id: string };
+      }[];
+      const box = listed.find((b) => b.id === boxB2Id)!;
+      expect(box).toMatchObject({ name: `B${RUN}`, isActive: true, branchId: b2Id });
+      expect(box.account.id).toBe(cash2Id);
+      // Its own branch's box stays writable for the accountant.
+      expect((await api().put(`/api/v1/cash-boxes/${boxMainId}`).set(auth(accountant)).send({ isActive: true })).status).toBe(200);
+    });
+
+    it('only a member with every branch moves a box to or from "no branch" → 403 ALL_BRANCHES_REQUIRED', async () => {
+      const take = await api().put(`/api/v1/cash-boxes/${boxNoBranchId}`).set(auth(accountant)).send({ branchId: mainId });
+      expect(take.status).toBe(403);
+      expect(take.body.error.code).toBe('ALL_BRANCHES_REQUIRED');
+      const share = await api().put(`/api/v1/cash-boxes/${boxMainId}`).set(auth(accountant)).send({ branchId: null });
+      expect(share.status).toBe(403);
+      expect(share.body.error.code).toBe('ALL_BRANCHES_REQUIRED');
+      const listed = (await api().get('/api/v1/cash-boxes').set(auth(owner))).body as { id: string; branchId: string | null }[];
+      expect(listed.find((b) => b.id === boxNoBranchId)?.branchId).toBeNull();
+      expect(listed.find((b) => b.id === boxMainId)?.branchId).toBe(mainId);
+    });
+
     it('the owner moves a box to B2, then to no branch, then back to MAIN; the accountant sees it accordingly', async () => {
       const put = (branchId: string | null) => api().put(`/api/v1/cash-boxes/${boxMainId}`).set(auth(owner)).send({ branchId });
 

@@ -349,6 +349,11 @@ describe('Branch access (BranchGuard, ADR-003)', () => {
     const refused = await api().patch(`/api/v1/branches/${b2Id}`).set(auth(owner)).send({ nameAr: null });
     expect(refused.status).toBe(400);
     expect(refused.body.error.code).toBe('VALIDATION');
+
+    // isActive cannot be cleared either: 400, not a 500 from the database.
+    const inactiveNull = await api().patch(`/api/v1/branches/${b2Id}`).set(auth(owner)).send({ isActive: null });
+    expect(inactiveNull.status).toBe(400);
+    expect(inactiveNull.body.error.code).toBe('VALIDATION');
   });
 
   it("tenant B cannot update A's branch: 404 NOT_FOUND, as for any other missing row", async () => {

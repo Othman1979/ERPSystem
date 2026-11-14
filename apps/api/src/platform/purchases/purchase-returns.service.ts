@@ -49,24 +49,23 @@ async function returnWarehouse(
   // Exists in this company first: another tenant's id answers 404, as everywhere.
   const warehouse = await tx.warehouse.findFirst({ where: { companyId, id, isActive: true }, select: { id: true } });
   if (!warehouse) throw DomainError.notFound('Warehouse', id.toString());
-  if (invoiceWarehouseId === null) {
-    throw new DomainError(
-      ErrorCode.RETURN_WAREHOUSE_MISMATCH,
-      'The original invoice has no warehouse, so its return names none',
-      { warehouseId: warehouse.id.toString(), invoiceWarehouseId: null },
-    );
-  }
   assertReturnWarehouse(invoiceWarehouseId, warehouse.id);
   return warehouse.id;
 }
 
-/** ADR-016 §5: the return's warehouse must be the invoice's, when the invoice has one. */
+/**
+ * ADR-016 §5: the return's warehouse is the invoice's, and none when the
+ * invoice has none (a service-only invoice). One check for create and post,
+ * so a draft saved before a rule cannot post what create now refuses.
+ */
 function assertReturnWarehouse(invoiceWarehouseId: bigint | null, warehouseId: bigint | null): void {
-  if (invoiceWarehouseId !== null && invoiceWarehouseId !== warehouseId) {
+  if (invoiceWarehouseId !== warehouseId) {
     throw new DomainError(
       ErrorCode.RETURN_WAREHOUSE_MISMATCH,
-      "A purchase return leaves from the original invoice's warehouse",
-      { warehouseId: warehouseId?.toString() ?? null, invoiceWarehouseId: invoiceWarehouseId.toString() },
+      invoiceWarehouseId === null
+        ? 'The original invoice has no warehouse, so its return names none'
+        : "A purchase return leaves from the original invoice's warehouse",
+      { warehouseId: warehouseId?.toString() ?? null, invoiceWarehouseId: invoiceWarehouseId?.toString() ?? null },
     );
   }
 }

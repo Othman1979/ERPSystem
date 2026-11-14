@@ -442,6 +442,61 @@ describe('Trade review fixes — stock and documents', () => {
     await assertConsistent();
   });
 
+  it('ADR-016 §5: create and post refuse the same things for a service-only return (warehouse named, item now stocked)', async () => {
+    const web = await webPayloads();
+    const svc = await item('SVC2', { itemKind: 'SERVICE' });
+    const inv = await createAndPost('purchase-invoices', {
+      invoiceDate: '2025-01-08', supplierId, paymentType: 'CREDIT', lines: [{ itemId: svc, qty: '3', unitCost: '10' }],
+    });
+    const invoice = (await api().get(`/api/v1/purchase-invoices/${inv.id}`).set(auth(token))).body as {
+      id: string;
+      warehouseId: string | null;
+      lines: { id: string }[];
+    };
+    const body = () =>
+      web.purchaseReturnBody(invoice, { returnDate: '2025-01-09', refundType: 'CREDIT', qtyByLine: { [invoice.lines[0].id]: '1' } });
+    const statusOf = async (id: string) =>
+      ((await db.query('SELECT status FROM purchase_returns WHERE tenant_id = ? AND id = ?', [tenantId, id])) as { status: string }[])[0].status;
+    const movementsOf = async (id: string) =>
+      ((await db.query(
+        "SELECT COUNT(*) AS n FROM stock_movements WHERE tenant_id = ? AND source_type = 'PURCHASE_RETURN' AND source_id = ?",
+        [tenantId, id],
+      )) as { n: bigint }[])[0].n;
+
+    // A draft that names a warehouse (saved by an older client) gets create's answer at posting.
+    const named = await create('purchase-returns', body());
+    await db.query('UPDATE purchase_returns SET warehouse_id = ? WHERE tenant_id = ? AND id = ?', [W1, tenantId, named.id]);
+    const namedPost = await post('purchase-returns', named.id);
+    expect(namedPost.status).toBe(400);
+    expect(namedPost.body.error.code).toBe('RETURN_WAREHOUSE_MISMATCH');
+    expect(namedPost.body.error.details).toEqual({ warehouseId: W1, invoiceWarehouseId: null });
+    expect(await statusOf(named.id)).toBe('DRAFT');
+    await db.query('UPDATE purchase_returns SET warehouse_id = NULL WHERE tenant_id = ? AND id = ?', [tenantId, named.id]);
+
+    // The item became stocked after the invoice (no API changes a kind; the data can): no
+    // warehouse to take the goods from, so posting and creating both refuse.
+    await db.query("UPDATE items SET item_kind = 'STOCK' WHERE tenant_id = ? AND id = ?", [tenantId, svc]);
+    try {
+      const atPost = await post('purchase-returns', named.id);
+      expect(atPost.status).toBe(400);
+      expect(atPost.body.error.code).toBe('RETURN_WAREHOUSE_REQUIRED');
+      expect(atPost.body.error.details).toEqual({ itemIds: [svc] });
+      expect(await statusOf(named.id)).toBe('DRAFT');
+      expect(await movementsOf(named.id)).toBe(0n);
+      const atCreate = await api().post('/api/v1/purchase-returns').set(auth(token)).send(body());
+      expect(atCreate.status).toBe(400);
+      expect(atCreate.body.error.code).toBe('RETURN_WAREHOUSE_REQUIRED');
+    } finally {
+      await db.query("UPDATE items SET item_kind = 'SERVICE' WHERE tenant_id = ? AND id = ?", [tenantId, svc]);
+    }
+
+    // Back to a service item, the same draft posts with no warehouse and no movement.
+    const done = await post('purchase-returns', named.id);
+    expect(done.status).toBe(201);
+    expect(await movementsOf(named.id)).toBe(0n);
+    await assertConsistent();
+  });
+
   it('DB-04 / TRADE-19: a transfer reversal mirrors the original cost; a reversal cannot be reversed', async () => {
     const T = await item('T');
     await buy(T, '10', '7', '2025-01-10');
