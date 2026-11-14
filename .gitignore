@@ -11,6 +11,8 @@ apps/api/src/generated/
 
 # local caches
 npm-cache/
+# scratch output from local runs (logs, jest cache, backups)
+.tmp/
 
 # uploaded files (STORAGE_DIR)
 apps/api/storage/

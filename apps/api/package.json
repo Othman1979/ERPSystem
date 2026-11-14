@@ -26,6 +26,7 @@
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
     "prisma": "prisma",
     "seed": "tsx prisma/seed.ts",
+    "db:create": "tsx scripts/create-db.mts",
     "demo:seed": "tsx scripts/demo-seed.mts",
     "ledger:check": "tsx scripts/ledger-check.mts",
     "openapi:models": "tsx test/static/prisma-models-render.ts",
