@@ -7,6 +7,7 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import type { Env } from '../../common/config/env.validation.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { effectiveMemberPermissions } from '../../common/permissions/member-permissions.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { ChartProvisioningService } from '../accounting/chart-provisioning.service.js';
 import { ChangePasswordDto, LoginDto, RegisterDto, SwitchTenantDto } from './dto/auth.dto.js';
@@ -403,10 +404,11 @@ export class AuthService {
     // active branches when none are assigned. Tenant-scoped client.
     let branches: { id: string; code: string; nameAr: string; nameEn: string | null }[] = [];
     let permissions: string[] = [];
+    let approvalLimit: string | null = null;
     let allBranches = true;
     if (current) {
       const db = this.prisma.forTenant(current.tenantId);
-      const [assigned, active, granted] = await Promise.all([
+      const [assigned, active, granted, extra] = await Promise.all([
         db.membershipBranch.findMany({ where: { membershipId: current.id }, select: { branchId: true } }),
         db.branch.findMany({
           where: { isActive: true },
@@ -421,8 +423,16 @@ export class AuthService {
           where: { roleId: current.roleId },
           select: { permissionCode: true },
         }),
+        // The member's purchase permissions (ADR-024 §3.4), tenant-scoped client.
+        db.memberPermission.findMany({
+          where: { membershipId: current.id },
+          select: { permissionCode: true, amountLimit: true },
+        }),
       ]);
-      permissions = granted.map((p) => p.permissionCode).sort();
+      // The same union TenantGuard builds, so the web shows what the guards enforce.
+      const member = effectiveMemberPermissions(current.role.code, extra);
+      permissions = [...new Set([...granted.map((p) => p.permissionCode), ...member.codes])].sort();
+      approvalLimit = member.approvalLimit;
       const allowed = new Set(assigned.map((a) => a.branchId));
       allBranches = allowed.size === 0;
       branches = active
@@ -456,6 +466,8 @@ export class AuthService {
             roleCode: current.role.code,
             /** Permission codes of this role in this tenant (common/permissions), for the web to hide what it cannot use. */
             permissions,
+            /** purchase.approve limit (ADR-024 §3.3): a 3-decimal string, or null for no limit. */
+            approvalLimit,
             defaultBranchId: current.defaultBranchId?.toString() ?? null,
             branches,
             /** No assigned branch: may open the company-wide reports (ADR-003 §13–§14). */

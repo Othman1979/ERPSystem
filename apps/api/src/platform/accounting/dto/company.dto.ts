@@ -1,4 +1,6 @@
-import { IsBoolean, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsEnum, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import { ProcurementLevel } from '../../../generated/prisma/enums.js';
 
 /**
  * Company profile (setup wizard step 1 and settings, §13.4). A blank text
@@ -44,4 +46,13 @@ export class UpdateCompanyDto {
   @IsOptional()
   @IsBoolean()
   pricesIncludeTax?: boolean;
+
+  /**
+   * Purchasing cycle level (ADR-024 §2), needs company.manage. Raised any time;
+   * lowered only with no open cycle documents (PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS).
+   */
+  @ApiPropertyOptional({ enum: ProcurementLevel, enumName: 'ProcurementLevel' })
+  @IsOptional()
+  @IsEnum(ProcurementLevel)
+  procurementLevel?: ProcurementLevel;
 }

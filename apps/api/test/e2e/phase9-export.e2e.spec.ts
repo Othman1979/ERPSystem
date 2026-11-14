@@ -105,6 +105,7 @@ describe('Phase 9.4 — company data export', () => {
   let token = '';
   let tokenB = '';
   let accountant = '';
+  let accountantMembership = '';
   let tenantA = '';
   let files: Record<string, Uint8Array> = {};
 
@@ -134,9 +135,15 @@ describe('Phase 9.4 — company data export', () => {
     const logo = await api().post('/api/v1/company/logo').set(auth(token)).attach('file', PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(logo.status).toBe(201);
 
-    accountant = (
-      await addMember(BASE, token, { email: `ex-acc-${RUN}@test.dev`, roleCode: 'ACCOUNTANT', password: PASS })
-    ).token;
+    const member = await addMember(BASE, token, { email: `ex-acc-${RUN}@test.dev`, roleCode: 'ACCOUNTANT', password: PASS });
+    accountant = member.token;
+    accountantMembership = member.membershipId;
+    // A purchase permission with a limit (member_permissions, ADR-024 §3).
+    const granted = await api()
+      .put(`/api/v1/users/${member.membershipId}/purchase-permissions`)
+      .set(auth(token))
+      .send({ permissions: [{ code: 'purchase.approve', amountLimit: '1234.5' }] });
+    expect(granted.status).toBe(200);
   });
 
   it('the owner downloads a ZIP of workbooks, the logo and a README', async () => {
@@ -172,6 +179,13 @@ describe('Phase 9.4 — company data export', () => {
     expect(members.rows.map((r) => r[members.header.indexOf('email')]).sort()).toEqual(
       [`ex-${RUN}@test.dev`, `ex-acc-${RUN}@test.dev`].sort(),
     );
+
+    // The member's purchase permission, its limit an exact number.
+    const grants = (await sheet(files, '01-company.xlsx', 'MemberPermission'))!;
+    const col = (name: string) => grants.header.indexOf(name);
+    expect(grants.rows.map((r) => [r[col('membershipId')], r[col('permissionCode')], r[col('amountLimit')]])).toEqual([
+      [accountantMembership, 'purchase.approve', 1234.5],
+    ]);
   });
 
   it('carries no secrets or technical keys', async () => {
@@ -224,6 +238,7 @@ describe('Phase 9.4 — company data export', () => {
     expect(lines!.header).toEqual(['(empty)']);
     const members = (await sheet(b, '01-company.xlsx', 'Members'))!;
     expect(members.rows.map((r) => r[members.header.indexOf('email')])).toEqual([`exb-${RUN}@test.dev`]);
+    expect((await sheet(b, '01-company.xlsx', 'MemberPermission'))!.header).toEqual(['(empty)']);
     expect(Object.keys(b).some((f) => f.startsWith('attachments/'))).toBe(false);
     const accountsB = (await api().get('/api/v1/accounts').set(auth(tokenB))).body as unknown[];
     expect((await sheet(b, '02-accounts.xlsx', 'Account'))!.rows).toHaveLength(accountsB.length);

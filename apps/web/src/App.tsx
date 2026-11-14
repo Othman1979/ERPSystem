@@ -44,6 +44,7 @@ import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { ServerUnreachable } from './components/ServerUnreachable';
 import { NoAccess } from './components/NoAccess';
 import { PERMISSIONS } from './auth/permissions';
+import { useProcurementLevel } from './auth/procurementLevel';
 import { lazyPage } from './lazyPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
 import { displayName } from './i18n/displayName';
@@ -185,7 +186,7 @@ function HomeScreen() {
   const { me, can } = useAuth();
   // Only what the role can use: the API would refuse the rest with 403.
   const quickActions = QUICK_ACTIONS.filter((a) => can(a.permission));
-  const groups = allowedGroups(APP_GROUPS, can);
+  const groups = allowedGroups(APP_GROUPS, can, useProcurementLevel());
   const canSetUp = can(SETUP_PERMISSION);
   const navigate = useNavigate();
   const company = useCompany();
@@ -262,6 +263,8 @@ function AppShell() {
   // Signed in with invitations only (no company yet): the invitations page is the only tenant-free screen (ADR-012 §PLAT-10).
   const noCompany = !me?.currentTenant;
   const pendingInvitations = me?.pendingInvitations ?? 0;
+  // Cycle screens (phases 12–13) show from their procurement level up (ADR-024 §2.3).
+  const procurementLevel = useProcurementLevel(!noCompany);
 
   const language = i18n.language as AppLanguage;
   const isRtl = language !== 'en';
@@ -279,7 +282,7 @@ function AppShell() {
       // Screens the role cannot use are not offered (the API would answer 403).
       ...(noCompany
         ? APP_GROUPS.filter((g) => g.routes.some((r) => r.path === INVITATIONS_PATH))
-        : allowedGroups(APP_GROUPS, can)
+        : allowedGroups(APP_GROUPS, can, procurementLevel)
       ).map((g) => ({
         type: 'group' as const,
         key: g.label,
@@ -305,7 +308,7 @@ function AppShell() {
         : []),
     ],
     // Labels depend on the language; t identity changes with it.
-    [t, siderCollapsed, isMobile, isPlatformAdmin, noCompany, pendingInvitations, can],
+    [t, siderCollapsed, isMobile, isPlatformAdmin, noCompany, pendingInvitations, can, procurementLevel],
   );
 
   const menu = (
@@ -505,7 +508,7 @@ function AppShell() {
                   key={r.key}
                   path={`${r.path}/*`}
                   element={
-                    <ViewErrorBoundary key={r.key}>{allowedRoute(r, can) ? r.element : <NoAccess />}</ViewErrorBoundary>
+                    <ViewErrorBoundary key={r.key}>{allowedRoute(r, can, procurementLevel) ? r.element : <NoAccess />}</ViewErrorBoundary>
                   }
                 />
               ))}

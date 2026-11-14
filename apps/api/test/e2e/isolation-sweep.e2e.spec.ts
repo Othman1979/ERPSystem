@@ -309,6 +309,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     if (p.endsWith('/items/{id}/units')) return { units: [{ unitId: id.unit, factorToBase: '1' }] };
     if (p.endsWith('/items/{id}/barcodes')) return { barcode: `X${RUN}` };
     if (p.includes('/lines/{lineId}')) return { countedQty: '1' };
+    if (p.endsWith('/purchase-permissions')) return { permissions: [{ code: 'purchase.direct' }] };
     if (p === '/api/v1/sales-invoices/{id}') return bodies.salesInvoice;
     if (p === '/api/v1/purchase-invoices/{id}') return bodies.purchaseInvoice;
     if (p === '/api/v1/goods-notes/{id}') return bodies.goodsNote;

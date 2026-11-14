@@ -54,6 +54,7 @@ function signedIn(roleCode: string, permissions: string[]): AuthState {
         membershipId: 'm1',
         roleCode,
         permissions,
+        approvalLimit: null,
         defaultBranchId: null,
         allBranches: true,
         branches: [],

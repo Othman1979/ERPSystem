@@ -6,6 +6,7 @@
 import { ApiProperty, ApiPropertyOptional, PickType } from '@nestjs/swagger';
 import { RolePermissionRow, RoleRow } from '../../../common/openapi/prisma-models.js';
 import { MembershipStatus } from '../../../generated/prisma/enums.js';
+import { MEMBER_PERMISSION_CODES, type MemberPermissionCode } from '../../../common/permissions/member-permissions.js';
 
 /** A permission granted to a system role. */
 export class UserRolePermissionDto extends PickType(RolePermissionRow, ['permissionCode'] as const) {}
@@ -55,6 +56,20 @@ export class UserMembershipBranchDto {
   nameAr!: string;
 }
 
+/** A purchase permission a member holds (ADR-024 §3.1). */
+export class UserPurchasePermissionDto {
+  @ApiProperty({ enum: MEMBER_PERMISSION_CODES, enumName: 'MemberPermissionCode' })
+  code!: MemberPermissionCode;
+
+  @ApiProperty({
+    type: 'string',
+    format: 'decimal',
+    nullable: true,
+    description: 'purchase.approve only: the highest amount approved alone. Null: no limit.',
+  })
+  amountLimit!: string | null;
+}
+
 /** A membership as the team screens show it (UsersService `serialize`). */
 export class UserMembershipDto {
   @ApiProperty({ type: 'string' })
@@ -80,6 +95,13 @@ export class UserMembershipDto {
 
   @ApiProperty({ type: () => UserMembershipBranchDto, isArray: true })
   branches!: UserMembershipBranchDto[];
+
+  @ApiProperty({
+    type: () => UserPurchasePermissionDto,
+    isArray: true,
+    description: 'Purchase permissions the member holds (ADR-024 §3); an owner holds all three, with no limit.',
+  })
+  purchasePermissions!: UserPurchasePermissionDto[];
 }
 
 /**

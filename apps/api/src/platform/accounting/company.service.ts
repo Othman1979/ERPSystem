@@ -4,6 +4,8 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { ProcurementCycleRegistry } from '../../common/procurement/procurement-level.js';
 import { StorageService } from '../../common/storage/storage.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { UpdateCompanyDto } from './dto/company.dto.js';
@@ -42,6 +44,7 @@ export class CompanyService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly audit: AuditService,
+    private readonly procurementCycle: ProcurementCycleRegistry,
   ) {}
 
   private tenant() {
@@ -72,6 +75,7 @@ export class CompanyService {
       address: c.address,
       phone: c.phone,
       pricesIncludeTax: c.pricesIncludeTax,
+      procurementLevel: c.procurementLevel,
       onboardingCompletedAt: c.onboardingCompletedAt,
       logo: c.logoAttachment
         ? {
@@ -85,8 +89,12 @@ export class CompanyService {
   }
 
   async update(dto: UpdateCompanyDto) {
-    const { db } = this.tenant();
+    const { tenantId, db } = this.tenant();
     const c = await this.company(db);
+    const levelChange = dto.procurementLevel !== undefined && dto.procurementLevel !== c.procurementLevel;
+    if (levelChange && !ClsServiceManager.getClsService<RequestContext>().get('permissions')?.has(PERMISSIONS.COMPANY_MANAGE)) {
+      throw new DomainError(ErrorCode.FORBIDDEN, `Missing permission: ${PERMISSIONS.COMPANY_MANAGE}`);
+    }
     const data = {
       ...(dto.legalNameAr !== undefined ? { legalNameAr: dto.legalNameAr.trim() } : {}),
       legalNameEn: blankToNull(dto.legalNameEn),
@@ -95,8 +103,19 @@ export class CompanyService {
       address: blankToNull(dto.address),
       phone: blankToNull(dto.phone),
       ...(dto.pricesIncludeTax !== undefined ? { pricesIncludeTax: dto.pricesIncludeTax } : {}),
+      ...(levelChange ? { procurementLevel: dto.procurementLevel } : {}),
     };
-    await db.company.update({ where: { id: c.id }, data });
+    await db.$transaction(async (tx) => {
+      if (levelChange) {
+        // The company row lock orders the open-documents check with the cycle
+        // documents created from phase 12 on (ADR-024 §2.2).
+        await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${c.id} FOR UPDATE`;
+        // The level as of the lock: a concurrent change may have moved it since `c` was read.
+        const { procurementLevel: from } = await tx.company.findFirstOrThrow({ where: { id: c.id }, select: { procurementLevel: true } });
+        await this.procurementCycle.assertLevelChange(tx, from, dto.procurementLevel!);
+      }
+      await tx.company.update({ where: { id: c.id }, data });
+    });
     await this.audit.log({
       action: 'company.update',
       entityType: 'company',
@@ -106,6 +125,7 @@ export class CompanyService {
         taxNumber: c.taxNumber,
         address: c.address,
         pricesIncludeTax: c.pricesIncludeTax,
+        procurementLevel: c.procurementLevel,
       },
       after: dto,
     });
