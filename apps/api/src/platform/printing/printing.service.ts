@@ -1,11 +1,9 @@
-import path from 'node:path';
 import { Injectable, StreamableFile } from '@nestjs/common';
-import pdfmake from 'pdfmake';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { StorageService } from '../../common/storage/storage.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
-import { FONT_DIR, FONT_FILES, FONT_NAME } from './fonts.js';
+import { renderPdf } from './pdf-render.js';
 import { documentPdf, type DocumentPrint } from './document-pdf.js';
 import { tablePdf, tableXlsx, type PrintContext, type ReportTable } from './report-table.js';
 
@@ -28,18 +26,6 @@ export const EXPORT_LIMITS = {
     return Number(process.env.REPORT_XLSX_MAX_ROWS || 50_000);
   },
 };
-
-let configured = false;
-function configurePdfmake() {
-  if (configured) return;
-  pdfmake.setFonts({
-    [FONT_NAME]: { normal: FONT_FILES.normal, bold: FONT_FILES.bold, italics: FONT_FILES.normal, bolditalics: FONT_FILES.bold },
-  });
-  // Documents never fetch anything: no URLs, and only our font files on disk.
-  pdfmake.setUrlAccessPolicy(() => false);
-  pdfmake.setLocalAccessPolicy((p) => path.resolve(p).startsWith(FONT_DIR));
-  configured = true;
-}
 
 /**
  * PDF (pdfmake, BUILD_PLAN §3 — no Chromium on the hosting) and XLSX
@@ -88,8 +74,7 @@ export class PrintingService {
   }
 
   async pdf(definition: object): Promise<Buffer> {
-    configurePdfmake();
-    return Buffer.from(await pdfmake.createPdf(definition).getBuffer());
+    return renderPdf(definition);
   }
 
   /** A business document as an A4 PDF (§13.7). */
