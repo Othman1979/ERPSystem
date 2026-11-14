@@ -1934,6 +1934,8 @@ model EInvoiceSubmission {
   @@unique([tenantId, companyId, icv])
   @@index([status, nextAttemptAt])
   @@index([claimToken])
+  // The worker's stuck-row recovery reads SENDING rows older than a cutoff.
+  @@index([status, claimedAt])
   @@map("einvoice_submissions")
 }
 

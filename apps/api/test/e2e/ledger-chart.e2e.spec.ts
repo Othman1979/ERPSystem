@@ -533,3 +533,300 @@ describe('Ledger review fixes (2026-11-13) — chart, mappings, fiscal years, re
     expect((tb.body as TbBody).balanced).toBe(true);
   });
 });
+
+/**
+ * LEDGER-03 under concurrency (PR #26 locks the parent account FOR UPDATE when a
+ * child is created; a posting reads its accounts LOCK IN SHARE MODE). A child
+ * account under P and a posting to P are raced on separate connections:
+ * exactly one of them wins, never both.
+ *
+ *  - the posting lands while P is still postable → the child is refused
+ *    (409 ACCOUNT_IN_USE, reason HAS_LINES) and P stays a postable leaf;
+ *  - or the child is created first → P is a group and the posting is refused
+ *    (400 ACCOUNT_NOT_POSTABLE), leaving no journal line on P.
+ *
+ * The posting is an opening entry (`/journal-entries/opening`): it creates and
+ * posts in one request. A manual draft would already hold a line on P, and a
+ * draft line alone makes the child refusal certain, so it could not race.
+ * Own tenants A and B, so the totals of the suite above are untouched. Both
+ * tenants race in the same round, which also shows the lock never crosses
+ * tenants.
+ */
+describe('LEDGER-03 race — a child account under P against a posting to P', () => {
+  const ROUNDS = 14;
+  /** [child delay, posting delay] in ms: the child is usually the faster request, so it is held back by 0-48 ms to let the posting win too. */
+  const STAGGER: [number, number][] = [
+    [0, 0],
+    [8, 0],
+    [16, 0],
+    [24, 0],
+    [32, 0],
+    [0, 8],
+    [48, 0],
+  ];
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  interface Side {
+    label: string;
+    token: string;
+    tenantId: bigint;
+    /** The postable-turned-group parent of every P: "Current assets". */
+    group: string;
+  }
+
+  async function setupSide(label: string): Promise<Side> {
+    const reg = await api()
+      .post('/api/v1/auth/register')
+      .send({
+        tenantName: `LC race ${label} ${RUN}`,
+        ownerName: `Owner ${label}`,
+        email: `ledger-race-${label.toLowerCase()}-${RUN}@test.dev`,
+        password: PASS,
+      });
+    expect(reg.status).toBe(201);
+    const token = (reg.body as { accessToken: string }).accessToken;
+    const fy = await api()
+      .post('/api/v1/fiscal-years')
+      .set(auth(token))
+      .send({ code: '2025', startDate: '2025-01-01', endDate: '2025-12-31' });
+    expect(fy.status).toBe(201);
+    const accounts = (await api().get('/api/v1/accounts').set(auth(token))).body as AccountRow[];
+    const group = accounts.find((a) => a.code === '11');
+    expect(group?.isPostable).toBe(false);
+    const [tenant] = (await db.query('SELECT id FROM tenants WHERE name = ?', [`LC race ${label} ${RUN}`])) as {
+      id: bigint;
+    }[];
+    return { label, token, tenantId: tenant.id, group: group!.id };
+  }
+
+  const newParent = async (side: Side) => {
+    const res = await api()
+      .post('/api/v1/accounts')
+      .set(auth(side.token))
+      .send({ nameAr: 'P', parentId: side.group, accountType: 'ASSET' });
+    expect(res.status).toBe(201);
+    expect((res.body as AccountRow).isPostable).toBe(true);
+    return (res.body as IdBody).id;
+  };
+
+  const createChild = (side: Side, parentId: string) =>
+    api().post('/api/v1/accounts').set(auth(side.token)).send({ nameAr: 'child', parentId, accountType: 'ASSET' });
+
+  /** One opening line on P; the entry plugs the other side to the opening-balance equity. */
+  const postTo = (side: Side, accountId: string) =>
+    api()
+      .post('/api/v1/journal-entries/opening')
+      .set(auth(side.token))
+      .set(idem())
+      .send({ entryDate: '2025-01-01', description: 'race', lines: [{ accountId, debit: '10' }] });
+
+  const fire = async (delayMs: number, send: () => PromiseLike<request.Response>): Promise<request.Response> => {
+    if (delayMs > 0) await sleep(delayMs);
+    return send();
+  };
+
+  async function count(sql: string, params: unknown[]): Promise<number> {
+    const [row] = (await db.query(sql, params)) as { n: bigint | number }[];
+    return Number(row.n);
+  }
+
+  type Who = 'posting' | 'child';
+
+  /**
+   * A fresh postable P, the two requests run by `run`, then the database says who won.
+   * The invariant is checked whoever it was: never both.
+   */
+  async function race(
+    side: Side,
+    where: string,
+    run: (parentId: string) => Promise<[request.Response, request.Response]>,
+  ): Promise<Who> {
+    const parentId = await newParent(side);
+    const [child, posting] = await run(parentId);
+    // A deadlock or lock wait timeout is neither of the two outcomes: say what InnoDB saw.
+    for (const [who, res] of [['child', child], ['posting', posting]] as const) {
+      if (res.status >= 400 && errorOf(res).code === 'CONFLICT') {
+        throw new Error(`${where}: the ${who} request got CONFLICT (a lock conflict)\n${await lastDeadlock()}`);
+      }
+    }
+
+    const lines = await count('SELECT COUNT(*) AS n FROM journal_lines WHERE tenant_id = ? AND account_id = ?', [
+      side.tenantId,
+      parentId,
+    ]);
+    const children = await count('SELECT COUNT(*) AS n FROM accounts WHERE tenant_id = ? AND parent_id = ?', [
+      side.tenantId,
+      parentId,
+    ]);
+    const postable = await count('SELECT is_postable AS n FROM accounts WHERE tenant_id = ? AND id = ?', [
+      side.tenantId,
+      parentId,
+    ]);
+
+    // Never both: a used account must not gain a child, and a group must not hold a line.
+    expect({ where, stranded: lines > 0 && children > 0 }).toEqual({ where, stranded: false });
+
+    if (posting.status === 201) {
+      expectRefused(child, 409, 'ACCOUNT_IN_USE');
+      expect(errorOf(child).details).toMatchObject({ reason: 'HAS_LINES' });
+      expect({ where, lines, children, postable }).toEqual({ where, lines: 1, children: 0, postable: 1 });
+      return 'posting';
+    }
+    expect({ where, child: child.status }).toEqual({ where, child: 201 });
+    expectRefused(posting, 400, 'ACCOUNT_NOT_POSTABLE');
+    expect({ where, lines, children, postable }).toEqual({ where, lines: 0, children: 1, postable: 0 });
+    return 'child';
+  }
+
+  /** InnoDB's report of the latest deadlock it rolled back, for a failure message. */
+  async function lastDeadlock(): Promise<string> {
+    const [row] = (await db.query('SHOW ENGINE INNODB STATUS')) as { Status: string }[];
+    const text = row.Status;
+    const from = text.indexOf('LATEST DETECTED DEADLOCK');
+    const to = text.indexOf('\n------------\nTRANSACTIONS');
+    return from < 0 ? 'no deadlock recorded' : text.slice(from, to > from ? to : from + 6000);
+  }
+
+  /** A third connection of the test's own, for holding a lock. */
+  async function connect(): Promise<Connection> {
+    const url = new URL(process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1'));
+    return mariadb.createConnection({
+      host: url.hostname,
+      port: url.port ? Number(url.port) : 3306,
+      user: decodeURIComponent(url.username),
+      password: decodeURIComponent(url.password),
+      database: 'erp_test',
+    });
+  }
+
+  /** A lock read that has not come back after this long is queued behind the held lock. */
+  const QUEUED_AFTER_MS = 150;
+
+  /**
+   * How many statements that look like `pattern` have been running for a while. A lock read on one
+   * indexed row returns at once unless it waits for a lock, and the only lock held on P is ours.
+   * (INNODB_TRX does not list a transaction that has done nothing but wait, on MariaDB 10.4, so the
+   * process list is used; TIME_MS exists on every MariaDB.)
+   */
+  async function waiting(pattern: string): Promise<number> {
+    return count(
+      `SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST
+        WHERE db = 'erp_test' AND id <> CONNECTION_ID() AND time_ms >= ? AND info LIKE ?`,
+      [QUEUED_AFTER_MS, pattern],
+    );
+  }
+
+  async function until(condition: () => Promise<boolean>, what: string, timeoutMs = 20_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!(await condition())) {
+      if (Date.now() > deadline) throw new Error(`timed out after ${timeoutMs} ms waiting for ${what}`);
+      await sleep(10);
+    }
+  }
+
+  /** The child creation takes P FOR UPDATE; the posting reads its accounts LOCK IN SHARE MODE. */
+  const CHILD_WAIT = '%FROM accounts%WHERE tenant_id = ? AND id = ? FOR UPDATE%';
+  const POSTING_WAIT = '%FROM accounts%LOCK IN SHARE MODE%';
+
+  /**
+   * The contention is made, not hoped for: a third connection holds P FOR UPDATE, the request that
+   * must win is fired first and waited for until the database shows it queued on P, then the other
+   * is fired and waited for the same way, and only then is the lock released. Both sit in the lock
+   * queue in a known order, so the first one in is the one that has to win.
+   */
+  async function heldRace(side: Side, parentId: string, first: Who): Promise<[request.Response, request.Response]> {
+    const lock = await connect();
+    try {
+      await lock.beginTransaction();
+      await lock.query('SELECT id FROM accounts WHERE tenant_id = ? AND id = ? FOR UPDATE', [side.tenantId, parentId]);
+      const patterns = { child: CHILD_WAIT, posting: POSTING_WAIT };
+      const send = {
+        child: async () => createChild(side, parentId),
+        posting: async () => postTo(side, parentId),
+      };
+      const responses = {} as Record<Who, Promise<request.Response>>;
+      for (const who of first === 'child' ? (['child', 'posting'] as const) : (['posting', 'child'] as const)) {
+        const before = await waiting(patterns[who]);
+        responses[who] = send[who]();
+        await until(async () => (await waiting(patterns[who])) > before, `the ${who} request to queue on P`);
+      }
+      await lock.commit();
+      const [child, posting] = await Promise.all([responses.child, responses.posting]);
+      return [child, posting];
+    } finally {
+      await lock.rollback().catch(() => undefined);
+      await lock.end().catch(() => undefined);
+    }
+  }
+
+  let a: Side;
+  let b: Side;
+
+  it('sets up two tenants with a fiscal year each', async () => {
+    a = await setupSide('A');
+    b = await setupSide('B');
+  });
+
+  it('the account lock reads go through the PRIMARY key and look at one row per id', async () => {
+    // On MariaDB 10.11 the posting's read went through accounts_tenant_id_id_key while the child creation
+    // held the PRIMARY record: a deadlock. Every statement that locks an account row now starts at the
+    // clustered record (FORCE INDEX (PRIMARY)); this shows the plan on the version CI runs, and that it stays cheap.
+    const parentId = await newParent(a);
+    const plans = (await Promise.all([
+      db.query('EXPLAIN SELECT id FROM accounts FORCE INDEX (PRIMARY) WHERE tenant_id = ? AND id = ? FOR UPDATE', [a.tenantId, parentId]),
+      db.query(
+        'EXPLAIN SELECT id, code FROM accounts FORCE INDEX (PRIMARY) WHERE tenant_id = ? AND company_id = ? AND id IN (?, ?) ORDER BY id LOCK IN SHARE MODE',
+        [a.tenantId, a.tenantId, parentId, a.group],
+      ),
+    ])) as { type: string; key: string; rows: bigint | number }[][];
+    for (const [plan] of plans) {
+      expect(plan.key).toBe('PRIMARY');
+      expect(['const', 'range', 'eq_ref']).toContain(plan.type);
+      expect(Number(plan.rows)).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('held lock, both orders, both tenants: the request queued first wins, the other is refused', async () => {
+    for (const side of [a, b]) {
+      for (const first of ['child', 'posting', 'posting', 'child'] as const) {
+        const where = `tenant ${side.label}, ${first} first`;
+        const won = await race(side, where, (parentId) => heldRace(side, parentId, first));
+        expect({ where, won }).toEqual({ where, won: first });
+      }
+    }
+  }, 120_000);
+
+  it('free race: exactly one wins every round, in both tenants at once; tenant B cannot touch A\'s account', async () => {
+    // No lock is held here: the real scheduler decides who wins, and "never both" must hold anyway.
+    // (The deterministic test above is what proves both outcomes happen.)
+    for (let round = 0; round < ROUNDS; round++) {
+      const [childDelay, postDelay] = STAGGER[round % STAGGER.length];
+      const run = (side: Side) => (parentId: string) =>
+        Promise.all([
+          fire(childDelay, () => createChild(side, parentId)),
+          fire(postDelay, () => postTo(side, parentId)),
+        ]);
+      await Promise.all([
+        race(a, `tenant A, round ${round}`, run(a)),
+        race(b, `tenant B, round ${round}`, run(b)),
+      ]);
+    }
+
+    // Tenant B never reaches tenant A's accounts, with or without a race.
+    const parentA = await newParent(a);
+    expect((await createChild(b, parentA)).status).toBe(404);
+    expect((await postTo(b, parentA)).status).toBe(404);
+    expect(await count('SELECT COUNT(*) AS n FROM accounts WHERE tenant_id = ? AND parent_id = ?', [a.tenantId, parentA])).toBe(0);
+    expect(await count('SELECT COUNT(*) AS n FROM journal_lines WHERE tenant_id = ? AND account_id = ?', [a.tenantId, parentA])).toBe(0);
+    // ... and A's P is still a plain postable account.
+    const stillOk = await postTo(a, parentA);
+    expect(stillOk.status).toBe(201);
+    expectRefused(await createChild(a, parentA), 409, 'ACCOUNT_IN_USE');
+
+    for (const side of [a, b]) {
+      const tb = await api().get('/api/v1/reports/trial-balance').set(auth(side.token));
+      expect(tb.status).toBe(200);
+      expect((tb.body as TbBody).balanced).toBe(true);
+    }
+  }, 120_000);
+});

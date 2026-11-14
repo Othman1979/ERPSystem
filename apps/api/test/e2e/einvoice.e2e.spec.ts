@@ -9,21 +9,35 @@
  *  - a rejection reaches the user with its message; buyer and reason rules;
  *  - tenant isolation.
  * Real MariaDB (erp_test) + built API. Run `pnpm build` before `pnpm test`.
+ *
+ * Timing: nothing here sleeps for a fixed time to "let the worker run". A wait
+ * polls for the condition it needs, and "it was not resent" is shown by a later
+ * document going through a worker pass that started after the first one settled
+ * (afterWorkerPass). The knobs the timing depends on are the constants below,
+ * handed to the API processes the suite spawns. Every test has a generous
+ * timeout: jest's default of 5 s is shorter than the slowest of them needs
+ * (3.7 s idle) once the machine is busy.
  */
 import 'dotenv/config';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import http, { type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import net, { type AddressInfo } from 'node:net';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { createMockServer, validate } from 'jofotara-kit';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
 
-const API_PORT = 3200;
-const API2_PORT = 3201;
+/** Ports are picked free at start-up, so two runs on one machine never meet on a port. */
+let API_PORT = 0;
+let API2_PORT = 0;
+/** How often the in-API outbox worker runs, and how long an answer may take before a send is UNKNOWN. */
+const WORKER_INTERVAL_MS = 250;
+const HTTP_TIMEOUT_MS = 1500;
+/** Jest's default of 5 s is too short for the tests that wait on the worker. */
+const TEST_TIMEOUT_MS = 90_000;
 const RUN = Date.now().toString(36);
 const PASS = 'test-password-123';
 const CLIENT_ID = `client-${RUN}`;
@@ -40,24 +54,42 @@ const logs: string[] = [];
 
 /** What the "JoFotara" side saw: one entry per request, by document UUID. */
 const seen: string[] = [];
-let mode: 'forward' | 'hang' | 'duplicate' = 'forward';
+let mode: 'forward' | 'hang' | 'duplicate' | 'slow' = 'forward';
+/** In 'slow' mode an answer takes this long: a send stays SENDING for that long. */
+const SLOW_ANSWER_MS = 150;
 
 const api = (port = API_PORT) => request(`http://127.0.0.1:${port}`);
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 const idem = () => ({ 'Idempotency-Key': `ei-${RUN}-${Math.random().toString(36).slice(2)}` });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function waitFor<T>(fn: () => Promise<T | undefined | null | false>, timeoutMs = 15_000): Promise<T> {
+const slow = (name: string, fn: () => Promise<unknown>, timeoutMs = TEST_TIMEOUT_MS) => it(name, fn, timeoutMs);
+
+/** Polls until `fn` returns something truthy. The deadline is reached only when the condition never comes. */
+async function waitFor<T>(
+  fn: () => Promise<T | undefined | null | false>,
+  timeoutMs = 45_000,
+  what = 'the condition',
+  intervalMs = 100,
+): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const v = await fn();
     if (v) return v;
-    if (Date.now() > deadline) throw new Error('timed out waiting');
-    await sleep(200);
+    if (Date.now() > deadline) throw new Error(`timed out after ${timeoutMs} ms waiting for ${what}`);
+    await sleep(intervalMs);
   }
 }
 
-function startApi(port: number, worker: 'on' | 'off'): ChildProcess {
+async function freePort(): Promise<number> {
+  const probe = net.createServer();
+  await new Promise<void>((r) => probe.listen(0, '127.0.0.1', () => r()));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise((r) => probe.close(r));
+  return port;
+}
+
+function startApi(port: number, worker: 'on' | 'off', workerIntervalMs = WORKER_INTERVAL_MS): ChildProcess {
   const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
   const child = spawn('node', ['dist/main.js'], {
     cwd: path.resolve(import.meta.dirname, '..', '..'),
@@ -68,8 +100,8 @@ function startApi(port: number, worker: 'on' | 'off'): ChildProcess {
       NODE_ENV: 'test',
       EINVOICE_ENC_KEY: ENC_KEY,
       EINVOICE_WORKER: worker,
-      EINVOICE_WORKER_INTERVAL_MS: '250',
-      EINVOICE_HTTP_TIMEOUT_MS: '1500',
+      EINVOICE_WORKER_INTERVAL_MS: String(workerIntervalMs),
+      EINVOICE_HTTP_TIMEOUT_MS: String(HTTP_TIMEOUT_MS),
       // The unreachable case uses a .invalid host; anything else must be loopback.
       EINVOICE_SANDBOX_HOSTS: 'jofotara-down.invalid',
     },
@@ -86,29 +118,58 @@ function startApi(port: number, worker: 'on' | 'off'): ChildProcess {
 /** One run of the Cron command `einvoice-send` against erp_test (ADR-009 §15). */
 async function runSendJob(): Promise<{ runs: number; claimed: number }> {
   const databaseUrl = process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1');
-  const { stdout, stderr } = await promisify(execFile)('node', ['dist/jobs/cli.js', 'einvoice-send'], {
-    cwd: path.resolve(import.meta.dirname, '..', '..'),
-    env: {
-      ...process.env,
-      DATABASE_URL: databaseUrl,
-      NODE_ENV: 'test',
-      EINVOICE_ENC_KEY: ENC_KEY,
-      EINVOICE_HTTP_TIMEOUT_MS: '1500',
-      EINVOICE_SANDBOX_HOSTS: 'jofotara-down.invalid',
-    },
+  try {
+    const { stdout, stderr } = await promisify(execFile)('node', ['dist/jobs/cli.js', 'einvoice-send'], {
+      cwd: path.resolve(import.meta.dirname, '..', '..'),
+      env: {
+        ...process.env,
+        DATABASE_URL: databaseUrl,
+        NODE_ENV: 'test',
+        EINVOICE_ENC_KEY: ENC_KEY,
+        EINVOICE_HTTP_TIMEOUT_MS: String(HTTP_TIMEOUT_MS),
+        EINVOICE_SANDBOX_HOSTS: 'jofotara-down.invalid',
+      },
+    });
+    logs.push(stdout, stderr);
+    return JSON.parse(stdout) as { runs: number; claimed: number };
+  } catch (err) {
+    // execFile's message names only the command; the job's own output says why it failed.
+    const { stdout = '', stderr = '' } = err as { stdout?: string; stderr?: string };
+    logs.push(stdout, stderr);
+    throw new Error(`einvoice-send failed: ${(err as Error).message}\n${stdout}\n${stderr}`.slice(0, 4000), { cause: err });
+  }
+}
+
+/** A connection of the test's own, for playing a worker that is in the middle of a write. */
+async function newConnection(): Promise<Connection> {
+  const url = new URL(process.env.DATABASE_URL!.replace(/\/[^/?]+(\?|$)/, '/erp_test$1'));
+  return mariadb.createConnection({
+    host: url.hostname,
+    port: url.port ? Number(url.port) : 3306,
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: 'erp_test',
   });
-  logs.push(stdout, stderr);
-  return JSON.parse(stdout) as { runs: number; claimed: number };
+}
+
+async function count(sql: string, params: unknown[]): Promise<number> {
+  const [row] = (await db.query(sql, params)) as { n: bigint | number }[];
+  return Number(row.n);
 }
 
 async function waitForHealth(port: number, timeoutMs = 30_000): Promise<void> {
-  await waitFor(async () => {
-    try {
-      return (await api(port).get('/api/v1/health')).status === 200;
-    } catch {
-      return false;
-    }
-  }, timeoutMs);
+  await waitFor(
+    async () => {
+      try {
+        return (await api(port).get('/api/v1/health')).status === 200;
+      } catch {
+        return false;
+      }
+    },
+    timeoutMs,
+    `the API on port ${port} to become healthy`,
+    500, // anonymous requests have 100 a minute
+  );
 }
 
 const uuidOf = (body: string) => {
@@ -128,6 +189,7 @@ function startProxy(target: string): Promise<Server> {
     const body = Buffer.concat(chunks).toString('utf8');
     seen.push(uuidOf(body));
     if (mode === 'hang') return; // never answers: the client times out → unknown
+    if (mode === 'slow') await sleep(SLOW_ANSWER_MS);
     const forward = () =>
       fetch(`${target}${req.url}`, {
         method: req.method,
@@ -147,6 +209,8 @@ function startProxy(target: string): Promise<Server> {
 }
 
 beforeAll(async () => {
+  API_PORT = await freePort();
+  API2_PORT = await freePort();
   mock = createMockServer({ clientId: CLIENT_ID, secretKey: SECRET });
   await new Promise<void>((r) => mock.listen(0, '127.0.0.1', () => r()));
   const mockUrl = `http://127.0.0.1:${(mock.address() as AddressInfo).port}`;
@@ -173,6 +237,8 @@ afterAll(async () => {
     await once(p, 'exit').catch(() => undefined);
   }
   await db?.end();
+  // Hang mode leaves requests open on purpose; close() would wait for them.
+  proxy?.closeAllConnections();
   await new Promise((r) => proxy?.close(r));
   await new Promise((r) => mock?.close(r));
 });
@@ -243,13 +309,59 @@ describe('Phase 7 — JoFotara', () => {
     return res.body as Submission;
   }
 
-  const settled = (id: string, statuses = ['ACCEPTED', 'REJECTED', 'UNKNOWN', 'FAILED']) =>
-    waitFor(async () => {
-      const s = await get(id);
-      return statuses.includes(s.status) ? s : undefined;
-    });
+  /**
+   * Waits for the submission's status in the database, then reads it once through the API. Polling
+   * the API instead would spend the signed-in user's request allowance (300 a minute, ADR-011),
+   * and a slow run polls more, so it is the slow runs that would meet a 429.
+   */
+  async function settled(id: string, statuses = ['ACCEPTED', 'REJECTED', 'UNKNOWN', 'FAILED']): Promise<Submission> {
+    await waitFor(
+      async () => {
+        const [row] = (await db.query('SELECT status FROM einvoice_submissions WHERE tenant_id = ? AND id = ?', [
+          tenantId,
+          id,
+        ])) as { status: string }[];
+        return row !== undefined && statuses.includes(row.status);
+      },
+      45_000,
+      `submission ${id} to be ${statuses.join(' or ')}`,
+    );
+    return get(id);
+  }
 
-  it('setup', async () => {
+  /** What the outbox rows of this tenant look like now: status, last write, attempts counted and recorded. */
+  async function outboxState(ids: string[]) {
+    const rows = (await db.query(
+      `SELECT s.id, s.status, s.updated_at, s.attempt_count,
+              (SELECT COUNT(*) FROM einvoice_attempts a WHERE a.tenant_id = s.tenant_id AND a.submission_id = s.id) AS attempts
+         FROM einvoice_submissions s WHERE s.tenant_id = ? AND s.id IN (?) ORDER BY s.id`,
+      [tenantId, ids],
+    )) as { id: bigint; status: string; updated_at: Date; attempt_count: number; attempts: bigint | number }[];
+    return rows.map((r) => ({
+      id: String(r.id),
+      status: r.status,
+      updatedAt: new Date(r.updated_at).getTime(),
+      attemptCount: Number(r.attempt_count),
+      attempts: Number(r.attempts),
+    }));
+  }
+
+  /**
+   * Proof that the outbox worker has run since "now", without sleeping: a new
+   * invoice is posted and waited for until it is ACCEPTED. A worker run that
+   * sends it started after everything already settled, so had that run found
+   * an earlier submission due it would have taken it as well (rows are
+   * claimed in id order, 20 at a time). Call it with the proxy answering.
+   */
+  async function afterWorkerPass(): Promise<void> {
+    expect(mode).toBe('forward');
+    const canary = await draftInvoice('TN', '1');
+    expect((await post('sales-invoices', canary.id)).status).toBe(201);
+    const id = await waitFor(() => submissionOf('SALES_INVOICE', canary.id), 45_000, 'the canary to be queued');
+    expect((await settled(id)).status).toBe('ACCEPTED');
+  }
+
+  slow('setup', async () => {
     const reg = await api()
       .post('/api/v1/auth/register')
       .send({ tenantName: `EI ${RUN}`, ownerName: 'Owner', email: `ei-${RUN}@test.dev`, password: PASS });
@@ -260,6 +372,15 @@ describe('Phase 7 — JoFotara', () => {
       .send({ tenantName: `EI B ${RUN}`, ownerName: 'Owner B', email: `eib-${RUN}@test.dev`, password: PASS });
     tokenB = regB.body.accessToken;
     tenantId = ((await db.query('SELECT id FROM tenants WHERE name = ?', [`EI ${RUN}`])) as { id: bigint }[])[0].id;
+    // A plan of its own: the shared TRIAL plan's monthly invoice limit is lowered for a while by
+    // other suites (phase9-saas) on the same erp_test, which answered this suite's postings with 402.
+    const plan = (await db.query(
+      `INSERT INTO plans (code, name_ar, name_en, max_users, max_branches, max_warehouses,
+                          max_invoices_per_month, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, 50, 50, 50, 100000, 1, NOW(3), NOW(3))`,
+      [`E2E-EI-${RUN}`, `E2E EI ${RUN}`, `E2E EI ${RUN}`],
+    )) as { insertId: bigint };
+    await db.query('UPDATE tenants SET plan_id = ? WHERE name IN (?, ?)', [plan.insertId, `EI ${RUN}`, `EI B ${RUN}`]);
 
     await api()
       .post('/api/v1/fiscal-years')
@@ -296,7 +417,7 @@ describe('Phase 7 — JoFotara', () => {
 
   // ------------------------------------------------------------- settings
 
-  it('settings: enabling needs the seller and credentials; the secret is never returned', async () => {
+  slow('settings: enabling needs the seller and credentials; the secret is never returned', async () => {
     const before = await api().get('/api/v1/einvoice/settings').set(auth(token));
     expect(before.status).toBe(200);
     expect(before.body).toMatchObject({ isEnabled: false, hasSecret: false, environment: 'SANDBOX', encryptionKeySet: true });
@@ -331,14 +452,14 @@ describe('Phase 7 — JoFotara', () => {
 
   // ------------------------------------------------------ buyer / reason rules
 
-  it('a credit invoice needs a customer with a tax or national number', async () => {
+  slow('a credit invoice needs a customer with a tax or national number', async () => {
     const inv = await draftInvoice('NONE', '1');
     const res = await post('sales-invoices', inv.id);
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('EINVOICE_BUYER_REQUIRED');
   });
 
-  it('a small cash sale to an unnamed customer goes as a walk-in buyer (TN 0)', async () => {
+  slow('a small cash sale to an unnamed customer goes as a walk-in buyer (TN 0)', async () => {
     const inv = await draftInvoice('NONE', '1', 'CASH');
     expect((await post('sales-invoices', inv.id)).status).toBe(201);
     const s = await settled((await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!);
@@ -346,7 +467,7 @@ describe('Phase 7 — JoFotara', () => {
     expect(s.requestXml).toContain('<cbc:ID schemeID="TN">0</cbc:ID>');
   });
 
-  it('a non-Jordanian buyer goes with his personal number (PN)', async () => {
+  slow('a non-Jordanian buyer goes with his personal number (PN)', async () => {
     const inv = await draftInvoice('PN', '1', 'CASH');
     expect((await post('sales-invoices', inv.id)).status).toBe(201);
     const s = await settled((await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!);
@@ -356,7 +477,7 @@ describe('Phase 7 — JoFotara', () => {
 
   // ------------------------------------------------------------ happy path
 
-  it('a posted credit invoice is queued, validated, sent once and accepted with a QR', async () => {
+  slow('a posted credit invoice is queued, validated, sent once and accepted with a QR', async () => {
     firstInvoice = await draftInvoice('TN', '3');
     const posted = await post('sales-invoices', firstInvoice.id);
     expect(posted.status).toBe(201);
@@ -378,7 +499,7 @@ describe('Phase 7 — JoFotara', () => {
     expect(view.body.einvoice.qrPayload).toBe(firstSubmission.qrPayload);
   });
 
-  it('a return needs a reason, references the original and is accepted; so is a second one', async () => {
+  slow('a return needs a reason, references the original and is accepted; so is a second one', async () => {
     const draft = (qty: string, reason?: string) =>
       api()
         .post('/api/v1/sales-returns')
@@ -411,7 +532,7 @@ describe('Phase 7 — JoFotara', () => {
 
   // ---------------------------------------------------------- failure paths
 
-  it('a rejection is kept with its message and is not resent automatically', async () => {
+  slow('a rejection is kept with its message and is not resent automatically', async () => {
     mode = 'duplicate';
     const inv = await draftInvoice('NIN', '1');
     expect((await post('sales-invoices', inv.id)).status).toBe(201);
@@ -421,21 +542,31 @@ describe('Phase 7 — JoFotara', () => {
     expect(s.errors?.length).toBeGreaterThan(0);
     expect(s.errors![0].message).toBeTruthy();
     const sentBefore = seen.filter((u) => u === s.uuid).length;
-    await sleep(1500);
+    expect(sentBefore).toBeGreaterThan(0);
+    await afterWorkerPass(); // a worker run after the rejection: it must not have taken it again
     expect(seen.filter((u) => u === s.uuid).length).toBe(sentBefore);
+    expect((await get(s.id)).status).toBe('REJECTED');
   });
 
-  it('an unanswered request is UNKNOWN, never resent on its own; a manual resend repeats the same XML', async () => {
+  slow('an unanswered request is UNKNOWN, never resent on its own; a manual resend repeats the same XML', async () => {
     mode = 'hang';
     const inv = await draftInvoice('TN', '2');
     expect((await post('sales-invoices', inv.id)).status).toBe(201);
     const id = (await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!;
     const unknown = await settled(id);
     expect(unknown.status).toBe('UNKNOWN');
-    await sleep(1500); // several worker runs
+    // The client gave up after its timeout, not later: a 30 s default would still settle within the wait above.
+    const [attempt] = (await db.query(
+      'SELECT TIMESTAMPDIFF(MICROSECOND, started_at, finished_at) / 1000 AS ms FROM einvoice_attempts WHERE tenant_id = ? AND submission_id = ? ORDER BY attempt_no',
+      [tenantId, id],
+    )) as { ms: string | number }[];
+    expect(Number(attempt.ms)).toBeGreaterThanOrEqual(HTTP_TIMEOUT_MS - 250);
+    expect(Number(attempt.ms)).toBeLessThan(HTTP_TIMEOUT_MS + 3000);
+    mode = 'forward'; // from here an automatic resend would be answered, and seen
+    await afterWorkerPass(); // a worker run after the timeout: it must not have taken it again
     expect(seen.filter((u) => u === unknown.uuid)).toHaveLength(1);
+    expect((await get(id)).status).toBe('UNKNOWN');
 
-    mode = 'forward';
     const resend = await api().post(`/api/v1/einvoice/submissions/${id}/resend`).set(auth(token)).set(idem());
     expect(resend.status).toBe(201);
     const accepted = await settled(id, ['ACCEPTED', 'REJECTED']);
@@ -446,7 +577,7 @@ describe('Phase 7 — JoFotara', () => {
     expect(accepted.attempts?.map((a) => a.outcome)).toEqual(['unknown', 'accepted']);
   });
 
-  it('an unreachable server is FAILED with a retry planned, and recovers after a resend', async () => {
+  slow('an unreachable server is FAILED with a retry planned, and recovers after a resend', async () => {
     // A new URL drops the stored secret, so it is sent again with each change.
     const put = (baseUrl: string) =>
       api().put('/api/v1/einvoice/settings').set(auth(token)).send(settingsBody({ baseUrl, secretKey: SECRET }));
@@ -465,7 +596,7 @@ describe('Phase 7 — JoFotara', () => {
     expect((await settled(id, ['ACCEPTED', 'REJECTED'])).status).toBe('ACCEPTED');
   });
 
-  it('two workers never send the same document twice', async () => {
+  slow('two workers never send the same document twice', async () => {
     api2 = startApi(API2_PORT, 'on');
     await waitForHealth(API2_PORT);
     const ids: string[] = [];
@@ -475,6 +606,10 @@ describe('Phase 7 — JoFotara', () => {
       ids.push((await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!);
     }
     const done = await Promise.all(ids.map((id) => settled(id)));
+    // The second process has done its part: it does not outlive this test and take work in the later ones.
+    api2.kill('SIGTERM');
+    await once(api2, 'exit').catch(() => undefined);
+    api2 = undefined;
     for (const s of done) {
       expect(s.status).toBe('ACCEPTED');
       expect(seen.filter((u) => u === s.uuid)).toHaveLength(1);
@@ -482,9 +617,40 @@ describe('Phase 7 — JoFotara', () => {
     // ICVs are unique and consecutive per company.
     const icvs = done.map((s) => s.icv).sort((a, b) => a - b);
     expect(new Set(icvs).size).toBe(icvs.length);
-  }, 60_000); // boots a second API process inside the test
+  }); // boots a second API process inside the test (default timeout: 90 s)
 
-  it('parallel postings each draw their own ICV', async () => {
+  /**
+   * A smoke test for the claim and the recovery under load, not a reproduction (that is the test after
+   * the Cron one): answers are slow, so many rows are SENDING at any moment, and a second process ticks
+   * every 100 ms (the smallest the API allows) while the first finishes sends. Every document must end
+   * ACCEPTED, with one attempt.
+   */
+  slow('two busy workers: every document ends ACCEPTED, with one attempt', async () => {
+    api2 = startApi(API2_PORT, 'on', 100);
+    await waitForHealth(API2_PORT);
+    mode = 'slow';
+    try {
+      const ids: string[] = [];
+      for (let round = 0; round < 6; round++) {
+        const drafts = await Promise.all([1, 2, 3, 4].map((q) => draftInvoice('TN', String(q))));
+        const posted = await Promise.all(drafts.map((d) => post('sales-invoices', d.id)));
+        expect(posted.map((p) => p.status)).toEqual([201, 201, 201, 201]);
+        for (const d of drafts) ids.push((await waitFor(() => submissionOf('SALES_INVOICE', d.id)))!);
+      }
+      const done = await Promise.all(ids.map((id) => settled(id)));
+      expect(done.map((s) => s.status)).toEqual(Array(ids.length).fill('ACCEPTED'));
+      for (const s of done) expect(seen.filter((u) => u === s.uuid)).toHaveLength(1);
+      const state = await outboxState(ids);
+      expect(state.map((r) => [r.status, r.attemptCount, r.attempts])).toEqual(Array(ids.length).fill(['ACCEPTED', 1, 1]));
+    } finally {
+      mode = 'forward';
+      api2.kill('SIGTERM');
+      await once(api2, 'exit').catch(() => undefined);
+      api2 = undefined;
+    }
+  });
+
+  slow('parallel postings each draw their own ICV', async () => {
     const drafts = await Promise.all([1, 2, 3, 4, 5].map((q) => draftInvoice('TN', String(q))));
     const posted = await Promise.all(drafts.map((d) => post('sales-invoices', d.id)));
     // Status with the error code, so a failure says why (e.g. a deadlock after posting's one retry).
@@ -500,7 +666,7 @@ describe('Phase 7 — JoFotara', () => {
     for (const s of await Promise.all(ids.map((id) => settled(id)))) expect(s.status).toBe('ACCEPTED');
   });
 
-  it('a 0% tax line needs its e-invoice code before the invoice can be posted', async () => {
+  slow('a 0% tax line needs its e-invoice code before the invoice can be posted', async () => {
     const taxes = (await api().get('/api/v1/tax-categories').set(auth(token))).body as { id: string; rate: string }[];
     const zero = taxes.find((t) => Number(t.rate) === 0)!;
     const units = await api().get('/api/v1/units').set(auth(token));
@@ -532,7 +698,7 @@ describe('Phase 7 — JoFotara', () => {
     expect(s.requestXml).toContain('UN/ECE 5305">Z</cbc:ID>');
   });
 
-  it('the sandbox URL stays on this machine, and changing it drops the stored secret', async () => {
+  slow('the sandbox URL stays on this machine, and changing it drops the stored secret', async () => {
     const put = (body: object) => api().put('/api/v1/einvoice/settings').set(auth(token)).send(settingsBody(body));
     for (const baseUrl of ['https://attacker.example', 'http://backend.jofotara.gov.jo:443', 'http://10.0.0.5:8080']) {
       expect((await put({ baseUrl, isEnabled: false })).status).toBe(400);
@@ -550,7 +716,7 @@ describe('Phase 7 — JoFotara', () => {
     expect(back.body).toMatchObject({ isEnabled: true, hasSecret: true });
   });
 
-  it('the follow-up list counts by status; another tenant sees nothing', async () => {
+  slow('the follow-up list counts by status; another tenant sees nothing', async () => {
     const list = await api().get('/api/v1/einvoice/submissions').set(auth(token));
     expect(list.status).toBe(200);
     expect(list.body.counts.ACCEPTED).toBeGreaterThanOrEqual(10);
@@ -566,7 +732,7 @@ describe('Phase 7 — JoFotara', () => {
     expect(bSettings.body).toMatchObject({ isEnabled: false, hasSecret: false, clientId: null });
   });
 
-  it('the Cron command sends the outbox; two runs at once never send a document twice', async () => {
+  slow('the Cron command sends the outbox; two runs at once never send a document twice', async () => {
     // Restart without the in-process loop (the default now): only the command sends.
     for (const p of [api1, api2]) {
       if (!p) continue;
@@ -583,21 +749,104 @@ describe('Phase 7 — JoFotara', () => {
       expect((await post('sales-invoices', inv.id)).status).toBe(201);
       ids.push((await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!);
     }
-    await sleep(1000);
-    const waiting = (await db.query('SELECT status FROM einvoice_submissions WHERE id IN (?)', [ids])) as { status: string }[];
-    expect(waiting.map((r) => r.status)).toEqual(Array(4).fill('PENDING'));
+    const queued = await outboxState(ids);
+    expect(queued.map((r) => [r.status, r.attemptCount, r.attempts])).toEqual(Array(4).fill(['PENDING', 0, 0]));
+    // Nothing to wait for here: that nothing happens can only be watched for. Four
+    // worker intervals would have been four chances for an in-process loop to send.
+    await sleep(WORKER_INTERVAL_MS * 4);
+    // Still PENDING, and not touched at all: same last write, no attempt counted or recorded.
+    expect(await outboxState(ids)).toEqual(queued);
 
     const [a, b] = await Promise.all([runSendJob(), runSendJob()]);
-    expect(a.claimed + b.claimed).toBe(4);
-    for (const s of await Promise.all(ids.map((id) => settled(id)))) {
+    // erp_test is shared and the command is cross-tenant: it also takes other tenants' rows
+    // that happen to be due (stale FAILED retries from earlier runs), so the total is at
+    // least ours. That no document went twice is what `seen` shows next.
+    expect(a.claimed + b.claimed).toBeGreaterThanOrEqual(ids.length);
+    const done = await Promise.all(ids.map((id) => settled(id)));
+    for (const s of done) {
       expect(s.status).toBe('ACCEPTED');
       expect(seen.filter((u) => u === s.uuid)).toHaveLength(1);
     }
-    // An empty outbox: one run, nothing claimed.
-    expect(await runSendJob()).toMatchObject({ runs: 1, claimed: 0 });
+    // Each of our documents was claimed once: one attempt recorded, one counted.
+    const sent = await outboxState(ids);
+    expect(sent.map((r) => [r.status, r.attemptCount, r.attempts])).toEqual(Array(4).fill(['ACCEPTED', 1, 1]));
+    // Nothing of ours is left: another run takes none of our rows. Not one is written again
+    // (same last write, same attempts) and none is sent a second time.
+    expect((await runSendJob()).runs).toBeGreaterThanOrEqual(1);
+    expect(await outboxState(ids)).toEqual(sent);
+    for (const s of done) expect(seen.filter((u) => u === s.uuid)).toHaveLength(1);
   }, 120_000);
 
-  it('the secret never reached the logs', () => {
+  /**
+   * The deadlock found while repeating this suite, made to happen. A worker's tick used to run
+   * `UPDATE ... WHERE status = 'SENDING' AND claimed_at < ...` (the stuck-row recovery), which scanned, and
+   * so locked, every SENDING row, among them one another worker is finishing. The finish locks the primary
+   * record first and the index entries after; the scan took the index entries first and then wanted the
+   * record: a cycle. InnoDB rolled one of them back, and when that was the write recording JoFotara's
+   * answer the row stayed SENDING and ten minutes later became UNKNOWN, accepted or not.
+   *
+   * Here the finish is played by this test on a third connection, in its two halves: first the record lock
+   * (SELECT ... FOR UPDATE), then, once two Cron runs are going, the update that records ACCEPTED. The
+   * runs must not wait for that row, and the update must go through: the row ends ACCEPTED, no run
+   * reports a failure, and it is never UNKNOWN. (With the old statements the runs queue on the row and
+   * the update deadlocks with them.)
+   */
+  slow('a finish under way is not locked by two Cron runs and their recovery: the row ends ACCEPTED', async () => {
+    const inv = await draftInvoice('TN', '1');
+    expect((await post('sales-invoices', inv.id)).status).toBe(201);
+    const id = (await waitFor(() => submissionOf('SALES_INVOICE', inv.id)))!;
+    // The test plays the first worker: it has claimed the row and is sending it.
+    const token = randomUUID();
+    await db.query(
+      "UPDATE einvoice_submissions SET status = 'SENDING', claim_token = ?, claimed_at = UTC_TIMESTAMP(3), sent_at = UTC_TIMESTAMP(3) WHERE tenant_id = ? AND id = ?",
+      [token, tenantId, id],
+    );
+
+    const finisher = await newConnection();
+    try {
+      await finisher.beginTransaction();
+      await finisher.query('SELECT id FROM einvoice_submissions WHERE tenant_id = ? AND id = ? FOR UPDATE', [tenantId, id]);
+
+      // The other workers: two Cron runs, each running the recovery and the claim.
+      let finished = false;
+      const runs = Promise.all([runSendJob(), runSendJob()]).finally(() => {
+        finished = true;
+      });
+      // Wait until the runs are done, or have stopped on the held row (a statement that has been
+      // running for a while on this table: the process list shows it).
+      await waitFor(
+        async () =>
+          finished ||
+          (await count(
+            `SELECT COUNT(*) AS n FROM information_schema.PROCESSLIST
+              WHERE db = 'erp_test' AND id <> CONNECTION_ID() AND time_ms >= 300 AND info LIKE '%einvoice_submissions%'`,
+            [],
+          )) > 0,
+        45_000,
+        'the Cron runs to finish or to wait for the held row',
+      );
+
+      // The second half of the finish: record the answer, guarded by the claim token as the sender does.
+      const written = (await finisher.query(
+        "UPDATE einvoice_submissions SET status = 'ACCEPTED', claim_token = NULL, completed_at = UTC_TIMESTAMP(3), attempt_count = 1 WHERE tenant_id = ? AND id = ? AND claim_token = ?",
+        [tenantId, id, token],
+      )) as { affectedRows: number };
+      expect(written.affectedRows).toBe(1);
+      await finisher.commit();
+      await runs; // a run that failed would throw here
+    } finally {
+      await finisher.rollback().catch(() => undefined);
+      await finisher.end().catch(() => undefined);
+    }
+
+    expect(logs.join('')).not.toMatch(/run failed|deadlock/i);
+    const [row] = (await db.query('SELECT status FROM einvoice_submissions WHERE tenant_id = ? AND id = ?', [tenantId, id])) as {
+      status: string;
+    }[];
+    expect(row.status).toBe('ACCEPTED');
+  });
+
+  slow('the secret never reached the logs', async () => {
     expect(logs.join('')).not.toContain(SECRET);
   });
 });

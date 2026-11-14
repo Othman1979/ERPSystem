@@ -132,7 +132,7 @@ export class MappingsService {
       if (current && current.accountId !== accountId) {
         // Re-saving the same account is allowed; moving a balance someone
         // else settles to another account would split it (LEDGER-05).
-        await tx.$queryRaw`SELECT id FROM accounts WHERE tenant_id = ${tenantId} AND id = ${current.accountId} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM accounts FORCE INDEX (PRIMARY) WHERE tenant_id = ${tenantId} AND id = ${current.accountId} FOR UPDATE`;
         const posted = await tx.journalLine.count({
           where: { tenantId, accountId: current.accountId, entry: { status: 'POSTED' } },
         });
