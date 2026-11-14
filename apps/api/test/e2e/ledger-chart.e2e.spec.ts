@@ -533,3 +533,169 @@ describe('Ledger review fixes (2026-11-13) — chart, mappings, fiscal years, re
     expect((tb.body as TbBody).balanced).toBe(true);
   });
 });
+
+/**
+ * LEDGER-03 under concurrency (PR #26 locks the parent account FOR UPDATE when a
+ * child is created; a posting reads its accounts LOCK IN SHARE MODE). A child
+ * account under P and a posting to P are raced on separate connections:
+ * exactly one of them wins, never both.
+ *
+ *  - the posting lands while P is still postable → the child is refused
+ *    (409 ACCOUNT_IN_USE, reason HAS_LINES) and P stays a postable leaf;
+ *  - or the child is created first → P is a group and the posting is refused
+ *    (400 ACCOUNT_NOT_POSTABLE), leaving no journal line on P.
+ *
+ * The posting is an opening entry (`/journal-entries/opening`): it creates and
+ * posts in one request. A manual draft would already hold a line on P, and a
+ * draft line alone makes the child refusal certain, so it could not race.
+ * Own tenants A and B, so the totals of the suite above are untouched. Both
+ * tenants race in the same round, which also shows the lock never crosses
+ * tenants.
+ */
+describe('LEDGER-03 race — a child account under P against a posting to P', () => {
+  const ROUNDS = 14;
+  /** [child delay, posting delay] in ms: the child is usually the faster request, so it is held back by 0-48 ms to let the posting win too. */
+  const STAGGER: [number, number][] = [
+    [0, 0],
+    [8, 0],
+    [16, 0],
+    [24, 0],
+    [32, 0],
+    [0, 8],
+    [48, 0],
+  ];
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  interface Side {
+    label: string;
+    token: string;
+    tenantId: bigint;
+    /** The postable-turned-group parent of every P: "Current assets". */
+    group: string;
+  }
+
+  async function setupSide(label: string): Promise<Side> {
+    const reg = await api()
+      .post('/api/v1/auth/register')
+      .send({
+        tenantName: `LC race ${label} ${RUN}`,
+        ownerName: `Owner ${label}`,
+        email: `ledger-race-${label.toLowerCase()}-${RUN}@test.dev`,
+        password: PASS,
+      });
+    expect(reg.status).toBe(201);
+    const token = (reg.body as { accessToken: string }).accessToken;
+    const fy = await api()
+      .post('/api/v1/fiscal-years')
+      .set(auth(token))
+      .send({ code: '2025', startDate: '2025-01-01', endDate: '2025-12-31' });
+    expect(fy.status).toBe(201);
+    const accounts = (await api().get('/api/v1/accounts').set(auth(token))).body as AccountRow[];
+    const group = accounts.find((a) => a.code === '11');
+    expect(group?.isPostable).toBe(false);
+    const [tenant] = (await db.query('SELECT id FROM tenants WHERE name = ?', [`LC race ${label} ${RUN}`])) as {
+      id: bigint;
+    }[];
+    return { label, token, tenantId: tenant.id, group: group!.id };
+  }
+
+  const newParent = async (side: Side) => {
+    const res = await api()
+      .post('/api/v1/accounts')
+      .set(auth(side.token))
+      .send({ nameAr: 'P', parentId: side.group, accountType: 'ASSET' });
+    expect(res.status).toBe(201);
+    expect((res.body as AccountRow).isPostable).toBe(true);
+    return (res.body as IdBody).id;
+  };
+
+  const createChild = (side: Side, parentId: string) =>
+    api().post('/api/v1/accounts').set(auth(side.token)).send({ nameAr: 'child', parentId, accountType: 'ASSET' });
+
+  /** One opening line on P; the entry plugs the other side to the opening-balance equity. */
+  const postTo = (side: Side, accountId: string) =>
+    api()
+      .post('/api/v1/journal-entries/opening')
+      .set(auth(side.token))
+      .set(idem())
+      .send({ entryDate: '2025-01-01', description: 'race', lines: [{ accountId, debit: '10' }] });
+
+  const fire = async (delayMs: number, send: () => PromiseLike<request.Response>): Promise<request.Response> => {
+    if (delayMs > 0) await sleep(delayMs);
+    return send();
+  };
+
+  async function count(sql: string, params: unknown[]): Promise<number> {
+    const [row] = (await db.query(sql, params)) as { n: bigint | number }[];
+    return Number(row.n);
+  }
+
+  /** One race on a fresh P; returns who won and checks the invariant in the database. */
+  async function race(side: Side, round: number): Promise<'posting' | 'child'> {
+    const parentId = await newParent(side);
+    const [childDelay, postDelay] = STAGGER[round % STAGGER.length];
+    const [child, posting] = await Promise.all([
+      fire(childDelay, () => createChild(side, parentId)),
+      fire(postDelay, () => postTo(side, parentId)),
+    ]);
+
+    const lines = await count('SELECT COUNT(*) AS n FROM journal_lines WHERE tenant_id = ? AND account_id = ?', [
+      side.tenantId,
+      parentId,
+    ]);
+    const children = await count('SELECT COUNT(*) AS n FROM accounts WHERE tenant_id = ? AND parent_id = ?', [
+      side.tenantId,
+      parentId,
+    ]);
+    const postable = await count('SELECT is_postable AS n FROM accounts WHERE tenant_id = ? AND id = ?', [
+      side.tenantId,
+      parentId,
+    ]);
+    const where = `tenant ${side.label}, round ${round}`;
+
+    // Never both: a used account must not gain a child, and a group must not hold a line.
+    expect({ where, stranded: lines > 0 && children > 0 }).toEqual({ where, stranded: false });
+
+    if (posting.status === 201) {
+      expectRefused(child, 409, 'ACCOUNT_IN_USE');
+      expect(errorOf(child).details).toMatchObject({ reason: 'HAS_LINES' });
+      expect({ where, lines, children, postable }).toEqual({ where, lines: 1, children: 0, postable: 1 });
+      return 'posting';
+    }
+    expect({ where, child: child.status }).toEqual({ where, child: 201 });
+    expectRefused(posting, 400, 'ACCOUNT_NOT_POSTABLE');
+    expect({ where, lines, children, postable }).toEqual({ where, lines: 0, children: 1, postable: 0 });
+    return 'child';
+  }
+
+  it('exactly one wins every round, in both tenants at once; tenant B cannot touch A\'s account', async () => {
+    const a = await setupSide('A');
+    const b = await setupSide('B');
+    const won = { posting: 0, child: 0 };
+
+    for (let round = 0; round < ROUNDS; round++) {
+      const [ra, rb] = await Promise.all([race(a, round), race(b, round + 3)]);
+      won[ra] += 1;
+      won[rb] += 1;
+    }
+    // Which side wins is up to the scheduler; every round must have had exactly one winner.
+    expect(won.posting + won.child).toBe(ROUNDS * 2);
+
+    // Tenant B never reaches tenant A's accounts, with or without a race.
+    const parentA = await newParent(a);
+    expect((await createChild(b, parentA)).status).toBe(404);
+    expect((await postTo(b, parentA)).status).toBe(404);
+    expect(await count('SELECT COUNT(*) AS n FROM accounts WHERE tenant_id = ? AND parent_id = ?', [a.tenantId, parentA])).toBe(0);
+    expect(await count('SELECT COUNT(*) AS n FROM journal_lines WHERE tenant_id = ? AND account_id = ?', [a.tenantId, parentA])).toBe(0);
+    // ... and A's P is still a plain postable account.
+    const stillOk = await postTo(a, parentA);
+    expect(stillOk.status).toBe(201);
+    expectRefused(await createChild(a, parentA), 409, 'ACCOUNT_IN_USE');
+
+    for (const side of [a, b]) {
+      const tb = await api().get('/api/v1/reports/trial-balance').set(auth(side.token));
+      expect(tb.status).toBe(200);
+      expect((tb.body as TbBody).balanced).toBe(true);
+    }
+  }, 120_000);
+});
