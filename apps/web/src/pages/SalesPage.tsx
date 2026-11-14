@@ -13,6 +13,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
@@ -39,6 +40,7 @@ import { ListToolbar } from '../components/ListToolbar';
 import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { useRemoteOptions } from '../hooks/useRemoteOptions';
+import { costCenterOptions, useCostCenters } from '../hooks/useCostCenters';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { salesInvoiceBody, salesInvoiceFormDefaults } from './sales/invoicePayload';
@@ -437,6 +439,8 @@ function InvoiceForm({
   const formDefaults = salesInvoiceFormDefaults(invoice);
   const [paymentType, setPaymentType] = useState<'CASH' | 'CREDIT'>(formDefaults.paymentType);
   const [cashAccountId, setCashAccountId] = useState<string | undefined>(formDefaults.cashAccountId);
+  const costCenters = useCostCenters();
+  const [costCenterId, setCostCenterId] = useState<string | undefined>(formDefaults.costCenterId);
   const [lines, setLines] = useState<InvoiceLineDraft[]>(() => {
     if (invoice?.lines.length) {
       return invoice.lines.map((l, i) => ({
@@ -502,6 +506,8 @@ function InvoiceForm({
           warehouseId,
           paymentType,
           cashAccountId,
+          // A draft keeps its centre while centres are off (ADR-024 §1.6): hidden, still sent.
+          costCenterId,
           lines,
         },
         invoice,
@@ -615,10 +621,29 @@ function InvoiceForm({
         <DocField
           field="dueDate"
           label={t('sales.dueDate')}
-          onKeyDown={enterTo(() => focusNamedField('paymentType'))}
+          onKeyDown={enterTo(() => focusNamedField(costCenters.enabled ? 'costCenter' : 'paymentType'))}
         >
           <DatePicker value={dueDate} onChange={setDueDate} allowClear />
         </DocField>
+        {costCenters.enabled && (
+          <DocField
+            field="costCenter"
+            label={
+              <Tooltip title={t('costCenters.documentHint')}>
+                <span>{t('costCenters.documentField')}</span>
+              </Tooltip>
+            }
+            onKeyDown={enterTo(() => focusNamedField('paymentType'))}
+          >
+            <GridSelect
+              enterOpens
+              allowClear
+              options={costCenterOptions(costCenters.rows, [costCenterId])}
+              value={costCenterId}
+              onChange={setCostCenterId}
+            />
+          </DocField>
+        )}
         <DocField
           field="paymentType"
           label={t('sales.paymentType')}
@@ -690,6 +715,7 @@ function InvoiceView({
   const { t } = useTranslation();
   const [, contextHolder] = message.useMessage();
   const { modal } = App.useApp();
+  const costCenters = useCostCenters();
   const isDraft = invoice?.status === 'DRAFT';
   // Ctrl+Enter posts a draft, behind the same confirmation as the button.
   const confirmPost = () => {
@@ -746,6 +772,11 @@ function InvoiceView({
         <DocField label={t('sales.dueDate')}>
           <DocValue>{invoice.dueDate ? dayjs(invoice.dueDate).format('YYYY-MM-DD') : '—'}</DocValue>
         </DocField>
+        {costCenters.enabled && invoice.costCenterId && (
+          <DocField label={t('costCenters.documentField')}>
+            <DocValue>{costCenters.nameOf(invoice.costCenterId)}</DocValue>
+          </DocField>
+        )}
         <DocField label={t('sales.net')}>
           <DocValue>{amountCell(invoice.netTotal)}</DocValue>
         </DocField>
@@ -810,6 +841,7 @@ function ReturnsTab() {
   const [statusFilter, setStatusFilter] = useState<SalesControllerListReturnsStatus | undefined>(undefined);
   const [modalOpen, setModalOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
+  const costCenters = useCostCenters();
   const [apiMessage, contextHolder] = message.useMessage();
 
   // Server-paged (ADR-022): search, status filter, sort and page go to the API.
@@ -979,6 +1011,11 @@ function ReturnsTab() {
                 <DocField label={t('sales.refundType')}>
                   <DocValue>{t(`sales.${view.refundType}`)}</DocValue>
                 </DocField>
+                {costCenters.enabled && view.costCenterId && (
+                  <DocField label={t('costCenters.documentField')}>
+                    <DocValue>{costCenters.nameOf(view.costCenterId)}</DocValue>
+                  </DocField>
+                )}
                 <DocField label={t('sales.grandTotal')}>
                   <DocValue>{amountCell(view.grandTotal)}</DocValue>
                 </DocField>
@@ -1076,6 +1113,8 @@ function ReturnForm({
   const [cashAccountId, setCashAccountId] = useState<string | undefined>();
   const [reason, setReason] = useState('');
   const [qtyByLine, setQtyByLine] = useState<Record<string, string>>({});
+  const costCenters = useCostCenters();
+  const [costCenterId, setCostCenterId] = useState<string | undefined>();
 
   const lookups = useSalesLookups();
   const { data: invoice } = useQuery({
@@ -1094,6 +1133,7 @@ function ReturnForm({
         refundType,
         cashAccountId: refundType === 'CASH' ? cashAccountId : undefined,
         reason: reason || undefined,
+        costCenterId: costCenterId || undefined,
         lines: (invoice?.lines ?? [])
           .filter((l) => dec(qtyByLine[l.id]).gt(0))
           .map((l) => ({ originalLineId: l.id, qty: qtyByLine[l.id] })),
@@ -1189,6 +1229,24 @@ function ReturnForm({
         <DocField label={t('sales.date')}>
           <DatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} />
         </DocField>
+        {costCenters.enabled && (
+          <DocField
+            label={
+              <Tooltip title={t('costCenters.documentHint')}>
+                <span>{t('costCenters.documentField')}</span>
+              </Tooltip>
+            }
+          >
+            <Select
+              showSearch
+              allowClear
+              optionFilterProp="label"
+              options={costCenterOptions(costCenters.rows, [costCenterId])}
+              value={costCenterId}
+              onChange={setCostCenterId}
+            />
+          </DocField>
+        )}
         <DocField label={t('sales.refundType')}>
           <Radio.Group
             name="refundType"

@@ -19,6 +19,8 @@ export interface PurchaseInvoiceForm {
   warehouseId?: string;
   paymentType: 'CASH' | 'CREDIT';
   cashAccountId?: string;
+  /** Optional header cost centre (ADR-024); left out of the body when empty. */
+  costCenterId?: string;
   lines: PurchaseInvoiceFormLine[];
 }
 
@@ -30,12 +32,14 @@ export interface PurchaseInvoiceForm {
 export function purchaseInvoiceFormDefaults(invoice?: PurchaseInvoiceDetailDto): {
   paymentType: 'CASH' | 'CREDIT';
   cashAccountId?: string;
+  costCenterId?: string;
   supplierInvoiceNo?: string;
   supplierInvoiceDate?: string;
 } {
   return {
     paymentType: invoice?.paymentType ?? 'CREDIT',
     cashAccountId: invoice?.cashAccountId ?? undefined,
+    costCenterId: invoice?.costCenterId ?? undefined,
     supplierInvoiceNo: invoice?.supplierInvoiceNo ?? undefined,
     supplierInvoiceDate: invoice?.supplierInvoiceDate
       ? dayjs(invoice.supplierInvoiceDate).format('YYYY-MM-DD')
@@ -61,6 +65,7 @@ export function purchaseInvoiceBody(
     warehouseId: form.warehouseId,
     paymentType: form.paymentType,
     cashAccountId: form.paymentType === 'CASH' ? form.cashAccountId : undefined,
+    costCenterId: form.costCenterId || undefined,
     description: invoice?.description ?? undefined,
     receivedGrnId: invoice?.receivedGrnId ?? undefined,
     lines: form.lines.flatMap((l) =>

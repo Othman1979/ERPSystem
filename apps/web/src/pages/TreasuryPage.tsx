@@ -15,6 +15,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -79,6 +80,7 @@ import { amountCell } from '../format/cells';
 import { dec, formatAmount, sum } from '../format/number';
 import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
+import { costCenterOptions, useCostCenters } from '../hooks/useCostCenters';
 
 // ------------------------------------------------------------- types
 
@@ -519,6 +521,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
   const [modalOpen, setModalOpen] = useState(false);
   useNewFromUrl(() => setModalOpen(true));
   const [viewId, setViewId] = useState<string | null>(null);
+  const costCenters = useCostCenters();
   const [api, contextHolder] = message.useMessage();
   const onError = (err: unknown) =>
     api.error(err instanceof ApiError ? t(`errors.${err.code}`, { defaultValue: err.message }) : t('errors.INTERNAL'));
@@ -722,6 +725,11 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                 <DocField label={t('treasury.cashAccount')}>
                   <DocValue>{view.cashAccount ? codeAndName(view.cashAccount) : '—'}</DocValue>
                 </DocField>
+                {costCenters.enabled && view.costCenterId && (
+                  <DocField label={t('costCenters.documentField')}>
+                    <DocValue>{costCenters.nameOf(view.costCenterId)}</DocValue>
+                  </DocField>
+                )}
                 <DocField label={t('treasury.amount')}>
                   <DocValue>{amountCell(view.amount)}</DocValue>
                 </DocField>
@@ -849,6 +857,8 @@ function VoucherForm({
   const [description, setDescription] = useState('');
   const [allocations, setAllocations] = useState<{ documentId: string; amount: string | null }[]>([]);
   const [autoAllocate, setAutoAllocate] = useState(false);
+  const costCenters = useCostCenters();
+  const [costCenterId, setCostCenterId] = useState<string | undefined>();
   // One key per opened form: a double-click or retry replays, never posts twice.
   const idemKey = useMemo(() => crypto.randomUUID(), []);
 
@@ -915,6 +925,7 @@ function VoucherForm({
         partyType,
         partyId: partyId!,
         cashAccountId: cashAccountId!,
+        costCenterId: costCenterId || undefined,
         amount: amount!,
         referenceNo: referenceNo || undefined,
         description: description || undefined,
@@ -1033,6 +1044,24 @@ function VoucherForm({
             onChange={setCashAccountId}
           />
         </DocField>
+        {costCenters.enabled && (
+          <DocField
+            field="costCenter"
+            label={
+              <Tooltip title={t('costCenters.documentHint')}>
+                <span>{t('costCenters.documentField')}</span>
+              </Tooltip>
+            }
+          >
+            <GridSelect
+              enterOpens
+              allowClear
+              options={costCenterOptions(costCenters.rows, [costCenterId])}
+              value={costCenterId}
+              onChange={setCostCenterId}
+            />
+          </DocField>
+        )}
         <DocField field="amount" label={t('treasury.amount')} required error={requiredError(missing.amount)}>
           <InputNumber<string>
             className="doc-amount"

@@ -27,6 +27,12 @@ describe('purchase return body (ADR-016 §5)', () => {
     expect(purchaseReturnBody(invoice, { ...form, refundType: 'CASH' }).cashAccountId).toBe('77');
   });
 
+  it('sends the cost centre when one is chosen, and leaves it out when none', () => {
+    expect(purchaseReturnBody(invoice, { ...form, costCenterId: '42' }).costCenterId).toBe('42');
+    const body = JSON.parse(JSON.stringify(purchaseReturnBody(invoice, form))) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('costCenterId');
+  });
+
   it('sends no warehouse for an invoice without one (a service-only return has none)', () => {
     const body = JSON.parse(JSON.stringify(purchaseReturnBody({ ...invoice, warehouseId: null }, form))) as Record<string, unknown>;
     expect(body).not.toHaveProperty('warehouseId');

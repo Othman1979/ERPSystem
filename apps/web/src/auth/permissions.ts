@@ -14,6 +14,7 @@ export const PERMISSIONS = {
   TREASURY_MANAGE: 'treasury.manage',
   EINVOICE_MANAGE: 'einvoice.manage',
   REPORTS_VIEW: 'reports.view',
+  COST_CENTER_MANAGE: 'cost_center.manage',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

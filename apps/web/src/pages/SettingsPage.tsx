@@ -42,6 +42,7 @@ import { displayName } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { formatPercent } from '../format/number';
 import { EInvoiceSettingsTab } from './einvoice/EInvoiceSettingsTab';
+import { CostCentersTab } from './settings/CostCentersTab';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 
@@ -353,6 +354,7 @@ export function SettingsPage() {
             label: t('settings.taxCategories'),
             children: <LookupTable kind="taxCategory" title={t('settings.taxCategories')} />,
           },
+          { key: 'costCenters', label: t('costCenters.title'), children: <CostCentersTab /> },
           {
             key: 'payments',
             label: t('settings.paymentMethods'),

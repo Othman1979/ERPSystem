@@ -38,9 +38,15 @@ describe('purchase invoice defaults', () => {
     expect(purchaseInvoiceFormDefaults(savedInvoice)).toEqual({
       paymentType: 'CASH',
       cashAccountId: '77',
+      costCenterId: undefined,
       supplierInvoiceNo: 'SUP-1001',
       supplierInvoiceDate: '2025-01-05',
     });
+  });
+
+  it('carries the cost centre of a saved invoice', () => {
+    const withCentre = { ...savedInvoice, costCenterId: '42' } as unknown as PurchaseInvoiceDetailDto;
+    expect(purchaseInvoiceFormDefaults(withCentre).costCenterId).toBe('42');
   });
 });
 
@@ -65,6 +71,12 @@ describe('purchase invoice body', () => {
 
   it('drops the cash account of a CREDIT invoice', () => {
     expect(purchaseInvoiceBody({ ...form, paymentType: 'CREDIT' }).cashAccountId).toBeUndefined();
+  });
+
+  it('sends the cost centre when one is chosen, and leaves it out when none', () => {
+    expect(purchaseInvoiceBody({ ...form, costCenterId: '42' }).costCenterId).toBe('42');
+    const body = JSON.parse(JSON.stringify(purchaseInvoiceBody({ ...form, costCenterId: '' }))) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('costCenterId');
   });
 
   it('passes description and receivedGrnId through from the loaded invoice', () => {

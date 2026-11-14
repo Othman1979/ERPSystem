@@ -33,6 +33,12 @@ import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { ReverseButton } from '../components/ReverseButton';
 import { usePartyColumn } from '../components/usePartyColumn';
+import {
+  costCenterRulesByAccount,
+  firstLineProblem,
+  lineProblemText,
+} from '../components/journalLineChecks';
+import { costCenterOptions, useCostCenters } from '../hooks/useCostCenters';
 import { amountCell, amountOrBlankCell } from '../format/cells';
 import { formatAmount } from '../format/number';
 import { codeAndName } from '../i18n/displayName';
@@ -76,6 +82,9 @@ export function OpeningBalancesPage() {
   const [entryDate, setEntryDate] = useState<Dayjs>(dayjs());
   const [description, setDescription] = useState('');
   const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
+  // Rows marked after the check before posting (the same marks as the journal).
+  const [missingParty, setMissingParty] = useState<number | null>(null);
+  const [missingCentre, setMissingCentre] = useState<number | null>(null);
   const [formSeq, setFormSeq] = useState(0);
   // One key per opened form: a double click or a retry after a lost response
   // replays the same entry instead of posting a second one.
@@ -123,6 +132,18 @@ export function OpeningBalancesPage() {
     .filter((a) => a.id !== inventoryAccountId && a.id !== equityAccount?.id)
     .map((a) => ({ value: a.id, label: codeAndName(a) }));
 
+  // Cost centres (ADR-024 §1) only while the company has them on: the column and the check.
+  const centres = useCostCenters();
+  const costCenterColumn = centres.enabled
+    ? {
+        options: costCenterOptions(centres.rows, lines.map((l) => l.costCenterId)),
+        ...costCenterRulesByAccount(accounts.data),
+      }
+    : undefined;
+  const centreRules = centres.enabled
+    ? { enabled: true, ...costCenterRulesByAccount(accounts.data) }
+    : undefined;
+
   const filled = lines.filter((l): l is FilledLine => !!l.accountId);
   const plug = openingPlug(filled);
   const equityLabel = equityAccount ? codeAndName(equityAccount) : t('opening.equityAccount');
@@ -145,6 +166,8 @@ export function OpeningBalancesPage() {
     setEntryDate(defaultOpeningDate(years.data));
     setDescription(t('opening.defaultDescription'));
     setLines([emptyLine(1), emptyLine(2)]);
+    setMissingParty(null);
+    setMissingCentre(null);
     setFormSeq((s) => s + 1);
     setScreen('entry');
   };
@@ -175,6 +198,7 @@ export function OpeningBalancesPage() {
             credit: l.credit || undefined,
             description: l.description || undefined,
             ...partyFields(l, partyColumn),
+            ...(l.costCenterId ? { costCenterId: l.costCenterId } : {}),
           })),
         },
         { headers: { 'Idempotency-Key': idemKey } },
@@ -204,9 +228,12 @@ export function OpeningBalancesPage() {
       apiMessage.error(t('opening.noLines'));
       return;
     }
-    const noParty = filled.find((l) => partyColumn.kindByAccount.has(l.accountId!) && !l.partyId);
-    if (noParty) {
-      apiMessage.error(t('journal.partyRequired', { line: lines.indexOf(noParty) + 1 }));
+    // The same check as the journal before saving: a posted entry cannot be fixed afterwards.
+    const problem = firstLineProblem(lines, partyColumn.kindByAccount, partyColumn.sideOf, centreRules);
+    setMissingParty(problem?.rule === 'PARTY_REQUIRED' ? lines[problem.index].key : null);
+    setMissingCentre(problem && problem.rule.startsWith('COST_CENTER') ? lines[problem.index].key : null);
+    if (problem) {
+      apiMessage.error(lineProblemText(t, problem));
       return;
     }
     modal.confirm({
@@ -374,6 +401,14 @@ export function OpeningBalancesPage() {
                 title: t('journal.party'),
                 render: (_: unknown, l: JournalEntryLineDto) => partyName(l.partyId) ?? '—',
               },
+              ...(centres.enabled
+                ? [
+                    {
+                      title: t('costCenters.column'),
+                      render: (_: unknown, l: JournalEntryLineDto) => centres.nameOf(l.costCenterId) || '—',
+                    },
+                  ]
+                : []),
               {
                 title: t('common.description'),
                 dataIndex: 'description',
@@ -384,7 +419,7 @@ export function OpeningBalancesPage() {
             ]}
             summary={() => (
               <Table.Summary.Row style={{ fontWeight: 600 }}>
-                <Table.Summary.Cell index={0} colSpan={4}>
+                <Table.Summary.Cell index={0} colSpan={centres.enabled ? 5 : 4}>
                   {t('journal.total')}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">
@@ -444,6 +479,9 @@ export function OpeningBalancesPage() {
           accountOptions={accountOptions}
           focusSignal={formSeq}
           partyColumn={partyColumn}
+          costCenterColumn={costCenterColumn}
+          missingParty={missingParty}
+          missingCostCenter={missingCentre}
           footerNote={
             plug.totalDebit.isZero() && plug.totalCredit.isZero() ? null : (
               <Typography.Text type={plug.side === null ? 'success' : 'secondary'}>{plugText}</Typography.Text>

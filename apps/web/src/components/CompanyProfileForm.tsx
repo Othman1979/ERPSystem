@@ -25,7 +25,14 @@ const LOGO_MAX_BYTES = 1024 * 1024;
 
 type FormValues = Pick<
   CompanyDto,
-  'legalNameAr' | 'legalNameEn' | 'taxNumber' | 'commercialRegistration' | 'address' | 'phone' | 'pricesIncludeTax'
+  | 'legalNameAr'
+  | 'legalNameEn'
+  | 'taxNumber'
+  | 'commercialRegistration'
+  | 'address'
+  | 'phone'
+  | 'pricesIncludeTax'
+  | 'costCentersEnabled'
 >;
 
 /**
@@ -115,6 +122,16 @@ export function CompanyProfileForm({
       </div>
       {withTax && (
         <Form.Item name="pricesIncludeTax" label={t('company.pricesIncludeTax')} valuePropName="checked" extra={t('company.pricesIncludeTaxHint')}>
+          <Switch />
+        </Form.Item>
+      )}
+      {withTax && (
+        <Form.Item
+          name="costCentersEnabled"
+          label={t('costCenters.enableLabel')}
+          valuePropName="checked"
+          extra={t('costCenters.enableHint')}
+        >
           <Switch />
         </Form.Item>
       )}

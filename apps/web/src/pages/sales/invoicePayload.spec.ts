@@ -24,7 +24,12 @@ describe('sales invoice defaults', () => {
   });
 
   it('carries the cash account of a saved CASH invoice', () => {
-    expect(salesInvoiceFormDefaults(savedInvoice)).toEqual({ paymentType: 'CASH', cashAccountId: '88' });
+    expect(salesInvoiceFormDefaults(savedInvoice)).toEqual({ paymentType: 'CASH', cashAccountId: '88', costCenterId: undefined });
+  });
+
+  it('carries the cost centre of a saved invoice', () => {
+    const withCentre = { ...savedInvoice, costCenterId: '42' } as unknown as SalesInvoiceDetailDto;
+    expect(salesInvoiceFormDefaults(withCentre).costCenterId).toBe('42');
   });
 });
 
@@ -38,6 +43,15 @@ describe('sales invoice body', () => {
 
   it('drops the cash account of a CREDIT invoice', () => {
     expect(salesInvoiceBody({ ...form, paymentType: 'CREDIT' }).cashAccountId).toBeUndefined();
+  });
+
+  it('sends the cost centre when one is chosen', () => {
+    expect(salesInvoiceBody({ ...form, costCenterId: '42' }).costCenterId).toBe('42');
+  });
+
+  it('leaves the cost centre out of the body when none is chosen', () => {
+    const body = JSON.parse(JSON.stringify(salesInvoiceBody({ ...form, costCenterId: '' }))) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('costCenterId');
   });
 
   it('passes the description through from the loaded invoice', () => {

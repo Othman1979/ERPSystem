@@ -22,6 +22,7 @@ import { bothNames, codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { AgingTab } from './reports/AgingTab';
 import { BalanceSheetTab } from './reports/BalanceSheetTab';
+import { CostCenterStatementTab } from './reports/CostCenterStatementTab';
 import { IncomeStatementTab } from './reports/IncomeStatementTab';
 import { ItemBalancesTab } from './reports/ItemBalancesTab';
 import { LedgerTable, sideCell, type LedgerLine, type LedgerSummary } from './reports/LedgerTable';
@@ -30,6 +31,7 @@ import { TradeSummaryTab } from './reports/TradeSummaryTab';
 import { ExportButtons } from '../components/ExportButtons';
 import { formatAmount } from '../format/number';
 import { useAccounts } from '../hooks/useAccounts';
+import { useCostCenters } from '../hooks/useCostCenters';
 import { useAuth } from '../auth/AuthContext';
 import { useKeysetQuery } from '../hooks/useKeysetQuery';
 
@@ -51,7 +53,7 @@ const STATEMENT_PAGE_LIMIT = 100;
  * branch. The API refuses them otherwise, so their tabs are hidden and their
  * queries never run for a branch-scoped member.
  */
-const COMPANY_WIDE_TABS = new Set(['tb', 'is', 'bs', 'gl']);
+const COMPANY_WIDE_TABS = new Set(['tb', 'is', 'bs', 'gl', 'cc']);
 
 
 
@@ -79,6 +81,7 @@ export function ReportsPage() {
   const [partyType, setPartyType] = useState<'CUSTOMER' | 'SUPPLIER' | undefined>(undefined);
   const [partyId, setPartyId] = useState<string | undefined>(undefined);
 
+  const { enabled: costCentersEnabled } = useCostCenters();
   const { data: accounts } = useAccounts();
   const accountOptions = (accounts ?? []).map((a) => ({
     value: a.id,
@@ -380,6 +383,10 @@ export function ReportsPage() {
         </>
       ),
     },
+    // Cost centre statement: only while cost centres are on for the company (ADR-024).
+    ...(costCentersEnabled
+      ? [{ key: 'cc', label: t('costCenters.statement'), children: <CostCenterStatementTab /> }]
+      : []),
     {
       key: 'items',
       label: t('reports.itemBalances'),
