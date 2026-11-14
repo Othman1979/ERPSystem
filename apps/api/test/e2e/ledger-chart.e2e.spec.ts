@@ -725,7 +725,7 @@ describe('LEDGER-03 race — a child account under P against a posting to P', ()
   }
 
   /** The child creation takes P FOR UPDATE; the posting reads its accounts LOCK IN SHARE MODE. */
-  const CHILD_WAIT = '%FROM accounts WHERE tenant_id = ? AND id = ? FOR UPDATE%';
+  const CHILD_WAIT = '%FROM accounts%WHERE tenant_id = ? AND id = ? FOR UPDATE%';
   const POSTING_WAIT = '%FROM accounts%LOCK IN SHARE MODE%';
 
   /**
@@ -765,6 +765,25 @@ describe('LEDGER-03 race — a child account under P against a posting to P', ()
   it('sets up two tenants with a fiscal year each', async () => {
     a = await setupSide('A');
     b = await setupSide('B');
+  });
+
+  it('the account lock reads go through the PRIMARY key and look at one row per id', async () => {
+    // On MariaDB 10.11 the posting's read went through accounts_tenant_id_id_key while the child creation
+    // held the PRIMARY record: a deadlock. Every statement that locks an account row now starts at the
+    // clustered record (FORCE INDEX (PRIMARY)); this shows the plan on the version CI runs, and that it stays cheap.
+    const parentId = await newParent(a);
+    const plans = (await Promise.all([
+      db.query('EXPLAIN SELECT id FROM accounts FORCE INDEX (PRIMARY) WHERE tenant_id = ? AND id = ? FOR UPDATE', [a.tenantId, parentId]),
+      db.query(
+        'EXPLAIN SELECT id, code FROM accounts FORCE INDEX (PRIMARY) WHERE tenant_id = ? AND company_id = ? AND id IN (?, ?) ORDER BY id LOCK IN SHARE MODE',
+        [a.tenantId, a.tenantId, parentId, a.group],
+      ),
+    ])) as { type: string; key: string; rows: bigint | number }[][];
+    for (const [plan] of plans) {
+      expect(plan.key).toBe('PRIMARY');
+      expect(['const', 'range', 'eq_ref']).toContain(plan.type);
+      expect(Number(plan.rows)).toBeLessThanOrEqual(2);
+    }
   });
 
   it('held lock, both orders, both tenants: the request queued first wins, the other is refused', async () => {

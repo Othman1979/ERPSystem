@@ -92,9 +92,13 @@ export class PostingService {
     // MappingsService) waits for this posting, and a posting after that change
     // sees it (review of PR #26, LEDGER-03). Ascending id order, so two
     // postings never take these locks in opposite orders.
+    // FORCE INDEX (PRIMARY): every statement that locks an account row by id takes
+    // the clustered record first, then any index entry. Left to the optimizer, MariaDB
+    // 10.11 read through accounts_tenant_id_id_key (S on the index entry, then on the
+    // record) while AccountsService held the record and wanted the entry: a deadlock.
     const rows = (await tx.$queryRaw`
       SELECT id, code, is_active, is_postable, is_control, control_type
-      FROM accounts
+      FROM accounts FORCE INDEX (PRIMARY)
       WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id IN (${Prisma.join(accountIds)})
       ORDER BY id
       LOCK IN SHARE MODE

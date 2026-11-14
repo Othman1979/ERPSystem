@@ -7,7 +7,7 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
-import { calendarDateIn } from '../shared/document-support.service.js';
+import { calendarDateIn, retryOnLockConflict } from '../shared/document-support.service.js';
 import { CreateAccountDto, UpdateAccountDto } from './dto/accounting.dto.js';
 
 // journal_lines is read here, not through JournalModule: JournalModule imports AccountingModule (cycle). Read-only usage checks; both are the accounting domain (CLAUDE.md module list).
@@ -134,11 +134,13 @@ export class AccountsService {
     // transaction; a unique-collision retries with the next sequence.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const account = await db.$transaction(async (tx) => {
+        // A deadlock with a posting on the same parent rolls this transaction back; run again,
+        // it then sees the committed posting and answers ACCOUNT_IN_USE (not CONFLICT).
+        const account = await retryOnLockConflict(() => db.$transaction(async (tx) => {
           if (parent) {
             // Lock the parent first: the usage checks and the INSERT below
             // must see the same state (LEDGER-03).
-            await tx.$queryRaw`SELECT id FROM accounts WHERE tenant_id = ${tenantId} AND id = ${parent.id} FOR UPDATE`;
+            await tx.$queryRaw`SELECT id FROM accounts FORCE INDEX (PRIMARY) WHERE tenant_id = ${tenantId} AND id = ${parent.id} FOR UPDATE`;
             // Re-read the flags under the lock: they may have changed since loadParent.
             const current = await tx.account.findFirst({
               where: { id: parent.id },
@@ -176,7 +178,7 @@ export class AccountsService {
             });
           }
           return created;
-        });
+        }));
         await this.audit.log({
           action: 'account.create',
           entityType: 'account',
@@ -293,8 +295,9 @@ export class AccountsService {
     // accounts until COMMIT (PostingService.validateLines), so the checks
     // below and the update see no posting in flight, and a later posting sees
     // the new flags (review of PR #26).
-    const { existing, updated } = await db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM accounts WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    // Run again on a deadlock with a posting (same reason as in create).
+    const { existing, updated } = await retryOnLockConflict(() => db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM accounts FORCE INDEX (PRIMARY) WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
       const existing = await tx.account.findFirst({ where: { id, companyId } });
       if (!existing) throw DomainError.notFound('Account', id.toString());
 
@@ -341,7 +344,7 @@ export class AccountsService {
         },
       });
       return { existing, updated };
-    });
+    }));
     await this.audit.log({
       action: 'account.update',
       entityType: 'account',
