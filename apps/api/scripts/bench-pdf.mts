@@ -80,3 +80,6 @@ for (const lang of ['ar', 'en'] as const) {
     if (outDir) writeFileSync(path.join(outDir, `invoice-${lang}-${n}.pdf`), buf);
   }
 }
+
+// resourceUsage().maxRSS is in kilobytes: the peak resident set of the whole process so far.
+console.log(`peak RSS: ${(process.resourceUsage().maxRSS / 1024).toFixed(0)} MB`);

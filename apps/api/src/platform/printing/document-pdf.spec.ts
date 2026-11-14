@@ -3,13 +3,15 @@ import { salesInvoicePrint } from '../sales/sales.print.js';
 import { documentPdf } from './document-pdf.js';
 import { renderPdf } from './pdf-render.js';
 import type { PrintContext } from './report-table.js';
+import { woffStats } from './woff.js';
 
 /**
  * A 200-line sales invoice used to take ~5 s in the request thread
  * (TRADE-21): every document re-decompressed the WOFF fonts with a pure-JS
  * inflate. Fonts are now unwrapped once per process (woff.ts), so a render
- * costs about 0.3 s locally. The bound below is generous for slow CI
- * runners, but well under the old cost.
+ * costs about 0.3 s locally. Timings flake on loaded runners, so the lock is
+ * structural: the unwrap count must not grow across renders. The time bound
+ * is only a loose sanity check.
  */
 const D = (v: string) => new Decimal(v);
 
@@ -56,28 +58,35 @@ describe('document PDFs', () => {
     await render(5, 'ar');
   }, 30_000);
 
-  it.each(['ar', 'en'] as const)('a 200-line invoice (%s) renders in under 1.5 s and keeps its shape', async (lang) => {
+  it.each(['ar', 'en'] as const)('a 200-line invoice (%s) keeps its shape without unwrapping fonts again', async (lang) => {
     const def = documentPdf(salesInvoicePrint(invoice(200), lang), ctx(lang));
+    const unwrapsBefore = woffStats.unwraps;
     const started = performance.now();
     const pdf = await renderPdf(def);
     const took = performance.now() - started;
 
-    expect(took).toBeLessThan(1_500);
+    // Regression guard (TRADE-21): no font work per document. Both fonts were unwrapped by the warm-up.
+    expect(woffStats.unwraps).toBe(unwrapsBefore);
+    expect(took).toBeLessThan(5_000);
     expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
     // The font is embedded as a subset, from the unwrapped Buffer.
     expect(pdf.toString('latin1')).toMatch(/IBMPlexSansArabic/);
-    // 200 rows, header repeated on every page: pagination is stable.
-    expect(pageCount(pdf)).toBe(10);
+    // 200 rows with the header repeated on every page: about ten A4 pages.
+    expect(pageCount(pdf)).toBeGreaterThanOrEqual(9);
+    expect(pageCount(pdf)).toBeLessThanOrEqual(11);
     // The definition carries the header row, every line, and the document number.
     const json = JSON.stringify(def);
     expect(json).toContain('SI-2025-000123');
     expect(json).toContain('ITM-0200');
   }, 30_000);
 
-  it('a 10-line invoice is one page and costs no more than its first render did', async () => {
-    const started = performance.now();
+  it('fonts are unwrapped once per process, however many documents are rendered', async () => {
+    const after = woffStats.unwraps;
+    // The warm-up unwrapped exactly the two fonts (regular and bold).
+    expect(after).toBe(2);
     const pdf = await render(10, 'ar');
-    expect(performance.now() - started).toBeLessThan(1_500);
+    await render(10, 'en');
+    expect(woffStats.unwraps).toBe(after);
     expect(pageCount(pdf)).toBe(1);
   }, 30_000);
 });

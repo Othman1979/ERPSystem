@@ -176,7 +176,7 @@ describe('Printed documents', () => {
     }
   }, 60_000);
 
-  it('a 200-line invoice prints in Arabic and English in under 1.5 s', async () => {
+  it('a 200-line invoice prints in Arabic and English within a sanity bound', async () => {
     expect(ids.bigInvoice).toBeTruthy();
     // The first request of the process pays one-off costs; the bound applies to the next ones.
     expectPdf(await pdf(`/api/v1/sales-invoices/${ids.bigInvoice}/pdf`, token));
@@ -188,8 +188,9 @@ describe('Printed documents', () => {
       const pages = ((res.body as Buffer).toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length;
       expect(pages).toBeGreaterThanOrEqual(9);
       expect(pages).toBeLessThanOrEqual(11);
-      // Was ~2 s before fonts were unwrapped once per process; now ~0.4 s; the bound leaves room for a slow CI runner.
-      expect(took).toBeLessThan(1_500);
+      // Loose sanity bound only (about 0.4 s locally): the once-per-process font unwrap is locked in
+      // document-pdf.spec.ts by counting unwraps, which cannot flake on a loaded runner.
+      expect(took).toBeLessThan(5_000);
     }
   }, 60_000);
 

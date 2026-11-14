@@ -14,8 +14,12 @@ import { inflateSync } from 'node:zlib';
  * directory entry per table (tag, offset, compLength, origLength, origChecksum);
  * a table is zlib-compressed when compLength < origLength.
  */
+/** How many fonts were unwrapped in this process; tests assert it stays put across renders. */
+export const woffStats = { unwraps: 0 };
+
 export function woffToSfnt(woff: Buffer): Buffer {
   if (woff.length < 44 || woff.toString('latin1', 0, 4) !== 'wOFF') throw new Error('Not a WOFF 1.0 font');
+  woffStats.unwraps++;
   const flavor = woff.readUInt32BE(4);
   const numTables = woff.readUInt16BE(12);
 
