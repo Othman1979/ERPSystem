@@ -183,14 +183,28 @@ export class JournalService implements OnModuleInit {
       (dir) => ({ id: dir }),
     );
     return findPage(db, pageWindow(query), {
-      rows: (tx, window) =>
-        tx.journalEntry.findMany({
+      rows: async (tx, window) => {
+        const entries = await tx.journalEntry.findMany({
           where,
           orderBy,
           // reversals: lets the list tag reversed entries.
-          include: { _count: { select: { lines: true } }, reversals: { select: { id: true, entryNo: true } } },
+          include: { reversals: { select: { id: true, entryNo: true } } },
           ...window,
-        }),
+        });
+        // Line counts of this page only. Prisma's `_count` include joins a
+        // GROUP BY over every tenant's journal_lines (WHERE 1=1): ~3.4 s on
+        // 750k lines, whatever the page (Wave 4A). This reads ≤ pageSize
+        // entries' lines through (tenant_id, journal_entry_id, line_no).
+        const counts = entries.length
+          ? await tx.journalLine.groupBy({
+              by: ['journalEntryId'],
+              where: { journalEntryId: { in: entries.map((e) => e.id) } },
+              _count: { _all: true },
+            })
+          : [];
+        const byEntry = new Map(counts.map((c) => [c.journalEntryId, c._count._all]));
+        return entries.map((e) => ({ ...e, _count: { lines: byEntry.get(e.id) ?? 0 } }));
+      },
       count: (tx) => tx.journalEntry.count({ where }),
     });
   }
