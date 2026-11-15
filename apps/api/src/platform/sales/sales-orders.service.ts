@@ -30,9 +30,9 @@ import type {
   SalesReservationQueryDto,
   UpdateSalesOrderDto,
 } from './dto/sales-cycle.dto.js';
+import { reservedByItem } from './sales-cycle.reservation.js';
 import {
   availableQty,
-  isQuoteExpired,
   needsOrderApproval,
   neededPerItem,
   outstandingValue,
@@ -328,8 +328,9 @@ export class SalesOrdersService {
 
   /**
    * Converts an accepted quote into one draft order with all its lines and
-   * prices (ADR-027 §2). Refused once expired, and once only (the quote is
-   * locked, and the order's sales_quote_id is unique).
+   * prices (ADR-027 §2). Expiry refuses the acceptance of a sent quote, not its
+   * conversion; a quote converts once (the quote is locked, and the order's
+   * sales_quote_id is unique).
    */
   async fromQuote(quoteId: bigint, dto: ConvertSalesQuoteDto) {
     const { tenantId, db } = this.support.tenant();
@@ -357,9 +358,6 @@ export class SalesOrdersService {
           where: { id: quoteId },
           include: { lines: { orderBy: { lineNo: 'asc' } } },
         });
-        if (isQuoteExpired(sq.validUntil, todayUtc())) {
-          throw new DomainError(ErrorCode.QUOTE_EXPIRED, 'The quote has expired', { validUntil: sq.validUntil?.toISOString().slice(0, 10) ?? null });
-        }
         await this.parties.assertActiveCustomer(sq.customerId, tx);
         const costCenterId = dto.costCenterId ? BigInt(dto.costCenterId) : sq.costCenterId;
         if (costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, costCenterId);
@@ -436,7 +434,7 @@ export class SalesOrdersService {
             select: { itemId: true, qtyOnHand: true },
           })
         : [];
-      const held = company.salesReservation === 'NONE' ? new Map<bigint, Decimal>() : await this.reservedByItem(tx, tenantId, companyId, wh.id, stockIds, null);
+      const held = company.salesReservation === 'NONE' ? new Map<bigint, Decimal>() : await reservedByItem(tx, tenantId, companyId, wh.id, stockIds, null, false);
       const hand = new Map(onHand.map((b) => [b.itemId, new Decimal(b.qtyOnHand.toString())]));
       return {
         warehouseId: wh.id.toString(),
@@ -654,7 +652,7 @@ export class SalesOrdersService {
     const needed = neededPerItem(ctx.lines.filter((l) => stock.has(l.itemId)).map((l) => ({ itemId: l.itemId, qtyBase: l.qtyBase })));
     if (needed.size === 0) return;
     const warehouseId = ctx.row.warehouse_id;
-    const held = await this.reservedByItem(tx, ctx.tenantId, ctx.companyId, warehouseId, [...needed.keys()], orderId);
+    const held = await reservedByItem(tx, ctx.tenantId, ctx.companyId, warehouseId, [...needed.keys()], orderId, false);
     for (const [itemId, need] of needed) {
       const available = availableQty(ctx.onHand.get(itemId) ?? null, held.get(itemId) ?? new Decimal(0));
       if (need.gt(available)) {
@@ -665,32 +663,5 @@ export class SalesOrdersService {
         });
       }
     }
-  }
-
-  /**
-   * Base quantity held per item by open order lines of one warehouse, not
-   * counting `excludeOrderId` (ADR-027 §5). Every read names the tenant.
-   */
-  private async reservedByItem(
-    tx: Prisma.TransactionClient,
-    tenantId: bigint,
-    companyId: bigint,
-    warehouseId: bigint,
-    itemIds: bigint[],
-    excludeOrderId: bigint | null,
-  ): Promise<Map<bigint, Decimal>> {
-    const out = new Map<bigint, Decimal>();
-    if (itemIds.length === 0) return out;
-    const excluded = excludeOrderId ?? BigInt(0);
-    const rows = await tx.$queryRaw<{ item_id: bigint; reserved: { toString(): string } }[]>`
-      SELECT l.item_id AS item_id, COALESCE(SUM(GREATEST(l.qty_base - l.invoiced_qty, 0)), 0) AS reserved
-        FROM sales_order_lines l
-        JOIN sales_orders o ON o.tenant_id = l.tenant_id AND o.id = l.order_id
-       WHERE l.tenant_id = ${tenantId} AND o.company_id = ${companyId} AND o.warehouse_id = ${warehouseId}
-         AND o.status IN ('CONFIRMED', 'PARTIALLY_INVOICED') AND o.id <> ${excluded}
-         AND l.item_id IN (${Prisma.join(itemIds)})
-       GROUP BY l.item_id`;
-    for (const r of rows) out.set(BigInt(r.item_id), new Decimal(r.reserved.toString()));
-    return out;
   }
 }

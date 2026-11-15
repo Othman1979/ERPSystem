@@ -250,3 +250,31 @@ export class SalesReservationQueryDto {
 }
 
 export { ReasonDto } from '../../procurement/dto/procurement.dto.js';
+
+/** The invoice made from a sales order (ADR-027 §4): the order's own terms; the payment and dates are chosen here. */
+export class CreateInvoiceFromOrderDto {
+  @IsOptional()
+  @Matches(DATE_PATTERN, DATE_MESSAGE)
+  @IsDateString({ strict: true })
+  invoiceDate?: string;
+
+  @IsOptional()
+  @Matches(DATE_PATTERN, DATE_MESSAGE)
+  @IsDateString({ strict: true })
+  dueDate?: string;
+
+  /** Defaults to CREDIT. */
+  @IsOptional()
+  @IsIn(['CASH', 'CREDIT'])
+  paymentType?: 'CASH' | 'CREDIT';
+
+  /** Required for a cash invoice. */
+  @IsOptional()
+  @Matches(ID_PATTERN, ID_MESSAGE)
+  cashAccountId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+}

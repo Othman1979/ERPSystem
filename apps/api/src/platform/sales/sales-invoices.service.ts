@@ -47,6 +47,20 @@ import {
   type SettlementState,
 } from '../shared/invoice-settlement.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
+import { assertCanApprove, isAuthor, readApprover } from '../../common/procurement/approval.js';
+import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { lockCompanySales, lockOrderLines, lockSalesOrder, type LockedOrderLine } from './sales-cycle.locks.js';
+import { reservedByItem } from './sales-cycle.reservation.js';
+import {
+  addDays,
+  availableQty,
+  leftToInvoice,
+  neededPerItem,
+  pricedBelowOrder,
+  todayUtc,
+  unitQtyFloor,
+} from './sales-cycle.rules.js';
+import type { CreateInvoiceFromOrderDto } from './dto/sales-cycle.dto.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesInvoiceDto, ListSalesInvoicesQueryDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
@@ -66,6 +80,92 @@ interface ResolvedLine {
   taxRate: Decimal;
   taxCategoryId: bigint | null;
   amounts: ReturnType<typeof computeLineAmounts>;
+}
+
+/** The order statuses that take invoices (ADR-027 §4): a confirmed or partly invoiced order. */
+export const INVOICEABLE_ORDER_STATUSES: readonly string[] = ['CONFIRMED', 'PARTIALLY_INVOICED'];
+
+/** One line of an invoice as the order check reads it (draft lines and resolved lines both map to this). */
+interface BillingLine {
+  lineNo: number;
+  orderLineId: bigint | null;
+  itemId: bigint;
+  qtyBase: Decimal;
+}
+
+/**
+ * ADR-027 §4 on the locked order lines: every line of an invoice made from an
+ * order bills one line of that order, of the same item, and the base quantity
+ * billed on an order line never exceeds what is left on it. Returns what this
+ * invoice bills per order line. Refusals name the line, never a number of the
+ * company (the figures are the order's own).
+ */
+export function billedPerOrderLine(orderLines: Map<bigint, LockedOrderLine>, lines: BillingLine[]): Map<bigint, Decimal> {
+  const billed = new Map<bigint, Decimal>();
+  for (const l of lines) {
+    if (l.orderLineId === null) {
+      throw new DomainError(ErrorCode.VALIDATION, 'An invoice made from a sales order bills order lines only', { lineNo: l.lineNo });
+    }
+    const ol = orderLines.get(l.orderLineId);
+    if (!ol) {
+      throw new DomainError(ErrorCode.VALIDATION, 'A line is not a line of this sales order', {
+        lineNo: l.lineNo,
+        orderLineId: l.orderLineId.toString(),
+      });
+    }
+    if (ol.itemId !== l.itemId) {
+      throw new DomainError(ErrorCode.VALIDATION, 'A line bills another item than its sales order line', {
+        lineNo: l.lineNo,
+        orderLineId: l.orderLineId.toString(),
+      });
+    }
+    billed.set(ol.id, (billed.get(ol.id) ?? new Decimal(0)).plus(l.qtyBase));
+  }
+  for (const [olId, qty] of billed) {
+    const ol = orderLines.get(olId)!;
+    const remaining = leftToInvoice(ol.qtyBase, ol.invoicedQty);
+    if (qty.gt(remaining)) {
+      throw new DomainError(ErrorCode.SALES_ORDER_OVER_INVOICED, 'The invoice bills more than is left on the sales order line', {
+        orderLineId: olId.toString(),
+        remaining: remaining.toFixed(6),
+        wanted: qty.toFixed(6),
+      });
+    }
+  }
+  return billed;
+}
+
+/** Refuses an order that takes no invoice (ADR-027 §3–§4): draft, pending, cancelled or closed. */
+export function assertOrderInvoiceable(status: string): void {
+  if (!INVOICEABLE_ORDER_STATUSES.includes(status)) {
+    throw new DomainError(ErrorCode.SALES_ORDER_NOT_INVOICEABLE, 'The sales order takes no invoice in its status', { status });
+  }
+}
+
+/** A posted-to-be draft line as the post reads it (Prisma values, read under the invoice lock). */
+interface PostedDraftLine {
+  lineNo: number;
+  orderLineId: bigint | null;
+  itemId: bigint;
+  qtyBase: { toString(): string };
+  unitPrice: { toString(): string };
+  discountPct: { toString(): string };
+}
+
+/** An invoice's order billing, locked and checked (ADR-027 §4): the order, its lines, what this invoice bills per line. */
+interface BilledOrder {
+  orderId: bigint;
+  lines: LockedOrderLine[];
+  billed: Map<bigint, Decimal>;
+}
+
+/** A direct invoice (no order) names no order line (ADR-027 §4). */
+function assertDirectLines(dtos: SalesInvoiceLineDto[]): void {
+  if (dtos.some((l) => l.orderLineId !== undefined)) {
+    throw new DomainError(ErrorCode.VALIDATION, 'Order lines are billed only by an invoice made from a sales order', {
+      field: 'lines.orderLineId',
+    });
+  }
 }
 
 /** Sales invoices: draft CRUD + post → stock OUT + COGS/revenue journal (§8.4). */
@@ -492,6 +592,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const pricesIncludeTax = await this.support.pricesIncludeTax(db);
+    assertDirectLines(dto.lines);
     const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto);
 
@@ -556,11 +657,22 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
     }
     assertBranchAllowed(inv.branchId);
-    const pricesIncludeTax = await this.support.pricesIncludeTax(db);
+    // ADR-027 §4: an invoice made from an order keeps its order's customer and warehouse.
+    if (inv.salesOrderId !== null) {
+      if (BigInt(dto.customerId) !== inv.customerId || BigInt(dto.warehouseId) !== inv.warehouseId) {
+        throw new DomainError(ErrorCode.VALIDATION, 'An invoice made from a sales order keeps its customer and warehouse');
+      }
+    } else {
+      assertDirectLines(dto.lines);
+    }
+    // An order's invoice keeps the order's price basis (its draft flag), a direct one the company's.
+    const pricesIncludeTax = inv.salesOrderId !== null ? inv.pricesIncludeTax : await this.support.pricesIncludeTax(db);
     const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto);
 
     await db.$transaction(async (tx) => {
+      // The company's sales settings first (shared), as in every sales transaction (ADR-027 §8).
+      await lockCompanySales(tx, tenantId, companyId);
       // Lock the invoice and re-check it first: a save racing a post of the
       // same draft must not delete and rewrite the lines of a posted invoice.
       const [locked] = await tx.$queryRaw<{ status: string }[]>`
@@ -568,6 +680,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       if (!locked || locked.status !== 'DRAFT') {
         throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
       }
+      if (inv.salesOrderId !== null) await this.lockDraftOrder(tx, tenantId, inv.salesOrderId, lines);
       // Share-lock the header centre before the row that references it (ADR-024 §1.4).
       if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       await tx.salesInvoiceLine.deleteMany({ where: { invoiceId: id } });
@@ -584,6 +697,9 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           description: dto.description ?? null,
           pricesIncludeTax,
           ...this.totals(lines),
+          // ADR-027 §4 / ADR-026 §2: an edit clears the price approval.
+          priceApprovedAt: null,
+          priceApprovedBy: null,
           updatedBy: this.support.userId() ?? null,
         },
       });
@@ -594,6 +710,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           lineNo: i + 1,
           itemId: l.itemId,
           itemUnitId: l.itemUnitId,
+          orderLineId: l.dto.orderLineId ? BigInt(l.dto.orderLineId) : null,
           qty: l.dto.qty,
           qtyBase: l.amounts.qtyBase,
           unitPrice: l.dto.unitPrice,
@@ -627,7 +744,236 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     return { deleted: true };
   }
 
-  /** Posts: stock OUT per line + revenue/tax/COGS journal (§8.4, §9). */
+  /**
+   * POST sales-orders/:id/invoice (ADR-027 §4): a draft invoice of what is left on each
+   * line of a confirmed or partly invoiced order. The customer, warehouse, branch, cost
+   * centre, prices-include-tax flag and tax come from the order. Several drafts may
+   * exist at once; the posting decides (§4). A line with nothing left is not copied.
+   */
+  async createFromOrder(orderId: bigint, dto: CreateInvoiceFromOrderDto) {
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    // The order first: another branch's or tenant's id answers 404 before any body check.
+    const exists = await db.salesOrder.findFirst({ where: { id: orderId, AND: [branchWhere()] }, select: { id: true } });
+    if (!exists) throw DomainError.notFound('SalesOrder', orderId.toString());
+    const paymentType = dto.paymentType ?? 'CREDIT';
+    if (paymentType === 'CASH') {
+      if (!dto.cashAccountId) throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');
+      await this.assertCashAccount(db, companyId, BigInt(dto.cashAccountId));
+    }
+    const invoiceDate = dto.invoiceDate ? new Date(dto.invoiceDate) : todayUtc();
+
+    const id = await this.support.withRetry(() =>
+      db.$transaction(async (tx) => {
+        await lockCompanySales(tx, tenantId, companyId);
+        const order = await lockSalesOrder(tx, tenantId, orderId);
+        assertBranchAllowed(order.branch_id);
+        assertOrderInvoiceable(order.status);
+        const lines = await lockOrderLines(tx, tenantId, orderId);
+        const header = await tx.salesOrder.findFirstOrThrow({
+          where: { id: orderId },
+          select: { branchId: true, customerId: true, warehouseId: true, costCenterId: true, pricesIncludeTax: true, paymentTermsDays: true },
+        });
+        const open = lines.filter((l) => leftToInvoice(l.qtyBase, l.invoicedQty).gt(0));
+        if (open.length === 0) {
+          throw new DomainError(ErrorCode.SALES_ORDER_NOT_INVOICEABLE, 'Nothing is left to invoice on the sales order', { status: order.status });
+        }
+        if (header.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, header.costCenterId);
+        const dueDate = dto.dueDate
+          ? new Date(dto.dueDate)
+          : header.paymentTermsDays !== null
+            ? addDays(invoiceDate, header.paymentTermsDays)
+            : null;
+
+        const drafts = open.map((l, i) => {
+          const qty = unitQtyFloor(leftToInvoice(l.qtyBase, l.invoicedQty), l.factorToBase);
+          const amounts = computeLineAmounts({
+            qty: qty.toString(),
+            factorToBase: l.factorToBase.toString(),
+            unitPrice: l.unitPrice.toString(),
+            discountPct: l.discountPct.toString(),
+            taxRate: l.taxRate.toString(),
+            pricesIncludeTax: header.pricesIncludeTax,
+          });
+          return { lineNo: i + 1, line: l, qty, amounts };
+        });
+        const created = await tx.salesInvoice.create({
+          data: {
+            tenantId,
+            companyId,
+            branchId: header.branchId,
+            invoiceDate,
+            dueDate,
+            customerId: header.customerId,
+            warehouseId: header.warehouseId,
+            paymentType,
+            cashAccountId: paymentType === 'CASH' ? BigInt(dto.cashAccountId!) : null,
+            costCenterId: header.costCenterId,
+            salesOrderId: orderId,
+            description: dto.description ?? null,
+            pricesIncludeTax: header.pricesIncludeTax,
+            netTotal: sum(drafts.map((d) => d.amounts.netAmount)),
+            taxTotal: sum(drafts.map((d) => d.amounts.taxAmount)),
+            grandTotal: sum(drafts.map((d) => d.amounts.lineTotal)),
+            createdBy: this.support.userId() ?? null,
+          },
+        });
+        await tx.salesInvoiceLine.createMany({
+          data: drafts.map((d) => ({
+            tenantId,
+            invoiceId: created.id,
+            lineNo: d.lineNo,
+            orderLineId: d.line.id,
+            itemId: d.line.itemId,
+            itemUnitId: d.line.itemUnitId,
+            qty: d.qty,
+            qtyBase: d.amounts.qtyBase,
+            unitPrice: d.line.unitPrice,
+            discountPct: d.line.discountPct,
+            discountAmount: d.amounts.discountAmount,
+            netAmount: d.amounts.netAmount,
+            taxCategoryId: d.line.taxCategoryId,
+            taxRate: d.line.taxRate,
+            taxAmount: d.amounts.taxAmount,
+            lineTotal: d.amounts.lineTotal,
+          })),
+        });
+        return created.id;
+      }, POSTING_TX_OPTIONS),
+    );
+    await this.audit.log({
+      action: 'sales_invoice.create',
+      entityType: 'sales_invoice',
+      entityId: id,
+      after: { salesOrderId: orderId.toString() },
+    });
+    return this.get(id);
+  }
+
+  /**
+   * GET sales-orders/:id/invoiceable (ADR-027 §4): what each line of the order still
+   * allows to invoice, in base units and in the line's unit (rounded down).
+   */
+  async invoiceable(orderId: bigint) {
+    const { db } = this.support.tenant();
+    const order = await db.salesOrder.findFirst({
+      where: { id: orderId, AND: [branchWhere()] },
+      select: {
+        id: true,
+        status: true,
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: {
+            id: true,
+            lineNo: true,
+            itemId: true,
+            itemUnitId: true,
+            qtyBase: true,
+            invoicedQty: true,
+            unitPrice: true,
+            discountPct: true,
+            taxCategoryId: true,
+            taxRate: true,
+            itemUnit: { select: { factorToBase: true } },
+          },
+        },
+      },
+    });
+    if (!order) throw DomainError.notFound('SalesOrder', orderId.toString());
+    return {
+      orderId: order.id.toString(),
+      status: order.status,
+      invoiceable: INVOICEABLE_ORDER_STATUSES.includes(order.status),
+      lines: order.lines.map((l) => {
+        const qtyBase = new Decimal(l.qtyBase.toString());
+        const remaining = leftToInvoice(qtyBase, new Decimal(l.invoicedQty.toString()));
+        const factor = l.itemUnit ? new Decimal(l.itemUnit.factorToBase.toString()) : new Decimal(1);
+        return {
+          orderLineId: l.id.toString(),
+          lineNo: l.lineNo,
+          itemId: l.itemId.toString(),
+          itemUnitId: l.itemUnitId?.toString() ?? null,
+          qtyBase: qtyBase.toFixed(6),
+          invoicedQty: new Decimal(l.invoicedQty.toString()).toFixed(6),
+          remainingBase: remaining.toFixed(6),
+          remainingQty: unitQtyFloor(remaining, factor).toFixed(6),
+          unitPrice: new Decimal(l.unitPrice.toString()).toFixed(3),
+          discountPct: new Decimal(l.discountPct.toString()).toFixed(4),
+          taxCategoryId: l.taxCategoryId?.toString() ?? null,
+          taxRate: new Decimal(l.taxRate.toString()).toFixed(4),
+        };
+      }),
+    };
+  }
+
+  /**
+   * POST sales-invoices/:id/approve-price (ADR-027 §4): «approve the price» of a draft
+   * made from an order, one with a line priced below its order line or discounted more.
+   * sales.approve (the route), no amount limit, never by the invoice's author or last
+   * editor; an owner always. A later edit of the draft clears it.
+   */
+  async approvePrice(id: bigint) {
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const approvedBy = await this.support.withRetry(() =>
+      db.$transaction(async (tx) => {
+        await lockCompanySales(tx, tenantId, companyId);
+        const [inv] = await tx.$queryRaw<
+          { status: string; branch_id: bigint | null; sales_order_id: bigint | null; created_by: bigint | null; updated_by: bigint | null }[]
+        >`
+          SELECT status, branch_id, sales_order_id, created_by, updated_by FROM sales_invoices
+           WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        if (!inv) throw DomainError.notFound('SalesInvoice', id.toString());
+        assertBranchAllowed(inv.branch_id === null ? null : BigInt(inv.branch_id));
+        if (inv.status !== 'DRAFT') {
+          throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only a draft invoice has a price to approve', {
+            status: inv.status,
+            action: 'approve-price',
+          });
+        }
+        if (inv.sales_order_id === null) {
+          throw new DomainError(ErrorCode.VALIDATION, 'Only an invoice made from a sales order has an order price to compare with');
+        }
+        const orderId = BigInt(inv.sales_order_id);
+        await lockSalesOrder(tx, tenantId, orderId);
+        const orderLines = new Map((await lockOrderLines(tx, tenantId, orderId)).map((l) => [l.id, l]));
+        // A plain read after every lock above: its snapshot is taken now, so it sees the committed draft.
+        const draft = await tx.salesInvoiceLine.findMany({ where: { invoiceId: id }, orderBy: { lineNo: 'asc' } });
+        const below = draft.some((l) => {
+          const ol = l.orderLineId === null ? undefined : orderLines.get(l.orderLineId);
+          return ol !== undefined && pricedBelowOrder(
+            { unitPrice: l.unitPrice.toString(), discountPct: l.discountPct.toString() },
+            { unitPrice: ol.unitPrice.toString(), discountPct: ol.discountPct.toString() },
+          );
+        });
+        if (!below) throw new DomainError(ErrorCode.VALIDATION, 'No line is priced below the sales order: nothing to approve');
+        const approver = await readApprover(tx, tenantId, PERMISSIONS.SALES_APPROVE);
+        const author = {
+          created_by: inv.created_by === null ? null : BigInt(inv.created_by),
+          updated_by: inv.updated_by === null ? null : BigInt(inv.updated_by),
+          submitted_by: null,
+        };
+        assertCanApprove({
+          permission: PERMISSIONS.SALES_APPROVE,
+          ...approver,
+          amount: null,
+          isAuthor: isAuthor(author, approver.userId),
+        });
+        // An approval is not an edit: updated_by stays the last editor.
+        await tx.salesInvoice.update({ where: { id }, data: { priceApprovedAt: new Date(), priceApprovedBy: approver.userId } });
+        return approver.userId;
+      }, POSTING_TX_OPTIONS),
+    );
+    await this.audit.log({
+      action: 'sales_invoice.approve_price',
+      entityType: 'sales_invoice',
+      entityId: id,
+      after: { approvedBy: approvedBy?.toString() ?? null },
+    });
+    return this.get(id);
+  }
+
+  /** Posts: stock OUT per line + revenue/tax/COGS journal (§8.4, §9), with the order and reservation rules of ADR-027 §4–§5. */
   async post(id: bigint) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
@@ -635,6 +981,10 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
+        // The company's sales settings first, under a shared lock (ADR-027 §8). A post
+        // never writes the company row, so concurrent posts hold shared locks only and
+        // none of them waits to upgrade one.
+        const settings = await lockCompanySales(tx, tenantId, companyId);
         // Lock the document first (§10.1 step 7). As the first statement it also
         // makes every later read see the latest committed state, so two
         // concurrent requests cannot both post or reverse it.
@@ -654,6 +1004,10 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         }
         if (draft.paymentType === 'CASH' && !draft.cashAccountId) {
           throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');
+        }
+        // ADR-027 §1: while sales_order_required is on, a direct invoice does not post.
+        if (settings.salesOrderRequired && draft.salesOrderId === null) {
+          throw new DomainError(ErrorCode.SALES_ORDER_REQUIRED, 'Sales invoices are made from a sales order while sales_order_required is on');
         }
         // JoFotara rules (buyer, tax codes), checked before anything is posted (0005 §11).
         const buyer = await tx.party.findFirst({
@@ -692,6 +1046,9 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           }),
         );
 
+        // An invoice made from an order: the order and its lines locked before any stock lock (ADR-027 §8).
+        const billing = draft.salesOrderId === null ? null : await this.lockBilledOrder(tx, tenantId, draft, settings.salesPriceLocked);
+
         // Stock OUT for STOCK items — returns avg cost per base unit.
         let costTotal = new Decimal(0);
         let writeOff = new Decimal(0);
@@ -702,6 +1059,17 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           companyId,
           draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
         );
+        // ADR-027 §5 (HARD): a direct invoice takes only what no open order reserves; read under the stock locks.
+        if (billing === null && settings.salesReservation === 'HARD') {
+          await this.assertDirectReservable(
+            tx,
+            tenantId,
+            companyId,
+            draft.warehouseId,
+            draft.lines.map((l) => ({ itemId: l.itemId, qtyBase: new Decimal(l.qtyBase.toString()) })),
+            stockItems,
+          );
+        }
         for (const line of draft.lines) {
           if (!stockItems.has(line.itemId)) continue;
           const res = await this.ledger.applyMovement(tx, companyId, {
@@ -813,6 +1181,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
             postedBy: userId ?? null,
           },
         });
+        // ADR-027 §4: the order's billed quantities and status, in this same transaction.
+        if (billing !== null) await this.recordOrderBilling(tx, billing);
         // Outbox (BUILD_PLAN §12.2): queued in this transaction, sent by the worker after it commits.
         await this.einvoice.enqueue(tx, {
           companyId,
@@ -835,6 +1205,114 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
   }
 
   // ------------------------------------------------------------- internals
+
+  /**
+   * ADR-027 §4 under the locks of a post: the order and its lines (locking reads, before
+   * any stock lock), the order's status, what this invoice bills per order line, and the
+   * price approval when the price is locked.
+   */
+  private async lockBilledOrder(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    draft: { salesOrderId: bigint | null; priceApprovedAt: Date | null; lines: PostedDraftLine[] },
+    priceLocked: boolean,
+  ): Promise<BilledOrder> {
+    const orderId = draft.salesOrderId!;
+    const order = await lockSalesOrder(tx, tenantId, orderId);
+    assertBranchAllowed(order.branch_id);
+    assertOrderInvoiceable(order.status);
+    const lines = await lockOrderLines(tx, tenantId, orderId);
+    const byId = new Map(lines.map((l) => [l.id, l]));
+    const billed = billedPerOrderLine(
+      byId,
+      draft.lines.map((l) => ({ lineNo: l.lineNo, orderLineId: l.orderLineId, itemId: l.itemId, qtyBase: new Decimal(l.qtyBase.toString()) })),
+    );
+    if (priceLocked && draft.priceApprovedAt === null) {
+      const below = draft.lines
+        .filter((l) => {
+          const ol = l.orderLineId === null ? undefined : byId.get(l.orderLineId);
+          return ol !== undefined && pricedBelowOrder(
+            { unitPrice: l.unitPrice.toString(), discountPct: l.discountPct.toString() },
+            { unitPrice: ol.unitPrice.toString(), discountPct: ol.discountPct.toString() },
+          );
+        })
+        .map((l) => l.lineNo);
+      if (below.length > 0) {
+        throw new DomainError(ErrorCode.SALES_PRICE_APPROVAL_REQUIRED, 'A line is priced below its sales order line: approve the price first', {
+          lines: below,
+        });
+      }
+    }
+    return { orderId, lines, billed };
+  }
+
+  /**
+   * The order part of a draft update (ADR-027 §4): the order is invoiceable, and each
+   * line bills one of its lines, no more than what is left. Under the order locks.
+   */
+  private async lockDraftOrder(tx: Prisma.TransactionClient, tenantId: bigint, orderId: bigint, lines: ResolvedLine[]): Promise<void> {
+    const order = await lockSalesOrder(tx, tenantId, orderId);
+    assertBranchAllowed(order.branch_id);
+    assertOrderInvoiceable(order.status);
+    const byId = new Map((await lockOrderLines(tx, tenantId, orderId)).map((l) => [l.id, l]));
+    billedPerOrderLine(
+      byId,
+      lines.map((l, i) => ({
+        lineNo: i + 1,
+        orderLineId: l.dto.orderLineId ? BigInt(l.dto.orderLineId) : null,
+        itemId: l.itemId,
+        qtyBase: l.amounts.qtyBase,
+      })),
+    );
+  }
+
+  /** ADR-027 §4: the invoice's billed quantities go onto its order lines; the order is INVOICED when all of them are billed. */
+  private async recordOrderBilling(tx: Prisma.TransactionClient, billing: BilledOrder): Promise<void> {
+    for (const [lineId, qty] of billing.billed) {
+      await tx.salesOrderLine.update({ where: { id: lineId }, data: { invoicedQty: { increment: qty } } });
+    }
+    const allBilled = billing.lines.every((l) => leftToInvoice(l.qtyBase, l.invoicedQty.plus(billing.billed.get(l.id) ?? 0)).lte(0));
+    await tx.salesOrder.update({ where: { id: billing.orderId }, data: { status: allBilled ? 'INVOICED' : 'PARTIALLY_INVOICED' } });
+  }
+
+  /**
+   * ADR-027 §5 (HARD): the stock a direct invoice takes must fit in what is available,
+   * that is on hand less what the other open orders still reserve. Called after the
+   * stock locks, so the on-hand quantities are the committed ones; the reservations are
+   * read with a locking read for the same reason. Negative stock does not lift the block.
+   */
+  private async assertDirectReservable(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    warehouseId: bigint,
+    lines: { itemId: bigint; qtyBase: Decimal }[],
+    stockItems: Set<bigint>,
+  ): Promise<void> {
+    const needed = neededPerItem(lines.filter((l) => stockItems.has(l.itemId)));
+    if (needed.size === 0) return;
+    const held = await reservedByItem(tx, tenantId, companyId, warehouseId, [...needed.keys()], null, true);
+    for (const [itemId, need] of needed) {
+      const onHand = this.ledger.lockedQtyOnHand(tx, warehouseId, itemId);
+      const available = availableQty(onHand, held.get(itemId) ?? new Decimal(0));
+      if (need.gt(available)) {
+        throw new DomainError(ErrorCode.STOCK_RESERVED, 'The quantity is above what is available after the sales orders reserve their stock', {
+          itemId: itemId.toString(),
+          needed: need.toFixed(6),
+          available: available.toFixed(6),
+        });
+      }
+    }
+  }
+
+  /** A cash invoice's account: an active cash or bank account of the company (as on a direct invoice). */
+  private async assertCashAccount(db: ReturnType<PrismaService['forTenant']>, companyId: bigint, accountId: bigint): Promise<void> {
+    const acc = await db.account.findFirst({
+      where: { companyId, id: accountId, isActive: true, isPostable: true, controlType: { in: ['CASH', 'BANK'] } },
+      select: { id: true },
+    });
+    if (!acc) throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId must be an active cash/bank account');
+  }
 
   private totals(lines: ResolvedLine[]) {
     return {

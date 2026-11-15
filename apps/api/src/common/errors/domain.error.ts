@@ -94,6 +94,10 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.QUOTE_ALREADY_CONVERTED]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_RESERVED]: HttpStatus.CONFLICT,
   [ErrorCode.SALES_ORDER_NOT_CANCELLABLE]: HttpStatus.CONFLICT,
+  [ErrorCode.SALES_ORDER_REQUIRED]: HttpStatus.CONFLICT,
+  [ErrorCode.SALES_ORDER_OVER_INVOICED]: HttpStatus.CONFLICT,
+  [ErrorCode.SALES_ORDER_NOT_INVOICEABLE]: HttpStatus.CONFLICT,
+  [ErrorCode.SALES_PRICE_APPROVAL_REQUIRED]: HttpStatus.CONFLICT,
 };
 
 export class DomainError extends HttpException {

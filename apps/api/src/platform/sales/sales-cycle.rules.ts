@@ -20,9 +20,9 @@ export function defaultValidUntil(quoteDate: Date, days: number): Date | null {
 }
 
 /**
- * A quote past its validity (ADR-027 §2): valid_until is before today. The
- * refusal of acceptance applies to SENT quotes; conversion refuses any quote
- * past its validity (see SalesOrdersService.fromQuote).
+ * A quote past its validity (ADR-027 §2): valid_until is before today. Only the
+ * acceptance of a SENT quote is refused; converting an ACCEPTED quote is not
+ * (see SalesOrdersService.fromQuote).
  */
 export function isQuoteExpired(validUntil: Date | null, today: Date): boolean {
   return validUntil !== null && validUntil.getTime() < today.getTime();
@@ -72,4 +72,36 @@ export function neededPerItem(lines: { itemId: bigint; qtyBase: Decimal }[]): Ma
   const out = new Map<bigint, Decimal>();
   for (const l of lines) out.set(l.itemId, (out.get(l.itemId) ?? new Decimal(0)).plus(l.qtyBase));
   return out;
+}
+
+/** Milliseconds in a day, for the due dates of an order's payment terms. */
+export function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * DAY_MS);
+}
+
+/** What an order line still allows to invoice, in base units (ADR-027 §4), never negative. */
+export function leftToInvoice(qtyBase: Decimal, invoicedQty: Decimal): Decimal {
+  return Decimal.max(new Decimal(0), new Decimal(qtyBase).minus(invoicedQty));
+}
+
+/** The quantity in a line's own unit that is `baseQty` base units, rounded DOWN to 6 places so it never exceeds it. */
+export function unitQtyFloor(baseQty: Decimal, factorToBase: Decimal): Decimal {
+  return new Decimal(baseQty).div(factorToBase).toDecimalPlaces(6, Decimal.ROUND_DOWN);
+}
+
+/** A line's net unit price after its discount, exact (ADR-027 §4 compares net prices). */
+export function netUnitPrice(unitPrice: Decimal.Value, discountPct: Decimal.Value): Decimal {
+  return new Decimal(unitPrice).times(new Decimal(100).minus(discountPct)).div(100);
+}
+
+/**
+ * ADR-027 §4 (price lock): an invoice line is priced below its order line when its
+ * net unit price is lower, or its discount is higher. A higher price is always allowed.
+ */
+export function pricedBelowOrder(
+  line: { unitPrice: Decimal.Value; discountPct: Decimal.Value },
+  order: { unitPrice: Decimal.Value; discountPct: Decimal.Value },
+): boolean {
+  return netUnitPrice(line.unitPrice, line.discountPct).lt(netUnitPrice(order.unitPrice, order.discountPct)) ||
+    new Decimal(line.discountPct).gt(new Decimal(order.discountPct));
 }

@@ -143,6 +143,15 @@ export enum ErrorCode {
   // ADR-027 §3: an order with an invoiced line cannot be cancelled; close it instead
   // (details.invoicedLines).
   SALES_ORDER_NOT_CANCELLABLE = 'SALES_ORDER_NOT_CANCELLABLE',
+  // ADR-027 §1: while sales_order_required is on, a sales invoice posts only from a sales order.
+  SALES_ORDER_REQUIRED = 'SALES_ORDER_REQUIRED',
+  // ADR-027 §4: the invoices would bill more than the order line has left (details.orderLineId,
+  // details.remaining, details.wanted), in base units.
+  SALES_ORDER_OVER_INVOICED = 'SALES_ORDER_OVER_INVOICED',
+  // ADR-027 §3-§4: the order is not confirmed nor partly invoiced, so nothing more is billed (details.status).
+  SALES_ORDER_NOT_INVOICEABLE = 'SALES_ORDER_NOT_INVOICEABLE',
+  // ADR-027 §4: a line is priced below its order line or discounted more, with no price approval (details.lines).
+  SALES_PRICE_APPROVAL_REQUIRED = 'SALES_PRICE_APPROVAL_REQUIRED',
   // ADR-026 §9: at FULL a goods issue without an approved issue request needs
   // stock.issue_without_request (owners aside).
   ISSUE_REQUEST_REQUIRED = 'ISSUE_REQUEST_REQUIRED',

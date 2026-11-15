@@ -68,24 +68,61 @@ export async function lockSalesQuote(tx: Prisma.TransactionClient, tenantId: big
 
 export interface LockedOrderLine {
   id: bigint;
+  lineNo: number;
   itemId: bigint;
+  itemUnitId: bigint | null;
+  /** The line unit's factor to the base unit (1 when the line is in the base unit). */
+  factorToBase: Decimal;
   qtyBase: Decimal;
   invoicedQty: Decimal;
+  unitPrice: Decimal;
+  discountPct: Decimal;
+  taxCategoryId: bigint | null;
+  taxRate: Decimal;
   lineTotal: Decimal;
 }
 
-/** The order's lines FOR UPDATE, in id order: the invoiced quantities a confirmation reads are current. */
+/**
+ * The order's lines FOR UPDATE, in id order, with every column an invoice reads
+ * (ADR-027 §4). One locking read: a plain read inside a transaction whose
+ * snapshot predates the lock could return the invoiced quantities of before
+ * another invoice's commit.
+ */
 export async function lockOrderLines(tx: Prisma.TransactionClient, tenantId: bigint, orderId: bigint): Promise<LockedOrderLine[]> {
   const rows = await tx.$queryRaw<
-    { id: bigint; item_id: bigint; qty_base: { toString(): string }; invoiced_qty: { toString(): string }; line_total: { toString(): string } }[]
+    {
+      id: bigint;
+      line_no: number;
+      item_id: bigint;
+      item_unit_id: bigint | null;
+      factor_to_base: { toString(): string } | null;
+      qty_base: { toString(): string };
+      invoiced_qty: { toString(): string };
+      unit_price: { toString(): string };
+      discount_pct: { toString(): string };
+      tax_category_id: bigint | null;
+      tax_rate: { toString(): string };
+      line_total: { toString(): string };
+    }[]
   >`
-    SELECT id, item_id, qty_base, invoiced_qty, line_total FROM sales_order_lines
-     WHERE tenant_id = ${tenantId} AND order_id = ${orderId} ORDER BY id FOR UPDATE`;
+    SELECT l.id, l.line_no, l.item_id, l.item_unit_id, u.factor_to_base, l.qty_base, l.invoiced_qty,
+           l.unit_price, l.discount_pct, l.tax_category_id, l.tax_rate, l.line_total
+      FROM sales_order_lines l
+      LEFT JOIN item_units u ON u.tenant_id = l.tenant_id AND u.id = l.item_unit_id
+     WHERE l.tenant_id = ${tenantId} AND l.order_id = ${orderId}
+     ORDER BY l.id FOR UPDATE`;
   return rows.map((r) => ({
     id: BigInt(r.id),
+    lineNo: Number(r.line_no),
     itemId: BigInt(r.item_id),
+    itemUnitId: r.item_unit_id === null ? null : BigInt(r.item_unit_id),
+    factorToBase: r.factor_to_base === null ? new Decimal(1) : new Decimal(r.factor_to_base.toString()),
     qtyBase: new Decimal(r.qty_base.toString()),
     invoicedQty: new Decimal(r.invoiced_qty.toString()),
+    unitPrice: new Decimal(r.unit_price.toString()),
+    discountPct: new Decimal(r.discount_pct.toString()),
+    taxCategoryId: r.tax_category_id === null ? null : BigInt(r.tax_category_id),
+    taxRate: new Decimal(r.tax_rate.toString()),
     lineTotal: new Decimal(r.line_total.toString()),
   }));
 }

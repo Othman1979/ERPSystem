@@ -1,14 +1,18 @@
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import {
+  addDays,
   availableQty,
   defaultValidUntil,
   isQuoteExpired,
+  leftToInvoice,
   needsOrderApproval,
   neededPerItem,
   outstandingValue,
   overCreditLimit,
+  pricedBelowOrder,
   reservedQty,
   todayUtc,
+  unitQtyFloor,
 } from './sales-cycle.rules.js';
 
 const d = (s: string) => new Date(`${s}T00:00:00.000Z`);
@@ -74,5 +78,46 @@ describe('Outstanding value and reservations (ADR-027 §5, §6)', () => {
     ]);
     expect(needed.get(BigInt(7))?.toFixed(6)).toBe('5.000000');
     expect(needed.get(BigInt(8))?.toFixed(6)).toBe('1.000000');
+  });
+});
+
+describe('Invoice from order helpers (ADR-027 §4)', () => {
+  const order = { unitPrice: '10', discountPct: '0' };
+
+  it('prices below the order on a lower net price', () => {
+    expect(pricedBelowOrder({ unitPrice: '9.999', discountPct: '0' }, order)).toBe(true);
+  });
+
+  it('prices below the order on a higher discount', () => {
+    expect(pricedBelowOrder({ unitPrice: '10', discountPct: '5' }, order)).toBe(true);
+    // A higher list price with a bigger discount: net price 9 equals the order's, the discount is higher.
+    expect(pricedBelowOrder({ unitPrice: '12', discountPct: '25' }, { unitPrice: '9', discountPct: '0' })).toBe(true);
+  });
+
+  it('is not below when the price and discount are equal', () => {
+    expect(pricedBelowOrder({ unitPrice: '10', discountPct: '0' }, order)).toBe(false);
+  });
+
+  it('allows a higher net price', () => {
+    expect(pricedBelowOrder({ unitPrice: '10.5', discountPct: '0' }, order)).toBe(false);
+  });
+
+  it('rounds the unit quantity down so it never exceeds the base quantity', () => {
+    // 1 base unit in a pack of 12 is 1/12 = 0.0833333..., floored to 0.083333.
+    expect(unitQtyFloor(dec('1'), dec('12')).toFixed(6)).toBe('0.083333');
+    expect(unitQtyFloor(dec('24'), dec('12')).toFixed(6)).toBe('2.000000');
+    expect(unitQtyFloor(dec('2'), dec('3')).toFixed(6)).toBe('0.666666');
+  });
+
+  it('never leaves a negative quantity to invoice', () => {
+    expect(leftToInvoice(dec('10'), dec('4')).toFixed(6)).toBe('6.000000');
+    expect(leftToInvoice(dec('10'), dec('10')).toFixed(6)).toBe('0.000000');
+    expect(leftToInvoice(dec('10'), dec('12')).toFixed(6)).toBe('0.000000');
+  });
+
+  it('adds whole days', () => {
+    expect(addDays(d('2026-11-15'), 30).toISOString().slice(0, 10)).toBe('2026-12-15');
+    expect(addDays(d('2026-02-27'), 2).toISOString().slice(0, 10)).toBe('2026-03-01');
+    expect(addDays(d('2026-11-15'), 0).toISOString().slice(0, 10)).toBe('2026-11-15');
   });
 });

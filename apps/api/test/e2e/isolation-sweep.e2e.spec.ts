@@ -410,6 +410,24 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     expect(exercised).toBeGreaterThan(70);
   }, 180_000);
 
+  it("B gets 404 for A's order and invoice on the phase 14 invoicing routes (ADR-027 §4)", async () => {
+    // Named explicitly on top of the generic walk above, so a rename of a route cannot drop them silently.
+    const order = await api().get(`/api/v1/sales-orders/${id.salesOrder}/invoiceable`).set(auth(b));
+    expect([order.status, bodyText(order).includes(MARK)]).toEqual([404, false]);
+    const invoice = await api().post(`/api/v1/sales-orders/${id.salesOrder}/invoice`).set(auth(b)).set(idem()).send({});
+    expect([invoice.status, bodyText(invoice).includes(MARK)]).toEqual([404, false]);
+    const price = await api().post(`/api/v1/sales-invoices/${id.salesDraft}/approve-price`).set(auth(b)).set(idem()).send({});
+    expect([price.status, bodyText(price).includes(MARK)]).toEqual([404, false]);
+    const paths = ops.map((o) => `${o.method} ${o.path}`);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        'GET /api/v1/sales-orders/{id}/invoiceable',
+        'POST /api/v1/sales-orders/{id}/invoice',
+        'POST /api/v1/sales-invoices/{id}/approve-price',
+      ]),
+    );
+  }, 60_000);
+
   it("B's lists, and every …Id query fed with A's ids, never show A's records", async () => {
     const byName: Record<string, string | undefined> = {
       accountId: id.account,

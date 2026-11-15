@@ -671,6 +671,24 @@ export const ProcurementLevel = {
   FULL: 'FULL',
 } as const;
 
+export type SalesReservation = typeof SalesReservation[keyof typeof SalesReservation];
+
+
+export const SalesReservation = {
+  NONE: 'NONE',
+  SOFT: 'SOFT',
+  HARD: 'HARD',
+} as const;
+
+export type SalesOrderApproval = typeof SalesOrderApproval[keyof typeof SalesOrderApproval];
+
+
+export const SalesOrderApproval = {
+  NONE: 'NONE',
+  OVER_CREDIT_LIMIT: 'OVER_CREDIT_LIMIT',
+  ALWAYS: 'ALWAYS',
+} as const;
+
 export interface CompanyLogoDto {
   id: string;
   fileName: string;
@@ -697,6 +715,14 @@ export interface CompanyDto {
   costCentersEnabled: boolean;
   /** Purchasing cycle level (ADR-024 §2). */
   procurementLevel: ProcurementLevel;
+  /** A sales invoice must come from a confirmed order (ADR-027 §1). */
+  salesOrderRequired: boolean;
+  salesReservation: SalesReservation;
+  salesOrderApproval: SalesOrderApproval;
+  salesPriceLocked: boolean;
+  quoteValidityDays: number;
+  /** Direct sales invoice drafts (no order): the ones the owner must review when salesOrderRequired is turned on (ADR-027 §1). */
+  directSalesDraftCount: number;
   /**
      * Set when the setup wizard is finished.
      * @nullable
@@ -712,6 +738,8 @@ export interface UpdateCompanyDto {
      * lowered only with no open cycle documents (PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS).
      */
   procurementLevel?: ProcurementLevel;
+  salesReservation?: SalesReservation;
+  salesOrderApproval?: SalesOrderApproval;
   /**
      * @minLength 1
      * @maxLength 191
@@ -746,6 +774,15 @@ export interface UpdateCompanyDto {
   pricesIncludeTax?: boolean;
   /** Cost centres shown and enforced (ADR-024 §1.6). Off keeps posted lines and account flags as they are. */
   costCentersEnabled?: boolean;
+  salesOrderRequired?: boolean;
+  /** The invoice price may not go below the order without a price approval (ADR-027 §4). */
+  salesPriceLocked?: boolean;
+  /**
+     * Default validity of a new quote in days; 0 = no default expiry (ADR-027 §1).
+     * @minimum 0
+     * @maximum 365
+     */
+  quoteValidityDays?: number;
 }
 
 export interface CompanyLogoBase64Dto {
@@ -811,6 +848,7 @@ export type MemberPermissionCode = typeof MemberPermissionCode[keyof typeof Memb
 export const MemberPermissionCode = {
   purchasedirect: 'purchase.direct',
   purchaseapprove: 'purchase.approve',
+  salesapprove: 'sales.approve',
   stockissue_without_request: 'stock.issue_without_request',
 } as const;
 
@@ -917,7 +955,7 @@ export interface MemberPermissionGrantDto {
 }
 
 export interface UpdatePurchasePermissionsDto {
-  /** @maxItems 3 */
+  /** @maxItems 4 */
   permissions: MemberPermissionGrantDto[];
 }
 
@@ -3076,6 +3114,18 @@ export interface SalesInvoiceListItemDto {
      * @nullable
      */
   costCenterId: string | null;
+  /**
+     * ADR-027 §4: the order this invoice bills (set on the draft, final at posting).
+     * @nullable
+     */
+  salesOrderId: string | null;
+  /**
+     * ADR-027 §4 / ADR-026 §2: price approval of a locked-price invoice (set by approve-price).
+     * @nullable
+     */
+  priceApprovedAt: string | null;
+  /** @nullable */
+  priceApprovedBy: string | null;
   status: DocumentStatus;
   /** @nullable */
   description: string | null;
@@ -3196,6 +3246,11 @@ export interface SalesInvoiceLineViewDto {
   /** @nullable */
   unitCost: string | null;
   costTotal: string;
+  /**
+     * ADR-027 §4: the order line this line bills (set on the draft, final at posting).
+     * @nullable
+     */
+  orderLineId: string | null;
   createdAt: string;
   item: SalesInvoiceItemRefDto;
   /** @nullable */
@@ -3293,6 +3348,18 @@ export interface SalesInvoiceDetailDto {
      * @nullable
      */
   costCenterId: string | null;
+  /**
+     * ADR-027 §4: the order this invoice bills (set on the draft, final at posting).
+     * @nullable
+     */
+  salesOrderId: string | null;
+  /**
+     * ADR-027 §4 / ADR-026 §2: price approval of a locked-price invoice (set by approve-price).
+     * @nullable
+     */
+  priceApprovedAt: string | null;
+  /** @nullable */
+  priceApprovedBy: string | null;
   status: DocumentStatus;
   /** @nullable */
   description: string | null;
@@ -3338,6 +3405,8 @@ export interface SalesInvoiceLineDto {
   /** @pattern ^\d+(\.\d{1,4})?$ */
   discountPct?: string;
   taxCategoryId?: string;
+  /** ADR-027 §4: the order line this line bills; allowed only on an invoice made from a sales order. */
+  orderLineId?: string;
 }
 
 export type CreateSalesInvoiceDtoPaymentType = typeof CreateSalesInvoiceDtoPaymentType[keyof typeof CreateSalesInvoiceDtoPaymentType];
@@ -3565,6 +3634,678 @@ export interface CreateSalesReturnDto {
   reason?: string;
   /** @minItems 1 */
   lines: SalesReturnLineDto[];
+}
+
+export type SalesQuoteStatus = typeof SalesQuoteStatus[keyof typeof SalesQuoteStatus];
+
+
+export const SalesQuoteStatus = {
+  DRAFT: 'DRAFT',
+  SENT: 'SENT',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export interface SalesCycleCustomerRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface SalesCycleLineCountDto {
+  lines: number;
+}
+
+export interface SalesCycleQuoteListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The warehouse's branch when a warehouse is named (ADR-003).
+     * @nullable
+     */
+  branchId: string | null;
+  /**
+     * The warehouse the quote is for; the order takes its own at conversion.
+     * @nullable
+     */
+  warehouseId: string | null;
+  customerId: string;
+  /** @nullable */
+  costCenterId: string | null;
+  /** @nullable */
+  quoteNo: string | null;
+  quoteDate: string;
+  /** @nullable */
+  validUntil: string | null;
+  /** ADR-017: prices entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  status: SalesQuoteStatus;
+  /** @nullable */
+  description: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  /** @nullable */
+  sentAt: string | null;
+  /** @nullable */
+  sentBy: string | null;
+  /** @nullable */
+  acceptedAt: string | null;
+  /** @nullable */
+  acceptedBy: string | null;
+  /** @nullable */
+  rejectedAt: string | null;
+  /** @nullable */
+  rejectedBy: string | null;
+  /** @nullable */
+  rejectReason: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  customer: SalesCycleCustomerRefDto;
+  _count: SalesCycleLineCountDto;
+}
+
+export interface SalesCycleQuoteListItemDtoPage {
+  items: SalesCycleQuoteListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface SalesCycleCustomerDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  taxNumber: string | null;
+  /** @nullable */
+  phone: string | null;
+  /** @nullable */
+  address: string | null;
+}
+
+export interface SalesCycleWarehouseRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface SalesCycleCostCenterRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface SalesCycleItemRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  itemKind: ItemKind;
+  baseUnitId: string;
+}
+
+export interface SalesCycleUnitRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface SalesCycleItemUnitDto {
+  id: string;
+  tenantId: string;
+  itemId: string;
+  unitId: string;
+  factorToBase: string;
+  isDefaultSale: boolean;
+  isDefaultPurchase: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  unit: SalesCycleUnitRefDto;
+}
+
+export interface SalesCycleQuoteLineViewDto {
+  id: string;
+  tenantId: string;
+  quoteId: string;
+  lineNo: number;
+  itemId: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  qty: string;
+  qtyBase: string;
+  unitPrice: string;
+  discountPct: string;
+  discountAmount: string;
+  netAmount: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  taxRate: string;
+  taxAmount: string;
+  lineTotal: string;
+  /** @nullable */
+  note: string | null;
+  createdAt: string;
+  item: SalesCycleItemRefDto;
+  /** @nullable */
+  itemUnit: SalesCycleItemUnitDto | null;
+}
+
+export interface SalesCycleQuoteDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The warehouse's branch when a warehouse is named (ADR-003).
+     * @nullable
+     */
+  branchId: string | null;
+  /**
+     * The warehouse the quote is for; the order takes its own at conversion.
+     * @nullable
+     */
+  warehouseId: string | null;
+  customerId: string;
+  /** @nullable */
+  costCenterId: string | null;
+  /** @nullable */
+  quoteNo: string | null;
+  quoteDate: string;
+  /** @nullable */
+  validUntil: string | null;
+  /** ADR-017: prices entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  status: SalesQuoteStatus;
+  /** @nullable */
+  description: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  /** @nullable */
+  sentAt: string | null;
+  /** @nullable */
+  sentBy: string | null;
+  /** @nullable */
+  acceptedAt: string | null;
+  /** @nullable */
+  acceptedBy: string | null;
+  /** @nullable */
+  rejectedAt: string | null;
+  /** @nullable */
+  rejectedBy: string | null;
+  /** @nullable */
+  rejectReason: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  customer: SalesCycleCustomerDto;
+  /** @nullable */
+  warehouse: SalesCycleWarehouseRefDto | null;
+  /** @nullable */
+  costCenter: SalesCycleCostCenterRefDto | null;
+  lines: SalesCycleQuoteLineViewDto[];
+  /** SENT and past its validUntil date; computed, not stored. */
+  expired: boolean;
+}
+
+export interface SalesLineDto {
+  itemId: string;
+  itemUnitId?: string;
+  qty: string;
+  /** Per unit of the line; tax-inclusive when the company enters prices so (ADR-017). */
+  unitPrice: string;
+  discountPct?: string;
+  /** @maxLength 500 */
+  note?: string;
+}
+
+export interface CreateSalesQuoteDto {
+  /** Defaults to today when the quote is created. */
+  quoteDate?: string;
+  /**
+     * Omitted: the company default (quote_validity_days) from the quote date; null: no expiry.
+     * @nullable
+     */
+  validUntil?: string | null;
+  customerId: string;
+  /** Optional: the warehouse the quote is for (its branch applies, ADR-003). */
+  warehouseId?: string;
+  costCenterId?: string;
+  /** @maxLength 500 */
+  description?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines: SalesLineDto[];
+}
+
+export interface UpdateSalesQuoteDto {
+  /** Defaults to today when the quote is created. */
+  quoteDate?: string;
+  /**
+     * Omitted: the company default (quote_validity_days) from the quote date; null: no expiry.
+     * @nullable
+     */
+  validUntil?: string | null;
+  customerId: string;
+  /** Optional: the warehouse the quote is for (its branch applies, ADR-003). */
+  warehouseId?: string;
+  costCenterId?: string;
+  /** @maxLength 500 */
+  description?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines: SalesLineDto[];
+}
+
+export interface ReasonDto {
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  reason: string;
+}
+
+export interface ConvertSalesQuoteDto {
+  /** Required when the quote names no warehouse. */
+  warehouseId?: string;
+  orderDate?: string;
+  expectedDate?: string;
+  costCenterId?: string;
+  /**
+     * @minimum 0
+     * @maximum 365
+     */
+  paymentTermsDays?: number;
+}
+
+export type SalesOrderStatus = typeof SalesOrderStatus[keyof typeof SalesOrderStatus];
+
+
+export const SalesOrderStatus = {
+  DRAFT: 'DRAFT',
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  CONFIRMED: 'CONFIRMED',
+  PARTIALLY_INVOICED: 'PARTIALLY_INVOICED',
+  INVOICED: 'INVOICED',
+  CLOSED: 'CLOSED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export interface SalesCycleQuoteStatusRefDto {
+  id: string;
+  /** @nullable */
+  quoteNo: string | null;
+  status: SalesQuoteStatus;
+}
+
+export interface SalesCycleOrderLineViewDto {
+  id: string;
+  tenantId: string;
+  orderId: string;
+  lineNo: number;
+  /** @nullable */
+  quoteLineId: string | null;
+  itemId: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  qty: string;
+  qtyBase: string;
+  /** Base quantity billed by posted invoices; never above qty_base (ADR-027 §4). */
+  invoicedQty: string;
+  unitPrice: string;
+  discountPct: string;
+  discountAmount: string;
+  netAmount: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  taxRate: string;
+  taxAmount: string;
+  lineTotal: string;
+  /** @nullable */
+  note: string | null;
+  createdAt: string;
+  item: SalesCycleItemRefDto;
+  /** @nullable */
+  itemUnit: SalesCycleItemUnitDto | null;
+}
+
+export interface SalesCycleOrderDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The warehouse's branch (ADR-003), as on the sales invoice.
+     * @nullable
+     */
+  branchId: string | null;
+  /** @nullable */
+  orderNo: string | null;
+  orderDate: string;
+  /** @nullable */
+  expectedDate: string | null;
+  customerId: string;
+  warehouseId: string;
+  /** @nullable */
+  costCenterId: string | null;
+  /**
+     * The quote it was converted from (once only, ADR-027 §2).
+     * @nullable
+     */
+  salesQuoteId: string | null;
+  /** ADR-017: prices entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  /** @nullable */
+  paymentTermsDays: number | null;
+  status: SalesOrderStatus;
+  /** @nullable */
+  description: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  submittedBy: string | null;
+  /** @nullable */
+  confirmedAt: string | null;
+  /** @nullable */
+  confirmedBy: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  approvedBy: string | null;
+  /**
+     * The last rejection of the approval (the order went back to DRAFT).
+     * @nullable
+     */
+  rejectedAt: string | null;
+  /** @nullable */
+  rejectedBy: string | null;
+  /** @nullable */
+  rejectReason: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  /**
+     * ADR-027 §3: closed by hand with a written reason, partly invoiced; its reservation is released.
+     * @nullable
+     */
+  closedAt: string | null;
+  /** @nullable */
+  closedBy: string | null;
+  /** @nullable */
+  closeReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  customer: SalesCycleCustomerDto;
+  warehouse: SalesCycleWarehouseRefDto;
+  /** @nullable */
+  costCenter: SalesCycleCostCenterRefDto | null;
+  /** @nullable */
+  quote: SalesCycleQuoteStatusRefDto | null;
+  lines: SalesCycleOrderLineViewDto[];
+}
+
+export interface SalesCycleQuoteNoRefDto {
+  id: string;
+  /** @nullable */
+  quoteNo: string | null;
+}
+
+export interface SalesCycleOrderListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The warehouse's branch (ADR-003), as on the sales invoice.
+     * @nullable
+     */
+  branchId: string | null;
+  /** @nullable */
+  orderNo: string | null;
+  orderDate: string;
+  /** @nullable */
+  expectedDate: string | null;
+  customerId: string;
+  warehouseId: string;
+  /** @nullable */
+  costCenterId: string | null;
+  /**
+     * The quote it was converted from (once only, ADR-027 §2).
+     * @nullable
+     */
+  salesQuoteId: string | null;
+  /** ADR-017: prices entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  /** @nullable */
+  paymentTermsDays: number | null;
+  status: SalesOrderStatus;
+  /** @nullable */
+  description: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  submittedBy: string | null;
+  /** @nullable */
+  confirmedAt: string | null;
+  /** @nullable */
+  confirmedBy: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  approvedBy: string | null;
+  /**
+     * The last rejection of the approval (the order went back to DRAFT).
+     * @nullable
+     */
+  rejectedAt: string | null;
+  /** @nullable */
+  rejectedBy: string | null;
+  /** @nullable */
+  rejectReason: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  /**
+     * ADR-027 §3: closed by hand with a written reason, partly invoiced; its reservation is released.
+     * @nullable
+     */
+  closedAt: string | null;
+  /** @nullable */
+  closedBy: string | null;
+  /** @nullable */
+  closeReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  customer: SalesCycleCustomerRefDto;
+  /** @nullable */
+  quote: SalesCycleQuoteNoRefDto | null;
+  _count: SalesCycleLineCountDto;
+}
+
+export interface SalesCycleOrderListItemDtoPage {
+  items: SalesCycleOrderListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface SalesCycleReservationItemDto {
+  itemId: string;
+  /** Base-unit quantity on hand. */
+  onHand: string;
+  /**
+     * Null when reservation is NONE.
+     * @nullable
+     */
+  reserved: string | null;
+  /**
+     * Null when reservation is NONE.
+     * @nullable
+     */
+  available: string | null;
+}
+
+export interface SalesCycleReservationDto {
+  warehouseId: string;
+  /** The company setting of ADR-027 §5. */
+  mode: SalesReservation;
+  items: SalesCycleReservationItemDto[];
+}
+
+export interface CreateSalesOrderDto {
+  orderDate: string;
+  expectedDate?: string;
+  customerId: string;
+  /** The warehouse the goods leave from; the order's branch is its branch (ADR-003). */
+  warehouseId: string;
+  costCenterId?: string;
+  /**
+     * @minimum 0
+     * @maximum 365
+     */
+  paymentTermsDays?: number;
+  /** @maxLength 500 */
+  description?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines: SalesLineDto[];
+}
+
+export interface UpdateSalesOrderDto {
+  orderDate: string;
+  expectedDate?: string;
+  customerId: string;
+  /** The warehouse the goods leave from; the order's branch is its branch (ADR-003). */
+  warehouseId: string;
+  costCenterId?: string;
+  /**
+     * @minimum 0
+     * @maximum 365
+     */
+  paymentTermsDays?: number;
+  /** @maxLength 500 */
+  description?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines: SalesLineDto[];
+}
+
+/**
+ * Defaults to CREDIT.
+ */
+export type CreateInvoiceFromOrderDtoPaymentType = typeof CreateInvoiceFromOrderDtoPaymentType[keyof typeof CreateInvoiceFromOrderDtoPaymentType];
+
+
+export const CreateInvoiceFromOrderDtoPaymentType = {
+  CASH: 'CASH',
+  CREDIT: 'CREDIT',
+} as const;
+
+export interface CreateInvoiceFromOrderDto {
+  invoiceDate?: string;
+  dueDate?: string;
+  /** Defaults to CREDIT. */
+  paymentType?: CreateInvoiceFromOrderDtoPaymentType;
+  /** Required for a cash invoice. */
+  cashAccountId?: string;
+  /** @maxLength 500 */
+  description?: string;
+}
+
+export interface SalesCycleInvoiceableLineDto {
+  orderLineId: string;
+  lineNo: number;
+  itemId: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  qtyBase: string;
+  invoicedQty: string;
+  remainingBase: string;
+  remainingQty: string;
+  unitPrice: string;
+  discountPct: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  taxRate: string;
+}
+
+export interface SalesCycleInvoiceableDto {
+  orderId: string;
+  status: SalesOrderStatus;
+  /** True when the order status takes invoices (ADR-027 §4). */
+  invoiceable: boolean;
+  lines: SalesCycleInvoiceableLineDto[];
 }
 
 export interface PurchaseSupplierRefDto {
@@ -4788,14 +5529,6 @@ export interface CreatePurchaseRequestDto {
      * @maxItems 500
      */
   lines: PurchaseRequestLineDto[];
-}
-
-export interface ReasonDto {
-  /**
-     * @minLength 1
-     * @maxLength 500
-     */
-  reason: string;
 }
 
 export interface ComparisonRequestDto {
@@ -7210,10 +7943,6 @@ export interface AdminErrorDetailDto {
   stack: string | null;
 }
 
-export interface TestSupportAmountDto {
-  amount: string;
-}
-
 export type ErrorCode = typeof ErrorCode[keyof typeof ErrorCode];
 
 
@@ -7296,6 +8025,14 @@ export const ErrorCode = {
   PURCHASE_ORDER_NOT_RECEIVED: 'PURCHASE_ORDER_NOT_RECEIVED',
   PURCHASE_BILL_EXCEEDS_RECEIPT: 'PURCHASE_BILL_EXCEEDS_RECEIPT',
   PURCHASE_PRICE_ABOVE_ORDER: 'PURCHASE_PRICE_ABOVE_ORDER',
+  QUOTE_EXPIRED: 'QUOTE_EXPIRED',
+  QUOTE_ALREADY_CONVERTED: 'QUOTE_ALREADY_CONVERTED',
+  STOCK_RESERVED: 'STOCK_RESERVED',
+  SALES_ORDER_NOT_CANCELLABLE: 'SALES_ORDER_NOT_CANCELLABLE',
+  SALES_ORDER_REQUIRED: 'SALES_ORDER_REQUIRED',
+  SALES_ORDER_OVER_INVOICED: 'SALES_ORDER_OVER_INVOICED',
+  SALES_ORDER_NOT_INVOICEABLE: 'SALES_ORDER_NOT_INVOICEABLE',
+  SALES_PRICE_APPROVAL_REQUIRED: 'SALES_PRICE_APPROVAL_REQUIRED',
   ISSUE_REQUEST_REQUIRED: 'ISSUE_REQUEST_REQUIRED',
   ISSUE_REQUEST_QTY_EXCEEDED: 'ISSUE_REQUEST_QTY_EXCEEDED',
   ISSUE_REQUEST_DEPARTMENT_MISMATCH: 'ISSUE_REQUEST_DEPARTMENT_MISMATCH',
@@ -8101,6 +8838,155 @@ export type SalesControllerReturnPdfLang = typeof SalesControllerReturnPdfLang[k
 
 
 export const SalesControllerReturnPdfLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type SalesCycleControllerListQuotesParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
+  q?: string;
+  sort?: SalesCycleControllerListQuotesSort;
+  status?: SalesCycleControllerListQuotesStatus;
+  customerId?: string;
+  /** Quote date on or after (yyyy-mm-dd). */
+  from?: string;
+  /** Quote date on or before (yyyy-mm-dd). */
+  to?: string;
+};
+
+export type SalesCycleControllerListQuotesSort = typeof SalesCycleControllerListQuotesSort[keyof typeof SalesCycleControllerListQuotesSort];
+
+
+export const SalesCycleControllerListQuotesSort = {
+  quoteDate: 'quoteDate',
+  '-quoteDate': '-quoteDate',
+  quoteNo: 'quoteNo',
+  '-quoteNo': '-quoteNo',
+  grandTotal: 'grandTotal',
+  '-grandTotal': '-grandTotal',
+} as const;
+
+export type SalesCycleControllerListQuotesStatus = typeof SalesCycleControllerListQuotesStatus[keyof typeof SalesCycleControllerListQuotesStatus];
+
+
+export const SalesCycleControllerListQuotesStatus = {
+  DRAFT: 'DRAFT',
+  SENT: 'SENT',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type SalesCycleControllerQuotePdfParams = {
+  format?: SalesCycleControllerQuotePdfFormat;
+  lang?: SalesCycleControllerQuotePdfLang;
+};
+
+export type SalesCycleControllerQuotePdfFormat = typeof SalesCycleControllerQuotePdfFormat[keyof typeof SalesCycleControllerQuotePdfFormat];
+
+
+export const SalesCycleControllerQuotePdfFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type SalesCycleControllerQuotePdfLang = typeof SalesCycleControllerQuotePdfLang[keyof typeof SalesCycleControllerQuotePdfLang];
+
+
+export const SalesCycleControllerQuotePdfLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type SalesCycleControllerListOrdersParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
+  q?: string;
+  sort?: SalesCycleControllerListOrdersSort;
+  status?: SalesCycleControllerListOrdersStatus;
+  customerId?: string;
+  from?: string;
+  to?: string;
+};
+
+export type SalesCycleControllerListOrdersSort = typeof SalesCycleControllerListOrdersSort[keyof typeof SalesCycleControllerListOrdersSort];
+
+
+export const SalesCycleControllerListOrdersSort = {
+  orderDate: 'orderDate',
+  '-orderDate': '-orderDate',
+  orderNo: 'orderNo',
+  '-orderNo': '-orderNo',
+  grandTotal: 'grandTotal',
+  '-grandTotal': '-grandTotal',
+} as const;
+
+export type SalesCycleControllerListOrdersStatus = typeof SalesCycleControllerListOrdersStatus[keyof typeof SalesCycleControllerListOrdersStatus];
+
+
+export const SalesCycleControllerListOrdersStatus = {
+  DRAFT: 'DRAFT',
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  CONFIRMED: 'CONFIRMED',
+  PARTIALLY_INVOICED: 'PARTIALLY_INVOICED',
+  INVOICED: 'INVOICED',
+  CLOSED: 'CLOSED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type SalesCycleControllerReservationParams = {
+  warehouseId: string;
+  /**
+   * Comma-separated item ids, at most 500.
+   * @maxLength 5000
+   */
+  itemIds: string;
+};
+
+export type SalesCycleControllerOrderPdfParams = {
+  format?: SalesCycleControllerOrderPdfFormat;
+  lang?: SalesCycleControllerOrderPdfLang;
+};
+
+export type SalesCycleControllerOrderPdfFormat = typeof SalesCycleControllerOrderPdfFormat[keyof typeof SalesCycleControllerOrderPdfFormat];
+
+
+export const SalesCycleControllerOrderPdfFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type SalesCycleControllerOrderPdfLang = typeof SalesCycleControllerOrderPdfLang[keyof typeof SalesCycleControllerOrderPdfLang];
+
+
+export const SalesCycleControllerOrderPdfLang = {
   ar: 'ar',
   en: 'en',
 } as const;
@@ -14871,6 +15757,1258 @@ export const salesControllerPostReturn = async (id: string, options?: Parameters
 
 
 
+export type salesCycleControllerListQuotesResponse200 = {
+  data: SalesCycleQuoteListItemDtoPage
+  status: 200
+}
+
+export type salesCycleControllerListQuotesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerListQuotesResponseSuccess = (salesCycleControllerListQuotesResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerListQuotesResponseError = (salesCycleControllerListQuotesResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerListQuotesUrl = (params?: SalesCycleControllerListQuotesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/sales-quotes?${stringifiedParams}` : `/api/v1/sales-quotes`
+}
+
+export const salesCycleControllerListQuotes = async (params?: SalesCycleControllerListQuotesParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerListQuotesResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerListQuotesResponseSuccess>(getSalesCycleControllerListQuotesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerCreateQuoteResponse201 = {
+  data: SalesCycleQuoteDetailDto
+  status: 201
+}
+
+export type salesCycleControllerCreateQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerCreateQuoteResponseSuccess = (salesCycleControllerCreateQuoteResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerCreateQuoteResponseError = (salesCycleControllerCreateQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerCreateQuoteUrl = () => {
+
+
+
+
+  return `/api/v1/sales-quotes`
+}
+
+export const salesCycleControllerCreateQuote = async (createSalesQuoteDto: CreateSalesQuoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerCreateQuoteResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesCycleControllerCreateQuoteResponseSuccess>(getSalesCycleControllerCreateQuoteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createSalesQuoteDto)
+  }
+);}
+
+
+
+export type salesCycleControllerGetQuoteResponse200 = {
+  data: SalesCycleQuoteDetailDto
+  status: 200
+}
+
+export type salesCycleControllerGetQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerGetQuoteResponseSuccess = (salesCycleControllerGetQuoteResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerGetQuoteResponseError = (salesCycleControllerGetQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerGetQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-quotes/${id}`
+}
+
+export const salesCycleControllerGetQuote = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerGetQuoteResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerGetQuoteResponseSuccess>(getSalesCycleControllerGetQuoteUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerUpdateQuoteResponse200 = {
+  data: SalesCycleQuoteDetailDto
+  status: 200
+}
+
+export type salesCycleControllerUpdateQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerUpdateQuoteResponseSuccess = (salesCycleControllerUpdateQuoteResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerUpdateQuoteResponseError = (salesCycleControllerUpdateQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerUpdateQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-quotes/${id}`
+}
+
+export const salesCycleControllerUpdateQuote = async (id: string,
+    updateSalesQuoteDto: UpdateSalesQuoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerUpdateQuoteResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesCycleControllerUpdateQuoteResponseSuccess>(getSalesCycleControllerUpdateQuoteUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateSalesQuoteDto)
+  }
+);}
+
+
+
+export type salesCycleControllerDeleteQuoteResponse200 = {
+  data: DeletedDto
+  status: 200
+}
+
+export type salesCycleControllerDeleteQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerDeleteQuoteResponseSuccess = (salesCycleControllerDeleteQuoteResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerDeleteQuoteResponseError = (salesCycleControllerDeleteQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerDeleteQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-quotes/${id}`
+}
+
+export const salesCycleControllerDeleteQuote = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerDeleteQuoteResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerDeleteQuoteResponseSuccess>(getSalesCycleControllerDeleteQuoteUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerQuotePdfResponse200 = {
+  data: Blob
+  status: 200
+}
+
+export type salesCycleControllerQuotePdfResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerQuotePdfResponseSuccess = (salesCycleControllerQuotePdfResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerQuotePdfResponseError = (salesCycleControllerQuotePdfResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerQuotePdfUrl = (id: string,
+    params?: SalesCycleControllerQuotePdfParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/sales-quotes/${id}/pdf?${stringifiedParams}` : `/api/v1/sales-quotes/${id}/pdf`
+}
+
+/**
+ * @summary The quotation to send to the customer (ADR-027 §2).
+ */
+export const salesCycleControllerQuotePdf = async (id: string,
+    params?: SalesCycleControllerQuotePdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerQuotePdfResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerQuotePdfResponseSuccess>(getSalesCycleControllerQuotePdfUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerSendQuoteResponse201 = {
+  data: SalesCycleQuoteDetailDto
+  status: 201
+}
+
+export type salesCycleControllerSendQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerSendQuoteResponseSuccess = (salesCycleControllerSendQuoteResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerSendQuoteResponseError = (salesCycleControllerSendQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerSendQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-quotes/${id}/send`
+}
+
+export const salesCycleControllerSendQuote = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerSendQuoteResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerSendQuoteResponseSuccess>(getSalesCycleControllerSendQuoteUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerAcceptQuoteResponse201 = {
+  data: SalesCycleQuoteDetailDto
+  status: 201
+}
+
+export type salesCycleControllerAcceptQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerAcceptQuoteResponseSuccess = (salesCycleControllerAcceptQuoteResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerAcceptQuoteResponseError = (salesCycleControllerAcceptQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerAcceptQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-quotes/${id}/accept`
+}
+
+export const salesCycleControllerAcceptQuote = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerAcceptQuoteResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerAcceptQuoteResponseSuccess>(getSalesCycleControllerAcceptQuoteUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerRejectQuoteResponse201 = {
+  data: SalesCycleQuoteDetailDto
+  status: 201
+}
+
+export type salesCycleControllerRejectQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerRejectQuoteResponseSuccess = (salesCycleControllerRejectQuoteResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerRejectQuoteResponseError = (salesCycleControllerRejectQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerRejectQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-quotes/${id}/reject`
+}
+
+export const salesCycleControllerRejectQuote = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerRejectQuoteResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesCycleControllerRejectQuoteResponseSuccess>(getSalesCycleControllerRejectQuoteUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type salesCycleControllerCancelQuoteResponse201 = {
+  data: SalesCycleQuoteDetailDto
+  status: 201
+}
+
+export type salesCycleControllerCancelQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerCancelQuoteResponseSuccess = (salesCycleControllerCancelQuoteResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerCancelQuoteResponseError = (salesCycleControllerCancelQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerCancelQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-quotes/${id}/cancel`
+}
+
+export const salesCycleControllerCancelQuote = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerCancelQuoteResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesCycleControllerCancelQuoteResponseSuccess>(getSalesCycleControllerCancelQuoteUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type salesCycleControllerCopyQuoteResponse201 = {
+  data: SalesCycleQuoteDetailDto
+  status: 201
+}
+
+export type salesCycleControllerCopyQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerCopyQuoteResponseSuccess = (salesCycleControllerCopyQuoteResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerCopyQuoteResponseError = (salesCycleControllerCopyQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerCopyQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-quotes/${id}/copy`
+}
+
+/**
+ * @summary A new draft from any quote (ADR-027 §2: a sent quote is cancelled and copied).
+ */
+export const salesCycleControllerCopyQuote = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerCopyQuoteResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerCopyQuoteResponseSuccess>(getSalesCycleControllerCopyQuoteUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerConvertQuoteResponse201 = {
+  data: SalesCycleOrderDetailDto
+  status: 201
+}
+
+export type salesCycleControllerConvertQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerConvertQuoteResponseSuccess = (salesCycleControllerConvertQuoteResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerConvertQuoteResponseError = (salesCycleControllerConvertQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerConvertQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-quotes/${id}/convert`
+}
+
+/**
+ * @summary An accepted quote becomes one draft sales order (ADR-027 §2).
+ */
+export const salesCycleControllerConvertQuote = async (id: string,
+    convertSalesQuoteDto: ConvertSalesQuoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerConvertQuoteResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesCycleControllerConvertQuoteResponseSuccess>(getSalesCycleControllerConvertQuoteUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(convertSalesQuoteDto)
+  }
+);}
+
+
+
+export type salesCycleControllerListOrdersResponse200 = {
+  data: SalesCycleOrderListItemDtoPage
+  status: 200
+}
+
+export type salesCycleControllerListOrdersResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerListOrdersResponseSuccess = (salesCycleControllerListOrdersResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerListOrdersResponseError = (salesCycleControllerListOrdersResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerListOrdersUrl = (params?: SalesCycleControllerListOrdersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/sales-orders?${stringifiedParams}` : `/api/v1/sales-orders`
+}
+
+export const salesCycleControllerListOrders = async (params?: SalesCycleControllerListOrdersParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerListOrdersResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerListOrdersResponseSuccess>(getSalesCycleControllerListOrdersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerCreateOrderResponse201 = {
+  data: SalesCycleOrderDetailDto
+  status: 201
+}
+
+export type salesCycleControllerCreateOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerCreateOrderResponseSuccess = (salesCycleControllerCreateOrderResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerCreateOrderResponseError = (salesCycleControllerCreateOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerCreateOrderUrl = () => {
+
+
+
+
+  return `/api/v1/sales-orders`
+}
+
+export const salesCycleControllerCreateOrder = async (createSalesOrderDto: CreateSalesOrderDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerCreateOrderResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesCycleControllerCreateOrderResponseSuccess>(getSalesCycleControllerCreateOrderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createSalesOrderDto)
+  }
+);}
+
+
+
+export type salesCycleControllerReservationResponse200 = {
+  data: SalesCycleReservationDto
+  status: 200
+}
+
+export type salesCycleControllerReservationResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerReservationResponseSuccess = (salesCycleControllerReservationResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerReservationResponseError = (salesCycleControllerReservationResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerReservationUrl = (params: SalesCycleControllerReservationParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/sales-orders/reservation?${stringifiedParams}` : `/api/v1/sales-orders/reservation`
+}
+
+/**
+ * @summary Reserved and available quantities per item in one warehouse (ADR-027 §5); declared before `:id`.
+ */
+export const salesCycleControllerReservation = async (params: SalesCycleControllerReservationParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerReservationResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerReservationResponseSuccess>(getSalesCycleControllerReservationUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerGetOrderResponse200 = {
+  data: SalesCycleOrderDetailDto
+  status: 200
+}
+
+export type salesCycleControllerGetOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerGetOrderResponseSuccess = (salesCycleControllerGetOrderResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerGetOrderResponseError = (salesCycleControllerGetOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerGetOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-orders/${id}`
+}
+
+export const salesCycleControllerGetOrder = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerGetOrderResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerGetOrderResponseSuccess>(getSalesCycleControllerGetOrderUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerUpdateOrderResponse200 = {
+  data: SalesCycleOrderDetailDto
+  status: 200
+}
+
+export type salesCycleControllerUpdateOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerUpdateOrderResponseSuccess = (salesCycleControllerUpdateOrderResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerUpdateOrderResponseError = (salesCycleControllerUpdateOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerUpdateOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-orders/${id}`
+}
+
+export const salesCycleControllerUpdateOrder = async (id: string,
+    updateSalesOrderDto: UpdateSalesOrderDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerUpdateOrderResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesCycleControllerUpdateOrderResponseSuccess>(getSalesCycleControllerUpdateOrderUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateSalesOrderDto)
+  }
+);}
+
+
+
+export type salesCycleControllerDeleteOrderResponse200 = {
+  data: DeletedDto
+  status: 200
+}
+
+export type salesCycleControllerDeleteOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerDeleteOrderResponseSuccess = (salesCycleControllerDeleteOrderResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerDeleteOrderResponseError = (salesCycleControllerDeleteOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerDeleteOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-orders/${id}`
+}
+
+export const salesCycleControllerDeleteOrder = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerDeleteOrderResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerDeleteOrderResponseSuccess>(getSalesCycleControllerDeleteOrderUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerOrderPdfResponse200 = {
+  data: Blob
+  status: 200
+}
+
+export type salesCycleControllerOrderPdfResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerOrderPdfResponseSuccess = (salesCycleControllerOrderPdfResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerOrderPdfResponseError = (salesCycleControllerOrderPdfResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerOrderPdfUrl = (id: string,
+    params?: SalesCycleControllerOrderPdfParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/sales-orders/${id}/pdf?${stringifiedParams}` : `/api/v1/sales-orders/${id}/pdf`
+}
+
+/**
+ * @summary The order to print for the customer (ADR-027 §3).
+ */
+export const salesCycleControllerOrderPdf = async (id: string,
+    params?: SalesCycleControllerOrderPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerOrderPdfResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerOrderPdfResponseSuccess>(getSalesCycleControllerOrderPdfUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerConfirmOrderResponse201 = {
+  data: SalesCycleOrderDetailDto
+  status: 201
+}
+
+export type salesCycleControllerConfirmOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerConfirmOrderResponseSuccess = (salesCycleControllerConfirmOrderResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerConfirmOrderResponseError = (salesCycleControllerConfirmOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerConfirmOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-orders/${id}/confirm`
+}
+
+export const salesCycleControllerConfirmOrder = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerConfirmOrderResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerConfirmOrderResponseSuccess>(getSalesCycleControllerConfirmOrderUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerApproveOrderResponse201 = {
+  data: SalesCycleOrderDetailDto
+  status: 201
+}
+
+export type salesCycleControllerApproveOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerApproveOrderResponseSuccess = (salesCycleControllerApproveOrderResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerApproveOrderResponseError = (salesCycleControllerApproveOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerApproveOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-orders/${id}/approve`
+}
+
+export const salesCycleControllerApproveOrder = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerApproveOrderResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerApproveOrderResponseSuccess>(getSalesCycleControllerApproveOrderUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerRejectOrderApprovalResponse201 = {
+  data: SalesCycleOrderDetailDto
+  status: 201
+}
+
+export type salesCycleControllerRejectOrderApprovalResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerRejectOrderApprovalResponseSuccess = (salesCycleControllerRejectOrderApprovalResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerRejectOrderApprovalResponseError = (salesCycleControllerRejectOrderApprovalResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerRejectOrderApprovalUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-orders/${id}/reject-approval`
+}
+
+export const salesCycleControllerRejectOrderApproval = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerRejectOrderApprovalResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesCycleControllerRejectOrderApprovalResponseSuccess>(getSalesCycleControllerRejectOrderApprovalUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type salesCycleControllerCancelOrderResponse201 = {
+  data: SalesCycleOrderDetailDto
+  status: 201
+}
+
+export type salesCycleControllerCancelOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerCancelOrderResponseSuccess = (salesCycleControllerCancelOrderResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerCancelOrderResponseError = (salesCycleControllerCancelOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerCancelOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-orders/${id}/cancel`
+}
+
+export const salesCycleControllerCancelOrder = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerCancelOrderResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesCycleControllerCancelOrderResponseSuccess>(getSalesCycleControllerCancelOrderUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type salesCycleControllerInvoiceOrderResponse201 = {
+  data: SalesInvoiceDetailDto
+  status: 201
+}
+
+export type salesCycleControllerInvoiceOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerInvoiceOrderResponseSuccess = (salesCycleControllerInvoiceOrderResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerInvoiceOrderResponseError = (salesCycleControllerInvoiceOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerInvoiceOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-orders/${id}/invoice`
+}
+
+/**
+ * @summary A draft invoice of what is left on each line (ADR-027 §4); several drafts may exist, the posting decides.
+ */
+export const salesCycleControllerInvoiceOrder = async (id: string,
+    createInvoiceFromOrderDto: CreateInvoiceFromOrderDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerInvoiceOrderResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesCycleControllerInvoiceOrderResponseSuccess>(getSalesCycleControllerInvoiceOrderUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createInvoiceFromOrderDto)
+  }
+);}
+
+
+
+export type salesCycleControllerInvoiceableResponse200 = {
+  data: SalesCycleInvoiceableDto
+  status: 200
+}
+
+export type salesCycleControllerInvoiceableResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesCycleControllerInvoiceableResponseSuccess = (salesCycleControllerInvoiceableResponse200) & {
+  headers: Headers;
+};
+export type salesCycleControllerInvoiceableResponseError = (salesCycleControllerInvoiceableResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerInvoiceableUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-orders/${id}/invoiceable`
+}
+
+/**
+ * @summary What each line of the order still allows to invoice (ADR-027 §4).
+ */
+export const salesCycleControllerInvoiceable = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerInvoiceableResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerInvoiceableResponseSuccess>(getSalesCycleControllerInvoiceableUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerApproveInvoicePriceResponse201 = {
+  data: SalesInvoiceDetailDto
+  status: 201
+}
+
+export type salesCycleControllerApproveInvoicePriceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerApproveInvoicePriceResponseSuccess = (salesCycleControllerApproveInvoicePriceResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerApproveInvoicePriceResponseError = (salesCycleControllerApproveInvoicePriceResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerApproveInvoicePriceUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-invoices/${id}/approve-price`
+}
+
+/**
+ * @summary The approval of a draft priced below its order line (ADR-027 §4): sales.approve, never by its author.
+ */
+export const salesCycleControllerApproveInvoicePrice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerApproveInvoicePriceResponseSuccess> => {
+
+  return apiFetch<salesCycleControllerApproveInvoicePriceResponseSuccess>(getSalesCycleControllerApproveInvoicePriceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type salesCycleControllerCloseOrderResponse201 = {
+  data: SalesCycleOrderDetailDto
+  status: 201
+}
+
+export type salesCycleControllerCloseOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type salesCycleControllerCloseOrderResponseSuccess = (salesCycleControllerCloseOrderResponse201) & {
+  headers: Headers;
+};
+export type salesCycleControllerCloseOrderResponseError = (salesCycleControllerCloseOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesCycleControllerCloseOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/sales-orders/${id}/close`
+}
+
+export const salesCycleControllerCloseOrder = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesCycleControllerCloseOrderResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesCycleControllerCloseOrderResponseSuccess>(getSalesCycleControllerCloseOrderUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
 export type purchasesControllerListInvoicesResponse200 = {
   data: PurchaseInvoiceListItemDtoPage
   status: 200
@@ -20229,82 +22367,6 @@ export const adminErrorsControllerReopen = async (id: string, options?: Paramete
   {
     ...options,
     method: 'POST'
-
-
-  }
-);}
-
-
-
-export type testContractControllerMatchResponse200 = {
-  data: TestSupportAmountDto
-  status: 200
-}
-
-export type testContractControllerMatchResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type testContractControllerMatchResponseSuccess = (testContractControllerMatchResponse200) & {
-  headers: Headers;
-};
-export type testContractControllerMatchResponseError = (testContractControllerMatchResponseDefault) & {
-  headers: Headers;
-};
-
-export const getTestContractControllerMatchUrl = () => {
-
-
-
-
-  return `/api/v1/__test/contract/match`
-}
-
-export const testContractControllerMatch = async ( options?: Parameters<typeof apiFetch>[1]): Promise<testContractControllerMatchResponseSuccess> => {
-
-  return apiFetch<testContractControllerMatchResponseSuccess>(getTestContractControllerMatchUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export type testContractControllerMismatchResponse200 = {
-  data: TestSupportAmountDto
-  status: 200
-}
-
-export type testContractControllerMismatchResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type testContractControllerMismatchResponseSuccess = (testContractControllerMismatchResponse200) & {
-  headers: Headers;
-};
-export type testContractControllerMismatchResponseError = (testContractControllerMismatchResponseDefault) & {
-  headers: Headers;
-};
-
-export const getTestContractControllerMismatchUrl = () => {
-
-
-
-
-  return `/api/v1/__test/contract/mismatch`
-}
-
-export const testContractControllerMismatch = async ( options?: Parameters<typeof apiFetch>[1]): Promise<testContractControllerMismatchResponseSuccess> => {
-
-  return apiFetch<testContractControllerMismatchResponseSuccess>(getTestContractControllerMismatchUrl(),
-  {
-    ...options,
-    method: 'GET'
 
 
   }
