@@ -39,10 +39,11 @@ export class UsersController {
   /**
    * Active members whose role creates or posts purchase invoices but who lack
    * purchase.direct (owners aside): raising the procurement level from SIMPLE
-   * would stop them (ADR-025 §4). The owner sees them before confirming.
+   * would stop them (ADR-025 §4). Shown before confirming the raise, so it
+   * needs what raising needs (company.manage); name, email and role only.
    */
   @Get('purchase-direct-gaps')
-  @RequirePermission(PERMISSIONS.USER_MANAGE)
+  @RequirePermission(PERMISSIONS.COMPANY_MANAGE)
   @ApiOkResponse({ type: PurchaseDirectGapDto, isArray: true })
   purchaseDirectGaps() {
     return this.users.purchaseDirectGaps();

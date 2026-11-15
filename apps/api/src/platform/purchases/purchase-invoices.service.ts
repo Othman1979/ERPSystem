@@ -456,7 +456,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto, lines);
 
-    const inv = await db.$transaction(async (tx) => {
+    // Retried on a lock conflict: the transaction now share-locks the company row (ADR-025 §4).
+    const inv = await this.support.withRetry(() => db.$transaction(async (tx) => {
       // ADR-025 §4: at MEDIUM / FULL a direct purchase needs purchase.direct (owners aside).
       await assertDirectPurchaseAllowed(tx, tenantId, companyId);
       // Share-lock the header centre before the row that references it (ADR-024 §1.4).
@@ -504,7 +505,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         })),
       });
       return created;
-    }, POSTING_TX_OPTIONS);
+    }, POSTING_TX_OPTIONS));
     await this.audit.log({
       action: 'purchase_invoice.create',
       entityType: 'purchase_invoice',

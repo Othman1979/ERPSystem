@@ -845,10 +845,8 @@ export interface PurchaseDirectGapRoleDto {
 }
 
 export interface PurchaseDirectGapDto {
-  membershipId: string;
   fullName: string;
   email: string;
-  roleCode: string;
   role: PurchaseDirectGapRoleDto;
 }
 
@@ -6742,6 +6740,7 @@ export const ErrorCode = {
   PURCHASE_REQUEST_REQUIRED: 'PURCHASE_REQUEST_REQUIRED',
   PURCHASE_REQUEST_QTY_EXCEEDED: 'PURCHASE_REQUEST_QTY_EXCEEDED',
   INVALID_STATUS_TRANSITION: 'INVALID_STATUS_TRANSITION',
+  PURCHASE_ORDER_ZERO_TOTAL: 'PURCHASE_ORDER_ZERO_TOTAL',
   INTERNAL: 'INTERNAL',
 } as const;
 
@@ -10334,7 +10333,8 @@ export const getUsersControllerPurchaseDirectGapsUrl = () => {
 /**
  * @summary Active members whose role creates or posts purchase invoices but who lack
 purchase.direct (owners aside): raising the procurement level from SIMPLE
-would stop them (ADR-025 §4). The owner sees them before confirming.
+would stop them (ADR-025 §4). Shown before confirming the raise, so it
+needs what raising needs (company.manage); name, email and role only.
  */
 export const usersControllerPurchaseDirectGaps = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerPurchaseDirectGapsResponseSuccess> => {
 

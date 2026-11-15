@@ -288,16 +288,10 @@ export class PurchaseDirectGapRoleDto {
 /** A member who creates or posts purchase invoices today without purchase.direct (ADR-025 §4). */
 export class PurchaseDirectGapDto {
   @ApiProperty({ type: 'string' })
-  membershipId!: string;
-
-  @ApiProperty({ type: 'string' })
   fullName!: string;
 
   @ApiProperty({ type: 'string' })
   email!: string;
-
-  @ApiProperty({ type: 'string' })
-  roleCode!: string;
 
   @ApiProperty({ type: () => PurchaseDirectGapRoleDto })
   role!: PurchaseDirectGapRoleDto;

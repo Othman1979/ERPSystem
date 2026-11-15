@@ -44,10 +44,24 @@ export async function lockProcurementLevel(
   tenantId: bigint,
   companyId: bigint,
 ): Promise<ProcurementLevel> {
-  const [row] = await tx.$queryRaw<{ procurement_level: ProcurementLevel }[]>`
-    SELECT procurement_level FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} LOCK IN SHARE MODE`;
+  return (await lockCompanyProcurement(tx, tenantId, companyId)).level;
+}
+
+/**
+ * The level and the tax-inclusive prices setting (ADR-017) in one read under
+ * the company row's shared lock, so a document is written with the setting
+ * as it is when the transaction commits, and freezes it.
+ */
+export async function lockCompanyProcurement(
+  tx: Prisma.TransactionClient,
+  tenantId: bigint,
+  companyId: bigint,
+): Promise<{ level: ProcurementLevel; pricesIncludeTax: boolean }> {
+  const [row] = await tx.$queryRaw<{ procurement_level: ProcurementLevel; prices_include_tax: boolean | number }[]>`
+    SELECT procurement_level, prices_include_tax FROM companies
+     WHERE tenant_id = ${tenantId} AND id = ${companyId} LOCK IN SHARE MODE`;
   if (!row) throw new DomainError(ErrorCode.INTERNAL, 'Tenant has no active company');
-  return row.procurement_level;
+  return { level: row.procurement_level, pricesIncludeTax: Boolean(Number(row.prices_include_tax)) };
 }
 
 /**
@@ -59,6 +73,11 @@ export async function lockProcurementLevel(
 export interface OpenCycleDocumentsCounter {
   /** Name of the documents counted, for the refusal details (for example `purchaseOrders`). */
   readonly key: string;
+  /**
+   * The lowest level whose cycle has these documents (requests and quotes:
+   * FULL; orders: MEDIUM). Only a lowering below it counts them (ADR-025 §6).
+   */
+  readonly level: ProcurementLevel;
   /**
    * Open documents of the tenant, read inside the level change transaction
    * (tenant-scoped client), after the company row is locked.
@@ -92,11 +111,17 @@ export class ProcurementCycleRegistry {
     return this.counters.map((c) => c.key);
   }
 
-  /** Refuses a lowering while documents of the cycle are open; anything else passes. */
+  /**
+   * Refuses a lowering while documents the target level drops are open
+   * (ADR-025 §6): FULL → MEDIUM counts requests and quotes only, → SIMPLE
+   * counts orders too. Anything else passes.
+   */
   async assertLevelChange(tx: Prisma.TransactionClient, from: ProcurementLevel, to: ProcurementLevel): Promise<void> {
     if (!isLoweringLevel(from, to)) return;
     const open: Record<string, number> = {};
     for (const counter of this.counters) {
+      if (meetsProcurementLevel(to, counter.level)) continue; // the target level still has them
+
       const n = await counter.count(tx);
       if (n > 0) open[counter.key] = n;
     }

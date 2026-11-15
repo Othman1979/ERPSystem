@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DeleteOutlined, SaveOutlined } from '@ant-design/icons';
 import {
+  Alert,
   Button,
   DatePicker,
   Form,
@@ -17,7 +18,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
 import {
@@ -67,12 +68,18 @@ import { dec } from '../format/number';
 import {
   convertBody,
   defaultPicks,
+  missingReceivePrices,
   quoteBody,
   receiveBody,
+  withPick,
   type QuotePicks,
 } from './procurement/quotePayload';
+import { invalidateProcurement, procurementKeys } from './procurement/queryKeys';
 
 // ------------------------------------------------------------------ shared
+
+/** The toast API of antd's message.useMessage(), passed down so every screen shares one holder. */
+type MessageApi = ReturnType<typeof message.useMessage>[0];
 
 /** The request picker's label: its number and its date. */
 function requestLabel(r: { id: string; requestNo: string | null; requestDate: string }): string {
@@ -87,7 +94,7 @@ function requestOption(r: { id: string; requestNo: string | null; requestDate: s
 /** The request the quote or comparison is for; loaded for its open lines and remaining quantities. */
 function useRequestDetail(requestId?: string) {
   return useQuery({
-    queryKey: ['procurement-request', requestId],
+    queryKey: procurementKeys.request(requestId),
     queryFn: ({ signal }) =>
       procurementControllerGetRequest(requestId!, { signal }).then((r) => r.data),
     enabled: !!requestId,
@@ -111,7 +118,7 @@ function ApprovedRequestPicker({
   const { t } = useTranslation();
   return (
     <RemoteSelect
-      queryKey={['procurement-requests', 'pick', 'APPROVED']}
+      queryKey={procurementKeys.requestPick('APPROVED')}
       fetchOptions={(q, signal) =>
         procurementControllerListRequests(
           { status: 'APPROVED', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) },
@@ -140,20 +147,30 @@ function QuoteStatus({ status }: { status: string }) {
   return <StatusTag tone={tone[status] ?? 'neutral'}>{t(`procurement.statuses.${status}`)}</StatusTag>;
 }
 
-/** Every mutation on quotes and requests refreshes the procurement screens together. */
-function invalidateProcurement(queryClient: QueryClient) {
-  return queryClient.invalidateQueries({
-    predicate: (q) => String(q.queryKey[0]).startsWith('procurement-'),
-  });
-}
-
 // ------------------------------------------------------------------ page
 
 export function PurchaseQuotesPage() {
   const { t } = useTranslation();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   // A request can open this page (?requestId=...): its quote and comparison start from it.
-  const initialRequestId = params.get('requestId') ?? undefined;
+  // The state keeps the value after the address is cleaned up below.
+  const requestIdParam = params.get('requestId') ?? undefined;
+  const [initialRequestId, setInitialRequestId] = useState(requestIdParam);
+  // Drop the one-off flags from the address, so a refresh or Back does not replay them.
+  // `new` is read by QuotesTab (useNewFromUrl), which drops it too; both removals are safe to repeat.
+  useEffect(() => {
+    if (requestIdParam) setInitialRequestId(requestIdParam);
+    if (!params.has('requestId') && !params.has('new')) return;
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('requestId');
+        next.delete('new');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [requestIdParam, params, setParams]);
   const [tab, setTab] = useState('quotes');
   return (
     <div>
@@ -200,7 +217,7 @@ function QuotesTab({ initialRequestId }: { initialRequestId?: string }) {
     { status?: ProcurementControllerListQuotesStatus },
     ProcurementControllerListQuotesSort
   >({
-    key: ['procurement-quotes', 'list'],
+    key: procurementKeys.quoteList(),
     filters: { status: statusFilter },
     defaultSort: '-quoteDate',
     fetch: (params, signal) => procurementControllerListQuotes(params, { signal }).then((r) => r.data),
@@ -208,7 +225,7 @@ function QuotesTab({ initialRequestId }: { initialRequestId?: string }) {
   });
 
   const detail = useQuery({
-    queryKey: ['procurement-quote', quoteId],
+    queryKey: procurementKeys.quote(quoteId ?? undefined),
     queryFn: ({ signal }) => procurementControllerGetQuote(quoteId!, { signal }).then((r) => r.data),
     enabled: screen !== 'list' && !!quoteId,
   });
@@ -219,13 +236,11 @@ function QuotesTab({ initialRequestId }: { initialRequestId?: string }) {
         ? t(`errors.${err.code}`, { defaultValue: err.message })
         : t('errors.INTERNAL'),
     );
-  const refresh = () => invalidateProcurement(queryClient);
-
   const send = useMutation({
     mutationFn: (id: string) => procurementControllerSendQuote(id, { headers: idemHeaders() }),
     onSuccess: () => {
       apiMessage.success(t('procurement.sent'));
-      refresh();
+      void invalidateProcurement(queryClient);
     },
     onError,
   });
@@ -233,7 +248,7 @@ function QuotesTab({ initialRequestId }: { initialRequestId?: string }) {
     mutationFn: (id: string) => procurementControllerCloseQuote(id, { headers: idemHeaders() }),
     onSuccess: () => {
       apiMessage.success(t('procurement.closed'));
-      refresh();
+      void invalidateProcurement(queryClient);
     },
     onError,
   });
@@ -242,7 +257,7 @@ function QuotesTab({ initialRequestId }: { initialRequestId?: string }) {
       procurementControllerCancelQuote(id, { reason }, { headers: idemHeaders() }),
     onSuccess: () => {
       apiMessage.success(t('procurement.cancelled'));
-      refresh();
+      void invalidateProcurement(queryClient);
     },
     onError,
   });
@@ -251,7 +266,7 @@ function QuotesTab({ initialRequestId }: { initialRequestId?: string }) {
       procurementControllerReceiveQuote(id, body, { headers: idemHeaders() }),
     onSuccess: () => {
       apiMessage.success(t('procurement.received'));
-      refresh();
+      void invalidateProcurement(queryClient);
       setScreen('view');
     },
     onError,
@@ -260,7 +275,7 @@ function QuotesTab({ initialRequestId }: { initialRequestId?: string }) {
     mutationFn: (id: string) => procurementControllerDeleteQuote(id),
     onSuccess: () => {
       apiMessage.success(t('common.deleted'));
-      refresh();
+      void invalidateProcurement(queryClient);
       setQuoteId(null);
       setScreen('list');
     },
@@ -316,108 +331,117 @@ function QuotesTab({ initialRequestId }: { initialRequestId?: string }) {
     },
   ];
 
-  if (screen === 'form') {
-    if (quoteId && !detail.data) return <Typography.Text>{t('common.loading')}</Typography.Text>;
-    return (
-      <QuoteForm
-        key={quoteId ?? 'new'}
-        quote={quoteId ? detail.data : undefined}
-        initialRequestId={initialRequestId}
-        onBack={() => {
-          setQuoteId(null);
-          setScreen('list');
-        }}
-        onSaved={(id) => {
-          refresh();
-          setQuoteId(id);
-          setScreen('view');
-        }}
-      />
-    );
-  }
-
-  if ((screen === 'view' || screen === 'receive') && quoteId) {
-    if (!detail.data) return <Typography.Text>{t('common.loading')}</Typography.Text>;
-    if (screen === 'receive') {
+  // One message holder for every screen, so a toast survives a switch between them.
+  const renderScreen = (): ReactNode => {
+    if (screen === 'form') {
+      if (quoteId && !detail.data) return <Typography.Text>{t('common.loading')}</Typography.Text>;
       return (
-        <QuoteReceive
-          quote={detail.data}
-          busy={receive.isPending}
-          onBack={() => setScreen('view')}
-          onSubmit={(body) => receive.mutate({ id: detail.data!.id, body })}
+        <QuoteForm
+          key={quoteId ?? 'new'}
+          quote={quoteId ? detail.data : undefined}
+          initialRequestId={initialRequestId}
+          apiMessage={apiMessage}
+          onBack={() => {
+            setQuoteId(null);
+            setScreen('list');
+          }}
+          onSaved={(id) => {
+            setQuoteId(id);
+            setScreen('view');
+          }}
         />
       );
     }
+
+    if ((screen === 'view' || screen === 'receive') && quoteId) {
+      if (!detail.data) return <Typography.Text>{t('common.loading')}</Typography.Text>;
+      if (screen === 'receive') {
+        return (
+          <QuoteReceive
+            quote={detail.data}
+            busy={receive.isPending}
+            onBack={() => setScreen('view')}
+            onSubmit={(body) => receive.mutate({ id: detail.data!.id, body })}
+          />
+        );
+      }
+      return (
+        <QuoteView
+          quote={detail.data}
+          canManage={canManage}
+          busy={send.isPending || close.isPending || cancel.isPending || del.isPending}
+          onBack={() => {
+            setQuoteId(null);
+            setScreen('list');
+          }}
+          onEdit={() => setScreen('form')}
+          onReceive={() => setScreen('receive')}
+          onSend={(id) => send.mutate(id)}
+          onClose={(id) => close.mutate(id)}
+          onCancel={(id, reason) => cancel.mutateAsync({ id, reason })}
+          onDelete={(id) => del.mutate(id)}
+        />
+      );
+    }
+
     return (
-      <QuoteView
-        quote={detail.data}
-        canManage={canManage}
-        busy={send.isPending || close.isPending || cancel.isPending || del.isPending}
-        onBack={() => {
-          setQuoteId(null);
-          setScreen('list');
-        }}
-        onEdit={() => setScreen('form')}
-        onReceive={() => setScreen('receive')}
-        onSend={(id) => send.mutate(id)}
-        onClose={(id) => close.mutate(id)}
-        onCancel={(id, reason) => cancel.mutateAsync({ id, reason })}
-        onDelete={(id) => del.mutate(id)}
-      />
+      <div>
+        <ListToolbar
+          search={list.search}
+          onSearch={list.setSearch}
+          filters={
+            <Select
+              allowClear
+              placeholder={t('common.status')}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={(['DRAFT', 'SENT', 'RECEIVED', 'CLOSED', 'CANCELLED'] as const).map((s) => ({
+                value: s,
+                label: t(`procurement.statuses.${s}`),
+              }))}
+            />
+          }
+          count={list.total}
+          actions={
+            canManage ? (
+              <Button
+                type="primary"
+                onClick={() => {
+                  setQuoteId(null);
+                  setScreen('form');
+                }}
+              >
+                {t('procurement.newQuote')}
+              </Button>
+            ) : undefined
+          }
+        />
+        <Table
+          rowKey="id"
+          loading={list.query.isLoading}
+          dataSource={list.rows}
+          locale={tableLocale(list.query)}
+          columns={columns}
+          size="small"
+          pagination={list.pagination}
+          onChange={list.onTableChange}
+          onRow={(r) => ({
+            onClick: () => {
+              setQuoteId(r.id);
+              setScreen('view');
+            },
+            style: { cursor: 'pointer' },
+          })}
+        />
+      </div>
     );
-  }
+  };
 
   return (
-    <div>
+    <>
       {contextHolder}
-      <ListToolbar
-        search={list.search}
-        onSearch={list.setSearch}
-        filters={
-          <Select
-            allowClear
-            placeholder={t('common.status')}
-            value={statusFilter}
-            onChange={setStatusFilter}
-            options={(['DRAFT', 'SENT', 'RECEIVED', 'CLOSED', 'CANCELLED'] as const).map((s) => ({
-              value: s,
-              label: t(`procurement.statuses.${s}`),
-            }))}
-          />
-        }
-        count={list.total}
-        actions={
-          canManage ? (
-            <Button
-              type="primary"
-              onClick={() => {
-                setQuoteId(null);
-                setScreen('form');
-              }}
-            >
-              {t('procurement.newQuote')}
-            </Button>
-          ) : undefined
-        }
-      />
-      <Table
-        rowKey="id"
-        loading={list.query.isLoading}
-        dataSource={list.rows}
-        locale={tableLocale(list.query)}
-        columns={columns}
-        size="small"
-        pagination={list.pagination}
-        onChange={list.onTableChange}
-        onRow={(r) => ({
-          onClick: () => {
-            setQuoteId(r.id);
-            setScreen('view');
-          },
-          style: { cursor: 'pointer' },
-        })}
-      />
-    </div>
+      {renderScreen()}
+    </>
   );
 }
 
@@ -455,17 +479,19 @@ function quoteDraftLines(quote: PurchaseQuoteDetailDto): DraftLine[] {
 function QuoteForm({
   quote,
   initialRequestId,
+  apiMessage,
   onBack,
   onSaved,
 }: {
   /** The DRAFT being edited; undefined for a new quote. */
   quote?: PurchaseQuoteDetailDto;
   initialRequestId?: string;
+  apiMessage: MessageApi;
   onBack: () => void;
   onSaved: (id: string) => void;
 }) {
   const { t } = useTranslation();
-  const [apiMessage, contextHolder] = message.useMessage();
+  const queryClient = useQueryClient();
   const [requestId, setRequestId] = useState<string | undefined>(quote?.requestId ?? initialRequestId);
   const request = useRequestDetail(requestId);
   const [supplierId, setSupplierId] = useState<string | undefined>(quote?.supplierId);
@@ -508,6 +534,7 @@ function QuoteForm({
     },
     onSuccess: (res) => {
       apiMessage.success(t('common.saved'));
+      void invalidateProcurement(queryClient);
       onSaved(res.data.id);
     },
     onError: (err) =>
@@ -551,7 +578,6 @@ function QuoteForm({
         </Button>
       }
     >
-      {contextHolder}
       <DocFields>
         <DocField label={t('procurement.request')} required error={requiredError(missing.request)}>
           <ApprovedRequestPicker
@@ -861,12 +887,15 @@ function QuoteReceive({
   const priceOf = (id: string): PriceDraft => prices[id] ?? { unitPrice: '', discountPct: '' };
   const setPrice = (id: string, patch: Partial<PriceDraft>) =>
     setPrices((p) => ({ ...p, [id]: { ...priceOf(id), ...patch } }));
-  // Every line needs a price (ADR-025 §10); the server checks the rest.
-  const unpriced = (id: string) => !priceOf(id).unitPrice.trim();
+  // Every line needs a price above zero (ADR-025 §10). The helper lists the lines without one;
+  // their cells are marked after a first try, and the call is blocked until they are filled.
+  const missing = new Set(
+    missingReceivePrices(quote.lines.map((l) => ({ lineId: l.id, unitPrice: priceOf(l.id).unitPrice }))),
+  );
 
   const submit = () => {
     if (busy) return;
-    if (quote.lines.length === 0 || quote.lines.some((l) => unpriced(l.id))) {
+    if (quote.lines.length === 0 || missing.size > 0) {
       setTried(true);
       return;
     }
@@ -896,6 +925,9 @@ function QuoteReceive({
         </Button>
       }
     >
+      {tried && missing.size > 0 && (
+        <Alert type="warning" showIcon message={t('procurement.quotesUi.missingPrices')} />
+      )}
       <DocFields>
         <DocField label={t('procurement.supplierRef')}>
           <Input value={supplierRef} maxLength={100} onChange={(e) => setSupplierRef(e.target.value)} />
@@ -925,8 +957,8 @@ function QuoteReceive({
                 stringMode
                 min="0"
                 size="small"
-                aria-label={t('procurement.unitPrice')}
-                status={tried && unpriced(l.id) ? 'error' : undefined}
+                aria-label={t('procurement.quotesUi.priceFor', { item: l.item.code, line: l.lineNo })}
+                status={tried && missing.has(l.id) ? 'error' : undefined}
                 value={priceOf(l.id).unitPrice}
                 style={{ width: '100%' }}
                 onChange={(v) => setPrice(l.id, { unitPrice: v ?? '' })}
@@ -942,7 +974,7 @@ function QuoteReceive({
                 min="0"
                 max="100"
                 size="small"
-                aria-label={t('procurement.discountPct')}
+                aria-label={t('procurement.quotesUi.discountFor', { item: l.item.code, line: l.lineNo })}
                 value={priceOf(l.id).discountPct}
                 style={{ width: '100%' }}
                 onChange={(v) => setPrice(l.id, { discountPct: v ?? '' })}
@@ -977,7 +1009,7 @@ function ComparisonTab({ initialRequestId }: { initialRequestId?: string }) {
   const [tried, setTried] = useState(false);
 
   const comparison = useQuery({
-    queryKey: ['procurement-comparison', requestId],
+    queryKey: procurementKeys.comparison(requestId),
     queryFn: ({ signal }) => procurementControllerComparison(requestId!, { signal }).then((r) => r.data),
     enabled: !!requestId,
   });
@@ -1012,11 +1044,14 @@ function ComparisonTab({ initialRequestId }: { initialRequestId?: string }) {
         ),
         { headers: idemHeaders() },
       ),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       const count = res.data.orders.length;
       setCreated(count);
+      setUserPicks(null);
       apiMessage.success(t('procurement.ordersCreated', { count }));
-      void invalidateProcurement(queryClient);
+      // The mutation stays pending until the comparison is fetched again, so the
+      // button stays disabled meanwhile and a second click cannot create the orders twice.
+      await invalidateProcurement(queryClient);
     },
     onError: (err) =>
       apiMessage.error(
@@ -1075,14 +1110,21 @@ function ComparisonTab({ initialRequestId }: { initialRequestId?: string }) {
               </DocFields>
               {!open && <Typography.Text type="secondary">{t('procurement.noLinesLeft')}</Typography.Text>}
               {open && line.offers.length === 0 && (
-                <Typography.Text type="secondary">{t('procurement.noOffers')}</Typography.Text>
+                <Typography.Text type="secondary">{t('procurement.quotesUi.noOfferYet')}</Typography.Text>
               )}
               {line.offers.length > 0 && (
                 <Radio.Group
-                  value={picks[line.requestLineId]}
+                  // An empty choice means the line is left out of the order.
+                  value={picks[line.requestLineId] ?? ''}
                   disabled={!open || !canManage}
-                  onChange={(e) => setUserPicks({ ...picks, [line.requestLineId]: e.target.value as string })}
+                  onChange={(e) => setUserPicks(withPick(picks, line.requestLineId, e.target.value as string))}
                 >
+                  <Radio
+                    value=""
+                    aria-label={t('procurement.quotesUi.skipFor', { item: line.item.code, line: line.lineNo })}
+                  >
+                    {t('procurement.quotesUi.skipLine')}
+                  </Radio>
                   <Table<ComparisonOfferDto>
                     rowKey="quoteLineId"
                     size="small"
@@ -1093,7 +1135,10 @@ function ComparisonTab({ initialRequestId }: { initialRequestId?: string }) {
                         title: t('procurement.chooseOffer'),
                         width: 110,
                         render: (_: unknown, o: ComparisonOfferDto) => (
-                          <Radio value={o.quoteLineId} aria-label={t('procurement.chooseOffer')} />
+                          <Radio
+                            value={o.quoteLineId}
+                            aria-label={t('procurement.quotesUi.offerFor', { item: line.item.code, line: line.lineNo })}
+                          />
                         ),
                       },
                       {

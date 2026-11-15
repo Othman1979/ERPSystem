@@ -117,3 +117,25 @@ export function quoteBody(form: QuoteForm): UpdatePurchaseQuoteDto {
       .map((l) => ({ requestLineId: l.requestLineId, qty: l.qty.trim() })),
   };
 }
+
+/**
+ * The lines whose unit price is blank or not above zero. A receive needs a
+ * price on every line (ADR-025 §10), so the screen blocks the call while any
+ * line is listed here: a blank or zero price is never sent silently.
+ */
+export function missingReceivePrices(
+  lines: readonly { lineId: string; unitPrice?: string | null }[],
+): string[] {
+  return lines.filter((l) => !dec((l.unitPrice ?? '').trim()).gt(0)).map((l) => l.lineId);
+}
+
+/**
+ * The picks after the user chooses `quoteLineId` for a request line. An empty
+ * choice takes the line out, so it is left out of the order's selections.
+ */
+export function withPick(picks: QuotePicks, requestLineId: string, quoteLineId: string): QuotePicks {
+  const next: Record<string, string> = { ...picks };
+  if (quoteLineId) next[requestLineId] = quoteLineId;
+  else delete next[requestLineId];
+  return next;
+}

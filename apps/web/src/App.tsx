@@ -43,6 +43,7 @@ import { useCompany } from './components/CompanyProfileForm';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { ServerUnreachable } from './components/ServerUnreachable';
 import { NoAccess } from './components/NoAccess';
+import { ProcurementLevelGate } from './components/ProcurementLevelGate';
 import { PERMISSIONS } from './auth/permissions';
 import { useProcurementLevel } from './auth/procurementLevel';
 import { lazyPage } from './lazyPage';
@@ -51,7 +52,6 @@ import { displayName } from './i18n/displayName';
 import {
   ALL_ROUTES,
   allowedGroups,
-  allowedRoute,
   APP_GROUPS,
   INVITATIONS_PATH,
   routeForPath,
@@ -508,7 +508,13 @@ function AppShell() {
                   key={r.key}
                   path={`${r.path}/*`}
                   element={
-                    <ViewErrorBoundary key={r.key}>{allowedRoute(r, can, procurementLevel) ? r.element : <NoAccess />}</ViewErrorBoundary>
+                    <ViewErrorBoundary key={r.key}>
+                      {!r.permission || can(r.permission) ? (
+                        <ProcurementLevelGate min={r.minProcurementLevel}>{r.element}</ProcurementLevelGate>
+                      ) : (
+                        <NoAccess />
+                      )}
+                    </ViewErrorBoundary>
                   }
                 />
               ))}

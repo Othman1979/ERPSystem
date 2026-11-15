@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { Alert, Button, DatePicker, Input, InputNumber, Modal, Popconfirm, Select, Table, Typography, message } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -55,11 +55,14 @@ import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
 import {
   approvalHint,
+  isAuthoredBy,
+  missingPriceLines,
   purchaseOrderBody,
   purchaseOrderUpdateBody,
   type PurchaseOrderForm,
   type PurchaseOrderFormLine,
 } from './procurement/orderPayload';
+import { invalidateProcurement, procurementKeys } from './procurement/queryKeys';
 
 // ------------------------------------------------------------------ types
 
@@ -101,16 +104,6 @@ function errorText(t: TFunction, err: unknown): string {
   return err instanceof ApiError
     ? t(`errors.${err.code}`, { defaultValue: err.message })
     : t('errors.INTERNAL');
-}
-
-/**
- * Refreshes every order list and order, and the requests they draw on: an
- * order takes quantities off its request, so the request's remaining figures change.
- */
-function invalidateOrders(queryClient: QueryClient) {
-  void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-  void queryClient.invalidateQueries({ queryKey: ['purchase-order'] });
-  void queryClient.invalidateQueries({ queryKey: ['procurement-request'] });
 }
 
 /** Item picker row for a line's item (the picker's search may not return it). */
@@ -219,7 +212,7 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
     { status?: ProcurementControllerListOrdersStatus },
     ProcurementControllerListOrdersSort
   >({
-    key: ['purchase-orders', 'list'],
+    key: procurementKeys.orderList(),
     filters: { status: statusFilter },
     defaultSort: '-orderDate',
     fetch: (params, signal) => procurementControllerListOrders(params, { signal }).then((r) => r.data),
@@ -336,12 +329,12 @@ function OrderScreen({
   const canManage = can(PERMISSIONS.PURCHASE_MANAGE);
 
   const detail = useQuery({
-    queryKey: ['purchase-order', id],
+    queryKey: procurementKeys.order(id),
     queryFn: ({ signal }) => procurementControllerGetOrder(id!, { signal }).then((r) => r.data),
     enabled: !!id,
   });
   const request = useQuery({
-    queryKey: ['procurement-request', requestId],
+    queryKey: procurementKeys.request(requestId),
     queryFn: ({ signal }) => procurementControllerGetRequest(requestId!, { signal }).then((r) => r.data),
     enabled: !id && !!requestId,
   });
@@ -459,7 +452,7 @@ function OrderEditor({
     mutationFn: persist,
     onSuccess: (id) => {
       apiMessage.success(t('common.saved'));
-      invalidateOrders(queryClient);
+      void invalidateProcurement(queryClient);
       onSaved(id);
     },
     onError,
@@ -474,7 +467,7 @@ function OrderEditor({
     },
     onSuccess: (id) => {
       apiMessage.success(t('procurement.submitted'));
-      invalidateOrders(queryClient);
+      void invalidateProcurement(queryClient);
       onSaved(id);
     },
     onError,
@@ -487,7 +480,7 @@ function OrderEditor({
     },
     onSuccess: () => {
       apiMessage.success(t('common.deleted'));
-      invalidateOrders(queryClient);
+      void invalidateProcurement(queryClient);
       onDeleted();
     },
     onError,
@@ -497,19 +490,23 @@ function OrderEditor({
 
   // Save stays enabled: an attempt with gaps marks the missing fields instead.
   const [tried, setTried] = useState(false);
+  // Rows of lines with an item and no unit price (never sent as zero).
+  const priceGaps = missingPriceLines(lines);
   const missing = {
     supplier: !supplierId,
     warehouse: !warehouseId,
     lines: !lines.some((l) => l.itemId && l.qty),
+    prices: priceGaps.length > 0,
   };
   /** True when the form may be sent; otherwise marks what is missing. */
   const checkForm = (): boolean => {
     if (busy) return false;
-    if (missing.supplier || missing.warehouse || missing.lines) {
+    if (missing.supplier || missing.warehouse || missing.lines || missing.prices) {
       setTried(true);
       if (missing.supplier) focusNamedField('supplier');
       else if (missing.warehouse) focusNamedField('warehouse');
-      else apiMessage.warning(t('stock.minLines'));
+      else if (missing.lines) apiMessage.warning(t('stock.minLines'));
+      else apiMessage.warning(t('procurement.ordersUi.priceRequired'));
       return false;
     }
     return true;
@@ -636,6 +633,7 @@ function OrderEditor({
           return lineSeq.current;
         }}
         lineError={tried && missing.lines ? t('common.requiredField') : undefined}
+        priceGaps={new Set(tried ? priceGaps : [])}
       />
     </DocLayout>
   );
@@ -655,6 +653,7 @@ function OrderLinesGrid({
   priceOf,
   nextKey,
   lineError,
+  priceGaps,
 }: {
   lines: OrderLineDraft[];
   onChange: (lines: OrderLineDraft[]) => void;
@@ -664,6 +663,8 @@ function OrderLinesGrid({
   priceOf: (itemId: string) => string | undefined;
   nextKey: () => number;
   lineError?: string;
+  /** Row indexes whose unit price is missing; marked as errors. */
+  priceGaps: ReadonlySet<number>;
 }) {
   const { t } = useTranslation();
 
@@ -743,6 +744,7 @@ function OrderLinesGrid({
                     variant="borderless"
                     stringMode
                     min="0"
+                    status={priceGaps.has(row) ? 'error' : undefined}
                     placeholder={t('procurement.unitPrice')}
                     value={l.unitPrice}
                     onChange={(v) => update(l.key, { unitPrice: v })}
@@ -858,7 +860,7 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
     canApprove,
     approvalLimit: membership?.approvalLimit,
     grandTotal: order.grandTotal,
-    createdByMe: !!me && order.createdBy === me.user.id,
+    authoredByMe: isAuthoredBy(order, me?.user.id),
   });
   const hintText =
     submitted && hint === 'needsOwner'
@@ -875,7 +877,7 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
     mutationFn: () => procurementControllerApproveOrder(order.id, { headers: idemHeaders() }),
     onSuccess: () => {
       apiMessage.success(t('procurement.approved'));
-      invalidateOrders(queryClient);
+      void invalidateProcurement(queryClient);
     },
     onError,
   });
@@ -885,7 +887,7 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
     onSuccess: () => {
       setReasonAction(null);
       apiMessage.success(t('procurement.rejected'));
-      invalidateOrders(queryClient);
+      void invalidateProcurement(queryClient);
     },
     onError,
   });
@@ -895,7 +897,7 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
     onSuccess: () => {
       setReasonAction(null);
       apiMessage.success(t('procurement.cancelled'));
-      invalidateOrders(queryClient);
+      void invalidateProcurement(queryClient);
     },
     onError,
   });
@@ -917,7 +919,8 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
                   {t('procurement.approve')}
                 </Button>
               </Popconfirm>
-              <Button danger disabled={hint === 'ownDocument' || busy} onClick={() => setReasonAction('reject')}>
+              {/* Rejecting is allowed on one's own order; only approving is not (APPROVAL_SELF_NOT_ALLOWED). */}
+              <Button danger disabled={busy} onClick={() => setReasonAction('reject')}>
                 {t('procurement.reject')}
               </Button>
             </>

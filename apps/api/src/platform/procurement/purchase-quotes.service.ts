@@ -7,7 +7,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { findPage } from '../../common/paging/find-page.js';
 import { withLineCounts } from '../../common/paging/line-counts.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
-import { assertProcurementLevel, lockProcurementLevel } from '../../common/procurement/procurement-level.js';
+import { assertProcurementLevel, lockCompanyProcurement, lockProcurementLevel } from '../../common/procurement/procurement-level.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { CatalogService } from '../inventory/catalog.service.js';
@@ -121,10 +121,10 @@ export class PurchaseQuotesService {
     const companyId = await this.support.companyId(db);
     const requestId = BigInt(dto.requestId);
     await this.parties.assertActiveSupplier(BigInt(dto.supplierId));
-    const pricesIncludeTax = await this.support.pricesIncludeTax(db);
     const created = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         const req = await this.lockApprovedRequest(tx, tenantId, companyId, requestId);
+        const pricesIncludeTax = req.pricesIncludeTax;
         const lines = await this.quoteLines(tx, requestId, dto.lines);
         const quote = await tx.purchaseQuote.create({
           data: {
@@ -154,10 +154,9 @@ export class PurchaseQuotesService {
     const companyId = await this.support.companyId(db);
     const requestId = await this.requestIdOf(id);
     await this.parties.assertActiveSupplier(BigInt(dto.supplierId));
-    const pricesIncludeTax = await this.support.pricesIncludeTax(db);
     await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
-        await this.lockApprovedRequest(tx, tenantId, companyId, requestId);
+        const { pricesIncludeTax } = await this.lockApprovedRequest(tx, tenantId, companyId, requestId);
         const quote = await lockDocument(tx, 'purchase_quotes', tenantId, id);
         assertBranchAllowed(quote.branch_id);
         assertStatus('quote', quote.status, ['DRAFT'], 'edited');
@@ -341,11 +340,13 @@ export class PurchaseQuotesService {
 
   /** The level (FULL) and the request (shared lock) it quotes for, approved and in the caller's branches. */
   private async lockApprovedRequest(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint, requestId: bigint) {
-    assertProcurementLevel(await lockProcurementLevel(tx, tenantId, companyId), 'FULL');
+    // The level and the tax-inclusive setting in one read of the share-locked company row (frozen on the quote).
+    const company = await lockCompanyProcurement(tx, tenantId, companyId);
+    assertProcurementLevel(company.level, 'FULL');
     const req = await lockRequest(tx, tenantId, requestId, true);
     assertBranchAllowed(req.branch_id);
     assertStatus('purchase request', req.status, ['APPROVED'], 'quoted');
-    return req;
+    return { ...req, pricesIncludeTax: company.pricesIncludeTax };
   }
 
   /** Quote lines from request lines: the given ones (each once), or every line with something left. */

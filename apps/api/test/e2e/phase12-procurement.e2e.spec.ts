@@ -114,6 +114,9 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
   let s1 = '';
   let s2 = '';
   let customer = '';
+  let standard = '';
+  let zero = '';
+  let r1Outer = '';
 
   const setLevel = (token: string, procurementLevel: string) =>
     api().patch('/api/v1/company').set(auth(token)).send({ procurementLevel });
@@ -205,8 +208,8 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
       const units = await api().get('/api/v1/units').set(auth(owner));
       const pcs = (units.body as { id: string; code: string }[]).find((u) => u.code === 'PCS')!.id;
       const taxes = (await api().get('/api/v1/tax-categories').set(auth(owner))).body as { id: string; code: string }[];
-      const standard = taxes.find((x) => x.code === 'STANDARD')!.id;
-      const zero = taxes.find((x) => x.code === 'ZERO')!.id;
+      standard = taxes.find((x) => x.code === 'STANDARD')!.id;
+      zero = taxes.find((x) => x.code === 'ZERO')!.id;
       itemTaxed = (await api().post('/api/v1/items').set(auth(owner)).send({ code: 'I1', nameAr: 'صنف 1', baseUnitId: pcs, taxCategoryId: standard })).body.id;
       itemZero = (await api().post('/api/v1/items').set(auth(owner)).send({ code: 'I2', nameAr: 'صنف 2', baseUnitId: pcs, taxCategoryId: zero })).body.id;
       const party = async (code: string, partyType: string) =>
@@ -257,14 +260,16 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
       expect((await invoice(cashier)).status).toBe(201);
     });
 
-    it('the raise-level warning lists the members who buy today without purchase.direct (owner only)', async () => {
+    it('the raise-level warning lists the members who buy today without purchase.direct (company.manage)', async () => {
       const res = await api().get('/api/v1/users/purchase-direct-gaps').set(auth(owner));
       expect(res.status).toBe(200);
-      expect((res.body as { membershipId: string; roleCode: string }[]).map((m) => [m.membershipId, m.roleCode])).toEqual([
-        [accMembership, 'ACCOUNTANT'],
-        [cashierMembership, 'CASHIER'],
+      expect(res.body).toEqual([
+        { fullName: expect.any(String), email: `p12-acc-${RUN}@test.dev`, role: { code: 'ACCOUNTANT', nameAr: expect.any(String), nameEn: 'Accountant' } },
+        { fullName: expect.any(String), email: `p12-cash-${RUN}@test.dev`, role: { code: 'CASHIER', nameAr: expect.any(String), nameEn: 'Cashier' } },
       ]);
-      expect((await api().get('/api/v1/users/purchase-direct-gaps').set(auth(acc))).status).toBe(403);
+      // The accountant raises levels (company.manage), so sees it too; the viewer does not.
+      expect((await api().get('/api/v1/users/purchase-direct-gaps').set(auth(acc))).status).toBe(200);
+      expect((await api().get('/api/v1/users/purchase-direct-gaps').set(auth(appr2))).status).toBe(403);
       // Nothing is granted by raising the level (checked below: the cashier is refused).
     });
   });
@@ -285,8 +290,12 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
       expect([post.status, post.body.error.code]).toEqual([403, 'PURCHASE_DIRECT_REQUIRED']);
       expect((await grant(cashierMembership, [{ code: 'purchase.direct' }])).status).toBe(200);
       expect((await invoice(cashier)).status).toBe(201);
-      const gaps = (await api().get('/api/v1/users/purchase-direct-gaps').set(auth(owner))).body as { membershipId: string }[];
-      expect(gaps.map((m) => m.membershipId)).toEqual([accMembership]);
+      const gaps = (await api().get('/api/v1/users/purchase-direct-gaps').set(auth(owner))).body as { email: string }[];
+      expect(gaps.map((m) => m.email)).toEqual([`p12-acc-${RUN}@test.dev`]);
+      // purchase.direct is read under lock in the transaction: a revoke applies to the next invoice at once.
+      expect((await grant(cashierMembership, [])).status).toBe(200);
+      expect((await invoice(cashier)).body.error.code).toBe('PURCHASE_DIRECT_REQUIRED');
+      expect((await grant(cashierMembership, [{ code: 'purchase.direct' }])).status).toBe(200);
     });
 
     it('requests stay FULL-only, and an order cannot name a request at MEDIUM', async () => {
@@ -384,6 +393,30 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
       expect((await api().delete(`/api/v1/purchase-orders/${draft}`).set(auth(acc))).body).toEqual({ deleted: true });
     });
 
+    it('editing or submitting someone else’s draft makes it yours: no approval by the editor (review #47)', async () => {
+      const id = (await order(owner, directOrder([{ itemId: itemTaxed, qty: '1', unitPrice: '10' }]))).body.id as string;
+      // The accountant edits the owner's draft, then submits it.
+      expect((await api().put(`/api/v1/purchase-orders/${id}`).set(auth(acc)).send(directOrder([{ itemId: itemTaxed, qty: '2', unitPrice: '10' }]))).status).toBe(200);
+      await act(acc, 'purchase-orders', id, 'submit');
+      expect((await act(acc, 'purchase-orders', id, 'approve')).body.error.code).toBe('APPROVAL_SELF_NOT_ALLOWED');
+      // A rejection is not an approval: the author may turn it down (ADR-025 forbids self-approval only).
+      const rejected = await act(acc, 'purchase-orders', id, 'reject', { reason: 'Own mistake' });
+      expect([rejected.status, rejected.body.status]).toEqual([201, 'DRAFT']);
+      // The owner's own draft, submitted by the cashier: the cashier holds no approval, the owner may.
+      await act(cashier, 'purchase-orders', id, 'submit');
+      const viewer = (await get(owner, 'purchase-orders', id)).body;
+      expect([viewer.submittedBy === viewer.createdBy, viewer.status]).toEqual([false, 'SUBMITTED']);
+      expect((await act(acc, 'purchase-orders', id, 'approve')).body.error.code).toBe('APPROVAL_SELF_NOT_ALLOWED'); // last editor
+      expect((await act(acc, 'purchase-orders', id, 'cancel', { reason: 'Test only' })).body.status).toBe('CANCELLED');
+    });
+
+    it('an order worth nothing is not submitted (PURCHASE_ORDER_ZERO_TOTAL)', async () => {
+      const id = (await order(acc, directOrder([{ itemId: itemTaxed, qty: '3', unitPrice: '0' }]))).body.id as string;
+      const res = await act(acc, 'purchase-orders', id, 'submit');
+      expect([res.status, res.body.error.code]).toEqual([400, 'PURCHASE_ORDER_ZERO_TOTAL']);
+      expect((await api().delete(`/api/v1/purchase-orders/${id}`).set(auth(acc))).body).toEqual({ deleted: true });
+    });
+
     it('an approved order is cancelled with a reason and keeps its number', async () => {
       const res = await act(acc, 'purchase-orders', po2, 'cancel', { reason: 'Supplier late' });
       expect([res.body.status, res.body.orderNo]).toEqual(['CANCELLED', 'PO-2026-000002']);
@@ -411,8 +444,15 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
     let s1Order = '';
     let direct = '';
 
-    it('raises to FULL; an order now needs an approved request', async () => {
+    it('raises to FULL; an open order does not hold FULL → MEDIUM (orders exist there), only → SIMPLE', async () => {
       expect((await setLevel(owner, 'FULL')).body.procurementLevel).toBe('FULL');
+      expect((await setLevel(owner, 'MEDIUM')).body.procurementLevel).toBe('MEDIUM');
+      const toSimple = await setLevel(owner, 'SIMPLE');
+      expect([toSimple.status, toSimple.body.error.details.openDocuments]).toEqual([409, { purchaseOrders: 1 }]);
+      expect((await setLevel(owner, 'FULL')).body.procurementLevel).toBe('FULL');
+    });
+
+    it('at FULL an order needs an approved request', async () => {
       const res = await order(acc, directOrder([{ itemId: itemTaxed, qty: '1', unitPrice: '1' }]));
       expect([res.status, res.body.error.code]).toEqual([400, 'PURCHASE_REQUEST_REQUIRED']);
       // purchase.direct applies at FULL too.
@@ -459,6 +499,18 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
       await act(acc, 'purchase-requests', r3, 'submit');
       const can = await act(acc, 'purchase-requests', r3, 'cancel', { reason: 'Duplicate' });
       expect([can.body.status, can.body.cancelReason, can.body.requestNo]).toEqual(['CANCELLED', 'Duplicate', null]);
+      // The storekeeper's request, edited and submitted by the accountant: the accountant may not approve it.
+      const r5 = (await api().post('/api/v1/purchase-requests').set(auth(store)).send({ requestDate: '2026-11-15', lines: [{ itemId: itemTaxed, qty: '1' }] })).body.id as string;
+      expect((await api().put(`/api/v1/purchase-requests/${r5}`).set(auth(acc)).send({ requestDate: '2026-11-15', lines: [{ itemId: itemTaxed, qty: '2' }] })).status).toBe(200);
+      expect((await act(acc, 'purchase-requests', r5, 'submit')).body.status).toBe('SUBMITTED');
+      expect((await act(acc, 'purchase-requests', r5, 'approve')).body.error.code).toBe('APPROVAL_SELF_NOT_ALLOWED');
+      // A submitter alone is an author too: the storekeeper's untouched draft, submitted by the accountant.
+      const r6 = (await api().post('/api/v1/purchase-requests').set(auth(store)).send({ requestDate: '2026-11-15', lines: [{ itemId: itemTaxed, qty: '1' }] })).body.id as string;
+      await act(acc, 'purchase-requests', r6, 'submit');
+      expect((await act(acc, 'purchase-requests', r6, 'approve')).body.error.code).toBe('APPROVAL_SELF_NOT_ALLOWED');
+      // The author may reject their own request.
+      expect((await act(acc, 'purchase-requests', r5, 'reject', { reason: 'Not needed' })).body.status).toBe('REJECTED');
+      expect((await act(appr2, 'purchase-requests', r6, 'reject', { reason: 'Not needed' })).body.status).toBe('REJECTED');
       // A draft request is deleted.
       const r4 = await make();
       expect((await api().delete(`/api/v1/purchase-requests/${r4}`).set(auth(acc))).body).toEqual({ deleted: true });
@@ -501,6 +553,11 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
       const q2Lines = (await get(acc, 'purchase-quotes', q2)).body.lines as { id: string }[];
       expect((await act(acc, 'purchase-quotes', q2, 'receive', { lines: [{ lineId: q2Lines[0].id, unitPrice: '90' }] })).body.status).toBe('RECEIVED');
       expect((await act(acc, 'purchase-quotes', q2, 'send')).body.error.code).toBe('INVALID_STATUS_TRANSITION');
+      // A third quote, sent then closed by hand: no reopening touches it later.
+      const q4 = (await api().post('/api/v1/purchase-quotes').set(auth(acc)).send({ requestId: r1, supplierId: s1, quoteDate: '2026-11-15' })).body.id as string;
+      expect((await act(acc, 'purchase-quotes', q4, 'send')).body.quoteNo).toBe('RFQ-2026-000003');
+      expect((await act(acc, 'purchase-quotes', q4, 'close')).body.status).toBe('CLOSED');
+      r1Outer = r1;
     });
 
     it('the comparison shows the received prices per line and marks the lowest', async () => {
@@ -519,6 +576,8 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
       const offer = (line: number, supplier: string) =>
         (cmp.lines[line].offers as { supplier: { id: string }; quoteLineId: string }[]).find((o) => o.supplier.id === supplier)!.quoteLineId;
       const header = { orderDate: '2026-11-15', warehouseId: warehouse };
+      // The item's tax changes after the quotes: the orders keep the quoted 16% (review #47).
+      expect((await api().patch(`/api/v1/items/${itemTaxed}`).set(auth(owner)).send({ taxCategoryId: zero })).status).toBe(200);
       const tooMuch = await act(acc, 'purchase-requests', r1, 'convert', {
         ...header,
         selections: [{ quoteLineId: offer(0, s2), qty: '15' }, { quoteLineId: offer(0, s1), qty: '6' }],
@@ -538,6 +597,7 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
       s1Order = orders[1].id;
       expect(eq(orders[0].grandTotal, '1252.8')).toBe(true); // 12 × 90 + 16%
       expect(eq(orders[1].grandTotal, '1081.6')).toBe(true); // 8 × 95 + 16%, 5 × 40 at 0%
+      expect((await api().patch(`/api/v1/items/${itemTaxed}`).set(auth(owner)).send({ taxCategoryId: standard })).status).toBe(200);
       const req = (await get(acc, 'purchase-requests', r1)).body;
       expect(req.lines.map((l: { remainingQty: string }) => l.remainingQty)).toEqual(['0', '0']);
       const more = await order(acc, directOrder([{ itemId: itemTaxed, qty: '1', unitPrice: '1', requestLineId: r1Lines[0].id }], { requestId: r1 }));
@@ -585,7 +645,7 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
       expect((await act(owner, 'purchase-orders', s2Order, 'approve')).body.orderNo).toBe('PO-2026-000004');
       const req = (await get(acc, 'purchase-requests', r1)).body;
       expect([req.status, req.closedBy]).toEqual(['CLOSED', null]);
-      expect(req.quotes.map((q: { status: string }) => q.status)).toEqual(['CLOSED', 'CLOSED']);
+      expect(req.quotes.map((q: { status: string }) => q.status)).toEqual(['CLOSED', 'CLOSED', 'CLOSED']);
       // A closed request takes no new quote or order.
       expect((await api().post('/api/v1/purchase-quotes').set(auth(acc)).send({ requestId: r1, supplierId: s1, quoteDate: '2026-11-15' })).body.error.code).toBe('INVALID_STATUS_TRANSITION');
     });
@@ -596,16 +656,20 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
       const req = (await get(acc, 'purchase-requests', r1)).body;
       expect(req.status).toBe('APPROVED');
       expect(req.lines.map((l: { remainingQty: string }) => l.remainingQty)).toEqual(['12', '0']);
+      // The quotes closed with it are received again; the one closed by hand stays closed.
+      expect(req.quotes.map((q: { status: string }) => q.status)).toEqual(['RECEIVED', 'RECEIVED', 'CLOSED']);
       // An approved request with orders is closed, not cancelled.
       expect((await act(acc, 'purchase-requests', r1, 'cancel', { reason: 'x' })).body.error.details.reason).toBe('HAS_ORDERS');
     });
 
-    it('lowering FULL → MEDIUM is refused while requests, quotes or orders are open', async () => {
+    it('lowering is refused by what the target level drops: requests and quotes for MEDIUM, orders too for SIMPLE', async () => {
       const q3 = await api().post('/api/v1/purchase-quotes').set(auth(acc)).send({ requestId: r1, supplierId: s1, quoteDate: '2026-11-15' });
       expect(q3.status).toBe(201);
       const res = await setLevel(owner, 'MEDIUM');
       expect([res.status, res.body.error.code]).toEqual([409, 'PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS']);
-      expect(res.body.error.details.openDocuments).toEqual({ purchaseRequests: 1, purchaseQuotes: 1, purchaseOrders: 2 });
+      expect(res.body.error.details.openDocuments).toEqual({ purchaseRequests: 1, purchaseQuotes: 3 });
+      const toSimple = await setLevel(owner, 'SIMPLE');
+      expect(toSimple.body.error.details.openDocuments).toEqual({ purchaseRequests: 1, purchaseQuotes: 3, purchaseOrders: 2 });
     });
 
     it('concurrent orders for what is left on a request line: one wins, the other is refused (§10.4)', async () => {
@@ -643,6 +707,7 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
         'PRQ-2026-000001',
         'RFQ-2026-000001',
         'RFQ-2026-000002',
+        'RFQ-2026-000003',
       ]);
       const drafts = await count(
         "SELECT COUNT(*) AS n FROM purchase_orders WHERE tenant_id = ? AND status IN ('DRAFT', 'SUBMITTED') AND order_no IS NOT NULL",
@@ -688,6 +753,12 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
       const line = (await get(cashier, 'purchase-requests', mainReq)).body.lines[0].id;
       const intoB2 = await order(cashier, directOrder([{ itemId: itemTaxed, qty: '1', unitPrice: '1', requestLineId: line }], { requestId: mainReq, warehouseId: warehouseB2 }));
       expect([intoB2.status, intoB2.body.error.code]).toEqual([403, 'BRANCH_NOT_ALLOWED']);
+      // Even with every branch, an order from a MAIN request does not receive into B2 (review #47).
+      const accIntoB2 = await order(acc, directOrder([{ itemId: itemTaxed, qty: '1', unitPrice: '1', requestLineId: line }], { requestId: mainReq, warehouseId: warehouseB2 }));
+      expect([accIntoB2.status, accIntoB2.body.error.code, accIntoB2.body.error.details.field]).toEqual([400, 'VALIDATION', 'warehouseId']);
+      // The request's orders as a MAIN-only member sees them: none of another branch.
+      const seen = (await get(cashier, 'purchase-requests', mainReq)).body.orders as { id: string }[];
+      expect(seen.map((o) => o.id)).not.toContain(poB2);
       const ok = await order(cashier, directOrder([{ itemId: itemTaxed, qty: '1', unitPrice: '1', requestLineId: line }], { requestId: mainReq }));
       expect(ok.status).toBe(201);
       poMain = ok.body.id;
@@ -732,10 +803,66 @@ describe('Phase 12 — purchase requests, quotes and orders (ADR-025)', () => {
     }
   });
 
+  describe('concurrency (§10.4, review #47)', () => {
+    const submitted = async () => {
+      const line = (await get(acc, 'purchase-requests', r1Outer)).body.lines[0].id as string;
+      const res = await order(acc, directOrder([{ itemId: itemTaxed, qty: '2', unitPrice: '10', requestLineId: line }], { requestId: r1Outer }));
+      expect(res.status).toBe(201);
+      expect((await act(acc, 'purchase-orders', res.body.id, 'submit')).status).toBe(201);
+      return res.body.id as string;
+    };
+    const lastOrderNo = async () =>
+      ((await db.query("SELECT MAX(order_no) AS no FROM purchase_orders WHERE tenant_id = ?", [tenantA])) as { no: string }[])[0].no;
+
+    it('two approvers at once: one approves, the other is refused, one number is used', async () => {
+      const id = await submitted();
+      const before = await lastOrderNo();
+      const results = await Promise.all([act(owner, 'purchase-orders', id, 'approve'), act(appr2, 'purchase-orders', id, 'approve')]);
+      expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+      expect(results.find((r) => r.status === 409)!.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+      const no = results.find((r) => r.status === 201)!.body.orderNo as string;
+      expect(Number(no.slice(-6))).toBe(Number(before.slice(-6)) + 1);
+      expect(await lastOrderNo()).toBe(no);
+      expect((await act(acc, 'purchase-orders', id, 'cancel', { reason: 'Test only' })).body.status).toBe('CANCELLED');
+    });
+
+    it('an approval racing a cancellation: the order ends cancelled, numbered at most once, its quantity given back', async () => {
+      const id = await submitted();
+      const before = await lastOrderNo();
+      const left = (await get(acc, 'purchase-requests', r1Outer)).body.lines[0].remainingQty as string;
+      const [approve, cancel] = await Promise.all([
+        act(appr2, 'purchase-orders', id, 'approve'),
+        act(acc, 'purchase-orders', id, 'cancel', { reason: 'Race' }),
+      ]);
+      expect(cancel.status).toBe(201); // from SUBMITTED or from APPROVED, a cancel goes through
+      expect([201, 409]).toContain(approve.status);
+      const final = (await get(acc, 'purchase-orders', id)).body;
+      expect(final.status).toBe('CANCELLED');
+      expect(final.orderNo === null ? before : final.orderNo).toBe(await lastOrderNo());
+      expect(eq((await get(acc, 'purchase-requests', r1Outer)).body.lines[0].remainingQty, new Decimal(left).plus(2).toString())).toBe(true);
+      const off = await count(
+        `SELECT COUNT(*) AS n FROM purchase_request_lines x WHERE x.tenant_id = ? AND x.ordered_qty <> COALESCE((
+           SELECT SUM(ol.qty) FROM purchase_order_lines ol JOIN purchase_orders o ON o.tenant_id = ol.tenant_id AND o.id = ol.order_id
+            WHERE ol.tenant_id = x.tenant_id AND ol.request_line_id = x.id AND o.status <> 'CANCELLED'), 0)`,
+        [tenantA],
+      );
+      expect(off).toBe(0);
+    });
+  });
+
   describe('suppliers in use (ADR-021) and the acceptance rule', () => {
     it('a supplier on a quote or an order is deactivated, never deleted', async () => {
       const res = await api().patch(`/api/v1/parties/${s2}/deactivate`).set(auth(owner));
       expect([res.status, res.body]).toEqual([200, { deactivated: true }]);
+      // Its received quote can no longer become an order (review #47).
+      const cmp = (await api().get(`/api/v1/purchase-requests/${r1Outer}/comparison`).set(auth(acc))).body;
+      const fromS2 = (cmp.lines[0].offers as { supplier: { id: string }; quoteLineId: string }[]).find((o) => o.supplier.id === s2)!;
+      const converted = await act(acc, 'purchase-requests', r1Outer, 'convert', {
+        orderDate: '2026-11-15',
+        warehouseId: warehouse,
+        selections: [{ quoteLineId: fromS2.quoteLineId, qty: '1' }],
+      });
+      expect([converted.status, converted.body.error.code]).toEqual([400, 'VALIDATION']);
       const s3 = (await api().post('/api/v1/parties').set(auth(owner)).send({ code: 'S3', nameAr: 'S3', partyType: 'SUPPLIER' })).body.id;
       // The approved MAIN request still has something left to quote (the B2 one is fully ordered).
       const approved = (await api().get('/api/v1/purchase-requests?status=APPROVED').set(auth(cashier))).body.items as { id: string }[];

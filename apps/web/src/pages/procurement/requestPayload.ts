@@ -102,17 +102,23 @@ export function requestActions(
 }
 
 /**
- * True when the user may not approve this request because they created it (ADR-025 §2):
- * only the company owner may approve a document they made.
+ * True when the user may not approve this request because they touched it (ADR-025 §2):
+ * they created it, last edited it, or submitted it. Only the company owner may approve
+ * such a document. Rejecting is not affected: a member may reject their own request.
  */
 export function approvalBlockedAsOwnDocument({
   createdBy,
+  updatedBy,
+  submittedBy,
   userId,
   isOwner,
 }: {
   createdBy: string | null | undefined;
+  updatedBy: string | null | undefined;
+  submittedBy: string | null | undefined;
   userId: string | null | undefined;
   isOwner: boolean;
 }): boolean {
-  return !isOwner && !!createdBy && createdBy === userId;
+  if (isOwner || !userId) return false;
+  return [createdBy, updatedBy, submittedBy].some((id) => !!id && id === userId);
 }

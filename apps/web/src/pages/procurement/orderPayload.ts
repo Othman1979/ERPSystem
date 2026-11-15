@@ -36,20 +36,26 @@ function text(v: string | null | undefined): string | undefined {
 }
 
 /**
+ * Indexes of the lines that have an item but no unit price. Every line with an
+ * item needs a price: a blank one is never sent as zero. A price of '0' is a price.
+ */
+export function missingPriceLines(lines: readonly PurchaseOrderFormLine[]): number[] {
+  return lines.flatMap((l, index) => (l.itemId && !text(l.unitPrice) ? [index] : []));
+}
+
+/**
  * Lines as the server takes them. A line without an item or a quantity is not
  * sent. The server computes every total and tax from these inputs; no total is
- * sent from here.
+ * sent from here. The page blocks a save while `missingPriceLines` is not empty,
+ * so a line that reaches here with a quantity and no price is a caller error.
  */
 function orderLines(lines: readonly PurchaseOrderFormLine[]): PurchaseOrderLineDto[] {
   return lines.flatMap((l): PurchaseOrderLineDto[] => {
     const qty = text(l.qty);
     if (!l.itemId || !qty) return [];
-    const line: PurchaseOrderLineDto = {
-      itemId: l.itemId,
-      qty,
-      // The API requires a unit price; a blank one is sent as zero, as the purchase invoice does.
-      unitPrice: text(l.unitPrice) ?? '0',
-    };
+    const unitPrice = text(l.unitPrice);
+    if (!unitPrice) throw new Error('a unit price is required on every line with an item');
+    const line: PurchaseOrderLineDto = { itemId: l.itemId, qty, unitPrice };
     const itemUnitId = text(l.itemUnitId);
     const discountPct = text(l.discountPct);
     const requestLineId = text(l.requestLineId);
@@ -108,8 +114,24 @@ export interface ApprovalHintInput {
   approvalLimit: string | null | undefined;
   /** The order's grand total as the server computed it. */
   grandTotal: string;
-  /** The order was created by the current member. */
-  createdByMe: boolean;
+  /** The current member created, last edited or submitted the order (see isAuthoredBy). */
+  authoredByMe: boolean;
+}
+
+/** The document fields that name the member who wrote it (ADR-024 §3). */
+export interface AuthorFields {
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  submittedBy?: string | null;
+}
+
+/**
+ * Whether the member wrote the document: created it, last edited it or
+ * submitted it. Such a member cannot approve it (APPROVAL_SELF_NOT_ALLOWED).
+ */
+export function isAuthoredBy(doc: AuthorFields, userId: string | undefined): boolean {
+  if (!userId) return false;
+  return [doc.createdBy, doc.updatedBy, doc.submittedBy].includes(userId);
 }
 
 /**
@@ -119,7 +141,7 @@ export interface ApprovalHintInput {
 export function approvalHint(input: ApprovalHintInput): ApprovalHint {
   if (input.isOwner) return 'ok';
   if (!input.canApprove) return 'noApproval';
-  if (input.createdByMe) return 'ownDocument';
+  if (input.authoredByMe) return 'ownDocument';
   const limit = toDecimal(input.approvalLimit);
   if (limit !== null && dec(input.grandTotal).gt(limit)) return 'needsOwner';
   return 'ok';

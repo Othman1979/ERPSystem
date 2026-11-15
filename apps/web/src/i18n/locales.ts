@@ -1143,6 +1143,28 @@ export const ar = {
     directGapsBody:
       'في المستويين المتوسط والكامل تحتاج فاتورة الشراء بلا أمر شراء صلاحية «الشراء المباشر». هؤلاء الأعضاء يُنشئون فواتير الشراء اليوم ولا يملكونها، ولن تُمنح تلقائياً. امنحها لمن تريد من صفحة المستخدمين.',
     directGapsConfirm: 'رفع المستوى',
+    quotesUi: {
+      missingPrices: 'أدخل سعر وحدة أكبر من صفر لكل سطر قبل تسجيل الأسعار.',
+      priceFor: 'سعر الوحدة للصنف {{item}}، السطر {{line}}',
+      discountFor: 'نسبة الخصم للصنف {{item}}، السطر {{line}}',
+      offerFor: 'اختر العرض للصنف {{item}}، السطر {{line}}',
+      skipLine: 'لا تطلب هذا السطر',
+      skipFor: 'لا تطلب الصنف {{item}}، السطر {{line}}',
+      noOfferYet: 'لم يُسعَّر هذا السطر في أي عرض بعد. سجّل أسعار الموردين لتتم المقارنة.',
+    },
+    ordersUi: {
+      priceRequired: 'أدخل سعر الوحدة لكل سطر فيه صنف',
+    },
+    shellUi: {
+      levelTooLowTitle: 'هذه الشاشة تحتاج مستوى مشتريات أعلى',
+      levelTooLowText: 'تحتاج هذه الشاشة مستوى المشتريات «{{level}}» أو أعلى، ومستوى شركتك الحالي أدنى منه. يستطيع مالك الحساب رفع المستوى من ملف الشركة.',
+      levelNames: {
+        SIMPLE: 'بسيط',
+        MEDIUM: 'متوسط',
+        FULL: 'كامل',
+      },
+      openCompanyProfile: 'فتح ملف الشركة',
+    },
   },
   goods: {
     docNo: 'رقم المستند',
@@ -1403,6 +1425,7 @@ export const ar = {
     PURCHASE_REQUEST_REQUIRED: 'في المستوى الكامل ينشأ أمر الشراء من طلب شراء معتمد، وكل سطر منه من سطر في الطلب.',
     PURCHASE_REQUEST_QTY_EXCEEDED: 'الكمية أكبر من المتبقي على سطر طلب الشراء.',
     INVALID_STATUS_TRANSITION: 'لا يمكن هذا الإجراء على المستند في حالته الحالية. حدّث الصفحة.',
+    PURCHASE_ORDER_ZERO_TOTAL: 'إجمالي أمر الشراء صفر. أدخل أسعار الأسطر قبل تقديمه للاعتماد.',
     TENANT_READ_ONLY: 'الاشتراك للقراءة فقط؛ لا يمكن إجراء تعديلات حتى يُجدَّد',
     DB_UNAVAILABLE: 'قاعدة البيانات غير متاحة مؤقتاً. حاول بعد قليل.',
     ENTRY_NOT_DRAFT: 'القيد ليس مسودة؛ لا يُحذف ولا يُرحَّل مرة أخرى',
@@ -2583,6 +2606,28 @@ export const en: typeof ar = {
     directGapsBody:
       'At the medium and full levels a purchase invoice without a purchase order needs the “direct purchase” permission. These members create purchase invoices today without it, and it is not granted automatically. Grant it from the users page to whoever should keep buying directly.',
     directGapsConfirm: 'Raise the level',
+    quotesUi: {
+      missingPrices: 'Enter a unit price above zero for every line before you record the prices.',
+      priceFor: 'Unit price for {{item}}, line {{line}}',
+      discountFor: 'Discount % for {{item}}, line {{line}}',
+      offerFor: 'Choose the offer for {{item}}, line {{line}}',
+      skipLine: 'Do not order this line',
+      skipFor: 'Do not order {{item}}, line {{line}}',
+      noOfferYet: 'No quote has a price for this line yet. Record the supplier prices to compare them.',
+    },
+    ordersUi: {
+      priceRequired: 'Enter a unit price on every line with an item',
+    },
+    shellUi: {
+      levelTooLowTitle: 'This screen needs a higher procurement level',
+      levelTooLowText: 'This screen needs the “{{level}}” procurement level or higher, and your company is set lower. The account owner can raise the level in the company profile.',
+      levelNames: {
+        SIMPLE: 'Simple',
+        MEDIUM: 'Medium',
+        FULL: 'Full',
+      },
+      openCompanyProfile: 'Open company profile',
+    },
   },
   goods: {
     docNo: 'Document No',
@@ -2844,6 +2889,7 @@ export const en: typeof ar = {
     PURCHASE_REQUEST_REQUIRED: 'At the full procurement level an order comes from an approved purchase request, every line from one of its lines.',
     PURCHASE_REQUEST_QTY_EXCEEDED: 'The quantity is more than what is left on the purchase request line.',
     INVALID_STATUS_TRANSITION: 'This action does not apply to the document in its current status. Refresh the page.',
+    PURCHASE_ORDER_ZERO_TOTAL: 'The purchase order total is zero. Enter the line prices before submitting it for approval.',
     TENANT_READ_ONLY: 'The subscription is read-only; changes are blocked until it is renewed',
     DB_UNAVAILABLE: 'The database is temporarily unavailable. Try again shortly.',
     ENTRY_NOT_DRAFT: 'The entry is not a draft; it cannot be deleted or posted again',

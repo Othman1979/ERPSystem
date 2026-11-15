@@ -26,9 +26,11 @@ export class ProcurementRegistrations implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.cycle.register({ key: 'purchaseRequests', count: (tx) => this.requests.countOpen(tx) });
-    this.cycle.register({ key: 'purchaseQuotes', count: (tx) => this.quotes.countOpen(tx) });
-    this.cycle.register({ key: 'purchaseOrders', count: (tx) => this.orders.countOpen(tx) });
+    // ADR-025 §6 (owner decision on #47): requests and quotes belong to FULL,
+    // orders to MEDIUM, so only a lowering below that level counts them.
+    this.cycle.register({ key: 'purchaseRequests', level: 'FULL', count: (tx) => this.requests.countOpen(tx) });
+    this.cycle.register({ key: 'purchaseQuotes', level: 'FULL', count: (tx) => this.quotes.countOpen(tx) });
+    this.cycle.register({ key: 'purchaseOrders', level: 'MEDIUM', count: (tx) => this.orders.countOpen(tx) });
     this.partyUsage.register('procurement', (tx, partyId) => this.partyInUse(tx, partyId));
     this.costCenterUsage.register('procurement', async (tx, id) =>
       (await tx.purchaseOrder.findFirst({ where: { costCenterId: id }, select: { id: true } })) ? 'purchase_orders' : null,

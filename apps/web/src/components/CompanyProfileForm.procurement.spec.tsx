@@ -4,7 +4,7 @@ import { App as AntApp } from 'antd';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError } from '@erp/api-client';
+import { ApiError, type PurchaseDirectGapDto } from '@erp/api-client';
 import i18n from '../i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -50,19 +50,15 @@ vi.mock('@erp/api-client', async (original) => ({
   usersControllerPurchaseDirectGaps: (...args: unknown[]) => directGaps(...args),
 }));
 
-const GAPS = [
+const GAPS: PurchaseDirectGapDto[] = [
   {
-    membershipId: 'm1',
     fullName: 'سارة أحمد',
     email: 'sara@example.com',
-    roleCode: 'ACCOUNTANT',
     role: { code: 'ACCOUNTANT', nameAr: 'محاسب', nameEn: 'Accountant' },
   },
   {
-    membershipId: 'm2',
     fullName: 'Omar Ali',
     email: 'omar@example.com',
-    roleCode: 'CASHIER',
     role: { code: 'CASHIER', nameAr: 'أمين صندوق', nameEn: 'Cashier' },
   },
 ];
@@ -188,12 +184,41 @@ describe('CompanyProfileForm direct-purchase gaps before raising from SIMPLE (AD
     expect(document.body.textContent).toContain(i18n.t('procurement.directGapsTitle'));
     expect(document.body.textContent).toContain(i18n.t('procurement.directGapsBody'));
     expect(document.body.textContent).toContain('سارة أحمد');
+    expect(document.body.textContent).toContain('sara@example.com');
     expect(document.body.textContent).toContain('Omar Ali');
+    expect(document.body.textContent).toContain('omar@example.com');
+    expect(document.body.textContent).toContain('Accountant');
 
     act(() => dialogButton(i18n.t('procurement.directGapsConfirm')).click());
     await settle();
     expect(update).toHaveBeenCalledTimes(1);
     expect(update.mock.calls[0]![0]).toMatchObject({ procurementLevel: 'MEDIUM' });
+  });
+
+  it('asks with company.manage alone (no user.manage), since the gaps list needs that permission', async () => {
+    session.permissions = ['company.manage', 'settings.manage'];
+    directGaps.mockImplementation(() => ok(GAPS));
+    await mount(true);
+    await choose('MEDIUM');
+    await submit();
+
+    expect(directGaps).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('sara@example.com');
+  });
+
+  it('keeps the list scrollable so long lists do not push the buttons off screen', async () => {
+    directGaps.mockImplementation(() => ok(GAPS));
+    await mount(true);
+    await choose('MEDIUM');
+    await submit();
+
+    const scroller = [...document.querySelectorAll<HTMLElement>('.ant-modal div')].find(
+      (el) => el.style.overflowY === 'auto',
+    );
+    expect(scroller).toBeDefined();
+    expect(scroller!.style.maxHeight).toBe('240px');
+    expect(scroller!.querySelectorAll('li')).toHaveLength(2);
   });
 
   it('keeps the form unsaved when the owner cancels the dialog', async () => {

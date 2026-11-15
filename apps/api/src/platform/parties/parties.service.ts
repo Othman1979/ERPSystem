@@ -75,11 +75,12 @@ export class PartiesService {
    * VALIDATION unless `id` is an active supplier (SUPPLIER or BOTH) of the
    * company: the supplier of another module's document (module boundary).
    */
-  async assertActiveSupplier(id: bigint): Promise<void> {
-    const { db } = this.support.tenant();
-    const companyId = await this.support.companyId(db);
+  async assertActiveSupplier(id: bigint, tx?: Prisma.TransactionClient): Promise<void> {
+    const { tenantId, db: tenantDb } = this.support.tenant();
+    // The caller's transaction (tenant-scoped) when given: its connection, not a second one.
+    const db = tx ?? tenantDb;
     const supplier = await db.party.findFirst({
-      where: { companyId, id, isActive: true },
+      where: { tenantId, company: { isActive: true }, id, isActive: true },
       select: { partyType: true },
     });
     if (!supplier || (supplier.partyType !== 'SUPPLIER' && supplier.partyType !== 'BOTH')) {

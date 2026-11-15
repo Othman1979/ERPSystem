@@ -7,8 +7,8 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { findPage } from '../../common/paging/find-page.js';
 import { withLineCounts } from '../../common/paging/line-counts.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
-import { assertCanApprove, readApprover } from '../../common/procurement/approval.js';
-import { assertProcurementLevel, lockProcurementLevel } from '../../common/procurement/procurement-level.js';
+import { assertCanApprove, isAuthor, readApprover } from '../../common/procurement/approval.js';
+import { assertProcurementLevel, lockCompanyProcurement } from '../../common/procurement/procurement-level.js';
 import { Prisma, type ProcurementLevel } from '../../generated/prisma/client.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
@@ -166,13 +166,12 @@ export class PurchaseOrdersService {
     const supplierId = BigInt(dto.supplierId);
     await this.parties.assertActiveSupplier(supplierId);
     const branchId = await this.warehouseBranch(dto.warehouseId);
-    const pricesIncludeTax = await this.support.pricesIncludeTax(db);
     const requestId = dto.requestId ? BigInt(dto.requestId) : null;
 
     const created = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
-        const level = await this.lockLevel(tx, tenantId, companyId);
-        const reqLines = await this.lockRequestForOrder(tx, tenantId, level, requestId, dto.lines);
+        const { level, pricesIncludeTax } = await this.lockCompany(tx, tenantId, companyId);
+        const reqLines = await this.lockRequestForOrder(tx, tenantId, level, requestId, dto.lines, branchId);
         const lines = await this.priceLines(tx, dto.lines, pricesIncludeTax);
         if (reqLines) await this.takeQty(tx, lines, reqLines, new Map());
         return this.writeOrder(tx, tenantId, companyId, branchId, requestId, pricesIncludeTax, { ...dto, supplierId }, lines);
@@ -191,12 +190,11 @@ export class PurchaseOrdersService {
     const supplierId = BigInt(dto.supplierId);
     await this.parties.assertActiveSupplier(supplierId);
     const branchId = await this.warehouseBranch(dto.warehouseId);
-    const pricesIncludeTax = await this.support.pricesIncludeTax(db);
 
     await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
-        const level = await this.lockLevel(tx, tenantId, companyId);
-        const reqLines = await this.lockRequestForOrder(tx, tenantId, level, requestId, dto.lines);
+        const { level, pricesIncludeTax } = await this.lockCompany(tx, tenantId, companyId);
+        const reqLines = await this.lockRequestForOrder(tx, tenantId, level, requestId, dto.lines, branchId);
         const order = await lockDocument(tx, 'purchase_orders', tenantId, id);
         assertBranchAllowed(order.branch_id);
         assertStatus('purchase order', order.status, ['DRAFT'], 'edited');
@@ -250,14 +248,19 @@ export class PurchaseOrdersService {
       if ((await tx.purchaseOrderLine.count({ where: { orderId: id } })) === 0) {
         throw new DomainError(ErrorCode.VALIDATION, 'The order has no lines');
       }
+      // Review #47: an order worth nothing is a mistake (a price left blank), not something to approve.
+      const { grandTotal } = await tx.purchaseOrder.findFirstOrThrow({ where: { id }, select: { grandTotal: true } });
+      if (new Decimal(grandTotal.toString()).lte(0)) {
+        throw new DomainError(ErrorCode.PURCHASE_ORDER_ZERO_TOTAL, 'The order total is zero: enter the prices first');
+      }
       return { status: 'SUBMITTED', submittedAt: new Date(), submittedBy: this.support.userId() ?? null };
     });
   }
 
   /**
    * ADR-025 §2: an owner, or a member with purchase.approve up to their limit
-   * on the order total, never on their own order. Numbered PO here; closes the
-   * request once approved orders cover it.
+   * on the order total, never on an order they created, last edited or
+   * submitted. Numbered PO here; closes the request once approved orders cover it.
    */
   approve(id: bigint) {
     return this.transition(id, 'approve', ['SUBMITTED'], async (tx, order, tenantId, companyId) => {
@@ -266,18 +269,18 @@ export class PurchaseOrdersService {
       assertCanApprove({
         ...approver,
         amount: new Decimal(row.grandTotal.toString()),
-        isCreator: approver.userId !== null && approver.userId === order.created_by,
+        isAuthor: isAuthor(order, approver.userId),
       });
       const orderNo = await allocateDocumentNo(tx, tenantId, companyId, 'PURCHASE_ORDER', row.orderDate);
       return { status: 'APPROVED', orderNo, approvedAt: new Date(), approvedBy: approver.userId };
     }, async (tx, tenantId, requestId) => (await this.requests.closeIfFullyOrdered(tx, tenantId, requestId)) ? requestId : null);
   }
 
-  /** Back to DRAFT with the approver's reason (ADR-025 §7); same rule as approving, without the limit. */
+  /** Back to DRAFT with the approver's reason (ADR-025 §7): purchase.approve (or an owner), one's own order included. */
   reject(id: bigint, reason: string) {
-    return this.transition(id, 'reject', ['SUBMITTED'], async (tx, order, tenantId) => {
+    return this.transition(id, 'reject', ['SUBMITTED'], async (tx, _order, tenantId) => {
       const approver = await readApprover(tx, tenantId);
-      assertCanApprove({ ...approver, amount: null, isCreator: approver.userId !== null && approver.userId === order.created_by });
+      assertCanApprove({ ...approver, amount: null, isAuthor: false });
       return { status: 'DRAFT', rejectReason: reason, rejectedAt: new Date(), rejectedBy: approver.userId, submittedAt: null, submittedBy: null };
     });
   }
@@ -291,11 +294,8 @@ export class PurchaseOrdersService {
     return this.transition(id, 'cancel', ['SUBMITTED', 'APPROVED'], async (tx, order) => {
       if (order.request_id) {
         await this.giveBack(tx, await this.heldQty(tx, id));
-        const req = await tx.purchaseRequest.findFirstOrThrow({ where: { id: order.request_id }, select: { status: true, closedBy: true, closedAt: true } });
-        // closed_by is null only on an automatic close (closeIfFullyOrdered).
-        if (req.status === 'CLOSED' && req.closedBy === null && req.closedAt !== null) {
-          await tx.purchaseRequest.update({ where: { id: order.request_id }, data: { status: 'APPROVED', closedAt: null } });
-        }
+        // An automatic close is undone with the quotes closed by it; a close by hand stays.
+        await this.requests.reopenIfAutoClosed(tx, order.request_id);
       }
       return { status: 'CANCELLED', cancelReason: reason, cancelledAt: new Date(), cancelledBy: this.support.userId() ?? null };
     });
@@ -322,6 +322,7 @@ export class PurchaseOrdersService {
         const req = await lockRequest(tx, tenantId, requestId);
         assertBranchAllowed(req.branch_id);
         assertStatus('purchase request', req.status, ['APPROVED'], 'ordered from');
+        this.assertWarehouseInRequestBranch(req.branch_id, branchId);
         const reqLines = await lockRequestLines(tx, tenantId, requestId);
         // Quotes change only under this request's lock, so these reads are current.
         const quoteLines = await tx.purchaseQuoteLine.findMany({
@@ -354,7 +355,13 @@ export class PurchaseOrdersService {
               wanted: qty.toFixed(6),
             });
           }
-          const item = resolveItem(refs, { itemId: ql.itemId.toString(), itemUnitId: ql.itemUnitId?.toString() ?? null, qty: qty.toString() });
+          // The quoted price, discount and tax category exactly (review #47): the order
+          // costs per unit what the comparison showed, whatever the item's tax is today.
+          const item = {
+            ...resolveItem(refs, { itemId: ql.itemId.toString(), itemUnitId: ql.itemUnitId?.toString() ?? null, qty: qty.toString() }),
+            taxCategoryId: ql.taxCategoryId,
+            taxRate: new Decimal(ql.taxRate.toString()),
+          };
           const line = priceLine(item, ql.unitPrice.toString(), ql.discountPct.toString(), ql.quote.pricesIncludeTax);
           const group = groups.get(ql.quote.supplierId) ?? { pricesIncludeTax: ql.quote.pricesIncludeTax, lines: [] };
           if (group.pricesIncludeTax !== ql.quote.pricesIncludeTax) {
@@ -363,6 +370,8 @@ export class PurchaseOrdersService {
           group.lines.push({ line, requestLineId: ql.requestLineId, quoteLineId: ql.id, note: ql.note });
           groups.set(ql.quote.supplierId, group);
         }
+        // A supplier deactivated since its quote takes no new order (ADR-021).
+        for (const supplierId of groups.keys()) await this.parties.assertActiveSupplier(supplierId, tx);
         await this.takeQty(tx, [...groups.values()].flatMap((g) => g.lines), reqLines, new Map());
         const created: bigint[] = [];
         for (const [supplierId, group] of groups) {
@@ -390,9 +399,32 @@ export class PurchaseOrdersService {
 
   /** MEDIUM or above, read under the company row's shared lock (ADR-025 §5). */
   private async lockLevel(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint): Promise<ProcurementLevel> {
-    const level = await lockProcurementLevel(tx, tenantId, companyId);
-    assertProcurementLevel(level, 'MEDIUM');
-    return level;
+    return (await this.lockCompany(tx, tenantId, companyId)).level;
+  }
+
+  /**
+   * MEDIUM or above, and the tax-inclusive prices setting, from one read of
+   * the share-locked company row (ADR-025 §5, ADR-017): the setting a draft
+   * is written with is the one current when it commits, frozen on the order.
+   */
+  private async lockCompany(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint) {
+    const company = await lockCompanyProcurement(tx, tenantId, companyId);
+    assertProcurementLevel(company.level, 'MEDIUM');
+    return company;
+  }
+
+  /**
+   * An order from a request receives in the request's branch (review #47):
+   * its warehouse is one of that branch, or a company-wide one (no branch,
+   * ADR-003). VALIDATION otherwise.
+   */
+  private assertWarehouseInRequestBranch(requestBranchId: bigint | null, warehouseBranchId: bigint | null): void {
+    if (requestBranchId === null || warehouseBranchId === null || requestBranchId === warehouseBranchId) return;
+    throw new DomainError(ErrorCode.VALIDATION, "The receiving warehouse must be in the purchase request's branch", {
+      field: 'warehouseId',
+      requestBranchId: requestBranchId.toString(),
+      warehouseBranchId: warehouseBranchId.toString(),
+    });
   }
 
   /** The receiving warehouse's branch, which the caller must be allowed (ADR-003, ADR-025 §12). */
@@ -413,6 +445,7 @@ export class PurchaseOrdersService {
     level: ProcurementLevel,
     requestId: bigint | null,
     lines: PurchaseOrderLineDto[],
+    warehouseBranchId: bigint | null,
   ): Promise<Map<bigint, LockedRequestLine> | null> {
     if (level !== 'FULL') {
       if (requestId !== null || lines.some((l) => l.requestLineId)) {
@@ -429,6 +462,7 @@ export class PurchaseOrdersService {
     const req = await lockRequest(tx, tenantId, requestId);
     assertBranchAllowed(req.branch_id);
     assertStatus('purchase request', req.status, ['APPROVED'], 'ordered from');
+    this.assertWarehouseInRequestBranch(req.branch_id, warehouseBranchId);
     const reqLines = await lockRequestLines(tx, tenantId, requestId);
     for (const l of lines) {
       if (!l.requestLineId) {
@@ -583,7 +617,8 @@ export class PurchaseOrdersService {
         assertBranchAllowed(order.branch_id);
         assertStatus('purchase order', order.status, from, verb);
         const data = await apply(tx, order, tenantId, companyId);
-        await tx.purchaseOrder.update({ where: { id }, data: { ...data, updatedBy: this.support.userId() ?? null } });
+        // updated_by stays the last editor of the content: a status change has its own *_by column.
+        await tx.purchaseOrder.update({ where: { id }, data });
         const closed = after && requestId ? await after(tx, tenantId, requestId) : null;
         return { set: data, closedRequest: closed };
       }, POSTING_TX_OPTIONS),

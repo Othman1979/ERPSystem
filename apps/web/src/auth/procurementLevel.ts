@@ -21,14 +21,23 @@ export function meetsProcurementLevel(level: ProcurementLevel | undefined, min: 
 }
 
 /**
- * The current company's procurement level, from the shared company query
- * (the same key as useCompany). `enabled` is false without a company.
+ * The current company's procurement level and whether it is still loading,
+ * from the shared company query (the same key as useCompany). `enabled` is
+ * false without a company. `level` falls back to SIMPLE until the company loads.
  */
-export function useProcurementLevel(enabled = true): ProcurementLevel {
+export function useProcurementLevelState(enabled = true): { level: ProcurementLevel; loading: boolean } {
   const company = useQuery({
     queryKey: ['company'],
     queryFn: ({ signal }) => companyControllerGet({ signal }).then((r) => r.data),
     enabled,
   });
-  return company.data?.procurementLevel ?? ProcurementLevel.SIMPLE;
+  return {
+    level: company.data?.procurementLevel ?? ProcurementLevel.SIMPLE,
+    loading: company.isLoading,
+  };
+}
+
+/** The current company's procurement level (SIMPLE while it loads). */
+export function useProcurementLevel(enabled = true): ProcurementLevel {
+  return useProcurementLevelState(enabled).level;
 }

@@ -7,7 +7,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { findPage } from '../../common/paging/find-page.js';
 import { withLineCounts } from '../../common/paging/line-counts.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
-import { assertCanApprove, readApprover } from '../../common/procurement/approval.js';
+import { assertCanApprove, isAuthor, readApprover } from '../../common/procurement/approval.js';
 import { assertProcurementLevel, lockProcurementLevel } from '../../common/procurement/procurement-level.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
@@ -87,11 +87,14 @@ export class PurchaseRequestsService {
       where: { id, AND: [branchWhere()] },
       include: {
         lines: { orderBy: { lineNo: 'asc' }, include: { item: itemRef, itemUnit: unitRef } },
+        // Only the quotes and orders of the caller's branches (ADR-003 §11).
         quotes: {
+          where: branchWhere(),
           orderBy: { id: 'asc' },
           select: { id: true, quoteNo: true, status: true, quoteDate: true, grandTotal: true, supplier: supplierRef },
         },
         orders: {
+          where: branchWhere(),
           orderBy: { id: 'asc' },
           select: { id: true, orderNo: true, status: true, orderDate: true, grandTotal: true, supplier: supplierRef },
         },
@@ -184,21 +187,24 @@ export class PurchaseRequestsService {
     });
   }
 
-  /** ADR-025 §2: purchase.approve, never on one's own request (owners aside); no limit (no binding prices). Numbered here. */
+  /**
+   * ADR-025 §2: purchase.approve, never on a request one created, last edited
+   * or submitted (owners aside); no limit (no binding prices). Numbered here.
+   */
   approve(id: bigint) {
     return this.transition(id, 'approve', ['SUBMITTED'], async (tx, req, tenantId, companyId) => {
       const approver = await readApprover(tx, tenantId);
-      assertCanApprove({ ...approver, amount: null, isCreator: approver.userId !== null && approver.userId === req.created_by });
+      assertCanApprove({ ...approver, amount: null, isAuthor: isAuthor(req, approver.userId) });
       const requestNo = await allocateDocumentNo(tx, tenantId, companyId, 'PURCHASE_REQUEST', new Date(req.request_date));
       return { status: 'APPROVED', requestNo, approvedAt: new Date(), approvedBy: approver.userId };
     });
   }
 
-  /** The approver's no: same rule as approving, without the limit; the request ends REJECTED. */
+  /** The approver's no: purchase.approve (or an owner), one's own request included; it ends REJECTED. */
   reject(id: bigint, reason: string) {
-    return this.transition(id, 'reject', ['SUBMITTED'], async (tx, req, tenantId) => {
+    return this.transition(id, 'reject', ['SUBMITTED'], async (tx, _req, tenantId) => {
       const approver = await readApprover(tx, tenantId);
-      assertCanApprove({ ...approver, amount: null, isCreator: approver.userId !== null && approver.userId === req.created_by });
+      assertCanApprove({ ...approver, amount: null, isAuthor: false });
       return { status: 'REJECTED', rejectReason: reason, rejectedAt: new Date(), rejectedBy: approver.userId };
     });
   }
@@ -247,15 +253,42 @@ export class PurchaseRequestsService {
        WHERE rl.tenant_id = ${tenantId} AND rl.request_id = ${requestId}`;
     const covered = rows.every((r) => new Decimal(r.approved?.toString() ?? '0').gte(r.qty.toString()));
     if (!covered) return false;
-    await this.closeOpenQuotes(tx, requestId, 'CLOSED');
+    // closed_by stays null on the request and its quotes: the mark of an automatic close.
+    await this.closeOpenQuotes(tx, requestId, 'CLOSED', undefined, true);
     await tx.purchaseRequest.update({ where: { id: requestId }, data: { status: 'CLOSED', closedAt: new Date(), closedBy: null } });
+    return true;
+  }
+
+  /**
+   * Undoes an automatic close when a cancelled order gives quantity back
+   * (review #47), on the cancelling transaction, which holds the request lock:
+   * the request is APPROVED again, and its quotes closed with it (closed_by
+   * null) return to the status they had: RECEIVED, SENT or DRAFT. A request
+   * or quote closed by hand stays closed. True when it reopened the request.
+   */
+  async reopenIfAutoClosed(tx: Prisma.TransactionClient, requestId: bigint): Promise<boolean> {
+    const req = await tx.purchaseRequest.findFirstOrThrow({ where: { id: requestId }, select: { status: true, closedBy: true, closedAt: true } });
+    if (req.status !== 'CLOSED' || req.closedBy !== null || req.closedAt === null) return false;
+    await tx.purchaseRequest.update({ where: { id: requestId }, data: { status: 'APPROVED', closedAt: null } });
+    const auto = { requestId, status: 'CLOSED' as const, closedBy: null, closedAt: { not: null } };
+    const reopened = { closedAt: null };
+    await tx.purchaseQuote.updateMany({ where: { ...auto, receivedAt: { not: null } }, data: { ...reopened, status: 'RECEIVED' } });
+    await tx.purchaseQuote.updateMany({ where: { ...auto, receivedAt: null, sentAt: { not: null } }, data: { ...reopened, status: 'SENT' } });
+    await tx.purchaseQuote.updateMany({ where: { ...auto, sentAt: null }, data: { ...reopened, status: 'DRAFT' } });
     return true;
   }
 
   // ------------------------------------------------------------- internals
 
-  private async closeOpenQuotes(tx: Prisma.TransactionClient, requestId: bigint, to: 'CLOSED' | 'CANCELLED', reason?: string) {
-    const userId = this.support.userId() ?? null;
+  /** `automatic`: the system closes them (closed_by null), see reopenIfAutoClosed. */
+  private async closeOpenQuotes(
+    tx: Prisma.TransactionClient,
+    requestId: bigint,
+    to: 'CLOSED' | 'CANCELLED',
+    reason?: string,
+    automatic = false,
+  ) {
+    const userId = automatic ? null : (this.support.userId() ?? null);
     await tx.purchaseQuote.updateMany({
       where: { requestId, status: { in: ['DRAFT', 'SENT', 'RECEIVED'] } },
       data:
@@ -291,7 +324,8 @@ export class PurchaseRequestsService {
         assertBranchAllowed(req.branch_id);
         assertStatus('purchase request', req.status, from, verb);
         const set = await apply(tx, req, tenantId, companyId);
-        await tx.purchaseRequest.update({ where: { id }, data: { ...set, updatedBy: this.support.userId() ?? null } });
+        // updated_by stays the last editor of the content: a status change has its own *_by column.
+        await tx.purchaseRequest.update({ where: { id }, data: set });
         return set;
       }, POSTING_TX_OPTIONS),
     );

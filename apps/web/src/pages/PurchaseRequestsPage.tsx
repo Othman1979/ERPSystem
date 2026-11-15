@@ -70,6 +70,7 @@ import {
   requestActions,
   type RequestAction,
 } from './procurement/requestPayload';
+import { invalidateProcurement, procurementKeys } from './procurement/queryKeys';
 
 // ------------------------------------------------------------------ helpers
 
@@ -141,7 +142,7 @@ export function PurchaseRequestsPage() {
     { status?: ProcurementControllerListRequestsStatus },
     ProcurementControllerListRequestsSort
   >({
-    key: ['purchase-requests', 'list'],
+    key: procurementKeys.requestList(),
     filters: { status: statusFilter },
     defaultSort: '-requestDate',
     fetch: (params, signal) => procurementControllerListRequests(params, { signal }).then((r) => r.data),
@@ -149,16 +150,12 @@ export function PurchaseRequestsPage() {
   });
 
   const detail = useQuery({
-    queryKey: ['purchase-request', requestId],
+    queryKey: procurementKeys.request(requestId ?? undefined),
     queryFn: ({ signal }) => procurementControllerGetRequest(requestId!, { signal }).then((r) => r.data),
     enabled: screen === 'entry' && !!requestId,
   });
   const request = detail.data;
 
-  const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
-    void queryClient.invalidateQueries({ queryKey: ['purchase-request'] });
-  };
   const onError = (err: unknown) =>
     apiMessage.error(
       err instanceof ApiError
@@ -166,17 +163,16 @@ export function PurchaseRequestsPage() {
         : t('errors.INTERNAL'),
     );
 
-  // One mutation for the state changes (submit, approve, reject, cancel, close). Each
-  // user action gets its own Idempotency-Key (ADR-025 §15).
+  // One mutation for the state changes on a submitted or approved request (approve, reject,
+  // cancel, close). Each user action gets its own Idempotency-Key (ADR-025 §15). Submit lives
+  // in the editor, because it saves the form first.
   type StateChange =
-    | { kind: 'submit' | 'approve' | 'close'; id: string }
+    | { kind: 'approve' | 'close'; id: string }
     | { kind: 'reject' | 'cancel'; id: string; reason: string };
   const change = useMutation({
     mutationFn: (c: StateChange) => {
       const options = { headers: idemHeaders() };
       switch (c.kind) {
-        case 'submit':
-          return procurementControllerSubmitRequest(c.id, options);
         case 'approve':
           return procurementControllerApproveRequest(c.id, options);
         case 'close':
@@ -189,26 +185,26 @@ export function PurchaseRequestsPage() {
     },
     onSuccess: (_res, c) => {
       const done: Record<StateChange['kind'], string> = {
-        submit: 'procurement.submitted',
         approve: 'procurement.approved',
         reject: 'procurement.rejected',
         cancel: 'procurement.cancelled',
         close: 'procurement.closed',
       };
       apiMessage.success(t(done[c.kind]));
-      refresh();
     },
     onError,
+    // Settled, not success: a failed call may still have changed the server.
+    onSettled: () => invalidateProcurement(queryClient),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => procurementControllerDeleteRequest(id),
     onSuccess: () => {
       apiMessage.success(t('common.deleted'));
-      refresh();
       backToList();
     },
     onError,
+    onSettled: () => invalidateProcurement(queryClient),
   });
 
   const actionPending = change.isPending || remove.isPending;
@@ -275,11 +271,7 @@ export function PurchaseRequestsPage() {
           key={request?.id ?? 'new'}
           request={request}
           onBack={backToList}
-          onSaved={(id) => {
-            refresh();
-            setRequestId(id);
-          }}
-          onSubmit={(id) => change.mutate({ kind: 'submit', id })}
+          onSaved={(id) => setRequestId(id)}
           onDelete={(id) => remove.mutate(id)}
           actionPending={actionPending}
         />
@@ -366,7 +358,6 @@ function RequestEditor({
   request,
   onBack,
   onSaved,
-  onSubmit,
   onDelete,
   actionPending,
 }: {
@@ -374,12 +365,12 @@ function RequestEditor({
   request?: PurchaseRequestDetailDto;
   onBack: () => void;
   onSaved: (id: string) => void;
-  onSubmit: (id: string) => void;
   onDelete: (id: string) => void;
   actionPending: boolean;
 }) {
   const { t } = useTranslation();
   const { can } = useAuth();
+  const queryClient = useQueryClient();
   const [apiMessage, contextHolder] = message.useMessage();
   const [requestDate, setRequestDate] = useState<Dayjs>(request ? dayjs(request.requestDate) : dayjs());
   const [neededBy, setNeededBy] = useState<Dayjs | null>(request?.neededBy ? dayjs(request.neededBy) : null);
@@ -427,51 +418,81 @@ function RequestEditor({
   }
   const itemOptions = rows;
 
+  const onError = (err: unknown) =>
+    apiMessage.error(
+      err instanceof ApiError
+        ? t(`errors.${err.code}`, { defaultValue: err.message })
+        : t('errors.INTERNAL'),
+    );
+
+  // Creates the request, or updates the draft, with the form as it is now. Returns its id.
+  const persist = async (): Promise<string> => {
+    const body = purchaseRequestBody(
+      {
+        requestDate: requestDate.format('YYYY-MM-DD'),
+        neededBy: neededBy?.format('YYYY-MM-DD'),
+        notes,
+      },
+      lines,
+    );
+    if (!request) {
+      const res = await procurementControllerCreateRequest(body);
+      return res.data.id;
+    }
+    await procurementControllerUpdateRequest(request.id, body);
+    return request.id;
+  };
+
   const save = useMutation({
-    mutationFn: async (): Promise<PurchaseRequestDetailDto> => {
-      const body = purchaseRequestBody(
-        {
-          requestDate: requestDate.format('YYYY-MM-DD'),
-          neededBy: neededBy?.format('YYYY-MM-DD'),
-          notes,
-        },
-        lines,
-      );
-      const res = request
-        ? await procurementControllerUpdateRequest(request.id, body)
-        : await procurementControllerCreateRequest(body);
-      return res.data;
-    },
-    onSuccess: (saved) => {
+    mutationFn: persist,
+    onSuccess: (id) => {
       apiMessage.success(t('common.saved'));
-      onSaved(saved.id);
+      onSaved(id);
     },
-    onError: (err) =>
-      apiMessage.error(
-        err instanceof ApiError
-          ? t(`errors.${err.code}`, { defaultValue: err.message })
-          : t('errors.INTERNAL'),
-      ),
+    onError,
+    onSettled: () => invalidateProcurement(queryClient),
   });
+
+  // Submit saves the draft first, so the submitted request is the one on screen. If the
+  // save fails, the error shows and nothing is submitted.
+  const submit = useMutation({
+    mutationFn: async () => {
+      const id = await persist();
+      await procurementControllerSubmitRequest(id, { headers: idemHeaders() });
+    },
+    onSuccess: () => apiMessage.success(t('procurement.submitted')),
+    onError,
+    onSettled: () => invalidateProcurement(queryClient),
+  });
+
+  /** Lines the request would send: a request needs at least one complete line. */
+  const completeLineCount = () =>
+    purchaseRequestBody({ requestDate: requestDate.format('YYYY-MM-DD') }, lines).lines.length;
 
   // Save stays enabled: a save with no complete line says what is missing instead.
   const trySave = () => {
-    if (save.isPending) return;
-    const complete = purchaseRequestBody(
-      { requestDate: requestDate.format('YYYY-MM-DD') },
-      lines,
-    ).lines.length;
-    if (complete === 0) {
+    if (save.isPending || submit.isPending) return;
+    if (completeLineCount() === 0) {
       apiMessage.warning(t('stock.minLines'));
       focusFirstGridCell();
       return;
     }
     save.mutate();
   };
+  // The same check as trySave, then save and submit in one go.
+  const submitRequest = () => {
+    if (save.isPending || submit.isPending || actionPending) return;
+    if (completeLineCount() === 0) {
+      apiMessage.warning(t('stock.minLines'));
+      focusFirstGridCell();
+      return;
+    }
+    submit.mutate();
+  };
   useDocShortcuts({ onSave: trySave });
 
   const actions = request ? requestActions(request.status, can) : [];
-  const busy = save.isPending || actionPending;
+  const busy = save.isPending || submit.isPending || actionPending;
 
   return (
     <DocLayout
@@ -484,7 +505,7 @@ function RequestEditor({
           {contextHolder}
           <Button
             loading={save.isPending}
-            disabled={actionPending}
+            disabled={busy}
             icon={<SaveOutlined />}
             onClick={trySave}
           >
@@ -492,12 +513,8 @@ function RequestEditor({
             <span className="doc-kbd">Ctrl+S</span>
           </Button>
           {request && actions.includes('submit') && (
-            <Popconfirm
-              title={t('procurement.confirmSubmit')}
-              onConfirm={() => onSubmit(request.id)}
-              disabled={busy}
-            >
-              <Button type="primary" loading={actionPending} disabled={busy}>
+            <Popconfirm title={t('procurement.confirmSubmit')} onConfirm={submitRequest} disabled={busy}>
+              <Button type="primary" loading={submit.isPending} disabled={busy}>
                 {t('procurement.submit')}
               </Button>
             </Popconfirm>
@@ -828,9 +845,11 @@ function RequestView({
   const [cancelOpen, setCancelOpen] = useState(false);
   const actions = requestActions(request.status, can);
   const has = (a: RequestAction) => actions.includes(a);
-  // Only the owner may approve a document they made themselves (ADR-025 §2).
+  // Only the owner may approve a document they touched (ADR-025 §2). Rejecting stays open.
   const approveBlocked = approvalBlockedAsOwnDocument({
     createdBy: request.createdBy,
+    updatedBy: request.updatedBy,
+    submittedBy: request.submittedBy,
     userId: me?.user.id,
     isOwner: me?.currentMembership?.roleCode === 'OWNER',
   });

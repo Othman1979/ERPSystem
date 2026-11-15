@@ -22,8 +22,12 @@ export interface LockedRequest {
   status: string;
   branch_id: bigint | null;
   created_by: bigint | null;
+  updated_by: bigint | null;
+  submitted_by: bigint | null;
   request_date: Date;
 }
+
+const big = (v: bigint | number | null) => (v === null ? null : BigInt(v));
 
 export interface LockedRequestLine {
   id: bigint;
@@ -43,14 +47,16 @@ export async function lockRequest(
 ): Promise<LockedRequest> {
   const mode = shared ? Prisma.sql`LOCK IN SHARE MODE` : Prisma.sql`FOR UPDATE`;
   const [row] = await tx.$queryRaw<LockedRequest[]>`
-    SELECT id, status, branch_id, created_by, request_date FROM purchase_requests
+    SELECT id, status, branch_id, created_by, updated_by, submitted_by, request_date FROM purchase_requests
      WHERE tenant_id = ${tenantId} AND id = ${id} ${mode}`;
   if (!row) throw DomainError.notFound('PurchaseRequest', id.toString());
   return {
     ...row,
     id: BigInt(row.id),
-    branch_id: row.branch_id === null ? null : BigInt(row.branch_id),
-    created_by: row.created_by === null ? null : BigInt(row.created_by),
+    branch_id: big(row.branch_id),
+    created_by: big(row.created_by),
+    updated_by: big(row.updated_by),
+    submitted_by: big(row.submitted_by),
   };
 }
 
@@ -81,22 +87,42 @@ export async function lockRequestLines(
   );
 }
 
-/** One document row FOR UPDATE: its status, branch, creator and request; NOT_FOUND when absent. */
+export interface LockedDocument {
+  id: bigint;
+  status: string;
+  branch_id: bigint | null;
+  created_by: bigint | null;
+  updated_by: bigint | null;
+  /** Orders only (quotes have no submission); null on a quote. */
+  submitted_by: bigint | null;
+  request_id: bigint | null;
+}
+
+/** One document row FOR UPDATE: its status, branch, authors and request; NOT_FOUND when absent. */
 export async function lockDocument(
   tx: Prisma.TransactionClient,
   table: 'purchase_quotes' | 'purchase_orders',
   tenantId: bigint,
   id: bigint,
-): Promise<{ id: bigint; status: string; branch_id: bigint | null; created_by: bigint | null; request_id: bigint | null }> {
+): Promise<LockedDocument> {
   const [row] =
     table === 'purchase_quotes'
-      ? await tx.$queryRaw<{ id: bigint; status: string; branch_id: bigint | null; created_by: bigint | null; request_id: bigint | null }[]>`
-          SELECT id, status, branch_id, created_by, request_id FROM purchase_quotes WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`
-      : await tx.$queryRaw<{ id: bigint; status: string; branch_id: bigint | null; created_by: bigint | null; request_id: bigint | null }[]>`
-          SELECT id, status, branch_id, created_by, request_id FROM purchase_orders WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      ? await tx.$queryRaw<LockedDocument[]>`
+          SELECT id, status, branch_id, created_by, updated_by, NULL AS submitted_by, request_id
+            FROM purchase_quotes WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`
+      : await tx.$queryRaw<LockedDocument[]>`
+          SELECT id, status, branch_id, created_by, updated_by, submitted_by, request_id
+            FROM purchase_orders WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
   if (!row) throw DomainError.notFound(table === 'purchase_quotes' ? 'PurchaseQuote' : 'PurchaseOrder', id.toString());
-  const big = (v: bigint | null) => (v === null ? null : BigInt(v));
-  return { id: BigInt(row.id), status: row.status, branch_id: big(row.branch_id), created_by: big(row.created_by), request_id: big(row.request_id) };
+  return {
+    id: BigInt(row.id),
+    status: row.status,
+    branch_id: big(row.branch_id),
+    created_by: big(row.created_by),
+    updated_by: big(row.updated_by),
+    submitted_by: big(row.submitted_by),
+    request_id: big(row.request_id),
+  };
 }
 
 /** INVALID_STATUS_TRANSITION unless `status` is one of `allowed`. */

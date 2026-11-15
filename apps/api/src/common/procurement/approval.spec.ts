@@ -1,7 +1,7 @@
 import { Decimal } from '../decimal/decimal.utils.js';
 import { DomainError } from '../errors/domain.error.js';
 import { ErrorCode } from '../errors/error-codes.js';
-import { assertCanApprove, type ApprovalCheck } from './approval.js';
+import { assertCanApprove, isAuthor, type ApprovalCheck } from './approval.js';
 import { assertProcurementLevel, meetsProcurementLevel } from './procurement-level.js';
 
 const member = (over: Partial<ApprovalCheck> = {}): ApprovalCheck => ({
@@ -9,7 +9,7 @@ const member = (over: Partial<ApprovalCheck> = {}): ApprovalCheck => ({
   canApprove: true,
   limit: null,
   amount: new Decimal('100.000'),
-  isCreator: false,
+  isAuthor: false,
   ...over,
 });
 
@@ -25,7 +25,7 @@ const codeOf = (fn: () => void): string | null => {
 
 describe('Approval rule (ADR-025 §2)', () => {
   it('an owner always approves: own document, over any limit, without a grant', () => {
-    expect(codeOf(() => assertCanApprove(member({ isOwner: true, canApprove: false, isCreator: true, limit: new Decimal(1) })))).toBeNull();
+    expect(codeOf(() => assertCanApprove(member({ isOwner: true, canApprove: false, isAuthor: true, limit: new Decimal(1) })))).toBeNull();
   });
 
   it('a member needs purchase.approve', () => {
@@ -33,9 +33,16 @@ describe('Approval rule (ADR-025 §2)', () => {
   });
 
   it('a member never approves a document they created', () => {
-    expect(codeOf(() => assertCanApprove(member({ isCreator: true })))).toBe(ErrorCode.APPROVAL_SELF_NOT_ALLOWED);
+    expect(codeOf(() => assertCanApprove(member({ isAuthor: true })))).toBe(ErrorCode.APPROVAL_SELF_NOT_ALLOWED);
     // Even a request without an amount.
-    expect(codeOf(() => assertCanApprove(member({ isCreator: true, amount: null })))).toBe(ErrorCode.APPROVAL_SELF_NOT_ALLOWED);
+    expect(codeOf(() => assertCanApprove(member({ isAuthor: true, amount: null })))).toBe(ErrorCode.APPROVAL_SELF_NOT_ALLOWED);
+  });
+
+  it('an author is the creator, the last editor or the submitter (review #47)', () => {
+    const doc = { created_by: 1n, updated_by: 2n, submitted_by: 3n };
+    expect([1n, 2n, 3n, 4n].map((u) => isAuthor(doc, u))).toEqual([true, true, true, false]);
+    expect(isAuthor({ created_by: null, updated_by: null, submitted_by: null }, 1n)).toBe(false);
+    expect(isAuthor(doc, null)).toBe(false);
   });
 
   it('compares the amount with the limit as Decimal: equal passes, one fils over is refused', () => {

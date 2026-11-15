@@ -108,17 +108,43 @@ describe('requestActions', () => {
 });
 
 describe('approvalBlockedAsOwnDocument', () => {
+  const none = { createdBy: null, updatedBy: null, submittedBy: null };
+
   it('blocks a non-owner from approving a request they created', () => {
-    expect(approvalBlockedAsOwnDocument({ createdBy: 'u1', userId: 'u1', isOwner: false })).toBe(true);
+    expect(
+      approvalBlockedAsOwnDocument({ ...none, createdBy: 'u1', userId: 'u1', isOwner: false }),
+    ).toBe(true);
   });
 
-  it('lets the owner approve their own request', () => {
-    expect(approvalBlockedAsOwnDocument({ createdBy: 'u1', userId: 'u1', isOwner: true })).toBe(false);
+  it('blocks a non-owner who last edited the request', () => {
+    expect(
+      approvalBlockedAsOwnDocument({ ...none, createdBy: 'u2', updatedBy: 'u1', userId: 'u1', isOwner: false }),
+    ).toBe(true);
   });
 
-  it('does not block when someone else created the request, or the creator is unknown', () => {
-    expect(approvalBlockedAsOwnDocument({ createdBy: 'u2', userId: 'u1', isOwner: false })).toBe(false);
-    expect(approvalBlockedAsOwnDocument({ createdBy: null, userId: 'u1', isOwner: false })).toBe(false);
-    expect(approvalBlockedAsOwnDocument({ createdBy: 'u1', userId: null, isOwner: false })).toBe(false);
+  it('blocks a non-owner who submitted the request', () => {
+    expect(
+      approvalBlockedAsOwnDocument({ ...none, createdBy: 'u2', submittedBy: 'u1', userId: 'u1', isOwner: false }),
+    ).toBe(true);
+  });
+
+  it('lets the owner approve a request they touched', () => {
+    expect(
+      approvalBlockedAsOwnDocument({
+        createdBy: 'u1',
+        updatedBy: 'u1',
+        submittedBy: 'u1',
+        userId: 'u1',
+        isOwner: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not block when someone else touched the request, or the users are unknown', () => {
+    expect(
+      approvalBlockedAsOwnDocument({ createdBy: 'u2', updatedBy: 'u3', submittedBy: 'u4', userId: 'u1', isOwner: false }),
+    ).toBe(false);
+    expect(approvalBlockedAsOwnDocument({ ...none, createdBy: 'u1', userId: null, isOwner: false })).toBe(false);
+    expect(approvalBlockedAsOwnDocument({ ...none, userId: 'u1', isOwner: false })).toBe(false);
   });
 });

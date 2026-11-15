@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { PurchaseComparisonDto } from '@erp/api-client';
-import { convertBody, defaultPicks, quoteBody, receiveBody } from './quotePayload';
+import {
+  convertBody,
+  defaultPicks,
+  missingReceivePrices,
+  quoteBody,
+  receiveBody,
+  withPick,
+} from './quotePayload';
 
 const offer = (quoteLineId: string, lowest: boolean) =>
   ({ quoteId: `Q-${quoteLineId}`, quoteNo: null, quoteLineId, lowest }) as unknown as PurchaseComparisonDto['lines'][number]['offers'][number];
@@ -130,5 +137,50 @@ describe('quoteBody', () => {
       notes: 'net 30',
       lines: [{ requestLineId: 'rl-a', qty: '1' }],
     });
+  });
+});
+
+describe('missingReceivePrices', () => {
+  it('lists the lines with a blank, zero, or unfinished price', () => {
+    expect(
+      missingReceivePrices([
+        { lineId: 'ql-1', unitPrice: '2.500' },
+        { lineId: 'ql-2', unitPrice: '' },
+        { lineId: 'ql-3', unitPrice: '   ' },
+        { lineId: 'ql-4', unitPrice: '0' },
+        { lineId: 'ql-5', unitPrice: '0.000' },
+        { lineId: 'ql-6', unitPrice: null },
+        { lineId: 'ql-7', unitPrice: '.' },
+      ]),
+    ).toStrictEqual(['ql-2', 'ql-3', 'ql-4', 'ql-5', 'ql-6', 'ql-7']);
+  });
+
+  it('returns nothing when every line has a price above zero', () => {
+    expect(
+      missingReceivePrices([
+        { lineId: 'ql-1', unitPrice: '0.001' },
+        { lineId: 'ql-2', unitPrice: '7' },
+      ]),
+    ).toStrictEqual([]);
+  });
+});
+
+describe('withPick', () => {
+  it('sets the choice for a request line without touching the others', () => {
+    expect(withPick({ 'rl-a': 'ql-a1' }, 'rl-b', 'ql-b1')).toStrictEqual({ 'rl-a': 'ql-a1', 'rl-b': 'ql-b1' });
+  });
+
+  it('takes a line out when the choice is cleared, so it is not in the selections', () => {
+    const picks = withPick({ 'rl-a': 'ql-a1', 'rl-b': 'ql-b1' }, 'rl-a', '');
+    expect(picks).toStrictEqual({ 'rl-b': 'ql-b1' });
+    expect(convertBody({ orderDate: '2026-11-15', warehouseId: '3' }, picks).selections).toStrictEqual([
+      { quoteLineId: 'ql-b1' },
+    ]);
+  });
+
+  it('does not change the picks it was given', () => {
+    const picks = { 'rl-a': 'ql-a1' };
+    withPick(picks, 'rl-a', '');
+    expect(picks).toStrictEqual({ 'rl-a': 'ql-a1' });
   });
 });

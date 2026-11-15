@@ -118,5 +118,7 @@ export enum ErrorCode {
   PURCHASE_REQUEST_QTY_EXCEEDED = 'PURCHASE_REQUEST_QTY_EXCEEDED',
   // ADR-025 §7: the action does not apply to the document's status (details.status).
   INVALID_STATUS_TRANSITION = 'INVALID_STATUS_TRANSITION',
+  // Review #47: a purchase order whose grand total is 0 is not submitted (a price left blank).
+  PURCHASE_ORDER_ZERO_TOTAL = 'PURCHASE_ORDER_ZERO_TOTAL',
   INTERNAL = 'INTERNAL',
 }

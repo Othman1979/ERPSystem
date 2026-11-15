@@ -47,7 +47,9 @@ vi.mock('../hooks/useCostCenters', () => ({
 }));
 
 const supplier = { id: 's1', code: 'S1', nameAr: 'مورد الاختبار', nameEn: 'Test supplier' };
-const warehouse = { id: 'w1', code: 'W1', nameAr: 'المستودع الرئيسي' };
+const warehouse = { id: 'w1', code: 'W1', nameAr: 'المستودع الرئيسي', nameEn: 'Main warehouse' };
+const item = { id: 'it1', code: 'I1', nameAr: 'صنف اختبار', nameEn: 'Test item', itemKind: 'STOCK', purchasePrice: null };
+const itemRef = { id: 'it1', code: 'I1', nameAr: 'صنف اختبار', nameEn: 'Test item', itemKind: 'STOCK', baseUnitId: 'u1' };
 
 /** Orders as the list returns them. */
 const LIST_ITEMS = [
@@ -90,6 +92,8 @@ const SUBMITTED_DETAIL = {
   rejectReason: null,
   cancelReason: null,
   createdBy: 'u9',
+  updatedBy: 'u9',
+  submittedBy: 'u9',
   supplier,
   warehouse,
   costCenter: null,
@@ -97,14 +101,66 @@ const SUBMITTED_DETAIL = {
   lines: [],
 };
 
+/** A draft with one priced line, saved by the signed-in member. */
+const DRAFT_DETAIL = {
+  ...SUBMITTED_DETAIL,
+  id: '1',
+  orderNo: null,
+  status: 'DRAFT',
+  createdBy: 'u1',
+  updatedBy: 'u1',
+  submittedBy: null,
+  netTotal: '20.000',
+  taxTotal: '0.000',
+  grandTotal: '20.000',
+  lines: [
+    {
+      id: 'l1',
+      lineNo: 1,
+      itemId: 'it1',
+      item: itemRef,
+      itemUnitId: null,
+      itemUnit: null,
+      qty: '2',
+      unitPrice: '10',
+      discountPct: null,
+      requestLineId: null,
+      netAmount: '20.000',
+      taxAmount: '0.000',
+      lineTotal: '20.000',
+    },
+  ],
+};
+
+let orderDetail: unknown = SUBMITTED_DETAIL;
+
 const listOrders = vi.fn(() =>
   ok({ items: LIST_ITEMS, page: 1, pageSize: 20, total: LIST_ITEMS.length }),
 );
-const getOrder = vi.fn(() => ok(SUBMITTED_DETAIL));
+const getOrder = vi.fn((..._args: unknown[]) => ok(orderDetail));
+const createOrder = vi.fn((..._args: unknown[]) => ok({ id: '9' }));
+const updateOrder = vi.fn((..._args: unknown[]) => ok({ id: '1' }));
+const submitOrder = vi.fn((..._args: unknown[]) => ok({ id: '1' }));
+const approveOrder = vi.fn((..._args: unknown[]) => ok({ id: '2' }));
+const rejectOrder = vi.fn((..._args: unknown[]) => ok({ id: '2' }));
+const cancelOrder = vi.fn((..._args: unknown[]) => ok({ id: '1' }));
+
 vi.mock('@erp/api-client', async (original) => ({
   ...(await original<typeof import('@erp/api-client')>()),
   procurementControllerListOrders: () => listOrders(),
-  procurementControllerGetOrder: () => getOrder(),
+  procurementControllerGetOrder: (...args: unknown[]) => getOrder(...args),
+  procurementControllerCreateOrder: (...args: unknown[]) => createOrder(...args),
+  procurementControllerUpdateOrder: (...args: unknown[]) => updateOrder(...args),
+  procurementControllerSubmitOrder: (...args: unknown[]) => submitOrder(...args),
+  procurementControllerApproveOrder: (...args: unknown[]) => approveOrder(...args),
+  procurementControllerRejectOrder: (...args: unknown[]) => rejectOrder(...args),
+  procurementControllerCancelOrder: (...args: unknown[]) => cancelOrder(...args),
+  // The editor's pickers: a supplier, a warehouse and an item, one of each.
+  partiesControllerList: () => ok({ items: [supplier], total: 1, page: 1, pageSize: 20 }),
+  warehousesControllerList: () => ok([warehouse]),
+  catalogControllerListItems: () => ok({ items: [item], total: 1, page: 1, pageSize: 20 }),
+  catalogControllerGetItem: () =>
+    ok({ ...item, baseUnit: { id: 'u1', code: 'PCS', nameAr: 'قطعة', nameEn: 'Piece' }, units: [] }),
 }));
 
 const { PurchaseOrdersPage } = await import('./PurchaseOrdersPage');
@@ -119,8 +175,10 @@ beforeEach(() => {
   session.roleCode = 'ACCOUNTANT';
   session.approvalLimit = '1000';
   session.permissions = ['purchase.manage', 'purchase.approve'];
-  listOrders.mockClear();
-  getOrder.mockClear();
+  orderDetail = SUBMITTED_DETAIL;
+  for (const mock of [listOrders, getOrder, createOrder, updateOrder, submitOrder, approveOrder, rejectOrder, cancelOrder]) {
+    mock.mockClear();
+  }
 });
 afterEach(() => {
   act(() => root?.unmount());
@@ -131,7 +189,7 @@ afterEach(() => {
 
 const settle = (ms = 300) => act(() => new Promise((r) => setTimeout(r, ms)));
 
-async function mount() {
+async function mount(path = '/purchase-orders') {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -140,7 +198,7 @@ async function mount() {
     root!.render(
       <QueryClientProvider client={client}>
         <AntApp>
-          <MemoryRouter initialEntries={['/purchase-orders']}>
+          <MemoryRouter initialEntries={[path]}>
             <PurchaseOrdersPage />
           </MemoryRouter>
         </AntApp>
@@ -153,6 +211,54 @@ async function mount() {
 const rowOf = (text: string) => [...host.querySelectorAll('tr')].find((tr) => tr.textContent?.includes(text))!;
 const buttonNamed = (label: string) =>
   [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === label);
+const buttonStartingWith = (label: string) =>
+  [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim().startsWith(label));
+const bodyText = () => document.body.textContent ?? '';
+
+/** The OK button of the confirmation that is open (Popconfirm). */
+function confirmOk() {
+  const open = [...document.querySelectorAll('.ant-popover:not(.ant-popover-hidden)')].filter(
+    (p) => !/-leave/.test(p.className),
+  );
+  const button = open[open.length - 1]?.querySelector<HTMLButtonElement>('.ant-btn-primary');
+  if (!button) throw new Error('no open confirmation');
+  return button;
+}
+
+/** The OK button of the open modal. */
+const modalOk = () => document.querySelector<HTMLButtonElement>('.ant-modal-footer .ant-btn-primary')!;
+
+/** The grid cell labelled as the page labels it (`ui.cellLabel`). */
+const cellInput = (column: string, row: number) =>
+  host.querySelector<HTMLInputElement>(
+    `input[aria-label="${i18n.t('ui.cellLabel', { column: i18n.t(column), line: row + 1 })}"]`,
+  );
+
+/** Types into an antd InputNumber or Input (React reads the native value setter). */
+function type(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  act(() => {
+    const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+/** Opens a select and clicks the option whose text contains `text`. */
+async function pick(input: HTMLInputElement, text: string) {
+  act(() => input.focus());
+  act(() => {
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  });
+  await settle(50);
+  const open = document.querySelectorAll('.ant-select-dropdown:not(.ant-select-dropdown-hidden):not([class*="-leave"])');
+  expect(open).toHaveLength(1);
+  const option = [...open[0].querySelectorAll<HTMLElement>('.ant-select-item-option')].find((o) =>
+    o.textContent?.includes(text),
+  );
+  if (!option) throw new Error(`no option "${text}"`);
+  act(() => option.click());
+  await settle(50);
+}
 
 describe('PurchaseOrdersPage list', () => {
   it('renders the orders with their translated status', async () => {
@@ -186,5 +292,119 @@ describe('PurchaseOrdersPage approval of a submitted order', () => {
 
     expect(host.textContent).not.toContain(i18n.t('procurement.needsOwner'));
     expect(buttonNamed(i18n.t('procurement.approve'))?.disabled).toBe(false);
+  });
+
+  it('approves with an Idempotency-Key header once the approver confirms', async () => {
+    session.approvalLimit = null;
+    await mount();
+    act(() => rowOf('PO-2').click());
+    await settle();
+
+    act(() => buttonNamed(i18n.t('procurement.approve'))!.click());
+    await settle(50);
+    act(() => confirmOk().click());
+    await settle();
+
+    expect(approveOrder).toHaveBeenCalledTimes(1);
+    expect(approveOrder).toHaveBeenCalledWith('2', { headers: { 'Idempotency-Key': expect.any(String) } });
+  });
+
+  it('keeps Reject enabled for the member who created the order, and Approve disabled', async () => {
+    orderDetail = { ...SUBMITTED_DETAIL, createdBy: 'u1' };
+    await mount();
+    act(() => rowOf('PO-2').click());
+    await settle();
+
+    expect(host.textContent).toContain(i18n.t('procurement.ownDocument'));
+    expect(buttonNamed(i18n.t('procurement.approve'))?.disabled).toBe(true);
+    expect(buttonNamed(i18n.t('procurement.reject'))?.disabled).toBe(false);
+  });
+
+  it('keeps Approve disabled for a member who last edited the order', async () => {
+    session.approvalLimit = null;
+    orderDetail = { ...SUBMITTED_DETAIL, createdBy: 'u9', updatedBy: 'u1' };
+    await mount();
+    act(() => rowOf('PO-2').click());
+    await settle();
+
+    expect(buttonNamed(i18n.t('procurement.approve'))?.disabled).toBe(true);
+  });
+});
+
+describe('PurchaseOrdersPage cancel of an approved order', () => {
+  it('cannot be confirmed with an empty reason, then cancels with the reason and an Idempotency-Key', async () => {
+    orderDetail = { ...SUBMITTED_DETAIL, id: '1', orderNo: 'PO-1', status: 'APPROVED', submittedBy: 'u9' };
+    await mount();
+    act(() => rowOf('PO-1').click());
+    await settle();
+
+    act(() => buttonNamed(i18n.t('procurement.cancel'))!.click());
+    await settle(50);
+    act(() => modalOk().click());
+    await settle(50);
+
+    expect(cancelOrder).not.toHaveBeenCalled();
+    expect(bodyText()).toContain(i18n.t('procurement.reasonRequired'));
+
+    const reason = document.querySelector<HTMLTextAreaElement>('.ant-modal textarea')!;
+    type(reason, 'Duplicate order');
+    act(() => modalOk().click());
+    await settle();
+
+    expect(cancelOrder).toHaveBeenCalledTimes(1);
+    expect(cancelOrder).toHaveBeenCalledWith(
+      '1',
+      { reason: 'Duplicate order' },
+      { headers: { 'Idempotency-Key': expect.any(String) } },
+    );
+  });
+});
+
+describe('PurchaseOrdersPage order editor', () => {
+  it('submits a draft: saves it, then sends submit with an Idempotency-Key header', async () => {
+    orderDetail = DRAFT_DETAIL;
+    await mount();
+    act(() => rowOf('PO-1').click());
+    await settle();
+
+    act(() => buttonNamed(i18n.t('procurement.submit'))!.click());
+    await settle(50);
+    act(() => confirmOk().click());
+    await settle();
+
+    expect(updateOrder).toHaveBeenCalledWith('1', expect.objectContaining({ lines: [expect.objectContaining({ unitPrice: '10' })] }));
+    expect(submitOrder).toHaveBeenCalledTimes(1);
+    expect(submitOrder).toHaveBeenCalledWith('1', { headers: { 'Idempotency-Key': expect.any(String) } });
+  });
+
+  it('refuses a new order whose line has an item and no price: marks the cell and does not create', async () => {
+    await mount('/purchase-orders?new=1');
+    await pick(host.querySelector<HTMLInputElement>('[data-field="supplier"] input')!, 'Test supplier');
+    await pick(host.querySelector<HTMLInputElement>('[data-field="warehouse"] input')!, 'Main warehouse');
+    await pick(cellInput('procurement.item', 0)!, 'Test item');
+    type(cellInput('procurement.qty', 0)!, '2');
+
+    act(() => buttonStartingWith(i18n.t('common.saveDraft'))!.click());
+    await settle();
+
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(updateOrder).not.toHaveBeenCalled();
+    expect(cellInput('procurement.unitPrice', 0)!.closest('.ant-input-number-status-error')).not.toBeNull();
+    expect(bodyText()).toContain(i18n.t('procurement.ordersUi.priceRequired'));
+  });
+
+  it('refuses a draft whose line has no price, and does not send it', async () => {
+    orderDetail = { ...DRAFT_DETAIL, lines: [{ ...DRAFT_DETAIL.lines[0], unitPrice: null }] };
+    await mount();
+    act(() => rowOf('PO-1').click());
+    await settle();
+
+    act(() => buttonStartingWith(i18n.t('common.save'))!.click());
+    await settle();
+
+    expect(updateOrder).not.toHaveBeenCalled();
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(cellInput('procurement.unitPrice', 0)!.closest('.ant-input-number-status-error')).not.toBeNull();
+    expect(bodyText()).toContain(i18n.t('procurement.ordersUi.priceRequired'));
   });
 });

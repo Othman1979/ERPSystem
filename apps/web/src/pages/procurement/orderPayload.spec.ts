@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   approvalHint,
+  isAuthoredBy,
+  missingPriceLines,
   purchaseOrderBody,
   purchaseOrderUpdateBody,
   type PurchaseOrderForm,
@@ -50,12 +52,22 @@ describe('purchase order body', () => {
     ]);
   });
 
-  it('drops lines without an item or a quantity, and sends a blank price as zero', () => {
+  it('drops lines without an item or a quantity', () => {
     const body = purchaseOrderBody(form, [
-      { itemId: undefined, qty: '4' },
+      { itemId: undefined, qty: '4', unitPrice: '2' },
       { itemId: 'i3', qty: '', unitPrice: '2' },
-      { itemId: 'i4', qty: '1', unitPrice: null },
+      { itemId: 'i4', qty: '1', unitPrice: '5' },
     ]);
+    expect(body.lines).toEqual([{ itemId: 'i4', qty: '1', unitPrice: '5' }]);
+  });
+
+  it('never sends a blank price as zero: a line with an item and a quantity needs a price', () => {
+    expect(() => purchaseOrderBody(form, [{ itemId: 'i4', qty: '1', unitPrice: null }])).toThrow();
+    expect(() => purchaseOrderBody(form, [{ itemId: 'i4', qty: '1', unitPrice: '  ' }])).toThrow();
+  });
+
+  it('sends an explicit zero price as the price it is', () => {
+    const body = purchaseOrderBody(form, [{ itemId: 'i4', qty: '1', unitPrice: '0' }]);
     expect(body.lines).toEqual([{ itemId: 'i4', qty: '1', unitPrice: '0' }]);
   });
 
@@ -86,25 +98,75 @@ describe('purchase order update body', () => {
   });
 });
 
+describe('missingPriceLines', () => {
+  it('returns the indexes of the lines with an item and no price', () => {
+    expect(
+      missingPriceLines([
+        { itemId: 'i1', qty: '1', unitPrice: '2' },
+        { itemId: 'i2', qty: '1', unitPrice: null },
+        { itemId: 'i3', qty: '1' },
+        { itemId: 'i4', qty: '1', unitPrice: '   ' },
+      ]),
+    ).toEqual([1, 2, 3]);
+  });
+
+  it('ignores blank rows without an item', () => {
+    expect(missingPriceLines([{ qty: '1' }, {}])).toEqual([]);
+  });
+
+  it('counts a price of zero as a price', () => {
+    expect(missingPriceLines([{ itemId: 'i1', qty: '1', unitPrice: '0' }])).toEqual([]);
+  });
+
+  it('is empty when every line with an item has a price', () => {
+    expect(missingPriceLines([{ itemId: 'i1', unitPrice: '1.250' }, { itemId: 'i2', unitPrice: '3' }])).toEqual([]);
+  });
+});
+
+describe('isAuthoredBy', () => {
+  const doc = { createdBy: 'u1', updatedBy: 'u2', submittedBy: 'u3' };
+
+  it('is true for the member who created the document', () => {
+    expect(isAuthoredBy({ ...doc, updatedBy: null, submittedBy: null }, 'u1')).toBe(true);
+  });
+
+  it('is true for the member who last edited the document', () => {
+    expect(isAuthoredBy({ ...doc, createdBy: 'u9', submittedBy: null }, 'u2')).toBe(true);
+  });
+
+  it('is true for the member who submitted the document', () => {
+    expect(isAuthoredBy({ ...doc, createdBy: 'u9', updatedBy: null }, 'u3')).toBe(true);
+  });
+
+  it('is false for another member', () => {
+    expect(isAuthoredBy(doc, 'u4')).toBe(false);
+  });
+
+  it('is false when the fields are empty or the member is unknown', () => {
+    expect(isAuthoredBy({ createdBy: null, updatedBy: null, submittedBy: null }, 'u1')).toBe(false);
+    expect(isAuthoredBy(doc, undefined)).toBe(false);
+  });
+});
+
 describe('approvalHint', () => {
   const base = {
     isOwner: false,
     canApprove: true,
     approvalLimit: '1000',
     grandTotal: '500',
-    createdByMe: false,
+    authoredByMe: false,
   };
 
   it('the owner always approves', () => {
-    expect(approvalHint({ ...base, isOwner: true, approvalLimit: '1', grandTotal: '999999', createdByMe: true })).toBe('ok');
+    expect(approvalHint({ ...base, isOwner: true, approvalLimit: '1', grandTotal: '999999', authoredByMe: true })).toBe('ok');
   });
 
   it('a member without purchase.approve has no approval', () => {
     expect(approvalHint({ ...base, canApprove: false })).toBe('noApproval');
   });
 
-  it('a member does not approve a document they created', () => {
-    expect(approvalHint({ ...base, createdByMe: true })).toBe('ownDocument');
+  it('a member does not approve a document they wrote', () => {
+    expect(approvalHint({ ...base, authoredByMe: true })).toBe('ownDocument');
   });
 
   it('an order exactly at the limit is within it', () => {

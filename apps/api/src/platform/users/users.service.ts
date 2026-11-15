@@ -107,13 +107,7 @@ export class UsersService {
       select: { id: true, user: { select: { fullName: true, email: true } }, role: { select: { code: true, nameAr: true, nameEn: true } } },
       orderBy: { id: 'asc' },
     });
-    return rows.map((m) => ({
-      membershipId: m.id.toString(),
-      fullName: m.user.fullName,
-      email: m.user.email,
-      roleCode: m.role.code,
-      role: m.role,
-    }));
+    return rows.map((m) => ({ fullName: m.user.fullName, email: m.user.email, role: m.role }));
   }
 
   async roles() {
