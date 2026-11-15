@@ -57,6 +57,7 @@ import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
+import { assertDirectPurchaseAllowed } from '../../common/procurement/approval.js';
 
 const SOURCE = 'PURCHASE_INVOICE';
 
@@ -456,6 +457,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     await this.assertHeader(db, companyId, dto, lines);
 
     const inv = await db.$transaction(async (tx) => {
+      // ADR-025 §4: at MEDIUM / FULL a direct purchase needs purchase.direct (owners aside).
+      await assertDirectPurchaseAllowed(tx, tenantId, companyId);
       // Share-lock the header centre before the row that references it (ADR-024 §1.4).
       if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       const receivedGrnId = await this.checkDraftGrn(tx, tenantId, null, dto, lines);
@@ -608,6 +611,10 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
+        // ADR-025 §4: at MEDIUM / FULL a direct purchase needs purchase.direct
+        // (owners aside). A shared lock on the company row, a locking read like
+        // the ones below, so it does not open the snapshot early.
+        await assertDirectPurchaseAllowed(tx, tenantId, companyId);
         // Lock the document first (§10.1 step 7), then the GRN it bills
         // (TRADE-02), both before the first plain read: every later read then
         // sees what was committed before both locks (see assertGrnBillable).

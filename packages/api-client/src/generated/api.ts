@@ -837,6 +837,21 @@ export interface UserMembershipDto {
   purchasePermissions: UserPurchasePermissionDto[];
 }
 
+export interface PurchaseDirectGapRoleDto {
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface PurchaseDirectGapDto {
+  membershipId: string;
+  fullName: string;
+  email: string;
+  roleCode: string;
+  role: PurchaseDirectGapRoleDto;
+}
+
 export interface InviteUserDto {
   email: string;
   /** @maxLength 191 */
@@ -4176,6 +4191,858 @@ export interface CreateGoodsNoteDto {
   lines: GoodsNoteLineDto[];
 }
 
+export type PurchaseRequestStatus = typeof PurchaseRequestStatus[keyof typeof PurchaseRequestStatus];
+
+
+export const PurchaseRequestStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED',
+  CLOSED: 'CLOSED',
+} as const;
+
+export interface ProcurementLineCountDto {
+  lines: number;
+}
+
+export interface PurchaseRequestListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The branch of the request context when the draft was created (ADR-003).
+     * @nullable
+     */
+  branchId: string | null;
+  /** @nullable */
+  requestNo: string | null;
+  requestDate: string;
+  /** @nullable */
+  neededBy: string | null;
+  status: PurchaseRequestStatus;
+  /** @nullable */
+  notes: string | null;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  submittedBy: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  approvedBy: string | null;
+  /** @nullable */
+  rejectedAt: string | null;
+  /** @nullable */
+  rejectedBy: string | null;
+  /** @nullable */
+  rejectReason: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  /** @nullable */
+  closedAt: string | null;
+  /** @nullable */
+  closedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  _count: ProcurementLineCountDto;
+}
+
+export interface PurchaseRequestListItemDtoPage {
+  items: PurchaseRequestListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface ProcurementItemRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  itemKind: ItemKind;
+  baseUnitId: string;
+}
+
+export interface ProcurementUnitRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface ProcurementItemUnitDto {
+  id: string;
+  tenantId: string;
+  itemId: string;
+  unitId: string;
+  factorToBase: string;
+  isDefaultSale: boolean;
+  isDefaultPurchase: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  unit: ProcurementUnitRefDto;
+}
+
+export interface PurchaseRequestLineViewDto {
+  id: string;
+  tenantId: string;
+  requestId: string;
+  lineNo: number;
+  itemId: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  qty: string;
+  qtyBase: string;
+  /**
+     * Optional estimate per unit; not binding, so approval ignores it (ADR-025 §2).
+     * @nullable
+     */
+  estimatedPrice: string | null;
+  /** @nullable */
+  note: string | null;
+  orderedQty: string;
+  createdAt: string;
+  item: ProcurementItemRefDto;
+  /** @nullable */
+  itemUnit: ProcurementItemUnitDto | null;
+  /** qty − orderedQty: what is left to order, in the line's unit. */
+  remainingQty: string;
+}
+
+export type PurchaseQuoteStatus = typeof PurchaseQuoteStatus[keyof typeof PurchaseQuoteStatus];
+
+
+export const PurchaseQuoteStatus = {
+  DRAFT: 'DRAFT',
+  SENT: 'SENT',
+  RECEIVED: 'RECEIVED',
+  CLOSED: 'CLOSED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export interface ProcurementSupplierRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface PurchaseRequestQuoteRefDto {
+  id: string;
+  /** @nullable */
+  quoteNo: string | null;
+  quoteDate: string;
+  status: PurchaseQuoteStatus;
+  grandTotal: string;
+  supplier: ProcurementSupplierRefDto;
+}
+
+export type PurchaseOrderStatus = typeof PurchaseOrderStatus[keyof typeof PurchaseOrderStatus];
+
+
+export const PurchaseOrderStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  APPROVED: 'APPROVED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export interface PurchaseRequestOrderRefDto {
+  id: string;
+  /** @nullable */
+  orderNo: string | null;
+  orderDate: string;
+  status: PurchaseOrderStatus;
+  grandTotal: string;
+  supplier: ProcurementSupplierRefDto;
+}
+
+export interface PurchaseRequestDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The branch of the request context when the draft was created (ADR-003).
+     * @nullable
+     */
+  branchId: string | null;
+  /** @nullable */
+  requestNo: string | null;
+  requestDate: string;
+  /** @nullable */
+  neededBy: string | null;
+  status: PurchaseRequestStatus;
+  /** @nullable */
+  notes: string | null;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  submittedBy: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  approvedBy: string | null;
+  /** @nullable */
+  rejectedAt: string | null;
+  /** @nullable */
+  rejectedBy: string | null;
+  /** @nullable */
+  rejectReason: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  /** @nullable */
+  closedAt: string | null;
+  /** @nullable */
+  closedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  lines: PurchaseRequestLineViewDto[];
+  quotes: PurchaseRequestQuoteRefDto[];
+  orders: PurchaseRequestOrderRefDto[];
+}
+
+export interface PurchaseRequestLineDto {
+  itemId: string;
+  itemUnitId?: string;
+  /** In the line's unit (the item's base unit without itemUnitId). */
+  qty: string;
+  /** Optional estimate per unit; not binding (ADR-025 §2). */
+  estimatedPrice?: string;
+  /** @maxLength 500 */
+  note?: string;
+}
+
+export interface CreatePurchaseRequestDto {
+  requestDate: string;
+  neededBy?: string;
+  /** @maxLength 500 */
+  notes?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines: PurchaseRequestLineDto[];
+}
+
+export interface ReasonDto {
+  /**
+     * @minLength 1
+     * @maxLength 500
+     */
+  reason: string;
+}
+
+export interface ComparisonRequestDto {
+  id: string;
+  /** @nullable */
+  requestNo: string | null;
+  status: PurchaseRequestStatus;
+  requestDate: string;
+}
+
+export interface ComparisonOfferDto {
+  quoteId: string;
+  /** @nullable */
+  quoteNo: string | null;
+  quoteLineId: string;
+  supplier: ProcurementSupplierRefDto;
+  qty: string;
+  unitPrice: string;
+  discountPct: string;
+  netAmount: string;
+  taxAmount: string;
+  lineTotal: string;
+  pricesIncludeTax: boolean;
+  /** lineTotal / qty, tax included, 6 decimals: what the offers are compared on. */
+  unitTotal: string;
+  /** The lowest unitTotal of the line (ties all marked). */
+  lowest: boolean;
+}
+
+export interface ComparisonLineDto {
+  requestLineId: string;
+  lineNo: number;
+  item: ProcurementItemRefDto;
+  /** @nullable */
+  itemUnit: ProcurementItemUnitDto | null;
+  qty: string;
+  orderedQty: string;
+  remainingQty: string;
+  offers: ComparisonOfferDto[];
+}
+
+export interface PurchaseComparisonDto {
+  request: ComparisonRequestDto;
+  lines: ComparisonLineDto[];
+}
+
+export interface ConvertSelectionDto {
+  /** A line of a received quote of this request: the supplier and price chosen for its request line. */
+  quoteLineId: string;
+  /** Omitted: the quoted quantity, capped at what is left on the request line. */
+  qty?: string;
+}
+
+export interface ConvertPurchaseRequestDto {
+  orderDate: string;
+  expectedDate?: string;
+  warehouseId: string;
+  costCenterId?: string;
+  /** @maxLength 500 */
+  notes?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  selections: ConvertSelectionDto[];
+}
+
+export interface ProcurementSupplierDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  taxNumber: string | null;
+  /** @nullable */
+  phone: string | null;
+  /** @nullable */
+  address: string | null;
+}
+
+export interface ProcurementWarehouseRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface ProcurementCostCenterRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface ProcurementRequestRefDto {
+  id: string;
+  /** @nullable */
+  requestNo: string | null;
+  status: PurchaseRequestStatus;
+}
+
+export interface ProcurementRequestLineRefDto {
+  id: string;
+  lineNo: number;
+}
+
+export interface ProcurementQuoteLineRefDto {
+  id: string;
+  quoteId: string;
+}
+
+export interface PurchaseOrderLineViewDto {
+  id: string;
+  tenantId: string;
+  orderId: string;
+  lineNo: number;
+  /** @nullable */
+  requestLineId: string | null;
+  /** @nullable */
+  quoteLineId: string | null;
+  itemId: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  qty: string;
+  qtyBase: string;
+  unitPrice: string;
+  discountPct: string;
+  discountAmount: string;
+  netAmount: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  taxRate: string;
+  taxAmount: string;
+  lineTotal: string;
+  /** @nullable */
+  note: string | null;
+  createdAt: string;
+  item: ProcurementItemRefDto;
+  /** @nullable */
+  itemUnit: ProcurementItemUnitDto | null;
+  /** @nullable */
+  requestLine: ProcurementRequestLineRefDto | null;
+  /** @nullable */
+  quoteLine: ProcurementQuoteLineRefDto | null;
+}
+
+export interface PurchaseOrderDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The receiving warehouse's branch (ADR-025 §12, ADR-003).
+     * @nullable
+     */
+  branchId: string | null;
+  /** @nullable */
+  orderNo: string | null;
+  orderDate: string;
+  /** @nullable */
+  expectedDate: string | null;
+  supplierId: string;
+  warehouseId: string;
+  /**
+     * ADR-025 §12: copied to the invoice in phase 13.
+     * @nullable
+     */
+  costCenterId: string | null;
+  /**
+     * The approved request it orders from (always at FULL, never at MEDIUM); set at creation only.
+     * @nullable
+     */
+  requestId: string | null;
+  /** ADR-017: prices entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  status: PurchaseOrderStatus;
+  /** @nullable */
+  notes: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  submittedBy: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  approvedBy: string | null;
+  /**
+     * The last rejection (the order went back to DRAFT).
+     * @nullable
+     */
+  rejectedAt: string | null;
+  /** @nullable */
+  rejectedBy: string | null;
+  /** @nullable */
+  rejectReason: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  supplier: ProcurementSupplierDto;
+  warehouse: ProcurementWarehouseRefDto;
+  /** @nullable */
+  costCenter: ProcurementCostCenterRefDto | null;
+  /** @nullable */
+  request: ProcurementRequestRefDto | null;
+  lines: PurchaseOrderLineViewDto[];
+}
+
+export interface ConvertedOrdersDto {
+  orders: PurchaseOrderDetailDto[];
+}
+
+export interface ProcurementRequestNoDto {
+  id: string;
+  /** @nullable */
+  requestNo: string | null;
+}
+
+export interface PurchaseQuoteListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The request's branch.
+     * @nullable
+     */
+  branchId: string | null;
+  requestId: string;
+  supplierId: string;
+  /** @nullable */
+  quoteNo: string | null;
+  quoteDate: string;
+  /** @nullable */
+  validUntil: string | null;
+  /**
+     * The supplier's own reference for the offer, entered with the prices.
+     * @nullable
+     */
+  supplierRef: string | null;
+  /** ADR-017: prices entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  status: PurchaseQuoteStatus;
+  /** @nullable */
+  notes: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  /** @nullable */
+  sentAt: string | null;
+  /** @nullable */
+  sentBy: string | null;
+  /** @nullable */
+  receivedAt: string | null;
+  /** @nullable */
+  receivedBy: string | null;
+  /** @nullable */
+  closedAt: string | null;
+  /** @nullable */
+  closedBy: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  supplier: ProcurementSupplierRefDto;
+  request: ProcurementRequestNoDto;
+  _count: ProcurementLineCountDto;
+}
+
+export interface PurchaseQuoteListItemDtoPage {
+  items: PurchaseQuoteListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface PurchaseQuoteLineViewDto {
+  id: string;
+  tenantId: string;
+  quoteId: string;
+  lineNo: number;
+  requestLineId: string;
+  itemId: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  qty: string;
+  qtyBase: string;
+  /** @nullable */
+  unitPrice: string | null;
+  discountPct: string;
+  discountAmount: string;
+  netAmount: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  taxRate: string;
+  taxAmount: string;
+  lineTotal: string;
+  /** @nullable */
+  note: string | null;
+  createdAt: string;
+  item: ProcurementItemRefDto;
+  /** @nullable */
+  itemUnit: ProcurementItemUnitDto | null;
+  requestLine: ProcurementRequestLineRefDto;
+}
+
+export interface PurchaseQuoteDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The request's branch.
+     * @nullable
+     */
+  branchId: string | null;
+  requestId: string;
+  supplierId: string;
+  /** @nullable */
+  quoteNo: string | null;
+  quoteDate: string;
+  /** @nullable */
+  validUntil: string | null;
+  /**
+     * The supplier's own reference for the offer, entered with the prices.
+     * @nullable
+     */
+  supplierRef: string | null;
+  /** ADR-017: prices entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  status: PurchaseQuoteStatus;
+  /** @nullable */
+  notes: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  /** @nullable */
+  sentAt: string | null;
+  /** @nullable */
+  sentBy: string | null;
+  /** @nullable */
+  receivedAt: string | null;
+  /** @nullable */
+  receivedBy: string | null;
+  /** @nullable */
+  closedAt: string | null;
+  /** @nullable */
+  closedBy: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  supplier: ProcurementSupplierDto;
+  request: ProcurementRequestRefDto;
+  lines: PurchaseQuoteLineViewDto[];
+}
+
+export interface PurchaseQuoteLineInputDto {
+  /** A line of the quote's request. */
+  requestLineId: string;
+  /** In the request line's unit; omitted: what is left to order on it. */
+  qty?: string;
+  /** @maxLength 500 */
+  note?: string;
+}
+
+export interface CreatePurchaseQuoteDto {
+  /** An approved purchase request. */
+  requestId: string;
+  supplierId: string;
+  quoteDate: string;
+  validUntil?: string;
+  /** @maxLength 500 */
+  notes?: string;
+  /**
+     * Omitted on create: every request line with something left to order.
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines?: PurchaseQuoteLineInputDto[];
+}
+
+export interface UpdatePurchaseQuoteDto {
+  supplierId: string;
+  quoteDate: string;
+  validUntil?: string;
+  /** @maxLength 500 */
+  notes?: string;
+  /**
+     * Omitted on create: every request line with something left to order.
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines?: PurchaseQuoteLineInputDto[];
+}
+
+export interface ReceivedQuoteLineDto {
+  /** A line of this quote. */
+  lineId: string;
+  /** Per unit of the line, in the company's base currency; tax-inclusive when the company enters prices so (ADR-017). */
+  unitPrice: string;
+  discountPct?: string;
+}
+
+export interface ReceivePurchaseQuoteDto {
+  /** @maxLength 100 */
+  supplierRef?: string;
+  validUntil?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines: ReceivedQuoteLineDto[];
+}
+
+export interface PurchaseOrderListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The receiving warehouse's branch (ADR-025 §12, ADR-003).
+     * @nullable
+     */
+  branchId: string | null;
+  /** @nullable */
+  orderNo: string | null;
+  orderDate: string;
+  /** @nullable */
+  expectedDate: string | null;
+  supplierId: string;
+  warehouseId: string;
+  /**
+     * ADR-025 §12: copied to the invoice in phase 13.
+     * @nullable
+     */
+  costCenterId: string | null;
+  /**
+     * The approved request it orders from (always at FULL, never at MEDIUM); set at creation only.
+     * @nullable
+     */
+  requestId: string | null;
+  /** ADR-017: prices entered including tax (company setting when the draft was saved). */
+  pricesIncludeTax: boolean;
+  status: PurchaseOrderStatus;
+  /** @nullable */
+  notes: string | null;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  submittedBy: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  approvedBy: string | null;
+  /**
+     * The last rejection (the order went back to DRAFT).
+     * @nullable
+     */
+  rejectedAt: string | null;
+  /** @nullable */
+  rejectedBy: string | null;
+  /** @nullable */
+  rejectReason: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  supplier: ProcurementSupplierRefDto;
+  /** @nullable */
+  request: ProcurementRequestNoDto | null;
+  _count: ProcurementLineCountDto;
+}
+
+export interface PurchaseOrderListItemDtoPage {
+  items: PurchaseOrderListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface PurchaseOrderLineDto {
+  itemId: string;
+  itemUnitId?: string;
+  qty: string;
+  /** Per unit of the line; tax-inclusive when the company enters prices so (ADR-017). */
+  unitPrice: string;
+  discountPct?: string;
+  /**
+     * The request line this orders (required at FULL): same item and unit, and
+     * no more than is left on it (ADR-025 §9).
+     */
+  requestLineId?: string;
+  /** @maxLength 500 */
+  note?: string;
+}
+
+export interface CreatePurchaseOrderDto {
+  orderDate: string;
+  expectedDate?: string;
+  supplierId: string;
+  /** The receiving warehouse; the order's branch is its branch (ADR-025 §12). */
+  warehouseId: string;
+  /** Optional cost centre (an active leaf), copied to the invoice in phase 13. */
+  costCenterId?: string;
+  /** The approved request it orders from: required at FULL, refused at MEDIUM (ADR-025 §1). Set at creation only. */
+  requestId?: string;
+  /** @maxLength 500 */
+  notes?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines: PurchaseOrderLineDto[];
+}
+
+export interface UpdatePurchaseOrderDto {
+  orderDate: string;
+  expectedDate?: string;
+  supplierId: string;
+  /** The receiving warehouse; the order's branch is its branch (ADR-025 §12). */
+  warehouseId: string;
+  /** Optional cost centre (an active leaf), copied to the invoice in phase 13. */
+  costCenterId?: string;
+  /** @maxLength 500 */
+  notes?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines: PurchaseOrderLineDto[];
+}
+
 export interface TreasuryAccountRefDto {
   id: string;
   code: string;
@@ -5868,6 +6735,13 @@ export const ErrorCode = {
   PARTY_IN_USE: 'PARTY_IN_USE',
   CURSOR_INVALID: 'CURSOR_INVALID',
   ALL_BRANCHES_REQUIRED: 'ALL_BRANCHES_REQUIRED',
+  PROCUREMENT_LEVEL_REQUIRED: 'PROCUREMENT_LEVEL_REQUIRED',
+  PURCHASE_DIRECT_REQUIRED: 'PURCHASE_DIRECT_REQUIRED',
+  APPROVAL_SELF_NOT_ALLOWED: 'APPROVAL_SELF_NOT_ALLOWED',
+  APPROVAL_LIMIT_EXCEEDED: 'APPROVAL_LIMIT_EXCEEDED',
+  PURCHASE_REQUEST_REQUIRED: 'PURCHASE_REQUEST_REQUIRED',
+  PURCHASE_REQUEST_QTY_EXCEEDED: 'PURCHASE_REQUEST_QTY_EXCEEDED',
+  INVALID_STATUS_TRANSITION: 'INVALID_STATUS_TRANSITION',
   INTERNAL: 'INTERNAL',
 } as const;
 
@@ -6857,6 +7731,189 @@ export type GoodsNotesControllerListNoteType = typeof GoodsNotesControllerListNo
 export const GoodsNotesControllerListNoteType = {
   GRN: 'GRN',
   GIN: 'GIN',
+} as const;
+
+export type ProcurementControllerListRequestsParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
+  q?: string;
+  sort?: ProcurementControllerListRequestsSort;
+  status?: ProcurementControllerListRequestsStatus;
+  /** Request date on or after (yyyy-mm-dd). */
+  from?: string;
+  /** Request date on or before (yyyy-mm-dd). */
+  to?: string;
+};
+
+export type ProcurementControllerListRequestsSort = typeof ProcurementControllerListRequestsSort[keyof typeof ProcurementControllerListRequestsSort];
+
+
+export const ProcurementControllerListRequestsSort = {
+  requestDate: 'requestDate',
+  '-requestDate': '-requestDate',
+  requestNo: 'requestNo',
+  '-requestNo': '-requestNo',
+} as const;
+
+export type ProcurementControllerListRequestsStatus = typeof ProcurementControllerListRequestsStatus[keyof typeof ProcurementControllerListRequestsStatus];
+
+
+export const ProcurementControllerListRequestsStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED',
+  CLOSED: 'CLOSED',
+} as const;
+
+export type ProcurementControllerListQuotesParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
+  q?: string;
+  sort?: ProcurementControllerListQuotesSort;
+  status?: ProcurementControllerListQuotesStatus;
+  requestId?: string;
+  supplierId?: string;
+};
+
+export type ProcurementControllerListQuotesSort = typeof ProcurementControllerListQuotesSort[keyof typeof ProcurementControllerListQuotesSort];
+
+
+export const ProcurementControllerListQuotesSort = {
+  quoteDate: 'quoteDate',
+  '-quoteDate': '-quoteDate',
+  quoteNo: 'quoteNo',
+  '-quoteNo': '-quoteNo',
+  grandTotal: 'grandTotal',
+  '-grandTotal': '-grandTotal',
+} as const;
+
+export type ProcurementControllerListQuotesStatus = typeof ProcurementControllerListQuotesStatus[keyof typeof ProcurementControllerListQuotesStatus];
+
+
+export const ProcurementControllerListQuotesStatus = {
+  DRAFT: 'DRAFT',
+  SENT: 'SENT',
+  RECEIVED: 'RECEIVED',
+  CLOSED: 'CLOSED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type ProcurementControllerQuotePdfParams = {
+  format?: ProcurementControllerQuotePdfFormat;
+  lang?: ProcurementControllerQuotePdfLang;
+};
+
+export type ProcurementControllerQuotePdfFormat = typeof ProcurementControllerQuotePdfFormat[keyof typeof ProcurementControllerQuotePdfFormat];
+
+
+export const ProcurementControllerQuotePdfFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ProcurementControllerQuotePdfLang = typeof ProcurementControllerQuotePdfLang[keyof typeof ProcurementControllerQuotePdfLang];
+
+
+export const ProcurementControllerQuotePdfLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type ProcurementControllerListOrdersParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
+  q?: string;
+  sort?: ProcurementControllerListOrdersSort;
+  status?: ProcurementControllerListOrdersStatus;
+  supplierId?: string;
+  requestId?: string;
+  /** Order date on or after (yyyy-mm-dd). */
+  from?: string;
+  /** Order date on or before (yyyy-mm-dd). */
+  to?: string;
+};
+
+export type ProcurementControllerListOrdersSort = typeof ProcurementControllerListOrdersSort[keyof typeof ProcurementControllerListOrdersSort];
+
+
+export const ProcurementControllerListOrdersSort = {
+  orderDate: 'orderDate',
+  '-orderDate': '-orderDate',
+  orderNo: 'orderNo',
+  '-orderNo': '-orderNo',
+  grandTotal: 'grandTotal',
+  '-grandTotal': '-grandTotal',
+} as const;
+
+export type ProcurementControllerListOrdersStatus = typeof ProcurementControllerListOrdersStatus[keyof typeof ProcurementControllerListOrdersStatus];
+
+
+export const ProcurementControllerListOrdersStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  APPROVED: 'APPROVED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type ProcurementControllerOrderPdfParams = {
+  format?: ProcurementControllerOrderPdfFormat;
+  lang?: ProcurementControllerOrderPdfLang;
+};
+
+export type ProcurementControllerOrderPdfFormat = typeof ProcurementControllerOrderPdfFormat[keyof typeof ProcurementControllerOrderPdfFormat];
+
+
+export const ProcurementControllerOrderPdfFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ProcurementControllerOrderPdfLang = typeof ProcurementControllerOrderPdfLang[keyof typeof ProcurementControllerOrderPdfLang];
+
+
+export const ProcurementControllerOrderPdfLang = {
+  ar: 'ar',
+  en: 'en',
 } as const;
 
 export type TreasuryControllerListReceiptsParams = {
@@ -9239,6 +10296,49 @@ export const getUsersControllerListUrl = () => {
 export const usersControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerListResponseSuccess> => {
 
   return apiFetch<usersControllerListResponseSuccess>(getUsersControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type usersControllerPurchaseDirectGapsResponse200 = {
+  data: PurchaseDirectGapDto[]
+  status: 200
+}
+
+export type usersControllerPurchaseDirectGapsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type usersControllerPurchaseDirectGapsResponseSuccess = (usersControllerPurchaseDirectGapsResponse200) & {
+  headers: Headers;
+};
+export type usersControllerPurchaseDirectGapsResponseError = (usersControllerPurchaseDirectGapsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getUsersControllerPurchaseDirectGapsUrl = () => {
+
+
+
+
+  return `/api/v1/users/purchase-direct-gaps`
+}
+
+/**
+ * @summary Active members whose role creates or posts purchase invoices but who lack
+purchase.direct (owners aside): raising the procurement level from SIMPLE
+would stop them (ADR-025 §4). The owner sees them before confirming.
+ */
+export const usersControllerPurchaseDirectGaps = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerPurchaseDirectGapsResponseSuccess> => {
+
+  return apiFetch<usersControllerPurchaseDirectGapsResponseSuccess>(getUsersControllerPurchaseDirectGapsUrl(),
   {
     ...options,
     method: 'GET'
@@ -13942,6 +15042,1465 @@ export const goodsNotesControllerPost = async (id: string, options?: Parameters<
     method: 'POST'
 
 
+  }
+);}
+
+
+
+export type procurementControllerListRequestsResponse200 = {
+  data: PurchaseRequestListItemDtoPage
+  status: 200
+}
+
+export type procurementControllerListRequestsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerListRequestsResponseSuccess = (procurementControllerListRequestsResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerListRequestsResponseError = (procurementControllerListRequestsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerListRequestsUrl = (params?: ProcurementControllerListRequestsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/purchase-requests?${stringifiedParams}` : `/api/v1/purchase-requests`
+}
+
+export const procurementControllerListRequests = async (params?: ProcurementControllerListRequestsParams, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerListRequestsResponseSuccess> => {
+
+  return apiFetch<procurementControllerListRequestsResponseSuccess>(getProcurementControllerListRequestsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type procurementControllerCreateRequestResponse201 = {
+  data: PurchaseRequestDetailDto
+  status: 201
+}
+
+export type procurementControllerCreateRequestResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerCreateRequestResponseSuccess = (procurementControllerCreateRequestResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerCreateRequestResponseError = (procurementControllerCreateRequestResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerCreateRequestUrl = () => {
+
+
+
+
+  return `/api/v1/purchase-requests`
+}
+
+export const procurementControllerCreateRequest = async (createPurchaseRequestDto: CreatePurchaseRequestDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerCreateRequestResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerCreateRequestResponseSuccess>(getProcurementControllerCreateRequestUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPurchaseRequestDto)
+  }
+);}
+
+
+
+export type procurementControllerGetRequestResponse200 = {
+  data: PurchaseRequestDetailDto
+  status: 200
+}
+
+export type procurementControllerGetRequestResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerGetRequestResponseSuccess = (procurementControllerGetRequestResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerGetRequestResponseError = (procurementControllerGetRequestResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerGetRequestUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-requests/${id}`
+}
+
+export const procurementControllerGetRequest = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerGetRequestResponseSuccess> => {
+
+  return apiFetch<procurementControllerGetRequestResponseSuccess>(getProcurementControllerGetRequestUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type procurementControllerUpdateRequestResponse200 = {
+  data: PurchaseRequestDetailDto
+  status: 200
+}
+
+export type procurementControllerUpdateRequestResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerUpdateRequestResponseSuccess = (procurementControllerUpdateRequestResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerUpdateRequestResponseError = (procurementControllerUpdateRequestResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerUpdateRequestUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-requests/${id}`
+}
+
+export const procurementControllerUpdateRequest = async (id: string,
+    createPurchaseRequestDto: CreatePurchaseRequestDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerUpdateRequestResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerUpdateRequestResponseSuccess>(getProcurementControllerUpdateRequestUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPurchaseRequestDto)
+  }
+);}
+
+
+
+export type procurementControllerDeleteRequestResponse200 = {
+  data: DeletedDto
+  status: 200
+}
+
+export type procurementControllerDeleteRequestResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerDeleteRequestResponseSuccess = (procurementControllerDeleteRequestResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerDeleteRequestResponseError = (procurementControllerDeleteRequestResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerDeleteRequestUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-requests/${id}`
+}
+
+export const procurementControllerDeleteRequest = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerDeleteRequestResponseSuccess> => {
+
+  return apiFetch<procurementControllerDeleteRequestResponseSuccess>(getProcurementControllerDeleteRequestUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type procurementControllerSubmitRequestResponse201 = {
+  data: PurchaseRequestDetailDto
+  status: 201
+}
+
+export type procurementControllerSubmitRequestResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerSubmitRequestResponseSuccess = (procurementControllerSubmitRequestResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerSubmitRequestResponseError = (procurementControllerSubmitRequestResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerSubmitRequestUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-requests/${id}/submit`
+}
+
+export const procurementControllerSubmitRequest = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerSubmitRequestResponseSuccess> => {
+
+  return apiFetch<procurementControllerSubmitRequestResponseSuccess>(getProcurementControllerSubmitRequestUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type procurementControllerApproveRequestResponse201 = {
+  data: PurchaseRequestDetailDto
+  status: 201
+}
+
+export type procurementControllerApproveRequestResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerApproveRequestResponseSuccess = (procurementControllerApproveRequestResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerApproveRequestResponseError = (procurementControllerApproveRequestResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerApproveRequestUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-requests/${id}/approve`
+}
+
+export const procurementControllerApproveRequest = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerApproveRequestResponseSuccess> => {
+
+  return apiFetch<procurementControllerApproveRequestResponseSuccess>(getProcurementControllerApproveRequestUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type procurementControllerRejectRequestResponse201 = {
+  data: PurchaseRequestDetailDto
+  status: 201
+}
+
+export type procurementControllerRejectRequestResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerRejectRequestResponseSuccess = (procurementControllerRejectRequestResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerRejectRequestResponseError = (procurementControllerRejectRequestResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerRejectRequestUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-requests/${id}/reject`
+}
+
+export const procurementControllerRejectRequest = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerRejectRequestResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerRejectRequestResponseSuccess>(getProcurementControllerRejectRequestUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type procurementControllerCancelRequestResponse201 = {
+  data: PurchaseRequestDetailDto
+  status: 201
+}
+
+export type procurementControllerCancelRequestResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerCancelRequestResponseSuccess = (procurementControllerCancelRequestResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerCancelRequestResponseError = (procurementControllerCancelRequestResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerCancelRequestUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-requests/${id}/cancel`
+}
+
+export const procurementControllerCancelRequest = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerCancelRequestResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerCancelRequestResponseSuccess>(getProcurementControllerCancelRequestUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type procurementControllerCloseRequestResponse201 = {
+  data: PurchaseRequestDetailDto
+  status: 201
+}
+
+export type procurementControllerCloseRequestResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerCloseRequestResponseSuccess = (procurementControllerCloseRequestResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerCloseRequestResponseError = (procurementControllerCloseRequestResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerCloseRequestUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-requests/${id}/close`
+}
+
+export const procurementControllerCloseRequest = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerCloseRequestResponseSuccess> => {
+
+  return apiFetch<procurementControllerCloseRequestResponseSuccess>(getProcurementControllerCloseRequestUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type procurementControllerComparisonResponse200 = {
+  data: PurchaseComparisonDto
+  status: 200
+}
+
+export type procurementControllerComparisonResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerComparisonResponseSuccess = (procurementControllerComparisonResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerComparisonResponseError = (procurementControllerComparisonResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerComparisonUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-requests/${id}/comparison`
+}
+
+/**
+ * @summary The received quotes' prices per request line (ADR-025 §10).
+ */
+export const procurementControllerComparison = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerComparisonResponseSuccess> => {
+
+  return apiFetch<procurementControllerComparisonResponseSuccess>(getProcurementControllerComparisonUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type procurementControllerConvertRequestResponse201 = {
+  data: ConvertedOrdersDto
+  status: 201
+}
+
+export type procurementControllerConvertRequestResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerConvertRequestResponseSuccess = (procurementControllerConvertRequestResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerConvertRequestResponseError = (procurementControllerConvertRequestResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerConvertRequestUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-requests/${id}/convert`
+}
+
+/**
+ * @summary «Create orders»: the chosen quote lines, one draft order per supplier (ADR-025 §10).
+ */
+export const procurementControllerConvertRequest = async (id: string,
+    convertPurchaseRequestDto: ConvertPurchaseRequestDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerConvertRequestResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerConvertRequestResponseSuccess>(getProcurementControllerConvertRequestUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(convertPurchaseRequestDto)
+  }
+);}
+
+
+
+export type procurementControllerListQuotesResponse200 = {
+  data: PurchaseQuoteListItemDtoPage
+  status: 200
+}
+
+export type procurementControllerListQuotesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerListQuotesResponseSuccess = (procurementControllerListQuotesResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerListQuotesResponseError = (procurementControllerListQuotesResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerListQuotesUrl = (params?: ProcurementControllerListQuotesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/purchase-quotes?${stringifiedParams}` : `/api/v1/purchase-quotes`
+}
+
+export const procurementControllerListQuotes = async (params?: ProcurementControllerListQuotesParams, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerListQuotesResponseSuccess> => {
+
+  return apiFetch<procurementControllerListQuotesResponseSuccess>(getProcurementControllerListQuotesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type procurementControllerCreateQuoteResponse201 = {
+  data: PurchaseQuoteDetailDto
+  status: 201
+}
+
+export type procurementControllerCreateQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerCreateQuoteResponseSuccess = (procurementControllerCreateQuoteResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerCreateQuoteResponseError = (procurementControllerCreateQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerCreateQuoteUrl = () => {
+
+
+
+
+  return `/api/v1/purchase-quotes`
+}
+
+export const procurementControllerCreateQuote = async (createPurchaseQuoteDto: CreatePurchaseQuoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerCreateQuoteResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerCreateQuoteResponseSuccess>(getProcurementControllerCreateQuoteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPurchaseQuoteDto)
+  }
+);}
+
+
+
+export type procurementControllerGetQuoteResponse200 = {
+  data: PurchaseQuoteDetailDto
+  status: 200
+}
+
+export type procurementControllerGetQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerGetQuoteResponseSuccess = (procurementControllerGetQuoteResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerGetQuoteResponseError = (procurementControllerGetQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerGetQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-quotes/${id}`
+}
+
+export const procurementControllerGetQuote = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerGetQuoteResponseSuccess> => {
+
+  return apiFetch<procurementControllerGetQuoteResponseSuccess>(getProcurementControllerGetQuoteUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type procurementControllerUpdateQuoteResponse200 = {
+  data: PurchaseQuoteDetailDto
+  status: 200
+}
+
+export type procurementControllerUpdateQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerUpdateQuoteResponseSuccess = (procurementControllerUpdateQuoteResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerUpdateQuoteResponseError = (procurementControllerUpdateQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerUpdateQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-quotes/${id}`
+}
+
+export const procurementControllerUpdateQuote = async (id: string,
+    updatePurchaseQuoteDto: UpdatePurchaseQuoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerUpdateQuoteResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerUpdateQuoteResponseSuccess>(getProcurementControllerUpdateQuoteUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updatePurchaseQuoteDto)
+  }
+);}
+
+
+
+export type procurementControllerDeleteQuoteResponse200 = {
+  data: DeletedDto
+  status: 200
+}
+
+export type procurementControllerDeleteQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerDeleteQuoteResponseSuccess = (procurementControllerDeleteQuoteResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerDeleteQuoteResponseError = (procurementControllerDeleteQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerDeleteQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-quotes/${id}`
+}
+
+export const procurementControllerDeleteQuote = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerDeleteQuoteResponseSuccess> => {
+
+  return apiFetch<procurementControllerDeleteQuoteResponseSuccess>(getProcurementControllerDeleteQuoteUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type procurementControllerQuotePdfResponse200 = {
+  data: Blob
+  status: 200
+}
+
+export type procurementControllerQuotePdfResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerQuotePdfResponseSuccess = (procurementControllerQuotePdfResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerQuotePdfResponseError = (procurementControllerQuotePdfResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerQuotePdfUrl = (id: string,
+    params?: ProcurementControllerQuotePdfParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/purchase-quotes/${id}/pdf?${stringifiedParams}` : `/api/v1/purchase-quotes/${id}/pdf`
+}
+
+/**
+ * @summary The request for quotation, to send to the supplier (ADR-025 §14).
+ */
+export const procurementControllerQuotePdf = async (id: string,
+    params?: ProcurementControllerQuotePdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerQuotePdfResponseSuccess> => {
+
+  return apiFetch<procurementControllerQuotePdfResponseSuccess>(getProcurementControllerQuotePdfUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type procurementControllerSendQuoteResponse201 = {
+  data: PurchaseQuoteDetailDto
+  status: 201
+}
+
+export type procurementControllerSendQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerSendQuoteResponseSuccess = (procurementControllerSendQuoteResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerSendQuoteResponseError = (procurementControllerSendQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerSendQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-quotes/${id}/send`
+}
+
+export const procurementControllerSendQuote = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerSendQuoteResponseSuccess> => {
+
+  return apiFetch<procurementControllerSendQuoteResponseSuccess>(getProcurementControllerSendQuoteUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type procurementControllerReceiveQuoteResponse201 = {
+  data: PurchaseQuoteDetailDto
+  status: 201
+}
+
+export type procurementControllerReceiveQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerReceiveQuoteResponseSuccess = (procurementControllerReceiveQuoteResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerReceiveQuoteResponseError = (procurementControllerReceiveQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerReceiveQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-quotes/${id}/receive`
+}
+
+export const procurementControllerReceiveQuote = async (id: string,
+    receivePurchaseQuoteDto: ReceivePurchaseQuoteDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerReceiveQuoteResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerReceiveQuoteResponseSuccess>(getProcurementControllerReceiveQuoteUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(receivePurchaseQuoteDto)
+  }
+);}
+
+
+
+export type procurementControllerCloseQuoteResponse201 = {
+  data: PurchaseQuoteDetailDto
+  status: 201
+}
+
+export type procurementControllerCloseQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerCloseQuoteResponseSuccess = (procurementControllerCloseQuoteResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerCloseQuoteResponseError = (procurementControllerCloseQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerCloseQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-quotes/${id}/close`
+}
+
+export const procurementControllerCloseQuote = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerCloseQuoteResponseSuccess> => {
+
+  return apiFetch<procurementControllerCloseQuoteResponseSuccess>(getProcurementControllerCloseQuoteUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type procurementControllerCancelQuoteResponse201 = {
+  data: PurchaseQuoteDetailDto
+  status: 201
+}
+
+export type procurementControllerCancelQuoteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerCancelQuoteResponseSuccess = (procurementControllerCancelQuoteResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerCancelQuoteResponseError = (procurementControllerCancelQuoteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerCancelQuoteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-quotes/${id}/cancel`
+}
+
+export const procurementControllerCancelQuote = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerCancelQuoteResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerCancelQuoteResponseSuccess>(getProcurementControllerCancelQuoteUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type procurementControllerListOrdersResponse200 = {
+  data: PurchaseOrderListItemDtoPage
+  status: 200
+}
+
+export type procurementControllerListOrdersResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerListOrdersResponseSuccess = (procurementControllerListOrdersResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerListOrdersResponseError = (procurementControllerListOrdersResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerListOrdersUrl = (params?: ProcurementControllerListOrdersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/purchase-orders?${stringifiedParams}` : `/api/v1/purchase-orders`
+}
+
+export const procurementControllerListOrders = async (params?: ProcurementControllerListOrdersParams, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerListOrdersResponseSuccess> => {
+
+  return apiFetch<procurementControllerListOrdersResponseSuccess>(getProcurementControllerListOrdersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type procurementControllerCreateOrderResponse201 = {
+  data: PurchaseOrderDetailDto
+  status: 201
+}
+
+export type procurementControllerCreateOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerCreateOrderResponseSuccess = (procurementControllerCreateOrderResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerCreateOrderResponseError = (procurementControllerCreateOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerCreateOrderUrl = () => {
+
+
+
+
+  return `/api/v1/purchase-orders`
+}
+
+export const procurementControllerCreateOrder = async (createPurchaseOrderDto: CreatePurchaseOrderDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerCreateOrderResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerCreateOrderResponseSuccess>(getProcurementControllerCreateOrderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPurchaseOrderDto)
+  }
+);}
+
+
+
+export type procurementControllerGetOrderResponse200 = {
+  data: PurchaseOrderDetailDto
+  status: 200
+}
+
+export type procurementControllerGetOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerGetOrderResponseSuccess = (procurementControllerGetOrderResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerGetOrderResponseError = (procurementControllerGetOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerGetOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-orders/${id}`
+}
+
+export const procurementControllerGetOrder = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerGetOrderResponseSuccess> => {
+
+  return apiFetch<procurementControllerGetOrderResponseSuccess>(getProcurementControllerGetOrderUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type procurementControllerUpdateOrderResponse200 = {
+  data: PurchaseOrderDetailDto
+  status: 200
+}
+
+export type procurementControllerUpdateOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerUpdateOrderResponseSuccess = (procurementControllerUpdateOrderResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerUpdateOrderResponseError = (procurementControllerUpdateOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerUpdateOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-orders/${id}`
+}
+
+export const procurementControllerUpdateOrder = async (id: string,
+    updatePurchaseOrderDto: UpdatePurchaseOrderDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerUpdateOrderResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerUpdateOrderResponseSuccess>(getProcurementControllerUpdateOrderUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updatePurchaseOrderDto)
+  }
+);}
+
+
+
+export type procurementControllerDeleteOrderResponse200 = {
+  data: DeletedDto
+  status: 200
+}
+
+export type procurementControllerDeleteOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerDeleteOrderResponseSuccess = (procurementControllerDeleteOrderResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerDeleteOrderResponseError = (procurementControllerDeleteOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerDeleteOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-orders/${id}`
+}
+
+export const procurementControllerDeleteOrder = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerDeleteOrderResponseSuccess> => {
+
+  return apiFetch<procurementControllerDeleteOrderResponseSuccess>(getProcurementControllerDeleteOrderUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type procurementControllerOrderPdfResponse200 = {
+  data: Blob
+  status: 200
+}
+
+export type procurementControllerOrderPdfResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type procurementControllerOrderPdfResponseSuccess = (procurementControllerOrderPdfResponse200) & {
+  headers: Headers;
+};
+export type procurementControllerOrderPdfResponseError = (procurementControllerOrderPdfResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerOrderPdfUrl = (id: string,
+    params?: ProcurementControllerOrderPdfParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/purchase-orders/${id}/pdf?${stringifiedParams}` : `/api/v1/purchase-orders/${id}/pdf`
+}
+
+/**
+ * @summary The order, to send to the supplier (ADR-025 §14).
+ */
+export const procurementControllerOrderPdf = async (id: string,
+    params?: ProcurementControllerOrderPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerOrderPdfResponseSuccess> => {
+
+  return apiFetch<procurementControllerOrderPdfResponseSuccess>(getProcurementControllerOrderPdfUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type procurementControllerSubmitOrderResponse201 = {
+  data: PurchaseOrderDetailDto
+  status: 201
+}
+
+export type procurementControllerSubmitOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerSubmitOrderResponseSuccess = (procurementControllerSubmitOrderResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerSubmitOrderResponseError = (procurementControllerSubmitOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerSubmitOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-orders/${id}/submit`
+}
+
+export const procurementControllerSubmitOrder = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerSubmitOrderResponseSuccess> => {
+
+  return apiFetch<procurementControllerSubmitOrderResponseSuccess>(getProcurementControllerSubmitOrderUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type procurementControllerApproveOrderResponse201 = {
+  data: PurchaseOrderDetailDto
+  status: 201
+}
+
+export type procurementControllerApproveOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerApproveOrderResponseSuccess = (procurementControllerApproveOrderResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerApproveOrderResponseError = (procurementControllerApproveOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerApproveOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-orders/${id}/approve`
+}
+
+export const procurementControllerApproveOrder = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerApproveOrderResponseSuccess> => {
+
+  return apiFetch<procurementControllerApproveOrderResponseSuccess>(getProcurementControllerApproveOrderUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type procurementControllerRejectOrderResponse201 = {
+  data: PurchaseOrderDetailDto
+  status: 201
+}
+
+export type procurementControllerRejectOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerRejectOrderResponseSuccess = (procurementControllerRejectOrderResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerRejectOrderResponseError = (procurementControllerRejectOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerRejectOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-orders/${id}/reject`
+}
+
+export const procurementControllerRejectOrder = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerRejectOrderResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerRejectOrderResponseSuccess>(getProcurementControllerRejectOrderUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type procurementControllerCancelOrderResponse201 = {
+  data: PurchaseOrderDetailDto
+  status: 201
+}
+
+export type procurementControllerCancelOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerCancelOrderResponseSuccess = (procurementControllerCancelOrderResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerCancelOrderResponseError = (procurementControllerCancelOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerCancelOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-orders/${id}/cancel`
+}
+
+export const procurementControllerCancelOrder = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerCancelOrderResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerCancelOrderResponseSuccess>(getProcurementControllerCancelOrderUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
   }
 );}
 

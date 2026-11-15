@@ -33,6 +33,8 @@ const CHECKS = [
   'journal_entries.source',
   'stock_movements.source',
   'stock_movements.source_line',
+  'purchase_request_lines.ordered_qty',
+  'purchase_order_lines.request_line_id',
   'collation',
 ];
 

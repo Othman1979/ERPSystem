@@ -189,6 +189,25 @@ export class IntegrityCheckService {
           ) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
 
+    // ADR-025 §9: a request line's ordered_qty is a projection of the order
+    // lines (not cancelled) that order it; it must equal their sum. Order
+    // lines must also belong to the order's own request, in the same tenant.
+    await orphans(
+      'purchase_request_lines.ordered_qty',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM purchase_request_lines x
+        WHERE x.ordered_qty <> COALESCE((SELECT SUM(ol.qty) FROM purchase_order_lines ol
+            JOIN purchase_orders o ON o.tenant_id = ol.tenant_id AND o.id = ol.order_id
+           WHERE ol.tenant_id = x.tenant_id AND ol.request_line_id = x.id AND o.status <> 'CANCELLED'), 0)
+          AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
+    await orphans(
+      'purchase_order_lines.request_line_id',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM purchase_order_lines x
+        JOIN purchase_orders o ON o.tenant_id = x.tenant_id AND o.id = x.order_id
+        JOIN purchase_request_lines rl ON rl.tenant_id = x.tenant_id AND rl.id = x.request_line_id
+        WHERE (o.request_id IS NULL OR rl.request_id <> o.request_id) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
+
     checks.push(await this.collation());
     return {
       ok: checks.every((c) => c.ok),

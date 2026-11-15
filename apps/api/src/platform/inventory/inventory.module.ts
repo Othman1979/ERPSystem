@@ -31,6 +31,7 @@ import { WarehousesService } from './warehouses.service.js';
     StockReportsService,
   ],
   // StockReportsService: the dashboard lists items below their minimum (module boundary).
-  exports: [StockLedgerService, StockReportsService],
+  // CatalogService / WarehousesService: the procurement documents' lines and header (ADR-025).
+  exports: [StockLedgerService, StockReportsService, CatalogService, WarehousesService],
 })
 export class InventoryModule {}

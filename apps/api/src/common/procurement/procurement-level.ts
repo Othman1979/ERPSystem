@@ -16,6 +16,40 @@ export function isLoweringLevel(from: ProcurementLevel, to: ProcurementLevel): b
   return PROCUREMENT_LEVELS.indexOf(to) < PROCUREMENT_LEVELS.indexOf(from);
 }
 
+/** True when `level` is `min` or above. */
+export function meetsProcurementLevel(level: ProcurementLevel, min: ProcurementLevel): boolean {
+  return PROCUREMENT_LEVELS.indexOf(level) >= PROCUREMENT_LEVELS.indexOf(min);
+}
+
+/** PROCUREMENT_LEVEL_REQUIRED unless `level` is `min` or above (ADR-025 §5). */
+export function assertProcurementLevel(level: ProcurementLevel, min: ProcurementLevel): void {
+  if (!meetsProcurementLevel(level, min)) {
+    throw new DomainError(
+      ErrorCode.PROCUREMENT_LEVEL_REQUIRED,
+      `This needs the ${min} procurement level; the company uses ${level}`,
+      { required: min, current: level },
+    );
+  }
+}
+
+/**
+ * The company's procurement level read under a shared lock of its row
+ * (ADR-025 §5), held to COMMIT: a lowering (which locks the row FOR UPDATE,
+ * see CompanyService.update) waits for this transaction and then counts the
+ * document it wrote, or this read waits for the lowering and sees the new
+ * level. Call it before the transaction's first plain read.
+ */
+export async function lockProcurementLevel(
+  tx: Prisma.TransactionClient,
+  tenantId: bigint,
+  companyId: bigint,
+): Promise<ProcurementLevel> {
+  const [row] = await tx.$queryRaw<{ procurement_level: ProcurementLevel }[]>`
+    SELECT procurement_level FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} LOCK IN SHARE MODE`;
+  if (!row) throw new DomainError(ErrorCode.INTERNAL, 'Tenant has no active company');
+  return row.procurement_level;
+}
+
 /**
  * Counts one kind of open purchasing-cycle document (a purchase request,
  * order or issue request not yet closed) of the current tenant. Phases 12 and

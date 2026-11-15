@@ -71,6 +71,22 @@ export class PartiesService {
     });
   }
 
+  /**
+   * VALIDATION unless `id` is an active supplier (SUPPLIER or BOTH) of the
+   * company: the supplier of another module's document (module boundary).
+   */
+  async assertActiveSupplier(id: bigint): Promise<void> {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const supplier = await db.party.findFirst({
+      where: { companyId, id, isActive: true },
+      select: { partyType: true },
+    });
+    if (!supplier || (supplier.partyType !== 'SUPPLIER' && supplier.partyType !== 'BOTH')) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Supplier not found or not a supplier', { supplierId: id.toString() });
+    }
+  }
+
   async get(id: bigint) {
     const { db } = this.support.tenant();
     const party = await db.party.findFirst({ where: { id } });

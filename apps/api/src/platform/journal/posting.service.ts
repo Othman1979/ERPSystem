@@ -5,6 +5,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { assertPostingCentre, lineCostCenter } from '../cost-centers/cost-center-rules.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
+import { allocateDocumentNo } from '../shared/document-numbering.js';
 
 export interface JournalLineInput {
   accountId: bigint;
@@ -525,43 +526,6 @@ export class PostingService {
     documentType: string,
     date: Date,
   ): Promise<string> {
-    const fiscalYear = await tx.fiscalYear.findFirst({
-      where: {
-        tenantId,
-        companyId,
-        startDate: { lte: date },
-        endDate: { gte: date },
-      },
-    });
-    if (!fiscalYear) {
-      throw new DomainError(ErrorCode.PERIOD_CLOSED, 'No fiscal year covers this date');
-    }
-
-    const rows = (await tx.$queryRaw`
-      SELECT id, prefix, next_number, padding
-      FROM document_sequences
-      WHERE tenant_id = ${tenantId}
-        AND company_id = ${companyId}
-        AND document_type = ${documentType}
-        AND fiscal_year_id = ${fiscalYear.id}
-      FOR UPDATE
-    `) as { id: bigint; prefix: string; next_number: number; padding: number }[];
-
-    const seq = rows[0];
-    if (!seq) {
-      throw new DomainError(
-        ErrorCode.VALIDATION,
-        `No document sequence for type ${documentType} in fiscal year ${fiscalYear.code}`,
-      );
-    }
-
-    const padded = String(seq.next_number).padStart(seq.padding, '0');
-    await tx.documentSequence.update({
-      where: { id: seq.id },
-      data: { nextNumber: { increment: 1 } },
-    });
-
-    // prefix already contains "{PREFIX}-{YEARCODE}" from provisioning.
-    return `${seq.prefix}-${padded}`;
+    return allocateDocumentNo(tx, tenantId, companyId, documentType, date);
   }
 }

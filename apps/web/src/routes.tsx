@@ -6,7 +6,10 @@ import {
   CalendarOutlined,
   ContainerOutlined,
   DashboardOutlined,
+  DiffOutlined,
+  FileAddOutlined,
   FileDoneOutlined,
+  FileTextOutlined,
   FlagOutlined,
   FileProtectOutlined,
   InboxOutlined,
@@ -38,6 +41,9 @@ export const PAGE_LOADERS = {
   sales: () => import('./pages/SalesPage').then((m) => m.SalesPage),
   einvoice: () => import('./pages/EInvoicePage').then((m) => m.EInvoicePage),
   purchases: () => import('./pages/PurchasesPage').then((m) => m.PurchasesPage),
+  purchaseRequests: () => import('./pages/PurchaseRequestsPage').then((m) => m.PurchaseRequestsPage),
+  purchaseQuotes: () => import('./pages/PurchaseQuotesPage').then((m) => m.PurchaseQuotesPage),
+  purchaseOrders: () => import('./pages/PurchaseOrdersPage').then((m) => m.PurchaseOrdersPage),
   goodsNotes: () => import('./pages/GoodsNotesPage').then((m) => m.GoodsNotesPage),
   parties: () => import('./pages/PartiesPage').then((m) => m.PartiesPage),
   items: () => import('./pages/ItemsPage').then((m) => m.ItemsPage),
@@ -59,6 +65,9 @@ const FiscalPage = lazyPage(PAGE_LOADERS.fiscal);
 const SalesPage = lazyPage(PAGE_LOADERS.sales);
 const EInvoicePage = lazyPage(PAGE_LOADERS.einvoice);
 const PurchasesPage = lazyPage(PAGE_LOADERS.purchases);
+const PurchaseRequestsPage = lazyPage(PAGE_LOADERS.purchaseRequests);
+const PurchaseQuotesPage = lazyPage(PAGE_LOADERS.purchaseQuotes);
+const PurchaseOrdersPage = lazyPage(PAGE_LOADERS.purchaseOrders);
 const GoodsNotesPage = lazyPage(PAGE_LOADERS.goodsNotes);
 const PartiesPage = lazyPage(PAGE_LOADERS.parties);
 const ItemsPage = lazyPage(PAGE_LOADERS.items);
@@ -88,8 +97,8 @@ export interface AppRoute {
   permission?: Permission;
   /**
    * Lowest procurement level whose cycle uses the screen (ADR-024 §2.3): below
-   * it the entry is hidden and the URL shows "no access". For the purchase
-   * request, order and issue screens of phases 12–13; no screen sets it yet.
+   * it the entry is hidden and the URL shows "no access". The purchase
+   * request, quote and order screens of phase 12 (ADR-025), and phase 13's.
    */
   minProcurementLevel?: ProcurementLevel;
 }
@@ -138,6 +147,34 @@ export const APP_GROUPS: AppGroup[] = [
       { key: 'sales', path: '/sales', label: 'nav.sales', icon: <ShoppingCartOutlined />, element: <SalesPage />, permission: PERMISSIONS.TENANT_READ },
       { key: 'einvoice', path: '/einvoice', label: 'nav.einvoice', icon: <FileProtectOutlined />, element: <EInvoicePage />, permission: PERMISSIONS.REPORTS_VIEW },
       { key: 'purchases', path: '/purchases', label: 'nav.purchases', icon: <ShoppingOutlined />, element: <PurchasesPage />, permission: PERMISSIONS.TENANT_READ },
+      // Phase 12 (ADR-025): requests and quotes at FULL, orders from MEDIUM.
+      {
+        key: 'purchaseRequests',
+        path: '/purchase-requests',
+        label: 'nav.purchaseRequests',
+        icon: <FileAddOutlined />,
+        element: <PurchaseRequestsPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        minProcurementLevel: 'FULL',
+      },
+      {
+        key: 'purchaseQuotes',
+        path: '/purchase-quotes',
+        label: 'nav.purchaseQuotes',
+        icon: <DiffOutlined />,
+        element: <PurchaseQuotesPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        minProcurementLevel: 'FULL',
+      },
+      {
+        key: 'purchaseOrders',
+        path: '/purchase-orders',
+        label: 'nav.purchaseOrders',
+        icon: <FileTextOutlined />,
+        element: <PurchaseOrdersPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        minProcurementLevel: 'MEDIUM',
+      },
       { key: 'goodsNotes', path: '/goods-notes', label: 'nav.goodsNotes', icon: <FileDoneOutlined />, element: <GoodsNotesPage />, permission: PERMISSIONS.TENANT_READ },
       { key: 'parties', path: '/parties', label: 'nav.parties', icon: <SolutionOutlined />, element: <PartiesPage />, permission: PERMISSIONS.TENANT_READ },
     ],

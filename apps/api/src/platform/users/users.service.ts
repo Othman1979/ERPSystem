@@ -18,6 +18,7 @@ import {
 } from '../../common/permissions/member-permissions.js';
 import { InviteUserDto, UpdateMembershipDto, UpdatePurchasePermissionsDto } from './dto/users.dto.js';
 import { issueInvitationCode } from './invitation-code.js';
+import { PERMISSIONS } from '../../common/permissions/permissions.js';
 
 const membershipInclude = {
   user: { select: { id: true, email: true, fullName: true, isActive: true } },
@@ -90,6 +91,29 @@ export class UsersService {
       orderBy: { id: 'asc' },
     });
     return rows.map(serialize);
+  }
+
+  /** See UsersController.purchaseDirectGaps (ADR-025 §4): oldest member first. */
+  async purchaseDirectGaps() {
+    const rows = await this.tenant().tenantMembership.findMany({
+      where: {
+        status: 'ACTIVE',
+        role: {
+          code: { not: OWNER_ROLE },
+          permissions: { some: { permissionCode: { in: [PERMISSIONS.PURCHASE_MANAGE, PERMISSIONS.PURCHASE_POST] } } },
+        },
+        extraPermissions: { none: { permissionCode: PERMISSIONS.PURCHASE_DIRECT } },
+      },
+      select: { id: true, user: { select: { fullName: true, email: true } }, role: { select: { code: true, nameAr: true, nameEn: true } } },
+      orderBy: { id: 'asc' },
+    });
+    return rows.map((m) => ({
+      membershipId: m.id.toString(),
+      fullName: m.user.fullName,
+      email: m.user.email,
+      roleCode: m.role.code,
+      role: m.role,
+    }));
   }
 
   async roles() {

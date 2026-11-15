@@ -74,6 +74,13 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.PARTY_IN_USE]: HttpStatus.CONFLICT,
   [ErrorCode.CURSOR_INVALID]: HttpStatus.BAD_REQUEST,
   [ErrorCode.ALL_BRANCHES_REQUIRED]: HttpStatus.FORBIDDEN,
+  [ErrorCode.PROCUREMENT_LEVEL_REQUIRED]: HttpStatus.CONFLICT,
+  [ErrorCode.PURCHASE_DIRECT_REQUIRED]: HttpStatus.FORBIDDEN,
+  [ErrorCode.APPROVAL_SELF_NOT_ALLOWED]: HttpStatus.FORBIDDEN,
+  [ErrorCode.APPROVAL_LIMIT_EXCEEDED]: HttpStatus.FORBIDDEN,
+  [ErrorCode.PURCHASE_REQUEST_REQUIRED]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.PURCHASE_REQUEST_QTY_EXCEEDED]: HttpStatus.CONFLICT,
+  [ErrorCode.INVALID_STATUS_TRANSITION]: HttpStatus.CONFLICT,
 };
 
 export class DomainError extends HttpException {

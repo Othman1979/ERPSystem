@@ -14,6 +14,7 @@ import {
   UserTemporaryPasswordDto,
 } from './dto/users-response.dto.js';
 import { UsersService } from './users.service.js';
+import { PurchaseDirectGapDto } from '../procurement/dto/procurement-response.dto.js';
 
 /** Team management belongs to the owner only (user.manage), including the directory and roles (PLAT-28). */
 @ApiTags('users')
@@ -33,6 +34,18 @@ export class UsersController {
   @ApiOkResponse({ type: UserMembershipDto, isArray: true })
   list() {
     return this.users.list();
+  }
+
+  /**
+   * Active members whose role creates or posts purchase invoices but who lack
+   * purchase.direct (owners aside): raising the procurement level from SIMPLE
+   * would stop them (ADR-025 §4). The owner sees them before confirming.
+   */
+  @Get('purchase-direct-gaps')
+  @RequirePermission(PERMISSIONS.USER_MANAGE)
+  @ApiOkResponse({ type: PurchaseDirectGapDto, isArray: true })
+  purchaseDirectGaps() {
+    return this.users.purchaseDirectGaps();
   }
 
   @Post('invite')

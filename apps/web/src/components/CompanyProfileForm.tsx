@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { PROCUREMENT_LEVELS } from '../auth/procurementLevel';
+import { displayName } from '../i18n/displayName';
 import {
   ApiError,
   type CompanyDto,
@@ -14,6 +15,8 @@ import {
   companyControllerRemoveLogo,
   companyControllerUpdate,
   companyControllerUploadLogo,
+  type PurchaseDirectGapDto,
+  usersControllerPurchaseDirectGaps,
 } from '@erp/api-client';
 
 /** The tenant's company profile (one query shared by the wizard, settings and home). */
@@ -25,6 +28,11 @@ export function useCompany() {
 }
 
 const LOGO_MAX_BYTES = 1024 * 1024;
+
+/** ADR-025 §4: the procurement level goes up out of SIMPLE (to MEDIUM or FULL). */
+function isRaiseFromSimple(from: string | undefined, to: string | undefined): boolean {
+  return from === 'SIMPLE' && (to === 'MEDIUM' || to === 'FULL');
+}
 
 type FormValues = Pick<
   CompanyDto,
@@ -51,7 +59,7 @@ export function CompanyProfileForm({
 }) {
   const { t } = useTranslation();
   const { can } = useAuth();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<FormValues>();
   const company = useCompany();
@@ -99,8 +107,50 @@ export function CompanyProfileForm({
     onError,
   });
 
+  /**
+   * ADR-025 §4: raising the level out of SIMPLE first lists the members who
+   * would lose purchase-invoice access without a purchase order. The owner
+   * confirms or cancels; nothing is granted automatically.
+   */
+  const requestSave = async (v: FormValues) => {
+    const raising = withProcurement && isRaiseFromSimple(company.data?.procurementLevel, v.procurementLevel);
+    if (!raising || !can(PERMISSIONS.USER_MANAGE)) {
+      save.mutate(v);
+      return;
+    }
+    let gaps: PurchaseDirectGapDto[];
+    try {
+      gaps = (await usersControllerPurchaseDirectGaps()).data;
+    } catch (err) {
+      onError(err);
+      return;
+    }
+    if (gaps.length === 0) {
+      save.mutate(v);
+      return;
+    }
+    modal.confirm({
+      title: t('procurement.directGapsTitle'),
+      content: (
+        <>
+          <Typography.Paragraph>{t('procurement.directGapsBody')}</Typography.Paragraph>
+          <ul>
+            {gaps.map((gap) => (
+              <li key={gap.membershipId}>
+                {gap.fullName} <Typography.Text type="secondary">{displayName(gap.role)}</Typography.Text>
+              </li>
+            ))}
+          </ul>
+        </>
+      ),
+      okText: t('procurement.directGapsConfirm'),
+      cancelText: t('common.cancel'),
+      onOk: () => save.mutate(v),
+    });
+  };
+
   return (
-    <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} style={{ maxWidth: 720 }}>
+    <Form form={form} layout="vertical" onFinish={(v) => void requestSave(v)} style={{ maxWidth: 720 }}>
       {/* One aligned two-column grid, the same as the master-data dialogs (UI-11). */}
       <div className="form-section-grid cols-2 is-flush">
         <Form.Item name="legalNameAr" label={t('company.legalNameAr')} rules={[{ required: true, whitespace: true }]}>

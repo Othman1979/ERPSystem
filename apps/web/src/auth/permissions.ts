@@ -12,6 +12,8 @@ export const PERMISSIONS = {
   JOURNAL_MANAGE: 'journal.manage',
   SALES_MANAGE: 'sales.manage',
   PURCHASE_MANAGE: 'purchase.manage',
+  /** Create, edit and submit purchase requests (ADR-025 §13). */
+  PURCHASE_REQUEST_MANAGE: 'purchase_request.manage',
   TREASURY_MANAGE: 'treasury.manage',
   EINVOICE_MANAGE: 'einvoice.manage',
   REPORTS_VIEW: 'reports.view',
