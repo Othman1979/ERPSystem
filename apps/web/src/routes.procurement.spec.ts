@@ -34,7 +34,7 @@ describe('minProcurementLevel on routes and menu items (ADR-024 §2.3)', () => {
 
   it('drops hidden entries from the menu groups, and a group left empty', () => {
     const groups: AppGroup[] = [
-      { label: 'g1', tone: 'trade', routes: [route('purchases'), route('orders', { minProcurementLevel: 'MEDIUM' })] },
+      { label: 'g1', tone: 'sales', routes: [route('purchases'), route('orders', { minProcurementLevel: 'MEDIUM' })] },
       { label: 'g2', tone: 'inventory', routes: [route('issues', { minProcurementLevel: 'FULL' })] },
     ];
     const keys = (level: 'SIMPLE' | 'MEDIUM' | 'FULL') =>
@@ -54,7 +54,10 @@ describe('minProcurementLevel on routes and menu items (ADR-024 §2.3)', () => {
       ['purchaseOrders', 'MEDIUM'],
       ['issueRequests', 'FULL'],
     ]);
-    const all = (level: 'SIMPLE' | 'MEDIUM' | 'FULL') => allowedGroups(APP_GROUPS, canAll, level).flatMap((g) => g.routes.map((r) => r.key));
+    // parties sits in two tabs (sales and purchases): each screen counted once.
+    const all = (level: 'SIMPLE' | 'MEDIUM' | 'FULL') => [
+      ...new Set(allowedGroups(APP_GROUPS, canAll, level).flatMap((g) => g.routes.map((r) => r.key))),
+    ];
     const cycle = ['purchaseRequests', 'purchaseQuotes', 'purchaseOrders', 'issueRequests'];
     expect(all('SIMPLE')).toEqual(ALL_ROUTES.map((r) => r.key).filter((k) => !cycle.includes(k)));
     expect(all('MEDIUM')).toEqual(
