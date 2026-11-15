@@ -3,16 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import {
   CloudServerOutlined,
-  ExportOutlined,
   HomeOutlined,
   QuestionCircleOutlined,
-  ImportOutlined,
   KeyOutlined,
   LogoutOutlined,
   MenuOutlined,
-  ProfileOutlined,
-  ShoppingCartOutlined,
-  ShoppingOutlined,
   TranslationOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -41,10 +36,10 @@ import { HomeDashboard } from './pages/HomeDashboard';
 import { LoginPage } from './pages/LoginPage';
 import { useCompany } from './components/CompanyProfileForm';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
+import { Ribbon } from './components/Ribbon';
 import { ServerUnreachable } from './components/ServerUnreachable';
 import { NoAccess } from './components/NoAccess';
 import { ProcurementLevelGate } from './components/ProcurementLevelGate';
-import { PERMISSIONS } from './auth/permissions';
 import { useProcurementLevel } from './auth/procurementLevel';
 import { lazyPage } from './lazyPage';
 import i18n, { SUPPORTED_LANGUAGES, type AppLanguage } from './i18n';
@@ -54,6 +49,8 @@ import {
   allowedGroups,
   APP_GROUPS,
   INVITATIONS_PATH,
+  PLATFORM_PATH,
+  QUICK_ACTIONS,
   routeForPath,
   SETUP_PATH,
   SETUP_PERMISSION,
@@ -130,39 +127,18 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundary
   }
 }
 
-const SIDER_STORAGE_KEY = 'erp.siderCollapsed';
-
-/** Platform owner console (outside the tenant modules of routes.tsx). */
-const PLATFORM_PATH = '/platform';
-
-function readSiderCollapsed(): boolean {
-  try {
-    return window.localStorage.getItem(SIDER_STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function writeSiderCollapsed(collapsed: boolean): void {
-  try {
-    window.localStorage.setItem(SIDER_STORAGE_KEY, collapsed ? '1' : '0');
-  } catch {
-    // Not critical: the menu just opens expanded next time.
-  }
-}
-
 /** Home-screen module group: a titled panel listing its screens as links. */
 function HomeGroup({ group, onOpen }: { group: AppGroup; onOpen: (route: AppRoute) => void }) {
   const { t } = useTranslation();
   return (
     <section className="home-group">
       <div className="home-group-head">
-        <span className="home-group-dot" style={{ background: palette.tone[group.tone] }} />
+        <span className="home-group-dot" style={{ background: palette.moduleTone[group.tone].fg }} />
         {t(group.label)}
       </div>
       {group.routes.map((r) => (
         <button key={r.key} type="button" className="home-link" onClick={() => onOpen(r)}>
-          <span className="home-link-icon" style={{ color: palette.tone[group.tone] }}>
+          <span className="home-link-icon" style={{ color: palette.moduleTone[group.tone].fg }}>
             {r.icon}
           </span>
           {t(r.label)}
@@ -171,15 +147,6 @@ function HomeGroup({ group, onOpen }: { group: AppGroup; onOpen: (route: AppRout
     </section>
   );
 }
-
-/** Everyday documents, opened straight into a new form (pages read `?new=1`); shown to roles that may create them. */
-const QUICK_ACTIONS = [
-  { key: 'sale', label: 'sales.newInvoice', path: '/sales?new=1', icon: <ShoppingCartOutlined />, permission: PERMISSIONS.SALES_MANAGE },
-  { key: 'purchase', label: 'purchases.newInvoice', path: '/purchases?new=1', icon: <ShoppingOutlined />, permission: PERMISSIONS.PURCHASE_MANAGE },
-  { key: 'receipt', label: 'treasury.newReceipt', path: '/treasury?tab=receipts&new=1', icon: <ImportOutlined />, permission: PERMISSIONS.TREASURY_MANAGE },
-  { key: 'payment', label: 'treasury.newPayment', path: '/treasury?tab=payments&new=1', icon: <ExportOutlined />, permission: PERMISSIONS.TREASURY_MANAGE },
-  { key: 'journal', label: 'journal.newEntry', path: '/journal?new=1', icon: <ProfileOutlined />, permission: PERMISSIONS.JOURNAL_MANAGE },
-] as const;
 
 function HomeScreen() {
   const { t } = useTranslation();
@@ -250,12 +217,8 @@ function AppShell() {
   const screens = Grid.useBreakpoint();
   // Breakpoints are empty on the first render; assume desktop until measured.
   const isMobile = screens.md === false;
-  // Tablets (768–991 px) start with the menu folded to icons, so the page
-  // keeps its width (UI-01); the toggle opens it for this visit only.
+  // Tablets (768–991 px) get the ribbon's compact buttons (ADR-029 §1).
   const isTablet = screens.md === true && screens.lg === false;
-  const [collapsed, setCollapsed] = useState(readSiderCollapsed);
-  const [tabletExpanded, setTabletExpanded] = useState(false);
-  const siderCollapsed = isTablet ? !tabletExpanded : collapsed;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -277,7 +240,10 @@ function AppShell() {
   // The platform owner's console (§13.3) — only for User.isPlatformAdmin.
   const isPlatformAdmin = !!me?.user.isPlatformAdmin;
   const menuItems: MenuProps['items'] = useMemo(
-    () => [
+    () => {
+      // A screen in two groups (parties: sales and purchases) is listed once: menu keys must be unique.
+      const listed = new Set<string>();
+      return [
       ...(noCompany ? [] : [{ key: '/', icon: <HomeOutlined />, label: t('nav.home') }]),
       // Screens the role cannot use are not offered (the API would answer 403).
       ...(noCompany
@@ -286,9 +252,9 @@ function AppShell() {
       ).map((g) => ({
         type: 'group' as const,
         key: g.label,
-        label: siderCollapsed && !isMobile ? null : t(g.label),
+        label: t(g.label),
         children: g.routes
-          .filter((r) => !noCompany || r.path === INVITATIONS_PATH)
+          .filter((r) => (!noCompany || r.path === INVITATIONS_PATH) && !listed.has(r.path) && !!listed.add(r.path))
           .map((r) => ({
             key: r.path,
             icon: r.icon,
@@ -306,9 +272,10 @@ function AppShell() {
       ...(isPlatformAdmin
         ? [{ key: PLATFORM_PATH, icon: <CloudServerOutlined />, label: t('platform.nav') }]
         : []),
-    ],
+      ];
+    },
     // Labels depend on the language; t identity changes with it.
-    [t, siderCollapsed, isMobile, isPlatformAdmin, noCompany, pendingInvitations, can, procurementLevel],
+    [t, isPlatformAdmin, noCompany, pendingInvitations, can, procurementLevel],
   );
 
   const menu = (
@@ -324,18 +291,8 @@ function AppShell() {
     />
   );
 
-  const toggleMenu = () => {
-    if (isMobile) {
-      setDrawerOpen(true);
-    } else if (isTablet) {
-      setTabletExpanded((x) => !x);
-    } else {
-      setCollapsed((c) => {
-        writeSiderCollapsed(!c);
-        return !c;
-      });
-    }
-  };
+  // Phones open the menu drawer; on wider screens the ribbon is always there.
+  const openMenu = () => setDrawerOpen(true);
 
   const logOut = () => {
     // Next sign-in starts on the home screen, not this user's last page.
@@ -373,15 +330,17 @@ function AppShell() {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <header className="app-topbar" style={{ height: TOPBAR_HEIGHT }}>
-        <Tooltip title={t('nav.menu')}>
-          <Button
-            type="text"
-            className="topbar-btn"
-            icon={<MenuOutlined />}
-            onClick={toggleMenu}
-            aria-label={t('nav.menu')}
-          />
-        </Tooltip>
+        {isMobile && (
+          <Tooltip title={t('nav.menu')}>
+            <Button
+              type="text"
+              className="topbar-btn"
+              icon={<MenuOutlined />}
+              onClick={openMenu}
+              aria-label={t('nav.menu')}
+            />
+          </Tooltip>
+        )}
         {!isMobile && (
           <button type="button" className="topbar-brand" onClick={() => navigate('/')}>
             {t('app.title')}
@@ -485,20 +444,17 @@ function AppShell() {
         </Space>
       </header>
 
-      <Layout hasSider={!isMobile}>
-        {!isMobile && (
-          <Layout.Sider
-            className="app-sider"
-            width={224}
-            collapsedWidth={56}
-            collapsed={siderCollapsed}
-            trigger={null}
-            theme="light"
-            style={{ top: TOPBAR_HEIGHT, height: `calc(100vh - ${TOPBAR_HEIGHT}px)` }}
-          >
-            {menu}
-          </Layout.Sider>
-        )}
+      {!isMobile && (
+        <Ribbon
+          can={can}
+          procurementLevel={procurementLevel}
+          noCompany={noCompany}
+          isPlatformAdmin={isPlatformAdmin}
+          pendingInvitations={pendingInvitations}
+          compact={isTablet}
+        />
+      )}
+      <Layout>
         <Layout.Content className="app-content" style={{ padding: isMobile ? 12 : 24 }}>
           <Suspense fallback={<PageSpinner />}>
             <Routes>

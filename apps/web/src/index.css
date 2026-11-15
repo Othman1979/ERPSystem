@@ -214,21 +214,12 @@ textarea:focus-visible,
   cursor: default;
 }
 
-/* Side menu stays in view while the page scrolls */
-.app-sider {
-  position: sticky !important;
-  overflow-y: auto;
-  border-inline-end: 1px solid var(--c-border);
-}
-
-/* Active item: ink-100 fill plus a 3px ink marker on the start edge */
-.app-sider .ant-menu-item-selected,
+/* Active item of the phone drawer: ink-100 fill plus a 3px ink marker on the start edge */
 .app-drawer-menu .ant-menu-item-selected {
   position: relative;
   font-weight: 600;
 }
 
-.app-sider .ant-menu-item-selected::before,
 .app-drawer-menu .ant-menu-item-selected::before {
   content: '';
   position: absolute;
@@ -241,6 +232,299 @@ textarea:focus-visible,
 
 .app-content {
   min-width: 0;
+}
+
+/* ------------------------------------------------------- ribbon (ADR-029) */
+
+/*
+ * The ribbon scrolls away with the page, as in Office: only the top bar stays,
+ * so a document's sticky toolbar (.doc-toolbar) is never covered, and a short
+ * laptop screen keeps its height for data entry. Relative: the folded strip floats from it.
+ */
+.ribbon {
+  position: relative;
+  z-index: 99;
+  min-width: 0;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+}
+
+/* The tab row is the top bar's ink, so the two read as one piece. */
+.ribbon-tab-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 36px;
+  padding-inline: 12px;
+  background: var(--c-ink-900);
+}
+
+.ribbon-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ribbon-tab {
+  flex: none;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-top: 3px solid transparent;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--c-on-ink-muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ribbon-tab:hover {
+  background: var(--c-on-ink-hover);
+  color: var(--c-on-ink);
+}
+
+/* The active tab rises to the strip's colour and takes its module colour as the top rule. */
+.ribbon-tab[aria-selected='true'] {
+  height: 34px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-weight: 600;
+}
+
+.ribbon-tab[data-tone='home'][aria-selected='true'] {
+  border-top-color: var(--c-tone-home-fg);
+}
+
+.ribbon-tab[data-tone='accounting'][aria-selected='true'] {
+  border-top-color: var(--c-tone-accounting-fg);
+}
+
+.ribbon-tab[data-tone='treasury'][aria-selected='true'] {
+  border-top-color: var(--c-tone-treasury-fg);
+}
+
+.ribbon-tab[data-tone='sales'][aria-selected='true'] {
+  border-top-color: var(--c-tone-sales-fg);
+}
+
+.ribbon-tab[data-tone='purchases'][aria-selected='true'] {
+  border-top-color: var(--c-tone-purchases-fg);
+}
+
+.ribbon-tab[data-tone='inventory'][aria-selected='true'] {
+  border-top-color: var(--c-tone-inventory-fg);
+}
+
+.ribbon-tab[data-tone='reports'][aria-selected='true'] {
+  border-top-color: var(--c-tone-reports-fg);
+}
+
+.ribbon-tab[data-tone='admin'][aria-selected='true'] {
+  border-top-color: var(--c-tone-admin-fg);
+}
+
+.ribbon-tab:focus-visible,
+.ribbon-fold:focus-visible {
+  outline: 2px solid var(--c-focus-on-ink) !important;
+  outline-offset: -2px;
+}
+
+/* Fold button at the end of the tab row */
+.ribbon-fold {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 4px;
+  margin-inline-start: auto;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--c-on-ink);
+  cursor: pointer;
+}
+
+.ribbon-fold:hover {
+  background: var(--c-on-ink-hover);
+}
+
+/* The strip of buttons, one captioned group per sub-group of the tab */
+.ribbon-strip {
+  display: flex;
+  align-items: stretch;
+  /* Room for a two-line label and the group caption; fixed, so switching tabs never moves the page. */
+  height: 112px;
+  padding-inline: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--c-surface);
+  scrollbar-width: thin;
+}
+
+.ribbon-group {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 6px;
+}
+
+.ribbon-group + .ribbon-group {
+  border-inline-start: 1px solid var(--c-border);
+}
+
+.ribbon-buttons {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.ribbon-caption {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--c-text-2);
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* A button: tile over label. The link is a real anchor, so Ctrl+click opens a new tab. */
+.ribbon-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 64px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--c-text);
+  text-decoration: none;
+}
+
+.ribbon-link:hover {
+  background: var(--c-panel);
+  color: var(--c-text);
+}
+
+.ribbon-tile {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  font-size: 22px;
+}
+
+/* Module colours: the tile's light fill and its icon colour (theme.ts moduleTone). */
+.ribbon-tile[data-tone='home'] {
+  background: var(--c-tone-home-bg);
+  color: var(--c-tone-home-fg);
+}
+.ribbon-tile[data-tone='accounting'] {
+  background: var(--c-tone-accounting-bg);
+  color: var(--c-tone-accounting-fg);
+}
+.ribbon-tile[data-tone='treasury'] {
+  background: var(--c-tone-treasury-bg);
+  color: var(--c-tone-treasury-fg);
+}
+.ribbon-tile[data-tone='sales'] {
+  background: var(--c-tone-sales-bg);
+  color: var(--c-tone-sales-fg);
+}
+.ribbon-tile[data-tone='purchases'] {
+  background: var(--c-tone-purchases-bg);
+  color: var(--c-tone-purchases-fg);
+}
+.ribbon-tile[data-tone='inventory'] {
+  background: var(--c-tone-inventory-bg);
+  color: var(--c-tone-inventory-fg);
+}
+.ribbon-tile[data-tone='reports'] {
+  background: var(--c-tone-reports-bg);
+  color: var(--c-tone-reports-fg);
+}
+.ribbon-tile[data-tone='admin'] {
+  background: var(--c-tone-admin-bg);
+  color: var(--c-tone-admin-fg);
+}
+
+/* The page this button leads to: an outline in the module colour and a heavier label */
+.ribbon-link[aria-current='page'] .ribbon-tile {
+  outline: 1.5px solid currentColor;
+  outline-offset: 2px;
+}
+
+.ribbon-link[aria-current='page'] .ribbon-label {
+  font-weight: 500;
+}
+
+.ribbon-label {
+  display: -webkit-box;
+  max-width: 96px;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  overflow-wrap: break-word;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* "New document" buttons: a small ink + on the tile's top corner */
+.ribbon-new {
+  position: absolute;
+  top: -5px;
+  inset-inline-end: -5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--c-ink-600);
+  color: var(--c-on-ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
+/* Folded: the strip floats over the page until a choice, Escape or a click outside */
+.ribbon-float {
+  position: absolute;
+  inset-inline: 0;
+  top: 36px;
+  z-index: 1;
+  border-bottom: 1px solid var(--c-border);
+  box-shadow: var(--shadow-float);
+}
+
+/* Tablets: smaller tiles and labels; the strip scrolls sideways when it does not fit */
+.ribbon.is-compact .ribbon-tile {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 18px;
+}
+
+.ribbon.is-compact .ribbon-link {
+  min-width: 56px;
+}
+
+.ribbon.is-compact .ribbon-label {
+  max-width: 72px;
+  font-size: 11px;
+  line-height: 14px;
 }
 
 /* ---------------------------------------------------------- home screen */
@@ -1209,7 +1493,7 @@ textarea:focus-visible,
 /* Paper is white: print drops the screen surfaces on purpose. */
 @media print {
   .app-topbar,
-  .app-sider {
+  .ribbon {
     display: none !important;
   }
 

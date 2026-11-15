@@ -123,3 +123,42 @@ describe('CSS variables are generated from the palette (UI-20)', () => {
     expect(root.style.getPropertyValue('--topbar-height')).toBe('44px');
   });
 });
+
+describe('ribbon module colours (ADR-029 §2)', () => {
+  const modules = Object.entries(palette.moduleTone);
+
+  it('has the eight tab tones of the ribbon', () => {
+    expect(modules.map(([key]) => key)).toEqual([
+      'home',
+      'accounting',
+      'treasury',
+      'sales',
+      'purchases',
+      'inventory',
+      'reports',
+      'admin',
+    ]);
+  });
+
+  it.each(modules)('%s: icon colour on its tile passes 3:1', (_key, pair) => {
+    expect(contrastRatio(pair.fg, pair.bg)).toBeGreaterThanOrEqual(3);
+  });
+
+  it.each(modules)('%s: icon colour on the ribbon surface passes 3:1', (_key, pair) => {
+    expect(contrastRatio(pair.fg, palette.surface)).toBeGreaterThanOrEqual(3);
+  });
+
+  it('exposes each tone as --c-tone-<name>-fg and -bg', () => {
+    for (const [key, pair] of modules) {
+      expect(cssVariables[`--c-tone-${key}-fg`]).toBe(pair.fg);
+      expect(cssVariables[`--c-tone-${key}-bg`]).toBe(pair.bg);
+    }
+  });
+
+  it('keeps the ribbon text pairs at AA', () => {
+    // Inactive tab labels on the ink tab row; the active tab label on the ribbon surface.
+    expect(contrastRatio(palette.onInkMuted, palette.ink900)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(palette.text, palette.surface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(palette.text2, palette.surface)).toBeGreaterThanOrEqual(4.5);
+  });
+});
