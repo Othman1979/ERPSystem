@@ -16,6 +16,54 @@ export function isLoweringLevel(from: ProcurementLevel, to: ProcurementLevel): b
   return PROCUREMENT_LEVELS.indexOf(to) < PROCUREMENT_LEVELS.indexOf(from);
 }
 
+/** True when `level` is `min` or above. */
+export function meetsProcurementLevel(level: ProcurementLevel, min: ProcurementLevel): boolean {
+  return PROCUREMENT_LEVELS.indexOf(level) >= PROCUREMENT_LEVELS.indexOf(min);
+}
+
+/** PROCUREMENT_LEVEL_REQUIRED unless `level` is `min` or above (ADR-025 §5). */
+export function assertProcurementLevel(level: ProcurementLevel, min: ProcurementLevel): void {
+  if (!meetsProcurementLevel(level, min)) {
+    throw new DomainError(
+      ErrorCode.PROCUREMENT_LEVEL_REQUIRED,
+      `This needs the ${min} procurement level; the company uses ${level}`,
+      { required: min, current: level },
+    );
+  }
+}
+
+/**
+ * The company's procurement level read under a shared lock of its row
+ * (ADR-025 §5), held to COMMIT: a lowering (which locks the row FOR UPDATE,
+ * see CompanyService.update) waits for this transaction and then counts the
+ * document it wrote, or this read waits for the lowering and sees the new
+ * level. Call it before the transaction's first plain read.
+ */
+export async function lockProcurementLevel(
+  tx: Prisma.TransactionClient,
+  tenantId: bigint,
+  companyId: bigint,
+): Promise<ProcurementLevel> {
+  return (await lockCompanyProcurement(tx, tenantId, companyId)).level;
+}
+
+/**
+ * The level and the tax-inclusive prices setting (ADR-017) in one read under
+ * the company row's shared lock, so a document is written with the setting
+ * as it is when the transaction commits, and freezes it.
+ */
+export async function lockCompanyProcurement(
+  tx: Prisma.TransactionClient,
+  tenantId: bigint,
+  companyId: bigint,
+): Promise<{ level: ProcurementLevel; pricesIncludeTax: boolean }> {
+  const [row] = await tx.$queryRaw<{ procurement_level: ProcurementLevel; prices_include_tax: boolean | number }[]>`
+    SELECT procurement_level, prices_include_tax FROM companies
+     WHERE tenant_id = ${tenantId} AND id = ${companyId} LOCK IN SHARE MODE`;
+  if (!row) throw new DomainError(ErrorCode.INTERNAL, 'Tenant has no active company');
+  return { level: row.procurement_level, pricesIncludeTax: Boolean(Number(row.prices_include_tax)) };
+}
+
 /**
  * Counts one kind of open purchasing-cycle document (a purchase request,
  * order or issue request not yet closed) of the current tenant. Phases 12 and
@@ -25,6 +73,11 @@ export function isLoweringLevel(from: ProcurementLevel, to: ProcurementLevel): b
 export interface OpenCycleDocumentsCounter {
   /** Name of the documents counted, for the refusal details (for example `purchaseOrders`). */
   readonly key: string;
+  /**
+   * The lowest level whose cycle has these documents (requests and quotes:
+   * FULL; orders: MEDIUM). Only a lowering below it counts them (ADR-025 §6).
+   */
+  readonly level: ProcurementLevel;
   /**
    * Open documents of the tenant, read inside the level change transaction
    * (tenant-scoped client), after the company row is locked.
@@ -58,11 +111,17 @@ export class ProcurementCycleRegistry {
     return this.counters.map((c) => c.key);
   }
 
-  /** Refuses a lowering while documents of the cycle are open; anything else passes. */
+  /**
+   * Refuses a lowering while documents the target level drops are open
+   * (ADR-025 §6): FULL → MEDIUM counts requests and quotes only, → SIMPLE
+   * counts orders too. Anything else passes.
+   */
   async assertLevelChange(tx: Prisma.TransactionClient, from: ProcurementLevel, to: ProcurementLevel): Promise<void> {
     if (!isLoweringLevel(from, to)) return;
     const open: Record<string, number> = {};
     for (const counter of this.counters) {
+      if (meetsProcurementLevel(to, counter.level)) continue; // the target level still has them
+
       const n = await counter.count(tx);
       if (n > 0) open[counter.key] = n;
     }

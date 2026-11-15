@@ -121,6 +121,33 @@ enum DocumentStatus {
   POSTED
 }
 
+/// Purchase request (ADR-025 §7): DRAFT → SUBMITTED → APPROVED; ends REJECTED, CANCELLED or CLOSED.
+enum PurchaseRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+  CLOSED
+}
+
+/// Request for quotation (ADR-025 §7): DRAFT → SENT → RECEIVED; ends CLOSED or CANCELLED.
+enum PurchaseQuoteStatus {
+  DRAFT
+  SENT
+  RECEIVED
+  CLOSED
+  CANCELLED
+}
+
+/// Purchase order (ADR-025 §7): DRAFT → SUBMITTED → APPROVED; ends CANCELLED. Phase 13 adds receipt states.
+enum PurchaseOrderStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  CANCELLED
+}
+
 // ---------------------------------------------------------------------------
 // Platform (non-tenant) tables
 // ---------------------------------------------------------------------------
@@ -316,6 +343,12 @@ model Tenant {
   einvoiceSubmissions  EInvoiceSubmission[]
   einvoiceAttempts     EInvoiceAttempt[]
   allocations          Allocation[]
+  purchaseRequests     PurchaseRequest[]
+  purchaseRequestLines PurchaseRequestLine[]
+  purchaseQuotes       PurchaseQuote[]
+  purchaseQuoteLines   PurchaseQuoteLine[]
+  purchaseOrders       PurchaseOrder[]
+  purchaseOrderLines   PurchaseOrderLine[]
 
   @@map("tenants")
 }
@@ -398,6 +431,9 @@ model Company {
   einvoiceSubmissions  EInvoiceSubmission[]
   allocations       Allocation[]
   costCenters       CostCenter[]
+  purchaseRequests  PurchaseRequest[]
+  purchaseQuotes    PurchaseQuote[]
+  purchaseOrders    PurchaseOrder[]
 
   @@unique([tenantId, id])
   @@map("companies")
@@ -425,6 +461,9 @@ model Branch {
   warehouses         Warehouse[]
   goodsNotes         GoodsNote[]
   einvoiceSubmissions EInvoiceSubmission[]
+  purchaseRequests   PurchaseRequest[]
+  purchaseQuotes     PurchaseQuote[]
+  purchaseOrders     PurchaseOrder[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -635,6 +674,8 @@ model TaxCategory {
   purchaseInvoiceLines    PurchaseInvoiceLine[]
   salesReturnLines        SalesReturnLine[]
   purchaseReturnLines     PurchaseReturnLine[]
+  purchaseQuoteLines      PurchaseQuoteLine[]
+  purchaseOrderLines      PurchaseOrderLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -926,6 +967,7 @@ model CostCenter {
   purchaseReturns  PurchaseReturn[]
   receipts         Receipt[]
   payments         Payment[]
+  purchaseOrders   PurchaseOrder[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
@@ -1002,6 +1044,9 @@ model Item {
   salesReturnLines   SalesReturnLine[]
   purchaseReturnLines PurchaseReturnLine[]
   goodsNoteLines     GoodsNoteLine[]
+  purchaseRequestLines PurchaseRequestLine[]
+  purchaseQuoteLines PurchaseQuoteLine[]
+  purchaseOrderLines PurchaseOrderLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1028,6 +1073,9 @@ model ItemUnit {
 
   salesInvoiceLines    SalesInvoiceLine[]
   purchaseInvoiceLines PurchaseInvoiceLine[]
+  purchaseRequestLines PurchaseRequestLine[]
+  purchaseQuoteLines   PurchaseQuoteLine[]
+  purchaseOrderLines   PurchaseOrderLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, itemId, unitId])
@@ -1081,6 +1129,7 @@ model Warehouse {
   purchaseReturns   PurchaseReturn[]
   goodsNotes        GoodsNote[]
   defaultItems      Item[]             @relation("ItemDefaultWarehouse")
+  purchaseOrders    PurchaseOrder[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1369,6 +1418,8 @@ model Party {
   receipts         Receipt[]
   payments         Payment[]
   allocations      Allocation[]
+  purchaseQuotes   PurchaseQuote[]
+  purchaseOrders   PurchaseOrder[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -2085,4 +2136,262 @@ model EInvoiceAttempt {
 
   @@unique([tenantId, submissionId, attemptNo])
   @@map("einvoice_attempts")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 12 — purchase requests, quotes and orders (ADR-025). None of these
+// documents posts a journal entry or a stock movement.
+// ---------------------------------------------------------------------------
+
+/// Internal request to buy (ADR-025 §1, FULL level only). Numbered PRQ at approval.
+model PurchaseRequest {
+  id           BigInt                @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt                @map("tenant_id") @db.UnsignedBigInt
+  companyId    BigInt                @map("company_id") @db.UnsignedBigInt
+  /// The branch of the request context when the draft was created (ADR-003).
+  branchId     BigInt?               @map("branch_id") @db.UnsignedBigInt
+  requestNo    String?               @map("request_no") @db.VarChar(50)
+  requestDate  DateTime              @map("request_date") @db.Date
+  neededBy     DateTime?             @map("needed_by") @db.Date
+  status       PurchaseRequestStatus @default(DRAFT)
+  notes        String?               @db.VarChar(500)
+  submittedAt  DateTime?             @map("submitted_at") @db.DateTime(3)
+  submittedBy  BigInt?               @map("submitted_by") @db.UnsignedBigInt
+  approvedAt   DateTime?             @map("approved_at") @db.DateTime(3)
+  approvedBy   BigInt?               @map("approved_by") @db.UnsignedBigInt
+  rejectedAt   DateTime?             @map("rejected_at") @db.DateTime(3)
+  rejectedBy   BigInt?               @map("rejected_by") @db.UnsignedBigInt
+  rejectReason String?               @map("reject_reason") @db.VarChar(500)
+  cancelledAt  DateTime?             @map("cancelled_at") @db.DateTime(3)
+  cancelledBy  BigInt?               @map("cancelled_by") @db.UnsignedBigInt
+  cancelReason String?               @map("cancel_reason") @db.VarChar(500)
+  closedAt     DateTime?             @map("closed_at") @db.DateTime(3)
+  closedBy     BigInt?               @map("closed_by") @db.UnsignedBigInt
+  createdAt    DateTime              @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime              @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy    BigInt?               @map("created_by") @db.UnsignedBigInt
+  updatedBy    BigInt?               @map("updated_by") @db.UnsignedBigInt
+
+  tenant  Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company Company               @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch  Branch?               @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  lines   PurchaseRequestLine[]
+  quotes  PurchaseQuote[]
+  orders  PurchaseOrder[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, requestNo])
+  // Lists: ORDER BY request_date DESC, id DESC.
+  @@index([tenantId, companyId, requestDate, id])
+  // Open-documents counter (ADR-025 §6).
+  @@index([tenantId, status])
+  @@map("purchase_requests")
+}
+
+/// A requested item. ordered_qty: in the line's unit, on purchase orders that are not cancelled (ADR-025 §9).
+model PurchaseRequestLine {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt   @map("tenant_id") @db.UnsignedBigInt
+  requestId      BigInt   @map("request_id") @db.UnsignedBigInt
+  lineNo         Int      @map("line_no")
+  itemId         BigInt   @map("item_id") @db.UnsignedBigInt
+  itemUnitId     BigInt?  @map("item_unit_id") @db.UnsignedBigInt
+  qty            Decimal  @db.Decimal(18, 6)
+  qtyBase        Decimal  @map("qty_base") @db.Decimal(18, 6)
+  /// Optional estimate per unit; not binding, so approval ignores it (ADR-025 §2).
+  estimatedPrice Decimal? @map("estimated_price") @db.Decimal(18, 6)
+  note           String?  @db.VarChar(500)
+  orderedQty     Decimal  @default(0) @map("ordered_qty") @db.Decimal(18, 6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request    PurchaseRequest     @relation(fields: [tenantId, requestId], references: [tenantId, id], onDelete: Cascade)
+  item       Item                @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  itemUnit   ItemUnit?           @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  quoteLines PurchaseQuoteLine[]
+  orderLines PurchaseOrderLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, requestId, lineNo])
+  @@map("purchase_request_lines")
+}
+
+/// Request for quotation sent to one supplier for an approved request (ADR-025 §1, FULL only). Numbered RFQ when sent.
+model PurchaseQuote {
+  id               BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt              @map("tenant_id") @db.UnsignedBigInt
+  companyId        BigInt              @map("company_id") @db.UnsignedBigInt
+  /// The request's branch.
+  branchId         BigInt?             @map("branch_id") @db.UnsignedBigInt
+  requestId        BigInt              @map("request_id") @db.UnsignedBigInt
+  supplierId       BigInt              @map("supplier_id") @db.UnsignedBigInt
+  quoteNo          String?             @map("quote_no") @db.VarChar(50)
+  quoteDate        DateTime            @map("quote_date") @db.Date
+  validUntil       DateTime?           @map("valid_until") @db.Date
+  /// The supplier's own reference for the offer, entered with the prices.
+  supplierRef      String?             @map("supplier_ref") @db.VarChar(100)
+  /// ADR-017: prices entered including tax (company setting when the draft was saved).
+  pricesIncludeTax Boolean             @default(false) @map("prices_include_tax")
+  status           PurchaseQuoteStatus @default(DRAFT)
+  notes            String?             @db.VarChar(500)
+  netTotal         Decimal             @default(0) @map("net_total") @db.Decimal(18, 3)
+  taxTotal         Decimal             @default(0) @map("tax_total") @db.Decimal(18, 3)
+  grandTotal       Decimal             @default(0) @map("grand_total") @db.Decimal(18, 3)
+  sentAt           DateTime?           @map("sent_at") @db.DateTime(3)
+  sentBy           BigInt?             @map("sent_by") @db.UnsignedBigInt
+  receivedAt       DateTime?           @map("received_at") @db.DateTime(3)
+  receivedBy       BigInt?             @map("received_by") @db.UnsignedBigInt
+  closedAt         DateTime?           @map("closed_at") @db.DateTime(3)
+  closedBy         BigInt?             @map("closed_by") @db.UnsignedBigInt
+  cancelledAt      DateTime?           @map("cancelled_at") @db.DateTime(3)
+  cancelledBy      BigInt?             @map("cancelled_by") @db.UnsignedBigInt
+  cancelReason     String?             @map("cancel_reason") @db.VarChar(500)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy        BigInt?             @map("created_by") @db.UnsignedBigInt
+  updatedBy        BigInt?             @map("updated_by") @db.UnsignedBigInt
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company  Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch   Branch?             @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  request  PurchaseRequest     @relation(fields: [tenantId, requestId], references: [tenantId, id])
+  supplier Party               @relation(fields: [tenantId, supplierId], references: [tenantId, id])
+  lines    PurchaseQuoteLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, quoteNo])
+  @@index([tenantId, companyId, quoteDate, id])
+  @@index([tenantId, requestId, status])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, status])
+  @@map("purchase_quotes")
+}
+
+/// A quoted line for one request line; prices and amounts are set when the quote is received.
+model PurchaseQuoteLine {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt   @map("tenant_id") @db.UnsignedBigInt
+  quoteId        BigInt   @map("quote_id") @db.UnsignedBigInt
+  lineNo         Int      @map("line_no")
+  requestLineId  BigInt   @map("request_line_id") @db.UnsignedBigInt
+  itemId         BigInt   @map("item_id") @db.UnsignedBigInt
+  itemUnitId     BigInt?  @map("item_unit_id") @db.UnsignedBigInt
+  qty            Decimal  @db.Decimal(18, 6)
+  qtyBase        Decimal  @map("qty_base") @db.Decimal(18, 6)
+  unitPrice      Decimal? @map("unit_price") @db.Decimal(18, 6)
+  discountPct    Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
+  discountAmount Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
+  netAmount      Decimal  @default(0) @map("net_amount") @db.Decimal(18, 3)
+  taxCategoryId  BigInt?  @map("tax_category_id") @db.UnsignedBigInt
+  taxRate        Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
+  taxAmount      Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
+  lineTotal      Decimal  @default(0) @map("line_total") @db.Decimal(18, 3)
+  note           String?  @db.VarChar(500)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quote       PurchaseQuote       @relation(fields: [tenantId, quoteId], references: [tenantId, id], onDelete: Cascade)
+  requestLine PurchaseRequestLine @relation(fields: [tenantId, requestLineId], references: [tenantId, id])
+  item        Item                @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  itemUnit    ItemUnit?           @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  taxCategory TaxCategory?        @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  orderLines  PurchaseOrderLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, quoteId, lineNo])
+  @@map("purchase_quote_lines")
+}
+
+/// Purchase order to one supplier (ADR-025 §4, MEDIUM and FULL). Numbered PO at approval; no ledger or stock effect.
+model PurchaseOrder {
+  id               BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt              @map("tenant_id") @db.UnsignedBigInt
+  companyId        BigInt              @map("company_id") @db.UnsignedBigInt
+  /// The receiving warehouse's branch (ADR-025 §12, ADR-003).
+  branchId         BigInt?             @map("branch_id") @db.UnsignedBigInt
+  orderNo          String?             @map("order_no") @db.VarChar(50)
+  orderDate        DateTime            @map("order_date") @db.Date
+  expectedDate     DateTime?           @map("expected_date") @db.Date
+  supplierId       BigInt              @map("supplier_id") @db.UnsignedBigInt
+  warehouseId      BigInt              @map("warehouse_id") @db.UnsignedBigInt
+  /// ADR-025 §12: copied to the invoice in phase 13.
+  costCenterId     BigInt?             @map("cost_center_id") @db.UnsignedBigInt
+  /// The approved request it orders from (always at FULL, never at MEDIUM); set at creation only.
+  requestId        BigInt?             @map("request_id") @db.UnsignedBigInt
+  /// ADR-017: prices entered including tax (company setting when the draft was saved).
+  pricesIncludeTax Boolean             @default(false) @map("prices_include_tax")
+  status           PurchaseOrderStatus @default(DRAFT)
+  notes            String?             @db.VarChar(500)
+  netTotal         Decimal             @default(0) @map("net_total") @db.Decimal(18, 3)
+  taxTotal         Decimal             @default(0) @map("tax_total") @db.Decimal(18, 3)
+  grandTotal       Decimal             @default(0) @map("grand_total") @db.Decimal(18, 3)
+  submittedAt      DateTime?           @map("submitted_at") @db.DateTime(3)
+  submittedBy      BigInt?             @map("submitted_by") @db.UnsignedBigInt
+  approvedAt       DateTime?           @map("approved_at") @db.DateTime(3)
+  approvedBy       BigInt?             @map("approved_by") @db.UnsignedBigInt
+  /// The last rejection (the order went back to DRAFT).
+  rejectedAt       DateTime?           @map("rejected_at") @db.DateTime(3)
+  rejectedBy       BigInt?             @map("rejected_by") @db.UnsignedBigInt
+  rejectReason     String?             @map("reject_reason") @db.VarChar(500)
+  cancelledAt      DateTime?           @map("cancelled_at") @db.DateTime(3)
+  cancelledBy      BigInt?             @map("cancelled_by") @db.UnsignedBigInt
+  cancelReason     String?             @map("cancel_reason") @db.VarChar(500)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy        BigInt?             @map("created_by") @db.UnsignedBigInt
+  updatedBy        BigInt?             @map("updated_by") @db.UnsignedBigInt
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company    Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch     Branch?             @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  supplier   Party               @relation(fields: [tenantId, supplierId], references: [tenantId, id])
+  warehouse  Warehouse           @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  costCenter CostCenter?         @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  request    PurchaseRequest?    @relation(fields: [tenantId, requestId], references: [tenantId, id])
+  lines      PurchaseOrderLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, orderNo])
+  @@index([tenantId, companyId, orderDate, id])
+  @@index([tenantId, supplierId])
+  @@index([tenantId, requestId])
+  @@index([tenantId, status])
+  @@map("purchase_orders")
+}
+
+/// An ordered line; request_line_id when it orders part of a request line, quote_line_id when chosen from a quote.
+model PurchaseOrderLine {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt   @map("tenant_id") @db.UnsignedBigInt
+  orderId        BigInt   @map("order_id") @db.UnsignedBigInt
+  lineNo         Int      @map("line_no")
+  requestLineId  BigInt?  @map("request_line_id") @db.UnsignedBigInt
+  quoteLineId    BigInt?  @map("quote_line_id") @db.UnsignedBigInt
+  itemId         BigInt   @map("item_id") @db.UnsignedBigInt
+  itemUnitId     BigInt?  @map("item_unit_id") @db.UnsignedBigInt
+  qty            Decimal  @db.Decimal(18, 6)
+  qtyBase        Decimal  @map("qty_base") @db.Decimal(18, 6)
+  unitPrice      Decimal  @map("unit_price") @db.Decimal(18, 6)
+  discountPct    Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
+  discountAmount Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
+  netAmount      Decimal  @map("net_amount") @db.Decimal(18, 3)
+  taxCategoryId  BigInt?  @map("tax_category_id") @db.UnsignedBigInt
+  taxRate        Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
+  taxAmount      Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
+  lineTotal      Decimal  @map("line_total") @db.Decimal(18, 3)
+  note           String?  @db.VarChar(500)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order       PurchaseOrder        @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Cascade)
+  requestLine PurchaseRequestLine? @relation(fields: [tenantId, requestLineId], references: [tenantId, id])
+  quoteLine   PurchaseQuoteLine?   @relation(fields: [tenantId, quoteLineId], references: [tenantId, id])
+  item        Item                 @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  itemUnit    ItemUnit?            @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  taxCategory TaxCategory?         @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, orderId, lineNo])
+  @@index([tenantId, requestLineId])
+  @@map("purchase_order_lines")
 }

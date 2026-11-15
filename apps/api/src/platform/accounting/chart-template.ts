@@ -192,4 +192,8 @@ export const DOCUMENT_TYPE_PREFIXES: Record<string, string> = {
   GOODS_ISSUE: 'GIN',
   RECEIPT: 'RC',
   PAYMENT: 'PY',
+  // Phase 12 (ADR-025 §8): numbered at approval (PRQ, PO) or when sent (RFQ). PR is the purchase return.
+  PURCHASE_REQUEST: 'PRQ',
+  PURCHASE_QUOTE: 'RFQ',
+  PURCHASE_ORDER: 'PO',
 };

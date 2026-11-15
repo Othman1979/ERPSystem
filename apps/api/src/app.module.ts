@@ -27,6 +27,7 @@ import { InventoryModule } from './platform/inventory/inventory.module.js';
 import { PartiesModule } from './platform/parties/parties.module.js';
 import { SalesModule } from './platform/sales/sales.module.js';
 import { PurchasesModule } from './platform/purchases/purchases.module.js';
+import { ProcurementModule } from './platform/procurement/procurement.module.js';
 import { GoodsNotesModule } from './platform/goods-notes/goods-notes.module.js';
 import { TreasuryModule } from './platform/treasury/treasury.module.js';
 import { EInvoiceModule } from './platform/einvoice/einvoice.module.js';
@@ -59,6 +60,7 @@ import { TestSupportModule } from './platform/monitoring/test-support.module.js'
     PartiesModule,
     SalesModule,
     PurchasesModule,
+    ProcurementModule,
     GoodsNotesModule,
     TreasuryModule,
     EInvoiceModule,

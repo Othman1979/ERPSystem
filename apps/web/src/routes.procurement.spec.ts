@@ -47,11 +47,22 @@ describe('minProcurementLevel on routes and menu items (ADR-024 §2.3)', () => {
     ]);
   });
 
-  it('hides no existing screen in phase 11, at any level: goods notes and purchases stay', () => {
-    expect(ALL_ROUTES.filter((r) => r.minProcurementLevel !== undefined)).toEqual([]);
+  it('gates only the phase 12 screens: orders from MEDIUM, requests and quotes at FULL (ADR-025)', () => {
+    expect(ALL_ROUTES.filter((r) => r.minProcurementLevel !== undefined).map((r) => [r.key, r.minProcurementLevel])).toEqual([
+      ['purchaseRequests', 'FULL'],
+      ['purchaseQuotes', 'FULL'],
+      ['purchaseOrders', 'MEDIUM'],
+    ]);
     const all = (level: 'SIMPLE' | 'MEDIUM' | 'FULL') => allowedGroups(APP_GROUPS, canAll, level).flatMap((g) => g.routes.map((r) => r.key));
-    expect(all('SIMPLE')).toEqual(ALL_ROUTES.map((r) => r.key));
-    expect(all('FULL')).toEqual(all('SIMPLE'));
+    const cycle = ['purchaseRequests', 'purchaseQuotes', 'purchaseOrders'];
+    expect(all('SIMPLE')).toEqual(ALL_ROUTES.map((r) => r.key).filter((k) => !cycle.includes(k)));
+    expect(all('MEDIUM')).toEqual(ALL_ROUTES.map((r) => r.key).filter((k) => k !== 'purchaseRequests' && k !== 'purchaseQuotes'));
+    expect(all('FULL')).toEqual(ALL_ROUTES.map((r) => r.key));
+    // The existing screens stay at every level.
     for (const path of ['/purchases', '/goods-notes', '/stock']) expect([path, canOpenPath(path, canAll, 'SIMPLE')]).toEqual([path, true]);
+    expect(canOpenPath('/purchase-orders', canAll, 'SIMPLE')).toBe(false);
+    expect(canOpenPath('/purchase-orders/12', canAll, 'MEDIUM')).toBe(true);
+    expect(canOpenPath('/purchase-requests', canAll, 'MEDIUM')).toBe(false);
+    expect(canOpenPath('/purchase-quotes', canAll, 'FULL')).toBe(true);
   });
 });

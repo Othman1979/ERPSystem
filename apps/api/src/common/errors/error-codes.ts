@@ -100,5 +100,25 @@ export enum ErrorCode {
   CURSOR_INVALID = 'CURSOR_INVALID',
   // ADR-003 §13: a company-wide report needs access to every branch.
   ALL_BRANCHES_REQUIRED = 'ALL_BRANCHES_REQUIRED',
+  // ADR-025 §5: the company's procurement level is below what the document
+  // needs (details.required, details.current): FULL for requests and quotes, MEDIUM for orders.
+  PROCUREMENT_LEVEL_REQUIRED = 'PROCUREMENT_LEVEL_REQUIRED',
+  // ADR-025 §4: at MEDIUM or FULL a purchase invoice (a direct purchase) needs
+  // purchase.direct for anyone but an owner.
+  PURCHASE_DIRECT_REQUIRED = 'PURCHASE_DIRECT_REQUIRED',
+  // ADR-025 §2: nobody but an owner approves a document they created.
+  APPROVAL_SELF_NOT_ALLOWED = 'APPROVAL_SELF_NOT_ALLOWED',
+  // ADR-025 §2: the order total is above the member's approval limit (details.amount,
+  // details.limit); an owner approves it.
+  APPROVAL_LIMIT_EXCEEDED = 'APPROVAL_LIMIT_EXCEEDED',
+  // ADR-025 §1: at FULL every purchase order comes from an approved purchase request.
+  PURCHASE_REQUEST_REQUIRED = 'PURCHASE_REQUEST_REQUIRED',
+  // ADR-025 §9: the ordered quantities would exceed what is left on the request line
+  // (details.requestLineId, details.remaining).
+  PURCHASE_REQUEST_QTY_EXCEEDED = 'PURCHASE_REQUEST_QTY_EXCEEDED',
+  // ADR-025 §7: the action does not apply to the document's status (details.status).
+  INVALID_STATUS_TRANSITION = 'INVALID_STATUS_TRANSITION',
+  // Review #47: a purchase order whose grand total is 0 is not submitted (a price left blank).
+  PURCHASE_ORDER_ZERO_TOTAL = 'PURCHASE_ORDER_ZERO_TOTAL',
   INTERNAL = 'INTERNAL',
 }

@@ -55,6 +55,21 @@ export class WarehousesService {
     return wh;
   }
 
+  /**
+   * An active warehouse of the company with its branch, for another module's
+   * document header (module boundary); NOT_FOUND otherwise.
+   */
+  async activeRef(id: bigint): Promise<{ id: bigint; branchId: bigint | null }> {
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const wh = await db.warehouse.findFirst({
+      where: { id, companyId, isActive: true },
+      select: { id: true, branchId: true },
+    });
+    if (!wh) throw DomainError.notFound('Warehouse', id.toString());
+    return wh;
+  }
+
   async create(dto: CreateWarehouseDto) {
     const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);

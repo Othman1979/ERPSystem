@@ -4,7 +4,7 @@ import { App as AntApp } from 'antd';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError } from '@erp/api-client';
+import { ApiError, type PurchaseDirectGapDto } from '@erp/api-client';
 import i18n from '../i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -37,15 +37,31 @@ const COMPANY = {
 };
 
 const session = vi.hoisted(() => ({ permissions: ['company.manage', 'settings.manage'] }));
+const saved = vi.hoisted(() => ({ level: 'MEDIUM' }));
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({ can: (p: string) => session.permissions.includes(p) }),
 }));
 const update = vi.fn();
+const directGaps = vi.fn();
 vi.mock('@erp/api-client', async (original) => ({
   ...(await original<typeof import('@erp/api-client')>()),
-  companyControllerGet: () => ok(COMPANY),
+  companyControllerGet: () => ok({ ...COMPANY, procurementLevel: saved.level }),
   companyControllerUpdate: (...args: unknown[]) => update(...args),
+  usersControllerPurchaseDirectGaps: (...args: unknown[]) => directGaps(...args),
 }));
+
+const GAPS: PurchaseDirectGapDto[] = [
+  {
+    fullName: 'سارة أحمد',
+    email: 'sara@example.com',
+    role: { code: 'ACCOUNTANT', nameAr: 'محاسب', nameEn: 'Accountant' },
+  },
+  {
+    fullName: 'Omar Ali',
+    email: 'omar@example.com',
+    role: { code: 'CASHIER', nameAr: 'أمين صندوق', nameEn: 'Cashier' },
+  },
+];
 
 const { CompanyProfileForm } = await import('./CompanyProfileForm');
 
@@ -58,6 +74,9 @@ beforeAll(async () => {
 beforeEach(() => {
   update.mockReset();
   update.mockImplementation(() => ok(COMPANY));
+  directGaps.mockReset();
+  directGaps.mockImplementation(() => ok([]));
+  saved.level = 'MEDIUM';
   session.permissions = ['company.manage', 'settings.manage'];
 });
 afterEach(() => {
@@ -140,5 +159,98 @@ describe('CompanyProfileForm procurement level (ADR-024 §2)', () => {
   it('is not part of the setup wizard form', async () => {
     await mount(false);
     expect(levelItem()).toBeUndefined();
+  });
+});
+
+describe('CompanyProfileForm direct-purchase gaps before raising from SIMPLE (ADR-025 §4)', () => {
+  const dialog = () => document.querySelector<HTMLElement>('.ant-modal');
+  const dialogButton = (label: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>('.ant-modal button')].find((b) => b.textContent === label)!;
+
+  beforeEach(() => {
+    session.permissions = ['company.manage', 'settings.manage', 'user.manage'];
+    saved.level = 'SIMPLE';
+  });
+
+  it('asks before raising SIMPLE to MEDIUM when members lack direct purchase, and saves only once confirmed', async () => {
+    directGaps.mockImplementation(() => ok(GAPS));
+    await mount(true);
+    await choose('MEDIUM');
+    await submit();
+
+    expect(directGaps).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
+    expect(dialog()).not.toBeNull();
+    expect(document.body.textContent).toContain(i18n.t('procurement.directGapsTitle'));
+    expect(document.body.textContent).toContain(i18n.t('procurement.directGapsBody'));
+    expect(document.body.textContent).toContain('سارة أحمد');
+    expect(document.body.textContent).toContain('sara@example.com');
+    expect(document.body.textContent).toContain('Omar Ali');
+    expect(document.body.textContent).toContain('omar@example.com');
+    expect(document.body.textContent).toContain('Accountant');
+
+    act(() => dialogButton(i18n.t('procurement.directGapsConfirm')).click());
+    await settle();
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0]![0]).toMatchObject({ procurementLevel: 'MEDIUM' });
+  });
+
+  it('asks with company.manage alone (no user.manage), since the gaps list needs that permission', async () => {
+    session.permissions = ['company.manage', 'settings.manage'];
+    directGaps.mockImplementation(() => ok(GAPS));
+    await mount(true);
+    await choose('MEDIUM');
+    await submit();
+
+    expect(directGaps).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('sara@example.com');
+  });
+
+  it('keeps the list scrollable so long lists do not push the buttons off screen', async () => {
+    directGaps.mockImplementation(() => ok(GAPS));
+    await mount(true);
+    await choose('MEDIUM');
+    await submit();
+
+    const scroller = [...document.querySelectorAll<HTMLElement>('.ant-modal div')].find(
+      (el) => el.style.overflowY === 'auto',
+    );
+    expect(scroller).toBeDefined();
+    expect(scroller!.style.maxHeight).toBe('240px');
+    expect(scroller!.querySelectorAll('li')).toHaveLength(2);
+  });
+
+  it('keeps the form unsaved when the owner cancels the dialog', async () => {
+    directGaps.mockImplementation(() => ok(GAPS));
+    await mount(true);
+    await choose('MEDIUM');
+    await submit();
+
+    act(() => dialogButton(i18n.t('common.cancel')).click());
+    await settle();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('saves directly when no member lacks direct purchase', async () => {
+    await mount(true);
+    await choose('MEDIUM');
+    await submit();
+
+    expect(directGaps).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.ant-modal')).toBeNull();
+  });
+
+  it('does not ask when the level goes from MEDIUM to FULL', async () => {
+    saved.level = 'MEDIUM';
+    directGaps.mockImplementation(() => ok(GAPS));
+    await mount(true);
+    await choose('FULL');
+    await submit();
+
+    expect(directGaps).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.ant-modal')).toBeNull();
   });
 });

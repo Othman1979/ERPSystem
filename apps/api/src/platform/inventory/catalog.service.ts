@@ -477,4 +477,66 @@ export class CatalogService {
     if (!bc) throw DomainError.notFound('ItemBarcode', barcode);
     return bc.item;
   }
+
+  // ------------------------------------------------- document lines (exports)
+
+  /**
+   * What a document line needs from the catalog, for another module (module
+   * boundary): the company's active items asked for, with their tax category
+   * rate; the active item units asked for, with their item and factor; and the
+   * default tax category. Ids that are not found (another tenant's, inactive)
+   * are simply absent: the caller refuses its own line. Pass the caller's
+   * transaction (tenant-scoped) to read on its connection instead of a second one.
+   */
+  async itemsForLines(itemIds: bigint[], itemUnitIds: bigint[], tx?: Prisma.TransactionClient): Promise<CatalogLineRefs> {
+    const { tenantId, db: tenantDb } = this.tenant();
+    const db = tx ?? tenantDb;
+    const company = await db.company.findFirst({ where: { tenantId, isActive: true }, orderBy: { id: 'asc' }, select: { id: true } });
+    if (!company) throw new DomainError(ErrorCode.INTERNAL, 'Tenant has no active company');
+    const companyId = company.id;
+    const items = itemIds.length
+      ? await db.item.findMany({
+          where: { tenantId, companyId, id: { in: [...new Set(itemIds)] }, isActive: true },
+          select: {
+            id: true,
+            code: true,
+            itemKind: true,
+            taxCategoryId: true,
+            taxCategory: { select: { id: true, rate: true, isActive: true } },
+          },
+        })
+      : [];
+    const units = itemUnitIds.length
+      ? await db.itemUnit.findMany({
+          where: { tenantId, id: { in: [...new Set(itemUnitIds)] }, isActive: true },
+          select: { id: true, itemId: true, factorToBase: true },
+        })
+      : [];
+    const defaultTax = await db.taxCategory.findFirst({
+      where: { tenantId, isDefault: true, isActive: true },
+      select: { id: true, rate: true },
+    });
+    return {
+      items: new Map(
+        items.map((i) => [
+          i.id,
+          {
+            id: i.id,
+            code: i.code,
+            itemKind: i.itemKind,
+            taxCategory: i.taxCategory?.isActive ? { id: i.taxCategory.id, rate: new Decimal(i.taxCategory.rate.toString()) } : null,
+          },
+        ]),
+      ),
+      units: new Map(units.map((u) => [u.id, { id: u.id, itemId: u.itemId, factorToBase: new Decimal(u.factorToBase.toString()) }])),
+      defaultTax: defaultTax ? { id: defaultTax.id, rate: new Decimal(defaultTax.rate.toString()) } : null,
+    };
+  }
+}
+
+/** See CatalogService.itemsForLines. */
+export interface CatalogLineRefs {
+  items: Map<bigint, { id: bigint; code: string; itemKind: 'STOCK' | 'SERVICE'; taxCategory: { id: bigint; rate: Decimal } | null }>;
+  units: Map<bigint, { id: bigint; itemId: bigint; factorToBase: Decimal }>;
+  defaultTax: { id: bigint; rate: Decimal } | null;
 }

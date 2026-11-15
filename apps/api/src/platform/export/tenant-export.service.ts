@@ -63,6 +63,11 @@ const WORKBOOKS: { file: string; models: string[] }[] = [
   { file: '09-treasury.xlsx', models: ['CashBox', 'BankAccount', 'Receipt', 'Payment', 'Allocation', 'CashTransfer'] },
   { file: '10-einvoice.xlsx', models: ['EInvoiceSubmission'] },
   { file: '11-audit.xlsx', models: ['AuditLog'] },
+  // Phase 12 (ADR-025 §15): requests, quotes and orders with their lines.
+  {
+    file: '12-procurement.xlsx',
+    models: ['PurchaseRequest', 'PurchaseRequestLine', 'PurchaseQuote', 'PurchaseQuoteLine', 'PurchaseOrder', 'PurchaseOrderLine'],
+  },
 ];
 
 /** Columns not exported (secrets, leases, raw payloads). */

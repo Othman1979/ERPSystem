@@ -76,6 +76,8 @@ class TestContractController {
 @Injectable()
 export class TestOpenCycleCounter implements OpenCycleDocumentsCounter, OnModuleInit {
   readonly key = 'testDocuments';
+  // Counted on every lowering, as the phase 11 suite expects (FULL → MEDIUM and → SIMPLE).
+  readonly level = 'FULL' as const;
   private readonly byTenant = new Map<bigint, number>();
 
   constructor(private readonly registry: ProcurementCycleRegistry) {}

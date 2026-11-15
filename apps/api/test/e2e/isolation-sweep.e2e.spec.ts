@@ -246,6 +246,28 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       'cashTransfer',
     );
 
+    // Phase 12 (ADR-025): A at FULL with an approved request, a received quote and a
+    // draft order; B at FULL too, so B's writes reach the tenant lookup instead of the level gate.
+    expect((await asA('patch', '/company', { procurementLevel: 'FULL' })).status).toBe(200);
+    expect((await api().patch('/api/v1/company').set(auth(b)).send({ procurementLevel: 'FULL' })).status).toBe(200);
+    bodies.purchaseRequest = { requestDate: '2026-04-01', notes: MARK, lines: [{ itemId: id.item, qty: '5' }] };
+    const prq = await create('/purchase-requests', bodies.purchaseRequest, 'purchaseRequest');
+    await post(`/purchase-requests/${prq}/submit`);
+    const approvedRequest = (await post(`/purchase-requests/${prq}/approve`)).body as { lines: { id: string }[] };
+    await create('/purchase-quotes', { requestId: prq, supplierId: id.supplier, quoteDate: '2026-04-01', notes: MARK }, 'purchaseQuote');
+    await post(`/purchase-quotes/${id.purchaseQuote}/send`);
+    const quoteLines = ((await asA('get', `/purchase-quotes/${id.purchaseQuote}`)).body as { lines: { id: string }[] }).lines;
+    const received = await asA('post', `/purchase-quotes/${id.purchaseQuote}/receive`, { lines: [{ lineId: quoteLines[0].id, unitPrice: '3' }] });
+    if (received.status !== 201) throw new Error(`setup receive: ${received.status} ${JSON.stringify(received.body)}`);
+    bodies.purchaseOrder = {
+      orderDate: '2026-04-02',
+      supplierId: id.supplier,
+      warehouseId: id.warehouse,
+      notes: MARK,
+      lines: [{ itemId: id.item, qty: '1', unitPrice: '3', requestLineId: approvedRequest.lines[0].id }],
+    };
+    await create('/purchase-orders', { ...bodies.purchaseOrder, requestId: prq }, 'purchaseOrder');
+
     const doc = await api().get('/api/docs-json');
     expect(doc.status).toBe(200);
     const paths = doc.body.paths as Record<string, Record<string, { parameters?: { name: string; in: string }[] }>>;
@@ -290,6 +312,9 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       allocations: id.allocation,
       'cash-transfers': id.cashTransfer,
       'cost-centers': id.costCenter,
+      'purchase-requests': id.purchaseRequest,
+      'purchase-quotes': id.purchaseQuote,
+      'purchase-orders': id.purchaseOrder,
     };
     const values: Record<string, string> = {};
     for (const [, name] of p.matchAll(/\{(\w+)\}/g)) {
@@ -315,6 +340,15 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     if (p === '/api/v1/sales-invoices/{id}') return bodies.salesInvoice;
     if (p === '/api/v1/purchase-invoices/{id}') return bodies.purchaseInvoice;
     if (p === '/api/v1/goods-notes/{id}') return bodies.goodsNote;
+    // Phase 12: valid bodies, so B's change reaches the lookup of A's document.
+    if (/\/purchase-(requests|quotes|orders)\/\{id\}\/(reject|cancel)$/.test(p)) return { reason: 'x' };
+    if (p === '/api/v1/purchase-requests/{id}') return bodies.purchaseRequest;
+    if (p === '/api/v1/purchase-quotes/{id}') return { supplierId: id.supplier, quoteDate: '2026-04-01' };
+    if (p === '/api/v1/purchase-orders/{id}') return bodies.purchaseOrder;
+    if (p.endsWith('/purchase-quotes/{id}/receive')) return { lines: [{ lineId: '1', unitPrice: '1' }] };
+    if (p.endsWith('/purchase-requests/{id}/convert')) {
+      return { orderDate: '2026-04-01', warehouseId: id.warehouse, selections: [{ quoteLineId: '1' }] };
+    }
     return {};
   }
 
@@ -364,6 +398,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       documentId: id.salesInvoice,
       invoiceId: id.salesInvoice,
       costCenterId: id.costCenter,
+      requestId: id.purchaseRequest,
     };
     const leaks: string[] = [];
     const unknown: string[] = [];
