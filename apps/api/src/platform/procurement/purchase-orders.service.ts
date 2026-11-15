@@ -26,10 +26,14 @@ import type {
 } from './dto/procurement.dto.js';
 import { amountColumns, assertWithinRemaining, documentTotals, priceLine, resolveItem, type PricedLine } from './procurement-lines.js';
 import { assertStatus, lockDocument, lockRequest, lockRequestLines, type LockedRequestLine } from './procurement-locks.js';
+import { PurchaseOrderReceiptsService } from './purchase-order-receipts.service.js';
 import { PurchaseRequestsService } from './purchase-requests.service.js';
 
-/** Statuses that count as open for the procurement level (ADR-025 §6; phase 13 adds «fully received»). */
-export const OPEN_ORDER_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED'] as const;
+/**
+ * Statuses that count as open for the procurement level (ADR-025 §6, ADR-026 §6):
+ * everything but RECEIVED, CLOSED and CANCELLED.
+ */
+export const OPEN_ORDER_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'PARTIALLY_RECEIVED'] as const;
 
 const itemRef = { select: { id: true, code: true, nameAr: true, nameEn: true, baseUnitId: true, itemKind: true } } as const;
 const unitRef = { include: { unit: { select: { id: true, code: true, nameAr: true } } } } as const;
@@ -69,6 +73,7 @@ export class PurchaseOrdersService {
     private readonly parties: PartiesService,
     private readonly costCenters: CostCentersService,
     private readonly requests: PurchaseRequestsService,
+    private readonly receipts: PurchaseOrderReceiptsService,
   ) {}
 
   countOpen(tx: Prisma.TransactionClient): Promise<number> {
@@ -288,16 +293,39 @@ export class PurchaseOrdersService {
   /**
    * Cancels a submitted or approved order with a written reason (ADR-025 §3):
    * its quantities go back to the request; a request closed because it was
-   * fully ordered opens again. Phase 13 refuses it once goods are received.
+   * fully ordered opens again. Refused once anything is received (ADR-026 §6):
+   * a posted GRN makes the order PARTIALLY_RECEIVED or RECEIVED, and the
+   * received quantities are checked again under the order lines' locks.
    */
   cancel(id: bigint, reason: string) {
     return this.transition(id, 'cancel', ['SUBMITTED', 'APPROVED'], async (tx, order) => {
+      const locked = await this.receipts.lockOrder(tx, id);
+      if ([...locked.lines.values()].some((l) => l.receivedQty.gt(0))) {
+        throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Goods are received on this order: close it instead', {
+          status: order.status,
+          action: 'cancelled',
+          reason: 'HAS_RECEIPTS',
+        });
+      }
       if (order.request_id) {
         await this.giveBack(tx, await this.heldQty(tx, id));
         // An automatic close is undone with the quotes closed by it; a close by hand stays.
         await this.requests.reopenIfAutoClosed(tx, order.request_id);
       }
       return { status: 'CANCELLED', cancelReason: reason, cancelledAt: new Date(), cancelledBy: this.support.userId() ?? null };
+    });
+  }
+
+  /**
+   * Closes an approved or partly received order by hand with a written reason
+   * (ADR-026 §6): nothing more is received on it; its receipts stay billable.
+   * purchase.manage (the route) or an owner. The order lines are locked too,
+   * so a GRN posting at the same time queues before or after the close.
+   */
+  close(id: bigint, reason: string) {
+    return this.transition(id, 'close', ['APPROVED', 'PARTIALLY_RECEIVED'], async (tx) => {
+      await this.receipts.lockOrder(tx, id);
+      return { status: 'CLOSED', closeReason: reason, closedAt: new Date(), closedBy: this.support.userId() ?? null };
     });
   }
 
@@ -592,7 +620,7 @@ export class PurchaseOrdersService {
    */
   private async transition(
     id: bigint,
-    action: 'submit' | 'approve' | 'reject' | 'cancel',
+    action: 'submit' | 'approve' | 'reject' | 'cancel' | 'close',
     from: readonly string[],
     apply: (
       tx: Prisma.TransactionClient,
@@ -605,7 +633,7 @@ export class PurchaseOrdersService {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const requestId = await this.requestIdOf(id);
-    const verb = { submit: 'submitted', approve: 'approved', reject: 'rejected', cancel: 'cancelled' }[action];
+    const verb = { submit: 'submitted', approve: 'approved', reject: 'rejected', cancel: 'cancelled', close: 'closed' }[action];
     const { set, closedRequest } = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         await this.lockLevel(tx, tenantId, companyId);
@@ -627,7 +655,12 @@ export class PurchaseOrdersService {
       action: `purchase_order.${action}`,
       entityType: 'purchase_order',
       entityId: id,
-      after: { status: set.status, ...(set.orderNo ? { orderNo: set.orderNo } : {}), ...(set.cancelReason ? { reason: set.cancelReason } : {}) },
+      after: {
+        status: set.status,
+        ...(set.orderNo ? { orderNo: set.orderNo } : {}),
+        ...(set.cancelReason ? { reason: set.cancelReason } : {}),
+        ...(set.closeReason ? { reason: set.closeReason } : {}),
+      },
     });
     if (closedRequest) {
       await this.audit.log({ action: 'purchase_request.close', entityType: 'purchase_request', entityId: closedRequest, after: { reason: 'fully_ordered' } });

@@ -441,6 +441,7 @@ export class PurchaseReturnsService {
             branchId: true,
             paymentType: true,
             receivedGrnId: true,
+            purchaseOrderId: true,
             warehouseId: true,
             lines: { select: { id: true, lineNo: true, qtyBase: true } },
           },
@@ -493,6 +494,9 @@ export class PurchaseReturnsService {
         // entered at the GRN's cost and its price difference was booked to
         // INVENTORY_ADJUSTMENT (ADR-016 §2).
         const received = original?.receivedGrnId ? await this.goodsNotes.billingSource(tx, original.receivedGrnId) : null;
+        // ADR-026 §7: an invoice on a purchase order cleared each line's GRN
+        // line at its receipt value: the goods leave at that value, per line.
+        const billedReceipts = original?.purchaseOrderId ? await this.receiptValueByLine(tx, draft.originalInvoiceId) : null;
 
         // Split stock vs service portions for the journal.
         let stockNet = new Decimal(0);
@@ -506,17 +510,20 @@ export class PurchaseReturnsService {
             // today's average: the original purchase line's cost, or for a
             // billed GRN the received cost, the line's share of the price
             // difference going back out of INVENTORY_ADJUSTMENT.
-            const grnItem = received?.byItem.get(line.itemId);
             const qtyBase = new Decimal(line.qtyBase.toString());
-            const cost = grnItem
-              ? {
-                  unitCost: grnItem.value.div(grnItem.qty),
-                  totalCost: qtyBase.eq(grnItem.qty) ? grnItem.value : round3(grnItem.value.times(qtyBase).div(grnItem.qty)),
-                }
-              : {
-                  unitCost: new Decimal(line.originalLine.netAmount.toString()).div(line.originalLine.qtyBase.toString()),
-                  totalCost: new Decimal(line.netAmount.toString()),
-                };
+            const receipt = billedReceipts?.get(line.originalLineId);
+            const grnItem = billedReceipts ? undefined : received?.byItem.get(line.itemId);
+            const cost = receipt
+              ? this.receiptReturnCost(receipt, qtyBase, posted.filter((p) => p.originalLineId === line.originalLineId))
+              : grnItem
+                ? {
+                    unitCost: grnItem.value.div(grnItem.qty),
+                    totalCost: qtyBase.eq(grnItem.qty) ? grnItem.value : round3(grnItem.value.times(qtyBase).div(grnItem.qty)),
+                  }
+                : {
+                    unitCost: new Decimal(line.originalLine.netAmount.toString()).div(line.originalLine.qtyBase.toString()),
+                    totalCost: new Decimal(line.netAmount.toString()),
+                  };
             const res = await this.ledger.applyMovement(tx, companyId, {
               // Not null: assertNoStockWithoutWarehouse refused stock without one.
               warehouseId: warehouseId!,
@@ -626,5 +633,47 @@ export class PurchaseReturnsService {
       after: { returnNo: result.returnNo },
     });
     return this.get(result.id);
+  }
+
+  /**
+   * ADR-026 §7: per line of an invoice on a purchase order, the base
+   * quantity it billed and the value it cleared from 2104 (its receipt
+   * links). A posted invoice's links never change, so a plain read under
+   * the invoice's lock.
+   */
+  private async receiptValueByLine(tx: Prisma.TransactionClient, invoiceId: bigint): Promise<Map<bigint, { qty: Decimal; value: Decimal }>> {
+    const links = await tx.purchaseInvoiceReceipt.findMany({
+      where: { invoiceLine: { invoiceId } },
+      select: { invoiceLineId: true, qty: true, clearedValue: true },
+    });
+    const out = new Map<bigint, { qty: Decimal; value: Decimal }>();
+    for (const l of links) {
+      if (l.clearedValue === null) {
+        throw new DomainError(ErrorCode.INTERNAL, `Receipt link of invoice line ${l.invoiceLineId} has no cleared value`);
+      }
+      const cur = out.get(l.invoiceLineId) ?? { qty: new Decimal(0), value: new Decimal(0) };
+      out.set(l.invoiceLineId, { qty: cur.qty.plus(l.qty.toString()), value: cur.value.plus(l.clearedValue.toString()) });
+    }
+    return out;
+  }
+
+  /**
+   * The cost a return of `qtyBase` from a line billed from receipts leaves
+   * at (ADR-026 §7, ADR-016 §2): the receipt value pro rata, and the return
+   * that takes the last of the line takes what is left of the value, so the
+   * line's returns add up to its receipt value exactly. `prior`: the posted
+   * returns of the same line.
+   */
+  private receiptReturnCost(
+    receipt: { qty: Decimal; value: Decimal },
+    qtyBase: Decimal,
+    prior: { qtyBase: { toString(): string } }[],
+  ): { unitCost: Decimal; totalCost: Decimal } {
+    const share = (q: Decimal) => (q.eq(receipt.qty) ? receipt.value : round3(receipt.value.times(q).div(receipt.qty)));
+    const priorQty = sum(prior.map((p) => p.qtyBase.toString()));
+    const totalCost = priorQty.plus(qtyBase).eq(receipt.qty)
+      ? receipt.value.minus(sum(prior.map((p) => share(new Decimal(p.qtyBase.toString())))))
+      : share(qtyBase);
+    return { unitCost: receipt.value.div(receipt.qty), totalCost };
   }
 }

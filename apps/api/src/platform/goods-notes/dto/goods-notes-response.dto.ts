@@ -4,10 +4,15 @@
  */
 import { ApiProperty, PickType } from '@nestjs/swagger';
 import {
+  AccountRow,
+  CostCenterRow,
   GoodsNoteLineRow,
   GoodsNoteRow,
+  IssueRequestRow,
   ItemRow,
   JournalEntryRow,
+  PartyRow,
+  PurchaseOrderRow,
   WarehouseRow,
 } from '../../../common/openapi/prisma-models.js';
 import { BranchRefDto, WarehouseRefDto } from '../../inventory/dto/inventory-response.dto.js';
@@ -42,8 +47,38 @@ export class GoodsNoteLineWithItemDto extends GoodsNoteLineRow {
 /** The journal entry a posted goods note created: id, number and status. */
 export class GoodsNoteJournalEntryRefDto extends PickType(JournalEntryRow, ['id', 'entryNo', 'status'] as const) {}
 
+/** The purchase order a GRN receives against (ADR-026 §5). */
+export class GoodsNoteOrderRefDto extends PickType(PurchaseOrderRow, ['id', 'orderNo', 'status'] as const) {}
+
+/** The issue request a GIN issues from (ADR-026 §9). */
+export class GoodsNoteIssueRequestRefDto extends PickType(IssueRequestRow, ['id', 'requestNo', 'status'] as const) {}
+
+/** The supplier of a GRN against an order. */
+export class GoodsNoteSupplierRefDto extends PickType(PartyRow, ['id', 'code', 'nameAr'] as const) {}
+
+/** The expense account of a GIN to a department (ADR-026 §8). */
+export class GoodsNoteAccountRefDto extends PickType(AccountRow, ['id', 'code', 'nameAr'] as const) {}
+
+/** The department (cost centre) of a GIN. */
+export class GoodsNoteCostCenterRefDto extends PickType(CostCenterRow, ['id', 'code', 'nameAr'] as const) {}
+
 /** One goods note with its warehouse, branch, lines and journal entry (GoodsNotesService.get; also create, update and post). */
 export class GoodsNoteDetailDto extends GoodsNoteRow {
+  @ApiProperty({ type: () => GoodsNoteOrderRefDto, nullable: true })
+  purchaseOrder!: GoodsNoteOrderRefDto | null;
+
+  @ApiProperty({ type: () => GoodsNoteSupplierRefDto, nullable: true })
+  supplier!: GoodsNoteSupplierRefDto | null;
+
+  @ApiProperty({ type: () => GoodsNoteAccountRefDto, nullable: true })
+  expenseAccount!: GoodsNoteAccountRefDto | null;
+
+  @ApiProperty({ type: () => GoodsNoteCostCenterRefDto, nullable: true })
+  costCenter!: GoodsNoteCostCenterRefDto | null;
+
+  @ApiProperty({ type: () => GoodsNoteIssueRequestRefDto, nullable: true })
+  issueRequest!: GoodsNoteIssueRequestRefDto | null;
+
   @ApiProperty({ type: () => WarehouseRow })
   warehouse!: WarehouseRow;
 

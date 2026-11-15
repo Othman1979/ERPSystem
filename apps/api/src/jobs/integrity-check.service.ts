@@ -208,6 +208,42 @@ export class IntegrityCheckService {
         WHERE (o.request_id IS NULL OR rl.request_id <> o.request_id) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
 
+    // ADR-026 §5/§7/§9: the receipt, billing and issue projections equal the
+    // posted documents they add up: an order line's received_qty the posted
+    // GRN lines on it; a GRN line's billed_qty and cleared_value the links of
+    // posted invoices; an issue request line's issued_qty the posted GIN lines.
+    await orphans(
+      'purchase_order_lines.received_qty',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM purchase_order_lines x
+        WHERE (x.received_qty <> COALESCE((SELECT SUM(gl.qty) FROM goods_note_lines gl
+            JOIN goods_notes g ON g.tenant_id = gl.tenant_id AND g.id = gl.note_id
+           WHERE gl.tenant_id = x.tenant_id AND gl.po_line_id = x.id AND g.status = 'POSTED'), 0)
+           OR x.received_qty > x.qty_base)
+          AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
+    await orphans(
+      'goods_note_lines.billed_qty',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM goods_note_lines x
+        WHERE (x.billed_qty <> COALESCE((SELECT SUM(r.qty) FROM purchase_invoice_receipts r
+            JOIN purchase_invoice_lines il ON il.tenant_id = r.tenant_id AND il.id = r.invoice_line_id
+            JOIN purchase_invoices i ON i.tenant_id = il.tenant_id AND i.id = il.invoice_id
+           WHERE r.tenant_id = x.tenant_id AND r.grn_line_id = x.id AND i.status = 'POSTED'), 0)
+           OR x.cleared_value <> COALESCE((SELECT SUM(r.cleared_value) FROM purchase_invoice_receipts r
+            JOIN purchase_invoice_lines il ON il.tenant_id = r.tenant_id AND il.id = r.invoice_line_id
+            JOIN purchase_invoices i ON i.tenant_id = il.tenant_id AND i.id = il.invoice_id
+           WHERE r.tenant_id = x.tenant_id AND r.grn_line_id = x.id AND i.status = 'POSTED'), 0)
+           OR x.billed_qty > x.qty)
+          AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
+    await orphans(
+      'issue_request_lines.issued_qty',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM issue_request_lines x
+        WHERE x.issued_qty <> COALESCE((SELECT SUM(gl.qty) FROM goods_note_lines gl
+            JOIN goods_notes g ON g.tenant_id = gl.tenant_id AND g.id = gl.note_id
+           WHERE gl.tenant_id = x.tenant_id AND gl.issue_request_line_id = x.id AND g.status = 'POSTED'), 0)
+          AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
+
     checks.push(await this.collation());
     return {
       ok: checks.every((c) => c.ok),

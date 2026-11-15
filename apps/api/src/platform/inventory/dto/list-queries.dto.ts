@@ -96,6 +96,20 @@ export class ListGoodsNotesQueryDto extends StockDocumentListQueryDto {
   @IsOptional()
   @IsIn(NOTE_TYPES)
   noteType?: (typeof NOTE_TYPES)[number];
+
+  /** The receipts of one purchase order (ADR-026 §5). */
+  @ApiPropertyOptional()
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
+  purchaseOrderId?: string;
+
+  /** The issues of one issue request (ADR-026 §9). */
+  @ApiPropertyOptional()
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
+  issueRequestId?: string;
 }
 
 /**

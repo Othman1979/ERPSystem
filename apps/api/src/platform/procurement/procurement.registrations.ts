@@ -3,6 +3,7 @@ import { ProcurementCycleRegistry } from '../../common/procurement/procurement-l
 import type { Prisma } from '../../generated/prisma/client.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
+import { IssueRequestsService } from './issue-requests.service.js';
 import { PurchaseOrdersService } from './purchase-orders.service.js';
 import { PurchaseQuotesService } from './purchase-quotes.service.js';
 import { PurchaseRequestsService } from './purchase-requests.service.js';
@@ -23,6 +24,7 @@ export class ProcurementRegistrations implements OnModuleInit {
     private readonly requests: PurchaseRequestsService,
     private readonly quotes: PurchaseQuotesService,
     private readonly orders: PurchaseOrdersService,
+    private readonly issueRequests: IssueRequestsService,
   ) {}
 
   onModuleInit(): void {
@@ -31,9 +33,13 @@ export class ProcurementRegistrations implements OnModuleInit {
     this.cycle.register({ key: 'purchaseRequests', level: 'FULL', count: (tx) => this.requests.countOpen(tx) });
     this.cycle.register({ key: 'purchaseQuotes', level: 'FULL', count: (tx) => this.quotes.countOpen(tx) });
     this.cycle.register({ key: 'purchaseOrders', level: 'MEDIUM', count: (tx) => this.orders.countOpen(tx) });
+    // ADR-026 §9: issue requests belong to FULL.
+    this.cycle.register({ key: 'issueRequests', level: 'FULL', count: (tx) => this.issueRequests.countOpen(tx) });
     this.partyUsage.register('procurement', (tx, partyId) => this.partyInUse(tx, partyId));
     this.costCenterUsage.register('procurement', async (tx, id) =>
-      (await tx.purchaseOrder.findFirst({ where: { costCenterId: id }, select: { id: true } })) ? 'purchase_orders' : null,
+      (await tx.purchaseOrder.findFirst({ where: { costCenterId: id }, select: { id: true } }))
+        ? 'purchase_orders'
+        : this.issueRequests.costCenterInUse(tx, id),
     );
   }
 

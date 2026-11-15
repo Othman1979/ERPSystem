@@ -12,7 +12,9 @@ import {
   JournalEntryRow,
   PartyRow,
   PurchaseInvoiceLineRow,
+  PurchaseInvoiceReceiptRow,
   PurchaseInvoiceRow,
+  PurchaseOrderRow,
   PurchaseReturnLineRow,
   PurchaseReturnRow,
   UnitRow,
@@ -54,14 +56,23 @@ export class PurchaseInvoiceItemUnitDto extends ItemUnitRow {
   unit!: PurchaseUnitRefDto;
 }
 
-/** A purchase invoice line: every column of `purchase_invoice_lines` plus its item and item unit. */
+/** ADR-026 §7: the GRN line an invoice line bills, its base quantity and the value cleared from 2104 (null on a draft). */
+export class PurchaseInvoiceReceiptLinkDto extends PickType(PurchaseInvoiceReceiptRow, ['id', 'grnLineId', 'qty', 'clearedValue'] as const) {}
+
+/** A purchase invoice line: every column of `purchase_invoice_lines` plus its item, item unit and receipt links. */
 export class PurchaseInvoiceLineViewDto extends PurchaseInvoiceLineRow {
   @ApiProperty({ type: () => PurchaseInvoiceItemRefDto })
   item!: PurchaseInvoiceItemRefDto;
 
   @ApiProperty({ type: () => PurchaseInvoiceItemUnitDto, nullable: true })
   itemUnit!: PurchaseInvoiceItemUnitDto | null;
+
+  @ApiProperty({ type: () => PurchaseInvoiceReceiptLinkDto, isArray: true })
+  receipts!: PurchaseInvoiceReceiptLinkDto[];
 }
+
+/** The purchase order an invoice bills (ADR-026 §7). */
+export class PurchaseInvoiceOrderRefDto extends PickType(PurchaseOrderRow, ['id', 'orderNo', 'status'] as const) {}
 
 /** A return that credits a purchase invoice, as listed on the invoice detail. */
 export class PurchaseInvoiceReturnRefDto extends PickType(PurchaseReturnRow, ['id', 'returnNo', 'status', 'grandTotal'] as const) {}
@@ -107,11 +118,107 @@ export class PurchaseInvoiceDetailDto extends PurchaseInvoiceRow {
   @ApiProperty({ type: () => PurchaseInvoiceGoodsNoteRefDto, nullable: true })
   receivedGrn!: PurchaseInvoiceGoodsNoteRefDto | null;
 
+  @ApiProperty({ type: () => PurchaseInvoiceOrderRefDto, nullable: true })
+  purchaseOrder!: PurchaseInvoiceOrderRefDto | null;
+
   @ApiProperty({ type: 'string', format: 'decimal' })
   creditedAmount!: string;
 
   @ApiProperty({ type: 'string', format: 'decimal' })
   outstanding!: string;
+}
+
+// ------------------------------------------- billing an order (ADR-026 §7)
+
+/** An item on the «billable» view: id, code and names. */
+export class BillableItemRefDto extends PickType(ItemRow, ['id', 'code', 'nameAr', 'nameEn'] as const) {}
+
+/** One posted GRN line of the order, with what it received and billed and the prices to bill it at. */
+export class BillableLineDto {
+  @ApiProperty({ type: 'string' })
+  grnLineId!: string;
+
+  @ApiProperty({ type: 'string' })
+  grnId!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  grnDocNo!: string | null;
+
+  @ApiProperty({ type: () => BillableItemRefDto })
+  item!: BillableItemRefDto;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  poLineId!: string | null;
+
+  @ApiProperty({ type: 'integer', nullable: true })
+  poLineNo!: number | null;
+
+  /** Base quantities. */
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  receivedQty!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  billedQty!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  unbilledQty!: string;
+
+  /** The receipt cost per base unit (the order's net price, ADR-026 §5). */
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  receiptUnitCost!: string;
+
+  /** The order line's price per its unit, and discount. */
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  orderUnitPrice!: string | null;
+
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  orderDiscountPct!: string | null;
+
+  /** The order's net price per base unit (6 dp): what an invoice price is compared with (ADR-026 §2). */
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  orderNetUnitPrice!: string | null;
+
+  /** The invoice price per base unit to suggest: the order's, on the company's tax basis, never above it. */
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  defaultUnitCost!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  defaultDiscountPct!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  taxCategoryId!: string | null;
+}
+
+/** GET /purchase-orders/:id/billable: the order and its posted GRN lines. */
+export class PurchaseOrderBillableDto {
+  @ApiProperty({ type: 'string' })
+  orderId!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  orderNo!: string | null;
+
+  @ApiProperty({ type: 'string' })
+  status!: string;
+
+  @ApiProperty({ type: 'string' })
+  supplierId!: string;
+
+  @ApiProperty({ type: 'string' })
+  warehouseId!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  costCenterId!: string | null;
+
+  /** The order's prices include tax (frozen on the order). */
+  @ApiProperty({ type: 'boolean' })
+  orderPricesIncludeTax!: boolean;
+
+  /** The company's current setting: an invoice is priced on it (ADR-017). */
+  @ApiProperty({ type: 'boolean' })
+  pricesIncludeTax!: boolean;
+
+  @ApiProperty({ type: () => BillableLineDto, isArray: true })
+  lines!: BillableLineDto[];
 }
 
 // ----------------------------------------------------- purchase returns
