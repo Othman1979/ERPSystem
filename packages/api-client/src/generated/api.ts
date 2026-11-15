@@ -8437,6 +8437,9 @@ export const ProcurementControllerListOrdersStatus = {
   DRAFT: 'DRAFT',
   SUBMITTED: 'SUBMITTED',
   APPROVED: 'APPROVED',
+  PARTIALLY_RECEIVED: 'PARTIALLY_RECEIVED',
+  RECEIVED: 'RECEIVED',
+  CLOSED: 'CLOSED',
   CANCELLED: 'CANCELLED',
 } as const;
 

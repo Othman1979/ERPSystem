@@ -768,7 +768,8 @@ function PurchaseInvoiceView({
           {contextHolder}
           {isDraft && (
             <>
-              <Button onClick={onEdit}>{t('common.edit')}</Button>
+              {/* A bill of an order's receipts is made from the order (ADR-026 §7): delete it and bill again to change it. */}
+              {!invoice.purchaseOrder && <Button onClick={onEdit}>{t('common.edit')}</Button>}
               {invoice.purchaseOrder && !invoice.priceApprovedAt && can(PERMISSIONS.PURCHASE_APPROVE) && (
                 <Popconfirm title={t('billing.approvePriceConfirm')} onConfirm={() => approvePrice.mutate(invoice.id)}>
                   <Button loading={approvePrice.isPending}>{t('billing.approvePrice')}</Button>

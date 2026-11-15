@@ -19,8 +19,9 @@
  * Real MariaDB (E2E_DB_NAME) + built API. Run `pnpm build` first.
  */
 import 'dotenv/config';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { promisify } from 'node:util';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -640,6 +641,18 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
       await verified(ownerB);
     });
   });
+
+  it('the integrity check finds the receipt, billing and issue projections equal to the posted documents', async () => {
+    const { stdout } = await promisify(execFile)('node', ['dist/jobs/cli.js', 'integrity-check', '--tenant', tenantA], {
+      cwd: API_DIR,
+      env: { ...process.env, DATABASE_URL: testDatabaseUrl(), NODE_ENV: 'test' },
+    });
+    const report = JSON.parse(stdout) as { ok: boolean; checks: { name: string; ok: boolean; count: number }[] };
+    for (const name of ['purchase_order_lines.received_qty', 'goods_note_lines.billed_qty', 'issue_request_lines.issued_qty']) {
+      expect(report.checks.find((c) => c.name === name)).toMatchObject({ ok: true, count: 0 });
+    }
+    expect(report.ok).toBe(true);
+  }, T);
 
   it('the OpenAPI response audit found nothing', async () => {
     await verified();

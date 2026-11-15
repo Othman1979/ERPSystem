@@ -237,8 +237,7 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
     ProcurementControllerListOrdersSort
   >({
     key: procurementKeys.orderList(),
-    // The generated list type still names the first four statuses; the API filters by all seven (ADR-026).
-    filters: { status: statusFilter as ProcurementControllerListOrdersStatus | undefined },
+    filters: { status: statusFilter },
     defaultSort: '-orderDate',
     fetch: (params, signal) => procurementControllerListOrders(params, { signal }).then((r) => r.data),
   });

@@ -16,7 +16,6 @@ import { PageQueryDto, SortParam, sortValues } from '../../../common/paging/page
 
 const PAYMENT_TYPES = ['CASH', 'CREDIT'] as const;
 const DECIMAL = /^\d+(\.\d{1,6})?$/;
-const MONEY = /^\d+(\.\d{1,3})?$/;
 const INT_STRING = /^\d+$/;
 
 export class PurchaseInvoiceLineDto {
