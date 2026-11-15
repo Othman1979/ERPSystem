@@ -163,7 +163,8 @@ export function Ribbon({ can, procurementLevel, noCompany, isPlatformAdmin, pend
           add(route.section ?? group.label, {
             key: `${route.key}:new`,
             path: route.newPath,
-            label: t('ribbon.newOf', { name: t(route.label) }),
+            // A document's own name ("New sales invoice") reads better than "New: Sales".
+            label: i18n.exists(`ribbon.new.${route.key}`) ? t(`ribbon.new.${route.key}`) : t('ribbon.newOf', { name: t(route.label) }),
             icon: route.icon,
             tone: group.tone,
             isNew: true,

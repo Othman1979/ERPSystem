@@ -358,7 +358,8 @@ textarea:focus-visible,
 .ribbon-strip {
   display: flex;
   align-items: stretch;
-  height: 92px;
+  /* Room for a two-line label and the group caption; fixed, so switching tabs never moves the page. */
+  height: 112px;
   padding-inline: 8px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -467,11 +468,16 @@ textarea:focus-visible,
 }
 
 .ribbon-label {
+  display: -webkit-box;
   max-width: 96px;
   font-size: 12px;
   line-height: 16px;
   text-align: center;
   overflow-wrap: break-word;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 /* "New document" buttons: a small ink + on the tile's top corner */

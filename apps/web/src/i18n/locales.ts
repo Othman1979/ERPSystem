@@ -57,6 +57,16 @@ export const ar = {
     fold: 'طيّ الشريط',
     unfold: 'إظهار الشريط',
     newOf: 'جديد: {{name}}',
+    new: {
+      journal: 'قيد جديد',
+      openingBalances: 'رصيد افتتاحي جديد',
+      sales: 'فاتورة بيع جديدة',
+      purchases: 'فاتورة شراء جديدة',
+      purchaseRequests: 'طلب شراء جديد',
+      purchaseQuotes: 'طلب عرض أسعار جديد',
+      purchaseOrders: 'أمر شراء جديد',
+      issueRequests: 'طلب صرف جديد',
+    },
   },
   auth: {
     loginTitle: 'تسجيل الدخول',
@@ -1647,6 +1657,16 @@ export const en: typeof ar = {
     fold: 'Collapse ribbon',
     unfold: 'Expand ribbon',
     newOf: 'New: {{name}}',
+    new: {
+      journal: 'New journal entry',
+      openingBalances: 'New opening balance',
+      sales: 'New sales invoice',
+      purchases: 'New purchase invoice',
+      purchaseRequests: 'New purchase request',
+      purchaseQuotes: 'New request for quotation',
+      purchaseOrders: 'New purchase order',
+      issueRequests: 'New issue request',
+    },
   },
   auth: {
     loginTitle: 'Sign in',
