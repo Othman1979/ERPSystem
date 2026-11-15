@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import type { AccountDto, AccountMappingSlotDto } from '@erp/api-client';
 import { round3, toDecimal } from '../format/number';
 
@@ -72,14 +73,47 @@ export function lineParty(
   return partyType ? { partyType, partyId } : undefined;
 }
 
+/**
+ * Cost centre rules of the chart (ADR-024 §1), as the client copy of
+ * PostingService.validateLines: the income-statement accounts (a centre is
+ * allowed on them only) and those of them flagged costCenterRequired.
+ */
+export interface CostCenterSets {
+  income: ReadonlySet<string>;
+  required: ReadonlySet<string>;
+}
+
+/** The centre rules of a company: `enabled` is companies.cost_centers_enabled. */
+export interface CostCenterRules extends CostCenterSets {
+  enabled: boolean;
+}
+
+type CostCenterFlags = { id: string; accountType: string; costCenterRequired?: boolean };
+
+/**
+ * Income-statement accounts (REVENUE, EXPENSE) and the ones among them that
+ * require a centre, from the chart. Without accounts (still loading) both sets are empty.
+ */
+export function costCenterRulesByAccount(accounts: readonly CostCenterFlags[] | undefined): CostCenterSets {
+  const income = new Set<string>();
+  const required = new Set<string>();
+  for (const a of accounts ?? []) {
+    if (a.accountType !== 'REVENUE' && a.accountType !== 'EXPENSE') continue;
+    income.add(a.id);
+    if (a.costCenterRequired) required.add(a.id);
+  }
+  return { income, required };
+}
+
 export interface CheckedLine {
   accountId?: string;
   debit?: string | null;
   credit?: string | null;
   partyId?: string | null;
+  costCenterId?: string | null;
 }
 
-export type LineRule = 'ONE_SIDE' | 'PARTY_REQUIRED';
+export type LineRule = 'ONE_SIDE' | 'PARTY_REQUIRED' | 'COST_CENTER_NOT_ALLOWED' | 'COST_CENTER_REQUIRED';
 
 export interface LineProblem {
   /** Row number as shown in the grid (1-based; rows without an account count too). */
@@ -99,15 +133,18 @@ const positive = (v?: string | null) => {
 
 /**
  * The first row the API would refuse to post, in the API's order: debit XOR
- * credit, then the party. Checked before saving, because a saved draft cannot
- * be edited: a row the API rejects at posting means deleting the draft.
- * Rows without an account are skipped (they are not sent). `sideOf` as in
- * PartyColumn: a party on an 'ANY' account counts only once its side is known.
+ * credit, then the party, then the cost centre (ADR-024 §1). Checked before
+ * saving, because a saved draft cannot be edited: a row the API rejects at
+ * posting means deleting the draft. Rows without an account are skipped (they
+ * are not sent). `sideOf` as in PartyColumn: a party on an 'ANY' account counts
+ * only once its side is known. `centres` (omitted: no centre checks) gives the
+ * centre rules; the required rule applies only while the company has centres on.
  */
 export function firstLineProblem(
   lines: readonly CheckedLine[],
   needByAccount: ReadonlyMap<string, PartyNeed>,
   sideOf?: (partyId: string) => PartyKind | undefined,
+  centres?: CostCenterRules,
 ): LineProblem | null {
   for (const [index, l] of lines.entries()) {
     if (!l.accountId) continue;
@@ -115,6 +152,22 @@ export function firstLineProblem(
     if (positive(l.debit) === positive(l.credit)) return { ...base, rule: 'ONE_SIDE' };
     const need = needByAccount.get(l.accountId);
     if (need && !lineParty(need, l.partyId, sideOf)) return { ...base, rule: 'PARTY_REQUIRED', need };
+    if (centres) {
+      if (l.costCenterId && !centres.income.has(l.accountId)) return { ...base, rule: 'COST_CENTER_NOT_ALLOWED' };
+      if (centres.enabled && centres.required.has(l.accountId) && !l.costCenterId) {
+        return { ...base, rule: 'COST_CENTER_REQUIRED' };
+      }
+    }
   }
   return null;
+}
+
+/** The message for a row the check before saving refused. */
+export function lineProblemText(t: TFunction, p: LineProblem): string {
+  if (p.rule === 'ONE_SIDE') return t('journal.oneSide', { line: p.line });
+  if (p.rule === 'COST_CENTER_NOT_ALLOWED') return t('costCenters.lineNotAllowed', { line: p.line });
+  if (p.rule === 'COST_CENTER_REQUIRED') return t('costCenters.lineRequired', { line: p.line });
+  if (p.need === 'CUSTOMER') return t('journal.partyRequiredCustomer', { line: p.line });
+  if (p.need === 'SUPPLIER') return t('journal.partyRequiredSupplier', { line: p.line });
+  return t('journal.partyRequired', { line: p.line });
 }

@@ -76,6 +76,7 @@ export class CompanyService {
       address: c.address,
       phone: c.phone,
       pricesIncludeTax: c.pricesIncludeTax,
+      costCentersEnabled: c.costCentersEnabled,
       procurementLevel: c.procurementLevel,
       onboardingCompletedAt: c.onboardingCompletedAt,
       logo: c.logoAttachment
@@ -104,6 +105,7 @@ export class CompanyService {
       address: blankToNull(dto.address),
       phone: blankToNull(dto.phone),
       ...(dto.pricesIncludeTax !== undefined ? { pricesIncludeTax: dto.pricesIncludeTax } : {}),
+      ...(dto.costCentersEnabled !== undefined ? { costCentersEnabled: dto.costCentersEnabled } : {}),
       ...(levelChange ? { procurementLevel: dto.procurementLevel } : {}),
     };
     const levelBefore = await db.$transaction(async (tx) => {
@@ -130,6 +132,7 @@ export class CompanyService {
         taxNumber: c.taxNumber,
         address: c.address,
         pricesIncludeTax: c.pricesIncludeTax,
+        costCentersEnabled: c.costCentersEnabled,
         procurementLevel: levelBefore,
       },
       after: dto,

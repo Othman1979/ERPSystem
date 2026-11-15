@@ -46,6 +46,12 @@ export const REFERENCE_DATA: ReferenceFamily[] = [
     keys: [['units'], ['settings', 'unit']],
     writes: new RegExp(`^/(units|${SETUP})(/|$)`),
   },
+  {
+    // ADR-024 §1: the centre tree, read by the settings tab, the grids, the documents and the reports.
+    name: 'costCenters',
+    keys: [['cost-centers']],
+    writes: /^\/cost-centers(\/|$)/,
+  },
 ];
 
 /**

@@ -761,6 +761,156 @@ export class ReportsService {
     };
   }
 
+  // ------------------------------------------------- cost centres (ADR-024 §1.9)
+
+  /**
+   * Posted debit / credit totals per (income-statement account, cost centre),
+   * entries dated in the range: the lines of accountTotals on REVENUE and
+   * EXPENSE accounts, split by centre (null = no centre). Summed over the
+   * centres they equal accountTotals for those accounts, so the income
+   * statement by centre adds up to the income statement. No dedicated index
+   * (ADR-024 §1.8): it reads the range's lines like the income statement does.
+   */
+  async incomeTotalsByCostCenter(range: ReportRange): Promise<(AccountTotal & { costCenterId: bigint | null })[]> {
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const dateWhere = this.dateWhere(range);
+    const grouped = await db.journalLine.groupBy({
+      by: ['accountId', 'costCenterId'],
+      where: {
+        entry: {
+          companyId,
+          status: 'POSTED',
+          ...(Object.keys(dateWhere).length ? { entryDate: dateWhere } : {}),
+        },
+        account: { accountType: { in: [...NOMINAL_TYPES] as AccountTypeCode[] } },
+      },
+      _sum: { debit: true, credit: true },
+    });
+    const ids = [...new Set(grouped.map((g) => g.accountId))];
+    const accounts = ids.length
+      ? await db.account.findMany({
+          where: { id: { in: ids } },
+          select: {
+            id: true,
+            code: true,
+            nameAr: true,
+            nameEn: true,
+            parentId: true,
+            accountType: true,
+            normalBalance: true,
+            isPostable: true,
+          },
+        })
+      : [];
+    const byId = new Map(accounts.map((a) => [a.id, a]));
+    return grouped.flatMap((g) => {
+      const account = byId.get(g.accountId);
+      if (!account) return [];
+      return [
+        {
+          account,
+          costCenterId: g.costCenterId,
+          debit: new Decimal(g._sum.debit?.toString() ?? 0),
+          credit: new Decimal(g._sum.credit?.toString() ?? 0),
+        },
+      ];
+    });
+  }
+
+  /**
+   * Lines of a cost-centre statement: every posted line of the centre dated in
+   * the period, on the line's own date (journal_lines_cost_center_seek_idx).
+   * Opening entries count as movements: a centre's statement opens at zero
+   * (ADR-024 §1.9, income-statement accounts only), and its total is the
+   * centre's column of the income statement by centre.
+   */
+  private costCenterWhere(companyId: bigint, costCenterId: bigint, range: ReportRange): Prisma.JournalLineWhereInput {
+    return {
+      costCenterId,
+      ...this.movementLineWhere(range),
+      entry: { companyId, status: 'POSTED' },
+    };
+  }
+
+  /**
+   * Cost-centre statement, whole (PDF / XLSX, capped like the general
+   * ledger): opening zero, the period's lines with a running Dr − Cr balance.
+   */
+  async costCenterStatement(costCenterId: bigint, range: ReportRange) {
+    this.assertRange(range);
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const lines = await db.journalLine.findMany({
+      where: this.costCenterWhere(companyId, costCenterId, range),
+      orderBy: LINE_ORDER,
+      take: EXPORT_LIMITS.xlsx + 1,
+      include: ReportsService.PARTY_LINE_INCLUDE,
+    });
+    if (lines.length > EXPORT_LIMITS.xlsx) {
+      throw new DomainError(
+        ErrorCode.REPORT_TOO_LARGE,
+        `The statement has more than ${EXPORT_LIMITS.xlsx} lines. Narrow the period.`,
+        { limit: EXPORT_LIMITS.xlsx },
+      );
+    }
+    const opening = new Decimal(0);
+    const { rows } = ReportsService.withRunning(lines, opening, ReportsService.partyRow);
+    return {
+      ...ReportsService.statementSummary(
+        opening,
+        sum(rows.map((r) => r.debit)),
+        sum(rows.map((r) => r.credit)),
+      ),
+      rows,
+    };
+  }
+
+  /**
+   * One keyset page of a cost-centre statement (ADR-022 §4), like
+   * generalLedgerPage, with its own cursor kind and an opening of zero.
+   */
+  async costCenterStatementPage(costCenterId: bigint, range: ReportRange, page: StatementPageQuery) {
+    this.assertRange(range);
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const filters = { costCenterId: costCenterId.toString(), from: range.from, to: range.to };
+    const at = page.cursor ? lineCursor(this.cursors.decode('cost-center-statement', filters, page.cursor)) : null;
+    const where = this.costCenterWhere(companyId, costCenterId, range);
+
+    // P3: the page and the period totals read one snapshot.
+    const read = await db.$transaction(async (tx) => {
+      const lines = await tx.journalLine.findMany({
+        where: at ? { AND: [where, afterLine(at.key)] } : where,
+        orderBy: LINE_ORDER,
+        take: page.limit + 1,
+        include: ReportsService.PARTY_LINE_INCLUDE,
+      });
+      if (at) return { lines, totals: null };
+      const totals = await tx.journalLine.aggregate({ where, _sum: { debit: true, credit: true } });
+      return { lines, totals };
+    });
+    const lines = read.lines;
+    const more = lines.length > page.limit;
+    if (more) lines.pop();
+
+    const summary = read.totals
+      ? ReportsService.statementSummary(
+          new Decimal(0),
+          new Decimal(read.totals._sum.debit?.toString() ?? 0),
+          new Decimal(read.totals._sum.credit?.toString() ?? 0),
+        )
+      : null;
+    const start = at ? at.balance : new Decimal(0);
+    const { rows, balance } = ReportsService.withRunning(lines, start, ReportsService.partyRow);
+    const last = lines[lines.length - 1];
+    return {
+      summary,
+      items: rows,
+      nextCursor: more && last ? this.cursors.encode('cost-center-statement', filters, lineState(last, balance)) : null,
+    };
+  }
+
   // ------------------------------------------- aging inputs (treasury, ADR-004)
 
   /** Entry date of each given journal entry of the company (treasury aging: voucher reversal dates). */

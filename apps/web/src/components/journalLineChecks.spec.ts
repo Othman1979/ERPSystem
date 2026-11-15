@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { partyFields, type PartyColumn } from './JournalLinesGrid';
 import {
+  costCenterRulesByAccount,
   firstLineProblem,
   lineParty,
+  lineProblemText,
   partyKindOf,
   partyNeedByAccount,
   sideOfPartyType,
+  type CostCenterRules,
   type PartyNeed,
 } from './journalLineChecks';
 
@@ -209,5 +212,101 @@ describe('a party on a control account of no side (ANY)', () => {
     expect(sideOfPartyType('BOTH')).toBe('CUSTOMER');
     expect(sideOfPartyType('CUSTOMER')).toBe('CUSTOMER');
     expect(sideOfPartyType('SUPPLIER')).toBe('SUPPLIER');
+  });
+});
+
+describe('costCenterRulesByAccount (ADR-024 §1)', () => {
+  const accounts = [
+    { id: 'cash', accountType: 'ASSET' },
+    { id: 'rev', accountType: 'REVENUE' },
+    { id: 'exp', accountType: 'EXPENSE', costCenterRequired: true },
+    { id: 'bsReq', accountType: 'LIABILITY', costCenterRequired: true },
+  ];
+
+  it('takes the income-statement accounts only', () => {
+    const rules = costCenterRulesByAccount(accounts);
+    expect([...rules.income].sort()).toEqual(['exp', 'rev']);
+  });
+
+  it('marks as required only the income-statement accounts that require a centre', () => {
+    const rules = costCenterRulesByAccount(accounts);
+    expect([...rules.required]).toEqual(['exp']);
+  });
+
+  it('copes with data still loading', () => {
+    const rules = costCenterRulesByAccount(undefined);
+    expect(rules.income.size).toBe(0);
+    expect(rules.required.size).toBe(0);
+  });
+});
+
+describe('firstLineProblem with cost centre rules', () => {
+  const CENTRES = costCenterRulesByAccount([
+    { id: 'cash', accountType: 'ASSET' },
+    { id: 'rev', accountType: 'REVENUE' },
+    { id: 'exp', accountType: 'EXPENSE', costCenterRequired: true },
+    { id: 'exp2', accountType: 'EXPENSE' },
+  ]);
+  const on: CostCenterRules = { enabled: true, ...CENTRES };
+  const off: CostCenterRules = { enabled: false, ...CENTRES };
+  const noNeeds = new Map<string, PartyNeed>();
+
+  it('refuses a centre on a balance-sheet account (COST_CENTER_NOT_ALLOWED), whether centres are on or off', () => {
+    const lines = [{ accountId: 'cash', debit: '5', costCenterId: 'c1' }, { accountId: 'rev', credit: '5' }];
+    expect(firstLineProblem(lines, noNeeds, undefined, on)).toEqual({
+      line: 1,
+      index: 0,
+      rule: 'COST_CENTER_NOT_ALLOWED',
+    });
+    expect(firstLineProblem(lines, noNeeds, undefined, off)).toMatchObject({ rule: 'COST_CENTER_NOT_ALLOWED' });
+  });
+
+  it('refuses a required account line without a centre while centres are on (COST_CENTER_REQUIRED)', () => {
+    const lines = [{ accountId: 'cash', debit: '5' }, { accountId: 'exp', credit: '5' }];
+    expect(firstLineProblem(lines, noNeeds, undefined, on)).toEqual({
+      line: 2,
+      index: 1,
+      rule: 'COST_CENTER_REQUIRED',
+    });
+  });
+
+  it('does not require a centre while the company has centres off', () => {
+    const lines = [{ accountId: 'cash', debit: '5' }, { accountId: 'exp', credit: '5' }];
+    expect(firstLineProblem(lines, noNeeds, undefined, off)).toBeNull();
+  });
+
+  it('accepts a required account line that carries a centre, and an optional one without', () => {
+    expect(
+      firstLineProblem(
+        [{ accountId: 'cash', debit: '5' }, { accountId: 'exp', credit: '5', costCenterId: 'c1' }],
+        noNeeds,
+        undefined,
+        on,
+      ),
+    ).toBeNull();
+    expect(
+      firstLineProblem([{ accountId: 'cash', debit: '5' }, { accountId: 'exp2', credit: '5' }], noNeeds, undefined, on),
+    ).toBeNull();
+  });
+
+  it('checks the party before the cost centre on the same row', () => {
+    const needs = new Map<string, PartyNeed>([['exp', 'CUSTOMER']]);
+    expect(
+      firstLineProblem([{ accountId: 'cash', debit: '5' }, { accountId: 'exp', credit: '5' }], needs, undefined, on),
+    ).toMatchObject({ line: 2, rule: 'PARTY_REQUIRED' });
+  });
+
+  it('runs no centre check without the centre argument', () => {
+    expect(firstLineProblem([{ accountId: 'cash', debit: '5', costCenterId: 'c1' }, { accountId: 'exp', credit: '5' }], noNeeds)).toBeNull();
+  });
+
+  it('names the row of a centre problem in the messages', () => {
+    const t = ((key: string, opts: { line: number }) => `${key}:${opts.line}`) as unknown as Parameters<
+      typeof lineProblemText
+    >[0];
+    expect(lineProblemText(t, { line: 2, index: 1, rule: 'COST_CENTER_REQUIRED' })).toBe('costCenters.lineRequired:2');
+    expect(lineProblemText(t, { line: 1, index: 0, rule: 'COST_CENTER_NOT_ALLOWED' })).toBe(
+      'costCenters.lineNotAllowed:1',
+    );
   });
 });

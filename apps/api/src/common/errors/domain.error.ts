@@ -46,6 +46,13 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.ACCOUNT_IN_USE]: HttpStatus.CONFLICT,
   [ErrorCode.ACCOUNT_HAS_CHILDREN]: HttpStatus.CONFLICT,
   [ErrorCode.ACCOUNT_TYPE_MISMATCH]: HttpStatus.BAD_REQUEST,
+  // Cost centres (ADR-024 §1), the same split as the account codes above.
+  [ErrorCode.COST_CENTER_REQUIRED]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.COST_CENTER_NOT_ALLOWED]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.COST_CENTER_INACTIVE]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.COST_CENTER_NOT_POSTABLE]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.COST_CENTER_HAS_CHILDREN]: HttpStatus.CONFLICT,
+  [ErrorCode.COST_CENTER_IN_USE]: HttpStatus.CONFLICT,
   [ErrorCode.PARTY_REQUIRED]: HttpStatus.BAD_REQUEST,
   [ErrorCode.PARTY_TYPE_MISMATCH]: HttpStatus.BAD_REQUEST,
   [ErrorCode.PARTY_ON_NON_CONTROL_ACCOUNT]: HttpStatus.BAD_REQUEST,

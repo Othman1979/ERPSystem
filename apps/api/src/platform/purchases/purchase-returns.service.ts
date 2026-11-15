@@ -28,6 +28,7 @@ import { computeReturnLines, returnedByLine } from '../shared/return-lines.js';
 import { assertRefundType } from '../shared/refund-type.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import { GoodsNotesService } from '../goods-notes/goods-notes.service.js';
+import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 
 const SOURCE = 'PURCHASE_RETURN';
 
@@ -99,6 +100,7 @@ export class PurchaseReturnsService {
     private readonly ledger: StockLedgerService,
     private readonly audit: AuditService,
     private readonly goodsNotes: GoodsNotesService,
+    private readonly costCenters: CostCentersService,
   ) {}
 
   /**
@@ -313,6 +315,8 @@ export class PurchaseReturnsService {
         include: { lines: true },
       });
       if (!invoice) throw DomainError.notFound('PurchaseInvoice', dto.originalInvoiceId);
+      // Share-lock the header centre before the row that references it (ADR-024 §1.4).
+      if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       if (invoice.status !== 'POSTED') {
         throw new DomainError(ErrorCode.VALIDATION, 'Returns require a posted invoice');
       }
@@ -347,6 +351,7 @@ export class PurchaseReturnsService {
           warehouseId,
           refundType: dto.refundType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
+          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
           reason: dto.reason ?? null,
           ...totals,
           createdBy: this.support.userId() ?? null,
@@ -594,6 +599,10 @@ export class PurchaseReturnsService {
           description: draft.reason ?? `Purchase return ${returnNo}`,
           lines: journalLines,
           postedBy: userId ?? null,
+          // ADR-024 §1.2: onto every income-statement line (expenses, cost, adjustments).
+          costCenterId: draft.costCenterId,
+          // ADR-024 §1.3: the document has a centre field, so a flagged line needs one.
+          requireCostCenters: true,
         });
 
         await tx.purchaseReturn.update({

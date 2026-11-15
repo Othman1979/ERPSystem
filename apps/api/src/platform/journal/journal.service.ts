@@ -25,6 +25,8 @@ import {
   type NormalizedLine,
 } from './posting.service.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
+import { CostCentersService } from '../cost-centers/cost-centers.service.js';
+import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 
 const MANUAL_SOURCE = 'MANUAL_JOURNAL';
 const OPENING_SOURCE = 'OPENING_ENTRY';
@@ -47,10 +49,47 @@ export class JournalService implements OnModuleInit {
     private readonly audit: AuditService,
     private readonly parties: PartiesService,
     private readonly partyUsage: PartyUsageRegistry,
+    private readonly costCenters: CostCentersService,
+    private readonly costCenterUsage: CostCenterUsageRegistry,
   ) {}
 
   onModuleInit(): void {
     this.partyUsage.register('journal', (tx, partyId) => this.partyInUse(tx, partyId));
+    this.costCenterUsage.register('journal', (tx, id) => this.costCenterInUse(tx, id));
+  }
+
+  /**
+   * ADR-024 §1.7: journal lines that reference the cost centre, drafts included.
+   * journal_lines.cost_center_id has no FK: this check is the only guard.
+   */
+  async costCenterInUse(tx: Prisma.TransactionClient, costCenterId: bigint): Promise<string | null> {
+    const line = await tx.journalLine.findFirst({ where: { costCenterId }, select: { id: true } });
+    return line ? 'journal_lines' : null;
+  }
+
+  /**
+   * Cost centres typed on manual and opening lines must be the company's.
+   * Shared-locked to COMMIT inside the transaction that inserts the lines
+   * (journal_lines.cost_center_id has no FK), so a concurrent delete waits and
+   * then sees the line. The active / leaf checks run at posting (validateLines).
+   */
+  private async assertCostCenters(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    lines: { costCenterId?: string | null }[],
+  ): Promise<void> {
+    const ids = lines.filter((l) => l.costCenterId).map((l) => BigInt(l.costCenterId!));
+    if (ids.length === 0) return;
+    const found = await this.costCenters.lockForPosting(tx, tenantId, companyId, ids);
+    lines.forEach((l, i) => {
+      if (l.costCenterId && !found.has(BigInt(l.costCenterId))) {
+        throw new DomainError(ErrorCode.NOT_FOUND, `Line ${i + 1}: cost centre ${l.costCenterId} not found`, {
+          line: i + 1,
+          costCenterId: l.costCenterId,
+        });
+      }
+    });
   }
 
   /**
@@ -230,6 +269,7 @@ export class JournalService implements OnModuleInit {
 
     const entry = await db.$transaction(async (tx) => {
       await this.assertParties(tx, companyId, dto.lines);
+      await this.assertCostCenters(tx, tenantId, companyId, dto.lines);
       const created = await tx.journalEntry.create({
         data: {
           tenantId,
@@ -261,6 +301,7 @@ export class JournalService implements OnModuleInit {
           partyId: l.partyId ? BigInt(l.partyId) : null,
           description: l.description ?? null,
           branchId,
+          costCenterId: l.costCenterId ? BigInt(l.costCenterId) : null,
           // LEDGER-19: the line keeps its entry's date (a draft's date never changes).
           entryDate: created.entryDate,
         })),
@@ -357,9 +398,11 @@ export class JournalService implements OnModuleInit {
           partyId: l.partyId,
           description: l.description,
           branchId: l.branchId,
+          costCenterId: l.costCenterId,
         }));
 
-        const normalized = await this.posting.validateLines(tx, tenantId, companyId, input);
+        // A manual entry has a centre column: a flagged line needs a centre (ADR-024 §1.3).
+        const normalized = await this.posting.validateLines(tx, tenantId, companyId, input, { requireCostCenters: true });
         let totalDebit = new Decimal(0);
         let totalCredit = new Decimal(0);
         for (const n of normalized) {
@@ -474,6 +517,7 @@ export class JournalService implements OnModuleInit {
     const result = await this.withRetry(() =>
       db.$transaction(async (tx) => {
         await this.assertParties(tx, companyId, dto.lines);
+        // The lines' cost centres are checked and locked by postEntry, after the accounts (ADR-024 §1.4).
         const entryDate = new Date(dto.entryDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, entryDate);
 
@@ -522,6 +566,7 @@ export class JournalService implements OnModuleInit {
           partyType: l.partyType ?? null,
           partyId: l.partyId ? BigInt(l.partyId) : null,
           description: l.description ?? null,
+          costCenterId: l.costCenterId ? BigInt(l.costCenterId) : null,
         }));
 
         // Plug the difference into OPENING_BALANCE_EQUITY.
@@ -559,6 +604,7 @@ export class JournalService implements OnModuleInit {
           description: dto.description ?? null,
           lines,
           postedBy: userId ?? null,
+          requireCostCenters: true,
         });
       }, POSTING_TX_OPTIONS),
     );

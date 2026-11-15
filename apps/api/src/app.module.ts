@@ -21,6 +21,7 @@ import { AdminModule } from './platform/admin/admin.module.js';
 import { BranchesModule } from './platform/branches/branches.module.js';
 import { UsersModule } from './platform/users/users.module.js';
 import { AccountingModule } from './platform/accounting/accounting.module.js';
+import { CostCentersModule } from './platform/cost-centers/cost-centers.module.js';
 import { JournalModule } from './platform/journal/journal.module.js';
 import { InventoryModule } from './platform/inventory/inventory.module.js';
 import { PartiesModule } from './platform/parties/parties.module.js';
@@ -52,6 +53,7 @@ import { TestSupportModule } from './platform/monitoring/test-support.module.js'
     UsersModule,
     BranchesModule,
     AccountingModule,
+    CostCentersModule,
     JournalModule,
     InventoryModule,
     PartiesModule,

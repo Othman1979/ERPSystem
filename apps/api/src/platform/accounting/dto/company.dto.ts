@@ -47,6 +47,11 @@ export class UpdateCompanyDto {
   @IsBoolean()
   pricesIncludeTax?: boolean;
 
+  /** Cost centres shown and enforced (ADR-024 §1.6). Off keeps posted lines and account flags as they are. */
+  @IsOptional()
+  @IsBoolean()
+  costCentersEnabled?: boolean;
+
   /**
    * Purchasing cycle level (ADR-024 §2), needs company.manage. Raised any time;
    * lowered only with no open cycle documents (PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS).

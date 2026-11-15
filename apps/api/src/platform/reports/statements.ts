@@ -195,3 +195,94 @@ export function balanceSheet(
     balanced: assets.total.eq(totalLiabilitiesAndEquity),
   };
 }
+
+/** One column of the income statement by cost centre: a centre, or "no centre" (all nulls). */
+export interface CostCenterColumn {
+  costCenterId: string | null;
+  code: string | null;
+  nameAr: string | null;
+  nameEn: string | null;
+}
+
+/** One account of the income statement by cost centre: its amount per column and in total. */
+export interface CostCenterStatementRow {
+  accountId: string;
+  code: string;
+  nameAr: string;
+  nameEn: string | null;
+  amounts: string[];
+  total: string;
+}
+
+export interface CostCenterSection {
+  rows: CostCenterStatementRow[];
+  /** Per column, in column order. */
+  totals: string[];
+  total: string;
+}
+
+/**
+ * Income statement by cost centre (ADR-024 §1.9), over the per-(account,
+ * centre) totals of the range:
+ *  - one column per centre with lines in the range (by code), then "no
+ *    centre" (always present, last); a centre missing from `centres` (an
+ *    orphan id) keeps its column, named by its id;
+ *  - revenue rows Cr − Dr, expense rows Dr − Cr (cost of sales included), the
+ *    postable accounts with lines, by code;
+ *  - net profit per column = revenue − expenses; the columns add up to the
+ *    total, which is the income statement's net profit for the same range
+ *    (the same lines, summed another way).
+ */
+export function incomeStatementByCostCenter(
+  totals: (AccountTotal & { costCenterId: bigint | null })[],
+  centres: { id: bigint; code: string; nameAr: string; nameEn: string | null }[],
+) {
+  const present = new Set(totals.map((t) => t.costCenterId).filter((id): id is bigint => id !== null));
+  const known = new Map(centres.map((c) => [c.id, c]));
+  const named = centres.filter((c) => present.has(c.id)).sort((a, b) => a.code.localeCompare(b.code));
+  const orphans = [...present].filter((id) => !known.has(id)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const columns: CostCenterColumn[] = [
+    ...named.map((c) => ({ costCenterId: c.id.toString(), code: c.code, nameAr: c.nameAr, nameEn: c.nameEn })),
+    ...orphans.map((id) => ({ costCenterId: id.toString(), code: id.toString(), nameAr: null, nameEn: null })),
+    { costCenterId: null, code: null, nameAr: null, nameEn: null },
+  ];
+  const columnOf = new Map(columns.map((c, i) => [c.costCenterId ?? '', i]));
+  const zeros = () => columns.map(() => new Decimal(0));
+
+  const section = (type: 'REVENUE' | 'EXPENSE') => {
+    const byAccount = new Map<bigint, { account: AccountTotal['account']; amounts: Decimal[] }>();
+    for (const t of totals) {
+      if (t.account.accountType !== type) continue;
+      const row = byAccount.get(t.account.id) ?? { account: t.account, amounts: zeros() };
+      const i = columnOf.get(t.costCenterId?.toString() ?? '')!;
+      row.amounts[i] = row.amounts[i].plus(statementAmount(type, t.debit, t.credit));
+      byAccount.set(t.account.id, row);
+    }
+    const sums = zeros();
+    const rows = [...byAccount.values()]
+      .sort((a, b) => a.account.code.localeCompare(b.account.code))
+      .map(({ account, amounts }) => {
+        amounts.forEach((a, i) => (sums[i] = sums[i].plus(a)));
+        return {
+          accountId: account.id.toString(),
+          code: account.code,
+          nameAr: account.nameAr,
+          nameEn: account.nameEn,
+          amounts: amounts.map((a) => a.toFixed(3)),
+          total: amounts.reduce((s, a) => s.plus(a), new Decimal(0)).toFixed(3),
+        };
+      });
+    const total = sums.reduce((s, a) => s.plus(a), new Decimal(0));
+    return { section: { rows, totals: sums.map((a) => a.toFixed(3)), total: total.toFixed(3) }, sums, total };
+  };
+
+  const revenue = section('REVENUE');
+  const expenses = section('EXPENSE');
+  const net = revenue.sums.map((r, i) => r.minus(expenses.sums[i]));
+  return {
+    columns,
+    revenue: revenue.section,
+    expenses: expenses.section,
+    netProfit: { amounts: net.map((a) => a.toFixed(3)), total: revenue.total.minus(expenses.total).toFixed(3) },
+  };
+}

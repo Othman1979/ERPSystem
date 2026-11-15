@@ -18,6 +18,8 @@ export interface JournalLineDraft {
   description?: string;
   /** Customer / supplier of a control-account line (party column only). */
   partyId?: string;
+  /** Cost centre of an income-statement line (cost centre column only). */
+  costCenterId?: string;
 }
 
 export const emptyLine = (key: number): JournalLineDraft => ({ key });
@@ -46,6 +48,16 @@ export function partyFields(
   return (need && lineParty(need, line.partyId, column?.sideOf)) || {};
 }
 
+/** Cost centre column (ADR-024 §1): shown when the company has centres on. */
+export interface CostCenterColumn {
+  /** Postable centres, plus any already chosen on the lines. */
+  options: Option[];
+  /** Income-statement accounts: the only ones a centre can be picked on. */
+  income: ReadonlySet<string>;
+  /** Income-statement accounts that need a centre. */
+  required: ReadonlySet<string>;
+}
+
 interface Props {
   lines: JournalLineDraft[];
   onChange: (lines: JournalLineDraft[]) => void;
@@ -54,15 +66,18 @@ interface Props {
   focusSignal?: number;
   /** Adds the customer / supplier column. */
   partyColumn?: PartyColumn;
+  /** Adds the cost centre column (after the party column). */
+  costCenterColumn?: CostCenterColumn;
   /** Replaces the balanced / unbalanced note in the footer. */
   footerNote?: ReactNode;
   /** Key of a line to mark as missing its party (after the check before saving). */
   missingParty?: number | null;
+  /** Key of a line to mark as missing its cost centre (after the check before saving). */
+  missingCostCenter?: number | null;
 }
 
-// Column ids: account (1), debit (2), credit (3), description (4), party (5).
+// Column ids: account (1), debit (2), credit (3), description (4), party (5), cost centre (6).
 const NAV_COLS = [1, 2, 3, 4];
-const NAV_COLS_WITH_PARTY = [1, 5, 2, 3, 4];
 
 const PARTY_PLACEHOLDER: Record<PartyNeed, string> = {
   CUSTOMER: 'journal.pickCustomer',
@@ -80,8 +95,10 @@ export function JournalLinesGrid({
   accountOptions,
   focusSignal,
   partyColumn,
+  costCenterColumn,
   footerNote,
   missingParty,
+  missingCostCenter,
 }: Props) {
   const { t } = useTranslation();
   const gridRef = useRef<HTMLTableElement>(null);
@@ -93,6 +110,12 @@ export function JournalLinesGrid({
 
   const kindOf = (accountId: string | undefined) =>
     accountId ? partyColumn?.kindByAccount.get(accountId) : undefined;
+  // A centre is picked only on an income-statement account.
+  const centreOn = (accountId: string | undefined) =>
+    !!accountId && !!costCenterColumn?.income.has(accountId);
+  // Cells are rendered with the column count of the header, so the footer spans count the same columns.
+  const leadingCols = 2 + (partyColumn ? 1 : 0) + (costCenterColumn ? 1 : 0);
+  const extraCols = (partyColumn ? 1 : 0) + (costCenterColumn ? 1 : 0);
 
   const update = (key: number, patch: Partial<JournalLineDraft>) =>
     onChange(linesRef.current.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -113,9 +136,19 @@ export function JournalLinesGrid({
     );
   };
 
-  // Ordered editable columns of a row; the party cell exists on control-account rows only.
-  const navCols = (row: number) =>
-    kindOf(linesRef.current[row]?.accountId) ? NAV_COLS_WITH_PARTY : NAV_COLS;
+  // Ordered editable columns of a row, in screen order: the party cell exists on
+  // control-account rows only, the cost centre cell on income-statement rows only.
+  const navCols = (row: number) => {
+    const accountId = linesRef.current[row]?.accountId;
+    return [
+      1,
+      ...(kindOf(accountId) ? [5] : []),
+      ...(centreOn(accountId) ? [6] : []),
+      2,
+      3,
+      4,
+    ];
+  };
 
   // Focus once the cell exists; retry a single time if a new row hasn't rendered yet.
   // (Focusing twice re-opened a select's list after the user had moved on.)
@@ -201,6 +234,7 @@ export function JournalLinesGrid({
             <th className="row-no">#</th>
             <th style={{ width: partyColumn ? '28%' : '34%' }}>{t('journal.account')}</th>
             {partyColumn && <th style={{ width: '22%' }}>{t('journal.party')}</th>}
+            {costCenterColumn && <th style={{ width: '22%' }}>{t('costCenters.column')}</th>}
             <th className="num-cell" style={{ width: 130 }}>{t('journal.debit')}</th>
             <th className="num-cell" style={{ width: 130 }}>{t('journal.credit')}</th>
             <th>{t('common.description')}</th>
@@ -211,6 +245,10 @@ export function JournalLinesGrid({
           {lines.map((l, row) => {
             const kind = kindOf(l.accountId);
             const missing = !!kind && !l.partyId && missingParty === l.key;
+            const centre = centreOn(l.accountId);
+            // The account needs a centre (ADR-024 §1.3): marked before the line is even filled in.
+            const needsCentre = centre && !!costCenterColumn?.required.has(l.accountId!);
+            const missingCentre = centre && !l.costCenterId && missingCostCenter === l.key;
             return (
               <tr key={l.key}>
                 <td className="row-no">{row + 1}</td>
@@ -221,13 +259,14 @@ export function JournalLinesGrid({
                     placeholder={t('journal.account')}
                     options={accountOptions}
                     value={l.accountId}
-                    onChange={(v: string) =>
+                    onChange={(v: string) => {
                       // A party belongs to its kind of control account: drop it when that changes.
-                      update(
-                        l.key,
-                        kindOf(v) === kind ? { accountId: v } : { accountId: v, partyId: undefined },
-                      )
-                    }
+                      const patch: Partial<JournalLineDraft> =
+                        kindOf(v) === kind ? { accountId: v } : { accountId: v, partyId: undefined };
+                      // A centre belongs to an income-statement account: drop it when that changes.
+                      if (costCenterColumn && !costCenterColumn.income.has(v)) patch.costCenterId = undefined;
+                      update(l.key, patch);
+                    }}
                     onEnterSelect={() => advance(row, 1)}
                     style={{ width: '100%' }}
                     size="small"
@@ -250,6 +289,34 @@ export function JournalLinesGrid({
                         value={l.partyId}
                         onChange={(v: string) => update(l.key, { partyId: v })}
                         onEnterSelect={() => advance(row, 5)}
+                        style={{ width: '100%' }}
+                        size="small"
+                      />
+                    ) : (
+                      <Typography.Text type="secondary">—</Typography.Text>
+                    )}
+                  </td>
+                )}
+                {costCenterColumn && (
+                  <td
+                    className={
+                      [missingCentre && 'cell-missing', needsCentre && 'cell-required'].filter(Boolean).join(' ') ||
+                      undefined
+                    }
+                    {...cellProps(row, 6)}
+                  >
+                    {centre ? (
+                      <GridSelect
+                        aria-label={cellLabel(t, t('costCenters.column'), row)}
+                        aria-invalid={missingCentre || undefined}
+                        aria-required={needsCentre || undefined}
+                        variant="borderless"
+                        allowClear
+                        placeholder={t('costCenters.pick')}
+                        options={costCenterColumn.options}
+                        value={l.costCenterId}
+                        onChange={(v?: string) => update(l.key, { costCenterId: v ?? undefined })}
+                        onEnterSelect={() => advance(row, 6)}
                         style={{ width: '100%' }}
                         size="small"
                       />
@@ -316,7 +383,7 @@ export function JournalLinesGrid({
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan={partyColumn ? 3 : 2}>
+            <td colSpan={leadingCols}>
               {t('journal.total')}
             </td>
             <td className="num-cell">
@@ -341,7 +408,7 @@ export function JournalLinesGrid({
           {footerNote !== undefined && footerNote !== null && (
             // A longer note gets a row of its own across the grid.
             <tr>
-              <td colSpan={partyColumn ? 7 : 6}>{footerNote}</td>
+              <td colSpan={6 + extraCols}>{footerNote}</td>
             </tr>
           )}
         </tfoot>

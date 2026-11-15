@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { InventoryModule } from '../inventory/inventory.module.js';
 import { JournalModule } from '../journal/journal.module.js';
 import { SharedModule } from '../shared/shared.module.js';
+import { CostCentersModule } from '../cost-centers/cost-centers.module.js';
 import { EInvoiceOutboxModule } from '../einvoice/einvoice-outbox.module.js';
 import { PrintingModule } from '../printing/printing.module.js';
 import { SalesController } from './sales.controller.js';
@@ -10,7 +11,7 @@ import { SalesReturnsService } from './sales-returns.service.js';
 import { PartiesModule } from '../parties/parties.module.js';
 
 @Module({
-  imports: [PartiesModule, SharedModule, JournalModule, InventoryModule, EInvoiceOutboxModule, PrintingModule],
+  imports: [PartiesModule, SharedModule, JournalModule, InventoryModule, EInvoiceOutboxModule, PrintingModule, CostCentersModule],
   controllers: [SalesController],
   providers: [SalesInvoicesService, SalesReturnsService],
   // Treasury reads open credit invoices for aging through this service (module boundary).

@@ -9,11 +9,23 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { calendarDateIn, retryOnLockConflict } from '../shared/document-support.service.js';
+import { isIncomeStatement } from '../cost-centers/cost-center-rules.js';
 import { CreateAccountDto, UpdateAccountDto } from './dto/accounting.dto.js';
 
 // journal_lines is read here, not through JournalModule: JournalModule imports AccountingModule (cycle). Read-only usage checks; both are the accounting domain (CLAUDE.md module list).
 
 type TenantDb = ReturnType<PrismaService['forTenant']>;
+
+/** ADR-024 §1.1: "cost centre required" only on an income-statement account. */
+function assertCostCenterFlagAllowed(accountType: string): void {
+  if (!isIncomeStatement(accountType)) {
+    throw new DomainError(
+      ErrorCode.COST_CENTER_NOT_ALLOWED,
+      'Only revenue and expense accounts can require a cost centre',
+      { accountType },
+    );
+  }
+}
 
 function levelOfCode(code: string): number {
   if (code.length <= 1) return 1;
@@ -124,6 +136,7 @@ export class AccountsService {
     if (!dto.code && !parent) {
       throw new DomainError(ErrorCode.VALIDATION, 'code is required for a root account');
     }
+    if (dto.costCenterRequired) assertCostCenterFlagAllowed(dto.accountType);
 
     // A contra sub-account may still pass its own normalBalance explicitly.
     const normalBalance =
@@ -167,6 +180,7 @@ export class AccountsService {
               isPostable: dto.isPostable ?? true,
               isControl: dto.isControl ?? false,
               controlType: dto.controlType ?? null,
+              costCenterRequired: dto.costCenterRequired ?? false,
               createdBy: cls.get('userId') ?? null,
             },
           });
@@ -306,6 +320,7 @@ export class AccountsService {
       if (dto.isActive === false && existing.isActive) {
         await this.assertCanDeactivate(tx, companyId, existing);
       }
+      if (dto.costCenterRequired === true) assertCostCenterFlagAllowed(existing.accountType);
 
       if (dto.isPostable === true) {
         // Any account with children is a group, root or not (LEDGER-04).
@@ -342,6 +357,7 @@ export class AccountsService {
           nameEn: dto.nameEn,
           isPostable: dto.isPostable,
           isActive: dto.isActive,
+          costCenterRequired: dto.costCenterRequired,
           updatedBy: userId,
         },
       });

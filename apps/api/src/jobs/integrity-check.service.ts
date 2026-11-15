@@ -81,6 +81,17 @@ export class IntegrityCheckService {
         WHERE x.branch_id IS NOT NULL
           AND NOT EXISTS (SELECT 1 FROM branches b WHERE b.tenant_id = x.tenant_id AND b.id = x.branch_id) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
+    // ADR-024 §1.7: journal_lines.cost_center_id has no FK; the centre must
+    // exist in the same company as the line's entry.
+    await orphans(
+      'journal_lines.cost_center_id',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM journal_lines x
+        JOIN journal_entries e ON e.tenant_id = x.tenant_id AND e.id = x.journal_entry_id
+        WHERE x.cost_center_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM cost_centers c
+            WHERE c.tenant_id = x.tenant_id AND c.id = x.cost_center_id AND c.company_id = e.company_id)
+          AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
     // LEDGER-19: journal_lines.entry_date is a copy of its entry's date; the
     // statements order and page by it, so a drifted copy would misplace lines.
     await orphans(

@@ -39,6 +39,8 @@ import { ListToolbar } from '../components/ListToolbar';
 import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { useRemoteOptions } from '../hooks/useRemoteOptions';
+import { useCostCenters } from '../hooks/useCostCenters';
+import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import {
   ApiError,
@@ -433,6 +435,8 @@ function PurchaseInvoiceForm({
     formDefaults.supplierInvoiceDate ? dayjs(formDefaults.supplierInvoiceDate) : null,
   );
   const [cashAccountId, setCashAccountId] = useState<string | undefined>(formDefaults.cashAccountId);
+  const costCenters = useCostCenters();
+  const [costCenterId, setCostCenterId] = useState<string | undefined>(formDefaults.costCenterId);
   const [lines, setLines] = useState<InvoiceLineDraft[]>(() => {
     if (invoice?.lines.length) {
       return invoice.lines.map((l, i) => ({
@@ -500,6 +504,8 @@ function PurchaseInvoiceForm({
           warehouseId,
           paymentType,
           cashAccountId,
+          // A draft keeps its centre while centres are off (ADR-024 §1.6): hidden, still sent.
+          costCenterId,
           lines,
         },
         invoice,
@@ -631,10 +637,24 @@ function PurchaseInvoiceForm({
         <DocField
           field="dueDate"
           label={t('purchases.dueDate')}
-          onKeyDown={enterTo(() => focusNamedField('paymentType'))}
+          onKeyDown={enterTo(() => focusNamedField(costCenters.enabled ? 'costCenter' : 'paymentType'))}
         >
           <DatePicker value={dueDate} onChange={setDueDate} allowClear />
         </DocField>
+        {costCenters.enabled && (
+          <DocField
+            field="costCenter"
+            label={<CostCenterLabel />}
+            onKeyDown={enterTo(() => focusNamedField('paymentType'))}
+          >
+            <CostCenterSelect
+              enterOpens
+              rows={costCenters.rows}
+              value={costCenterId}
+              onChange={setCostCenterId}
+            />
+          </DocField>
+        )}
         <DocField
           field="paymentType"
           label={t('purchases.paymentType')}
@@ -707,6 +727,7 @@ function PurchaseInvoiceView({
   const { t } = useTranslation();
   const [, contextHolder] = message.useMessage();
   const { modal } = App.useApp();
+  const costCenters = useCostCenters();
   const isDraft = invoice?.status === 'DRAFT';
   // Ctrl+Enter posts a draft, behind the same confirmation as the button.
   const confirmPost = () => {
@@ -765,6 +786,11 @@ function PurchaseInvoiceView({
         <DocField label={t('purchases.dueDate')}>
           <DocValue>{invoice.dueDate ? dayjs(invoice.dueDate).format('YYYY-MM-DD') : '—'}</DocValue>
         </DocField>
+        {costCenters.enabled && invoice.costCenterId && (
+          <DocField label={t('costCenters.documentField')}>
+            <DocValue>{costCenters.nameOf(invoice.costCenterId)}</DocValue>
+          </DocField>
+        )}
         <DocField label={t('purchases.net')}>
           <DocValue>{amountCell(invoice.netTotal)}</DocValue>
         </DocField>
@@ -816,6 +842,7 @@ function PurchaseReturnsTab() {
   const [statusFilter, setStatusFilter] = useState<PurchasesControllerListReturnsStatus | undefined>(undefined);
   const [modalOpen, setModalOpen] = useState(false);
   const [viewId, setViewId] = useState<string | null>(null);
+  const costCenters = useCostCenters();
   const [apiMessage, contextHolder] = message.useMessage();
 
   // Server-paged (ADR-022): search, status filter, sort and page go to the API.
@@ -987,6 +1014,11 @@ function PurchaseReturnsTab() {
                 <DocField label={t('purchases.refundType')}>
                   <DocValue>{t(`purchases.${view.refundType}`)}</DocValue>
                 </DocField>
+                {costCenters.enabled && view.costCenterId && (
+                  <DocField label={t('costCenters.documentField')}>
+                    <DocValue>{costCenters.nameOf(view.costCenterId)}</DocValue>
+                  </DocField>
+                )}
                 <DocField label={t('purchases.grandTotal')}>
                   <DocValue>{amountCell(view.grandTotal)}</DocValue>
                 </DocField>
@@ -1075,6 +1107,10 @@ function PurchaseReturnForm({
   const [cashAccountId, setCashAccountId] = useState<string | undefined>();
   const [reason, setReason] = useState('');
   const [qtyByLine, setQtyByLine] = useState<Record<string, string>>({});
+  const costCenters = useCostCenters();
+  const [costCenterId, setCostCenterId] = useState<string | undefined>();
+  // Until the user picks or clears a centre, it follows the original invoice's.
+  const [costCenterTouched, setCostCenterTouched] = useState(false);
 
   const lookups = usePurchaseLookups();
   const { data: invoice } = useQuery({
@@ -1084,6 +1120,15 @@ function PurchaseReturnForm({
     enabled: !!invoiceId,
   });
 
+  useEffect(() => {
+    if (costCenterTouched || !invoice || invoice.id !== invoiceId) return;
+    setCostCenterId(invoice.costCenterId ?? undefined);
+  }, [invoice, invoiceId, costCenterTouched]);
+  const pickCostCentre = (id: string | undefined) => {
+    setCostCenterTouched(true);
+    setCostCenterId(id);
+  };
+
   const create = useMutation({
     // Save needs a quantity on a line, and the lines come from the loaded invoice.
     mutationFn: async () =>
@@ -1092,6 +1137,8 @@ function PurchaseReturnForm({
           returnDate: returnDate.format('YYYY-MM-DD'),
           refundType,
           cashAccountId,
+          // A new return: a centre only while centres are on (the prefill stays hidden otherwise).
+          costCenterId: costCenters.enabled ? costCenterId : undefined,
           reason,
           qtyByLine,
         }),
@@ -1187,6 +1234,15 @@ function PurchaseReturnForm({
         <DocField label={t('purchases.date')}>
           <DatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} />
         </DocField>
+        {costCenters.enabled && (
+          <DocField label={<CostCenterLabel />}>
+            <CostCenterSelect
+              rows={costCenters.rows}
+              value={costCenterId}
+              onChange={pickCostCentre}
+            />
+          </DocField>
+        )}
         <DocField label={t('purchases.refundType')}>
           <Radio.Group
             name="refundType"

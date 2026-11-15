@@ -149,6 +149,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     await create('/parties', { code: 'S', nameAr: `S ${MARK}`, partyType: 'SUPPLIER' }, 'supplier');
     await create('/cash-boxes', { code: 'CB', name: `CB ${MARK}`, accountId: id.account }, 'cashBox');
     await create('/bank-accounts', { bankName: `Bank ${MARK}`, accountId: id.bankAccountGl }, 'bankAccount');
+    await create('/cost-centers', { code: 'CC', nameAr: `CC ${MARK}` }, 'costCenter');
 
     await create(
       '/stock-adjustments',
@@ -288,6 +289,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       payments: id.payment,
       allocations: id.allocation,
       'cash-transfers': id.cashTransfer,
+      'cost-centers': id.costCenter,
     };
     const values: Record<string, string> = {};
     for (const [, name] of p.matchAll(/\{(\w+)\}/g)) {
@@ -361,6 +363,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       bankAccountId: id.bankAccount,
       documentId: id.salesInvoice,
       invoiceId: id.salesInvoice,
+      costCenterId: id.costCenter,
     };
     const leaks: string[] = [];
     const unknown: string[] = [];
@@ -394,5 +397,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     expect((await asA('get', `/stock-adjustments/${id.adjustment}`)).body.status).toBe('POSTED');
     const receipt = (await asA('get', `/receipts/${id.receipt}`)).body as { status: string };
     expect(receipt.status).toBe('POSTED');
+    const centres = (await asA('get', '/cost-centers')).body as { id: string; nameAr: string; isActive: boolean }[];
+    expect(centres.find((c) => c.id === id.costCenter)).toMatchObject({ nameAr: `CC ${MARK}`, isActive: true });
   }, 60_000);
 });

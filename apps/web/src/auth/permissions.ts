@@ -15,6 +15,7 @@ export const PERMISSIONS = {
   TREASURY_MANAGE: 'treasury.manage',
   EINVOICE_MANAGE: 'einvoice.manage',
   REPORTS_VIEW: 'reports.view',
+  COST_CENTER_MANAGE: 'cost_center.manage',
   // Purchase permissions per member (ADR-024 §3); an owner holds all three.
   PURCHASE_DIRECT: 'purchase.direct',
   PURCHASE_APPROVE: 'purchase.approve',

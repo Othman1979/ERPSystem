@@ -8,6 +8,7 @@ import {
   Popconfirm,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
   message,
@@ -34,6 +35,7 @@ import type Decimal from 'decimal.js';
 import { amountCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
 import { ACCOUNTS_QUERY_KEY, useAccounts, type AccountRow } from '../hooks/useAccounts';
+import { useCostCenters } from '../hooks/useCostCenters';
 import { useAuth } from '../auth/AuthContext';
 
 export type Account = AccountRow;
@@ -134,6 +136,13 @@ export function AccountsPage() {
   }, [data, trial]);
 
   const watchedParentId = Form.useWatch('parentId', form) as string | undefined;
+  const watchedAccountType = Form.useWatch('accountType', form) as AccountType | undefined;
+  const { enabled: costCentersOn } = useCostCenters();
+  // The cost-centre flag applies to revenue and expense accounts only (ADR-024 §1.5).
+  const typeForCentre = editing ? editing.accountType : watchedAccountType;
+  const takesCentre = typeForCentre === 'REVENUE' || typeForCentre === 'EXPENSE';
+  // Hidden while centres are off (ADR-024 §1.6); the saved flag is then left as it is.
+  const showCentreFlag = costCentersOn && takesCentre;
   const isCreate = !editing;
   const selectedParent = useMemo(
     () => (data ?? []).find((a) => a.id === watchedParentId) ?? null,
@@ -160,12 +169,14 @@ export function AccountsPage() {
       parentId?: string;
       accountType: AccountType;
       isPostable?: boolean;
+      costCenterRequired?: boolean;
     }) => {
       if (editing) {
         return accountingControllerUpdateAccount(editing.id, {
           nameAr: values.nameAr,
           nameEn: values.nameEn || null,
           isPostable: values.isPostable,
+          costCenterRequired: showCentreFlag ? values.costCenterRequired === true : undefined,
         });
       }
       return accountingControllerCreateAccount({
@@ -175,6 +186,7 @@ export function AccountsPage() {
         parentId: values.parentId || undefined,
         accountType: values.accountType,
         isPostable: values.isPostable ?? true,
+        costCenterRequired: showCentreFlag ? values.costCenterRequired === true : undefined,
       });
     },
     onSuccess: () => {
@@ -214,7 +226,12 @@ export function AccountsPage() {
 
   const openEdit = (a: Account) => {
     setEditing(a);
-    form.setFieldsValue({ nameAr: a.nameAr, nameEn: a.nameEn, isPostable: a.isPostable });
+    form.setFieldsValue({
+      nameAr: a.nameAr,
+      nameEn: a.nameEn,
+      isPostable: a.isPostable,
+      costCenterRequired: a.costCenterRequired,
+    });
     setModalOpen(true);
   };
 
@@ -266,7 +283,16 @@ export function AccountsPage() {
           {
             title: t('common.name'),
             key: 'name',
-            render: (_: unknown, a: Account) => bothNames(a),
+            render: (_: unknown, a: Account) => (
+              <Space size={8}>
+                {bothNames(a)}
+                {costCentersOn && a.costCenterRequired && (
+                  <Tag style={{ background: palette.ink100, color: palette.ink600, borderColor: palette.ink200 }}>
+                    {t('costCenters.requiredTag')}
+                  </Tag>
+                )}
+              </Space>
+            ),
           },
           {
             title: t('accounts.type'),
@@ -415,6 +441,16 @@ export function AccountsPage() {
               ]}
             />
           </Form.Item>
+          {showCentreFlag && (
+            <Form.Item
+              name="costCenterRequired"
+              label={t('costCenters.required')}
+              valuePropName="checked"
+              extra={t('costCenters.requiredHint')}
+            >
+              <Switch />
+            </Form.Item>
+          )}
           </FormSection>
         </Form>
       </FormDialog>

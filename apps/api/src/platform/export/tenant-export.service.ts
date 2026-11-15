@@ -38,7 +38,7 @@ const WORKBOOKS: { file: string; models: string[] }[] = [
       'MemberPermission',
     ],
   },
-  { file: '02-accounts.xlsx', models: ['Account', 'AccountMapping'] },
+  { file: '02-accounts.xlsx', models: ['Account', 'AccountMapping', 'CostCenter'] },
   { file: '03-journal.xlsx', models: ['JournalEntry', 'JournalLine'] },
   { file: '04-items.xlsx', models: ['ItemGroup', 'Item', 'ItemUnit', 'ItemBarcode', 'Warehouse'] },
   {

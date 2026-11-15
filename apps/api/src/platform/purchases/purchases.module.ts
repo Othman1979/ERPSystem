@@ -3,6 +3,7 @@ import { GoodsNotesModule } from '../goods-notes/goods-notes.module.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
 import { JournalModule } from '../journal/journal.module.js';
 import { SharedModule } from '../shared/shared.module.js';
+import { CostCentersModule } from '../cost-centers/cost-centers.module.js';
 import { PrintingModule } from '../printing/printing.module.js';
 import { PurchaseInvoicesService } from './purchase-invoices.service.js';
 import { PurchaseReturnsService } from './purchase-returns.service.js';
@@ -10,7 +11,7 @@ import { PurchasesController } from './purchases.controller.js';
 import { PartiesModule } from '../parties/parties.module.js';
 
 @Module({
-  imports: [PartiesModule, SharedModule, JournalModule, InventoryModule, GoodsNotesModule, PrintingModule],
+  imports: [PartiesModule, SharedModule, JournalModule, InventoryModule, GoodsNotesModule, PrintingModule, CostCentersModule],
   controllers: [PurchasesController],
   providers: [PurchaseInvoicesService, PurchaseReturnsService],
   // Treasury reads open credit invoices for aging through this service (module boundary);

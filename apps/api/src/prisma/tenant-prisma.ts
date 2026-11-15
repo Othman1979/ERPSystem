@@ -63,6 +63,8 @@ export const TENANT_MODELS = [
   'EInvoiceSettings',
   'EInvoiceSubmission',
   'EInvoiceAttempt',
+  // Phase 11A (ADR-024 §1).
+  'CostCenter',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);

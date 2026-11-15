@@ -52,6 +52,8 @@ import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesInvoiceDto, ListSalesInvoicesQueryDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
+import { CostCentersService } from '../cost-centers/cost-centers.service.js';
+import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 
 const SOURCE = 'SALES_INVOICE';
 
@@ -77,10 +79,20 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     private readonly einvoice: EInvoiceOutboxService,
     private readonly limits: PlanLimitsService,
     private readonly partyUsage: PartyUsageRegistry,
+    private readonly costCenters: CostCentersService,
+    private readonly costCenterUsage: CostCenterUsageRegistry,
   ) {}
 
   onModuleInit(): void {
     this.partyUsage.register('sales', (tx, partyId) => this.partyInUse(tx, partyId));
+    this.costCenterUsage.register('sales', (tx, id) => this.costCenterInUse(tx, id));
+  }
+
+  /** ADR-024 §1.7: the first sales table whose header references the cost centre, drafts included. */
+  async costCenterInUse(tx: Prisma.TransactionClient, costCenterId: bigint): Promise<string | null> {
+    if (await tx.salesInvoice.findFirst({ where: { costCenterId }, select: { id: true } })) return 'sales_invoices';
+    if (await tx.salesReturn.findFirst({ where: { costCenterId }, select: { id: true } })) return 'sales_returns';
+    return null;
   }
 
   /**
@@ -478,6 +490,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     await this.assertHeader(db, companyId, dto);
 
     const inv = await db.$transaction(async (tx) => {
+      // Share-lock the header centre before the row that references it (ADR-024 §1.4).
+      if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       const created = await tx.salesInvoice.create({
         data: {
           tenantId,
@@ -490,6 +504,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           warehouseId: BigInt(dto.warehouseId),
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
+          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
           description: dto.description ?? null,
           pricesIncludeTax,
           ...this.totals(lines),
@@ -547,6 +562,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       if (!locked || locked.status !== 'DRAFT') {
         throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
       }
+      // Share-lock the header centre before the row that references it (ADR-024 §1.4).
+      if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       await tx.salesInvoiceLine.deleteMany({ where: { invoiceId: id } });
       await tx.salesInvoice.update({
         where: { id },
@@ -557,6 +574,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           warehouseId: BigInt(dto.warehouseId),
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
+          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
           description: dto.description ?? null,
           pricesIncludeTax,
           ...this.totals(lines),
@@ -772,6 +790,10 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           description: draft.description ?? `Sales invoice ${invoiceNo}`,
           lines: journalLines,
           postedBy: userId ?? null,
+          // ADR-024 §1.2: onto the revenue and cost lines (income statement).
+          costCenterId: draft.costCenterId,
+          // ADR-024 §1.3: the document has a centre field, so a flagged line needs one.
+          requireCostCenters: true,
         });
 
         await tx.salesInvoice.update({

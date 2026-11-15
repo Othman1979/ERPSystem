@@ -534,6 +534,12 @@ textarea:focus-visible,
   box-shadow: inset 0 0 0 1px var(--c-danger);
 }
 
+/* A centre the account requires (ADR-024 §1.3): an ink bar on the start edge.
+   aria-required on the select carries the same meaning for screen readers. */
+.entry-grid tbody td.cell-required {
+  border-inline-start: 2px solid var(--c-ink-600);
+}
+
 /* The cell that owns keyboard focus */
 .entry-grid tbody td:focus-within {
   background: var(--c-surface);

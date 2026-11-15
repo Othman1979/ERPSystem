@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { ReportsService } from '../journal/reports.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import { dayBefore, ReportPeriods } from './report-periods.service.js';
-import { balanceSheet, incomeStatement } from './statements.js';
+import { balanceSheet, incomeStatement, incomeStatementByCostCenter } from './statements.js';
+import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 
 /**
  * Income statement and balance sheet (Phase 8). Both read the journal's
@@ -15,6 +16,7 @@ export class FinancialStatementsService {
     private readonly ledger: ReportsService,
     private readonly periods: ReportPeriods,
     private readonly support: DocumentSupportService,
+    private readonly costCenters: CostCentersService,
   ) {}
 
   /** Mapped cost-of-sales accounts; a missing mapping just leaves its line out. */
@@ -36,6 +38,20 @@ export class FinancialStatementsService {
       this.costAccounts(),
     ]);
     return { from: period.from, to: period.to, fiscalYear: period.fiscalYear, ...incomeStatement(chart, totals, mapped) };
+  }
+
+  /**
+   * Income statement by cost centre (ADR-024 §1.9), same `?from&to` and
+   * defaults: a column per centre with lines, plus "no centre", adding up to
+   * the income statement's net profit.
+   */
+  async incomeStatementByCostCenter(q: { from?: string; to?: string }) {
+    const period = await this.periods.period(q);
+    const [totals, centres] = await Promise.all([
+      this.ledger.incomeTotalsByCostCenter({ from: period.from, to: period.to }),
+      this.costCenters.list(),
+    ]);
+    return { from: period.from, to: period.to, fiscalYear: period.fiscalYear, ...incomeStatementByCostCenter(totals, centres) };
   }
 
   /** `?asOf`, default today; the year profit runs from the start of the fiscal year containing asOf. */

@@ -87,6 +87,7 @@ describe('Tenant isolation — static guards (ADR-010 §10.4)', () => {
       'attachments',
       'membership_branches',
       'member_permissions',
+      'cost_centers',
     ]) {
       expect(tables.has(t)).toBe(true);
     }

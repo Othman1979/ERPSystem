@@ -9,6 +9,8 @@ export const PERMISSIONS = {
   COMPANY_MANAGE: 'company.manage',
   SETTINGS_MANAGE: 'settings.manage',
   ACCOUNT_MANAGE: 'account.manage',
+  /** Cost centre tree (ADR-024 §1). */
+  COST_CENTER_MANAGE: 'cost_center.manage',
   JOURNAL_MANAGE: 'journal.manage',
   JOURNAL_POST: 'journal.post',
   FISCAL_MANAGE: 'fiscal.manage',
@@ -49,6 +51,7 @@ const FINANCE_PERMISSIONS: PermissionCode[] = [
   PERMISSIONS.COMPANY_MANAGE,
   PERMISSIONS.SETTINGS_MANAGE,
   PERMISSIONS.ACCOUNT_MANAGE,
+  PERMISSIONS.COST_CENTER_MANAGE,
   PERMISSIONS.JOURNAL_MANAGE,
   PERMISSIONS.JOURNAL_POST,
   PERMISSIONS.FISCAL_MANAGE,

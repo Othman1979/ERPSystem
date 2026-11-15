@@ -377,13 +377,22 @@ describe('Journal list and keyset statements (ADR-022, ADR-003 §12–§13)', ()
   });
 
   describe('Company-wide reports (ADR-003 §13)', () => {
+    let costCenter = '';
     it.each([
       ['trial balance', '/api/v1/reports/trial-balance?from=2025-01-01&to=2025-12-31'],
       ['general ledger', '/api/v1/reports/general-ledger?accountId=ACCT&from=2025-01-01&to=2025-12-31'],
       ['income statement', '/api/v1/reports/income-statement?from=2025-01-01&to=2025-12-31'],
       ['balance sheet', '/api/v1/reports/balance-sheet?asOf=2025-12-31'],
+      // ADR-024 §1.9: both cost-centre reports are company-wide.
+      ['income statement by cost centre', '/api/v1/reports/income-statement-by-cost-center?from=2025-01-01&to=2025-12-31'],
+      ['cost-centre statement', '/api/v1/reports/cost-center-statement?costCenterId=CC&from=2025-01-01&to=2025-12-31'],
     ])('%s: 403 ALL_BRANCHES_REQUIRED for the MAIN-only accountant, 200 for the owner', async (_label, raw) => {
-      const url = raw.replace('ACCT', receivables);
+      if (raw.includes('CC') && !costCenter) {
+        const created = await api().post('/api/v1/cost-centers').set(auth(owner)).send({ code: 'PL-CC', nameAr: 'مركز' });
+        expect(created.status).toBe(201);
+        costCenter = String(created.body.id);
+      }
+      const url = raw.replace('ACCT', receivables).replace('costCenterId=CC', `costCenterId=${costCenter}`);
       const refused = await api().get(url).set(auth(accountant));
       expect(refused.status).toBe(403);
       expect(refused.body.error.code).toBe('ALL_BRANCHES_REQUIRED');

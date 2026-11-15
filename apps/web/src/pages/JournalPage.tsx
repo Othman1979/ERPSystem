@@ -26,15 +26,19 @@ import {
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import {
   emptyLine,
   JournalLinesGrid,
   partyFields,
   type JournalLineDraft,
 } from '../components/JournalLinesGrid';
-import { firstLineProblem, type LineProblem } from '../components/journalLineChecks';
+import {
+  costCenterRulesByAccount,
+  firstLineProblem,
+  lineProblemText,
+} from '../components/journalLineChecks';
 import { usePartyColumn } from '../components/usePartyColumn';
+import { costCenterOptions, useCostCenters } from '../hooks/useCostCenters';
 import { selectPostable, useAccounts } from '../hooks/useAccounts';
 import {
   ApiError,
@@ -79,14 +83,6 @@ function filledLines(lines: JournalLineDraft[]): FilledLine[] {
   return lines.filter((l): l is FilledLine => !!l.accountId);
 }
 
-/** The message for a row the check before saving refused (journalLineChecks). */
-function lineProblemText(t: TFunction, p: LineProblem): string {
-  if (p.rule === 'ONE_SIDE') return t('journal.oneSide', { line: p.line });
-  if (p.need === 'CUSTOMER') return t('journal.partyRequiredCustomer', { line: p.line });
-  if (p.need === 'SUPPLIER') return t('journal.partyRequiredSupplier', { line: p.line });
-  return t('journal.partyRequired', { line: p.line });
-}
-
 /** Only manual entries reverse here; document entries reverse through their document. */
 const REVERSIBLE_HERE = new Set(['MANUAL_JOURNAL', 'OPENING_ENTRY']);
 
@@ -129,6 +125,8 @@ export function JournalPage() {
   const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
   // Row whose party cell is marked empty after the check before saving.
   const [missingParty, setMissingParty] = useState<number | null>(null);
+  // Row whose cost centre cell is marked after the check before saving.
+  const [missingCentre, setMissingCentre] = useState<number | null>(null);
   const [gridFocus, setGridFocus] = useState(0);
 
   // Server-paged (ADR-022): search (entry number, description), filters, sort and page go to the API.
@@ -145,8 +143,19 @@ export function JournalPage() {
   });
 
   const { data: accounts } = useAccounts();
+  const centres = useCostCenters();
 
   const accountOptions = selectPostable(accounts ?? []).map((a) => ({ value: a.id, label: codeAndName(a) }));
+  // Cost centres (ADR-024 §1) only while the company has them on: the column and the check.
+  const costCenterColumn = centres.enabled
+    ? {
+        options: costCenterOptions(centres.rows, lines.map((l) => l.costCenterId)),
+        ...costCenterRulesByAccount(accounts),
+      }
+    : undefined;
+  const centreRules = centres.enabled
+    ? { enabled: true, ...costCenterRulesByAccount(accounts) }
+    : undefined;
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['journal-entry', entryId],
@@ -181,6 +190,7 @@ export function JournalPage() {
     setNewDescription('');
     setLines([emptyLine(1), emptyLine(2)]);
     setMissingParty(null);
+    setMissingCentre(null);
     setGridFocus((g) => g + 1);
     setScreen('entry');
   };
@@ -208,6 +218,7 @@ export function JournalPage() {
           credit: l.credit ?? undefined,
           description: l.description || undefined,
           ...partyFields(l, partyColumn),
+          ...(l.costCenterId ? { costCenterId: l.costCenterId } : {}),
         })),
       }),
     onSuccess: (res) => {
@@ -234,8 +245,9 @@ export function JournalPage() {
       return;
     }
     // A saved draft cannot be edited: catch the rows the API would refuse to post now.
-    const problem = firstLineProblem(lines, partyColumn.kindByAccount, partyColumn.sideOf);
+    const problem = firstLineProblem(lines, partyColumn.kindByAccount, partyColumn.sideOf, centreRules);
     setMissingParty(problem?.rule === 'PARTY_REQUIRED' ? lines[problem.index].key : null);
+    setMissingCentre(problem && problem.rule.startsWith('COST_CENTER') ? lines[problem.index].key : null);
     if (problem) {
       apiMessage.error(lineProblemText(t, problem));
       return;
@@ -597,7 +609,9 @@ export function JournalPage() {
             accountOptions={accountOptions}
             focusSignal={gridFocus}
             partyColumn={partyColumn}
+            costCenterColumn={costCenterColumn}
             missingParty={missingParty}
+            missingCostCenter={missingCentre}
           />
         ) : detailLoading ? (
           <div className="doc-section">{t('common.loading')}</div>
@@ -621,6 +635,14 @@ export function JournalPage() {
                 title: t('journal.party'),
                 render: (_: unknown, l: JournalEntryLineDto) => partyName(l.partyId) ?? '—',
               },
+              ...(centres.enabled
+                ? [
+                    {
+                      title: t('costCenters.column'),
+                      render: (_: unknown, l: JournalEntryLineDto) => centres.nameOf(l.costCenterId) || '—',
+                    },
+                  ]
+                : []),
               {
                 title: t('common.description'),
                 dataIndex: 'description',
@@ -643,7 +665,7 @@ export function JournalPage() {
             ]}
             summary={() => (
               <Table.Summary.Row style={{ fontWeight: 600 }}>
-                <Table.Summary.Cell index={0} colSpan={4}>
+                <Table.Summary.Cell index={0} colSpan={centres.enabled ? 5 : 4}>
                   {t('journal.total')}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">

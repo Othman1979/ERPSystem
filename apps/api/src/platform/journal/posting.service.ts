@@ -3,6 +3,8 @@ import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { Prisma } from '../../generated/prisma/client.js';
+import { assertPostingCentre, lineCostCenter } from '../cost-centers/cost-center-rules.js';
+import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 
 export interface JournalLineInput {
   accountId: bigint;
@@ -12,12 +14,30 @@ export interface JournalLineInput {
   partyId?: bigint | null;
   description?: string | null;
   branchId?: bigint | null;
+  /** The line's own cost centre (manual and opening entries, reversals); ADR-024 §1.2. */
+  costCenterId?: bigint | null;
 }
 
 export interface NormalizedLine {
   line: JournalLineInput;
   debit: Decimal;
   credit: Decimal;
+  /** The centre the line posts with: its own, or the document's on an income-statement line. */
+  costCenterId: bigint | null;
+}
+
+/** How validateLines places cost centres (ADR-024 §1). */
+export interface LineValidationOptions {
+  /** The document's header centre, copied onto every income-statement line. */
+  costCenterId?: bigint | null;
+  /** A reversal carries the original's centres as they are: no required / active / leaf checks. */
+  reversal?: boolean;
+  /**
+   * Enforce COST_CENTER_REQUIRED (ADR-024 §1.3): only for entries typed on a screen
+   * with a centre field (manual, opening, invoices, returns, vouchers). Default off:
+   * stock documents and cash transfers post a flagged line without a centre.
+   */
+  requireCostCenters?: boolean;
 }
 
 export interface PostEntryParams {
@@ -43,6 +63,13 @@ export interface PostEntryParams {
   description?: string | null;
   lines: JournalLineInput[];
   postedBy?: bigint | null;
+  /**
+   * The document's cost centre (ADR-024 §1.2): copied onto every line of an
+   * income-statement account that has no centre of its own.
+   */
+  costCenterId?: bigint | null;
+  /** See LineValidationOptions.requireCostCenters; set by the posting paths that have a centre field. */
+  requireCostCenters?: boolean;
 }
 
 /** Party kind a control account expects, or null when any kind is accepted. */
@@ -54,6 +81,8 @@ type ExpectedPartyType = 'CUSTOMER' | 'SUPPLIER' | null;
  */
 @Injectable()
 export class PostingService {
+  constructor(private readonly costCenters: CostCentersService) {}
+
   /** Sums debit/credit across raw line inputs (round3 per line). */
   totals(lines: JournalLineInput[]): { debit: Decimal; credit: Decimal } {
     let debit = new Decimal(0);
@@ -73,6 +102,13 @@ export class PostingService {
    * matching its control type. A party on any other account is rejected, except
    * on the account currently mapped as CUSTOMERS_CONTROL or SUPPLIERS_CONTROL,
    * which stays a party control account for legacy tenants.
+   * Cost centres (ADR-024 §1): a line's own centre is for an income-statement
+   * account only (COST_CENTER_NOT_ALLOWED); `opts.costCenterId` (a document's)
+   * goes onto every income-statement line without one; while the company has
+   * centres enabled, a flagged account's line without a centre is refused
+   * (COST_CENTER_REQUIRED) when opts.requireCostCenters (an entry with a centre field). The centres are then locked in share mode, after the
+   * accounts, ascending, and must be active leaves of the company. A reversal
+   * (`opts.reversal`) carries the original's centres as they are.
    * Returns normalized lines with round3 amounts.
    */
   async validateLines(
@@ -80,6 +116,7 @@ export class PostingService {
     tenantId: bigint,
     companyId: bigint,
     lines: JournalLineInput[],
+    opts: LineValidationOptions = {},
   ): Promise<NormalizedLine[]> {
     if (lines.length < 2) {
       throw new DomainError(ErrorCode.VALIDATION, 'Journal entry requires at least 2 lines');
@@ -97,7 +134,7 @@ export class PostingService {
     // 10.11 read through accounts_tenant_id_id_key (S on the index entry, then on the
     // record) while AccountsService held the record and wanted the entry: a deadlock.
     const rows = (await tx.$queryRaw`
-      SELECT id, code, is_active, is_postable, is_control, control_type
+      SELECT id, code, account_type, is_active, is_postable, is_control, control_type, cost_center_required
       FROM accounts FORCE INDEX (PRIMARY)
       WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id IN (${Prisma.join(accountIds)})
       ORDER BY id
@@ -105,14 +142,18 @@ export class PostingService {
     `) as {
       id: bigint;
       code: string;
+      account_type: string;
       is_active: number | boolean;
       is_postable: number | boolean;
       is_control: number | boolean;
       control_type: string | null;
+      cost_center_required: number | boolean;
     }[];
     const accounts = rows.map((r) => ({
       id: BigInt(r.id),
       code: r.code,
+      accountType: r.account_type,
+      costCenterRequired: Boolean(r.cost_center_required),
       isActive: Boolean(r.is_active),
       isPostable: Boolean(r.is_postable),
       isControl: Boolean(r.is_control),
@@ -138,7 +179,19 @@ export class PostingService {
       legacyExpected.set(m.accountId, m.mappingKey === 'CUSTOMERS_CONTROL' ? 'CUSTOMER' : 'SUPPLIER');
     }
 
-    return lines.map((line, i) => {
+    // ADR-024 §1.3, §1.6: "required" applies only while the company has centres on.
+    const company = await tx.company.findFirst({
+      where: { tenantId, id: companyId },
+      select: { costCentersEnabled: true },
+    });
+    const centreContext = {
+      enabled: company?.costCentersEnabled ?? false,
+      header: opts.costCenterId ?? null,
+      reversal: opts.reversal ?? false,
+      required: opts.requireCostCenters ?? false,
+    };
+
+    const normalized = lines.map((line, i): NormalizedLine => {
       const lineNo = i + 1;
       const accountId = line.accountId.toString();
       const account = byId.get(line.accountId);
@@ -210,8 +263,22 @@ export class PostingService {
         }
       }
 
-      return { line, debit, credit };
+      const costCenterId = lineCostCenter(lineNo, account, line.costCenterId, centreContext);
+      return { line, debit, credit, costCenterId };
     });
+
+    // Lock the centres after the accounts, ascending (ADR-024 §1.4): a delete
+    // or regrouping of a centre waits for this posting, and sees its lines.
+    const centreIds = normalized.map((n) => n.costCenterId).filter((id): id is bigint => id !== null);
+    if (centreIds.length > 0) {
+      const centres = await this.costCenters.lockForPosting(tx, tenantId, companyId, centreIds);
+      normalized.forEach((n, i) => {
+        if (n.costCenterId !== null) {
+          assertPostingCentre(i + 1, n.costCenterId, centres.get(n.costCenterId), centreContext.reversal);
+        }
+      });
+    }
+    return normalized;
   }
 
   /**
@@ -225,7 +292,11 @@ export class PostingService {
   ): Promise<{ id: bigint; entryNo: string; totalDebit: Decimal; totalCredit: Decimal }> {
     const { tenantId, companyId } = params;
 
-    const normalized = await this.validateLines(tx, tenantId, companyId, params.lines);
+    const normalized = await this.validateLines(tx, tenantId, companyId, params.lines, {
+      costCenterId: params.costCenterId,
+      reversal: params.postingKind === 'REVERSAL',
+      requireCostCenters: params.requireCostCenters,
+    });
 
     let totalDebit = new Decimal(0);
     let totalCredit = new Decimal(0);
@@ -281,6 +352,7 @@ export class PostingService {
           partyId: n.line.partyId ?? null,
           description: n.line.description ?? null,
           branchId: n.line.branchId ?? params.branchId ?? null,
+          costCenterId: n.costCenterId,
           // LEDGER-19: the line keeps its entry's date for the statement indexes.
           entryDate: params.entryDate,
         })),
@@ -381,6 +453,8 @@ export class PostingService {
       partyId: l.partyId,
       description: l.description,
       branchId: l.branchId,
+      // ADR-024 §1.10: the reversal keeps each line's centre.
+      costCenterId: l.costCenterId,
     }));
     return this.postEntry(tx, {
       tenantId,

@@ -296,6 +296,7 @@ model Tenant {
   stockTransferLines   StockTransferLine[]
   stockCountLines      StockCountLine[]
   parties              Party[]
+  costCenters          CostCenter[]
   cashBoxes            CashBox[]
   bankAccounts         BankAccount[]
   salesInvoices        SalesInvoice[]
@@ -354,6 +355,8 @@ model Company {
   costingMethod          CostingMethod @default(WEIGHTED_AVERAGE) @map("costing_method")
   allowNegativeStock     Boolean       @default(false) @map("allow_negative_stock")
   pricesIncludeTax       Boolean       @default(false) @map("prices_include_tax")
+  /// ADR-024 §1: cost centres shown and enforced. Off hides them; posted lines keep theirs.
+  costCentersEnabled     Boolean       @default(false) @map("cost_centers_enabled")
   /// Set when the owner finishes the setup wizard (§13.4, ADR-009).
   onboardingCompletedAt  DateTime?     @map("onboarding_completed_at") @db.DateTime(3)
   /// Purchasing cycle level (ADR-024 §2): raised any time, lowered only with no open cycle documents.
@@ -394,6 +397,7 @@ model Company {
   einvoiceSettings     EInvoiceSettings[]
   einvoiceSubmissions  EInvoiceSubmission[]
   allocations       Allocation[]
+  costCenters       CostCenter[]
 
   @@unique([tenantId, id])
   @@map("companies")
@@ -714,6 +718,9 @@ model Account {
   isPostable    Boolean       @default(true) @map("is_postable")
   isControl     Boolean       @default(false) @map("is_control")
   controlType   ControlType?  @map("control_type")
+  /// ADR-024 §1.3: a posting line needs a cost centre while centres are enabled.
+  /// Income-statement accounts (REVENUE, EXPENSE) only.
+  costCenterRequired Boolean  @default(false) @map("cost_center_required")
   isActive      Boolean       @default(true) @map("is_active")
   createdAt     DateTime      @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt     DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
@@ -853,6 +860,10 @@ model JournalLine {
   partyId        BigInt?           @map("party_id") @db.UnsignedBigInt
   description    String?           @db.VarChar(500)
   branchId       BigInt?           @map("branch_id") @db.UnsignedBigInt
+  /// ADR-024 §1.7: no foreign key, like party_id and branch_id. A used centre is
+  /// deactivated, never deleted (CostCentersService), and job:integrity-check
+  /// counts orphans. Income-statement lines only.
+  costCenterId   BigInt?           @map("cost_center_id") @db.UnsignedBigInt
   /// Copy of the entry's date (LEDGER-19): an entry's date never changes once
   /// its lines exist, so statements can seek on the line indexes below.
   /// Written with the lines (PostingService, draft creation in JournalService).
@@ -877,7 +888,49 @@ model JournalLine {
   // cursor in statement order (entry date, entry id, line no) and reads on.
   @@index([tenantId, accountId, entryDate, journalEntryId, lineNo], map: "journal_lines_account_seek_idx")
   @@index([tenantId, partyType, partyId, entryDate, journalEntryId, lineNo], map: "journal_lines_party_seek_idx")
+  // ADR-024 §1.8: the cost-centre statement seeks like the account statement. The only
+  // cost-centre index on journal_lines; the income statement by centre is measured without one.
+  @@index([tenantId, costCenterId, entryDate, journalEntryId, lineNo], map: "journal_lines_cost_center_seek_idx")
   @@map("journal_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 11 — cost centres (ADR-013 §3, ADR-024 §1)
+// ---------------------------------------------------------------------------
+
+/// A tree of cost centres per company, apart from the branches. Only a leaf
+/// (`isPostable`) takes lines; a centre that is used is deactivated, not deleted.
+model CostCenter {
+  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId   BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId  BigInt   @map("company_id") @db.UnsignedBigInt
+  code       String   @db.VarChar(50)
+  nameAr     String   @map("name_ar") @db.VarChar(191)
+  nameEn     String?  @map("name_en") @db.VarChar(191)
+  parentId   BigInt?  @map("parent_id") @db.UnsignedBigInt
+  /// False once the centre has a child (a group takes no lines).
+  isPostable Boolean  @default(true) @map("is_postable")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy  BigInt?  @map("created_by") @db.UnsignedBigInt
+  updatedBy  BigInt?  @map("updated_by") @db.UnsignedBigInt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company          Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  parent           CostCenter?       @relation("CostCenterTree", fields: [tenantId, companyId, parentId], references: [tenantId, companyId, id])
+  children         CostCenter[]      @relation("CostCenterTree")
+  salesInvoices    SalesInvoice[]
+  salesReturns     SalesReturn[]
+  purchaseInvoices PurchaseInvoice[]
+  purchaseReturns  PurchaseReturn[]
+  receipts         Receipt[]
+  payments         Payment[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, code])
+  @@map("cost_centers")
 }
 
 // ---------------------------------------------------------------------------
@@ -1378,6 +1431,8 @@ model SalesInvoice {
   /// ADR-017: line prices were entered including tax (company setting when the draft was saved).
   pricesIncludeTax Boolean           @default(false) @map("prices_include_tax")
   cashAccountId  BigInt?             @map("cash_account_id") @db.UnsignedBigInt
+  /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
   status         DocumentStatus      @default(DRAFT)
   description    String?             @db.VarChar(500)
   netTotal       Decimal             @default(0) @map("net_total") @db.Decimal(18, 3)
@@ -1398,6 +1453,7 @@ model SalesInvoice {
   customer     Party               @relation(fields: [tenantId, customerId], references: [tenantId, id])
   warehouse    Warehouse           @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
   cashAccount  Account?            @relation("SalesInvoiceCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
   journalEntry JournalEntry?       @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   lines        SalesInvoiceLine[]
   returns      SalesReturn[]
@@ -1462,6 +1518,8 @@ model PurchaseInvoice {
   /// ADR-017: line costs were entered including tax (company setting when the draft was saved).
   pricesIncludeTax    Boolean             @default(false) @map("prices_include_tax")
   cashAccountId       BigInt?             @map("cash_account_id") @db.UnsignedBigInt
+  /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
   status              DocumentStatus      @default(DRAFT)
   description         String?             @db.VarChar(500)
   netTotal            Decimal             @default(0) @map("net_total") @db.Decimal(18, 3)
@@ -1483,6 +1541,7 @@ model PurchaseInvoice {
   supplier     Party                @relation(fields: [tenantId, supplierId], references: [tenantId, id])
   warehouse    Warehouse?           @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
   cashAccount  Account?             @relation("PurchaseInvoiceCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
   journalEntry JournalEntry?        @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   receivedGrn  GoodsNote?           @relation(fields: [tenantId, receivedGrnId], references: [tenantId, id])
   lines        PurchaseInvoiceLine[]
@@ -1543,6 +1602,8 @@ model SalesReturn {
   warehouseId      BigInt              @map("warehouse_id") @db.UnsignedBigInt
   refundType       InvoicePaymentType  @map("refund_type")
   cashAccountId    BigInt?             @map("cash_account_id") @db.UnsignedBigInt
+  /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
   reason           String?             @db.VarChar(500)
   status           DocumentStatus      @default(DRAFT)
   netTotal         Decimal             @default(0) @map("net_total") @db.Decimal(18, 3)
@@ -1563,6 +1624,7 @@ model SalesReturn {
   customer        Party              @relation(fields: [tenantId, customerId], references: [tenantId, id])
   warehouse       Warehouse          @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
   cashAccount     Account?           @relation("SalesReturnCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
   journalEntry    JournalEntry?      @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   lines           SalesReturnLine[]
 
@@ -1618,6 +1680,8 @@ model PurchaseReturn {
   warehouseId       BigInt?             @map("warehouse_id") @db.UnsignedBigInt // NULL: service-only invoice (ADR-016 §5)
   refundType        InvoicePaymentType  @map("refund_type")
   cashAccountId     BigInt?             @map("cash_account_id") @db.UnsignedBigInt
+  /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
   reason            String?             @db.VarChar(500)
   status            DocumentStatus      @default(DRAFT)
   netTotal          Decimal             @default(0) @map("net_total") @db.Decimal(18, 3)
@@ -1637,6 +1701,7 @@ model PurchaseReturn {
   supplier        Party                 @relation(fields: [tenantId, supplierId], references: [tenantId, id])
   warehouse       Warehouse?            @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
   cashAccount     Account?              @relation("PurchaseReturnCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
   journalEntry    JournalEntry?         @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   lines           PurchaseReturnLine[]
 
@@ -1741,6 +1806,8 @@ model Receipt {
   partyType       JournalPartyType    @map("party_type")
   partyId         BigInt              @map("party_id") @db.UnsignedBigInt
   cashAccountId   BigInt              @map("cash_account_id") @db.UnsignedBigInt
+  /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
   amount          Decimal             @db.Decimal(18, 3)
   paymentMethodId BigInt?             @map("payment_method_id") @db.UnsignedBigInt
   referenceNo     String?             @map("reference_no") @db.VarChar(100)
@@ -1760,6 +1827,7 @@ model Receipt {
   company        Company      @relation(fields: [tenantId, companyId], references: [tenantId, id])
   party          Party        @relation(fields: [tenantId, partyId], references: [tenantId, id])
   cashAccount    Account      @relation("ReceiptCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
   paymentMethod  PaymentMethod? @relation(fields: [tenantId, paymentMethodId], references: [tenantId, id])
   journalEntry   JournalEntry? @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   allocations    Allocation[]
@@ -1781,6 +1849,8 @@ model Payment {
   partyId         BigInt?             @map("party_id") @db.UnsignedBigInt
   expenseAccountId BigInt?            @map("expense_account_id") @db.UnsignedBigInt
   cashAccountId   BigInt              @map("cash_account_id") @db.UnsignedBigInt
+  /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
+  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
   amount          Decimal             @db.Decimal(18, 3)
   paymentMethodId BigInt?             @map("payment_method_id") @db.UnsignedBigInt
   referenceNo     String?             @map("reference_no") @db.VarChar(100)
@@ -1801,6 +1871,7 @@ model Payment {
   party          Party?        @relation(fields: [tenantId, partyId], references: [tenantId, id])
   expenseAccount Account?      @relation("PaymentExpenseAccount", fields: [tenantId, companyId, expenseAccountId], references: [tenantId, companyId, id])
   cashAccount    Account       @relation("PaymentCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
   paymentMethod  PaymentMethod? @relation(fields: [tenantId, paymentMethodId], references: [tenantId, id])
   journalEntry   JournalEntry? @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   allocations    Allocation[]

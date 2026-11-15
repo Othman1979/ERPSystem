@@ -7,6 +7,7 @@ import { ApiProperty, PickType } from '@nestjs/swagger';
 import { KeysetOf } from '../../../common/openapi/responses.js';
 import {
   AccountRow,
+  CostCenterRow,
   JournalEntryRow,
   JournalLineRow,
 } from '../../../common/openapi/prisma-models.js';
@@ -201,6 +202,26 @@ export class PartyStatementPageDto extends KeysetOf(PartyStatementItemDto, {
 
   @ApiProperty({ type: 'string' })
   partyId!: string;
+}
+
+/** The cost centre a statement is about: `{ id, code, nameAr, nameEn }`. */
+export class CostCenterRefDto extends PickType(CostCenterRow, ['id', 'code', 'nameAr', 'nameEn'] as const) {}
+
+/** One line of a cost-centre statement, with its account and running Dr − Cr balance (ADR-024 §1.9). */
+export class CostCenterStatementItemDto extends PartyStatementItemDto {}
+
+/**
+ * One keyset page of a cost-centre statement (ReportsService.costCenterStatementPage),
+ * the JSON answer of GET /reports/cost-center-statement. The opening is always
+ * zero; `summary` is null after the first page.
+ */
+export class CostCenterStatementPageDto extends KeysetOf(CostCenterStatementItemDto, {
+  summary: JournalStatementSummaryDto,
+  summaryMode: 'nullable',
+  name: 'CostCenterStatementKeysetBase',
+}) {
+  @ApiProperty({ type: () => CostCenterRefDto })
+  costCenter!: CostCenterRefDto;
 }
 
 /** One account row of the trial balance; the PRIOR_YEARS row carries an empty accountId (ReportsService.trialBalance). */

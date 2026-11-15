@@ -12,6 +12,8 @@ export interface PurchaseReturnForm {
   returnDate: string;
   refundType: CreatePurchaseReturnDtoRefundType;
   cashAccountId?: string;
+  /** Optional header cost centre (ADR-024); left out of the body when empty. */
+  costCenterId?: string;
   reason?: string;
   /** Quantity to return per original line id; empty or 0 lines are left out. */
   qtyByLine: Record<string, string | undefined>;
@@ -38,6 +40,7 @@ export function purchaseReturnBody(invoice: ReturnedInvoice, form: PurchaseRetur
     warehouseId: invoice.warehouseId ?? undefined,
     refundType: form.refundType,
     cashAccountId: form.refundType === 'CASH' ? form.cashAccountId : undefined,
+    costCenterId: form.costCenterId || undefined,
     reason: form.reason || undefined,
     lines: invoice.lines
       .filter((l) => positive(form.qtyByLine[l.id]))

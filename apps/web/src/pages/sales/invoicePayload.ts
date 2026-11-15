@@ -16,6 +16,8 @@ export interface SalesInvoiceForm {
   warehouseId: string;
   paymentType: 'CASH' | 'CREDIT';
   cashAccountId?: string;
+  /** Optional header cost centre (ADR-024); left out of the body when empty. */
+  costCenterId?: string;
   lines: SalesInvoiceFormLine[];
 }
 
@@ -26,10 +28,12 @@ export interface SalesInvoiceForm {
 export function salesInvoiceFormDefaults(invoice?: SalesInvoiceDetailDto): {
   paymentType: 'CASH' | 'CREDIT';
   cashAccountId?: string;
+  costCenterId?: string;
 } {
   return {
     paymentType: invoice?.paymentType ?? 'CREDIT',
     cashAccountId: invoice?.cashAccountId ?? undefined,
+    costCenterId: invoice?.costCenterId ?? undefined,
   };
 }
 
@@ -46,6 +50,7 @@ export function salesInvoiceBody(form: SalesInvoiceForm, invoice?: SalesInvoiceD
     warehouseId: form.warehouseId,
     paymentType: form.paymentType,
     cashAccountId: form.paymentType === 'CASH' ? form.cashAccountId : undefined,
+    costCenterId: form.costCenterId || undefined,
     description: invoice?.description ?? undefined,
     lines: form.lines.flatMap((l) =>
       l.itemId && l.qty
