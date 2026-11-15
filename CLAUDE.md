@@ -36,6 +36,7 @@ pnpm test
 pnpm typecheck
 pnpm lint
 pnpm --filter api prisma migrate dev --name <name>
+pnpm --filter api prisma:generate    # prisma generate + بصمة schema.sha256 التي يقارنها preflight (يعمل دون DATABASE_URL)
 pnpm --filter api prisma db seed
 pnpm --filter api db:create          # ينشئ قاعدة DATABASE_URL إن لم تكن موجودة
 start-local.bat                       # تشغيل محلي بنقرة: يتحقق من Node وMariaDB، يرحّل ويزرع، ويشغّل api وweb

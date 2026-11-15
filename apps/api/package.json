@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",
-    "start": "node dist/main.js",
-    "start:web": "node scripts/start-with-web.mjs",
+    "start": "node --max-old-space-size=512 dist/main.js",
+    "start:web": "node --max-old-space-size=512 scripts/start-with-web.mjs",
     "job:tenant-status": "node dist/jobs/cli.js tenant-status",
     "job:einvoice-send": "node dist/jobs/cli.js einvoice-send",
     "job:purge-tenant": "node dist/jobs/cli.js purge-tenant",
@@ -25,13 +25,14 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
     "prisma": "prisma",
+    "prisma:generate": "prisma generate && node scripts/prisma-stamp.mjs",
     "seed": "tsx prisma/seed.ts",
     "db:create": "tsx scripts/create-db.mts",
     "demo:seed": "tsx scripts/demo-seed.mts",
     "ledger:check": "tsx scripts/ledger-check.mts",
     "openapi:models": "tsx test/static/prisma-models-render.ts",
     "openapi:document": "node scripts/openapi-document.mjs",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate && node scripts/prisma-stamp.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",
