@@ -13,6 +13,7 @@ import {
   FileTextOutlined,
   FlagOutlined,
   FileProtectOutlined,
+  ImportOutlined,
   InboxOutlined,
   MailOutlined,
   ProfileOutlined,
@@ -27,6 +28,7 @@ import {
 import { lazyPage } from './lazyPage';
 import { PERMISSIONS, type Permission } from './auth/permissions';
 import { meetsProcurementLevel, type ProcurementLevel } from './auth/procurementLevel';
+import type { ModuleTone } from './theme';
 
 /**
  * Each module's page is its own chunk, loaded when first opened (WEB-10).
@@ -104,15 +106,49 @@ export interface AppRoute {
    * request, quote and order screens of phase 12 (ADR-025), and phase 13's.
    */
   minProcurementLevel?: ProcurementLevel;
+  /**
+   * i18n key of the ribbon's sub-group caption (ADR-029 §3). Without one the
+   * button sits under its tab's own caption.
+   */
+  section?: string;
+  /**
+   * Path that opens the screen's new-document form (`?new=1`, read by
+   * useNewFromUrl). Only set where the page supports it; the ribbon then adds
+   * a "new" button for it.
+   */
+  newPath?: string;
 }
 
 export interface AppGroup {
-  /** i18n key of the group heading. */
+  /** i18n key of the tab caption (ribbon) and of the menu heading. */
   label: string;
-  /** Tile colour for the group on the home screen (theme token name). */
-  tone: 'finance' | 'trade' | 'inventory' | 'admin';
+  /** Tab colour (theme.ts moduleTone), also the home-screen colour. */
+  tone: ModuleTone;
   routes: AppRoute[];
 }
+
+/** A "new document" shortcut on the home screen and in the ribbon's home tab. */
+export interface QuickAction {
+  key: string;
+  /** i18n key of the button label. */
+  label: string;
+  path: string;
+  icon: ReactNode;
+  tone: ModuleTone;
+  permission: Permission;
+}
+
+/** Everyday documents, opened straight into a new form (pages read `?new=1`); shown to roles that may create them. */
+export const QUICK_ACTIONS: QuickAction[] = [
+  { key: 'sale', label: 'sales.newInvoice', path: '/sales?new=1', icon: <ShoppingCartOutlined />, tone: 'sales', permission: PERMISSIONS.SALES_MANAGE },
+  { key: 'purchase', label: 'purchases.newInvoice', path: '/purchases?new=1', icon: <ShoppingOutlined />, tone: 'purchases', permission: PERMISSIONS.PURCHASE_MANAGE },
+  { key: 'receipt', label: 'treasury.newReceipt', path: '/treasury?tab=receipts&new=1', icon: <ImportOutlined />, tone: 'treasury', permission: PERMISSIONS.TREASURY_MANAGE },
+  { key: 'payment', label: 'treasury.newPayment', path: '/treasury?tab=payments&new=1', icon: <ExportOutlined />, tone: 'treasury', permission: PERMISSIONS.TREASURY_MANAGE },
+  { key: 'journal', label: 'journal.newEntry', path: '/journal?new=1', icon: <ProfileOutlined />, tone: 'accounting', permission: PERMISSIONS.JOURNAL_MANAGE },
+];
+
+/** The platform owner's console (§13.3), outside the tenant modules. */
+export const PLATFORM_PATH = '/platform';
 
 /** Invitations are reachable without a company (ADR-012 §PLAT-10). */
 export const INVITATIONS_PATH = '/invitations';
@@ -122,14 +158,37 @@ export const SETUP_PATH = '/setup';
 /** The wizard reads /tax-categories and finishes with POST /company/onboarding/complete: both need this. */
 export const SETUP_PERMISSION: Permission = PERMISSIONS.SETTINGS_MANAGE;
 
-/** Every module, grouped as on the home screen and in the side menu. */
+/** Suppliers and customers: one screen, listed under both sales and purchases. */
+const PARTIES_ROUTE: AppRoute = {
+  key: 'parties',
+  path: '/parties',
+  label: 'nav.parties',
+  icon: <SolutionOutlined />,
+  element: <PartiesPage />,
+  permission: PERMISSIONS.TENANT_READ,
+  section: 'nav.sectionPartners',
+};
+
+/**
+ * Every module, in the order of the ribbon's tabs (ADR-029 §3) and of the side menu.
+ * A tab is a group; `section` splits its buttons into captioned sub-groups.
+ */
 export const APP_GROUPS: AppGroup[] = [
   {
-    label: 'nav.groupFinance',
-    tone: 'finance',
+    label: 'nav.groupAccounting',
+    tone: 'accounting',
     routes: [
-      { key: 'accounts', path: '/accounts', label: 'nav.accounts', icon: <BankOutlined />, element: <AccountsPage />, permission: PERMISSIONS.TENANT_READ },
-      { key: 'journal', path: '/journal', label: 'nav.journal', icon: <ProfileOutlined />, element: <JournalPage />, permission: PERMISSIONS.TENANT_READ },
+      { key: 'accounts', path: '/accounts', label: 'nav.accounts', icon: <BankOutlined />, element: <AccountsPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionLedger' },
+      {
+        key: 'journal',
+        path: '/journal',
+        label: 'nav.journal',
+        icon: <ProfileOutlined />,
+        element: <JournalPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        section: 'nav.sectionLedger',
+        newPath: '/journal?new=1',
+      },
       {
         key: 'openingBalances',
         path: '/opening-balances',
@@ -137,19 +196,52 @@ export const APP_GROUPS: AppGroup[] = [
         icon: <FlagOutlined />,
         element: <OpeningBalancesPage />,
         permission: PERMISSIONS.TENANT_READ,
+        section: 'nav.sectionLedger',
+        newPath: '/opening-balances?new=1',
       },
+      { key: 'fiscal', path: '/fiscal', label: 'nav.fiscal', icon: <CalendarOutlined />, element: <FiscalPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionPeriods' },
+    ],
+  },
+  {
+    label: 'nav.groupTreasury',
+    tone: 'treasury',
+    routes: [
       { key: 'treasury', path: '/treasury', label: 'nav.treasury', icon: <WalletOutlined />, element: <TreasuryPage />, permission: PERMISSIONS.TENANT_READ },
-      { key: 'reports', path: '/reports', label: 'nav.reports', icon: <BarChartOutlined />, element: <ReportsPage />, permission: PERMISSIONS.REPORTS_VIEW },
-      { key: 'fiscal', path: '/fiscal', label: 'nav.fiscal', icon: <CalendarOutlined />, element: <FiscalPage />, permission: PERMISSIONS.TENANT_READ },
     ],
   },
   {
     label: 'nav.groupSales',
-    tone: 'trade',
+    tone: 'sales',
     routes: [
-      { key: 'sales', path: '/sales', label: 'nav.sales', icon: <ShoppingCartOutlined />, element: <SalesPage />, permission: PERMISSIONS.TENANT_READ },
-      { key: 'einvoice', path: '/einvoice', label: 'nav.einvoice', icon: <FileProtectOutlined />, element: <EInvoicePage />, permission: PERMISSIONS.REPORTS_VIEW },
-      { key: 'purchases', path: '/purchases', label: 'nav.purchases', icon: <ShoppingOutlined />, element: <PurchasesPage />, permission: PERMISSIONS.TENANT_READ },
+      {
+        key: 'sales',
+        path: '/sales',
+        label: 'nav.sales',
+        icon: <ShoppingCartOutlined />,
+        element: <SalesPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        section: 'nav.sectionDocuments',
+        newPath: '/sales?new=1',
+      },
+      { key: 'einvoice', path: '/einvoice', label: 'nav.einvoice', icon: <FileProtectOutlined />, element: <EInvoicePage />, permission: PERMISSIONS.REPORTS_VIEW, section: 'nav.sectionDocuments' },
+      PARTIES_ROUTE,
+    ],
+  },
+  {
+    label: 'nav.groupPurchases',
+    tone: 'purchases',
+    routes: [
+      {
+        key: 'purchases',
+        path: '/purchases',
+        label: 'nav.purchases',
+        icon: <ShoppingOutlined />,
+        element: <PurchasesPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        section: 'nav.sectionDocuments',
+        newPath: '/purchases?new=1',
+      },
+      { key: 'goodsNotes', path: '/goods-notes', label: 'nav.goodsNotes', icon: <FileDoneOutlined />, element: <GoodsNotesPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionDocuments' },
       // Phase 12 (ADR-025): requests and quotes at FULL, orders from MEDIUM.
       {
         key: 'purchaseRequests',
@@ -159,6 +251,8 @@ export const APP_GROUPS: AppGroup[] = [
         element: <PurchaseRequestsPage />,
         permission: PERMISSIONS.TENANT_READ,
         minProcurementLevel: 'FULL',
+        section: 'nav.sectionCycle',
+        newPath: '/purchase-requests?new=1',
       },
       {
         key: 'purchaseQuotes',
@@ -168,6 +262,8 @@ export const APP_GROUPS: AppGroup[] = [
         element: <PurchaseQuotesPage />,
         permission: PERMISSIONS.TENANT_READ,
         minProcurementLevel: 'FULL',
+        section: 'nav.sectionCycle',
+        newPath: '/purchase-quotes?new=1',
       },
       {
         key: 'purchaseOrders',
@@ -177,18 +273,19 @@ export const APP_GROUPS: AppGroup[] = [
         element: <PurchaseOrdersPage />,
         permission: PERMISSIONS.TENANT_READ,
         minProcurementLevel: 'MEDIUM',
+        section: 'nav.sectionCycle',
+        newPath: '/purchase-orders?new=1',
       },
-      { key: 'goodsNotes', path: '/goods-notes', label: 'nav.goodsNotes', icon: <FileDoneOutlined />, element: <GoodsNotesPage />, permission: PERMISSIONS.TENANT_READ },
-      { key: 'parties', path: '/parties', label: 'nav.parties', icon: <SolutionOutlined />, element: <PartiesPage />, permission: PERMISSIONS.TENANT_READ },
+      PARTIES_ROUTE,
     ],
   },
   {
     label: 'nav.groupInventory',
     tone: 'inventory',
     routes: [
-      { key: 'items', path: '/items', label: 'nav.items', icon: <InboxOutlined />, element: <ItemsPage />, permission: PERMISSIONS.TENANT_READ },
-      { key: 'warehouses', path: '/warehouses', label: 'nav.warehouses', icon: <ContainerOutlined />, element: <WarehousesPage />, permission: PERMISSIONS.TENANT_READ },
-      { key: 'stock', path: '/stock', label: 'nav.stock', icon: <AuditOutlined />, element: <StockPage />, permission: PERMISSIONS.TENANT_READ },
+      { key: 'items', path: '/items', label: 'nav.items', icon: <InboxOutlined />, element: <ItemsPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionCatalog' },
+      { key: 'warehouses', path: '/warehouses', label: 'nav.warehouses', icon: <ContainerOutlined />, element: <WarehousesPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionCatalog' },
+      { key: 'stock', path: '/stock', label: 'nav.stock', icon: <AuditOutlined />, element: <StockPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionMovements' },
       // Phase 13 (ADR-026 §9): issue requests, FULL procurement level only.
       {
         key: 'issueRequests',
@@ -198,17 +295,26 @@ export const APP_GROUPS: AppGroup[] = [
         element: <IssueRequestsPage />,
         permission: PERMISSIONS.TENANT_READ,
         minProcurementLevel: 'FULL',
+        section: 'nav.sectionMovements',
+        newPath: '/issue-requests?new=1',
       },
+    ],
+  },
+  {
+    label: 'nav.groupReports',
+    tone: 'reports',
+    routes: [
+      { key: 'reports', path: '/reports', label: 'nav.reports', icon: <BarChartOutlined />, element: <ReportsPage />, permission: PERMISSIONS.REPORTS_VIEW },
     ],
   },
   {
     label: 'nav.groupAdmin',
     tone: 'admin',
     routes: [
-      { key: 'users', path: '/users', label: 'nav.users', icon: <TeamOutlined />, element: <UsersPage />, permission: PERMISSIONS.USER_MANAGE },
-      { key: 'branches', path: '/branches', label: 'nav.branches', icon: <ShopOutlined />, element: <BranchesPage />, permission: PERMISSIONS.TENANT_READ },
-      { key: 'settings', path: '/settings', label: 'nav.settings', icon: <SettingOutlined />, element: <SettingsPage />, permission: PERMISSIONS.SETTINGS_MANAGE },
-      { key: 'health', path: '/health', label: 'nav.health', icon: <DashboardOutlined />, element: <HealthPage /> },
+      { key: 'users', path: '/users', label: 'nav.users', icon: <TeamOutlined />, element: <UsersPage />, permission: PERMISSIONS.USER_MANAGE, section: 'nav.sectionPeople' },
+      { key: 'branches', path: '/branches', label: 'nav.branches', icon: <ShopOutlined />, element: <BranchesPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionCompany' },
+      { key: 'settings', path: '/settings', label: 'nav.settings', icon: <SettingOutlined />, element: <SettingsPage />, permission: PERMISSIONS.SETTINGS_MANAGE, section: 'nav.sectionCompany' },
+      { key: 'health', path: '/health', label: 'nav.health', icon: <DashboardOutlined />, element: <HealthPage />, section: 'nav.sectionSystem' },
     ],
   },
   {
@@ -227,7 +333,10 @@ export const APP_GROUPS: AppGroup[] = [
   },
 ];
 
-export const ALL_ROUTES: AppRoute[] = APP_GROUPS.flatMap((g) => g.routes);
+/** Each screen once, even when a tab lists it too (parties): routes are registered by key. */
+export const ALL_ROUTES: AppRoute[] = APP_GROUPS.flatMap((g) => g.routes).filter(
+  (route, index, all) => all.findIndex((other) => other.key === route.key) === index,
+);
 
 /**
  * True when a role with `can`, in a company at procurement `level`, may open

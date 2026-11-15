@@ -159,7 +159,14 @@ async function until(check: () => void): Promise<void> {
 }
 
 const text = () => document.body.textContent ?? '';
-const sideMenu = () => [...container.querySelectorAll('.app-sider .ant-menu-item')].map((li) => li.textContent);
+/** Labels of the buttons on the ribbon's open strip (the active tab's screens). */
+const sideMenu = () => [...container.querySelectorAll('.ribbon-strip .ribbon-label')].map((l) => l.textContent);
+/** Opens a ribbon tab by its i18n key, as a user clicking it does. */
+async function openTab(key: string): Promise<void> {
+  const tab = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => b.textContent === i18n.t(key));
+  if (!tab) throw new Error(`no ribbon tab ${key}`);
+  await act(async () => tab.click());
+}
 const homeLinks = () => [...container.querySelectorAll('.home-link')].map((b) => b.textContent);
 const quickActions = () => [...container.querySelectorAll('.home-quick button')].map((b) => b.textContent);
 const usersListRequested = () => requested.some((u) => /\/api\/v1\/users(\?|$)/.test(u));
@@ -193,8 +200,9 @@ describe('screens follow the role permissions from GET /me', () => {
     session.state = signedIn('ACCOUNTANT', ACCOUNTANT);
     await mount('/');
     await until(() => expect(homeLinks().length).toBeGreaterThan(0));
-    expect(sideMenu()).not.toContain(i18n.t('nav.users'));
     expect(homeLinks()).not.toContain(i18n.t('nav.users'));
+    await openTab('nav.groupAdmin');
+    expect(sideMenu()).not.toContain(i18n.t('nav.users'));
     // Everything else of the admin group is still there.
     expect(sideMenu()).toEqual(expect.arrayContaining([i18n.t('nav.branches'), i18n.t('nav.settings')]));
   });
@@ -215,8 +223,10 @@ describe('screens follow the role permissions from GET /me', () => {
     session.state = signedIn('VIEWER', VIEWER);
     await mount('/');
     await until(() => expect(homeLinks().length).toBeGreaterThan(0));
-    expect(sideMenu()).not.toContain(i18n.t('nav.settings'));
     expect(quickActions()).toEqual([]);
+    await openTab('nav.groupAdmin');
+    expect(sideMenu()).not.toContain(i18n.t('nav.settings'));
+    await openTab('nav.groupReports');
     expect(sideMenu()).toContain(i18n.t('nav.reports'));
   });
 
@@ -289,9 +299,8 @@ describe('leaving a screen cancels its requests (WEB-05)', () => {
     const signal = signals.get(url)!;
     expect(signal.aborted).toBe(false);
 
-    const home = [...container.querySelectorAll<HTMLElement>('.app-sider .ant-menu-item')].find(
-      (li) => li.textContent === i18n.t('nav.home'),
-    )!;
+    await openTab('nav.home');
+    const home = container.querySelector<HTMLAnchorElement>('.ribbon-link[href="/"]')!;
     await act(async () => home.click());
     expect(pathname).toBe('/');
     await until(() => expect(signal.aborted).toBe(true));
@@ -307,6 +316,36 @@ describe('leaving a screen cancels its requests (WEB-05)', () => {
     await until(() => expect(signal.aborted).toBe(true));
     // afterEach unmounts again; give it a fresh root to unmount.
     root = createRoot(container);
+  });
+});
+
+describe('the ribbon replaces the side menu above phone width (ADR-029)', () => {
+  const menuButton = () => container.querySelector<HTMLButtonElement>(`button[aria-label="${i18n.t('nav.menu')}"]`);
+
+  it('shows the ribbon and no side menu on desktop, and no menu button', async () => {
+    setViewport(1280);
+    session.state = signedIn('OWNER', OWNER);
+    await mount('/accounts');
+    await until(() => expect(container.querySelector('.ribbon')).not.toBeNull());
+    expect(container.querySelector('.app-sider')).toBeNull();
+    expect(container.querySelector('.ribbon.is-compact')).toBeNull();
+    expect(menuButton()).toBeNull();
+  });
+
+  it('shows the compact ribbon on tablets', async () => {
+    setViewport(800);
+    session.state = signedIn('OWNER', OWNER);
+    await mount('/accounts');
+    await until(() => expect(container.querySelector('.ribbon.is-compact')).not.toBeNull());
+    expect(container.querySelector('.app-sider')).toBeNull();
+  });
+
+  it('keeps the menu drawer on phones, with no ribbon', async () => {
+    setViewport(375);
+    session.state = signedIn('OWNER', OWNER);
+    await mount('/accounts');
+    await until(() => expect(menuButton()).not.toBeNull());
+    expect(container.querySelector('.ribbon')).toBeNull();
   });
 });
 

@@ -103,7 +103,48 @@ export const palette = {
     inventory: '#a8461a',
     admin: '#5b6b7a',
   },
+  /**
+   * Ribbon colour per module (ADR-029 §2). `fg` colours the icon and the active
+   * tab's top rule, `bg` is the tile behind the icon. Each pair passes 3:1 (WCAG 1.4.11).
+   */
+  moduleTone: {
+    home: {
+      fg: '#1f3a5f',
+      bg: '#e8edf4',
+    },
+    accounting: {
+      fg: '#3c3489',
+      bg: '#eeedfe',
+    },
+    treasury: {
+      fg: '#3b6d11',
+      bg: '#eaf3de',
+    },
+    sales: {
+      fg: '#0f6e56',
+      bg: '#e1f5ee',
+    },
+    purchases: {
+      fg: '#993c1d',
+      bg: '#faece7',
+    },
+    inventory: {
+      fg: '#854f0b',
+      bg: '#faeeda',
+    },
+    reports: {
+      fg: '#185fa5',
+      bg: '#e6f1fb',
+    },
+    admin: {
+      fg: '#5f5e5a',
+      bg: '#f1efe8',
+    },
+  },
 } as const;
+
+/** The module colour keys of the ribbon: one per tab tone (ADR-029 §2). */
+export type ModuleTone = keyof typeof palette.moduleTone;
 
 export const TOPBAR_HEIGHT = 44;
 
@@ -123,6 +164,10 @@ export const cssVariables: Record<string, string> = (() => {
   }
   for (const [key, value] of Object.entries(palette.grid)) vars[`--c-grid-${kebab(key)}`] = value;
   for (const [key, value] of Object.entries(palette.tone)) vars[`--c-tone-${kebab(key)}`] = value;
+  for (const [key, pair] of Object.entries(palette.moduleTone)) {
+    vars[`--c-tone-${kebab(key)}-fg`] = pair.fg;
+    vars[`--c-tone-${kebab(key)}-bg`] = pair.bg;
+  }
   vars['--topbar-height'] = `${TOPBAR_HEIGHT}px`;
   vars['--font'] = FONT_FAMILY;
   vars['--font-mono'] = MONO_FAMILY;
