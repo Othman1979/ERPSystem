@@ -348,7 +348,7 @@ export class ConvertPurchaseRequestDto {
   selections!: ConvertSelectionDto[];
 }
 
-export const PURCHASE_ORDER_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'CANCELLED'] as const;
+export const PURCHASE_ORDER_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CLOSED', 'CANCELLED'] as const;
 export const PURCHASE_ORDER_SORTS = sortValues(['orderDate', 'orderNo', 'grandTotal'] as const);
 
 /** GET /purchase-orders: a numbered page, newest first; `q` matches the number and the supplier. */

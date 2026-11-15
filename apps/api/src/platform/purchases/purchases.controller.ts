@@ -9,7 +9,9 @@ import { PrintingService } from '../printing/printing.service.js';
 import { purchaseInvoicePrint } from './purchases.print.js';
 import { PurchaseInvoicesService } from './purchase-invoices.service.js';
 import { PurchaseReturnsService } from './purchase-returns.service.js';
+import { ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
 import {
+  BillPurchaseOrderDto,
   CreatePurchaseInvoiceDto,
   CreatePurchaseReturnDto,
   ListPurchaseInvoicesQueryDto,
@@ -18,6 +20,7 @@ import {
 import {
   PurchaseInvoiceDetailDto,
   PurchaseInvoiceListItemDto,
+  PurchaseOrderBillableDto,
   PurchaseReturnDetailDto,
   PurchaseReturnListItemDto,
 } from './dto/purchases-response.dto.js';
@@ -83,6 +86,37 @@ export class PurchasesController {
   @ApiCreatedResponse({ type: PurchaseInvoiceDetailDto })
   postInvoice(@Param('id') id: string) {
     return this.invoices.post(BigInt(id));
+  }
+
+  /**
+   * ADR-026 §2: approves a draft's price above its purchase order (purchase.approve,
+   * not its creator or last editor; an owner always). An edit clears it.
+   */
+  @Post('purchase-invoices/:id/approve-price')
+  @RequiresIdempotencyKey()
+  @RequirePermission(PERMISSIONS.PURCHASE_APPROVE)
+  @ApiCreatedResponse({ type: PurchaseInvoiceDetailDto })
+  approvePrice(@Param('id', ParseIdPipe) id: string) {
+    return this.invoices.approvePrice(BigInt(id));
+  }
+
+  // ------------------------------------ billing an order's receipts (ADR-026 §7)
+
+  /** The order's posted GRN lines, what is billed of them and the prices to bill them at. */
+  @Get('purchase-orders/:id/billable')
+  @RequirePermission(PERMISSIONS.TENANT_READ)
+  @ApiOkResponse({ type: PurchaseOrderBillableDto })
+  billable(@Param('id', ParseIdPipe) id: string) {
+    return this.invoices.billable(BigInt(id));
+  }
+
+  /** A draft purchase invoice from the order's posted receipts. */
+  @Post('purchase-orders/:id/bill')
+  @RequiresIdempotencyKey()
+  @RequirePermission(PERMISSIONS.PURCHASE_MANAGE)
+  @ApiCreatedResponse({ type: PurchaseInvoiceDetailDto })
+  bill(@Param('id', ParseIdPipe) id: string, @Body() dto: BillPurchaseOrderDto) {
+    return this.invoices.bill(BigInt(id), dto);
   }
 
   // ------------------------------------------------------ purchase returns

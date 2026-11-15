@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DeleteOutlined, PlusOutlined, PrinterOutlined, SaveOutlined } from '@ant-design/icons';
 import {
+  Alert,
   App,
   Button,
   DatePicker,
   Dropdown,
   Input,
+  InputNumber,
   Popconfirm,
   Select,
   Space,
@@ -14,7 +16,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   emptyItemLine,
@@ -29,14 +31,20 @@ import {
   goodsNotesControllerGet,
   goodsNotesControllerList,
   goodsNotesControllerPost,
+  goodsNotesControllerUpdate,
   warehousesControllerList,
 } from '@erp/api-client';
 import type {
+  GoodsNoteDetailDto,
   GoodsNoteLineWithItemDto,
   GoodsNoteListItemDto,
   GoodsNotesControllerListSort,
   ItemListItemDto,
 } from '@erp/api-client';
+import { goodsNoteBody } from './goods/goodsNotePayload';
+import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
+import { useCostCenters } from '../hooks/useCostCenters';
+import { type AccountRow, useAccounts } from '../hooks/useAccounts';
 import { idemHeaders } from '../idempotency';
 import {
   enterTo,
@@ -44,6 +52,7 @@ import {
   focusNamedField,
   GridSelect,
 } from '../components/GridSelect';
+import { cellLabel } from '../components/gridA11y';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
@@ -65,6 +74,51 @@ const TYPE_LABEL: Record<NoteType, string> = {
   GIN: 'goods.exitVoucher',
 };
 const TYPE_TAG_COLOR: Record<NoteType, string> = { GRN: 'blue', GIN: 'orange' };
+
+/** Postable expense accounts: the choices of a GIN's expense account (ADR-026 §8). Module-level so the select stays memoised. */
+const selectExpenseAccounts = (rows: AccountRow[]): AccountRow[] =>
+  rows.filter((a) => a.isActive && a.isPostable && a.accountType === 'EXPENSE');
+
+/** Read-only header fields that name the source documents of a note (order, supplier, request, account, centre). */
+function SourceFields({
+  entry,
+  withAccounts = true,
+}: {
+  entry: GoodsNoteDetailDto;
+  /** False where the account and centre are already editable fields. */
+  withAccounts?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {entry.purchaseOrder && (
+        <DocField label={t('goods.purchaseOrder')}>
+          <DocValue>{entry.purchaseOrder.orderNo ?? `#${entry.purchaseOrder.id}`}</DocValue>
+        </DocField>
+      )}
+      {entry.supplier && (
+        <DocField label={t('goods.supplier')}>
+          <DocValue>{codeAndName(entry.supplier)}</DocValue>
+        </DocField>
+      )}
+      {entry.issueRequest && (
+        <DocField label={t('goods.issueRequest')}>
+          <DocValue>{entry.issueRequest.requestNo ?? `#${entry.issueRequest.id}`}</DocValue>
+        </DocField>
+      )}
+      {withAccounts && entry.expenseAccount && (
+        <DocField label={t('goods.expenseAccount')}>
+          <DocValue>{codeAndName(entry.expenseAccount)}</DocValue>
+        </DocField>
+      )}
+      {withAccounts && entry.costCenter && (
+        <DocField label={t('costCenters.documentField')}>
+          <DocValue>{codeAndName(entry.costCenter)}</DocValue>
+        </DocField>
+      )}
+    </>
+  );
+}
 
 function TypeTag({ type }: { type: NoteType }) {
   const { t } = useTranslation();
@@ -101,6 +155,21 @@ export function GoodsNotesSection({
   const [newWarehouseId, setNewWarehouseId] = useState<string | undefined>();
   const [newDescription, setNewDescription] = useState('');
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1), emptyItemLine(2)]);
+  // GIN only (ADR-026 §8): expense account and department.
+  const [newExpenseAccountId, setNewExpenseAccountId] = useState<string | undefined>();
+  const [newCostCenterId, setNewCostCenterId] = useState<string | undefined>();
+  const costCenters = useCostCenters();
+  const expenseAccounts = useAccounts(selectExpenseAccounts);
+  const expenseOptions = useMemo(
+    () => (expenseAccounts.data ?? []).map((a) => ({ value: a.id, label: codeAndName(a) })),
+    [expenseAccounts.data],
+  );
+  // Draft linked to an order or request: only quantities, date, description (and a GIN's account and centre) change.
+  const [editDate, setEditDate] = useState<Dayjs>(dayjs());
+  const [editDescription, setEditDescription] = useState('');
+  const [editExpenseAccountId, setEditExpenseAccountId] = useState<string | undefined>();
+  const [editCostCenterId, setEditCostCenterId] = useState<string | undefined>();
+  const [editQty, setEditQty] = useState<Record<string, string | null>>({});
   // New notes start at the warehouse (required, no default); bumped by openNew.
   const [headerFocus, setHeaderFocus] = useState(0);
   useEffect(() => {
@@ -163,6 +232,8 @@ export function GoodsNotesSection({
     setNewDate(dayjs());
     setNewWarehouseId(undefined);
     setNewDescription('');
+    setNewExpenseAccountId(undefined);
+    setNewCostCenterId(undefined);
     setLines([emptyItemLine(1), emptyItemLine(2)]);
     setHeaderFocus((g) => g + 1);
     setScreen('entry');
@@ -187,19 +258,17 @@ export function GoodsNotesSection({
 
   const create = useMutation({
     mutationFn: async ({ andPost, warehouseId }: { andPost: boolean; warehouseId: string }) => {
-      const res = await goodsNotesControllerCreate({
-        noteDate: newDate.format('YYYY-MM-DD'),
-        warehouseId,
-        noteType: newType,
-        description: newDescription || undefined,
-        lines: lines
-          .filter((l): l is ItemLineDraft & { itemId: string; qty: string } => !!l.itemId && !!l.qty)
-          .map((l) => ({
-            itemId: l.itemId,
-            qty: l.qty,
-            unitCost: newType === 'GRN' && l.unitCost != null ? l.unitCost : undefined,
-          })),
-      });
+      const res = await goodsNotesControllerCreate(
+        goodsNoteBody({
+          noteDate: newDate.format('YYYY-MM-DD'),
+          warehouseId,
+          noteType: newType,
+          description: newDescription,
+          expenseAccountId: newExpenseAccountId,
+          costCenterId: newCostCenterId,
+          lines: lines.map((l) => ({ itemId: l.itemId ?? '', qty: l.qty ?? '', unitCost: l.unitCost })),
+        }),
+      );
       const id = res.data.id;
       if (andPost) {
         await goodsNotesControllerPost(id, { headers: idemHeaders() });
@@ -235,6 +304,16 @@ export function GoodsNotesSection({
     },
     onError,
   });
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: ReturnType<typeof goodsNoteBody> }) =>
+      goodsNotesControllerUpdate(id, body),
+    onSuccess: (_res, { id }) => {
+      apiMessage.success(t('common.saved'));
+      invalidate();
+      void queryClient.invalidateQueries({ queryKey: ['goods-note', id] });
+    },
+    onError,
+  });
 
   const canSave =
     !!newWarehouseId &&
@@ -260,9 +339,51 @@ export function GoodsNotesSection({
   // (a new note is created and posted), behind a confirmation.
   const { modal } = App.useApp();
   const openDraft = screen === 'entry' && detail?.status === 'DRAFT' ? detail : null;
+  const linkedDraft =
+    openDraft && (openDraft.purchaseOrderId || openDraft.issueRequestId) ? openDraft : null;
   const isNewEntry = screen === 'entry' && !entryId;
+
+  // Keep the edit form in step with the saved note (also after a save refetches it).
+  useEffect(() => {
+    if (!detail) return;
+    setEditDate(dayjs(detail.noteDate));
+    setEditDescription(detail.description ?? '');
+    setEditExpenseAccountId(detail.expenseAccountId ?? undefined);
+    setEditCostCenterId(detail.costCenterId ?? undefined);
+    setEditQty(Object.fromEntries(detail.lines.map((l) => [l.id, l.qty])));
+  }, [detail]);
+
+  const saveLinked = () => {
+    if (!linkedDraft || update.isPending) return;
+    if (linkedDraft.lines.some((l) => !editQty[l.id])) {
+      apiMessage.error(t('errors.VALIDATION'));
+      return;
+    }
+    update.mutate({
+      id: linkedDraft.id,
+      body: goodsNoteBody(
+        {
+          noteType: linkedDraft.noteType,
+          noteDate: editDate.format('YYYY-MM-DD'),
+          warehouseId: linkedDraft.warehouseId,
+          description: editDescription,
+          expenseAccountId: editExpenseAccountId,
+          costCenterId: editCostCenterId,
+          lines: linkedDraft.lines.map((l) => ({
+            itemId: l.itemId,
+            qty: editQty[l.id] ?? '',
+            poLineId: l.poLineId,
+            issueRequestLineId: l.issueRequestLineId,
+          })),
+        },
+        linkedDraft,
+        true,
+      ),
+    });
+  };
+
   useDocShortcuts({
-    onSave: isNewEntry ? () => saveNew(false) : undefined,
+    onSave: isNewEntry ? () => saveNew(false) : linkedDraft ? saveLinked : undefined,
     onPost:
       isNewEntry || openDraft
         ? () => {
@@ -435,6 +556,12 @@ export function GoodsNotesSection({
               <>
                 {entry.status === 'DRAFT' && (
                   <>
+                    {linkedDraft && (
+                      <Button loading={update.isPending} onClick={saveLinked}>
+                        {t('common.save')}
+                        <span className="doc-kbd">Ctrl+S</span>
+                      </Button>
+                    )}
                     <Popconfirm
                       title={t('journal.confirmPost')}
                       onConfirm={() => post.mutate(entry.id)}
@@ -504,7 +631,9 @@ export function GoodsNotesSection({
             <DocField
               field="description"
               label={t('common.description')}
-              onKeyDown={enterTo(focusFirstGridCell)}
+              onKeyDown={enterTo(
+                newType === 'GIN' ? () => focusNamedField('expenseAccount') : focusFirstGridCell,
+              )}
             >
               <Input
                 value={newDescription}
@@ -512,6 +641,84 @@ export function GoodsNotesSection({
                 maxLength={500}
               />
             </DocField>
+            {newType === 'GIN' && (
+              <>
+                <DocField
+                  field="expenseAccount"
+                  label={t('goods.expenseAccount')}
+                  onKeyDown={enterTo(
+                    costCenters.enabled ? () => focusNamedField('costCenter') : focusFirstGridCell,
+                  )}
+                >
+                  <GridSelect
+                    enterOpens
+                    allowClear
+                    options={expenseOptions}
+                    value={newExpenseAccountId}
+                    onChange={(v: string | undefined) => setNewExpenseAccountId(v ?? undefined)}
+                  />
+                </DocField>
+                {costCenters.enabled && (
+                  <DocField
+                    field="costCenter"
+                    label={<CostCenterLabel />}
+                    onKeyDown={enterTo(focusFirstGridCell)}
+                  >
+                    <CostCenterSelect
+                      enterOpens
+                      rows={costCenters.rows}
+                      value={newCostCenterId}
+                      onChange={setNewCostCenterId}
+                    />
+                  </DocField>
+                )}
+              </>
+            )}
+          </DocFields>
+        ) : linkedDraft ? (
+          <DocFields>
+            <DocField label={t('goods.noteType')}>
+              <DocValue>
+                <TypeTag type={linkedDraft.noteType} />
+              </DocValue>
+            </DocField>
+            <DocField label={t('goods.date')}>
+              <DatePicker value={editDate} onChange={(d) => d && setEditDate(d)} />
+            </DocField>
+            <DocField label={t('stock.warehouse')}>
+              <DocValue>
+                {linkedDraft.warehouse ? codeAndName(linkedDraft.warehouse) : '—'}
+              </DocValue>
+            </DocField>
+            <DocField label={t('common.description')}>
+              <Input
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                maxLength={500}
+              />
+            </DocField>
+            {linkedDraft.noteType === 'GIN' && (
+              <>
+                <DocField label={t('goods.expenseAccount')}>
+                  <GridSelect
+                    allowClear
+                    options={expenseOptions}
+                    value={editExpenseAccountId}
+                    onChange={(v: string | undefined) => setEditExpenseAccountId(v ?? undefined)}
+                  />
+                </DocField>
+                {costCenters.enabled && (
+                  <DocField label={<CostCenterLabel />}>
+                    <CostCenterSelect
+                      rows={costCenters.rows}
+                      value={editCostCenterId}
+                      onChange={setEditCostCenterId}
+                    />
+                  </DocField>
+                )}
+              </>
+            )}
+            <SourceFields entry={linkedDraft} withAccounts={false} />
           </DocFields>
         ) : (
           entry && (
@@ -533,6 +740,7 @@ export function GoodsNotesSection({
               <DocField label={t('common.description')}>
                 <DocValue>{entry.description ?? '—'}</DocValue>
               </DocField>
+              <SourceFields entry={entry} />
             </DocFields>
           )
         )}
@@ -546,6 +754,57 @@ export function GoodsNotesSection({
             showCost={newType === 'GRN'}
             showDescription
           />
+        ) : linkedDraft ? (
+          <>
+            <Alert
+              type="info"
+              showIcon
+              message={t('goods.linkedDraftHint')}
+              style={{ marginBottom: 12 }}
+            />
+            <Table
+              rowKey="id"
+              size="small"
+              pagination={false}
+              dataSource={linkedDraft.lines}
+              columns={[
+                { title: '#', dataIndex: 'lineNo', width: 50 },
+                {
+                  title: t('items.title'),
+                  render: (_: unknown, l: GoodsNoteLineWithItemDto) => codeAndName(l.item),
+                },
+                {
+                  title: t('stock.qty'),
+                  width: 140,
+                  align: 'right' as const,
+                  render: (_: unknown, l: GoodsNoteLineWithItemDto, index: number) => (
+                    <InputNumber<string>
+                      aria-label={cellLabel(t, t('stock.qty'), index)}
+                      stringMode
+                      min="0.000001"
+                      placeholder={t('stock.qty')}
+                      value={editQty[l.id]}
+                      onChange={(v) => setEditQty((q) => ({ ...q, [l.id]: v }))}
+                      style={{ width: '100%' }}
+                      controls={false}
+                    />
+                  ),
+                },
+                // ADR-026 §5: an order-linked GRN takes its cost from the order; nothing to enter.
+                ...(linkedDraft.purchaseOrderId
+                  ? []
+                  : [
+                      {
+                        title: t('stock.unitCost'),
+                        dataIndex: 'unitCost',
+                        width: 110,
+                        align: 'right' as const,
+                        render: unitCostCell,
+                      },
+                    ]),
+              ]}
+            />
+          </>
         ) : (
           <Table
             rowKey="id"

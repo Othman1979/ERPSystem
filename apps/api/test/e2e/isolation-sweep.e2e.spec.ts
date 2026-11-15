@@ -267,6 +267,9 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       lines: [{ itemId: id.item, qty: '1', unitPrice: '3', requestLineId: approvedRequest.lines[0].id }],
     };
     await create('/purchase-orders', { ...bodies.purchaseOrder, requestId: prq }, 'purchaseOrder');
+    // Phase 13 (ADR-026 §9): a draft issue request (FULL).
+    bodies.issueRequest = { requestDate: '2026-04-03', warehouseId: id.warehouse, notes: MARK, lines: [{ itemId: id.item, qty: '1' }] };
+    await create('/issue-requests', bodies.issueRequest, 'issueRequest');
 
     const doc = await api().get('/api/docs-json');
     expect(doc.status).toBe(200);
@@ -315,6 +318,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       'purchase-requests': id.purchaseRequest,
       'purchase-quotes': id.purchaseQuote,
       'purchase-orders': id.purchaseOrder,
+      'issue-requests': id.issueRequest,
     };
     const values: Record<string, string> = {};
     for (const [, name] of p.matchAll(/\{(\w+)\}/g)) {
@@ -348,6 +352,13 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     if (p.endsWith('/purchase-quotes/{id}/receive')) return { lines: [{ lineId: '1', unitPrice: '1' }] };
     if (p.endsWith('/purchase-requests/{id}/convert')) {
       return { orderDate: '2026-04-01', warehouseId: id.warehouse, selections: [{ quoteLineId: '1' }] };
+    }
+    // Phase 13 (ADR-026): valid bodies for the new changes.
+    if (/\/(purchase-orders|issue-requests)\/\{id\}\/(reject|cancel|close)$/.test(p)) return { reason: 'x' };
+    if (p === '/api/v1/issue-requests/{id}') return bodies.issueRequest;
+    if (p.endsWith('/purchase-orders/{id}/receive') || p.endsWith('/issue-requests/{id}/issue')) return { noteDate: '2026-04-03' };
+    if (p.endsWith('/purchase-orders/{id}/bill')) {
+      return { invoiceDate: '2026-04-03', paymentType: 'CREDIT', lines: [{ grnLineId: '1', qty: '1', unitCost: '1' }] };
     }
     return {};
   }
@@ -399,6 +410,8 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       invoiceId: id.salesInvoice,
       costCenterId: id.costCenter,
       requestId: id.purchaseRequest,
+      purchaseOrderId: id.purchaseOrder,
+      issueRequestId: id.issueRequest,
     };
     const leaks: string[] = [];
     const unknown: string[] = [];

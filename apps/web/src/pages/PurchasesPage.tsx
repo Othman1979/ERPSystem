@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DeleteOutlined, PlusOutlined, PrinterOutlined, SaveOutlined } from '@ant-design/icons';
 import {
+  Alert,
   App,
   Button,
   Radio,
@@ -47,6 +48,7 @@ import {
   catalogControllerListItems,
   warehousesControllerList,
   partiesControllerList,
+  purchasesControllerApprovePrice,
   purchasesControllerCreateInvoice,
   purchasesControllerCreateReturn,
   purchasesControllerDeleteInvoice,
@@ -72,6 +74,11 @@ import {
   type PurchasesControllerListReturnsStatus,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
+import { useAuth } from '../auth/AuthContext';
+import { PERMISSIONS } from '../auth/permissions';
+import { StatusTag } from '../components/StatusTag';
+import { approvalBlockedAsOwnDocument } from './procurement/requestPayload';
+import { invalidateProcurement } from './procurement/queryKeys';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { purchaseInvoiceBody, purchaseInvoiceFormDefaults } from './purchases/invoicePayload';
 import { purchaseReturnBody } from './purchases/returnPayload';
@@ -725,10 +732,36 @@ function PurchaseInvoiceView({
   posting: boolean;
 }) {
   const { t } = useTranslation();
-  const [, contextHolder] = message.useMessage();
+  const [apiMessage, contextHolder] = message.useMessage();
   const { modal } = App.useApp();
   const costCenters = useCostCenters();
+  const { can, me } = useAuth();
+  const queryClient = useQueryClient();
   const isDraft = invoice?.status === 'DRAFT';
+  const priceLines = invoice?.priceAboveOrderLines ?? [];
+  const needsPriceApproval = isDraft && !!invoice?.purchaseOrder && priceLines.length > 0 && !invoice?.priceApprovedAt;
+  // Only the owner may approve a bill the signed-in user created or last edited (ADR-025 §2, ADR-026 §2).
+  const priceApprovalBlocked = approvalBlockedAsOwnDocument({
+    createdBy: invoice?.createdBy,
+    updatedBy: invoice?.updatedBy,
+    submittedBy: null,
+    userId: me?.user.id,
+    isOwner: me?.currentMembership?.roleCode === 'OWNER',
+  });
+  // ADR-026 §2: the approver accepts the price difference of a bill above its order.
+  const approvePrice = useMutation({
+    mutationFn: (id: string) => purchasesControllerApprovePrice(id, { headers: idemHeaders() }),
+    onSuccess: (_data, id) => {
+      apiMessage.success(t('billing.approvePriceDone'));
+      void queryClient.invalidateQueries({ queryKey: ['purchase-invoice', id] });
+      void queryClient.invalidateQueries({ queryKey: ['purchase-invoices'] });
+      void invalidateProcurement(queryClient);
+    },
+    onError: (err) =>
+      apiMessage.error(
+        err instanceof ApiError ? t(`errors.${err.code}`, { defaultValue: err.message }) : t('errors.INTERNAL'),
+      ),
+  });
   // Ctrl+Enter posts a draft, behind the same confirmation as the button.
   const confirmPost = () => {
     if (!invoice || !isDraft || posting) return;
@@ -750,7 +783,19 @@ function PurchaseInvoiceView({
           {contextHolder}
           {isDraft && (
             <>
-              <Button onClick={onEdit}>{t('common.edit')}</Button>
+              {/* A bill of an order's receipts is made from the order (ADR-026 §7): delete it and bill again to change it. */}
+              {!invoice.purchaseOrder && <Button onClick={onEdit}>{t('common.edit')}</Button>}
+              {needsPriceApproval && can(PERMISSIONS.PURCHASE_APPROVE) &&
+                (priceApprovalBlocked ? (
+                  <>
+                    <Button disabled>{t('billing.approvePrice')}</Button>
+                    <Typography.Text type="secondary">{t('procurement.ownDocument')}</Typography.Text>
+                  </>
+                ) : (
+                  <Popconfirm title={t('billing.approvePriceConfirm')} onConfirm={() => approvePrice.mutate(invoice.id)}>
+                    <Button loading={approvePrice.isPending}>{t('billing.approvePrice')}</Button>
+                  </Popconfirm>
+                ))}
               <Popconfirm title={t('purchases.postConfirm')} onConfirm={() => onPost(invoice.id)}>
                 <Button type="primary" loading={posting}>
                   {t('common.post')}
@@ -766,6 +811,25 @@ function PurchaseInvoiceView({
         </>
       }
     >
+      {isDraft && invoice.purchaseOrder && (
+        <Alert type="info" showIcon message={t('billing.editFromOrderHint')} />
+      )}
+      {needsPriceApproval && (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('billing.needsApproval', { count: priceLines.length })}
+          description={priceLines.map((line) => (
+            <div key={line.grnLineId}>
+              {t('billing.priceLineDetail', {
+                lineNo: line.lineNo,
+                invoicePrice: line.invoiceNetUnitPrice,
+                orderPrice: line.orderNetUnitPrice,
+              })}
+            </div>
+          ))}
+        />
+      )}
       <DocFields>
         <DocField label={t('purchases.supplier')}>
           <DocValue>{displayName(invoice.supplier)}</DocValue>
@@ -773,6 +837,18 @@ function PurchaseInvoiceView({
         <DocField label={t('purchases.supplierInvoiceNo')}>
           <DocValue>{invoice.supplierInvoiceNo ?? '—'}</DocValue>
         </DocField>
+        {invoice.purchaseOrder && (
+          <DocField label={t('billing.purchaseOrderNo')}>
+            <DocValue>{invoice.purchaseOrder.orderNo ?? `#${invoice.purchaseOrder.id}`}</DocValue>
+          </DocField>
+        )}
+        {invoice.priceApprovedAt && (
+          <DocField label={t('billing.priceApprovedLabel')}>
+            <DocValue>
+              <StatusTag tone="success">{t('billing.priceApproved')}</StatusTag>
+            </DocValue>
+          </DocField>
+        )}
         <DocField label={t('purchases.paymentType')}>
           <DocValue>
             <Tag color={invoice.paymentType === 'CASH' ? 'green' : 'blue'}>

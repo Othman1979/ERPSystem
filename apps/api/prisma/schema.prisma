@@ -140,12 +140,26 @@ enum PurchaseQuoteStatus {
   CANCELLED
 }
 
-/// Purchase order (ADR-025 §7): DRAFT → SUBMITTED → APPROVED; ends CANCELLED. Phase 13 adds receipt states.
+/// Purchase order (ADR-025 §7, ADR-026 §6): DRAFT → SUBMITTED → APPROVED → PARTIALLY_RECEIVED → RECEIVED;
+/// CLOSED by hand (approved or partly received), CANCELLED while nothing is received.
 enum PurchaseOrderStatus {
   DRAFT
   SUBMITTED
   APPROVED
   CANCELLED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CLOSED
+}
+
+/// Issue request (ADR-026 §9, FULL only): DRAFT → SUBMITTED → APPROVED; ends REJECTED, CANCELLED or CLOSED.
+enum IssueRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+  CLOSED
 }
 
 // ---------------------------------------------------------------------------
@@ -349,6 +363,9 @@ model Tenant {
   purchaseQuoteLines   PurchaseQuoteLine[]
   purchaseOrders       PurchaseOrder[]
   purchaseOrderLines   PurchaseOrderLine[]
+  purchaseInvoiceReceipts PurchaseInvoiceReceipt[]
+  issueRequests        IssueRequest[]
+  issueRequestLines    IssueRequestLine[]
 
   @@map("tenants")
 }
@@ -434,6 +451,7 @@ model Company {
   purchaseRequests  PurchaseRequest[]
   purchaseQuotes    PurchaseQuote[]
   purchaseOrders    PurchaseOrder[]
+  issueRequests     IssueRequest[]
 
   @@unique([tenantId, id])
   @@map("companies")
@@ -464,6 +482,7 @@ model Branch {
   purchaseRequests   PurchaseRequest[]
   purchaseQuotes     PurchaseQuote[]
   purchaseOrders     PurchaseOrder[]
+  issueRequests      IssueRequest[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -785,6 +804,8 @@ model Account {
   paymentExpenseAccounts     Payment[]         @relation("PaymentExpenseAccount")
   cashTransfersFrom          CashTransfer[]    @relation("CashTransferFrom")
   cashTransfersTo            CashTransfer[]    @relation("CashTransferTo")
+  goodsNoteExpenseAccounts   GoodsNote[]       @relation("GoodsNoteExpenseAccount")
+  issueRequestExpenseAccounts IssueRequest[]   @relation("IssueRequestExpenseAccount")
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
@@ -968,6 +989,8 @@ model CostCenter {
   receipts         Receipt[]
   payments         Payment[]
   purchaseOrders   PurchaseOrder[]
+  goodsNotes       GoodsNote[]
+  issueRequests    IssueRequest[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
@@ -1047,6 +1070,7 @@ model Item {
   purchaseRequestLines PurchaseRequestLine[]
   purchaseQuoteLines PurchaseQuoteLine[]
   purchaseOrderLines PurchaseOrderLine[]
+  issueRequestLines  IssueRequestLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1130,6 +1154,7 @@ model Warehouse {
   goodsNotes        GoodsNote[]
   defaultItems      Item[]             @relation("ItemDefaultWarehouse")
   purchaseOrders    PurchaseOrder[]
+  issueRequests     IssueRequest[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1420,6 +1445,7 @@ model Party {
   allocations      Allocation[]
   purchaseQuotes   PurchaseQuote[]
   purchaseOrders   PurchaseOrder[]
+  goodsNotes       GoodsNote[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1580,6 +1606,11 @@ model PurchaseInvoice {
   journalEntryId      BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
   /// TRADE-02: the posted GRN this invoice bills; its stock lines clear 2104 instead of moving stock again.
   receivedGrnId       BigInt?             @map("received_grn_id") @db.UnsignedBigInt
+  /// ADR-026 §7: the purchase order whose posted receipts this invoice bills (set at creation, never changed).
+  purchaseOrderId     BigInt?             @map("purchase_order_id") @db.UnsignedBigInt
+  /// ADR-026 §2: «approve the price difference» for lines above the order price; an edit clears it.
+  priceApprovedAt     DateTime?           @map("price_approved_at") @db.DateTime(3)
+  priceApprovedBy     BigInt?             @map("price_approved_by") @db.UnsignedBigInt
   postedAt            DateTime?           @map("posted_at") @db.DateTime(3)
   postedBy            BigInt?             @map("posted_by") @db.UnsignedBigInt
   createdAt           DateTime            @default(now()) @map("created_at") @db.DateTime(3)
@@ -1595,6 +1626,7 @@ model PurchaseInvoice {
   costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
   journalEntry JournalEntry?        @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   receivedGrn  GoodsNote?           @relation(fields: [tenantId, receivedGrnId], references: [tenantId, id])
+  purchaseOrder PurchaseOrder?       @relation(fields: [tenantId, purchaseOrderId], references: [tenantId, id])
   lines        PurchaseInvoiceLine[]
   returns      PurchaseReturn[]
 
@@ -1608,6 +1640,8 @@ model PurchaseInvoice {
   @@index([tenantId, supplierId, status, paymentType, invoiceDate])
   // The GRN an invoice bills (TRADE-02, session 2B).
   @@index([tenantId, receivedGrnId])
+  // The invoices of a purchase order (ADR-026 §7).
+  @@index([tenantId, purchaseOrderId])
   @@map("purchase_invoices")
 }
 
@@ -1620,7 +1654,8 @@ model PurchaseInvoiceLine {
   itemUnitId     BigInt?   @map("item_unit_id") @db.UnsignedBigInt
   qty            Decimal   @db.Decimal(18, 6)
   qtyBase        Decimal   @map("qty_base") @db.Decimal(18, 6)
-  unitCost       Decimal   @map("unit_cost") @db.Decimal(18, 3)
+  /// Price per unit as entered, 6 dp (an order price, ADR-026 §5).
+  unitCost       Decimal   @map("unit_cost") @db.Decimal(18, 6)
   discountPct    Decimal   @default(0) @map("discount_pct") @db.Decimal(9, 4)
   discountAmount Decimal   @default(0) @map("discount_amount") @db.Decimal(18, 3)
   netAmount      Decimal   @map("net_amount") @db.Decimal(18, 3)
@@ -1636,6 +1671,7 @@ model PurchaseInvoiceLine {
   itemUnit    ItemUnit?       @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
   taxCategory TaxCategory?    @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
   returnLines PurchaseReturnLine[]
+  receipts    PurchaseInvoiceReceipt[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, invoiceId, lineNo])
@@ -1774,7 +1810,7 @@ model PurchaseReturnLine {
   itemId          BigInt   @map("item_id") @db.UnsignedBigInt
   qty             Decimal  @db.Decimal(18, 6)
   qtyBase         Decimal  @map("qty_base") @db.Decimal(18, 6)
-  unitCost        Decimal  @map("unit_cost") @db.Decimal(18, 3)
+  unitCost        Decimal  @map("unit_cost") @db.Decimal(18, 6)
   discountPct     Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
   discountAmount  Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
   netAmount       Decimal  @map("net_amount") @db.Decimal(18, 3)
@@ -1807,6 +1843,16 @@ model GoodsNote {
   status         DocumentStatus @default(DRAFT)
   docNo          String?        @map("doc_no") @db.VarChar(50)
   description    String?        @db.VarChar(500)
+  /// ADR-026 §5: a GRN against this purchase order (set at creation, never changed).
+  purchaseOrderId BigInt?       @map("purchase_order_id") @db.UnsignedBigInt
+  /// ADR-026 §5: the order's supplier, recorded on a GRN against an order.
+  supplierId     BigInt?        @map("supplier_id") @db.UnsignedBigInt
+  /// ADR-026 §8: a GIN to a department debits this expense account (none: INVENTORY_ADJUSTMENT).
+  expenseAccountId BigInt?      @map("expense_account_id") @db.UnsignedBigInt
+  /// ADR-026 §8 / ADR-024 §1.2: the department; copied onto the income-statement lines of the entry.
+  costCenterId   BigInt?        @map("cost_center_id") @db.UnsignedBigInt
+  /// ADR-026 §9: a GIN from this approved issue request (set at creation, never changed).
+  issueRequestId BigInt?        @map("issue_request_id") @db.UnsignedBigInt
   journalEntryId BigInt?        @map("journal_entry_id") @db.UnsignedBigInt
   postedAt       DateTime?      @map("posted_at") @db.DateTime(3)
   postedBy       BigInt?        @map("posted_by") @db.UnsignedBigInt
@@ -1818,12 +1864,20 @@ model GoodsNote {
   warehouse    Warehouse         @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
   branch       Branch?           @relation(fields: [tenantId, branchId], references: [tenantId, id])
   journalEntry JournalEntry?     @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+  purchaseOrder PurchaseOrder?   @relation(fields: [tenantId, purchaseOrderId], references: [tenantId, id])
+  supplier     Party?            @relation(fields: [tenantId, supplierId], references: [tenantId, id])
+  expenseAccount Account?        @relation("GoodsNoteExpenseAccount", fields: [tenantId, companyId, expenseAccountId], references: [tenantId, companyId, id])
+  costCenter   CostCenter?       @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  issueRequest IssueRequest?     @relation(fields: [tenantId, issueRequestId], references: [tenantId, id])
   invoices     PurchaseInvoice[]
   lines        GoodsNoteLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, docNo])
   @@index([tenantId, status])
+  // The receipts of an order (ADR-026 §7) and the issues of a request (§9).
+  @@index([tenantId, purchaseOrderId])
+  @@index([tenantId, issueRequestId])
   // Lists: ORDER BY note_date DESC, id DESC (DB-10).
   @@index([tenantId, companyId, noteDate, id])
   @@map("goods_notes")
@@ -1837,14 +1891,26 @@ model GoodsNoteLine {
   itemId    BigInt   @map("item_id") @db.UnsignedBigInt
   qty       Decimal  @db.Decimal(18, 6)
   unitCost  Decimal? @map("unit_cost") @db.Decimal(18, 6)
+  /// ADR-026 §5: the order line this GRN line receives (qty in base units).
+  poLineId  BigInt?  @map("po_line_id") @db.UnsignedBigInt
+  /// ADR-026 §9: the issue request line this GIN line issues (qty in base units).
+  issueRequestLineId BigInt? @map("issue_request_line_id") @db.UnsignedBigInt
+  /// ADR-026 §7: base quantity billed by posted invoices, and the value they cleared from 2104.
+  billedQty    Decimal @default(0) @map("billed_qty") @db.Decimal(18, 6)
+  clearedValue Decimal @default(0) @map("cleared_value") @db.Decimal(18, 3)
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   note   GoodsNote  @relation(fields: [tenantId, noteId], references: [tenantId, id], onDelete: Cascade)
   item   Item       @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  poLine PurchaseOrderLine? @relation(fields: [tenantId, poLineId], references: [tenantId, id])
+  issueRequestLine IssueRequestLine? @relation(fields: [tenantId, issueRequestLineId], references: [tenantId, id])
+  invoiceReceipts PurchaseInvoiceReceipt[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, noteId, lineNo])
+  @@index([tenantId, poLineId])
+  @@index([tenantId, issueRequestLineId])
   @@map("goods_note_lines")
 }
 
@@ -2336,6 +2402,10 @@ model PurchaseOrder {
   cancelledAt      DateTime?           @map("cancelled_at") @db.DateTime(3)
   cancelledBy      BigInt?             @map("cancelled_by") @db.UnsignedBigInt
   cancelReason     String?             @map("cancel_reason") @db.VarChar(500)
+  /// ADR-026 §6: closed by hand with a written reason; nothing is received after.
+  closedAt         DateTime?           @map("closed_at") @db.DateTime(3)
+  closedBy         BigInt?             @map("closed_by") @db.UnsignedBigInt
+  closeReason      String?             @map("close_reason") @db.VarChar(500)
   createdAt        DateTime            @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt        DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
   createdBy        BigInt?             @map("created_by") @db.UnsignedBigInt
@@ -2349,6 +2419,8 @@ model PurchaseOrder {
   costCenter CostCenter?         @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
   request    PurchaseRequest?    @relation(fields: [tenantId, requestId], references: [tenantId, id])
   lines      PurchaseOrderLine[]
+  goodsNotes GoodsNote[]
+  invoices   PurchaseInvoice[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, orderNo])
@@ -2380,6 +2452,8 @@ model PurchaseOrderLine {
   taxAmount      Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
   lineTotal      Decimal  @map("line_total") @db.Decimal(18, 3)
   note           String?  @db.VarChar(500)
+  /// ADR-026 §5: base quantity received by posted GRNs; never above qty_base (§4).
+  receivedQty    Decimal  @default(0) @map("received_qty") @db.Decimal(18, 6)
   createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -2389,9 +2463,104 @@ model PurchaseOrderLine {
   item        Item                 @relation(fields: [tenantId, itemId], references: [tenantId, id])
   itemUnit    ItemUnit?            @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
   taxCategory TaxCategory?         @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  goodsNoteLines GoodsNoteLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, orderId, lineNo])
   @@index([tenantId, requestLineId])
   @@map("purchase_order_lines")
+}
+
+/// ADR-026 §7: an invoice line billing a GRN line of its purchase order. qty in base units;
+/// cleared_value is the 2104 value the posting cleared (NULL on a draft).
+model PurchaseInvoiceReceipt {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId      BigInt   @map("tenant_id") @db.UnsignedBigInt
+  invoiceLineId BigInt   @map("invoice_line_id") @db.UnsignedBigInt
+  grnLineId     BigInt   @map("grn_line_id") @db.UnsignedBigInt
+  qty           Decimal  @db.Decimal(18, 6)
+  clearedValue  Decimal? @map("cleared_value") @db.Decimal(18, 3)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoiceLine PurchaseInvoiceLine @relation(fields: [tenantId, invoiceLineId], references: [tenantId, id], onDelete: Cascade)
+  grnLine     GoodsNoteLine       @relation(fields: [tenantId, grnLineId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, invoiceLineId, grnLineId])
+  @@index([tenantId, grnLineId])
+  @@map("purchase_invoice_receipts")
+}
+
+/// Issue request (ADR-026 §9, FULL only): a department asks the store for items. Numbered IRQ at approval.
+model IssueRequest {
+  id               BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt             @map("tenant_id") @db.UnsignedBigInt
+  companyId        BigInt             @map("company_id") @db.UnsignedBigInt
+  /// The issuing warehouse's branch (ADR-003).
+  branchId         BigInt?            @map("branch_id") @db.UnsignedBigInt
+  requestNo        String?            @map("request_no") @db.VarChar(50)
+  requestDate      DateTime           @map("request_date") @db.Date
+  warehouseId      BigInt             @map("warehouse_id") @db.UnsignedBigInt
+  /// The department (ADR-026 §8); copied to its issues.
+  costCenterId     BigInt?            @map("cost_center_id") @db.UnsignedBigInt
+  /// Expense account the issues debit; copied to its issues.
+  expenseAccountId BigInt?            @map("expense_account_id") @db.UnsignedBigInt
+  status           IssueRequestStatus @default(DRAFT)
+  notes            String?            @db.VarChar(500)
+  submittedAt      DateTime?          @map("submitted_at") @db.DateTime(3)
+  submittedBy      BigInt?            @map("submitted_by") @db.UnsignedBigInt
+  approvedAt       DateTime?          @map("approved_at") @db.DateTime(3)
+  approvedBy       BigInt?            @map("approved_by") @db.UnsignedBigInt
+  rejectedAt       DateTime?          @map("rejected_at") @db.DateTime(3)
+  rejectedBy       BigInt?            @map("rejected_by") @db.UnsignedBigInt
+  rejectReason     String?            @map("reject_reason") @db.VarChar(500)
+  cancelledAt      DateTime?          @map("cancelled_at") @db.DateTime(3)
+  cancelledBy      BigInt?            @map("cancelled_by") @db.UnsignedBigInt
+  cancelReason     String?            @map("cancel_reason") @db.VarChar(500)
+  closedAt         DateTime?          @map("closed_at") @db.DateTime(3)
+  closedBy         BigInt?            @map("closed_by") @db.UnsignedBigInt
+  createdAt        DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy        BigInt?            @map("created_by") @db.UnsignedBigInt
+  updatedBy        BigInt?            @map("updated_by") @db.UnsignedBigInt
+
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company        Company            @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch         Branch?            @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  warehouse      Warehouse          @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  costCenter     CostCenter?        @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  expenseAccount Account?           @relation("IssueRequestExpenseAccount", fields: [tenantId, companyId, expenseAccountId], references: [tenantId, companyId, id])
+  lines          IssueRequestLine[]
+  goodsNotes     GoodsNote[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, requestNo])
+  // Lists: ORDER BY request_date DESC, id DESC.
+  @@index([tenantId, companyId, requestDate, id])
+  // Open-documents counter (ADR-026 §9).
+  @@index([tenantId, status])
+  @@map("issue_requests")
+}
+
+/// A requested item, in base units. issued_qty: base quantity issued by posted GINs.
+model IssueRequestLine {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId  BigInt   @map("tenant_id") @db.UnsignedBigInt
+  requestId BigInt   @map("request_id") @db.UnsignedBigInt
+  lineNo    Int      @map("line_no")
+  itemId    BigInt   @map("item_id") @db.UnsignedBigInt
+  qty       Decimal  @db.Decimal(18, 6)
+  issuedQty Decimal  @default(0) @map("issued_qty") @db.Decimal(18, 6)
+  note      String?  @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  request        IssueRequest    @relation(fields: [tenantId, requestId], references: [tenantId, id], onDelete: Cascade)
+  item           Item            @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  goodsNoteLines GoodsNoteLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, requestId, lineNo])
+  @@map("issue_request_lines")
 }

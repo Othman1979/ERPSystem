@@ -303,4 +303,13 @@ export class ProcurementController {
   cancelOrder(@Param('id', ParseIdPipe) id: string, @Body() dto: ReasonDto) {
     return this.orders.cancel(BigInt(id), dto.reason);
   }
+
+  /** ADR-026 §6: closes an approved or partly received order by hand, with a reason; nothing is received after. */
+  @Post('purchase-orders/:id/close')
+  @RequiresIdempotencyKey()
+  @RequirePermission(PERMISSIONS.PURCHASE_MANAGE)
+  @ApiCreatedResponse({ type: PurchaseOrderDetailDto })
+  closeOrder(@Param('id', ParseIdPipe) id: string, @Body() dto: ReasonDto) {
+    return this.orders.close(BigInt(id), dto.reason);
+  }
 }

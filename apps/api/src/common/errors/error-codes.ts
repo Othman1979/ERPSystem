@@ -120,5 +120,26 @@ export enum ErrorCode {
   INVALID_STATUS_TRANSITION = 'INVALID_STATUS_TRANSITION',
   // Review #47: a purchase order whose grand total is 0 is not submitted (a price left blank).
   PURCHASE_ORDER_ZERO_TOTAL = 'PURCHASE_ORDER_ZERO_TOTAL',
+  // ADR-026 §4: a receipt above what is left on the order line (details.poLineId,
+  // details.remaining, details.wanted).
+  PURCHASE_ORDER_OVER_RECEIPT = 'PURCHASE_ORDER_OVER_RECEIPT',
+  // ADR-026 §3: an invoice on a purchase order bills posted receipts of that order only;
+  // none yet (or a stocked line without its receipt line).
+  PURCHASE_ORDER_NOT_RECEIVED = 'PURCHASE_ORDER_NOT_RECEIVED',
+  // ADR-026 §7: the billed quantity is above what is received and not billed yet
+  // (details.grnLineId, details.unbilled, details.wanted).
+  PURCHASE_BILL_EXCEEDS_RECEIPT = 'PURCHASE_BILL_EXCEEDS_RECEIPT',
+  // ADR-026 §2: a line is priced above the order and the difference is not approved
+  // (details.lines).
+  PURCHASE_PRICE_ABOVE_ORDER = 'PURCHASE_PRICE_ABOVE_ORDER',
+  // ADR-026 §9: at FULL a goods issue without an approved issue request needs
+  // stock.issue_without_request (owners aside).
+  ISSUE_REQUEST_REQUIRED = 'ISSUE_REQUEST_REQUIRED',
+  // ADR-026 §9: the issued quantity is above what is left on the request line
+  // (details.requestLineId, details.remaining, details.wanted).
+  ISSUE_REQUEST_QTY_EXCEEDED = 'ISSUE_REQUEST_QTY_EXCEEDED',
+  // ADR-026 §9: an issue from a request is to the request's cost centre and expense
+  // account (details.field, details.requestValue).
+  ISSUE_REQUEST_DEPARTMENT_MISMATCH = 'ISSUE_REQUEST_DEPARTMENT_MISMATCH',
   INTERNAL = 'INTERNAL',
 }

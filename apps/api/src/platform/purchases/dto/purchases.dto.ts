@@ -16,8 +16,9 @@ import { PageQueryDto, SortParam, sortValues } from '../../../common/paging/page
 
 const PAYMENT_TYPES = ['CASH', 'CREDIT'] as const;
 const DECIMAL = /^\d+(\.\d{1,6})?$/;
-const MONEY = /^\d+(\.\d{1,3})?$/;
 const INT_STRING = /^\d+$/;
+/** A unit cost: at most 12 integer digits and 6 decimals, the range of DECIMAL(18, 6), so a 400 and never a 500. */
+const UNIT_COST = /^\d{1,12}(\.\d{1,6})?$/;
 
 export class PurchaseInvoiceLineDto {
   @IsString()
@@ -33,8 +34,9 @@ export class PurchaseInvoiceLineDto {
   @Matches(DECIMAL)
   qty!: string;
 
+  /** Price per unit, up to 12 integer digits and 6 decimals (an order price, ADR-026 §5; CLAUDE.md unit costs). */
   @IsString()
-  @Matches(MONEY)
+  @Matches(UNIT_COST)
   unitCost!: string;
 
   @IsOptional()
@@ -45,6 +47,15 @@ export class PurchaseInvoiceLineDto {
   @IsString()
   @Matches(INT_STRING)
   taxCategoryId?: string;
+
+  /**
+   * ADR-026 §7: the GRN line of the invoice's purchase order this line bills
+   * (an invoice with purchaseOrderId; every stocked line names one, in base units).
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  grnLineId?: string;
 }
 
 export class CreatePurchaseInvoiceDto {
@@ -110,6 +121,84 @@ export class CreatePurchaseInvoiceDto {
   @IsString()
   @Matches(INT_STRING)
   receivedGrnId?: string;
+
+  /**
+   * ADR-026 §3/§7: the purchase order whose posted receipts this invoice
+   * bills: its supplier and warehouse, every stocked line naming a GRN line
+   * of the order. Set at creation, never changed; not with receivedGrnId.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  purchaseOrderId?: string;
+}
+
+/** One received line billed: its base quantity and price (ADR-026 §7). */
+export class BillLineDto {
+  @IsString()
+  @Matches(INT_STRING)
+  grnLineId!: string;
+
+  /** Base quantity, within what is received and not billed yet. */
+  @IsString()
+  @Matches(DECIMAL)
+  qty!: string;
+
+  /** The supplier's price per base unit (the order's by default, GET …/billable); 12 integer digits, 6 decimals at most. */
+  @IsString()
+  @Matches(UNIT_COST)
+  unitCost!: string;
+
+  @IsOptional()
+  @Matches(/^\d+(\.\d{1,4})?$/)
+  discountPct?: string;
+}
+
+/**
+ * POST /purchase-orders/:id/bill: a draft purchase invoice from the order's
+ * posted receipts (ADR-026 §7), with the order's supplier, warehouse and
+ * cost centre (unless another is given).
+ */
+export class BillPurchaseOrderDto {
+  @IsDateString()
+  invoiceDate!: string;
+
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  supplierInvoiceNo?: string;
+
+  @IsOptional()
+  @IsDateString()
+  supplierInvoiceDate?: string;
+
+  @IsIn(PAYMENT_TYPES)
+  paymentType!: (typeof PAYMENT_TYPES)[number];
+
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  cashAccountId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  costCenterId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => BillLineDto)
+  lines!: BillLineDto[];
 }
 
 export class PurchaseReturnLineDto {
@@ -194,6 +283,12 @@ export class ListPurchaseInvoicesQueryDto extends PageQueryDto {
   @IsOptional()
   @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
   supplierId?: string;
+
+  /** The invoices of one purchase order (ADR-026 §7). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(ID_PATTERN, { message: '$property must be a positive integer id' })
+  purchaseOrderId?: string;
 
   /** Invoice date on or after (yyyy-mm-dd). */
   @ApiPropertyOptional()

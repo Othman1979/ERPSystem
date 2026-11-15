@@ -196,4 +196,6 @@ export const DOCUMENT_TYPE_PREFIXES: Record<string, string> = {
   PURCHASE_REQUEST: 'PRQ',
   PURCHASE_QUOTE: 'RFQ',
   PURCHASE_ORDER: 'PO',
+  // Phase 13 (ADR-026 §9): an issue request, numbered at approval.
+  ISSUE_REQUEST: 'IRQ',
 };

@@ -10,9 +10,11 @@ import {
   ApiError,
   catalogControllerGetItem,
   catalogControllerListItems,
+  goodsNotesControllerList,
   partiesControllerList,
   procurementControllerApproveOrder,
   procurementControllerCancelOrder,
+  procurementControllerCloseOrder,
   procurementControllerCreateOrder,
   procurementControllerDeleteOrder,
   procurementControllerGetOrder,
@@ -21,12 +23,15 @@ import {
   procurementControllerRejectOrder,
   procurementControllerSubmitOrder,
   procurementControllerUpdateOrder,
+  purchasesControllerListInvoices,
   warehousesControllerList,
+  type GoodsNoteListItemDto,
   type ItemListItemDto,
   type ProcurementControllerListOrdersSort,
   type ProcurementControllerListOrdersStatus,
   type ProcurementItemRefDto,
   type PurchaseOrderDetailDto,
+  type PurchaseInvoiceListItemDto,
   type PurchaseOrderLineViewDto,
   type PurchaseOrderListItemDto,
   type PurchaseOrderStatus,
@@ -63,6 +68,8 @@ import {
   type PurchaseOrderFormLine,
 } from './procurement/orderPayload';
 import { invalidateProcurement, procurementKeys } from './procurement/queryKeys';
+import { ReceiveOrderModal } from './procurement/ReceiveOrderModal';
+import { BillOrderModal } from './procurement/BillOrderModal';
 
 // ------------------------------------------------------------------ types
 
@@ -82,14 +89,31 @@ interface OrderLineDraft extends PurchaseOrderFormLine {
 
 // ------------------------------------------------------------------ constants
 
-const STATUSES: ProcurementControllerListOrdersStatus[] = ['DRAFT', 'SUBMITTED', 'APPROVED', 'CANCELLED'];
+const STATUSES: PurchaseOrderStatus[] = [
+  'DRAFT',
+  'SUBMITTED',
+  'APPROVED',
+  'PARTIALLY_RECEIVED',
+  'RECEIVED',
+  'CLOSED',
+  'CANCELLED',
+];
 
 const STATUS_TONE: Record<PurchaseOrderStatus, StatusTone> = {
   DRAFT: 'neutral',
   SUBMITTED: 'info',
   APPROVED: 'success',
+  PARTIALLY_RECEIVED: 'warning',
+  RECEIVED: 'success',
+  CLOSED: 'neutral',
   CANCELLED: 'danger',
 };
+
+/** Statuses in which goods can still be received against the order (ADR-026). */
+const RECEIVABLE: PurchaseOrderStatus[] = ['APPROVED', 'PARTIALLY_RECEIVED'];
+
+/** Statuses in which an invoice can be billed from the order's receipts (ADR-026). */
+const BILLABLE: PurchaseOrderStatus[] = ['PARTIALLY_RECEIVED', 'RECEIVED', 'CLOSED'];
 
 /** Unit choice of a line meaning the item's base unit (sent as no unit id). */
 const BASE_UNIT = 'base';
@@ -204,7 +228,7 @@ export function PurchaseOrdersPage() {
 function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: () => void }) {
   const { t } = useTranslation();
   const { can } = useAuth();
-  const [statusFilter, setStatusFilter] = useState<ProcurementControllerListOrdersStatus | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<PurchaseOrderStatus | undefined>(undefined);
 
   // Server-paged (ADR-022): search, status filter, sort and page go to the API.
   const list = usePagedQuery<
@@ -849,11 +873,16 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
   const queryClient = useQueryClient();
   const [apiMessage, contextHolder] = message.useMessage();
   const costCenters = useCostCenters();
-  const [reasonAction, setReasonAction] = useState<'reject' | 'cancel' | null>(null);
+  const [reasonAction, setReasonAction] = useState<'reject' | 'cancel' | 'close' | null>(null);
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [billOpen, setBillOpen] = useState(false);
   const canApprove = can(PERMISSIONS.PURCHASE_APPROVE);
   const canManage = can(PERMISSIONS.PURCHASE_MANAGE);
+  const canReceive = can(PERMISSIONS.STOCK_MOVEMENT);
   const membership = me?.currentMembership ?? null;
   const submitted = order.status === 'SUBMITTED';
+  // Receipts and invoices exist only once the order is approved (ADR-026).
+  const beyondApproval = order.status !== 'DRAFT' && order.status !== 'SUBMITTED';
 
   const hint = approvalHint({
     isOwner: membership?.roleCode === OWNER_ROLE,
@@ -901,7 +930,17 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
     },
     onError,
   });
-  const busy = approveMut.isPending || rejectMut.isPending || cancelMut.isPending;
+  const closeMut = useMutation({
+    mutationFn: (reason: string) =>
+      procurementControllerCloseOrder(order.id, { reason }, { headers: idemHeaders() }),
+    onSuccess: () => {
+      setReasonAction(null);
+      apiMessage.success(t('procurement.closed'));
+      void invalidateProcurement(queryClient);
+    },
+    onError,
+  });
+  const busy = approveMut.isPending || rejectMut.isPending || cancelMut.isPending || closeMut.isPending;
 
   return (
     <DocLayout
@@ -928,6 +967,21 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
           {canManage && (submitted || order.status === 'APPROVED') && (
             <Button disabled={busy} onClick={() => setReasonAction('cancel')}>
               {t('procurement.cancel')}
+            </Button>
+          )}
+          {canReceive && RECEIVABLE.includes(order.status) && (
+            <Button type="primary" disabled={busy} onClick={() => setReceiveOpen(true)}>
+              {t('procurement.receiveGoods')}
+            </Button>
+          )}
+          {canManage && RECEIVABLE.includes(order.status) && (
+            <Button disabled={busy} onClick={() => setReasonAction('close')}>
+              {t('procurement.close')}
+            </Button>
+          )}
+          {canManage && BILLABLE.includes(order.status) && (
+            <Button disabled={busy} onClick={() => setBillOpen(true)}>
+              {t('procurement.billOrderButton')}
             </Button>
           )}
           <PrintPdfButton path={`/purchase-orders/${order.id}/pdf`} />
@@ -982,6 +1036,9 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
       {order.status === 'CANCELLED' && order.cancelReason && (
         <Alert type="warning" showIcon message={t('procurement.cancelledReason', { reason: order.cancelReason })} />
       )}
+      {order.status === 'CLOSED' && order.closeReason && (
+        <Alert type="info" showIcon message={t('procurement.closedReason', { reason: order.closeReason })} />
+      )}
 
       <Table<PurchaseOrderLineViewDto>
         rowKey="id"
@@ -1001,6 +1058,9 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
               codeAndName(l.itemUnit?.unit) ?? '—',
           },
           { title: t('procurement.qty'), dataIndex: 'qty', width: 90, align: 'right' as const, render: qtyCell },
+          ...(beyondApproval
+            ? [{ title: t('procurement.receivedQty'), dataIndex: 'receivedQty', width: 100, align: 'right' as const, render: qtyCell }]
+            : []),
           { title: t('procurement.unitPrice'), dataIndex: 'unitPrice', width: 110, align: 'right' as const, render: unitCostCell },
           { title: t('procurement.discountPct'), dataIndex: 'discountPct', width: 90, align: 'right' as const },
           { title: t('procurement.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, render: amountCell },
@@ -1009,18 +1069,114 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
         ]}
       />
 
+      {beyondApproval && <OrderDocuments orderId={order.id} />}
+
+      {receiveOpen && (
+        <ReceiveOrderModal
+          order={order}
+          open
+          onClose={() => setReceiveOpen(false)}
+          onDone={() => setReceiveOpen(false)}
+        />
+      )}
+      <BillOrderModal
+        order={order}
+        open={billOpen}
+        onClose={() => setBillOpen(false)}
+        onBilled={() => {
+          setBillOpen(false);
+          apiMessage.success(t('procurement.orderBilledToast'));
+          void invalidateProcurement(queryClient);
+        }}
+      />
+
       {reasonAction && (
         <ReasonModal
-          title={t(reasonAction === 'reject' ? 'procurement.rejectTitle' : 'procurement.cancelTitle')}
-          okText={t(reasonAction === 'reject' ? 'procurement.reject' : 'procurement.cancel')}
-          busy={reasonAction === 'reject' ? rejectMut.isPending : cancelMut.isPending}
-          onClose={() => setReasonAction(null)}
-          onConfirm={(reason) =>
-            reasonAction === 'reject' ? rejectMut.mutate(reason) : cancelMut.mutate(reason)
+          title={t(
+            reasonAction === 'reject'
+              ? 'procurement.rejectTitle'
+              : reasonAction === 'cancel'
+                ? 'procurement.cancelTitle'
+                : 'procurement.closeTitle',
+          )}
+          okText={t(reasonAction === 'reject' ? 'procurement.reject' : 'procurement.close')}
+          busy={
+            reasonAction === 'reject'
+              ? rejectMut.isPending
+              : reasonAction === 'cancel'
+                ? cancelMut.isPending
+                : closeMut.isPending
           }
+          onClose={() => setReasonAction(null)}
+          onConfirm={(reason) => {
+            if (reasonAction === 'reject') rejectMut.mutate(reason);
+            else if (reasonAction === 'cancel') cancelMut.mutate(reason);
+            else closeMut.mutate(reason);
+          }}
         />
       )}
     </DocLayout>
+  );
+}
+
+/**
+ * Receipts (goods receipt notes) and purchase invoices raised against an order.
+ * Shown once the order has left approval; the lists are server-filtered by order.
+ */
+function OrderDocuments({ orderId }: { orderId: string }) {
+  const { t } = useTranslation();
+  const receipts = useQuery({
+    queryKey: [...procurementKeys.order(orderId), 'receipts'],
+    queryFn: ({ signal }) =>
+      goodsNotesControllerList({ purchaseOrderId: orderId, page: 1, pageSize: 50 }, { signal }).then((r) => r.data),
+  });
+  const invoices = useQuery({
+    queryKey: [...procurementKeys.order(orderId), 'invoices'],
+    queryFn: ({ signal }) =>
+      purchasesControllerListInvoices({ purchaseOrderId: orderId, page: 1, pageSize: 50 }, { signal }).then(
+        (r) => r.data,
+      ),
+  });
+  const docDate = (v: string) => dayjs(v).format('YYYY-MM-DD');
+  const docStatus = (v: string) => (
+    <StatusTag tone={v === 'POSTED' ? 'success' : 'neutral'}>
+      {v === 'POSTED' ? t('common.posted') : t('common.draft')}
+    </StatusTag>
+  );
+  return (
+    <section style={{ marginTop: 16 }}>
+      <Typography.Title level={5}>{t('procurement.receiptsAndInvoices')}</Typography.Title>
+      <Typography.Text strong>{t('procurement.receipts')}</Typography.Text>
+      <Table<GoodsNoteListItemDto>
+        rowKey="id"
+        size="small"
+        pagination={false}
+        loading={receipts.isLoading}
+        locale={tableLocale(receipts)}
+        dataSource={receipts.data?.items ?? []}
+        columns={[
+          { title: t('procurement.docNo'), dataIndex: 'docNo', render: (v: string | null) => v ?? t('procurement.draftNo') },
+          { title: t('procurement.docDate'), dataIndex: 'noteDate', width: 120, render: docDate },
+          { title: t('common.status'), dataIndex: 'status', width: 120, render: docStatus },
+        ]}
+      />
+      <Typography.Text strong style={{ display: 'block', marginTop: 12 }}>
+        {t('procurement.purchaseInvoices')}
+      </Typography.Text>
+      <Table<PurchaseInvoiceListItemDto>
+        rowKey="id"
+        size="small"
+        pagination={false}
+        loading={invoices.isLoading}
+        locale={tableLocale(invoices)}
+        dataSource={invoices.data?.items ?? []}
+        columns={[
+          { title: t('procurement.docNo'), dataIndex: 'invoiceNo', render: (v: string | null) => v ?? t('procurement.draftNo') },
+          { title: t('procurement.docDate'), dataIndex: 'invoiceDate', width: 120, render: docDate },
+          { title: t('common.status'), dataIndex: 'status', width: 120, render: docStatus },
+        ]}
+      />
+    </section>
   );
 }
 

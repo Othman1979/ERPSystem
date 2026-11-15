@@ -72,6 +72,10 @@ export const TENANT_MODELS = [
   'PurchaseQuoteLine',
   'PurchaseOrder',
   'PurchaseOrderLine',
+  // Phase 13 (ADR-026).
+  'PurchaseInvoiceReceipt',
+  'IssueRequest',
+  'IssueRequestLine',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);

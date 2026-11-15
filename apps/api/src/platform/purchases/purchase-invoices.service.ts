@@ -1,5 +1,5 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
-import { Decimal, round3, sum } from '../../common/decimal/decimal.utils.js';
+import { Decimal, round3, round6, sum } from '../../common/decimal/decimal.utils.js';
 import {
   assertBranchAllowed,
   branchSql,
@@ -57,9 +57,32 @@ import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
-import { assertDirectPurchaseAllowed } from '../../common/procurement/approval.js';
+import { assertCanApprove, assertDirectPurchaseAllowed, isAuthor, readApprover } from '../../common/procurement/approval.js';
+import { lockProcurementLevel } from '../../common/procurement/procurement-level.js';
+import type { ReceiptLine } from '../goods-notes/goods-notes.service.js';
+import {
+  BILLABLE_ORDER_STATUSES,
+  netUnitPrice,
+  PurchaseOrderReceiptsService,
+  type LockedOrderLine,
+} from '../procurement/purchase-order-receipts.service.js';
+import type { BillPurchaseOrderDto } from './dto/purchases.dto.js';
+import { clearedThrough } from '../shared/receipt-clearing.js';
 
 const SOURCE = 'PURCHASE_INVOICE';
+
+/** An order as an invoice drafted from its receipts reads it (PurchaseOrderReceiptsService.forBilling). */
+type BillingOrder = Awaited<ReturnType<PurchaseOrderReceiptsService['forBilling']>>;
+
+/** An invoice line priced above its order line (ADR-026 §2). */
+interface AbovePrice {
+  lineNo: number;
+  grnLineId: string;
+  invoiceNetUnitPrice: string;
+  orderNetUnitPrice: string;
+}
+
+type Num = { toString(): string };
 
 interface ResolvedLine {
   dto: PurchaseInvoiceLineDto;
@@ -87,6 +110,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     private readonly partyUsage: PartyUsageRegistry,
     private readonly costCenters: CostCentersService,
     private readonly costCenterUsage: CostCenterUsageRegistry,
+    private readonly orders: PurchaseOrderReceiptsService,
   ) {}
 
   onModuleInit(): void {
@@ -366,6 +390,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       ...(query.status ? { status: query.status } : {}),
       ...(query.paymentType ? { paymentType: query.paymentType } : {}),
       ...(query.supplierId ? { supplierId: BigInt(query.supplierId) } : {}),
+      ...(query.purchaseOrderId ? { purchaseOrderId: BigInt(query.purchaseOrderId) } : {}),
       ...(query.from || query.to
         ? {
             invoiceDate: {
@@ -438,37 +463,64 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           include: {
             item: { select: { id: true, code: true, nameAr: true, baseUnitId: true, itemKind: true } },
             itemUnit: { include: { unit: { select: { id: true, code: true, nameAr: true } } } },
+            // ADR-026 §7: the GRN line it bills, the quantity and the value cleared from 2104.
+            receipts: { select: { id: true, grnLineId: true, qty: true, clearedValue: true } },
           },
         },
         journalEntry: { select: { id: true, entryNo: true, status: true } },
         returns: { select: { id: true, returnNo: true, status: true, grandTotal: true } },
         receivedGrn: { select: { id: true, docNo: true, noteDate: true } },
+        purchaseOrder: { select: { id: true, orderNo: true, status: true } },
       },
     });
     if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
-    return withBalance(inv, await this.creditedFor(db, [inv.id]));
+    // ADR-026 §2: a draft on an order shows the lines above the order price (what the approval covers).
+    let priceAboveOrderLines: AbovePrice[] = [];
+    if (inv.status === 'DRAFT' && inv.purchaseOrderId) {
+      const order = await this.orders.forBilling(inv.purchaseOrderId);
+      const received = await this.goodsNotes.receiptLinesOf(db, { lineIds: inv.lines.flatMap((l) => l.receipts.map((r) => r.grnLineId)) });
+      priceAboveOrderLines = this.abovePrice(inv, order, received);
+    }
+    return { ...withBalance(inv, await this.creditedFor(db, [inv.id])), priceAboveOrderLines };
   }
 
   async create(dto: CreatePurchaseInvoiceDto) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
+    // ADR-026 §7: an invoice on a purchase order; another tenant's or branch's order answers 404.
+    const order = dto.purchaseOrderId ? await this.orders.forBilling(BigInt(dto.purchaseOrderId)) : null;
     const pricesIncludeTax = await this.support.pricesIncludeTax(db);
     const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto, lines);
+    this.assertReceiptLinksNeedOrder(order, lines);
+    if (order) this.assertOrderHeader(order, dto);
+    const costCenterId = dto.costCenterId ? BigInt(dto.costCenterId) : (order?.costCenterId ?? null);
 
     // Retried on a lock conflict: the transaction now share-locks the company row (ADR-025 §4).
-    const inv = await this.support.withRetry(() => db.$transaction(async (tx) => {
-      // ADR-025 §4: at MEDIUM / FULL a direct purchase needs purchase.direct (owners aside).
-      await assertDirectPurchaseAllowed(tx, tenantId, companyId);
-      // Share-lock the header centre before the row that references it (ADR-024 §1.4).
-      if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
-      const receivedGrnId = await this.checkDraftGrn(tx, tenantId, null, dto, lines);
-      const created = await tx.purchaseInvoice.create({
+    const inv = await this.support.withRetry(async () => {
+      const noteIds = order ? await this.receiptNoteIds(this.linkedGrnLineIds(lines)) : [];
+      return db.$transaction(async (tx) => {
+        let received: Map<bigint, ReceiptLine> | null = null;
+        if (order) {
+          // ADR-026 §7/§10: billing an order's receipts is not a direct purchase.
+          // The posting's lock order: company (shared) → the order → its GRNs →
+          // their lines, so a draft and a posting never wait on each other in a cycle.
+          received = await this.lockReceiptBilling(tx, tenantId, companyId, order.id, noteIds);
+        } else {
+          // ADR-025 §4: at MEDIUM / FULL a direct purchase needs purchase.direct (owners aside).
+          await assertDirectPurchaseAllowed(tx, tenantId, companyId);
+        }
+        // Share-lock the header centre before the row that references it (ADR-024 §1.4).
+        if (costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, costCenterId);
+        const receivedGrnId = await this.checkDraftGrn(tx, tenantId, null, dto, lines);
+        if (order && received) this.assertDraftReceipts(order.id, lines, received);
+        const created = await tx.purchaseInvoice.create({
         data: {
           tenantId,
           companyId,
-          // Branch from the request context (BranchGuard), never the body — ADR-003.
-          branchId: currentBranchId(),
+          // Branch from the request context (BranchGuard), never the body — ADR-003;
+          // an invoice on an order is in the order's branch (ADR-026 §7).
+          branchId: order?.branchId ?? currentBranchId(),
           invoiceDate: new Date(dto.invoiceDate),
           dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
           supplierId: BigInt(dto.supplierId),
@@ -477,35 +529,19 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           warehouseId: dto.warehouseId ? BigInt(dto.warehouseId) : null,
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
-          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
+          costCenterId,
           description: dto.description ?? null,
           pricesIncludeTax,
           receivedGrnId,
+          purchaseOrderId: order?.id ?? null,
           ...this.totals(lines),
           createdBy: this.support.userId() ?? null,
         },
       });
-      await tx.purchaseInvoiceLine.createMany({
-        data: lines.map((l, i) => ({
-          tenantId,
-          invoiceId: created.id,
-          lineNo: i + 1,
-          itemId: l.itemId,
-          itemUnitId: l.itemUnitId,
-          qty: l.dto.qty,
-          qtyBase: l.amounts.qtyBase,
-          unitCost: l.dto.unitCost,
-          discountPct: l.dto.discountPct ?? '0',
-          discountAmount: l.amounts.discountAmount,
-          netAmount: l.amounts.netAmount,
-          taxCategoryId: l.taxCategoryId,
-          taxRate: l.taxRate,
-          taxAmount: l.amounts.taxAmount,
-          lineTotal: l.amounts.lineTotal,
-        })),
-      });
-      return created;
-    }, POSTING_TX_OPTIONS));
+        await this.writeLines(tx, tenantId, created.id, lines);
+        return created;
+      }, POSTING_TX_OPTIONS);
+    });
     await this.audit.log({
       action: 'purchase_invoice.create',
       entityType: 'purchase_invoice',
@@ -524,16 +560,33 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
     }
     assertBranchAllowed(inv.branchId);
+    // ADR-026 §7: the order is set at creation and never changes.
+    const orderId = dto.purchaseOrderId ? BigInt(dto.purchaseOrderId) : null;
+    if (orderId !== inv.purchaseOrderId) {
+      throw new DomainError(ErrorCode.VALIDATION, "An invoice's purchase order is set when it is created and never changes");
+    }
+    const order = orderId ? await this.orders.forBilling(orderId) : null;
     const pricesIncludeTax = await this.support.pricesIncludeTax(db);
     const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto, lines);
+    this.assertReceiptLinksNeedOrder(order, lines);
+    if (order) this.assertOrderHeader(order, dto);
+    const costCenterId = dto.costCenterId ? BigInt(dto.costCenterId) : (order?.costCenterId ?? null);
 
-    await db.$transaction(async (tx) => {
-      // Lock the invoice first and re-check it under the lock, the order
-      // posting follows (invoice, then GRN): a save racing a post of the same
-      // draft queues here instead of deadlocking, and never rewrites a posted
-      // invoice. A locking read, so the GRN lock below is still taken before
-      // this transaction's first plain read (see assertGrnBillable).
+    // Retried on a lock conflict, like posting.
+    await this.support.withRetry(async () => {
+      // The GRNs the draft bills now and will bill after the save, read before the transaction to lock them first.
+      const noteIds = order
+        ? await this.receiptNoteIds([...this.linkedGrnLineIds(lines), ...(await this.currentGrnLineIds(id))])
+        : [];
+      return db.$transaction(async (tx) => {
+      // Locks in the posting's order, all locking reads ahead of the first plain read:
+      //  - on an order (ADR-026 §10): company (shared) → the order → its GRNs →
+      //    their lines → the invoice, the order postFromReceipts takes them in;
+      //  - otherwise: the invoice, then the GRN it bills (TRADE-02, as post()).
+      // A save racing a post of the same draft queues on the first shared lock
+      // instead of deadlocking, and never rewrites a posted invoice.
+      const received = order ? await this.lockReceiptBilling(tx, tenantId, companyId, order.id, noteIds) : null;
       const [locked] = await tx.$queryRaw<{ status: string; branch_id: bigint | null }[]>`
         SELECT status, branch_id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
       if (!locked) throw DomainError.notFound('PurchaseInvoice', id.toString());
@@ -542,8 +595,10 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       }
       assertBranchAllowed(locked.branch_id === null ? null : BigInt(locked.branch_id));
       // Share-lock the header centre before the row that references it (ADR-024 §1.4).
-      if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
+      if (costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, costCenterId);
       const receivedGrnId = await this.checkDraftGrn(tx, tenantId, id, dto, lines);
+      if (order && received) this.assertDraftReceipts(order.id, lines, received);
+      // Cascades to the lines' receipt links (purchase_invoice_receipts).
       await tx.purchaseInvoiceLine.deleteMany({ where: { invoiceId: id } });
       await tx.purchaseInvoice.update({
         where: { id },
@@ -556,34 +611,20 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           warehouseId: dto.warehouseId ? BigInt(dto.warehouseId) : null,
           paymentType: dto.paymentType,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
-          costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
+          costCenterId,
           description: dto.description ?? null,
           pricesIncludeTax,
           receivedGrnId,
+          // ADR-026 §2: an edit clears the approval of a price above the order.
+          priceApprovedAt: null,
+          priceApprovedBy: null,
           ...this.totals(lines),
           updatedBy: this.support.userId() ?? null,
         },
       });
-      await tx.purchaseInvoiceLine.createMany({
-        data: lines.map((l, i) => ({
-          tenantId,
-          invoiceId: id,
-          lineNo: i + 1,
-          itemId: l.itemId,
-          itemUnitId: l.itemUnitId,
-          qty: l.dto.qty,
-          qtyBase: l.amounts.qtyBase,
-          unitCost: l.dto.unitCost,
-          discountPct: l.dto.discountPct ?? '0',
-          discountAmount: l.amounts.discountAmount,
-          netAmount: l.amounts.netAmount,
-          taxCategoryId: l.taxCategoryId,
-          taxRate: l.taxRate,
-          taxAmount: l.amounts.taxAmount,
-          lineTotal: l.amounts.lineTotal,
-        })),
-      });
-    }, POSTING_TX_OPTIONS);
+      await this.writeLines(tx, tenantId, id, lines);
+      }, POSTING_TX_OPTIONS);
+    });
     await this.audit.log({
       action: 'purchase_invoice.update',
       entityType: 'purchase_invoice',
@@ -593,14 +634,19 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
   }
 
   async deleteDraft(id: bigint) {
-    const { db } = this.support.tenant();
-    const inv = await db.purchaseInvoice.findFirst({ where: { id } });
-    if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
-    if (inv.status !== 'DRAFT') {
-      throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be deleted');
-    }
-    assertBranchAllowed(inv.branchId);
-    await db.purchaseInvoice.delete({ where: { id } });
+    const { tenantId, db } = this.support.tenant();
+    await db.$transaction(async (tx) => {
+      // Locked and re-checked: a delete racing a post of the same draft never
+      // deletes a posted invoice (and its GRN lines' billed quantities).
+      const [inv] = await tx.$queryRaw<{ status: string; branch_id: bigint | null }[]>`
+        SELECT status, branch_id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
+      if (inv.status !== 'DRAFT') {
+        throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be deleted');
+      }
+      assertBranchAllowed(inv.branch_id === null ? null : BigInt(inv.branch_id));
+      await tx.purchaseInvoice.delete({ where: { id } });
+    }, POSTING_TX_OPTIONS);
     return { deleted: true };
   }
 
@@ -609,6 +655,9 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const userId = this.support.userId();
+    // ADR-026 §7: an invoice on a purchase order bills its receipts (set at creation, never changed).
+    const head = await db.purchaseInvoice.findFirst({ where: { id }, select: { purchaseOrderId: true } });
+    if (head?.purchaseOrderId) return this.postFromReceipts(id, head.purchaseOrderId);
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
@@ -802,7 +851,602 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     return this.get(result.id);
   }
 
+  // ------------------------------------------- invoices from receipts (ADR-026)
+
+  /**
+   * Posts an invoice on a purchase order (ADR-026 §7, ADR-016 §2): no stock
+   * moves (its GRNs received the goods); each stocked line clears its GRN
+   * line's value from 2104 pro rata, the last bill of a GRN line taking what
+   * is left of it, so 2104 reaches exactly zero once everything received is
+   * billed; the price difference goes to INVENTORY_ADJUSTMENT. Services, tax
+   * and the supplier as in any invoice.
+   *
+   * Locks (ADR-026 §10): company (shared) → the order → its lines → the GRNs
+   * → their lines → the invoice, all locking reads before the first plain
+   * read. The GRNs are those the invoice's links name, read before the
+   * transaction and checked again under the invoice's lock.
+   */
+  private async postFromReceipts(id: bigint, orderId: bigint) {
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const userId = this.support.userId();
+    const result = await this.support.withRetry(async () => {
+      const grnIds = await this.receiptNoteIds(await this.currentGrnLineIds(id));
+      return db.$transaction(async (tx) => {
+        const { order, received } = await this.lockReceiptBillingWithOrder(tx, tenantId, companyId, orderId, grnIds);
+        await tx.$queryRaw`SELECT id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        const draft = await tx.purchaseInvoice.findFirst({
+          where: { id },
+          include: { lines: { orderBy: { lineNo: 'asc' }, include: { receipts: { orderBy: { id: 'asc' } } } } },
+        });
+        if (!draft) throw DomainError.notFound('PurchaseInvoice', id.toString());
+        if (draft.status !== 'DRAFT') {
+          throw new DomainError(ErrorCode.CONFLICT, 'Invoice is not a draft');
+        }
+        assertBranchAllowed(draft.branchId);
+        await assertWarehouseBranchAllowed(tx, draft.warehouseId);
+        if (draft.lines.length === 0) {
+          throw new DomainError(ErrorCode.VALIDATION, 'Invoice has no lines');
+        }
+        if (draft.paymentType === 'CASH' && !draft.cashAccountId) {
+          throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');
+        }
+        // An edit between the read above and the invoice lock may name other GRNs: start again.
+        for (const link of draft.lines.flatMap((l) => l.receipts)) {
+          if (!received.has(link.grnLineId)) {
+            throw new DomainError(ErrorCode.CONFLICT, 'The invoice changed while posting; try again');
+          }
+        }
+        if (!(BILLABLE_ORDER_STATUSES as readonly string[]).includes(order.status)) {
+          throw new DomainError(ErrorCode.PURCHASE_ORDER_NOT_RECEIVED, `Nothing is received on purchase order ${order.orderNo ?? order.id}`, {
+            status: order.status,
+          });
+        }
+        if (draft.supplierId !== order.supplierId || draft.warehouseId !== order.warehouseId) {
+          throw new DomainError(ErrorCode.VALIDATION, "An invoice on a purchase order has the order's supplier and warehouse");
+        }
+
+        const invoiceDate = new Date(draft.invoiceDate);
+        const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, invoiceDate);
+        const stockItems = await this.ledger.stockItemIds(tx, companyId, draft.lines.map((l) => l.itemId));
+
+        // Three-way match under the locks (ADR-026 §7): every stocked line bills
+        // a posted GRN line of this order, within what it received and has not
+        // billed yet; the order's received quantities never pass the order (§4).
+        const billing = draft.lines.map((l) => ({
+          lineNo: l.lineNo,
+          itemId: l.itemId,
+          itemUnitId: l.itemUnitId,
+          isStock: stockItems.has(l.itemId),
+          qtyBase: new Decimal(l.qtyBase.toString()),
+          links: l.receipts.map((r) => ({ grnLineId: r.grnLineId, qty: new Decimal(r.qty.toString()) })),
+        }));
+        this.assertReceiptMatch(order.id, billing, received);
+        // ADR-026 §2: above the order price, only once the difference is approved.
+        const above = this.abovePrice(draft, order, received);
+        if (above.length > 0 && !draft.priceApprovedAt) {
+          throw new DomainError(ErrorCode.PURCHASE_PRICE_ABOVE_ORDER, 'A line is priced above the purchase order: approve the difference first', {
+            lines: above,
+          });
+        }
+
+        // Pro-rata clearing, cumulative, in line order (ADR-026 §7): what a GRN
+        // line has cleared once `billedAfter` of it is billed is
+        // round3(value × billedAfter / received); each bill clears the step from
+        // what was cleared before. Every step lies between 0 and what is left
+        // (round3 is monotonic), and the bill that takes the last of the line
+        // clears exactly value − Σ cleared, so 2104 ends at zero. A per-bill
+        // round3 of value × qty / received could overshoot and leave a negative rest.
+        const running = new Map([...received].map(([lineId, r]) => [lineId, { billed: r.billedQty, cleared: r.clearedValue }]));
+        const perGrnLine = new Map<bigint, { qty: Decimal; cleared: Decimal }>();
+        let cleared = new Decimal(0);
+        let stockNet = new Decimal(0);
+        let serviceNet = new Decimal(0);
+        for (const line of draft.lines) {
+          if (!stockItems.has(line.itemId)) {
+            serviceNet = serviceNet.plus(line.netAmount);
+            continue;
+          }
+          stockNet = stockNet.plus(line.netAmount);
+          for (const link of line.receipts) {
+            const r = received.get(link.grnLineId)!;
+            const run = running.get(link.grnLineId)!;
+            const qty = new Decimal(link.qty.toString());
+            const billedAfter = run.billed.plus(qty);
+            const value = clearedThrough(r.value, billedAfter, r.qty).minus(run.cleared);
+            if (value.lt(0)) {
+              // Unreachable while cleared_value is a projection of this rule (integrity check); refuse rather than post it.
+              throw new DomainError(ErrorCode.INTERNAL, `GRN line ${r.id} would clear a negative value`);
+            }
+            run.billed = billedAfter;
+            run.cleared = run.cleared.plus(value);
+            const acc = perGrnLine.get(link.grnLineId) ?? { qty: new Decimal(0), cleared: new Decimal(0) };
+            perGrnLine.set(link.grnLineId, { qty: acc.qty.plus(qty), cleared: acc.cleared.plus(value) });
+            await tx.purchaseInvoiceReceipt.update({ where: { id: link.id }, data: { clearedValue: value } });
+            cleared = cleared.plus(value);
+          }
+        }
+        await this.goodsNotes.recordBilling(tx, perGrnLine);
+
+        const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
+          'INVENTORY_ADJUSTMENT',
+          'GOODS_RECEIVED_NOT_INVOICED',
+          'PURCHASES',
+          'INPUT_TAX',
+          'SUPPLIERS_CONTROL',
+        ]);
+        const docNos = [...new Set([...received.values()].filter((r) => perGrnLine.has(r.id)).map((r) => r.docNo ?? r.noteId.toString()))];
+        const journalLines: JournalLineInput[] = [];
+        if (cleared.gt(0)) {
+          journalLines.push({
+            accountId: mapping.GOODS_RECEIVED_NOT_INVOICED,
+            debit: cleared.toString(),
+            description: `Goods received ${docNos.join(', ')}`,
+          });
+        }
+        // ADR-016 §2: the price difference (positive: dearer than received) to INVENTORY_ADJUSTMENT.
+        const difference = stockNet.minus(cleared);
+        if (difference.gt(0)) {
+          journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, debit: difference.toString(), description: 'Invoice vs goods received' });
+        } else if (difference.lt(0)) {
+          journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, credit: difference.abs().toString(), description: 'Invoice vs goods received' });
+        }
+        if (serviceNet.gt(0)) {
+          journalLines.push({ accountId: mapping.PURCHASES, debit: serviceNet.toString() });
+        }
+        if (draft.taxTotal.gt(0)) {
+          journalLines.push({ accountId: mapping.INPUT_TAX, debit: draft.taxTotal.toString() });
+        }
+        if (draft.paymentType === 'CASH') {
+          journalLines.push({ accountId: draft.cashAccountId!, credit: draft.grandTotal.toString(), description: 'Cash purchase' });
+        } else {
+          journalLines.push({
+            accountId: mapping.SUPPLIERS_CONTROL,
+            credit: draft.grandTotal.toString(),
+            partyType: 'SUPPLIER',
+            partyId: draft.supplierId,
+            description: 'Credit purchase',
+          });
+        }
+
+        const invoiceNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, 'PURCHASE_INVOICE', invoiceDate);
+        const entry = await this.posting.postEntry(tx, {
+          tenantId,
+          companyId,
+          branchId: draft.branchId,
+          entryDate: invoiceDate,
+          fiscalPeriodId: period.id,
+          sourceType: SOURCE,
+          sourceId: draft.id,
+          description: draft.description ?? `Purchase invoice ${invoiceNo}`,
+          lines: journalLines,
+          postedBy: userId ?? null,
+          // ADR-024 §1.2: onto every income-statement line (expenses, cost, adjustments).
+          costCenterId: draft.costCenterId,
+          // ADR-024 §1.3: the document has a centre field, so a flagged line needs one.
+          requireCostCenters: true,
+        });
+        await tx.purchaseInvoice.update({
+          where: { id: draft.id },
+          data: { status: 'POSTED', invoiceNo, journalEntryId: entry.id, postedAt: new Date(), postedBy: userId ?? null },
+        });
+        return { id: draft.id, invoiceNo };
+      }, POSTING_TX_OPTIONS);
+    });
+
+    await this.audit.log({
+      action: 'purchase_invoice.post',
+      entityType: 'purchase_invoice',
+      entityId: result.id,
+      after: { invoiceNo: result.invoiceNo, purchaseOrderId: orderId.toString() },
+    });
+    return this.get(result.id);
+  }
+
+  /**
+   * ADR-026 §2: «approve the price difference» of a draft invoice on a
+   * purchase order with a line above the order price. purchase.approve (the
+   * route), no amount limit, never by the invoice's creator or last editor;
+   * an owner always. An edit afterwards clears it.
+   */
+  async approvePrice(id: bigint) {
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const approvedBy = await this.support.withRetry(() =>
+      db.$transaction(async (tx) => {
+        await lockProcurementLevel(tx, tenantId, companyId);
+        const [inv] = await tx.$queryRaw<
+          { status: string; branch_id: bigint | null; purchase_order_id: bigint | null; created_by: bigint | null; updated_by: bigint | null }[]
+        >`
+          SELECT status, branch_id, purchase_order_id, created_by, updated_by FROM purchase_invoices
+           WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
+        assertBranchAllowed(inv.branch_id === null ? null : BigInt(inv.branch_id));
+        if (inv.status !== 'DRAFT') {
+          throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only a draft invoice has a price to approve', {
+            status: inv.status,
+            action: 'approve-price',
+          });
+        }
+        if (inv.purchase_order_id === null) {
+          throw new DomainError(ErrorCode.VALIDATION, 'Only an invoice on a purchase order has an order price to compare with');
+        }
+        const draft = await tx.purchaseInvoice.findFirstOrThrow({
+          where: { id },
+          include: { lines: { orderBy: { lineNo: 'asc' }, include: { receipts: true } } },
+        });
+        const order = await this.orders.forBilling(BigInt(inv.purchase_order_id), tx);
+        const received = await this.goodsNotes.receiptLinesOf(tx, { lineIds: draft.lines.flatMap((l) => l.receipts.map((r) => r.grnLineId)) });
+        if (this.abovePrice(draft, order, received).length === 0) {
+          throw new DomainError(ErrorCode.VALIDATION, 'No line is priced above the purchase order');
+        }
+        const approver = await readApprover(tx, tenantId);
+        const author = { created_by: inv.created_by === null ? null : BigInt(inv.created_by), updated_by: inv.updated_by === null ? null : BigInt(inv.updated_by), submitted_by: null };
+        assertCanApprove({ ...approver, amount: null, isAuthor: isAuthor(author, approver.userId) });
+        // An approval is not an edit: updated_by stays the last editor.
+        await tx.purchaseInvoice.update({ where: { id }, data: { priceApprovedAt: new Date(), priceApprovedBy: approver.userId } });
+        return approver.userId;
+      }, POSTING_TX_OPTIONS),
+    );
+    await this.audit.log({
+      action: 'purchase_invoice.approve_price',
+      entityType: 'purchase_invoice',
+      entityId: id,
+      after: { approvedBy: approvedBy?.toString() ?? null },
+    });
+    return this.get(id);
+  }
+
+  /**
+   * POST /purchase-orders/:id/bill (ADR-026 §7): a draft invoice from the
+   * order's posted receipts, one line per GRN line billed, in base units,
+   * with the order's supplier, warehouse, cost centre and the order line's
+   * tax category.
+   */
+  async bill(orderId: bigint, dto: BillPurchaseOrderDto) {
+    const { db } = this.support.tenant();
+    const order = await this.orders.forBilling(orderId);
+    const received = await this.goodsNotes.receiptLinesOf(db, { lineIds: dto.lines.map((l) => BigInt(l.grnLineId)) });
+    return this.create({
+      invoiceDate: dto.invoiceDate,
+      dueDate: dto.dueDate,
+      supplierInvoiceNo: dto.supplierInvoiceNo,
+      supplierInvoiceDate: dto.supplierInvoiceDate,
+      paymentType: dto.paymentType,
+      cashAccountId: dto.cashAccountId,
+      costCenterId: dto.costCenterId,
+      description: dto.description,
+      supplierId: order.supplierId.toString(),
+      warehouseId: order.warehouseId.toString(),
+      purchaseOrderId: orderId.toString(),
+      lines: dto.lines.map((l) => {
+        const r = received.get(BigInt(l.grnLineId));
+        if (!r || r.purchaseOrderId !== order.id) throw DomainError.notFound('GoodsNoteLine', l.grnLineId);
+        const poLine = r.poLineId !== null ? order.lines.get(r.poLineId) : undefined;
+        return {
+          itemId: r.itemId.toString(),
+          qty: l.qty,
+          unitCost: l.unitCost,
+          discountPct: l.discountPct,
+          ...(poLine?.taxCategoryId ? { taxCategoryId: poLine.taxCategoryId.toString() } : {}),
+          grnLineId: l.grnLineId,
+        };
+      }),
+    });
+  }
+
+  /**
+   * GET /purchase-orders/:id/billable: the order's posted GRN lines with what
+   * is received and billed, the order price and the default invoice price
+   * per base unit (the order's, never above it), for the «Bill» screen.
+   */
+  async billable(orderId: bigint) {
+    const { db } = this.support.tenant();
+    const order = await this.orders.forBilling(orderId);
+    const pricesIncludeTax = await this.support.pricesIncludeTax(db);
+    const received = await this.goodsNotes.receiptLinesOf(db, { orderId });
+    const items = await db.item.findMany({
+      where: { id: { in: [...new Set([...received.values()].map((r) => r.itemId))] } },
+      select: { id: true, code: true, nameAr: true, nameEn: true },
+    });
+    const itemById = new Map(items.map((i) => [i.id, i]));
+    const lines = [...received.values()].map((r) => {
+      const poLine = r.poLineId !== null ? order.lines.get(r.poLineId) : undefined;
+      const unbilled = r.qty.minus(r.billedQty);
+      return {
+        grnLineId: r.id.toString(),
+        grnId: r.noteId.toString(),
+        grnDocNo: r.docNo,
+        item: itemById.get(r.itemId)!,
+        poLineId: poLine?.id.toString() ?? null,
+        poLineNo: poLine?.lineNo ?? null,
+        receivedQty: r.qty.toString(),
+        billedQty: r.billedQty.toString(),
+        unbilledQty: unbilled.toString(),
+        receiptUnitCost: r.unitCost.toString(),
+        orderUnitPrice: poLine?.unitPrice.toString() ?? null,
+        orderDiscountPct: poLine?.discountPct.toString() ?? null,
+        orderNetUnitPrice: poLine ? round6(this.orderNetUnitPrice(order, poLine)).toString() : null,
+        defaultUnitCost: poLine ? this.defaultUnitCost(order, poLine, pricesIncludeTax).toString() : r.unitCost.toString(),
+        defaultDiscountPct: poLine?.discountPct.toString() ?? '0',
+        taxCategoryId: poLine?.taxCategoryId?.toString() ?? null,
+        taxRate: poLine?.taxRate.toString() ?? '0',
+      };
+    });
+    return {
+      orderId: order.id.toString(),
+      orderNo: order.orderNo,
+      status: order.status,
+      supplierId: order.supplierId.toString(),
+      warehouseId: order.warehouseId.toString(),
+      costCenterId: order.costCenterId?.toString() ?? null,
+      orderPricesIncludeTax: order.pricesIncludeTax,
+      pricesIncludeTax,
+      lines,
+    };
+  }
+
   // ------------------------------------------------------------- internals
+
+  /** The lines, then the receipt links of the lines that bill a GRN line (ADR-026 §7, qty in base units). */
+  private async writeLines(tx: Prisma.TransactionClient, tenantId: bigint, invoiceId: bigint, lines: ResolvedLine[]) {
+    await tx.purchaseInvoiceLine.createMany({
+      data: lines.map((l, i) => ({
+        tenantId,
+        invoiceId,
+        lineNo: i + 1,
+        itemId: l.itemId,
+        itemUnitId: l.itemUnitId,
+        qty: l.dto.qty,
+        qtyBase: l.amounts.qtyBase,
+        unitCost: l.dto.unitCost,
+        discountPct: l.dto.discountPct ?? '0',
+        discountAmount: l.amounts.discountAmount,
+        netAmount: l.amounts.netAmount,
+        taxCategoryId: l.taxCategoryId,
+        taxRate: l.taxRate,
+        taxAmount: l.amounts.taxAmount,
+        lineTotal: l.amounts.lineTotal,
+      })),
+    });
+    if (!lines.some((l) => l.dto.grnLineId)) return;
+    const written = await tx.purchaseInvoiceLine.findMany({ where: { invoiceId }, select: { id: true, lineNo: true } });
+    const idByNo = new Map(written.map((w) => [w.lineNo, w.id]));
+    await tx.purchaseInvoiceReceipt.createMany({
+      data: lines.flatMap((l, i) =>
+        l.dto.grnLineId
+          ? [{ tenantId, invoiceLineId: idByNo.get(i + 1)!, grnLineId: BigInt(l.dto.grnLineId), qty: l.amounts.qtyBase }]
+          : [],
+      ),
+    });
+  }
+
+  /** ADR-026 §7: an invoice on an order has the order's supplier and warehouse, and bills no GRN as a whole. */
+  private assertOrderHeader(order: BillingOrder, dto: CreatePurchaseInvoiceDto): void {
+    if (dto.receivedGrnId) {
+      throw new DomainError(ErrorCode.VALIDATION, 'An invoice on a purchase order bills its GRN lines, not receivedGrnId');
+    }
+    if (BigInt(dto.supplierId) !== order.supplierId) {
+      throw new DomainError(ErrorCode.VALIDATION, "An invoice on a purchase order is from the order's supplier", {
+        field: 'supplierId',
+        orderSupplierId: order.supplierId.toString(),
+      });
+    }
+    if (!dto.warehouseId || BigInt(dto.warehouseId) !== order.warehouseId) {
+      throw new DomainError(ErrorCode.VALIDATION, "An invoice on a purchase order names the order's warehouse", {
+        field: 'warehouseId',
+        orderWarehouseId: order.warehouseId.toString(),
+      });
+    }
+  }
+
+  /** The GRN lines the lines of a draft name (ADR-026 §7). */
+  private linkedGrnLineIds(lines: ResolvedLine[]): bigint[] {
+    return lines.filter((l) => l.dto.grnLineId).map((l) => BigInt(l.dto.grnLineId!));
+  }
+
+  /** The GRN lines an invoice's saved lines bill now (plain read, before its transaction). */
+  private async currentGrnLineIds(invoiceId: bigint): Promise<bigint[]> {
+    const { db } = this.support.tenant();
+    const links = await db.purchaseInvoiceReceipt.findMany({ where: { invoiceLine: { invoiceId } }, select: { grnLineId: true } });
+    return links.map((l) => l.grnLineId);
+  }
+
+  /**
+   * The goods notes holding these GRN lines, read before the transaction so
+   * it can lock them first (a posted GRN line never moves to another note).
+   */
+  private async receiptNoteIds(grnLineIds: bigint[]): Promise<bigint[]> {
+    if (grnLineIds.length === 0) return [];
+    const { db } = this.support.tenant();
+    const lines = await this.goodsNotes.receiptLinesOf(db, { lineIds: [...new Set(grnLineIds)] });
+    return [...new Set([...lines.values()].map((l) => l.noteId))];
+  }
+
+  /**
+   * ADR-026 §10, for every writer of an invoice on an order (create, update,
+   * post): company (shared) → the order FOR UPDATE → its lines → the GRNs
+   * (ascending) → their lines (ascending), all locking reads. The invoice row
+   * comes after. Returns the locked order and GRN lines.
+   */
+  private async lockReceiptBillingWithOrder(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    orderId: bigint,
+    noteIds: bigint[],
+  ) {
+    await lockProcurementLevel(tx, tenantId, companyId);
+    const order = await this.orders.lockOrder(tx, orderId);
+    const received = await this.goodsNotes.lockReceiptLines(tx, noteIds);
+    return { order, received };
+  }
+
+  private async lockReceiptBilling(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    orderId: bigint,
+    noteIds: bigint[],
+  ): Promise<Map<bigint, ReceiptLine>> {
+    return (await this.lockReceiptBillingWithOrder(tx, tenantId, companyId, orderId, noteIds)).received;
+  }
+
+  /** ADR-026 §7: a line bills a GRN line only on an invoice on a purchase order. */
+  private assertReceiptLinksNeedOrder(order: BillingOrder | null, lines: ResolvedLine[]): void {
+    if (!order && lines.some((l) => l.dto.grnLineId)) {
+      throw new DomainError(ErrorCode.VALIDATION, 'grnLineId needs purchaseOrderId: only an invoice on a purchase order bills GRN lines', {
+        field: 'grnLineId',
+      });
+    }
+  }
+
+  /**
+   * Draft check of an invoice on an order (ADR-026 §3, §7) against the GRN
+   * lines locked on the draft's transaction; posting checks it all again.
+   */
+  private assertDraftReceipts(orderId: bigint, lines: ResolvedLine[], received: Map<bigint, ReceiptLine>): void {
+    if (lines.some((l) => l.dto.grnLineId && l.itemKind !== 'STOCK')) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Only a stocked line bills a GRN line');
+    }
+    this.assertReceiptMatch(
+      orderId,
+      lines.map((l, i) => ({
+        lineNo: i + 1,
+        itemId: l.itemId,
+        itemUnitId: l.itemUnitId,
+        isStock: l.itemKind === 'STOCK',
+        qtyBase: l.amounts.qtyBase,
+        links: l.dto.grnLineId ? [{ grnLineId: BigInt(l.dto.grnLineId), qty: l.amounts.qtyBase }] : [],
+      })),
+      received,
+    );
+  }
+
+  /**
+   * The three-way match (ADR-026 §3, §7): receive first (at least one GRN
+   * line, and every stocked line bills one); each billed GRN line is a
+   * posted receipt of this order for the same item, billed in base units;
+   * and per GRN line the billed quantity stays within what it received and
+   * has not billed yet. The order's received quantity never passes the order
+   * (enforced when receiving, §4).
+   */
+  private assertReceiptMatch(
+    orderId: bigint,
+    lines: { lineNo: number; itemId: bigint; itemUnitId: bigint | null; isStock: boolean; qtyBase: Decimal; links: { grnLineId: bigint; qty: Decimal }[] }[],
+    received: Map<bigint, ReceiptLine>,
+  ): void {
+    if (!lines.some((l) => l.links.length > 0)) {
+      throw new DomainError(ErrorCode.PURCHASE_ORDER_NOT_RECEIVED, 'An invoice on a purchase order bills its posted receipts: receive the goods first');
+    }
+    const wanted = new Map<bigint, Decimal>();
+    for (const l of lines) {
+      if (l.isStock && l.links.length === 0) {
+        throw new DomainError(ErrorCode.PURCHASE_ORDER_NOT_RECEIVED, `Line ${l.lineNo} bills no received goods: name its GRN line`, {
+          lineNo: l.lineNo,
+        });
+      }
+      if (l.links.length === 0) continue;
+      if (l.itemUnitId !== null) {
+        throw new DomainError(ErrorCode.VALIDATION, `Line ${l.lineNo} bills received goods in base units: no item unit`, { lineNo: l.lineNo });
+      }
+      const linked = sum(l.links.map((k) => k.qty));
+      if (!linked.eq(l.qtyBase)) {
+        throw new DomainError(ErrorCode.CONFLICT, 'The invoice changed while posting; try again');
+      }
+      for (const k of l.links) {
+        const r = received.get(k.grnLineId);
+        if (!r) throw DomainError.notFound('GoodsNoteLine', k.grnLineId.toString());
+        if (r.noteType !== 'GRN' || r.noteStatus !== 'POSTED' || r.purchaseOrderId !== orderId) {
+          throw new DomainError(ErrorCode.PURCHASE_ORDER_NOT_RECEIVED, `GRN line ${k.grnLineId} is not a posted receipt of this purchase order`, {
+            grnLineId: k.grnLineId.toString(),
+          });
+        }
+        if (r.itemId !== l.itemId) {
+          throw new DomainError(ErrorCode.VALIDATION, `Line ${l.lineNo} is for another item than its GRN line`, {
+            lineNo: l.lineNo,
+            grnLineId: k.grnLineId.toString(),
+          });
+        }
+        wanted.set(k.grnLineId, (wanted.get(k.grnLineId) ?? new Decimal(0)).plus(k.qty));
+      }
+    }
+    for (const [grnLineId, qty] of wanted) {
+      const r = received.get(grnLineId)!;
+      const unbilled = r.qty.minus(r.billedQty);
+      if (qty.gt(unbilled)) {
+        throw new DomainError(
+          ErrorCode.PURCHASE_BILL_EXCEEDS_RECEIPT,
+          `GRN ${r.docNo ?? r.noteId} has ${unbilled.toFixed(6)} received and not billed on this line`,
+          { grnLineId: grnLineId.toString(), unbilled: unbilled.toFixed(6), wanted: qty.toFixed(6) },
+        );
+      }
+    }
+  }
+
+  /** The order line's net price per base unit (exact), on the order's own tax basis. */
+  private orderNetUnitPrice(order: { pricesIncludeTax: boolean }, poLine: LockedOrderLine): Decimal {
+    return netUnitPrice({
+      unitPrice: poLine.unitPrice,
+      discountPct: poLine.discountPct,
+      factorToBase: poLine.factorToBase,
+      taxRate: poLine.taxRate,
+      pricesIncludeTax: order.pricesIncludeTax,
+    });
+  }
+
+  /**
+   * ADR-026 §2: the lines priced above their order line, comparing the net
+   * price per base unit exactly (price less discount, per base unit, net of
+   * tax when the price includes it); a lower or equal price passes.
+   */
+  private abovePrice(
+    inv: {
+      pricesIncludeTax: boolean;
+      lines: { lineNo: number; unitCost: Num; discountPct: Num; taxRate: Num; receipts: { grnLineId: bigint }[] }[];
+    },
+    order: { pricesIncludeTax: boolean; lines: Map<bigint, LockedOrderLine> },
+    received: Map<bigint, ReceiptLine>,
+  ): AbovePrice[] {
+    const out: AbovePrice[] = [];
+    for (const line of inv.lines) {
+      const invoiceNet = netUnitPrice({
+        unitPrice: line.unitCost.toString(),
+        discountPct: line.discountPct.toString(),
+        factorToBase: 1,
+        taxRate: line.taxRate.toString(),
+        pricesIncludeTax: inv.pricesIncludeTax,
+      });
+      for (const link of line.receipts) {
+        const poLineId = received.get(link.grnLineId)?.poLineId;
+        const poLine = poLineId != null ? order.lines.get(poLineId) : undefined;
+        if (!poLine) continue;
+        const orderNet = this.orderNetUnitPrice(order, poLine);
+        if (invoiceNet.gt(orderNet)) {
+          out.push({
+            lineNo: line.lineNo,
+            grnLineId: link.grnLineId.toString(),
+            invoiceNetUnitPrice: round6(invoiceNet).toFixed(6),
+            orderNetUnitPrice: round6(orderNet).toFixed(6),
+          });
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The invoice price per base unit an order line suggests: its price per
+   * base unit, on the company's current tax basis, rounded DOWN to 6 dp so
+   * the default is never above the order (ADR-026 §2).
+   */
+  private defaultUnitCost(order: { pricesIncludeTax: boolean }, poLine: LockedOrderLine, pricesIncludeTax: boolean): Decimal {
+    let price = poLine.unitPrice.div(poLine.factorToBase);
+    const factor = poLine.taxRate.div(100).plus(1);
+    if (order.pricesIncludeTax && !pricesIncludeTax) price = price.div(factor);
+    else if (!order.pricesIncludeTax && pricesIncludeTax) price = price.times(factor);
+    return price.toDecimalPlaces(6, Decimal.ROUND_DOWN);
+  }
 
   private totals(lines: ResolvedLine[]) {
     return {
@@ -876,6 +1520,12 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     if (!grn) throw DomainError.notFound('GoodsNote', grnId);
     if (grn.noteType !== 'GRN' || grn.status !== 'POSTED') {
       throw new DomainError(ErrorCode.VALIDATION, 'receivedGrnId must be a posted goods receipt note');
+    }
+    // ADR-026 §7: a receipt against a purchase order is billed from that order, line by line.
+    if (grn.purchaseOrderId !== null) {
+      throw new DomainError(ErrorCode.VALIDATION, 'This goods receipt is against a purchase order: bill it from the order', {
+        purchaseOrderId: grn.purchaseOrderId.toString(),
+      });
     }
     if (warehouseId !== grn.warehouseId) {
       throw new DomainError(ErrorCode.VALIDATION, 'The invoice warehouse must be the warehouse the goods were received in');

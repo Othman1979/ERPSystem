@@ -35,6 +35,11 @@ const CHECKS = [
   'stock_movements.source_line',
   'purchase_request_lines.ordered_qty',
   'purchase_order_lines.request_line_id',
+  // Phase 13 (ADR-026): the receipt, billing and issue projections.
+  'purchase_order_lines.received_qty',
+  'goods_note_lines.billed_qty',
+  'goods_note_lines.cleared_value',
+  'issue_request_lines.issued_qty',
   'collation',
 ];
 

@@ -7,6 +7,7 @@ import {
   ContainerOutlined,
   DashboardOutlined,
   DiffOutlined,
+  ExportOutlined,
   FileAddOutlined,
   FileDoneOutlined,
   FileTextOutlined,
@@ -45,6 +46,7 @@ export const PAGE_LOADERS = {
   purchaseQuotes: () => import('./pages/PurchaseQuotesPage').then((m) => m.PurchaseQuotesPage),
   purchaseOrders: () => import('./pages/PurchaseOrdersPage').then((m) => m.PurchaseOrdersPage),
   goodsNotes: () => import('./pages/GoodsNotesPage').then((m) => m.GoodsNotesPage),
+  issueRequests: () => import('./pages/IssueRequestsPage').then((m) => m.IssueRequestsPage),
   parties: () => import('./pages/PartiesPage').then((m) => m.PartiesPage),
   items: () => import('./pages/ItemsPage').then((m) => m.ItemsPage),
   warehouses: () => import('./pages/WarehousesPage').then((m) => m.WarehousesPage),
@@ -69,6 +71,7 @@ const PurchaseRequestsPage = lazyPage(PAGE_LOADERS.purchaseRequests);
 const PurchaseQuotesPage = lazyPage(PAGE_LOADERS.purchaseQuotes);
 const PurchaseOrdersPage = lazyPage(PAGE_LOADERS.purchaseOrders);
 const GoodsNotesPage = lazyPage(PAGE_LOADERS.goodsNotes);
+const IssueRequestsPage = lazyPage(PAGE_LOADERS.issueRequests);
 const PartiesPage = lazyPage(PAGE_LOADERS.parties);
 const ItemsPage = lazyPage(PAGE_LOADERS.items);
 const WarehousesPage = lazyPage(PAGE_LOADERS.warehouses);
@@ -186,6 +189,16 @@ export const APP_GROUPS: AppGroup[] = [
       { key: 'items', path: '/items', label: 'nav.items', icon: <InboxOutlined />, element: <ItemsPage />, permission: PERMISSIONS.TENANT_READ },
       { key: 'warehouses', path: '/warehouses', label: 'nav.warehouses', icon: <ContainerOutlined />, element: <WarehousesPage />, permission: PERMISSIONS.TENANT_READ },
       { key: 'stock', path: '/stock', label: 'nav.stock', icon: <AuditOutlined />, element: <StockPage />, permission: PERMISSIONS.TENANT_READ },
+      // Phase 13 (ADR-026 §9): issue requests, FULL procurement level only.
+      {
+        key: 'issueRequests',
+        path: '/issue-requests',
+        label: 'nav.issueRequests',
+        icon: <ExportOutlined />,
+        element: <IssueRequestsPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        minProcurementLevel: 'FULL',
+      },
     ],
   },
   {

@@ -30,9 +30,10 @@ interface PurchaseOrderLike {
   orderNo: string | null;
   orderDate: Date;
   expectedDate: Date | null;
-  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'CANCELLED';
+  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'CANCELLED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CLOSED';
   notes: string | null;
   cancelReason: string | null;
+  closeReason: string | null;
   pricesIncludeTax: boolean;
   netTotal: Dec;
   taxTotal: Dec;
@@ -52,8 +53,14 @@ export function purchaseOrderPrint(po: PurchaseOrderLike, lang: Lang): DocumentP
   return {
     title: t(lang, 'أمر شراء', 'Purchase order'),
     docNo: po.orderNo,
-    status: po.status === 'APPROVED' || po.status === 'CANCELLED' ? 'POSTED' : 'DRAFT',
-    banner: po.status === 'CANCELLED' ? t(lang, `ملغى: ${po.cancelReason ?? ''}`, `Cancelled: ${po.cancelReason ?? ''}`) : null,
+    // Numbered from approval on (ADR-025 §8), whatever was received or closed since (ADR-026 §6).
+    status: po.status === 'DRAFT' || po.status === 'SUBMITTED' ? 'DRAFT' : 'POSTED',
+    banner:
+      po.status === 'CANCELLED'
+        ? t(lang, `ملغى: ${po.cancelReason ?? ''}`, `Cancelled: ${po.cancelReason ?? ''}`)
+        : po.status === 'CLOSED'
+          ? t(lang, `مغلق: ${po.closeReason ?? ''}`, `Closed: ${po.closeReason ?? ''}`)
+          : null,
     fields: [
       { label: t(lang, 'المورد', 'Supplier'), value: supplierName(po.supplier, lang) },
       { label: t(lang, 'تاريخ الأمر', 'Order date'), value: ymd(po.orderDate) },

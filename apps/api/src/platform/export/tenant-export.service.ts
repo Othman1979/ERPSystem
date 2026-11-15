@@ -59,7 +59,11 @@ const WORKBOOKS: { file: string; models: string[] }[] = [
   },
   { file: '06-parties.xlsx', models: ['Party'] },
   { file: '07-sales.xlsx', models: ['SalesInvoice', 'SalesInvoiceLine', 'SalesReturn', 'SalesReturnLine'] },
-  { file: '08-purchases.xlsx', models: ['PurchaseInvoice', 'PurchaseInvoiceLine', 'PurchaseReturn', 'PurchaseReturnLine'] },
+  {
+    file: '08-purchases.xlsx',
+    // ADR-026 §7: the invoice line ↔ GRN line links.
+    models: ['PurchaseInvoice', 'PurchaseInvoiceLine', 'PurchaseInvoiceReceipt', 'PurchaseReturn', 'PurchaseReturnLine'],
+  },
   { file: '09-treasury.xlsx', models: ['CashBox', 'BankAccount', 'Receipt', 'Payment', 'Allocation', 'CashTransfer'] },
   { file: '10-einvoice.xlsx', models: ['EInvoiceSubmission'] },
   { file: '11-audit.xlsx', models: ['AuditLog'] },
@@ -68,6 +72,8 @@ const WORKBOOKS: { file: string; models: string[] }[] = [
     file: '12-procurement.xlsx',
     models: ['PurchaseRequest', 'PurchaseRequestLine', 'PurchaseQuote', 'PurchaseQuoteLine', 'PurchaseOrder', 'PurchaseOrderLine'],
   },
+  // Phase 13 (ADR-026 §9): issue requests with their lines.
+  { file: '13-issue-requests.xlsx', models: ['IssueRequest', 'IssueRequestLine'] },
 ];
 
 /** Columns not exported (secrets, leases, raw payloads). */
