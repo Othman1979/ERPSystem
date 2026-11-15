@@ -1140,6 +1140,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         defaultUnitCost: poLine ? this.defaultUnitCost(order, poLine, pricesIncludeTax).toString() : r.unitCost.toString(),
         defaultDiscountPct: poLine?.discountPct.toString() ?? '0',
         taxCategoryId: poLine?.taxCategoryId?.toString() ?? null,
+        taxRate: poLine?.taxRate.toString() ?? '0',
       };
     });
     return {

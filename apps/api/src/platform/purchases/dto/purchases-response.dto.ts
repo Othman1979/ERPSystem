@@ -187,6 +187,10 @@ export class BillableLineDto {
 
   @ApiProperty({ type: 'string', nullable: true })
   taxCategoryId!: string | null;
+
+  /** The order line's tax rate in percent, to compare a tax-inclusive price net of tax. */
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  taxRate!: string;
 }
 
 /** GET /purchase-orders/:id/billable: the order and its posted GRN lines. */

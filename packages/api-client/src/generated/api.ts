@@ -3621,6 +3621,18 @@ export interface PurchaseInvoiceListItemDto {
      * @nullable
      */
   receivedGrnId: string | null;
+  /**
+     * ADR-026 §7: the purchase order whose posted receipts this invoice bills (set at creation, never changed).
+     * @nullable
+     */
+  purchaseOrderId: string | null;
+  /**
+     * ADR-026 §2: «approve the price difference» for lines above the order price; an edit clears it.
+     * @nullable
+     */
+  priceApprovedAt: string | null;
+  /** @nullable */
+  priceApprovedBy: string | null;
   /** @nullable */
   postedAt: string | null;
   /** @nullable */
@@ -3693,6 +3705,14 @@ export interface PurchaseInvoiceItemUnitDto {
   unit: PurchaseUnitRefDto;
 }
 
+export interface PurchaseInvoiceReceiptLinkDto {
+  id: string;
+  grnLineId: string;
+  qty: string;
+  /** @nullable */
+  clearedValue: string | null;
+}
+
 export interface PurchaseInvoiceLineViewDto {
   id: string;
   tenantId: string;
@@ -3703,6 +3723,7 @@ export interface PurchaseInvoiceLineViewDto {
   itemUnitId: string | null;
   qty: string;
   qtyBase: string;
+  /** Price per unit as entered, 6 dp (an order price, ADR-026 §5). */
   unitCost: string;
   discountPct: string;
   discountAmount: string;
@@ -3716,6 +3737,7 @@ export interface PurchaseInvoiceLineViewDto {
   item: PurchaseInvoiceItemRefDto;
   /** @nullable */
   itemUnit: PurchaseInvoiceItemUnitDto | null;
+  receipts: PurchaseInvoiceReceiptLinkDto[];
 }
 
 export interface PurchaseJournalRefDto {
@@ -3738,6 +3760,26 @@ export interface PurchaseInvoiceGoodsNoteRefDto {
   noteDate: string;
   /** @nullable */
   docNo: string | null;
+}
+
+export type PurchaseOrderStatus = typeof PurchaseOrderStatus[keyof typeof PurchaseOrderStatus];
+
+
+export const PurchaseOrderStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  APPROVED: 'APPROVED',
+  CANCELLED: 'CANCELLED',
+  PARTIALLY_RECEIVED: 'PARTIALLY_RECEIVED',
+  RECEIVED: 'RECEIVED',
+  CLOSED: 'CLOSED',
+} as const;
+
+export interface PurchaseInvoiceOrderRefDto {
+  id: string;
+  /** @nullable */
+  orderNo: string | null;
+  status: PurchaseOrderStatus;
 }
 
 export interface PurchaseInvoiceDetailDto {
@@ -3782,6 +3824,18 @@ export interface PurchaseInvoiceDetailDto {
      * @nullable
      */
   receivedGrnId: string | null;
+  /**
+     * ADR-026 §7: the purchase order whose posted receipts this invoice bills (set at creation, never changed).
+     * @nullable
+     */
+  purchaseOrderId: string | null;
+  /**
+     * ADR-026 §2: «approve the price difference» for lines above the order price; an edit clears it.
+     * @nullable
+     */
+  priceApprovedAt: string | null;
+  /** @nullable */
+  priceApprovedBy: string | null;
   /** @nullable */
   postedAt: string | null;
   /** @nullable */
@@ -3803,6 +3857,8 @@ export interface PurchaseInvoiceDetailDto {
   returns: PurchaseInvoiceReturnRefDto[];
   /** @nullable */
   receivedGrn: PurchaseInvoiceGoodsNoteRefDto | null;
+  /** @nullable */
+  purchaseOrder: PurchaseInvoiceOrderRefDto | null;
   creditedAmount: string;
   outstanding: string;
 }
@@ -3811,10 +3867,16 @@ export interface PurchaseInvoiceLineDto {
   itemId: string;
   itemUnitId?: string;
   qty: string;
+  /** Price per unit, up to 6 decimals (an order price, ADR-026 §5; CLAUDE.md unit costs). */
   unitCost: string;
   /** @pattern ^\d+(\.\d{1,4})?$ */
   discountPct?: string;
   taxCategoryId?: string;
+  /**
+     * ADR-026 §7: the GRN line of the invoice's purchase order this line bills
+     * (an invoice with purchaseOrderId; every stocked line names one, in base units).
+     */
+  grnLineId?: string;
 }
 
 export type CreatePurchaseInvoiceDtoPaymentType = typeof CreatePurchaseInvoiceDtoPaymentType[keyof typeof CreatePurchaseInvoiceDtoPaymentType];
@@ -3850,6 +3912,106 @@ export interface CreatePurchaseInvoiceDto {
      * second time. A GRN is billed by one invoice only.
      */
   receivedGrnId?: string;
+  /**
+     * ADR-026 §3/§7: the purchase order whose posted receipts this invoice
+     * bills: its supplier and warehouse, every stocked line naming a GRN line
+     * of the order. Set at creation, never changed; not with receivedGrnId.
+     */
+  purchaseOrderId?: string;
+}
+
+export interface BillableItemRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface BillableLineDto {
+  grnLineId: string;
+  grnId: string;
+  /** @nullable */
+  grnDocNo: string | null;
+  item: BillableItemRefDto;
+  /** @nullable */
+  poLineId: string | null;
+  /** @nullable */
+  poLineNo: number | null;
+  /** Base quantities. */
+  receivedQty: string;
+  billedQty: string;
+  unbilledQty: string;
+  /** The receipt cost per base unit (the order's net price, ADR-026 §5). */
+  receiptUnitCost: string;
+  /**
+     * The order line's price per its unit, and discount.
+     * @nullable
+     */
+  orderUnitPrice: string | null;
+  /** @nullable */
+  orderDiscountPct: string | null;
+  /**
+     * The order's net price per base unit (6 dp): what an invoice price is compared with (ADR-026 §2).
+     * @nullable
+     */
+  orderNetUnitPrice: string | null;
+  /** The invoice price per base unit to suggest: the order's, on the company's tax basis, never above it. */
+  defaultUnitCost: string;
+  defaultDiscountPct: string;
+  /** @nullable */
+  taxCategoryId: string | null;
+  /** The order line's tax rate in percent, to compare a tax-inclusive price net of tax. */
+  taxRate: string;
+}
+
+export interface PurchaseOrderBillableDto {
+  orderId: string;
+  /** @nullable */
+  orderNo: string | null;
+  status: string;
+  supplierId: string;
+  warehouseId: string;
+  /** @nullable */
+  costCenterId: string | null;
+  /** The order's prices include tax (frozen on the order). */
+  orderPricesIncludeTax: boolean;
+  /** The company's current setting: an invoice is priced on it (ADR-017). */
+  pricesIncludeTax: boolean;
+  lines: BillableLineDto[];
+}
+
+export interface BillLineDto {
+  grnLineId: string;
+  /** Base quantity, within what is received and not billed yet. */
+  qty: string;
+  /** The supplier's price per base unit (the order's by default, GET …/billable). */
+  unitCost: string;
+  /** @pattern ^\d+(\.\d{1,4})?$ */
+  discountPct?: string;
+}
+
+export type BillPurchaseOrderDtoPaymentType = typeof BillPurchaseOrderDtoPaymentType[keyof typeof BillPurchaseOrderDtoPaymentType];
+
+
+export const BillPurchaseOrderDtoPaymentType = {
+  CASH: 'CASH',
+  CREDIT: 'CREDIT',
+} as const;
+
+export interface BillPurchaseOrderDto {
+  invoiceDate: string;
+  dueDate?: string;
+  /** @maxLength 100 */
+  supplierInvoiceNo?: string;
+  supplierInvoiceDate?: string;
+  paymentType: BillPurchaseOrderDtoPaymentType;
+  cashAccountId?: string;
+  costCenterId?: string;
+  /** @maxLength 500 */
+  description?: string;
+  /** @minItems 1 */
+  lines: BillLineDto[];
 }
 
 export interface PurchaseReturnOriginalInvoiceRefDto {
@@ -4074,6 +4236,31 @@ export interface GoodsNoteListItemDto {
   docNo: string | null;
   /** @nullable */
   description: string | null;
+  /**
+     * ADR-026 §5: a GRN against this purchase order (set at creation, never changed).
+     * @nullable
+     */
+  purchaseOrderId: string | null;
+  /**
+     * ADR-026 §5: the order's supplier, recorded on a GRN against an order.
+     * @nullable
+     */
+  supplierId: string | null;
+  /**
+     * ADR-026 §8: a GIN to a department debits this expense account (none: INVENTORY_ADJUSTMENT).
+     * @nullable
+     */
+  expenseAccountId: string | null;
+  /**
+     * ADR-026 §8 / ADR-024 §1.2: the department; copied onto the income-statement lines of the entry.
+     * @nullable
+     */
+  costCenterId: string | null;
+  /**
+     * ADR-026 §9: a GIN from this approved issue request (set at creation, never changed).
+     * @nullable
+     */
+  issueRequestId: string | null;
   /** @nullable */
   journalEntryId: string | null;
   /** @nullable */
@@ -4104,6 +4291,50 @@ export interface GoodsNoteListItemDtoPage {
   total: number;
 }
 
+export interface GoodsNoteOrderRefDto {
+  id: string;
+  /** @nullable */
+  orderNo: string | null;
+  status: PurchaseOrderStatus;
+}
+
+export interface GoodsNoteSupplierRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface GoodsNoteAccountRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface GoodsNoteCostCenterRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export type IssueRequestStatus = typeof IssueRequestStatus[keyof typeof IssueRequestStatus];
+
+
+export const IssueRequestStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED',
+  CLOSED: 'CLOSED',
+} as const;
+
+export interface GoodsNoteIssueRequestRefDto {
+  id: string;
+  /** @nullable */
+  requestNo: string | null;
+  status: IssueRequestStatus;
+}
+
 export interface GoodsNoteItemRefDto {
   id: string;
   code: string;
@@ -4119,6 +4350,19 @@ export interface GoodsNoteLineWithItemDto {
   qty: string;
   /** @nullable */
   unitCost: string | null;
+  /**
+     * ADR-026 §5: the order line this GRN line receives (qty in base units).
+     * @nullable
+     */
+  poLineId: string | null;
+  /**
+     * ADR-026 §9: the issue request line this GIN line issues (qty in base units).
+     * @nullable
+     */
+  issueRequestLineId: string | null;
+  /** ADR-026 §7: base quantity billed by posted invoices, and the value they cleared from 2104. */
+  billedQty: string;
+  clearedValue: string;
   createdAt: string;
   item: GoodsNoteItemRefDto;
 }
@@ -4147,6 +4391,31 @@ export interface GoodsNoteDetailDto {
   docNo: string | null;
   /** @nullable */
   description: string | null;
+  /**
+     * ADR-026 §5: a GRN against this purchase order (set at creation, never changed).
+     * @nullable
+     */
+  purchaseOrderId: string | null;
+  /**
+     * ADR-026 §5: the order's supplier, recorded on a GRN against an order.
+     * @nullable
+     */
+  supplierId: string | null;
+  /**
+     * ADR-026 §8: a GIN to a department debits this expense account (none: INVENTORY_ADJUSTMENT).
+     * @nullable
+     */
+  expenseAccountId: string | null;
+  /**
+     * ADR-026 §8 / ADR-024 §1.2: the department; copied onto the income-statement lines of the entry.
+     * @nullable
+     */
+  costCenterId: string | null;
+  /**
+     * ADR-026 §9: a GIN from this approved issue request (set at creation, never changed).
+     * @nullable
+     */
+  issueRequestId: string | null;
   /** @nullable */
   journalEntryId: string | null;
   /** @nullable */
@@ -4155,6 +4424,16 @@ export interface GoodsNoteDetailDto {
   postedBy: string | null;
   createdAt: string;
   updatedAt: string;
+  /** @nullable */
+  purchaseOrder: GoodsNoteOrderRefDto | null;
+  /** @nullable */
+  supplier: GoodsNoteSupplierRefDto | null;
+  /** @nullable */
+  expenseAccount: GoodsNoteAccountRefDto | null;
+  /** @nullable */
+  costCenter: GoodsNoteCostCenterRefDto | null;
+  /** @nullable */
+  issueRequest: GoodsNoteIssueRequestRefDto | null;
   warehouse: WarehouseRow;
   /** @nullable */
   branch: BranchRefDto | null;
@@ -4167,8 +4446,16 @@ export interface GoodsNoteLineDto {
   itemId: string;
   /** Base-unit quantity. */
   qty: string;
-  /** Required for GRN (receipt cost per base unit); ignored for GIN. */
+  /**
+     * Required for a GRN without a purchase order (receipt cost per base unit);
+     * ignored for a GIN. Refused on a GRN against an order: its cost is the
+     * order's net price (ADR-026 §5).
+     */
   unitCost?: string;
+  /** ADR-026 §5: the order line this GRN line receives (a GRN with purchaseOrderId only). */
+  poLineId?: string;
+  /** ADR-026 §9: the request line this GIN line issues (a GIN with issueRequestId only). */
+  issueRequestLineId?: string;
 }
 
 export type CreateGoodsNoteDtoNoteType = typeof CreateGoodsNoteDtoNoteType[keyof typeof CreateGoodsNoteDtoNoteType];
@@ -4185,8 +4472,54 @@ export interface CreateGoodsNoteDto {
   noteType: CreateGoodsNoteDtoNoteType;
   /** @maxLength 500 */
   description?: string;
+  /**
+     * ADR-026 §5: a GRN against this approved purchase order: the order's
+     * warehouse, every line naming an order line. Set at creation, never changed.
+     */
+  purchaseOrderId?: string;
+  /** ADR-026 §8: a GIN to a department debits this expense account instead of INVENTORY_ADJUSTMENT. */
+  expenseAccountId?: string;
+  /** ADR-026 §8: the department (a leaf cost centre) of a GIN. */
+  costCenterId?: string;
+  /**
+     * ADR-026 §9: a GIN from this approved issue request (FULL level): its
+     * warehouse, every line naming a request line. Set at creation, never changed.
+     */
+  issueRequestId?: string;
   /** @minItems 1 */
   lines: GoodsNoteLineDto[];
+}
+
+export interface ReceiveLineDto {
+  poLineId: string;
+  qty: string;
+}
+
+export interface ReceivePurchaseOrderDto {
+  noteDate: string;
+  /** @maxLength 500 */
+  description?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines?: ReceiveLineDto[];
+}
+
+export interface IssueLineDto {
+  issueRequestLineId: string;
+  qty: string;
+}
+
+export interface IssueFromRequestDto {
+  noteDate: string;
+  /** @maxLength 500 */
+  description?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines?: IssueLineDto[];
 }
 
 export type PurchaseRequestStatus = typeof PurchaseRequestStatus[keyof typeof PurchaseRequestStatus];
@@ -4355,16 +4688,6 @@ export interface PurchaseRequestQuoteRefDto {
   grandTotal: string;
   supplier: ProcurementSupplierRefDto;
 }
-
-export type PurchaseOrderStatus = typeof PurchaseOrderStatus[keyof typeof PurchaseOrderStatus];
-
-
-export const PurchaseOrderStatus = {
-  DRAFT: 'DRAFT',
-  SUBMITTED: 'SUBMITTED',
-  APPROVED: 'APPROVED',
-  CANCELLED: 'CANCELLED',
-} as const;
 
 export interface PurchaseRequestOrderRefDto {
   id: string;
@@ -4592,6 +4915,8 @@ export interface PurchaseOrderLineViewDto {
   lineTotal: string;
   /** @nullable */
   note: string | null;
+  /** ADR-026 §5: base quantity received by posted GRNs; never above qty_base (§4). */
+  receivedQty: string;
   createdAt: string;
   item: ProcurementItemRefDto;
   /** @nullable */
@@ -4659,6 +4984,15 @@ export interface PurchaseOrderDetailDto {
   cancelledBy: string | null;
   /** @nullable */
   cancelReason: string | null;
+  /**
+     * ADR-026 §6: closed by hand with a written reason; nothing is received after.
+     * @nullable
+     */
+  closedAt: string | null;
+  /** @nullable */
+  closedBy: string | null;
+  /** @nullable */
+  closeReason: string | null;
   createdAt: string;
   updatedAt: string;
   /** @nullable */
@@ -4961,6 +5295,15 @@ export interface PurchaseOrderListItemDto {
   cancelledBy: string | null;
   /** @nullable */
   cancelReason: string | null;
+  /**
+     * ADR-026 §6: closed by hand with a written reason; nothing is received after.
+     * @nullable
+     */
+  closedAt: string | null;
+  /** @nullable */
+  closedBy: string | null;
+  /** @nullable */
+  closeReason: string | null;
   createdAt: string;
   updatedAt: string;
   /** @nullable */
@@ -5039,6 +5382,194 @@ export interface UpdatePurchaseOrderDto {
      * @maxItems 500
      */
   lines: PurchaseOrderLineDto[];
+}
+
+export interface IssueRequestListItemDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The issuing warehouse's branch (ADR-003).
+     * @nullable
+     */
+  branchId: string | null;
+  /** @nullable */
+  requestNo: string | null;
+  requestDate: string;
+  warehouseId: string;
+  /**
+     * The department (ADR-026 §8); copied to its issues.
+     * @nullable
+     */
+  costCenterId: string | null;
+  /**
+     * Expense account the issues debit; copied to its issues.
+     * @nullable
+     */
+  expenseAccountId: string | null;
+  status: IssueRequestStatus;
+  /** @nullable */
+  notes: string | null;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  submittedBy: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  approvedBy: string | null;
+  /** @nullable */
+  rejectedAt: string | null;
+  /** @nullable */
+  rejectedBy: string | null;
+  /** @nullable */
+  rejectReason: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  /** @nullable */
+  closedAt: string | null;
+  /** @nullable */
+  closedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  warehouse: ProcurementWarehouseRefDto;
+  /** @nullable */
+  costCenter: ProcurementCostCenterRefDto | null;
+  _count: ProcurementLineCountDto;
+}
+
+export interface IssueRequestListItemDtoPage {
+  items: IssueRequestListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface IssueRequestAccountRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface IssueRequestLineViewDto {
+  id: string;
+  tenantId: string;
+  requestId: string;
+  lineNo: number;
+  itemId: string;
+  qty: string;
+  issuedQty: string;
+  /** @nullable */
+  note: string | null;
+  createdAt: string;
+  item: ProcurementItemRefDto;
+  remainingQty: string;
+}
+
+export interface IssueRequestDetailDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  /**
+     * The issuing warehouse's branch (ADR-003).
+     * @nullable
+     */
+  branchId: string | null;
+  /** @nullable */
+  requestNo: string | null;
+  requestDate: string;
+  warehouseId: string;
+  /**
+     * The department (ADR-026 §8); copied to its issues.
+     * @nullable
+     */
+  costCenterId: string | null;
+  /**
+     * Expense account the issues debit; copied to its issues.
+     * @nullable
+     */
+  expenseAccountId: string | null;
+  status: IssueRequestStatus;
+  /** @nullable */
+  notes: string | null;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  submittedBy: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  approvedBy: string | null;
+  /** @nullable */
+  rejectedAt: string | null;
+  /** @nullable */
+  rejectedBy: string | null;
+  /** @nullable */
+  rejectReason: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  /** @nullable */
+  cancelledBy: string | null;
+  /** @nullable */
+  cancelReason: string | null;
+  /** @nullable */
+  closedAt: string | null;
+  /** @nullable */
+  closedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  warehouse: ProcurementWarehouseRefDto;
+  /** @nullable */
+  costCenter: ProcurementCostCenterRefDto | null;
+  /** @nullable */
+  expenseAccount: IssueRequestAccountRefDto | null;
+  lines: IssueRequestLineViewDto[];
+}
+
+export interface IssueRequestLineDto {
+  itemId: string;
+  /** Base-unit quantity. */
+  qty: string;
+  /** @maxLength 500 */
+  note?: string;
+}
+
+export interface CreateIssueRequestDto {
+  requestDate: string;
+  /** The warehouse that issues the items; its branch is the request's (ADR-003). */
+  warehouseId: string;
+  /** The department (a leaf cost centre, ADR-026 §8); copied to the issues. */
+  costCenterId?: string;
+  /** An expense account the issues debit; copied to the issues. */
+  expenseAccountId?: string;
+  /** @maxLength 500 */
+  notes?: string;
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  lines: IssueRequestLineDto[];
 }
 
 export interface TreasuryAccountRefDto {
@@ -6663,6 +7194,10 @@ export interface AdminErrorDetailDto {
   stack: string | null;
 }
 
+export interface TestSupportAmountDto {
+  amount: string;
+}
+
 export type ErrorCode = typeof ErrorCode[keyof typeof ErrorCode];
 
 
@@ -6741,6 +7276,12 @@ export const ErrorCode = {
   PURCHASE_REQUEST_QTY_EXCEEDED: 'PURCHASE_REQUEST_QTY_EXCEEDED',
   INVALID_STATUS_TRANSITION: 'INVALID_STATUS_TRANSITION',
   PURCHASE_ORDER_ZERO_TOTAL: 'PURCHASE_ORDER_ZERO_TOTAL',
+  PURCHASE_ORDER_OVER_RECEIPT: 'PURCHASE_ORDER_OVER_RECEIPT',
+  PURCHASE_ORDER_NOT_RECEIVED: 'PURCHASE_ORDER_NOT_RECEIVED',
+  PURCHASE_BILL_EXCEEDS_RECEIPT: 'PURCHASE_BILL_EXCEEDS_RECEIPT',
+  PURCHASE_PRICE_ABOVE_ORDER: 'PURCHASE_PRICE_ABOVE_ORDER',
+  ISSUE_REQUEST_REQUIRED: 'ISSUE_REQUEST_REQUIRED',
+  ISSUE_REQUEST_QTY_EXCEEDED: 'ISSUE_REQUEST_QTY_EXCEEDED',
   INTERNAL: 'INTERNAL',
 } as const;
 
@@ -7567,6 +8108,8 @@ export type PurchasesControllerListInvoicesParams = {
   status?: PurchasesControllerListInvoicesStatus;
   paymentType?: PurchasesControllerListInvoicesPaymentType;
   supplierId?: string;
+  /** The invoices of one purchase order (ADR-026 §7). */
+  purchaseOrderId?: string;
   /** Invoice date on or after (yyyy-mm-dd). */
   from?: string;
   /** Invoice date on or before (yyyy-mm-dd). */
@@ -7704,6 +8247,10 @@ export type GoodsNotesControllerListParams = {
   /** Document date on or before (yyyy-mm-dd). */
   to?: string;
   noteType?: GoodsNotesControllerListNoteType;
+  /** The receipts of one purchase order (ADR-026 §5). */
+  purchaseOrderId?: string;
+  /** The issues of one issue request (ADR-026 §9). */
+  issueRequestId?: string;
 };
 
 export type GoodsNotesControllerListSort = typeof GoodsNotesControllerListSort[keyof typeof GoodsNotesControllerListSort];
@@ -7913,6 +8460,52 @@ export type ProcurementControllerOrderPdfLang = typeof ProcurementControllerOrde
 export const ProcurementControllerOrderPdfLang = {
   ar: 'ar',
   en: 'en',
+} as const;
+
+export type IssueRequestsControllerListParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
+  q?: string;
+  sort?: IssueRequestsControllerListSort;
+  status?: IssueRequestsControllerListStatus;
+  /** Request date on or after (yyyy-mm-dd). */
+  from?: string;
+  /** Request date on or before (yyyy-mm-dd). */
+  to?: string;
+};
+
+export type IssueRequestsControllerListSort = typeof IssueRequestsControllerListSort[keyof typeof IssueRequestsControllerListSort];
+
+
+export const IssueRequestsControllerListSort = {
+  requestDate: 'requestDate',
+  '-requestDate': '-requestDate',
+  requestNo: 'requestNo',
+  '-requestNo': '-requestNo',
+} as const;
+
+export type IssueRequestsControllerListStatus = typeof IssueRequestsControllerListStatus[keyof typeof IssueRequestsControllerListStatus];
+
+
+export const IssueRequestsControllerListStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED',
+  CLOSED: 'CLOSED',
 } as const;
 
 export type TreasuryControllerListReceiptsParams = {
@@ -14569,6 +15162,142 @@ export const purchasesControllerPostInvoice = async (id: string, options?: Param
 
 
 
+export type purchasesControllerApprovePriceResponse201 = {
+  data: PurchaseInvoiceDetailDto
+  status: 201
+}
+
+export type purchasesControllerApprovePriceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type purchasesControllerApprovePriceResponseSuccess = (purchasesControllerApprovePriceResponse201) & {
+  headers: Headers;
+};
+export type purchasesControllerApprovePriceResponseError = (purchasesControllerApprovePriceResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPurchasesControllerApprovePriceUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-invoices/${id}/approve-price`
+}
+
+/**
+ * @summary ADR-026 §2: approves a draft's price above its purchase order (purchase.approve,
+not its creator or last editor; an owner always). An edit clears it.
+ */
+export const purchasesControllerApprovePrice = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerApprovePriceResponseSuccess> => {
+
+  return apiFetch<purchasesControllerApprovePriceResponseSuccess>(getPurchasesControllerApprovePriceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type purchasesControllerBillableResponse200 = {
+  data: PurchaseOrderBillableDto
+  status: 200
+}
+
+export type purchasesControllerBillableResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type purchasesControllerBillableResponseSuccess = (purchasesControllerBillableResponse200) & {
+  headers: Headers;
+};
+export type purchasesControllerBillableResponseError = (purchasesControllerBillableResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPurchasesControllerBillableUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-orders/${id}/billable`
+}
+
+export const purchasesControllerBillable = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerBillableResponseSuccess> => {
+
+  return apiFetch<purchasesControllerBillableResponseSuccess>(getPurchasesControllerBillableUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type purchasesControllerBillResponse201 = {
+  data: PurchaseInvoiceDetailDto
+  status: 201
+}
+
+export type purchasesControllerBillResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type purchasesControllerBillResponseSuccess = (purchasesControllerBillResponse201) & {
+  headers: Headers;
+};
+export type purchasesControllerBillResponseError = (purchasesControllerBillResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPurchasesControllerBillUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-orders/${id}/bill`
+}
+
+/**
+ * @summary A draft purchase invoice from the order's posted receipts.
+ */
+export const purchasesControllerBill = async (id: string,
+    billPurchaseOrderDto: BillPurchaseOrderDto, options?: Parameters<typeof apiFetch>[1]): Promise<purchasesControllerBillResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<purchasesControllerBillResponseSuccess>(getPurchasesControllerBillUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(billPurchaseOrderDto)
+  }
+);}
+
+
+
 export type purchasesControllerListReturnsResponse200 = {
   data: PurchaseReturnListItemDtoPage
   status: 200
@@ -15042,6 +15771,118 @@ export const goodsNotesControllerPost = async (id: string, options?: Parameters<
     method: 'POST'
 
 
+  }
+);}
+
+
+
+export type receivingControllerReceiveResponse201 = {
+  data: GoodsNoteDetailDto
+  status: 201
+}
+
+export type receivingControllerReceiveResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type receivingControllerReceiveResponseSuccess = (receivingControllerReceiveResponse201) & {
+  headers: Headers;
+};
+export type receivingControllerReceiveResponseError = (receivingControllerReceiveResponseDefault) & {
+  headers: Headers;
+};
+
+export const getReceivingControllerReceiveUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-orders/${id}/receive`
+}
+
+/**
+ * @summary A draft GRN against the approved order, for the given lines or what is left on each.
+ */
+export const receivingControllerReceive = async (id: string,
+    receivePurchaseOrderDto: ReceivePurchaseOrderDto, options?: Parameters<typeof apiFetch>[1]): Promise<receivingControllerReceiveResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<receivingControllerReceiveResponseSuccess>(getReceivingControllerReceiveUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(receivePurchaseOrderDto)
+  }
+);}
+
+
+
+export type receivingControllerIssueResponse201 = {
+  data: GoodsNoteDetailDto
+  status: 201
+}
+
+export type receivingControllerIssueResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type receivingControllerIssueResponseSuccess = (receivingControllerIssueResponse201) & {
+  headers: Headers;
+};
+export type receivingControllerIssueResponseError = (receivingControllerIssueResponseDefault) & {
+  headers: Headers;
+};
+
+export const getReceivingControllerIssueUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/issue-requests/${id}/issue`
+}
+
+/**
+ * @summary A draft GIN from the approved issue request (FULL level), for the given lines or what is left on each.
+ */
+export const receivingControllerIssue = async (id: string,
+    issueFromRequestDto: IssueFromRequestDto, options?: Parameters<typeof apiFetch>[1]): Promise<receivingControllerIssueResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<receivingControllerIssueResponseSuccess>(getReceivingControllerIssueUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(issueFromRequestDto)
   }
 );}
 
@@ -16501,6 +17342,511 @@ return apiFetch<procurementControllerCancelOrderResponseSuccess>(getProcurementC
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type procurementControllerCloseOrderResponse201 = {
+  data: PurchaseOrderDetailDto
+  status: 201
+}
+
+export type procurementControllerCloseOrderResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type procurementControllerCloseOrderResponseSuccess = (procurementControllerCloseOrderResponse201) & {
+  headers: Headers;
+};
+export type procurementControllerCloseOrderResponseError = (procurementControllerCloseOrderResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProcurementControllerCloseOrderUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/purchase-orders/${id}/close`
+}
+
+/**
+ * @summary ADR-026 §6: closes an approved or partly received order by hand, with a reason; nothing is received after.
+ */
+export const procurementControllerCloseOrder = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<procurementControllerCloseOrderResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<procurementControllerCloseOrderResponseSuccess>(getProcurementControllerCloseOrderUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type issueRequestsControllerListResponse200 = {
+  data: IssueRequestListItemDtoPage
+  status: 200
+}
+
+export type issueRequestsControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type issueRequestsControllerListResponseSuccess = (issueRequestsControllerListResponse200) & {
+  headers: Headers;
+};
+export type issueRequestsControllerListResponseError = (issueRequestsControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getIssueRequestsControllerListUrl = (params?: IssueRequestsControllerListParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/issue-requests?${stringifiedParams}` : `/api/v1/issue-requests`
+}
+
+/**
+ * @summary Numbered page `{ items, page, pageSize, total }` (ADR-022), the caller's branches only.
+ */
+export const issueRequestsControllerList = async (params?: IssueRequestsControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<issueRequestsControllerListResponseSuccess> => {
+
+  return apiFetch<issueRequestsControllerListResponseSuccess>(getIssueRequestsControllerListUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type issueRequestsControllerCreateResponse201 = {
+  data: IssueRequestDetailDto
+  status: 201
+}
+
+export type issueRequestsControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type issueRequestsControllerCreateResponseSuccess = (issueRequestsControllerCreateResponse201) & {
+  headers: Headers;
+};
+export type issueRequestsControllerCreateResponseError = (issueRequestsControllerCreateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getIssueRequestsControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/issue-requests`
+}
+
+export const issueRequestsControllerCreate = async (createIssueRequestDto: CreateIssueRequestDto, options?: Parameters<typeof apiFetch>[1]): Promise<issueRequestsControllerCreateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<issueRequestsControllerCreateResponseSuccess>(getIssueRequestsControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createIssueRequestDto)
+  }
+);}
+
+
+
+export type issueRequestsControllerGetResponse200 = {
+  data: IssueRequestDetailDto
+  status: 200
+}
+
+export type issueRequestsControllerGetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type issueRequestsControllerGetResponseSuccess = (issueRequestsControllerGetResponse200) & {
+  headers: Headers;
+};
+export type issueRequestsControllerGetResponseError = (issueRequestsControllerGetResponseDefault) & {
+  headers: Headers;
+};
+
+export const getIssueRequestsControllerGetUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/issue-requests/${id}`
+}
+
+export const issueRequestsControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<issueRequestsControllerGetResponseSuccess> => {
+
+  return apiFetch<issueRequestsControllerGetResponseSuccess>(getIssueRequestsControllerGetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type issueRequestsControllerUpdateResponse200 = {
+  data: IssueRequestDetailDto
+  status: 200
+}
+
+export type issueRequestsControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type issueRequestsControllerUpdateResponseSuccess = (issueRequestsControllerUpdateResponse200) & {
+  headers: Headers;
+};
+export type issueRequestsControllerUpdateResponseError = (issueRequestsControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getIssueRequestsControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/issue-requests/${id}`
+}
+
+export const issueRequestsControllerUpdate = async (id: string,
+    createIssueRequestDto: CreateIssueRequestDto, options?: Parameters<typeof apiFetch>[1]): Promise<issueRequestsControllerUpdateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<issueRequestsControllerUpdateResponseSuccess>(getIssueRequestsControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createIssueRequestDto)
+  }
+);}
+
+
+
+export type issueRequestsControllerDeleteResponse200 = {
+  data: DeletedDto
+  status: 200
+}
+
+export type issueRequestsControllerDeleteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type issueRequestsControllerDeleteResponseSuccess = (issueRequestsControllerDeleteResponse200) & {
+  headers: Headers;
+};
+export type issueRequestsControllerDeleteResponseError = (issueRequestsControllerDeleteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getIssueRequestsControllerDeleteUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/issue-requests/${id}`
+}
+
+export const issueRequestsControllerDelete = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<issueRequestsControllerDeleteResponseSuccess> => {
+
+  return apiFetch<issueRequestsControllerDeleteResponseSuccess>(getIssueRequestsControllerDeleteUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type issueRequestsControllerSubmitResponse201 = {
+  data: IssueRequestDetailDto
+  status: 201
+}
+
+export type issueRequestsControllerSubmitResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type issueRequestsControllerSubmitResponseSuccess = (issueRequestsControllerSubmitResponse201) & {
+  headers: Headers;
+};
+export type issueRequestsControllerSubmitResponseError = (issueRequestsControllerSubmitResponseDefault) & {
+  headers: Headers;
+};
+
+export const getIssueRequestsControllerSubmitUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/issue-requests/${id}/submit`
+}
+
+export const issueRequestsControllerSubmit = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<issueRequestsControllerSubmitResponseSuccess> => {
+
+  return apiFetch<issueRequestsControllerSubmitResponseSuccess>(getIssueRequestsControllerSubmitUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type issueRequestsControllerApproveResponse201 = {
+  data: IssueRequestDetailDto
+  status: 201
+}
+
+export type issueRequestsControllerApproveResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type issueRequestsControllerApproveResponseSuccess = (issueRequestsControllerApproveResponse201) & {
+  headers: Headers;
+};
+export type issueRequestsControllerApproveResponseError = (issueRequestsControllerApproveResponseDefault) & {
+  headers: Headers;
+};
+
+export const getIssueRequestsControllerApproveUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/issue-requests/${id}/approve`
+}
+
+export const issueRequestsControllerApprove = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<issueRequestsControllerApproveResponseSuccess> => {
+
+  return apiFetch<issueRequestsControllerApproveResponseSuccess>(getIssueRequestsControllerApproveUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type issueRequestsControllerRejectResponse201 = {
+  data: IssueRequestDetailDto
+  status: 201
+}
+
+export type issueRequestsControllerRejectResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type issueRequestsControllerRejectResponseSuccess = (issueRequestsControllerRejectResponse201) & {
+  headers: Headers;
+};
+export type issueRequestsControllerRejectResponseError = (issueRequestsControllerRejectResponseDefault) & {
+  headers: Headers;
+};
+
+export const getIssueRequestsControllerRejectUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/issue-requests/${id}/reject`
+}
+
+export const issueRequestsControllerReject = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<issueRequestsControllerRejectResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<issueRequestsControllerRejectResponseSuccess>(getIssueRequestsControllerRejectUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type issueRequestsControllerCancelResponse201 = {
+  data: IssueRequestDetailDto
+  status: 201
+}
+
+export type issueRequestsControllerCancelResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type issueRequestsControllerCancelResponseSuccess = (issueRequestsControllerCancelResponse201) & {
+  headers: Headers;
+};
+export type issueRequestsControllerCancelResponseError = (issueRequestsControllerCancelResponseDefault) & {
+  headers: Headers;
+};
+
+export const getIssueRequestsControllerCancelUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/issue-requests/${id}/cancel`
+}
+
+export const issueRequestsControllerCancel = async (id: string,
+    reasonDto: ReasonDto, options?: Parameters<typeof apiFetch>[1]): Promise<issueRequestsControllerCancelResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<issueRequestsControllerCancelResponseSuccess>(getIssueRequestsControllerCancelUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reasonDto)
+  }
+);}
+
+
+
+export type issueRequestsControllerCloseResponse201 = {
+  data: IssueRequestDetailDto
+  status: 201
+}
+
+export type issueRequestsControllerCloseResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type issueRequestsControllerCloseResponseSuccess = (issueRequestsControllerCloseResponse201) & {
+  headers: Headers;
+};
+export type issueRequestsControllerCloseResponseError = (issueRequestsControllerCloseResponseDefault) & {
+  headers: Headers;
+};
+
+export const getIssueRequestsControllerCloseUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/issue-requests/${id}/close`
+}
+
+export const issueRequestsControllerClose = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<issueRequestsControllerCloseResponseSuccess> => {
+
+  return apiFetch<issueRequestsControllerCloseResponseSuccess>(getIssueRequestsControllerCloseUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 );}
 
@@ -18863,6 +20209,82 @@ export const adminErrorsControllerReopen = async (id: string, options?: Paramete
   {
     ...options,
     method: 'POST'
+
+
+  }
+);}
+
+
+
+export type testContractControllerMatchResponse200 = {
+  data: TestSupportAmountDto
+  status: 200
+}
+
+export type testContractControllerMatchResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type testContractControllerMatchResponseSuccess = (testContractControllerMatchResponse200) & {
+  headers: Headers;
+};
+export type testContractControllerMatchResponseError = (testContractControllerMatchResponseDefault) & {
+  headers: Headers;
+};
+
+export const getTestContractControllerMatchUrl = () => {
+
+
+
+
+  return `/api/v1/__test/contract/match`
+}
+
+export const testContractControllerMatch = async ( options?: Parameters<typeof apiFetch>[1]): Promise<testContractControllerMatchResponseSuccess> => {
+
+  return apiFetch<testContractControllerMatchResponseSuccess>(getTestContractControllerMatchUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type testContractControllerMismatchResponse200 = {
+  data: TestSupportAmountDto
+  status: 200
+}
+
+export type testContractControllerMismatchResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type testContractControllerMismatchResponseSuccess = (testContractControllerMismatchResponse200) & {
+  headers: Headers;
+};
+export type testContractControllerMismatchResponseError = (testContractControllerMismatchResponseDefault) & {
+  headers: Headers;
+};
+
+export const getTestContractControllerMismatchUrl = () => {
+
+
+
+
+  return `/api/v1/__test/contract/mismatch`
+}
+
+export const testContractControllerMismatch = async ( options?: Parameters<typeof apiFetch>[1]): Promise<testContractControllerMismatchResponseSuccess> => {
+
+  return apiFetch<testContractControllerMismatchResponseSuccess>(getTestContractControllerMismatchUrl(),
+  {
+    ...options,
+    method: 'GET'
 
 
   }

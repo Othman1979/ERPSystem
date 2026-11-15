@@ -71,6 +71,15 @@ const LIST_ITEMS = [
     status: 'SUBMITTED',
     grandTotal: '1500.000',
   },
+  {
+    id: '3',
+    orderNo: 'PO-3',
+    orderDate: '2026-11-13T00:00:00.000Z',
+    supplier,
+    request: null,
+    status: 'PARTIALLY_RECEIVED',
+    grandTotal: '300.000',
+  },
 ];
 
 /** The submitted order over the approver's limit, created by someone else. */
@@ -133,6 +142,8 @@ const DRAFT_DETAIL = {
 };
 
 let orderDetail: unknown = SUBMITTED_DETAIL;
+/** Goods receipts the order's receipts list returns (ADR-026). */
+let receiptItems: unknown[] = [];
 
 const listOrders = vi.fn(() =>
   ok({ items: LIST_ITEMS, page: 1, pageSize: 20, total: LIST_ITEMS.length }),
@@ -144,6 +155,11 @@ const submitOrder = vi.fn((..._args: unknown[]) => ok({ id: '1' }));
 const approveOrder = vi.fn((..._args: unknown[]) => ok({ id: '2' }));
 const rejectOrder = vi.fn((..._args: unknown[]) => ok({ id: '2' }));
 const cancelOrder = vi.fn((..._args: unknown[]) => ok({ id: '1' }));
+const closeOrder = vi.fn((..._args: unknown[]) => ok({ id: '1' }));
+const goodsNotesList = vi.fn((..._args: unknown[]) =>
+  ok({ items: receiptItems, page: 1, pageSize: 50, total: receiptItems.length }),
+);
+const invoicesList = vi.fn((..._args: unknown[]) => ok({ items: [], page: 1, pageSize: 50, total: 0 }));
 
 vi.mock('@erp/api-client', async (original) => ({
   ...(await original<typeof import('@erp/api-client')>()),
@@ -155,6 +171,9 @@ vi.mock('@erp/api-client', async (original) => ({
   procurementControllerApproveOrder: (...args: unknown[]) => approveOrder(...args),
   procurementControllerRejectOrder: (...args: unknown[]) => rejectOrder(...args),
   procurementControllerCancelOrder: (...args: unknown[]) => cancelOrder(...args),
+  procurementControllerCloseOrder: (...args: unknown[]) => closeOrder(...args),
+  goodsNotesControllerList: (...args: unknown[]) => goodsNotesList(...args),
+  purchasesControllerListInvoices: (...args: unknown[]) => invoicesList(...args),
   // The editor's pickers: a supplier, a warehouse and an item, one of each.
   partiesControllerList: () => ok({ items: [supplier], total: 1, page: 1, pageSize: 20 }),
   warehousesControllerList: () => ok([warehouse]),
@@ -175,8 +194,22 @@ beforeEach(() => {
   session.roleCode = 'ACCOUNTANT';
   session.approvalLimit = '1000';
   session.permissions = ['purchase.manage', 'purchase.approve'];
+  session.permissions = ['purchase.manage', 'purchase.approve'];
   orderDetail = SUBMITTED_DETAIL;
-  for (const mock of [listOrders, getOrder, createOrder, updateOrder, submitOrder, approveOrder, rejectOrder, cancelOrder]) {
+  receiptItems = [];
+  for (const mock of [
+    listOrders,
+    getOrder,
+    createOrder,
+    updateOrder,
+    submitOrder,
+    approveOrder,
+    rejectOrder,
+    cancelOrder,
+    closeOrder,
+    goodsNotesList,
+    invoicesList,
+  ]) {
     mock.mockClear();
   }
 });
@@ -357,6 +390,114 @@ describe('PurchaseOrdersPage cancel of an approved order', () => {
       { reason: 'Duplicate order' },
       { headers: { 'Idempotency-Key': expect.any(String) } },
     );
+  });
+});
+
+/** An approved order with one line: 5 ordered, 2 received (base units). */
+const APPROVED_LINE = {
+  id: 'l1',
+  lineNo: 1,
+  itemId: 'it1',
+  item: itemRef,
+  itemUnitId: null,
+  itemUnit: null,
+  qty: '5',
+  qtyBase: '5',
+  receivedQty: '2',
+  unitPrice: '10',
+  discountPct: '0',
+  netAmount: '50.000',
+  taxAmount: '0.000',
+  lineTotal: '50.000',
+};
+
+const APPROVED_DETAIL = {
+  ...SUBMITTED_DETAIL,
+  id: '1',
+  orderNo: 'PO-1',
+  status: 'APPROVED',
+  submittedBy: 'u9',
+  lines: [APPROVED_LINE],
+};
+
+describe('PurchaseOrdersPage receiving and closing', () => {
+  it('offers receive and close on an approved order to a member with the permissions', async () => {
+    session.permissions = ['purchase.manage', 'stock.movement'];
+    orderDetail = APPROVED_DETAIL;
+    await mount();
+    act(() => rowOf('PO-1').click());
+    await settle();
+
+    expect(buttonNamed(i18n.t('procurement.receiveGoods'))).toBeDefined();
+    expect(buttonNamed(i18n.t('procurement.close'))).toBeDefined();
+    // Billing starts only once goods were received.
+    expect(buttonNamed(i18n.t('procurement.billOrderButton'))).toBeUndefined();
+    expect(host.textContent).toContain(i18n.t('procurement.receivedQty'));
+  });
+
+  it('hides receive without the stock movement permission but keeps close', async () => {
+    session.permissions = ['purchase.manage'];
+    orderDetail = APPROVED_DETAIL;
+    await mount();
+    act(() => rowOf('PO-1').click());
+    await settle();
+
+    expect(buttonNamed(i18n.t('procurement.receiveGoods'))).toBeUndefined();
+    expect(buttonNamed(i18n.t('procurement.close'))).toBeDefined();
+  });
+
+  it('closes with a reason, cannot be confirmed empty, then sends the reason with an Idempotency-Key', async () => {
+    session.permissions = ['purchase.manage'];
+    orderDetail = APPROVED_DETAIL;
+    await mount();
+    act(() => rowOf('PO-1').click());
+    await settle();
+
+    act(() => buttonNamed(i18n.t('procurement.close'))!.click());
+    await settle(50);
+    act(() => modalOk().click());
+    await settle(50);
+
+    expect(closeOrder).not.toHaveBeenCalled();
+    expect(bodyText()).toContain(i18n.t('procurement.reasonRequired'));
+
+    type(document.querySelector<HTMLTextAreaElement>('.ant-modal textarea')!, 'Supplier short-shipped');
+    act(() => modalOk().click());
+    await settle();
+
+    expect(closeOrder).toHaveBeenCalledTimes(1);
+    expect(closeOrder).toHaveBeenCalledWith(
+      '1',
+      { reason: 'Supplier short-shipped' },
+      { headers: { 'Idempotency-Key': expect.any(String) } },
+    );
+  });
+
+  it('shows the receipts of a partially received order and the bill action', async () => {
+    session.permissions = ['purchase.manage', 'stock.movement'];
+    receiptItems = [{ id: 'g1', docNo: 'GRN-1', noteDate: '2026-11-13', status: 'POSTED' }];
+    orderDetail = { ...APPROVED_DETAIL, status: 'PARTIALLY_RECEIVED' };
+    await mount();
+    act(() => rowOf('PO-1').click());
+    await settle();
+
+    expect(goodsNotesList).toHaveBeenCalledWith(
+      expect.objectContaining({ purchaseOrderId: '1' }),
+      expect.anything(),
+    );
+    expect(host.textContent).toContain(i18n.t('procurement.receiptsAndInvoices'));
+    expect(host.textContent).toContain('GRN-1');
+    expect(buttonNamed(i18n.t('procurement.billOrderButton'))).toBeDefined();
+    expect(buttonNamed(i18n.t('procurement.receiveGoods'))).toBeDefined();
+  });
+
+  it('labels the partially received, received and closed statuses', async () => {
+    await mount();
+
+    expect(rowOf('PO-3').textContent).toContain(i18n.t('procurement.statuses.PARTIALLY_RECEIVED'));
+    expect(i18n.t('procurement.statuses.PARTIALLY_RECEIVED')).toBe('Partially received');
+    expect(i18n.t('procurement.statuses.RECEIVED')).toBe('Received');
+    expect(i18n.t('procurement.statuses.CLOSED')).toBe('Closed');
   });
 });
 

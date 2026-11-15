@@ -345,9 +345,7 @@ export class GoodsNotesService implements OnModuleInit {
       order.lines
         .filter((l) => l.remaining.gt(0))
         .map((l) => ({ itemId: l.itemId.toString(), qty: l.remaining.toString(), poLineId: l.id.toString() }));
-    if (wanted.length === 0) {
-      throw new DomainError(ErrorCode.PURCHASE_ORDER_OVER_RECEIPT, 'Nothing is left to receive on this order', { remaining: '0' });
-    }
+    // Nothing left: the order is RECEIVED (or not receivable); create refuses it under the order's lock.
     return this.create({
       noteDate: dto.noteDate,
       noteType: 'GRN',
@@ -375,9 +373,7 @@ export class GoodsNotesService implements OnModuleInit {
       req.lines
         .filter((l) => l.remaining.gt(0))
         .map((l) => ({ itemId: l.itemId.toString(), qty: l.remaining.toString(), issueRequestLineId: l.id.toString() }));
-    if (wanted.length === 0) {
-      throw new DomainError(ErrorCode.ISSUE_REQUEST_QTY_EXCEEDED, 'Nothing is left to issue on this request', { remaining: '0' });
-    }
+    // Nothing left: the request is CLOSED (or not approved); create refuses it under the request's lock.
     return this.create({
       noteDate: dto.noteDate,
       noteType: 'GIN',
@@ -769,6 +765,7 @@ export class GoodsNotesService implements OnModuleInit {
       this.assertReceivable(order);
       const lines = dto.lines.map((l) => ({ dto: l, poLine: this.orderLine(order, l) }));
       this.checkReceipt(order, warehouse.id, lines.map((l) => ({ itemId: BigInt(l.dto.itemId), qty: l.dto.qty, poLineId: l.poLine.id })));
+      if (lines.length === 0) throw new DomainError(ErrorCode.VALIDATION, 'Nothing is left to receive on this order');
       return {
         // ADR-026 §5: the order's branch (its warehouse's, ADR-025 §12).
         branchId: order.branchId ?? branchId,
@@ -797,6 +794,7 @@ export class GoodsNotesService implements OnModuleInit {
           warehouse.id,
           dto.lines.map((l) => ({ itemId: BigInt(l.itemId), qty: l.qty, issueRequestLineId: BigInt(l.issueRequestLineId!) })),
         );
+        if (dto.lines.length === 0) throw new DomainError(ErrorCode.VALIDATION, 'Nothing is left to issue on this request');
       } else {
         await this.assertIssueWithoutRequest(tx, tenantId, locks.level);
       }

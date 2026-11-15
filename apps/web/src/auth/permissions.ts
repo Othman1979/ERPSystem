@@ -22,6 +22,8 @@ export const PERMISSIONS = {
   PURCHASE_DIRECT: 'purchase.direct',
   PURCHASE_APPROVE: 'purchase.approve',
   STOCK_ISSUE_WITHOUT_REQUEST: 'stock.issue_without_request',
+  /** Post stock movements, e.g. the issue note of an approved issue request (ADR-026 §9). */
+  STOCK_MOVEMENT: 'stock.movement',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

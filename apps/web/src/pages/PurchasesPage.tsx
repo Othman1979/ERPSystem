@@ -47,6 +47,7 @@ import {
   catalogControllerListItems,
   warehousesControllerList,
   partiesControllerList,
+  purchasesControllerApprovePrice,
   purchasesControllerCreateInvoice,
   purchasesControllerCreateReturn,
   purchasesControllerDeleteInvoice,
@@ -72,6 +73,9 @@ import {
   type PurchasesControllerListReturnsStatus,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
+import { useAuth } from '../auth/AuthContext';
+import { PERMISSIONS } from '../auth/permissions';
+import { StatusTag } from '../components/StatusTag';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { purchaseInvoiceBody, purchaseInvoiceFormDefaults } from './purchases/invoicePayload';
 import { purchaseReturnBody } from './purchases/returnPayload';
@@ -725,10 +729,24 @@ function PurchaseInvoiceView({
   posting: boolean;
 }) {
   const { t } = useTranslation();
-  const [, contextHolder] = message.useMessage();
+  const [apiMessage, contextHolder] = message.useMessage();
   const { modal } = App.useApp();
   const costCenters = useCostCenters();
+  const { can } = useAuth();
+  const queryClient = useQueryClient();
   const isDraft = invoice?.status === 'DRAFT';
+  // ADR-026 §2: the approver accepts the price difference of a bill above its order.
+  const approvePrice = useMutation({
+    mutationFn: (id: string) => purchasesControllerApprovePrice(id, { headers: idemHeaders() }),
+    onSuccess: () => {
+      apiMessage.success(t('billing.approvePriceDone'));
+      queryClient.invalidateQueries({ queryKey: ['purchase-invoice', invoice?.id] });
+    },
+    onError: (err) =>
+      apiMessage.error(
+        err instanceof ApiError ? t(`errors.${err.code}`, { defaultValue: err.message }) : t('errors.INTERNAL'),
+      ),
+  });
   // Ctrl+Enter posts a draft, behind the same confirmation as the button.
   const confirmPost = () => {
     if (!invoice || !isDraft || posting) return;
@@ -751,6 +769,11 @@ function PurchaseInvoiceView({
           {isDraft && (
             <>
               <Button onClick={onEdit}>{t('common.edit')}</Button>
+              {invoice.purchaseOrder && !invoice.priceApprovedAt && can(PERMISSIONS.PURCHASE_APPROVE) && (
+                <Popconfirm title={t('billing.approvePriceConfirm')} onConfirm={() => approvePrice.mutate(invoice.id)}>
+                  <Button loading={approvePrice.isPending}>{t('billing.approvePrice')}</Button>
+                </Popconfirm>
+              )}
               <Popconfirm title={t('purchases.postConfirm')} onConfirm={() => onPost(invoice.id)}>
                 <Button type="primary" loading={posting}>
                   {t('common.post')}
@@ -773,6 +796,18 @@ function PurchaseInvoiceView({
         <DocField label={t('purchases.supplierInvoiceNo')}>
           <DocValue>{invoice.supplierInvoiceNo ?? '—'}</DocValue>
         </DocField>
+        {invoice.purchaseOrder && (
+          <DocField label={t('billing.purchaseOrderNo')}>
+            <DocValue>{invoice.purchaseOrder.orderNo ?? `#${invoice.purchaseOrder.id}`}</DocValue>
+          </DocField>
+        )}
+        {invoice.priceApprovedAt && (
+          <DocField label={t('billing.priceApprovedLabel')}>
+            <DocValue>
+              <StatusTag tone="success">{t('billing.priceApproved')}</StatusTag>
+            </DocValue>
+          </DocField>
+        )}
         <DocField label={t('purchases.paymentType')}>
           <DocValue>
             <Tag color={invoice.paymentType === 'CASH' ? 'green' : 'blue'}>
