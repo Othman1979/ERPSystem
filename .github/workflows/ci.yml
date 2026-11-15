@@ -1,3 +1,5 @@
+# Disabled by the owner (2026-11-14): this workflow is not used as a merge gate and runs only on
+# request. The gate is a PR, a code review, and local checks (CLAUDE.md: affected tests, typecheck, lint).
 name: ci
 
 on:
@@ -36,7 +38,6 @@ jobs:
       DATABASE_URL: mysql://root:root@127.0.0.1:3306/erp_test
       # CI-only values: the API refuses to start without them (src/common/config/env.validation.ts).
       JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production
-      JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production
       # Backup tests (ADR-010 §10.2) run the MariaDB client tools installed below.
       MYSQLDUMP_PATH: mariadb-dump
       MYSQL_PATH: mariadb

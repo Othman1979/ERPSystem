@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, rm, statfs, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, statfs, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { parseEnv } from 'node:util';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type Env, trustProxySetting } from '../common/config/env.validation.js';
 import { LOOPBACK_HOSTS } from '../common/net/loopback.js';
 import { overlaps } from '../common/fs/is-inside.js';
 import { probeDatabase } from '../health/db-probe.js';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { DEFAULT_POOL_LIMITS, JOB_POOL_SIZE, PrismaService } from '../prisma/prisma.service.js';
+import { SCHEMA_STAMP_FILE, schemaHash } from '../prisma/schema-stamp.js';
 import { BackupService, PRIVATE_DIR } from './backup/backup.service.js';
 import { backupTime } from './backup/manifest.js';
 import { firstLine, toolVersion } from './backup/mysql-tools.js';
@@ -39,6 +41,152 @@ const BACKUP_STALE_HOURS = 26;
 const HOUR_MS = 60 * 60 * 1000;
 /** The write probe waits this long before the check fails. */
 const DB_WRITE_TIMEOUT_MS = 5000;
+/** Supported MariaDB (ADR-019): the LTS range CI tests, as major * 1000 + minor. */
+const MARIADB_OLDEST = 10_011;
+const MARIADB_NEWEST_TESTED = 11_008;
+/** Cron commands that can overlap (each with its own pool of JOB_POOL_SIZE; DB-07, deploy.md). */
+const OVERLAPPING_CRON_JOBS = 3;
+
+type Level = PreflightCheck['level'];
+/** A check that only matters on a real server: an error in production, a warning elsewhere. */
+const serverLevel = (production: boolean): Level => (production ? 'error' : 'warn');
+
+/** The connection and database character set every table expects (migration 20261113164500, prisma.service.ts). */
+export const EXPECTED_CHARSETS: Record<string, string> = {
+  character_set_database: 'utf8mb4',
+  collation_database: 'utf8mb4_unicode_ci',
+  character_set_client: 'utf8mb4',
+  character_set_connection: 'utf8mb4',
+  character_set_results: 'utf8mb4',
+  collation_connection: 'utf8mb4_unicode_ci',
+};
+
+/**
+ * MariaDB from 10.11 to 11.8 (ADR-019). Not MariaDB, or older than 10.11, is
+ * an error in production and a warning elsewhere (development runs XAMPP's
+ * 10.4); newer than 11.8 is untested, a warning.
+ */
+export function databaseVersionLevel(version: string, production: boolean): { level: Level; detail: string } {
+  // Old clients see a "5.5.5-" prefix on MariaDB's version.
+  const v = version.replace(/^5\.5\.5-/, '');
+  const m = /^(\d+)\.(\d+)\./.exec(v);
+  if (!m || !/mariadb/i.test(v)) {
+    return { level: serverLevel(production), detail: `${version} is not MariaDB: supported is MariaDB 10.11 to 11.8 (ADR-019)` };
+  }
+  const major = Number.parseInt(m[1], 10);
+  const minor = Number.parseInt(m[2], 10);
+  const at = major * 1000 + minor;
+  if (at < MARIADB_OLDEST) {
+    return { level: serverLevel(production), detail: `MariaDB ${major}.${minor} is older than 10.11, the oldest supported LTS (ADR-019)` };
+  }
+  if (at > MARIADB_NEWEST_TESTED) {
+    return { level: 'warn', detail: `MariaDB ${major}.${minor} is newer than 11.8, the newest tested: add it to the test matrix (ADR-019)` };
+  }
+  return { level: 'info', detail: `MariaDB ${major}.${minor}, within 10.11 to 11.8 (ADR-019)` };
+}
+
+/** Each server variable that is not the expected utf8mb4 / utf8mb4_unicode_ci, as "name=value (expected x)". */
+export function charsetProblems(row: Record<string, string | null | undefined>): string[] {
+  return Object.entries(EXPECTED_CHARSETS)
+    .filter(([name, expected]) => (row[name] ?? '').toLowerCase() !== expected)
+    .map(([name, expected]) => `${name}=${row[name] ?? 'unknown'} (expected ${expected})`);
+}
+
+/**
+ * Node and the database session in different UTC offsets: CURRENT_TIMESTAMP
+ * defaults and NOW() in SQL then disagree with the times the application
+ * writes. A warning: business dates use Asia/Amman either way.
+ */
+export function timezoneLevel(nodeOffsetMinutes: number, dbOffsetMinutes: number): Level {
+  return nodeOffsetMinutes === dbOffsetMinutes ? 'info' : 'warn';
+}
+
+function utcOffset(minutes: number): string {
+  const sign = minutes < 0 ? '-' : '+';
+  const abs = Math.abs(minutes);
+  return `UTC${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
+}
+
+/**
+ * NODE_ENV against where the site lives: a public CORS_ORIGIN (the site's
+ * address) with NODE_ENV not production means a server running with
+ * development rules (no production checks, insecure cookies, API docs on).
+ */
+export function environmentLevel(nodeEnv: string, corsOrigin: string): { level: Level; detail: string } {
+  if (nodeEnv === 'production') return { level: 'info', detail: 'production' };
+  let host = '';
+  try {
+    host = new URL(corsOrigin).hostname;
+  } catch {
+    // not a URL: treated as local
+  }
+  if (host === '' || LOOPBACK_HOSTS.has(host)) return { level: 'warn', detail: `${nodeEnv} (not production)` };
+  return { level: 'error', detail: `NODE_ENV=${nodeEnv} on a public site (CORS_ORIGIN ${host}): set NODE_ENV=production` };
+}
+
+/** The settings among these that are relative paths (resolved against the working folder, which a Cron line may change). */
+export function relativePaths(dirs: Record<string, string>): string[] {
+  return Object.entries(dirs)
+    .filter(([, dir]) => !path.isAbsolute(dir))
+    .map(([name, dir]) => `${name}=${dir}`);
+}
+
+/** The API's DB_POOL_SIZE from its .env text (a Cron command's own pool is smaller, jobs/job-env.ts). */
+export function apiPoolSize(envFile: string | null): number {
+  const value = envFile === null ? undefined : parseEnv(envFile).DB_POOL_SIZE;
+  const size = value ? Number.parseInt(value, 10) : Number.NaN;
+  return Number.isInteger(size) && size > 0 ? size : DEFAULT_POOL_LIMITS.size;
+}
+
+/**
+ * The account's connection limit against what can be open at once: the API's
+ * pool plus OVERLAPPING_CRON_JOBS Cron pools (DB-07). max_user_connections 0
+ * means no per-account limit, then max_connections applies.
+ */
+export function connectionsLevel(
+  maxUserConnections: number,
+  maxConnections: number,
+  apiPool: number,
+): { level: Level; detail: string } {
+  const need = apiPool + OVERLAPPING_CRON_JOBS * JOB_POOL_SIZE;
+  const [limit, name] = maxUserConnections > 0 ? [maxUserConnections, 'max_user_connections'] : [maxConnections, 'max_connections'];
+  const sum = `API pool ${apiPool} + ${OVERLAPPING_CRON_JOBS} Cron x ${JOB_POOL_SIZE} = ${need}`;
+  if (limit < need) {
+    return { level: 'warn', detail: `${name}=${limit} is below ${sum}: lower DB_POOL_SIZE, or requests fail waiting for a connection` };
+  }
+  return { level: 'info', detail: `${name}=${limit}, ${sum}` };
+}
+
+/**
+ * The generated Prisma client against the schema on disk (prisma/schema-stamp.ts).
+ * No stamp, or one from another schema, is an error in production and a warning elsewhere.
+ */
+export function prismaClientLevel(stamp: string | null, schema: string, production: boolean): { level: Level; detail: string } {
+  const fix = 'run pnpm --filter api prisma:generate, then pnpm build';
+  if (stamp === null) return { level: serverLevel(production), detail: `no ${SCHEMA_STAMP_FILE} with the built client: ${fix}` };
+  const current = schemaHash(schema);
+  if (stamp.trim() !== current) {
+    return { level: serverLevel(production), detail: `the built client was generated from another prisma/schema.prisma: ${fix}` };
+  }
+  return { level: 'info', detail: `generated from the current schema (${current.slice(0, 12)})` };
+}
+
+/** Creates the folder if needed and writes and removes one probe file in it. */
+export async function probeFolder(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  const probe = path.join(dir, `.preflight-${randomUUID()}`);
+  await writeFile(probe, 'ok');
+  await rm(probe);
+}
+
+async function readIfExists(file: string): Promise<string | null> {
+  try {
+    return await readFile(file, 'utf8');
+  } catch (err) {
+    if ((err as { code?: string }).code === 'ENOENT') return null;
+    throw err;
+  }
+}
 
 /** Migration folders against `_prisma_migrations` rows: what is missing or broken. */
 export function compareMigrations(
@@ -130,7 +278,8 @@ export class PreflightService {
     };
 
     // Loading the module already validated the environment (production rules included).
-    add('environment', true, production ? 'production' : `${env} (not production)`, production ? 'info' : 'warn');
+    const environment = environmentLevel(env, this.config.get('CORS_ORIGIN', { infer: true }));
+    add('environment', environment.level !== 'error', environment.detail, environment.level);
     // ADR-011: which proxies may name the client; none trusted behind a proxy
     // means every client shares one rate limit (the API also logs it then).
     const proxies = this.config.get('TRUST_PROXY', { infer: true });
@@ -150,9 +299,31 @@ export class PreflightService {
       const [v] = await db.$queryRaw<{ version: string }[]>`SELECT VERSION() AS version`;
       dbUp = true;
       add('database', true, `connected, ${v.version}`);
+      const supported = databaseVersionLevel(v.version, production);
+      add('database-version', supported.level !== 'error', supported.detail, supported.level);
     });
 
     if (dbUp) {
+      await attempt('charset', async () => {
+        const [row] = await db.$queryRaw<Record<string, string | null>[]>`
+          SELECT @@character_set_database AS character_set_database, @@collation_database AS collation_database,
+                 @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection,
+                 @@character_set_results AS character_set_results, @@collation_connection AS collation_connection`;
+        const problems = charsetProblems(row);
+        if (problems.length === 0) add('charset', true, 'database and connection utf8mb4 / utf8mb4_unicode_ci');
+        else {
+          const level = serverLevel(production);
+          add('charset', level !== 'error', `${problems.join(', ')}: create the database as utf8mb4 / utf8mb4_unicode_ci (deploy.md)`, level);
+        }
+      });
+      await attempt('connections', async () => {
+        const [row] = await db.$queryRaw<{ u: bigint | number; m: bigint | number }[]>`
+          SELECT @@max_user_connections AS u, @@max_connections AS m`;
+        // A Cron command (this one too) runs with its own small pool: the API's is in .env.
+        const pool = apiPoolSize(await readIfExists(path.resolve('.env')));
+        const { level, detail } = connectionsLevel(Number(row.u), Number(row.m), pool);
+        add('connections', true, detail, level);
+      });
       await attempt('database-write', async () => {
         // PLAT-31: a database that answers SELECT but cannot write or use its temp directory.
         const probe = await probeDatabase(db, DB_WRITE_TIMEOUT_MS);
@@ -192,15 +363,39 @@ export class PreflightService {
         else add('isolation', false, 'innodb_snapshot_isolation is ON: set it OFF globally, or concurrent postings fail with 1020');
       });
       await attempt('timezone', async () => {
-        const [tz] = await db.$queryRaw<{ g: string; s: string }[]>`SELECT @@global.time_zone AS g, @@session.time_zone AS s`;
+        const [tz] = await db.$queryRaw<{ g: string; s: string; off: bigint | number }[]>`
+          SELECT @@global.time_zone AS g, @@session.time_zone AS s, TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(), NOW()) AS off`;
+        const nodeOffset = -new Date().getTimezoneOffset();
+        const dbOffset = Number(tz.off);
+        const level = timezoneLevel(nodeOffset, dbOffset);
         add(
           'timezone',
           true,
-          `node ${Intl.DateTimeFormat().resolvedOptions().timeZone}, database ${tz.g}/${tz.s}; business dates use Asia/Amman`,
+          `node ${Intl.DateTimeFormat().resolvedOptions().timeZone} (${utcOffset(nodeOffset)}), database ${tz.g}/${tz.s} (${utcOffset(dbOffset)})` +
+            `${level === 'warn' ? ': the offsets differ, so SQL NOW() and the times Node writes disagree' : ''}; business dates use Asia/Amman`,
+          level,
         );
       });
     }
 
+    await attempt('prisma-client', () => this.prismaClient(add, production));
+    await attempt('error-log', async () => {
+      const dir = path.dirname(path.resolve(this.config.get('ERROR_LOG_FILE', { infer: true })));
+      await probeFolder(dir);
+      add('error-log', true, `writable: ${dir}`);
+    });
+    await attempt('paths', async () => {
+      const relative = relativePaths({
+        STORAGE_DIR: this.config.get('STORAGE_DIR', { infer: true }),
+        BACKUP_DIR: this.config.get('BACKUP_DIR', { infer: true }),
+      });
+      add(
+        'paths',
+        true,
+        relative.length ? `${relative.join(', ')} relative to ${process.cwd()}: use absolute paths on a server` : 'STORAGE_DIR and BACKUP_DIR absolute',
+        relative.length ? 'warn' : 'info',
+      );
+    });
     await attempt('storage', () => this.storage(add));
     await attempt('backup', () => this.backupReady(add, production));
     await attempt('disk', () => this.disks(add, dbUp));
@@ -234,6 +429,18 @@ export class PreflightService {
       ...(failed.length ? [`failed: ${failed.join(', ')}`] : []),
     ];
     add('migrations', problems.length === 0, problems.length ? problems.join('; ') : `${folders.length} applied`);
+  }
+
+  /**
+   * The client this build runs (dist/generated/prisma; src/generated/prisma in
+   * tests: the same depth) against prisma/schema.prisma. The stamp reaches dist
+   * through nest-cli.json assets.
+   */
+  private async prismaClient(add: Add, production: boolean): Promise<void> {
+    const generated = path.resolve(import.meta.dirname, '..', 'generated', 'prisma');
+    const schema = await readFile(path.resolve(import.meta.dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
+    const { level, detail } = prismaClientLevel(await readIfExists(path.join(generated, SCHEMA_STAMP_FILE)), schema, production);
+    add('prisma-client', level !== 'error', detail, level);
   }
 
   /** BACKUP_DIR writable and apart from the uploads and the web folder; the dump tool runs. */

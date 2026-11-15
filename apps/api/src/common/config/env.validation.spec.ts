@@ -29,7 +29,7 @@ describe('validateEnv', () => {
 
 describe('production rules (ADR-010 §10.1)', () => {
   const good = {
-    DATABASE_URL: 'mysql://app@db:3306/erp',
+    DATABASE_URL: 'mysql://app:s3cret-pass@db:3306/erp',
     NODE_ENV: 'production',
     JWT_ACCESS_SECRET: 'a'.repeat(32),
     CORS_ORIGIN: 'https://erp.example.jo',
@@ -63,6 +63,41 @@ describe('production rules (ADR-010 §10.1)', () => {
     expect(() => validateEnv({ ...good, ...change })).toThrow(new RegExp(`${name}: `));
   });
 
+  it.each([
+    ['JWT_ACCESS_SECRET', 'dev-only-access-secret-of-32-characters', 'dev-only'],
+    ['JWT_ACCESS_SECRET', 'dev-only-access-secret-change-me', 'change-me'],
+    ['JWT_ACCESS_SECRET', 'change-me-access-secret-at-least-32', 'change-me'],
+    ['JWT_ACCESS_SECRET', 'an-EXAMPLE-secret-copied-from-the-runbook', 'example'],
+    ['EINVOICE_ENC_KEY', 'change-me-to-32-random-bytes-base64=', 'change-me'],
+    ['BACKUP_ENCRYPTION_KEY', 'example-backup-key', 'example'],
+  ])('refuses a placeholder %s (%s)', (name, value, word) => {
+    expect(() => validateEnv({ ...good, [name]: value })).toThrow(new RegExp(`${name}: looks like a placeholder \\("${word}"\\)`));
+  });
+
+  it.each([
+    ['root', 'mysql://root:s3cret-pass@localhost:3306/erp', /DATABASE_URL: must not use the root account/],
+    ['ROOT in capitals', 'mysql://ROOT:s3cret-pass@localhost:3306/erp', /DATABASE_URL: must not use the root account/],
+    ['no password', 'mysql://u123_erp@localhost:3306/u123_erp', /DATABASE_URL: must have a password/],
+    ['an empty password', 'mysql://u123_erp:@localhost:3306/u123_erp', /DATABASE_URL: must have a password/],
+    ['no password, as root', 'mysql://root:@localhost:3306/erp', /root account.*; DATABASE_URL: must have a password/],
+  ])('refuses a production DATABASE_URL with %s', (_case, url, error) => {
+    expect(() => validateEnv({ ...good, DATABASE_URL: url })).toThrow(error);
+  });
+
+  it('accepts a hosting account with a password; the database rules are production only', () => {
+    expect(validateEnv({ ...good, DATABASE_URL: 'mysql://u123_erp:p%40ss@localhost:3306/u123_erp' }).DATABASE_URL).toContain('u123_erp');
+    expect(validateEnv({ ...good, NODE_ENV: 'development', DATABASE_URL: 'mysql://root:@localhost:3306/erp' }).NODE_ENV).toBe('development');
+  });
+
+  it('inside Jest, production mode may use the local test database account (the e2e harness)', () => {
+    const env = validateEnv({ ...good, DATABASE_URL: 'mysql://root:@localhost:3306/erp_test', JEST_WORKER_ID: '1' });
+    expect(env.NODE_ENV).toBe('production');
+    // The secret rules still hold inside Jest.
+    expect(() => validateEnv({ ...good, JWT_ACCESS_SECRET: 'dev-only-access-secret-change-me', JEST_WORKER_ID: '1' })).toThrow(
+      /JWT_ACCESS_SECRET: looks like a placeholder/,
+    );
+  });
+
   it('says which origin it expects', () => {
     expect(() => validateEnv({ ...good, CORS_ORIGIN: 'https://ERP.example.jo:443/' })).toThrow(
       /\(here: https:\/\/erp\.example\.jo\)/,
@@ -70,7 +105,7 @@ describe('production rules (ADR-010 §10.1)', () => {
   });
 
   it('names every problem at once', () => {
-    const problems = productionProblems(validateEnv({ ...good, NODE_ENV: 'test' }));
+    const problems = productionProblems(validateEnv({ ...good, NODE_ENV: 'test', JEST_WORKER_ID: '1' }));
     expect(problems).toEqual([]); // the rules are production only
     expect(() => validateEnv({ ...good, CORS_ORIGIN: 'http://x', EINVOICE_WORKER: 'on' })).toThrow(
       /CORS_ORIGIN: .*; EINVOICE_WORKER: /,
@@ -81,6 +116,30 @@ describe('production rules (ADR-010 §10.1)', () => {
     expect(validateEnv({ ...good, TRUST_PROXY: 'loopback, 10.0.0.0/8' }).TRUST_PROXY).toBe('loopback, 10.0.0.0/8');
     expect(validateEnv({ ...good, TRUST_PROXY: '1' }).TRUST_PROXY).toBe('1');
     expect(validateEnv({ ...good, TRUST_PROXY: 'false' }).TRUST_PROXY).toBe('false');
+  });
+});
+
+describe('NODE_ENV=test only in a test run', () => {
+  const base = { DATABASE_URL: 'mysql://root@localhost:3306/db', JWT_ACCESS_SECRET: 'test-secret-at-least-16-chars' };
+
+  it('is refused outside Jest: test-only routes must not open on a server', () => {
+    expect(() => validateEnv({ ...base, NODE_ENV: 'test' })).toThrow(/NODE_ENV: test is only for test runs/);
+    expect(() => validateEnv({ ...base, NODE_ENV: 'test', ALLOW_TEST_ENV: 'false' })).toThrow(/NODE_ENV: test/);
+  });
+
+  it('is accepted inside Jest (JEST_WORKER_ID, inherited by the spawned API) or with ALLOW_TEST_ENV=true', () => {
+    expect(validateEnv({ ...base, NODE_ENV: 'test', JEST_WORKER_ID: '3' }).NODE_ENV).toBe('test');
+    expect(validateEnv({ ...base, NODE_ENV: 'test', ALLOW_TEST_ENV: 'true' }).NODE_ENV).toBe('test');
+  });
+
+  it('ALLOW_TEST_ENV is true or false only, false by default', () => {
+    expect(validateEnv(base).ALLOW_TEST_ENV).toBe('false');
+    expect(() => validateEnv({ ...base, ALLOW_TEST_ENV: 'yes' })).toThrow(/ALLOW_TEST_ENV/);
+  });
+
+  it('JWT_REFRESH_SECRET is gone: an old .env that still has it starts, and the value is not kept', () => {
+    const env = validateEnv({ ...base, JWT_REFRESH_SECRET: 'dev-only-refresh-secret-change-me' }) as Record<string, unknown>;
+    expect(env.JWT_REFRESH_SECRET).toBeUndefined();
   });
 });
 

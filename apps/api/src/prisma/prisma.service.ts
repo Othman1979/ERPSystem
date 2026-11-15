@@ -37,6 +37,26 @@ export interface PoolLimits {
  */
 export const CONNECT_TIMEOUT_MS = 10_000;
 
+/**
+ * The connection character set and collation, set explicitly rather than left
+ * to the driver's default: every table is utf8mb4_unicode_ci (migration
+ * 20261113164500), and a connection in another collation would compare string
+ * literals against columns differently (or fail with "Illegal mix of collations").
+ * preflight checks the session and database values (`charset`).
+ *
+ * The collation names the character set (utf8mb4). Deliberately no `charset`
+ * option beside it: mariadb 3.5.4 resolves `charset` after `collation` and
+ * replaces it with the charset's default (utf8mb4_general_ci).
+ */
+export const CONNECTION_COLLATION = 'UTF8MB4_UNICODE_CI';
+
+/**
+ * The handshake already asks for that collation; this repeats it as a
+ * statement so the session does not depend on how a server maps the
+ * handshake (MariaDB 11.2+ can remap utf8mb4 through character_set_collations).
+ */
+export const SESSION_CHARSET_SQL = 'SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci';
+
 /** A Cron command's pool when DB_POOL_SIZE is not given (jobs/cli.ts, DB-07). */
 export const JOB_POOL_SIZE = 2;
 
@@ -59,7 +79,8 @@ export function parseDatabaseUrl(url: string, limits: PoolLimits = DEFAULT_POOL_
     acquireTimeout: limits.acquireTimeoutMs,
     // PLAT-06: a database that does not accept the connection fails within 10 s.
     connectTimeout: CONNECT_TIMEOUT_MS,
-    initSql: SESSION_INIT_SQL,
+    collation: CONNECTION_COLLATION,
+    initSql: [SESSION_CHARSET_SQL, SESSION_INIT_SQL],
   };
 }
 

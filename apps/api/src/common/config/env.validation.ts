@@ -15,7 +15,6 @@ export const envSchema = z.object({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   JWT_ACCESS_SECRET: z.string().min(16),
-  JWT_REFRESH_SECRET: z.string().min(16).optional(),
   ACCESS_TOKEN_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
   // JoFotara (docs/decisions/0005 §13): 32 random bytes, base64; seals the Secret-Key at rest.
@@ -71,20 +70,47 @@ export const envSchema = z.object({
   // Where the error monitor appends errors it could not write to the database (ADR-010 §10.3);
   // error-digest alerts them. Outside the web root.
   ERROR_LOG_FILE: z.string().min(1).default('logs/errors-fallback.log'),
+  // NODE_ENV=test mounts test-only routes (TestSupportModule). Outside a Jest run
+  // (JEST_WORKER_ID) it is refused unless this is 'true': a server copied with
+  // NODE_ENV=test must not start with those routes open.
+  ALLOW_TEST_ENV: z.enum(['true', 'false']).default('false'),
 });
 
 export type Env = z.infer<typeof envSchema>;
+
+/** Words of the placeholder secrets in the .env.example files and the runbooks: never a real secret. */
+const PLACEHOLDER_WORDS = ['change-me', 'dev-only', 'example'];
+
+/** The secrets production requires; none may be a copied placeholder. */
+const PRODUCTION_SECRETS = ['JWT_ACCESS_SECRET', 'EINVOICE_ENC_KEY', 'BACKUP_ENCRYPTION_KEY'] as const;
+
+function placeholderWord(value: string | undefined): string | undefined {
+  const lower = value?.toLowerCase() ?? '';
+  return PLACEHOLDER_WORDS.find((word) => lower.includes(word));
+}
+
+/** Where productionProblems runs: a Jest run may point production mode at the local test database. */
+export interface ProductionContext {
+  underTest?: boolean;
+}
 
 /**
  * What production must have on top of the schema (ADR-010 §10.1). Each
  * problem names its variable; the API refuses to start.
  */
-export function productionProblems(env: Env): { path: string; message: string }[] {
+export function productionProblems(env: Env, context: ProductionContext = {}): { path: string; message: string }[] {
   if (env.NODE_ENV !== 'production') return [];
   const problems: { path: string; message: string }[] = [];
   if (env.JWT_ACCESS_SECRET.length < 32) {
     problems.push({ path: 'JWT_ACCESS_SECRET', message: 'must be at least 32 characters in production' });
   }
+  for (const name of PRODUCTION_SECRETS) {
+    const word = placeholderWord(env[name]);
+    if (word) problems.push({ path: name, message: `looks like a placeholder ("${word}"): generate a random secret for production` });
+  }
+  // The e2e harness runs production mode against the local test database (root, often no
+  // password); a server never runs inside Jest.
+  if (!context.underTest) problems.push(...databaseCredentialProblems(env.DATABASE_URL));
   let origin: URL | null = null;
   try {
     origin = new URL(env.CORS_ORIGIN);
@@ -124,6 +150,34 @@ export function productionProblems(env: Env): { path: string; message: string }[
   return problems;
 }
 
+/** A production database account: not root, with a password (the development default is root with none). */
+function databaseCredentialProblems(databaseUrl: string): { path: string; message: string }[] {
+  let url: URL;
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    return [{ path: 'DATABASE_URL', message: 'must be a mysql://user:password@host:port/database URL' }];
+  }
+  const problems: { path: string; message: string }[] = [];
+  if (decodeURIComponent(url.username).toLowerCase() === 'root') {
+    problems.push({ path: 'DATABASE_URL', message: 'must not use the root account in production: use the database user from the hosting panel' });
+  }
+  if (url.password === '') {
+    problems.push({ path: 'DATABASE_URL', message: 'must have a password in production' });
+  }
+  return problems;
+}
+
+/**
+ * NODE_ENV=test only inside a test run: Jest sets JEST_WORKER_ID (the e2e
+ * suites spawn the built API with the whole environment, so it reaches them
+ * too), or ALLOW_TEST_ENV=true for a deliberate manual run.
+ */
+function testEnvProblems(env: Env, underTest: boolean): string[] {
+  if (env.NODE_ENV !== 'test' || underTest || env.ALLOW_TEST_ENV === 'true') return [];
+  return ['NODE_ENV: test is only for test runs (it opens test-only routes): use production on a server, development locally'];
+}
+
 /** Express `trust proxy` from TRUST_PROXY: false, true, a hop count, or addresses and subnets. */
 export function trustProxySetting(value: string): boolean | number | string {
   const v = value.trim();
@@ -139,8 +193,13 @@ export function validateEnv(config: Record<string, unknown>): Env {
   // Node hosting panels hand the app its port in PORT: listen there unless API_PORT says otherwise.
   if (given.API_PORT === undefined && given.PORT !== undefined) given.API_PORT = given.PORT;
   const result = envSchema.safeParse(given);
+  // Jest sets JEST_WORKER_ID in every worker; ConfigModule passes the whole process environment.
+  const underTest = given.JEST_WORKER_ID !== undefined;
   const issues = result.success
-    ? productionProblems(result.data).map((p) => `${p.path}: ${p.message}`)
+    ? [
+        ...productionProblems(result.data, { underTest }).map((p) => `${p.path}: ${p.message}`),
+        ...testEnvProblems(result.data, underTest),
+      ]
     : result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
   if (!result.success || issues.length > 0) {
     throw new Error(`Invalid environment configuration: ${issues.join('; ')}`);
