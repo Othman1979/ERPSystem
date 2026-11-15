@@ -10,6 +10,8 @@ import { lockProcurementLevel } from './procurement-level.js';
 
 /** Who approves, and what (ADR-025 §2). */
 export interface ApprovalCheck {
+  /** The approval permission (default purchase.approve; sales orders use sales.approve, ADR-027 §6). */
+  permission?: string;
   /** The approver's role is OWNER: always allowed, no limit, may approve their own document. */
   isOwner: boolean;
   /** The approver holds purchase.approve (read under lock in the approving transaction). */
@@ -55,7 +57,7 @@ export function isAuthor(doc: DocumentAuthors, userId: bigint | null): boolean {
 export function assertCanApprove(c: ApprovalCheck): void {
   if (c.isOwner) return;
   if (!c.canApprove) {
-    throw new DomainError(ErrorCode.FORBIDDEN, `Missing permission: ${PERMISSIONS.PURCHASE_APPROVE}`);
+    throw new DomainError(ErrorCode.FORBIDDEN, `Missing permission: ${c.permission ?? PERMISSIONS.PURCHASE_APPROVE}`);
   }
   if (c.isAuthor) {
     throw new DomainError(ErrorCode.APPROVAL_SELF_NOT_ALLOWED, 'You cannot approve a document you created, edited or submitted');
@@ -77,12 +79,13 @@ export function assertCanApprove(c: ApprovalCheck): void {
 export async function readApprover(
   tx: Prisma.TransactionClient,
   tenantId: bigint,
+  permission: string = PERMISSIONS.PURCHASE_APPROVE,
 ): Promise<{ userId: bigint | null; isOwner: boolean; canApprove: boolean; limit: Decimal | null }> {
   const cls = ClsServiceManager.getClsService<RequestContext>();
   const userId = cls.get('userId') ?? null;
   const isOwner = cls.get('roleCode') === OWNER_ROLE;
   if (isOwner) return { userId, isOwner, canApprove: true, limit: null };
-  const grant = await readMemberGrant(tx, tenantId, PERMISSIONS.PURCHASE_APPROVE);
+  const grant = await readMemberGrant(tx, tenantId, permission);
   return { userId, isOwner, canApprove: grant !== null, limit: grant?.limit ?? null };
 }
 

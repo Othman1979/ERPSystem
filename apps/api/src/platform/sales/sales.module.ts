@@ -8,12 +8,16 @@ import { PrintingModule } from '../printing/printing.module.js';
 import { SalesController } from './sales.controller.js';
 import { SalesInvoicesService } from './sales-invoices.service.js';
 import { SalesReturnsService } from './sales-returns.service.js';
+import { SalesCycleController } from './sales-cycle.controller.js';
+import { SalesOrdersService } from './sales-orders.service.js';
+import { SalesQuotesService } from './sales-quotes.service.js';
 import { PartiesModule } from '../parties/parties.module.js';
 
 @Module({
   imports: [PartiesModule, SharedModule, JournalModule, InventoryModule, EInvoiceOutboxModule, PrintingModule, CostCentersModule],
-  controllers: [SalesController],
-  providers: [SalesInvoicesService, SalesReturnsService],
+  // Phase 14 (ADR-027): sales quotations and orders; no posting, no stock movement here.
+  controllers: [SalesController, SalesCycleController],
+  providers: [SalesInvoicesService, SalesReturnsService, SalesQuotesService, SalesOrdersService],
   // Treasury reads open credit invoices for aging through this service (module boundary).
   // EInvoiceModule builds JoFotara documents from posted invoices and returns.
   exports: [SalesInvoicesService, SalesReturnsService],

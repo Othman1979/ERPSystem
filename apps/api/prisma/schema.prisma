@@ -368,6 +368,10 @@ model Tenant {
   issueRequestLines    IssueRequestLine[]
 
   @@map("tenants")
+  salesQuotes SalesQuote[]
+  salesQuoteLines SalesQuoteLine[]
+  salesOrders SalesOrder[]
+  salesOrderLines SalesOrderLine[]
 }
 
 model Subscription {
@@ -411,6 +415,16 @@ model Company {
   onboardingCompletedAt  DateTime?     @map("onboarding_completed_at") @db.DateTime(3)
   /// Purchasing cycle level (ADR-024 §2): raised any time, lowered only with no open cycle documents.
   procurementLevel       ProcurementLevel @default(SIMPLE) @map("procurement_level")
+  /// Sales cycle settings (ADR-027 §1): a sales invoice must come from a confirmed order when on.
+  salesOrderRequired     Boolean          @default(false) @map("sales_order_required")
+  /// ADR-027 §5: NONE hides reservations, SOFT shows them, HARD refuses over-reserving.
+  salesReservation       SalesReservation @default(SOFT) @map("sales_reservation")
+  /// ADR-027 §6: when a sales order needs approval before it is confirmed.
+  salesOrderApproval     SalesOrderApproval @default(OVER_CREDIT_LIMIT) @map("sales_order_approval")
+  /// ADR-027 §4: the invoice price and discount may not go below the order without approval.
+  salesPriceLocked       Boolean          @default(false) @map("sales_price_locked")
+  /// Default validity of a new quote in days; 0 = no default expiry (ADR-027 §1).
+  quoteValidityDays      Int              @default(30) @map("quote_validity_days")
   isActive              Boolean       @default(true) @map("is_active")
   createdAt              DateTime      @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt              DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
@@ -452,6 +466,8 @@ model Company {
   purchaseQuotes    PurchaseQuote[]
   purchaseOrders    PurchaseOrder[]
   issueRequests     IssueRequest[]
+  salesQuotes       SalesQuote[]
+  salesOrders       SalesOrder[]
 
   @@unique([tenantId, id])
   @@map("companies")
@@ -487,6 +503,8 @@ model Branch {
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
   @@map("branches")
+  salesQuotes SalesQuote[]
+  salesOrders SalesOrder[]
 }
 
 model TenantMembership {
@@ -699,6 +717,8 @@ model TaxCategory {
   @@unique([tenantId, id])
   @@unique([tenantId, code])
   @@map("tax_categories")
+  salesQuoteLines SalesQuoteLine[]
+  salesOrderLines SalesOrderLine[]
 }
 
 model PaymentMethod {
@@ -996,6 +1016,8 @@ model CostCenter {
   @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, code])
   @@map("cost_centers")
+  salesQuotes SalesQuote[]
+  salesOrders SalesOrder[]
 }
 
 // ---------------------------------------------------------------------------
@@ -1076,6 +1098,8 @@ model Item {
   @@unique([tenantId, companyId, code])
   @@index([tenantId, itemKind])
   @@map("items")
+  salesQuoteLines SalesQuoteLine[]
+  salesOrderLines SalesOrderLine[]
 }
 
 model ItemUnit {
@@ -1104,6 +1128,8 @@ model ItemUnit {
   @@unique([tenantId, id])
   @@unique([tenantId, itemId, unitId])
   @@map("item_units")
+  salesQuoteLines SalesQuoteLine[]
+  salesOrderLines SalesOrderLine[]
 }
 
 model ItemBarcode {
@@ -1159,6 +1185,8 @@ model Warehouse {
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
   @@map("warehouses")
+  salesQuotes SalesQuote[]
+  salesOrders SalesOrder[]
 }
 
 model StockMovement {
@@ -1446,6 +1474,8 @@ model Party {
   purchaseQuotes   PurchaseQuote[]
   purchaseOrders   PurchaseOrder[]
   goodsNotes       GoodsNote[]
+  salesQuotes      SalesQuote[]
+  salesOrders      SalesOrder[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1510,6 +1540,11 @@ model SalesInvoice {
   cashAccountId  BigInt?             @map("cash_account_id") @db.UnsignedBigInt
   /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
   costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
+  /// ADR-027 §4: the order this invoice bills (set on the draft, final at posting).
+  salesOrderId   BigInt?             @map("sales_order_id") @db.UnsignedBigInt
+  /// ADR-027 §4 / ADR-026 §2: price approval of a locked-price invoice (set by approve-price).
+  priceApprovedAt DateTime?          @map("price_approved_at") @db.DateTime(3)
+  priceApprovedBy BigInt?            @map("price_approved_by") @db.UnsignedBigInt
   status         DocumentStatus      @default(DRAFT)
   description    String?             @db.VarChar(500)
   netTotal       Decimal             @default(0) @map("net_total") @db.Decimal(18, 3)
@@ -1532,11 +1567,14 @@ model SalesInvoice {
   cashAccount  Account?            @relation("SalesInvoiceCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
   costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
   journalEntry JournalEntry?       @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+  salesOrder   SalesOrder?         @relation(fields: [tenantId, salesOrderId], references: [tenantId, id])
   lines        SalesInvoiceLine[]
   returns      SalesReturn[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, invoiceNo])
+  // Invoices of one order (ADR-027 §4): the order's list of billed invoices.
+  @@index([tenantId, salesOrderId])
   // Lists: ORDER BY invoice_date DESC, id DESC (DB-10).
   @@index([tenantId, companyId, invoiceDate, id])
   // Posted-only counts and sums by date: monthly quota on every post, summaries.
@@ -1565,6 +1603,8 @@ model SalesInvoiceLine {
   lineTotal      Decimal   @map("line_total") @db.Decimal(18, 3)
   unitCost       Decimal?  @map("unit_cost") @db.Decimal(18, 6)
   costTotal      Decimal   @default(0) @map("cost_total") @db.Decimal(18, 3)
+  /// ADR-027 §4: the order line this line bills (set on the draft, final at posting).
+  orderLineId    BigInt?   @map("order_line_id") @db.UnsignedBigInt
   createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1572,10 +1612,12 @@ model SalesInvoiceLine {
   item        Item        @relation(fields: [tenantId, itemId], references: [tenantId, id])
   itemUnit    ItemUnit?   @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
   taxCategory TaxCategory? @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  orderLine   SalesOrderLine? @relation(fields: [tenantId, orderLineId], references: [tenantId, id])
   returnLines SalesReturnLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, invoiceId, lineNo])
+  @@index([tenantId, orderLineId])
   @@map("sales_invoice_lines")
 }
 
@@ -2563,4 +2605,229 @@ model IssueRequestLine {
   @@unique([tenantId, id])
   @@unique([tenantId, requestId, lineNo])
   @@map("issue_request_lines")
+}
+
+/// Sales quote (ADR-027 §2): DRAFT → SENT → ACCEPTED or REJECTED; CANCELLED from DRAFT or SENT. Numbered when sent.
+enum SalesQuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+/// Sales order (ADR-027 §3): DRAFT → (PENDING_APPROVAL) → CONFIRMED → PARTIALLY_INVOICED → INVOICED; CLOSED or CANCELLED. Numbered when confirmed.
+enum SalesOrderStatus {
+  DRAFT
+  PENDING_APPROVAL
+  CONFIRMED
+  PARTIALLY_INVOICED
+  INVOICED
+  CLOSED
+  CANCELLED
+}
+
+/// ADR-027 §5: stock reservation of confirmed orders (NONE hides it, SOFT shows it, HARD refuses).
+enum SalesReservation {
+  NONE
+  SOFT
+  HARD
+}
+
+/// ADR-027 §6: when a sales order needs approval before it is confirmed.
+enum SalesOrderApproval {
+  NONE
+  OVER_CREDIT_LIMIT
+  ALWAYS
+}
+
+/// Sales quotation to one customer (ADR-027 §2). No ledger or stock effect.
+model SalesQuote {
+  id               BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt           @map("tenant_id") @db.UnsignedBigInt
+  companyId        BigInt           @map("company_id") @db.UnsignedBigInt
+  /// The warehouse's branch when a warehouse is named (ADR-003).
+  branchId         BigInt?          @map("branch_id") @db.UnsignedBigInt
+  /// The warehouse the quote is for; the order takes its own at conversion.
+  warehouseId      BigInt?          @map("warehouse_id") @db.UnsignedBigInt
+  customerId       BigInt           @map("customer_id") @db.UnsignedBigInt
+  costCenterId     BigInt?          @map("cost_center_id") @db.UnsignedBigInt
+  quoteNo          String?          @map("quote_no") @db.VarChar(50)
+  quoteDate        DateTime         @map("quote_date") @db.Date
+  validUntil       DateTime?        @map("valid_until") @db.Date
+  /// ADR-017: prices entered including tax (company setting when the draft was saved).
+  pricesIncludeTax Boolean          @default(false) @map("prices_include_tax")
+  status           SalesQuoteStatus @default(DRAFT)
+  description      String?          @db.VarChar(500)
+  netTotal         Decimal          @default(0) @map("net_total") @db.Decimal(18, 3)
+  taxTotal         Decimal          @default(0) @map("tax_total") @db.Decimal(18, 3)
+  grandTotal       Decimal          @default(0) @map("grand_total") @db.Decimal(18, 3)
+  sentAt           DateTime?        @map("sent_at") @db.DateTime(3)
+  sentBy           BigInt?          @map("sent_by") @db.UnsignedBigInt
+  acceptedAt       DateTime?        @map("accepted_at") @db.DateTime(3)
+  acceptedBy       BigInt?          @map("accepted_by") @db.UnsignedBigInt
+  rejectedAt       DateTime?        @map("rejected_at") @db.DateTime(3)
+  rejectedBy       BigInt?          @map("rejected_by") @db.UnsignedBigInt
+  rejectReason     String?          @map("reject_reason") @db.VarChar(500)
+  cancelledAt      DateTime?        @map("cancelled_at") @db.DateTime(3)
+  cancelledBy      BigInt?          @map("cancelled_by") @db.UnsignedBigInt
+  cancelReason     String?          @map("cancel_reason") @db.VarChar(500)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy        BigInt?          @map("created_by") @db.UnsignedBigInt
+  updatedBy        BigInt?          @map("updated_by") @db.UnsignedBigInt
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company    Company          @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch     Branch?          @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  warehouse  Warehouse?       @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  customer   Party            @relation(fields: [tenantId, customerId], references: [tenantId, id])
+  costCenter CostCenter?      @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  lines      SalesQuoteLine[]
+  orders     SalesOrder[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, quoteNo])
+  @@index([tenantId, companyId, quoteDate, id])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@map("sales_quotes")
+}
+
+/// A quoted line; prices and amounts are computed by the server when the draft is saved.
+model SalesQuoteLine {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt   @map("tenant_id") @db.UnsignedBigInt
+  quoteId        BigInt   @map("quote_id") @db.UnsignedBigInt
+  lineNo         Int      @map("line_no")
+  itemId         BigInt   @map("item_id") @db.UnsignedBigInt
+  itemUnitId     BigInt?  @map("item_unit_id") @db.UnsignedBigInt
+  qty            Decimal  @db.Decimal(18, 6)
+  qtyBase        Decimal  @map("qty_base") @db.Decimal(18, 6)
+  unitPrice      Decimal  @map("unit_price") @db.Decimal(18, 3)
+  discountPct    Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
+  discountAmount Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
+  netAmount      Decimal  @default(0) @map("net_amount") @db.Decimal(18, 3)
+  taxCategoryId  BigInt?  @map("tax_category_id") @db.UnsignedBigInt
+  taxRate        Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
+  taxAmount      Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
+  lineTotal      Decimal  @default(0) @map("line_total") @db.Decimal(18, 3)
+  note           String?  @db.VarChar(500)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quote       SalesQuote      @relation(fields: [tenantId, quoteId], references: [tenantId, id], onDelete: Cascade)
+  item        Item            @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  itemUnit    ItemUnit?       @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  taxCategory TaxCategory?    @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  orderLines  SalesOrderLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, quoteId, lineNo])
+  @@map("sales_quote_lines")
+}
+
+/// Sales order to one customer (ADR-027 §3). Numbered at confirmation; no ledger or stock effect (invoices bill it, §4).
+model SalesOrder {
+  id               BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt           @map("tenant_id") @db.UnsignedBigInt
+  companyId        BigInt           @map("company_id") @db.UnsignedBigInt
+  /// The warehouse's branch (ADR-003), as on the sales invoice.
+  branchId         BigInt?          @map("branch_id") @db.UnsignedBigInt
+  orderNo          String?          @map("order_no") @db.VarChar(50)
+  orderDate        DateTime         @map("order_date") @db.Date
+  expectedDate     DateTime?        @map("expected_date") @db.Date
+  customerId       BigInt           @map("customer_id") @db.UnsignedBigInt
+  warehouseId      BigInt           @map("warehouse_id") @db.UnsignedBigInt
+  costCenterId     BigInt?          @map("cost_center_id") @db.UnsignedBigInt
+  /// The quote it was converted from (once only, ADR-027 §2).
+  salesQuoteId     BigInt?          @map("sales_quote_id") @db.UnsignedBigInt
+  /// ADR-017: prices entered including tax (company setting when the draft was saved).
+  pricesIncludeTax Boolean          @default(false) @map("prices_include_tax")
+  paymentTermsDays Int?             @map("payment_terms_days")
+  status           SalesOrderStatus @default(DRAFT)
+  description      String?          @db.VarChar(500)
+  netTotal         Decimal          @default(0) @map("net_total") @db.Decimal(18, 3)
+  taxTotal         Decimal          @default(0) @map("tax_total") @db.Decimal(18, 3)
+  grandTotal       Decimal          @default(0) @map("grand_total") @db.Decimal(18, 3)
+  submittedAt      DateTime?        @map("submitted_at") @db.DateTime(3)
+  submittedBy      BigInt?          @map("submitted_by") @db.UnsignedBigInt
+  confirmedAt      DateTime?        @map("confirmed_at") @db.DateTime(3)
+  confirmedBy      BigInt?          @map("confirmed_by") @db.UnsignedBigInt
+  approvedAt       DateTime?        @map("approved_at") @db.DateTime(3)
+  approvedBy       BigInt?          @map("approved_by") @db.UnsignedBigInt
+  /// The last rejection of the approval (the order went back to DRAFT).
+  rejectedAt       DateTime?        @map("rejected_at") @db.DateTime(3)
+  rejectedBy       BigInt?          @map("rejected_by") @db.UnsignedBigInt
+  rejectReason     String?          @map("reject_reason") @db.VarChar(500)
+  cancelledAt      DateTime?        @map("cancelled_at") @db.DateTime(3)
+  cancelledBy      BigInt?          @map("cancelled_by") @db.UnsignedBigInt
+  cancelReason     String?          @map("cancel_reason") @db.VarChar(500)
+  /// ADR-027 §3: closed by hand with a written reason, partly invoiced; its reservation is released.
+  closedAt         DateTime?        @map("closed_at") @db.DateTime(3)
+  closedBy         BigInt?          @map("closed_by") @db.UnsignedBigInt
+  closeReason      String?          @map("close_reason") @db.VarChar(500)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy        BigInt?          @map("created_by") @db.UnsignedBigInt
+  updatedBy        BigInt?          @map("updated_by") @db.UnsignedBigInt
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company    Company          @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch     Branch?          @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  customer   Party            @relation(fields: [tenantId, customerId], references: [tenantId, id])
+  warehouse  Warehouse        @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  costCenter CostCenter?      @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  quote      SalesQuote?      @relation(fields: [tenantId, salesQuoteId], references: [tenantId, id])
+  lines      SalesOrderLine[]
+  invoices   SalesInvoice[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, orderNo])
+  // One order per quote (ADR-027 §2): a converted quote is not converted again.
+  @@unique([tenantId, salesQuoteId])
+  @@index([tenantId, companyId, orderDate, id])
+  @@index([tenantId, customerId])
+  @@index([tenantId, warehouseId, status])
+  @@index([tenantId, status])
+  @@map("sales_orders")
+}
+
+/// An ordered line. invoiced_qty (base units) is set by the posting of the invoices that bill it (ADR-027 §4).
+model SalesOrderLine {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt   @map("tenant_id") @db.UnsignedBigInt
+  orderId        BigInt   @map("order_id") @db.UnsignedBigInt
+  lineNo         Int      @map("line_no")
+  quoteLineId    BigInt?  @map("quote_line_id") @db.UnsignedBigInt
+  itemId         BigInt   @map("item_id") @db.UnsignedBigInt
+  itemUnitId     BigInt?  @map("item_unit_id") @db.UnsignedBigInt
+  qty            Decimal  @db.Decimal(18, 6)
+  qtyBase        Decimal  @map("qty_base") @db.Decimal(18, 6)
+  /// Base quantity billed by posted invoices; never above qty_base (ADR-027 §4).
+  invoicedQty    Decimal  @default(0) @map("invoiced_qty") @db.Decimal(18, 6)
+  unitPrice      Decimal  @map("unit_price") @db.Decimal(18, 3)
+  discountPct    Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
+  discountAmount Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
+  netAmount      Decimal  @default(0) @map("net_amount") @db.Decimal(18, 3)
+  taxCategoryId  BigInt?  @map("tax_category_id") @db.UnsignedBigInt
+  taxRate        Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
+  taxAmount      Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
+  lineTotal      Decimal  @default(0) @map("line_total") @db.Decimal(18, 3)
+  note           String?  @db.VarChar(500)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order        SalesOrder          @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Cascade)
+  quoteLine    SalesQuoteLine?     @relation(fields: [tenantId, quoteLineId], references: [tenantId, id])
+  item         Item                @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  itemUnit     ItemUnit?           @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  taxCategory  TaxCategory?        @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  invoiceLines SalesInvoiceLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, orderId, lineNo])
+  // Reservations: open lines of one item (ADR-027 §5).
+  @@index([tenantId, itemId])
+  @@map("sales_order_lines")
 }

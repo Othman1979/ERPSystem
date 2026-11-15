@@ -88,6 +88,23 @@ export class PartiesService {
     }
   }
 
+  /**
+   * VALIDATION unless `id` is an active customer (CUSTOMER or BOTH) of the
+   * company: the customer of a sales quote or order (module boundary, ADR-027 §8).
+   */
+  async assertActiveCustomer(id: bigint, tx?: Prisma.TransactionClient): Promise<{ creditLimit: string | null }> {
+    const { tenantId, db: tenantDb } = this.support.tenant();
+    const db = tx ?? tenantDb;
+    const customer = await db.party.findFirst({
+      where: { tenantId, company: { isActive: true }, id, isActive: true },
+      select: { partyType: true, creditLimit: true },
+    });
+    if (!customer || (customer.partyType !== 'CUSTOMER' && customer.partyType !== 'BOTH')) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Customer not found or not a customer', { customerId: id.toString() });
+    }
+    return { creditLimit: customer.creditLimit?.toString() ?? null };
+  }
+
   async get(id: bigint) {
     const { db } = this.support.tenant();
     const party = await db.party.findFirst({ where: { id } });

@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
-import { ProcurementLevel } from '../../../generated/prisma/enums.js';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { ProcurementLevel, SalesOrderApproval, SalesReservation } from '../../../generated/prisma/enums.js';
 
 /**
  * Company profile (setup wizard step 1 and settings, §13.4). A blank text
@@ -60,4 +60,33 @@ export class UpdateCompanyDto {
   @IsOptional()
   @IsEnum(ProcurementLevel)
   procurementLevel?: ProcurementLevel;
+
+  // Sales cycle settings (ADR-027 §1): owner only (SALES_SETTINGS_OWNER_ONLY in the service).
+
+  /** A sales invoice must come from a confirmed sales order (ADR-027 §1). */
+  @IsOptional()
+  @IsBoolean()
+  salesOrderRequired?: boolean;
+
+  @ApiPropertyOptional({ enum: SalesReservation, enumName: 'SalesReservation' })
+  @IsOptional()
+  @IsEnum(SalesReservation)
+  salesReservation?: SalesReservation;
+
+  @ApiPropertyOptional({ enum: SalesOrderApproval, enumName: 'SalesOrderApproval' })
+  @IsOptional()
+  @IsEnum(SalesOrderApproval)
+  salesOrderApproval?: SalesOrderApproval;
+
+  /** The invoice price may not go below the order without a price approval (ADR-027 §4). */
+  @IsOptional()
+  @IsBoolean()
+  salesPriceLocked?: boolean;
+
+  /** Default validity of a new quote in days; 0 = no default expiry (ADR-027 §1). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  quoteValidityDays?: number;
 }

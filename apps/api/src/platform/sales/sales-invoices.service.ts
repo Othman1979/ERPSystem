@@ -92,6 +92,9 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
   async costCenterInUse(tx: Prisma.TransactionClient, costCenterId: bigint): Promise<string | null> {
     if (await tx.salesInvoice.findFirst({ where: { costCenterId }, select: { id: true } })) return 'sales_invoices';
     if (await tx.salesReturn.findFirst({ where: { costCenterId }, select: { id: true } })) return 'sales_returns';
+    // ADR-027 §8: quotes and orders header their cost centre too.
+    if (await tx.salesQuote.findFirst({ where: { costCenterId }, select: { id: true } })) return 'sales_quotes';
+    if (await tx.salesOrder.findFirst({ where: { costCenterId }, select: { id: true } })) return 'sales_orders';
     return null;
   }
 
@@ -107,6 +110,9 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     if (await tx.salesReturn.findFirst({ where: { customerId: partyId }, select: { id: true } })) {
       return 'sales_returns';
     }
+    // ADR-027 §8: a customer named by a quote or an order is in use too.
+    if (await tx.salesQuote.findFirst({ where: { customerId: partyId }, select: { id: true } })) return 'sales_quotes';
+    if (await tx.salesOrder.findFirst({ where: { customerId: partyId }, select: { id: true } })) return 'sales_orders';
     return null;
   }
 

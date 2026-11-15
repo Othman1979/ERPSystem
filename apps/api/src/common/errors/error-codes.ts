@@ -132,6 +132,17 @@ export enum ErrorCode {
   // ADR-026 §2: a line is priced above the order and the difference is not approved
   // (details.lines).
   PURCHASE_PRICE_ABOVE_ORDER = 'PURCHASE_PRICE_ABOVE_ORDER',
+  // ADR-027 §2: an expired quote (valid_until before today) is not accepted nor converted
+  // (details.validUntil).
+  QUOTE_EXPIRED = 'QUOTE_EXPIRED',
+  // ADR-027 §2: a quote becomes one order, once (details.orderId).
+  QUOTE_ALREADY_CONVERTED = 'QUOTE_ALREADY_CONVERTED',
+  // ADR-027 §5: a confirmation (or approval) under HARD reservation would take more than is
+  // available (details.itemId, details.needed, details.available).
+  STOCK_RESERVED = 'STOCK_RESERVED',
+  // ADR-027 §3: an order with an invoiced line cannot be cancelled; close it instead
+  // (details.invoicedLines).
+  SALES_ORDER_NOT_CANCELLABLE = 'SALES_ORDER_NOT_CANCELLABLE',
   // ADR-026 §9: at FULL a goods issue without an approved issue request needs
   // stock.issue_without_request (owners aside).
   ISSUE_REQUEST_REQUIRED = 'ISSUE_REQUEST_REQUIRED',

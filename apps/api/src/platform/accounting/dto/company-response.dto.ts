@@ -3,7 +3,7 @@
  * CompanyService returns today; nothing here changes a body.
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { ProcurementLevel } from '../../../generated/prisma/enums.js';
+import { ProcurementLevel, SalesOrderApproval, SalesReservation } from '../../../generated/prisma/enums.js';
 
 /** The logo as CompanyService.get shows it: attachment metadata, no bytes. */
 export class CompanyLogoDto {
@@ -51,6 +51,27 @@ export class CompanyDto {
 
   @ApiProperty({ enum: ProcurementLevel, enumName: 'ProcurementLevel', description: 'Purchasing cycle level (ADR-024 §2).' })
   procurementLevel!: ProcurementLevel;
+
+  @ApiProperty({ type: 'boolean', description: 'A sales invoice must come from a confirmed order (ADR-027 §1).' })
+  salesOrderRequired!: boolean;
+
+  @ApiProperty({ enum: SalesReservation, enumName: 'SalesReservation' })
+  salesReservation!: SalesReservation;
+
+  @ApiProperty({ enum: SalesOrderApproval, enumName: 'SalesOrderApproval' })
+  salesOrderApproval!: SalesOrderApproval;
+
+  @ApiProperty({ type: 'boolean' })
+  salesPriceLocked!: boolean;
+
+  @ApiProperty({ type: 'integer' })
+  quoteValidityDays!: number;
+
+  @ApiProperty({
+    type: 'integer',
+    description: 'Direct sales invoice drafts (no order): the ones the owner must review when salesOrderRequired is turned on (ADR-027 §1).',
+  })
+  directSalesDraftCount!: number;
 
   @ApiProperty({ type: 'string', format: 'date-time', nullable: true, description: 'Set when the setup wizard is finished.' })
   onboardingCompletedAt!: string | null;
