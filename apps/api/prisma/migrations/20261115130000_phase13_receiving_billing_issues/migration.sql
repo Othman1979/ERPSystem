@@ -5,7 +5,12 @@
   Prisma's warnings, reviewed:
   - `unit_cost` on `purchase_invoice_lines` and `purchase_return_lines` goes from DECIMAL(18,3)
     to DECIMAL(18,6) (CLAUDE.md: unit costs are 6 dp; an order price has 6 dp, ADR-026 §5).
-    A wider scale keeps every stored value exactly; nothing is lost.
+    The scale grows, so every stored decimal is kept exactly, but the integer part shrinks from
+    15 to 12 digits: a stored unit cost of 10^12 or more would make the ALTER fail (strict mode),
+    changing nothing. Check before deploying (docs/runbooks/deploy.md, phase 13); the API now
+    refuses a unit cost above 12 integer digits (400).
+  - These ALTERs, and the new foreign keys on goods_notes, goods_note_lines and purchase_invoices,
+    rebuild those tables: apply with the application stopped, in a maintenance window.
   - The new `purchase_orders.status` values are appended to the ENUM, so stored values keep
     their meaning (MariaDB stores the index; existing members keep theirs).
 */

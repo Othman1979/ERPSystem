@@ -1,3 +1,4 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -74,17 +75,22 @@ export class CreateGoodsNoteDto {
   @Matches(INT_STRING)
   purchaseOrderId?: string;
 
-  /** ADR-026 §8: a GIN to a department debits this expense account instead of INVENTORY_ADJUSTMENT. */
+  /**
+   * ADR-026 §8: a GIN to a department debits this expense account instead of
+   * INVENTORY_ADJUSTMENT. Omitted or null: none (a save replaces the note, so null clears it).
+   */
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @IsString()
   @Matches(INT_STRING)
-  expenseAccountId?: string;
+  expenseAccountId?: string | null;
 
-  /** ADR-026 §8: the department (a leaf cost centre) of a GIN. */
+  /** ADR-026 §8: the department (a leaf cost centre) of a GIN. Omitted or null: none. */
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @IsString()
   @Matches(INT_STRING)
-  costCenterId?: string;
+  costCenterId?: string | null;
 
   /**
    * ADR-026 §9: a GIN from this approved issue request (FULL level): its

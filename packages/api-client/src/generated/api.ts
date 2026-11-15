@@ -3782,6 +3782,13 @@ export interface PurchaseInvoiceOrderRefDto {
   status: PurchaseOrderStatus;
 }
 
+export interface PriceAboveOrderLineDto {
+  lineNo: number;
+  grnLineId: string;
+  invoiceNetUnitPrice: string;
+  orderNetUnitPrice: string;
+}
+
 export interface PurchaseInvoiceDetailDto {
   id: string;
   tenantId: string;
@@ -3859,6 +3866,8 @@ export interface PurchaseInvoiceDetailDto {
   receivedGrn: PurchaseInvoiceGoodsNoteRefDto | null;
   /** @nullable */
   purchaseOrder: PurchaseInvoiceOrderRefDto | null;
+  /** ADR-026 §2: on a draft on an order, the lines priced above the order (empty otherwise). */
+  priceAboveOrderLines: PriceAboveOrderLineDto[];
   creditedAmount: string;
   outstanding: string;
 }
@@ -3867,7 +3876,7 @@ export interface PurchaseInvoiceLineDto {
   itemId: string;
   itemUnitId?: string;
   qty: string;
-  /** Price per unit, up to 6 decimals (an order price, ADR-026 §5; CLAUDE.md unit costs). */
+  /** Price per unit, up to 12 integer digits and 6 decimals (an order price, ADR-026 §5; CLAUDE.md unit costs). */
   unitCost: string;
   /** @pattern ^\d+(\.\d{1,4})?$ */
   discountPct?: string;
@@ -3985,7 +3994,7 @@ export interface BillLineDto {
   grnLineId: string;
   /** Base quantity, within what is received and not billed yet. */
   qty: string;
-  /** The supplier's price per base unit (the order's by default, GET …/billable). */
+  /** The supplier's price per base unit (the order's by default, GET …/billable); 12 integer digits, 6 decimals at most. */
   unitCost: string;
   /** @pattern ^\d+(\.\d{1,4})?$ */
   discountPct?: string;
@@ -4467,6 +4476,17 @@ export const CreateGoodsNoteDtoNoteType = {
 } as const;
 
 export interface CreateGoodsNoteDto {
+  /**
+     * ADR-026 §8: a GIN to a department debits this expense account instead of
+     * INVENTORY_ADJUSTMENT. Omitted or null: none (a save replaces the note, so null clears it).
+     * @nullable
+     */
+  expenseAccountId?: string | null;
+  /**
+     * ADR-026 §8: the department (a leaf cost centre) of a GIN. Omitted or null: none.
+     * @nullable
+     */
+  costCenterId?: string | null;
   noteDate: string;
   warehouseId: string;
   noteType: CreateGoodsNoteDtoNoteType;
@@ -4477,10 +4497,6 @@ export interface CreateGoodsNoteDto {
      * warehouse, every line naming an order line. Set at creation, never changed.
      */
   purchaseOrderId?: string;
-  /** ADR-026 §8: a GIN to a department debits this expense account instead of INVENTORY_ADJUSTMENT. */
-  expenseAccountId?: string;
-  /** ADR-026 §8: the department (a leaf cost centre) of a GIN. */
-  costCenterId?: string;
   /**
      * ADR-026 §9: a GIN from this approved issue request (FULL level): its
      * warehouse, every line naming a request line. Set at creation, never changed.
@@ -7282,6 +7298,7 @@ export const ErrorCode = {
   PURCHASE_PRICE_ABOVE_ORDER: 'PURCHASE_PRICE_ABOVE_ORDER',
   ISSUE_REQUEST_REQUIRED: 'ISSUE_REQUEST_REQUIRED',
   ISSUE_REQUEST_QTY_EXCEEDED: 'ISSUE_REQUEST_QTY_EXCEEDED',
+  ISSUE_REQUEST_DEPARTMENT_MISMATCH: 'ISSUE_REQUEST_DEPARTMENT_MISMATCH',
   INTERNAL: 'INTERNAL',
 } as const;
 

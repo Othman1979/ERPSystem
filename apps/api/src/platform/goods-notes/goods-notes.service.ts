@@ -235,24 +235,7 @@ export class GoodsNotesService implements OnModuleInit {
       db.$transaction(async (tx) => {
         const locks = await this.lockSources(tx, tenantId, companyId, orderId, requestId, true);
         const p = await this.prepare(tx, tenantId, companyId, dto, locks, null);
-        const created = await tx.goodsNote.create({
-          data: {
-            tenantId,
-            companyId,
-            branchId: p.branchId,
-            warehouseId: p.warehouseId,
-            noteDate: new Date(dto.noteDate),
-            noteType: dto.noteType,
-            description: dto.description ?? null,
-            purchaseOrderId: orderId,
-            supplierId: p.supplierId,
-            expenseAccountId: p.expenseAccountId,
-            costCenterId: p.costCenterId,
-            issueRequestId: requestId,
-          },
-        });
-        await this.writeLines(tx, tenantId, created.id, p.lines);
-        return created;
+        return this.writeNote(tx, tenantId, companyId, dto, p, orderId, requestId);
       }, POSTING_TX_OPTIONS),
     );
     await this.audit.log({
@@ -316,23 +299,53 @@ export class GoodsNotesService implements OnModuleInit {
   }
 
   async deleteDraft(id: bigint) {
-    const { db } = this.support.tenant();
-    const note = await db.goodsNote.findFirst({ where: { id } });
-    if (!note) throw DomainError.notFound('GoodsNote', id.toString());
-    if (note.status !== 'DRAFT') {
-      throw new DomainError(ErrorCode.CONFLICT, 'Only draft notes can be deleted');
-    }
-    assertBranchAllowed(note.branchId);
-    await db.goodsNote.delete({ where: { id } });
+    const { tenantId, db } = this.support.tenant();
+    await db.$transaction(async (tx) => {
+      // Locked and re-checked: a delete racing a post of the same draft never
+      // deletes a posted note (and the order's received quantities with it).
+      const note = await this.lockNote(tx, tenantId, id);
+      if (note.status !== 'DRAFT') {
+        throw new DomainError(ErrorCode.CONFLICT, 'Only draft notes can be deleted');
+      }
+      assertBranchAllowed(note.branch_id);
+      await tx.goodsNote.delete({ where: { id } });
+    }, POSTING_TX_OPTIONS);
     return { deleted: true };
   }
 
   /**
-   * POST /purchase-orders/:id/receive (ADR-026 §5): a draft GRN against the
-   * order, dated `noteDate`, for the given base quantities, or for what is
-   * left on every line. Posting it receives the goods.
+   * POST /purchase-orders/:id/receive (ADR-026 §5, coordinator decision on
+   * #50): receives the goods in ONE action — the GRN against the order is
+   * created and posted in one transaction (the posting and lock order of
+   * post()), for the given base quantities or what is left on every line, so
+   * no draft is left behind. Drafts made with POST /goods-notes still post as before.
    */
   async receive(orderId: bigint, dto: ReceivePurchaseOrderDto) {
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const body = await this.receiveBody(orderId, dto);
+    this.assertShape(body);
+    const result = await this.support.withRetry(() =>
+      db.$transaction(async (tx) => {
+        // company (shared) → the order FOR UPDATE → its lines, then the new note.
+        const locks = await this.lockSources(tx, tenantId, companyId, orderId, null, false);
+        const p = await this.prepare(tx, tenantId, companyId, body, locks, null);
+        const created = await this.writeNote(tx, tenantId, companyId, body, p, orderId, null);
+        return this.postLocked(tx, companyId, created.id, { purchaseOrderId: orderId, issueRequestId: null }, locks);
+      }, POSTING_TX_OPTIONS),
+    );
+    await this.audit.log({
+      action: 'goods_note.create',
+      entityType: 'goods_note',
+      entityId: result.id,
+      after: { noteType: 'GRN', lines: body.lines.length, purchaseOrderId: orderId.toString(), via: 'receive' },
+    });
+    await this.auditPost(result);
+    return this.get(result.id);
+  }
+
+  /** The GRN a receive action writes: the order's warehouse, the given lines or what is left. */
+  private async receiveBody(orderId: bigint, dto: ReceivePurchaseOrderDto): Promise<CreateGoodsNoteDto> {
     // Another tenant's or branch's order answers 404 before anything else.
     const order = await this.orders.receivable(orderId);
     const byId = new Map(order.lines.map((l) => [l.id, l]));
@@ -345,15 +358,15 @@ export class GoodsNotesService implements OnModuleInit {
       order.lines
         .filter((l) => l.remaining.gt(0))
         .map((l) => ({ itemId: l.itemId.toString(), qty: l.remaining.toString(), poLineId: l.id.toString() }));
-    // Nothing left: the order is RECEIVED (or not receivable); create refuses it under the order's lock.
-    return this.create({
+    // Nothing left: the order is RECEIVED (or not receivable); prepare refuses it under the order's lock.
+    return {
       noteDate: dto.noteDate,
       noteType: 'GRN',
       warehouseId: order.warehouseId.toString(),
       description: dto.description,
       purchaseOrderId: orderId.toString(),
       lines: wanted,
-    });
+    };
   }
 
   /**
@@ -512,7 +525,6 @@ export class GoodsNotesService implements OnModuleInit {
   async post(id: bigint) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const userId = this.support.userId();
     // The order and request never change after creation: read them first to lock them first (ADR-026 §10).
     const head = await db.goodsNote.findFirst({ where: { id }, select: { purchaseOrderId: true, issueRequestId: true } });
     if (!head) throw DomainError.notFound('GoodsNote', id.toString());
@@ -525,124 +537,14 @@ export class GoodsNotesService implements OnModuleInit {
         // state and two concurrent requests cannot both post it or both take
         // the same order quantity.
         const locks = await this.lockSources(tx, tenantId, companyId, head.purchaseOrderId, head.issueRequestId, false);
-        await this.lockNote(tx, tenantId, id);
-        const draft = await tx.goodsNote.findFirst({
-          where: { id },
-          include: { lines: { orderBy: { lineNo: 'asc' } } },
-        });
-        if (!draft) throw DomainError.notFound('GoodsNote', id.toString());
-        if (draft.status !== 'DRAFT') {
-          throw new DomainError(ErrorCode.CONFLICT, 'Note is not a draft');
-        }
-        assertBranchAllowed(draft.branchId);
-        if (draft.lines.length === 0) {
-          throw new DomainError(ErrorCode.VALIDATION, 'Note has no lines');
-        }
-        if (draft.purchaseOrderId !== head.purchaseOrderId || draft.issueRequestId !== head.issueRequestId) {
-          throw new DomainError(ErrorCode.CONFLICT, 'The note changed while posting; try again');
-        }
-
-        const noteDate = new Date(draft.noteDate);
-        const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, noteDate);
-        const isGrn = draft.noteType === 'GRN';
-
-        // ADR-026 §5/§9: checked again under the order's (or request's) locks.
-        const received = locks.order ? this.checkReceipt(locks.order, draft.warehouseId, draft.lines) : null;
-        const issued = locks.request ? this.checkIssue(locks, draft.warehouseId, draft.lines) : null;
-        if (!isGrn && !locks.request) await this.assertIssueWithoutRequest(tx, tenantId, locks.level);
-        if (draft.expenseAccountId) await assertExpenseAccount(tx, companyId, draft.expenseAccountId);
-
-        // Lock every (item, warehouse) in the fixed order before any movement.
-        await this.ledger.lockForDocument(
-          tx,
-          companyId,
-          draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
-        );
-
-        let totalCost = new Decimal(0);
-        let writeOff = new Decimal(0);
-        for (const line of draft.lines) {
-          const res = await this.ledger.applyMovement(tx, companyId, {
-            warehouseId: draft.warehouseId,
-            itemId: line.itemId,
-            movementDate: noteDate,
-            type: isGrn ? 'IN' : 'OUT',
-            qty: line.qty.toString(),
-            unitCost: isGrn ? (line.unitCost?.toString() ?? undefined) : undefined,
-            sourceType: isGrn ? 'GOODS_RECEIPT' : 'GOODS_ISSUE',
-            sourceId: draft.id,
-            sourceLineId: line.id,
-            description: `${draft.noteType} ${draft.id}`,
-          });
-          totalCost = totalCost.plus(res.totalCost);
-          writeOff = writeOff.plus(res.writeOff);
-        }
-
-        if (locks.order && received) await this.orders.recordReceipt(tx, locks.order, received);
-        const closedRequest = locks.request && issued ? await this.issueRequests.recordIssue(tx, locks.request, issued) : false;
-
-        const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
-          'INVENTORY',
-          'INVENTORY_ADJUSTMENT',
-          'GOODS_RECEIVED_NOT_INVOICED',
-        ]);
-
-        const journalLines: JournalLineInput[] = [];
-        if (totalCost.gt(0)) {
-          if (isGrn) {
-            journalLines.push({ accountId: mapping.INVENTORY, debit: totalCost.toString() });
-            journalLines.push({
-              accountId: mapping.GOODS_RECEIVED_NOT_INVOICED,
-              credit: totalCost.toString(),
-            });
-          } else {
-            // ADR-026 §8: the department's expense account, else the old INVENTORY_ADJUSTMENT.
-            journalLines.push({ accountId: draft.expenseAccountId ?? mapping.INVENTORY_ADJUSTMENT, debit: totalCost.toString() });
-            journalLines.push({ accountId: mapping.INVENTORY, credit: totalCost.toString() });
-          }
-        }
-        journalLines.push(
-          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
-        );
-
-        const docType = isGrn ? 'GOODS_RECEIPT' : 'GOODS_ISSUE';
-        const docNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, docType, noteDate);
-        let entryId: bigint | null = null;
-        if (journalLines.length > 0) {
-          const entry = await this.posting.postEntry(tx, {
-            tenantId,
-            companyId,
-            entryDate: noteDate,
-            fiscalPeriodId: period.id,
-            sourceType: docType,
-            sourceId: draft.id,
-            branchId: draft.branchId,
-            description: draft.description ?? `${draft.noteType} ${docNo}`,
-            lines: journalLines,
-            postedBy: userId ?? null,
-            // ADR-024 §1.2 / ADR-026 §8: the department onto the income-statement lines.
-            costCenterId: draft.costCenterId,
-            // ADR-024 §1.3: a GIN to a department has a centre field, so a flagged
-            // expense account needs one; a note without one keeps the old rule.
-            requireCostCenters: draft.expenseAccountId !== null,
-          });
-          entryId = entry.id;
-        }
-
-        await tx.goodsNote.update({
-          where: { id: draft.id },
-          data: {
-            status: 'POSTED',
-            docNo,
-            journalEntryId: entryId,
-            postedAt: new Date(),
-            postedBy: userId ?? null,
-          },
-        });
-        return { id: draft.id, docNo, closedRequest: closedRequest ? locks.request!.id : null };
+        return this.postLocked(tx, companyId, id, head, locks);
       }, POSTING_TX_OPTIONS),
     );
+    await this.auditPost(result);
+    return this.get(result.id);
+  }
 
+  private async auditPost(result: { id: bigint; docNo: string; closedRequest: bigint | null }) {
     await this.audit.log({
       action: 'goods_note.post',
       entityType: 'goods_note',
@@ -652,7 +554,146 @@ export class GoodsNotesService implements OnModuleInit {
     if (result.closedRequest) {
       await this.audit.log({ action: 'issue_request.close', entityType: 'issue_request', entityId: result.closedRequest, after: { reason: 'fully_issued' } });
     }
-    return this.get(result.id);
+  }
+
+  /**
+   * Posts a draft note on the caller's transaction, which already holds the
+   * company, order or request locks (lockSources, FOR UPDATE): the note is
+   * locked next, then item_costs and stock_balances (ADR-026 §10).
+   */
+  private async postLocked(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    id: bigint,
+    head: { purchaseOrderId: bigint | null; issueRequestId: bigint | null },
+    locks: { level: ProcurementLevel; order: LockedOrder | null; request: LockedIssueRequest | null },
+  ): Promise<{ id: bigint; docNo: string; closedRequest: bigint | null }> {
+    const { tenantId } = this.support.tenant();
+    const userId = this.support.userId();
+    await this.lockNote(tx, tenantId, id);
+    const draft = await tx.goodsNote.findFirst({
+      where: { id },
+      include: { lines: { orderBy: { lineNo: 'asc' } } },
+    });
+    if (!draft) throw DomainError.notFound('GoodsNote', id.toString());
+    if (draft.status !== 'DRAFT') {
+      throw new DomainError(ErrorCode.CONFLICT, 'Note is not a draft');
+    }
+    assertBranchAllowed(draft.branchId);
+    if (draft.lines.length === 0) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Note has no lines');
+    }
+    if (draft.purchaseOrderId !== head.purchaseOrderId || draft.issueRequestId !== head.issueRequestId) {
+      throw new DomainError(ErrorCode.CONFLICT, 'The note changed while posting; try again');
+    }
+
+    const noteDate = new Date(draft.noteDate);
+    const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, noteDate);
+    const isGrn = draft.noteType === 'GRN';
+
+    // ADR-026 §5/§9: checked again under the order's (or request's) locks.
+    const received = locks.order ? this.checkReceipt(locks.order, draft.warehouseId, draft.lines) : null;
+    const issued = locks.request ? this.checkIssue(locks, draft.warehouseId, draft.lines) : null;
+    if (locks.request) {
+      // ADR-026 §9: again at posting, the request's department and expense account exactly.
+      if (draft.costCenterId !== locks.request.costCenterId || draft.expenseAccountId !== locks.request.expenseAccountId) {
+        throw new DomainError(ErrorCode.ISSUE_REQUEST_DEPARTMENT_MISMATCH, "An issue from a request is to the request's department and expense account", {
+          requestCostCenterId: locks.request.costCenterId?.toString() ?? null,
+          requestExpenseAccountId: locks.request.expenseAccountId?.toString() ?? null,
+        });
+      }
+    }
+    if (!isGrn && !locks.request) await this.assertIssueWithoutRequest(tx, tenantId, locks.level);
+    if (draft.expenseAccountId) await assertExpenseAccount(tx, companyId, draft.expenseAccountId);
+
+    // Lock every (item, warehouse) in the fixed order before any movement.
+    await this.ledger.lockForDocument(
+      tx,
+      companyId,
+      draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
+    );
+
+    let totalCost = new Decimal(0);
+    let writeOff = new Decimal(0);
+    for (const line of draft.lines) {
+      const res = await this.ledger.applyMovement(tx, companyId, {
+        warehouseId: draft.warehouseId,
+        itemId: line.itemId,
+        movementDate: noteDate,
+        type: isGrn ? 'IN' : 'OUT',
+        qty: line.qty.toString(),
+        unitCost: isGrn ? (line.unitCost?.toString() ?? undefined) : undefined,
+        sourceType: isGrn ? 'GOODS_RECEIPT' : 'GOODS_ISSUE',
+        sourceId: draft.id,
+        sourceLineId: line.id,
+        description: `${draft.noteType} ${draft.id}`,
+      });
+      totalCost = totalCost.plus(res.totalCost);
+      writeOff = writeOff.plus(res.writeOff);
+    }
+
+    if (locks.order && received) await this.orders.recordReceipt(tx, locks.order, received);
+    const closedRequest = locks.request && issued ? await this.issueRequests.recordIssue(tx, locks.request, issued) : false;
+
+    const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
+      'INVENTORY',
+      'INVENTORY_ADJUSTMENT',
+      'GOODS_RECEIVED_NOT_INVOICED',
+    ]);
+
+    const journalLines: JournalLineInput[] = [];
+    if (totalCost.gt(0)) {
+      if (isGrn) {
+        journalLines.push({ accountId: mapping.INVENTORY, debit: totalCost.toString() });
+        journalLines.push({
+          accountId: mapping.GOODS_RECEIVED_NOT_INVOICED,
+          credit: totalCost.toString(),
+        });
+      } else {
+        // ADR-026 §8: the department's expense account, else the old INVENTORY_ADJUSTMENT.
+        journalLines.push({ accountId: draft.expenseAccountId ?? mapping.INVENTORY_ADJUSTMENT, debit: totalCost.toString() });
+        journalLines.push({ accountId: mapping.INVENTORY, credit: totalCost.toString() });
+      }
+    }
+    journalLines.push(
+      ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+    );
+
+    const docType = isGrn ? 'GOODS_RECEIPT' : 'GOODS_ISSUE';
+    const docNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, docType, noteDate);
+    let entryId: bigint | null = null;
+    if (journalLines.length > 0) {
+      const entry = await this.posting.postEntry(tx, {
+        tenantId,
+        companyId,
+        entryDate: noteDate,
+        fiscalPeriodId: period.id,
+        sourceType: docType,
+        sourceId: draft.id,
+        branchId: draft.branchId,
+        description: draft.description ?? `${draft.noteType} ${docNo}`,
+        lines: journalLines,
+        postedBy: userId ?? null,
+        // ADR-024 §1.2 / ADR-026 §8: the department onto the income-statement lines.
+        costCenterId: draft.costCenterId,
+        // ADR-024 §1.3: a GIN to a department has a centre field, so a flagged
+        // expense account needs one; a note without one keeps the old rule.
+        requireCostCenters: draft.expenseAccountId !== null,
+      });
+      entryId = entry.id;
+    }
+
+    await tx.goodsNote.update({
+      where: { id: draft.id },
+      data: {
+        status: 'POSTED',
+        docNo,
+        journalEntryId: entryId,
+        postedAt: new Date(),
+        postedBy: userId ?? null,
+      },
+    });
+    return { id: draft.id, docNo, closedRequest: closedRequest ? locks.request!.id : null };
   }
 
   // ------------------------------------------------------------- internals
@@ -798,13 +839,21 @@ export class GoodsNotesService implements OnModuleInit {
       } else {
         await this.assertIssueWithoutRequest(tx, tenantId, locks.level);
       }
+      // ADR-026 §9: an issue from a request is to the request's department and
+      // expense account, prefilled from it; another one is refused.
+      const wanted = locks.request
+        ? this.requestDepartment(locks.request, dto)
+        : {
+            costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
+            expenseAccountId: dto.expenseAccountId ? BigInt(dto.expenseAccountId) : null,
+          };
       // Share-lock the centre before the row that references it (ADR-024 §1.4).
-      if (dto.costCenterId) {
-        costCenterId = BigInt(dto.costCenterId);
+      if (wanted.costCenterId) {
+        costCenterId = wanted.costCenterId;
         await this.costCenters.assertUsable(tx, tenantId, companyId, costCenterId);
       }
-      if (dto.expenseAccountId) {
-        expenseAccountId = BigInt(dto.expenseAccountId);
+      if (wanted.expenseAccountId) {
+        expenseAccountId = wanted.expenseAccountId;
         await assertExpenseAccount(tx, companyId, expenseAccountId);
       }
     }
@@ -821,6 +870,33 @@ export class GoodsNotesService implements OnModuleInit {
         poLineId: null,
         issueRequestLineId: l.issueRequestLineId ? BigInt(l.issueRequestLineId) : null,
       })),
+    };
+  }
+
+  /**
+   * ADR-026 §9: the cost centre and expense account of an issue from a
+   * request are the approved request's. Omitted, they are taken from it; a
+   * different one (or one where the request has none) is refused with
+   * ISSUE_REQUEST_DEPARTMENT_MISMATCH.
+   */
+  private requestDepartment(
+    req: LockedIssueRequest,
+    given: { costCenterId?: string | null; expenseAccountId?: string | null },
+  ): { costCenterId: bigint | null; expenseAccountId: bigint | null } {
+    const pick = (field: 'costCenterId' | 'expenseAccountId', value: string | null | undefined, own: bigint | null) => {
+      if (value === undefined || value === null || value === '') return own;
+      if (own === null || BigInt(value) !== own) {
+        throw new DomainError(
+          ErrorCode.ISSUE_REQUEST_DEPARTMENT_MISMATCH,
+          `An issue from a request is to the request's ${field === 'costCenterId' ? 'cost centre' : 'expense account'}`,
+          { field, requestValue: own?.toString() ?? null, given: value },
+        );
+      }
+      return own;
+    };
+    return {
+      costCenterId: pick('costCenterId', given.costCenterId, req.costCenterId),
+      expenseAccountId: pick('expenseAccountId', given.expenseAccountId, req.expenseAccountId),
     };
   }
 
@@ -926,6 +1002,36 @@ export class GoodsNotesService implements OnModuleInit {
       `At the FULL procurement level a goods issue comes from an approved issue request, or needs ${PERMISSIONS.STOCK_ISSUE_WITHOUT_REQUEST}`,
       { level },
     );
+  }
+
+  /** A new draft note and its lines, as prepared. */
+  private async writeNote(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    dto: CreateGoodsNoteDto,
+    p: PreparedNote,
+    orderId: bigint | null,
+    requestId: bigint | null,
+  ) {
+    const created = await tx.goodsNote.create({
+      data: {
+        tenantId,
+        companyId,
+        branchId: p.branchId,
+        warehouseId: p.warehouseId,
+        noteDate: new Date(dto.noteDate),
+        noteType: dto.noteType,
+        description: dto.description ?? null,
+        purchaseOrderId: orderId,
+        supplierId: p.supplierId,
+        expenseAccountId: p.expenseAccountId,
+        costCenterId: p.costCenterId,
+        issueRequestId: requestId,
+      },
+    });
+    await this.writeLines(tx, tenantId, created.id, p.lines);
+    return created;
   }
 
   private async writeLines(tx: Prisma.TransactionClient, tenantId: bigint, noteId: bigint, lines: NoteLineRow[]) {

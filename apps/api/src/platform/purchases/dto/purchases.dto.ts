@@ -17,6 +17,8 @@ import { PageQueryDto, SortParam, sortValues } from '../../../common/paging/page
 const PAYMENT_TYPES = ['CASH', 'CREDIT'] as const;
 const DECIMAL = /^\d+(\.\d{1,6})?$/;
 const INT_STRING = /^\d+$/;
+/** A unit cost: at most 12 integer digits and 6 decimals, the range of DECIMAL(18, 6), so a 400 and never a 500. */
+const UNIT_COST = /^\d{1,12}(\.\d{1,6})?$/;
 
 export class PurchaseInvoiceLineDto {
   @IsString()
@@ -32,9 +34,9 @@ export class PurchaseInvoiceLineDto {
   @Matches(DECIMAL)
   qty!: string;
 
-  /** Price per unit, up to 6 decimals (an order price, ADR-026 §5; CLAUDE.md unit costs). */
+  /** Price per unit, up to 12 integer digits and 6 decimals (an order price, ADR-026 §5; CLAUDE.md unit costs). */
   @IsString()
-  @Matches(DECIMAL)
+  @Matches(UNIT_COST)
   unitCost!: string;
 
   @IsOptional()
@@ -142,9 +144,9 @@ export class BillLineDto {
   @Matches(DECIMAL)
   qty!: string;
 
-  /** The supplier's price per base unit (the order's by default, GET …/billable). */
+  /** The supplier's price per base unit (the order's by default, GET …/billable); 12 integer digits, 6 decimals at most. */
   @IsString()
-  @Matches(DECIMAL)
+  @Matches(UNIT_COST)
   unitCost!: string;
 
   @IsOptional()

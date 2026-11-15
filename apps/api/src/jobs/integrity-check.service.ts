@@ -235,6 +235,20 @@ export class IntegrityCheckService {
            OR x.billed_qty > x.qty)
           AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
+    // ADR-026 §7 (review #50): what posted invoices cleared from 2104 per GRN line
+    // never passes the line's received value, no link clears a negative value, and
+    // a line billed in full has cleared its value exactly (2104 back to zero).
+    await orphans(
+      'goods_note_lines.cleared_value',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM goods_note_lines x
+        WHERE x.po_line_id IS NOT NULL
+          AND (x.cleared_value < 0
+           OR x.cleared_value > ROUND(x.qty * COALESCE(x.unit_cost, 0), 3)
+           OR (x.billed_qty = x.qty AND x.cleared_value <> ROUND(x.qty * COALESCE(x.unit_cost, 0), 3))
+           OR EXISTS (SELECT 1 FROM purchase_invoice_receipts r
+                       WHERE r.tenant_id = x.tenant_id AND r.grn_line_id = x.id AND r.cleared_value < 0))
+          AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
     await orphans(
       'issue_request_lines.issued_qty',
       db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM issue_request_lines x

@@ -138,5 +138,8 @@ export enum ErrorCode {
   // ADR-026 §9: the issued quantity is above what is left on the request line
   // (details.requestLineId, details.remaining, details.wanted).
   ISSUE_REQUEST_QTY_EXCEEDED = 'ISSUE_REQUEST_QTY_EXCEEDED',
+  // ADR-026 §9: an issue from a request is to the request's cost centre and expense
+  // account (details.field, details.requestValue).
+  ISSUE_REQUEST_DEPARTMENT_MISMATCH = 'ISSUE_REQUEST_DEPARTMENT_MISMATCH',
   INTERNAL = 'INTERNAL',
 }

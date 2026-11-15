@@ -71,6 +71,21 @@ export class PurchaseInvoiceLineViewDto extends PurchaseInvoiceLineRow {
   receipts!: PurchaseInvoiceReceiptLinkDto[];
 }
 
+/** An invoice line priced above its order line: the net prices per base unit compared (ADR-026 §2). */
+export class PriceAboveOrderLineDto {
+  @ApiProperty({ type: 'integer' })
+  lineNo!: number;
+
+  @ApiProperty({ type: 'string' })
+  grnLineId!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  invoiceNetUnitPrice!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  orderNetUnitPrice!: string;
+}
+
 /** The purchase order an invoice bills (ADR-026 §7). */
 export class PurchaseInvoiceOrderRefDto extends PickType(PurchaseOrderRow, ['id', 'orderNo', 'status'] as const) {}
 
@@ -120,6 +135,10 @@ export class PurchaseInvoiceDetailDto extends PurchaseInvoiceRow {
 
   @ApiProperty({ type: () => PurchaseInvoiceOrderRefDto, nullable: true })
   purchaseOrder!: PurchaseInvoiceOrderRefDto | null;
+
+  /** ADR-026 §2: on a draft on an order, the lines priced above the order (empty otherwise). */
+  @ApiProperty({ type: () => PriceAboveOrderLineDto, isArray: true })
+  priceAboveOrderLines!: PriceAboveOrderLineDto[];
 
   @ApiProperty({ type: 'string', format: 'decimal' })
   creditedAmount!: string;

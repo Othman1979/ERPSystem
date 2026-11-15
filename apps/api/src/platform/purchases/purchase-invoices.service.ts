@@ -67,6 +67,7 @@ import {
   type LockedOrderLine,
 } from '../procurement/purchase-order-receipts.service.js';
 import type { BillPurchaseOrderDto } from './dto/purchases.dto.js';
+import { clearedThrough } from '../shared/receipt-clearing.js';
 
 const SOURCE = 'PURCHASE_INVOICE';
 
@@ -473,7 +474,14 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       },
     });
     if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
-    return withBalance(inv, await this.creditedFor(db, [inv.id]));
+    // ADR-026 §2: a draft on an order shows the lines above the order price (what the approval covers).
+    let priceAboveOrderLines: AbovePrice[] = [];
+    if (inv.status === 'DRAFT' && inv.purchaseOrderId) {
+      const order = await this.orders.forBilling(inv.purchaseOrderId);
+      const received = await this.goodsNotes.receiptLinesOf(db, { lineIds: inv.lines.flatMap((l) => l.receipts.map((r) => r.grnLineId)) });
+      priceAboveOrderLines = this.abovePrice(inv, order, received);
+    }
+    return { ...withBalance(inv, await this.creditedFor(db, [inv.id])), priceAboveOrderLines };
   }
 
   async create(dto: CreatePurchaseInvoiceDto) {
@@ -484,24 +492,29 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const pricesIncludeTax = await this.support.pricesIncludeTax(db);
     const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto, lines);
+    this.assertReceiptLinksNeedOrder(order, lines);
     if (order) this.assertOrderHeader(order, dto);
     const costCenterId = dto.costCenterId ? BigInt(dto.costCenterId) : (order?.costCenterId ?? null);
 
     // Retried on a lock conflict: the transaction now share-locks the company row (ADR-025 §4).
-    const inv = await this.support.withRetry(() => db.$transaction(async (tx) => {
-      if (order) {
-        // ADR-026 §7: billing an order's receipts is not a direct purchase; the
-        // company row is still share-locked first (ADR-026 §10).
-        await lockProcurementLevel(tx, tenantId, companyId);
-      } else {
-        // ADR-025 §4: at MEDIUM / FULL a direct purchase needs purchase.direct (owners aside).
-        await assertDirectPurchaseAllowed(tx, tenantId, companyId);
-      }
-      // Share-lock the header centre before the row that references it (ADR-024 §1.4).
-      if (costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, costCenterId);
-      const receivedGrnId = await this.checkDraftGrn(tx, tenantId, null, dto, lines);
-      if (order) await this.checkDraftReceipts(tx, order, lines);
-      const created = await tx.purchaseInvoice.create({
+    const inv = await this.support.withRetry(async () => {
+      const noteIds = order ? await this.receiptNoteIds(this.linkedGrnLineIds(lines)) : [];
+      return db.$transaction(async (tx) => {
+        let received: Map<bigint, ReceiptLine> | null = null;
+        if (order) {
+          // ADR-026 §7/§10: billing an order's receipts is not a direct purchase.
+          // The posting's lock order: company (shared) → the order → its GRNs →
+          // their lines, so a draft and a posting never wait on each other in a cycle.
+          received = await this.lockReceiptBilling(tx, tenantId, companyId, order.id, noteIds);
+        } else {
+          // ADR-025 §4: at MEDIUM / FULL a direct purchase needs purchase.direct (owners aside).
+          await assertDirectPurchaseAllowed(tx, tenantId, companyId);
+        }
+        // Share-lock the header centre before the row that references it (ADR-024 §1.4).
+        if (costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, costCenterId);
+        const receivedGrnId = await this.checkDraftGrn(tx, tenantId, null, dto, lines);
+        if (order && received) this.assertDraftReceipts(order.id, lines, received);
+        const created = await tx.purchaseInvoice.create({
         data: {
           tenantId,
           companyId,
@@ -525,9 +538,10 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           createdBy: this.support.userId() ?? null,
         },
       });
-      await this.writeLines(tx, tenantId, created.id, lines);
-      return created;
-    }, POSTING_TX_OPTIONS));
+        await this.writeLines(tx, tenantId, created.id, lines);
+        return created;
+      }, POSTING_TX_OPTIONS);
+    });
     await this.audit.log({
       action: 'purchase_invoice.create',
       entityType: 'purchase_invoice',
@@ -555,15 +569,24 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const pricesIncludeTax = await this.support.pricesIncludeTax(db);
     const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto, lines);
+    this.assertReceiptLinksNeedOrder(order, lines);
     if (order) this.assertOrderHeader(order, dto);
     const costCenterId = dto.costCenterId ? BigInt(dto.costCenterId) : (order?.costCenterId ?? null);
 
-    await db.$transaction(async (tx) => {
-      // Lock the invoice first and re-check it under the lock, the order
-      // posting follows (invoice, then GRN): a save racing a post of the same
-      // draft queues here instead of deadlocking, and never rewrites a posted
-      // invoice. A locking read, so the GRN lock below is still taken before
-      // this transaction's first plain read (see assertGrnBillable).
+    // Retried on a lock conflict, like posting.
+    await this.support.withRetry(async () => {
+      // The GRNs the draft bills now and will bill after the save, read before the transaction to lock them first.
+      const noteIds = order
+        ? await this.receiptNoteIds([...this.linkedGrnLineIds(lines), ...(await this.currentGrnLineIds(id))])
+        : [];
+      return db.$transaction(async (tx) => {
+      // Locks in the posting's order, all locking reads ahead of the first plain read:
+      //  - on an order (ADR-026 §10): company (shared) → the order → its GRNs →
+      //    their lines → the invoice, the order postFromReceipts takes them in;
+      //  - otherwise: the invoice, then the GRN it bills (TRADE-02, as post()).
+      // A save racing a post of the same draft queues on the first shared lock
+      // instead of deadlocking, and never rewrites a posted invoice.
+      const received = order ? await this.lockReceiptBilling(tx, tenantId, companyId, order.id, noteIds) : null;
       const [locked] = await tx.$queryRaw<{ status: string; branch_id: bigint | null }[]>`
         SELECT status, branch_id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
       if (!locked) throw DomainError.notFound('PurchaseInvoice', id.toString());
@@ -574,7 +597,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       // Share-lock the header centre before the row that references it (ADR-024 §1.4).
       if (costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, costCenterId);
       const receivedGrnId = await this.checkDraftGrn(tx, tenantId, id, dto, lines);
-      if (order) await this.checkDraftReceipts(tx, order, lines);
+      if (order && received) this.assertDraftReceipts(order.id, lines, received);
       // Cascades to the lines' receipt links (purchase_invoice_receipts).
       await tx.purchaseInvoiceLine.deleteMany({ where: { invoiceId: id } });
       await tx.purchaseInvoice.update({
@@ -600,7 +623,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         },
       });
       await this.writeLines(tx, tenantId, id, lines);
-    }, POSTING_TX_OPTIONS);
+      }, POSTING_TX_OPTIONS);
+    });
     await this.audit.log({
       action: 'purchase_invoice.update',
       entityType: 'purchase_invoice',
@@ -610,14 +634,19 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
   }
 
   async deleteDraft(id: bigint) {
-    const { db } = this.support.tenant();
-    const inv = await db.purchaseInvoice.findFirst({ where: { id } });
-    if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
-    if (inv.status !== 'DRAFT') {
-      throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be deleted');
-    }
-    assertBranchAllowed(inv.branchId);
-    await db.purchaseInvoice.delete({ where: { id } });
+    const { tenantId, db } = this.support.tenant();
+    await db.$transaction(async (tx) => {
+      // Locked and re-checked: a delete racing a post of the same draft never
+      // deletes a posted invoice (and its GRN lines' billed quantities).
+      const [inv] = await tx.$queryRaw<{ status: string; branch_id: bigint | null }[]>`
+        SELECT status, branch_id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
+      if (inv.status !== 'DRAFT') {
+        throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be deleted');
+      }
+      assertBranchAllowed(inv.branch_id === null ? null : BigInt(inv.branch_id));
+      await tx.purchaseInvoice.delete({ where: { id } });
+    }, POSTING_TX_OPTIONS);
     return { deleted: true };
   }
 
@@ -841,18 +870,10 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const userId = this.support.userId();
-    const noteIds = async () => {
-      const links = await db.purchaseInvoiceReceipt.findMany({ where: { invoiceLine: { invoiceId: id } }, select: { grnLineId: true } });
-      const lines = await this.goodsNotes.receiptLinesOf(db, { lineIds: links.map((l) => l.grnLineId) });
-      return [...new Set([...lines.values()].map((l) => l.noteId))];
-    };
-
     const result = await this.support.withRetry(async () => {
-      const grnIds = await noteIds();
+      const grnIds = await this.receiptNoteIds(await this.currentGrnLineIds(id));
       return db.$transaction(async (tx) => {
-        await lockProcurementLevel(tx, tenantId, companyId);
-        const order = await this.orders.lockOrder(tx, orderId);
-        const received = await this.goodsNotes.lockReceiptLines(tx, grnIds);
+        const { order, received } = await this.lockReceiptBillingWithOrder(tx, tenantId, companyId, orderId, grnIds);
         await tx.$queryRaw`SELECT id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
         const draft = await tx.purchaseInvoice.findFirst({
           where: { id },
@@ -909,8 +930,13 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           });
         }
 
-        // Pro-rata clearing, in line order; the bill that takes the last of a
-        // GRN line takes what is left of its value (ADR-026 §7).
+        // Pro-rata clearing, cumulative, in line order (ADR-026 §7): what a GRN
+        // line has cleared once `billedAfter` of it is billed is
+        // round3(value × billedAfter / received); each bill clears the step from
+        // what was cleared before. Every step lies between 0 and what is left
+        // (round3 is monotonic), and the bill that takes the last of the line
+        // clears exactly value − Σ cleared, so 2104 ends at zero. A per-bill
+        // round3 of value × qty / received could overshoot and leave a negative rest.
         const running = new Map([...received].map(([lineId, r]) => [lineId, { billed: r.billedQty, cleared: r.clearedValue }]));
         const perGrnLine = new Map<bigint, { qty: Decimal; cleared: Decimal }>();
         let cleared = new Decimal(0);
@@ -927,7 +953,11 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
             const run = running.get(link.grnLineId)!;
             const qty = new Decimal(link.qty.toString());
             const billedAfter = run.billed.plus(qty);
-            const value = billedAfter.eq(r.qty) ? r.value.minus(run.cleared) : round3(r.value.times(qty).div(r.qty));
+            const value = clearedThrough(r.value, billedAfter, r.qty).minus(run.cleared);
+            if (value.lt(0)) {
+              // Unreachable while cleared_value is a projection of this rule (integrity check); refuse rather than post it.
+              throw new DomainError(ErrorCode.INTERNAL, `GRN line ${r.id} would clear a negative value`);
+            }
             run.billed = billedAfter;
             run.cleared = run.cleared.plus(value);
             const acc = perGrnLine.get(link.grnLineId) ?? { qty: new Decimal(0), cleared: new Decimal(0) };
@@ -1210,18 +1240,77 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     }
   }
 
+  /** The GRN lines the lines of a draft name (ADR-026 §7). */
+  private linkedGrnLineIds(lines: ResolvedLine[]): bigint[] {
+    return lines.filter((l) => l.dto.grnLineId).map((l) => BigInt(l.dto.grnLineId!));
+  }
+
+  /** The GRN lines an invoice's saved lines bill now (plain read, before its transaction). */
+  private async currentGrnLineIds(invoiceId: bigint): Promise<bigint[]> {
+    const { db } = this.support.tenant();
+    const links = await db.purchaseInvoiceReceipt.findMany({ where: { invoiceLine: { invoiceId } }, select: { grnLineId: true } });
+    return links.map((l) => l.grnLineId);
+  }
+
   /**
-   * Draft check of an invoice on an order (ADR-026 §3, §7) on the draft's
-   * transaction; posting checks it all again under the locks.
+   * The goods notes holding these GRN lines, read before the transaction so
+   * it can lock them first (a posted GRN line never moves to another note).
    */
-  private async checkDraftReceipts(tx: Prisma.TransactionClient, order: BillingOrder, lines: ResolvedLine[]): Promise<void> {
+  private async receiptNoteIds(grnLineIds: bigint[]): Promise<bigint[]> {
+    if (grnLineIds.length === 0) return [];
+    const { db } = this.support.tenant();
+    const lines = await this.goodsNotes.receiptLinesOf(db, { lineIds: [...new Set(grnLineIds)] });
+    return [...new Set([...lines.values()].map((l) => l.noteId))];
+  }
+
+  /**
+   * ADR-026 §10, for every writer of an invoice on an order (create, update,
+   * post): company (shared) → the order FOR UPDATE → its lines → the GRNs
+   * (ascending) → their lines (ascending), all locking reads. The invoice row
+   * comes after. Returns the locked order and GRN lines.
+   */
+  private async lockReceiptBillingWithOrder(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    orderId: bigint,
+    noteIds: bigint[],
+  ) {
+    await lockProcurementLevel(tx, tenantId, companyId);
+    const order = await this.orders.lockOrder(tx, orderId);
+    const received = await this.goodsNotes.lockReceiptLines(tx, noteIds);
+    return { order, received };
+  }
+
+  private async lockReceiptBilling(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    orderId: bigint,
+    noteIds: bigint[],
+  ): Promise<Map<bigint, ReceiptLine>> {
+    return (await this.lockReceiptBillingWithOrder(tx, tenantId, companyId, orderId, noteIds)).received;
+  }
+
+  /** ADR-026 §7: a line bills a GRN line only on an invoice on a purchase order. */
+  private assertReceiptLinksNeedOrder(order: BillingOrder | null, lines: ResolvedLine[]): void {
+    if (!order && lines.some((l) => l.dto.grnLineId)) {
+      throw new DomainError(ErrorCode.VALIDATION, 'grnLineId needs purchaseOrderId: only an invoice on a purchase order bills GRN lines', {
+        field: 'grnLineId',
+      });
+    }
+  }
+
+  /**
+   * Draft check of an invoice on an order (ADR-026 §3, §7) against the GRN
+   * lines locked on the draft's transaction; posting checks it all again.
+   */
+  private assertDraftReceipts(orderId: bigint, lines: ResolvedLine[], received: Map<bigint, ReceiptLine>): void {
     if (lines.some((l) => l.dto.grnLineId && l.itemKind !== 'STOCK')) {
       throw new DomainError(ErrorCode.VALIDATION, 'Only a stocked line bills a GRN line');
     }
-    const lineIds = lines.filter((l) => l.dto.grnLineId).map((l) => BigInt(l.dto.grnLineId!));
-    const received = await this.goodsNotes.receiptLinesOf(tx, { lineIds });
     this.assertReceiptMatch(
-      order.id,
+      orderId,
       lines.map((l, i) => ({
         lineNo: i + 1,
         itemId: l.itemId,

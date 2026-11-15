@@ -29,6 +29,7 @@ import { assertRefundType } from '../shared/refund-type.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import { GoodsNotesService } from '../goods-notes/goods-notes.service.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
+import { clearedThrough } from '../shared/receipt-clearing.js';
 
 const SOURCE = 'PURCHASE_RETURN';
 
@@ -659,21 +660,20 @@ export class PurchaseReturnsService {
 
   /**
    * The cost a return of `qtyBase` from a line billed from receipts leaves
-   * at (ADR-026 §7, ADR-016 §2): the receipt value pro rata, and the return
-   * that takes the last of the line takes what is left of the value, so the
-   * line's returns add up to its receipt value exactly. `prior`: the posted
-   * returns of the same line.
+   * at (ADR-026 §7, ADR-016 §2): the receipt value pro rata, cumulatively
+   * (clearedThrough), so each return lies between 0 and what is left and the
+   * line's returns add up to its receipt value exactly, the last one taking
+   * the rest. `prior`: the posted returns of the same line.
    */
   private receiptReturnCost(
     receipt: { qty: Decimal; value: Decimal },
     qtyBase: Decimal,
     prior: { qtyBase: { toString(): string } }[],
   ): { unitCost: Decimal; totalCost: Decimal } {
-    const share = (q: Decimal) => (q.eq(receipt.qty) ? receipt.value : round3(receipt.value.times(q).div(receipt.qty)));
     const priorQty = sum(prior.map((p) => p.qtyBase.toString()));
-    const totalCost = priorQty.plus(qtyBase).eq(receipt.qty)
-      ? receipt.value.minus(sum(prior.map((p) => share(new Decimal(p.qtyBase.toString())))))
-      : share(qtyBase);
+    const totalCost = clearedThrough(receipt.value, priorQty.plus(qtyBase), receipt.qty).minus(
+      clearedThrough(receipt.value, priorQty, receipt.qty),
+    );
     return { unitCost: receipt.value.div(receipt.qty), totalCost };
   }
 }
