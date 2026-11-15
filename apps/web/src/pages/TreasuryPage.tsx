@@ -15,7 +15,6 @@ import {
   Table,
   Tabs,
   Tag,
-  Tooltip,
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -80,7 +79,8 @@ import { amountCell } from '../format/cells';
 import { dec, formatAmount, sum } from '../format/number';
 import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
-import { costCenterOptions, useCostCenters } from '../hooks/useCostCenters';
+import { useCostCenters } from '../hooks/useCostCenters';
+import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
 
 // ------------------------------------------------------------- types
 
@@ -1045,18 +1045,10 @@ function VoucherForm({
           />
         </DocField>
         {costCenters.enabled && (
-          <DocField
-            field="costCenter"
-            label={
-              <Tooltip title={t('costCenters.documentHint')}>
-                <span>{t('costCenters.documentField')}</span>
-              </Tooltip>
-            }
-          >
-            <GridSelect
+          <DocField field="costCenter" label={<CostCenterLabel />}>
+            <CostCenterSelect
               enterOpens
-              allowClear
-              options={costCenterOptions(costCenters.rows, [costCenterId])}
+              rows={costCenters.rows}
               value={costCenterId}
               onChange={setCostCenterId}
             />

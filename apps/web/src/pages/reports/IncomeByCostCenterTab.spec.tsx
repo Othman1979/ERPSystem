@@ -115,7 +115,7 @@ afterEach(() => {
 describe('IncomeByCostCenterTab', () => {
   it('renders a column per centre plus the no-centre column, the amounts and the net profit row', async () => {
     income.mockReturnValue(ok(REPORT));
-    renderWithProviders(<IncomeByCostCenterTab />);
+    renderWithProviders(<IncomeByCostCenterTab from={null} to={null} />);
     await flush();
 
     const headers = [...(host?.querySelectorAll('th') ?? [])].map((th) => th.textContent?.trim());
@@ -136,7 +136,7 @@ describe('IncomeByCostCenterTab', () => {
 
   it('asks the company-wide report for the period the filters give', async () => {
     income.mockReturnValue(ok(REPORT));
-    renderWithProviders(<IncomeByCostCenterTab />);
+    renderWithProviders(<IncomeByCostCenterTab from={null} to={null} />);
     await flush();
     expect(income).toHaveBeenCalledWith({ from: undefined, to: undefined }, expect.anything());
   });

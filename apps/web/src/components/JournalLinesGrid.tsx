@@ -246,6 +246,8 @@ export function JournalLinesGrid({
             const kind = kindOf(l.accountId);
             const missing = !!kind && !l.partyId && missingParty === l.key;
             const centre = centreOn(l.accountId);
+            // The account needs a centre (ADR-024 §1.3): marked before the line is even filled in.
+            const needsCentre = centre && !!costCenterColumn?.required.has(l.accountId!);
             const missingCentre = centre && !l.costCenterId && missingCostCenter === l.key;
             return (
               <tr key={l.key}>
@@ -297,14 +299,17 @@ export function JournalLinesGrid({
                 )}
                 {costCenterColumn && (
                   <td
-                    className={missingCentre ? 'cell-missing' : undefined}
+                    className={
+                      [missingCentre && 'cell-missing', needsCentre && 'cell-required'].filter(Boolean).join(' ') ||
+                      undefined
+                    }
                     {...cellProps(row, 6)}
                   >
                     {centre ? (
                       <GridSelect
                         aria-label={cellLabel(t, t('costCenters.column'), row)}
                         aria-invalid={missingCentre || undefined}
-                        aria-required={costCenterColumn.required.has(l.accountId!) || undefined}
+                        aria-required={needsCentre || undefined}
                         variant="borderless"
                         allowClear
                         placeholder={t('costCenters.pick')}

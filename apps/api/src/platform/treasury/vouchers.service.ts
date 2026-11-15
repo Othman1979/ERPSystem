@@ -212,7 +212,8 @@ export class VouchersService implements OnModuleInit {
       db.$transaction(async (tx) => {
         await this.assertReceiptParty(tx, tenantId, companyId, dto);
         await this.assertCashAccount(tx, companyId, dto.cashAccountId);
-        if (dto.costCenterId) await this.costCenters.assertUsable(tx, companyId, BigInt(dto.costCenterId));
+        // Share-lock the header centre before the voucher row that references it (ADR-024 §1.4).
+        if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
         const period = await this.posting.resolveOpenPeriod(
           tx, tenantId, companyId, new Date(dto.receiptDate),
         );
@@ -280,6 +281,7 @@ export class VouchersService implements OnModuleInit {
           postedBy: userId ?? null,
           // ADR-024 §1.2: onto the income-statement lines (a payment's expense line).
           costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
+          requireCostCenters: true,
         });
 
         await tx.receipt.update({ where: { id: receipt.id }, data: { journalEntryId: entry.id } });
@@ -426,7 +428,8 @@ export class VouchersService implements OnModuleInit {
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         await this.assertCashAccount(tx, companyId, dto.cashAccountId);
-        if (dto.costCenterId) await this.costCenters.assertUsable(tx, companyId, BigInt(dto.costCenterId));
+        // Share-lock the header centre before the voucher row that references it (ADR-024 §1.4).
+        if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
         if (dto.partyId) {
           await this.assertPaymentParty(tx, tenantId, companyId, dto);
         } else {
@@ -521,6 +524,7 @@ export class VouchersService implements OnModuleInit {
           postedBy: userId ?? null,
           // ADR-024 §1.2: onto the income-statement lines (a payment's expense line).
           costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
+          requireCostCenters: true,
         });
 
         await tx.payment.update({ where: { id: payment.id }, data: { journalEntryId: entry.id } });

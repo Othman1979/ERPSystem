@@ -7,7 +7,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../../i18n';
 import { costCenterTree } from './costCenterTree';
-import type { CostCenterDto } from '@erp/api-client';
+import { ApiError, type CostCenterDto } from '@erp/api-client';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 // jsdom has no matchMedia; antd's responsive hooks ask for it.
@@ -208,6 +208,27 @@ describe('CostCentersTab', () => {
     await settle();
 
     expect(createCentre.mock.calls[0][0]).toEqual({ code: '20-01', nameAr: 'الإعلان', parentId: '3' });
+  });
+
+  it('offers to deactivate instead when a centre in use cannot be deleted', async () => {
+    removeCentre.mockImplementation(() => Promise.reject(new ApiError(409, 'COST_CENTER_IN_USE', 'in use')));
+    updateCentre.mockImplementation(() => ok({}));
+    await render();
+    const row = [...host.querySelectorAll('tr')].find((tr) => tr.textContent?.includes('Marketing'))!;
+    act(() => buttonNamed(row, 'Delete')!.click());
+    await settle();
+    act(() => document.querySelector<HTMLButtonElement>('.ant-popconfirm .ant-btn-primary')!.click());
+    await settle();
+
+    expect(removeCentre).toHaveBeenCalledWith('3');
+    const dialog = document.querySelector<HTMLElement>('.ant-modal-confirm');
+    expect(dialog).not.toBeNull();
+    expect(dialog!.textContent).toContain(i18n.t('errors.COST_CENTER_IN_USE'));
+    expect(updateCentre).not.toHaveBeenCalled();
+
+    act(() => buttonNamed(dialog!, 'Deactivate')!.click());
+    await settle();
+    expect(updateCentre).toHaveBeenCalledWith('3', { isActive: false });
   });
 
   it('hides every action without the cost_center.manage permission', async () => {

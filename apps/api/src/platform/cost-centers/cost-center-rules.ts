@@ -34,13 +34,19 @@ export interface CentreContext {
   header: bigint | null;
   /** A reversal carries the original's centres as they are (§1.10): no checks but existence. */
   reversal: boolean;
+  /**
+   * The entry comes from a screen with a centre field: manual and opening lines,
+   * invoices, returns, vouchers. Other system-built entries (stock documents, cash
+   * transfers) never wait for a centre: their flagged lines post without one (§1.3).
+   */
+  required: boolean;
 }
 
 /**
  * The centre a line posts with, or null: its own, else the document's header
  * centre on an income-statement line. Throws COST_CENTER_NOT_ALLOWED for a centre
  * given on a balance-sheet line and COST_CENTER_REQUIRED for a flagged account's
- * line without one (centres enabled, not a reversal).
+ * line without one (centres enabled, an entry with a centre field, not a reversal).
  */
 export function lineCostCenter(
   lineNo: number,
@@ -57,7 +63,7 @@ export function lineCostCenter(
     );
   }
   const centre = own ?? (income ? ctx.header : null) ?? null;
-  if (!centre && ctx.enabled && account.costCenterRequired && income && !ctx.reversal) {
+  if (!centre && ctx.required && ctx.enabled && account.costCenterRequired && income && !ctx.reversal) {
     throw new DomainError(ErrorCode.COST_CENTER_REQUIRED, `Line ${lineNo}: account ${account.code} requires a cost centre`, {
       line: lineNo,
     });
@@ -126,5 +132,14 @@ export function assertCanDelete(centre: { code: string }, children: number, usag
 export function assertCanDeactivate(centre: { code: string }, activeChildren: number): void {
   if (activeChildren > 0) {
     throw new DomainError(ErrorCode.COST_CENTER_HAS_CHILDREN, `Cost centre ${centre.code} has active sub-centres`);
+  }
+}
+
+/** A centre is reactivated under an active parent only. */
+export function assertCanReactivate(parent: { code: string; isActive: boolean }): void {
+  if (!parent.isActive) {
+    throw new DomainError(ErrorCode.COST_CENTER_INACTIVE, `The parent centre ${parent.code} is inactive; reactivate it first`, {
+      reason: 'PARENT_INACTIVE',
+    });
   }
 }

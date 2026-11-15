@@ -23,6 +23,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { addMember } from './support/members.js';
 import { statementBody } from './support/statements.js';
 import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
@@ -470,10 +471,54 @@ describe('cost centres (ADR-024 §1)', () => {
     expect(off.status).toBe(200);
     expect(off.body.isActive).toBe(false);
     expect((await as(A).patch(`/cost-centers/${cc['ADM-HQ']}`, { isActive: true })).body.isActive).toBe(true);
+
+    // A leaf is reactivated under an active parent only.
+    const grp = await centre(A, 'GRP');
+    cc.GRP = grp;
+    const grpLeaf = await centre(A, 'GRP-1', 'GRP');
+    expect((await as(A).patch(`/cost-centers/${grpLeaf}`, { isActive: false })).status).toBe(200);
+    expect((await as(A).patch(`/cost-centers/${grp}`, { isActive: false })).status).toBe(200);
+    refused(await as(A).patch(`/cost-centers/${grpLeaf}`, { isActive: true }), 400, 'COST_CENTER_INACTIVE');
+    expect((await as(A).patch(`/cost-centers/${grp}`, { isActive: true })).status).toBe(200);
+    expect((await as(A).patch(`/cost-centers/${grpLeaf}`, { isActive: true })).status).toBe(200);
+  }, T);
+
+  it('CC6b managing centres needs cost_center.manage (403 for a viewer, reading allowed)', async () => {
+    const viewer = await addMember(BASE, A.token, { email: `cc-viewer-${RUN}@test.dev`, roleCode: 'VIEWER', password: PASS });
+    const v = { token: viewer.token, tenantId: A.tenantId, acc: A.acc };
+    expect((await as(v).get('/cost-centers')).status).toBe(200);
+    refused(await as(v).post('/cost-centers', { code: 'VX', nameAr: 'x' }), 403, 'FORBIDDEN');
+    refused(await as(v).patch(`/cost-centers/${cc.SALES}`, { nameAr: 'x' }), 403, 'FORBIDDEN');
+    refused(await as(v).del(`/cost-centers/${cc.OLD}`), 403, 'FORBIDDEN');
+    expect(((await as(A).get('/cost-centers')).body as { code: string }[]).some((c) => c.code === 'VX')).toBe(false);
   }, T);
 
   it('CC7 switched off: nothing is required, posted lines and flags stay', async () => {
+    // A draft keeps its header centre while centres are off, and on a save.
+    const kept = await as(A).post('/sales-invoices', {
+      invoiceDate: '2025-06-09',
+      customerId,
+      warehouseId,
+      paymentType: 'CREDIT',
+      costCenterId: cc.SALES,
+      lines: [{ itemId, qty: '1', unitPrice: '10.000' }],
+    });
+    expect(kept.status).toBe(201);
     expect((await as(A).patch('/company', { costCentersEnabled: false })).status).toBe(200);
+    const resaved = await api()
+      .put(`/api/v1/sales-invoices/${kept.body.id}`)
+      .set(auth(A.token))
+      .send({
+        invoiceDate: '2025-06-09',
+        customerId,
+        warehouseId,
+        paymentType: 'CREDIT',
+        costCenterId: cc.SALES,
+        lines: [{ itemId, qty: '1', unitPrice: '12.000' }],
+      });
+    expect(resaved.status).toBe(200);
+    expect((await as(A).get(`/sales-invoices/${kept.body.id}`)).body.costCenterId).toBe(cc.SALES);
+    expect((await as(A).del(`/sales-invoices/${kept.body.id}`)).status).toBe(200);
     // 5202 is still flagged, but no centre is required while centres are off.
     const free = await journal(A, '2025-06-10', [
       { accountId: A.acc['5202'], debit: '5' },
@@ -511,6 +556,45 @@ describe('cost centres (ADR-024 §1)', () => {
     expect(fixed.status).toBe(200);
     expect((await as(A).post(`/sales-invoices/${inv.body.id}/post`)).status).toBe(201);
     expect((await as(A).patch(`/accounts/${A.acc['4101']}`, { costCenterRequired: false })).status).toBe(200);
+  }, T);
+
+  it('CC7b a document without a centre field posts a flagged line without a centre (ADR-024 §1.3 amendment)', async () => {
+    // INVENTORY_ADJUSTMENT (5102) flagged, centres on: a stock adjustment still posts, unassigned.
+    expect((await as(A).patch(`/accounts/${A.acc['5102']}`, { costCenterRequired: true })).status).toBe(200);
+    const adj = await as(A).post('/stock-adjustments', {
+      adjustmentDate: '2025-06-12',
+      adjustmentType: 'OUT',
+      warehouseId,
+      lines: [{ itemId, qty: '1' }],
+    });
+    expect(adj.status).toBe(201);
+    const posted = await as(A).post(`/stock-adjustments/${adj.body.id}/post`);
+    expect(posted.status).toBe(201);
+    const entryId = String(posted.body.journalEntryId ?? (await as(A).get(`/stock-adjustments/${adj.body.id}`)).body.journalEntryId);
+    const lines = await centresOf(A, entryId);
+    expect(lines['5102']).toBeNull();
+    expect(lines['1104']).toBeNull();
+    const by = await as(A).get('/reports/income-statement-by-cost-center?from=2025-06-12&to=2025-06-12');
+    const row = (by.body.expenses.rows as { code: string; amounts: string[]; total: string }[]).find((r) => r.code === '5102')!;
+    // The only column is "no centre": the adjustment's cost lands there.
+    expect(by.body.columns.map((c: { costCenterId: string | null }) => c.costCenterId)).toEqual([null]);
+    expect(row.amounts).toEqual([row.total]);
+    expect((await as(A).patch(`/accounts/${A.acc['5102']}`, { costCenterRequired: false })).status).toBe(200);
+  }, T);
+
+  it('CC7c the by-centre PDF holds 12 centre columns; more goes to XLSX', async () => {
+    const lines: Line[] = [];
+    for (let i = 1; i <= 13; i++) {
+      lines.push({ accountId: A.acc['5204'], debit: '1', costCenterId: await centre(A, `W${String(i).padStart(2, '0')}`) });
+    }
+    lines.push({ accountId: A.acc['1101'], credit: '13' });
+    expect((await journal(A, '2025-06-20', lines)).post.status).toBe(201);
+    const q = '/reports/income-statement-by-cost-center?from=2025-06-20&to=2025-06-20';
+    const json = await as(A).get(q);
+    expect(json.body.columns).toHaveLength(14);
+    expect(json.body.netProfit.total).toBe('-13.000');
+    refused(await as(A).get(`${q}&format=pdf`), 413, 'REPORT_TOO_LARGE');
+    expect((await as(A).get(`${q}&format=xlsx`)).status).toBe(200);
   }, T);
 
   it('CC8 job:integrity-check counts a journal line whose centre does not exist', async () => {

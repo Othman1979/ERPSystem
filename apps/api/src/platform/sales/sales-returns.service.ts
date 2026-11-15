@@ -308,7 +308,6 @@ export class SalesReturnsService {
         throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId must be an active cash/bank account');
       }
     }
-    if (dto.costCenterId) await this.costCenters.assertUsable(db, companyId, BigInt(dto.costCenterId));
 
     const { ret, invoiceId } = await db.$transaction(async (tx) => {
       // TRADE-01: lock the original invoice first. Every return of it is
@@ -320,6 +319,8 @@ export class SalesReturnsService {
         include: { lines: true },
       });
       if (!invoice) throw DomainError.notFound('SalesInvoice', dto.originalInvoiceId);
+      // Share-lock the header centre before the row that references it (ADR-024 §1.4).
+      if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       if (invoice.status !== 'POSTED') {
         throw new DomainError(ErrorCode.VALIDATION, 'Returns require a posted invoice');
       }
@@ -550,6 +551,8 @@ export class SalesReturnsService {
           postedBy: userId ?? null,
           // ADR-024 §1.2: onto the returns and cost lines (income statement).
           costCenterId: draft.costCenterId,
+          // ADR-024 §1.3: the document has a centre field, so a flagged line needs one.
+          requireCostCenters: true,
         });
 
         await tx.salesReturn.update({

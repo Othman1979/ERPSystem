@@ -2,19 +2,18 @@ import { useQuery } from '@tanstack/react-query';
 import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { reportsControllerIncomeStatementByCostCenter } from '@erp/api-client';
-import { ExportButtons } from '../../components/ExportButtons';
-import { ListToolbar } from '../../components/ListToolbar';
 import { Num } from '../../components/Num';
 import { tableLocale } from '../../components/QueryState';
 import { dec, formatAmount } from '../../format/number';
 import { palette } from '../../theme';
-import { isoDay, PeriodMeta, PeriodPickers, ScreenPrintButton } from './PeriodFilters';
+import { isoDay, PeriodMeta } from './PeriodFilters';
 import { buildIncomeByCostCenterRows, columnTitle, type ByCentreRow } from './incomeByCostCenterRows';
 
-const PATH = '/reports/income-statement-by-cost-center';
+/** Export path of the by-centre statement (the toolbar of IncomeStatementTab exports it). */
+export const BY_CENTRE_PATH = '/reports/income-statement-by-cost-center';
 const INDENT_PX = 18;
 const AMOUNT_WIDTH = 140;
 
@@ -29,22 +28,31 @@ function AmountCell({ row, value }: { row: ByCentreRow; value: string | undefine
   return <Num style={negative ? { color: palette.danger } : undefined}>{formatAmount(value)}</Num>;
 }
 
+/** The period both income statement views take from IncomeStatementTab (empty = the API's default). */
+export interface IncomePeriodProps {
+  from: Dayjs | null;
+  to: Dayjs | null;
+  /** Reports the period the API used, once the report has loaded. */
+  onResolved?: (period: { from: string; to: string }) => void;
+}
+
 /**
  * Income statement split by cost centre (ADR-024): revenue and expenses down
  * the side, one amount column per centre and a "no centre" column last, then
  * the total and the net profit footer (equal to the ordinary income statement).
  */
-export function IncomeByCostCenterTab() {
+export function IncomeByCostCenterTab({ from, to, onResolved }: IncomePeriodProps) {
   const { t, i18n } = useTranslation();
-  // Empty = the fiscal year containing today (or the end that is set), chosen by the API.
-  const [from, setFrom] = useState<Dayjs | null>(null);
-  const [to, setTo] = useState<Dayjs | null>(null);
   const params = { from: isoDay(from), to: isoDay(to) };
   const listQuery = useQuery({
     queryKey: ['report-income-by-cost-center', params.from, params.to],
     queryFn: ({ signal }) => reportsControllerIncomeStatementByCostCenter(params, { signal }).then((r) => r.data),
   });
   const { data, isLoading } = listQuery;
+
+  useEffect(() => {
+    if (data && onResolved) onResolved({ from: data.from, to: data.to });
+  }, [data, onResolved]);
 
   const lang = i18n.language;
   const unassigned = t('costCenters.unassigned');
@@ -99,15 +107,6 @@ export function IncomeByCostCenterTab() {
 
   return (
     <>
-      <ListToolbar
-        filters={<PeriodPickers from={from} to={to} onFrom={setFrom} onTo={setTo} resolved={data} />}
-        actions={
-          <>
-            <ScreenPrintButton />
-            <ExportButtons path={PATH} params={params} />
-          </>
-        }
-      />
       {data && (
         <div className="report-meta">
           <PeriodMeta from={data.from} to={data.to} fiscalYear={data.fiscalYear} />

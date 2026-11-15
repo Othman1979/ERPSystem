@@ -13,7 +13,6 @@ import {
   Table,
   Tabs,
   Tag,
-  Tooltip,
   Typography,
   message,
 } from 'antd';
@@ -40,7 +39,8 @@ import { ListToolbar } from '../components/ListToolbar';
 import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { useRemoteOptions } from '../hooks/useRemoteOptions';
-import { costCenterOptions, useCostCenters } from '../hooks/useCostCenters';
+import { useCostCenters } from '../hooks/useCostCenters';
+import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { salesInvoiceBody, salesInvoiceFormDefaults } from './sales/invoicePayload';
@@ -628,17 +628,12 @@ function InvoiceForm({
         {costCenters.enabled && (
           <DocField
             field="costCenter"
-            label={
-              <Tooltip title={t('costCenters.documentHint')}>
-                <span>{t('costCenters.documentField')}</span>
-              </Tooltip>
-            }
+            label={<CostCenterLabel />}
             onKeyDown={enterTo(() => focusNamedField('paymentType'))}
           >
-            <GridSelect
+            <CostCenterSelect
               enterOpens
-              allowClear
-              options={costCenterOptions(costCenters.rows, [costCenterId])}
+              rows={costCenters.rows}
               value={costCenterId}
               onChange={setCostCenterId}
             />
@@ -1115,6 +1110,8 @@ function ReturnForm({
   const [qtyByLine, setQtyByLine] = useState<Record<string, string>>({});
   const costCenters = useCostCenters();
   const [costCenterId, setCostCenterId] = useState<string | undefined>();
+  // Until the user picks or clears a centre, it follows the original invoice's.
+  const [costCenterTouched, setCostCenterTouched] = useState(false);
 
   const lookups = useSalesLookups();
   const { data: invoice } = useQuery({
@@ -1123,6 +1120,15 @@ function ReturnForm({
       salesControllerGetInvoice(invoiceId!, { signal }).then((r) => r.data),
     enabled: !!invoiceId,
   });
+
+  useEffect(() => {
+    if (costCenterTouched || !invoice || invoice.id !== invoiceId) return;
+    setCostCenterId(invoice.costCenterId ?? undefined);
+  }, [invoice, invoiceId, costCenterTouched]);
+  const pickCostCentre = (id: string | undefined) => {
+    setCostCenterTouched(true);
+    setCostCenterId(id);
+  };
 
   const create = useMutation({
     mutationFn: async () => {
@@ -1133,7 +1139,8 @@ function ReturnForm({
         refundType,
         cashAccountId: refundType === 'CASH' ? cashAccountId : undefined,
         reason: reason || undefined,
-        costCenterId: costCenterId || undefined,
+        // A new return: a centre only while centres are on (the prefill stays hidden otherwise).
+        costCenterId: costCenters.enabled ? costCenterId || undefined : undefined,
         lines: (invoice?.lines ?? [])
           .filter((l) => dec(qtyByLine[l.id]).gt(0))
           .map((l) => ({ originalLineId: l.id, qty: qtyByLine[l.id] })),
@@ -1230,20 +1237,11 @@ function ReturnForm({
           <DatePicker value={returnDate} onChange={(d) => d && setReturnDate(d)} />
         </DocField>
         {costCenters.enabled && (
-          <DocField
-            label={
-              <Tooltip title={t('costCenters.documentHint')}>
-                <span>{t('costCenters.documentField')}</span>
-              </Tooltip>
-            }
-          >
-            <Select
-              showSearch
-              allowClear
-              optionFilterProp="label"
-              options={costCenterOptions(costCenters.rows, [costCenterId])}
+          <DocField label={<CostCenterLabel />}>
+            <CostCenterSelect
+              rows={costCenters.rows}
               value={costCenterId}
-              onChange={setCostCenterId}
+              onChange={pickCostCentre}
             />
           </DocField>
         )}

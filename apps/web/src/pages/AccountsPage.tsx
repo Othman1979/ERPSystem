@@ -286,7 +286,11 @@ export function AccountsPage() {
             render: (_: unknown, a: Account) => (
               <Space size={8}>
                 {bothNames(a)}
-                {costCentersOn && a.costCenterRequired && <Tag color="gold">{t('costCenters.requiredTag')}</Tag>}
+                {costCentersOn && a.costCenterRequired && (
+                  <Tag style={{ background: palette.ink100, color: palette.ink600, borderColor: palette.ink200 }}>
+                    {t('costCenters.requiredTag')}
+                  </Tag>
+                )}
               </Space>
             ),
           },

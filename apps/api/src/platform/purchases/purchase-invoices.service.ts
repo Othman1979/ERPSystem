@@ -456,6 +456,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     await this.assertHeader(db, companyId, dto, lines);
 
     const inv = await db.$transaction(async (tx) => {
+      // Share-lock the header centre before the row that references it (ADR-024 §1.4).
+      if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       const receivedGrnId = await this.checkDraftGrn(tx, tenantId, null, dto, lines);
       const created = await tx.purchaseInvoice.create({
         data: {
@@ -535,6 +537,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
       }
       assertBranchAllowed(locked.branch_id === null ? null : BigInt(locked.branch_id));
+      // Share-lock the header centre before the row that references it (ADR-024 §1.4).
+      if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       const receivedGrnId = await this.checkDraftGrn(tx, tenantId, id, dto, lines);
       await tx.purchaseInvoiceLine.deleteMany({ where: { invoiceId: id } });
       await tx.purchaseInvoice.update({
@@ -763,6 +767,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           postedBy: userId ?? null,
           // ADR-024 §1.2: onto every income-statement line (expenses, cost, adjustments).
           costCenterId: draft.costCenterId,
+          // ADR-024 §1.3: the document has a centre field, so a flagged line needs one.
+          requireCostCenters: true,
         });
 
         await tx.purchaseInvoice.update({
@@ -942,7 +948,6 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId must be an active cash/bank account');
       }
     }
-    if (dto.costCenterId) await this.costCenters.assertUsable(db, companyId, BigInt(dto.costCenterId));
   }
 
   private async resolveLines(

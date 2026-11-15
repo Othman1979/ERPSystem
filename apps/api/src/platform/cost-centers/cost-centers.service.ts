@@ -3,18 +3,16 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { Prisma } from '../../generated/prisma/client.js';
-import type { PrismaService } from '../../prisma/prisma.service.js';
 import { DocumentSupportService, retryOnLockConflict } from '../shared/document-support.service.js';
 import {
   assertCanDeactivate,
   assertCanDelete,
+  assertCanReactivate,
   assertCanTakeChild,
   type PostingCentre,
 } from './cost-center-rules.js';
 import { CostCenterUsageRegistry } from './cost-center-usage.registry.js';
 import type { CreateCostCenterDto, UpdateCostCenterDto } from './dto/cost-centers.dto.js';
-
-type TenantDb = ReturnType<PrismaService['forTenant']>;
 
 /**
  * Cost centres (ADR-013 §3, ADR-024 §1): a tree per company, apart from the
@@ -96,6 +94,11 @@ export class CostCentersService {
         if (dto.isActive === false && before.isActive) {
           assertCanDeactivate(before, await tx.costCenter.count({ where: { parentId: id, isActive: true } }));
         }
+        // Reactivate under an active parent only: no active leaf sits under an inactive group.
+        if (dto.isActive === true && !before.isActive && before.parentId !== null) {
+          const parent = await this.lockRow(tx, tenantId, companyId, before.parentId);
+          assertCanReactivate(parent);
+        }
         const updated = await tx.costCenter.update({
           where: { id },
           data: { nameAr: dto.nameAr, nameEn: dto.nameEn, isActive: dto.isActive, updatedBy: userId },
@@ -157,14 +160,15 @@ export class CostCentersService {
   }
 
   /**
-   * A header centre on a document draft: one of the company's, active and a
-   * leaf. Posting checks it again under its lock (lockForPosting).
+   * A header centre on a document: one of the company's, active and a leaf.
+   * Called inside the transaction that writes the header row, before that
+   * write: the centre is share-locked to COMMIT first (lockForPosting), so the
+   * row's foreign key check never waits behind a delete holding the centre,
+   * and a delete that runs first leaves a 404 here, a delete that runs second
+   * sees the document and answers COST_CENTER_IN_USE. Posting checks it again.
    */
-  async assertUsable(db: TenantDb | Prisma.TransactionClient, companyId: bigint, id: bigint): Promise<void> {
-    const row = await db.costCenter.findFirst({
-      where: { companyId, id },
-      select: { code: true, isActive: true, isPostable: true },
-    });
+  async assertUsable(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint, id: bigint): Promise<void> {
+    const row = (await this.lockForPosting(tx, tenantId, companyId, [id])).get(id);
     if (!row) throw DomainError.notFound('CostCenter', id.toString());
     if (!row.isActive) {
       throw new DomainError(ErrorCode.COST_CENTER_INACTIVE, `Cost centre ${row.code} is inactive`, {

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ApartmentOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Form, Input, Popconfirm, Space, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Form, Input, Popconfirm, Space, Table, Typography } from 'antd';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -12,6 +12,7 @@ import {
 } from '@erp/api-client';
 import { FormDialog, FormSection } from '../../components/FormDialog';
 import { tableLocale } from '../../components/QueryState';
+import { ActiveTag } from '../../components/StatusTag';
 import { useAuth } from '../../auth/AuthContext';
 import { PERMISSIONS } from '../../auth/permissions';
 import { COST_CENTERS_QUERY_KEY, useCostCenters } from '../../hooks/useCostCenters';
@@ -36,7 +37,7 @@ type DialogState = { mode: 'create'; parent: CostCenterDto | null } | { mode: 'e
 export function CostCentersTab() {
   const { t } = useTranslation();
   const { can } = useAuth();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const canManage = can(PERMISSIONS.COST_CENTER_MANAGE);
   const { enabled, list, rows } = useCostCenters({ always: true });
@@ -88,12 +89,26 @@ export function CostCentersTab() {
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => costCentersControllerRemove(id),
+    mutationFn: (c: CostCenterNode) => costCentersControllerRemove(c.id),
     onSuccess: () => {
       message.success(t('costCenters.deleted'));
       refresh();
     },
-    onError: showError,
+    onError: (err, c) => {
+      // A centre already used by entries or documents is not deleted: offer to deactivate it instead.
+      if (err instanceof ApiError && err.code === 'COST_CENTER_IN_USE') {
+        modal.confirm({
+          title: t('costCenters.deactivateConfirm', { name: displayName(c) }),
+          content: t('errors.COST_CENTER_IN_USE'),
+          okText: t('costCenters.deactivate'),
+          okButtonProps: { danger: true },
+          cancelText: t('common.cancel'),
+          onOk: () => setActive.mutate({ id: c.id, isActive: false }),
+        });
+        return;
+      }
+      showError(err);
+    },
   });
 
   const openCreate = (parent: CostCenterDto | null) => {
@@ -154,8 +169,8 @@ export function CostCentersTab() {
             title: t('costCenters.status'),
             dataIndex: 'isActive',
             width: 100,
-            render: (v: boolean) =>
-              v ? <Tag color="green">{t('costCenters.active')}</Tag> : <Tag>{t('costCenters.inactive')}</Tag>,
+            // ADR-020 §8: only the exception is marked; an active centre shows nothing.
+            render: (v: boolean) => <ActiveTag active={v} />,
           },
           ...(canManage
             ? [
@@ -189,7 +204,7 @@ export function CostCentersTab() {
                       )}
                       <Popconfirm
                         title={t('costCenters.deleteConfirm', { name: displayName(c) })}
-                        onConfirm={() => remove.mutate(c.id)}
+                        onConfirm={() => remove.mutate(c)}
                       >
                         <Button size="small" danger>
                           {t('costCenters.delete')}

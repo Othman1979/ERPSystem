@@ -401,7 +401,8 @@ export class JournalService implements OnModuleInit {
           costCenterId: l.costCenterId,
         }));
 
-        const normalized = await this.posting.validateLines(tx, tenantId, companyId, input);
+        // A manual entry has a centre column: a flagged line needs a centre (ADR-024 §1.3).
+        const normalized = await this.posting.validateLines(tx, tenantId, companyId, input, { requireCostCenters: true });
         let totalDebit = new Decimal(0);
         let totalCredit = new Decimal(0);
         for (const n of normalized) {
@@ -603,6 +604,7 @@ export class JournalService implements OnModuleInit {
           description: dto.description ?? null,
           lines,
           postedBy: userId ?? null,
+          requireCostCenters: true,
         });
       }, POSTING_TX_OPTIONS),
     );

@@ -132,6 +132,18 @@ describe('cost centre column of JournalLinesGrid', () => {
     expect(next[0].costCenterId).toBe('cc1');
   });
 
+  it('marks the centre cell of a line whose account requires a centre', () => {
+    render({
+      costCenterColumn: CENTRES,
+      lines: [{ key: 1, accountId: 'exp', debit: '5' }, { key: 2, accountId: 'rev', credit: '5' }],
+    });
+    // 'exp' is required (CENTRES.required), 'rev' is an income account that is not.
+    expect(cell(0, 6)?.classList.contains('cell-required')).toBe(true);
+    expect(field('costCenters.column', 0)?.getAttribute('aria-required')).toBe('true');
+    expect(cell(1, 6)?.classList.contains('cell-required')).toBe(false);
+    expect(field('costCenters.column', 1)?.getAttribute('aria-required')).toBeNull();
+  });
+
   it('marks the cell of the missing-centre row', () => {
     render({
       costCenterColumn: CENTRES,

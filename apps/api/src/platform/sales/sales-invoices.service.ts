@@ -490,6 +490,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     await this.assertHeader(db, companyId, dto);
 
     const inv = await db.$transaction(async (tx) => {
+      // Share-lock the header centre before the row that references it (ADR-024 §1.4).
+      if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       const created = await tx.salesInvoice.create({
         data: {
           tenantId,
@@ -560,6 +562,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       if (!locked || locked.status !== 'DRAFT') {
         throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
       }
+      // Share-lock the header centre before the row that references it (ADR-024 §1.4).
+      if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       await tx.salesInvoiceLine.deleteMany({ where: { invoiceId: id } });
       await tx.salesInvoice.update({
         where: { id },
@@ -788,6 +792,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           postedBy: userId ?? null,
           // ADR-024 §1.2: onto the revenue and cost lines (income statement).
           costCenterId: draft.costCenterId,
+          // ADR-024 §1.3: the document has a centre field, so a flagged line needs one.
+          requireCostCenters: true,
         });
 
         await tx.salesInvoice.update({
@@ -850,7 +856,6 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     });
     if (!warehouse) throw DomainError.notFound('Warehouse', dto.warehouseId);
     assertBranchAllowed(warehouse.branchId);
-    if (dto.costCenterId) await this.costCenters.assertUsable(db, companyId, BigInt(dto.costCenterId));
     if (dto.paymentType === 'CASH') {
       if (!dto.cashAccountId) {
         throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');

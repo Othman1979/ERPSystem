@@ -3,6 +3,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import {
   assertCanDeactivate,
   assertCanDelete,
+  assertCanReactivate,
   assertCanTakeChild,
   assertPostingCentre,
   isIncomeStatement,
@@ -24,7 +25,7 @@ const expense = { code: '5204', accountType: 'EXPENSE', costCenterRequired: fals
 const flagged = { code: '5202', accountType: 'EXPENSE', costCenterRequired: true };
 const revenue = { code: '4101', accountType: 'REVENUE', costCenterRequired: false };
 const cash = { code: '1101', accountType: 'ASSET', costCenterRequired: false };
-const on = { enabled: true, header: null, reversal: false };
+const on = { enabled: true, header: null, reversal: false, required: true };
 
 describe('cost centre rules (ADR-024 §1)', () => {
   it('income statement means REVENUE and EXPENSE', () => {
@@ -52,6 +53,12 @@ describe('cost centre rules (ADR-024 §1)', () => {
       expect(lineCostCenter(1, flagged, null, { ...on, enabled: false })).toBeNull();
       expect(lineCostCenter(1, flagged, null, { ...on, header: 3n })).toBe(3n);
       expect(lineCostCenter(1, expense, null, on)).toBeNull();
+    });
+
+    it('an entry without a centre field (stock, cash transfer) never waits for one (ADR-024 §1.3)', () => {
+      expect(lineCostCenter(1, flagged, null, { ...on, required: false })).toBeNull();
+      // A centre given there is still placed and checked like any other.
+      expect(codeOf(() => lineCostCenter(1, cash, 7n, { ...on, required: false }))).toBe(ErrorCode.COST_CENTER_NOT_ALLOWED);
     });
 
     it('a reversal carries what the original had, without checks', () => {
@@ -100,6 +107,11 @@ describe('cost centre rules (ADR-024 §1)', () => {
       expect(codeOf(() => assertCanDelete({ code: 'C' }, 0, []))).toBeNull();
       expect(codeOf(() => assertCanDelete({ code: 'C' }, 1, []))).toBe(ErrorCode.COST_CENTER_HAS_CHILDREN);
       expect(codeOf(() => assertCanDelete({ code: 'C' }, 0, ['sales:sales_invoices']))).toBe(ErrorCode.COST_CENTER_IN_USE);
+    });
+
+    it('reactivates under an active parent only', () => {
+      expect(codeOf(() => assertCanReactivate({ code: 'P', isActive: true }))).toBeNull();
+      expect(codeOf(() => assertCanReactivate({ code: 'P', isActive: false }))).toBe(ErrorCode.COST_CENTER_INACTIVE);
     });
 
     it('deactivates a group after its active sub-centres', () => {

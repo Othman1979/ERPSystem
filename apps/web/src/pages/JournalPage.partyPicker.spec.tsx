@@ -63,6 +63,8 @@ vi.mock('@erp/api-client', async (original) => ({
     ok({ items: params.partyType === 'CUSTOMER' ? [CUSTOMER] : [], total: 0, page: 1, pageSize: 20 }),
   partiesControllerGet: () => ok(CUSTOMER),
   journalControllerCreateDraft: (...args: unknown[]) => createDraft(...args),
+  // The page asks whether cost centres are on (ADR-024 §1): off here, no real request.
+  companyControllerGet: () => ok({ costCentersEnabled: false }),
 }));
 
 const { JournalPage } = await import('./JournalPage');

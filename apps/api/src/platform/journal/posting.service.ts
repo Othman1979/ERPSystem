@@ -32,6 +32,12 @@ export interface LineValidationOptions {
   costCenterId?: bigint | null;
   /** A reversal carries the original's centres as they are: no required / active / leaf checks. */
   reversal?: boolean;
+  /**
+   * Enforce COST_CENTER_REQUIRED (ADR-024 §1.3): only for entries typed on a screen
+   * with a centre field (manual, opening, invoices, returns, vouchers). Default off:
+   * stock documents and cash transfers post a flagged line without a centre.
+   */
+  requireCostCenters?: boolean;
 }
 
 export interface PostEntryParams {
@@ -62,6 +68,8 @@ export interface PostEntryParams {
    * income-statement account that has no centre of its own.
    */
   costCenterId?: bigint | null;
+  /** See LineValidationOptions.requireCostCenters; set by the posting paths that have a centre field. */
+  requireCostCenters?: boolean;
 }
 
 /** Party kind a control account expects, or null when any kind is accepted. */
@@ -98,7 +106,7 @@ export class PostingService {
    * account only (COST_CENTER_NOT_ALLOWED); `opts.costCenterId` (a document's)
    * goes onto every income-statement line without one; while the company has
    * centres enabled, a flagged account's line without a centre is refused
-   * (COST_CENTER_REQUIRED). The centres are then locked in share mode, after the
+   * (COST_CENTER_REQUIRED) when opts.requireCostCenters (an entry with a centre field). The centres are then locked in share mode, after the
    * accounts, ascending, and must be active leaves of the company. A reversal
    * (`opts.reversal`) carries the original's centres as they are.
    * Returns normalized lines with round3 amounts.
@@ -180,6 +188,7 @@ export class PostingService {
       enabled: company?.costCentersEnabled ?? false,
       header: opts.costCenterId ?? null,
       reversal: opts.reversal ?? false,
+      required: opts.requireCostCenters ?? false,
     };
 
     const normalized = lines.map((line, i): NormalizedLine => {
@@ -286,6 +295,7 @@ export class PostingService {
     const normalized = await this.validateLines(tx, tenantId, companyId, params.lines, {
       costCenterId: params.costCenterId,
       reversal: params.postingKind === 'REVERSAL',
+      requireCostCenters: params.requireCostCenters,
     });
 
     let totalDebit = new Decimal(0);
