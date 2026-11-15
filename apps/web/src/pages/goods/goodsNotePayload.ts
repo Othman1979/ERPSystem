@@ -17,10 +17,10 @@ export interface GoodsNoteFormValues {
   noteDate: string;
   warehouseId: string;
   description?: string;
-  /** GIN only: the expense account that replaces INVENTORY_ADJUSTMENT (ADR-026 §8). */
-  expenseAccountId?: string;
-  /** GIN only: the department cost centre (ADR-026 §8). */
-  costCenterId?: string;
+  /** GIN only: the expense account that replaces INVENTORY_ADJUSTMENT (ADR-026 §8). Null or undefined: none. */
+  expenseAccountId?: string | null;
+  /** GIN only: the department cost centre (ADR-026 §8). Null or undefined: none. */
+  costCenterId?: string | null;
   lines: GoodsNoteFormLine[];
 }
 
@@ -37,12 +37,15 @@ export interface GoodsNoteLinks {
  * - a GRN against an order sends the order id and each line's order line, and no
  *   unit cost (the server takes the order's net price);
  * - a GIN against a request sends the request id and each line's request line;
- * - unit cost goes only on a plain GRN line.
+ * - unit cost goes only on a plain GRN line;
+ * - a GIN's expense account and cost centre are omitted when none is chosen on create,
+ *   and sent as null on update, because an update replaces the note and null clears them.
  * Lines without an item or a quantity are left out, as the create screen always did.
  */
 export function goodsNoteBody(
   form: GoodsNoteFormValues,
   existing?: GoodsNoteLinks | null,
+  forUpdate = false,
 ): CreateGoodsNoteDto {
   const isGrn = form.noteType === 'GRN';
   const orderLinked = !!existing?.purchaseOrderId;
@@ -72,7 +75,9 @@ export function goodsNoteBody(
   if (existing?.issueRequestId) body.issueRequestId = existing.issueRequestId;
   if (!isGrn) {
     if (form.expenseAccountId) body.expenseAccountId = form.expenseAccountId;
+    else if (forUpdate) body.expenseAccountId = null;
     if (form.costCenterId) body.costCenterId = form.costCenterId;
+    else if (forUpdate) body.costCenterId = null;
   }
   return body;
 }

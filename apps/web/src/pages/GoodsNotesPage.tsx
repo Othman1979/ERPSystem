@@ -377,6 +377,7 @@ export function GoodsNotesSection({
           })),
         },
         linkedDraft,
+        true,
       ),
     });
   };

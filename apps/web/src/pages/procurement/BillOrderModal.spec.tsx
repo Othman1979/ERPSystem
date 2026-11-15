@@ -77,7 +77,15 @@ const BILLABLE: PurchaseOrderBillableDto = {
   ],
 };
 
-const order = { id: 'o1', orderNo: 'PO-1' } as unknown as PurchaseOrderDetailDto;
+/** The order's own lines: the ordered quantity shown beside each receipt line comes from here. */
+const order = {
+  id: 'o1',
+  orderNo: 'PO-1',
+  lines: [
+    { id: 'p1', qtyBase: '10', receivedQty: '10' },
+    { id: 'p2', qtyBase: '5', receivedQty: '5' },
+  ],
+} as unknown as PurchaseOrderDetailDto;
 
 const billable = vi.fn((..._args: unknown[]) => ok(BILLABLE));
 const bill = vi.fn((..._args: unknown[]) => ok({ id: '77' }));
@@ -158,6 +166,30 @@ describe('BillOrderModal', () => {
     expect(text).toContain('I1');
     expect(text).toContain('I2');
     expect(text).not.toContain('priced above the purchase order');
+  });
+
+  it('shows the ordered quantity of each line from the order', async () => {
+    await mount();
+    const headers = [...document.body.querySelectorAll('th')].map((th) => th.textContent?.trim());
+    const orderedIndex = headers.indexOf('Ordered');
+    expect(orderedIndex).toBeGreaterThan(-1);
+    const rowFor = (code: string) =>
+      [...document.body.querySelectorAll('tr')].find((tr) => tr.textContent?.includes(code))!;
+    expect(rowFor('I1').querySelectorAll('td')[orderedIndex].textContent).toContain('10');
+    expect(rowFor('I2').querySelectorAll('td')[orderedIndex].textContent).toContain('5');
+  });
+
+  it('lists the receipts included in the selected rows in the header', async () => {
+    await mount();
+    expect(document.body.textContent).toContain('Receipts included: GRN-1');
+  });
+
+  it('falls back to the receipt id when a receipt has no number', async () => {
+    billable.mockImplementationOnce(() =>
+      ok({ ...BILLABLE, lines: BILLABLE.lines.map((l) => ({ ...l, grnDocNo: null })) }),
+    );
+    await mount();
+    expect(document.body.textContent).toContain('Receipts included: #grn1');
   });
 
   it('warns when an edited invoice price is above the order price', async () => {

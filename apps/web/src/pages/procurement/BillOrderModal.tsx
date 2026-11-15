@@ -9,6 +9,7 @@ import {
   purchasesControllerBillable,
   type BillableLineDto,
   type PurchaseOrderDetailDto,
+  type PurchaseOrderLineViewDto,
 } from '@erp/api-client';
 import { selectCashBank, useAccounts } from '../../hooks/useAccounts';
 import { StatusTag } from '../../components/StatusTag';
@@ -80,6 +81,20 @@ export function BillOrderModal({ order, open, onClose, onBilled }: BillOrderModa
     () => new Map<string, BillableLineDto>((billable.data?.lines ?? []).map((l) => [l.grnLineId, l])),
     [billable.data],
   );
+  const orderLinesById = useMemo(
+    () => new Map<string, PurchaseOrderLineViewDto>((order.lines ?? []).map((l) => [l.id, l])),
+    [order.lines],
+  );
+  // The receipts the selected rows bill, shown in the header so the user sees which GRNs are included.
+  const grnLabels = [
+    ...new Set(
+      rows
+        .filter((r) => r.selected)
+        .map((r) => linesById.get(r.grnLineId))
+        .filter((l): l is BillableLineDto => l !== undefined)
+        .map((l) => l.grnDocNo ?? `#${l.grnId}`),
+    ),
+  ];
   const issues: BillIssue[] = billable.data ? billIssues(billable.data, header, rows) : [];
   const above = billable.data ? aboveRows(billable.data, rows) : [];
   const aboveIds = new Set(above.map((r) => r.grnLineId));
@@ -146,6 +161,14 @@ export function BillOrderModal({ order, open, onClose, onBilled }: BillOrderModa
             )}
           </>
         );
+      },
+    },
+    {
+      title: t('procurement.orderedQty'),
+      align: 'end' as const,
+      render: (_: unknown, r: BillRow) => {
+        const poLineId = linesById.get(r.grnLineId)?.poLineId ?? '';
+        return qtyCell(orderLinesById.get(poLineId)?.qtyBase);
       },
     },
     {
@@ -229,7 +252,16 @@ export function BillOrderModal({ order, open, onClose, onBilled }: BillOrderModa
   return (
     <Modal
       open={open}
-      title={t('billing.billOrderTitle', { orderNo: orderLabel })}
+      title={
+        <>
+          <div>{t('billing.billOrderTitle', { orderNo: orderLabel })}</div>
+          {grnLabels.length > 0 && (
+            <Typography.Text type="secondary" style={{ display: 'block', fontSize: 13, fontWeight: 400 }}>
+              {t('billing.grnsIncluded', { list: grnLabels.join(', ') })}
+            </Typography.Text>
+          )}
+        </>
+      }
       width={1100}
       destroyOnClose
       okText={t('billing.submit')}

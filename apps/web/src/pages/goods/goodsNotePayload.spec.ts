@@ -92,6 +92,48 @@ describe('goodsNoteBody', () => {
     expect(body.costCenterId).toBe('cc-2');
   });
 
+  it('sends null for a GIN account and centre the user cleared, on update', () => {
+    const body = goodsNoteBody(
+      { ...base, noteType: 'GIN', lines: [{ itemId: 'item-1', qty: '1' }] },
+      { purchaseOrderId: null, issueRequestId: 'ir-3' },
+      true,
+    );
+    expect(body.expenseAccountId).toBeNull();
+    expect(body.costCenterId).toBeNull();
+  });
+
+  it('keeps the chosen GIN account and centre on update', () => {
+    const body = goodsNoteBody(
+      { ...base, noteType: 'GIN', expenseAccountId: 'acc-5', costCenterId: 'cc-2', lines: [{ itemId: 'item-1', qty: '1' }] },
+      { purchaseOrderId: null, issueRequestId: 'ir-3' },
+      true,
+    );
+    expect(body.expenseAccountId).toBe('acc-5');
+    expect(body.costCenterId).toBe('cc-2');
+  });
+
+  it('never sends a GIN account or centre for a GRN update', () => {
+    const body = goodsNoteBody(
+      { ...base, expenseAccountId: null, costCenterId: null },
+      { purchaseOrderId: 'po-9', issueRequestId: null },
+      true,
+    );
+    expect(body).not.toHaveProperty('expenseAccountId');
+    expect(body).not.toHaveProperty('costCenterId');
+  });
+
+  it('omits a cleared GIN account and centre on create', () => {
+    const body = goodsNoteBody({
+      ...base,
+      noteType: 'GIN',
+      expenseAccountId: null,
+      costCenterId: null,
+      lines: [{ itemId: 'item-1', qty: '1' }],
+    });
+    expect(body).not.toHaveProperty('expenseAccountId');
+    expect(body).not.toHaveProperty('costCenterId');
+  });
+
   it('clears an empty description to undefined', () => {
     expect(goodsNoteBody({ ...base, description: '' }).description).toBeUndefined();
   });

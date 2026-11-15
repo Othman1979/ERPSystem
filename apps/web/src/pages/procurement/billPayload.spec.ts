@@ -89,6 +89,21 @@ describe('isAbovePrice', () => {
   it('uses a discount on the invoice price', () => {
     expect(isAbovePrice(orderLine, row({ unitCost: '11', discountPct: '10' }), false)).toBe(false);
   });
+
+  it('ignores a difference below 6 decimals, the precision of the order price', () => {
+    const precise = line({ orderNetUnitPrice: '3.333333' });
+    expect(isAbovePrice(precise, row({ unitCost: '3.3333334' }), false)).toBe(false);
+    expect(isAbovePrice(precise, row({ unitCost: '3.3333336' }), false)).toBe(true);
+  });
+});
+
+describe('invoiceNetUnitPrice rounding', () => {
+  it('rounds the net price to 6 decimals, half up', () => {
+    const net = (unitCost: string) =>
+      invoiceNetUnitPrice({ unitCost, discountPct: '0', taxRate: '0', pricesIncludeTax: false }).toFixed();
+    expect(net('3.3333334')).toBe('3.333333');
+    expect(net('3.3333335')).toBe('3.333334');
+  });
 });
 
 describe('defaultBillRows', () => {

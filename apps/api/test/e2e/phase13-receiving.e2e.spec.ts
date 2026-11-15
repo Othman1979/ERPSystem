@@ -137,14 +137,20 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
     expect(approved.status).toBe(201);
     return approved.body as { id: string; status: string; lines: { id: string; qtyBase: string; receivedQty: string }[] };
   }
+  /** Receiving is ONE action (review #50): the GRN against the order is created and posted together. */
   const receive = (orderId: string, lines?: { poLineId: string; qty: string }[], token = owner, key?: string) =>
     post(token, `purchase-orders/${orderId}/receive`, { noteDate: '2026-11-15', ...(lines ? { lines } : {}) }, key);
+  /** A draft GRN against the order made the old way (POST /goods-notes), posted later. */
+  const draftGrn = (orderId: string, itemId: string, lines: { poLineId: string; qty: string }[], warehouseId = W, token = owner) =>
+    api()
+      .post('/api/v1/goods-notes')
+      .set(auth(token))
+      .send({ noteDate: '2026-11-15', warehouseId, noteType: 'GRN', purchaseOrderId: orderId, lines: lines.map((l) => ({ itemId, ...l })) });
   const postNote = (id: string, token = owner) => post(token, `goods-notes/${id}/post`);
   async function receivedAndPosted(orderId: string, lines?: { poLineId: string; qty: string }[]) {
-    const draft = await receive(orderId, lines);
-    expect(draft.status).toBe(201);
-    const posted = await postNote(draft.body.id);
+    const posted = await receive(orderId, lines);
     expect(posted.status).toBe(201);
+    expect(posted.body.status).toBe('POSTED');
     return posted.body as { id: string; lines: { id: string; qty: string; unitCost: string }[]; journalEntryId: string };
   }
   const bill = (orderId: string, lines: object[], token = owner, key?: string) =>
@@ -279,21 +285,25 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
       const over = await receive(po.id, [{ poLineId: line, qty: '10.000001' }]);
       expect([over.status, over.body.error.code, over.body.error.details.remaining]).toEqual([409, 'PURCHASE_ORDER_OVER_RECEIPT', '10.000000']);
 
+      // The old way still works: a draft against the order moves nothing and records nothing; deleting it is fine.
+      const kept = await draftGrn(po.id, item, [{ poLineId: line, qty: '1' }]);
+      expect([kept.status, kept.body.status]).toEqual([201, 'DRAFT']);
+      expect(eq((await orderOf(po.id)).lines[0].receivedQty, '0')).toBe(true);
+      expect((await api().delete(`/api/v1/goods-notes/${kept.body.id}`).set(auth(owner))).status).toBe(200);
+
+      // ONE action (review #50): created and posted together, nothing left as a draft.
       const g = await receive(po.id, [{ poLineId: line, qty: '4' }]);
       expect(g.status).toBe(201);
-      expect([g.body.noteType, g.body.status, g.body.purchaseOrderId, g.body.supplierId, g.body.warehouseId]).toEqual(['GRN', 'DRAFT', po.id, s1, W]);
+      expect([g.body.noteType, g.body.status, g.body.purchaseOrderId, g.body.supplierId, g.body.warehouseId]).toEqual(['GRN', 'POSTED', po.id, s1, W]);
+      expect(g.body.docNo).toMatch(/^GRN-2026-/);
       expect(eq(g.body.lines[0].unitCost, '5')).toBe(true);
-      // A draft moves nothing and records nothing on the order.
-      expect(eq((await orderOf(po.id)).lines[0].receivedQty, '0')).toBe(true);
-      const posted = await postNote(g.body.id);
-      expect(posted.status).toBe(201);
       const after = await orderOf(po.id);
       expect([after.status, new Decimal(after.lines[0].receivedQty).toString()]).toEqual(['PARTIALLY_RECEIVED', '4']);
       // Without lines: what is left (6).
       const rest = await receive(po.id);
-      expect(eq(rest.body.lines[0].qty, '6')).toBe(true);
-      expect((await postNote(rest.body.id)).status).toBe(201);
+      expect([rest.body.status, new Decimal(rest.body.lines[0].qty).toString()]).toEqual(['POSTED', '6']);
       expect((await orderOf(po.id)).status).toBe('RECEIVED');
+      expect(await count("SELECT COUNT(*) AS n FROM goods_notes WHERE tenant_id = ? AND purchase_order_id = ? AND status = 'DRAFT'", [tenantA, po.id])).toBe(0);
       const nothing = await receive(po.id);
       expect([nothing.status, nothing.body.error.code]).toEqual([409, 'INVALID_STATUS_TRANSITION']);
       await verified();
@@ -315,12 +325,16 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
     it('a second draft posted after the first is refused above the order; cancel only while nothing is received', async () => {
       const po = await approvedOrder([{ itemId: item, qty: '10', unitPrice: '2' }]);
       const line = po.lines[0].id;
-      const d1 = await receive(po.id, [{ poLineId: line, qty: '6' }]);
-      const d2 = await receive(po.id, [{ poLineId: line, qty: '6' }]);
+      const d1 = await draftGrn(po.id, item, [{ poLineId: line, qty: '6' }]);
+      const d2 = await draftGrn(po.id, item, [{ poLineId: line, qty: '6' }]);
       expect([d1.status, d2.status]).toEqual([201, 201]);
       expect((await postNote(d1.body.id)).status).toBe(201);
       const second = await postNote(d2.body.id);
       expect([second.status, second.body.error.code]).toEqual([409, 'PURCHASE_ORDER_OVER_RECEIPT']);
+      // One action above what is left is refused the same way, and leaves nothing behind.
+      const overNow = await receive(po.id, [{ poLineId: line, qty: '5' }]);
+      expect([overNow.status, overNow.body.error.code]).toEqual([409, 'PURCHASE_ORDER_OVER_RECEIPT']);
+      expect(await count('SELECT COUNT(*) AS n FROM goods_notes WHERE tenant_id = ? AND purchase_order_id = ?', [tenantA, po.id])).toBe(2);
       const cancel = await post(owner, `purchase-orders/${po.id}/cancel`, { reason: 'late' });
       expect([cancel.status, cancel.body.error.code]).toEqual([409, 'INVALID_STATUS_TRANSITION']);
       // Close with a reason: nothing is received after; the receipt stays billable.
@@ -337,22 +351,29 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
       await verified();
     });
 
-    it('two GRNs on one order line posted at once: exactly one takes the quantity', async () => {
+    it('two receipts on one order line at once: exactly one takes the quantity (drafts posted, and one-step receives)', async () => {
       const po = await approvedOrder([{ itemId: item, qty: '10', unitPrice: '1' }]);
       const line = po.lines[0].id;
-      const d1 = await receive(po.id, [{ poLineId: line, qty: '6' }]);
-      const d2 = await receive(po.id, [{ poLineId: line, qty: '6' }]);
+      const d1 = await draftGrn(po.id, item, [{ poLineId: line, qty: '6' }]);
+      const d2 = await draftGrn(po.id, item, [{ poLineId: line, qty: '6' }]);
       const results = await Promise.all([postNote(d1.body.id), postNote(d2.body.id)]);
       expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
       expect(results.find((r) => r.status === 409)!.body.error.code).toBe('PURCHASE_ORDER_OVER_RECEIPT');
       expect(eq((await orderOf(po.id)).lines[0].receivedQty, '6')).toBe(true);
+
+      const po2 = await approvedOrder([{ itemId: item, qty: '10', unitPrice: '1' }]);
+      const line2 = po2.lines[0].id;
+      const both = await Promise.all([receive(po2.id, [{ poLineId: line2, qty: '6' }]), receive(po2.id, [{ poLineId: line2, qty: '6' }])]);
+      expect(both.map((r) => r.status).sort()).toEqual([201, 409]);
+      expect(eq((await orderOf(po2.id)).lines[0].receivedQty, '6')).toBe(true);
+      expect(await count('SELECT COUNT(*) AS n FROM goods_notes WHERE tenant_id = ? AND purchase_order_id = ?', [tenantA, po2.id])).toBe(1);
       await verified();
     });
 
-    it('a GRN racing a cancel or a close: one wins, the order and the stock stay consistent', async () => {
+    it('a GRN racing a cancel, a close or a delete of its draft: one wins, the order and the stock stay consistent', async () => {
       for (const action of ['cancel', 'close'] as const) {
         const po = await approvedOrder([{ itemId: item, qty: '5', unitPrice: '1' }]);
-        const d = await receive(po.id);
+        const d = await draftGrn(po.id, item, [{ poLineId: po.lines[0].id, qty: '5' }]);
         const [grn, other] = await Promise.all([postNote(d.body.id), post(owner, `purchase-orders/${po.id}/${action}`, { reason: 'race' })]);
         const order = await orderOf(po.id);
         const moved = await count('SELECT COUNT(*) AS n FROM stock_movements WHERE tenant_id = ? AND source_id = ? AND source_type = ?', [
@@ -372,10 +393,21 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
           ]);
         }
       }
+      // Delete vs post of the same draft (review #50): the delete locks and re-checks it.
+      const po = await approvedOrder([{ itemId: item, qty: '2', unitPrice: '1' }]);
+      const d = await draftGrn(po.id, item, [{ poLineId: po.lines[0].id, qty: '2' }]);
+      const [posted, deleted] = await Promise.all([postNote(d.body.id), api().delete(`/api/v1/goods-notes/${d.body.id}`).set(auth(owner))]);
+      const [row] = (await db.query('SELECT status FROM goods_notes WHERE tenant_id = ? AND id = ?', [tenantA, d.body.id])) as { status: string }[];
+      const received = new Decimal((await orderOf(po.id)).lines[0].receivedQty).toString();
+      if (posted.status === 201) {
+        expect([deleted.status, row.status, received]).toEqual([409, 'POSTED', '2']);
+      } else {
+        expect([deleted.status, row, received]).toEqual([200, undefined, '0']);
+      }
       await verified();
     });
 
-    it('idempotent replay of receive returns the same draft', async () => {
+    it('idempotent replay of receive returns the same posted receipt', async () => {
       const po = await approvedOrder([{ itemId: item, qty: '3', unitPrice: '1' }]);
       const key = `p13-${RUN}-replay-receive`;
       const a = await receive(po.id, undefined, owner, key);
@@ -489,6 +521,78 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
       const b = await bill(order.id, [{ grnLineId: g.lines[0].id, qty: '2', unitCost: '1' }], owner, key);
       expect([a.status, b.status, b.body.id]).toEqual([201, 201, a.body.id]);
       expect(await count('SELECT COUNT(*) AS n FROM purchase_invoices WHERE tenant_id = ? AND purchase_order_id = ?', [tenantA, order.id])).toBe(1);
+    });
+
+    it('a GRN line only on an invoice on an order; a unit cost above 12 integer digits is a 400', async () => {
+      const order = await approvedOrder([{ itemId: item, qty: '1', unitPrice: '1' }]);
+      const g = await receivedAndPosted(order.id);
+      const noOrder = await api().post('/api/v1/purchase-invoices').set(auth(owner)).send({
+        invoiceDate: '2026-11-15', supplierId: s1, warehouseId: W, paymentType: 'CREDIT',
+        lines: [{ itemId: item, qty: '1', unitCost: '1', grnLineId: g.lines[0].id }],
+      });
+      expect([noOrder.status, noOrder.body.error.code, noOrder.body.error.details.field]).toEqual([400, 'VALIDATION', 'grnLineId']);
+      // A draft GRN line (not posted) is not billable either.
+      const order2 = await approvedOrder([{ itemId: item, qty: '1', unitPrice: '1' }]);
+      const draft = await draftGrn(order2.id, item, [{ poLineId: order2.lines[0].id, qty: '1' }]);
+      const onDraft = await bill(order2.id, [{ grnLineId: draft.body.lines[0].id, qty: '1', unitCost: '1' }]);
+      expect([onDraft.status, onDraft.body.error.code]).toEqual([400, 'PURCHASE_ORDER_NOT_RECEIVED']);
+      const huge = await api().post('/api/v1/purchase-invoices').set(auth(owner)).send({
+        invoiceDate: '2026-11-15', supplierId: s1, warehouseId: W, paymentType: 'CREDIT', lines: [{ itemId: item, qty: '1', unitCost: '1234567890123' }],
+      });
+      expect([huge.status, huge.body.error.code]).toEqual([400, 'VALIDATION']);
+      expect((await bill(order.id, [{ grnLineId: g.lines[0].id, qty: '1', unitCost: '1234567890123.5' }])).status).toBe(400);
+    });
+
+    it('two invoices each billing part of one GRN line at once: both post, the clearing adds up exactly', async () => {
+      // 8 @ 1.111111 → value round3(8.888888) = 8.889. Bills of 3 and 4 in either order clear
+      // round3(8.889 × 7 / 8) = round3(7.777875) = 7.778 together; the last unit then clears 8.889 − 7.778 = 1.111.
+      const order = await approvedOrder([{ itemId: item, qty: '8', unitPrice: '1.111111' }]);
+      const g = await receivedAndPosted(order.id);
+      const a = await bill(order.id, [{ grnLineId: g.lines[0].id, qty: '3', unitCost: '1.111111' }]);
+      const b = await bill(order.id, [{ grnLineId: g.lines[0].id, qty: '4', unitCost: '1.111111' }]);
+      const posted = await Promise.all([post(owner, `purchase-invoices/${a.body.id}/post`), post(owner, `purchase-invoices/${b.body.id}/post`)]);
+      expect(posted.map((r) => r.status)).toEqual([201, 201]);
+      const sumCleared = posted.reduce((s, r) => s.plus(r.body.lines[0].receipts[0].clearedValue), new Decimal(0));
+      expect(sumCleared.toFixed(3)).toBe('7.778');
+      const last = await bill(order.id, [{ grnLineId: g.lines[0].id, qty: '1', unitCost: '1.111111' }]);
+      const lastPosted = await post(owner, `purchase-invoices/${last.body.id}/post`);
+      expect(new Decimal(lastPosted.body.lines[0].receipts[0].clearedValue).toFixed(3)).toBe('1.111');
+      const [l] = (await db.query('SELECT billed_qty, cleared_value FROM goods_note_lines WHERE tenant_id = ? AND id = ?', [tenantA, g.lines[0].id])) as {
+        billed_qty: string;
+        cleared_value: string;
+      }[];
+      expect([new Decimal(l.billed_qty).toString(), new Decimal(l.cleared_value).toFixed(3)]).toEqual(['8', '8.889']);
+      await verified();
+    });
+
+    it('a save racing a post of the same invoice draft on an order: no deadlock, a posted invoice is never rewritten', async () => {
+      const order = await approvedOrder([{ itemId: item, qty: '2', unitPrice: '1' }]);
+      const g = await receivedAndPosted(order.id);
+      const draft = (await bill(order.id, [{ grnLineId: g.lines[0].id, qty: '2', unitCost: '1' }])).body;
+      const body = {
+        invoiceDate: '2026-11-15', supplierId: s1, warehouseId: W, paymentType: 'CREDIT', purchaseOrderId: order.id, description: 'saved',
+        lines: [{ itemId: item, qty: '2', unitCost: '1', grnLineId: g.lines[0].id, taxCategoryId: draft.lines[0].taxCategoryId }],
+      };
+      const [saved, posted] = await Promise.all([
+        api().put(`/api/v1/purchase-invoices/${draft.id}`).set(auth(owner)).send(body),
+        post(owner, `purchase-invoices/${draft.id}/post`),
+      ]);
+      expect(posted.status).toBe(201);
+      expect([200, 409]).toContain(saved.status);
+      const final = (await get(owner, `purchase-invoices/${draft.id}`)).body;
+      expect(final.status).toBe('POSTED');
+      const [l] = (await db.query('SELECT billed_qty FROM goods_note_lines WHERE tenant_id = ? AND id = ?', [tenantA, g.lines[0].id])) as { billed_qty: string }[];
+      expect(new Decimal(l.billed_qty).toString()).toBe('2');
+      // Delete vs post of another draft: the delete locks and re-checks it.
+      const order2 = await approvedOrder([{ itemId: item, qty: '1', unitPrice: '1' }]);
+      const g2 = await receivedAndPosted(order2.id);
+      const d2 = (await bill(order2.id, [{ grnLineId: g2.lines[0].id, qty: '1', unitCost: '1' }])).body;
+      const [p2, del] = await Promise.all([post(owner, `purchase-invoices/${d2.id}/post`), api().delete(`/api/v1/purchase-invoices/${d2.id}`).set(auth(owner))]);
+      const [row] = (await db.query('SELECT status FROM purchase_invoices WHERE tenant_id = ? AND id = ?', [tenantA, d2.id])) as { status: string }[];
+      const [l2] = (await db.query('SELECT billed_qty FROM goods_note_lines WHERE tenant_id = ? AND id = ?', [tenantA, g2.lines[0].id])) as { billed_qty: string }[];
+      if (p2.status === 201) expect([del.status, row.status, new Decimal(l2.billed_qty).toString()]).toEqual([409, 'POSTED', '1']);
+      else expect([del.status, row, new Decimal(l2.billed_qty).toString()]).toEqual([200, undefined, '0']);
+      await verified();
     });
   });
 
@@ -604,6 +708,51 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
       await verified();
     });
 
+    it("an issue from a request is to the request's department and expense account (review #50)", async () => {
+      expect((await api().patch('/api/v1/company').set(auth(owner)).send({ costCentersEnabled: true })).status).toBe(200);
+      const centre = async (c: string) => (await api().post('/api/v1/cost-centers').set(auth(owner)).send({ code: c, nameAr: c })).body.id as string;
+      const d1 = await centre(`D1${RUN}`);
+      const d2 = await centre(`D2${RUN}`);
+      const accountId = async (c: string) =>
+        String(((await db.query('SELECT id FROM accounts WHERE tenant_id = ? AND code = ?', [tenantA, c])) as { id: bigint }[])[0].id);
+      const e5204 = await accountId('5204');
+      const e5202 = await accountId('5202');
+      const req = await api().post('/api/v1/issue-requests').set(auth(store)).send({
+        requestDate: '2026-11-15', warehouseId: W, costCenterId: d1, expenseAccountId: e5204, lines: [{ itemId: item, qty: '1' }],
+      });
+      expect(req.status).toBe(201);
+      await post(store, `issue-requests/${req.body.id}/submit`);
+      expect((await post(acc, `issue-requests/${req.body.id}/approve`)).status).toBe(201);
+      const line = req.body.lines[0].id as string;
+      const gin = (extra: object) =>
+        api().post('/api/v1/goods-notes').set(auth(store)).send({
+          noteDate: '2026-11-15', warehouseId: W, noteType: 'GIN', issueRequestId: req.body.id, lines: [{ itemId: item, qty: '1', issueRequestLineId: line }], ...extra,
+        });
+      const otherCentre = await gin({ costCenterId: d2 });
+      expect([otherCentre.status, otherCentre.body.error.code, otherCentre.body.error.details.field]).toEqual([
+        400,
+        'ISSUE_REQUEST_DEPARTMENT_MISMATCH',
+        'costCenterId',
+      ]);
+      const otherAccount = await gin({ expenseAccountId: e5202 });
+      expect([otherAccount.status, otherAccount.body.error.code, otherAccount.body.error.details.field]).toEqual([
+        400,
+        'ISSUE_REQUEST_DEPARTMENT_MISMATCH',
+        'expenseAccountId',
+      ]);
+      // Omitted: prefilled from the request, and posted to it.
+      const prefilled = await gin({});
+      expect([prefilled.status, prefilled.body.costCenterId, prefilled.body.expenseAccountId]).toEqual([201, d1, e5204]);
+      const posted = await postNote(prefilled.body.id, store);
+      expect(posted.status).toBe(201);
+      const [l] = (await db.query(
+        "SELECT a.code, l.cost_center_id AS c FROM journal_lines l JOIN accounts a ON a.id = l.account_id WHERE l.tenant_id = ? AND l.journal_entry_id = ? AND l.debit > 0",
+        [tenantA, posted.body.journalEntryId],
+      )) as { code: string; c: bigint }[];
+      expect([l.code, String(l.c)]).toEqual(['5204', d1]);
+      await verified();
+    });
+
     it('an issue request is isolated from tenant B', async () => {
       // At FULL too, so the level is not what refuses it.
       expect((await api().patch('/api/v1/company').set(auth(ownerB)).send({ procurementLevel: 'FULL' })).status).toBe(200);
@@ -625,11 +774,10 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
       expect((await api().patch('/api/v1/company').set(auth(ownerB)).send({ procurementLevel: 'MEDIUM' })).status).toBe(200);
       const r =await approvedOrder([{ itemId: itemB, qty: '1', unitPrice: '1' }], { token: ownerB, supplierId: sB, warehouseId: WB });
       const g = await receive(r.id, undefined, ownerB);
-      const p = await post(ownerB, `goods-notes/${g.body.id}/post`);
-      expect(p.status).toBe(201);
+      expect([g.status, g.body.status]).toEqual([201, 'POSTED']);
       const partial = await approvedOrder([{ itemId: itemB, qty: '2', unitPrice: '1' }], { token: ownerB, supplierId: sB, warehouseId: WB });
       const g2 = await receive(partial.id, [{ poLineId: partial.lines[0].id, qty: '1' }], ownerB);
-      expect((await post(ownerB, `goods-notes/${g2.body.id}/post`)).status).toBe(201);
+      expect([g2.status, g2.body.status]).toEqual([201, 'POSTED']);
       const lowerB = () => api().patch('/api/v1/company').set(auth(ownerB)).send({ procurementLevel: 'SIMPLE' });
       // The isolation test's order is APPROVED and this one PARTIALLY_RECEIVED: both open.
       const blocked = await lowerB();
@@ -648,7 +796,7 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
       env: { ...process.env, DATABASE_URL: testDatabaseUrl(), NODE_ENV: 'test' },
     });
     const report = JSON.parse(stdout) as { ok: boolean; checks: { name: string; ok: boolean; count: number }[] };
-    for (const name of ['purchase_order_lines.received_qty', 'goods_note_lines.billed_qty', 'issue_request_lines.issued_qty']) {
+    for (const name of ['purchase_order_lines.received_qty', 'goods_note_lines.billed_qty', 'goods_note_lines.cleared_value', 'issue_request_lines.issued_qty']) {
       expect(report.checks.find((c) => c.name === name)).toMatchObject({ ok: true, count: 0 });
     }
     expect(report.ok).toBe(true);

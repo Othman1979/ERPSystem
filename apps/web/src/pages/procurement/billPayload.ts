@@ -1,4 +1,5 @@
 import type { BillableLineDto, BillLineDto, BillPurchaseOrderDto, PurchaseOrderBillableDto } from '@erp/api-client';
+import Decimal from 'decimal.js';
 import { dec, toDecimal } from '../../format/number';
 
 /**
@@ -47,17 +48,18 @@ function text(v: string | null | undefined): string | undefined {
  * The net price per base unit of an invoice line, as the server compares it
  * with the order (ADR-026 §2): the unit cost less the discount, and without
  * tax when the company's prices include tax. A blank discount is zero; a
- * blank or invalid tax rate is zero too.
+ * blank or invalid tax rate is zero too. The result is rounded to 6 decimals,
+ * half up, the precision the server stores the order's net price with.
  */
 export function invoiceNetUnitPrice(input: {
   unitCost: string | null | undefined;
   discountPct: string | null | undefined;
   taxRate: string | null | undefined;
   pricesIncludeTax: boolean;
-}) {
+}): Decimal {
   const afterDiscount = dec(input.unitCost).times(dec(100).minus(dec(input.discountPct)).div(100));
-  if (!input.pricesIncludeTax) return afterDiscount;
-  return afterDiscount.div(dec(input.taxRate).div(100).plus(1));
+  const net = input.pricesIncludeTax ? afterDiscount.div(dec(input.taxRate).div(100).plus(1)) : afterDiscount;
+  return net.toDecimalPlaces(6, Decimal.ROUND_HALF_UP);
 }
 
 /**

@@ -559,9 +559,10 @@ export class GoodsNotesService implements OnModuleInit {
   /**
    * Posts a draft note on the caller's transaction, which already holds the
    * company, order or request locks (lockSources, FOR UPDATE): the note is
-   * locked next, then item_costs and stock_balances (ADR-026 §10).
+   * locked next, then item_costs and stock_balances (ADR-026 §10). Not private:
+   * the posting-transactions guard reads methods on the caller's transaction by this form.
    */
-  private async postLocked(
+  async postLocked(
     tx: Prisma.TransactionClient,
     companyId: bigint,
     id: bigint,

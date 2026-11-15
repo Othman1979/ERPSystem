@@ -18,10 +18,11 @@
  * P3  PO 3 Y @ 3.333333 (6 dp): gross round3(9.999999) = 10.000. GRN 3 at
  *     round6(10.000 / 3) = 3.333333, value round3(3 × 3.333333) = 10.000.
  *     Three bills of 1 @ 3.333333 (net 3.333, tax round3(0.53328) = 0.533,
- *     total 3.866): cleared round3(10.000 / 3) = 3.333, 3.333, then the last
- *     takes the rest 10.000 − 6.666 = 3.334 and its variance
- *     3.333 − 3.334 = −0.001 is credited to 5102. 2104 after each:
- *     6.667, 3.334, 0.000 exactly.
+ *     total 3.866). Clearing is cumulative (review #50): after k units billed
+ *     the line has cleared round3(10.000 × k / 3): 3.333, 6.667, 10.000, so the
+ *     bills clear 3.333, 3.334 (6.667 − 3.333) and 3.333 (10.000 − 6.667).
+ *     Bill 2's variance 3.333 − 3.334 = −0.001 is credited to 5102; bills 1
+ *     and 3 have none. 2104 after each: −6.667, −3.333, 0.000 exactly.
  * P4  Returns of the P2 invoice at the receipt cost (4.000 a unit, not 4.200):
  *     2 X → net 8.400, tax 1.344, total 9.744; out at 8.000 (2/5 of 20.000),
  *     Cr 5102 0.400 (its share of the variance) → X 13 @ 62.000. The last
@@ -32,6 +33,8 @@
  *     at the average round3(4 × 5.000000). X 6 @ 30.000.
  * End: 1104 = Σ item values = 30.000 (X) + 10.000 (Y) = 40.000; 2104 = 0;
  *      5102 = −0.001 (P3 only); TB balanced; stock:verify clean after every step.
+ * P6  a tax-inclusive order and P7 a receipt worth less than its units (review #50),
+ *     hand-computed in their own comments below, then a second end check.
  * Real MariaDB (E2E_DB_NAME) + built API. Run `pnpm build` first.
  */
 import 'dotenv/config';
@@ -128,9 +131,11 @@ describe('Golden scenarios P1–P5 — receiving, billing from receipts, issues 
     return ok(await act(`purchase-orders/${po.id}/approve`), 201, 'approve order');
   }
 
+  /** Receiving is one action (review #50): the GRN is created and posted together. */
   async function receiveAndPost(orderId: string, poLineId: string, qty: string, date: string) {
     const grn = await ok(await act(`purchase-orders/${orderId}/receive`, { noteDate: date, lines: [{ poLineId, qty }] }), 201, 'receive');
-    return ok(await act(`goods-notes/${grn.id}/post`), 201, 'post GRN');
+    expect(grn.status).toBe('POSTED');
+    return grn;
   }
 
   /** Journal lines as sorted "CODE Dr|Cr amount" strings. */
@@ -292,12 +297,12 @@ describe('Golden scenarios P1–P5 — receiving, billing from receipts, issues 
     expect(new Decimal(g.lines[0].unitCost).toFixed(6)).toBe('3.333333');
     expect(await entryLines(g.journalEntryId)).toEqual([`${code.INVENTORY} Dr 10.000`, `${code.GOODS_RECEIVED_NOT_INVOICED} Cr 10.000`].sort());
 
+    // Cumulative clearing (review #50): 3.333, 6.667 − 3.333 = 3.334, 10.000 − 6.667 = 3.333.
     const expected = [
       { cleared: '3.333', pending: '-6.667', lines: [`${code.GOODS_RECEIVED_NOT_INVOICED} Dr 3.333`, `${code.INPUT_TAX} Dr 0.533`, `${code.SUPPLIERS_CONTROL} Cr 3.866`] },
-      { cleared: '3.333', pending: '-3.334', lines: [`${code.GOODS_RECEIVED_NOT_INVOICED} Dr 3.333`, `${code.INPUT_TAX} Dr 0.533`, `${code.SUPPLIERS_CONTROL} Cr 3.866`] },
       {
         cleared: '3.334',
-        pending: '0.000',
+        pending: '-3.333',
         lines: [
           `${code.GOODS_RECEIVED_NOT_INVOICED} Dr 3.334`,
           `${code.INPUT_TAX} Dr 0.533`,
@@ -305,6 +310,7 @@ describe('Golden scenarios P1–P5 — receiving, billing from receipts, issues 
           `${code.SUPPLIERS_CONTROL} Cr 3.866`,
         ],
       },
+      { cleared: '3.333', pending: '0.000', lines: [`${code.GOODS_RECEIVED_NOT_INVOICED} Dr 3.333`, `${code.INPUT_TAX} Dr 0.533`, `${code.SUPPLIERS_CONTROL} Cr 3.866`] },
     ];
     for (const [i, e] of expected.entries()) {
       const draft = await ok(
@@ -417,6 +423,115 @@ describe('Golden scenarios P1–P5 — receiving, billing from receipts, issues 
     expect(await balance(code.INVENTORY)).toBe('40.000');
     expect(await balance('2104')).toBe('0.000');
     expect(await balance('5102')).toBe('-0.001');
+    await verified();
+  });
+
+  /** A new 16% item. */
+  async function newItem(itemCode: string) {
+    const pcs = ((await api().get('/api/v1/units').set(auth(token))).body as { id: string; code: string }[]).find((u) => u.code === 'PCS')!.id;
+    const tax16 = ((await api().get('/api/v1/tax-categories').set(auth(token))).body as { id: string; rate: string }[]).find((t) =>
+      new Decimal(t.rate).eq(16),
+    )!;
+    return (await api().post('/api/v1/items').set(auth(token)).send({ code: itemCode, nameAr: itemCode, baseUnitId: pcs, taxCategoryId: tax16.id })).body
+      .id as string;
+  }
+
+  /**
+   * P6 (review #50) — a tax-inclusive order (ADR-017), billed on the same basis:
+   * PO 10 Z @ 11.600 incl. 16% → net round3(116.000 / 1.16) = 100.000, tax 16.000,
+   * total 116.000. GRN 10 at round6(100.000 / 10) = 10.000000 → Dr 1104 100.000 /
+   * Cr 2104 100.000. The billable view suggests 11.600 (the order price, same basis)
+   * and compares on 11.600 / 1.16 = 10.000000 = the order's: no approval. Invoice
+   * 10 × 11.600 incl. → net 100.000, tax 16.000, total 116.000 → Dr 2104 100.000,
+   * Dr 1105 16.000, Cr 2101 116.000; no variance. Z 10 @ 100.000.
+   */
+  it('P6 a tax-inclusive order: received net of tax, billed at its price, 2104 = 0, no variance', async () => {
+    const Z = await newItem('Z');
+    await ok(await api().patch('/api/v1/company').set(auth(token)).send({ pricesIncludeTax: true }), 200, 'inclusive on');
+    const po = await approvedOrder(Z, '10', '11.600');
+    expect([m3(po.netTotal), m3(po.taxTotal), m3(po.grandTotal)]).toEqual(['100.000', '16.000', '116.000']);
+    const g = await receiveAndPost(po.id, po.lines[0].id, '10', '2025-03-15');
+    expect(new Decimal(g.lines[0].unitCost).toFixed(6)).toBe('10.000000');
+    expect(await entryLines(g.journalEntryId)).toEqual([`${code.INVENTORY} Dr 100.000`, `${code.GOODS_RECEIVED_NOT_INVOICED} Cr 100.000`].sort());
+    const billable = (await api().get(`/api/v1/purchase-orders/${po.id}/billable`).set(auth(token))).body;
+    expect([m3(billable.lines[0].defaultUnitCost), new Decimal(billable.lines[0].orderNetUnitPrice).toFixed(6)]).toEqual(['11.600', '10.000000']);
+    const draft = await ok(
+      await act(`purchase-orders/${po.id}/bill`, {
+        invoiceDate: '2025-03-16',
+        paymentType: 'CREDIT',
+        lines: [{ grnLineId: g.lines[0].id, qty: '10', unitCost: '11.600' }],
+      }),
+      201,
+      'bill',
+    );
+    expect(draft.pricesIncludeTax).toBe(true);
+    expect([m3(draft.netTotal), m3(draft.taxTotal), m3(draft.grandTotal)]).toEqual(['100.000', '16.000', '116.000']);
+    expect(draft.priceAboveOrderLines).toEqual([]);
+    const inv = await ok(await act(`purchase-invoices/${draft.id}/post`), 201, 'post invoice');
+    expect(await entryLines(inv.journalEntryId)).toEqual(
+      [`${code.GOODS_RECEIVED_NOT_INVOICED} Dr 100.000`, `${code.INPUT_TAX} Dr 16.000`, `${code.SUPPLIERS_CONTROL} Cr 116.000`].sort(),
+    );
+    expect(await itemCost(Z)).toEqual({ qty: '10', value: '100.000' });
+    expect(await balance('2104')).toBe('0.000');
+    await ok(await api().patch('/api/v1/company').set(auth(token)).send({ pricesIncludeTax: false }), 200, 'inclusive off');
+    await verified();
+  });
+
+  /**
+   * P7 (review #50) — a value smaller than its units: PO 6 T @ 0.0015 → net
+   * round3(0.009) = 0.009, tax round3(0.00144) = 0.001, total 0.010. GRN 6 at
+   * round6(0.009 / 6) = 0.001500, value round3(6 × 0.0015) = 0.009 → Dr 1104 0.009 /
+   * Cr 2104 0.009. Six bills of 1 @ 0.0015: net round3(0.0015) = 0.002, tax
+   * round3(0.00032) = 0.000, total 0.002. Cumulative clearing round3(0.009 × k / 6)
+   * = 0.002, 0.003, 0.005, 0.006, 0.008, 0.009, so the bills clear 0.002, 0.001,
+   * 0.002, 0.001, 0.002, 0.001 (a per-bill round3 would clear 0.002 five times and
+   * overshoot the 0.009). Variance (net − cleared): 0, +0.001, 0, +0.001, 0, +0.001,
+   * debited to 5102. 2104 after each: −0.007, −0.006, −0.004, −0.003, −0.001, 0.000.
+   */
+  it('P7 six bills of a 0.009 receipt: no bill clears more than is left, 2104 exactly 0', async () => {
+    const Tt = await newItem('T');
+    const po = await approvedOrder(Tt, '6', '0.0015');
+    expect([m3(po.netTotal), m3(po.taxTotal), m3(po.grandTotal)]).toEqual(['0.009', '0.001', '0.010']);
+    const g = await receiveAndPost(po.id, po.lines[0].id, '6', '2025-03-17');
+    expect(new Decimal(g.lines[0].unitCost).toFixed(6)).toBe('0.001500');
+    expect(await entryLines(g.journalEntryId)).toEqual([`${code.INVENTORY} Dr 0.009`, `${code.GOODS_RECEIVED_NOT_INVOICED} Cr 0.009`].sort());
+    const cleared = ['0.002', '0.001', '0.002', '0.001', '0.002', '0.001'];
+    const pending = ['-0.007', '-0.006', '-0.004', '-0.003', '-0.001', '0.000'];
+    for (const [i, c] of cleared.entries()) {
+      const draft = await ok(
+        await act(`purchase-orders/${po.id}/bill`, {
+          invoiceDate: '2025-03-18',
+          paymentType: 'CREDIT',
+          lines: [{ grnLineId: g.lines[0].id, qty: '1', unitCost: '0.0015' }],
+        }),
+        201,
+        `bill ${i + 1}`,
+      );
+      expect([m3(draft.netTotal), m3(draft.taxTotal), m3(draft.grandTotal)]).toEqual(['0.002', '0.000', '0.002']);
+      const inv = await ok(await act(`purchase-invoices/${draft.id}/post`), 201, `post bill ${i + 1}`);
+      expect(m3(inv.lines[0].receipts[0].clearedValue)).toBe(c);
+      const variance = c === '0.001' ? [`${code.INVENTORY_ADJUSTMENT} Dr 0.001`] : [];
+      expect(await entryLines(inv.journalEntryId)).toEqual(
+        [`${code.GOODS_RECEIVED_NOT_INVOICED} Dr ${c}`, ...variance, `${code.SUPPLIERS_CONTROL} Cr 0.002`].sort(),
+      );
+      expect(await balance('2104')).toBe(pending[i]);
+      await verified();
+    }
+    // The projection equals the posted clearing (the integrity check's rule).
+    const [l] = (await db.query(
+      `SELECT x.billed_qty, x.cleared_value,
+              (SELECT SUM(r.cleared_value) FROM purchase_invoice_receipts r WHERE r.tenant_id = x.tenant_id AND r.grn_line_id = x.id) AS links
+         FROM goods_note_lines x WHERE x.tenant_id = ? AND x.id = ?`,
+      [tenantId, g.lines[0].id],
+    )) as { billed_qty: string; cleared_value: string; links: string }[];
+    expect([new Decimal(l.billed_qty).toString(), m3(l.cleared_value), m3(l.links)]).toEqual(['6', '0.009', '0.009']);
+    expect(await itemCost(Tt)).toEqual({ qty: '6', value: '0.009' });
+  });
+
+  it('end after P6 and P7: 1104 = 40.000 + 100.000 + 0.009 = 140.009, 2104 = 0, 5102 = −0.001 + 0.003 = 0.002', async () => {
+    expect(await balance(code.INVENTORY)).toBe('140.009');
+    expect(await balance('2104')).toBe('0.000');
+    expect(await balance('5102')).toBe('0.002');
     await verified();
   });
 });
