@@ -360,7 +360,7 @@ export function Ribbon({ can, procurementLevel, noCompany, isPlatformAdmin, pend
           type="button"
           className="ribbon-fold"
           aria-expanded={!folded}
-          aria-label={t('ribbon.fold')}
+          aria-label={folded ? t('ribbon.unfold') : t('ribbon.fold')}
           title={folded ? t('ribbon.unfold') : t('ribbon.fold')}
           onClick={() => changeFolded(!folded)}
         >
