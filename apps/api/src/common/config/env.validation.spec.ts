@@ -1,5 +1,9 @@
 import { apiDocsEnabled, productionProblems, trustProxySetting, validateEnv } from './env.validation.js';
 
+/** Where validateEnv reads JEST_WORKER_ID (the real process environment, never the merged .env). */
+const OUTSIDE_JEST = {};
+const IN_JEST = { JEST_WORKER_ID: '1' };
+
 describe('validateEnv', () => {
   it('accepts minimal config and applies defaults', () => {
     const env = validateEnv({
@@ -81,19 +85,19 @@ describe('production rules (ADR-010 §10.1)', () => {
     ['an empty password', 'mysql://u123_erp:@localhost:3306/u123_erp', /DATABASE_URL: must have a password/],
     ['no password, as root', 'mysql://root:@localhost:3306/erp', /root account.*; DATABASE_URL: must have a password/],
   ])('refuses a production DATABASE_URL with %s', (_case, url, error) => {
-    expect(() => validateEnv({ ...good, DATABASE_URL: url })).toThrow(error);
+    expect(() => validateEnv({ ...good, DATABASE_URL: url }, OUTSIDE_JEST)).toThrow(error);
   });
 
   it('accepts a hosting account with a password; the database rules are production only', () => {
-    expect(validateEnv({ ...good, DATABASE_URL: 'mysql://u123_erp:p%40ss@localhost:3306/u123_erp' }).DATABASE_URL).toContain('u123_erp');
-    expect(validateEnv({ ...good, NODE_ENV: 'development', DATABASE_URL: 'mysql://root:@localhost:3306/erp' }).NODE_ENV).toBe('development');
+    expect(validateEnv({ ...good, DATABASE_URL: 'mysql://u123_erp:p%40ss@localhost:3306/u123_erp' }, OUTSIDE_JEST).DATABASE_URL).toContain('u123_erp');
+    expect(validateEnv({ ...good, NODE_ENV: 'development', DATABASE_URL: 'mysql://root:@localhost:3306/erp' }, OUTSIDE_JEST).NODE_ENV).toBe('development');
   });
 
   it('inside Jest, production mode may use the local test database account (the e2e harness)', () => {
-    const env = validateEnv({ ...good, DATABASE_URL: 'mysql://root:@localhost:3306/erp_test', JEST_WORKER_ID: '1' });
+    const env = validateEnv({ ...good, DATABASE_URL: 'mysql://root:@localhost:3306/erp_test' }, IN_JEST);
     expect(env.NODE_ENV).toBe('production');
     // The secret rules still hold inside Jest.
-    expect(() => validateEnv({ ...good, JWT_ACCESS_SECRET: 'dev-only-access-secret-change-me', JEST_WORKER_ID: '1' })).toThrow(
+    expect(() => validateEnv({ ...good, JWT_ACCESS_SECRET: 'dev-only-access-secret-change-me' }, IN_JEST)).toThrow(
       /JWT_ACCESS_SECRET: looks like a placeholder/,
     );
   });
@@ -105,7 +109,7 @@ describe('production rules (ADR-010 §10.1)', () => {
   });
 
   it('names every problem at once', () => {
-    const problems = productionProblems(validateEnv({ ...good, NODE_ENV: 'test', JEST_WORKER_ID: '1' }));
+    const problems = productionProblems(validateEnv({ ...good, NODE_ENV: 'test' }, IN_JEST));
     expect(problems).toEqual([]); // the rules are production only
     expect(() => validateEnv({ ...good, CORS_ORIGIN: 'http://x', EINVOICE_WORKER: 'on' })).toThrow(
       /CORS_ORIGIN: .*; EINVOICE_WORKER: /,
@@ -123,13 +127,33 @@ describe('NODE_ENV=test only in a test run', () => {
   const base = { DATABASE_URL: 'mysql://root@localhost:3306/db', JWT_ACCESS_SECRET: 'test-secret-at-least-16-chars' };
 
   it('is refused outside Jest: test-only routes must not open on a server', () => {
-    expect(() => validateEnv({ ...base, NODE_ENV: 'test' })).toThrow(/NODE_ENV: test is only for test runs/);
-    expect(() => validateEnv({ ...base, NODE_ENV: 'test', ALLOW_TEST_ENV: 'false' })).toThrow(/NODE_ENV: test/);
+    expect(() => validateEnv({ ...base, NODE_ENV: 'test' }, OUTSIDE_JEST)).toThrow(/NODE_ENV: test is only for test runs/);
+    expect(() => validateEnv({ ...base, NODE_ENV: 'test', ALLOW_TEST_ENV: 'false' }, OUTSIDE_JEST)).toThrow(/NODE_ENV: test/);
   });
 
   it('is accepted inside Jest (JEST_WORKER_ID, inherited by the spawned API) or with ALLOW_TEST_ENV=true', () => {
-    expect(validateEnv({ ...base, NODE_ENV: 'test', JEST_WORKER_ID: '3' }).NODE_ENV).toBe('test');
-    expect(validateEnv({ ...base, NODE_ENV: 'test', ALLOW_TEST_ENV: 'true' }).NODE_ENV).toBe('test');
+    expect(validateEnv({ ...base, NODE_ENV: 'test' }, { JEST_WORKER_ID: '3' }).NODE_ENV).toBe('test');
+    expect(validateEnv({ ...base, NODE_ENV: 'test', ALLOW_TEST_ENV: 'true' }, OUTSIDE_JEST).NODE_ENV).toBe('test');
+  });
+
+  it('reads JEST_WORKER_ID from the process environment only: a .env line (merged config) exempts nothing', () => {
+    expect(() => validateEnv({ ...base, NODE_ENV: 'test', JEST_WORKER_ID: '1' }, OUTSIDE_JEST)).toThrow(/NODE_ENV: test/);
+    const production = {
+      DATABASE_URL: 'mysql://root:@localhost:3306/erp',
+      NODE_ENV: 'production',
+      JWT_ACCESS_SECRET: 'a'.repeat(32),
+      CORS_ORIGIN: 'https://erp.example.jo',
+      EINVOICE_ENC_KEY: Buffer.alloc(32, 7).toString('base64'),
+      BACKUP_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString('base64'),
+      JEST_WORKER_ID: '1',
+    };
+    expect(() => validateEnv(production, OUTSIDE_JEST)).toThrow(/DATABASE_URL: must not use the root account/);
+    expect(() => validateEnv(production, { JEST_WORKER_ID: '' })).toThrow(/DATABASE_URL: /);
+  });
+
+  it('by default reads the real process environment (Jest sets JEST_WORKER_ID here)', () => {
+    expect(process.env.JEST_WORKER_ID).toBeTruthy();
+    expect(validateEnv({ ...base, NODE_ENV: 'test' }).NODE_ENV).toBe('test');
   });
 
   it('ALLOW_TEST_ENV is true or false only, false by default', () => {

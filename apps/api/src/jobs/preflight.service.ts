@@ -62,16 +62,21 @@ export const EXPECTED_CHARSETS: Record<string, string> = {
 };
 
 /**
- * MariaDB from 10.11 to 11.8 (ADR-019). Not MariaDB, or older than 10.11, is
- * an error in production and a warning elsewhere (development runs XAMPP's
- * 10.4); newer than 11.8 is untested, a warning.
+ * MariaDB from 10.11 to 11.8 (ADR-019). Not MariaDB is always an error: the
+ * migrations use MariaDB-only syntax (DROP INDEX IF EXISTS ... ON, executable
+ * comments), so MySQL is not supported. Older than 10.11 is an error in
+ * production and a warning elsewhere (development runs XAMPP's 10.4); newer
+ * than 11.8 is untested, a warning.
  */
 export function databaseVersionLevel(version: string, production: boolean): { level: Level; detail: string } {
   // Old clients see a "5.5.5-" prefix on MariaDB's version.
   const v = version.replace(/^5\.5\.5-/, '');
   const m = /^(\d+)\.(\d+)\./.exec(v);
   if (!m || !/mariadb/i.test(v)) {
-    return { level: serverLevel(production), detail: `${version} is not MariaDB: supported is MariaDB 10.11 to 11.8 (ADR-019)` };
+    return {
+      level: 'error',
+      detail: `${version} is not MariaDB: MySQL is not supported (the migrations use MariaDB-only syntax); MariaDB 10.11 or newer is required (ADR-019)`,
+    };
   }
   const major = Number.parseInt(m[1], 10);
   const minor = Number.parseInt(m[2], 10);
@@ -122,6 +127,24 @@ export function environmentLevel(nodeEnv: string, corsOrigin: string): { level: 
   }
   if (host === '' || LOOPBACK_HOSTS.has(host)) return { level: 'warn', detail: `${nodeEnv} (not production)` };
   return { level: 'error', detail: `NODE_ENV=${nodeEnv} on a public site (CORS_ORIGIN ${host}): set NODE_ENV=production` };
+}
+
+/**
+ * Test switches present in the environment: JEST_WORKER_ID (env validation's
+ * test exemptions) or ALLOW_TEST_ENV=true. Either on a production server is
+ * an error; elsewhere a warning (the e2e suites run preflight inside Jest).
+ */
+export function testFlagsLevel(
+  jestWorkerId: string | undefined,
+  allowTestEnv: string | undefined,
+  production: boolean,
+): { level: Level; detail: string } {
+  const set = [...(jestWorkerId ? ['JEST_WORKER_ID'] : []), ...(allowTestEnv === 'true' ? ['ALLOW_TEST_ENV=true'] : [])];
+  if (set.length === 0) return { level: 'info', detail: 'no test switches set' };
+  return {
+    level: serverLevel(production),
+    detail: `${set.join(' and ')} set: test-only switches; remove them from the server environment and .env`,
+  };
 }
 
 /** The settings among these that are relative paths (resolved against the working folder, which a Cron line may change). */
@@ -280,6 +303,9 @@ export class PreflightService {
     // Loading the module already validated the environment (production rules included).
     const environment = environmentLevel(env, this.config.get('CORS_ORIGIN', { infer: true }));
     add('environment', environment.level !== 'error', environment.detail, environment.level);
+    // JEST_WORKER_ID from the process (where env validation reads it); ALLOW_TEST_ENV from the validated config.
+    const flags = testFlagsLevel(process.env.JEST_WORKER_ID, this.config.get('ALLOW_TEST_ENV', { infer: true }), production);
+    add('test-flags', flags.level !== 'error', flags.detail, flags.level);
     // ADR-011: which proxies may name the client; none trusted behind a proxy
     // means every client shares one rate limit (the API also logs it then).
     const proxies = this.config.get('TRUST_PROXY', { infer: true });

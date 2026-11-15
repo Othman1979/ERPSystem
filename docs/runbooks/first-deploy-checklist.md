@@ -4,8 +4,10 @@
 كلمة مرور: الأسرار في `apps/api/.env` على الخادم، ونسخة منها في مدير كلمات المرور فقط.
 
 ## قبل البدء
-- [ ] Node 24 مختار في لوحة Node (`.nvmrc`)، وpnpm 10 متاح. (`deploy.md` §المتطلبات)
-- [ ] نسخة MariaDB في الاستضافة بين 10.11 و11.8. (§المتطلبات)
+- [ ] الخطة فيها SSH وCron وNode 24 (Hostinger Cloud أو VPS). الخطة المشتركة دونها لا تكفي. (`deploy.md`
+      §المتطلبات)
+- [ ] Node 24 مختار في لوحة Node (`.nvmrc`)، وpnpm 10 متاح. (§المتطلبات)
+- [ ] القاعدة **MariaDB 10.11 أو أحدث** (LTS بين 10.11 و11.8). **MySQL غير مدعومة.** (§المتطلبات)
 - [ ] نطاق مع SSL، وCron مفعّل. (§المتطلبات)
 
 ## القاعدة والمجلدات والإعدادات
@@ -25,6 +27,7 @@
 - [ ] `pnpm install --frozen-lockfile --prod=false` (§النشر الأول 1)
 - [ ] `pnpm --filter api prisma:generate` (§النشر الأول 2)
 - [ ] `pnpm build` (§النشر الأول 3)
+- [ ] `echo $DATABASE_URL` فارغ أو يشير إلى القاعدة الصحيحة: متغير الـ shell يغلب `.env`. (§ملف `apps/api/.env`)
 - [ ] `pnpm --filter api exec prisma migrate deploy` (§النشر الأول 4؛ عند الفشل: §القاعدة، «أي migration فاشلة»)
 - [ ] `pnpm --filter api exec prisma db seed` (§النشر الأول 4)
 

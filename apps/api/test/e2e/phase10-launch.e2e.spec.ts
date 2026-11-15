@@ -220,7 +220,7 @@ describe('Phase 10.1 — preflight and grant-platform-admin', () => {
       [
         'backup', 'backup-age', 'backup-key', 'charset', 'connections', 'database', 'database-version', 'database-write',
         'disk', 'environment', 'error-log', 'isolation', 'migrations', 'paths', 'plans', 'platform-admin', 'prisma-client',
-        'proxy', 'restore-tool', 'storage', 'timezone', 'web',
+        'proxy', 'restore-tool', 'storage', 'test-flags', 'timezone', 'web',
       ].sort(),
     );
     expect(checks.environment.level).toBe('warn'); // NODE_ENV=test is not production

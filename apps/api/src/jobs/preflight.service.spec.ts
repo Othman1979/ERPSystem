@@ -15,6 +15,7 @@ import {
   prismaClientLevel,
   probeFolder,
   relativePaths,
+  testFlagsLevel,
   timezoneLevel,
 } from './preflight.service.js';
 
@@ -31,13 +32,20 @@ describe('preflight: database version (ADR-019)', () => {
     expect(databaseVersionLevel(version, true).level).toBe(level);
   });
 
-  it('older than 10.11, or not MariaDB, is an error in production and a warning elsewhere', () => {
-    for (const version of ['10.6.18-MariaDB', '10.4.32-MariaDB', '8.0.36', '8.4.2-log', 'nonsense']) {
+  it('older than 10.11 is an error in production and a warning elsewhere (development runs XAMPP 10.4)', () => {
+    for (const version of ['10.6.18-MariaDB', '10.4.32-MariaDB']) {
       expect(databaseVersionLevel(version, true).level).toBe('error');
       expect(databaseVersionLevel(version, false).level).toBe('warn');
     }
     expect(databaseVersionLevel('10.6.18-MariaDB', true).detail).toMatch(/older than 10\.11/);
-    expect(databaseVersionLevel('8.0.36', true).detail).toMatch(/not MariaDB/);
+  });
+
+  it('not MariaDB (MySQL) is always an error: the migrations use MariaDB-only syntax', () => {
+    for (const version of ['8.0.36', '8.4.2-log', 'nonsense']) {
+      expect(databaseVersionLevel(version, true).level).toBe('error');
+      expect(databaseVersionLevel(version, false).level).toBe('error');
+    }
+    expect(databaseVersionLevel('8.0.36', false).detail).toMatch(/not MariaDB: MySQL is not supported .*MariaDB 10\.11 or newer is required/);
   });
 });
 
@@ -102,6 +110,21 @@ describe('preflight: environment', () => {
       level: 'error',
       detail: expect.stringMatching(/NODE_ENV=development on a public site .*set NODE_ENV=production/),
     });
+  });
+});
+
+describe('preflight: test switches', () => {
+  it('none set is fine', () => {
+    expect(testFlagsLevel(undefined, 'false', true).level).toBe('info');
+    expect(testFlagsLevel('', undefined, true).level).toBe('info');
+  });
+
+  it('JEST_WORKER_ID or ALLOW_TEST_ENV=true is an error in production and a warning elsewhere', () => {
+    expect(testFlagsLevel('1', 'false', true)).toEqual({ level: 'error', detail: expect.stringMatching(/^JEST_WORKER_ID set/) });
+    expect(testFlagsLevel(undefined, 'true', true)).toEqual({ level: 'error', detail: expect.stringMatching(/^ALLOW_TEST_ENV=true set/) });
+    expect(testFlagsLevel('2', 'true', true).detail).toMatch(/^JEST_WORKER_ID and ALLOW_TEST_ENV=true set/);
+    expect(testFlagsLevel('1', 'false', false).level).toBe('warn');
+    expect(testFlagsLevel(undefined, 'true', false).level).toBe('warn');
   });
 });
 

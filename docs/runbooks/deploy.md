@@ -6,12 +6,16 @@
 قائمة مختصرة بالترتيب لأول نشر: `first-deploy-checklist.md`. هذا الملف هو التفاصيل.
 
 ## المتطلبات
+- **خطة استضافة فيها SSH وCron وNode 24:** Hostinger Cloud أو VPS. الخطط المشتركة التي ينقصها أحدها لا
+  تشغّل هذا التطبيق.
 - **Node.js 24 LTS** وpnpm 10. النسخة مثبتة في `.nvmrc` (`24`) وفي `engines` في `package.json`. اختر 24 في
   لوحة Node، أو `nvm use` في المستودع.
-- **MariaDB بنسخة LTS بين 10.11 و11.8** (ADR-019). CI يختبر طرفي هذا المدى: `mariadb:10.11` و`mariadb:11.8`.
+- **MariaDB 10.11 أو أحدث، بنسخة LTS بين 10.11 و11.8** (ADR-019). CI يختبر طرفي هذا المدى: `mariadb:10.11`
+  و`mariadb:11.8`.
+  - **MySQL غير مدعومة:** الـ migrations تستعمل صيغة MariaDB وحدها، مثل `DROP INDEX IF EXISTS … ON`.
   - 10.6 انتهى دعمها في تموز 2026، فلم تعد مقبولة.
-  - `preflight` يفحصها (`database-version`): ليست MariaDB، أو أقدم من 10.11، خطأ في الإنتاج. أحدث من 11.8
-    تحذير.
+  - `preflight` يفحصها (`database-version`): غير MariaDB خطأ دائماً، وأقدم من 10.11 خطأ في الإنتاج. أحدث
+    من 11.8 تحذير.
   - اكتب نسخة الاستضافة الفعلية (من مخرجات `preflight`، سطر `VERSION()`) في ADR-019 عند أول نشر. إذا كانت خارج
     المدى، فأضفها إلى مصفوفة CI قبل النشر.
   - على 11.6.2 وما بعده: الإعداد `SESSION_INIT_SQL` يتكفل بـ snapshot isolation، و`preflight` يتحقق منه.
@@ -86,6 +90,8 @@ which node mysqldump mysql      # أو: which node mariadb-dump mariadb
 - **أنشئه قبل التثبيت.** `prisma generate` (بعد التثبيت تلقائياً) لا يحتاج القاعدة، لكن كل ما بعده يحتاجها:
   `migrate deploy` و`db seed` والتطبيق وأوامر Cron. دون `DATABASE_URL` تتوقف أوامر prisma برسالة
   `datasource.url property is required`.
+- **متغير مُصدَّر في الـ shell يغلب `.env`:** dotenv لا يكتب فوق متغير موجود. قبل أي `migrate` تأكد أن
+  `echo $DATABASE_URL` فارغ أو يشير إلى القاعدة الصحيحة، وإلا طُبّقت الـ migrations على قاعدة أخرى.
 - كل المتغيرات مشروحة في `apps/api/.env.example`. الإلزامي منها في الإنتاج، والتطبيق يرفض الإقلاع دونه:
 
 ```
@@ -111,7 +117,9 @@ ALERT_WEBHOOK_URL="https://..."           # اختياري
 - **ما يرفضه الإنتاج** (الرسالة تسمّي المتغير):
   - سرّ فيه `change-me` أو `dev-only` أو `example`، أي قيمة منسوخة من ملف مثال؛
   - `DATABASE_URL` بالمستخدم `root` أو بلا كلمة مرور؛
-  - `NODE_ENV=test` على أي خادم: يفتح مسارات الاختبار، فيُرفض خارج تشغيل Jest.
+  - `NODE_ENV=test` على أي خادم: يفتح مسارات الاختبار، فيُرفض خارج تشغيل Jest (`JEST_WORKER_ID` في بيئة
+    العملية فقط، لا من `.env`).
+- `preflight` يعدّ `JEST_WORKER_ID` أو `ALLOW_TEST_ENV=true` في الإنتاج خطأً (`test-flags`).
 - `preflight` يعدّ `NODE_ENV` غير `production` خطأً حين يكون `CORS_ORIGIN` نطاقاً عاماً (`environment`).
 
 **توليد الأسرار:** نفّذ الأمرين على جهازك، ولا تلصق الناتج في أي محادثة أو تذكرة.
@@ -150,6 +158,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
    ```
 4. **الـ migrations ثم البذور** (الباقات والعملات والدول والأدوار):
    ```bash
+   echo $DATABASE_URL     # فارغ، أو القاعدة الصحيحة (§ملف apps/api/.env)
    pnpm --filter api exec prisma migrate deploy
    pnpm --filter api exec prisma db seed
    ```
@@ -226,23 +235,26 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 البناء يفرّغ `dist` ثم يعيد كتابته. في هذه الدقائق تفشل ملفات الواجهة عند المتصفحات المفتوحة، ويفشل أي أمر
 Cron يبدأ. لذلك يجري التحديث في نافذة صيانة قصيرة.
 
-الترتيب: **أوقف التطبيق، ثم `ledger:check`، ثم الـ migrations، ثم التوليد، ثم البناء، ثم التشغيل.**
+الترتيب: **أوقف التطبيق، ثم `ledger:check` بالإصدار الحالي، ثم السحب والتثبيت، ثم الـ migrations، ثم
+التوليد، ثم البناء، ثم التشغيل، ثم `preflight`.**
 
 1. **أوقف أوامر Cron مؤقتاً**، بتعليق أسطرها، **وخذ نسخة:** `node dist/jobs/cli.js backup`.
-2. **السحب والتثبيت**، والتطبيق القديم ما زال يعمل (يقرأ `dist` فقط):
+2. **أوقف التطبيق.**
+3. **فحص بيانات القيود** (ADR-014) **بالكود الحالي، قبل السحب:** يفحص البيانات القديمة بالعميل القديم. للقراءة
+   فقط، لا يكتب شيئاً، **ويجب أن يخرج نظيفاً**:
    ```bash
-   cd ~/erp && git pull && pnpm install --frozen-lockfile --prod=false
-   ```
-3. **أوقف التطبيق.**
-4. **فحص بيانات القيود** (ADR-014). للقراءة فقط، لا يكتب شيئاً، **ويجب أن يخرج نظيفاً**:
-   ```bash
-   pnpm --filter api ledger:check
+   cd ~/erp && pnpm --filter api ledger:check
    ```
    - رمز 1 يعني قيوداً معكوسة مرتين: الـ migration `20261113163739_journal_reversal_unique` تفشل بوجودها.
-     يصحّحها المحاسب بقيود قبل المتابعة (المرحّل لا يُعدَّل).
+     يصحّحها المحاسب بقيود قبل المتابعة (المرحّل لا يُعدَّل)، ثم أعد التشغيل وأعد الفحص.
    - الأقسام الأخرى في التقرير تُراجع مع المحاسب، ولا تمنع المتابعة.
+4. **السحب والتثبيت.** التثبيت يعيد توليد عميل Prisma من الـ schema الجديد (postinstall):
+   ```bash
+   git pull && pnpm install --frozen-lockfile --prod=false
+   ```
 5. **الـ migrations:**
    ```bash
+   echo $DATABASE_URL     # فارغ، أو القاعدة الصحيحة
    pnpm --filter api exec prisma migrate deploy
    ```
    - إن فشلت إحداها: §القاعدة، «أي migration فاشلة».
@@ -282,8 +294,10 @@ Cron يبدأ. لذلك يجري التحديث في نافذة صيانة قص�
    pnpm --filter api prisma:generate
    pnpm build
    ```
-   التثبيت في الخطوة 2 يولّد العميل أيضاً (postinstall)، لكن هذه الخطوة تضمنه حتى لو لم يتغير شيء في الحزم.
-7. **`preflight`**، ثم شغّل التطبيق، **وأعد أوامر Cron.**
+   التثبيت في الخطوة 4 ولّد العميل وختمه، و`prisma:generate` يعيد التوليد والختم (`schema.sha256`) صراحةً،
+   فيطابق ما يبنيه `pnpm build` الـ schema الحالي حتى لو تخطى التثبيت شيئاً.
+7. **شغّل التطبيق**، ثم **`preflight`** (`cd apps/api && node dist/jobs/cli.js preflight`): لا `error`. ثم
+   **أعد أوامر Cron.**
 8. **التحقق:** الإصدار الجديد يظهر في المتصفح فوراً، لأن `index.html` لا يُخزَّن مؤقتاً. من فتح الصفحة أثناء
    البناء يعيد تحميلها.
    - لتحديث بلا انقطاع لاحقاً: ابنِ في مجلد إصدار جديد، ثم بدّل إليه وأعد التشغيل.

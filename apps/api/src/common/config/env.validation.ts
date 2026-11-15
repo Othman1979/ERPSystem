@@ -187,14 +187,22 @@ export function trustProxySetting(value: string): boolean | number | string {
   return v;
 }
 
-export function validateEnv(config: Record<string, unknown>): Env {
+/**
+ * `runtime` is where JEST_WORKER_ID is read: the real process environment
+ * only, never `config` (which ConfigModule merges with apps/api/.env), so a
+ * JEST_WORKER_ID line in a .env file cannot switch the test exemptions on.
+ */
+export function validateEnv(
+  config: Record<string, unknown>,
+  runtime: { JEST_WORKER_ID?: string } = process.env,
+): Env {
   // `NAME=` in a .env file means unset: its default applies, or "required".
   const given = Object.fromEntries(Object.entries(config).filter(([, v]) => v !== ''));
   // Node hosting panels hand the app its port in PORT: listen there unless API_PORT says otherwise.
   if (given.API_PORT === undefined && given.PORT !== undefined) given.API_PORT = given.PORT;
   const result = envSchema.safeParse(given);
-  // Jest sets JEST_WORKER_ID in every worker; ConfigModule passes the whole process environment.
-  const underTest = given.JEST_WORKER_ID !== undefined;
+  // Jest sets JEST_WORKER_ID in every worker, and spawned e2e processes inherit it.
+  const underTest = !!runtime.JEST_WORKER_ID;
   const issues = result.success
     ? [
         ...productionProblems(result.data, { underTest }).map((p) => `${p.path}: ${p.message}`),
