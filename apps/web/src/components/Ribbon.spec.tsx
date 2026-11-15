@@ -180,6 +180,17 @@ describe('links are real anchors', () => {
     expect(badge?.textContent).toBe('+');
   });
 
+  it('names the document on a "new" button', () => {
+    render('/sales');
+    expect(container.querySelector('a[href="/sales?new=1"] .ribbon-label')?.textContent).toBe(t('ribbon.new.sales'));
+  });
+
+  it('offers no "new" button to a role that cannot create the document (review #55)', () => {
+    render('/sales', { can: (p: Permission) => p === PERMISSIONS.TENANT_READ || p === PERMISSIONS.REPORTS_VIEW });
+    expect(container.querySelector('a[href="/sales"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/sales?new=1"]')).toBeNull();
+  });
+
   it('offers only the quick actions the role can use on the home tab', () => {
     render('/', { can: (p: Permission) => p === PERMISSIONS.SALES_MANAGE });
     expect(linkLabels()).toEqual([t('nav.home'), t('sales.newInvoice')]);

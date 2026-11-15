@@ -117,6 +117,8 @@ export interface AppRoute {
    * a "new" button for it.
    */
   newPath?: string;
+  /** Permission needed to create the document behind newPath; without it the button is not offered. */
+  newPermission?: Permission;
 }
 
 export interface AppGroup {
@@ -188,6 +190,7 @@ export const APP_GROUPS: AppGroup[] = [
         permission: PERMISSIONS.TENANT_READ,
         section: 'nav.sectionLedger',
         newPath: '/journal?new=1',
+        newPermission: PERMISSIONS.JOURNAL_MANAGE,
       },
       {
         key: 'openingBalances',
@@ -198,6 +201,7 @@ export const APP_GROUPS: AppGroup[] = [
         permission: PERMISSIONS.TENANT_READ,
         section: 'nav.sectionLedger',
         newPath: '/opening-balances?new=1',
+        newPermission: PERMISSIONS.JOURNAL_MANAGE,
       },
       { key: 'fiscal', path: '/fiscal', label: 'nav.fiscal', icon: <CalendarOutlined />, element: <FiscalPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionPeriods' },
     ],
@@ -222,6 +226,7 @@ export const APP_GROUPS: AppGroup[] = [
         permission: PERMISSIONS.TENANT_READ,
         section: 'nav.sectionDocuments',
         newPath: '/sales?new=1',
+        newPermission: PERMISSIONS.SALES_MANAGE,
       },
       { key: 'einvoice', path: '/einvoice', label: 'nav.einvoice', icon: <FileProtectOutlined />, element: <EInvoicePage />, permission: PERMISSIONS.REPORTS_VIEW, section: 'nav.sectionDocuments' },
       PARTIES_ROUTE,
@@ -240,6 +245,7 @@ export const APP_GROUPS: AppGroup[] = [
         permission: PERMISSIONS.TENANT_READ,
         section: 'nav.sectionDocuments',
         newPath: '/purchases?new=1',
+        newPermission: PERMISSIONS.PURCHASE_MANAGE,
       },
       { key: 'goodsNotes', path: '/goods-notes', label: 'nav.goodsNotes', icon: <FileDoneOutlined />, element: <GoodsNotesPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionDocuments' },
       // Phase 12 (ADR-025): requests and quotes at FULL, orders from MEDIUM.
@@ -253,6 +259,7 @@ export const APP_GROUPS: AppGroup[] = [
         minProcurementLevel: 'FULL',
         section: 'nav.sectionCycle',
         newPath: '/purchase-requests?new=1',
+        newPermission: PERMISSIONS.PURCHASE_REQUEST_MANAGE,
       },
       {
         key: 'purchaseQuotes',
@@ -264,6 +271,7 @@ export const APP_GROUPS: AppGroup[] = [
         minProcurementLevel: 'FULL',
         section: 'nav.sectionCycle',
         newPath: '/purchase-quotes?new=1',
+        newPermission: PERMISSIONS.PURCHASE_MANAGE,
       },
       {
         key: 'purchaseOrders',
@@ -275,6 +283,7 @@ export const APP_GROUPS: AppGroup[] = [
         minProcurementLevel: 'MEDIUM',
         section: 'nav.sectionCycle',
         newPath: '/purchase-orders?new=1',
+        newPermission: PERMISSIONS.PURCHASE_MANAGE,
       },
       PARTIES_ROUTE,
     ],
@@ -297,6 +306,7 @@ export const APP_GROUPS: AppGroup[] = [
         minProcurementLevel: 'FULL',
         section: 'nav.sectionMovements',
         newPath: '/issue-requests?new=1',
+        newPermission: PERMISSIONS.PURCHASE_REQUEST_MANAGE,
       },
     ],
   },

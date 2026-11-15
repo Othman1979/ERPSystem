@@ -236,10 +236,13 @@ textarea:focus-visible,
 
 /* ------------------------------------------------------- ribbon (ADR-029) */
 
-/* Tab row and strip stay under the top bar while the page scrolls. */
+/*
+ * The ribbon scrolls away with the page, as in Office: only the top bar stays,
+ * so a document's sticky toolbar (.doc-toolbar) is never covered, and a short
+ * laptop screen keeps its height for data entry. Relative: the folded strip floats from it.
+ */
 .ribbon {
-  position: sticky;
-  top: var(--topbar-height);
+  position: relative;
   z-index: 99;
   min-width: 0;
   background: var(--c-surface);

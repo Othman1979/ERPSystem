@@ -159,7 +159,8 @@ export function Ribbon({ can, procurementLevel, noCompany, isPlatformAdmin, pend
       for (const route of group.routes) {
         const count = route.badge === 'pendingInvitations' && pendingInvitations > 0 ? pendingInvitations : undefined;
         add(route.section ?? group.label, routeItem(route, group.tone, count));
-        if (route.newPath) {
+        // Offered only to roles that may create the document (the API answers others with 403).
+        if (route.newPath && (!route.newPermission || can(route.newPermission))) {
           add(route.section ?? group.label, {
             key: `${route.key}:new`,
             path: route.newPath,
@@ -224,7 +225,7 @@ export function Ribbon({ can, procurementLevel, noCompany, isPlatformAdmin, pend
 
     return list.filter((tab) => tab.sections.some((s) => s.items.length > 0));
     // Labels depend on the language; t identity changes with it.
-  }, [t, can, procurementLevel, noCompany, isPlatformAdmin, pendingInvitations]);
+  }, [t, i18n, can, procurementLevel, noCompany, isPlatformAdmin, pendingInvitations]);
 
   // The tabs whose buttons lead to the current page: several for a screen listed twice (parties).
   const pathTabKeys = tabs

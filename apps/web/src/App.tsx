@@ -240,7 +240,10 @@ function AppShell() {
   // The platform owner's console (§13.3) — only for User.isPlatformAdmin.
   const isPlatformAdmin = !!me?.user.isPlatformAdmin;
   const menuItems: MenuProps['items'] = useMemo(
-    () => [
+    () => {
+      // A screen in two groups (parties: sales and purchases) is listed once: menu keys must be unique.
+      const listed = new Set<string>();
+      return [
       ...(noCompany ? [] : [{ key: '/', icon: <HomeOutlined />, label: t('nav.home') }]),
       // Screens the role cannot use are not offered (the API would answer 403).
       ...(noCompany
@@ -251,7 +254,7 @@ function AppShell() {
         key: g.label,
         label: t(g.label),
         children: g.routes
-          .filter((r) => !noCompany || r.path === INVITATIONS_PATH)
+          .filter((r) => (!noCompany || r.path === INVITATIONS_PATH) && !listed.has(r.path) && !!listed.add(r.path))
           .map((r) => ({
             key: r.path,
             icon: r.icon,
@@ -269,7 +272,8 @@ function AppShell() {
       ...(isPlatformAdmin
         ? [{ key: PLATFORM_PATH, icon: <CloudServerOutlined />, label: t('platform.nav') }]
         : []),
-    ],
+      ];
+    },
     // Labels depend on the language; t identity changes with it.
     [t, isPlatformAdmin, noCompany, pendingInvitations, can, procurementLevel],
   );
