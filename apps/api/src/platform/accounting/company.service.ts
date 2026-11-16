@@ -4,12 +4,22 @@ import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { OWNER_ROLE } from '../../common/permissions/member-permissions.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { ProcurementCycleRegistry } from '../../common/procurement/procurement-level.js';
 import { StorageService } from '../../common/storage/storage.service.js';
 import type { ProcurementLevel } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { UpdateCompanyDto } from './dto/company.dto.js';
+
+/** The sales cycle settings (ADR-027 §1), owner only. */
+const SALES_SETTING_KEYS = [
+  'salesOrderRequired',
+  'salesReservation',
+  'salesOrderApproval',
+  'salesPriceLocked',
+  'quoteValidityDays',
+] as const;
 
 /** What the upload interceptor hands over (multer's file, the fields we use). */
 export interface UploadedFileLike {
@@ -78,6 +88,13 @@ export class CompanyService {
       pricesIncludeTax: c.pricesIncludeTax,
       costCentersEnabled: c.costCentersEnabled,
       procurementLevel: c.procurementLevel,
+      salesOrderRequired: c.salesOrderRequired,
+      salesReservation: c.salesReservation,
+      salesOrderApproval: c.salesOrderApproval,
+      salesPriceLocked: c.salesPriceLocked,
+      quoteValidityDays: c.quoteValidityDays,
+      // ADR-027 §1: the owner reviews these before turning sales_order_required on.
+      directSalesDraftCount: await db.salesInvoice.count({ where: { companyId: c.id, status: 'DRAFT', salesOrderId: null } }),
       onboardingCompletedAt: c.onboardingCompletedAt,
       logo: c.logoAttachment
         ? {
@@ -97,6 +114,11 @@ export class CompanyService {
     if (levelChange && !ClsServiceManager.getClsService<RequestContext>().get('permissions')?.has(PERMISSIONS.COMPANY_MANAGE)) {
       throw new DomainError(ErrorCode.FORBIDDEN, `Missing permission: ${PERMISSIONS.COMPANY_MANAGE}`);
     }
+    // ADR-027 §1: the sales settings are the owner's alone, whatever permissions a member holds.
+    const salesChange = SALES_SETTING_KEYS.some((k) => dto[k] !== undefined);
+    if (salesChange && ClsServiceManager.getClsService<RequestContext>().get('roleCode') !== OWNER_ROLE) {
+      throw new DomainError(ErrorCode.FORBIDDEN, 'Only the owner changes the sales settings');
+    }
     const data = {
       ...(dto.legalNameAr !== undefined ? { legalNameAr: dto.legalNameAr.trim() } : {}),
       legalNameEn: blankToNull(dto.legalNameEn),
@@ -107,6 +129,11 @@ export class CompanyService {
       ...(dto.pricesIncludeTax !== undefined ? { pricesIncludeTax: dto.pricesIncludeTax } : {}),
       ...(dto.costCentersEnabled !== undefined ? { costCentersEnabled: dto.costCentersEnabled } : {}),
       ...(levelChange ? { procurementLevel: dto.procurementLevel } : {}),
+      ...(dto.salesOrderRequired !== undefined ? { salesOrderRequired: dto.salesOrderRequired } : {}),
+      ...(dto.salesReservation !== undefined ? { salesReservation: dto.salesReservation } : {}),
+      ...(dto.salesOrderApproval !== undefined ? { salesOrderApproval: dto.salesOrderApproval } : {}),
+      ...(dto.salesPriceLocked !== undefined ? { salesPriceLocked: dto.salesPriceLocked } : {}),
+      ...(dto.quoteValidityDays !== undefined ? { quoteValidityDays: dto.quoteValidityDays } : {}),
     };
     const levelBefore = await db.$transaction(async (tx) => {
       let from = c.procurementLevel;
@@ -134,6 +161,11 @@ export class CompanyService {
         pricesIncludeTax: c.pricesIncludeTax,
         costCentersEnabled: c.costCentersEnabled,
         procurementLevel: levelBefore,
+        salesOrderRequired: c.salesOrderRequired,
+        salesReservation: c.salesReservation,
+        salesOrderApproval: c.salesOrderApproval,
+        salesPriceLocked: c.salesPriceLocked,
+        quoteValidityDays: c.quoteValidityDays,
       },
       after: dto,
     });

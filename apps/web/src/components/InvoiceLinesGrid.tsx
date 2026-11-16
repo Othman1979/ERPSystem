@@ -41,6 +41,13 @@ interface Props {
   priceLabel?: string;
   /** Increment to auto-focus the first cell (e.g. when a form opens). */
   focusSignal?: number;
+  /**
+   * An invoice made from a sales order (ADR-027 §4): the items stay as they
+   * are and no line is added; the user may remove lines and lower quantities.
+   */
+  lockedItems?: boolean;
+  /** The most a line's quantity may be (an order-linked draft's saved quantity). */
+  maxQtyOf?: (key: number) => string | undefined;
 }
 
 function amountsFor(l: InvoiceLineDraft, items: InvoiceItemOption[], pricesIncludeTax: boolean): LineAmounts {
@@ -59,7 +66,16 @@ function amountsFor(l: InvoiceLineDraft, items: InvoiceItemOption[], pricesInclu
  * net/tax/total computed live (estimate — server computes authoritative
  * totals). Enter moves row-major; last cell of last row appends a line.
  */
-export function InvoiceLinesGrid({ lines, onChange, itemOptions, onItemSearch, priceLabel, focusSignal }: Props) {
+export function InvoiceLinesGrid({
+  lines,
+  onChange,
+  itemOptions,
+  onItemSearch,
+  priceLabel,
+  focusSignal,
+  lockedItems = false,
+  maxQtyOf,
+}: Props) {
   const { t } = useTranslation();
   const gridRef = useRef<HTMLTableElement>(null);
   const nextKey = useRef(lines.length);
@@ -106,6 +122,8 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, onItemSearch, p
       nextColPos = 0;
     }
     if (nextRow >= lines.length) {
+      // Lines of an order-linked invoice are not added to by typing past the last one.
+      if (lockedItems) return;
       addRow();
       focusSoon(nextRow, NAV_COLS[0]);
     } else {
@@ -190,6 +208,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, onItemSearch, p
                 <GridSelect
                   aria-label={cellLabel(t, t('items.title'), row)}
                   variant="borderless"
+                  disabled={lockedItems}
                   placeholder={t('items.title')}
                   options={itemOptions.map((o) => ({
                     value: o.id,
@@ -215,6 +234,7 @@ export function InvoiceLinesGrid({ lines, onChange, itemOptions, onItemSearch, p
                   variant="borderless"
                   stringMode
                   min="0.000001"
+                  max={maxQtyOf?.(l.key)}
                   value={l.qty}
                   onChange={(v) => update(l.key, { qty: v })}
                   style={{ width: '100%' }}

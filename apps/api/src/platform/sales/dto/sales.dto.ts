@@ -45,6 +45,12 @@ export class SalesInvoiceLineDto {
   @IsString()
   @Matches(INT_STRING)
   taxCategoryId?: string;
+
+  /** ADR-027 §4: the order line this line bills; allowed only on an invoice made from a sales order. */
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  orderLineId?: string;
 }
 
 export class CreateSalesInvoiceDto {

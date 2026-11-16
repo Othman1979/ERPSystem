@@ -212,6 +212,23 @@ export class IntegrityCheckService {
     // posted documents they add up: an order line's received_qty the posted
     // GRN lines on it; a GRN line's billed_qty and cleared_value the links of
     // posted invoices; an issue request line's issued_qty the posted GIN lines.
+    // ADR-027 §4: a sales order line's invoiced_qty is never negative nor above its base quantity
+    // (the invoices that bill it add up to it, checked with the invoice links in part B).
+    await orphans(
+      'sales_order_lines.invoiced_qty',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM sales_order_lines x
+        WHERE (x.invoiced_qty < 0 OR x.invoiced_qty > x.qty_base)
+          AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
+    // ADR-027 §4: an order line's invoiced quantity is what the posted invoices that bill it add up to.
+    await orphans(
+      'sales_order_lines.invoiced_qty (posted invoices)',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM sales_order_lines x
+        WHERE x.invoiced_qty <> COALESCE((SELECT SUM(il.qty_base) FROM sales_invoice_lines il
+            JOIN sales_invoices i ON i.tenant_id = il.tenant_id AND i.id = il.invoice_id
+           WHERE il.tenant_id = x.tenant_id AND il.order_line_id = x.id AND i.status = 'POSTED'), 0)
+          AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
     await orphans(
       'purchase_order_lines.received_qty',
       db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM purchase_order_lines x

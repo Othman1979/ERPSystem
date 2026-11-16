@@ -270,6 +270,17 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     // Phase 13 (ADR-026 §9): a draft issue request (FULL).
     bodies.issueRequest = { requestDate: '2026-04-03', warehouseId: id.warehouse, notes: MARK, lines: [{ itemId: id.item, qty: '1' }] };
     await create('/issue-requests', bodies.issueRequest, 'issueRequest');
+    // Phase 14 (ADR-027): a draft quote and a draft sales order of A.
+    bodies.salesQuote = { quoteDate: '2026-04-05', customerId: id.customer, description: MARK, lines: [{ itemId: id.item, qty: '1', unitPrice: '2' }] };
+    await create('/sales-quotes', bodies.salesQuote, 'salesQuote');
+    bodies.salesOrder = {
+      orderDate: '2026-04-06',
+      customerId: id.customer,
+      warehouseId: id.warehouse,
+      description: MARK,
+      lines: [{ itemId: id.item, qty: '1', unitPrice: '2' }],
+    };
+    await create('/sales-orders', bodies.salesOrder, 'salesOrder');
 
     const doc = await api().get('/api/docs-json');
     expect(doc.status).toBe(200);
@@ -319,6 +330,8 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       'purchase-quotes': id.purchaseQuote,
       'purchase-orders': id.purchaseOrder,
       'issue-requests': id.issueRequest,
+      'sales-quotes': id.salesQuote,
+      'sales-orders': id.salesOrder,
     };
     const values: Record<string, string> = {};
     for (const [, name] of p.matchAll(/\{(\w+)\}/g)) {
@@ -356,6 +369,10 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     // Phase 13 (ADR-026): valid bodies for the new changes.
     if (/\/(purchase-orders|issue-requests)\/\{id\}\/(reject|cancel|close)$/.test(p)) return { reason: 'x' };
     if (p === '/api/v1/issue-requests/{id}') return bodies.issueRequest;
+    // Phase 14 (ADR-027): valid bodies for the sales quotes and orders.
+    if (p === '/api/v1/sales-quotes/{id}') return bodies.salesQuote;
+    if (p === '/api/v1/sales-orders/{id}') return bodies.salesOrder;
+    if (/\/sales-(quotes|orders)\/\{id\}\/(reject|cancel|close|reject-approval)$/.test(p)) return { reason: 'x' };
     if (p.endsWith('/purchase-orders/{id}/receive') || p.endsWith('/issue-requests/{id}/issue')) return { noteDate: '2026-04-03' };
     if (p.endsWith('/purchase-orders/{id}/bill')) {
       return { invoiceDate: '2026-04-03', paymentType: 'CREDIT', lines: [{ grnLineId: '1', qty: '1', unitCost: '1' }] };
@@ -392,6 +409,24 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     expect(wrong).toEqual([]);
     expect(exercised).toBeGreaterThan(70);
   }, 180_000);
+
+  it("B gets 404 for A's order and invoice on the phase 14 invoicing routes (ADR-027 §4)", async () => {
+    // Named explicitly on top of the generic walk above, so a rename of a route cannot drop them silently.
+    const order = await api().get(`/api/v1/sales-orders/${id.salesOrder}/invoiceable`).set(auth(b));
+    expect([order.status, bodyText(order).includes(MARK)]).toEqual([404, false]);
+    const invoice = await api().post(`/api/v1/sales-orders/${id.salesOrder}/invoice`).set(auth(b)).set(idem()).send({});
+    expect([invoice.status, bodyText(invoice).includes(MARK)]).toEqual([404, false]);
+    const price = await api().post(`/api/v1/sales-invoices/${id.salesDraft}/approve-price`).set(auth(b)).set(idem()).send({});
+    expect([price.status, bodyText(price).includes(MARK)]).toEqual([404, false]);
+    const paths = ops.map((o) => `${o.method} ${o.path}`);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        'GET /api/v1/sales-orders/{id}/invoiceable',
+        'POST /api/v1/sales-orders/{id}/invoice',
+        'POST /api/v1/sales-invoices/{id}/approve-price',
+      ]),
+    );
+  }, 60_000);
 
   it("B's lists, and every …Id query fed with A's ids, never show A's records", async () => {
     const byName: Record<string, string | undefined> = {

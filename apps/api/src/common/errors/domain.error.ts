@@ -89,6 +89,15 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.ISSUE_REQUEST_REQUIRED]: HttpStatus.FORBIDDEN,
   [ErrorCode.ISSUE_REQUEST_QTY_EXCEEDED]: HttpStatus.CONFLICT,
   [ErrorCode.ISSUE_REQUEST_DEPARTMENT_MISMATCH]: HttpStatus.BAD_REQUEST,
+  // ADR-027: state and stock refusals are conflicts (409), like the purchase ones.
+  [ErrorCode.QUOTE_EXPIRED]: HttpStatus.CONFLICT,
+  [ErrorCode.QUOTE_ALREADY_CONVERTED]: HttpStatus.CONFLICT,
+  [ErrorCode.STOCK_RESERVED]: HttpStatus.CONFLICT,
+  [ErrorCode.SALES_ORDER_NOT_CANCELLABLE]: HttpStatus.CONFLICT,
+  [ErrorCode.SALES_ORDER_REQUIRED]: HttpStatus.CONFLICT,
+  [ErrorCode.SALES_ORDER_OVER_INVOICED]: HttpStatus.CONFLICT,
+  [ErrorCode.SALES_ORDER_NOT_INVOICEABLE]: HttpStatus.CONFLICT,
+  [ErrorCode.SALES_PRICE_APPROVAL_REQUIRED]: HttpStatus.CONFLICT,
 };
 
 export class DomainError extends HttpException {

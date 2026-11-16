@@ -949,6 +949,8 @@ export class ReportsService {
     partyType: 'CUSTOMER' | 'SUPPLIER',
     asOf: Date,
     mappedAccountId?: bigint,
+    // ADR-027 §6: the credit check reads the whole company, whatever the caller's branches.
+    options?: { allBranches?: boolean },
   ): Promise<Map<bigint, Decimal>> {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
@@ -958,7 +960,7 @@ export class ReportsService {
         ...this.controlLineWhere(partyType, mappedAccountId),
         entry: { companyId, status: 'POSTED', entryDate: { lte: asOf } },
         // Aging is per branch for a restricted member (ADR-003 §12): the line's branch.
-        AND: [branchWhere()],
+        ...(options?.allBranches ? {} : { AND: [branchWhere()] }),
       },
       _sum: { debit: true, credit: true },
     });

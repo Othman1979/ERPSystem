@@ -22,6 +22,8 @@ export const PERMISSIONS = {
   SALES_MANAGE: 'sales.manage',
   SALES_POST: 'sales.post',
   SALES_RETURN: 'sales.return',
+  /** Approve sales orders over the credit limit or flagged ALWAYS, up to a limit (ADR-027 §6). */
+  SALES_APPROVE: 'sales.approve',
   PURCHASE_MANAGE: 'purchase.manage',
   PURCHASE_POST: 'purchase.post',
   PURCHASE_RETURN: 'purchase.return',

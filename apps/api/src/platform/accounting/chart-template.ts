@@ -198,4 +198,7 @@ export const DOCUMENT_TYPE_PREFIXES: Record<string, string> = {
   PURCHASE_ORDER: 'PO',
   // Phase 13 (ADR-026 §9): an issue request, numbered at approval.
   ISSUE_REQUEST: 'IRQ',
+  // Phase 14 (ADR-027 §8): a sales quote numbered when sent, a sales order when confirmed.
+  SALES_QUOTE: 'SQ',
+  SALES_ORDER: 'SO',
 };

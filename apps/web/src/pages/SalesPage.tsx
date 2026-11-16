@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import {
+  Alert,
   App,
   Button,
   Radio,
@@ -20,6 +21,13 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { useTranslation } from 'react-i18next';
+import { Link, useSearchParams } from 'react-router';
+import { useAuth } from '../auth/AuthContext';
+import { PERMISSIONS } from '../auth/permissions';
+import { useCompany } from '../components/CompanyProfileForm';
+import { isAuthoredBy } from './procurement/orderPayload';
+import { invalidateSalesCycle, salesCycleKeys } from './sales/cycleQueryKeys';
+import { linesBelowOrder } from './sales/salesLines';
 import {
   emptyInvoiceLine,
   InvoiceLinesGrid,
@@ -60,6 +68,8 @@ import {
   salesControllerPostInvoice,
   salesControllerPostReturn,
   salesControllerUpdateInvoice,
+  salesCycleControllerApproveInvoicePrice,
+  salesCycleControllerGetOrder,
   settingsControllerListTaxCategories,
   type ItemListItemDto,
   type SalesControllerListInvoicesPaymentType,
@@ -180,14 +190,39 @@ function useSalesLookups() {
   };
 }
 
+/** The sales order an invoice was made from (shared with the order screen's cache). */
+function useSalesOrder(orderId: string | null | undefined) {
+  return useQuery({
+    queryKey: salesCycleKeys.order(orderId ?? undefined),
+    queryFn: ({ signal }) => salesCycleControllerGetOrder(orderId!, { signal }).then((r) => r.data),
+    enabled: !!orderId,
+  });
+}
+
 // ------------------------------------------------------------- invoices tab
 
 function InvoicesTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<SalesControllerListInvoicesStatus | undefined>(undefined);
-  const [screen, setScreen] = useState<'list' | 'form' | 'view'>('list');
-  const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  // A sales order opens its new draft invoice here with ?invoiceId=...; it opens in the view.
+  const [params, setParams] = useSearchParams();
+  const linkedInvoiceId = params.get('invoiceId');
+  const [screen, setScreen] = useState<'list' | 'form' | 'view'>(linkedInvoiceId ? 'view' : 'list');
+  const [invoiceId, setInvoiceId] = useState<string | null>(linkedInvoiceId);
+  useEffect(() => {
+    if (!linkedInvoiceId) return;
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('invoiceId');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [linkedInvoiceId, setParams]);
+  const { can, me } = useAuth();
+  const company = useCompany();
   const [apiMessage, contextHolder] = message.useMessage();
   const lookups = useSalesLookups();
   useNewFromUrl(() => {
@@ -220,7 +255,11 @@ function InvoicesTab() {
     refetchInterval: (query) => (screen === 'view' && isInFlight(query.state.data?.einvoice?.status) ? 4000 : false),
   });
 
-  const invalidate = () => invalidateStockDocument(queryClient, 'salesInvoice');
+  // A posted invoice moves its order's invoiced quantities and the reservations too.
+  const invalidate = () => {
+    invalidateStockDocument(queryClient, 'salesInvoice');
+    void invalidateSalesCycle(queryClient);
+  };
   const onError = (err: unknown) =>
     apiMessage.error(
       err instanceof ApiError
@@ -242,6 +281,16 @@ function InvoicesTab() {
       apiMessage.success(t('common.deleted'));
       setScreen('list');
       invalidate();
+    },
+    onError,
+  });
+
+  // Approves a draft priced below its order (ADR-027 §4): sales.approve, never by its author.
+  const approvePrice = useMutation({
+    mutationFn: (id: string) => salesCycleControllerApproveInvoicePrice(id, { headers: idemHeaders() }),
+    onSuccess: () => {
+      apiMessage.success(t('salesCycle.priceApproved'));
+      void invalidateSalesCycle(queryClient);
     },
     onError,
   });
@@ -339,6 +388,12 @@ function InvoicesTab() {
         onPost={(id) => post.mutate(id)}
         onDelete={(id) => del.mutate(id)}
         posting={post.isPending}
+        onApprovePrice={(id) => approvePrice.mutate(id)}
+        approvingPrice={approvePrice.isPending}
+        canApprovePrice={can(PERMISSIONS.SALES_APPROVE)}
+        userId={me?.user.id}
+        salesPriceLocked={company.data?.salesPriceLocked === true}
+        salesOrderRequired={company.data?.salesOrderRequired === true}
       />
     );
   }
@@ -422,6 +477,10 @@ function InvoiceForm({
 }) {
   const { t } = useTranslation();
   const [apiMessage, contextHolder] = message.useMessage();
+  // An invoice made from a sales order (ADR-027 §4) keeps its customer, warehouse and items; only lowering is allowed.
+  const orderLinked = !!invoice?.salesOrderId;
+  const linkedOrder = useSalesOrder(invoice?.salesOrderId);
+  const savedQtyByKey = new Map((invoice?.lines ?? []).map((l, i) => [i + 1, l.qtyBase]));
   // Keyboard entry starts at the first field the user must fill.
   useEffect(() => {
     if (loading) return;
@@ -568,6 +627,15 @@ function InvoiceForm({
     >
       {contextHolder}
       <DocFields>
+        {orderLinked && (
+          <DocField label={t('salesCycle.orderNoLabel')}>
+            <DocValue>
+              <Link to={`/sales-orders?orderId=${invoice!.salesOrderId}`}>
+                {linkedOrder.data?.orderNo ?? `#${invoice!.salesOrderId}`}
+              </Link>
+            </DocValue>
+          </DocField>
+        )}
         <DocField
           field="customer"
           label={t('sales.customer')}
@@ -592,6 +660,7 @@ function InvoiceForm({
                 : undefined
             }
             status={requiredError(missing.customer) ? 'error' : undefined}
+            disabled={orderLinked}
             value={customerId}
             onChange={setCustomerId}
           />
@@ -606,6 +675,7 @@ function InvoiceForm({
           <GridSelect
             enterOpens
             status={requiredError(missing.warehouse) ? 'error' : undefined}
+            disabled={orderLinked}
             options={warehouseOptions}
             value={warehouseId}
             onChange={setWarehouseId}
@@ -683,6 +753,8 @@ function InvoiceForm({
         onChange={setLines}
         itemOptions={itemOptions}
         onItemSearch={items.onSearch}
+        lockedItems={orderLinked}
+        maxQtyOf={orderLinked ? (key) => savedQtyByKey.get(key) : undefined}
       />
     </DocLayout>
   );
@@ -698,6 +770,12 @@ function InvoiceView({
   onPost,
   onDelete,
   posting,
+  onApprovePrice,
+  approvingPrice,
+  canApprovePrice,
+  userId,
+  salesPriceLocked,
+  salesOrderRequired,
 }: {
   invoice?: SalesInvoiceDetailDto;
   loading: boolean;
@@ -706,12 +784,29 @@ function InvoiceView({
   onPost: (id: string) => void;
   onDelete: (id: string) => void;
   posting: boolean;
+  onApprovePrice: (id: string) => void;
+  approvingPrice: boolean;
+  canApprovePrice: boolean;
+  userId?: string;
+  salesPriceLocked: boolean;
+  salesOrderRequired: boolean;
 }) {
   const { t } = useTranslation();
   const [, contextHolder] = message.useMessage();
   const { modal } = App.useApp();
   const costCenters = useCostCenters();
   const isDraft = invoice?.status === 'DRAFT';
+  const linkedOrder = useSalesOrder(invoice?.salesOrderId);
+  // A draft priced below its order needs a price approval before posting, when the company locks prices (ADR-027 §4).
+  const belowOrder =
+    salesPriceLocked && invoice?.salesOrderId && !invoice.priceApprovedAt && linkedOrder.data
+      ? linesBelowOrder(
+          invoice.lines.map((l) => ({ orderLineId: l.orderLineId, unitPrice: l.unitPrice, discountPct: l.discountPct })),
+          linkedOrder.data.lines,
+        ).size > 0
+      : false;
+  const priceNeedsApproval = isDraft && belowOrder;
+  const canApproveHere = canApprovePrice && !!invoice && !isAuthoredBy(invoice, userId);
   // Ctrl+Enter posts a draft, behind the same confirmation as the button.
   const confirmPost = () => {
     if (!invoice || !isDraft || posting) return;
@@ -745,12 +840,36 @@ function InvoiceView({
               </Popconfirm>
             </>
           )}
+          {priceNeedsApproval && canApproveHere && (
+            <Button onClick={() => onApprovePrice(invoice.id)} loading={approvingPrice} disabled={posting}>
+              {t('salesCycle.approvePrice')}
+            </Button>
+          )}
           <PrintPdfButton path={`/sales-invoices/${invoice.id}/pdf`} />
         </>
       }
     >
       <EInvoiceNotice einvoice={invoice.einvoice} />
+      {priceNeedsApproval && (
+        <Alert
+          type="warning"
+          showIcon
+          message={canApproveHere ? t('salesCycle.priceNeedsApproval') : t('salesCycle.priceNeedsApprovalOther')}
+        />
+      )}
+      {isDraft && salesOrderRequired && !invoice.salesOrderId && (
+        <Alert type="warning" showIcon message={t('salesCycle.directInvoiceBlocked')} />
+      )}
       <DocFields>
+        {invoice.salesOrderId && (
+          <DocField label={t('salesCycle.orderNoLabel')}>
+            <DocValue>
+              <Link to={`/sales-orders?orderId=${invoice.salesOrderId}`}>
+                {linkedOrder.data?.orderNo ?? `#${invoice.salesOrderId}`}
+              </Link>
+            </DocValue>
+          </DocField>
+        )}
         <DocField label={t('sales.customer')}>
           <DocValue>{displayName(invoice.customer)}</DocValue>
         </DocField>

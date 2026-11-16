@@ -13,10 +13,12 @@ import {
   FileTextOutlined,
   FlagOutlined,
   FileProtectOutlined,
+  FileSearchOutlined,
   ImportOutlined,
   InboxOutlined,
   MailOutlined,
   ProfileOutlined,
+  ScheduleOutlined,
   SettingOutlined,
   ShopOutlined,
   ShoppingCartOutlined,
@@ -47,6 +49,8 @@ export const PAGE_LOADERS = {
   purchaseRequests: () => import('./pages/PurchaseRequestsPage').then((m) => m.PurchaseRequestsPage),
   purchaseQuotes: () => import('./pages/PurchaseQuotesPage').then((m) => m.PurchaseQuotesPage),
   purchaseOrders: () => import('./pages/PurchaseOrdersPage').then((m) => m.PurchaseOrdersPage),
+  salesQuotes: () => import('./pages/SalesQuotesPage').then((m) => m.SalesQuotesPage),
+  salesOrders: () => import('./pages/SalesOrdersPage').then((m) => m.SalesOrdersPage),
   goodsNotes: () => import('./pages/GoodsNotesPage').then((m) => m.GoodsNotesPage),
   issueRequests: () => import('./pages/IssueRequestsPage').then((m) => m.IssueRequestsPage),
   parties: () => import('./pages/PartiesPage').then((m) => m.PartiesPage),
@@ -72,6 +76,8 @@ const PurchasesPage = lazyPage(PAGE_LOADERS.purchases);
 const PurchaseRequestsPage = lazyPage(PAGE_LOADERS.purchaseRequests);
 const PurchaseQuotesPage = lazyPage(PAGE_LOADERS.purchaseQuotes);
 const PurchaseOrdersPage = lazyPage(PAGE_LOADERS.purchaseOrders);
+const SalesQuotesPage = lazyPage(PAGE_LOADERS.salesQuotes);
+const SalesOrdersPage = lazyPage(PAGE_LOADERS.salesOrders);
 const GoodsNotesPage = lazyPage(PAGE_LOADERS.goodsNotes);
 const IssueRequestsPage = lazyPage(PAGE_LOADERS.issueRequests);
 const PartiesPage = lazyPage(PAGE_LOADERS.parties);
@@ -229,6 +235,29 @@ export const APP_GROUPS: AppGroup[] = [
         newPermission: PERMISSIONS.SALES_MANAGE,
       },
       { key: 'einvoice', path: '/einvoice', label: 'nav.einvoice', icon: <FileProtectOutlined />, element: <EInvoicePage />, permission: PERMISSIONS.REPORTS_VIEW, section: 'nav.sectionDocuments' },
+      // Phase 14 (ADR-027): quotations and sales orders, before the parties.
+      {
+        key: 'salesQuotes',
+        path: '/sales-quotes',
+        label: 'nav.salesQuotes',
+        icon: <FileSearchOutlined />,
+        element: <SalesQuotesPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        section: 'nav.sectionSalesCycle',
+        newPath: '/sales-quotes?new=1',
+        newPermission: PERMISSIONS.SALES_MANAGE,
+      },
+      {
+        key: 'salesOrders',
+        path: '/sales-orders',
+        label: 'nav.salesOrders',
+        icon: <ScheduleOutlined />,
+        element: <SalesOrdersPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        section: 'nav.sectionSalesCycle',
+        newPath: '/sales-orders?new=1',
+        newPermission: PERMISSIONS.SALES_MANAGE,
+      },
       PARTIES_ROUTE,
     ],
   },

@@ -11,8 +11,10 @@ import { PasswordService } from '../auth/password.service.js';
 import { generateTemporaryPassword, temporaryPasswordWrites } from '../auth/temporary-password.js';
 import { round3 } from '../../common/decimal/decimal.utils.js';
 import {
+  approvalLimitOf,
   effectiveMemberPermissions,
-  LIMITED_MEMBER_PERMISSION,
+  isLimitedMemberPermission,
+  LIMITED_MEMBER_PERMISSIONS,
   type MemberPermissionGrant,
   OWNER_ROLE,
 } from '../../common/permissions/member-permissions.js';
@@ -62,7 +64,7 @@ function serialize(m: {
     })),
     purchasePermissions: purchase.codes.map((code) => ({
       code,
-      amountLimit: code === LIMITED_MEMBER_PERMISSION ? purchase.approvalLimit : null,
+      amountLimit: isLimitedMemberPermission(code) ? approvalLimitOf(purchase, code) : null,
     })),
   };
 }
@@ -412,8 +414,8 @@ export class UsersService {
         wanted.set(g.code, null);
         continue;
       }
-      if (g.code !== LIMITED_MEMBER_PERMISSION) {
-        throw new DomainError(ErrorCode.VALIDATION, `Only ${LIMITED_MEMBER_PERMISSION} takes an amount limit`, {
+      if (!isLimitedMemberPermission(g.code)) {
+        throw new DomainError(ErrorCode.VALIDATION, `Only ${LIMITED_MEMBER_PERMISSIONS.join(' and ')} take an amount limit`, {
           field: 'amountLimit',
         });
       }

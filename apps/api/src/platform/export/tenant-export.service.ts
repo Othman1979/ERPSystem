@@ -74,6 +74,8 @@ const WORKBOOKS: { file: string; models: string[] }[] = [
   },
   // Phase 13 (ADR-026 §9): issue requests with their lines.
   { file: '13-issue-requests.xlsx', models: ['IssueRequest', 'IssueRequestLine'] },
+  // Phase 14 (ADR-027 §8): sales quotes and orders with their lines.
+  { file: '14-sales-orders.xlsx', models: ['SalesQuote', 'SalesQuoteLine', 'SalesOrder', 'SalesOrderLine'] },
 ];
 
 /** Columns not exported (secrets, leases, raw payloads). */
