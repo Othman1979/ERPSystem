@@ -564,12 +564,14 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
    */
   async recipeOutByItem(warehouseId: bigint, from: Date, to: Date): Promise<Map<bigint, Decimal>> {
     const { tenantId, db } = this.support.tenant();
+    // The sales module reads its own tables only (CLAUDE.md): a component moved out of the invoice's
+    // warehouse on the invoice date, so the invoice header gives both (review #65).
     const rows = await db.$queryRaw<{ itemId: bigint; qty: string }[]>`
       SELECT c.component_item_id AS itemId, COALESCE(SUM(c.qty_base), 0) AS qty
         FROM sales_invoice_line_components c
-        JOIN stock_movements m ON m.tenant_id = c.tenant_id AND m.id = c.movement_id
-       WHERE c.tenant_id = ${tenantId} AND m.warehouse_id = ${warehouseId}
-         AND m.movement_date > ${from} AND m.movement_date <= ${to}
+        JOIN sales_invoices i ON i.tenant_id = c.tenant_id AND i.id = c.invoice_id
+       WHERE c.tenant_id = ${tenantId} AND i.warehouse_id = ${warehouseId} AND i.status = 'POSTED'
+         AND i.invoice_date > ${from} AND i.invoice_date <= ${to}
        GROUP BY c.component_item_id`;
     return new Map(rows.map((r) => [BigInt(r.itemId), new Decimal(r.qty)]));
   }

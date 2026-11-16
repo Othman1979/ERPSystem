@@ -20,6 +20,8 @@ import {
   InboxOutlined,
   MailOutlined,
   ProfileOutlined,
+  ReconciliationOutlined,
+  ExperimentOutlined,
   ScheduleOutlined,
   SettingOutlined,
   ShopOutlined,
@@ -65,6 +67,8 @@ export const PAGE_LOADERS = {
   health: () => import('./pages/HealthPage').then((m) => m.HealthPage),
   invitations: () => import('./pages/InvitationsPage').then((m) => m.InvitationsPage),
   boms: () => import('./pages/manufacturing/BomsPage').then((m) => m.BomsPage),
+  consumption: () => import('./pages/reports/ConsumptionPage').then((m) => m.ConsumptionPage),
+  recipeSales: () => import('./pages/reports/RecipeSalesWithoutBomPage').then((m) => m.RecipeSalesWithoutBomPage),
   production: () => import('./pages/manufacturing/ProductionPage').then((m) => m.ProductionPage),
 };
 
@@ -94,6 +98,8 @@ const SettingsPage = lazyPage(PAGE_LOADERS.settings);
 const HealthPage = lazyPage(PAGE_LOADERS.health);
 const InvitationsPage = lazyPage(PAGE_LOADERS.invitations);
 const BomsPage = lazyPage(PAGE_LOADERS.boms);
+const ConsumptionPage = lazyPage(PAGE_LOADERS.consumption);
+const RecipeSalesWithoutBomPage = lazyPage(PAGE_LOADERS.recipeSales);
 const ProductionPage = lazyPage(PAGE_LOADERS.production);
 
 export interface AppRoute {
@@ -373,6 +379,25 @@ export const APP_GROUPS: AppGroup[] = [
     tone: 'reports',
     routes: [
       { key: 'reports', path: '/reports', label: 'nav.reports', icon: <BarChartOutlined />, element: <ReportsPage />, permission: PERMISSIONS.REPORTS_VIEW },
+      // Phase 17 (ADR-032 §3, §1): stock reports that need the recipes.
+      {
+        key: 'consumption',
+        path: '/consumption',
+        label: 'nav.consumption',
+        icon: <ReconciliationOutlined />,
+        element: <ConsumptionPage />,
+        permission: PERMISSIONS.REPORTS_VIEW,
+        section: 'nav.sectionStockReports',
+      },
+      {
+        key: 'recipeSales',
+        path: '/recipe-sales',
+        label: 'nav.recipeSales',
+        icon: <ExperimentOutlined />,
+        element: <RecipeSalesWithoutBomPage />,
+        permission: PERMISSIONS.REPORTS_VIEW,
+        section: 'nav.sectionStockReports',
+      },
     ],
   },
   {

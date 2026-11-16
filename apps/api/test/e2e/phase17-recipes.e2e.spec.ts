@@ -287,6 +287,70 @@ describe('Phase 17 — recipes exploded at sale (ADR-032), tenant A', () => {
     expect(rep.some((r: { invoiceId: string; itemCode: string }) => r.invoiceId === id && r.itemCode === 'Z')).toBe(true);
   });
 
+  it('HARD reservation: 10 H1 on hand, an order of 9 H1 confirmed; a direct sale of 2 HR (H1 1 each) is refused STOCK_RESERVED, 1 HR posts', async () => {
+    ids.H1 = await makeItem(A, 'H1');
+    ids.HR = await makeItem(A, 'HR', 'RECIPE');
+    await activeBom(A, ids.HR, [{ componentItemId: ids.H1, qty: '1' }]);
+    await buy(A, supplier, W, `${Y}-01-10`, [{ itemId: ids.H1, qty: '10', unitCost: '1' }]);
+    expect((await h.patchCompany(A.token, { salesReservation: 'HARD' })).status).toBe(200);
+    try {
+      const order = h.ok(
+        await h.api().post('/api/v1/sales-orders').set(h.auth(A.token)).send({
+          orderDate: `${Y}-02-10`,
+          customerId: customer,
+          warehouseId: W,
+          lines: [{ itemId: ids.H1, qty: '9', unitPrice: '2' }],
+        }),
+        201,
+        'order H1',
+      );
+      expect(h.ok(await h.act(A.token, `sales-orders/${order.id}/confirm`), 201, 'confirm order').status).toBe('CONFIRMED');
+      // Needs 2 of the 1 that is available after the reservation: refused; the draft stays a draft.
+      expect(h.err((await sell(ids.HR, '2', `${Y}-02-11`)).posted)).toEqual([409, 'STOCK_RESERVED']);
+      expect(await onHand(A.tenantId, ids.H1, W)).toBe('10.000000');
+      // Needs exactly the 1 that is available: posts.
+      expect((await sell(ids.HR, '1', `${Y}-02-11`)).posted.status).toBe(201);
+      expect(await onHand(A.tenantId, ids.H1, W)).toBe('9.000000');
+      await verified(A.token);
+    } finally {
+      expect((await h.patchCompany(A.token, { salesReservation: 'SOFT' })).status).toBe(200);
+    }
+  });
+
+  it('nesting: a chain of 3 recipes explodes at sale (L1 → L2 → L3 → G 2 each level 1); activation does not limit the depth, the sale does', async () => {
+    ids.G = await makeItem(A, 'G');
+    for (const code of ['L1', 'L2', 'L3']) ids[code] = await makeItem(A, code, 'RECIPE');
+    await activeBom(A, ids.L3, [{ componentItemId: ids.G, qty: '2' }]);
+    await activeBom(A, ids.L2, [{ componentItemId: ids.L3, qty: '1' }]);
+    await activeBom(A, ids.L1, [{ componentItemId: ids.L2, qty: '1' }]);
+    await buy(A, supplier, W, `${Y}-01-11`, [{ itemId: ids.G, qty: '10', unitCost: '1' }]);
+    // 3 L1 → 3 L2 → 3 L3 → G 3 × 2 = 6 in one movement.
+    const { id, posted } = await sell(ids.L1, '3', `${Y}-02-12`);
+    expect(posted.status).toBe(201);
+    const detail = h.ok(await h.get(A.token, `sales-invoices/${id}`), 200, 'detail');
+    expect(detail.lines[0].components.map((c: { qtyBase: string }) => new Decimal(c.qtyBase).toFixed(6))).toEqual(['6.000000']);
+    expect(m3(posted.body.costTotal)).toBe('6.000');
+    expect(await onHand(A.tenantId, ids.G, W)).toBe('4.000000');
+    await verified(A.token);
+  });
+
+  it('nesting deeper than 8 levels: a chain of 10 recipes activates, but the sale is refused RECIPE_DEPTH_EXCEEDED (400) and nothing moves', async () => {
+    ids.D = await makeItem(A, 'D');
+    const chain: string[] = [];
+    for (let i = 0; i < 10; i++) chain.push(await makeItem(A, `DR${i}`, 'RECIPE'));
+    // Built from the bottom: DR9 = D 1; DR8 = DR9 1; ... DR0 = DR1 1 (DR9 sits at depth 9 from DR0).
+    await activeBom(A, chain[9], [{ componentItemId: ids.D, qty: '1' }]);
+    for (let i = 8; i >= 0; i--) await activeBom(A, chain[i], [{ componentItemId: chain[i + 1], qty: '1' }]);
+    await buy(A, supplier, W, `${Y}-01-12`, [{ itemId: ids.D, qty: '5', unitCost: '1' }]);
+    const refused = await sell(chain[0], '1', `${Y}-02-13`);
+    expect(h.err(refused.posted)).toEqual([400, 'RECIPE_DEPTH_EXCEEDED']);
+    expect(await onHand(A.tenantId, ids.D, W)).toBe('5.000000');
+    // The same recipe one level up (DR1, 9 levels with its leaf at depth 8) is the last depth that explodes.
+    expect((await sell(chain[1], '1', `${Y}-02-13`)).posted.status).toBe(201);
+    expect(await onHand(A.tenantId, ids.D, W)).toBe('4.000000');
+    await verified(A.token);
+  }, 120_000);
+
   it('tenant B cannot read tenant A: the recipe preview, the cost card and the consumption report are 404', async () => {
     const B = await registerTenant(`P17B${RUN}`);
     const pv = await h.get(B.token, `sales-invoices/${ids.previewInvoice}/recipe-preview`);

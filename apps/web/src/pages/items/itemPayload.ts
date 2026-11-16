@@ -1,4 +1,5 @@
 import type { CreateItemDto, CreateItemDtoItemKind, UpdateItemDto } from '@erp/api-client';
+import { holdsStock } from './itemKinds';
 
 /**
  * The item form's values, as antd's `onFinish` hands them over. Disabled
@@ -67,9 +68,10 @@ export function itemCreateBody(v: ItemFormValues): CreateItemDto {
     taxCategoryId: absent(v.taxCategoryId),
     salePrice: absent(v.salePrice),
     purchasePrice: absent(v.purchasePrice),
-    minStock: absent(v.minStock),
-    maxStock: absent(v.maxStock),
-    defaultWarehouseId: absent(v.defaultWarehouseId),
+    // Stock settings belong to a stocked kind only (ADR-032 §5): a recipe or a service sends none.
+    minStock: holdsStock(v.itemKind) ? absent(v.minStock) : undefined,
+    maxStock: holdsStock(v.itemKind) ? absent(v.maxStock) : undefined,
+    defaultWarehouseId: holdsStock(v.itemKind) ? absent(v.defaultWarehouseId) : undefined,
     salePriceIncludesTax: v.salePriceIncludesTax,
     imageUrl: absent(v.imageUrl),
   };

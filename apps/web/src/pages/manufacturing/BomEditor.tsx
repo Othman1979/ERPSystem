@@ -34,7 +34,7 @@ import {
 } from './bomPayload';
 import { bomKeys, invalidateManufacturing, useItemDetail } from './manufacturingQueries';
 import { ItemUnitSelect } from './ItemUnitSelect';
-import { ManufacturedItemPicker, StockedItemPicker } from './pickers';
+import { ComponentItemPicker, OwnerItemPicker } from './pickers';
 
 /** How long the requirements preview waits after the last key stroke. */
 const PREVIEW_DEBOUNCE_MS = 300;
@@ -77,6 +77,8 @@ export function BomEditor({
   const settledPreview = useDebouncedValue(previewQty, PREVIEW_DEBOUNCE_MS);
 
   const item = useItemDetail(form.itemId);
+  // The owner's kind decides the component picker: a recipe may take recipes (ADR-032 §6).
+  const ownerKind = item.data?.itemKind;
   const itemOption = form.itemId && item.data ? { value: form.itemId, label: codeAndName(item.data) } : undefined;
 
   const update = (patch: Partial<BomForm>) => setForm((f) => ({ ...f, ...patch }));
@@ -166,7 +168,8 @@ export function BomEditor({
       title: t('manufacturing.bom.component'),
       minWidth: 220,
       render: (_: unknown, line: BomLineForm) => (
-        <StockedItemPicker
+        <ComponentItemPicker
+          ownerKind={ownerKind}
           size="small"
           style={{ width: '100%', minWidth: 180 }}
           selected={line.componentItemId && line.componentLabel ? { value: line.componentItemId, label: line.componentLabel } : undefined}
@@ -290,7 +293,7 @@ export function BomEditor({
       {tried && problems.length > 0 && <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={t('manufacturing.bom.problemsHint')} />}
       <DocFields>
         <DocField field="item" label={t('manufacturing.bom.item')} required error={requiredError('item')}>
-          <ManufacturedItemPicker
+          <OwnerItemPicker
             disabled={!!bom}
             selected={itemOption}
             status={problemOf('item') ? 'error' : undefined}
@@ -308,6 +311,11 @@ export function BomEditor({
             value={form.outputQty ?? undefined}
             onChange={(v) => update({ outputQty: v ?? null })}
           />
+          {ownerKind === 'RECIPE' && (
+            <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+              {t('manufacturing.bom.recipeOutputHelp')}
+            </Typography.Text>
+          )}
         </DocField>
         <DocField label={t('manufacturing.bom.outputUnit')}>
           <ItemUnitSelect

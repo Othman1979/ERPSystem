@@ -161,7 +161,7 @@ describe('the active tab follows the page', () => {
     render('/sales');
     await click(tabNamed('nav.groupReports'));
     expect(selectedTab()).toBe(t('nav.groupReports'));
-    expect(linkLabels()).toEqual([t('nav.reports')]);
+    expect(linkLabels()).toEqual([t('nav.reports'), t('nav.consumption'), t('nav.recipeSales')]);
     expect(pathname).toBe('/sales');
   });
 });

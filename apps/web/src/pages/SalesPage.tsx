@@ -28,6 +28,8 @@ import { useCompany } from '../components/CompanyProfileForm';
 import { isAuthoredBy } from './procurement/orderPayload';
 import { invalidateSalesCycle, salesCycleKeys } from './sales/cycleQueryKeys';
 import { linesBelowOrder } from './sales/salesLines';
+import { PostedRecipeComponents, RecipeIngredientsPanel } from './sales/RecipeIngredients';
+import { StatusTag } from '../components/StatusTag';
 import {
   emptyInvoiceLine,
   InvoiceLinesGrid,
@@ -926,13 +928,27 @@ function InvoiceView({
         rowKey="id"
         size="small"
         pagination={false}
+        scroll={{ x: 'max-content' }}
         dataSource={invoice.lines ?? []}
+        // A posted recipe line opens onto the components it took (ADR-032 §12).
+        expandable={
+          isDraft
+            ? undefined
+            : {
+                rowExpandable: (l: InvoiceLine) => l.components.length > 0,
+                expandedRowRender: (l: InvoiceLine) => <PostedRecipeComponents components={l.components} />,
+              }
+        }
         columns={[
           { title: '#', dataIndex: 'lineNo', width: 50 },
           {
             title: t('items.title'),
-            render: (_: unknown, l: InvoiceLine) =>
-              l.item ? codeAndName(l.item) : l.itemId,
+            render: (_: unknown, l: InvoiceLine) => (
+              <Space wrap size={6}>
+                {l.item ? codeAndName(l.item) : l.itemId}
+                {l.recipeBomMissing && <StatusTag tone="warning">{t('sales.recipe.bomMissing')}</StatusTag>}
+              </Space>
+            ),
           },
           { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'right' as const, render: qtyCell },
           { title: t('sales.unitPrice'), dataIndex: 'unitPrice', width: 110, align: 'right' as const, render: unitCostCell },
@@ -940,8 +956,16 @@ function InvoiceView({
           { title: t('sales.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, render: amountCell },
           { title: t('sales.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
           { title: t('sales.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
+          // The cost of a posted line (ADR-032 §12): a draft has none yet.
+          ...(isDraft
+            ? []
+            : [
+                { title: t('sales.recipe.unitCost'), dataIndex: 'unitCost', width: 110, align: 'right' as const, render: unitCostCell },
+                { title: t('sales.recipe.lineCost'), dataIndex: 'costTotal', width: 110, align: 'right' as const, render: amountCell },
+              ]),
         ]}
       />
+      {isDraft && <RecipeIngredientsPanel invoiceId={invoice.id} />}
       <EInvoiceQrPanel einvoice={invoice.einvoice} />
     </DocLayout>
   );
