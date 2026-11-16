@@ -16,7 +16,7 @@ import { allocateDocumentNo } from '../shared/document-numbering.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import type { CreatePurchaseRequestDto, ListPurchaseRequestsQueryDto } from './dto/procurement.dto.js';
 import { assertStatus, lockRequest, lockRequestLines } from './procurement-locks.js';
-import { remainingQty, resolveItem } from './procurement-lines.js';
+import { remainingQty, resolvePurchaseItem } from './procurement-lines.js';
 
 /** Statuses that count as open for the procurement level (ADR-025 §6). */
 export const OPEN_REQUEST_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED'] as const;
@@ -344,7 +344,7 @@ export class PurchaseRequestsService {
       dto.lines.filter((l) => l.itemUnitId).map((l) => BigInt(l.itemUnitId!)),
     );
     return dto.lines.map((l) => {
-      const item = resolveItem(refs, l);
+      const item = resolvePurchaseItem(refs, l);
       return {
         itemId: item.itemId,
         itemUnitId: item.itemUnitId,

@@ -8,6 +8,8 @@ import { PurchasesModule } from '../purchases/purchases.module.js';
 import { SalesModule } from '../sales/sales.module.js';
 import { SharedModule } from '../shared/shared.module.js';
 import { TreasuryModule } from '../treasury/treasury.module.js';
+import { ConsumptionController } from './consumption.controller.js';
+import { ConsumptionReportService } from './consumption-report.service.js';
 import { DashboardService } from './dashboard.service.js';
 import { FinancialStatementsService } from './financial-statements.service.js';
 import { ReportPeriods } from './report-periods.service.js';
@@ -33,7 +35,7 @@ import { TradeSummaryService } from './trade-summary.service.js';
     // The centres named by the income statement by cost centre (ADR-024 §1.9).
     CostCentersModule,
   ],
-  controllers: [ReportsController],
-  providers: [ReportPeriods, FinancialStatementsService, TaxSummaryService, TradeSummaryService, DashboardService],
+  controllers: [ReportsController, ConsumptionController],
+  providers: [ReportPeriods, FinancialStatementsService, TaxSummaryService, TradeSummaryService, DashboardService, ConsumptionReportService],
 })
 export class ReportsModule {}

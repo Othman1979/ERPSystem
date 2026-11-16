@@ -59,7 +59,8 @@ const WORKBOOKS: { file: string; models: string[] }[] = [
     ],
   },
   { file: '06-parties.xlsx', models: ['Party'] },
-  { file: '07-sales.xlsx', models: ['SalesInvoice', 'SalesInvoiceLine', 'SalesReturn', 'SalesReturnLine'] },
+  // Phase 17 (ADR-032 §8): the recipe components of the sales lines come with them.
+  { file: '07-sales.xlsx', models: ['SalesInvoice', 'SalesInvoiceLine', 'SalesInvoiceLineComponent', 'SalesReturn', 'SalesReturnLine'] },
   {
     file: '08-purchases.xlsx',
     // ADR-026 §7: the invoice line ↔ GRN line links.

@@ -129,3 +129,76 @@ export class BomRequirementsDto {
   @ApiProperty({ type: () => [BomRequirementLineDto] })
   lines!: BomRequirementLineDto[];
 }
+
+/** One stock leaf of a cost card: its quantity for one output unit and its average cost (ADR-032 §4). */
+export class BomCostLineDto {
+  @ApiProperty({ type: 'string' })
+  componentItemId!: string;
+
+  @ApiProperty({ type: () => BomItemRefDto })
+  componentItem!: BomItemRefDto;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  qtyBase!: string;
+
+  /** The item's current average cost per base unit (6 dp). */
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  avgCost!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  totalCost!: string;
+
+  /** True when the component has no cost yet (an opening or receipt at zero): the cost is understated. */
+  @ApiProperty({ type: 'boolean' })
+  zeroCost!: boolean;
+}
+
+/** The cost card of a version (GET boms/:id/cost, ADR-032 §4). Amounts are strings. */
+export class BomCostCardDto {
+  @ApiProperty({ type: 'string' })
+  bomId!: string;
+
+  @ApiProperty({ type: 'integer' })
+  versionNo!: number;
+
+  @ApiProperty({ type: 'string' })
+  status!: string;
+
+  @ApiProperty({ type: 'boolean' })
+  isRecipe!: boolean;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  outputQtyBase!: string;
+
+  /** A recipe in the tree has no ACTIVE version (only meaningful for a recipe): the lines are partial. */
+  @ApiProperty({ type: 'boolean' })
+  missingBom!: boolean;
+
+  @ApiProperty({ type: 'boolean' })
+  zeroCostWarning!: boolean;
+
+  @ApiProperty({ type: () => BomCostLineDto, isArray: true })
+  lines!: BomCostLineDto[];
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  totalCost!: string;
+
+  /** The cost per output unit (6 dp). */
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  unitCost!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  salePrice!: string | null;
+
+  @ApiProperty({ type: 'boolean', nullable: true })
+  pricesIncludeTax!: boolean | null;
+
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  salePriceNet!: string | null;
+
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  margin!: string | null;
+
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  marginPct!: string | null;
+}

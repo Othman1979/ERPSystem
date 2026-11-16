@@ -6,7 +6,7 @@ import type { RequestContext } from '../../common/cls/cls.types.js';
 import { Decimal, round3, round6 } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
-import { isStocked } from '../../common/inventory/item-kind.js';
+import { isStocked, assertNotRecipe } from '../../common/inventory/item-kind.js';
 import { findPage } from '../../common/paging/find-page.js';
 import { pageWindow } from '../../common/paging/page-query.dto.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -412,11 +412,13 @@ export class ProductionVouchersService {
     });
     const kindById = new Map(kinds.map((k) => [k.id, k]));
     const product = kindById.get(draft.itemId);
+    if (product) assertNotRecipe(product.itemKind, product.code);
     if (!product || !product.isActive || product.itemKind !== 'MANUFACTURED') {
       throw new DomainError(ErrorCode.VALIDATION, 'The produced item is no longer an active manufactured item', { itemId: draft.itemId.toString() });
     }
     for (const line of draft.lines) {
       const k = kindById.get(line.itemId);
+      if (k) assertNotRecipe(k.itemKind, k.code);
       if (!k || !k.isActive || !isStocked(k.itemKind)) {
         throw new DomainError(ErrorCode.VALIDATION, 'A material is no longer an active stock item', { lineNo: line.lineNo, itemId: line.itemId.toString() });
       }
@@ -770,6 +772,7 @@ export class ProductionVouchersService {
       select: { id: true, code: true, itemKind: true, isActive: true, baseUnitId: true },
     });
     if (!item || !item.isActive) throw DomainError.notFound('Item', itemId.toString());
+    assertNotRecipe(item.itemKind, item.code);
     if (item.itemKind !== 'MANUFACTURED') {
       throw new DomainError(ErrorCode.BOM_ITEM_NOT_MANUFACTURED, `Item ${item.code} is not a manufactured item`);
     }
@@ -869,6 +872,7 @@ export class ProductionVouchersService {
       const component = byId.get(itemId);
       if (!component) throw DomainError.notFound('Item', l.itemId);
       if (itemId === producedItemId) throw new DomainError(ErrorCode.VALIDATION, 'An item cannot be its own component', { lineNo });
+      assertNotRecipe(component.itemKind, component.code);
       if (!isStocked(component.itemKind)) throw new DomainError(ErrorCode.VALIDATION, `Item ${component.code} is a service`, { lineNo });
       if (!component.isActive) throw DomainError.notFound('Item', l.itemId);
       if (seen.has(itemId)) throw new DomainError(ErrorCode.VALIDATION, 'A component appears on two lines', { lineNo });

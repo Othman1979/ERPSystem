@@ -103,6 +103,8 @@ enum ItemKind {
   STOCK
   SERVICE
   MANUFACTURED
+  /// ADR-032: sold, never stocked; its components leave stock when the sale posts.
+  RECIPE
 }
 
 enum StockMovementType {
@@ -387,6 +389,7 @@ model Tenant {
   issueRequests        IssueRequest[]
   issueRequestLines    IssueRequestLine[]
 
+  salesInvoiceLineComponents SalesInvoiceLineComponent[]
   @@map("tenants")
   salesQuotes SalesQuote[]
   salesQuoteLines SalesQuoteLine[]
@@ -1124,6 +1127,7 @@ model Item {
   productionVouchers     ProductionVoucher[]
   productionVoucherLines ProductionVoucherLine[]
 
+  salesLineComponents SalesInvoiceLineComponent[]
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
   @@index([tenantId, itemKind])
@@ -1253,6 +1257,7 @@ model StockMovement {
   reversalOf StockMovement?  @relation("MovementReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
   reversals  StockMovement[] @relation("MovementReversal")
 
+  salesLineComponents SalesInvoiceLineComponent[]
   @@unique([tenantId, id])
   @@index([tenantId, warehouseId, itemId])
   @@index([tenantId, itemId, movementDate])
@@ -1643,6 +1648,7 @@ model SalesInvoice {
   lines        SalesInvoiceLine[]
   returns      SalesReturn[]
 
+  lineComponents SalesInvoiceLineComponent[]
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, invoiceNo])
   // Invoices of one order (ADR-027 §4): the order's list of billed invoices.
@@ -1677,6 +1683,8 @@ model SalesInvoiceLine {
   costTotal      Decimal   @default(0) @map("cost_total") @db.Decimal(18, 3)
   /// ADR-027 §4: the order line this line bills (set on the draft, final at posting).
   orderLineId    BigInt?   @map("order_line_id") @db.UnsignedBigInt
+  /// ADR-032 §1: a recipe with no ACTIVE bill of materials at posting: sold at cost 0, no components.
+  recipeBomMissing Boolean @default(false) @map("recipe_bom_missing")
   createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1686,11 +1694,44 @@ model SalesInvoiceLine {
   taxCategory TaxCategory? @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
   orderLine   SalesOrderLine? @relation(fields: [tenantId, orderLineId], references: [tenantId, id])
   returnLines SalesReturnLine[]
+  /// ADR-032 §8: the exploded components of a recipe line (a projection of its stock movements).
+  components  SalesInvoiceLineComponent[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, invoiceId, lineNo])
   @@index([tenantId, orderLineId])
   @@map("sales_invoice_lines")
+}
+
+/// ADR-032 §8: one row per stock component a recipe sale consumed (one per merged leaf item).
+/// A projection of the OUT movement `movementId` (sourceLineId = the recipe line).
+model SalesInvoiceLineComponent {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt   @map("tenant_id") @db.UnsignedBigInt
+  invoiceId       BigInt   @map("invoice_id") @db.UnsignedBigInt
+  invoiceLineId   BigInt   @map("invoice_line_id") @db.UnsignedBigInt
+  componentItemId BigInt   @map("component_item_id") @db.UnsignedBigInt
+  qtyBase         Decimal  @map("qty_base") @db.Decimal(18, 6)
+  unitCost        Decimal  @map("unit_cost") @db.Decimal(18, 6)
+  totalCost       Decimal  @map("total_cost") @db.Decimal(18, 3)
+  movementId      BigInt   @map("movement_id") @db.UnsignedBigInt
+  /// The ACTIVE bill of materials of the sold recipe (the top of the explosion) at posting.
+  bomId           BigInt   @map("bom_id") @db.UnsignedBigInt
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice       SalesInvoice     @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Cascade)
+  invoiceLine   SalesInvoiceLine @relation(fields: [tenantId, invoiceLineId], references: [tenantId, id], onDelete: Cascade)
+  componentItem Item             @relation(fields: [tenantId, componentItemId], references: [tenantId, id])
+  movement      StockMovement    @relation(fields: [tenantId, movementId], references: [tenantId, id])
+  bom           Bom              @relation(fields: [tenantId, bomId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, invoiceLineId])
+  @@index([tenantId, componentItemId])
+  @@index([tenantId, movementId])
+  @@map("sales_invoice_line_components")
 }
 
 model PurchaseInvoice {
@@ -2940,6 +2981,7 @@ model Bom {
   lines              BomLine[]
   productionVouchers ProductionVoucher[]
 
+  salesLineComponents SalesInvoiceLineComponent[]
   @@unique([tenantId, id])
   @@unique([tenantId, itemId, versionNo])
   @@index([tenantId, companyId, itemId, status])

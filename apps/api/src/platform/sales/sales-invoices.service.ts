@@ -1,5 +1,5 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
-import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
+import { Decimal, round3, round6, sum } from '../../common/decimal/decimal.utils.js';
 import {
   assertBranchAllowed,
   assertWarehouseBranchAllowed,
@@ -67,7 +67,8 @@ import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
-import { ItemKindValue } from '../../common/inventory/item-kind.js';
+import { isRecipe, ItemKindValue } from '../../common/inventory/item-kind.js';
+import { BomService, type StockExplosion } from '../manufacturing/bom.service.js';
 
 const SOURCE = 'SALES_INVOICE';
 
@@ -181,6 +182,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     private readonly partyUsage: PartyUsageRegistry,
     private readonly costCenters: CostCentersService,
     private readonly costCenterUsage: CostCenterUsageRegistry,
+    private readonly bom: BomService,
   ) {}
 
   onModuleInit(): void {
@@ -538,6 +540,11 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           include: {
             item: { select: { id: true, code: true, nameAr: true, baseUnitId: true, itemKind: true } },
             itemUnit: { include: { unit: { select: { id: true, code: true, nameAr: true } } } },
+            // ADR-032 §12: what a recipe line took from stock, per merged component.
+            components: {
+              orderBy: { id: 'asc' },
+              include: { componentItem: { select: { id: true, code: true, nameAr: true, baseUnitId: true, itemKind: true } } },
+            },
           },
         },
         journalEntry: { select: { id: true, entryNo: true, status: true } },
@@ -548,6 +555,126 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     return {
       ...withBalance(inv, await this.creditedFor(db, [inv.id])),
       einvoice: await this.einvoice.stateOf('SALES_INVOICE', inv.id),
+    };
+  }
+
+  /**
+   * ADR-032 §6: the quantity the recipe sales took from one warehouse per component item, for the
+   * movements dated in (from, to]. Read from the component projection and its movements.
+   */
+  async recipeOutByItem(warehouseId: bigint, from: Date, to: Date): Promise<Map<bigint, Decimal>> {
+    const { tenantId, db } = this.support.tenant();
+    const rows = await db.$queryRaw<{ itemId: bigint; qty: string }[]>`
+      SELECT c.component_item_id AS itemId, COALESCE(SUM(c.qty_base), 0) AS qty
+        FROM sales_invoice_line_components c
+        JOIN stock_movements m ON m.tenant_id = c.tenant_id AND m.id = c.movement_id
+       WHERE c.tenant_id = ${tenantId} AND m.warehouse_id = ${warehouseId}
+         AND m.movement_date > ${from} AND m.movement_date <= ${to}
+       GROUP BY c.component_item_id`;
+    return new Map(rows.map((r) => [BigInt(r.itemId), new Decimal(r.qty)]));
+  }
+
+  /**
+   * ADR-032 §1 (report): the recipe lines of posted invoices dated in [from, to] that were sold without an
+   * ACTIVE bill of materials, so their cost is missing. Lists them to correct the bills of materials.
+   */
+  async recipeSalesWithoutBom(from: Date, to: Date) {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const lines = await db.salesInvoiceLine.findMany({
+      where: {
+        recipeBomMissing: true,
+        invoice: { companyId, status: 'POSTED', invoiceDate: { gte: from, lte: to } },
+      },
+      orderBy: [{ invoiceId: 'asc' }, { lineNo: 'asc' }],
+      select: {
+        id: true,
+        lineNo: true,
+        qtyBase: true,
+        netAmount: true,
+        invoice: { select: { id: true, invoiceNo: true, invoiceDate: true } },
+        item: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+      },
+    });
+    return lines.map((l) => ({
+      invoiceId: l.invoice.id,
+      invoiceNo: l.invoice.invoiceNo,
+      invoiceDate: l.invoice.invoiceDate,
+      lineId: l.id,
+      lineNo: l.lineNo,
+      itemId: l.item.id,
+      itemCode: l.item.code,
+      itemNameAr: l.item.nameAr,
+      itemNameEn: l.item.nameEn,
+      qtyBase: new Decimal(l.qtyBase.toString()),
+      netAmount: new Decimal(l.netAmount.toString()),
+    }));
+  }
+
+  /**
+   * ADR-032 §12: a draft's recipe lines, the stock components each one will take, what is on hand for
+   * them in the invoice warehouse, the shortage (negative stock follows the company setting, ADR-018),
+   * and the missing-version warning. Nothing is reserved or moved here.
+   */
+  async recipePreview(id: bigint) {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const inv = await db.salesInvoice.findFirst({
+      where: { id, ...branchWhere() },
+      select: {
+        id: true,
+        warehouseId: true,
+        lines: {
+          orderBy: { lineNo: 'asc' },
+          select: { id: true, lineNo: true, itemId: true, qtyBase: true, item: { select: { code: true, itemKind: true } } },
+        },
+      },
+    });
+    if (!inv) throw DomainError.notFound('SalesInvoice', id.toString());
+    const recipeLines = inv.lines.filter((l) => l.item.itemKind === 'RECIPE');
+    const lines = [];
+    for (const line of recipeLines) {
+      const exp = await this.bom.explodeToStock(db, companyId, line.itemId, line.qtyBase.toString(), false);
+      const balances = exp.components.length === 0
+        ? []
+        : await db.stockBalance.findMany({
+            where: { warehouseId: inv.warehouseId, itemId: { in: exp.components.map((c) => c.itemId) } },
+            select: { itemId: true, qtyOnHand: true },
+          });
+      const onHand = new Map(balances.map((b) => [b.itemId, new Decimal(b.qtyOnHand.toString())]));
+      const comps = exp.components.map((c) => {
+        const have = onHand.get(c.itemId) ?? new Decimal(0);
+        const short = c.qtyBase.gt(have) ? c.qtyBase.minus(have) : new Decimal(0);
+        return { componentItemId: c.itemId, qtyBase: c.qtyBase, onHandBase: have, shortageBase: short };
+      });
+      const names = await db.item.findMany({
+        where: { companyId, id: { in: comps.map((c) => c.componentItemId) } },
+        select: { id: true, code: true, nameAr: true },
+      });
+      const nameById = new Map(names.map((n) => [n.id, n]));
+      lines.push({
+        lineId: line.id,
+        lineNo: line.lineNo,
+        itemId: line.itemId,
+        itemCode: line.item.code,
+        qtyBase: line.qtyBase,
+        bomMissing: exp.missing,
+        components: comps.map((c) => ({
+          componentItemId: c.componentItemId,
+          code: nameById.get(c.componentItemId)?.code ?? '',
+          nameAr: nameById.get(c.componentItemId)?.nameAr ?? '',
+          qtyBase: c.qtyBase,
+          onHandBase: c.onHandBase,
+          shortageBase: c.shortageBase,
+        })),
+      });
+    }
+    return {
+      invoiceId: inv.id,
+      warehouseId: inv.warehouseId,
+      hasWarnings: lines.some((l) => l.bomMissing),
+      hasShortage: lines.some((l) => l.components.some((c) => c.shortageBase.gt(0))),
+      lines,
     };
   }
 
@@ -1049,28 +1176,78 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         // An invoice made from an order: the order and its lines locked before any stock lock (ADR-027 §8).
         const billing = draft.salesOrderId === null ? null : await this.lockBilledOrder(tx, tenantId, draft, settings.salesPriceLocked);
 
-        // Stock OUT for STOCK items — returns avg cost per base unit.
+        // ADR-032 §7: a recipe line explodes to its stock components before any stock lock. A recipe with
+        // no ACTIVE version posts at cost 0 and is flagged (ADR-032 §1).
         let costTotal = new Decimal(0);
         let writeOff = new Decimal(0);
         const costByLine = new Map<bigint, { unitCost: Decimal; totalCost: Decimal }>();
-        // Lock every (item, warehouse) in the fixed order before any movement.
-        const stockItems = await this.ledger.lockForDocument(
-          tx,
-          companyId,
-          draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
-        );
+        const explosions = await this.explodeRecipeLines(tx, companyId, draft.lines);
+        const missingLineIds = [...explosions].filter(([, e]) => e.missing).map(([lineId]) => lineId);
+        // Lock every (item, warehouse) in the fixed order before any movement: the document's own
+        // pairs and the components of its recipes (ADR-032 §7).
+        const stockItems = await this.ledger.lockForDocument(tx, companyId, [
+          ...draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
+          ...[...explosions.values()].flatMap((e) =>
+            e.components.map((c) => ({ itemId: c.itemId, warehouseId: draft.warehouseId })),
+          ),
+        ]);
         // ADR-027 §5 (HARD): a direct invoice takes only what no open order reserves; read under the stock locks.
+        // ADR-032 §10: the components of the recipes count with the direct lines.
         if (billing === null && settings.salesReservation === 'HARD') {
           await this.assertDirectReservable(
             tx,
             tenantId,
             companyId,
             draft.warehouseId,
-            draft.lines.map((l) => ({ itemId: l.itemId, qtyBase: new Decimal(l.qtyBase.toString()) })),
+            [
+              ...draft.lines
+                .filter((l) => !explosions.has(l.id))
+                .map((l) => ({ itemId: l.itemId, qtyBase: new Decimal(l.qtyBase.toString()) })),
+              ...[...explosions.values()].flatMap((e) => e.components.map((c) => ({ itemId: c.itemId, qtyBase: c.qtyBase }))),
+            ],
             stockItems,
           );
         }
+        const componentRows: Prisma.SalesInvoiceLineComponentCreateManyInput[] = [];
         for (const line of draft.lines) {
+          const explosion = explosions.get(line.id);
+          if (explosion !== undefined) {
+            if (explosion.missing || explosion.bomId === null) {
+              costByLine.set(line.id, { unitCost: new Decimal(0), totalCost: new Decimal(0) });
+              continue;
+            }
+            let lineCost = new Decimal(0);
+            for (const comp of explosion.components) {
+              const res = await this.ledger.applyMovement(tx, companyId, {
+                warehouseId: draft.warehouseId,
+                itemId: comp.itemId,
+                movementDate: invoiceDate,
+                type: 'OUT',
+                qty: comp.qtyBase.toString(),
+                sourceType: SOURCE,
+                sourceId: draft.id,
+                sourceLineId: line.id,
+                description: `Sales invoice ${draft.id}: recipe component`,
+              });
+              lineCost = lineCost.plus(res.totalCost);
+              writeOff = writeOff.plus(res.writeOff);
+              componentRows.push({
+                tenantId,
+                invoiceId: draft.id,
+                invoiceLineId: line.id,
+                componentItemId: comp.itemId,
+                qtyBase: comp.qtyBase,
+                unitCost: res.unitCost,
+                totalCost: res.totalCost,
+                movementId: res.movementId,
+                bomId: explosion.bomId,
+              });
+            }
+            // ADR-032 §8: the line's cost is the sum of its components; its unit cost is that sum per sold unit.
+            costByLine.set(line.id, { unitCost: round6(lineCost.div(new Decimal(line.qtyBase.toString()))), totalCost: round3(lineCost) });
+            costTotal = costTotal.plus(lineCost);
+            continue;
+          }
           if (!stockItems.has(line.itemId)) continue;
           const res = await this.ledger.applyMovement(tx, companyId, {
             warehouseId: draft.warehouseId,
@@ -1086,6 +1263,13 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           costByLine.set(line.id, { unitCost: res.unitCost, totalCost: res.totalCost });
           costTotal = costTotal.plus(res.totalCost);
           writeOff = writeOff.plus(res.writeOff);
+        }
+        if (componentRows.length > 0) await tx.salesInvoiceLineComponent.createMany({ data: componentRows });
+        if (missingLineIds.length > 0) {
+          await tx.salesInvoiceLine.updateMany({
+            where: { invoiceId: draft.id, id: { in: missingLineIds } },
+            data: { recipeBomMissing: true },
+          });
         }
         // Persist the per-line cost snapshot in one statement (TRADE-21 / DB-09),
         // not one UPDATE per line inside the posting transaction.
@@ -1205,6 +1389,28 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
   }
 
   // ------------------------------------------------------------- internals
+
+  /**
+   * ADR-032 §7: the explosion of each recipe line of a draft, read in the posting transaction
+   * before any stock lock (the BOM versions are read with a shared lock there).
+   */
+  private async explodeRecipeLines(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    lines: { id: bigint; itemId: bigint; qtyBase: Prisma.Decimal }[],
+  ): Promise<Map<bigint, StockExplosion>> {
+    const kinds = await tx.item.findMany({
+      where: { companyId, id: { in: [...new Set(lines.map((l) => l.itemId))] } },
+      select: { id: true, itemKind: true },
+    });
+    const recipes = new Set(kinds.filter((k) => isRecipe(k.itemKind)).map((k) => k.id));
+    const out = new Map<bigint, StockExplosion>();
+    for (const line of lines) {
+      if (!recipes.has(line.itemId)) continue;
+      out.set(line.id, await this.bom.explodeToStock(tx, companyId, line.itemId, line.qtyBase.toString(), true));
+    }
+    return out;
+  }
 
   /**
    * ADR-027 §4 under the locks of a post: the order and its lines (locking reads, before

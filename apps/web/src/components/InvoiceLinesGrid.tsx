@@ -17,7 +17,8 @@ export interface InvoiceItemOption {
   price?: string | null;
   /** Tax rate percent (0–100), as a decimal string. */
   taxRate: string;
-  itemKind: 'STOCK' | 'SERVICE' | 'MANUFACTURED';
+  /** RECIPE (ADR-032): sold and priced, never stocked; the grid treats it as a non-stock line. */
+  itemKind: 'STOCK' | 'SERVICE' | 'MANUFACTURED' | 'RECIPE';
 }
 
 /** Editable line; numeric fields are decimal strings (InputNumber stringMode). */

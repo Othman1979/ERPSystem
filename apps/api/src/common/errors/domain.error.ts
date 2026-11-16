@@ -104,6 +104,8 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.BOM_NOT_DRAFT]: HttpStatus.CONFLICT,
   [ErrorCode.BOM_ITEM_NOT_MANUFACTURED]: HttpStatus.BAD_REQUEST,
   [ErrorCode.BOM_COMPONENT_INVALID]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.RECIPE_NOT_STOCKED]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.RECIPE_DEPTH_EXCEEDED]: HttpStatus.BAD_REQUEST,
   [ErrorCode.BOM_UNIT_INVALID]: HttpStatus.BAD_REQUEST,
   [ErrorCode.PRODUCTION_NOT_DRAFT]: HttpStatus.CONFLICT,
   [ErrorCode.PRODUCTION_NOT_POSTED]: HttpStatus.CONFLICT,

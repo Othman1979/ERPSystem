@@ -7,7 +7,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { costMovement, type CostState } from './stock-costing.js';
-import { isStocked, ItemKindValue } from '../../common/inventory/item-kind.js';
+import { isStocked, ItemKindValue, assertNotRecipe } from '../../common/inventory/item-kind.js';
 
 
 /** True when the loaded item exists and holds stock (ADR-031 §1). */
@@ -458,6 +458,7 @@ export class StockLedgerService {
     // An item deactivated with no stock can still be returned or have a
     // document reversed (TRADE-15); new documents refuse it when drafted.
     if (!item.isActive && !inactiveAllowed) throw DomainError.notFound('Item', itemId.toString());
+    assertNotRecipe(item.itemKind, item.code);
     if (!isStocked(item.itemKind)) {
       throw new DomainError(ErrorCode.VALIDATION, `Item ${item.code} is a service — it produces no stock movements`);
     }

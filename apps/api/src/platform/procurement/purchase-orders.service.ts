@@ -24,7 +24,7 @@ import type {
   PurchaseOrderLineDto,
   UpdatePurchaseOrderDto,
 } from './dto/procurement.dto.js';
-import { amountColumns, assertWithinRemaining, documentTotals, priceLine, resolveItem, type PricedLine } from './procurement-lines.js';
+import { amountColumns, assertWithinRemaining, documentTotals, priceLine, type PricedLine, resolvePurchaseItem } from './procurement-lines.js';
 import { assertStatus, lockDocument, lockRequest, lockRequestLines, type LockedRequestLine } from './procurement-locks.js';
 import { PurchaseOrderReceiptsService } from './purchase-order-receipts.service.js';
 import { PurchaseRequestsService } from './purchase-requests.service.js';
@@ -386,7 +386,7 @@ export class PurchaseOrdersService {
           // The quoted price, discount and tax category exactly (review #47): the order
           // costs per unit what the comparison showed, whatever the item's tax is today.
           const item = {
-            ...resolveItem(refs, { itemId: ql.itemId.toString(), itemUnitId: ql.itemUnitId?.toString() ?? null, qty: qty.toString() }),
+            ...resolvePurchaseItem(refs, { itemId: ql.itemId.toString(), itemUnitId: ql.itemUnitId?.toString() ?? null, qty: qty.toString() }),
             taxCategoryId: ql.taxCategoryId,
             taxRate: new Decimal(ql.taxRate.toString()),
           };
@@ -514,7 +514,7 @@ export class PurchaseOrdersService {
       tx,
     );
     return dtos.map((l) => ({
-      line: priceLine(resolveItem(refs, l), l.unitPrice, l.discountPct, pricesIncludeTax),
+      line: priceLine(resolvePurchaseItem(refs, l), l.unitPrice, l.discountPct, pricesIncludeTax),
       requestLineId: l.requestLineId ? BigInt(l.requestLineId) : null,
       quoteLineId: null,
       note: l.note ?? null,

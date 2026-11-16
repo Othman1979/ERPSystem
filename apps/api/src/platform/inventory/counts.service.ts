@@ -24,7 +24,7 @@ import type {
 } from './dto/inventory.dto.js';
 import type { ListStockCountsQueryDto } from './dto/list-queries.dto.js';
 import { StockLedgerService } from './stock-ledger.service.js';
-import { isStocked, stockedItemKindFilter } from '../../common/inventory/item-kind.js';
+import { isStocked, stockedItemKindFilter, assertNotRecipe } from '../../common/inventory/item-kind.js';
 
 /** The item fields a count line shows. */
 const ITEM_REF = { select: { id: true, code: true, nameAr: true, baseUnitId: true } } as const;
@@ -278,7 +278,11 @@ export class CountsService {
   ): Promise<Prisma.ItemWhereInput> {
     if (scope === 'ITEMS') {
       if (!dto.itemIds?.length) throw new DomainError(ErrorCode.VALIDATION, 'itemIds are required for an ITEMS count');
-      return { id: { in: [...new Set(dto.itemIds)].map((x) => BigInt(x)) } };
+      const ids = [...new Set(dto.itemIds)].map((x) => BigInt(x));
+      // ADR-032 §5: a recipe is not counted; refuse it by name instead of skipping it.
+      const recipe = await db.item.findFirst({ where: { id: { in: ids }, itemKind: 'RECIPE' }, select: { code: true } });
+      if (recipe) throw new DomainError(ErrorCode.RECIPE_NOT_STOCKED, `Item ${recipe.code} is a recipe: it is not counted`);
+      return { id: { in: ids } };
     }
     if (scope === 'GROUP') {
       if (!dto.itemGroupId) throw new DomainError(ErrorCode.VALIDATION, 'itemGroupId is required for a GROUP count');
@@ -337,7 +341,14 @@ export class CountsService {
       const item = await tx.item.findFirst({
         where: { id: BigInt(dto.itemId), tenantId, companyId, itemKind: stockedItemKindFilter(), isActive: true },
       });
-      if (!item) throw new DomainError(ErrorCode.VALIDATION, 'The item is not an active stock item');
+      if (!item) {
+        const recipe = await tx.item.findFirst({
+          where: { id: BigInt(dto.itemId), tenantId, companyId, itemKind: 'RECIPE' },
+          select: { code: true },
+        });
+        if (recipe) throw new DomainError(ErrorCode.RECIPE_NOT_STOCKED, `Item ${recipe.code} is a recipe: it is not counted`);
+        throw new DomainError(ErrorCode.VALIDATION, 'The item is not an active stock item');
+      }
       const exists = await tx.stockCountLine.findFirst({ where: { countId, itemId: item.id } });
       if (exists) throw new DomainError(ErrorCode.CONFLICT, 'The item is already on this count sheet');
       const book = await this.bookOf(tx, tenantId, count, item.id);
@@ -389,6 +400,7 @@ export class CountsService {
         include: { item: { select: { id: true, companyId: true, itemKind: true, isActive: true } }, itemUnit: true },
       });
       if (!bc || bc.item.companyId !== companyId) throw DomainError.notFound('ItemBarcode', dto.barcode);
+      assertNotRecipe(bc.item.itemKind, String(bc.item.id));
       if (!isStocked(bc.item.itemKind) || !bc.item.isActive) {
         throw new DomainError(ErrorCode.VALIDATION, 'Only active stock items are counted');
       }

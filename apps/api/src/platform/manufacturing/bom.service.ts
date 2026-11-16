@@ -5,7 +5,7 @@ import type { RequestContext } from '../../common/cls/cls.types.js';
 import { Decimal, round3, round6 } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
-import { isStocked } from '../../common/inventory/item-kind.js';
+import { isRecipe, isStocked, type ItemKindValue } from '../../common/inventory/item-kind.js';
 import { findPage } from '../../common/paging/find-page.js';
 import { pageWindow } from '../../common/paging/page-query.dto.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -96,7 +96,7 @@ export type BomDetail = Awaited<ReturnType<BomService['get']>>;
 export interface ExplodedLine {
   lineNo: number;
   componentItemId: bigint;
-  componentItem: { id: bigint; code: string; nameAr: string; nameEn: string | null; itemKind: 'STOCK' | 'SERVICE' | 'MANUFACTURED'; baseUnit: { id: bigint; code: string; nameAr: string; nameEn: string | null } };
+  componentItem: { id: bigint; code: string; nameAr: string; nameEn: string | null; itemKind: 'STOCK' | 'SERVICE' | 'MANUFACTURED' | 'RECIPE'; baseUnit: { id: bigint; code: string; nameAr: string; nameEn: string | null } };
   wastePct: Decimal;
   /** The line's base quantity per output batch (before scaling). */
   qtyBase: Decimal;
@@ -111,13 +111,42 @@ export interface BomExplosion {
   lines: ExplodedLine[];
 }
 
+/** ADR-032 §7: nested recipes below the sold one, at most this many levels deep. */
+export const RECIPE_MAX_DEPTH = 8;
+
+/** One stock leaf of a recipe explosion: quantity in the base unit (6 dp), merged across levels. */
+export interface StockComponent {
+  itemId: bigint;
+  qtyBase: Decimal;
+}
+
+/** The stock leaves a sale of a recipe consumes (ADR-032 §7). */
+export interface StockExplosion {
+  /** The ACTIVE version of the sold recipe (or the explicit one), null when missing. */
+  bomId: bigint | null;
+  /** True when a recipe in the tree has no ACTIVE version (ADR-032 §1): no components, cost 0. */
+  missing: boolean;
+  components: StockComponent[];
+}
+
+/** The BOM fields an explosion reads (one level). */
+const EXPLODE_BOM_SELECT = {
+  id: true,
+  versionNo: true,
+  outputQtyBase: true,
+  lines: {
+    orderBy: { lineNo: 'asc' },
+    select: { lineNo: true, componentItemId: true, qtyBase: true, wastePct: true, componentItem: { select: { itemKind: true } } },
+  },
+} as const;
+
 /** Lock one item row (the first lock of every BOM write, ADR-031 §5). */
 async function lockItem(tx: Tx, tenantId: bigint, itemId: bigint): Promise<void> {
   await tx.$queryRaw`SELECT id FROM items WHERE tenant_id = ${tenantId} AND id = ${itemId} FOR UPDATE`;
 }
 
 /**
- * Bill of materials versions for MANUFACTURED items (ADR-031 §5).
+ * Bill of materials versions for MANUFACTURED items (ADR-031 §5) and for recipes (ADR-032 §6).
  *
  * Only a DRAFT is edited or deleted. Activation takes the company row lock and
  * then the item row lock, so two activations in one company run one after the
@@ -192,7 +221,7 @@ export class BomService {
       const itemId = BigInt(dto.itemId);
       const item = await this.manufacturedItem(tx, companyId, itemId);
       await lockItem(tx, tenantId, item.id);
-      const content = await this.resolveContent(tx, companyId, item.id, dto);
+      const content = await this.resolveContent(tx, companyId, item.id, item.itemKind, dto);
       const bom = await tx.bom.create({
         data: {
           tenantId,
@@ -227,7 +256,7 @@ export class BomService {
       await lockItem(tx, tenantId, head.itemId);
       const current = await this.versionHead(tx, companyId, id);
       if (current.status !== 'DRAFT') throw new DomainError(ErrorCode.BOM_NOT_DRAFT, 'Only a draft version can be changed', { status: current.status });
-      const content = await this.resolveContent(tx, companyId, current.itemId, dto);
+      const content = await this.resolveContent(tx, companyId, current.itemId, current.item.itemKind, dto);
       await tx.bomLine.deleteMany({ where: { bomId: id } });
       await tx.bom.update({
         where: { id },
@@ -360,6 +389,86 @@ export class BomService {
     return this.get(id);
   }
 
+  /**
+   * ADR-032 §4 (GET boms/:id/cost): one output unit of this version costed at the current average
+   * cost of its stock leaves, with the zero-cost warning. For a recipe, also its sale price net of
+   * tax (ADR-017: a tax-inclusive price is divided by 1 + rate) and the margin in value and percent.
+   */
+  async costCard(id: bigint) {
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const bom = await db.bom.findFirst({
+      where: { id, companyId },
+      select: {
+        id: true,
+        itemId: true,
+        versionNo: true,
+        status: true,
+        outputQtyBase: true,
+        item: {
+          select: {
+            itemKind: true,
+            salePrice: true,
+            salePriceIncludesTax: true,
+            taxCategory: { select: { rate: true } },
+          },
+        },
+      },
+    });
+    if (!bom) throw DomainError.notFound('Bom', id.toString());
+    const exploded = await this.explodeToStock(db, companyId, bom.itemId, bom.outputQtyBase.toString(), false, bom.id);
+    const leafIds = exploded.components.map((c) => c.itemId);
+    const [costs, leaves] = await Promise.all([
+      leafIds.length === 0 ? [] : db.itemCost.findMany({ where: { companyId, itemId: { in: leafIds } }, select: { itemId: true, avgCost: true } }),
+      leafIds.length === 0 ? [] : db.item.findMany({ where: { companyId, id: { in: leafIds } }, select: ITEM_REF.select }),
+    ]);
+    const avgById = new Map(costs.map((c) => [c.itemId, new Decimal(c.avgCost.toString())]));
+    const leafById = new Map(leaves.map((l) => [l.id, l]));
+    const lines = exploded.components.map((c) => {
+      const avgCost = avgById.get(c.itemId) ?? new Decimal(0);
+      return {
+        componentItemId: c.itemId,
+        componentItem: leafById.get(c.itemId)!,
+        qtyBase: c.qtyBase,
+        avgCost: round6(avgCost),
+        totalCost: round3(c.qtyBase.times(avgCost)),
+        zeroCost: avgCost.isZero(),
+      };
+    });
+    const outputQtyBase = new Decimal(bom.outputQtyBase.toString());
+    const totalCost = round3(lines.reduce((acc, l) => acc.plus(l.totalCost), new Decimal(0)));
+    const unitCost = round6(totalCost.div(outputQtyBase));
+
+    // ADR-017 / ADR-032 §4: the sale price of a recipe, net of its tax, and the margin per output unit.
+    let salePriceNet: Decimal | null = null;
+    let margin: Decimal | null = null;
+    let marginPct: Decimal | null = null;
+    if (bom.item.itemKind === 'RECIPE' && bom.item.salePrice !== null) {
+      const price = new Decimal(bom.item.salePrice.toString());
+      const rate = new Decimal((bom.item.taxCategory?.rate ?? 0).toString());
+      salePriceNet = bom.item.salePriceIncludesTax ? round3(price.div(new Decimal(1).plus(rate.div(100)))) : round3(price);
+      margin = round3(salePriceNet.minus(unitCost));
+      marginPct = salePriceNet.gt(0) ? margin.div(salePriceNet).times(100).toDecimalPlaces(2) : null;
+    }
+    return {
+      bomId: bom.id,
+      versionNo: bom.versionNo,
+      status: bom.status,
+      isRecipe: bom.item.itemKind === 'RECIPE',
+      outputQtyBase,
+      missingBom: exploded.missing,
+      zeroCostWarning: lines.some((l) => l.zeroCost),
+      lines,
+      totalCost,
+      unitCost,
+      salePrice: bom.item.salePrice === null ? null : new Decimal(bom.item.salePrice.toString()),
+      pricesIncludeTax: bom.item.itemKind === 'RECIPE' ? bom.item.salePriceIncludesTax : null,
+      salePriceNet,
+      margin,
+      marginPct,
+    };
+  }
+
   /** Marks an ACTIVE version INACTIVE; the item then has no active version until another is activated. */
   async deactivate(id: bigint) {
     const { tenantId, db } = this.tenant();
@@ -456,6 +565,73 @@ export class BomService {
     };
   }
 
+  /**
+   * ADR-032 §7: the stock leaves of `qtyBase` of a recipe. A nested recipe is exploded
+   * too; a stocked or MANUFACTURED component is a leaf. Duplicates across the levels are
+   * merged, and each leaf is rounded to 6 dp once. The versions are read with a shared lock
+   * when `lock` is set (ADR-032 §7), so an activation waits until the sale posts.
+   * A recipe with no ACTIVE version (the top one or a nested one) sets `missing` (ADR-032 §1).
+   * `bomId` names the top version explicitly (costing a given version); otherwise ACTIVE.
+   */
+  async explodeToStock(
+    tx: Tx,
+    companyId: bigint,
+    recipeItemId: bigint,
+    qtyBase: Decimal.Value,
+    lock: boolean,
+    bomId?: bigint,
+  ): Promise<StockExplosion> {
+    const { tenantId } = this.tenant();
+    const produced = new Decimal(qtyBase);
+    if (!produced.gt(0)) throw new DomainError(ErrorCode.VALIDATION, 'The sold quantity must be greater than zero');
+    const totals = new Map<bigint, Decimal>();
+    let topBomId: bigint | null = null;
+    let missing = false;
+
+    const visit = async (itemId: bigint, qty: Decimal, depth: number, ancestors: Set<bigint>, explicitBomId?: bigint): Promise<void> => {
+      if (ancestors.has(itemId)) throw new DomainError(ErrorCode.BOM_CYCLE, 'The recipe forms a loop', { itemId: itemId.toString() });
+      if (depth > RECIPE_MAX_DEPTH) {
+        throw new DomainError(ErrorCode.RECIPE_DEPTH_EXCEEDED, `A recipe nests deeper than ${RECIPE_MAX_DEPTH} levels`, { itemId: itemId.toString() });
+      }
+      if (lock) {
+        if (explicitBomId !== undefined) {
+          await tx.$queryRaw`SELECT id FROM boms WHERE tenant_id = ${tenantId} AND id = ${explicitBomId} LOCK IN SHARE MODE`;
+        } else {
+          await tx.$queryRaw`SELECT id FROM boms WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND item_id = ${itemId} AND status = 'ACTIVE' LOCK IN SHARE MODE`;
+        }
+      }
+      const bom = await tx.bom.findFirst({
+        where: explicitBomId !== undefined ? { id: explicitBomId, companyId, itemId } : { companyId, itemId, status: 'ACTIVE' },
+        select: EXPLODE_BOM_SELECT,
+      });
+      if (!bom) {
+        missing = true;
+        return;
+      }
+      if (depth === 0) topBomId = bom.id;
+      const ratio = qty.div(new Decimal(bom.outputQtyBase.toString()));
+      const next = new Set(ancestors).add(itemId);
+      for (const line of bom.lines) {
+        const waste = new Decimal(line.wastePct.toString());
+        const need = new Decimal(line.qtyBase.toString()).times(ratio).times(new Decimal(1).plus(waste.div(100)));
+        if (isRecipe(line.componentItem.itemKind)) {
+          await visit(line.componentItemId, need, depth + 1, next);
+          if (missing) return;
+        } else if (isStocked(line.componentItem.itemKind)) {
+          totals.set(line.componentItemId, (totals.get(line.componentItemId) ?? new Decimal(0)).plus(need));
+        }
+      }
+    };
+
+    await visit(recipeItemId, produced, 0, new Set<bigint>(), bomId);
+    if (missing) return { bomId: null, missing: true, components: [] };
+    const components = [...totals.entries()]
+      .map(([itemId, q]) => ({ itemId, qtyBase: round6(q) }))
+      .filter((c) => c.qtyBase.gt(0))
+      .sort((a, b) => (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0));
+    return { bomId: topBomId, missing: false, components };
+  }
+
   // ------------------------------------------------------------ helpers
 
   private async detail(db: Tx, companyId: bigint, id: bigint) {
@@ -466,19 +642,23 @@ export class BomService {
 
   /** The version's item and status, read in the caller's transaction (after the item lock). */
   private async versionHead(tx: Tx, companyId: bigint, id: bigint) {
-    const head = await tx.bom.findFirst({ where: { id, companyId }, select: { itemId: true, status: true } });
+    const head = await tx.bom.findFirst({
+      where: { id, companyId },
+      select: { itemId: true, status: true, item: { select: { itemKind: true } } },
+    });
     if (!head) throw DomainError.notFound('Bom', id.toString());
     return head;
   }
 
+  /** The owner of a version: a MANUFACTURED item, or a RECIPE (ADR-032 §6). */
   private async manufacturedItem(tx: Tx, companyId: bigint, itemId: bigint) {
     const item = await tx.item.findFirst({
       where: { companyId, id: itemId },
       select: { id: true, code: true, itemKind: true, isActive: true },
     });
     if (!item || !item.isActive) throw DomainError.notFound('Item', itemId.toString());
-    if (item.itemKind !== 'MANUFACTURED') {
-      throw new DomainError(ErrorCode.BOM_ITEM_NOT_MANUFACTURED, `Item ${item.code} is not a manufactured item`);
+    if (item.itemKind !== 'MANUFACTURED' && item.itemKind !== 'RECIPE') {
+      throw new DomainError(ErrorCode.BOM_ITEM_NOT_MANUFACTURED, `Item ${item.code} is neither a manufactured item nor a recipe`);
     }
     return item;
   }
@@ -493,7 +673,13 @@ export class BomService {
    * quantities (ADR-031 §10): output and components, units of their items,
    * stocked components only (no service, no the item itself).
    */
-  private async resolveContent(tx: Tx, companyId: bigint, itemId: bigint, dto: CreateBomDto | UpdateBomDto): Promise<ResolvedContent> {
+  private async resolveContent(
+    tx: Tx,
+    companyId: bigint,
+    itemId: bigint,
+    ownerKind: ItemKindValue,
+    dto: CreateBomDto | UpdateBomDto,
+  ): Promise<ResolvedContent> {
     // No output unit given: the item's base unit (no item unit row, as on the documents).
     const outputUnit =
       dto.outputItemUnitId === undefined
@@ -537,7 +723,12 @@ export class BomService {
         throw new DomainError(ErrorCode.BOM_COMPONENT_INVALID, 'An item cannot be its own component', { lineNo: index + 1 });
       }
       const component = componentById.get(componentItemId)!;
-      if (!isStocked(component.itemKind)) {
+      // ADR-032 §6: a recipe is a component only of another recipe, never of a manufactured item.
+      if (isRecipe(component.itemKind)) {
+        if (ownerKind !== 'RECIPE') {
+          throw new DomainError(ErrorCode.BOM_COMPONENT_INVALID, `Component ${component.code} is a recipe: only a recipe can use it`, { lineNo: index + 1 });
+        }
+      } else if (!isStocked(component.itemKind)) {
         throw new DomainError(ErrorCode.BOM_COMPONENT_INVALID, `Component ${component.code} is a service`, { lineNo: index + 1 });
       }
       if (!component.isActive) throw DomainError.notFound('Item', componentItemId.toString());

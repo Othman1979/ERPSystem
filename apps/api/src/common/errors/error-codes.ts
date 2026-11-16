@@ -166,6 +166,10 @@ export enum ErrorCode {
   BOM_COMPONENT_INVALID = 'BOM_COMPONENT_INVALID',
   // The unit does not belong to the item (a line or the output unit).
   BOM_UNIT_INVALID = 'BOM_UNIT_INVALID',
+  // ADR-032 §5: a recipe is sold, never stocked, so a stock or purchase document refuses it by name.
+  RECIPE_NOT_STOCKED = 'RECIPE_NOT_STOCKED',
+  // ADR-032 §7: a recipe nests deeper than the explosion limit (8 levels below the sold one).
+  RECIPE_DEPTH_EXCEEDED = 'RECIPE_DEPTH_EXCEEDED',
   // ADR-031 §7 (Phase 16): a production voucher is edited or deleted only as a draft, and posted or reversed once.
   PRODUCTION_NOT_DRAFT = 'PRODUCTION_NOT_DRAFT',
   PRODUCTION_NOT_POSTED = 'PRODUCTION_NOT_POSTED',

@@ -88,6 +88,8 @@ export const TENANT_MODELS = [
   'BomLine',
   'ProductionVoucher',
   'ProductionVoucherLine',
+  // Phase 17 (ADR-032 §8): the stock components of a recipe sale.
+  'SalesInvoiceLineComponent',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);

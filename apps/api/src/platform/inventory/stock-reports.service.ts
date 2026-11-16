@@ -8,7 +8,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { CursorCodec, type CursorState } from '../../common/paging/cursor.js';
 import { keysetLimit } from '../../common/paging/page-query.dto.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { EXPORT_LIMITS } from '../printing/printing.service.js';
 import type { ItemLedgerQueryDto, StockMovementsQueryDto } from './dto/stock-reports.dto.js';
 import { stockedItemKindFilter } from '../../common/inventory/item-kind.js';
@@ -357,6 +357,77 @@ export class StockReportsService {
   }
 
   /** Code and name of a warehouse of this company (report headers). */
+  /**
+   * ADR-032 §6: what one warehouse moved between two POSTED counts (from before to), per item counted in
+   * both. Opening and closing are the counted quantities; receipts are IN movements dated in (from, to];
+   * outgoing is every OUT movement in the same window. Count adjustments are left out of both: they are
+   * the counts' own result, not consumption. The sales split of the outgoing is read by the sales module.
+   */
+  async countConsumption(warehouseId: bigint, fromCountId: bigint, toCountId: bigint) {
+    const { tenantId, db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const [from, to] = await Promise.all([
+      db.stockCount.findFirst({ where: { id: fromCountId, companyId }, select: { id: true, warehouseId: true, countDate: true, status: true } }),
+      db.stockCount.findFirst({ where: { id: toCountId, companyId }, select: { id: true, warehouseId: true, countDate: true, status: true } }),
+    ]);
+    if (!from) throw DomainError.notFound('StockCount', fromCountId.toString());
+    if (!to) throw DomainError.notFound('StockCount', toCountId.toString());
+    if (from.warehouseId !== warehouseId || to.warehouseId !== warehouseId) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Both counts must belong to the warehouse');
+    }
+    if (from.status !== 'POSTED' || to.status !== 'POSTED') {
+      throw new DomainError(ErrorCode.CONFLICT, 'Both counts must be posted');
+    }
+    if (from.countDate.getTime() >= to.countDate.getTime()) {
+      throw new DomainError(ErrorCode.VALIDATION, 'The first count must be dated before the second');
+    }
+    const [fromLines, toLines] = await Promise.all([
+      db.stockCountLine.findMany({ where: { countId: from.id }, select: { itemId: true, countedQty: true } }),
+      db.stockCountLine.findMany({ where: { countId: to.id }, select: { itemId: true, countedQty: true } }),
+    ]);
+    const toById = new Map(toLines.map((l) => [l.itemId, l.countedQty]));
+    const both = fromLines.filter((l) => l.countedQty !== null && toById.get(l.itemId) != null);
+    if (both.length === 0) return { fromCount: from, toCount: to, rows: [] };
+    const itemIds = both.map((l) => l.itemId);
+    const agg = await db.$queryRaw<{ itemId: bigint; receipts: string; outAll: string; outSales: string }[]>`
+      SELECT m.item_id AS itemId,
+             COALESCE(SUM(CASE WHEN m.movement_type = 'IN' THEN m.qty_in ELSE 0 END), 0) AS receipts,
+             COALESCE(SUM(CASE WHEN m.movement_type = 'OUT' THEN m.qty_out ELSE 0 END), 0) AS outAll,
+             COALESCE(SUM(CASE WHEN m.movement_type = 'OUT' AND m.source_type = 'SALES_INVOICE' THEN m.qty_out ELSE 0 END), 0) AS outSales
+        FROM stock_movements m
+       WHERE m.tenant_id = ${tenantId} AND m.company_id = ${companyId} AND m.warehouse_id = ${warehouseId}
+         AND m.item_id IN (${Prisma.join(itemIds)})
+         AND m.movement_date > ${from.countDate} AND m.movement_date <= ${to.countDate}
+         AND NOT (m.source_type = 'STOCK_ADJUSTMENT' AND m.source_id IN (
+               SELECT a.id FROM stock_adjustments a
+                WHERE a.tenant_id = ${tenantId} AND a.adjustment_type = 'COUNT_ADJUSTMENT'))
+       GROUP BY m.item_id`;
+    const aggById = new Map(agg.map((r) => [BigInt(r.itemId), r]));
+    const [items, costs] = await Promise.all([
+      db.item.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, code: true, nameAr: true, nameEn: true } }),
+      db.itemCost.findMany({ where: { companyId, itemId: { in: itemIds } }, select: { itemId: true, avgCost: true } }),
+    ]);
+    const itemById = new Map(items.map((i) => [i.id, i]));
+    const avgById = new Map(costs.map((c) => [c.itemId, new Decimal(c.avgCost.toString())]));
+    const rows = both.map((l) => {
+      const a = aggById.get(l.itemId);
+      const item = itemById.get(l.itemId)!;
+      return {
+        itemId: l.itemId,
+        code: item.code,
+        nameAr: item.nameAr,
+        nameEn: item.nameEn,
+        openingCounted: new Decimal(l.countedQty!.toString()),
+        closingCounted: new Decimal(toById.get(l.itemId)!.toString()),
+        receipts: new Decimal(a?.receipts ?? 0),
+        outAll: new Decimal(a?.outAll ?? 0),
+        outSales: new Decimal(a?.outSales ?? 0),
+        avgCost: avgById.get(l.itemId) ?? new Decimal(0),
+      };
+    });
+    return { fromCount: from, toCount: to, rows };
+  }
+
   async warehouseSummary(id: string) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);

@@ -4,19 +4,7 @@
  * changes a body.
  */
 import { ApiProperty, PickType } from '@nestjs/swagger';
-import {
-  AccountRow,
-  ItemRow,
-  ItemUnitRow,
-  JournalEntryRow,
-  PartyRow,
-  SalesInvoiceLineRow,
-  SalesInvoiceRow,
-  SalesReturnLineRow,
-  SalesReturnRow,
-  UnitRow,
-  WarehouseRow,
-} from '../../../common/openapi/prisma-models.js';
+import { AccountRow, ItemRow, ItemUnitRow, JournalEntryRow, PartyRow, SalesInvoiceLineRow, SalesInvoiceRow, SalesReturnLineRow, SalesReturnRow, UnitRow, WarehouseRow, SalesInvoiceLineComponentRow } from '../../../common/openapi/prisma-models.js';
 import { EInvoiceStateDto } from '../../einvoice/dto/einvoice-response.dto.js';
 import { PartyDto } from '../../parties/dto/parties-response.dto.js';
 
@@ -55,7 +43,17 @@ export class SalesInvoiceItemUnitDto extends ItemUnitRow {
 }
 
 /** A sales invoice line: every column of `sales_invoice_lines` plus its item and item unit. */
+/** ADR-032 §8: one stock component a recipe line consumed (the component's item in the detail). */
+export class SalesInvoiceLineComponentViewDto extends SalesInvoiceLineComponentRow {
+  @ApiProperty({ type: () => SalesInvoiceItemRefDto })
+  componentItem!: SalesInvoiceItemRefDto;
+}
+
 export class SalesInvoiceLineViewDto extends SalesInvoiceLineRow {
+  /** ADR-032 §12: the components of a recipe line (empty for other lines). */
+  @ApiProperty({ type: () => SalesInvoiceLineComponentViewDto, isArray: true })
+  components!: SalesInvoiceLineComponentViewDto[];
+
   @ApiProperty({ type: () => SalesInvoiceItemRefDto })
   item!: SalesInvoiceItemRefDto;
 

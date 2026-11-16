@@ -10,7 +10,7 @@ import { PrintingService } from '../printing/printing.service.js';
 import { bomPrint } from './bom.print.js';
 import { BomService } from './bom.service.js';
 import { BomRequirementsQueryDto, CreateBomDto, ListBomsQueryDto, UpdateBomDto } from './dto/bom.dto.js';
-import { BomDetailDto, BomListItemDto, BomRequirementsDto } from './dto/bom-response.dto.js';
+import { BomCostCardDto, BomDetailDto, BomListItemDto, BomRequirementsDto } from './dto/bom-response.dto.js';
 
 /** Bill of materials versions (ADR-031 §5). Writes need the item permission; reads need tenant access. */
 @ApiTags('manufacturing')
@@ -81,6 +81,14 @@ export class BomsController {
   }
 
   /** Standard requirements for a quantity of the output, one level (ADR-031 §6). */
+  /** ADR-032 §4: the cost card of a version: per leaf the average cost, the total, the unit cost and, for a recipe, the margin. */
+  @Get(':id/cost')
+  @RequirePermission(PERMISSIONS.TENANT_READ)
+  @ApiOkResponse({ type: BomCostCardDto })
+  cost(@Param('id', ParseIdPipe) id: string) {
+    return this.boms.costCard(BigInt(id));
+  }
+
   @Get(':id/requirements')
   @RequirePermission(PERMISSIONS.TENANT_READ)
   @ApiOkResponse({ type: BomRequirementsDto })

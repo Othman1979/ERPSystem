@@ -1,3 +1,4 @@
+import { assertNotRecipe } from '../../common/inventory/item-kind.js';
 import { Decimal, round6, sum } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -55,6 +56,16 @@ export function resolveItem(refs: CatalogLineRefs, line: LineItemInput): Resolve
     taxCategoryId: tax?.id ?? null,
     taxRate: tax?.rate ?? new Decimal(0),
   };
+}
+
+/**
+ * A purchase document's line: a recipe is refused by name (ADR-032 §5), then the usual resolution.
+ * Sales quotes and orders keep resolveItem, which sells a recipe.
+ */
+export function resolvePurchaseItem(refs: CatalogLineRefs, line: LineItemInput): ResolvedItem {
+  const item = refs.items.get(BigInt(line.itemId));
+  if (item) assertNotRecipe(item.itemKind, item.code);
+  return resolveItem(refs, line);
 }
 
 /** A priced line: the item plus its amounts, computed here (ADR-017), never taken from the client. */
