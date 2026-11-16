@@ -29,6 +29,7 @@ export function DocLayout({
   title,
   docNo,
   status,
+  statusStages,
   onBack,
   actions,
   children,
@@ -37,6 +38,8 @@ export function DocLayout({
   /** Document number once assigned (e.g. SI-FY2026-000012); omitted for new drafts. */
   docNo?: string | null;
   status?: string;
+  /** Stages of the status bar when a document has more than Draft and Posted (e.g. a submitted count). */
+  statusStages?: readonly string[];
   onBack?: () => void;
   actions?: ReactNode;
   children: ReactNode;
@@ -55,7 +58,7 @@ export function DocLayout({
         )}
         <h2 className="doc-title">{title}</h2>
         {docNo && <span className="doc-no">{docNo}</span>}
-        {status && <StatusBar status={status} />}
+        {status && <StatusBar status={status} stages={statusStages} />}
         {actions && <div className="doc-toolbar-actions">{actions}</div>}
       </div>
       {children}

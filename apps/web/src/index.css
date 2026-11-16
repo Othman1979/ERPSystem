@@ -1563,3 +1563,157 @@ textarea:focus-visible,
 .ant-table-tbody > tr.row-openable:focus-visible > td {
   background: var(--c-grid-row-hover);
 }
+
+/* ---- Physical count (ADR-030) ---- */
+.count-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--c-panel);
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+}
+
+/* The scan area is the first thing a storekeeper uses: a full-width input. */
+.count-scan-panel {
+  flex-direction: column;
+  align-items: stretch;
+  background: var(--c-surface);
+}
+.count-scan-input {
+  width: 100%;
+}
+.count-scan-error {
+  font-weight: 600;
+}
+.count-scan-feedback {
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: var(--c-success-bg);
+  border: 1px solid var(--c-success-border);
+  color: var(--c-success);
+  font-weight: 600;
+}
+
+.count-progress {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+.count-progress .ant-progress {
+  margin: 2px 0 0;
+}
+.count-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.count-actions {
+  flex: 1 1 100%;
+  justify-content: flex-end;
+}
+
+.count-code {
+  color: var(--c-text-3);
+  font-size: 12px;
+}
+.count-meta {
+  color: var(--c-text-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.count-qty {
+  min-width: 104px;
+}
+
+/* Difference report */
+.count-variance {
+  margin-bottom: 16px;
+}
+.count-variance-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.count-variance-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.count-variance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.count-tile {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-inline-start: 4px solid var(--c-border-strong);
+  border-radius: 4px;
+  padding: 12px 14px;
+}
+.count-tile-shortage {
+  border-inline-start-color: var(--c-danger);
+}
+.count-tile-surplus {
+  border-inline-start-color: var(--c-success);
+}
+.count-tile-net {
+  border-inline-start-color: var(--c-ink-600);
+}
+.count-tile-label {
+  color: var(--c-text-2);
+  font-size: 13px;
+}
+.count-tile-value {
+  font-size: 20px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.count-tile-hint {
+  color: var(--c-text-3);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.count-variance-alert {
+  margin-bottom: 12px;
+}
+.count-uncounted-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .count-toolbar {
+    padding: 10px;
+  }
+  .count-progress,
+  .count-actions {
+    flex-basis: 100%;
+  }
+  .count-actions {
+    justify-content: flex-start;
+  }
+  /* 16px stops iOS zooming in on focus; 40px keeps the touch target usable. */
+  .count-scan-input .ant-input,
+  .count-qty .ant-input-number-input {
+    font-size: 16px;
+    min-height: 40px;
+  }
+  .count-qty {
+    min-width: 112px;
+  }
+  .count-tile-value {
+    font-size: 18px;
+  }
+}
