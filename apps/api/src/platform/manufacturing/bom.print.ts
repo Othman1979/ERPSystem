@@ -36,7 +36,7 @@ export function bomPrint(bom: BomDetail, lang: Lang): DocumentPrint {
         value: `${bom.outputQty.toString()} ${unitName(bom.outputItemUnit?.unit ?? bom.item.baseUnit)}`,
       },
       { label: t(lang, 'كمية الناتج بالأساسية', 'Output in base unit'), value: bom.outputQtyBase.toString() },
-      { label: t(lang, 'التكلفة المحمّلة لكل دفعة', 'Applied cost per batch'), value: bom.appliedCostPerUnit.toString() },
+      { label: t(lang, 'التكلفة المحمّلة لكل وحدة', 'Applied cost per unit'), value: bom.appliedCostPerUnit.toString() },
       { label: t(lang, 'رقم النسخة', 'Version'), value: String(bom.versionNo) },
     ],
     lines: {
