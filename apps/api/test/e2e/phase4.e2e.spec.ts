@@ -327,7 +327,7 @@ describe('Phase 4 — inventory (erp_test)', () => {
     expect(await balanceOf(itemId, warehouse2Id)).toBeCloseTo(0);
   });
 
-  it('stock count → approve generates COUNT_ADJUSTMENT', async () => {
+  it('stock count → submit → approve generates COUNT_ADJUSTMENT', async () => {
     // WH1 has 15 on hand; count 12 → shortage of 3.
     const count = await api()
       .post('/api/v1/stock-counts')
@@ -336,12 +336,12 @@ describe('Phase 4 — inventory (erp_test)', () => {
     expect(count.status).toBe(201);
     expect(count.body.lines.length).toBeGreaterThan(0);
 
-    // countedQty=null everywhere → approve must fail.
+    // A draft is not approved (ADR-030 §5): only a submitted count is.
     const early = await api()
       .post(`/api/v1/stock-counts/${count.body.id}/approve`)
       .set(auth(token))
       .set(idem()); // keyed like every posting route (TRADE-07)
-    expect(early.status).toBe(400);
+    expect([early.status, early.body.error.code]).toEqual([409, 'INVALID_STATUS_TRANSITION']);
 
     for (const line of count.body.lines as {
       id: string;
@@ -357,6 +357,16 @@ describe('Phase 4 — inventory (erp_test)', () => {
       expect(upd.status).toBe(200);
     }
 
+    // Closing the counting is keyed too; the approval is the owner's (no self-approval rule for an owner).
+    const submitted = await api()
+      .post(`/api/v1/stock-counts/${count.body.id}/submit`)
+      .set(auth(token))
+      .set(idem());
+    expect([submitted.status, submitted.body.status]).toEqual([201, 'SUBMITTED']);
+
+    // The approval is dated today (ADR-030 §1): today's fiscal year must be open.
+    const year = new Date().getUTCFullYear();
+    expect((await api().post('/api/v1/fiscal-years').set(auth(token)).send({ code: String(year), startDate: `${year}-01-01`, endDate: `${year}-12-31` })).status).toBe(201);
     const approve = await api()
       .post(`/api/v1/stock-counts/${count.body.id}/approve`)
       .set(auth(token))

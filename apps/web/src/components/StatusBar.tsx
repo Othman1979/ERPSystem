@@ -2,15 +2,24 @@ import { useTranslation } from 'react-i18next';
 
 /**
  * Status bar for documents: Draft → Posted, as two chips joined by an arrow.
- * The current state is ink, past states success, future states neutral.
+ * Documents with a middle state (a count is submitted before it is posted)
+ * pass `stages`. The current state is ink, past states success, future states neutral.
  * Styles: `.status-bar*` in index.css.
  */
-export function StatusBar({ status }: { status: 'DRAFT' | 'POSTED' | string }) {
+export function StatusBar({
+  status,
+  stages = ['DRAFT', 'POSTED'],
+}: {
+  status: 'DRAFT' | 'POSTED' | string;
+  stages?: readonly string[];
+}) {
   const { t, i18n } = useTranslation();
-  const steps = [
-    { key: 'DRAFT', label: t('common.draft') },
-    { key: 'POSTED', label: t('common.posted') },
-  ];
+  const labelOf: Record<string, string> = {
+    DRAFT: t('common.draft'),
+    SUBMITTED: t('stockCount.statusSubmitted'),
+    POSTED: t('common.posted'),
+  };
+  const steps = stages.map((key) => ({ key, label: labelOf[key] ?? key }));
   const currentIdx = steps.findIndex((s) => s.key === status);
   // The flow reads in the page's direction: → in English, ← in Arabic.
   const arrow = i18n.dir() === 'rtl' ? '←' : '→';

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { InfoCircleOutlined, SaveOutlined } from '@ant-design/icons';
+import { SaveOutlined } from '@ant-design/icons';
 import {
   Button,
   Card,
@@ -7,7 +7,6 @@ import {
   DatePicker,
   Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Select,
@@ -16,52 +15,39 @@ import {
   Tabs,
   Tag,
   Typography,
-  message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import {
-  ApiError,
   catalogControllerListItems,
-  stockDocumentsControllerApproveCount,
   stockDocumentsControllerCreateAdjustment,
-  stockDocumentsControllerCreateCount,
   stockDocumentsControllerCreateTransfer,
   stockDocumentsControllerDeleteAdjustment,
-  stockDocumentsControllerDeleteCount,
   stockDocumentsControllerDeleteTransfer,
-  stockDocumentsControllerGetCount,
   stockDocumentsControllerListAdjustments,
-  stockDocumentsControllerListCounts,
   stockDocumentsControllerListTransfers,
   stockDocumentsControllerPostAdjustment,
   stockDocumentsControllerPostTransfer,
   stockDocumentsControllerReverseAdjustment,
   stockDocumentsControllerReverseTransfer,
-  stockDocumentsControllerUpdateCountLine,
   stockReportsControllerBalances,
   stockReportsControllerMovements,
   stockReportsControllerValuation,
-  warehousesControllerList,
 } from '@erp/api-client';
 import type {
   CreateStockAdjustmentDtoAdjustmentType,
-  ItemListItemDto,
   StockAdjustmentListItemDto,
-  StockCountDetailDto,
-  StockCountLineDto,
-  StockCountListItemDto,
   StockReportMovementDto,
   StockTransferListItemDto,
   StockDocumentsControllerListAdjustmentsSort,
-  StockDocumentsControllerListCountsSort,
   StockDocumentsControllerListTransfersSort,
 } from '@erp/api-client';
 import { idemHeaders } from '../idempotency';
 import { GoodsNotesSection } from './GoodsNotesPage';
-import { FormDialog, FormSection } from '../components/FormDialog';
+import { CountsTab } from './stock/CountsTab';
+import { itemOptionsOf, useApiMessage, useLookups, useStockItemPicker } from './stock/stockHooks';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
@@ -69,7 +55,7 @@ import { LoadMore } from '../components/LoadMore';
 import { RemoteSelect } from '../components/RemoteSelect';
 import { useKeysetQuery } from '../hooks/useKeysetQuery';
 import { usePagedQuery } from '../hooks/usePagedQuery';
-import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
+import { PICKER_PAGE_SIZE } from '../hooks/useRemoteOptions';
 import { ExportButtons } from '../components/ExportButtons';
 import {
   emptyItemLine,
@@ -80,63 +66,14 @@ import { codeAndName, displayName, type Named } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { EnterNav } from '../components/EnterNav';
 import { GridSelect } from '../components/GridSelect';
-import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
+import { DocFields, DocLayout, useDocShortcuts } from '../components/DocLayout';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
-import { formatAmount, formatQty } from '../format/number';
+import { formatAmount } from '../format/number';
 import { invalidateStock } from '../stockQueries';
 
-type ItemOpt = ItemListItemDto;
 type AdjustmentRow = StockAdjustmentListItemDto;
 type TransferRow = StockTransferListItemDto;
-type CountRow = StockCountListItemDto;
 type MovementRow = StockReportMovementDto;
-type CountLine = StockCountLineDto;
-type CountDetail = StockCountDetailDto;
-
-function useApiMessage() {
-  const { t } = useTranslation();
-  const [apiMessage, contextHolder] = message.useMessage();
-  const show = (err: unknown) =>
-    apiMessage.error(
-      err instanceof ApiError
-        ? t(`errors.${err.code}`, { defaultValue: err.message })
-        : t('errors.INTERNAL'),
-    );
-  const ok = (key: string) => apiMessage.success(t(key));
-  return { apiMessage, contextHolder, show, ok };
-}
-
-function useLookups() {
-  const warehouses = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
-  });
-  const whOptions = (warehouses.data ?? [])
-    .filter((w) => w.isActive)
-    .map((w) => ({ value: w.id, label: codeAndName(w) }));
-  // Report rows only carry the warehouse code; show "code — name" instead.
-  const warehouseLabel = (code: string) =>
-    codeAndName((warehouses.data ?? []).find((w) => w.code === code)) ?? code;
-  return { warehouses, whOptions, warehouseLabel };
-}
-
-/**
- * Stock items for the document grids: searched on the server as the user
- * types, never the whole catalogue (ADR-022 §8). Chosen rows stay labelled.
- */
-function useStockItemPicker(enabled: boolean) {
-  return useRemoteOptions<ItemOpt>({
-    key: ['items', 'pick', { itemKind: 'STOCK' }],
-    enabled,
-    fetch: (q, signal) =>
-      catalogControllerListItems(
-        { pageSize: PICKER_PAGE_SIZE, itemKind: 'STOCK', ...(q ? { q } : {}) },
-        { signal },
-      ).then((r) => r.data.items),
-  });
-}
-
-const itemOptionsOf = (rows: readonly ItemOpt[]) => rows.map((i) => ({ value: i.id, label: codeAndName(i) }));
 
 const statusTag = (s: string, t: (k: string) => string) =>
   s === 'POSTED' ? <Tag color="green">{t('stock.posted')}</Tag> : <Tag>{t('stock.draft')}</Tag>;
@@ -752,287 +689,6 @@ function TransfersTab() {
       >
         <DatePicker value={reverseDate} onChange={setReverseDate} style={{ width: '100%' }} />
       </Modal>
-    </>
-  );
-}
-
-function CountsTab() {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const { contextHolder, show, ok } = useApiMessage();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [detail, setDetail] = useState<CountDetail | null>(null);
-  const [counted, setCounted] = useState<Record<string, string | null>>({});
-  const [form] = Form.useForm();
-  const { whOptions } = useLookups();
-
-  // Server-paged (ADR-022): search, sort and page go to the API.
-  const list = usePagedQuery<CountRow, Record<string, string | undefined>, StockDocumentsControllerListCountsSort>({
-    key: ['stock-counts', 'list'],
-    filters: {},
-    defaultSort: '-date',
-    fetch: (params, signal) => stockDocumentsControllerListCounts(params, { signal }).then((r) => r.data),
-    enabled: !detail,
-  });
-  const listQuery = list.query;
-  const { isLoading } = listQuery;
-  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['stock-counts'] });
-
-  const create = useMutation({
-    mutationFn: (v: { countDate: Dayjs; warehouseId: string; description?: string }) =>
-      stockDocumentsControllerCreateCount({
-        countDate: v.countDate.format('YYYY-MM-DD'),
-        warehouseId: v.warehouseId,
-        description: v.description || undefined,
-      }),
-    onSuccess: () => {
-      ok('common.saved');
-      setModalOpen(false);
-      form.resetFields();
-      invalidate();
-    },
-    onError: show,
-  });
-
-  const openDetail = async (id: string) => {
-    const res = await stockDocumentsControllerGetCount(id);
-    const d = res.data;
-    setDetail(d);
-    setCounted(
-      Object.fromEntries(
-        d.lines.map((l) => [l.id, l.countedQty ?? null]),
-      ),
-    );
-  };
-
-  const saveLine = useMutation({
-    mutationFn: (v: { lineId: string; qty: string }) =>
-      stockDocumentsControllerUpdateCountLine(detail!.id, v.lineId, {
-        countedQty: v.qty,
-      }),
-    onError: show,
-  });
-
-  // Enter in a counted-qty cell moves to the next row's input.
-  const onCountGridKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-    const inputs = Array.from(
-      e.currentTarget.querySelectorAll<HTMLInputElement>('.ant-table-tbody input'),
-    );
-    const idx = inputs.indexOf(e.target as HTMLInputElement);
-    if (idx === -1) return;
-    e.preventDefault();
-    inputs[idx + 1]?.focus();
-  };
-
-  const approve = useMutation({
-    mutationFn: (id: string) => stockDocumentsControllerApproveCount(id),
-    onSuccess: () => {
-      ok('common.saved');
-      setDetail(null);
-      invalidate();
-      invalidateStock(queryClient);
-    },
-    onError: show,
-  });
-
-  const del = useMutation({
-    mutationFn: (id: string) => stockDocumentsControllerDeleteCount(id),
-    onSuccess: invalidate,
-    onError: show,
-  });
-
-  // The count sheet opens as a full document page.
-  if (detail) {
-    const isDraft = detail.status === 'DRAFT';
-    return (
-      <>
-        {contextHolder}
-        <DocLayout
-          title={t('stock.countLines')}
-          docNo={detail.docNo}
-          onBack={() => setDetail(null)}
-          actions={
-            isDraft && (
-              <Popconfirm
-                title={t('stock.confirmApprove')}
-                onConfirm={() => approve.mutate(detail.id)}
-              >
-                <Button type="primary" loading={approve.isPending}>
-                  {t('stock.approve')}
-                </Button>
-              </Popconfirm>
-            )
-          }
-        >
-          <DocFields>
-            <DocField label={t('stock.date')}>
-              <DocValue>
-                {detail.countDate ? dayjs(detail.countDate).format('YYYY-MM-DD') : '—'}
-              </DocValue>
-            </DocField>
-            <DocField label={t('stock.warehouse')}>
-              <DocValue>
-                {whOptions.find((o) => o.value === detail.warehouseId)?.label ?? '—'}
-              </DocValue>
-            </DocField>
-            <DocField label={t('common.status')}>
-              <DocValue>{statusTag(detail.status, t)}</DocValue>
-            </DocField>
-            {detail.description && (
-              <DocField label={t('common.description')}>
-                <DocValue>{detail.description}</DocValue>
-              </DocField>
-            )}
-          </DocFields>
-          <div onKeyDown={onCountGridKeyDown}>
-            <Table
-              rowKey="id"
-              size="small"
-              dataSource={detail.lines}
-              pagination={false}
-              columns={[
-                {
-                  title: t('items.code'),
-                  width: 110,
-                  render: (_: unknown, l: CountLine) => l.item?.code ?? l.itemId,
-                },
-                {
-                  title: t('common.name'),
-                  render: (_: unknown, l: CountLine) => displayName(l.item) ?? '—',
-                },
-                { title: t('stock.systemQty'), dataIndex: 'systemQty', width: 110, align: 'right' as const, render: qtyCell },
-                {
-                  title: t('stock.countedQty'),
-                  width: 130,
-                  align: 'right' as const,
-                  render: (_: unknown, l: CountLine) =>
-                    isDraft ? (
-                      <InputNumber<string>
-                        stringMode
-                        size="small"
-                        min="0"
-                        value={counted[l.id] ?? null}
-                        onChange={(v) => {
-                          setCounted((c) => ({ ...c, [l.id]: v }));
-                          if (v != null) saveLine.mutate({ lineId: l.id, qty: v });
-                        }}
-                      />
-                    ) : (
-                      <Num>{formatQty(l.countedQty)}</Num>
-                    ),
-                },
-                {
-                  title: t('stock.diff'),
-                  dataIndex: 'differenceQty',
-                  width: 90,
-                  align: 'right' as const,
-                  render: (v: string | null) => <Num>{formatQty(v)}</Num>,
-                },
-              ]}
-            />
-          </div>
-        </DocLayout>
-      </>
-    );
-  }
-
-  return (
-    <>
-      {contextHolder}
-      <ListToolbar
-        search={list.search}
-        onSearch={list.setSearch}
-        count={list.total}
-        actions={
-          <Button type="primary" onClick={() => setModalOpen(true)}>
-            {t('stock.newCount')}
-          </Button>
-        }
-      />
-      <Table
-        rowKey="id"
-        size="small"
-        loading={isLoading}
-        dataSource={list.rows}
-        locale={tableLocale(listQuery)}
-        pagination={list.pagination}
-        onChange={list.onTableChange}
-        columns={[
-          {
-            title: t('stock.docNo'),
-            dataIndex: 'docNo',
-            key: 'docNo',
-            sorter: true,
-            sortOrder: list.sortOrderOf('docNo'),
-            width: 150,
-            className: 'nowrap',
-            render: (v: string | null) => v ?? '—',
-          },
-          {
-            title: t('stock.date'),
-            dataIndex: 'countDate',
-            key: 'date',
-            sorter: true,
-            sortOrder: list.sortOrderOf('date'),
-            width: 110,
-            render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '—'),
-          },
-          { title: t('stock.lines'), width: 80, render: (_: unknown, r: CountRow) => r._count?.lines ?? '—' },
-          {
-            title: t('common.status'),
-            dataIndex: 'status',
-            width: 90,
-            render: (v: string) => statusTag(v, t),
-          },
-          {
-            title: t('common.actions'),
-            width: 200,
-            render: (_: unknown, row: CountRow) => (
-              <Space>
-                <Button size="small" onClick={() => void openDetail(row.id)}>
-                  {t('stock.countLines')}
-                </Button>
-                {row.status === 'DRAFT' && (
-                  <Popconfirm title={t('common.confirmDelete')} onConfirm={() => del.mutate(row.id)}>
-                    <Button size="small" danger>
-                      {t('common.delete')}
-                    </Button>
-                  </Popconfirm>
-                )}
-              </Space>
-            ),
-          },
-        ]}
-      />
-      <FormDialog
-        title={t('stock.newCount')}
-        open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onSave={() => form.submit()}
-        saving={create.isPending}
-      >
-        <EnterNav autoFocusWhen={modalOpen}>
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(v) => create.mutate(v)}
-          initialValues={{ countDate: dayjs() }}
-        >
-          <FormSection title={t('stock.countDetails')} icon={<InfoCircleOutlined />}>
-            <Form.Item name="countDate" label={t('stock.date')} rules={[{ required: true }]}>
-              <DatePicker />
-            </Form.Item>
-            <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]}>
-              <GridSelect enterOpens options={whOptions} />
-            </Form.Item>
-            <Form.Item name="description" label={t('common.description')}>
-              <Input maxLength={500} />
-            </Form.Item>
-          </FormSection>
-        </Form>
-        </EnterNav>
-      </FormDialog>
     </>
   );
 }

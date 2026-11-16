@@ -420,7 +420,7 @@ describe('Trade wave 2 — treasury, units, branches', () => {
     const cnt = await api()
       .post('/api/v1/stock-counts')
       .set(auth(owner))
-      .send({ countDate: '2025-04-01', warehouseId, lines: [{ itemId, countedQty: '10' }] });
+      .send({ countDate: '2025-04-01', warehouseId, scope: 'ITEMS', itemIds: [itemId] });
     expect(cnt.status).toBe(201);
     countId = cnt.body.id;
 

@@ -71,6 +71,7 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.GRN_ALREADY_INVOICED]: HttpStatus.CONFLICT,
   [ErrorCode.PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_COUNT_STALE]: HttpStatus.CONFLICT,
+  [ErrorCode.STOCK_COUNT_SELF_APPROVAL]: HttpStatus.FORBIDDEN,
   [ErrorCode.PARTY_IN_USE]: HttpStatus.CONFLICT,
   [ErrorCode.CURSOR_INVALID]: HttpStatus.BAD_REQUEST,
   [ErrorCode.ALL_BRANCHES_REQUIRED]: HttpStatus.FORBIDDEN,

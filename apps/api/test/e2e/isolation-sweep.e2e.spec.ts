@@ -374,6 +374,9 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     if (p === '/api/v1/sales-orders/{id}') return bodies.salesOrder;
     if (/\/sales-(quotes|orders)\/\{id\}\/(reject|cancel|close|reject-approval)$/.test(p)) return { reason: 'x' };
     if (p.endsWith('/purchase-orders/{id}/receive') || p.endsWith('/issue-requests/{id}/issue')) return { noteDate: '2026-04-03' };
+    // Phase 15 (ADR-030): valid bodies for the count lines and the scan.
+    if (/\/stock-counts\/\{id\}\/lines$/.test(p)) return { itemId: id.item };
+    if (p.endsWith('/stock-counts/{id}/scan')) return { barcode: `NOPE-${RUN}` };
     if (p.endsWith('/purchase-orders/{id}/bill')) {
       return { invoiceDate: '2026-04-03', paymentType: 'CREDIT', lines: [{ grnLineId: '1', qty: '1', unitCost: '1' }] };
     }

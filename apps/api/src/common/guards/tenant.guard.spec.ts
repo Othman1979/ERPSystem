@@ -149,11 +149,12 @@ describe('TenantGuard: purchase permissions per member (ADR-024 §3.4)', () => {
     expect(await permissionsAfter(guard)).toEqual(['tenant.read']);
   });
 
-  it('gives an owner all three with nothing stored', async () => {
+  it('gives an owner every member permission with nothing stored (sales.approve too, ADR-027 §6)', async () => {
     const { guard } = setup(ACTIVE);
     expect(await permissionsAfter(guard)).toEqual([
       'purchase.approve',
       'purchase.direct',
+      'sales.approve',
       'stock.issue_without_request',
       'tenant.read',
     ]);

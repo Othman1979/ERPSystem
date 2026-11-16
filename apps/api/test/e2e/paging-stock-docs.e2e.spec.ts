@@ -304,9 +304,9 @@ describe('Paging and branch scope of stock documents, goods notes and items (ADR
     tr.t4 = await transfer(w3, w2, '2025-03-09', 'b2 internal');
     tr.t5 = await transfer(w1, w3, '2025-03-09', 'main to b2');
 
-    // Counts (explicit lines, so no stock is needed to capture them): MAIN twice, B2 twice.
+    // Counts (ITEMS scope, so no stock is needed to capture them): MAIN twice, B2 twice.
     const count = (warehouseId: string, countDate: string, description: string) =>
-      create(CNT, { countDate, warehouseId, description, lines: [{ itemId: stock, countedQty: '50' }] });
+      create(CNT, { countDate, warehouseId, description, scope: 'ITEMS', itemIds: [stock] });
     cnt.c1 = await count(w1, '2025-03-08', 'count main');
     cnt.c2 = await count(w2, '2025-03-10', 'count b2');
     cnt.c3 = await count(w3, '2025-03-10', 'count b2 w3');
