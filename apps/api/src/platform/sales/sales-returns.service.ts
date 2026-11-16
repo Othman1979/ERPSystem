@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { isRecipe } from '../../common/inventory/item-kind.js';
 import { Decimal, round3, sum } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, assertWarehouseBranchAllowed, branchWhere } from '../../common/branch/branch-context.js';
 import { findPage } from '../../common/paging/find-page.js';
@@ -338,6 +339,18 @@ export class SalesReturnsService {
         taxTotal: sum(resolved.map((r) => r.taxAmount)),
         grandTotal: sum(resolved.map((r) => r.lineTotal)),
       };
+      // ADR-032 §11: a recipe comes back as revenue and tax only. Its line carries no unit cost, so no
+      // cost is reversed or re-derived for it (stock never moved for a recipe).
+      const recipeIds = new Set(
+        (
+          await tx.item.findMany({
+            where: { companyId, id: { in: [...new Set(resolved.map((r) => r.orig.itemId))] } },
+            select: { id: true, itemKind: true },
+          })
+        )
+          .filter((i) => isRecipe(i.itemKind))
+          .map((i) => i.id),
+      );
       const created = await tx.salesReturn.create({
         data: {
           tenantId,
@@ -371,7 +384,7 @@ export class SalesReturnsService {
           taxRate: r.orig.taxRate,
           taxAmount: r.taxAmount,
           lineTotal: r.lineTotal,
-          unitCost: r.orig.unitCost,
+          unitCost: recipeIds.has(r.orig.itemId) ? null : r.orig.unitCost,
         })),
       });
       return { ret: created, invoiceId: invoice.id };

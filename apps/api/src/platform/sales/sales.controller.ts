@@ -5,6 +5,7 @@ import { ApiFileResponse, ApiPagedResponse, DeletedDto } from '../../common/open
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { RequiresIdempotencyKey } from '../../common/idempotency/requires-idempotency-key.decorator.js';
 import { SalesInvoicesService } from './sales-invoices.service.js';
+import { RecipePreviewDto } from './dto/recipe-response.dto.js';
 import { SalesReturnsService } from './sales-returns.service.js';
 import {
   CreateSalesInvoiceDto,
@@ -49,6 +50,14 @@ export class SalesController {
   }
 
   /** Printed invoice (BUILD_PLAN §13.7, §15): A4 PDF with the JoFotara QR; another branch's answers 404 (ADR-003 §11). */
+  /** ADR-032 §12: a draft's recipe lines with the components they take and the stock on hand for them. */
+  @Get('sales-invoices/:id/recipe-preview')
+  @RequirePermission(PERMISSIONS.TENANT_READ)
+  @ApiOkResponse({ type: RecipePreviewDto })
+  recipePreview(@Param('id') id: string) {
+    return this.invoices.recipePreview(BigInt(id));
+  }
+
   @Get('sales-invoices/:id/pdf')
   @RequirePermission(PERMISSIONS.TENANT_READ)
   @ApiFileResponse(['application/pdf'])

@@ -393,7 +393,7 @@ function RequestEditor({
     key: ['items', 'pick', { isActive: 'true' }],
     fetch: (q, signal) =>
       catalogControllerListItems(
-        { pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}), isActive: 'true' },
+        { pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}), isActive: 'true', purchasable: 'true' },
         { signal },
       ).then((r) => r.data.items),
   });

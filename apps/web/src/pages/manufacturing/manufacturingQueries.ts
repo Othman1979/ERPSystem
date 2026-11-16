@@ -9,6 +9,7 @@ export const bomKeys = {
   ofItem: (itemId: string | undefined) => ['boms', 'item', itemId] as const,
   detail: (id: string | undefined) => ['boms', 'detail', id] as const,
   requirements: (id: string, qty: string) => ['boms', 'requirements', id, qty] as const,
+  cost: (id: string) => ['boms', 'cost', id] as const,
 };
 
 export const productionKeys = {

@@ -17,7 +17,7 @@ import type { CreateStockTransferDto } from './dto/inventory.dto.js';
 import type { ListStockTransfersQueryDto } from './dto/list-queries.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { retryOnLockConflict } from '../shared/document-support.service.js';
-import { isStocked, stockedItemKindFilter } from '../../common/inventory/item-kind.js';
+import { isStocked, stockedItemKindFilter, assertNotRecipe } from '../../common/inventory/item-kind.js';
 
 const SOURCE = 'STOCK_TRANSFER';
 
@@ -176,6 +176,7 @@ export class TransfersService {
           select: { code: true, itemKind: true },
         });
         if (!any) throw DomainError.notFound('Item', l.itemId);
+        assertNotRecipe(any.itemKind, any.code);
         throw new DomainError(
           ErrorCode.VALIDATION,
           !isStocked(any.itemKind)

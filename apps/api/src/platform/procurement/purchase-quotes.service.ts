@@ -21,7 +21,7 @@ import type {
   ReceivePurchaseQuoteDto,
   UpdatePurchaseQuoteDto,
 } from './dto/procurement.dto.js';
-import { amountColumns, documentTotals, priceLine, remainingQty, resolveItem } from './procurement-lines.js';
+import { amountColumns, documentTotals, priceLine, remainingQty, resolvePurchaseItem } from './procurement-lines.js';
 import { assertStatus, lockDocument, lockRequest } from './procurement-locks.js';
 
 /** Statuses that count as open for the procurement level (ADR-025 §6). */
@@ -240,7 +240,7 @@ export class PurchaseQuotesService {
         tx,
       );
       const priced = quote.lines.map((l) => {
-        const item = resolveItem(refs, { itemId: l.itemId.toString(), itemUnitId: l.itemUnitId?.toString() ?? null, qty: l.qty.toString() });
+        const item = resolvePurchaseItem(refs, { itemId: l.itemId.toString(), itemUnitId: l.itemUnitId?.toString() ?? null, qty: l.qty.toString() });
         const p = prices.get(l.id)!;
         return { id: l.id, line: priceLine(item, p.unitPrice, p.discountPct, quote.pricesIncludeTax) };
       });
@@ -370,7 +370,7 @@ export class PurchaseQuotesService {
       tx,
     );
     return picks.map((p) => {
-      const item = resolveItem(refs, { itemId: p.line.itemId.toString(), itemUnitId: p.line.itemUnitId?.toString() ?? null, qty: p.qty.toString() });
+      const item = resolvePurchaseItem(refs, { itemId: p.line.itemId.toString(), itemUnitId: p.line.itemUnitId?.toString() ?? null, qty: p.qty.toString() });
       return {
         requestLineId: p.line.id,
         itemId: item.itemId,

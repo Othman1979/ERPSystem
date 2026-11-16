@@ -463,6 +463,9 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       requestId: id.purchaseRequest,
       purchaseOrderId: id.purchaseOrder,
       issueRequestId: id.issueRequest,
+      // Phase 17 (ADR-032 §6): the consumption report between two counts.
+      fromCountId: id.stockCount,
+      toCountId: id.stockCount,
     };
     const leaks: string[] = [];
     const unknown: string[] = [];

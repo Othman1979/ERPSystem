@@ -37,7 +37,7 @@ import {
   type LockedOrder,
 } from '../procurement/purchase-order-receipts.service.js';
 import { IssueRequestsService, type LockedIssueRequest } from '../procurement/issue-requests.service.js';
-import { isStocked } from '../../common/inventory/item-kind.js';
+import { isStocked, assertNotRecipe } from '../../common/inventory/item-kind.js';
 
 /** A goods receipt note as a purchase invoice bills it (TRADE-02, ADR-016). */
 export interface GrnBillingSource {
@@ -797,6 +797,7 @@ export class GoodsNotesService implements OnModuleInit {
     for (const l of dto.lines) {
       const item = byId.get(BigInt(l.itemId));
       if (!item) throw DomainError.notFound('Item', l.itemId);
+      assertNotRecipe(item.itemKind, item.code);
       if (!isStocked(item.itemKind)) {
         throw new DomainError(ErrorCode.VALIDATION, `Item ${item.code} is a service — no stock note allowed`);
       }

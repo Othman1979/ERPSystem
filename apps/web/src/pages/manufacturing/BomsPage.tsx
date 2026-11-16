@@ -36,7 +36,8 @@ import { usePagedQuery } from '../../hooks/usePagedQuery';
 import { useNewFromUrl } from '../../useNewFromUrl';
 import { BomEditor } from './BomEditor';
 import { bomKeys, invalidateManufacturing } from './manufacturingQueries';
-import { ManufacturedItemPicker } from './pickers';
+import { OwnerItemPicker } from './pickers';
+import { BomCostCard } from './BomCostCard';
 
 /** What the page shows: the list, a new version (optionally for an item), or one saved version. */
 type Screen = { kind: 'list' } | { kind: 'new'; itemId?: string } | { kind: 'bom'; id: string };
@@ -160,7 +161,7 @@ function BomsList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: () =
         searchPlaceholder={t('manufacturing.bom.searchPlaceholder')}
         filters={
           <Space wrap>
-            <ManufacturedItemPicker
+            <OwnerItemPicker
               allowClear
               style={{ minWidth: 220 }}
               placeholder={t('manufacturing.bom.item')}
@@ -368,6 +369,7 @@ function BomView({ bom, onBack, onOpen }: { bom: BomDetailDto; onBack: () => voi
         dataSource={bom.lines}
         columns={columns}
       />
+      {bom.status === 'ACTIVE' && <BomCostCard bomId={bom.id} />}
     </DocLayout>
   );
 }

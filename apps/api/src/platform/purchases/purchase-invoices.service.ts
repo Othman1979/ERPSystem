@@ -68,7 +68,7 @@ import {
 } from '../procurement/purchase-order-receipts.service.js';
 import type { BillPurchaseOrderDto } from './dto/purchases.dto.js';
 import { clearedThrough } from '../shared/receipt-clearing.js';
-import { isStocked, ItemKindValue } from '../../common/inventory/item-kind.js';
+import { isStocked, ItemKindValue, assertNotRecipe } from '../../common/inventory/item-kind.js';
 
 const SOURCE = 'PURCHASE_INVOICE';
 
@@ -1655,6 +1655,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     for (const l of dtos) {
       const item = itemById.get(BigInt(l.itemId));
       if (!item) throw DomainError.notFound('Item', l.itemId);
+      assertNotRecipe(item.itemKind, item.code);
 
       let itemUnitId: bigint | null = null;
       let factorToBase = new Decimal(1);

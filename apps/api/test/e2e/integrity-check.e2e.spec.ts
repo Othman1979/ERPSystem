@@ -33,6 +33,7 @@ const CHECKS = [
   'journal_entries.source',
   'stock_movements.source',
   'stock_movements.source_line',
+  'sales_invoice_line_components.movement',
   'purchase_request_lines.ordered_qty',
   'purchase_order_lines.request_line_id',
   'sales_order_lines.invoiced_qty',

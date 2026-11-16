@@ -1386,6 +1386,34 @@ export class SalesInvoiceLineRow {
   costTotal!: string;
   @ApiProperty({ type: 'string', nullable: true, description: "ADR-027 §4: the order line this line bills (set on the draft, final at posting)." })
   orderLineId!: string | null;
+  @ApiProperty({ type: 'boolean', description: "ADR-032 §1: a recipe with no ACTIVE bill of materials at posting: sold at cost 0, no components." })
+  recipeBomMissing!: boolean;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  createdAt!: string;
+}
+
+/** Scalar columns of the Prisma model `SalesInvoiceLineComponent`, as JSON. */
+export class SalesInvoiceLineComponentRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  invoiceId!: string;
+  @ApiProperty({ type: 'string' })
+  invoiceLineId!: string;
+  @ApiProperty({ type: 'string' })
+  componentItemId!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  qtyBase!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  unitCost!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  totalCost!: string;
+  @ApiProperty({ type: 'string' })
+  movementId!: string;
+  @ApiProperty({ type: 'string', description: "The ACTIVE bill of materials of the sold recipe (the top of the explosion) at posting." })
+  bomId!: string;
   @ApiProperty({ type: 'string', format: 'date-time' })
   createdAt!: string;
 }

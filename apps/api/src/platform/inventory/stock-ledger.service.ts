@@ -7,7 +7,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { costMovement, type CostState } from './stock-costing.js';
-import { isStocked, ItemKindValue } from '../../common/inventory/item-kind.js';
+import { isStocked, ItemKindValue, assertNotRecipe } from '../../common/inventory/item-kind.js';
 
 
 /** True when the loaded item exists and holds stock (ADR-031 §1). */
@@ -228,6 +228,24 @@ export class StockLedgerService {
     await this.loadItems(tx, tenantId, companyId, ids);
     const st = this.state(tx);
     return new Set(ids.filter((id) => isStockedItem(st.items.get(id))));
+  }
+
+  /**
+   * On-hand quantities of some items in one warehouse, read without locks (a preview, never a posting
+   * check). The inventory module's own read, for other modules that must not query stock_balances
+   * (CLAUDE.md, review #65). A missing balance row is 0.
+   */
+  async onHandIn(
+    db: Pick<Prisma.TransactionClient, 'stockBalance'>,
+    warehouseId: bigint,
+    itemIds: bigint[],
+  ): Promise<Map<bigint, Decimal>> {
+    if (itemIds.length === 0) return new Map();
+    const rows = await db.stockBalance.findMany({
+      where: { warehouseId, itemId: { in: [...new Set(itemIds)] } },
+      select: { itemId: true, qtyOnHand: true },
+    });
+    return new Map(rows.map((r) => [r.itemId, new Decimal(r.qtyOnHand.toString())]));
   }
 
   /**
@@ -458,6 +476,7 @@ export class StockLedgerService {
     // An item deactivated with no stock can still be returned or have a
     // document reversed (TRADE-15); new documents refuse it when drafted.
     if (!item.isActive && !inactiveAllowed) throw DomainError.notFound('Item', itemId.toString());
+    assertNotRecipe(item.itemKind, item.code);
     if (!isStocked(item.itemKind)) {
       throw new DomainError(ErrorCode.VALIDATION, `Item ${item.code} is a service — it produces no stock movements`);
     }

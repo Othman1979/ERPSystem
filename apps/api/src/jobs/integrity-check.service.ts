@@ -194,6 +194,20 @@ export class IntegrityCheckService {
           ) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
 
+    // ADR-032 §8: a recipe component is a projection of its movement: the movement is an OUT of the same
+    // item and quantity, sourced from that invoice line, and the line belongs to the invoice.
+    await orphans(
+      'sales_invoice_line_components.movement',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM sales_invoice_line_components c
+        LEFT JOIN stock_movements m ON m.tenant_id = c.tenant_id AND m.id = c.movement_id
+        WHERE (m.id IS NULL OR m.movement_type <> 'OUT' OR m.item_id <> c.component_item_id
+          OR m.qty_out <> c.qty_base OR m.source_type <> 'SALES_INVOICE' OR m.source_id <> c.invoice_id
+          OR m.source_line_id <> c.invoice_line_id
+          OR NOT EXISTS (SELECT 1 FROM sales_invoice_lines l
+            WHERE l.tenant_id = c.tenant_id AND l.id = c.invoice_line_id AND l.invoice_id = c.invoice_id))
+          AND c.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
+
     // ADR-025 §9: a request line's ordered_qty is a projection of the order
     // lines (not cancelled) that order it; it must equal their sum. Order
     // lines must also belong to the order's own request, in the same tenant.

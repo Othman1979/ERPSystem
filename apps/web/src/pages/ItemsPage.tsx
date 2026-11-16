@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import JsBarcode from 'jsbarcode';
 import {
+  Alert,
   App,
   Button,
   Card,
@@ -73,7 +74,7 @@ import type Decimal from 'decimal.js';
 import { amountCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount, formatQty } from '../format/number';
 import { itemCreateBody, itemUpdateBody, type ItemFormValues } from './items/itemPayload';
-import { holdsStock, ITEM_KIND_LABEL_KEY, ITEM_KINDS } from './items/itemKinds';
+import { holdsStock, isRecipe, ITEM_KIND_LABEL_KEY, ITEM_KINDS, ownsFormula } from './items/itemKinds';
 import { ItemFormulas } from './manufacturing/ItemFormulas';
 
 type Group = ItemGroupDto;
@@ -117,6 +118,7 @@ function useApiError() {
 function KindTag({ kind }: { kind: string }) {
   const { t } = useTranslation();
   if (kind === 'MANUFACTURED') return <Tag color="cyan">{t('items.manufactured')}</Tag>;
+  if (kind === 'RECIPE') return <Tag color="purple">{t('items.recipe')}</Tag>;
   if (kind === 'STOCK') return <Tag color="blue">{t('items.stock')}</Tag>;
   return <Tag>{t('items.service')}</Tag>;
 }
@@ -546,11 +548,13 @@ function ItemsTab() {
                     />
                   </Form.Item>
                 </FormSection>
+              ) : isRecipe(getFieldValue('itemKind')) ? (
+                <Alert type="info" showIcon style={{ marginBottom: 16 }} message={t('items.recipeHint')} />
               ) : null
             }
           </Form.Item>
         </Form>
-        {editing?.itemKind === 'MANUFACTURED' && <ItemFormulas itemId={editing.id} />}
+        {editing && ownsFormula(editing.itemKind) && <ItemFormulas itemId={editing.id} />}
       </FormDialog>
 
       <LedgerModal item={ledgerItem} onClose={() => setLedgerItem(null)} warehouses={warehouses ?? []} />
