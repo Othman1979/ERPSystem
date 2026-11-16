@@ -11,12 +11,14 @@ import {
   Table,
   Tabs,
   Tag,
+  Typography,
   message,
 } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { CompanyProfileForm } from '../components/CompanyProfileForm';
+import { SalesSettingsForm } from '../components/SalesSettingsForm';
 import { DataExportCard } from '../components/DataExportCard';
 import {
   ApiError,
@@ -345,6 +347,13 @@ export function SettingsPage() {
                   {t('setup.open')}
                 </Button>
                 <CompanyProfileForm withTax withProcurement />
+                {/* The sales cycle settings are the owner's (ADR-027 §1), like the procurement level. */}
+                {can(PERMISSIONS.COMPANY_MANAGE) && (
+                  <section style={{ marginTop: 32 }}>
+                    <Typography.Title level={5}>{t('salesCycle.settings.title')}</Typography.Title>
+                    <SalesSettingsForm />
+                  </section>
+                )}
               </>
             ),
           },

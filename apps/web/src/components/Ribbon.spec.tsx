@@ -321,3 +321,19 @@ describe('layout', () => {
     expect(container.querySelector('section.ribbon')?.getAttribute('aria-label')).toBe(t('ribbon.label'));
   });
 });
+
+describe('sales cycle "new" buttons (ADR-027 §7)', () => {
+  it('offers a new quotation and a new sales order to a role with sales.manage', () => {
+    render('/sales', { can: (p: Permission) => p === PERMISSIONS.TENANT_READ || p === PERMISSIONS.SALES_MANAGE });
+    expect(container.querySelector('a[href="/sales-quotes?new=1"] .ribbon-label')?.textContent).toBe(t('ribbon.new.salesQuotes'));
+    expect(container.querySelector('a[href="/sales-orders?new=1"] .ribbon-label')?.textContent).toBe(t('ribbon.new.salesOrders'));
+  });
+
+  it('hides both new buttons from a role without sales.manage, and keeps the screens', () => {
+    render('/sales', { can: (p: Permission) => p === PERMISSIONS.TENANT_READ });
+    expect(container.querySelector('a[href="/sales-quotes?new=1"]')).toBeNull();
+    expect(container.querySelector('a[href="/sales-orders?new=1"]')).toBeNull();
+    expect(container.querySelector('a[href="/sales-quotes"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/sales-orders"]')).not.toBeNull();
+  });
+});

@@ -41,3 +41,38 @@ describe('purchase permissions editor values (ADR-024 §3)', () => {
     }
   });
 });
+
+describe('sales approval limit (ADR-027 §6)', () => {
+  it('opens sales.approve with its own limit, apart from the purchase limit', () => {
+    expect(
+      toPurchaseForm([
+        { code: 'sales.approve', amountLimit: '700' },
+        { code: 'purchase.approve', amountLimit: null },
+      ]),
+    ).toEqual({ codes: ['sales.approve', 'purchase.approve'], approvalLimit: undefined, salesApprovalLimit: '700' });
+  });
+
+  it('sends each approval limit on its own code, in the API order', () => {
+    expect(
+      purchasePermissionsPayload({
+        codes: ['sales.approve', 'purchase.approve'],
+        approvalLimit: '100',
+        salesApprovalLimit: ' 700 ',
+      }),
+    ).toEqual({
+      permissions: [
+        { code: 'purchase.approve', amountLimit: '100' },
+        { code: 'sales.approve', amountLimit: '700' },
+      ],
+    });
+  });
+
+  it('sends the sales limit only when sales.approve is ticked and a limit was typed', () => {
+    expect(purchasePermissionsPayload({ codes: ['purchase.direct'], salesApprovalLimit: '700' })).toEqual({
+      permissions: [{ code: 'purchase.direct' }],
+    });
+    expect(purchasePermissionsPayload({ codes: ['sales.approve'], salesApprovalLimit: ' ' })).toEqual({
+      permissions: [{ code: 'sales.approve' }],
+    });
+  });
+});

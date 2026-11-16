@@ -21,6 +21,8 @@ export const PERMISSIONS = {
   // Purchase permissions per member (ADR-024 §3); an owner holds all three.
   PURCHASE_DIRECT: 'purchase.direct',
   PURCHASE_APPROVE: 'purchase.approve',
+  /** Approve sales orders and invoice prices below the order (ADR-027 §6, §4); with a limit like purchase.approve. */
+  SALES_APPROVE: 'sales.approve',
   STOCK_ISSUE_WITHOUT_REQUEST: 'stock.issue_without_request',
   /** Post stock movements, e.g. the issue note of an approved issue request (ADR-026 §9). */
   STOCK_MOVEMENT: 'stock.movement',

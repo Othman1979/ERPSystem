@@ -7,6 +7,7 @@ import { ApiError, type UserMembershipDto, usersControllerUpdatePurchasePermissi
 import { FormDialog, FormSection } from '../../components/FormDialog';
 import {
   APPROVE_CODE,
+  SALES_APPROVE_CODE,
   isApprovalLimit,
   PURCHASE_PERMISSIONS,
   purchasePermissionsPayload,
@@ -74,6 +75,21 @@ export function PurchasePermissionsDialog({ member, onClose }: { member: UserMem
             <Form.Item
               name="approvalLimit"
               label={t('users.approvalLimit')}
+              extra={t('users.approvalLimitHint')}
+              rules={[
+                {
+                  validator: (_, v: string | undefined) =>
+                    !v?.trim() || isApprovalLimit(v.trim()) ? Promise.resolve() : Promise.reject(new Error(t('users.approvalLimitInvalid'))),
+                },
+              ]}
+            >
+              <Input dir="ltr" inputMode="decimal" maxLength={19} placeholder={t('users.noLimit')} style={{ maxWidth: 220 }} />
+            </Form.Item>
+          )}
+          {codes.includes(SALES_APPROVE_CODE) && (
+            <Form.Item
+              name="salesApprovalLimit"
+              label={t('users.salesApprovalLimit')}
               extra={t('users.approvalLimitHint')}
               rules={[
                 {

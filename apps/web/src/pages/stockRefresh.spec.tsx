@@ -59,6 +59,10 @@ const DRAFT_RETURN = {
   _count: { lines: 1 },
 };
 
+// SalesPage reads the signed-in member (approve-price and the order link); these screens need no more than that.
+vi.mock('../auth/AuthContext', () => ({
+  useAuth: () => ({ can: () => true, me: null }),
+}));
 vi.mock('@erp/api-client', async (original) => ({
   ...(await original<typeof import('@erp/api-client')>()),
   goodsNotesControllerList: () => page([DRAFT_NOTE]),

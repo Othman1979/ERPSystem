@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
-import { Alert, Button, DatePicker, Input, InputNumber, Modal, Popconfirm, Select, Table, Typography, message } from 'antd';
+import { Alert, Button, DatePicker, Input, InputNumber, Popconfirm, Select, Table, Typography, message } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -8,7 +8,6 @@ import { useSearchParams } from 'react-router';
 import type { TFunction } from 'i18next';
 import {
   ApiError,
-  catalogControllerGetItem,
   catalogControllerListItems,
   goodsNotesControllerList,
   partiesControllerList,
@@ -70,6 +69,8 @@ import {
 import { invalidateProcurement, procurementKeys } from './procurement/queryKeys';
 import { ReceiveOrderModal } from './procurement/ReceiveOrderModal';
 import { BillOrderModal } from './procurement/BillOrderModal';
+import { ReasonModal } from '../components/ReasonModal';
+import { UnitCell } from '../components/UnitCell';
 
 // ------------------------------------------------------------------ types
 
@@ -115,8 +116,6 @@ const RECEIVABLE: PurchaseOrderStatus[] = ['APPROVED', 'PARTIALLY_RECEIVED'];
 /** Statuses in which an invoice can be billed from the order's receipts (ADR-026). */
 const BILLABLE: PurchaseOrderStatus[] = ['PARTIALLY_RECEIVED', 'RECEIVED', 'CLOSED'];
 
-/** Unit choice of a line meaning the item's base unit (sent as no unit id). */
-const BASE_UNIT = 'base';
 
 /** Role code of the owner: the owner approves every order (ADR-024 §3). */
 const OWNER_ROLE = 'OWNER';
@@ -823,46 +822,6 @@ function OrderLinesGrid({
   );
 }
 
-/** Unit of a line: the item's base unit, or one of its own units. Needs the item, so it loads it. */
-function UnitCell({
-  itemId,
-  value,
-  label,
-  onChange,
-}: {
-  itemId?: string;
-  value?: string;
-  label: string;
-  onChange: (itemUnitId: string | undefined) => void;
-}) {
-  const { t } = useTranslation();
-  const item = useQuery({
-    queryKey: ['items', 'detail', itemId],
-    queryFn: ({ signal }) => catalogControllerGetItem(itemId!, { signal }).then((r) => r.data),
-    enabled: !!itemId,
-  });
-  const options = item.data
-    ? [
-        { value: BASE_UNIT, label: codeAndName(item.data.baseUnit) },
-        ...item.data.units
-          .filter((u) => u.isActive)
-          .map((u) => ({ value: u.id, label: codeAndName(u.unit) })),
-      ]
-    : [];
-  return (
-    <GridSelect
-      aria-label={label}
-      variant="borderless"
-      placeholder={t('procurement.unit')}
-      disabled={!itemId}
-      options={options}
-      value={itemId ? (value ?? BASE_UNIT) : undefined}
-      onChange={(v: string) => onChange(v === BASE_UNIT ? undefined : v)}
-      style={{ width: '100%' }}
-      size="small"
-    />
-  );
-}
 
 // ------------------------------------------------------------------ view
 
@@ -1180,46 +1139,3 @@ function OrderDocuments({ orderId }: { orderId: string }) {
   );
 }
 
-/** Asks for the reason of a rejection or a cancellation; the reason is required. */
-function ReasonModal({
-  title,
-  okText,
-  busy,
-  onClose,
-  onConfirm,
-}: {
-  title: string;
-  okText: string;
-  busy: boolean;
-  onClose: () => void;
-  onConfirm: (reason: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [reason, setReason] = useState('');
-  const [tried, setTried] = useState(false);
-  const blank = reason.trim() === '';
-  return (
-    <Modal
-      open
-      title={title}
-      okText={okText}
-      cancelText={t('common.cancel')}
-      confirmLoading={busy}
-      onCancel={onClose}
-      onOk={() => {
-        setTried(true);
-        if (!blank) onConfirm(reason.trim());
-      }}
-    >
-      <Input.TextArea
-        aria-label={t('procurement.reason')}
-        autoSize={{ minRows: 3, maxRows: 6 }}
-        maxLength={500}
-        value={reason}
-        status={tried && blank ? 'error' : undefined}
-        onChange={(e) => setReason(e.target.value)}
-      />
-      {tried && blank && <Typography.Text type="danger">{t('procurement.reasonRequired')}</Typography.Text>}
-    </Modal>
-  );
-}
