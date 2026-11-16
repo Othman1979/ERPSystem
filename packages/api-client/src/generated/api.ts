@@ -2718,13 +2718,31 @@ export interface StockTransferDetailDto {
   reversals: StockTransferReversalDto[];
 }
 
+export type StockCountStatus = typeof StockCountStatus[keyof typeof StockCountStatus];
+
+
+export const StockCountStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  POSTED: 'POSTED',
+} as const;
+
+export type StockCountScope = typeof StockCountScope[keyof typeof StockCountScope];
+
+
+export const StockCountScope = {
+  WAREHOUSE: 'WAREHOUSE',
+  GROUP: 'GROUP',
+  ITEMS: 'ITEMS',
+} as const;
+
 export interface StockCountListItemDto {
   id: string;
   tenantId: string;
   companyId: string;
   warehouseId: string;
   countDate: string;
-  status: DocumentStatus;
+  status: StockCountStatus;
   /** @nullable */
   docNo: string | null;
   /** @nullable */
@@ -2735,6 +2753,19 @@ export interface StockCountListItemDto {
   postedAt: string | null;
   /** @nullable */
   postedBy: string | null;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  submittedBy: string | null;
+  /** Blind count (ADR-030 §6): book qty and difference hidden from everyone until SUBMITTED. */
+  blind: boolean;
+  scope: StockCountScope;
+  /** @nullable */
+  itemGroupId: string | null;
+  /** WAREHOUSE scope: also count the items with no book balance at the count date. */
+  includeZero: boolean;
   createdAt: string;
   updatedAt: string;
   warehouse: StockDocumentWarehouseRefDto;
@@ -2757,19 +2788,59 @@ export interface StockCountListItemDtoPage {
   total: number;
 }
 
-export interface CountLineInputDto {
-  itemId: string;
-  /** @pattern ^[0-9]+(\.[0-9]+)?$ */
-  countedQty: string;
-}
+/**
+ * WAREHOUSE (default), GROUP (a group and its subgroups) or ITEMS (the chosen items).
+ */
+export type CreateStockCountDtoScope = typeof CreateStockCountDtoScope[keyof typeof CreateStockCountDtoScope];
+
+
+export const CreateStockCountDtoScope = {
+  WAREHOUSE: 'WAREHOUSE',
+  GROUP: 'GROUP',
+  ITEMS: 'ITEMS',
+} as const;
 
 export interface CreateStockCountDto {
   countDate: string;
   warehouseId: string;
   /** @maxLength 500 */
   description?: string;
-  /** Optional explicit lines; when omitted all warehouse items are captured. */
-  lines?: CountLineInputDto[];
+  /** A blind count hides the book qty and the difference until the count is submitted (ADR-030 §6). */
+  blind?: boolean;
+  /** WAREHOUSE (default), GROUP (a group and its subgroups) or ITEMS (the chosen items). */
+  scope?: CreateStockCountDtoScope;
+  /**
+     * GROUP scope: the group whose items are counted.
+     * @pattern ^[1-9]\d{0,17}$
+     */
+  itemGroupId?: string;
+  /**
+     * ITEMS scope: the stock items to count.
+     * @minItems 1
+     * @items.pattern ^[1-9]\d{0,17}$
+     */
+  itemIds?: string[];
+  /** WAREHOUSE scope: also count the stock items with no book balance at the count date. */
+  includeZero?: boolean;
+}
+
+export interface StockDocumentUnitRefDto {
+  code: string;
+  nameAr: string;
+}
+
+export interface StockCountItemUnitDto {
+  id: string;
+  tenantId: string;
+  itemId: string;
+  unitId: string;
+  factorToBase: string;
+  isDefaultSale: boolean;
+  isDefaultPurchase: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  unit: StockDocumentUnitRefDto;
 }
 
 export interface StockCountLineDto {
@@ -2777,14 +2848,31 @@ export interface StockCountLineDto {
   tenantId: string;
   countId: string;
   itemId: string;
-  systemQty: string;
-  /** @nullable */
+  /**
+     * Counted quantity in the BASE unit (6 dp); the entered quantity is countedUnitQty in itemUnit.
+     * @nullable
+     */
   countedQty: string | null;
+  /**
+     * The unit the counter entered (null = base unit) and the quantity in that unit (ADR-030 §8).
+     * @nullable
+     */
+  itemUnitId: string | null;
   /** @nullable */
-  differenceQty: string | null;
+  countedUnitQty: string | null;
+  /** @nullable */
+  countedBy: string | null;
+  /** @nullable */
+  countedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** @nullable */
+  systemQty: string | null;
+  /** @nullable */
+  differenceQty: string | null;
   item: StockDocumentItemBaseUnitRefDto;
+  /** @nullable */
+  itemUnit: StockCountItemUnitDto | null;
 }
 
 export interface StockCountDetailDto {
@@ -2793,7 +2881,7 @@ export interface StockCountDetailDto {
   companyId: string;
   warehouseId: string;
   countDate: string;
-  status: DocumentStatus;
+  status: StockCountStatus;
   /** @nullable */
   docNo: string | null;
   /** @nullable */
@@ -2804,29 +2892,134 @@ export interface StockCountDetailDto {
   postedAt: string | null;
   /** @nullable */
   postedBy: string | null;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  submittedBy: string | null;
+  /** Blind count (ADR-030 §6): book qty and difference hidden from everyone until SUBMITTED. */
+  blind: boolean;
+  scope: StockCountScope;
+  /** @nullable */
+  itemGroupId: string | null;
+  /** WAREHOUSE scope: also count the items with no book balance at the count date. */
+  includeZero: boolean;
   createdAt: string;
   updatedAt: string;
   warehouse: StockDocumentWarehouseDto;
   lines: StockCountLineDto[];
 }
 
-export interface UpdateCountLineDto {
-  /** @pattern ^[0-9]+(\.[0-9]+)?$ */
-  countedQty: string;
+export interface AddCountLineDto {
+  /** @pattern ^[1-9]\d{0,17}$ */
+  itemId: string;
 }
 
-export interface StockCountLineRow {
-  id: string;
-  tenantId: string;
-  countId: string;
+export interface UpdateCountLineDto {
+  /** @pattern ^[1-9]\d{0,17}$ */
+  itemUnitId?: string;
+  /**
+     * @nullable
+     * @pattern ^[0-9]+(\.[0-9]+)?$
+     */
+  countedQty: string | null;
+}
+
+export interface ScanCountDto {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  barcode: string;
+}
+
+export interface StockCountWarehouseRefDto {
+  code: string;
+  nameAr: string;
+}
+
+export interface StockCountSheetRowDto {
   itemId: string;
-  systemQty: string;
+  code: string;
+  /** @nullable */
+  barcode: string | null;
+  name: string;
+  unit: string;
+  /** The book qty at the count date; absent while the count is a blind draft. */
+  bookQty?: string;
   /** @nullable */
   countedQty: string | null;
+}
+
+export type StockCountSheetDtoStatus = typeof StockCountSheetDtoStatus[keyof typeof StockCountSheetDtoStatus];
+
+
+export const StockCountSheetDtoStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  POSTED: 'POSTED',
+} as const;
+
+export interface StockCountSheetDto {
+  countId: string;
   /** @nullable */
-  differenceQty: string | null;
-  createdAt: string;
-  updatedAt: string;
+  docNo: string | null;
+  status: StockCountSheetDtoStatus;
+  warehouse: StockCountWarehouseRefDto;
+  countDate: string;
+  bookHidden: boolean;
+  rows: StockCountSheetRowDto[];
+}
+
+export interface StockCountVarianceLineDto {
+  itemId: string;
+  code: string;
+  nameAr: string;
+  unit: string;
+  bookQty: string;
+  countedQty: string;
+  differenceQty: string;
+  unitCost: string;
+  differenceValue: string;
+  zeroCostGain: boolean;
+}
+
+export interface StockCountUncountedLineDto {
+  itemId: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface StockCountVarianceTotalsDto {
+  shortageQty: string;
+  surplusQty: string;
+  shortageValue: string;
+  surplusValue: string;
+  netValue: string;
+  countedLines: number;
+  uncountedLines: number;
+}
+
+export type StockCountVarianceDtoStatus = typeof StockCountVarianceDtoStatus[keyof typeof StockCountVarianceDtoStatus];
+
+
+export const StockCountVarianceDtoStatus = {
+  DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
+  POSTED: 'POSTED',
+} as const;
+
+export interface StockCountVarianceDto {
+  countId: string;
+  /** @nullable */
+  docNo: string | null;
+  status: StockCountVarianceDtoStatus;
+  warehouse: StockCountWarehouseRefDto;
+  countDate: string;
+  lines: StockCountVarianceLineDto[];
+  uncounted: StockCountUncountedLineDto[];
+  totals: StockCountVarianceTotalsDto;
 }
 
 export interface StockReportBalanceDto {
@@ -8019,6 +8212,7 @@ export const ErrorCode = {
   GRN_ALREADY_INVOICED: 'GRN_ALREADY_INVOICED',
   PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS: 'PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS',
   STOCK_COUNT_STALE: 'STOCK_COUNT_STALE',
+  STOCK_COUNT_SELF_APPROVAL: 'STOCK_COUNT_SELF_APPROVAL',
   PARTY_IN_USE: 'PARTY_IN_USE',
   CURSOR_INVALID: 'CURSOR_INVALID',
   ALL_BRANCHES_REQUIRED: 'ALL_BRANCHES_REQUIRED',
@@ -8407,11 +8601,11 @@ export type StockDocumentsControllerListAdjustmentsParams = {
    */
   q?: string;
   sort?: StockDocumentsControllerListAdjustmentsSort;
-  status?: StockDocumentsControllerListAdjustmentsStatus;
   /** Document date on or after (yyyy-mm-dd). */
   from?: string;
   /** Document date on or before (yyyy-mm-dd). */
   to?: string;
+  status?: StockDocumentsControllerListAdjustmentsStatus;
   adjustmentType?: StockDocumentsControllerListAdjustmentsAdjustmentType;
   warehouseId?: string;
 };
@@ -8461,11 +8655,11 @@ export type StockDocumentsControllerListTransfersParams = {
    */
   q?: string;
   sort?: StockDocumentsControllerListTransfersSort;
-  status?: StockDocumentsControllerListTransfersStatus;
   /** Document date on or after (yyyy-mm-dd). */
   from?: string;
   /** Document date on or before (yyyy-mm-dd). */
   to?: string;
+  status?: StockDocumentsControllerListTransfersStatus;
   warehouseId?: string;
 };
 
@@ -8504,11 +8698,11 @@ export type StockDocumentsControllerListCountsParams = {
    */
   q?: string;
   sort?: StockDocumentsControllerListCountsSort;
-  status?: StockDocumentsControllerListCountsStatus;
   /** Document date on or after (yyyy-mm-dd). */
   from?: string;
   /** Document date on or before (yyyy-mm-dd). */
   to?: string;
+  status?: StockDocumentsControllerListCountsStatus;
   warehouseId?: string;
 };
 
@@ -8527,7 +8721,56 @@ export type StockDocumentsControllerListCountsStatus = typeof StockDocumentsCont
 
 export const StockDocumentsControllerListCountsStatus = {
   DRAFT: 'DRAFT',
+  SUBMITTED: 'SUBMITTED',
   POSTED: 'POSTED',
+} as const;
+
+export type StockDocumentsControllerCountSheetParams = {
+  format?: StockDocumentsControllerCountSheetFormat;
+  lang?: StockDocumentsControllerCountSheetLang;
+};
+
+export type StockDocumentsControllerCountSheetFormat = typeof StockDocumentsControllerCountSheetFormat[keyof typeof StockDocumentsControllerCountSheetFormat];
+
+
+export const StockDocumentsControllerCountSheetFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type StockDocumentsControllerCountSheetLang = typeof StockDocumentsControllerCountSheetLang[keyof typeof StockDocumentsControllerCountSheetLang];
+
+
+export const StockDocumentsControllerCountSheetLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type StockDocumentsControllerImportCountBody = {
+  file: Blob | File;
+};
+
+export type StockDocumentsControllerCountVarianceParams = {
+  format?: StockDocumentsControllerCountVarianceFormat;
+  lang?: StockDocumentsControllerCountVarianceLang;
+};
+
+export type StockDocumentsControllerCountVarianceFormat = typeof StockDocumentsControllerCountVarianceFormat[keyof typeof StockDocumentsControllerCountVarianceFormat];
+
+
+export const StockDocumentsControllerCountVarianceFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type StockDocumentsControllerCountVarianceLang = typeof StockDocumentsControllerCountVarianceLang[keyof typeof StockDocumentsControllerCountVarianceLang];
+
+
+export const StockDocumentsControllerCountVarianceLang = {
+  ar: 'ar',
+  en: 'en',
 } as const;
 
 export type StockReportsControllerBalancesParams = {
@@ -9153,11 +9396,11 @@ export type GoodsNotesControllerListParams = {
    */
   q?: string;
   sort?: GoodsNotesControllerListSort;
-  status?: GoodsNotesControllerListStatus;
   /** Document date on or after (yyyy-mm-dd). */
   from?: string;
   /** Document date on or before (yyyy-mm-dd). */
   to?: string;
+  status?: GoodsNotesControllerListStatus;
   noteType?: GoodsNotesControllerListNoteType;
   /** The receipts of one purchase order (ADR-026 §5). */
   purchaseOrderId?: string;
@@ -14782,8 +15025,64 @@ export const stockDocumentsControllerDeleteCount = async (id: string, options?: 
 
 
 
+export type stockDocumentsControllerAddCountLineResponse201 = {
+  data: StockCountLineDto
+  status: 201
+}
+
+export type stockDocumentsControllerAddCountLineResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type stockDocumentsControllerAddCountLineResponseSuccess = (stockDocumentsControllerAddCountLineResponse201) & {
+  headers: Headers;
+};
+export type stockDocumentsControllerAddCountLineResponseError = (stockDocumentsControllerAddCountLineResponseDefault) & {
+  headers: Headers;
+};
+
+export const getStockDocumentsControllerAddCountLineUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-counts/${id}/lines`
+}
+
+/**
+ * @summary Adds an item found on the shelf to a DRAFT count (ADR-030 §7).
+ */
+export const stockDocumentsControllerAddCountLine = async (id: string,
+    addCountLineDto: AddCountLineDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerAddCountLineResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<stockDocumentsControllerAddCountLineResponseSuccess>(getStockDocumentsControllerAddCountLineUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(addCountLineDto)
+  }
+);}
+
+
+
 export type stockDocumentsControllerUpdateCountLineResponse200 = {
-  data: StockCountLineRow
+  data: StockCountLineDto
   status: 200
 }
 
@@ -14808,6 +15107,9 @@ export const getStockDocumentsControllerUpdateCountLineUrl = (id: string,
   return `/api/v1/stock-counts/${id}/lines/${lineId}`
 }
 
+/**
+ * @summary The counted quantity of one line, in the unit given (ADR-030 §8).
+ */
 export const stockDocumentsControllerUpdateCountLine = async (id: string,
     lineId: string,
     updateCountLineDto: UpdateCountLineDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerUpdateCountLineResponseSuccess> => {
@@ -14832,6 +15134,62 @@ return apiFetch<stockDocumentsControllerUpdateCountLineResponseSuccess>(getStock
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(updateCountLineDto)
+  }
+);}
+
+
+
+export type stockDocumentsControllerScanCountResponse201 = {
+  data: StockCountLineDto
+  status: 201
+}
+
+export type stockDocumentsControllerScanCountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type stockDocumentsControllerScanCountResponseSuccess = (stockDocumentsControllerScanCountResponse201) & {
+  headers: Headers;
+};
+export type stockDocumentsControllerScanCountResponseError = (stockDocumentsControllerScanCountResponseDefault) & {
+  headers: Headers;
+};
+
+export const getStockDocumentsControllerScanCountUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-counts/${id}/scan`
+}
+
+/**
+ * @summary One barcode scan: adds one of its unit to the line (ADR-030 §9).
+ */
+export const stockDocumentsControllerScanCount = async (id: string,
+    scanCountDto: ScanCountDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerScanCountResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<stockDocumentsControllerScanCountResponseSuccess>(getStockDocumentsControllerScanCountUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(scanCountDto)
   }
 );}
 
@@ -14863,11 +15221,93 @@ export const getStockDocumentsControllerRefreshCountUrl = (id: string,) => {
 }
 
 /**
- * @summary Re-takes the book-balance snapshot of a draft count (after STOCK_COUNT_STALE).
+ * @summary Re-takes the book qty at the count date of every line (informational while counting).
  */
 export const stockDocumentsControllerRefreshCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerRefreshCountResponseSuccess> => {
 
   return apiFetch<stockDocumentsControllerRefreshCountResponseSuccess>(getStockDocumentsControllerRefreshCountUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerSubmitCountResponse201 = {
+  data: StockCountDetailDto
+  status: 201
+}
+
+export type stockDocumentsControllerSubmitCountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type stockDocumentsControllerSubmitCountResponseSuccess = (stockDocumentsControllerSubmitCountResponse201) & {
+  headers: Headers;
+};
+export type stockDocumentsControllerSubmitCountResponseError = (stockDocumentsControllerSubmitCountResponseDefault) & {
+  headers: Headers;
+};
+
+export const getStockDocumentsControllerSubmitCountUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-counts/${id}/submit`
+}
+
+/**
+ * @summary Closes the counting: DRAFT to SUBMITTED (ADR-030 §5). Keyed.
+ */
+export const stockDocumentsControllerSubmitCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerSubmitCountResponseSuccess> => {
+
+  return apiFetch<stockDocumentsControllerSubmitCountResponseSuccess>(getStockDocumentsControllerSubmitCountUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerReopenCountResponse201 = {
+  data: StockCountDetailDto
+  status: 201
+}
+
+export type stockDocumentsControllerReopenCountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type stockDocumentsControllerReopenCountResponseSuccess = (stockDocumentsControllerReopenCountResponse201) & {
+  headers: Headers;
+};
+export type stockDocumentsControllerReopenCountResponseError = (stockDocumentsControllerReopenCountResponseDefault) & {
+  headers: Headers;
+};
+
+export const getStockDocumentsControllerReopenCountUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-counts/${id}/reopen`
+}
+
+/**
+ * @summary Brings a submitted count back to counting: SUBMITTED to DRAFT (ADR-030 §5). Keyed.
+ */
+export const stockDocumentsControllerReopenCount = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerReopenCountResponseSuccess> => {
+
+  return apiFetch<stockDocumentsControllerReopenCountResponseSuccess>(getStockDocumentsControllerReopenCountUrl(id),
   {
     ...options,
     method: 'POST'
@@ -14909,6 +15349,150 @@ export const stockDocumentsControllerApproveCount = async (id: string, options?:
   {
     ...options,
     method: 'POST'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerCountSheetResponse200 = {
+  data: StockCountSheetDto
+  status: 200
+}
+
+export type stockDocumentsControllerCountSheetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type stockDocumentsControllerCountSheetResponseSuccess = (stockDocumentsControllerCountSheetResponse200) & {
+  headers: Headers;
+};
+export type stockDocumentsControllerCountSheetResponseError = (stockDocumentsControllerCountSheetResponseDefault) & {
+  headers: Headers;
+};
+
+export const getStockDocumentsControllerCountSheetUrl = (id: string,
+    params?: StockDocumentsControllerCountSheetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/stock-counts/${id}/sheet?${stringifiedParams}` : `/api/v1/stock-counts/${id}/sheet`
+}
+
+/**
+ * @summary The count sheet: JSON, or a PDF or xlsx file (ADR-030 §11). The book column is withheld while blind.
+ */
+export const stockDocumentsControllerCountSheet = async (id: string,
+    params?: StockDocumentsControllerCountSheetParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerCountSheetResponseSuccess> => {
+
+  return apiFetch<stockDocumentsControllerCountSheetResponseSuccess>(getStockDocumentsControllerCountSheetUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type stockDocumentsControllerImportCountResponse201 = {
+  data: StockCountDetailDto
+  status: 201
+}
+
+export type stockDocumentsControllerImportCountResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type stockDocumentsControllerImportCountResponseSuccess = (stockDocumentsControllerImportCountResponse201) & {
+  headers: Headers;
+};
+export type stockDocumentsControllerImportCountResponseError = (stockDocumentsControllerImportCountResponseDefault) & {
+  headers: Headers;
+};
+
+export const getStockDocumentsControllerImportCountUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/stock-counts/${id}/import`
+}
+
+/**
+ * @summary Fills the counted quantities from an xlsx sheet, all or nothing (ADR-030 §11).
+ */
+export const stockDocumentsControllerImportCount = async (id: string,
+    stockDocumentsControllerImportCountBody: StockDocumentsControllerImportCountBody, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerImportCountResponseSuccess> => {
+    const formData = new FormData();
+formData.append(`file`, stockDocumentsControllerImportCountBody.file);
+
+  return apiFetch<stockDocumentsControllerImportCountResponseSuccess>(getStockDocumentsControllerImportCountUrl(id),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+export type stockDocumentsControllerCountVarianceResponse200 = {
+  data: StockCountVarianceDto
+  status: 200
+}
+
+export type stockDocumentsControllerCountVarianceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type stockDocumentsControllerCountVarianceResponseSuccess = (stockDocumentsControllerCountVarianceResponse200) & {
+  headers: Headers;
+};
+export type stockDocumentsControllerCountVarianceResponseError = (stockDocumentsControllerCountVarianceResponseDefault) & {
+  headers: Headers;
+};
+
+export const getStockDocumentsControllerCountVarianceUrl = (id: string,
+    params?: StockDocumentsControllerCountVarianceParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/stock-counts/${id}/variance?${stringifiedParams}` : `/api/v1/stock-counts/${id}/variance`
+}
+
+/**
+ * @summary The difference report: JSON, or a PDF or xlsx file (ADR-030 §12). Not while a blind count is a draft.
+ */
+export const stockDocumentsControllerCountVariance = async (id: string,
+    params?: StockDocumentsControllerCountVarianceParams, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerCountVarianceResponseSuccess> => {
+
+  return apiFetch<stockDocumentsControllerCountVarianceResponseSuccess>(getStockDocumentsControllerCountVarianceUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
 
 
   }

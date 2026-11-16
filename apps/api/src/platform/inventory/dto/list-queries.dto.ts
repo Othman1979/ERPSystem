@@ -12,6 +12,8 @@ const blankToUndefined = ({ value }: { value: unknown }) => {
 };
 
 const DOCUMENT_STATUSES = ['DRAFT', 'POSTED'] as const;
+/** A physical count also has SUBMITTED (ADR-030 §5). */
+const COUNT_STATUSES = ['DRAFT', 'SUBMITTED', 'POSTED'] as const;
 const ADJUSTMENT_TYPES = ['OPENING', 'IN', 'OUT', 'COUNT_ADJUSTMENT'] as const;
 const NOTE_TYPES = ['GRN', 'GIN'] as const;
 const ITEM_KINDS = ['STOCK', 'SERVICE'] as const;
@@ -33,12 +35,6 @@ export class StockDocumentListQueryDto extends PageQueryDto {
   @SortParam(STOCK_DOCUMENT_SORTS, '-date')
   sort?: (typeof STOCK_DOCUMENT_SORTS)[number];
 
-  @ApiPropertyOptional({ enum: DOCUMENT_STATUSES })
-  @Transform(blankToUndefined)
-  @IsOptional()
-  @IsIn(DOCUMENT_STATUSES)
-  status?: (typeof DOCUMENT_STATUSES)[number];
-
   /** Document date on or after (yyyy-mm-dd). */
   @ApiPropertyOptional()
   @Transform(blankToUndefined)
@@ -58,6 +54,12 @@ export class StockDocumentListQueryDto extends PageQueryDto {
 
 /** GET /stock-adjustments (ADR-022). */
 export class ListStockAdjustmentsQueryDto extends StockDocumentListQueryDto {
+  @ApiPropertyOptional({ enum: DOCUMENT_STATUSES })
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @IsIn(DOCUMENT_STATUSES)
+  status?: (typeof DOCUMENT_STATUSES)[number];
+
   @ApiPropertyOptional({ enum: ADJUSTMENT_TYPES })
   @Transform(blankToUndefined)
   @IsOptional()
@@ -73,6 +75,12 @@ export class ListStockAdjustmentsQueryDto extends StockDocumentListQueryDto {
 
 /** GET /stock-transfers (ADR-022): `warehouseId` matches the source or the destination. */
 export class ListStockTransfersQueryDto extends StockDocumentListQueryDto {
+  @ApiPropertyOptional({ enum: DOCUMENT_STATUSES })
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @IsIn(DOCUMENT_STATUSES)
+  status?: (typeof DOCUMENT_STATUSES)[number];
+
   @ApiPropertyOptional()
   @Transform(blankToUndefined)
   @IsOptional()
@@ -82,6 +90,12 @@ export class ListStockTransfersQueryDto extends StockDocumentListQueryDto {
 
 /** GET /stock-counts (ADR-022). */
 export class ListStockCountsQueryDto extends StockDocumentListQueryDto {
+  @ApiPropertyOptional({ enum: COUNT_STATUSES })
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @IsIn(COUNT_STATUSES)
+  status?: (typeof COUNT_STATUSES)[number];
+
   @ApiPropertyOptional()
   @Transform(blankToUndefined)
   @IsOptional()
@@ -91,6 +105,12 @@ export class ListStockCountsQueryDto extends StockDocumentListQueryDto {
 
 /** GET /goods-notes (ADR-022): note type on top of the shared stock document filters. */
 export class ListGoodsNotesQueryDto extends StockDocumentListQueryDto {
+  @ApiPropertyOptional({ enum: DOCUMENT_STATUSES })
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @IsIn(DOCUMENT_STATUSES)
+  status?: (typeof DOCUMENT_STATUSES)[number];
+
   @ApiPropertyOptional({ enum: NOTE_TYPES })
   @Transform(blankToUndefined)
   @IsOptional()

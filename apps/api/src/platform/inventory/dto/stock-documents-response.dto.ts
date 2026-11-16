@@ -4,9 +4,10 @@
  * today (AdjustmentsService, TransfersService, CountsService); nothing here
  * changes a body.
  */
-import { ApiProperty, PickType } from '@nestjs/swagger';
+import { ApiProperty, OmitType, PickType } from '@nestjs/swagger';
 import {
   ItemRow,
+  ItemUnitRow,
   JournalEntryRow,
   StockAdjustmentLineRow,
   StockAdjustmentRow,
@@ -143,15 +144,42 @@ export class StockCountListItemDto extends StockCountRow {
   _count!: StockDocumentLineCountDto;
 }
 
-/** A line of a count, with its item (CountsService.get). */
-export class StockCountLineDto extends StockCountLineRow {
+/** A unit as a count selects it: `{ code, nameAr }`. */
+export class StockDocumentUnitRefDto {
+  @ApiProperty({ type: 'string' })
+  code!: string;
+
+  @ApiProperty({ type: 'string' })
+  nameAr!: string;
+}
+
+/** The unit a counter entered a line in, with its unit code (null on a line counted in the base unit). */
+export class StockCountItemUnitDto extends ItemUnitRow {
+  @ApiProperty({ type: () => StockDocumentUnitRefDto })
+  unit!: StockDocumentUnitRefDto;
+}
+
+/**
+ * A count line. The book qty and the difference are null while the count is a
+ * blind DRAFT (ADR-030 §6), for everyone, the owner included.
+ */
+export class StockCountLineDto extends OmitType(StockCountLineRow, ['systemQty', 'differenceQty'] as const) {
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  systemQty!: string | null;
+
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  differenceQty!: string | null;
+
   @ApiProperty({ type: () => StockDocumentItemBaseUnitRefDto })
   item!: StockDocumentItemBaseUnitRefDto;
+
+  @ApiProperty({ type: () => StockCountItemUnitDto, nullable: true })
+  itemUnit!: StockCountItemUnitDto | null;
 }
 
 /**
  * One stock count with its warehouse and lines (CountsService.get). Mirrors
- * create, get, refresh and approve, which all return it.
+ * create, get, refresh, submit, reopen, approve and the import, which all return it.
  */
 export class StockCountDetailDto extends StockCountRow {
   @ApiProperty({ type: () => StockDocumentWarehouseDto })
@@ -159,4 +187,155 @@ export class StockCountDetailDto extends StockCountRow {
 
   @ApiProperty({ type: () => StockCountLineDto, isArray: true })
   lines!: StockCountLineDto[];
+}
+
+/** The sheet of a count (CountsService.sheet): the rows to count, the book only when it is shown. */
+export class StockCountSheetRowDto {
+  @ApiProperty({ type: 'string' })
+  itemId!: string;
+
+  @ApiProperty({ type: 'string' })
+  code!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  barcode!: string | null;
+
+  @ApiProperty({ type: 'string' })
+  name!: string;
+
+  @ApiProperty({ type: 'string' })
+  unit!: string;
+
+  /** The book qty at the count date; absent while the count is a blind draft. */
+  @ApiProperty({ type: 'string', format: 'decimal', required: false })
+  bookQty?: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  countedQty!: string | null;
+}
+
+/** A warehouse as a sheet or variance names it: `{ code, nameAr }`. */
+export class StockCountWarehouseRefDto {
+  @ApiProperty({ type: 'string' })
+  code!: string;
+
+  @ApiProperty({ type: 'string' })
+  nameAr!: string;
+}
+
+export class StockCountSheetDto {
+  @ApiProperty({ type: 'string' })
+  countId!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  docNo!: string | null;
+
+  @ApiProperty({ type: 'string', enum: ['DRAFT', 'SUBMITTED', 'POSTED'] })
+  status!: string;
+
+  @ApiProperty({ type: () => StockCountWarehouseRefDto })
+  warehouse!: StockCountWarehouseRefDto;
+
+  @ApiProperty({ type: 'string', format: 'date' })
+  countDate!: string;
+
+  @ApiProperty({ type: 'boolean' })
+  bookHidden!: boolean;
+
+  @ApiProperty({ type: () => StockCountSheetRowDto, isArray: true })
+  rows!: StockCountSheetRowDto[];
+}
+
+/** A counted line of the difference report (CountsService.variance). */
+export class StockCountVarianceLineDto {
+  @ApiProperty({ type: 'string' })
+  itemId!: string;
+
+  @ApiProperty({ type: 'string' })
+  code!: string;
+
+  @ApiProperty({ type: 'string' })
+  nameAr!: string;
+
+  @ApiProperty({ type: 'string' })
+  unit!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  bookQty!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  countedQty!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  differenceQty!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  unitCost!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  differenceValue!: string;
+
+  @ApiProperty({ type: 'boolean' })
+  zeroCostGain!: boolean;
+}
+
+export class StockCountUncountedLineDto {
+  @ApiProperty({ type: 'string' })
+  itemId!: string;
+
+  @ApiProperty({ type: 'string' })
+  code!: string;
+
+  @ApiProperty({ type: 'string' })
+  nameAr!: string;
+}
+
+/** Totals of the difference report: shortages (negative), surpluses (positive) and the net value. */
+export class StockCountVarianceTotalsDto {
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  shortageQty!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  surplusQty!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  shortageValue!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  surplusValue!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  netValue!: string;
+
+  @ApiProperty({ type: 'integer' })
+  countedLines!: number;
+
+  @ApiProperty({ type: 'integer' })
+  uncountedLines!: number;
+}
+
+export class StockCountVarianceDto {
+  @ApiProperty({ type: 'string' })
+  countId!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  docNo!: string | null;
+
+  @ApiProperty({ type: 'string', enum: ['DRAFT', 'SUBMITTED', 'POSTED'] })
+  status!: string;
+
+  @ApiProperty({ type: () => StockCountWarehouseRefDto })
+  warehouse!: StockCountWarehouseRefDto;
+
+  @ApiProperty({ type: 'string', format: 'date' })
+  countDate!: string;
+
+  @ApiProperty({ type: () => StockCountVarianceLineDto, isArray: true })
+  lines!: StockCountVarianceLineDto[];
+
+  @ApiProperty({ type: () => StockCountUncountedLineDto, isArray: true })
+  uncounted!: StockCountUncountedLineDto[];
+
+  @ApiProperty({ type: () => StockCountVarianceTotalsDto })
+  totals!: StockCountVarianceTotalsDto;
 }

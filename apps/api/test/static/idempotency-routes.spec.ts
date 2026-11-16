@@ -17,7 +17,7 @@ import { read, sourceFiles } from './isolation-scan.js';
 // routes (submit, reject, close, issue). ADR-027 §8: the sales quote and order transitions,
 // POST sales-orders/:id/invoice and POST sales-invoices/:id/approve-price.
 const POSTING_ROUTE =
-  /\/(post|reverse|allocations|cancel|approve)$|(^|\/)(receipts|payments|cash-transfers)$|(^|\/)journal-entries\/opening$|(^|\/)purchase-(requests|quotes|orders)\/:id\/(submit|reject|send|receive|close|convert|bill)$|(^|\/)purchase-invoices\/:id\/approve-price$|(^|\/)issue-requests\/:id\/(submit|reject|close|issue)$|(^|\/)sales-quotes\/:id\/(send|accept|reject|cancel|copy|convert)$|(^|\/)sales-orders\/:id\/(confirm|approve|reject-approval|cancel|close|invoice)$|(^|\/)sales-invoices\/:id\/approve-price$/i;
+  /\/(post|reverse|allocations|cancel|approve)$|(^|\/)(receipts|payments|cash-transfers)$|(^|\/)journal-entries\/opening$|(^|\/)purchase-(requests|quotes|orders)\/:id\/(submit|reject|send|receive|close|convert|bill)$|(^|\/)purchase-invoices\/:id\/approve-price$|(^|\/)issue-requests\/:id\/(submit|reject|close|issue)$|(^|\/)sales-quotes\/:id\/(send|accept|reject|cancel|copy|convert)$|(^|\/)sales-orders\/:id\/(confirm|approve|reject-approval|cancel|close|invoice)$|(^|\/)sales-invoices\/:id\/approve-price$|(^|\/)stock-counts\/:id\/(submit|reopen)$/i;
 const HTTP_METHOD = /^@(Get|Post|Put|Patch|Delete|All)\(\s*(?:'([^']*)')?\s*\)/;
 const METHOD_SIGNATURE = /^(async\s+)?[A-Za-z_]\w*\s*\(/;
 

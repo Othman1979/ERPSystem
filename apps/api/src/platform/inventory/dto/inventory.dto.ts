@@ -322,13 +322,8 @@ export class CreateStockTransferDto {
   lines!: TransferLineDto[];
 }
 
-export class CountLineInputDto {
-  @IsString()
-  itemId!: string;
-
-  @Matches(/^[0-9]+(\.[0-9]+)?$/)
-  countedQty!: string;
-}
+/** Scope of a physical count (ADR-030 §7). */
+const COUNT_SCOPES = ['WAREHOUSE', 'GROUP', 'ITEMS'] as const;
 
 export class CreateStockCountDto {
   @IsDateString()
@@ -342,17 +337,61 @@ export class CreateStockCountDto {
   @MaxLength(500)
   description?: string;
 
-  /** Optional explicit lines; when omitted all warehouse items are captured. */
+  /** A blind count hides the book qty and the difference until the count is submitted (ADR-030 §6). */
+  @IsOptional()
+  @IsBoolean()
+  blind?: boolean;
+
+  /** WAREHOUSE (default), GROUP (a group and its subgroups) or ITEMS (the chosen items). */
+  @IsOptional()
+  @IsIn(COUNT_SCOPES)
+  scope?: (typeof COUNT_SCOPES)[number];
+
+  /** GROUP scope: the group whose items are counted. */
+  @IsOptional()
+  @Matches(/^[1-9]\d{0,17}$/)
+  itemGroupId?: string;
+
+  /** ITEMS scope: the stock items to count. */
   @IsOptional()
   @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CountLineInputDto)
-  lines?: CountLineInputDto[];
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  @Matches(/^[1-9]\d{0,17}$/, { each: true })
+  itemIds?: string[];
+
+  /** WAREHOUSE scope: also count the stock items with no book balance at the count date. */
+  @IsOptional()
+  @IsBoolean()
+  includeZero?: boolean;
 }
 
+/** A line added to a DRAFT count for an item found on the shelf (ADR-030 §7). */
+export class AddCountLineDto {
+  @Matches(/^[1-9]\d{0,17}$/)
+  itemId!: string;
+}
+
+/** A barcode scanned in a DRAFT count (ADR-030 §9). */
+export class ScanCountDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  barcode!: string;
+}
+
+/**
+ * The counted quantity of one line, in the unit given (ADR-030 §8). `countedQty`
+ * null clears the line. Without `itemUnitId` the quantity is in the base unit.
+ */
 export class UpdateCountLineDto {
-  @Matches(/^[0-9]+(\.[0-9]+)?$/)
-  countedQty!: string;
+  @IsOptional()
+  @Matches(/^[1-9]\d{0,17}$/)
+  itemUnitId?: string;
+
+  @Matches(/^[0-9]+(\.[0-9]+)?$/, { message: 'countedQty must be a non-negative number' })
+  @IsOptional()
+  countedQty!: string | null;
 }
 
 export class SetItemUnitsDto {

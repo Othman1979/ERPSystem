@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JournalModule } from '../journal/journal.module.js';
 import { PrintingModule } from '../printing/printing.module.js';
+import { SharedModule } from '../shared/shared.module.js';
 import { AdjustmentsService } from './adjustments.service.js';
 import { CatalogController } from './catalog.controller.js';
 import { CatalogService } from './catalog.service.js';
@@ -14,7 +15,7 @@ import { WarehousesController } from './warehouses.controller.js';
 import { WarehousesService } from './warehouses.service.js';
 
 @Module({
-  imports: [JournalModule, PrintingModule],
+  imports: [JournalModule, PrintingModule, SharedModule],
   controllers: [
     CatalogController,
     WarehousesController,

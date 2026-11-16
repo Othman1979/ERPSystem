@@ -11,7 +11,7 @@
  *  - TRADE-12  a CREDIT return only against a CREDIT invoice; it may exceed what is owed;
  *  - TRADE-13  a return line stores the quantity in the invoice line's unit;
  *  - TRADE-22  returns that take a line in parts add up to it exactly;
- *  - TRADE-07  a stale count is refused; approval is atomic and keyed;
+ *  - TRADE-07  approval of a submitted count is keyed, atomic, single-winner (ADR-030);
  *  - DB-19     negative stock: the value resets at the incoming cost (ADR-018);
  *  - TRADE-20  stock:verify finds a value difference and a GL difference.
  * Every scenario ends with stock:verify clean (quantities, value and the GL
@@ -628,31 +628,40 @@ describe('Trade review fixes — stock and documents', () => {
     });
   });
 
-  it('TRADE-07: a stale count is refused; refresh, then approve once, keyed', async () => {
+  it('TRADE-07 (ADR-030): approval is keyed, only from SUBMITTED, single winner; a sale after the count date does not change the difference', async () => {
     const C = await item('CNT');
     await buy(C, '88', '1', '2025-01-20');
     const count = await api().post('/api/v1/stock-counts').set(auth(token)).send({
-      warehouseId: W1, countDate: '2025-01-21', lines: [{ itemId: C, countedQty: '50' }],
+      warehouseId: W1, countDate: '2025-01-21', scope: 'ITEMS', itemIds: [C],
     });
     expect(count.status).toBe(201);
+    expect(new Decimal(count.body.lines[0].systemQty).toString()).toBe('88'); // the book at the count date
+    // A sale AFTER the count date stays in the ledger; the difference is taken on the count date's book.
     await createAndPost('stock-adjustments', {
-      adjustmentDate: '2025-01-21', adjustmentType: 'OUT', warehouseId: W1, lines: [{ itemId: C, qty: '5' }],
+      adjustmentDate: '2025-01-22', adjustmentType: 'OUT', warehouseId: W1, lines: [{ itemId: C, qty: '5' }],
     });
     const noKey = await api().post(`/api/v1/stock-counts/${count.body.id}/approve`).set(auth(token));
     expect(noKey.status).toBe(400);
-    const stale = await api().post(`/api/v1/stock-counts/${count.body.id}/approve`).set(auth(token)).set('Idempotency-Key', key());
-    expect(stale.status).toBe(409);
-    expect(stale.body.error.code).toBe('STOCK_COUNT_STALE');
-    expect(await onHand(C, W1)).toBe('83'); // nothing posted
-    // Tenant B can neither refresh nor approve A's count.
+    // A draft is not approved: it is submitted first.
+    const draft = await api().post(`/api/v1/stock-counts/${count.body.id}/approve`).set(auth(token)).set('Idempotency-Key', key());
+    expect(draft.status).toBe(409);
+    expect(draft.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+    const line = count.body.lines[0];
+    expect((await api().put(`/api/v1/stock-counts/${count.body.id}/lines/${line.id}`).set(auth(token)).send({ countedQty: '50' })).status).toBe(200);
+    expect((await api().post(`/api/v1/stock-counts/${count.body.id}/submit`).set(auth(token))).status).toBe(400);
+    const submitted = await api().post(`/api/v1/stock-counts/${count.body.id}/submit`).set(auth(token)).set('Idempotency-Key', key());
+    expect([submitted.status, submitted.body.status]).toEqual([201, 'SUBMITTED']);
+    // Tenant B can neither submit nor approve A's count.
     expect((await api().post(`/api/v1/stock-counts/${count.body.id}/refresh`).set(auth(tokenB))).status).toBe(404);
-    const refreshed = await api().post(`/api/v1/stock-counts/${count.body.id}/refresh`).set(auth(token));
-    expect(refreshed.status).toBe(201);
-    expect(new Decimal(refreshed.body.lines[0].systemQty).toString()).toBe('83');
+    expect((await api().post(`/api/v1/stock-counts/${count.body.id}/approve`).set(auth(tokenB)).set('Idempotency-Key', key())).status).toBe(404);
+    // The approval is dated today (ADR-030 §1): today's fiscal year must be open.
+    const year = new Date().getUTCFullYear();
+    expect((await api().post('/api/v1/fiscal-years').set(auth(token)).send({ code: String(year), startDate: `${year}-01-01`, endDate: `${year}-12-31` })).status).toBe(201);
     const approve = () => api().post(`/api/v1/stock-counts/${count.body.id}/approve`).set(auth(token)).set('Idempotency-Key', key());
     const [x, y] = await Promise.all([approve(), approve()]);
     expect([x.status, y.status].sort()).toEqual([201, 409]);
-    expect(await onHand(C, W1)).toBe('50'); // as counted
+    // Difference on the count date's book: 50 - 88 = -38, on top of the current 83.
+    expect(await onHand(C, W1)).toBe('45');
     await assertConsistent();
   });
 
