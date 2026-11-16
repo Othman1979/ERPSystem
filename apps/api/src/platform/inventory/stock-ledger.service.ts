@@ -231,6 +231,24 @@ export class StockLedgerService {
   }
 
   /**
+   * On-hand quantities of some items in one warehouse, read without locks (a preview, never a posting
+   * check). The inventory module's own read, for other modules that must not query stock_balances
+   * (CLAUDE.md, review #65). A missing balance row is 0.
+   */
+  async onHandIn(
+    db: Pick<Prisma.TransactionClient, 'stockBalance'>,
+    warehouseId: bigint,
+    itemIds: bigint[],
+  ): Promise<Map<bigint, Decimal>> {
+    if (itemIds.length === 0) return new Map();
+    const rows = await db.stockBalance.findMany({
+      where: { warehouseId, itemId: { in: [...new Set(itemIds)] } },
+      select: { itemId: true, qtyOnHand: true },
+    });
+    return new Map(rows.map((r) => [r.itemId, new Decimal(r.qtyOnHand.toString())]));
+  }
+
+  /**
    * Current on-hand quantity of locked (item, warehouse) pairs — read from
    * the rows lockForDocument locked, so it is the latest committed value
    * (stock count approval compares it with the count snapshot, TRADE-07).

@@ -120,9 +120,12 @@ export class CatalogService {
       : stockedOnly
         ? stockedItemKindFilter()
         : undefined;
+    // purchasable=true: never a RECIPE (ADR-032 §5), combined with any other kind filter.
+    const notRecipe = query.purchasable === 'true' ? [{ itemKind: { not: 'RECIPE' as const } }] : [];
     const where: Prisma.ItemWhereInput = {
       companyId,
       ...(kindFilter !== undefined ? { itemKind: kindFilter } : {}),
+      ...(notRecipe.length > 0 ? { AND: notRecipe } : {}),
       ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
       ...(q
         ? {

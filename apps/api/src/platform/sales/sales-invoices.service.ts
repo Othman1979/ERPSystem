@@ -634,26 +634,29 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     });
     if (!inv) throw DomainError.notFound('SalesInvoice', id.toString());
     const recipeLines = inv.lines.filter((l) => l.item.itemKind === 'RECIPE');
-    const lines = [];
+    // Explode every recipe line first, then read balances and names once for all components (review #65):
+    // balances through the inventory module's service, never stock_balances directly (CLAUDE.md).
+    const explosions = [];
     for (const line of recipeLines) {
-      const exp = await this.bom.explodeToStock(db, companyId, line.itemId, line.qtyBase.toString(), false);
-      const balances = exp.components.length === 0
-        ? []
-        : await db.stockBalance.findMany({
-            where: { warehouseId: inv.warehouseId, itemId: { in: exp.components.map((c) => c.itemId) } },
-            select: { itemId: true, qtyOnHand: true },
-          });
-      const onHand = new Map(balances.map((b) => [b.itemId, new Decimal(b.qtyOnHand.toString())]));
+      explosions.push(await this.bom.explodeToStock(db, companyId, line.itemId, line.qtyBase.toString(), false));
+    }
+    const allComponentIds = explosions.flatMap((e) => e.components.map((c) => c.itemId));
+    const onHand = await this.ledger.onHandIn(db, inv.warehouseId, allComponentIds);
+    const names = allComponentIds.length === 0
+      ? []
+      : await db.item.findMany({
+          where: { companyId, id: { in: [...new Set(allComponentIds)] } },
+          select: { id: true, code: true, nameAr: true },
+        });
+    const nameById = new Map(names.map((n) => [n.id, n]));
+    const lines = [];
+    for (const [index, line] of recipeLines.entries()) {
+      const exp = explosions[index];
       const comps = exp.components.map((c) => {
         const have = onHand.get(c.itemId) ?? new Decimal(0);
         const short = c.qtyBase.gt(have) ? c.qtyBase.minus(have) : new Decimal(0);
         return { componentItemId: c.itemId, qtyBase: c.qtyBase, onHandBase: have, shortageBase: short };
       });
-      const names = await db.item.findMany({
-        where: { companyId, id: { in: comps.map((c) => c.componentItemId) } },
-        select: { id: true, code: true, nameAr: true },
-      });
-      const nameById = new Map(names.map((n) => [n.id, n]));
       lines.push({
         lineId: line.id,
         lineNo: line.lineNo,

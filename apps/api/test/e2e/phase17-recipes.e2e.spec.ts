@@ -154,6 +154,17 @@ describe('Phase 17 — recipes exploded at sale (ADR-032), tenant A', () => {
     T,
   );
 
+  it('the purchase pickers never list a recipe: items?purchasable=true (review #65)', async () => {
+    const all = await h.api().get('/api/v1/items?pageSize=100&isActive=true').set(h.auth(A.token));
+    const buyable = await h.api().get('/api/v1/items?pageSize=100&isActive=true&purchasable=true').set(h.auth(A.token));
+    expect(all.status).toBe(200);
+    expect(buyable.status).toBe(200);
+    const ids = (r: { body: { items: { id: string; itemKind: string }[] } }) => r.body.items.map((i) => i.itemKind);
+    expect(ids(all)).toContain('RECIPE');
+    expect(ids(buyable)).not.toContain('RECIPE');
+    expect(ids(buyable).length).toBeGreaterThan(0);
+  });
+
   it('RECIPE is refused by name in purchase invoice, purchase request, purchase order, transfer, adjustment, count and production', async () => {
     // The purchase order needs the MEDIUM procurement level (the trial company is SIMPLE).
     await boot.db.query("UPDATE companies SET procurement_level = 'MEDIUM' WHERE tenant_id = ?", [A.tenantId]);

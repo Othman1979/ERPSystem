@@ -154,6 +154,13 @@ export class ListItemsQueryDto extends PageQueryDto {
   @IsIn(['true', 'false'])
   stocked?: 'true' | 'false';
 
+  /** `true`: the kinds a purchase document takes, all but RECIPE (ADR-032 §5), for the purchase pickers. */
+  @ApiPropertyOptional({ enum: ['true', 'false'] })
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  purchasable?: 'true' | 'false';
+
   @ApiPropertyOptional({ enum: ['true', 'false'] })
   @Transform(blankToUndefined)
   @IsOptional()

@@ -9154,6 +9154,8 @@ export type CatalogControllerListItemsParams = {
   itemKind?: CatalogControllerListItemsItemKind;
   /** `true`: only the stocked kinds, STOCK and MANUFACTURED (ADR-031 §1), for the stock pickers. */
   stocked?: CatalogControllerListItemsStocked;
+  /** `true`: the kinds a purchase document takes, all but RECIPE (ADR-032 §5), for the purchase pickers. */
+  purchasable?: CatalogControllerListItemsPurchasable;
   isActive?: CatalogControllerListItemsIsActive;
 };
 
@@ -9181,6 +9183,14 @@ export type CatalogControllerListItemsStocked = typeof CatalogControllerListItem
 
 
 export const CatalogControllerListItemsStocked = {
+  true: 'true',
+  false: 'false',
+} as const;
+
+export type CatalogControllerListItemsPurchasable = typeof CatalogControllerListItemsPurchasable[keyof typeof CatalogControllerListItemsPurchasable];
+
+
+export const CatalogControllerListItemsPurchasable = {
   true: 'true',
   false: 'false',
 } as const;
