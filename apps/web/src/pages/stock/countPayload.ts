@@ -74,13 +74,14 @@ export function lineBody(qty: string | null, itemUnitId: string | null): UpdateC
 export type ApproveBlock = 'CREATOR' | 'COUNTER' | null;
 
 export function approveBlock(
-  detail: Pick<StockCountDetailDto, 'createdBy' | 'lines'>,
+  detail: Pick<StockCountDetailDto, 'createdBy' | 'counterIds'>,
   me: { userId?: string; isOwner: boolean },
 ): ApproveBlock {
   // The owner always may. Without a known user the server decides alone.
   if (me.isOwner || !me.userId) return null;
   if (detail.createdBy === me.userId) return 'CREATOR';
-  if (detail.lines.some((l) => l.countedBy === me.userId)) return 'COUNTER';
+  // Every user who entered a quantity, not only the last one on each line (ADR-030 §3).
+  if (detail.counterIds.includes(me.userId)) return 'COUNTER';
   return null;
 }
 

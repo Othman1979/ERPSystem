@@ -43,6 +43,8 @@ export const TENANT_MODELS = [
   'StockTransferLine',
   'StockCount',
   'StockCountLine',
+  // Phase 15 (ADR-030 §3): who entered each count, for the approval guard.
+  'StockCountCounter',
   'Party',
   'CashBox',
   'BankAccount',

@@ -1174,6 +1174,20 @@ export class StockCountLineRow {
   updatedAt!: string;
 }
 
+/** Scalar columns of the Prisma model `StockCountCounter`, as JSON. */
+export class StockCountCounterRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  countId!: string;
+  @ApiProperty({ type: 'string' })
+  userId!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  firstAt!: string;
+}
+
 /** Scalar columns of the Prisma model `Party`, as JSON. */
 export class PartyRow {
   @ApiProperty({ type: 'string' })

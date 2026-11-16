@@ -83,29 +83,29 @@ describe('qtyText', () => {
 });
 
 describe('approveBlock (ADR-030 §3)', () => {
-  const lines = [
-    { countedBy: '8' },
-    { countedBy: null },
-  ] as unknown as StockCountLineDto[];
-
   it('never blocks the owner', () => {
-    expect(approveBlock({ createdBy: '7', lines }, { userId: '7', isOwner: true })).toBeNull();
+    expect(approveBlock({ createdBy: '7', counterIds: ['7', '8'] }, { userId: '7', isOwner: true })).toBeNull();
   });
 
   it('blocks the member who created the count', () => {
-    expect(approveBlock({ createdBy: '7', lines: [] }, { userId: '7', isOwner: false })).toBe('CREATOR');
+    expect(approveBlock({ createdBy: '7', counterIds: [] }, { userId: '7', isOwner: false })).toBe('CREATOR');
   });
 
   it('blocks a member who counted a line', () => {
-    expect(approveBlock({ createdBy: '1', lines }, { userId: '8', isOwner: false })).toBe('COUNTER');
+    expect(approveBlock({ createdBy: '1', counterIds: ['8'] }, { userId: '8', isOwner: false })).toBe('COUNTER');
+  });
+
+  it('keeps blocking a counter whose line another member counted again', () => {
+    // Counter 8 entered a line, then member 9 counted the same line: 8 still may not approve.
+    expect(approveBlock({ createdBy: '1', counterIds: ['8', '9'] }, { userId: '8', isOwner: false })).toBe('COUNTER');
   });
 
   it('allows another member who neither created nor counted', () => {
-    expect(approveBlock({ createdBy: '1', lines }, { userId: '9', isOwner: false })).toBeNull();
+    expect(approveBlock({ createdBy: '1', counterIds: ['8'] }, { userId: '9', isOwner: false })).toBeNull();
   });
 
   it('leaves the decision to the server when the user is not known', () => {
-    expect(approveBlock({ createdBy: '1', lines }, { isOwner: false })).toBeNull();
+    expect(approveBlock({ createdBy: '1', counterIds: ['8'] }, { isOwner: false })).toBeNull();
   });
 });
 

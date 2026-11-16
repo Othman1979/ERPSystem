@@ -350,6 +350,7 @@ model Tenant {
   stockAdjustmentLines StockAdjustmentLine[]
   stockTransferLines   StockTransferLine[]
   stockCountLines      StockCountLine[]
+  stockCountCounters   StockCountCounter[]
   parties              Party[]
   costCenters          CostCenter[]
   cashBoxes            CashBox[]
@@ -1414,6 +1415,7 @@ model StockCount {
   warehouse Warehouse        @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
   itemGroup ItemGroup?       @relation(fields: [tenantId, itemGroupId], references: [tenantId, id])
   lines     StockCountLine[]
+  counters  StockCountCounter[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, docNo])
@@ -1448,6 +1450,23 @@ model StockCountLine {
   @@unique([tenantId, id])
   @@unique([tenantId, countId, itemId])
   @@map("stock_count_lines")
+}
+
+/// Who entered a count (ADR-030 §3): one row per user and count. A counter may not approve it,
+/// even after another user counts the same line again (the line keeps only the last counter).
+model StockCountCounter {
+  id       BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId BigInt   @map("tenant_id") @db.UnsignedBigInt
+  countId  BigInt   @map("count_id") @db.UnsignedBigInt
+  userId   BigInt   @map("user_id") @db.UnsignedBigInt
+  firstAt  DateTime @default(now()) @map("first_at") @db.DateTime(3)
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  count  StockCount @relation(fields: [tenantId, countId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, countId, userId])
+  @@map("stock_count_counters")
 }
 
 // ---------------------------------------------------------------------------

@@ -180,7 +180,13 @@ export class CountsService {
       },
     });
     if (!count) throw DomainError.notFound('StockCount', id.toString());
-    return isBlindDraft(count) ? { ...count, lines: count.lines.map(maskLine) } : count;
+    const counters = await db.stockCountCounter.findMany({
+      where: { countId: id },
+      orderBy: { id: 'asc' },
+      select: { userId: true },
+    });
+    const detail = { ...count, counterIds: counters.map((c) => c.userId.toString()) };
+    return isBlindDraft(count) ? { ...detail, lines: count.lines.map(maskLine) } : detail;
   }
 
   /**
@@ -290,7 +296,9 @@ export class CountsService {
     for (const g of groups) {
       if (g.parentId === null) continue;
       const key = g.parentId.toString();
-      children.set(key, [...(children.get(key) ?? []), g.id]);
+      const siblings = children.get(key);
+      if (siblings) siblings.push(g.id);
+      else children.set(key, [g.id]);
     }
     const found: bigint[] = [];
     const queue = [rootId];
@@ -302,14 +310,17 @@ export class CountsService {
     return found;
   }
 
+  /**
+   * Deletes a DRAFT count. The count is locked first, so a scan or a submit that
+   * races the delete waits for it, and DRAFT status and the branch are re-read
+   * under that lock before the row goes (its lines and counters cascade).
+   */
   async deleteDraft(id: bigint) {
-    const { db } = this.tenant();
-    const count = await db.stockCount.findFirst({ where: { id, AND: [{ warehouse: branchWhere() }] } });
-    if (!count) throw DomainError.notFound('StockCount', id.toString());
-    if (count.status !== 'DRAFT') {
-      throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only draft counts can be deleted', { status: count.status });
-    }
-    await db.stockCount.delete({ where: { id } });
+    const { tenantId, db } = this.tenant();
+    await db.$transaction(async (tx) => {
+      await this.lockedDraft(tx, tenantId, id);
+      await tx.stockCount.delete({ where: { id } });
+    }, POSTING_TX_OPTIONS);
     return { deleted: true };
   }
 
@@ -353,6 +364,7 @@ export class CountsService {
         where: { id: lineId },
         data: countedData(q, new Decimal(line.systemQty.toString()), userId, new Date()),
       });
+      if (q && userId !== null) await this.recordCounter(tx, tenantId, countId, userId);
       const saved = await tx.stockCountLine.findFirstOrThrow({ where: { id: lineId }, include: LINE_INCLUDE });
       return isBlindDraft(count) ? maskLine(saved) : saved;
     }, POSTING_TX_OPTIONS);
@@ -417,6 +429,7 @@ export class CountsService {
             data: { tenantId, countId, itemId, systemQty: book.toString(), ...data },
             include: LINE_INCLUDE,
           });
+      if (userId !== null) await this.recordCounter(tx, tenantId, countId, userId);
       return isBlindDraft(count) ? maskLine(saved) : saved;
     }, POSTING_TX_OPTIONS);
   }
@@ -508,8 +521,11 @@ export class CountsService {
         if (!count) throw DomainError.notFound('StockCount', id.toString());
         if (count.status !== 'SUBMITTED') throw invalidStatus(count.status, 'submitted');
         if (!this.isOwner()) {
-          const counter = count.lines.some((l) => l.countedBy === userId);
-          if (count.createdBy === userId || counter) {
+          // Counted by this user at any time, even when a later count of the same line came from someone else.
+          const counted =
+            userId !== null && (await tx.stockCountCounter.count({ where: { countId: id, userId } })) > 0;
+          const lineCounter = count.lines.some((l) => l.countedBy === userId);
+          if (count.createdBy === userId || lineCounter || counted) {
             throw new DomainError(
               ErrorCode.STOCK_COUNT_SELF_APPROVAL,
               'You created or counted this count; another storekeeper or the owner approves it',
@@ -757,6 +773,7 @@ export class CountsService {
     await db.$transaction(async (tx) => {
       const count = await this.lockedDraft(tx, tenantId, id);
       const now = new Date();
+      if (resolved.entries.length > 0 && userId !== null) await this.recordCounter(tx, tenantId, id, userId);
       for (const entry of resolved.entries) {
         const q = await this.quantityOf(tx, entry.itemId, entry.qty, entry.itemUnitId);
         const line = await tx.stockCountLine.findFirst({ where: { countId: id, itemId: entry.itemId } });
@@ -879,6 +896,20 @@ export class CountsService {
 
   private async lockCount(tx: Prisma.TransactionClient, tenantId: bigint, id: bigint): Promise<void> {
     await tx.$queryRaw`SELECT id FROM stock_counts WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+  }
+
+  /**
+   * Records that a user entered a quantity on this count (ADR-030 §3). One row per
+   * user and count: a repeat is skipped, so the approver check sees every past counter.
+   * Called under the count's lock.
+   */
+  private async recordCounter(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    countId: bigint,
+    userId: bigint,
+  ): Promise<void> {
+    await tx.stockCountCounter.createMany({ data: [{ tenantId, countId, userId }], skipDuplicates: true });
   }
 
   /** The count's book qty of one item at the count date (what a line snapshots). */

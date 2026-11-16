@@ -34,6 +34,7 @@ import { Num } from '../../components/Num';
 import { RemoteSelect } from '../../components/RemoteSelect';
 import { qtyCell } from '../../format/cells';
 import { formatQty } from '../../format/number';
+import { idemHeaders } from '../../idempotency';
 import { PICKER_PAGE_SIZE } from '../../hooks/useRemoteOptions';
 import { codeAndName, displayName } from '../../i18n/displayName';
 import {
@@ -166,7 +167,8 @@ export function CountDraftSheet({
   };
 
   const scan = useMutation({
-    mutationFn: (code: string) => stockDocumentsControllerScanCount(id, { barcode: code }),
+    // Each scan is its own action with a fresh key: the API adds one unit per key, so a replay adds once (ADR-030 §9).
+    mutationFn: (code: string) => stockDocumentsControllerScanCount(id, { barcode: code }, { headers: idemHeaders() }),
     onSuccess: (res) => {
       putLine(res.data);
       forget(res.data.id);

@@ -193,9 +193,10 @@ export class StockDocumentsController {
     return this.counts.updateLine(BigInt(id), BigInt(lineId), dto);
   }
 
-  /** One barcode scan: adds one of its unit to the line (ADR-030 §9). */
+  /** One barcode scan: adds one of its unit to the line (ADR-030 §9). Keyed: a replay adds once. */
   @Post('stock-counts/:id/scan')
   @RequirePermission(PERMISSIONS.STOCK_MOVEMENT)
+  @RequiresIdempotencyKey()
   @ApiCreatedResponse({ type: StockCountLineDto })
   scanCount(@Param('id') id: string, @Body() dto: ScanCountDto) {
     return this.counts.scan(BigInt(id), dto);

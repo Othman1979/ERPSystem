@@ -8,8 +8,10 @@
  *  - blind counts: no book qty and no difference while a draft, in the JSON and
  *    the sheet export, until submitted;
  *  - submit, reopen: no edit after submit; keyed transitions;
- *  - approval: refused to the creator or a counter (STOCK_COUNT_SELF_APPROVAL),
- *    accepted to another storekeeper and to the owner; uncounted lines skipped;
+ *  - approval: refused to the creator or to anyone who entered a quantity, even
+ *    after another user counted the same line, and to the importer
+ *    (STOCK_COUNT_SELF_APPROVAL), accepted to another storekeeper and to the
+ *    owner; uncounted lines skipped; a scan is keyed (a replay adds once);
  *    nothing counted refused; the adjustment dated today; a single winner of two
  *    concurrent approvals; a keyed replay;
  *  - Excel: the sheet export, the import (all or nothing, row numbers);
@@ -376,6 +378,21 @@ describe('Phase 15 — physical count (ADR-030)', () => {
       expect(first.status).toBe(201);
       expect([first.body.item.code, first.body.itemUnit.unit.code, d(first.body.countedQty).toString()]).toEqual(['PH-A', 'BOX', '12']);
     });
+
+    it('a scan needs an Idempotency-Key; a replay with the same key adds once, a new key adds again', async () => {
+      const c = await count(owner, { countDate: C, warehouseId: W1, scope: 'ITEMS', itemIds: [I1] });
+      const bare = await api().post(`/api/v1/stock-counts/${c.id}/scan`).set(auth(owner)).send({ barcode: `PH-A-PC-${RUN}` });
+      expect(err(bare)).toEqual([400, 'VALIDATION']);
+      const key = `p15-scan-${RUN}`;
+      const first = await post(owner, `stock-counts/${c.id}/scan`, { barcode: `PH-A-PC-${RUN}` }, key);
+      expect(first.status).toBe(201);
+      expect(d(first.body.countedQty).toString()).toBe('1');
+      const replay = await post(owner, `stock-counts/${c.id}/scan`, { barcode: `PH-A-PC-${RUN}` }, key);
+      expect([replay.status, d(replay.body.countedQty).toString()]).toEqual([201, '1']);
+      expect(d(lineOf((await get(owner, `stock-counts/${c.id}`)).body, 'PH-A').countedQty).toString()).toBe('1');
+      const again = await post(owner, `stock-counts/${c.id}/scan`, { barcode: `PH-A-PC-${RUN}` });
+      expect(d(again.body.countedQty).toString()).toBe('2');
+    });
   });
 
   describe('blind counts, submit and reopen (§5, §6)', () => {
@@ -572,6 +589,26 @@ describe('Phase 15 — physical count (ADR-030)', () => {
       const replay = await api().post(`/api/v1/stock-counts/${cc.id}/approve`).set(auth(owner)).set(idem(x.status === 201 ? k1 : k2));
       expect([replay.status, replay.body.docNo]).toEqual([201, winner.body.docNo]);
       expect(d(await balance(I1, W1)).toString()).toBe(d(before).minus(20).toString());
+    });
+
+    it('a counter cannot approve after another storekeeper counted the same line; the importer cannot approve', async () => {
+      // S1 enters PH-B, then S2 enters the same line: the line now names S2, but S1 still counted it.
+      const cr = await count(owner, { countDate: C, warehouseId: W1, scope: 'ITEMS', itemIds: [I2] });
+      const bLine = lineOf(cr, 'PH-B');
+      expect((await put(s1, `stock-counts/${cr.id}/lines/${bLine.id}`, { countedQty: '39' })).status).toBe(200);
+      expect((await put(s2, `stock-counts/${cr.id}/lines/${bLine.id}`, { countedQty: '40' })).status).toBe(200);
+      expect((await post(owner, `stock-counts/${cr.id}/submit`)).status).toBe(201);
+      const detail = await get(owner, `stock-counts/${cr.id}`);
+      expect(detail.body.counterIds).toHaveLength(2);
+      expect(err(await api().post(`/api/v1/stock-counts/${cr.id}/approve`).set(auth(s1)).set(idem()))).toEqual([403, 'STOCK_COUNT_SELF_APPROVAL']);
+      expect(err(await api().post(`/api/v1/stock-counts/${cr.id}/approve`).set(auth(s2)).set(idem()))).toEqual([403, 'STOCK_COUNT_SELF_APPROVAL']);
+
+      // S2 imports a sheet (the importer is a counter); S2 may not approve it, S1 (who did not count it) may.
+      const ci = await count(owner, { countDate: C, warehouseId: W1, scope: 'ITEMS', itemIds: [I3] });
+      expect((await importFile(s2, ci.id, [['PH-C', null, null, 26]])).status).toBe(201);
+      expect((await post(owner, `stock-counts/${ci.id}/submit`)).status).toBe(201);
+      expect(err(await api().post(`/api/v1/stock-counts/${ci.id}/approve`).set(auth(s2)).set(idem()))).toEqual([403, 'STOCK_COUNT_SELF_APPROVAL']);
+      expect((await api().post(`/api/v1/stock-counts/${ci.id}/approve`).set(auth(s1)).set(idem())).status).toBe(201);
     });
 
     it('the owner may approve a count they counted; a count of tenant A is 404 for tenant B', async () => {

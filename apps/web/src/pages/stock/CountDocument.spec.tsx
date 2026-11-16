@@ -62,6 +62,7 @@ const detailOf = (over: Partial<StockCountDetailDto>): StockCountDetailDto =>
     scope: 'WAREHOUSE',
     includeZero: false,
     createdBy: '1',
+    counterIds: [],
     description: null,
     adjustmentId: null,
     warehouse: { id: '5', code: 'W1', nameAr: 'المستودع الرئيسي' },
@@ -175,6 +176,7 @@ describe('approval rights in the submitted state (ADR-030 §3)', () => {
     detailOf({
       status: 'SUBMITTED',
       createdBy: '1',
+      counterIds: ['7'],
       lines: [line({ id: '1', countedQty: '5', countedUnitQty: '5', systemQty: '5.000000', differenceQty: '0', countedBy: '7' })],
       ...over,
     });

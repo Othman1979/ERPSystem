@@ -53,6 +53,7 @@ const WORKBOOKS: { file: string; models: string[] }[] = [
       'StockTransferLine',
       'StockCount',
       'StockCountLine',
+      'StockCountCounter',
       'GoodsNote',
       'GoodsNoteLine',
     ],

@@ -2909,6 +2909,8 @@ export interface StockCountDetailDto {
   updatedAt: string;
   warehouse: StockDocumentWarehouseDto;
   lines: StockCountLineDto[];
+  /** The users who entered quantities on this count (ADR-030 §3): none of them may approve it. */
+  counterIds: string[];
 }
 
 export interface AddCountLineDto {
@@ -15165,7 +15167,7 @@ export const getStockDocumentsControllerScanCountUrl = (id: string,) => {
 }
 
 /**
- * @summary One barcode scan: adds one of its unit to the line (ADR-030 §9).
+ * @summary One barcode scan: adds one of its unit to the line (ADR-030 §9). Keyed: a replay adds once.
  */
 export const stockDocumentsControllerScanCount = async (id: string,
     scanCountDto: ScanCountDto, options?: Parameters<typeof apiFetch>[1]): Promise<stockDocumentsControllerScanCountResponseSuccess> => {

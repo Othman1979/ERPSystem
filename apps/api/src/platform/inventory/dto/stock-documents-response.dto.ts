@@ -187,6 +187,10 @@ export class StockCountDetailDto extends StockCountRow {
 
   @ApiProperty({ type: () => StockCountLineDto, isArray: true })
   lines!: StockCountLineDto[];
+
+  /** The users who entered quantities on this count (ADR-030 §3): none of them may approve it. */
+  @ApiProperty({ type: 'string', isArray: true })
+  counterIds!: string[];
 }
 
 /** The sheet of a count (CountsService.sheet): the rows to count, the book only when it is shown. */
