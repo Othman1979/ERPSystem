@@ -18,6 +18,7 @@ import {
   UpdateItemGroupDto,
 } from './dto/inventory.dto.js';
 import type { ListItemsQueryDto } from './dto/list-queries.dto.js';
+import { ItemKindValue } from '../../common/inventory/item-kind.js';
 
 /**
  * Item catalog: groups, items, item units and barcodes (§7.4).
@@ -536,7 +537,7 @@ export class CatalogService {
 
 /** See CatalogService.itemsForLines. */
 export interface CatalogLineRefs {
-  items: Map<bigint, { id: bigint; code: string; itemKind: 'STOCK' | 'SERVICE'; taxCategory: { id: bigint; rate: Decimal } | null }>;
+  items: Map<bigint, { id: bigint; code: string; itemKind: ItemKindValue; taxCategory: { id: bigint; rate: Decimal } | null }>;
   units: Map<bigint, { id: bigint; itemId: bigint; factorToBase: Decimal }>;
   defaultTax: { id: bigint; rate: Decimal } | null;
 }

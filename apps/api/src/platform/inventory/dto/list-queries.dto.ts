@@ -3,6 +3,7 @@ import { Transform } from 'class-transformer';
 import { IsDateString, IsIn, IsOptional, Matches } from 'class-validator';
 import { DATE_PATTERN, ID_PATTERN } from '../../../common/pipes/parse-id.pipe.js';
 import { PageQueryDto, SortParam, sortValues } from '../../../common/paging/page-query.dto.js';
+import { ITEM_KINDS } from '../../../common/inventory/item-kind.js';
 
 /** The web sends '' for a filter it does not set: a blank value counts as not given. */
 const blankToUndefined = ({ value }: { value: unknown }) => {
@@ -16,7 +17,7 @@ const DOCUMENT_STATUSES = ['DRAFT', 'POSTED'] as const;
 const COUNT_STATUSES = ['DRAFT', 'SUBMITTED', 'POSTED'] as const;
 const ADJUSTMENT_TYPES = ['OPENING', 'IN', 'OUT', 'COUNT_ADJUSTMENT'] as const;
 const NOTE_TYPES = ['GRN', 'GIN'] as const;
-const ITEM_KINDS = ['STOCK', 'SERVICE'] as const;
+
 
 /** Sort keys of a stock document list: its document date and its number. */
 export const STOCK_DOCUMENT_SORT_KEYS = ['date', 'docNo'] as const;

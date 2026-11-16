@@ -18,6 +18,7 @@ import type { ListStockAdjustmentsQueryDto } from './dto/list-queries.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { retryOnLockConflict } from '../shared/document-support.service.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
+import { isStocked } from '../../common/inventory/item-kind.js';
 
 const SOURCE = 'STOCK_ADJUSTMENT';
 
@@ -156,7 +157,7 @@ export class AdjustmentsService {
     for (const l of dto.lines) {
       const item = byId.get(BigInt(l.itemId));
       if (!item) throw DomainError.notFound('Item', l.itemId);
-      if (item.itemKind !== 'STOCK') {
+      if (!isStocked(item.itemKind)) {
         throw new DomainError(
           ErrorCode.VALIDATION,
           `Item ${item.code} is a service — no stock adjustment allowed`,

@@ -17,7 +17,7 @@ export interface InvoiceItemOption {
   price?: string | null;
   /** Tax rate percent (0–100), as a decimal string. */
   taxRate: string;
-  itemKind: 'STOCK' | 'SERVICE';
+  itemKind: 'STOCK' | 'SERVICE' | 'MANUFACTURED';
 }
 
 /** Editable line; numeric fields are decimal strings (InputNumber stringMode). */

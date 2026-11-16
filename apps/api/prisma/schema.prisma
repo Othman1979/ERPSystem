@@ -102,6 +102,7 @@ enum JournalVoucherType {
 enum ItemKind {
   STOCK
   SERVICE
+  MANUFACTURED
 }
 
 enum StockMovementType {
@@ -343,6 +344,10 @@ model Tenant {
   stockBalances        StockBalance[]
   itemCosts            ItemCost[]
   stockAdjustments     StockAdjustment[]
+  boms                   Bom[]
+  bomLines               BomLine[]
+  productionVouchers     ProductionVoucher[]
+  productionVoucherLines ProductionVoucherLine[]
   stockTransfers       StockTransfer[]
   stockCounts          StockCount[]
   itemUnits            ItemUnit[]
@@ -460,6 +465,8 @@ model Company {
   stockMovements    StockMovement[]
   itemCosts         ItemCost[]
   stockAdjustments  StockAdjustment[]
+  boms               Bom[]
+  productionVouchers ProductionVoucher[]
   stockTransfers    StockTransfer[]
   stockCounts       StockCount[]
   parties           Party[]
@@ -514,6 +521,7 @@ model Branch {
   purchaseQuotes     PurchaseQuote[]
   purchaseOrders     PurchaseOrder[]
   issueRequests      IssueRequest[]
+  productionVouchers ProductionVoucher[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -923,6 +931,7 @@ model JournalEntry {
   reversals        JournalEntry[]    @relation("EntryReversal")
   lines            JournalLine[]
   stockAdjustments StockAdjustment[]
+  productionVouchers ProductionVoucher[]
   salesInvoices    SalesInvoice[]
   purchaseInvoices PurchaseInvoice[]
   salesReturns     SalesReturn[]
@@ -1025,6 +1034,7 @@ model CostCenter {
   payments         Payment[]
   purchaseOrders   PurchaseOrder[]
   goodsNotes       GoodsNote[]
+  productionVouchers ProductionVoucher[]
   issueRequests    IssueRequest[]
 
   @@unique([tenantId, id])
@@ -1109,6 +1119,10 @@ model Item {
   purchaseQuoteLines PurchaseQuoteLine[]
   purchaseOrderLines PurchaseOrderLine[]
   issueRequestLines  IssueRequestLine[]
+  boms                   Bom[]
+  bomLines               BomLine[]
+  productionVouchers     ProductionVoucher[]
+  productionVoucherLines ProductionVoucherLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -1135,6 +1149,10 @@ model ItemUnit {
   unit     Unit          @relation(fields: [tenantId, unitId], references: [tenantId, id])
   barcodes ItemBarcode[]
   stockCountLines StockCountLine[]
+  boms                   Bom[]
+  bomLines               BomLine[]
+  productionVoucherLines ProductionVoucherLine[]
+  productionVouchers     ProductionVoucher[]
 
   salesInvoiceLines    SalesInvoiceLine[]
   purchaseInvoiceLines PurchaseInvoiceLine[]
@@ -1187,6 +1205,8 @@ model Warehouse {
   movements     StockMovement[]
   balances      StockBalance[]
   adjustments   StockAdjustment[]
+  productionVouchersAsMaterials ProductionVoucher[] @relation("ProductionMaterials")
+  productionVouchersAsOutput    ProductionVoucher[] @relation("ProductionOutput")
   transfersFrom StockTransfer[]   @relation("TransferFrom")
   transfersTo   StockTransfer[]   @relation("TransferTo")
   counts        StockCount[]
@@ -2882,4 +2902,159 @@ model SalesOrderLine {
   // Reservations: open lines of one item (ADR-027 §5).
   @@index([tenantId, itemId])
   @@map("sales_order_lines")
+}
+
+/// Phase 16 (ADR-031 §5): bill-of-materials status. One ACTIVE version per item (service-enforced under a lock).
+enum BomStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+/// Bill of materials version for a MANUFACTURED item (ADR-031 §5).
+model Bom {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId           BigInt    @map("tenant_id") @db.UnsignedBigInt
+  companyId          BigInt    @map("company_id") @db.UnsignedBigInt
+  itemId             BigInt    @map("item_id") @db.UnsignedBigInt
+  versionNo          Int       @map("version_no")
+  status             BomStatus @default(DRAFT)
+  /// The output quantity as entered (e.g. 10 chairs), in outputItemUnitId, and in the base unit.
+  outputQty          Decimal   @map("output_qty") @db.Decimal(18, 6)
+  outputItemUnitId   BigInt?   @map("output_item_unit_id") @db.UnsignedBigInt
+  outputQtyBase      Decimal   @map("output_qty_base") @db.Decimal(18, 6)
+  /// Fixed applied cost per output batch (3 dp); the voucher multiplies it by the produced base quantity (ADR-031 §2).
+  appliedCostPerUnit Decimal   @default(0) @map("applied_cost_per_unit") @db.Decimal(18, 3)
+  note               String?   @db.VarChar(500)
+  activatedAt        DateTime? @map("activated_at") @db.DateTime(3)
+  activatedBy        BigInt?   @map("activated_by") @db.UnsignedBigInt
+  createdBy          BigInt?   @map("created_by") @db.UnsignedBigInt
+  updatedBy          BigInt?   @map("updated_by") @db.UnsignedBigInt
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company            Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  item               Item                @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  outputItemUnit     ItemUnit?            @relation(fields: [tenantId, outputItemUnitId], references: [tenantId, id])
+  lines              BomLine[]
+  productionVouchers ProductionVoucher[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, itemId, versionNo])
+  @@index([tenantId, companyId, itemId, status])
+  @@map("boms")
+}
+
+model BomLine {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt   @map("tenant_id") @db.UnsignedBigInt
+  bomId           BigInt   @map("bom_id") @db.UnsignedBigInt
+  lineNo          Int      @map("line_no")
+  componentItemId BigInt   @map("component_item_id") @db.UnsignedBigInt
+  itemUnitId      BigInt?  @map("item_unit_id") @db.UnsignedBigInt
+  /// Quantity per output batch, in itemUnitId, and in the base unit (6 dp).
+  qty             Decimal  @db.Decimal(18, 6)
+  qtyBase         Decimal  @map("qty_base") @db.Decimal(18, 6)
+  /// Extra consumption: required = qtyBase x (produced / output) x (1 + wastePct / 100) (ADR-031 §5).
+  wastePct        Decimal  @default(0) @map("waste_pct") @db.Decimal(9, 4)
+  note            String?  @db.VarChar(500)
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bom           Bom      @relation(fields: [tenantId, bomId], references: [tenantId, id], onDelete: Cascade)
+  componentItem Item     @relation(fields: [tenantId, componentItemId], references: [tenantId, id])
+  itemUnit      ItemUnit? @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, bomId, lineNo])
+  @@index([tenantId, componentItemId])
+  @@map("bom_lines")
+}
+
+/// Production voucher (ADR-031 §7): consumes components and produces the item. Numbered at posting.
+model ProductionVoucher {
+  id                   BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId             BigInt         @map("tenant_id") @db.UnsignedBigInt
+  companyId            BigInt         @map("company_id") @db.UnsignedBigInt
+  docNo                String?        @map("doc_no") @db.VarChar(50)
+  status               DocumentStatus @default(DRAFT)
+  voucherDate          DateTime       @map("voucher_date") @db.Date
+  itemId               BigInt         @map("item_id") @db.UnsignedBigInt
+  bomId                BigInt         @map("bom_id") @db.UnsignedBigInt
+  qty                  Decimal        @db.Decimal(18, 6)
+  itemUnitId           BigInt?        @map("item_unit_id") @db.UnsignedBigInt
+  qtyBase              Decimal        @map("qty_base") @db.Decimal(18, 6)
+  materialsWarehouseId BigInt         @map("materials_warehouse_id") @db.UnsignedBigInt
+  outputWarehouseId    BigInt         @map("output_warehouse_id") @db.UnsignedBigInt
+  branchId             BigInt?        @map("branch_id") @db.UnsignedBigInt
+  /// Cost centre tagged on the applied-cost journal line only (ADR-031 §2 and §7).
+  costCenterId         BigInt?        @map("cost_center_id") @db.UnsignedBigInt
+  description          String?        @db.VarChar(500)
+  /// Snapshot of the BOM applied cost (3 dp) and the derived totals, written at posting.
+  appliedCostPerUnit   Decimal        @default(0) @map("applied_cost_per_unit") @db.Decimal(18, 3)
+  appliedTotal         Decimal        @default(0) @map("applied_total") @db.Decimal(18, 3)
+  materialsTotal       Decimal        @default(0) @map("materials_total") @db.Decimal(18, 3)
+  outputTotal          Decimal        @default(0) @map("output_total") @db.Decimal(18, 3)
+  outputUnitCost       Decimal?       @map("output_unit_cost") @db.Decimal(18, 6)
+  journalEntryId       BigInt?        @map("journal_entry_id") @db.UnsignedBigInt
+  reversalOfId         BigInt?        @map("reversal_of_id") @db.UnsignedBigInt
+  postedAt             DateTime?      @map("posted_at") @db.DateTime(3)
+  postedBy             BigInt?        @map("posted_by") @db.UnsignedBigInt
+  createdBy            BigInt?        @map("created_by") @db.UnsignedBigInt
+  updatedBy            BigInt?        @map("updated_by") @db.UnsignedBigInt
+  createdAt            DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant             Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company            Company                 @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  item               Item                    @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  bom                Bom                     @relation(fields: [tenantId, bomId], references: [tenantId, id])
+  itemUnit           ItemUnit?                @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  materialsWarehouse Warehouse               @relation("ProductionMaterials", fields: [tenantId, materialsWarehouseId], references: [tenantId, id])
+  outputWarehouse    Warehouse               @relation("ProductionOutput", fields: [tenantId, outputWarehouseId], references: [tenantId, id])
+  branch             Branch?                 @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  costCenter         CostCenter?             @relation(fields: [tenantId, costCenterId], references: [tenantId, id])
+  journalEntry       JournalEntry?           @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+  reversalOf         ProductionVoucher?      @relation("ProductionReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
+  reversals          ProductionVoucher[]     @relation("ProductionReversal")
+  lines              ProductionVoucherLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, docNo])
+  /// At most one reversal per voucher (ADR-031 §4); MariaDB allows many NULLs in a unique index.
+  @@unique([tenantId, reversalOfId])
+  @@index([tenantId, status])
+  @@index([tenantId, companyId, voucherDate, id])
+  @@map("production_vouchers")
+}
+
+model ProductionVoucherLine {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt   @map("tenant_id") @db.UnsignedBigInt
+  voucherId       BigInt   @map("voucher_id") @db.UnsignedBigInt
+  lineNo          Int      @map("line_no")
+  itemId          BigInt   @map("item_id") @db.UnsignedBigInt
+  itemUnitId      BigInt?  @map("item_unit_id") @db.UnsignedBigInt
+  /// Actual consumption entered by the user, in itemUnitId and in the base unit.
+  qty             Decimal  @db.Decimal(18, 6)
+  qtyBase         Decimal  @map("qty_base") @db.Decimal(18, 6)
+  /// Standard (BOM) requirement in the base unit; qtyBase minus this is the variance (ADR-031 §3).
+  standardQtyBase Decimal  @default(0) @map("standard_qty_base") @db.Decimal(18, 6)
+  /// Written at posting: weighted-average cost per base unit (6 dp) and the line total (3 dp).
+  unitCost        Decimal? @map("unit_cost") @db.Decimal(18, 6)
+  totalCost       Decimal? @map("total_cost") @db.Decimal(18, 3)
+  note            String?  @db.VarChar(500)
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voucher  ProductionVoucher @relation(fields: [tenantId, voucherId], references: [tenantId, id], onDelete: Cascade)
+  item     Item              @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  itemUnit ItemUnit?          @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, voucherId, lineNo])
+  @@map("production_voucher_lines")
 }

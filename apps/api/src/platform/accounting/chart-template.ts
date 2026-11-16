@@ -20,6 +20,7 @@ export const ACCOUNT_MAPPING_KEYS = [
   'RETAINED_EARNINGS',
   'PURCHASES',
   'GOODS_RECEIVED_NOT_INVOICED',
+  'PRODUCTION_APPLIED_COST',
 ] as const;
 
 export type AccountMappingKey = (typeof ACCOUNT_MAPPING_KEYS)[number];
@@ -91,6 +92,8 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('5101', 'تكلفة البضاعة المباعة', 'EXPENSE', { nameEn: 'Cost of goods sold', parentCode: '5' }),
   acct('5102', 'فروقات الجرد والتسويات', 'EXPENSE', { nameEn: 'Stock count differences and adjustments', parentCode: '5' }),
   acct('5103', 'مشتريات', 'EXPENSE', { nameEn: 'Purchases', parentCode: '5' }),
+  // Phase 16 (ADR-031 §8): applied production costs; credited by production vouchers.
+  acct('5104', 'تكاليف إنتاج محمّلة', 'EXPENSE', { nameEn: 'Applied production costs', parentCode: '5' }),
   acct('5201', 'الرواتب', 'EXPENSE', { nameEn: 'Salaries', parentCode: '52' }),
   acct('5202', 'الإيجار', 'EXPENSE', { nameEn: 'Rent', parentCode: '52' }),
   acct('5203', 'الكهرباء والمياه والاتصالات', 'EXPENSE', { nameEn: 'Electricity, water and telecom', parentCode: '52' }),
@@ -115,6 +118,7 @@ export const TEMPLATE_MAPPINGS: Record<AccountMappingKey, string> = {
   RETAINED_EARNINGS: '3102',
   PURCHASES: '5103',
   GOODS_RECEIVED_NOT_INVOICED: '2104',
+  PRODUCTION_APPLIED_COST: '5104',
 };
 
 /**
@@ -143,6 +147,7 @@ export const MAPPING_RULES: Record<AccountMappingKey, MappingRule> = {
   RETAINED_EARNINGS: { types: ['EQUITY'] },
   PURCHASES: { types: ['EXPENSE'] },
   GOODS_RECEIVED_NOT_INVOICED: { types: ['LIABILITY'] },
+  PRODUCTION_APPLIED_COST: { types: ['EXPENSE'] },
 };
 
 /** Keys whose account accumulates a balance other documents settle: changing them after posting would split it (LEDGER-05). */
@@ -201,4 +206,6 @@ export const DOCUMENT_TYPE_PREFIXES: Record<string, string> = {
   // Phase 14 (ADR-027 §8): a sales quote numbered when sent, a sales order when confirmed.
   SALES_QUOTE: 'SQ',
   SALES_ORDER: 'SO',
+  // Phase 16 (ADR-031 §7): a production voucher, numbered at posting.
+  PRODUCTION: 'MFG',
 };

@@ -17,6 +17,7 @@ import type { CreateStockTransferDto } from './dto/inventory.dto.js';
 import type { ListStockTransfersQueryDto } from './dto/list-queries.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { retryOnLockConflict } from '../shared/document-support.service.js';
+import { isStocked, stockedItemKindFilter } from '../../common/inventory/item-kind.js';
 
 const SOURCE = 'STOCK_TRANSFER';
 
@@ -164,7 +165,7 @@ export class TransfersService {
 
     const itemIds = dto.lines.map((l) => BigInt(l.itemId));
     const items = await db.item.findMany({
-      where: { tenantId, companyId, id: { in: itemIds }, itemKind: 'STOCK', isActive: true },
+      where: { tenantId, companyId, id: { in: itemIds }, itemKind: stockedItemKindFilter(), isActive: true },
       select: { id: true, code: true },
     });
     const found = new Set(items.map((i) => i.id));
@@ -177,7 +178,7 @@ export class TransfersService {
         if (!any) throw DomainError.notFound('Item', l.itemId);
         throw new DomainError(
           ErrorCode.VALIDATION,
-          any.itemKind !== 'STOCK'
+          !isStocked(any.itemKind)
             ? `Item ${any.code} is a service — no stock transfer allowed`
             : `Item ${any.code} is inactive`,
         );

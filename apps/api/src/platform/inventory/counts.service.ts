@@ -24,6 +24,7 @@ import type {
 } from './dto/inventory.dto.js';
 import type { ListStockCountsQueryDto } from './dto/list-queries.dto.js';
 import { StockLedgerService } from './stock-ledger.service.js';
+import { isStocked, stockedItemKindFilter } from '../../common/inventory/item-kind.js';
 
 /** The item fields a count line shows. */
 const ITEM_REF = { select: { id: true, code: true, nameAr: true, baseUnitId: true } } as const;
@@ -215,7 +216,7 @@ export class CountsService {
       await assertWarehouseBranchAllowed(tx, warehouse.id);
 
       const stocked = await tx.item.findMany({
-        where: { tenantId, companyId, itemKind: 'STOCK', isActive: true, ...scopeItems },
+        where: { tenantId, companyId, itemKind: stockedItemKindFilter(), isActive: true, ...scopeItems },
         select: { id: true },
       });
       const scopedIds = new Set(stocked.map((i) => i.id));
@@ -334,7 +335,7 @@ export class CountsService {
     return db.$transaction(async (tx) => {
       const count = await this.lockedDraft(tx, tenantId, countId);
       const item = await tx.item.findFirst({
-        where: { id: BigInt(dto.itemId), tenantId, companyId, itemKind: 'STOCK', isActive: true },
+        where: { id: BigInt(dto.itemId), tenantId, companyId, itemKind: stockedItemKindFilter(), isActive: true },
       });
       if (!item) throw new DomainError(ErrorCode.VALIDATION, 'The item is not an active stock item');
       const exists = await tx.stockCountLine.findFirst({ where: { countId, itemId: item.id } });
@@ -388,7 +389,7 @@ export class CountsService {
         include: { item: { select: { id: true, companyId: true, itemKind: true, isActive: true } }, itemUnit: true },
       });
       if (!bc || bc.item.companyId !== companyId) throw DomainError.notFound('ItemBarcode', dto.barcode);
-      if (bc.item.itemKind !== 'STOCK' || !bc.item.isActive) {
+      if (!isStocked(bc.item.itemKind) || !bc.item.isActive) {
         throw new DomainError(ErrorCode.VALIDATION, 'Only active stock items are counted');
       }
       const itemId = bc.item.id;
@@ -816,7 +817,7 @@ export class CountsService {
     const barcodes = [...new Set(rows.map((r) => r.barcode).filter((c): c is string => !!c))];
     const items = codes.length
       ? await db.item.findMany({
-          where: { companyId, itemKind: 'STOCK', isActive: true, code: { in: codes } },
+          where: { companyId, itemKind: stockedItemKindFilter(), isActive: true, code: { in: codes } },
           include: { baseUnit: { select: { code: true } }, units: { include: { unit: { select: { code: true } } } } },
         })
       : [];

@@ -7,6 +7,13 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { costMovement, type CostState } from './stock-costing.js';
+import { isStocked, ItemKindValue } from '../../common/inventory/item-kind.js';
+
+
+/** True when the loaded item exists and holds stock (ADR-031 §1). */
+function isStockedItem(item: ItemInfo | undefined): boolean {
+  return item !== undefined && isStocked(item.itemKind);
+}
 
 export interface MovementInput {
   warehouseId: bigint;
@@ -98,7 +105,7 @@ interface BalanceRow {
 
 interface ItemInfo {
   code: string;
-  itemKind: 'STOCK' | 'SERVICE';
+  itemKind: ItemKindValue;
   isActive: boolean;
 }
 
@@ -197,7 +204,7 @@ export class StockLedgerService {
     await this.loadItems(tx, tenantId, companyId, itemIds);
     await this.allowNegative(tx, companyId);
 
-    const stock = itemIds.filter((id) => st.items.get(id)?.itemKind === 'STOCK').sort(ascending);
+    const stock = itemIds.filter((id) => isStockedItem(st.items.get(id))).sort(ascending);
     const isStock = new Set(stock);
     await this.lockCosts(tx, tenantId, companyId, stock);
 
@@ -220,7 +227,7 @@ export class StockLedgerService {
     const ids = [...new Set(itemIds)];
     await this.loadItems(tx, tenantId, companyId, ids);
     const st = this.state(tx);
-    return new Set(ids.filter((id) => st.items.get(id)?.itemKind === 'STOCK'));
+    return new Set(ids.filter((id) => isStockedItem(st.items.get(id))));
   }
 
   /**
@@ -451,7 +458,7 @@ export class StockLedgerService {
     // An item deactivated with no stock can still be returned or have a
     // document reversed (TRADE-15); new documents refuse it when drafted.
     if (!item.isActive && !inactiveAllowed) throw DomainError.notFound('Item', itemId.toString());
-    if (item.itemKind !== 'STOCK') {
+    if (!isStocked(item.itemKind)) {
       throw new DomainError(ErrorCode.VALIDATION, `Item ${item.code} is a service — it produces no stock movements`);
     }
     return item;

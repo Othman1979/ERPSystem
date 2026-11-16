@@ -67,6 +67,7 @@ import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
+import { ItemKindValue } from '../../common/inventory/item-kind.js';
 
 const SOURCE = 'SALES_INVOICE';
 
@@ -75,7 +76,7 @@ interface ResolvedLine {
   itemId: bigint;
   itemUnitId: bigint | null;
   factorToBase: Decimal;
-  itemKind: 'STOCK' | 'SERVICE';
+  itemKind: ItemKindValue;
   taxRate: Decimal;
   taxCategoryId: bigint | null;
   amounts: ReturnType<typeof computeLineAmounts>;

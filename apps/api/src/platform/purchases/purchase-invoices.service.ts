@@ -68,6 +68,7 @@ import {
 } from '../procurement/purchase-order-receipts.service.js';
 import type { BillPurchaseOrderDto } from './dto/purchases.dto.js';
 import { clearedThrough } from '../shared/receipt-clearing.js';
+import { isStocked, ItemKindValue } from '../../common/inventory/item-kind.js';
 
 const SOURCE = 'PURCHASE_INVOICE';
 
@@ -89,7 +90,7 @@ interface ResolvedLine {
   itemId: bigint;
   itemUnitId: bigint | null;
   factorToBase: Decimal;
-  itemKind: 'STOCK' | 'SERVICE';
+  itemKind: ItemKindValue;
   taxRate: Decimal;
   taxCategoryId: bigint | null;
   amounts: ReturnType<typeof computeLineAmounts>;
@@ -1306,7 +1307,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
    * lines locked on the draft's transaction; posting checks it all again.
    */
   private assertDraftReceipts(orderId: bigint, lines: ResolvedLine[], received: Map<bigint, ReceiptLine>): void {
-    if (lines.some((l) => l.dto.grnLineId && l.itemKind !== 'STOCK')) {
+    if (lines.some((l) => l.dto.grnLineId && !isStocked(l.itemKind))) {
       throw new DomainError(ErrorCode.VALIDATION, 'Only a stocked line bills a GRN line');
     }
     this.assertReceiptMatch(
@@ -1315,7 +1316,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         lineNo: i + 1,
         itemId: l.itemId,
         itemUnitId: l.itemUnitId,
-        isStock: l.itemKind === 'STOCK',
+        isStock: isStocked(l.itemKind),
         qtyBase: l.amounts.qtyBase,
         links: l.dto.grnLineId ? [{ grnLineId: BigInt(l.dto.grnLineId), qty: l.amounts.qtyBase }] : [],
       })),
@@ -1473,7 +1474,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const grn = await this.goodsNotes.lockForBilling(tx, BigInt(dto.receivedGrnId));
     const qtyByItem = new Map<bigint, Decimal>();
     for (const l of lines) {
-      if (l.itemKind !== 'STOCK') continue;
+      if (!isStocked(l.itemKind)) continue;
       qtyByItem.set(l.itemId, (qtyByItem.get(l.itemId) ?? new Decimal(0)).plus(l.amounts.qtyBase));
     }
     await this.assertGrnBillable(tx, tenantId, invoiceId, grn, dto.receivedGrnId, dto.warehouseId ? BigInt(dto.warehouseId) : null, qtyByItem);
@@ -1569,7 +1570,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     if (!supplier || (supplier.partyType !== 'SUPPLIER' && supplier.partyType !== 'BOTH')) {
       throw new DomainError(ErrorCode.VALIDATION, 'Supplier not found or not a supplier');
     }
-    const hasStock = lines.some((l) => l.itemKind === 'STOCK');
+    const hasStock = lines.some((l) => isStocked(l.itemKind));
     if (hasStock) {
       if (!dto.warehouseId) {
         throw new DomainError(ErrorCode.VALIDATION, 'warehouseId is required for stocked items');

@@ -382,6 +382,7 @@ export const AccountMappingSlotDtoMappingKey = {
   RETAINED_EARNINGS: 'RETAINED_EARNINGS',
   PURCHASES: 'PURCHASES',
   GOODS_RECEIVED_NOT_INVOICED: 'GOODS_RECEIVED_NOT_INVOICED',
+  PRODUCTION_APPLIED_COST: 'PRODUCTION_APPLIED_COST',
 } as const;
 
 export interface AccountMappingSlotDto {
@@ -1838,6 +1839,7 @@ export type ItemKind = typeof ItemKind[keyof typeof ItemKind];
 export const ItemKind = {
   STOCK: 'STOCK',
   SERVICE: 'SERVICE',
+  MANUFACTURED: 'MANUFACTURED',
 } as const;
 
 export interface CatalogRefDto {
@@ -2124,6 +2126,7 @@ export type CreateItemDtoItemKind = typeof CreateItemDtoItemKind[keyof typeof Cr
 export const CreateItemDtoItemKind = {
   STOCK: 'STOCK',
   SERVICE: 'SERVICE',
+  MANUFACTURED: 'MANUFACTURED',
 } as const;
 
 export interface CreateItemDto {
@@ -6525,6 +6528,193 @@ export interface CreateIssueRequestDto {
   lines: IssueRequestLineDto[];
 }
 
+export type BomStatus = typeof BomStatus[keyof typeof BomStatus];
+
+
+export const BomStatus = {
+  DRAFT: 'DRAFT',
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+} as const;
+
+export interface BomUnitRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface BomItemRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  itemKind: ItemKind;
+  baseUnit: BomUnitRefDto;
+}
+
+export interface BomItemUnitRefDto {
+  id: string;
+  factorToBase: string;
+  unit: BomUnitRefDto;
+}
+
+export interface BomListItemDto {
+  id: string;
+  itemId: string;
+  versionNo: number;
+  status: BomStatus;
+  /** The output quantity as entered (e.g. 10 chairs), in outputItemUnitId, and in the base unit. */
+  outputQty: string;
+  outputQtyBase: string;
+  /** Fixed applied cost per output batch (3 dp); the voucher multiplies it by the produced base quantity (ADR-031 §2). */
+  appliedCostPerUnit: string;
+  /** @nullable */
+  activatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  item: BomItemRefDto;
+  /**
+     * Null when the output is in the base unit.
+     * @nullable
+     */
+  outputItemUnit: BomItemUnitRefDto | null;
+  lineCount: number;
+}
+
+export interface BomListItemDtoPage {
+  items: BomListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface BomLineDto {
+  componentItemId: string;
+  /** Absent: the item's base unit (no item unit row). */
+  itemUnitId?: string;
+  /** Quantity per output batch, in itemUnitId (or the base unit). */
+  qty: string;
+  /** Extra consumption in percent (ADR-031 §5); defaults to 0. */
+  wastePct?: string;
+  /** @maxLength 500 */
+  note?: string;
+}
+
+export interface CreateBomDto {
+  itemId: string;
+  /** The output quantity as entered, e.g. 10 for «تنتج 10 كراسٍ». */
+  outputQty: string;
+  /** Absent: the item's base unit. */
+  outputItemUnitId?: string;
+  /** Fixed applied cost per output batch (ADR-031 §2); defaults to 0. */
+  appliedCostPerUnit?: string;
+  /** @maxLength 500 */
+  note?: string;
+  /**
+     * @minItems 1
+     * @maxItems 200
+     */
+  lines: BomLineDto[];
+}
+
+export interface BomLineDetailDto {
+  id: string;
+  lineNo: number;
+  componentItemId: string;
+  /** Quantity per output batch, in itemUnitId, and in the base unit (6 dp). */
+  qty: string;
+  qtyBase: string;
+  /** Extra consumption: required = qtyBase x (produced / output) x (1 + wastePct / 100) (ADR-031 §5). */
+  wastePct: string;
+  /** @nullable */
+  note: string | null;
+  componentItem: BomItemRefDto;
+  /**
+     * Null when the component is counted in its base unit.
+     * @nullable
+     */
+  itemUnit: BomItemUnitRefDto | null;
+}
+
+export interface BomDetailDto {
+  id: string;
+  itemId: string;
+  versionNo: number;
+  status: BomStatus;
+  /** The output quantity as entered (e.g. 10 chairs), in outputItemUnitId, and in the base unit. */
+  outputQty: string;
+  /** @nullable */
+  outputItemUnitId: string | null;
+  outputQtyBase: string;
+  /** Fixed applied cost per output batch (3 dp); the voucher multiplies it by the produced base quantity (ADR-031 §2). */
+  appliedCostPerUnit: string;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  activatedAt: string | null;
+  /** @nullable */
+  activatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  item: BomItemRefDto;
+  /**
+     * Null when the output is in the base unit.
+     * @nullable
+     */
+  outputItemUnit: BomItemUnitRefDto | null;
+  lines: BomLineDetailDto[];
+}
+
+export interface UpdateBomDto {
+  /** The output quantity as entered, e.g. 10 for «تنتج 10 كراسٍ». */
+  outputQty: string;
+  /** Absent: the item's base unit. */
+  outputItemUnitId?: string;
+  /** Fixed applied cost per output batch (ADR-031 §2); defaults to 0. */
+  appliedCostPerUnit?: string;
+  /** @maxLength 500 */
+  note?: string;
+  /**
+     * @minItems 1
+     * @maxItems 200
+     */
+  lines: BomLineDto[];
+}
+
+export interface BomRequirementLineDto {
+  lineNo: number;
+  componentItemId: string;
+  componentItem: BomItemRefDto;
+  /** Waste percentage of the line (4 dp). */
+  wastePct: string;
+  /** The line's base quantity per output batch, before scaling. */
+  qtyBase: string;
+  /** The standard requirement for the requested quantity, in the base unit (6 dp). */
+  requiredQtyBase: string;
+}
+
+export interface BomRequirementsDto {
+  bomId: string;
+  versionNo: number;
+  /** The requested quantity, in the BOM's output unit, as sent. */
+  qty: string;
+  qtyBase: string;
+  outputQtyBase: string;
+  lines: BomRequirementLineDto[];
+}
+
 export interface TreasuryAccountRefDto {
   id: string;
   code: string;
@@ -8238,6 +8428,12 @@ export const ErrorCode = {
   SALES_ORDER_OVER_INVOICED: 'SALES_ORDER_OVER_INVOICED',
   SALES_ORDER_NOT_INVOICEABLE: 'SALES_ORDER_NOT_INVOICEABLE',
   SALES_PRICE_APPROVAL_REQUIRED: 'SALES_PRICE_APPROVAL_REQUIRED',
+  BOM_CYCLE: 'BOM_CYCLE',
+  BOM_NOT_ACTIVE: 'BOM_NOT_ACTIVE',
+  BOM_NOT_DRAFT: 'BOM_NOT_DRAFT',
+  BOM_ITEM_NOT_MANUFACTURED: 'BOM_ITEM_NOT_MANUFACTURED',
+  BOM_COMPONENT_INVALID: 'BOM_COMPONENT_INVALID',
+  BOM_UNIT_INVALID: 'BOM_UNIT_INVALID',
   ISSUE_REQUEST_REQUIRED: 'ISSUE_REQUEST_REQUIRED',
   ISSUE_REQUEST_QTY_EXCEEDED: 'ISSUE_REQUEST_QTY_EXCEEDED',
   ISSUE_REQUEST_DEPARTMENT_MISMATCH: 'ISSUE_REQUEST_DEPARTMENT_MISMATCH',
@@ -8576,6 +8772,7 @@ export type CatalogControllerListItemsItemKind = typeof CatalogControllerListIte
 export const CatalogControllerListItemsItemKind = {
   STOCK: 'STOCK',
   SERVICE: 'SERVICE',
+  MANUFACTURED: 'MANUFACTURED',
 } as const;
 
 export type CatalogControllerListItemsIsActive = typeof CatalogControllerListItemsIsActive[keyof typeof CatalogControllerListItemsIsActive];
@@ -9666,6 +9863,61 @@ export const IssueRequestsControllerListStatus = {
   REJECTED: 'REJECTED',
   CANCELLED: 'CANCELLED',
   CLOSED: 'CLOSED',
+} as const;
+
+export type BomsControllerListParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
+  q?: string;
+  itemId?: string;
+  status?: BomsControllerListStatus;
+};
+
+export type BomsControllerListStatus = typeof BomsControllerListStatus[keyof typeof BomsControllerListStatus];
+
+
+export const BomsControllerListStatus = {
+  DRAFT: 'DRAFT',
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+} as const;
+
+export type BomsControllerRequirementsParams = {
+  qty: string;
+};
+
+export type BomsControllerPdfParams = {
+  format?: BomsControllerPdfFormat;
+  lang?: BomsControllerPdfLang;
+};
+
+export type BomsControllerPdfFormat = typeof BomsControllerPdfFormat[keyof typeof BomsControllerPdfFormat];
+
+
+export const BomsControllerPdfFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type BomsControllerPdfLang = typeof BomsControllerPdfLang[keyof typeof BomsControllerPdfLang];
+
+
+export const BomsControllerPdfLang = {
+  ar: 'ar',
+  en: 'en',
 } as const;
 
 export type TreasuryControllerListReceiptsParams = {
@@ -20598,6 +20850,443 @@ export const issueRequestsControllerClose = async (id: string, options?: Paramet
   {
     ...options,
     method: 'POST'
+
+
+  }
+);}
+
+
+
+export type bomsControllerListResponse200 = {
+  data: BomListItemDtoPage
+  status: 200
+}
+
+export type bomsControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bomsControllerListResponseSuccess = (bomsControllerListResponse200) & {
+  headers: Headers;
+};
+export type bomsControllerListResponseError = (bomsControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBomsControllerListUrl = (params?: BomsControllerListParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/boms?${stringifiedParams}` : `/api/v1/boms`
+}
+
+export const bomsControllerList = async (params?: BomsControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<bomsControllerListResponseSuccess> => {
+
+  return apiFetch<bomsControllerListResponseSuccess>(getBomsControllerListUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type bomsControllerCreateResponse201 = {
+  data: BomDetailDto
+  status: 201
+}
+
+export type bomsControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type bomsControllerCreateResponseSuccess = (bomsControllerCreateResponse201) & {
+  headers: Headers;
+};
+export type bomsControllerCreateResponseError = (bomsControllerCreateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBomsControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/boms`
+}
+
+export const bomsControllerCreate = async (createBomDto: CreateBomDto, options?: Parameters<typeof apiFetch>[1]): Promise<bomsControllerCreateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<bomsControllerCreateResponseSuccess>(getBomsControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createBomDto)
+  }
+);}
+
+
+
+export type bomsControllerGetResponse200 = {
+  data: BomDetailDto
+  status: 200
+}
+
+export type bomsControllerGetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bomsControllerGetResponseSuccess = (bomsControllerGetResponse200) & {
+  headers: Headers;
+};
+export type bomsControllerGetResponseError = (bomsControllerGetResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBomsControllerGetUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/boms/${id}`
+}
+
+export const bomsControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<bomsControllerGetResponseSuccess> => {
+
+  return apiFetch<bomsControllerGetResponseSuccess>(getBomsControllerGetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type bomsControllerUpdateResponse200 = {
+  data: BomDetailDto
+  status: 200
+}
+
+export type bomsControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bomsControllerUpdateResponseSuccess = (bomsControllerUpdateResponse200) & {
+  headers: Headers;
+};
+export type bomsControllerUpdateResponseError = (bomsControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBomsControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/boms/${id}`
+}
+
+export const bomsControllerUpdate = async (id: string,
+    updateBomDto: UpdateBomDto, options?: Parameters<typeof apiFetch>[1]): Promise<bomsControllerUpdateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<bomsControllerUpdateResponseSuccess>(getBomsControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateBomDto)
+  }
+);}
+
+
+
+export type bomsControllerDeleteDraftResponse200 = {
+  data: DeletedDto
+  status: 200
+}
+
+export type bomsControllerDeleteDraftResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bomsControllerDeleteDraftResponseSuccess = (bomsControllerDeleteDraftResponse200) & {
+  headers: Headers;
+};
+export type bomsControllerDeleteDraftResponseError = (bomsControllerDeleteDraftResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBomsControllerDeleteDraftUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/boms/${id}`
+}
+
+export const bomsControllerDeleteDraft = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<bomsControllerDeleteDraftResponseSuccess> => {
+
+  return apiFetch<bomsControllerDeleteDraftResponseSuccess>(getBomsControllerDeleteDraftUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type bomsControllerCopyResponse201 = {
+  data: BomDetailDto
+  status: 201
+}
+
+export type bomsControllerCopyResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type bomsControllerCopyResponseSuccess = (bomsControllerCopyResponse201) & {
+  headers: Headers;
+};
+export type bomsControllerCopyResponseError = (bomsControllerCopyResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBomsControllerCopyUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/boms/${id}/copy`
+}
+
+export const bomsControllerCopy = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<bomsControllerCopyResponseSuccess> => {
+
+  return apiFetch<bomsControllerCopyResponseSuccess>(getBomsControllerCopyUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type bomsControllerActivateResponse201 = {
+  data: BomDetailDto
+  status: 201
+}
+
+export type bomsControllerActivateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type bomsControllerActivateResponseSuccess = (bomsControllerActivateResponse201) & {
+  headers: Headers;
+};
+export type bomsControllerActivateResponseError = (bomsControllerActivateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBomsControllerActivateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/boms/${id}/activate`
+}
+
+export const bomsControllerActivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<bomsControllerActivateResponseSuccess> => {
+
+  return apiFetch<bomsControllerActivateResponseSuccess>(getBomsControllerActivateUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type bomsControllerDeactivateResponse201 = {
+  data: BomDetailDto
+  status: 201
+}
+
+export type bomsControllerDeactivateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type bomsControllerDeactivateResponseSuccess = (bomsControllerDeactivateResponse201) & {
+  headers: Headers;
+};
+export type bomsControllerDeactivateResponseError = (bomsControllerDeactivateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBomsControllerDeactivateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/boms/${id}/deactivate`
+}
+
+export const bomsControllerDeactivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<bomsControllerDeactivateResponseSuccess> => {
+
+  return apiFetch<bomsControllerDeactivateResponseSuccess>(getBomsControllerDeactivateUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type bomsControllerRequirementsResponse200 = {
+  data: BomRequirementsDto
+  status: 200
+}
+
+export type bomsControllerRequirementsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bomsControllerRequirementsResponseSuccess = (bomsControllerRequirementsResponse200) & {
+  headers: Headers;
+};
+export type bomsControllerRequirementsResponseError = (bomsControllerRequirementsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBomsControllerRequirementsUrl = (id: string,
+    params: BomsControllerRequirementsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/boms/${id}/requirements?${stringifiedParams}` : `/api/v1/boms/${id}/requirements`
+}
+
+/**
+ * @summary Standard requirements for a quantity of the output, one level (ADR-031 §6).
+ */
+export const bomsControllerRequirements = async (id: string,
+    params: BomsControllerRequirementsParams, options?: Parameters<typeof apiFetch>[1]): Promise<bomsControllerRequirementsResponseSuccess> => {
+
+  return apiFetch<bomsControllerRequirementsResponseSuccess>(getBomsControllerRequirementsUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type bomsControllerPdfResponse200 = {
+  data: Blob
+  status: 200
+}
+
+export type bomsControllerPdfResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bomsControllerPdfResponseSuccess = (bomsControllerPdfResponse200) & {
+  headers: Headers;
+};
+export type bomsControllerPdfResponseError = (bomsControllerPdfResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBomsControllerPdfUrl = (id: string,
+    params?: BomsControllerPdfParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/boms/${id}/pdf?${stringifiedParams}` : `/api/v1/boms/${id}/pdf`
+}
+
+export const bomsControllerPdf = async (id: string,
+    params?: BomsControllerPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<bomsControllerPdfResponseSuccess> => {
+
+  return apiFetch<bomsControllerPdfResponseSuccess>(getBomsControllerPdfUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
 
 
   }

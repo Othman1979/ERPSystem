@@ -152,7 +152,8 @@ function ItemsTab() {
     queryFn: ({ signal }) => settingsControllerListTaxCategories({ signal }).then((r) => r.data),
   });
   // On-hand quantities only for the stock items on this page (not every balance of the company).
-  const pageItemIds = list.rows.filter((r) => r.itemKind === 'STOCK').map((r) => r.id);
+  // Stocked kinds (STOCK and MANUFACTURED) hold balances; a service does not (ADR-031 §1).
+  const pageItemIds = list.rows.filter((r) => r.itemKind !== 'SERVICE').map((r) => r.id);
   const { data: balances } = useQuery({
     queryKey: ['stock-balances', 'items-page', pageItemIds],
     enabled: pageItemIds.length > 0,
@@ -350,6 +351,7 @@ function ItemsTab() {
               onChange={setKindFilter}
               options={[
                 { value: 'STOCK', label: t('items.stock') },
+                { value: 'MANUFACTURED', label: t('items.manufactured') },
                 { value: 'SERVICE', label: t('items.service') },
               ]}
             />
@@ -462,6 +464,7 @@ function ItemsTab() {
                 disabled={!!editing}
                 options={[
                   { value: 'STOCK', label: t('items.stock') },
+                  { value: 'MANUFACTURED', label: t('items.manufactured') },
                   { value: 'SERVICE', label: t('items.service') },
                 ]}
               />
