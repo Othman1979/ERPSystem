@@ -71,6 +71,15 @@ export class DocumentSupportService {
     return calendarDateIn(company?.timezone ?? 'Asia/Amman', now);
   }
 
+  /**
+   * Today in the company's timezone as a @db.Date value (midnight UTC of that
+   * calendar date): the default document date and the "today" of validity
+   * checks (review #56: never the UTC date, which is yesterday in Amman until 03:00).
+   */
+  async companyTodayDate(now = new Date()): Promise<Date> {
+    return new Date(`${await this.companyToday(this.tenant().db, now)}T00:00:00.000Z`);
+  }
+
   /** Company setting: invoice prices are entered including tax (ADR-017). */
   async pricesIncludeTax(db: ReturnType<PrismaService['forTenant']>): Promise<boolean> {
     const company = await db.company.findFirst({

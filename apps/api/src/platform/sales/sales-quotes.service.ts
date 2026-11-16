@@ -17,7 +17,7 @@ import { DocumentSupportService } from '../shared/document-support.service.js';
 import { amountColumns, documentTotals, priceLine, resolveItem, type PricedLine } from '../procurement/procurement-lines.js';
 import { assertStatus } from '../procurement/procurement-locks.js';
 import type { CreateSalesQuoteDto, ListSalesQuotesQueryDto, SalesLineDto, UpdateSalesQuoteDto } from './dto/sales-cycle.dto.js';
-import { defaultValidUntil, isQuoteExpired, todayUtc } from './sales-cycle.rules.js';
+import { defaultValidUntil, isQuoteExpired } from './sales-cycle.rules.js';
 import { lockCompanySales, lockSalesQuote } from './sales-cycle.locks.js';
 
 const itemRef = { select: { id: true, code: true, nameAr: true, nameEn: true, baseUnitId: true, itemKind: true } } as const;
@@ -127,10 +127,12 @@ export class SalesQuotesService {
         warehouse: { select: { id: true, code: true, nameAr: true } },
         costCenter: { select: { id: true, code: true, nameAr: true } },
         lines: { orderBy: { lineNo: 'asc' }, include: { item: itemRef, itemUnit: unitRef } },
+        // The order it was converted to (at most one, sales_quote_id is unique): the link back (review #56).
+        orders: { select: { id: true, orderNo: true, status: true } },
       },
     });
     if (!quote) throw DomainError.notFound('SalesQuote', id.toString());
-    return { ...quote, expired: quote.status === 'SENT' && isQuoteExpired(quote.validUntil, todayUtc()) };
+    return { ...quote, expired: quote.status === 'SENT' && isQuoteExpired(quote.validUntil, (await this.support.companyTodayDate())) };
   }
 
   async create(dto: CreateSalesQuoteDto) {
@@ -145,7 +147,7 @@ export class SalesQuotesService {
       db.$transaction(async (tx) => {
         const settings = await lockCompanySales(tx, tenantId, companyId);
         const lines = await this.priceLines(tx, dto.lines, settings.pricesIncludeTax);
-        const quoteDate = dto.quoteDate ? new Date(dto.quoteDate) : todayUtc();
+        const quoteDate = dto.quoteDate ? new Date(dto.quoteDate) : (await this.support.companyTodayDate());
         const header = this.header(dto, quoteDate, customerId, warehouseId, dto.validUntil, settings.quoteValidityDays);
         return this.writeQuote(tx, tenantId, companyId, branchId, settings.pricesIncludeTax, header, lines);
       }, POSTING_TX_OPTIONS),
@@ -171,8 +173,11 @@ export class SalesQuotesService {
         assertBranchAllowed(row.branch_id);
         assertStatus('sales quote', row.status, ['DRAFT'], 'edited');
         const lines = await this.priceLines(tx, dto.lines, settings.pricesIncludeTax);
-        const quoteDate = dto.quoteDate ? new Date(dto.quoteDate) : (await tx.salesQuote.findFirstOrThrow({ where: { id }, select: { quoteDate: true } })).quoteDate;
-        const header = this.header(dto, quoteDate, customerId, warehouseId, dto.validUntil, settings.quoteValidityDays);
+        const saved = await tx.salesQuote.findFirstOrThrow({ where: { id }, select: { quoteDate: true, validUntil: true } });
+        const quoteDate = dto.quoteDate ? new Date(dto.quoteDate) : saved.quoteDate;
+        // An edit that leaves validUntil out keeps the quote's own, not the company default (review #56).
+        const validUntil = dto.validUntil !== undefined ? dto.validUntil : saved.validUntil ? saved.validUntil.toISOString().slice(0, 10) : null;
+        const header = this.header(dto, quoteDate, customerId, warehouseId, validUntil, settings.quoteValidityDays);
         if (header.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, header.costCenterId);
         await tx.salesQuoteLine.deleteMany({ where: { quoteId: id } });
         await tx.salesQuote.update({
@@ -224,7 +229,7 @@ export class SalesQuotesService {
   accept(id: bigint) {
     return this.transition(id, 'accept', ['SENT'], 'accepted', async (tx) => {
       const quote = await tx.salesQuote.findFirstOrThrow({ where: { id }, select: { validUntil: true } });
-      if (isQuoteExpired(quote.validUntil, todayUtc())) {
+      if (isQuoteExpired(quote.validUntil, (await this.support.companyTodayDate()))) {
         throw new DomainError(ErrorCode.QUOTE_EXPIRED, 'The quote has expired', { validUntil: quote.validUntil?.toISOString().slice(0, 10) ?? null });
       }
       return { status: 'ACCEPTED', acceptedAt: new Date(), acceptedBy: this.support.userId() ?? null };
@@ -268,7 +273,7 @@ export class SalesQuotesService {
     const newId = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         const settings = await lockCompanySales(tx, tenantId, companyId);
-        const quoteDate = todayUtc();
+        const quoteDate = (await this.support.companyTodayDate());
         const header: QuoteHeader = {
           customerId: src.customerId,
           warehouseId: src.warehouseId,
@@ -342,13 +347,17 @@ export class SalesQuotesService {
     validUntil: string | null | undefined,
     validityDays: number,
   ): QuoteHeader {
+    const until = validUntil === undefined ? defaultValidUntil(quoteDate, validityDays) : validUntil === null ? null : new Date(validUntil);
+    // A quote is valid from its own date: an earlier validUntil would be expired at once (review #56).
+    if (until !== null && until.getTime() < quoteDate.getTime()) {
+      throw new DomainError(ErrorCode.VALIDATION, 'validUntil must not be before the quote date', { field: 'validUntil' });
+    }
     return {
       customerId,
       warehouseId,
       costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
       quoteDate,
-      validUntil:
-        validUntil === undefined ? defaultValidUntil(quoteDate, validityDays) : validUntil === null ? null : new Date(validUntil),
+      validUntil: until,
       description: dto.description ?? null,
     };
   }

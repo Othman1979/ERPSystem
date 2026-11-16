@@ -50,7 +50,7 @@ import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { isAuthoredBy } from './procurement/orderPayload';
 import { salesCycleKeys, invalidateSalesCycle } from './sales/cycleQueryKeys';
 import { CustomerFilter } from './sales/CustomerFilter';
-import { errorText } from './sales/errorText';
+import { apiErrorText as errorText } from '../components/ExportButtons';
 import { OrderInvoiceModal } from './sales/OrderInvoiceModal';
 import { ReservationPanel, type ReservationLine } from './sales/ReservationPanel';
 import { SalesLinesGrid, type SalesLineDraft } from './sales/SalesLinesGrid';

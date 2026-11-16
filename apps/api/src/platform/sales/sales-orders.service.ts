@@ -37,7 +37,6 @@ import {
   neededPerItem,
   outstandingValue,
   overCreditLimit,
-  todayUtc,
 } from './sales-cycle.rules.js';
 import {
   lockCompanySales,
@@ -366,7 +365,7 @@ export class SalesOrdersService {
             tenantId,
             companyId,
             branchId,
-            orderDate: dto.orderDate ? new Date(dto.orderDate) : todayUtc(),
+            orderDate: dto.orderDate ? new Date(dto.orderDate) : (await this.support.companyTodayDate()),
             expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
             customerId: sq.customerId,
             warehouseId: BigInt(warehouseId),
@@ -624,7 +623,7 @@ export class SalesOrdersService {
     const limit = party?.creditLimit ? new Decimal(party.creditLimit.toString()) : null;
     if (limit === null) return false;
     // The ledger read is company-wide: a restricted member must not see less exposure (ADR-003).
-    const receivable = (await this.ledger.controlBalancesByParty('CUSTOMER', todayUtc(), undefined, { allBranches: true })).get(order.customerId) ?? new Decimal(0);
+    const receivable = (await this.ledger.controlBalancesByParty('CUSTOMER', (await this.support.companyTodayDate()), undefined, { allBranches: true })).get(order.customerId) ?? new Decimal(0);
     const others = await tx.salesOrder.findMany({
       where: { companyId: ctx.companyId, customerId: order.customerId, status: { in: [...RESERVING_ORDER_STATUSES] }, id: { not: id } },
       select: { lines: { select: { lineTotal: true, qtyBase: true, invoicedQty: true } } },

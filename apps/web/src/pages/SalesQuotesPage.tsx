@@ -63,7 +63,7 @@ import { idemHeaders } from '../idempotency';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { invalidateSalesCycle, salesCycleKeys } from './sales/cycleQueryKeys';
-import { errorText } from './sales/errorText';
+import { apiErrorText as errorText } from '../components/ExportButtons';
 import { CustomerFilter } from './sales/CustomerFilter';
 import { SalesLinesGrid, type SalesLineDraft } from './sales/SalesLinesGrid';
 import { convertQuoteBody, defaultValidUntil, isQuoteExpired, salesQuoteBody } from './sales/quotePayload';
@@ -576,6 +576,8 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
   const [convertOpen, setConvertOpen] = useState(false);
   const [convertWarehouse, setConvertWarehouse] = useState<string | undefined>(undefined);
   const [createdOrder, setCreatedOrder] = useState<{ id: string; orderNo: string | null } | null>(null);
+  // The order this quote was converted to: just now, or saved on the quote (review #56).
+  const linkedOrder = createdOrder ?? quote.orders[0] ?? null;
   const canManage = can(PERMISSIONS.SALES_MANAGE);
   const warehouses = useQuery({
     queryKey: ['warehouses'],
@@ -694,14 +696,14 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
           message={t('salesCycle.expiredNotice', { date: dayjs(quote.validUntil).format('YYYY-MM-DD') })}
         />
       )}
-      {createdOrder && (
+      {linkedOrder && (
         <Alert
-          type="success"
+          type={createdOrder ? 'success' : 'info'}
           showIcon
           message={
             <Space wrap>
-              {t('salesCycle.orderCreated')}
-              <Link to={`/sales-orders?orderId=${createdOrder.id}`}>{createdOrder.orderNo ?? `#${createdOrder.id}`}</Link>
+              {createdOrder ? t('salesCycle.orderCreated') : t('salesCycle.convertedTo')}
+              <Link to={`/sales-orders?orderId=${linkedOrder.id}`}>{linkedOrder.orderNo ?? `#${linkedOrder.id}`}</Link>
             </Space>
           }
         />

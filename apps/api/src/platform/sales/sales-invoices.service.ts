@@ -57,7 +57,6 @@ import {
   leftToInvoice,
   neededPerItem,
   pricedBelowOrder,
-  todayUtc,
   unitQtyFloor,
 } from './sales-cycle.rules.js';
 import type { CreateInvoiceFromOrderDto } from './dto/sales-cycle.dto.js';
@@ -761,7 +760,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       if (!dto.cashAccountId) throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');
       await this.assertCashAccount(db, companyId, BigInt(dto.cashAccountId));
     }
-    const invoiceDate = dto.invoiceDate ? new Date(dto.invoiceDate) : todayUtc();
+    const invoiceDate = dto.invoiceDate ? new Date(dto.invoiceDate) : (await this.support.companyTodayDate());
 
     const id = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {

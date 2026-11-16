@@ -353,6 +353,21 @@ describe('Phase 14 — sales quotations and sales orders (ADR-027)', () => {
       expect(eq(conv.body.grandTotal, (await get(owner, `sales-quotes/${quote1}`)).body.grandTotal)).toBe(true);
       order1 = conv.body.id;
       expect(err(await act(owner, 'sales-quotes', quote1, 'convert', { warehouseId: warehouse }))).toEqual([expect.any(Number), 'QUOTE_ALREADY_CONVERTED']);
+      // The quote names its order, so the link survives a reload (review #56).
+      expect((await get(owner, `sales-quotes/${quote1}`)).body.orders).toEqual([expect.objectContaining({ id: order1, status: 'DRAFT' })]);
+    });
+
+    it('refuses a validity before the quote date, and an edit without validUntil keeps the quote own (review #56)', async () => {
+      const bad = await createQuote(owner, quoteBody([{ itemId: itemZero, qty: '1', unitPrice: '10' }], { quoteDate: '2026-11-15', validUntil: '2026-11-01' }));
+      expect(err(bad)).toEqual([expect.any(Number), 'VALIDATION']);
+      const q = await createQuote(owner, quoteBody([{ itemId: itemZero, qty: '1', unitPrice: '10' }], { quoteDate: '2026-11-15', validUntil: '2027-01-14' }));
+      expect(q.status).toBe(201);
+      const edit = await api()
+        .put(`/api/v1/sales-quotes/${q.body.id}`)
+        .set(auth(owner))
+        .send(quoteBody([{ itemId: itemZero, qty: '2', unitPrice: '10' }], { quoteDate: '2026-11-15' }));
+      expect(edit.status).toBe(200);
+      expect(edit.body.validUntil).toBe('2027-01-14T00:00:00.000Z');
     });
   });
 

@@ -92,7 +92,13 @@ export class SalesCycleQuoteDetailDto extends SalesQuoteRow {
 
   @ApiProperty({ type: 'boolean', description: 'SENT and past its validUntil date; computed, not stored.' })
   expired!: boolean;
+
+  @ApiProperty({ type: () => SalesCycleOrderOfQuoteDto, isArray: true, description: 'The order it was converted to: none or one.' })
+  orders!: SalesCycleOrderOfQuoteDto[];
 }
+
+/** The order a quote was converted to, on the quote detail (review #56). */
+export class SalesCycleOrderOfQuoteDto extends PickType(SalesOrderRow, ['id', 'orderNo', 'status'] as const) {}
 
 // ------------------------------------------------------- sales orders
 

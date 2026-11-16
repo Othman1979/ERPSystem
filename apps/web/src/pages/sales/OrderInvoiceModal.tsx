@@ -8,7 +8,7 @@ import { selectCashBank, useAccounts } from '../../hooks/useAccounts';
 import { codeAndName } from '../../i18n/displayName';
 import { idemHeaders } from '../../idempotency';
 import { invalidateSalesCycle } from './cycleQueryKeys';
-import { errorText } from './errorText';
+import { apiErrorText as errorText } from '../../components/ExportButtons';
 import { orderInvoiceBody, orderInvoiceGaps, type OrderInvoiceForm } from './orderPayload';
 
 /** The form starts with today's date, a credit invoice and no account (ADR-027 §4). */

@@ -3818,6 +3818,26 @@ export interface SalesCycleQuoteLineViewDto {
   itemUnit: SalesCycleItemUnitDto | null;
 }
 
+export type SalesOrderStatus = typeof SalesOrderStatus[keyof typeof SalesOrderStatus];
+
+
+export const SalesOrderStatus = {
+  DRAFT: 'DRAFT',
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  CONFIRMED: 'CONFIRMED',
+  PARTIALLY_INVOICED: 'PARTIALLY_INVOICED',
+  INVOICED: 'INVOICED',
+  CLOSED: 'CLOSED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export interface SalesCycleOrderOfQuoteDto {
+  id: string;
+  /** @nullable */
+  orderNo: string | null;
+  status: SalesOrderStatus;
+}
+
 export interface SalesCycleQuoteDetailDto {
   id: string;
   tenantId: string;
@@ -3882,6 +3902,8 @@ export interface SalesCycleQuoteDetailDto {
   lines: SalesCycleQuoteLineViewDto[];
   /** SENT and past its validUntil date; computed, not stored. */
   expired: boolean;
+  /** The order it was converted to: none or one. */
+  orders: SalesCycleOrderOfQuoteDto[];
 }
 
 export interface SalesLineDto {
@@ -3957,19 +3979,6 @@ export interface ConvertSalesQuoteDto {
      */
   paymentTermsDays?: number;
 }
-
-export type SalesOrderStatus = typeof SalesOrderStatus[keyof typeof SalesOrderStatus];
-
-
-export const SalesOrderStatus = {
-  DRAFT: 'DRAFT',
-  PENDING_APPROVAL: 'PENDING_APPROVAL',
-  CONFIRMED: 'CONFIRMED',
-  PARTIALLY_INVOICED: 'PARTIALLY_INVOICED',
-  INVOICED: 'INVOICED',
-  CLOSED: 'CLOSED',
-  CANCELLED: 'CANCELLED',
-} as const;
 
 export interface SalesCycleQuoteStatusRefDto {
   id: string;
