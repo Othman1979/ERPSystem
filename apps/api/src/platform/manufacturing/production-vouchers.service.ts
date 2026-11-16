@@ -404,6 +404,23 @@ export class ProductionVouchersService {
     // The version the voucher was made with: its applied cost is read now (the snapshot).
     const bom = await tx.bom.findFirst({ where: { id: draft.bomId, companyId }, select: { status: true, appliedCostPerUnit: true } });
     if (!bom || bom.status === 'DRAFT') throw new DomainError(ErrorCode.BOM_NOT_ACTIVE, 'The bill of materials of this voucher is not active');
+    // The catalogue may have changed since the draft was saved (review #62): the product must still be an
+    // active manufactured item, and every material an active stocked item, or a line would silently not move.
+    const kinds = await tx.item.findMany({
+      where: { companyId, id: { in: [draft.itemId, ...draft.lines.map((l) => l.itemId)] } },
+      select: { id: true, code: true, itemKind: true, isActive: true },
+    });
+    const kindById = new Map(kinds.map((k) => [k.id, k]));
+    const product = kindById.get(draft.itemId);
+    if (!product || !product.isActive || product.itemKind !== 'MANUFACTURED') {
+      throw new DomainError(ErrorCode.VALIDATION, 'The produced item is no longer an active manufactured item', { itemId: draft.itemId.toString() });
+    }
+    for (const line of draft.lines) {
+      const k = kindById.get(line.itemId);
+      if (!k || !k.isActive || !isStocked(k.itemKind)) {
+        throw new DomainError(ErrorCode.VALIDATION, 'A material is no longer an active stock item', { lineNo: line.lineNo, itemId: line.itemId.toString() });
+      }
+    }
 
     const voucherDate = new Date(draft.voucherDate);
     const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, voucherDate);

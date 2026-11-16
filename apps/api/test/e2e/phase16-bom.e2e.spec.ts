@@ -205,6 +205,8 @@ describe('Phase 16 — bills of materials (ADR-031, part A)', () => {
     expect(err(await post(ownerA, 'boms', { itemId: R1, outputQty: '1', lines: [{ componentItemId: R2, qty: '1' }] }))).toEqual([400, 'BOM_ITEM_NOT_MANUFACTURED']);
     expect(err(await post(ownerA, 'boms', { itemId: M1, outputQty: '1', lines: [{ componentItemId: SV, qty: '1' }] }))).toEqual([400, 'BOM_COMPONENT_INVALID']);
     expect(err(await post(ownerA, 'boms', { itemId: M1, outputQty: '1', lines: [{ componentItemId: M1, qty: '1' }] }))).toEqual([400, 'BOM_COMPONENT_INVALID']);
+    // One line per component (review #62): the voucher keys standards by item.
+    expect(err(await post(ownerA, 'boms', { itemId: M1, outputQty: '1', lines: [{ componentItemId: R2, qty: '1' }, { componentItemId: R2, qty: '2' }] }))).toEqual([400, 'BOM_COMPONENT_INVALID']);
     // R1's BOX row used on R2: the unit belongs to another item.
     expect(err(await post(ownerA, 'boms', { itemId: M1, outputQty: '1', lines: [{ componentItemId: R2, itemUnitId: R1BOX, qty: '1' }] }))).toEqual([400, 'BOM_UNIT_INVALID']);
     expect(err(await post(ownerA, 'boms', { itemId: M1, outputQty: '1', lines: [{ componentItemId: R2, qty: '0' }] }))).toEqual([400, 'VALIDATION']);

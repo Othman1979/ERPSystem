@@ -525,8 +525,14 @@ export class BomService {
     const units = await tx.itemUnit.findMany({ where: { id: { in: unitIds } }, select: { id: true, itemId: true, factorToBase: true } });
     const unitById = new Map(units.map((u) => [u.id, u]));
 
+    // One line per component (review #62): the voucher keys standards by item and refuses duplicates.
+    const seen = new Set<bigint>();
     const lines = dto.lines.map((l: BomLineDto, index): ResolvedLine => {
       const componentItemId = BigInt(l.componentItemId);
+      if (seen.has(componentItemId)) {
+        throw new DomainError(ErrorCode.BOM_COMPONENT_INVALID, 'A component appears on two lines: merge them', { lineNo: index + 1 });
+      }
+      seen.add(componentItemId);
       if (componentItemId === itemId) {
         throw new DomainError(ErrorCode.BOM_COMPONENT_INVALID, 'An item cannot be its own component', { lineNo: index + 1 });
       }
