@@ -6715,6 +6715,250 @@ export interface BomRequirementsDto {
   lines: BomRequirementLineDto[];
 }
 
+export type ProductionBomRefDtoStatus = typeof ProductionBomRefDtoStatus[keyof typeof ProductionBomRefDtoStatus];
+
+
+export const ProductionBomRefDtoStatus = {
+  DRAFT: 'DRAFT',
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+} as const;
+
+export interface ProductionBomRefDto {
+  id: string;
+  versionNo: number;
+  status: ProductionBomRefDtoStatus;
+}
+
+export interface ProductionWarehouseRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export interface ProductionVoucherListItemDto {
+  id: string;
+  /** @nullable */
+  docNo: string | null;
+  status: DocumentStatus;
+  voucherDate: string;
+  itemId: string;
+  bomId: string;
+  qty: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  qtyBase: string;
+  materialsWarehouseId: string;
+  outputWarehouseId: string;
+  appliedTotal: string;
+  materialsTotal: string;
+  outputTotal: string;
+  /** @nullable */
+  reversalOfId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  item: BomItemRefDto;
+  /**
+     * Null when the quantity is in the base unit.
+     * @nullable
+     */
+  itemUnit: BomItemUnitRefDto | null;
+  bom: ProductionBomRefDto;
+  materialsWarehouse: ProductionWarehouseRefDto;
+  outputWarehouse: ProductionWarehouseRefDto;
+}
+
+export interface ProductionVoucherListItemDtoPage {
+  items: ProductionVoucherListItemDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface ProductionLineDto {
+  itemId: string;
+  /** Absent: the component's base unit. */
+  itemUnitId?: string;
+  qty: string;
+  /** @maxLength 500 */
+  note?: string;
+}
+
+export interface CreateProductionVoucherDto {
+  itemId: string;
+  /** Absent: the item's ACTIVE version. Given: that version, ACTIVE or INACTIVE (never a draft). */
+  bomId?: string;
+  /** The produced quantity in itemUnitId (or the base unit when absent). */
+  qty: string;
+  itemUnitId?: string;
+  materialsWarehouseId: string;
+  /** Absent: the materials warehouse (ADR-031 §7). */
+  outputWarehouseId?: string;
+  voucherDate: string;
+  /** Cost centre of the applied-cost journal line only (ADR-031 §7). */
+  costCenterId?: string;
+  /** @maxLength 500 */
+  description?: string;
+  /**
+     * The actual consumption (ADR-031 §3). Absent: the standard requirements of
+     * the version, in the components' line units.
+     * @maxItems 200
+     */
+  lines?: ProductionLineDto[];
+}
+
+export interface ProductionCostCentreRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface ProductionShortageDto {
+  availableQtyBase: string;
+  shortageQtyBase: string;
+  /** True for a MANUFACTURED component that has an ACTIVE version to produce it from. */
+  canProduce: boolean;
+}
+
+export interface ProductionVoucherLineDetailDto {
+  id: string;
+  lineNo: number;
+  itemId: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  /** Actual consumption entered by the user, in itemUnitId and in the base unit. */
+  qty: string;
+  qtyBase: string;
+  /** Standard (BOM) requirement in the base unit; qtyBase minus this is the variance (ADR-031 §3). */
+  standardQtyBase: string;
+  /**
+     * Written at posting: weighted-average cost per base unit (6 dp) and the line total (3 dp).
+     * @nullable
+     */
+  unitCost: string | null;
+  /** @nullable */
+  totalCost: string | null;
+  /** @nullable */
+  note: string | null;
+  item: BomItemRefDto;
+  /** @nullable */
+  itemUnit: BomItemUnitRefDto | null;
+  /**
+     * Null once posted, and on a line of a posted voucher.
+     * @nullable
+     */
+  shortage: ProductionShortageDto | null;
+}
+
+export interface ProductionJournalRefDto {
+  id: string;
+  entryNo: string;
+}
+
+export type ProductionVoucherRefDtoStatus = typeof ProductionVoucherRefDtoStatus[keyof typeof ProductionVoucherRefDtoStatus];
+
+
+export const ProductionVoucherRefDtoStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
+
+export interface ProductionVoucherRefDto {
+  id: string;
+  /** @nullable */
+  docNo: string | null;
+  status: ProductionVoucherRefDtoStatus;
+}
+
+export interface ProductionVoucherDetailDto {
+  id: string;
+  /** @nullable */
+  docNo: string | null;
+  status: DocumentStatus;
+  voucherDate: string;
+  itemId: string;
+  bomId: string;
+  qty: string;
+  /** @nullable */
+  itemUnitId: string | null;
+  qtyBase: string;
+  materialsWarehouseId: string;
+  outputWarehouseId: string;
+  /** @nullable */
+  branchId: string | null;
+  /**
+     * Cost centre tagged on the applied-cost journal line only (ADR-031 §2 and §7).
+     * @nullable
+     */
+  costCenterId: string | null;
+  /** @nullable */
+  description: string | null;
+  /** Snapshot of the BOM applied cost (3 dp) and the derived totals, written at posting. */
+  appliedCostPerUnit: string;
+  appliedTotal: string;
+  materialsTotal: string;
+  outputTotal: string;
+  /** @nullable */
+  outputUnitCost: string | null;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  reversalOfId: string | null;
+  /** @nullable */
+  postedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  item: BomItemRefDto;
+  /** @nullable */
+  itemUnit: BomItemUnitRefDto | null;
+  bom: ProductionBomRefDto;
+  materialsWarehouse: ProductionWarehouseRefDto;
+  outputWarehouse: ProductionWarehouseRefDto;
+  /** @nullable */
+  costCenter: ProductionCostCentreRefDto | null;
+  lines: ProductionVoucherLineDetailDto[];
+  /** @nullable */
+  journalEntry: ProductionJournalRefDto | null;
+  /** @nullable */
+  reversalOf: ProductionVoucherRefDto | null;
+  reversals: ProductionVoucherRefDto[];
+}
+
+export interface UpdateProductionVoucherDto {
+  /** Absent: the item's ACTIVE version. Given: that version, ACTIVE or INACTIVE (never a draft). */
+  bomId?: string;
+  /** The produced quantity in itemUnitId (or the base unit when absent). */
+  qty: string;
+  itemUnitId?: string;
+  materialsWarehouseId: string;
+  /** Absent: the materials warehouse (ADR-031 §7). */
+  outputWarehouseId?: string;
+  voucherDate: string;
+  /** Cost centre of the applied-cost journal line only (ADR-031 §7). */
+  costCenterId?: string;
+  /** @maxLength 500 */
+  description?: string;
+  /**
+     * The actual consumption (ADR-031 §3). Absent: the standard requirements of
+     * the version, in the components' line units.
+     * @maxItems 200
+     */
+  lines?: ProductionLineDto[];
+}
+
 export interface TreasuryAccountRefDto {
   id: string;
   code: string;
@@ -8434,6 +8678,11 @@ export const ErrorCode = {
   BOM_ITEM_NOT_MANUFACTURED: 'BOM_ITEM_NOT_MANUFACTURED',
   BOM_COMPONENT_INVALID: 'BOM_COMPONENT_INVALID',
   BOM_UNIT_INVALID: 'BOM_UNIT_INVALID',
+  PRODUCTION_NOT_DRAFT: 'PRODUCTION_NOT_DRAFT',
+  PRODUCTION_NOT_POSTED: 'PRODUCTION_NOT_POSTED',
+  PRODUCTION_ALREADY_REVERSED: 'PRODUCTION_ALREADY_REVERSED',
+  PRODUCTION_REVERSAL_NOT_REVERSIBLE: 'PRODUCTION_REVERSAL_NOT_REVERSIBLE',
+  PRODUCTION_OUTPUT_CONSUMED: 'PRODUCTION_OUTPUT_CONSUMED',
   ISSUE_REQUEST_REQUIRED: 'ISSUE_REQUEST_REQUIRED',
   ISSUE_REQUEST_QTY_EXCEEDED: 'ISSUE_REQUEST_QTY_EXCEEDED',
   ISSUE_REQUEST_DEPARTMENT_MISMATCH: 'ISSUE_REQUEST_DEPARTMENT_MISMATCH',
@@ -8753,6 +9002,8 @@ export type CatalogControllerListItemsParams = {
   q?: string;
   sort?: CatalogControllerListItemsSort;
   itemKind?: CatalogControllerListItemsItemKind;
+  /** `true`: only the stocked kinds, STOCK and MANUFACTURED (ADR-031 §1), for the stock pickers. */
+  stocked?: CatalogControllerListItemsStocked;
   isActive?: CatalogControllerListItemsIsActive;
 };
 
@@ -8773,6 +9024,14 @@ export const CatalogControllerListItemsItemKind = {
   STOCK: 'STOCK',
   SERVICE: 'SERVICE',
   MANUFACTURED: 'MANUFACTURED',
+} as const;
+
+export type CatalogControllerListItemsStocked = typeof CatalogControllerListItemsStocked[keyof typeof CatalogControllerListItemsStocked];
+
+
+export const CatalogControllerListItemsStocked = {
+  true: 'true',
+  false: 'false',
 } as const;
 
 export type CatalogControllerListItemsIsActive = typeof CatalogControllerListItemsIsActive[keyof typeof CatalogControllerListItemsIsActive];
@@ -9026,6 +9285,7 @@ export type StockReportsControllerMovementsSourceType = typeof StockReportsContr
 export const StockReportsControllerMovementsSourceType = {
   GOODS_RECEIPT: 'GOODS_RECEIPT',
   GOODS_ISSUE: 'GOODS_ISSUE',
+  PRODUCTION: 'PRODUCTION',
   PURCHASE_INVOICE: 'PURCHASE_INVOICE',
   PURCHASE_RETURN: 'PURCHASE_RETURN',
   REVALUATION: 'REVALUATION',
@@ -9062,6 +9322,7 @@ export type StockReportsControllerItemLedgerSourceType = typeof StockReportsCont
 export const StockReportsControllerItemLedgerSourceType = {
   GOODS_RECEIPT: 'GOODS_RECEIPT',
   GOODS_ISSUE: 'GOODS_ISSUE',
+  PRODUCTION: 'PRODUCTION',
   PURCHASE_INVOICE: 'PURCHASE_INVOICE',
   PURCHASE_RETURN: 'PURCHASE_RETURN',
   REVALUATION: 'REVALUATION',
@@ -9916,6 +10177,58 @@ export type BomsControllerPdfLang = typeof BomsControllerPdfLang[keyof typeof Bo
 
 
 export const BomsControllerPdfLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type ProductionVouchersControllerListParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
+  q?: string;
+  status?: ProductionVouchersControllerListStatus;
+  itemId?: string;
+  from?: string;
+  to?: string;
+};
+
+export type ProductionVouchersControllerListStatus = typeof ProductionVouchersControllerListStatus[keyof typeof ProductionVouchersControllerListStatus];
+
+
+export const ProductionVouchersControllerListStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+} as const;
+
+export type ProductionVouchersControllerPdfParams = {
+  format?: ProductionVouchersControllerPdfFormat;
+  lang?: ProductionVouchersControllerPdfLang;
+};
+
+export type ProductionVouchersControllerPdfFormat = typeof ProductionVouchersControllerPdfFormat[keyof typeof ProductionVouchersControllerPdfFormat];
+
+
+export const ProductionVouchersControllerPdfFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ProductionVouchersControllerPdfLang = typeof ProductionVouchersControllerPdfLang[keyof typeof ProductionVouchersControllerPdfLang];
+
+
+export const ProductionVouchersControllerPdfLang = {
   ar: 'ar',
   en: 'en',
 } as const;
@@ -21284,6 +21597,355 @@ export const bomsControllerPdf = async (id: string,
     params?: BomsControllerPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<bomsControllerPdfResponseSuccess> => {
 
   return apiFetch<bomsControllerPdfResponseSuccess>(getBomsControllerPdfUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type productionVouchersControllerListResponse200 = {
+  data: ProductionVoucherListItemDtoPage
+  status: 200
+}
+
+export type productionVouchersControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type productionVouchersControllerListResponseSuccess = (productionVouchersControllerListResponse200) & {
+  headers: Headers;
+};
+export type productionVouchersControllerListResponseError = (productionVouchersControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProductionVouchersControllerListUrl = (params?: ProductionVouchersControllerListParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/production-vouchers?${stringifiedParams}` : `/api/v1/production-vouchers`
+}
+
+export const productionVouchersControllerList = async (params?: ProductionVouchersControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<productionVouchersControllerListResponseSuccess> => {
+
+  return apiFetch<productionVouchersControllerListResponseSuccess>(getProductionVouchersControllerListUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type productionVouchersControllerCreateResponse201 = {
+  data: ProductionVoucherDetailDto
+  status: 201
+}
+
+export type productionVouchersControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type productionVouchersControllerCreateResponseSuccess = (productionVouchersControllerCreateResponse201) & {
+  headers: Headers;
+};
+export type productionVouchersControllerCreateResponseError = (productionVouchersControllerCreateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProductionVouchersControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/production-vouchers`
+}
+
+export const productionVouchersControllerCreate = async (createProductionVoucherDto: CreateProductionVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<productionVouchersControllerCreateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<productionVouchersControllerCreateResponseSuccess>(getProductionVouchersControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createProductionVoucherDto)
+  }
+);}
+
+
+
+export type productionVouchersControllerGetResponse200 = {
+  data: ProductionVoucherDetailDto
+  status: 200
+}
+
+export type productionVouchersControllerGetResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type productionVouchersControllerGetResponseSuccess = (productionVouchersControllerGetResponse200) & {
+  headers: Headers;
+};
+export type productionVouchersControllerGetResponseError = (productionVouchersControllerGetResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProductionVouchersControllerGetUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/production-vouchers/${id}`
+}
+
+export const productionVouchersControllerGet = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<productionVouchersControllerGetResponseSuccess> => {
+
+  return apiFetch<productionVouchersControllerGetResponseSuccess>(getProductionVouchersControllerGetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type productionVouchersControllerUpdateResponse200 = {
+  data: ProductionVoucherDetailDto
+  status: 200
+}
+
+export type productionVouchersControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type productionVouchersControllerUpdateResponseSuccess = (productionVouchersControllerUpdateResponse200) & {
+  headers: Headers;
+};
+export type productionVouchersControllerUpdateResponseError = (productionVouchersControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProductionVouchersControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/production-vouchers/${id}`
+}
+
+export const productionVouchersControllerUpdate = async (id: string,
+    updateProductionVoucherDto: UpdateProductionVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<productionVouchersControllerUpdateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<productionVouchersControllerUpdateResponseSuccess>(getProductionVouchersControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateProductionVoucherDto)
+  }
+);}
+
+
+
+export type productionVouchersControllerDeleteDraftResponse200 = {
+  data: DeletedDto
+  status: 200
+}
+
+export type productionVouchersControllerDeleteDraftResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type productionVouchersControllerDeleteDraftResponseSuccess = (productionVouchersControllerDeleteDraftResponse200) & {
+  headers: Headers;
+};
+export type productionVouchersControllerDeleteDraftResponseError = (productionVouchersControllerDeleteDraftResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProductionVouchersControllerDeleteDraftUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/production-vouchers/${id}`
+}
+
+export const productionVouchersControllerDeleteDraft = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<productionVouchersControllerDeleteDraftResponseSuccess> => {
+
+  return apiFetch<productionVouchersControllerDeleteDraftResponseSuccess>(getProductionVouchersControllerDeleteDraftUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type productionVouchersControllerPostResponse201 = {
+  data: ProductionVoucherDetailDto
+  status: 201
+}
+
+export type productionVouchersControllerPostResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type productionVouchersControllerPostResponseSuccess = (productionVouchersControllerPostResponse201) & {
+  headers: Headers;
+};
+export type productionVouchersControllerPostResponseError = (productionVouchersControllerPostResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProductionVouchersControllerPostUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/production-vouchers/${id}/post`
+}
+
+export const productionVouchersControllerPost = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<productionVouchersControllerPostResponseSuccess> => {
+
+  return apiFetch<productionVouchersControllerPostResponseSuccess>(getProductionVouchersControllerPostUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type productionVouchersControllerReverseResponse201 = {
+  data: ProductionVoucherDetailDto
+  status: 201
+}
+
+export type productionVouchersControllerReverseResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type productionVouchersControllerReverseResponseSuccess = (productionVouchersControllerReverseResponse201) & {
+  headers: Headers;
+};
+export type productionVouchersControllerReverseResponseError = (productionVouchersControllerReverseResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProductionVouchersControllerReverseUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/production-vouchers/${id}/reverse`
+}
+
+export const productionVouchersControllerReverse = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<productionVouchersControllerReverseResponseSuccess> => {
+
+  return apiFetch<productionVouchersControllerReverseResponseSuccess>(getProductionVouchersControllerReverseUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type productionVouchersControllerPdfResponse200 = {
+  data: Blob
+  status: 200
+}
+
+export type productionVouchersControllerPdfResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type productionVouchersControllerPdfResponseSuccess = (productionVouchersControllerPdfResponse200) & {
+  headers: Headers;
+};
+export type productionVouchersControllerPdfResponseError = (productionVouchersControllerPdfResponseDefault) & {
+  headers: Headers;
+};
+
+export const getProductionVouchersControllerPdfUrl = (id: string,
+    params?: ProductionVouchersControllerPdfParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/production-vouchers/${id}/pdf?${stringifiedParams}` : `/api/v1/production-vouchers/${id}/pdf`
+}
+
+export const productionVouchersControllerPdf = async (id: string,
+    params?: ProductionVouchersControllerPdfParams, options?: Parameters<typeof apiFetch>[1]): Promise<productionVouchersControllerPdfResponseSuccess> => {
+
+  return apiFetch<productionVouchersControllerPdfResponseSuccess>(getProductionVouchersControllerPdfUrl(id,params),
   {
     ...options,
     method: 'GET'

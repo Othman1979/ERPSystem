@@ -135,6 +135,7 @@ export class IntegrityCheckService {
               OR (x.source_type = 'RECEIPT' AND EXISTS (SELECT 1 FROM receipts d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'PAYMENT' AND EXISTS (SELECT 1 FROM payments d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'MANUAL_JOURNAL' AND EXISTS (SELECT 1 FROM journal_entries d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
+              OR (x.source_type = 'PRODUCTION' AND EXISTS (SELECT 1 FROM production_vouchers d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
             ))
           ) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
@@ -149,6 +150,7 @@ export class IntegrityCheckService {
           OR (x.source_type = 'PURCHASE_RETURN' AND EXISTS (SELECT 1 FROM purchase_returns d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
           OR (x.source_type = 'SALES_INVOICE' AND EXISTS (SELECT 1 FROM sales_invoices d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
           OR (x.source_type = 'SALES_RETURN' AND EXISTS (SELECT 1 FROM sales_returns d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
+          OR (x.source_type = 'PRODUCTION' AND EXISTS (SELECT 1 FROM production_vouchers d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
           -- ADR-018: a zero-quantity write-off / revaluation keeps the source_id and
           -- source_line_id (either may be NULL) of the movement it comes with, not
           -- its document type: it is sound when that movement exists.
@@ -166,7 +168,7 @@ export class IntegrityCheckService {
       'stock_movements.source_line',
       db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM stock_movements x
         WHERE x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE', 'STOCK_ADJUSTMENT', 'STOCK_TRANSFER',
-                                'PURCHASE_INVOICE', 'PURCHASE_RETURN', 'SALES_INVOICE', 'SALES_RETURN')
+                                'PURCHASE_INVOICE', 'PURCHASE_RETURN', 'SALES_INVOICE', 'SALES_RETURN', 'PRODUCTION')
           AND NOT (
             (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE') AND EXISTS (
               SELECT 1 FROM goods_note_lines l WHERE l.tenant_id = x.tenant_id AND l.id = x.source_line_id AND l.note_id = x.source_id))
@@ -186,6 +188,9 @@ export class IntegrityCheckService {
               SELECT 1 FROM sales_invoice_lines l WHERE l.tenant_id = x.tenant_id AND l.id = x.source_line_id AND l.invoice_id = x.source_id))
             OR (x.source_type = 'SALES_RETURN' AND EXISTS (
               SELECT 1 FROM sales_return_lines l WHERE l.tenant_id = x.tenant_id AND l.id = x.source_line_id AND l.return_id = x.source_id))
+            -- ADR-031 §7: the output movement has no line (NULL); a material has its voucher line.
+            OR (x.source_type = 'PRODUCTION' AND (x.source_line_id IS NULL OR EXISTS (
+              SELECT 1 FROM production_voucher_lines l WHERE l.tenant_id = x.tenant_id AND l.id = x.source_line_id AND l.voucher_id = x.source_id)))
           ) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
 

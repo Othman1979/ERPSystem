@@ -405,10 +405,10 @@ function IssueRequestEditor({
 
   // Items are searched on the server (ADR-022 §8). Stock items only: an issue moves stock.
   const items = useRemoteOptions<ItemListItemDto>({
-    key: ['items', 'pick', { itemKind: 'STOCK' }],
+    key: ['items', 'pick', { stocked: 'true' }],
     fetch: (q, signal) =>
       catalogControllerListItems(
-        { pageSize: PICKER_PAGE_SIZE, itemKind: 'STOCK', ...(q ? { q } : {}) },
+        { pageSize: PICKER_PAGE_SIZE, stocked: 'true', ...(q ? { q } : {}) },
         { signal },
       ).then((r) => r.data.items),
   });

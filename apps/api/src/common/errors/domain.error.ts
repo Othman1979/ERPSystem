@@ -105,6 +105,11 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.BOM_ITEM_NOT_MANUFACTURED]: HttpStatus.BAD_REQUEST,
   [ErrorCode.BOM_COMPONENT_INVALID]: HttpStatus.BAD_REQUEST,
   [ErrorCode.BOM_UNIT_INVALID]: HttpStatus.BAD_REQUEST,
+  [ErrorCode.PRODUCTION_NOT_DRAFT]: HttpStatus.CONFLICT,
+  [ErrorCode.PRODUCTION_NOT_POSTED]: HttpStatus.CONFLICT,
+  [ErrorCode.PRODUCTION_ALREADY_REVERSED]: HttpStatus.CONFLICT,
+  [ErrorCode.PRODUCTION_REVERSAL_NOT_REVERSIBLE]: HttpStatus.CONFLICT,
+  [ErrorCode.PRODUCTION_OUTPUT_CONSUMED]: HttpStatus.CONFLICT,
 };
 
 export class DomainError extends HttpException {

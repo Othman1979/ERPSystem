@@ -147,6 +147,13 @@ export class ListItemsQueryDto extends PageQueryDto {
   @IsIn(ITEM_KINDS)
   itemKind?: (typeof ITEM_KINDS)[number];
 
+  /** `true`: only the stocked kinds, STOCK and MANUFACTURED (ADR-031 §1), for the stock pickers. */
+  @ApiPropertyOptional({ enum: ['true', 'false'] })
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  stocked?: 'true' | 'false';
+
   @ApiPropertyOptional({ enum: ['true', 'false'] })
   @Transform(blankToUndefined)
   @IsOptional()

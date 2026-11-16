@@ -342,10 +342,10 @@ export function CountDraftSheet({
         </label>
         <Space wrap className="count-actions">
           <RemoteSelect
-            queryKey={['items', 'pick', { itemKind: 'STOCK' }]}
+            queryKey={['items', 'pick', { stocked: 'true' }]}
             fetchOptions={(q, signal) =>
               catalogControllerListItems(
-                { pageSize: PICKER_PAGE_SIZE, itemKind: 'STOCK', ...(q ? { q } : {}) },
+                { pageSize: PICKER_PAGE_SIZE, stocked: 'true', ...(q ? { q } : {}) },
                 { signal },
               ).then((r) => r.data.items.map((i) => ({ value: i.id, label: codeAndName(i) })))
             }

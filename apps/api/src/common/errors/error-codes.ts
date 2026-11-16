@@ -166,6 +166,13 @@ export enum ErrorCode {
   BOM_COMPONENT_INVALID = 'BOM_COMPONENT_INVALID',
   // The unit does not belong to the item (a line or the output unit).
   BOM_UNIT_INVALID = 'BOM_UNIT_INVALID',
+  // ADR-031 §7 (Phase 16): a production voucher is edited or deleted only as a draft, and posted or reversed once.
+  PRODUCTION_NOT_DRAFT = 'PRODUCTION_NOT_DRAFT',
+  PRODUCTION_NOT_POSTED = 'PRODUCTION_NOT_POSTED',
+  PRODUCTION_ALREADY_REVERSED = 'PRODUCTION_ALREADY_REVERSED',
+  // ADR-031 §4: a reversal has no reversal, and a voucher reverses only while its output is still on hand.
+  PRODUCTION_REVERSAL_NOT_REVERSIBLE = 'PRODUCTION_REVERSAL_NOT_REVERSIBLE',
+  PRODUCTION_OUTPUT_CONSUMED = 'PRODUCTION_OUTPUT_CONSUMED',
   // ADR-026 §9: at FULL a goods issue without an approved issue request needs
   // stock.issue_without_request (owners aside).
   ISSUE_REQUEST_REQUIRED = 'ISSUE_REQUEST_REQUIRED',

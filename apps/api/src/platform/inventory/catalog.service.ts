@@ -18,7 +18,7 @@ import {
   UpdateItemGroupDto,
 } from './dto/inventory.dto.js';
 import type { ListItemsQueryDto } from './dto/list-queries.dto.js';
-import { ItemKindValue } from '../../common/inventory/item-kind.js';
+import { isStocked, stockedItemKindFilter, type ItemKindValue } from '../../common/inventory/item-kind.js';
 
 /**
  * Item catalog: groups, items, item units and barcodes (§7.4).
@@ -111,9 +111,18 @@ export class CatalogService {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
     const q = query.q;
+    // stocked=true: STOCK and MANUFACTURED (ADR-031 §1); with an itemKind, that kind only when it is stocked.
+    const stockedOnly = query.stocked === 'true';
+    const kindFilter = query.itemKind
+      ? stockedOnly && !isStocked(query.itemKind)
+        ? { in: [] as ItemKindValue[] }
+        : query.itemKind
+      : stockedOnly
+        ? stockedItemKindFilter()
+        : undefined;
     const where: Prisma.ItemWhereInput = {
       companyId,
-      ...(query.itemKind ? { itemKind: query.itemKind } : {}),
+      ...(kindFilter !== undefined ? { itemKind: kindFilter } : {}),
       ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
       ...(q
         ? {

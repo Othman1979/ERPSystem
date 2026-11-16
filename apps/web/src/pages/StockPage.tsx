@@ -721,13 +721,13 @@ function MovementsTab() {
         filters={
           <>
             <RemoteSelect
-              queryKey={['items', 'pick-movements', { itemKind: 'STOCK' }]}
+              queryKey={['items', 'pick-movements', { stocked: 'true' }]}
               placeholder={t('items.title')}
               value={itemId}
               onChange={setItemId}
               fetchOptions={(q, signal) =>
                 catalogControllerListItems(
-                  { pageSize: PICKER_PAGE_SIZE, itemKind: 'STOCK', ...(q ? { q } : {}) },
+                  { pageSize: PICKER_PAGE_SIZE, stocked: 'true', ...(q ? { q } : {}) },
                   { signal },
                 ).then((r) =>
                   r.data.items.map((i) => ({ value: i.id, label: codeAndName(i) })),
