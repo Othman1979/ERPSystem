@@ -83,6 +83,11 @@ export const TENANT_MODELS = [
   'SalesQuoteLine',
   'SalesOrder',
   'SalesOrderLine',
+  // Phase 16 (ADR-031): bills of materials and production vouchers.
+  'Bom',
+  'BomLine',
+  'ProductionVoucher',
+  'ProductionVoucherLine',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);

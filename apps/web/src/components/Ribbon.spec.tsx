@@ -337,3 +337,21 @@ describe('sales cycle "new" buttons (ADR-027 §7)', () => {
     expect(container.querySelector('a[href="/sales-orders"]')).not.toBeNull();
   });
 });
+
+describe('bill of materials and production "new" buttons (ADR-031 §5, §7)', () => {
+  it('offers a new formula to a role with item.manage, and a new voucher to a role with stock.movement', () => {
+    render('/items', {
+      can: (p: Permission) => p === PERMISSIONS.TENANT_READ || p === PERMISSIONS.ITEM_MANAGE || p === PERMISSIONS.STOCK_MOVEMENT,
+    });
+    expect(container.querySelector('a[href="/boms?new=1"] .ribbon-label')?.textContent).toBe(t('ribbon.new.boms'));
+    expect(container.querySelector('a[href="/production?new=1"] .ribbon-label')?.textContent).toBe(t('ribbon.new.production'));
+  });
+
+  it('hides each new button from a role without its own permission, and keeps the screens', () => {
+    render('/items', { can: (p: Permission) => p === PERMISSIONS.TENANT_READ || p === PERMISSIONS.STOCK_MOVEMENT });
+    expect(container.querySelector('a[href="/boms?new=1"]')).toBeNull();
+    expect(container.querySelector('a[href="/production?new=1"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/boms"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/production"]')).not.toBeNull();
+  });
+});

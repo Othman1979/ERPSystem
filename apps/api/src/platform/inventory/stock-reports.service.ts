@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { EXPORT_LIMITS } from '../printing/printing.service.js';
 import type { ItemLedgerQueryDto, StockMovementsQueryDto } from './dto/stock-reports.dto.js';
+import { stockedItemKindFilter } from '../../common/inventory/item-kind.js';
 
 const ADJUSTMENT_SOURCE = 'STOCK_ADJUSTMENT';
 const TRANSFER_SOURCE = 'STOCK_TRANSFER';
@@ -328,7 +329,7 @@ export class StockReportsService {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
     const items = await db.item.findMany({
-      where: { companyId, isActive: true, itemKind: 'STOCK', minStock: { gt: 0 } },
+      where: { companyId, isActive: true, itemKind: stockedItemKindFilter(), minStock: { gt: 0 } },
       select: { id: true, code: true, nameAr: true, nameEn: true, minStock: true, baseUnit: { select: { code: true } } },
     });
     const totals = await this.totalQtyByItem(db, items.map((i) => i.id));

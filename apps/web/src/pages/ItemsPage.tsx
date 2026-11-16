@@ -73,6 +73,8 @@ import type Decimal from 'decimal.js';
 import { amountCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount, formatQty } from '../format/number';
 import { itemCreateBody, itemUpdateBody, type ItemFormValues } from './items/itemPayload';
+import { holdsStock, ITEM_KIND_LABEL_KEY, ITEM_KINDS } from './items/itemKinds';
+import { ItemFormulas } from './manufacturing/ItemFormulas';
 
 type Group = ItemGroupDto;
 type Item = ItemListItemDto;
@@ -110,6 +112,14 @@ function useApiError() {
 }
 
 // ------------------------------------------------------------- items tab
+
+/** The kind of an item as a tag: a manufactured item is named apart from a stock item (ADR-031 §1). */
+function KindTag({ kind }: { kind: string }) {
+  const { t } = useTranslation();
+  if (kind === 'MANUFACTURED') return <Tag color="cyan">{t('items.manufactured')}</Tag>;
+  if (kind === 'STOCK') return <Tag color="blue">{t('items.stock')}</Tag>;
+  return <Tag>{t('items.service')}</Tag>;
+}
 
 function ItemsTab() {
   const { t } = useTranslation();
@@ -152,7 +162,8 @@ function ItemsTab() {
     queryFn: ({ signal }) => settingsControllerListTaxCategories({ signal }).then((r) => r.data),
   });
   // On-hand quantities only for the stock items on this page (not every balance of the company).
-  const pageItemIds = list.rows.filter((r) => r.itemKind === 'STOCK').map((r) => r.id);
+  // Stocked kinds (STOCK and MANUFACTURED) hold balances; a service does not (ADR-031 §1).
+  const pageItemIds = list.rows.filter((r) => holdsStock(r.itemKind)).map((r) => r.id);
   const { data: balances } = useQuery({
     queryKey: ['stock-balances', 'items-page', pageItemIds],
     enabled: pageItemIds.length > 0,
@@ -221,7 +232,7 @@ function ItemsTab() {
   };
 
   const stockBadge = (r: Item) => {
-    if (r.itemKind !== 'STOCK') return <Tag>{t('items.service')}</Tag>;
+    if (!holdsStock(r.itemKind)) return <Tag>{t('items.service')}</Tag>;
     const qty = qtyByItem.get(r.id);
     if (qty === undefined) return <Tag color="default">0</Tag>;
     const min = dec(r.minStock);
@@ -254,7 +265,7 @@ function ItemsTab() {
       dataIndex: 'itemKind',
       width: 100,
       render: (v: string) =>
-        v === 'STOCK' ? <Tag color="blue">{t('items.stock')}</Tag> : <Tag>{t('items.service')}</Tag>,
+        <KindTag kind={v} />,
     },
     {
       title: t('items.unit'),
@@ -301,7 +312,7 @@ function ItemsTab() {
             trigger={['click']}
             menu={{
               items: [
-                ...(row.itemKind === 'STOCK'
+                ...(holdsStock(row.itemKind)
                   ? [{ key: 'ledger', icon: <ProfileOutlined />, label: t('items.ledger') }]
                   : []),
                 { key: 'barcode', icon: <BarcodeOutlined />, label: t('items.barcode') },
@@ -348,10 +359,7 @@ function ItemsTab() {
               allowClear
               placeholder={t('items.kind')}
               onChange={setKindFilter}
-              options={[
-                { value: 'STOCK', label: t('items.stock') },
-                { value: 'SERVICE', label: t('items.service') },
-              ]}
+              options={ITEM_KINDS.map((k) => ({ value: k, label: t(ITEM_KIND_LABEL_KEY[k]) }))}
             />
             <Segmented
               value={view}
@@ -398,11 +406,7 @@ function ItemsTab() {
                 <Space direction="vertical" size={4} style={{ width: '100%' }}>
                   <Space style={{ justifyContent: 'space-between', width: '100%' }}>
                     <Typography.Text strong>{displayName(r)}</Typography.Text>
-                    {r.itemKind === 'STOCK' ? (
-                      <Tag color="blue">{t('items.stock')}</Tag>
-                    ) : (
-                      <Tag>{t('items.service')}</Tag>
-                    )}
+                    <KindTag kind={r.itemKind} />
                   </Space>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {r.code} {r.baseUnit ? `· ${r.baseUnit.code}` : ''}
@@ -416,7 +420,7 @@ function ItemsTab() {
                   </Space>
                   <Space size={4} wrap>
                     <Button size="small" onClick={() => openEdit(r)}>{t('common.edit')}</Button>
-                    {r.itemKind === 'STOCK' && (
+                    {holdsStock(r.itemKind) && (
                       <Button size="small" icon={<ProfileOutlined />} onClick={() => setLedgerItem(r)}>
                         {t('items.ledger')}
                       </Button>
@@ -460,10 +464,7 @@ function ItemsTab() {
                 optionType="button"
                 buttonStyle="solid"
                 disabled={!!editing}
-                options={[
-                  { value: 'STOCK', label: t('items.stock') },
-                  { value: 'SERVICE', label: t('items.service') },
-                ]}
+                options={ITEM_KINDS.map((k) => ({ value: k, label: t(ITEM_KIND_LABEL_KEY[k]) }))}
               />
             </Form.Item>
             <Form.Item name="nameAr" label={t('items.nameAr')} rules={[{ required: true }]} className="span-2">
@@ -530,7 +531,7 @@ function ItemsTab() {
           {/* Stock settings only apply to stocked items. */}
           <Form.Item noStyle shouldUpdate>
             {({ getFieldValue }) =>
-              getFieldValue('itemKind') === 'STOCK' ? (
+              holdsStock(getFieldValue('itemKind')) ? (
                 <FormSection title={t('items.inventory')} icon={<DatabaseOutlined />}>
                   <Form.Item name="minStock" label={t('items.minStock')}>
                     <InputNumber<string> stringMode min="0" step="0.000001" />
@@ -549,6 +550,7 @@ function ItemsTab() {
             }
           </Form.Item>
         </Form>
+        {editing?.itemKind === 'MANUFACTURED' && <ItemFormulas itemId={editing.id} />}
       </FormDialog>
 
       <LedgerModal item={ledgerItem} onClose={() => setLedgerItem(null)} warehouses={warehouses ?? []} />

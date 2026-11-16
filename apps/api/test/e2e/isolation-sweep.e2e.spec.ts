@@ -143,6 +143,12 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     await create('/warehouses', { code: 'W', nameAr: `W ${MARK}` }, 'warehouse');
     await create('/item-groups', { code: 'G', nameAr: `G ${MARK}` }, 'itemGroup');
     await create('/items', { code: 'I', nameAr: `I ${MARK}`, baseUnitId: id.unit, itemKind: 'STOCK' }, 'item');
+    // Phase 16 (ADR-031): a manufactured item with a draft bill of materials, for the /boms routes.
+    await create('/items', { code: 'M', nameAr: `M ${MARK}`, baseUnitId: id.unit, itemKind: 'MANUFACTURED' }, 'manufacturedItem');
+    await create('/boms', { itemId: id.manufacturedItem, outputQty: '1', lines: [{ componentItemId: id.item, qty: '1' }] }, 'bom');
+    // Phase 16 part B: the version is activated so a production voucher can be drafted on it (ADR-031 §7).
+    expect((await asA('post', `/boms/${id.bom}/activate`, {})).status).toBe(201);
+    await create('/production-vouchers', { itemId: id.manufacturedItem, qty: '1', materialsWarehouseId: id.warehouse, voucherDate: '2026-04-02' }, 'productionVoucher');
     id.barcodeCode = `B${RUN}`;
     await create(`/items/${id.item}/barcodes`, { barcode: id.barcodeCode }, 'barcode');
     await create('/parties', { code: 'C', nameAr: `C ${MARK}`, partyType: 'CUSTOMER' }, 'customer');
@@ -332,6 +338,8 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       'issue-requests': id.issueRequest,
       'sales-quotes': id.salesQuote,
       'sales-orders': id.salesOrder,
+      boms: id.bom,
+      'production-vouchers': id.productionVoucher,
     };
     const values: Record<string, string> = {};
     for (const [, name] of p.matchAll(/\{(\w+)\}/g)) {
@@ -377,6 +385,10 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     // Phase 15 (ADR-030): valid bodies for the count lines and the scan.
     if (/\/stock-counts\/\{id\}\/lines$/.test(p)) return { itemId: id.item };
     if (p.endsWith('/stock-counts/{id}/scan')) return { barcode: `NOPE-${RUN}` };
+    // Phase 16 (ADR-031): a valid replacement body for the draft update.
+    if (p === '/api/v1/boms/{id}') return { outputQty: '1', lines: [{ componentItemId: id.item, qty: '1' }] };
+    // Phase 16 part B (ADR-031 §7): a valid replacement body for the draft voucher update (no itemId: it is fixed).
+    if (p === '/api/v1/production-vouchers/{id}') return { qty: '1', materialsWarehouseId: id.warehouse, voucherDate: '2026-04-02' };
     if (p.endsWith('/purchase-orders/{id}/bill')) {
       return { invoiceDate: '2026-04-03', paymentType: 'CREDIT', lines: [{ grnLineId: '1', qty: '1', unitCost: '1' }] };
     }
@@ -398,7 +410,8 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
         continue;
       }
       if (key in UNCOVERED) continue;
-      const url = fill(o.path, values);
+      // The requirements preview takes a quantity: a valid one reaches the lookup.
+      const url = fill(o.path, values) + (o.path.endsWith('/requirements') ? '?qty=1' : '');
       const req = api()[o.method.toLowerCase() as 'get'](url).set(auth(b)).set(idem());
       const res = o.method === 'GET' || o.method === 'DELETE' ? await req : await req.send(bodyFor(o.path));
       exercised += 1;

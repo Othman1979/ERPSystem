@@ -154,6 +154,25 @@ export enum ErrorCode {
   SALES_ORDER_NOT_INVOICEABLE = 'SALES_ORDER_NOT_INVOICEABLE',
   // ADR-027 §4: a line is priced below its order line or discounted more, with no price approval (details.lines).
   SALES_PRICE_APPROVAL_REQUIRED = 'SALES_PRICE_APPROVAL_REQUIRED',
+  // ADR-031 §5 (Phase 16): bill of materials. A loop through active versions is refused at activation.
+  BOM_CYCLE = 'BOM_CYCLE',
+  // ADR-031 §5: no active version for the item, and none was chosen explicitly.
+  BOM_NOT_ACTIVE = 'BOM_NOT_ACTIVE',
+  // ADR-031 §5: only a draft version is edited or deleted; copy the version to change it.
+  BOM_NOT_DRAFT = 'BOM_NOT_DRAFT',
+  // ADR-031 §5: a bill of materials belongs to a MANUFACTURED item.
+  BOM_ITEM_NOT_MANUFACTURED = 'BOM_ITEM_NOT_MANUFACTURED',
+  // ADR-031 §5: a component is a stocked item, not a service and not the item itself.
+  BOM_COMPONENT_INVALID = 'BOM_COMPONENT_INVALID',
+  // The unit does not belong to the item (a line or the output unit).
+  BOM_UNIT_INVALID = 'BOM_UNIT_INVALID',
+  // ADR-031 §7 (Phase 16): a production voucher is edited or deleted only as a draft, and posted or reversed once.
+  PRODUCTION_NOT_DRAFT = 'PRODUCTION_NOT_DRAFT',
+  PRODUCTION_NOT_POSTED = 'PRODUCTION_NOT_POSTED',
+  PRODUCTION_ALREADY_REVERSED = 'PRODUCTION_ALREADY_REVERSED',
+  // ADR-031 §4: a reversal has no reversal, and a voucher reverses only while its output is still on hand.
+  PRODUCTION_REVERSAL_NOT_REVERSIBLE = 'PRODUCTION_REVERSAL_NOT_REVERSIBLE',
+  PRODUCTION_OUTPUT_CONSUMED = 'PRODUCTION_OUTPUT_CONSUMED',
   // ADR-026 §9: at FULL a goods issue without an approved issue request needs
   // stock.issue_without_request (owners aside).
   ISSUE_REQUEST_REQUIRED = 'ISSUE_REQUEST_REQUIRED',

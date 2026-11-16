@@ -21,6 +21,7 @@ const OPTIONAL_DATE = /^(\d{4}-\d{2}-\d{2})?$/;
 export const STOCK_SOURCE_TYPES = [
   'GOODS_RECEIPT',
   'GOODS_ISSUE',
+  'PRODUCTION',
   'PURCHASE_INVOICE',
   'PURCHASE_RETURN',
   'REVALUATION',

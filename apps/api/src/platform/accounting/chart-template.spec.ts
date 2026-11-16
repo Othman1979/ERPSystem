@@ -1,6 +1,7 @@
 import {
   ACCOUNT_MAPPING_KEYS,
   CHART_TEMPLATE,
+  DOCUMENT_TYPE_PREFIXES,
   MAPPING_RULES,
   TEMPLATE_MAPPINGS,
   type TemplateAccount,
@@ -67,6 +68,18 @@ describe('chart template', () => {
       }
       seen.add(account.code);
     }
+  });
+
+  it('Phase 16 (ADR-031 §8): the applied production cost account is an expense under 5, mapped and prefixed', () => {
+    const account = templateAccount('5104');
+    expect({ accountType: account.accountType, parentCode: account.parentCode, nameEn: account.nameEn }).toEqual({
+      accountType: 'EXPENSE',
+      parentCode: '5',
+      nameEn: 'Applied production costs',
+    });
+    expect(TEMPLATE_MAPPINGS.PRODUCTION_APPLIED_COST).toBe('5104');
+    expect(MAPPING_RULES.PRODUCTION_APPLIED_COST.types).toEqual(['EXPENSE']);
+    expect(DOCUMENT_TYPE_PREFIXES.PRODUCTION).toBe('MFG');
   });
 
   it('has a mapping rule for every mapping key', () => {

@@ -45,11 +45,11 @@ export function useLookups() {
  */
 export function useStockItemPicker(enabled: boolean) {
   return useRemoteOptions<ItemListItemDto>({
-    key: ['items', 'pick', { itemKind: 'STOCK' }],
+    key: ['items', 'pick', { stocked: 'true' }],
     enabled,
     fetch: (q, signal) =>
       catalogControllerListItems(
-        { pageSize: PICKER_PAGE_SIZE, itemKind: 'STOCK', ...(q ? { q } : {}) },
+        { pageSize: PICKER_PAGE_SIZE, stocked: 'true', ...(q ? { q } : {}) },
         { signal },
       ).then((r) => r.data.items),
   });

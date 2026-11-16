@@ -48,6 +48,7 @@ import {
   type LockedSalesOrderRow,
   type LockedSalesSettings,
 } from './sales-cycle.locks.js';
+import { isStocked } from '../../common/inventory/item-kind.js';
 
 const itemRef = { select: { id: true, code: true, nameAr: true, nameEn: true, baseUnitId: true, itemKind: true } } as const;
 const unitRef = { include: { unit: { select: { id: true, code: true, nameAr: true } } } } as const;
@@ -426,7 +427,7 @@ export class SalesOrdersService {
     return db.$transaction(async (tx) => {
       const company = await tx.company.findFirstOrThrow({ where: { id: companyId }, select: { salesReservation: true } });
       const kinds = await tx.item.findMany({ where: { tenantId, id: { in: itemIds } }, select: { id: true, itemKind: true } });
-      const stockIds = kinds.filter((k) => k.itemKind === 'STOCK').map((k) => k.id);
+      const stockIds = kinds.filter((k) => isStocked(k.itemKind)).map((k) => k.id);
       const onHand = stockIds.length
         ? await tx.stockBalance.findMany({
             where: { tenantId, warehouseId: wh.id, itemId: { in: stockIds } },
@@ -647,7 +648,7 @@ export class SalesOrdersService {
       where: { tenantId: ctx.tenantId, id: { in: [...new Set(ctx.lines.map((l) => l.itemId))] } },
       select: { id: true, itemKind: true },
     });
-    const stock = new Set(kinds.filter((k) => k.itemKind === 'STOCK').map((k) => k.id));
+    const stock = new Set(kinds.filter((k) => isStocked(k.itemKind)).map((k) => k.id));
     const needed = neededPerItem(ctx.lines.filter((l) => stock.has(l.itemId)).map((l) => ({ itemId: l.itemId, qtyBase: l.qtyBase })));
     if (needed.size === 0) return;
     const warehouseId = ctx.row.warehouse_id;

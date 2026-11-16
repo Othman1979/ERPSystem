@@ -12,8 +12,9 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { ITEM_KINDS } from '../../../common/inventory/item-kind.js';
 
-const ITEM_KINDS = ['STOCK', 'SERVICE'] as const;
+
 const ADJUSTMENT_TYPES = ['OPENING', 'IN', 'OUT', 'COUNT_ADJUSTMENT'] as const;
 
 export class CreateItemGroupDto {

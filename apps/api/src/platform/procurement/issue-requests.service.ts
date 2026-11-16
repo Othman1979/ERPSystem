@@ -19,6 +19,7 @@ import { DocumentSupportService } from '../shared/document-support.service.js';
 import { assertExpenseAccount } from '../shared/expense-account.js';
 import type { CreateIssueRequestDto, ListIssueRequestsQueryDto } from './dto/issue-requests.dto.js';
 import { assertStatus } from './procurement-locks.js';
+import { isStocked } from '../../common/inventory/item-kind.js';
 
 /** Statuses that count as open for the procurement level (ADR-026 §9). */
 export const OPEN_ISSUE_REQUEST_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED'] as const;
@@ -430,7 +431,7 @@ export class IssueRequestsService {
     return dto.lines.map((l) => {
       const item = refs.items.get(BigInt(l.itemId));
       if (!item) throw DomainError.notFound('Item', l.itemId);
-      if (item.itemKind !== 'STOCK') {
+      if (!isStocked(item.itemKind)) {
         throw new DomainError(ErrorCode.VALIDATION, `Item ${item.code} is a service — nothing to issue`);
       }
       const qty = new Decimal(l.qty);

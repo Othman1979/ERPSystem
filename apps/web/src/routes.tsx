@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import {
+  ApartmentOutlined,
   AuditOutlined,
+  BuildOutlined,
   BankOutlined,
   BarChartOutlined,
   CalendarOutlined,
@@ -62,6 +64,8 @@ export const PAGE_LOADERS = {
   settings: () => import('./pages/SettingsPage').then((m) => m.SettingsPage),
   health: () => import('./pages/HealthPage').then((m) => m.HealthPage),
   invitations: () => import('./pages/InvitationsPage').then((m) => m.InvitationsPage),
+  boms: () => import('./pages/manufacturing/BomsPage').then((m) => m.BomsPage),
+  production: () => import('./pages/manufacturing/ProductionPage').then((m) => m.ProductionPage),
 };
 
 const AccountsPage = lazyPage(PAGE_LOADERS.accounts);
@@ -89,6 +93,8 @@ const BranchesPage = lazyPage(PAGE_LOADERS.branches);
 const SettingsPage = lazyPage(PAGE_LOADERS.settings);
 const HealthPage = lazyPage(PAGE_LOADERS.health);
 const InvitationsPage = lazyPage(PAGE_LOADERS.invitations);
+const BomsPage = lazyPage(PAGE_LOADERS.boms);
+const ProductionPage = lazyPage(PAGE_LOADERS.production);
 
 export interface AppRoute {
   key: string;
@@ -323,7 +329,30 @@ export const APP_GROUPS: AppGroup[] = [
     routes: [
       { key: 'items', path: '/items', label: 'nav.items', icon: <InboxOutlined />, element: <ItemsPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionCatalog' },
       { key: 'warehouses', path: '/warehouses', label: 'nav.warehouses', icon: <ContainerOutlined />, element: <WarehousesPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionCatalog' },
+      // Phase 16 (ADR-031 §5, §7): formulas beside the items, and production vouchers beside the stock movements.
+      {
+        key: 'boms',
+        path: '/boms',
+        label: 'nav.boms',
+        icon: <ApartmentOutlined />,
+        element: <BomsPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        section: 'nav.sectionCatalog',
+        newPath: '/boms?new=1',
+        newPermission: PERMISSIONS.ITEM_MANAGE,
+      },
       { key: 'stock', path: '/stock', label: 'nav.stock', icon: <AuditOutlined />, element: <StockPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionMovements' },
+      {
+        key: 'production',
+        path: '/production',
+        label: 'nav.production',
+        icon: <BuildOutlined />,
+        element: <ProductionPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        section: 'nav.sectionMovements',
+        newPath: '/production?new=1',
+        newPermission: PERMISSIONS.STOCK_MOVEMENT,
+      },
       // Phase 13 (ADR-026 §9): issue requests, FULL procurement level only.
       {
         key: 'issueRequests',
