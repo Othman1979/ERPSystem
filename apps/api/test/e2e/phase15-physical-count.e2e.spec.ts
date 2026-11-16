@@ -58,10 +58,12 @@ const d = (value: unknown) => new Decimal(String(value));
 /** The company's calendar day (Asia/Amman by default), the approval date. */
 const todayCompany = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Amman' });
 /** A binary body reader for supertest (the xlsx and pdf answers). */
-const binary = (res: NodeJS.ReadableStream, cb: (err: Error | null, body: Buffer) => void) => {
+const binary = (res: unknown, cb: (err: Error | null, body: Buffer) => void) => {
+  // superagent hands the raw response stream to a custom parser; its declared type is not a stream.
+  const stream = res as NodeJS.ReadableStream;
   const chunks: Buffer[] = [];
-  res.on('data', (c: Buffer) => chunks.push(c));
-  res.on('end', () => cb(null, Buffer.concat(chunks)));
+  stream.on('data', (c: Buffer) => chunks.push(c));
+  stream.on('end', () => cb(null, Buffer.concat(chunks)));
 };
 
 async function waitForHealth(timeoutMs = 30_000): Promise<void> {

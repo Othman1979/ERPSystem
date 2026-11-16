@@ -532,6 +532,7 @@ export class CountsService {
           count.warehouseId,
           count.countDate,
           counted.map((l) => l.itemId),
+          true,
         );
 
         const adjLines: { itemId: bigint; diff: Decimal }[] = [];
@@ -902,20 +903,24 @@ export class CountsService {
     warehouseId: bigint,
     date: Date,
     itemIds?: bigint[],
+    lock = false,
   ): Promise<Map<bigint, Decimal>> {
     if (itemIds && itemIds.length === 0) return new Map();
+    // Approval reads under its stock locks: a locking read sees the latest committed movements, not the
+    // snapshot of the transaction's first plain read (review: a same-day sale racing the approval).
+    const lockClause = lock ? Prisma.sql` LOCK IN SHARE MODE` : Prisma.empty;
     const rows = itemIds
       ? await tx.$queryRaw<{ item_id: bigint | number; qty: string }[]>`
           SELECT item_id, CAST(SUM(qty_in - qty_out) AS CHAR) AS qty
             FROM stock_movements
            WHERE tenant_id = ${tenantId} AND warehouse_id = ${warehouseId}
              AND item_id IN (${Prisma.join(itemIds)}) AND movement_date <= ${date}
-           GROUP BY item_id`
+           GROUP BY item_id${lockClause}`
       : await tx.$queryRaw<{ item_id: bigint | number; qty: string }[]>`
           SELECT item_id, CAST(SUM(qty_in - qty_out) AS CHAR) AS qty
             FROM stock_movements
            WHERE tenant_id = ${tenantId} AND warehouse_id = ${warehouseId} AND movement_date <= ${date}
-           GROUP BY item_id`;
+           GROUP BY item_id${lockClause}`;
     return new Map(rows.map((r) => [BigInt(r.item_id), new Decimal(r.qty)]));
   }
 
