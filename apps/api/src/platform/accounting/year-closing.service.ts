@@ -59,6 +59,12 @@ export class YearClosingService {
     return { tenantId, db: this.prisma.forTenant(tenantId) };
   }
 
+  private assertAllBranchScope(): void {
+    if (ClsServiceManager.getClsService<RequestContext>().get('branchScope') !== 'ALL') {
+      throw new DomainError(ErrorCode.BRANCH_NOT_ALLOWED, 'Year closing requires access to all branches');
+    }
+  }
+
   private async year(tx: Prisma.TransactionClient, tenantId: bigint, yearId: bigint): Promise<FiscalYear> {
     const year = await tx.fiscalYear.findFirst({ where: { tenantId, id: yearId } });
     if (!year) throw DomainError.notFound('FiscalYear', yearId.toString());
@@ -352,6 +358,7 @@ export class YearClosingService {
   }
 
   async preview(yearId: bigint) {
+    this.assertAllBranchScope();
     const { tenantId, db } = this.tenant();
     return db.$transaction(async (tx) => {
       const year = await this.year(tx, tenantId, yearId);
@@ -360,6 +367,7 @@ export class YearClosingService {
   }
 
   async close(yearId: bigint) {
+    this.assertAllBranchScope();
     const { tenantId, db } = this.tenant();
     const row = await db.fiscalYear.findFirst({
       where: { tenantId, id: yearId },
@@ -470,6 +478,7 @@ export class YearClosingService {
   }
 
   async reopen(yearId: bigint) {
+    this.assertAllBranchScope();
     const { tenantId, db } = this.tenant();
     const cls = ClsServiceManager.getClsService<RequestContext>();
     if (cls.get('roleCode') !== 'OWNER') {

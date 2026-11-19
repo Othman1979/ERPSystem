@@ -140,6 +140,15 @@ beforeAll(async () => {
   );
   costCenterA = String(centerA.id);
   costCenterB = String(centerB.id);
+  branchRestrictedAccountant = (
+    await addMember(boot.base, token, {
+      email: `year-closing-accountant-${RUN}@test.dev`,
+      roleCode: 'ACCOUNTANT',
+      password: PASS,
+      branchIds: [branchA],
+      defaultBranchId: branchA,
+    })
+  ).token;
 }, 90_000);
 
 afterAll(async () => {
@@ -200,6 +209,22 @@ async function closingEntry(index: number) {
 }
 
 describe('Phase 18 golden year closing', () => {
+  it('requires all-branch scope before reading year-closing data', async () => {
+    const responses = [
+      await h.get(branchRestrictedAccountant, `fiscal-years/${yearIds[0]}/closing-preview`),
+      await h.act(branchRestrictedAccountant, `fiscal-years/${yearIds[0]}/close`),
+      await h.act(branchRestrictedAccountant, `fiscal-years/${yearIds[0]}/open`),
+    ];
+
+    for (const response of responses) {
+      expect(h.err(response)).toEqual([403, 'BRANCH_NOT_ALLOWED']);
+      expect(response.body.details).toBeUndefined();
+      expect(response.body.error?.details).toBeUndefined();
+      expect(JSON.stringify(response.body)).not.toContain(yearIds[0]);
+      expect(JSON.stringify(response.body)).not.toContain('JOURNAL_ENTRY');
+    }
+  });
+
   it('blocks a later-year close and previews dated drafts', async () => {
     expect(accounts['1101']).toBeDefined();
     expect(accounts['4101']).toBeDefined();
