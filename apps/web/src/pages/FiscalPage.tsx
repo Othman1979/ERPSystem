@@ -5,6 +5,7 @@ import {
   DatePicker,
   Form,
   Input,
+  Modal,
   Popconfirm,
   Table,
   Tabs,
@@ -20,6 +21,7 @@ import {
   type FiscalYearListItemDto,
   fiscalControllerClosePeriod,
   fiscalControllerCloseYear,
+  fiscalControllerClosingPreview,
   fiscalControllerCreateYear,
   fiscalControllerGetYear,
   fiscalControllerListSequences,
@@ -28,9 +30,12 @@ import {
   fiscalControllerOpenYear,
 } from '@erp/api-client';
 import { CalendarOutlined } from '@ant-design/icons';
+import { useAuth } from '../auth/AuthContext';
 import { FormDialog, FormSection } from '../components/FormDialog';
+import { Num } from '../components/Num';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
+import { formatAmount } from '../format/number';
 
 type FiscalPeriod = FiscalPeriodDto;
 
@@ -41,9 +46,11 @@ function fmtDate(v: string): string {
 }
 
 export function FiscalPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { me } = useAuth();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [previewYear, setPreviewYear] = useState<FiscalYear | null>(null);
   const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
@@ -91,12 +98,35 @@ export function FiscalPage() {
     },
   });
 
-  // The whole year at once (ADR-008 §7): every period closed or reopened.
-  const toggleYear = useMutation({
-    mutationFn: ({ id, close }: { id: string; close: boolean }) =>
-      close ? fiscalControllerCloseYear(id) : fiscalControllerOpenYear(id),
-    onSuccess: (_, v) => {
-      apiMessage.success(t(v.close ? 'fiscal.yearClosed' : 'fiscal.yearOpened'));
+  const closingPreview = useQuery({
+    queryKey: ['fiscal-year-closing-preview', previewYear?.id],
+    queryFn: ({ signal }) => fiscalControllerClosingPreview(previewYear!.id, { signal }).then((r) => r.data),
+    enabled: previewYear !== null,
+  });
+
+  const closeYear = useMutation({
+    mutationFn: (id: string) =>
+      fiscalControllerCloseYear(id, { headers: { 'Idempotency-Key': crypto.randomUUID() } }),
+    onSuccess: () => {
+      apiMessage.success(t('fiscal.yearClosed'));
+      setPreviewYear(null);
+      void queryClient.invalidateQueries({ queryKey: ['fiscal-years'] });
+      void queryClient.invalidateQueries({ queryKey: ['fiscal-year'] });
+    },
+    onError: (err) => {
+      apiMessage.error(
+        err instanceof ApiError
+          ? t(`errors.${err.code}`, { defaultValue: err.message })
+          : t('errors.INTERNAL'),
+      );
+    },
+  });
+
+  const reopenYear = useMutation({
+    mutationFn: (id: string) =>
+      fiscalControllerOpenYear(id, { headers: { 'Idempotency-Key': crypto.randomUUID() } }),
+    onSuccess: () => {
+      apiMessage.success(t('fiscal.yearOpened'));
       void queryClient.invalidateQueries({ queryKey: ['fiscal-years'] });
       void queryClient.invalidateQueries({ queryKey: ['fiscal-year'] });
     },
@@ -165,17 +195,28 @@ export function FiscalPage() {
             title: '',
             width: 150,
             render: (_: unknown, y: FiscalYear) => {
-              const close = y.status === 'OPEN';
+              const closedByYear = (y.closings?.length ?? 0) > 0;
+              if (closedByYear) {
+                if (me?.currentMembership?.roleCode !== 'OWNER') return null;
+                return (
+                  <Popconfirm
+                    title={t('fiscal.openYearConfirm', { code: y.code })}
+                    onConfirm={() => reopenYear.mutate(y.id)}
+                  >
+                    <Button
+                      size="small"
+                      loading={reopenYear.isPending && reopenYear.variables === y.id}
+                    >
+                      {t('fiscal.openYear')}
+                    </Button>
+                  </Popconfirm>
+                );
+              }
+              if (y.status !== 'OPEN') return null;
               return (
-                <Popconfirm
-                  title={t(close ? 'fiscal.closeYearConfirm' : 'fiscal.openYearConfirm', { code: y.code })}
-                  description={close ? t('fiscal.closeYearHint') : undefined}
-                  onConfirm={() => toggleYear.mutate({ id: y.id, close })}
-                >
-                  <Button size="small" danger={close} loading={toggleYear.isPending && toggleYear.variables?.id === y.id}>
-                    {t(close ? 'fiscal.closeYear' : 'fiscal.openYear')}
-                  </Button>
-                </Popconfirm>
+                <Button size="small" danger onClick={() => setPreviewYear(y)}>
+                  {t('fiscal.closeYear')}
+                </Button>
               );
             },
           },
@@ -204,6 +245,111 @@ export function FiscalPage() {
           </FormSection>
         </Form>
       </FormDialog>
+      <Modal
+        title={t('fiscal.previewTitle', { code: previewYear?.code ?? '' })}
+        open={previewYear !== null}
+        onCancel={() => setPreviewYear(null)}
+        width={900}
+        footer={[
+          <Button key="cancel" onClick={() => setPreviewYear(null)}>
+            {t('common.close')}
+          </Button>,
+          <Button
+            key="close"
+            type="primary"
+            danger
+            loading={closeYear.isPending}
+            disabled={!closingPreview.data?.canClose}
+            onClick={() => previewYear && closeYear.mutate(previewYear.id)}
+          >
+            {t('fiscal.confirmClose')}
+          </Button>,
+        ]}
+      >
+        {closingPreview.isLoading && <p>{t('common.loading')}</p>}
+        {closingPreview.isError && (
+          <p>
+            {closingPreview.error instanceof ApiError
+              ? t(`errors.${closingPreview.error.code}`, { defaultValue: closingPreview.error.message })
+              : t('errors.INTERNAL')}
+          </p>
+        )}
+        {closingPreview.data && (
+          <>
+            <p>
+              {t('fiscal.netResult')}: <Num>{formatAmount(closingPreview.data.netResult)}</Num>
+            </p>
+            {closingPreview.data.warnings.length > 0 && (
+              <>
+                <h3>{t('fiscal.warnings')}</h3>
+                {closingPreview.data.warnings.map((warning) => (
+                  <p key={warning.code} role="alert">
+                    {t(`errors.${warning.code}`, { defaultValue: warning.code })}
+                  </p>
+                ))}
+              </>
+            )}
+            <h3>{t('fiscal.closingEntryLines')}</h3>
+            {closingPreview.data.lines.length > 0 ? (
+              <Table
+                size="small"
+                pagination={false}
+                rowKey={(line) => `${line.accountId}-${line.costCenterId ?? ''}-${line.branchId ?? ''}`}
+                dataSource={closingPreview.data.lines}
+                columns={[
+                  {
+                    title: t('fiscal.account'),
+                    render: (_: unknown, line) => {
+                      const name =
+                        i18n.language.startsWith('ar')
+                          ? line.accountNameAr
+                          : line.accountNameEn ?? line.accountNameAr;
+                      return `${line.accountCode} · ${name}`;
+                    },
+                  },
+                  { title: t('fiscal.branch'), dataIndex: 'branchId' },
+                  { title: t('fiscal.costCenter'), dataIndex: 'costCenterId' },
+                  {
+                    title: t('journal.debit'),
+                    dataIndex: 'debit',
+                    align: 'right',
+                    render: (value: string) => <Num>{formatAmount(value)}</Num>,
+                  },
+                  {
+                    title: t('journal.credit'),
+                    dataIndex: 'credit',
+                    align: 'right',
+                    render: (value: string) => <Num>{formatAmount(value)}</Num>,
+                  },
+                ]}
+              />
+            ) : (
+              <p>{t('fiscal.noClosingLines')}</p>
+            )}
+            <h3>{t('fiscal.draftDocuments')}</h3>
+            {closingPreview.data.drafts.length > 0 ? (
+              <Table
+                size="small"
+                pagination={false}
+                rowKey={(draft) => `${draft.type}-${draft.id}`}
+                dataSource={closingPreview.data.drafts}
+                columns={[
+                  {
+                    title: t('fiscal.draftType'),
+                    dataIndex: 'type',
+                    render: (type: string) =>
+                      t(`fiscal.draftTypes.${type}`, { defaultValue: type }),
+                  },
+                  { title: t('fiscal.draftReference'), dataIndex: 'reference' },
+                  { title: t('fiscal.draftDate'), dataIndex: 'date', render: fmtDate },
+                ]}
+              />
+            ) : (
+              <p>{t('fiscal.noDraftDocuments')}</p>
+            )}
+          </>
+        )}
+      </Modal>
       </Card>
     </div>
   );
@@ -301,7 +447,12 @@ function YearDetailPanel({
               locale={tableLocale(sequencesQuery)}
               pagination={false}
               columns={[
-                { title: t('fiscal.documentType'), dataIndex: 'documentType' },
+                {
+                  title: t('fiscal.documentType'),
+                  dataIndex: 'documentType',
+                  render: (value: string) =>
+                    t(`fiscal.documentTypes.${value}`, { defaultValue: value }),
+                },
                 { title: t('fiscal.prefix'), dataIndex: 'prefix' },
                 { title: t('fiscal.nextNumber'), dataIndex: 'nextNumber', width: 110 },
               ]}

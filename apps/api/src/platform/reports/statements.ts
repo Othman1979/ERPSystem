@@ -164,7 +164,7 @@ export function incomeStatement(
 }
 
 /**
- * Balance sheet as of a date, with no closing entries (§8.5):
+ * Balance sheet as of a date, including closing entries (§8.5):
  *  - assets = Σ ASSET (Dr − Cr), liabilities = Σ LIABILITY (Cr − Dr),
  *    equity = Σ EQUITY (Cr − Dr), all lines dated ≤ asOf;
  *  - priorYears = Σ (Cr − Dr) of REVENUE + EXPENSE before the start of the

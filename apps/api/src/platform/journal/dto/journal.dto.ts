@@ -1,9 +1,10 @@
 import { ApiPropertyOptional, IntersectionType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsIn,
   IsOptional,
@@ -150,6 +151,12 @@ export class CreateOpeningEntryDto {
 }
 
 export class ReportQueryDto extends ExportQueryDto {
+  @ApiPropertyOptional({ type: 'boolean' })
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  afterClosing?: boolean;
+
   @IsOptional()
   @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
   @IsDateString({ strict: true })

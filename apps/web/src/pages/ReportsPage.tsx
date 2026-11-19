@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { PrinterOutlined } from '@ant-design/icons';
-import { Button, Card, DatePicker, Select, Table, Tabs, Tag, type TabsProps } from 'antd';
+import { Button, Card, DatePicker, Select, Switch, Table, Tabs, Tag, type TabsProps } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -80,6 +80,7 @@ export function ReportsPage() {
   };
   const [partyType, setPartyType] = useState<'CUSTOMER' | 'SUPPLIER' | undefined>(undefined);
   const [partyId, setPartyId] = useState<string | undefined>(undefined);
+  const [afterClosing, setAfterClosing] = useState(false);
 
   const { enabled: costCentersEnabled } = useCostCenters();
   const { data: accounts } = useAccounts();
@@ -96,8 +97,8 @@ export function ReportsPage() {
 
   // The from/to filters above apply to the trial balance too.
   const tbQuery = useQuery({
-    queryKey: ['report-tb', range.from, range.to],
-    queryFn: ({ signal }) => journalControllerTrialBalance(range, { signal }).then((r) => r.data),
+    queryKey: ['report-tb', range.from, range.to, afterClosing],
+    queryFn: ({ signal }) => journalControllerTrialBalance({ ...range, afterClosing }, { signal }).then((r) => r.data),
     enabled: allBranches,
   });
   const { data: tb, isLoading: tbLoading } = tbQuery;
@@ -184,8 +185,15 @@ export function ReportsPage() {
                     {tb.balanced ? t('reports.balanced') : t('reports.unbalanced')}
                   </Tag>
                 )}
+                <span>
+                  {t('reports.afterClosing')}{' '}
+                  <Switch checked={afterClosing} onChange={setAfterClosing} aria-label={t('reports.afterClosing')} />
+                </span>
                 {printButton}
-                <ExportButtons path="/reports/trial-balance" params={range} />
+                <ExportButtons
+                  path="/reports/trial-balance"
+                  params={{ ...range, afterClosing: String(afterClosing) }}
+                />
               </>
             }
           />
