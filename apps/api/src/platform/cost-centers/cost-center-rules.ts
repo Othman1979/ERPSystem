@@ -80,6 +80,7 @@ export function assertPostingCentre(
   id: bigint,
   centre: PostingCentre | undefined,
   reversal: boolean,
+  allowInactive = false,
 ): void {
   const costCenterId = id.toString();
   if (!centre) {
@@ -89,7 +90,7 @@ export function assertPostingCentre(
     });
   }
   if (reversal) return;
-  if (!centre.isActive) {
+  if (!allowInactive && !centre.isActive) {
     throw new DomainError(ErrorCode.COST_CENTER_INACTIVE, `Cost centre ${centre.code} is inactive`, {
       line: lineNo,
       costCenterId,

@@ -204,7 +204,7 @@ export class PostingService {
           accountId,
         });
       }
-      if (!account.isActive) {
+      if (!opts.isClosing && !account.isActive) {
         throw new DomainError(ErrorCode.ACCOUNT_INACTIVE, `Account ${account.code} is inactive`, {
           line: lineNo,
           accountId,
@@ -277,7 +277,13 @@ export class PostingService {
       const centres = await this.costCenters.lockForPosting(tx, tenantId, companyId, centreIds);
       normalized.forEach((n, i) => {
         if (n.costCenterId !== null) {
-          assertPostingCentre(i + 1, n.costCenterId, centres.get(n.costCenterId), centreContext.reversal);
+          assertPostingCentre(
+            i + 1,
+            n.costCenterId,
+            centres.get(n.costCenterId),
+            centreContext.reversal,
+            opts.isClosing,
+          );
         }
       });
     }
