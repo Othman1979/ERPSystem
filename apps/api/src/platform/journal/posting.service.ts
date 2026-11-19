@@ -33,6 +33,7 @@ export interface LineValidationOptions {
   costCenterId?: bigint | null;
   /** A reversal carries the original's centres as they are: no required / active / leaf checks. */
   reversal?: boolean;
+  isClosing?: boolean;
   /**
    * Enforce COST_CENTER_REQUIRED (ADR-024 §1.3): only for entries typed on a screen
    * with a centre field (manual, opening, invoices, returns, vouchers). Default off:
@@ -61,6 +62,7 @@ export interface PostEntryParams {
   reversalOfId?: bigint | null;
   /** Opening balances entry (§8.6): reports show it as the period's opening. */
   isOpening?: boolean;
+  isClosing?: boolean;
   description?: string | null;
   lines: JournalLineInput[];
   postedBy?: bigint | null;
@@ -189,7 +191,7 @@ export class PostingService {
       enabled: company?.costCentersEnabled ?? false,
       header: opts.costCenterId ?? null,
       reversal: opts.reversal ?? false,
-      required: opts.requireCostCenters ?? false,
+      required: opts.isClosing ? false : (opts.requireCostCenters ?? false),
     };
 
     const normalized = lines.map((line, i): NormalizedLine => {
@@ -296,6 +298,7 @@ export class PostingService {
     const normalized = await this.validateLines(tx, tenantId, companyId, params.lines, {
       costCenterId: params.costCenterId,
       reversal: params.postingKind === 'REVERSAL',
+      isClosing: params.isClosing,
       requireCostCenters: params.requireCostCenters,
     });
 
@@ -336,6 +339,7 @@ export class PostingService {
           totalCredit,
           reversalOfId: params.reversalOfId ?? null,
           isOpening: params.isOpening ?? false,
+          isClosing: params.isClosing ?? false,
           postedAt: new Date(),
           postedBy: params.postedBy ?? null,
         },
@@ -390,6 +394,7 @@ export class PostingService {
       companyId: bigint;
       entryId: bigint;
       reversalDate: Date;
+      isClosing?: boolean;
       description?: string | null;
       postedBy?: bigint | null;
     },
@@ -470,6 +475,7 @@ export class PostingService {
       reversalOfId: original.id,
       // A reversed opening entry stays in the opening balance (it nets out).
       isOpening: original.isOpening,
+      isClosing: params.isClosing ?? original.isClosing,
       description: params.description ?? null,
       lines: swapped,
       postedBy: params.postedBy ?? null,

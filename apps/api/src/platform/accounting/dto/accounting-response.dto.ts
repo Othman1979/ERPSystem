@@ -36,8 +36,25 @@ export class FiscalYearCountDto {
   periods!: number;
 }
 
+export class FiscalYearActiveClosingDto {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  journalEntryId!: string | null;
+
+  @ApiProperty({ type: 'string' })
+  netResult!: string;
+
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  closedAt!: string;
+}
+
 /** A fiscal year in the list (FiscalService.listYears): no periods array. */
 export class FiscalYearListItemDto extends FiscalYearRow {
+  @ApiProperty({ type: () => FiscalYearActiveClosingDto, isArray: true })
+  closings!: FiscalYearActiveClosingDto[];
+
   @ApiProperty({ type: () => FiscalYearCountDto })
   _count!: FiscalYearCountDto;
 }
@@ -50,8 +67,88 @@ export class FiscalYearDetailDto extends FiscalYearRow {
   @ApiProperty({ type: () => FiscalPeriodDto, isArray: true })
   periods!: FiscalPeriodDto[];
 
+  @ApiProperty({ type: () => FiscalYearActiveClosingDto, isArray: true })
+  closings!: FiscalYearActiveClosingDto[];
+
   @ApiProperty({ type: () => FiscalYearCountDto })
   _count!: FiscalYearCountDto;
+}
+
+export class YearClosingLineDto {
+  @ApiProperty({ type: 'string' })
+  accountId!: string;
+
+  @ApiProperty({ type: 'string' })
+  accountCode!: string;
+
+  @ApiProperty({ type: 'string' })
+  accountNameAr!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  accountNameEn!: string | null;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  branchId!: string | null;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  costCenterId!: string | null;
+
+  @ApiProperty({ type: 'string' })
+  debit!: string;
+
+  @ApiProperty({ type: 'string' })
+  credit!: string;
+}
+
+export class YearClosingDraftDto {
+  @ApiProperty({ type: 'string' })
+  type!: string;
+
+  @ApiProperty({ type: 'string' })
+  id!: string;
+
+  @ApiProperty({ type: 'string', format: 'date' })
+  date!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  reference!: string | null;
+}
+
+export class YearClosingWarningDto {
+  @ApiProperty({ type: 'string' })
+  code!: string;
+
+  @ApiProperty({ type: 'object', additionalProperties: true })
+  details!: Record<string, unknown>;
+}
+
+export class YearClosingPreviewDto {
+  @ApiProperty({ type: 'string' })
+  fiscalYearId!: string;
+
+  @ApiProperty({ type: 'string' })
+  code!: string;
+
+  @ApiProperty({ type: 'string', format: 'date' })
+  startDate!: string;
+
+  @ApiProperty({ type: 'string', format: 'date' })
+  endDate!: string;
+
+  @ApiProperty({ type: 'boolean' })
+  canClose!: boolean;
+
+  @ApiProperty({ type: 'string' })
+  netResult!: string;
+
+  @ApiProperty({ type: () => YearClosingLineDto, isArray: true })
+  lines!: YearClosingLineDto[];
+
+  @ApiProperty({ type: () => YearClosingDraftDto, isArray: true })
+  drafts!: YearClosingDraftDto[];
+
+  @ApiProperty({ type: () => YearClosingWarningDto, isArray: true })
+  warnings!: YearClosingWarningDto[];
 }
 
 /** The numbering sequence of one document type for a fiscal year (FiscalService.listSequences). */

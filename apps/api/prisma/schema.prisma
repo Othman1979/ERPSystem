@@ -335,6 +335,7 @@ model Tenant {
   taxCategories        TaxCategory[]
   paymentMethods       PaymentMethod[]
   fiscalYears          FiscalYear[]
+  fiscalYearClosings   FiscalYearClosing[]
   accounts             Account[]
   documentSequences    DocumentSequence[]
   journalEntries       JournalEntry[]
@@ -459,6 +460,7 @@ model Company {
   logoAttachment    Attachment?        @relation("CompanyLogo", fields: [tenantId, logoAttachmentId], references: [tenantId, id])
   branches          Branch[]
   fiscalYears       FiscalYear[]
+  fiscalYearClosings FiscalYearClosing[]
   accounts          Account[]
   accountMappings   AccountMapping[]
   documentSequences DocumentSequence[]
@@ -783,6 +785,7 @@ model FiscalYear {
   company   Company            @relation(fields: [tenantId, companyId], references: [tenantId, id])
   periods   FiscalPeriod[]
   sequences DocumentSequence[]
+  closings  FiscalYearClosing[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
@@ -808,6 +811,33 @@ model FiscalPeriod {
   @@unique([tenantId, id])
   @@unique([tenantId, fiscalYearId, periodNo])
   @@map("fiscal_periods")
+}
+
+model FiscalYearClosing {
+  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt    @map("tenant_id") @db.UnsignedBigInt
+  companyId        BigInt    @map("company_id") @db.UnsignedBigInt
+  fiscalYearId     BigInt    @map("fiscal_year_id") @db.UnsignedBigInt
+  journalEntryId   BigInt?   @map("journal_entry_id") @db.UnsignedBigInt
+  reversalEntryId  BigInt?   @map("reversal_entry_id") @db.UnsignedBigInt
+  status           String    @default("ACTIVE") @db.VarChar(20)
+  netResult        Decimal   @default(0) @map("net_result") @db.Decimal(18, 3)
+  closedBy         BigInt?   @map("closed_by") @db.UnsignedBigInt
+  closedAt         DateTime  @map("closed_at") @db.DateTime(3)
+  reversedBy       BigInt?   @map("reversed_by") @db.UnsignedBigInt
+  reversedAt       DateTime? @map("reversed_at") @db.DateTime(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company         Company      @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  fiscalYear      FiscalYear   @relation(fields: [tenantId, fiscalYearId], references: [tenantId, id], onDelete: Cascade)
+  journalEntry    JournalEntry? @relation("FiscalYearClosingEntry", fields: [tenantId, journalEntryId], references: [tenantId, id])
+  reversalEntry   JournalEntry? @relation("FiscalYearClosingReversal", fields: [tenantId, reversalEntryId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@index([tenantId, companyId, fiscalYearId, status])
+  @@map("fiscal_year_closings")
 }
 
 model Account {
@@ -921,6 +951,7 @@ model JournalEntry {
   /// OPENING stock adjustments, and their reversals. Reports show these
   /// lines as the opening balance of a period, not as movements.
   isOpening      Boolean            @default(false) @map("is_opening")
+  isClosing      Boolean            @default(false) @map("is_closing")
   postedAt       DateTime?          @map("posted_at") @db.DateTime(3)
   postedBy       BigInt?            @map("posted_by") @db.UnsignedBigInt
   createdAt      DateTime           @default(now()) @map("created_at") @db.DateTime(3)
@@ -932,6 +963,8 @@ model JournalEntry {
   fiscalPeriod     FiscalPeriod?     @relation(fields: [tenantId, fiscalPeriodId], references: [tenantId, id])
   reversalOf       JournalEntry?     @relation("EntryReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
   reversals        JournalEntry[]    @relation("EntryReversal")
+  fiscalYearClosings FiscalYearClosing[] @relation("FiscalYearClosingEntry")
+  fiscalYearClosingReversals FiscalYearClosing[] @relation("FiscalYearClosingReversal")
   lines            JournalLine[]
   stockAdjustments StockAdjustment[]
   productionVouchers ProductionVoucher[]
@@ -952,6 +985,7 @@ model JournalEntry {
   // from the reversal that points here. NULL (not a reversal) repeats freely.
   @@unique([tenantId, reversalOfId])
   @@index([tenantId, companyId, entryDate])
+  @@index([tenantId, companyId, entryDate, isClosing], map: "journal_entries_closing_idx")
   // Reports read posted entries of a company by date (DB-10).
   @@index([tenantId, companyId, status, entryDate])
   @@map("journal_entries")

@@ -24,6 +24,7 @@ export const TENANT_MODELS = [
   'PaymentMethod',
   'FiscalYear',
   'FiscalPeriod',
+  'FiscalYearClosing',
   'Account',
   'AccountMapping',
   'DocumentSequence',

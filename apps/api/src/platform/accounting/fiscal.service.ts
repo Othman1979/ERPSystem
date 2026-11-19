@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
+import { round3 } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -116,7 +117,7 @@ export class FiscalService {
             companyId,
             documentType,
             fiscalYearId: y.id,
-            prefix: `${prefix}-${yearCode}`,
+            prefix: documentType === 'YEAR_CLOSING' ? prefix : `${prefix}-${yearCode}`,
             nextNumber: 1,
             padding: 6,
           })),
@@ -145,11 +146,24 @@ export class FiscalService {
   async listYears() {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
-    return db.fiscalYear.findMany({
+    const years = await db.fiscalYear.findMany({
       where: { companyId },
-      include: { _count: { select: { periods: true } } },
+      include: {
+        closings: {
+          where: { status: 'ACTIVE' },
+          select: { id: true, journalEntryId: true, netResult: true, closedAt: true },
+        },
+        _count: { select: { periods: true } },
+      },
       orderBy: { startDate: 'desc' },
     });
+    return years.map((year) => ({
+      ...year,
+      closings: year.closings.map((closing) => ({
+        ...closing,
+        netResult: round3(closing.netResult).toString(),
+      })),
+    }));
   }
 
   async getYear(id: bigint) {
@@ -158,11 +172,21 @@ export class FiscalService {
       where: { id },
       include: {
         periods: { orderBy: { periodNo: 'asc' } },
+        closings: {
+          where: { status: 'ACTIVE' },
+          select: { id: true, journalEntryId: true, netResult: true, closedAt: true },
+        },
         _count: { select: { periods: true } },
       },
     });
     if (!year) throw DomainError.notFound('FiscalYear', id.toString());
-    return year;
+    return {
+      ...year,
+      closings: year.closings.map((closing) => ({
+        ...closing,
+        netResult: round3(closing.netResult).toString(),
+      })),
+    };
   }
 
   /**
@@ -179,55 +203,37 @@ export class FiscalService {
     });
   }
 
-  /**
-   * Closes (or reopens) a whole fiscal year: every period of it, and the
-   * year's own status (ADR-008 §7). Posting checks the periods, so a closed
-   * year takes no document; nothing is posted or reversed (no closing entry,
-   * §8.5). fiscal.close permission enforced at the controller.
-   */
-  async setYearStatus(yearId: bigint, status: 'OPEN' | 'CLOSED') {
-    const { tenantId, db } = this.tenant();
-    const year = await db.fiscalYear.findFirst({ where: { id: yearId }, select: { id: true, code: true, status: true } });
-    if (!year) throw DomainError.notFound('FiscalYear', yearId.toString());
-    const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
-    const changed = await db.$transaction(async (tx) => {
-      // Lock every period of the year before writing. Postings hold a shared
-      // lock on their period until COMMIT, so this waits for in-flight postings
-      // (DB-20). closedAt is taken after the lock.
-      await tx.$queryRaw`SELECT id FROM fiscal_periods WHERE tenant_id = ${tenantId} AND fiscal_year_id = ${yearId} ORDER BY id FOR UPDATE`;
-      const closedAt = new Date();
-      const periods = await tx.fiscalPeriod.updateMany({
-        where: { fiscalYearId: yearId, status: status === 'CLOSED' ? 'OPEN' : 'CLOSED' },
-        data:
-          status === 'CLOSED'
-            ? { status, closedAt, closedBy: userId }
-            : { status, closedAt: null, closedBy: null },
-      });
-      await tx.fiscalYear.update({ where: { id: yearId }, data: { status } });
-      return periods.count;
-    }, POSTING_TX_OPTIONS);
-    await this.audit.log({
-      action: status === 'CLOSED' ? 'fiscal_year.close' : 'fiscal_year.open',
-      entityType: 'fiscal_year',
-      entityId: yearId,
-      before: { status: year.status },
-      after: { status, periodsChanged: changed },
-    });
-    return this.getYear(yearId);
-  }
-
   /** Close/reopen a period — fiscal.close permission enforced at controller. */
   async setPeriodStatus(periodId: bigint, status: 'OPEN' | 'CLOSED') {
     const { tenantId, db } = this.tenant();
     const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
+    const periodRef = await db.fiscalPeriod.findFirst({
+      where: { tenantId, id: periodId },
+      select: { id: true, fiscalYearId: true, fiscalYear: { select: { companyId: true } } },
+    });
+    if (!periodRef) throw DomainError.notFound('FiscalPeriod', periodId.toString());
 
     const result = await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${periodRef.fiscalYear.companyId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM fiscal_years WHERE tenant_id = ${tenantId} AND id = ${periodRef.fiscalYearId} FOR UPDATE`;
       // Postings hold a shared lock on their period until COMMIT
       // (PostingService.resolveOpenPeriod), so the close waits for in-flight
       // postings and no posting lands in a period after it closed (DB-20).
       const rows = await tx.$queryRaw<{ id: bigint; status: string; fiscal_year_id: bigint }[]>`SELECT id, status, fiscal_year_id FROM fiscal_periods WHERE tenant_id = ${tenantId} AND id = ${periodId} FOR UPDATE`;
       const locked = rows[0];
       if (!locked) throw DomainError.notFound('FiscalPeriod', periodId.toString());
+
+      const activeClosing = await tx.fiscalYearClosing.findFirst({
+        where: { tenantId, companyId: periodRef.fiscalYear.companyId, fiscalYearId: locked.fiscal_year_id, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (status === 'OPEN' && activeClosing) {
+        throw new DomainError(
+          ErrorCode.YEAR_CLOSED_REOPEN_YEAR,
+          'Reopen the fiscal year to open one of its periods',
+          { fiscalYearId: locked.fiscal_year_id.toString() },
+        );
+      }
 
       const before = locked.status;
       if (before === status) {
@@ -245,14 +251,14 @@ export class FiscalService {
             ? { status, closedAt, closedBy: userId }
             : { status, closedAt: null, closedBy: null },
       });
-      // The year follows its periods: closed once all are closed, open again
-      // as soon as one reopens.
+      // An active year-closing record is authoritative; otherwise the year
+      // follows its individual periods.
       const stillOpen = await tx.fiscalPeriod.count({
         where: { fiscalYearId: locked.fiscal_year_id, status: 'OPEN' },
       });
       await tx.fiscalYear.update({
         where: { id: locked.fiscal_year_id },
-        data: { status: stillOpen > 0 ? 'OPEN' : 'CLOSED' },
+        data: { status: activeClosing || stillOpen === 0 ? 'CLOSED' : 'OPEN' },
       });
       return { changed: true, before, period: updated };
     }, POSTING_TX_OPTIONS);

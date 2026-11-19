@@ -45,6 +45,24 @@ export class MappingsService {
     return company.id;
   }
 
+  async mappedAccountId(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    mappingKey: AccountMappingKey,
+  ): Promise<bigint> {
+    const mapping = await tx.accountMapping.findFirst({
+      where: { tenantId, companyId, mappingKey },
+      select: { accountId: true },
+    });
+    if (!mapping) {
+      throw new DomainError(ErrorCode.MAPPING_ACCOUNT_INVALID, `Missing account mapping: ${mappingKey}`, {
+        mappingKey,
+      });
+    }
+    return mapping.accountId;
+  }
+
   async list() {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);

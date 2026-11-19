@@ -94,6 +94,15 @@ async function main(): Promise<void> {
       WHERE je.source_type = 'OPENING_ENTRY' AND je.posting_kind = 'POST' AND je.status = 'POSTED'
         AND je.entry_date <> fy.start_date
       ORDER BY je.tenant_id, je.entry_date`);
+
+    report.yearClosingSourceOrphans = await conn.query(`
+      SELECT je.tenant_id, je.id AS entry_id, je.entry_no, je.source_id
+      FROM journal_entries je
+      LEFT JOIN fiscal_year_closings fyc
+        ON fyc.tenant_id = je.tenant_id AND fyc.id = je.source_id
+      WHERE je.source_type = 'YEAR_CLOSING'
+        AND (je.source_id IS NULL OR fyc.id IS NULL)
+      ORDER BY je.tenant_id, je.entry_date, je.id`);
   } finally {
     await conn.end();
   }
