@@ -55,6 +55,9 @@ export class FiscalYearListItemDto extends FiscalYearRow {
   @ApiProperty({ type: () => FiscalYearActiveClosingDto, isArray: true })
   closings!: FiscalYearActiveClosingDto[];
 
+  @ApiProperty({ type: () => FiscalYearActiveClosingDto, nullable: true })
+  activeClosing!: FiscalYearActiveClosingDto | null;
+
   @ApiProperty({ type: () => FiscalYearCountDto })
   _count!: FiscalYearCountDto;
 }
@@ -69,6 +72,9 @@ export class FiscalYearDetailDto extends FiscalYearRow {
 
   @ApiProperty({ type: () => FiscalYearActiveClosingDto, isArray: true })
   closings!: FiscalYearActiveClosingDto[];
+
+  @ApiProperty({ type: () => FiscalYearActiveClosingDto, nullable: true })
+  activeClosing!: FiscalYearActiveClosingDto | null;
 
   @ApiProperty({ type: () => FiscalYearCountDto })
   _count!: FiscalYearCountDto;

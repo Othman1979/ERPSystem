@@ -403,6 +403,12 @@ export class YearClosingService {
       });
       const lastPeriod = periods[periods.length - 1];
       if (!lastPeriod) throw new DomainError(ErrorCode.PERIOD_CLOSED, 'Fiscal year has no periods');
+      if (lastPeriod.status === 'CLOSED') {
+        await tx.fiscalPeriod.updateMany({
+          where: { tenantId, id: lastPeriod.id, status: 'CLOSED' },
+          data: { status: 'OPEN', closedAt: null, closedBy: null },
+        });
+      }
       const computation = await this.compute(tx, tenantId, year);
       const closedAt = new Date();
       const closing = await tx.fiscalYearClosing.create({

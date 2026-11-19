@@ -195,7 +195,7 @@ export function FiscalPage() {
             title: '',
             width: 150,
             render: (_: unknown, y: FiscalYear) => {
-              const closedByYear = (y.closings?.length ?? 0) > 0;
+              const closedByYear = Boolean(y.activeClosing);
               if (closedByYear) {
                 if (me?.currentMembership?.roleCode !== 'OWNER') return null;
                 return (
@@ -212,7 +212,6 @@ export function FiscalPage() {
                   </Popconfirm>
                 );
               }
-              if (y.status !== 'OPEN') return null;
               return (
                 <Button size="small" danger onClick={() => setPreviewYear(y)}>
                   {t('fiscal.closeYear')}

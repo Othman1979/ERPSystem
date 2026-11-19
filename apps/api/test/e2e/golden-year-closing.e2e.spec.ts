@@ -197,8 +197,9 @@ async function verify(index: number) {
 
 async function closingEntry(index: number) {
   const fy = await fiscalYear(index);
-  const active = (fy.closings as { id: string; journalEntryId: string | null; netResult: string }[])[0]!;
-  expect(active).toBeDefined();
+  const activeClosing = fy.activeClosing as { id: string; journalEntryId: string | null; netResult: string } | null;
+  if (!activeClosing) throw new Error(`Expected active closing for year ${year(index).code}`);
+  const active = activeClosing;
   expect(active.journalEntryId).not.toBeNull();
   const entry = h.ok(await h.get(token, `journal-entries/${active.journalEntryId}`), 200, 'closing entry');
   expect(entry).toMatchObject({
@@ -506,9 +507,75 @@ describe('Phase 18 golden year closing', () => {
     expect([first.status, second.status].sort()).toEqual([201, 409]);
     expect([first, second].find((response) => response.status === 409)?.body.error.code).toBe('YEAR_ALREADY_CLOSED');
     const closed = await fiscalYear(4);
+    expect(closed.activeClosing).not.toBeNull();
     expect(closed.closings).toHaveLength(1);
     expect(closed.closings[0].journalEntryId).toBeNull();
     expect(m3(closed.closings[0].netResult)).toBe('0.000');
     await verify(4);
+  });
+
+  it('closes and reopens with an inactive cost centre that still has a balance', async () => {
+    await postJournal('2036-04-01', [
+      { accountId: accounts['1101'], debit: '60.000' },
+      { accountId: accounts['4101'], credit: '60.000', costCenterId: costCenterA },
+    ]);
+    expect(
+      h.ok(
+        await h.api().patch(`/api/v1/cost-centers/${costCenterA}`).set(h.auth(token)).send({ isActive: false }),
+        200,
+        'deactivate used cost centre before closing',
+      ).isActive,
+    ).toBe(false);
+
+    await closeYear(5);
+    const closed = await closingEntry(5);
+    expect(m3(closed.active.netResult)).toBe('60.000');
+    expect((await trialBalance(5, true)).rows.find((row) => row.code === '4101')).toMatchObject({
+      closingDebit: '0.000',
+      closingCredit: '0.000',
+    });
+
+    h.ok(
+      await h.api().patch(`/api/v1/cost-centers/${costCenterA}`).set(h.auth(token)).send({ isActive: true }),
+      200,
+      'reactivate cost centre after closing',
+    );
+    expect(
+      h.ok(
+        await h.api().patch(`/api/v1/cost-centers/${costCenterA}`).set(h.auth(token)).send({ isActive: false }),
+        200,
+        'deactivate cost centre after closing',
+      ).isActive,
+    ).toBe(false);
+
+    h.ok(await h.act(token, `fiscal-years/${yearIds[5]}/open`), 201, 'reopen year with inactive cost centre');
+    expect((await trialBalance(5, true)).rows.find((row) => row.code === '4101')).toMatchObject({
+      closingDebit: '0.000',
+      closingCredit: '60.000',
+    });
+    await closeYear(5);
+    await verify(5);
+  });
+
+  it('closes a year after all periods were closed individually', async () => {
+    await postJournal('2037-03-01', [
+      { accountId: accounts['1101'], debit: '25.000' },
+      { accountId: accounts['4101'], credit: '25.000' },
+    ]);
+    const before = await fiscalYear(6);
+    for (const period of before.periods as { id: string }[]) {
+      h.ok(await h.act(token, `fiscal-periods/${period.id}/close`), 201, 'close period individually');
+    }
+    const periodsClosed = await fiscalYear(6);
+    expect(periodsClosed.status).toBe('CLOSED');
+    expect(periodsClosed.activeClosing).toBeNull();
+
+    await closeYear(6);
+    const closed = await fiscalYear(6);
+    expect(closed.activeClosing).not.toBeNull();
+    expect(closed.activeClosing.journalEntryId).not.toBeNull();
+    expect(m3(closed.activeClosing.netResult)).toBe('25.000');
+    await closingEntry(6);
+    await verify(6);
   });
 });

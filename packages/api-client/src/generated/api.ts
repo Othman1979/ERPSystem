@@ -459,6 +459,8 @@ export interface FiscalYearListItemDto {
   /** @nullable */
   createdBy: string | null;
   closings: FiscalYearActiveClosingDto[];
+  /** @nullable */
+  activeClosing: FiscalYearActiveClosingDto | null;
   _count: FiscalYearCountDto;
 }
 
@@ -502,6 +504,8 @@ export interface FiscalYearDetailDto {
   createdBy: string | null;
   periods: FiscalPeriodDto[];
   closings: FiscalYearActiveClosingDto[];
+  /** @nullable */
+  activeClosing: FiscalYearActiveClosingDto | null;
   _count: FiscalYearCountDto;
 }
 

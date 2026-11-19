@@ -157,13 +157,13 @@ export class FiscalService {
       },
       orderBy: { startDate: 'desc' },
     });
-    return years.map((year) => ({
-      ...year,
-      closings: year.closings.map((closing) => ({
+    return years.map((year) => {
+      const closings = year.closings.map((closing) => ({
         ...closing,
         netResult: round3(closing.netResult).toString(),
-      })),
-    }));
+      }));
+      return { ...year, closings, activeClosing: closings[0] ?? null };
+    });
   }
 
   async getYear(id: bigint) {
@@ -180,12 +180,14 @@ export class FiscalService {
       },
     });
     if (!year) throw DomainError.notFound('FiscalYear', id.toString());
+    const closings = year.closings.map((closing) => ({
+      ...closing,
+      netResult: round3(closing.netResult).toString(),
+    }));
     return {
       ...year,
-      closings: year.closings.map((closing) => ({
-        ...closing,
-        netResult: round3(closing.netResult).toString(),
-      })),
+      closings,
+      activeClosing: closings[0] ?? null,
     };
   }
 

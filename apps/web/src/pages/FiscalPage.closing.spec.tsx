@@ -21,7 +21,7 @@ window.matchMedia ??= (query: string) =>
   }) as MediaQueryList;
 
 const ok = <T,>(data: T) => Promise.resolve({ data, status: 200, headers: new Headers() });
-const state = vi.hoisted(() => ({ role: 'OWNER', closed: false }));
+const state = vi.hoisted(() => ({ role: 'OWNER', closed: false, activeClosing: false }));
 
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({ me: { currentMembership: { roleCode: state.role } } }),
@@ -38,6 +38,9 @@ vi.mock('@erp/api-client', async (original) => ({
         status: state.closed ? 'CLOSED' : 'OPEN',
         _count: { periods: 12 },
         closings: state.closed ? [{ id: '10', journalEntryId: '20', netResult: '5.000', closedAt: '2031-12-31' }] : [],
+        activeClosing: state.activeClosing
+          ? { id: '10', journalEntryId: '20', netResult: '5.000', closedAt: '2031-12-31T00:00:00.000Z' }
+          : null,
       },
     ]),
   fiscalControllerClosingPreview: () =>
@@ -94,6 +97,7 @@ afterEach(() => {
   host = undefined;
   state.role = 'OWNER';
   state.closed = false;
+  state.activeClosing = false;
 });
 
 describe('FiscalPage year closing', () => {
@@ -116,6 +120,7 @@ describe('FiscalPage year closing', () => {
 
   it('shows the reopen action to the owner only', async () => {
     state.closed = true;
+    state.activeClosing = true;
     state.role = 'CASHIER';
     await renderPage();
     expect(document.body.textContent).not.toContain('Reopen year');
@@ -127,5 +132,12 @@ describe('FiscalPage year closing', () => {
     state.role = 'OWNER';
     await renderPage();
     expect(document.body.textContent).toContain('Reopen year');
+  });
+
+  it('shows close year when every period is closed but there is no active closing', async () => {
+    state.closed = true;
+    await renderPage();
+    expect(document.body.textContent).toContain('Close year');
+    expect(document.body.textContent).not.toContain('Reopen year');
   });
 });
