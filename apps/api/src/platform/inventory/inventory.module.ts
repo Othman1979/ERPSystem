@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AccountingModule } from '../accounting/accounting.module.js';
 import { JournalModule } from '../journal/journal.module.js';
 import { PrintingModule } from '../printing/printing.module.js';
 import { SharedModule } from '../shared/shared.module.js';
@@ -13,9 +14,10 @@ import { StockReportsService } from './stock-reports.service.js';
 import { TransfersService } from './transfers.service.js';
 import { WarehousesController } from './warehouses.controller.js';
 import { WarehousesService } from './warehouses.service.js';
+import { InventoryYearClosingDraftRegistrations } from './year-closing-draft-registrations.service.js';
 
 @Module({
-  imports: [JournalModule, PrintingModule, SharedModule],
+  imports: [AccountingModule, JournalModule, PrintingModule, SharedModule],
   controllers: [
     CatalogController,
     WarehousesController,
@@ -30,6 +32,7 @@ import { WarehousesService } from './warehouses.service.js';
     TransfersService,
     CountsService,
     StockReportsService,
+    InventoryYearClosingDraftRegistrations,
   ],
   // StockReportsService: the dashboard lists items below their minimum (module boundary).
   // CatalogService / WarehousesService: the procurement documents' lines and header (ADR-025).

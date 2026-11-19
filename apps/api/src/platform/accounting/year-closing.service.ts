@@ -13,15 +13,9 @@ import { PostingService } from '../journal/posting.service.js';
 import { retryOnLockConflict } from '../shared/document-support.service.js';
 import { FiscalService } from './fiscal.service.js';
 import { MappingsService } from './mappings.service.js';
+import { YearClosingDraftRegistry, type YearClosingDraft } from './year-closing-draft.registry.js';
 
 type FiscalYear = Prisma.FiscalYearGetPayload<Record<string, never>>;
-
-interface DraftDocument {
-  type: string;
-  id: string;
-  date: string;
-  reference: string | null;
-}
 
 interface ClosingLine {
   accountId: bigint;
@@ -39,10 +33,6 @@ interface ClosingComputation {
   netResult: Decimal;
 }
 
-function draft(type: string, id: bigint, date: Date, reference: string | null): DraftDocument {
-  return { type, id: id.toString(), date: date.toISOString().slice(0, 10), reference };
-}
-
 @Injectable()
 export class YearClosingService {
   constructor(
@@ -52,6 +42,7 @@ export class YearClosingService {
     private readonly posting: PostingService,
     private readonly mappings: MappingsService,
     private readonly fiscal: FiscalService,
+    private readonly draftRegistry: YearClosingDraftRegistry,
   ) {}
 
   private tenant() {
@@ -88,128 +79,8 @@ export class YearClosingService {
     tenantId: bigint,
     companyId: bigint,
     year: Pick<FiscalYear, 'startDate' | 'endDate'>,
-  ): Promise<DraftDocument[]> {
-    const date = { gte: year.startDate, lte: year.endDate };
-    const [
-      journalEntries,
-      stockAdjustments,
-      stockTransfers,
-      stockCounts,
-      salesInvoices,
-      purchaseInvoices,
-      salesReturns,
-      purchaseReturns,
-      goodsNotes,
-      receipts,
-      payments,
-      cashTransfers,
-      purchaseRequests,
-      purchaseQuotes,
-      purchaseOrders,
-      issueRequests,
-      salesQuotes,
-      salesOrders,
-      productionVouchers,
-    ] = await Promise.all([
-      tx.journalEntry.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', entryDate: date },
-        select: { id: true, entryDate: true, entryNo: true },
-      }),
-      tx.stockAdjustment.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', adjustmentDate: date },
-        select: { id: true, adjustmentDate: true, docNo: true },
-      }),
-      tx.stockTransfer.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', transferDate: date },
-        select: { id: true, transferDate: true, docNo: true },
-      }),
-      tx.stockCount.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', countDate: date },
-        select: { id: true, countDate: true, docNo: true },
-      }),
-      tx.salesInvoice.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', invoiceDate: date },
-        select: { id: true, invoiceDate: true, invoiceNo: true },
-      }),
-      tx.purchaseInvoice.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', invoiceDate: date },
-        select: { id: true, invoiceDate: true, invoiceNo: true },
-      }),
-      tx.salesReturn.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', returnDate: date },
-        select: { id: true, returnDate: true, returnNo: true },
-      }),
-      tx.purchaseReturn.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', returnDate: date },
-        select: { id: true, returnDate: true, returnNo: true },
-      }),
-      tx.goodsNote.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', noteDate: date },
-        select: { id: true, noteDate: true, docNo: true },
-      }),
-      tx.receipt.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', receiptDate: date },
-        select: { id: true, receiptDate: true, receiptNo: true },
-      }),
-      tx.payment.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', paymentDate: date },
-        select: { id: true, paymentDate: true, paymentNo: true },
-      }),
-      tx.cashTransfer.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', transferDate: date },
-        select: { id: true, transferDate: true, transferNo: true },
-      }),
-      tx.purchaseRequest.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', requestDate: date },
-        select: { id: true, requestDate: true, requestNo: true },
-      }),
-      tx.purchaseQuote.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', quoteDate: date },
-        select: { id: true, quoteDate: true, quoteNo: true },
-      }),
-      tx.purchaseOrder.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', orderDate: date },
-        select: { id: true, orderDate: true, orderNo: true },
-      }),
-      tx.issueRequest.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', requestDate: date },
-        select: { id: true, requestDate: true, requestNo: true },
-      }),
-      tx.salesQuote.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', quoteDate: date },
-        select: { id: true, quoteDate: true, quoteNo: true },
-      }),
-      tx.salesOrder.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', orderDate: date },
-        select: { id: true, orderDate: true, orderNo: true },
-      }),
-      tx.productionVoucher.findMany({
-        where: { tenantId, companyId, status: 'DRAFT', voucherDate: date },
-        select: { id: true, voucherDate: true, docNo: true },
-      }),
-    ]);
-
-    return [
-      ...journalEntries.map((row) => draft('JOURNAL_ENTRY', row.id, row.entryDate, row.entryNo)),
-      ...stockAdjustments.map((row) => draft('STOCK_ADJUSTMENT', row.id, row.adjustmentDate, row.docNo)),
-      ...stockTransfers.map((row) => draft('STOCK_TRANSFER', row.id, row.transferDate, row.docNo)),
-      ...stockCounts.map((row) => draft('STOCK_COUNT', row.id, row.countDate, row.docNo)),
-      ...salesInvoices.map((row) => draft('SALES_INVOICE', row.id, row.invoiceDate, row.invoiceNo)),
-      ...purchaseInvoices.map((row) => draft('PURCHASE_INVOICE', row.id, row.invoiceDate, row.invoiceNo)),
-      ...salesReturns.map((row) => draft('SALES_RETURN', row.id, row.returnDate, row.returnNo)),
-      ...purchaseReturns.map((row) => draft('PURCHASE_RETURN', row.id, row.returnDate, row.returnNo)),
-      ...goodsNotes.map((row) => draft('GOODS_NOTE', row.id, row.noteDate, row.docNo)),
-      ...receipts.map((row) => draft('RECEIPT', row.id, row.receiptDate, row.receiptNo)),
-      ...payments.map((row) => draft('PAYMENT', row.id, row.paymentDate, row.paymentNo)),
-      ...cashTransfers.map((row) => draft('CASH_TRANSFER', row.id, row.transferDate, row.transferNo)),
-      ...purchaseRequests.map((row) => draft('PURCHASE_REQUEST', row.id, row.requestDate, row.requestNo)),
-      ...purchaseQuotes.map((row) => draft('PURCHASE_QUOTE', row.id, row.quoteDate, row.quoteNo)),
-      ...purchaseOrders.map((row) => draft('PURCHASE_ORDER', row.id, row.orderDate, row.orderNo)),
-      ...issueRequests.map((row) => draft('ISSUE_REQUEST', row.id, row.requestDate, row.requestNo)),
-      ...salesQuotes.map((row) => draft('SALES_QUOTE', row.id, row.quoteDate, row.quoteNo)),
-      ...salesOrders.map((row) => draft('SALES_ORDER', row.id, row.orderDate, row.orderNo)),
-      ...productionVouchers.map((row) => draft('PRODUCTION_VOUCHER', row.id, row.voucherDate, row.docNo)),
-    ].sort((a, b) => a.date.localeCompare(b.date) || a.type.localeCompare(b.type) || a.id.localeCompare(b.id));
+  ): Promise<YearClosingDraft[]> {
+    return this.draftRegistry.list(tx, tenantId, companyId, year.startDate, year.endDate);
   }
 
   private async compute(

@@ -10,10 +10,11 @@ import { PurchaseReturnsService } from './purchase-returns.service.js';
 import { PurchasesController } from './purchases.controller.js';
 import { PartiesModule } from '../parties/parties.module.js';
 import { ProcurementModule } from '../procurement/procurement.module.js';
+import { AccountingModule } from '../accounting/accounting.module.js';
 
 @Module({
   // Procurement: invoices billing an order's receipts (ADR-026 §7), through its exported service.
-  imports: [PartiesModule, SharedModule, JournalModule, InventoryModule, GoodsNotesModule, PrintingModule, CostCentersModule, ProcurementModule],
+  imports: [AccountingModule, PartiesModule, SharedModule, JournalModule, InventoryModule, GoodsNotesModule, PrintingModule, CostCentersModule, ProcurementModule],
   controllers: [PurchasesController],
   providers: [PurchaseInvoicesService, PurchaseReturnsService],
   // Treasury reads open credit invoices for aging through this service (module boundary);

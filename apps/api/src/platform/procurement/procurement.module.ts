@@ -12,6 +12,7 @@ import { PurchaseOrderReceiptsService } from './purchase-order-receipts.service.
 import { PurchaseOrdersService } from './purchase-orders.service.js';
 import { PurchaseQuotesService } from './purchase-quotes.service.js';
 import { PurchaseRequestsService } from './purchase-requests.service.js';
+import { AccountingModule } from '../accounting/accounting.module.js';
 
 /**
  * Phase 12 (ADR-025): purchase requests, requests for quotation and purchase
@@ -21,7 +22,7 @@ import { PurchaseRequestsService } from './purchase-requests.service.js';
  * services (module boundary).
  */
 @Module({
-  imports: [SharedModule, InventoryModule, PartiesModule, CostCentersModule, PrintingModule],
+  imports: [AccountingModule, SharedModule, InventoryModule, PartiesModule, CostCentersModule, PrintingModule],
   controllers: [ProcurementController, IssueRequestsController],
   providers: [
     PurchaseRequestsService,

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { assertWarehouseBranchAllowed, branchWhere } from '../../common/branch/branch-context.js';
@@ -18,6 +18,7 @@ import { DocumentSupportService, retryOnLockConflict } from '../shared/document-
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import { BomService, type ExplodedLine } from './bom.service.js';
 import type { CreateProductionVoucherDto, ListProductionVouchersQueryDto, ProductionLineDto, UpdateProductionVoucherDto } from './dto/production-voucher.dto.js';
+import { YearClosingDraftRegistry, yearClosingDraft } from '../accounting/year-closing-draft.registry.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -143,7 +144,7 @@ export type ProductionVoucherDetail = Awaited<ReturnType<ProductionVouchersServi
 
 /** Production vouchers (ADR-031 §3-§4, §7). */
 @Injectable()
-export class ProductionVouchersService {
+export class ProductionVouchersService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: StockLedgerService,
@@ -151,7 +152,18 @@ export class ProductionVouchersService {
     private readonly audit: AuditService,
     private readonly support: DocumentSupportService,
     private readonly boms: BomService,
+    private readonly yearClosingDrafts: YearClosingDraftRegistry,
   ) {}
+
+  onModuleInit(): void {
+    this.yearClosingDrafts.register('PRODUCTION_VOUCHER', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.productionVoucher.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', voucherDate: { gte: from, lte: to } },
+        select: { id: true, voucherDate: true, docNo: true },
+      });
+      return rows.map((row) => yearClosingDraft('PRODUCTION_VOUCHER', row.id, row.voucherDate, row.docNo));
+    });
+  }
 
   private tenant() {
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');

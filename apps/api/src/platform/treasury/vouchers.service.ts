@@ -24,6 +24,7 @@ import type {
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
+import { YearClosingDraftRegistry, yearClosingDraft } from '../accounting/year-closing-draft.registry.js';
 
 type VoucherKind = 'receipt' | 'payment';
 
@@ -84,11 +85,33 @@ export class VouchersService implements OnModuleInit {
     private readonly partyUsage: PartyUsageRegistry,
     private readonly costCenters: CostCentersService,
     private readonly costCenterUsage: CostCenterUsageRegistry,
+    private readonly yearClosingDrafts: YearClosingDraftRegistry,
   ) {}
 
   onModuleInit(): void {
     this.partyUsage.register('treasury', (tx, partyId) => this.partyInUse(tx, partyId));
     this.costCenterUsage.register('treasury', (tx, id) => this.costCenterInUse(tx, id));
+    this.yearClosingDrafts.register('RECEIPT', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.receipt.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', receiptDate: { gte: from, lte: to } },
+        select: { id: true, receiptDate: true, receiptNo: true },
+      });
+      return rows.map((row) => yearClosingDraft('RECEIPT', row.id, row.receiptDate, row.receiptNo));
+    });
+    this.yearClosingDrafts.register('PAYMENT', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.payment.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', paymentDate: { gte: from, lte: to } },
+        select: { id: true, paymentDate: true, paymentNo: true },
+      });
+      return rows.map((row) => yearClosingDraft('PAYMENT', row.id, row.paymentDate, row.paymentNo));
+    });
+    this.yearClosingDrafts.register('CASH_TRANSFER', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.cashTransfer.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', transferDate: { gte: from, lte: to } },
+        select: { id: true, transferDate: true, transferNo: true },
+      });
+      return rows.map((row) => yearClosingDraft('CASH_TRANSFER', row.id, row.transferDate, row.transferNo));
+    });
   }
 
   /** ADR-024 §1.7: the first voucher table whose header references the cost centre. */
