@@ -271,6 +271,22 @@ describe('Idempotency-Key — route spellings, concurrency, reuse', () => {
     expect(await movements(a, id)).toBe(1);
   });
 
+  it('rejects a different request before taking over a stale reservation', async () => {
+    const id = await draft(a);
+    const k = key();
+    await db.query(
+      `INSERT INTO idempotency_keys
+         (tenant_id, \`key\`, endpoint, request_hash, status, created_at, expires_at)
+       VALUES (?, ?, ?, ?, 'RESERVED', NOW(3) - INTERVAL 11 MINUTE, NOW(3) + INTERVAL 1 DAY)`,
+      [a.tenantId, k, '/api/v1/stock-adjustments/:id/post', '0'.repeat(64)],
+    );
+
+    const retry = await api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);
+    expect(retry.status).toBe(409);
+    expect(retry.body.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    expect(await movements(a, id)).toBe(0);
+  });
+
   it('returns IDEMPOTENCY_ALREADY_APPLIED for COMMITTED without a stored response', async () => {
     const id = await draft(a);
     const k = key();

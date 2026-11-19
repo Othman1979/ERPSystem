@@ -123,6 +123,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
           await prisma.idempotencyKey.deleteMany({ where: { key, expiresAt: { lt: new Date() } } });
           continue;
         }
+        if (existing.requestHash !== requestHash) {
+          throw new DomainError(
+            ErrorCode.IDEMPOTENCY_KEY_REUSED,
+            'Idempotency-Key was already used with a different request',
+          );
+        }
         if (existing.status === 'RESERVED') {
           // Well past POSTING_TX_OPTIONS plus retries; RESERVED without COMMITTED proves nothing committed.
           await prisma.$executeRaw`
@@ -133,12 +139,6 @@ export class IdempotencyInterceptor implements NestInterceptor {
               AND created_at < NOW(3) - INTERVAL 10 MINUTE
           `;
           continue;
-        }
-        if (existing.requestHash !== requestHash) {
-          throw new DomainError(
-            ErrorCode.IDEMPOTENCY_KEY_REUSED,
-            'Idempotency-Key was already used with a different request',
-          );
         }
         if (existing.status === 'COMPLETED') return { kind: 'replay', value: existing.responseJson };
         if (existing.status === 'COMMITTED') {
