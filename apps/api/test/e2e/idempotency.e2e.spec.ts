@@ -12,6 +12,7 @@
  * Real MariaDB (erp_test) + built API. Run `pnpm build` before `pnpm test`.
  */
 import 'dotenv/config';
+import { createHash } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import path from 'node:path';
@@ -30,6 +31,28 @@ let db: Connection;
 const api = () => request(BASE);
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 const key = () => `idem-${RUN}-${Math.random().toString(36).slice(2)}`;
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
+  return `{${entries.join(',')}}`;
+}
+
+function adjustmentPostHash(id: string): string {
+  return createHash('sha256')
+    .update(
+      stableStringify({
+        method: 'POST',
+        endpoint: '/api/v1/stock-adjustments/:id/post',
+        params: { id },
+        body: null,
+      }),
+    )
+    .digest('hex');
+}
 
 async function waitForHealth(timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -202,7 +225,7 @@ describe('Idempotency-Key — route spellings, concurrency, reuse', () => {
     const send = () => api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);
     expect((await send()).status).toBe(201);
     // Make the stored row look like a request still in flight.
-    await db.query(`UPDATE idempotency_keys SET status = 'IN_PROGRESS', response_json = NULL WHERE tenant_id = ? AND \`key\` = ?`, [
+    await db.query(`UPDATE idempotency_keys SET status = 'RESERVED', response_json = NULL WHERE tenant_id = ? AND \`key\` = ?`, [
       a.tenantId,
       k,
     ]);
@@ -212,14 +235,30 @@ describe('Idempotency-Key — route spellings, concurrency, reuse', () => {
     expect(await movements(a, id)).toBe(1);
   });
 
-  it('takes over an 11-minute-old reservation, posts once, and replays the same body', async () => {
+  it('does not take over an old legacy IN_PROGRESS row', async () => {
     const id = await draft(a);
     const k = key();
     await db.query(
       `INSERT INTO idempotency_keys
          (tenant_id, \`key\`, endpoint, request_hash, status, created_at, expires_at)
        VALUES (?, ?, ?, ?, 'IN_PROGRESS', NOW(3) - INTERVAL 11 MINUTE, NOW(3) + INTERVAL 1 DAY)`,
-      [a.tenantId, k, `/api/v1/stock-adjustments/${id}/post`, '0'.repeat(64)],
+      [a.tenantId, k, '/api/v1/stock-adjustments/:id/post', adjustmentPostHash(id)],
+    );
+
+    const retry = await api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);
+    expect(retry.status).toBe(409);
+    expect(retry.body.error.code).toBe('CONFLICT');
+    expect(await movements(a, id)).toBe(0);
+  });
+
+  it('takes over an 11-minute-old reservation, posts once, and replays the same body', async () => {
+    const id = await draft(a);
+    const k = key();
+    await db.query(
+      `INSERT INTO idempotency_keys
+         (tenant_id, \`key\`, endpoint, request_hash, status, created_at, expires_at)
+       VALUES (?, ?, ?, ?, 'RESERVED', NOW(3) - INTERVAL 11 MINUTE, NOW(3) + INTERVAL 1 DAY)`,
+      [a.tenantId, k, '/api/v1/stock-adjustments/:id/post', adjustmentPostHash(id)],
     );
 
     const first = await api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);

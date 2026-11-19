@@ -21,7 +21,7 @@ async function addReservation(key: string): Promise<void> {
         key,
         endpoint: 'transaction-marker-test',
         requestHash: '0'.repeat(64),
-        status: 'IN_PROGRESS',
+        status: 'RESERVED',
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       },
     });
@@ -73,7 +73,7 @@ describe('tenant transaction idempotency marker (real MariaDB)', () => {
     expect(await statusOf(key)).toBe('COMMITTED');
   });
 
-  it('leaves the reservation in progress when the tenant transaction rolls back', async () => {
+  it('leaves the reservation reserved when the tenant transaction rolls back', async () => {
     const key = `tx-rollback-${RUN}`;
     await addReservation(key);
 
@@ -87,7 +87,7 @@ describe('tenant transaction idempotency marker (real MariaDB)', () => {
       }),
     ).rejects.toThrow('rollback marker transaction');
 
-    expect(await statusOf(key)).toBe('IN_PROGRESS');
+    expect(await statusOf(key)).toBe('RESERVED');
   });
 
   it('does not change a reservation when the active CLS context has no key', async () => {
@@ -99,6 +99,6 @@ describe('tenant transaction idempotency marker (real MariaDB)', () => {
       await prisma!.forTenant().$transaction(async () => undefined);
     });
 
-    expect(await statusOf(key)).toBe('IN_PROGRESS');
+    expect(await statusOf(key)).toBe('RESERVED');
   });
 });

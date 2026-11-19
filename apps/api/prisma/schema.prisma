@@ -678,7 +678,7 @@ model IdempotencyKey {
   key          String   @db.VarChar(255)
   endpoint     String   @db.VarChar(255)
   requestHash  String   @map("request_hash") @db.VarChar(64)
-  status       String   @db.VarChar(20) // IN_PROGRESS | COMPLETED
+  status       String   @db.VarChar(20) // RESERVED | COMMITTED | COMPLETED (IN_PROGRESS: rows from before PR #69)
   responseJson Json?    @map("response_json")
   httpStatus   Int?     @map("http_status")
   createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)

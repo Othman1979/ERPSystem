@@ -105,7 +105,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
               key,
               endpoint: endpoint.slice(0, 255),
               requestHash,
-              status: 'IN_PROGRESS',
+              status: 'RESERVED',
               expiresAt: new Date(Date.now() + KEY_TTL_MS),
             },
           });
@@ -121,10 +121,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
           continue;
         }
         const staleBefore = new Date(Date.now() - STALE_IN_PROGRESS_MS);
-        if (existing.status === 'IN_PROGRESS' && existing.createdAt < staleBefore) {
-          // Well past POSTING_TX_OPTIONS plus retries; IN_PROGRESS without COMMITTED proves nothing committed.
+        if (existing.status === 'RESERVED' && existing.createdAt < staleBefore) {
+          // Well past POSTING_TX_OPTIONS plus retries; RESERVED without COMMITTED proves nothing committed.
           await prisma.idempotencyKey.deleteMany({
-            where: { key, status: 'IN_PROGRESS', createdAt: { lt: staleBefore } },
+            where: { key, status: 'RESERVED', createdAt: { lt: staleBefore } },
           });
           continue;
         }
@@ -162,7 +162,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
           // work may have committed, and a retry must not post twice.
           catchError(async (err) => {
             await prisma.idempotencyKey
-              .deleteMany({ where: { key, status: 'IN_PROGRESS' } })
+              .deleteMany({ where: { key, status: 'RESERVED' } })
               .catch(() => undefined);
             throw err;
           }),
