@@ -27,6 +27,7 @@ import {
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
+import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
 
 const MANUAL_SOURCE = 'MANUAL_JOURNAL';
 const OPENING_SOURCE = 'OPENING_ENTRY';
@@ -51,11 +52,25 @@ export class JournalService implements OnModuleInit {
     private readonly partyUsage: PartyUsageRegistry,
     private readonly costCenters: CostCentersService,
     private readonly costCenterUsage: CostCenterUsageRegistry,
+    private readonly yearClosingDrafts: YearClosingDraftRegistry,
   ) {}
 
   onModuleInit(): void {
     this.partyUsage.register('journal', (tx, partyId) => this.partyInUse(tx, partyId));
     this.costCenterUsage.register('journal', (tx, id) => this.costCenterInUse(tx, id));
+    this.yearClosingDrafts.register('JOURNAL_ENTRY', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.journalEntry.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', entryDate: { gte: from, lte: to } },
+        select: { id: true, entryDate: true, entryNo: true, description: true },
+      });
+      return rows.map((row) => yearClosingDraft(
+        'JOURNAL_ENTRY',
+        row.id,
+        row.entryDate,
+        row.entryNo,
+        yearClosingDraftText(row.description),
+      ));
+    });
   }
 
   /**
@@ -194,12 +209,14 @@ export class JournalService implements OnModuleInit {
   async list(query: ListJournalEntriesQueryDto) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
+    const allBranches = ClsServiceManager.getClsService<RequestContext>().get('branchScope') === 'ALL';
     if (query.from && query.to && query.from > query.to) {
       throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', { from: query.from, to: query.to });
     }
     const q = query.q;
     const where: Prisma.JournalEntryWhereInput = {
       companyId,
+      ...(allBranches ? {} : { isClosing: false }),
       ...(query.status ? { status: query.status } : {}),
       ...(query.voucherType ? { voucherType: query.voucherType } : {}),
       ...(query.sourceType ? { sourceType: query.sourceType } : {}),
@@ -243,8 +260,9 @@ export class JournalService implements OnModuleInit {
   /** One entry; another branch's answers 404 like another tenant's (ADR-003 §11). */
   async get(id: bigint) {
     const { db } = this.tenant();
+    const allBranches = ClsServiceManager.getClsService<RequestContext>().get('branchScope') === 'ALL';
     const entry = await db.journalEntry.findFirst({
-      where: { id, ...branchWhere() },
+      where: { id, ...branchWhere(), ...(allBranches ? {} : { isClosing: false }) },
       include: {
         lines: {
           orderBy: { lineNo: 'asc' },

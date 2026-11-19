@@ -3,6 +3,7 @@ import { ProcurementCycleRegistry } from '../../common/procurement/procurement-l
 import type { Prisma } from '../../generated/prisma/client.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
+import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
 import { IssueRequestsService } from './issue-requests.service.js';
 import { PurchaseOrdersService } from './purchase-orders.service.js';
 import { PurchaseQuotesService } from './purchase-quotes.service.js';
@@ -25,6 +26,7 @@ export class ProcurementRegistrations implements OnModuleInit {
     private readonly quotes: PurchaseQuotesService,
     private readonly orders: PurchaseOrdersService,
     private readonly issueRequests: IssueRequestsService,
+    private readonly yearClosingDrafts: YearClosingDraftRegistry,
   ) {}
 
   onModuleInit(): void {
@@ -41,6 +43,46 @@ export class ProcurementRegistrations implements OnModuleInit {
         ? 'purchase_orders'
         : this.issueRequests.costCenterInUse(tx, id),
     );
+    this.yearClosingDrafts.register('PURCHASE_REQUEST', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.purchaseRequest.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', requestDate: { gte: from, lte: to } },
+        select: { id: true, requestDate: true, requestNo: true, notes: true },
+      });
+      return rows.map((row) => yearClosingDraft('PURCHASE_REQUEST', row.id, row.requestDate, row.requestNo, yearClosingDraftText(row.notes)));
+    });
+    this.yearClosingDrafts.register('PURCHASE_QUOTE', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.purchaseQuote.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', quoteDate: { gte: from, lte: to } },
+        select: { id: true, quoteDate: true, quoteNo: true, notes: true, supplier: { select: { nameAr: true } } },
+      });
+      return rows.map((row) => yearClosingDraft(
+        'PURCHASE_QUOTE',
+        row.id,
+        row.quoteDate,
+        row.quoteNo,
+        yearClosingDraftText(row.notes, row.supplier.nameAr),
+      ));
+    });
+    this.yearClosingDrafts.register('PURCHASE_ORDER', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.purchaseOrder.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', orderDate: { gte: from, lte: to } },
+        select: { id: true, orderDate: true, orderNo: true, notes: true, supplier: { select: { nameAr: true } } },
+      });
+      return rows.map((row) => yearClosingDraft(
+        'PURCHASE_ORDER',
+        row.id,
+        row.orderDate,
+        row.orderNo,
+        yearClosingDraftText(row.notes, row.supplier.nameAr),
+      ));
+    });
+    this.yearClosingDrafts.register('ISSUE_REQUEST', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.issueRequest.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', requestDate: { gte: from, lte: to } },
+        select: { id: true, requestDate: true, requestNo: true, notes: true },
+      });
+      return rows.map((row) => yearClosingDraft('ISSUE_REQUEST', row.id, row.requestDate, row.requestNo, yearClosingDraftText(row.notes)));
+    });
   }
 
   /** The first procurement table naming the supplier, in any status, or null. */

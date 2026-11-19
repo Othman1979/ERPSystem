@@ -578,6 +578,38 @@ export class FiscalPeriodRow {
   updatedAt!: string;
 }
 
+/** Scalar columns of the Prisma model `FiscalYearClosing`, as JSON. */
+export class FiscalYearClosingRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  companyId!: string;
+  @ApiProperty({ type: 'string' })
+  fiscalYearId!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  journalEntryId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  reversalEntryId!: string | null;
+  @ApiProperty({ type: 'string' })
+  status!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  netResult!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  closedBy!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  closedAt!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  reversedBy!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time', nullable: true })
+  reversedAt!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  createdAt!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  updatedAt!: string;
+}
+
 /** Scalar columns of the Prisma model `Account`, as JSON. */
 export class AccountRow {
   @ApiProperty({ type: 'string' })
@@ -698,6 +730,8 @@ export class JournalEntryRow {
   reversalOfId!: string | null;
   @ApiProperty({ type: 'boolean', description: "Opening balances (§8.6, ADR-008): the opening entry and the entries of OPENING stock adjustments, and their reversals. Reports show these lines as the opening balance of a period, not as movements." })
   isOpening!: boolean;
+  @ApiProperty({ type: 'boolean' })
+  isClosing!: boolean;
   @ApiProperty({ type: 'string', format: 'date-time', nullable: true })
   postedAt!: string | null;
   @ApiProperty({ type: 'string', nullable: true })

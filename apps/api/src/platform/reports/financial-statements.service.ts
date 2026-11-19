@@ -34,7 +34,7 @@ export class FinancialStatementsService {
     const period = await this.periods.period(q);
     const [chart, totals, mapped] = await Promise.all([
       this.ledger.chart(),
-      this.ledger.accountTotals({ from: period.from, to: period.to }),
+      this.ledger.accountTotals({ from: period.from, to: period.to }, { excludeClosing: true }),
       this.costAccounts(),
     ]);
     return { from: period.from, to: period.to, fiscalYear: period.fiscalYear, ...incomeStatement(chart, totals, mapped) };

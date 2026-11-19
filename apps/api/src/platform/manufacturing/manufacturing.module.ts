@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AccountingModule } from '../accounting/accounting.module.js';
 import { InventoryModule } from '../inventory/inventory.module.js';
 import { JournalModule } from '../journal/journal.module.js';
 import { PrintingModule } from '../printing/printing.module.js';
@@ -10,7 +11,7 @@ import { ProductionVouchersService } from './production-vouchers.service.js';
 
 /** Phase 16 (ADR-031): bills of materials and production vouchers. */
 @Module({
-  imports: [InventoryModule, JournalModule, PrintingModule, SharedModule],
+  imports: [AccountingModule, InventoryModule, JournalModule, PrintingModule, SharedModule],
   controllers: [BomsController, ProductionVouchersController],
   providers: [BomService, ProductionVouchersService],
   exports: [BomService],

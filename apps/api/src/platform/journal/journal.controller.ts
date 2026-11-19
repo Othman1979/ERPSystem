@@ -106,7 +106,11 @@ export class JournalController {
   @RequireAllBranches()
   @ApiFileResponse(REPORT_FILE_TYPES, TrialBalanceDto)
   async trialBalance(@Query() q: ReportQueryDto) {
-    return this.printing.respond(await this.reports.trialBalance(q), q, (d, lang) => trialBalanceTable(d, lang, q));
+    return this.printing.respond(
+      await this.reports.trialBalance(q, { afterClosing: q.afterClosing }),
+      q,
+      (d, lang) => trialBalanceTable(d, lang, q),
+    );
   }
 
   /**

@@ -38,6 +38,7 @@ import {
 } from '../procurement/purchase-order-receipts.service.js';
 import { IssueRequestsService, type LockedIssueRequest } from '../procurement/issue-requests.service.js';
 import { isStocked, assertNotRecipe } from '../../common/inventory/item-kind.js';
+import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
 
 /** A goods receipt note as a purchase invoice bills it (TRADE-02, ADR-016). */
 export interface GrnBillingSource {
@@ -127,6 +128,7 @@ export class GoodsNotesService implements OnModuleInit {
     private readonly issueRequests: IssueRequestsService,
     private readonly partyUsage: PartyUsageRegistry,
     private readonly costCenterUsage: CostCenterUsageRegistry,
+    private readonly yearClosingDrafts: YearClosingDraftRegistry,
   ) {}
 
   onModuleInit(): void {
@@ -137,6 +139,19 @@ export class GoodsNotesService implements OnModuleInit {
     this.costCenterUsage.register('goods-notes', async (tx, id) =>
       (await tx.goodsNote.findFirst({ where: { costCenterId: id }, select: { id: true } })) ? 'goods_notes' : null,
     );
+    this.yearClosingDrafts.register('GOODS_NOTE', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.goodsNote.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', noteDate: { gte: from, lte: to } },
+        select: { id: true, noteDate: true, docNo: true, description: true, supplier: { select: { nameAr: true } } },
+      });
+      return rows.map((row) => yearClosingDraft(
+        'GOODS_NOTE',
+        row.id,
+        row.noteDate,
+        row.docNo,
+        yearClosingDraftText(row.description, row.supplier?.nameAr),
+      ));
+    });
   }
 
   /**

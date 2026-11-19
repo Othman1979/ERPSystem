@@ -69,6 +69,7 @@ import {
 import type { BillPurchaseOrderDto } from './dto/purchases.dto.js';
 import { clearedThrough } from '../shared/receipt-clearing.js';
 import { isStocked, ItemKindValue, assertNotRecipe } from '../../common/inventory/item-kind.js';
+import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
 
 const SOURCE = 'PURCHASE_INVOICE';
 
@@ -112,11 +113,38 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     private readonly costCenters: CostCentersService,
     private readonly costCenterUsage: CostCenterUsageRegistry,
     private readonly orders: PurchaseOrderReceiptsService,
+    private readonly yearClosingDrafts: YearClosingDraftRegistry,
   ) {}
 
   onModuleInit(): void {
     this.partyUsage.register('purchases', (tx, partyId) => this.partyInUse(tx, partyId));
     this.costCenterUsage.register('purchases', (tx, id) => this.costCenterInUse(tx, id));
+    this.yearClosingDrafts.register('PURCHASE_INVOICE', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.purchaseInvoice.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', invoiceDate: { gte: from, lte: to } },
+        select: { id: true, invoiceDate: true, invoiceNo: true, description: true, supplier: { select: { nameAr: true } } },
+      });
+      return rows.map((row) => yearClosingDraft(
+        'PURCHASE_INVOICE',
+        row.id,
+        row.invoiceDate,
+        row.invoiceNo,
+        yearClosingDraftText(row.description, row.supplier.nameAr),
+      ));
+    });
+    this.yearClosingDrafts.register('PURCHASE_RETURN', async (tx, tenantId, companyId, from, to) => {
+      const rows = await tx.purchaseReturn.findMany({
+        where: { tenantId, companyId, status: 'DRAFT', returnDate: { gte: from, lte: to } },
+        select: { id: true, returnDate: true, returnNo: true, reason: true, supplier: { select: { nameAr: true } } },
+      });
+      return rows.map((row) => yearClosingDraft(
+        'PURCHASE_RETURN',
+        row.id,
+        row.returnDate,
+        row.returnNo,
+        yearClosingDraftText(row.reason, row.supplier.nameAr),
+      ));
+    });
   }
 
   /** ADR-024 §1.7: the first purchases table whose header references the cost centre, drafts included. */

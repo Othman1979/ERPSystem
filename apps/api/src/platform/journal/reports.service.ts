@@ -148,10 +148,11 @@ export class ReportsService {
     db: ReturnType<PrismaService['forTenant']>,
     companyId: bigint,
     entryWhere: Record<string, unknown>,
+    excludeClosing = false,
   ): Promise<Map<bigint, { debit: Decimal; credit: Decimal }>> {
     const grouped = await db.journalLine.groupBy({
       by: ['accountId'],
-      where: { entry: { companyId, status: 'POSTED', ...entryWhere } },
+      where: { entry: { companyId, status: 'POSTED', ...entryWhere, ...(excludeClosing ? { isClosing: false } : {}) } },
       _sum: { debit: true, credit: true },
     });
     return new Map(
@@ -194,7 +195,10 @@ export class ReportsService {
    * caller's branches (the tax summary, ADR-003 §12); the statements stay
    * company-wide and are for all-branch members only (§13).
    */
-  async accountTotals(range: ReportRange = {}, opts: { branchScoped?: boolean } = {}): Promise<AccountTotal[]> {
+  async accountTotals(
+    range: ReportRange = {},
+    opts: { branchScoped?: boolean; excludeClosing?: boolean } = {},
+  ): Promise<AccountTotal[]> {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
     const dateWhere = this.dateWhere(range);
@@ -205,6 +209,7 @@ export class ReportsService {
         entry: {
           companyId,
           status: 'POSTED',
+          ...(opts.excludeClosing ? { isClosing: false } : {}),
           ...(Object.keys(dateWhere).length ? { entryDate: dateWhere } : {}),
         },
         ...(opts.branchScoped ? { AND: [branchWhere()] } : {}),
@@ -251,19 +256,20 @@ export class ReportsService {
    * `totalDebit` / `totalCredit` / `balance` keep their meaning: every posted
    * line dated in the range, opening entries included.
    */
-  async trialBalance(range: ReportRange) {
+  async trialBalance(range: ReportRange, opts: { afterClosing?: boolean } = {}) {
     this.assertRange(range);
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
     const nominalStart = await this.nominalStart(range);
+    const excludeClosing = !opts.afterClosing;
     const [inRange, opening, movement, chart, prior] = await Promise.all([
-      this.accountTotals(range),
-      this.sumsByAccount(db, companyId, this.openingEntryWhere(range)),
-      this.sumsByAccount(db, companyId, this.movementEntryWhere(range)),
+      this.accountTotals(range, { excludeClosing }),
+      this.sumsByAccount(db, companyId, this.openingEntryWhere(range), excludeClosing),
+      this.sumsByAccount(db, companyId, this.movementEntryWhere(range), excludeClosing),
       this.chart(),
       // Lines of earlier fiscal years: P&L accounts leave them out of their opening.
       nominalStart
-        ? this.sumsByAccount(db, companyId, { entryDate: { lt: nominalStart } })
+        ? this.sumsByAccount(db, companyId, { entryDate: { lt: nominalStart } }, excludeClosing)
         : Promise.resolve(new Map<bigint, { debit: Decimal; credit: Decimal }>()),
     ]);
     const accountById = new Map(chart.map((a) => [a.id, a]));
@@ -781,6 +787,7 @@ export class ReportsService {
         entry: {
           companyId,
           status: 'POSTED',
+          isClosing: false,
           ...(Object.keys(dateWhere).length ? { entryDate: dateWhere } : {}),
         },
         account: { accountType: { in: [...NOMINAL_TYPES] as AccountTypeCode[] } },

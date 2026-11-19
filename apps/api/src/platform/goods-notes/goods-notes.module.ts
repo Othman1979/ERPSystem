@@ -8,10 +8,11 @@ import { SharedModule } from '../shared/shared.module.js';
 import { GoodsNotesController } from './goods-notes.controller.js';
 import { GoodsNotesService } from './goods-notes.service.js';
 import { ReceivingController } from './receiving.controller.js';
+import { AccountingModule } from '../accounting/accounting.module.js';
 
 @Module({
   // Procurement: receiving against orders and issuing from requests (ADR-026), through its exported services.
-  imports: [SharedModule, JournalModule, InventoryModule, CostCentersModule, PartiesModule, ProcurementModule],
+  imports: [AccountingModule, SharedModule, JournalModule, InventoryModule, CostCentersModule, PartiesModule, ProcurementModule],
   controllers: [GoodsNotesController, ReceivingController],
   providers: [GoodsNotesService],
   // Purchase invoices bill a posted GRN through it (TRADE-02, ADR-026 §7, module boundary).

@@ -1,13 +1,13 @@
 /**
- * Several fiscal years, no closing entry (ADR-008 §7, owner's option B):
+ * Several fiscal years and the year-start trial-balance rules (ADR-008 §7):
  *  - from a fiscal-year start, revenue and expense accounts open at zero;
  *    earlier years' unclosed profit is one computed equity row, so the
  *    trial balance still balances and agrees with the balance sheet;
  *  - mid-year, P&L accounts open with the year-to-date only;
  *  - the account statement of a P&L account follows the same rule; a
  *    balance-sheet account carries its whole history;
- *  - closing a year closes all its periods (no posting), reopening opens
- *    them; the permission and tenant isolation hold.
+ *  - a year-end closing posts its entry, a closed year cannot be reopened one
+ *    period at a time, and owner-only reopening reverses the close.
  * Real MariaDB (erp_test) + built API. Run `pnpm build` before `pnpm test`.
  */
 import 'dotenv/config';
@@ -167,11 +167,11 @@ describe('Fiscal year rollover', () => {
     expect(m3(cash.body.openingBalance)).toBe('700.000');
   });
 
-  it('closing a year closes every period and blocks posting; reopening undoes it', async () => {
-    expect((await api().post(`/api/v1/fiscal-years/${fy2025}/close`).set(auth(cashier))).status).toBe(403);
-    expect((await api().post(`/api/v1/fiscal-years/${fy2025}/close`).set(auth(tokenB))).status).toBe(404);
+  it('closing posts the year-end entry, blocks period-only reopening, and owner reopening reverses it', async () => {
+    expect((await api().post(`/api/v1/fiscal-years/${fy2025}/close`).set(auth(cashier)).set(idem())).status).toBe(403);
+    expect((await api().post(`/api/v1/fiscal-years/${fy2025}/close`).set(auth(tokenB)).set(idem())).status).toBe(404);
 
-    const closed = await api().post(`/api/v1/fiscal-years/${fy2025}/close`).set(auth(token));
+    const closed = await api().post(`/api/v1/fiscal-years/${fy2025}/close`).set(auth(token)).set(idem());
     expect(closed.status).toBe(201);
     expect(closed.body.status).toBe('CLOSED');
     expect((closed.body.periods as { status: string }[]).every((p) => p.status === 'CLOSED')).toBe(true);
@@ -179,13 +179,14 @@ describe('Fiscal year rollover', () => {
     expect(late.status).toBe(409);
     expect(late.body.error.code).toBe('PERIOD_CLOSED');
 
-    // Reopening one period opens the year again.
+    // A closed year must be reopened as a whole.
     const december = (closed.body.periods as { id: string; periodNo: number }[]).find((p) => p.periodNo === 12)!;
-    expect((await api().post(`/api/v1/fiscal-periods/${december.id}/open`).set(auth(token))).status).toBe(201);
+    const periodOpen = await api().post(`/api/v1/fiscal-periods/${december.id}/open`).set(auth(token));
+    expect([periodOpen.status, periodOpen.body.error.code]).toEqual([409, 'YEAR_CLOSED_REOPEN_YEAR']);
     const after = await api().get(`/api/v1/fiscal-years/${fy2025}`).set(auth(token));
-    expect(after.body.status).toBe('OPEN');
+    expect(after.body.status).toBe('CLOSED');
 
-    const reopened = await api().post(`/api/v1/fiscal-years/${fy2025}/open`).set(auth(token));
+    const reopened = await api().post(`/api/v1/fiscal-years/${fy2025}/open`).set(auth(token)).set(idem());
     expect(reopened.status).toBe(201);
     expect((reopened.body.periods as { status: string }[]).every((p) => p.status === 'OPEN')).toBe(true);
     expect((await sale('2025-12-20', '5')).status).toBe(201);

@@ -434,6 +434,14 @@ export const FiscalStatus = {
   CLOSED: 'CLOSED',
 } as const;
 
+export interface FiscalYearActiveClosingDto {
+  id: string;
+  /** @nullable */
+  journalEntryId: string | null;
+  netResult: string;
+  closedAt: string;
+}
+
 export interface FiscalYearCountDto {
   periods: number;
 }
@@ -450,6 +458,9 @@ export interface FiscalYearListItemDto {
   updatedAt: string;
   /** @nullable */
   createdBy: string | null;
+  closings: FiscalYearActiveClosingDto[];
+  /** @nullable */
+  activeClosing: FiscalYearActiveClosingDto | null;
   _count: FiscalYearCountDto;
 }
 
@@ -492,7 +503,53 @@ export interface FiscalYearDetailDto {
   /** @nullable */
   createdBy: string | null;
   periods: FiscalPeriodDto[];
+  closings: FiscalYearActiveClosingDto[];
+  /** @nullable */
+  activeClosing: FiscalYearActiveClosingDto | null;
   _count: FiscalYearCountDto;
+}
+
+export interface YearClosingLineDto {
+  accountId: string;
+  accountCode: string;
+  accountNameAr: string;
+  /** @nullable */
+  accountNameEn: string | null;
+  /** @nullable */
+  branchId: string | null;
+  /** @nullable */
+  costCenterId: string | null;
+  debit: string;
+  credit: string;
+}
+
+export interface YearClosingDraftDto {
+  type: string;
+  id: string;
+  date: string;
+  /** @nullable */
+  reference: string | null;
+  /** @nullable */
+  description: string | null;
+}
+
+export type YearClosingWarningDtoDetails = { [key: string]: unknown };
+
+export interface YearClosingWarningDto {
+  code: string;
+  details: YearClosingWarningDtoDetails;
+}
+
+export interface YearClosingPreviewDto {
+  fiscalYearId: string;
+  code: string;
+  startDate: string;
+  endDate: string;
+  canClose: boolean;
+  netResult: string;
+  lines: YearClosingLineDto[];
+  drafts: YearClosingDraftDto[];
+  warnings: YearClosingWarningDto[];
 }
 
 export interface DocumentSequenceDto {
@@ -792,335 +849,6 @@ export interface CompanyLogoBase64Dto {
   base64: string;
 }
 
-export interface UserRolePermissionDto {
-  permissionCode: string;
-}
-
-export interface UserRoleDto {
-  id: string;
-  code: string;
-  nameAr: string;
-  /** @nullable */
-  nameEn: string | null;
-  /** @nullable */
-  description: string | null;
-  isSystem: boolean;
-  createdAt: string;
-  updatedAt: string;
-  permissions: UserRolePermissionDto[];
-}
-
-export type MembershipStatus = typeof MembershipStatus[keyof typeof MembershipStatus];
-
-
-export const MembershipStatus = {
-  INVITED: 'INVITED',
-  ACTIVE: 'ACTIVE',
-  SUSPENDED: 'SUSPENDED',
-} as const;
-
-export interface UserMembershipUserDto {
-  id: string;
-  email: string;
-  /**
-     * Null while the membership is INVITED.
-     * @nullable
-     */
-  fullName: string | null;
-  isActive: boolean;
-}
-
-export interface UserMembershipRoleDto {
-  code: string;
-  nameAr: string;
-  /** @nullable */
-  nameEn: string | null;
-}
-
-export interface UserMembershipBranchDto {
-  id: string;
-  code: string;
-  nameAr: string;
-}
-
-export type MemberPermissionCode = typeof MemberPermissionCode[keyof typeof MemberPermissionCode];
-
-
-export const MemberPermissionCode = {
-  purchasedirect: 'purchase.direct',
-  purchaseapprove: 'purchase.approve',
-  salesapprove: 'sales.approve',
-  stockissue_without_request: 'stock.issue_without_request',
-} as const;
-
-export interface UserPurchasePermissionDto {
-  code: MemberPermissionCode;
-  /**
-     * purchase.approve only: the highest amount approved alone. Null: no limit.
-     * @nullable
-     */
-  amountLimit: string | null;
-}
-
-export interface UserMembershipDto {
-  membershipId: string;
-  status: MembershipStatus;
-  createdAt: string;
-  updatedAt: string;
-  user: UserMembershipUserDto;
-  role: UserMembershipRoleDto;
-  /** @nullable */
-  defaultBranch: UserMembershipBranchDto | null;
-  branches: UserMembershipBranchDto[];
-  /** Purchase permissions the member holds (ADR-024 §3); an owner holds all three, with no limit. */
-  purchasePermissions: UserPurchasePermissionDto[];
-}
-
-export interface PurchaseDirectGapRoleDto {
-  code: string;
-  nameAr: string;
-  /** @nullable */
-  nameEn: string | null;
-}
-
-export interface PurchaseDirectGapDto {
-  fullName: string;
-  email: string;
-  role: PurchaseDirectGapRoleDto;
-}
-
-export interface InviteUserDto {
-  email: string;
-  /** @maxLength 191 */
-  fullName?: string;
-  /** @maxLength 50 */
-  roleCode: string;
-  defaultBranchId?: string;
-  /** @maxItems 100 */
-  branchIds?: string[];
-}
-
-export interface UserInviteResultDto {
-  membershipId: string;
-  status: MembershipStatus;
-  createdAt: string;
-  updatedAt: string;
-  user: UserMembershipUserDto;
-  role: UserMembershipRoleDto;
-  /** @nullable */
-  defaultBranch: UserMembershipBranchDto | null;
-  branches: UserMembershipBranchDto[];
-  /** Purchase permissions the member holds (ADR-024 §3); an owner holds all three, with no limit. */
-  purchasePermissions: UserPurchasePermissionDto[];
-  /** Only for a brand-new account. */
-  temporaryPassword?: string;
-  /** Only for an existing account (status INVITED). */
-  acceptanceCode?: string;
-  acceptanceCodeExpiresAt?: string;
-}
-
-/**
- * INVITED is never set by an admin: only the invitee accepts (or the inviter cancels).
- */
-export type UpdateMembershipDtoStatus = typeof UpdateMembershipDtoStatus[keyof typeof UpdateMembershipDtoStatus];
-
-
-export const UpdateMembershipDtoStatus = {
-  ACTIVE: 'ACTIVE',
-  SUSPENDED: 'SUSPENDED',
-} as const;
-
-export interface UpdateMembershipDto {
-  /** @maxLength 50 */
-  roleCode?: string;
-  /** INVITED is never set by an admin: only the invitee accepts (or the inviter cancels). */
-  status?: UpdateMembershipDtoStatus;
-  /**
-     * null clears the default branch; a string must be a branch id.
-     * @nullable
-     */
-  defaultBranchId?: string | null;
-  /** @maxItems 100 */
-  branchIds?: string[];
-}
-
-export interface MemberPermissionGrantDto {
-  code: MemberPermissionCode;
-  /**
-     * purchase.approve only: the highest amount the member approves alone, a
-     * decimal string above zero with up to 3 decimals. Absent or null: no
-     * limit (GET users answers null for no limit, so it may be sent back as is).
-     * @nullable
-     */
-  amountLimit?: string | null;
-}
-
-export interface UpdatePurchasePermissionsDto {
-  /** @maxItems 4 */
-  permissions: MemberPermissionGrantDto[];
-}
-
-export interface UserInvitationCodeDto {
-  membershipId: string;
-  acceptanceCode: string;
-  acceptanceCodeExpiresAt: string;
-}
-
-export interface UserTemporaryPasswordDto {
-  temporaryPassword: string;
-}
-
-export interface UserInvitationCancelledDto {
-  membershipId: string;
-  cancelled: true;
-}
-
-export interface MyInvitationRoleDto {
-  code: string;
-  nameAr: string;
-  /** @nullable */
-  nameEn: string | null;
-}
-
-export interface MyInvitationInviterDto {
-  fullName: string;
-  email: string;
-}
-
-export interface MyInvitationDto {
-  membershipId: string;
-  tenantId: string;
-  tenantName: string;
-  role: MyInvitationRoleDto;
-  /** @nullable */
-  invitedBy: MyInvitationInviterDto | null;
-  invitedAt: string;
-  /**
-     * Null when no code is pending.
-     * @nullable
-     */
-  codeExpiresAt: string | null;
-}
-
-export interface AcceptInvitationDto {
-  /** @maxLength 32 */
-  code?: string;
-}
-
-export interface MyInvitationAcceptedDto {
-  membershipId: string;
-  tenantId: string;
-  tenantName: string;
-}
-
-export interface BranchDto {
-  id: string;
-  code: string;
-  nameAr: string;
-  /** @nullable */
-  nameEn: string | null;
-  /** @nullable */
-  address: string | null;
-  isActive: boolean;
-  companyId: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CreateBranchDto {
-  /**
-     * @minLength 1
-     * @maxLength 50
-     */
-  code: string;
-  /**
-     * @minLength 1
-     * @maxLength 191
-     */
-  nameAr: string;
-  /** @maxLength 191 */
-  nameEn?: string;
-  /** @maxLength 512 */
-  address?: string;
-}
-
-export interface UpdateBranchDto {
-  /**
-     * null clears the English name.
-     * @maxLength 191
-     * @nullable
-     */
-  nameEn?: string | null;
-  /**
-     * null clears the address.
-     * @maxLength 512
-     * @nullable
-     */
-  address?: string | null;
-  /**
-     * Not nullable: a null is validated (and refused), only an absent field is skipped.
-     * @minLength 1
-     * @maxLength 191
-     */
-  nameAr?: string;
-  isActive?: boolean;
-}
-
-export interface CostCenterDto {
-  id: string;
-  tenantId: string;
-  companyId: string;
-  code: string;
-  nameAr: string;
-  /** @nullable */
-  nameEn: string | null;
-  /** @nullable */
-  parentId: string | null;
-  /** False once the centre has a child (a group takes no lines). */
-  isPostable: boolean;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-  /** @nullable */
-  createdBy: string | null;
-  /** @nullable */
-  updatedBy: string | null;
-}
-
-export interface CreateCostCenterDto {
-  /**
-     * @minLength 1
-     * @maxLength 50
-     */
-  code: string;
-  /**
-     * @minLength 1
-     * @maxLength 191
-     */
-  nameAr: string;
-  /** @maxLength 191 */
-  nameEn?: string;
-  parentId?: string;
-}
-
-export interface UpdateCostCenterDto {
-  /**
-     * @minLength 1
-     * @maxLength 191
-     */
-  nameAr?: string;
-  /**
-     * @maxLength 191
-     * @nullable
-     */
-  nameEn?: string | null;
-  isActive?: boolean;
-}
-
-export interface DeletedDto {
-  deleted: true;
-}
-
 export type JournalPostingKind = typeof JournalPostingKind[keyof typeof JournalPostingKind];
 
 
@@ -1181,6 +909,7 @@ export interface JournalEntryListItemDto {
   reversalOfId: string | null;
   /** Opening balances (§8.6, ADR-008): the opening entry and the entries of OPENING stock adjustments, and their reversals. Reports show these lines as the opening balance of a period, not as movements. */
   isOpening: boolean;
+  isClosing: boolean;
   /** @nullable */
   postedAt: string | null;
   /** @nullable */
@@ -1339,6 +1068,7 @@ export interface JournalEntryDetailDto {
   reversalOfId: string | null;
   /** Opening balances (§8.6, ADR-008): the opening entry and the entries of OPENING stock adjustments, and their reversals. Reports show these lines as the opening balance of a period, not as movements. */
   isOpening: boolean;
+  isClosing: boolean;
   /** @nullable */
   postedAt: string | null;
   /** @nullable */
@@ -1350,6 +1080,10 @@ export interface JournalEntryDetailDto {
   /** @nullable */
   reversalOf: JournalEntryReversalOfDto | null;
   reversals: JournalEntryReversalDto[];
+}
+
+export interface DeletedDto {
+  deleted: true;
 }
 
 export interface ReverseJournalEntryDto {
@@ -1790,6 +1524,331 @@ export interface UpdatePartyDto {
 
 export interface DeactivatedDto {
   deactivated: true;
+}
+
+export interface CostCenterDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  parentId: string | null;
+  /** False once the centre has a child (a group takes no lines). */
+  isPostable: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+}
+
+export interface CreateCostCenterDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  parentId?: string;
+}
+
+export interface UpdateCostCenterDto {
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr?: string;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
+  isActive?: boolean;
+}
+
+export interface UserRolePermissionDto {
+  permissionCode: string;
+}
+
+export interface UserRoleDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  description: string | null;
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+  permissions: UserRolePermissionDto[];
+}
+
+export type MembershipStatus = typeof MembershipStatus[keyof typeof MembershipStatus];
+
+
+export const MembershipStatus = {
+  INVITED: 'INVITED',
+  ACTIVE: 'ACTIVE',
+  SUSPENDED: 'SUSPENDED',
+} as const;
+
+export interface UserMembershipUserDto {
+  id: string;
+  email: string;
+  /**
+     * Null while the membership is INVITED.
+     * @nullable
+     */
+  fullName: string | null;
+  isActive: boolean;
+}
+
+export interface UserMembershipRoleDto {
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface UserMembershipBranchDto {
+  id: string;
+  code: string;
+  nameAr: string;
+}
+
+export type MemberPermissionCode = typeof MemberPermissionCode[keyof typeof MemberPermissionCode];
+
+
+export const MemberPermissionCode = {
+  purchasedirect: 'purchase.direct',
+  purchaseapprove: 'purchase.approve',
+  salesapprove: 'sales.approve',
+  stockissue_without_request: 'stock.issue_without_request',
+} as const;
+
+export interface UserPurchasePermissionDto {
+  code: MemberPermissionCode;
+  /**
+     * purchase.approve only: the highest amount approved alone. Null: no limit.
+     * @nullable
+     */
+  amountLimit: string | null;
+}
+
+export interface UserMembershipDto {
+  membershipId: string;
+  status: MembershipStatus;
+  createdAt: string;
+  updatedAt: string;
+  user: UserMembershipUserDto;
+  role: UserMembershipRoleDto;
+  /** @nullable */
+  defaultBranch: UserMembershipBranchDto | null;
+  branches: UserMembershipBranchDto[];
+  /** Purchase permissions the member holds (ADR-024 §3); an owner holds all three, with no limit. */
+  purchasePermissions: UserPurchasePermissionDto[];
+}
+
+export interface PurchaseDirectGapRoleDto {
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface PurchaseDirectGapDto {
+  fullName: string;
+  email: string;
+  role: PurchaseDirectGapRoleDto;
+}
+
+export interface InviteUserDto {
+  email: string;
+  /** @maxLength 191 */
+  fullName?: string;
+  /** @maxLength 50 */
+  roleCode: string;
+  defaultBranchId?: string;
+  /** @maxItems 100 */
+  branchIds?: string[];
+}
+
+export interface UserInviteResultDto {
+  membershipId: string;
+  status: MembershipStatus;
+  createdAt: string;
+  updatedAt: string;
+  user: UserMembershipUserDto;
+  role: UserMembershipRoleDto;
+  /** @nullable */
+  defaultBranch: UserMembershipBranchDto | null;
+  branches: UserMembershipBranchDto[];
+  /** Purchase permissions the member holds (ADR-024 §3); an owner holds all three, with no limit. */
+  purchasePermissions: UserPurchasePermissionDto[];
+  /** Only for a brand-new account. */
+  temporaryPassword?: string;
+  /** Only for an existing account (status INVITED). */
+  acceptanceCode?: string;
+  acceptanceCodeExpiresAt?: string;
+}
+
+/**
+ * INVITED is never set by an admin: only the invitee accepts (or the inviter cancels).
+ */
+export type UpdateMembershipDtoStatus = typeof UpdateMembershipDtoStatus[keyof typeof UpdateMembershipDtoStatus];
+
+
+export const UpdateMembershipDtoStatus = {
+  ACTIVE: 'ACTIVE',
+  SUSPENDED: 'SUSPENDED',
+} as const;
+
+export interface UpdateMembershipDto {
+  /** @maxLength 50 */
+  roleCode?: string;
+  /** INVITED is never set by an admin: only the invitee accepts (or the inviter cancels). */
+  status?: UpdateMembershipDtoStatus;
+  /**
+     * null clears the default branch; a string must be a branch id.
+     * @nullable
+     */
+  defaultBranchId?: string | null;
+  /** @maxItems 100 */
+  branchIds?: string[];
+}
+
+export interface MemberPermissionGrantDto {
+  code: MemberPermissionCode;
+  /**
+     * purchase.approve only: the highest amount the member approves alone, a
+     * decimal string above zero with up to 3 decimals. Absent or null: no
+     * limit (GET users answers null for no limit, so it may be sent back as is).
+     * @nullable
+     */
+  amountLimit?: string | null;
+}
+
+export interface UpdatePurchasePermissionsDto {
+  /** @maxItems 4 */
+  permissions: MemberPermissionGrantDto[];
+}
+
+export interface UserInvitationCodeDto {
+  membershipId: string;
+  acceptanceCode: string;
+  acceptanceCodeExpiresAt: string;
+}
+
+export interface UserTemporaryPasswordDto {
+  temporaryPassword: string;
+}
+
+export interface UserInvitationCancelledDto {
+  membershipId: string;
+  cancelled: true;
+}
+
+export interface MyInvitationRoleDto {
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface MyInvitationInviterDto {
+  fullName: string;
+  email: string;
+}
+
+export interface MyInvitationDto {
+  membershipId: string;
+  tenantId: string;
+  tenantName: string;
+  role: MyInvitationRoleDto;
+  /** @nullable */
+  invitedBy: MyInvitationInviterDto | null;
+  invitedAt: string;
+  /**
+     * Null when no code is pending.
+     * @nullable
+     */
+  codeExpiresAt: string | null;
+}
+
+export interface AcceptInvitationDto {
+  /** @maxLength 32 */
+  code?: string;
+}
+
+export interface MyInvitationAcceptedDto {
+  membershipId: string;
+  tenantId: string;
+  tenantName: string;
+}
+
+export interface BranchDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  address: string | null;
+  isActive: boolean;
+  companyId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateBranchDto {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  code: string;
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  /** @maxLength 512 */
+  address?: string;
+}
+
+export interface UpdateBranchDto {
+  /**
+     * null clears the English name.
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
+  /**
+     * null clears the address.
+     * @maxLength 512
+     * @nullable
+     */
+  address?: string | null;
+  /**
+     * Not nullable: a null is validated (and refused), only an absent field is skipped.
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr?: string;
+  isActive?: boolean;
 }
 
 export interface ItemGroupDto {
@@ -8781,6 +8840,11 @@ export const ErrorCode = {
   MAPPING_LOCKED: 'MAPPING_LOCKED',
   FISCAL_YEAR_OVERLAP: 'FISCAL_YEAR_OVERLAP',
   FISCAL_YEAR_TOO_LONG: 'FISCAL_YEAR_TOO_LONG',
+  YEAR_HAS_DRAFTS: 'YEAR_HAS_DRAFTS',
+  YEAR_CLOSED_REOPEN_YEAR: 'YEAR_CLOSED_REOPEN_YEAR',
+  YEAR_ALREADY_CLOSED: 'YEAR_ALREADY_CLOSED',
+  PREVIOUS_YEAR_OPEN: 'PREVIOUS_YEAR_OPEN',
+  LATER_YEAR_CLOSED: 'LATER_YEAR_CLOSED',
   DUPLICATE_CODE: 'DUPLICATE_CODE',
   INVALID_DATE_RANGE: 'INVALID_DATE_RANGE',
   RETURN_WAREHOUSE_MISMATCH: 'RETURN_WAREHOUSE_MISMATCH',
@@ -8927,6 +8991,7 @@ export const JournalControllerListSourceType = {
 } as const;
 
 export type JournalControllerTrialBalanceParams = {
+  afterClosing?: boolean;
   from?: string;
   to?: string;
   accountId?: string;
@@ -8962,6 +9027,7 @@ export const JournalControllerTrialBalanceLang = {
 } as const;
 
 export type JournalControllerGeneralLedgerParams = {
+  afterClosing?: boolean;
   /**
    * @minimum 1
    * @maximum 500
@@ -9007,6 +9073,7 @@ export const JournalControllerGeneralLedgerPartyType = {
 } as const;
 
 export type JournalControllerPartyStatementParams = {
+  afterClosing?: boolean;
   /**
    * @minimum 1
    * @maximum 500
@@ -11862,6 +11929,44 @@ export const fiscalControllerGetYear = async (id: string, options?: Parameters<t
 
 
 
+export type fiscalControllerClosingPreviewResponse200 = {
+  data: YearClosingPreviewDto
+  status: 200
+}
+
+export type fiscalControllerClosingPreviewResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type fiscalControllerClosingPreviewResponseSuccess = (fiscalControllerClosingPreviewResponse200) & {
+  headers: Headers;
+};
+export type fiscalControllerClosingPreviewResponseError = (fiscalControllerClosingPreviewResponseDefault) & {
+  headers: Headers;
+};
+
+export const getFiscalControllerClosingPreviewUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/fiscal-years/${id}/closing-preview`
+}
+
+export const fiscalControllerClosingPreview = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerClosingPreviewResponseSuccess> => {
+
+  return apiFetch<fiscalControllerClosingPreviewResponseSuccess>(getFiscalControllerClosingPreviewUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export type fiscalControllerCloseYearResponse201 = {
   data: FiscalYearDetailDto
   status: 201
@@ -11888,7 +11993,7 @@ export const getFiscalControllerCloseYearUrl = (id: string,) => {
 }
 
 /**
- * @summary Closes every period of the year at once (ADR-008 §7).
+ * @summary Closes the year with a posted year-end entry.
  */
 export const fiscalControllerCloseYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerCloseYearResponseSuccess> => {
 
@@ -11929,7 +12034,7 @@ export const getFiscalControllerOpenYearUrl = (id: string,) => {
 }
 
 /**
- * @summary Reopens every period of the year.
+ * @summary Reverses the year-end entry and reopens every period.
  */
 export const fiscalControllerOpenYear = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<fiscalControllerOpenYearResponseSuccess> => {
 
@@ -12741,914 +12846,6 @@ export const companyControllerCompleteOnboarding = async ( options?: Parameters<
 
 
 
-export type usersControllerRolesResponse200 = {
-  data: UserRoleDto[]
-  status: 200
-}
-
-export type usersControllerRolesResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type usersControllerRolesResponseSuccess = (usersControllerRolesResponse200) & {
-  headers: Headers;
-};
-export type usersControllerRolesResponseError = (usersControllerRolesResponseDefault) & {
-  headers: Headers;
-};
-
-export const getUsersControllerRolesUrl = () => {
-
-
-
-
-  return `/api/v1/users/roles`
-}
-
-export const usersControllerRoles = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerRolesResponseSuccess> => {
-
-  return apiFetch<usersControllerRolesResponseSuccess>(getUsersControllerRolesUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export type usersControllerListResponse200 = {
-  data: UserMembershipDto[]
-  status: 200
-}
-
-export type usersControllerListResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type usersControllerListResponseSuccess = (usersControllerListResponse200) & {
-  headers: Headers;
-};
-export type usersControllerListResponseError = (usersControllerListResponseDefault) & {
-  headers: Headers;
-};
-
-export const getUsersControllerListUrl = () => {
-
-
-
-
-  return `/api/v1/users`
-}
-
-export const usersControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerListResponseSuccess> => {
-
-  return apiFetch<usersControllerListResponseSuccess>(getUsersControllerListUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export type usersControllerPurchaseDirectGapsResponse200 = {
-  data: PurchaseDirectGapDto[]
-  status: 200
-}
-
-export type usersControllerPurchaseDirectGapsResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type usersControllerPurchaseDirectGapsResponseSuccess = (usersControllerPurchaseDirectGapsResponse200) & {
-  headers: Headers;
-};
-export type usersControllerPurchaseDirectGapsResponseError = (usersControllerPurchaseDirectGapsResponseDefault) & {
-  headers: Headers;
-};
-
-export const getUsersControllerPurchaseDirectGapsUrl = () => {
-
-
-
-
-  return `/api/v1/users/purchase-direct-gaps`
-}
-
-/**
- * @summary Active members whose role creates or posts purchase invoices but who lack
-purchase.direct (owners aside): raising the procurement level from SIMPLE
-would stop them (ADR-025 §4). Shown before confirming the raise, so it
-needs what raising needs (company.manage); name, email and role only.
- */
-export const usersControllerPurchaseDirectGaps = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerPurchaseDirectGapsResponseSuccess> => {
-
-  return apiFetch<usersControllerPurchaseDirectGapsResponseSuccess>(getUsersControllerPurchaseDirectGapsUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export type usersControllerInviteResponse201 = {
-  data: UserInviteResultDto
-  status: 201
-}
-
-export type usersControllerInviteResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 201>
-}
-
-export type usersControllerInviteResponseSuccess = (usersControllerInviteResponse201) & {
-  headers: Headers;
-};
-export type usersControllerInviteResponseError = (usersControllerInviteResponseDefault) & {
-  headers: Headers;
-};
-
-export const getUsersControllerInviteUrl = () => {
-
-
-
-
-  return `/api/v1/users/invite`
-}
-
-export const usersControllerInvite = async (inviteUserDto: InviteUserDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerInviteResponseSuccess> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return apiFetch<usersControllerInviteResponseSuccess>(getUsersControllerInviteUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(inviteUserDto)
-  }
-);}
-
-
-
-export type usersControllerUpdateResponse200 = {
-  data: UserMembershipDto
-  status: 200
-}
-
-export type usersControllerUpdateResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type usersControllerUpdateResponseSuccess = (usersControllerUpdateResponse200) & {
-  headers: Headers;
-};
-export type usersControllerUpdateResponseError = (usersControllerUpdateResponseDefault) & {
-  headers: Headers;
-};
-
-export const getUsersControllerUpdateUrl = (membershipId: string,) => {
-
-
-
-
-  return `/api/v1/users/${membershipId}`
-}
-
-export const usersControllerUpdate = async (membershipId: string,
-    updateMembershipDto: UpdateMembershipDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerUpdateResponseSuccess> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return apiFetch<usersControllerUpdateResponseSuccess>(getUsersControllerUpdateUrl(membershipId),
-  {
-    ...options,
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(updateMembershipDto)
-  }
-);}
-
-
-
-export type usersControllerSuspendResponse200 = {
-  data: UserInvitationCancelledDto | UserMembershipDto
-  status: 200
-}
-
-export type usersControllerSuspendResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type usersControllerSuspendResponseSuccess = (usersControllerSuspendResponse200) & {
-  headers: Headers;
-};
-export type usersControllerSuspendResponseError = (usersControllerSuspendResponseDefault) & {
-  headers: Headers;
-};
-
-export const getUsersControllerSuspendUrl = (membershipId: string,) => {
-
-
-
-
-  return `/api/v1/users/${membershipId}`
-}
-
-/**
- * @summary Suspends a member, or cancels a pending invitation (INVITED).
- */
-export const usersControllerSuspend = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerSuspendResponseSuccess> => {
-
-  return apiFetch<usersControllerSuspendResponseSuccess>(getUsersControllerSuspendUrl(membershipId),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-export type usersControllerUpdatePurchasePermissionsResponse200 = {
-  data: UserMembershipDto
-  status: 200
-}
-
-export type usersControllerUpdatePurchasePermissionsResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type usersControllerUpdatePurchasePermissionsResponseSuccess = (usersControllerUpdatePurchasePermissionsResponse200) & {
-  headers: Headers;
-};
-export type usersControllerUpdatePurchasePermissionsResponseError = (usersControllerUpdatePurchasePermissionsResponseDefault) & {
-  headers: Headers;
-};
-
-export const getUsersControllerUpdatePurchasePermissionsUrl = (membershipId: string,) => {
-
-
-
-
-  return `/api/v1/users/${membershipId}/purchase-permissions`
-}
-
-/**
- * @summary The member's purchase permissions, as a whole set (ADR-024 §3): listed
-codes are granted, the rest revoked. Owner only (checked by the service).
- */
-export const usersControllerUpdatePurchasePermissions = async (membershipId: string,
-    updatePurchasePermissionsDto: UpdatePurchasePermissionsDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerUpdatePurchasePermissionsResponseSuccess> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return apiFetch<usersControllerUpdatePurchasePermissionsResponseSuccess>(getUsersControllerUpdatePurchasePermissionsUrl(membershipId),
-  {
-    ...options,
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(updatePurchasePermissionsDto)
-  }
-);}
-
-
-
-export type usersControllerReissueInvitationCodeResponse200 = {
-  data: UserInvitationCodeDto
-  status: 200
-}
-
-export type usersControllerReissueInvitationCodeResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type usersControllerReissueInvitationCodeResponseSuccess = (usersControllerReissueInvitationCodeResponse200) & {
-  headers: Headers;
-};
-export type usersControllerReissueInvitationCodeResponseError = (usersControllerReissueInvitationCodeResponseDefault) & {
-  headers: Headers;
-};
-
-export const getUsersControllerReissueInvitationCodeUrl = (membershipId: string,) => {
-
-
-
-
-  return `/api/v1/users/${membershipId}/invitation-code`
-}
-
-/**
- * @summary A new acceptance code for a pending invitation; the old one stops working (ADR-012 §PLAT-10).
- */
-export const usersControllerReissueInvitationCode = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerReissueInvitationCodeResponseSuccess> => {
-
-  return apiFetch<usersControllerReissueInvitationCodeResponseSuccess>(getUsersControllerReissueInvitationCodeUrl(membershipId),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-export type usersControllerResetPasswordResponse200 = {
-  data: UserTemporaryPasswordDto
-  status: 200
-}
-
-export type usersControllerResetPasswordResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type usersControllerResetPasswordResponseSuccess = (usersControllerResetPasswordResponse200) & {
-  headers: Headers;
-};
-export type usersControllerResetPasswordResponseError = (usersControllerResetPasswordResponseDefault) & {
-  headers: Headers;
-};
-
-export const getUsersControllerResetPasswordUrl = (membershipId: string,) => {
-
-
-
-
-  return `/api/v1/users/${membershipId}/reset-password`
-}
-
-/**
- * @summary Replaces the member's password with a temporary one (ADR-012).
- */
-export const usersControllerResetPassword = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerResetPasswordResponseSuccess> => {
-
-  return apiFetch<usersControllerResetPasswordResponseSuccess>(getUsersControllerResetPasswordUrl(membershipId),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-export type invitationsControllerListResponse200 = {
-  data: MyInvitationDto[]
-  status: 200
-}
-
-export type invitationsControllerListResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type invitationsControllerListResponseSuccess = (invitationsControllerListResponse200) & {
-  headers: Headers;
-};
-export type invitationsControllerListResponseError = (invitationsControllerListResponseDefault) & {
-  headers: Headers;
-};
-
-export const getInvitationsControllerListUrl = () => {
-
-
-
-
-  return `/api/v1/me/invitations`
-}
-
-export const invitationsControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerListResponseSuccess> => {
-
-  return apiFetch<invitationsControllerListResponseSuccess>(getInvitationsControllerListUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export type invitationsControllerAcceptResponse200 = {
-  data: MyInvitationAcceptedDto
-  status: 200
-}
-
-export type invitationsControllerAcceptResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type invitationsControllerAcceptResponseSuccess = (invitationsControllerAcceptResponse200) & {
-  headers: Headers;
-};
-export type invitationsControllerAcceptResponseError = (invitationsControllerAcceptResponseDefault) & {
-  headers: Headers;
-};
-
-export const getInvitationsControllerAcceptUrl = (membershipId: string,) => {
-
-
-
-
-  return `/api/v1/me/invitations/${membershipId}/accept`
-}
-
-/**
- * @summary Needs the acceptance code; 10 tries a minute per user on top of the per-code limit.
- */
-export const invitationsControllerAccept = async (membershipId: string,
-    acceptInvitationDto: AcceptInvitationDto, options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerAcceptResponseSuccess> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return apiFetch<invitationsControllerAcceptResponseSuccess>(getInvitationsControllerAcceptUrl(membershipId),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(acceptInvitationDto)
-  }
-);}
-
-
-
-export type invitationsControllerDeclineResponse204 = {
-  data: void
-  status: 204
-}
-
-export type invitationsControllerDeclineResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 204>
-}
-
-export type invitationsControllerDeclineResponseSuccess = (invitationsControllerDeclineResponse204) & {
-  headers: Headers;
-};
-export type invitationsControllerDeclineResponseError = (invitationsControllerDeclineResponseDefault) & {
-  headers: Headers;
-};
-
-export const getInvitationsControllerDeclineUrl = (membershipId: string,) => {
-
-
-
-
-  return `/api/v1/me/invitations/${membershipId}/decline`
-}
-
-export const invitationsControllerDecline = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerDeclineResponseSuccess> => {
-
-  return apiFetch<invitationsControllerDeclineResponseSuccess>(getInvitationsControllerDeclineUrl(membershipId),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-export type branchesControllerListResponse200 = {
-  data: BranchDto[]
-  status: 200
-}
-
-export type branchesControllerListResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type branchesControllerListResponseSuccess = (branchesControllerListResponse200) & {
-  headers: Headers;
-};
-export type branchesControllerListResponseError = (branchesControllerListResponseDefault) & {
-  headers: Headers;
-};
-
-export const getBranchesControllerListUrl = () => {
-
-
-
-
-  return `/api/v1/branches`
-}
-
-export const branchesControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerListResponseSuccess> => {
-
-  return apiFetch<branchesControllerListResponseSuccess>(getBranchesControllerListUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export type branchesControllerCreateResponse201 = {
-  data: BranchDto
-  status: 201
-}
-
-export type branchesControllerCreateResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 201>
-}
-
-export type branchesControllerCreateResponseSuccess = (branchesControllerCreateResponse201) & {
-  headers: Headers;
-};
-export type branchesControllerCreateResponseError = (branchesControllerCreateResponseDefault) & {
-  headers: Headers;
-};
-
-export const getBranchesControllerCreateUrl = () => {
-
-
-
-
-  return `/api/v1/branches`
-}
-
-export const branchesControllerCreate = async (createBranchDto: CreateBranchDto, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerCreateResponseSuccess> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return apiFetch<branchesControllerCreateResponseSuccess>(getBranchesControllerCreateUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(createBranchDto)
-  }
-);}
-
-
-
-export type branchesControllerUpdateResponse200 = {
-  data: BranchDto
-  status: 200
-}
-
-export type branchesControllerUpdateResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type branchesControllerUpdateResponseSuccess = (branchesControllerUpdateResponse200) & {
-  headers: Headers;
-};
-export type branchesControllerUpdateResponseError = (branchesControllerUpdateResponseDefault) & {
-  headers: Headers;
-};
-
-export const getBranchesControllerUpdateUrl = (id: string,) => {
-
-
-
-
-  return `/api/v1/branches/${id}`
-}
-
-export const branchesControllerUpdate = async (id: string,
-    updateBranchDto: UpdateBranchDto, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerUpdateResponseSuccess> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return apiFetch<branchesControllerUpdateResponseSuccess>(getBranchesControllerUpdateUrl(id),
-  {
-    ...options,
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(updateBranchDto)
-  }
-);}
-
-
-
-export type branchesControllerDeactivateResponse200 = {
-  data: BranchDto
-  status: 200
-}
-
-export type branchesControllerDeactivateResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type branchesControllerDeactivateResponseSuccess = (branchesControllerDeactivateResponse200) & {
-  headers: Headers;
-};
-export type branchesControllerDeactivateResponseError = (branchesControllerDeactivateResponseDefault) & {
-  headers: Headers;
-};
-
-export const getBranchesControllerDeactivateUrl = (id: string,) => {
-
-
-
-
-  return `/api/v1/branches/${id}`
-}
-
-export const branchesControllerDeactivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerDeactivateResponseSuccess> => {
-
-  return apiFetch<branchesControllerDeactivateResponseSuccess>(getBranchesControllerDeactivateUrl(id),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-export type costCentersControllerListResponse200 = {
-  data: CostCenterDto[]
-  status: 200
-}
-
-export type costCentersControllerListResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type costCentersControllerListResponseSuccess = (costCentersControllerListResponse200) & {
-  headers: Headers;
-};
-export type costCentersControllerListResponseError = (costCentersControllerListResponseDefault) & {
-  headers: Headers;
-};
-
-export const getCostCentersControllerListUrl = () => {
-
-
-
-
-  return `/api/v1/cost-centers`
-}
-
-/**
- * @summary Flat, by code (inactive ones too); the web builds the tree.
- */
-export const costCentersControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerListResponseSuccess> => {
-
-  return apiFetch<costCentersControllerListResponseSuccess>(getCostCentersControllerListUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-export type costCentersControllerCreateResponse201 = {
-  data: CostCenterDto
-  status: 201
-}
-
-export type costCentersControllerCreateResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 201>
-}
-
-export type costCentersControllerCreateResponseSuccess = (costCentersControllerCreateResponse201) & {
-  headers: Headers;
-};
-export type costCentersControllerCreateResponseError = (costCentersControllerCreateResponseDefault) & {
-  headers: Headers;
-};
-
-export const getCostCentersControllerCreateUrl = () => {
-
-
-
-
-  return `/api/v1/cost-centers`
-}
-
-export const costCentersControllerCreate = async (createCostCenterDto: CreateCostCenterDto, options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerCreateResponseSuccess> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return apiFetch<costCentersControllerCreateResponseSuccess>(getCostCentersControllerCreateUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(createCostCenterDto)
-  }
-);}
-
-
-
-export type costCentersControllerUpdateResponse200 = {
-  data: CostCenterDto
-  status: 200
-}
-
-export type costCentersControllerUpdateResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type costCentersControllerUpdateResponseSuccess = (costCentersControllerUpdateResponse200) & {
-  headers: Headers;
-};
-export type costCentersControllerUpdateResponseError = (costCentersControllerUpdateResponseDefault) & {
-  headers: Headers;
-};
-
-export const getCostCentersControllerUpdateUrl = (id: string,) => {
-
-
-
-
-  return `/api/v1/cost-centers/${id}`
-}
-
-/**
- * @summary Names, and `isActive: false` to deactivate a used centre.
- */
-export const costCentersControllerUpdate = async (id: string,
-    updateCostCenterDto: UpdateCostCenterDto, options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerUpdateResponseSuccess> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return apiFetch<costCentersControllerUpdateResponseSuccess>(getCostCentersControllerUpdateUrl(id),
-  {
-    ...options,
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(updateCostCenterDto)
-  }
-);}
-
-
-
-export type costCentersControllerRemoveResponse200 = {
-  data: DeletedDto
-  status: 200
-}
-
-export type costCentersControllerRemoveResponseDefault = {
-  data: ErrorResponseDto
-  status: Exclude<HTTPStatusCodes, 200>
-}
-
-export type costCentersControllerRemoveResponseSuccess = (costCentersControllerRemoveResponse200) & {
-  headers: Headers;
-};
-export type costCentersControllerRemoveResponseError = (costCentersControllerRemoveResponseDefault) & {
-  headers: Headers;
-};
-
-export const getCostCentersControllerRemoveUrl = (id: string,) => {
-
-
-
-
-  return `/api/v1/cost-centers/${id}`
-}
-
-/**
- * @summary An unused leaf only; a used centre answers COST_CENTER_IN_USE (deactivate it instead).
- */
-export const costCentersControllerRemove = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerRemoveResponseSuccess> => {
-
-  return apiFetch<costCentersControllerRemoveResponseSuccess>(getCostCentersControllerRemoveUrl(id),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
 export type journalControllerListResponse200 = {
   data: JournalEntryListItemDtoPage
   status: 200
@@ -14384,6 +13581,914 @@ export const partiesControllerDeactivate = async (id: string, options?: Paramete
   {
     ...options,
     method: 'PATCH'
+
+
+  }
+);}
+
+
+
+export type costCentersControllerListResponse200 = {
+  data: CostCenterDto[]
+  status: 200
+}
+
+export type costCentersControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type costCentersControllerListResponseSuccess = (costCentersControllerListResponse200) & {
+  headers: Headers;
+};
+export type costCentersControllerListResponseError = (costCentersControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getCostCentersControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/cost-centers`
+}
+
+/**
+ * @summary Flat, by code (inactive ones too); the web builds the tree.
+ */
+export const costCentersControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerListResponseSuccess> => {
+
+  return apiFetch<costCentersControllerListResponseSuccess>(getCostCentersControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type costCentersControllerCreateResponse201 = {
+  data: CostCenterDto
+  status: 201
+}
+
+export type costCentersControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type costCentersControllerCreateResponseSuccess = (costCentersControllerCreateResponse201) & {
+  headers: Headers;
+};
+export type costCentersControllerCreateResponseError = (costCentersControllerCreateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getCostCentersControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/cost-centers`
+}
+
+export const costCentersControllerCreate = async (createCostCenterDto: CreateCostCenterDto, options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerCreateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<costCentersControllerCreateResponseSuccess>(getCostCentersControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createCostCenterDto)
+  }
+);}
+
+
+
+export type costCentersControllerUpdateResponse200 = {
+  data: CostCenterDto
+  status: 200
+}
+
+export type costCentersControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type costCentersControllerUpdateResponseSuccess = (costCentersControllerUpdateResponse200) & {
+  headers: Headers;
+};
+export type costCentersControllerUpdateResponseError = (costCentersControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getCostCentersControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cost-centers/${id}`
+}
+
+/**
+ * @summary Names, and `isActive: false` to deactivate a used centre.
+ */
+export const costCentersControllerUpdate = async (id: string,
+    updateCostCenterDto: UpdateCostCenterDto, options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerUpdateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<costCentersControllerUpdateResponseSuccess>(getCostCentersControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateCostCenterDto)
+  }
+);}
+
+
+
+export type costCentersControllerRemoveResponse200 = {
+  data: DeletedDto
+  status: 200
+}
+
+export type costCentersControllerRemoveResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type costCentersControllerRemoveResponseSuccess = (costCentersControllerRemoveResponse200) & {
+  headers: Headers;
+};
+export type costCentersControllerRemoveResponseError = (costCentersControllerRemoveResponseDefault) & {
+  headers: Headers;
+};
+
+export const getCostCentersControllerRemoveUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cost-centers/${id}`
+}
+
+/**
+ * @summary An unused leaf only; a used centre answers COST_CENTER_IN_USE (deactivate it instead).
+ */
+export const costCentersControllerRemove = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<costCentersControllerRemoveResponseSuccess> => {
+
+  return apiFetch<costCentersControllerRemoveResponseSuccess>(getCostCentersControllerRemoveUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type usersControllerRolesResponse200 = {
+  data: UserRoleDto[]
+  status: 200
+}
+
+export type usersControllerRolesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type usersControllerRolesResponseSuccess = (usersControllerRolesResponse200) & {
+  headers: Headers;
+};
+export type usersControllerRolesResponseError = (usersControllerRolesResponseDefault) & {
+  headers: Headers;
+};
+
+export const getUsersControllerRolesUrl = () => {
+
+
+
+
+  return `/api/v1/users/roles`
+}
+
+export const usersControllerRoles = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerRolesResponseSuccess> => {
+
+  return apiFetch<usersControllerRolesResponseSuccess>(getUsersControllerRolesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type usersControllerListResponse200 = {
+  data: UserMembershipDto[]
+  status: 200
+}
+
+export type usersControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type usersControllerListResponseSuccess = (usersControllerListResponse200) & {
+  headers: Headers;
+};
+export type usersControllerListResponseError = (usersControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getUsersControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/users`
+}
+
+export const usersControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerListResponseSuccess> => {
+
+  return apiFetch<usersControllerListResponseSuccess>(getUsersControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type usersControllerPurchaseDirectGapsResponse200 = {
+  data: PurchaseDirectGapDto[]
+  status: 200
+}
+
+export type usersControllerPurchaseDirectGapsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type usersControllerPurchaseDirectGapsResponseSuccess = (usersControllerPurchaseDirectGapsResponse200) & {
+  headers: Headers;
+};
+export type usersControllerPurchaseDirectGapsResponseError = (usersControllerPurchaseDirectGapsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getUsersControllerPurchaseDirectGapsUrl = () => {
+
+
+
+
+  return `/api/v1/users/purchase-direct-gaps`
+}
+
+/**
+ * @summary Active members whose role creates or posts purchase invoices but who lack
+purchase.direct (owners aside): raising the procurement level from SIMPLE
+would stop them (ADR-025 §4). Shown before confirming the raise, so it
+needs what raising needs (company.manage); name, email and role only.
+ */
+export const usersControllerPurchaseDirectGaps = async ( options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerPurchaseDirectGapsResponseSuccess> => {
+
+  return apiFetch<usersControllerPurchaseDirectGapsResponseSuccess>(getUsersControllerPurchaseDirectGapsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type usersControllerInviteResponse201 = {
+  data: UserInviteResultDto
+  status: 201
+}
+
+export type usersControllerInviteResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type usersControllerInviteResponseSuccess = (usersControllerInviteResponse201) & {
+  headers: Headers;
+};
+export type usersControllerInviteResponseError = (usersControllerInviteResponseDefault) & {
+  headers: Headers;
+};
+
+export const getUsersControllerInviteUrl = () => {
+
+
+
+
+  return `/api/v1/users/invite`
+}
+
+export const usersControllerInvite = async (inviteUserDto: InviteUserDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerInviteResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<usersControllerInviteResponseSuccess>(getUsersControllerInviteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(inviteUserDto)
+  }
+);}
+
+
+
+export type usersControllerUpdateResponse200 = {
+  data: UserMembershipDto
+  status: 200
+}
+
+export type usersControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type usersControllerUpdateResponseSuccess = (usersControllerUpdateResponse200) & {
+  headers: Headers;
+};
+export type usersControllerUpdateResponseError = (usersControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getUsersControllerUpdateUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/users/${membershipId}`
+}
+
+export const usersControllerUpdate = async (membershipId: string,
+    updateMembershipDto: UpdateMembershipDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerUpdateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<usersControllerUpdateResponseSuccess>(getUsersControllerUpdateUrl(membershipId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateMembershipDto)
+  }
+);}
+
+
+
+export type usersControllerSuspendResponse200 = {
+  data: UserInvitationCancelledDto | UserMembershipDto
+  status: 200
+}
+
+export type usersControllerSuspendResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type usersControllerSuspendResponseSuccess = (usersControllerSuspendResponse200) & {
+  headers: Headers;
+};
+export type usersControllerSuspendResponseError = (usersControllerSuspendResponseDefault) & {
+  headers: Headers;
+};
+
+export const getUsersControllerSuspendUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/users/${membershipId}`
+}
+
+/**
+ * @summary Suspends a member, or cancels a pending invitation (INVITED).
+ */
+export const usersControllerSuspend = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerSuspendResponseSuccess> => {
+
+  return apiFetch<usersControllerSuspendResponseSuccess>(getUsersControllerSuspendUrl(membershipId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type usersControllerUpdatePurchasePermissionsResponse200 = {
+  data: UserMembershipDto
+  status: 200
+}
+
+export type usersControllerUpdatePurchasePermissionsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type usersControllerUpdatePurchasePermissionsResponseSuccess = (usersControllerUpdatePurchasePermissionsResponse200) & {
+  headers: Headers;
+};
+export type usersControllerUpdatePurchasePermissionsResponseError = (usersControllerUpdatePurchasePermissionsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getUsersControllerUpdatePurchasePermissionsUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/users/${membershipId}/purchase-permissions`
+}
+
+/**
+ * @summary The member's purchase permissions, as a whole set (ADR-024 §3): listed
+codes are granted, the rest revoked. Owner only (checked by the service).
+ */
+export const usersControllerUpdatePurchasePermissions = async (membershipId: string,
+    updatePurchasePermissionsDto: UpdatePurchasePermissionsDto, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerUpdatePurchasePermissionsResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<usersControllerUpdatePurchasePermissionsResponseSuccess>(getUsersControllerUpdatePurchasePermissionsUrl(membershipId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updatePurchasePermissionsDto)
+  }
+);}
+
+
+
+export type usersControllerReissueInvitationCodeResponse200 = {
+  data: UserInvitationCodeDto
+  status: 200
+}
+
+export type usersControllerReissueInvitationCodeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type usersControllerReissueInvitationCodeResponseSuccess = (usersControllerReissueInvitationCodeResponse200) & {
+  headers: Headers;
+};
+export type usersControllerReissueInvitationCodeResponseError = (usersControllerReissueInvitationCodeResponseDefault) & {
+  headers: Headers;
+};
+
+export const getUsersControllerReissueInvitationCodeUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/users/${membershipId}/invitation-code`
+}
+
+/**
+ * @summary A new acceptance code for a pending invitation; the old one stops working (ADR-012 §PLAT-10).
+ */
+export const usersControllerReissueInvitationCode = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerReissueInvitationCodeResponseSuccess> => {
+
+  return apiFetch<usersControllerReissueInvitationCodeResponseSuccess>(getUsersControllerReissueInvitationCodeUrl(membershipId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type usersControllerResetPasswordResponse200 = {
+  data: UserTemporaryPasswordDto
+  status: 200
+}
+
+export type usersControllerResetPasswordResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type usersControllerResetPasswordResponseSuccess = (usersControllerResetPasswordResponse200) & {
+  headers: Headers;
+};
+export type usersControllerResetPasswordResponseError = (usersControllerResetPasswordResponseDefault) & {
+  headers: Headers;
+};
+
+export const getUsersControllerResetPasswordUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/users/${membershipId}/reset-password`
+}
+
+/**
+ * @summary Replaces the member's password with a temporary one (ADR-012).
+ */
+export const usersControllerResetPassword = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<usersControllerResetPasswordResponseSuccess> => {
+
+  return apiFetch<usersControllerResetPasswordResponseSuccess>(getUsersControllerResetPasswordUrl(membershipId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type invitationsControllerListResponse200 = {
+  data: MyInvitationDto[]
+  status: 200
+}
+
+export type invitationsControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type invitationsControllerListResponseSuccess = (invitationsControllerListResponse200) & {
+  headers: Headers;
+};
+export type invitationsControllerListResponseError = (invitationsControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getInvitationsControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/me/invitations`
+}
+
+export const invitationsControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerListResponseSuccess> => {
+
+  return apiFetch<invitationsControllerListResponseSuccess>(getInvitationsControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type invitationsControllerAcceptResponse200 = {
+  data: MyInvitationAcceptedDto
+  status: 200
+}
+
+export type invitationsControllerAcceptResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type invitationsControllerAcceptResponseSuccess = (invitationsControllerAcceptResponse200) & {
+  headers: Headers;
+};
+export type invitationsControllerAcceptResponseError = (invitationsControllerAcceptResponseDefault) & {
+  headers: Headers;
+};
+
+export const getInvitationsControllerAcceptUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/me/invitations/${membershipId}/accept`
+}
+
+/**
+ * @summary Needs the acceptance code; 10 tries a minute per user on top of the per-code limit.
+ */
+export const invitationsControllerAccept = async (membershipId: string,
+    acceptInvitationDto: AcceptInvitationDto, options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerAcceptResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<invitationsControllerAcceptResponseSuccess>(getInvitationsControllerAcceptUrl(membershipId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(acceptInvitationDto)
+  }
+);}
+
+
+
+export type invitationsControllerDeclineResponse204 = {
+  data: void
+  status: 204
+}
+
+export type invitationsControllerDeclineResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 204>
+}
+
+export type invitationsControllerDeclineResponseSuccess = (invitationsControllerDeclineResponse204) & {
+  headers: Headers;
+};
+export type invitationsControllerDeclineResponseError = (invitationsControllerDeclineResponseDefault) & {
+  headers: Headers;
+};
+
+export const getInvitationsControllerDeclineUrl = (membershipId: string,) => {
+
+
+
+
+  return `/api/v1/me/invitations/${membershipId}/decline`
+}
+
+export const invitationsControllerDecline = async (membershipId: string, options?: Parameters<typeof apiFetch>[1]): Promise<invitationsControllerDeclineResponseSuccess> => {
+
+  return apiFetch<invitationsControllerDeclineResponseSuccess>(getInvitationsControllerDeclineUrl(membershipId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type branchesControllerListResponse200 = {
+  data: BranchDto[]
+  status: 200
+}
+
+export type branchesControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type branchesControllerListResponseSuccess = (branchesControllerListResponse200) & {
+  headers: Headers;
+};
+export type branchesControllerListResponseError = (branchesControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBranchesControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/branches`
+}
+
+export const branchesControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerListResponseSuccess> => {
+
+  return apiFetch<branchesControllerListResponseSuccess>(getBranchesControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type branchesControllerCreateResponse201 = {
+  data: BranchDto
+  status: 201
+}
+
+export type branchesControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type branchesControllerCreateResponseSuccess = (branchesControllerCreateResponse201) & {
+  headers: Headers;
+};
+export type branchesControllerCreateResponseError = (branchesControllerCreateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBranchesControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/branches`
+}
+
+export const branchesControllerCreate = async (createBranchDto: CreateBranchDto, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerCreateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<branchesControllerCreateResponseSuccess>(getBranchesControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createBranchDto)
+  }
+);}
+
+
+
+export type branchesControllerUpdateResponse200 = {
+  data: BranchDto
+  status: 200
+}
+
+export type branchesControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type branchesControllerUpdateResponseSuccess = (branchesControllerUpdateResponse200) & {
+  headers: Headers;
+};
+export type branchesControllerUpdateResponseError = (branchesControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBranchesControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/branches/${id}`
+}
+
+export const branchesControllerUpdate = async (id: string,
+    updateBranchDto: UpdateBranchDto, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerUpdateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<branchesControllerUpdateResponseSuccess>(getBranchesControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateBranchDto)
+  }
+);}
+
+
+
+export type branchesControllerDeactivateResponse200 = {
+  data: BranchDto
+  status: 200
+}
+
+export type branchesControllerDeactivateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type branchesControllerDeactivateResponseSuccess = (branchesControllerDeactivateResponse200) & {
+  headers: Headers;
+};
+export type branchesControllerDeactivateResponseError = (branchesControllerDeactivateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBranchesControllerDeactivateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/branches/${id}`
+}
+
+export const branchesControllerDeactivate = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<branchesControllerDeactivateResponseSuccess> => {
+
+  return apiFetch<branchesControllerDeactivateResponseSuccess>(getBranchesControllerDeactivateUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
 
 
   }

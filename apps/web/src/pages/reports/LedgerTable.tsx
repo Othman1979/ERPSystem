@@ -11,6 +11,7 @@ export interface LedgerLine {
   entryNo: string | null;
   entryDate: string;
   description: string | null;
+  sourceType?: string;
   debit: string;
   credit: string;
   balance: string;
@@ -92,7 +93,12 @@ export function LedgerTable({
           { title: t('common.name'), dataIndex: 'accountName' },
         ]
       : []),
-    { title: t('common.description'), dataIndex: 'description' },
+    {
+      title: t('common.description'),
+      dataIndex: 'description',
+      render: (description: string | null, row: Row) =>
+        row.sourceType === 'YEAR_CLOSING' ? t('fiscal.yearClosing') : description,
+    },
     { title: t('journal.debit'), dataIndex: 'debit', align: 'right', width: 120, render: sideCell },
     { title: t('journal.credit'), dataIndex: 'credit', align: 'right', width: 120, render: sideCell },
     {

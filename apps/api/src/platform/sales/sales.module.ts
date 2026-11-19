@@ -13,9 +13,10 @@ import { SalesOrdersService } from './sales-orders.service.js';
 import { SalesQuotesService } from './sales-quotes.service.js';
 import { PartiesModule } from '../parties/parties.module.js';
 import { ManufacturingModule } from '../manufacturing/manufacturing.module.js';
+import { AccountingModule } from '../accounting/accounting.module.js';
 
 @Module({
-  imports: [PartiesModule, SharedModule, JournalModule, InventoryModule, EInvoiceOutboxModule, PrintingModule, CostCentersModule, ManufacturingModule],
+  imports: [AccountingModule, PartiesModule, SharedModule, JournalModule, InventoryModule, EInvoiceOutboxModule, PrintingModule, CostCentersModule, ManufacturingModule],
   // Phase 14 (ADR-027): sales quotations and orders; no posting, no stock movement here.
   controllers: [SalesController, SalesCycleController],
   providers: [SalesInvoicesService, SalesReturnsService, SalesQuotesService, SalesOrdersService],

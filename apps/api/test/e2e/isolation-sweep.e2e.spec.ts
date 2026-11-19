@@ -440,6 +440,9 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
         'GET /api/v1/sales-orders/{id}/invoiceable',
         'POST /api/v1/sales-orders/{id}/invoice',
         'POST /api/v1/sales-invoices/{id}/approve-price',
+        'GET /api/v1/fiscal-years/{id}/closing-preview',
+        'POST /api/v1/fiscal-years/{id}/close',
+        'POST /api/v1/fiscal-years/{id}/open',
       ]),
     );
   }, 60_000);

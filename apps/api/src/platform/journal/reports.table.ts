@@ -7,6 +7,7 @@ function fallbackDescription(
   r: { sourceType: string; postingKind: string },
   t: (ar: string, en: string) => string,
 ): string {
+  if (r.sourceType === 'YEAR_CLOSING') return t('قيد إقفال السنة', 'Year closing');
   if (r.sourceType === 'OPENING_ENTRY') return t('أرصدة افتتاحية', 'Opening balances');
   if (r.postingKind === 'REVERSAL') return t('قيد عكسي', 'Reversal entry');
   return '';

@@ -135,6 +135,7 @@ export class IntegrityCheckService {
               OR (x.source_type = 'RECEIPT' AND EXISTS (SELECT 1 FROM receipts d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'PAYMENT' AND EXISTS (SELECT 1 FROM payments d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'MANUAL_JOURNAL' AND EXISTS (SELECT 1 FROM journal_entries d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
+              OR (x.source_type = 'YEAR_CLOSING' AND EXISTS (SELECT 1 FROM fiscal_year_closings d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'PRODUCTION' AND EXISTS (SELECT 1 FROM production_vouchers d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
             ))
           ) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
