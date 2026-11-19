@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../common/cls/cls.types.js';
 import type { Env } from '../common/config/env.validation.js';
+import { ErrorCode } from '../common/errors/error-codes.js';
 import { testDatabaseUrl } from '../../test/e2e/support/test-db.js';
 import { PrismaService } from './prisma.service.js';
 
@@ -12,10 +13,10 @@ const cls = ClsServiceManager.getClsService<RequestContext>();
 let prisma: PrismaService | undefined;
 let tenantId: bigint | undefined;
 
-async function addReservation(key: string): Promise<void> {
-  await cls.run(async () => {
+async function addReservation(key: string): Promise<bigint> {
+  const row = await cls.run(async () => {
     cls.set('tenantId', tenantId!);
-    await prisma!.client.idempotencyKey.create({
+    return prisma!.client.idempotencyKey.create({
       data: {
         tenantId: tenantId!,
         key,
@@ -26,6 +27,7 @@ async function addReservation(key: string): Promise<void> {
       },
     });
   });
+  return row.id;
 }
 
 async function statusOf(key: string): Promise<string | null> {
@@ -62,11 +64,11 @@ afterAll(async () => {
 describe('tenant transaction idempotency marker (real MariaDB)', () => {
   it('commits the reservation marker with a successful tenant transaction', async () => {
     const key = `tx-success-${RUN}`;
-    await addReservation(key);
+    const reservationId = await addReservation(key);
 
     await cls.run(async () => {
       cls.set('tenantId', tenantId!);
-      cls.set('idempotencyKey', key);
+      cls.set('idempotencyKeyId', reservationId);
       await prisma!.forTenant().$transaction(async () => undefined);
     });
 
@@ -75,12 +77,12 @@ describe('tenant transaction idempotency marker (real MariaDB)', () => {
 
   it('leaves the reservation reserved when the tenant transaction rolls back', async () => {
     const key = `tx-rollback-${RUN}`;
-    await addReservation(key);
+    const reservationId = await addReservation(key);
 
     await expect(
       cls.run(async () => {
         cls.set('tenantId', tenantId!);
-        cls.set('idempotencyKey', key);
+        cls.set('idempotencyKeyId', reservationId);
         await prisma!.forTenant().$transaction(async () => {
           throw new Error('rollback marker transaction');
         });
@@ -100,5 +102,51 @@ describe('tenant transaction idempotency marker (real MariaDB)', () => {
     });
 
     expect(await statusOf(key)).toBe('RESERVED');
+  });
+
+  it('rolls back transaction writes when the reservation row was taken over', async () => {
+    const key = `tx-taken-over-${RUN}`;
+    const reservationId = await addReservation(key);
+    const entityId = `reservation-${RUN}`;
+
+    await expect(
+      cls.run(async () => {
+        cls.set('tenantId', tenantId!);
+        cls.set('idempotencyKeyId', reservationId);
+        await prisma!.forTenant().$transaction(async (tx) => {
+          await tx.auditLog.create({
+            data: {
+              tenantId: tenantId!,
+              action: 'idempotency_marker_test',
+              entityType: 'reservation',
+              entityId,
+            },
+          });
+          await prisma!.client.idempotencyKey.delete({ where: { id: reservationId } });
+        });
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.CONFLICT });
+
+    expect(await statusOf(key)).toBeNull();
+    expect(
+      await prisma!.client.auditLog.count({
+        where: { tenantId: tenantId!, action: 'idempotency_marker_test', entityId },
+      }),
+    ).toBe(0);
+  });
+
+  it('allows sequential transactions owned by the same reservation', async () => {
+    const key = `tx-sequential-${RUN}`;
+    const reservationId = await addReservation(key);
+
+    await cls.run(async () => {
+      cls.set('tenantId', tenantId!);
+      cls.set('idempotencyKeyId', reservationId);
+      const db = prisma!.forTenant();
+      await db.$transaction(async () => undefined);
+      await db.$transaction(async () => undefined);
+    });
+
+    expect(await statusOf(key)).toBe('COMMITTED');
   });
 });

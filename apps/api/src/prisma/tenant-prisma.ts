@@ -189,13 +189,19 @@ export function tenantScopedPrisma(client: PrismaClient, tenantId?: bigint): Pri
             async (tx: Prisma.TransactionClient) => {
               const result = await operation(tx);
               const cls = ClsServiceManager.getClsService<RequestContext>();
-              const key = cls.isActive() ? cls.get('idempotencyKey') : undefined;
-              if (key) {
+              const idempotencyKeyId = cls.isActive() ? cls.get('idempotencyKeyId') : undefined;
+              if (idempotencyKeyId !== undefined) {
                 // The marker commits atomically with the request's work.
-                await tx.idempotencyKey.updateMany({
-                  where: { key, status: 'IN_PROGRESS' },
+                const marker = await tx.idempotencyKey.updateMany({
+                  where: { id: idempotencyKeyId, status: { in: ['RESERVED', 'COMMITTED'] } },
                   data: { status: 'COMMITTED' },
                 });
+                if (marker.count === 0) {
+                  throw new DomainError(
+                    ErrorCode.CONFLICT,
+                    'The Idempotency-Key reservation was taken over; this request was rolled back',
+                  );
+                }
               }
               return result;
             },

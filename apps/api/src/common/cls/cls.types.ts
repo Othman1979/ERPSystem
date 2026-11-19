@@ -15,8 +15,8 @@ export interface RequestContext {
   membershipId?: bigint;
   roleCode?: string;
   permissions?: ReadonlySet<string>;
-  /** Set by IdempotencyInterceptor for the request holding the key. */
-  idempotencyKey?: string;
+  /** Set by IdempotencyInterceptor for the request holding the reservation. */
+  idempotencyKeyId?: bigint;
   /** Branch of this request (X-Branch-Id or the default), set by BranchGuard. */
   branchId?: bigint;
   /**
