@@ -235,6 +235,40 @@ describe('Trade wave 2 — treasury, units, branches', () => {
     expect(ok.body.isActive).toBe(false);
   });
 
+  it('a committed receipt without a stored response is reported as already applied', async () => {
+    const customer = await party();
+    const before = await count('receipts');
+    const idempotencyKey = `receipt-${RUN}-${Math.random().toString(36).slice(2)}`;
+    const body = {
+      receiptDate: '2025-02-02',
+      partyType: 'CUSTOMER',
+      partyId: customer,
+      cashAccountId,
+      amount: '1.000',
+    };
+    const first = await api()
+      .post('/api/v1/receipts')
+      .set(auth(owner))
+      .set('Idempotency-Key', idempotencyKey)
+      .send(body);
+    expect(first.status).toBe(201);
+    expect(await count('receipts')).toBe(before + 1);
+
+    await db.query(
+      `UPDATE idempotency_keys SET status = 'COMMITTED', response_json = NULL
+        WHERE tenant_id = ? AND \`key\` = ?`,
+      [tenantId, idempotencyKey],
+    );
+    const retry = await api()
+      .post('/api/v1/receipts')
+      .set(auth(owner))
+      .set('Idempotency-Key', idempotencyKey)
+      .send(body);
+    expect(retry.status).toBe(409);
+    expect(retry.body.error.code).toBe('IDEMPOTENCY_ALREADY_APPLIED');
+    expect(await count('receipts')).toBe(before + 1);
+  });
+
   it('TRADE-23: a discount above 100 % is rejected on create', async () => {
     const res = await api()
       .post('/api/v1/sales-invoices')

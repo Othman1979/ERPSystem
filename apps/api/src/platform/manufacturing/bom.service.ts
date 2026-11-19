@@ -355,7 +355,7 @@ export class BomService {
     const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
     const userId = this.userId() ?? null;
-    const itemId = await db.$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       // Company row first: serialises activations, so the loop check sees the others' results.
       await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
       const head = await this.versionHead(tx, companyId, id);
@@ -365,7 +365,15 @@ export class BomService {
         select: { itemId: true, status: true, versionNo: true, lines: { select: { componentItemId: true } } },
       });
       if (!current) throw DomainError.notFound('Bom', id.toString());
-      if (current.status === 'ACTIVE') return current.itemId;
+      if (current.status === 'ACTIVE') {
+        await this.audit.log({
+          action: 'bom.activate',
+          entityType: 'bom',
+          entityId: id,
+          after: { itemId: current.itemId.toString() },
+        }, tx);
+        return current.itemId;
+      }
       if (current.lines.length === 0) {
         throw new DomainError(ErrorCode.VALIDATION, 'A bill of materials needs at least one component', { bomId: id.toString() });
       }
@@ -383,9 +391,14 @@ export class BomService {
         where: { id },
         data: { status: 'ACTIVE', activatedAt: new Date(), activatedBy: userId, updatedBy: userId },
       });
+      await this.audit.log({
+        action: 'bom.activate',
+        entityType: 'bom',
+        entityId: id,
+        after: { itemId: current.itemId.toString() },
+      }, tx);
       return current.itemId;
     });
-    await this.audit.log({ action: 'bom.activate', entityType: 'bom', entityId: id, after: { itemId: itemId.toString() } });
     return this.get(id);
   }
 
@@ -482,8 +495,8 @@ export class BomService {
         throw new DomainError(ErrorCode.BOM_NOT_ACTIVE, 'Only an active version can be deactivated', { status: current.status });
       }
       await tx.bom.update({ where: { id }, data: { status: 'INACTIVE', updatedBy: userId } });
+      await this.audit.log({ action: 'bom.deactivate', entityType: 'bom', entityId: id, after: null }, tx);
     });
-    await this.audit.log({ action: 'bom.deactivate', entityType: 'bom', entityId: id, after: null });
     return this.get(id);
   }
 

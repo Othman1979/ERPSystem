@@ -251,16 +251,17 @@ export class AdjustmentsService {
         // makes every later read see the latest committed state, so two
         // concurrent requests cannot both post or reverse it.
         await tx.$queryRaw`SELECT id FROM stock_adjustments WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
-        return this.postLocked(tx, id, companyId, userId);
+        const result = await this.postLocked(tx, id, companyId, userId);
+        await this.audit.log({
+          action: 'stock_adjustment.post',
+          entityType: 'stock_adjustment',
+          entityId: result.id,
+          after: { docNo: result.docNo },
+        }, tx);
+        return result;
       }, POSTING_TX_OPTIONS),
     );
 
-    await this.audit.log({
-      action: 'stock_adjustment.post',
-      entityType: 'stock_adjustment',
-      entityId: result.id,
-      after: { docNo: result.docNo },
-    });
     return this.get(result.id);
   }
 
@@ -551,16 +552,16 @@ export class AdjustmentsService {
           where: { id: reversal.id },
           data: { journalEntryId: entryId },
         });
+        await this.audit.log({
+          action: 'stock_adjustment.reverse',
+          entityType: 'stock_adjustment',
+          entityId: reversal.id,
+          after: { docNo },
+        }, tx);
         return { id: reversal.id, docNo };
       }, POSTING_TX_OPTIONS),
     );
 
-    await this.audit.log({
-      action: 'stock_adjustment.reverse',
-      entityType: 'stock_adjustment',
-      entityId: result.id,
-      after: { docNo: result.docNo },
-    });
     return this.get(result.id);
   }
 

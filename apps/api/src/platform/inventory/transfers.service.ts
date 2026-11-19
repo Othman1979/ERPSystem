@@ -302,16 +302,16 @@ export class TransfersService {
             postedBy: userId ?? null,
           },
         });
+        await this.audit.log({
+          action: 'stock_transfer.post',
+          entityType: 'stock_transfer',
+          entityId: draft.id,
+          after: { docNo },
+        }, tx);
         return { id: draft.id, docNo };
       }, POSTING_TX_OPTIONS),
     );
 
-    await this.audit.log({
-      action: 'stock_transfer.post',
-      entityType: 'stock_transfer',
-      entityId: result.id,
-      after: { docNo: result.docNo },
-    });
     return this.get(result.id);
   }
 
@@ -407,16 +407,16 @@ export class TransfersService {
 
         const docNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, 'STOCK_TRANSFER', reversalDate);
         await tx.stockTransfer.update({ where: { id: reversal.id }, data: { docNo } });
+        await this.audit.log({
+          action: 'stock_transfer.reverse',
+          entityType: 'stock_transfer',
+          entityId: reversal.id,
+          after: { docNo },
+        }, tx);
         return { id: reversal.id, docNo };
       }, POSTING_TX_OPTIONS),
     );
 
-    await this.audit.log({
-      action: 'stock_transfer.reverse',
-      entityType: 'stock_transfer',
-      entityId: result.id,
-      after: { docNo: result.docNo },
-    });
     return this.get(result.id);
   }
 

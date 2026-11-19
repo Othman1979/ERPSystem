@@ -21,6 +21,10 @@ const KEY_PATTERN = /^[\x21-\x7E]{1,128}$/;
 // released (the winner failed); it then tries again a bounded number of times.
 const RESERVE_ATTEMPTS = 3;
 
+type ReservationResult =
+  | { kind: 'replay'; value: unknown }
+  | { kind: 'reserved'; id: bigint };
+
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
@@ -94,21 +98,21 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
     const prisma = this.prisma.forTenant(tenantId);
 
-    const reserve = async (): Promise<{ replay: unknown }> => {
+    const reserve = async (): Promise<ReservationResult> => {
       for (let attempt = 0; attempt < RESERVE_ATTEMPTS; attempt++) {
         try {
           // Atomic reservation: the unique (tenant_id, key) decides the winner.
-          await prisma.idempotencyKey.create({
+          const reserved = await prisma.idempotencyKey.create({
             data: {
               tenantId,
               key,
               endpoint: endpoint.slice(0, 255),
               requestHash,
-              status: 'IN_PROGRESS',
+              status: 'RESERVED',
               expiresAt: new Date(Date.now() + KEY_TTL_MS),
             },
           });
-          return { replay: undefined };
+          return { kind: 'reserved', id: reserved.id };
         } catch (err) {
           if (!isUniqueViolation(err)) throw err;
         }
@@ -125,7 +129,24 @@ export class IdempotencyInterceptor implements NestInterceptor {
             'Idempotency-Key was already used with a different request',
           );
         }
-        if (existing.status === 'COMPLETED') return { replay: existing.responseJson };
+        if (existing.status === 'RESERVED') {
+          // Well past POSTING_TX_OPTIONS plus retries; RESERVED without COMMITTED proves nothing committed.
+          await prisma.$executeRaw`
+            DELETE FROM idempotency_keys
+            WHERE tenant_id = ${tenantId}
+              AND id = ${existing.id}
+              AND status = 'RESERVED'
+              AND created_at < NOW(3) - INTERVAL 10 MINUTE
+          `;
+          continue;
+        }
+        if (existing.status === 'COMPLETED') return { kind: 'replay', value: existing.responseJson };
+        if (existing.status === 'COMMITTED') {
+          throw new DomainError(
+            ErrorCode.IDEMPOTENCY_ALREADY_APPLIED,
+            'This request was already applied; reload to see the result',
+          );
+        }
         throw new DomainError(
           ErrorCode.CONFLICT,
           'A request with this Idempotency-Key is still in progress',
@@ -139,13 +160,16 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
     return defer(reserve).pipe(
       mergeMap((pre) => {
-        if (pre.replay !== undefined) return of(pre.replay);
+        if (pre.kind === 'replay') return of(pre.value);
+        cls.set('idempotencyKeyId', pre.id);
         return next.handle().pipe(
           // Only a failed handler releases the key so the client may retry.
           // A failure while recording the result keeps the key reserved: the
           // work may have committed, and a retry must not post twice.
           catchError(async (err) => {
-            await prisma.idempotencyKey.deleteMany({ where: { key } }).catch(() => undefined);
+            await prisma.idempotencyKey
+              .deleteMany({ where: { id: pre.id, status: 'RESERVED' } })
+              .catch(() => undefined);
             throw err;
           }),
           mergeMap(async (value) => {

@@ -399,7 +399,7 @@ export class PurchaseQuotesService {
     const companyId = await this.support.companyId(db);
     const requestId = await this.requestIdOf(id);
     const verb = { send: 'sent', receive: 'received', close: 'closed', cancel: 'cancelled' }[action];
-    const data = await this.support.withRetry(() =>
+    await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         if (needsApprovedRequest) {
           await this.lockApprovedRequest(tx, tenantId, companyId, requestId);
@@ -412,15 +412,15 @@ export class PurchaseQuotesService {
         assertStatus('quote', quote.status, from, verb);
         const set = await apply(tx, tenantId, companyId);
         await tx.purchaseQuote.update({ where: { id }, data: { ...set, updatedBy: this.support.userId() ?? null } });
+        await this.audit.log({
+          action: `purchase_quote.${action}`,
+          entityType: 'purchase_quote',
+          entityId: id,
+          after: { status: set.status, ...(set.quoteNo ? { quoteNo: set.quoteNo } : {}) },
+        }, tx);
         return set;
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({
-      action: `purchase_quote.${action}`,
-      entityType: 'purchase_quote',
-      entityId: id,
-      after: { status: data.status, ...(data.quoteNo ? { quoteNo: data.quoteNo } : {}) },
-    });
     return this.get(id);
   }
 }

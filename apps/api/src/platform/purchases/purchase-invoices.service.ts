@@ -485,7 +485,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     return { ...withBalance(inv, await this.creditedFor(db, [inv.id])), priceAboveOrderLines };
   }
 
-  async create(dto: CreatePurchaseInvoiceDto) {
+  async create(dto: CreatePurchaseInvoiceDto, auditInTransaction = false) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     // ADR-026 §7: an invoice on a purchase order; another tenant's or branch's order answers 404.
@@ -538,17 +538,27 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           ...this.totals(lines),
           createdBy: this.support.userId() ?? null,
         },
-      });
+        });
         await this.writeLines(tx, tenantId, created.id, lines);
+        if (auditInTransaction) {
+          await this.audit.log({
+            action: 'purchase_invoice.create',
+            entityType: 'purchase_invoice',
+            entityId: created.id,
+            after: { lines: lines.length },
+          }, tx);
+        }
         return created;
       }, POSTING_TX_OPTIONS);
     });
-    await this.audit.log({
-      action: 'purchase_invoice.create',
-      entityType: 'purchase_invoice',
-      entityId: inv.id,
-      after: { lines: lines.length },
-    });
+    if (!auditInTransaction) {
+      await this.audit.log({
+        action: 'purchase_invoice.create',
+        entityType: 'purchase_invoice',
+        entityId: inv.id,
+        after: { lines: lines.length },
+      });
+    }
     return this.get(inv.id);
   }
 
@@ -839,16 +849,16 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
             postedBy: userId ?? null,
           },
         });
+        await this.audit.log({
+          action: 'purchase_invoice.post',
+          entityType: 'purchase_invoice',
+          entityId: draft.id,
+          after: { invoiceNo },
+        }, tx);
         return { id: draft.id, invoiceNo };
       }, POSTING_TX_OPTIONS),
     );
 
-    await this.audit.log({
-      action: 'purchase_invoice.post',
-      entityType: 'purchase_invoice',
-      entityId: result.id,
-      after: { invoiceNo: result.invoiceNo },
-    });
     return this.get(result.id);
   }
 
@@ -1031,16 +1041,16 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           where: { id: draft.id },
           data: { status: 'POSTED', invoiceNo, journalEntryId: entry.id, postedAt: new Date(), postedBy: userId ?? null },
         });
+        await this.audit.log({
+          action: 'purchase_invoice.post',
+          entityType: 'purchase_invoice',
+          entityId: draft.id,
+          after: { invoiceNo, purchaseOrderId: orderId.toString() },
+        }, tx);
         return { id: draft.id, invoiceNo };
       }, POSTING_TX_OPTIONS);
     });
 
-    await this.audit.log({
-      action: 'purchase_invoice.post',
-      entityType: 'purchase_invoice',
-      entityId: result.id,
-      after: { invoiceNo: result.invoiceNo, purchaseOrderId: orderId.toString() },
-    });
     return this.get(result.id);
   }
 
@@ -1053,7 +1063,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
   async approvePrice(id: bigint) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const approvedBy = await this.support.withRetry(() =>
+    await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         await lockProcurementLevel(tx, tenantId, companyId);
         const [inv] = await tx.$queryRaw<
@@ -1086,15 +1096,14 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         assertCanApprove({ ...approver, amount: null, isAuthor: isAuthor(author, approver.userId) });
         // An approval is not an edit: updated_by stays the last editor.
         await tx.purchaseInvoice.update({ where: { id }, data: { priceApprovedAt: new Date(), priceApprovedBy: approver.userId } });
-        return approver.userId;
+        await this.audit.log({
+          action: 'purchase_invoice.approve_price',
+          entityType: 'purchase_invoice',
+          entityId: id,
+          after: { approvedBy: approver.userId?.toString() ?? null },
+        }, tx);
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({
-      action: 'purchase_invoice.approve_price',
-      entityType: 'purchase_invoice',
-      entityId: id,
-      after: { approvedBy: approvedBy?.toString() ?? null },
-    });
     return this.get(id);
   }
 
@@ -1133,7 +1142,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           grnLineId: l.grnLineId,
         };
       }),
-    });
+    }, true);
   }
 
   /**

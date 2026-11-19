@@ -12,6 +12,7 @@
  * Real MariaDB (erp_test) + built API. Run `pnpm build` before `pnpm test`.
  */
 import 'dotenv/config';
+import { createHash } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import path from 'node:path';
@@ -30,6 +31,28 @@ let db: Connection;
 const api = () => request(BASE);
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 const key = () => `idem-${RUN}-${Math.random().toString(36).slice(2)}`;
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
+  return `{${entries.join(',')}}`;
+}
+
+function adjustmentPostHash(id: string): string {
+  return createHash('sha256')
+    .update(
+      stableStringify({
+        method: 'POST',
+        endpoint: '/api/v1/stock-adjustments/:id/post',
+        params: { id },
+        body: null,
+      }),
+    )
+    .digest('hex');
+}
 
 async function waitForHealth(timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -148,10 +171,45 @@ describe('Idempotency-Key — route spellings, concurrency, reuse', () => {
     const k = key();
     const first = await api().post(`/api/v1/stock-adjustments/${id}/post/`).set(auth(a.token)).set('Idempotency-Key', k);
     expect(first.status).toBe(201);
+    const [stored] = (await db.query(
+      'SELECT status FROM idempotency_keys WHERE tenant_id = ? AND `key` = ?',
+      [a.tenantId, k],
+    )) as { status: string }[];
+    expect(stored.status).toBe('COMPLETED');
+    const postAudits = async () => {
+      const [row] = (await db.query(
+        `SELECT COUNT(*) AS n FROM audit_logs
+          WHERE tenant_id = ? AND action = 'stock_adjustment.post'
+            AND entity_type = 'stock_adjustment' AND entity_id = ?`,
+        [a.tenantId, id],
+      )) as { n: bigint }[];
+      return Number(row.n);
+    };
+    expect(await postAudits()).toBe(1);
     const replay = await api().post(`/api/v1/stock-adjustments/${id}/POST`).set(auth(a.token)).set('Idempotency-Key', k);
     expect(replay.status).toBe(201);
     expect(replay.body).toEqual(first.body);
     expect(await movements(a, id)).toBe(1);
+    expect(await postAudits()).toBe(1);
+  });
+
+  it('truncates a long User-Agent in the posting audit record', async () => {
+    const id = await draft(a);
+    const userAgent = 'u'.repeat(2000);
+    const response = await api()
+      .post(`/api/v1/stock-adjustments/${id}/post`)
+      .set(auth(a.token))
+      .set('Idempotency-Key', key())
+      .set('User-Agent', userAgent);
+
+    expect(response.status).toBe(201);
+    const [audit] = (await db.query(
+      `SELECT user_agent FROM audit_logs
+        WHERE tenant_id = ? AND action = 'stock_adjustment.post'
+          AND entity_type = 'stock_adjustment' AND entity_id = ?`,
+      [a.tenantId, id],
+    )) as { user_agent: string | null }[];
+    expect(audit.user_agent).toBe(userAgent.slice(0, 512));
   });
 
   it('two identical requests at the same instant post once and never answer 500', async () => {
@@ -186,13 +244,82 @@ describe('Idempotency-Key — route spellings, concurrency, reuse', () => {
     const send = () => api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);
     expect((await send()).status).toBe(201);
     // Make the stored row look like a request still in flight.
-    await db.query(`UPDATE idempotency_keys SET status = 'IN_PROGRESS', response_json = NULL WHERE tenant_id = ? AND \`key\` = ?`, [
+    await db.query(`UPDATE idempotency_keys SET status = 'RESERVED', response_json = NULL WHERE tenant_id = ? AND \`key\` = ?`, [
       a.tenantId,
       k,
     ]);
     const res = await send();
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CONFLICT');
+    expect(await movements(a, id)).toBe(1);
+  });
+
+  it('does not take over an old legacy IN_PROGRESS row', async () => {
+    const id = await draft(a);
+    const k = key();
+    await db.query(
+      `INSERT INTO idempotency_keys
+         (tenant_id, \`key\`, endpoint, request_hash, status, created_at, expires_at)
+       VALUES (?, ?, ?, ?, 'IN_PROGRESS', NOW(3) - INTERVAL 11 MINUTE, NOW(3) + INTERVAL 1 DAY)`,
+      [a.tenantId, k, '/api/v1/stock-adjustments/:id/post', adjustmentPostHash(id)],
+    );
+
+    const retry = await api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);
+    expect(retry.status).toBe(409);
+    expect(retry.body.error.code).toBe('CONFLICT');
+    expect(await movements(a, id)).toBe(0);
+  });
+
+  it('takes over an 11-minute-old reservation, posts once, and replays the same body', async () => {
+    const id = await draft(a);
+    const k = key();
+    await db.query(
+      `INSERT INTO idempotency_keys
+         (tenant_id, \`key\`, endpoint, request_hash, status, created_at, expires_at)
+       VALUES (?, ?, ?, ?, 'RESERVED', NOW(3) - INTERVAL 11 MINUTE, NOW(3) + INTERVAL 1 DAY)`,
+      [a.tenantId, k, '/api/v1/stock-adjustments/:id/post', adjustmentPostHash(id)],
+    );
+
+    const first = await api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);
+    expect(first.status).toBe(201);
+    expect(await movements(a, id)).toBe(1);
+
+    const replay = await api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);
+    expect(replay.status).toBe(201);
+    expect(replay.body).toEqual(first.body);
+    expect(await movements(a, id)).toBe(1);
+  });
+
+  it('rejects a different request before taking over a stale reservation', async () => {
+    const id = await draft(a);
+    const k = key();
+    await db.query(
+      `INSERT INTO idempotency_keys
+         (tenant_id, \`key\`, endpoint, request_hash, status, created_at, expires_at)
+       VALUES (?, ?, ?, ?, 'RESERVED', NOW(3) - INTERVAL 11 MINUTE, NOW(3) + INTERVAL 1 DAY)`,
+      [a.tenantId, k, '/api/v1/stock-adjustments/:id/post', '0'.repeat(64)],
+    );
+
+    const retry = await api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);
+    expect(retry.status).toBe(409);
+    expect(retry.body.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    expect(await movements(a, id)).toBe(0);
+  });
+
+  it('returns IDEMPOTENCY_ALREADY_APPLIED for COMMITTED without a stored response', async () => {
+    const id = await draft(a);
+    const k = key();
+    const first = await api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);
+    expect(first.status).toBe(201);
+    await db.query(
+      `UPDATE idempotency_keys SET status = 'COMMITTED', response_json = NULL
+        WHERE tenant_id = ? AND \`key\` = ?`,
+      [a.tenantId, k],
+    );
+
+    const retry = await api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);
+    expect(retry.status).toBe(409);
+    expect(retry.body.error.code).toBe('IDEMPOTENCY_ALREADY_APPLIED');
     expect(await movements(a, id)).toBe(1);
   });
 

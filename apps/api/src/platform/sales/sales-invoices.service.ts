@@ -970,15 +970,15 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
             lineTotal: d.amounts.lineTotal,
           })),
         });
+        await this.audit.log({
+          action: 'sales_invoice.create',
+          entityType: 'sales_invoice',
+          entityId: created.id,
+          after: { salesOrderId: orderId.toString() },
+        }, tx);
         return created.id;
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({
-      action: 'sales_invoice.create',
-      entityType: 'sales_invoice',
-      entityId: id,
-      after: { salesOrderId: orderId.toString() },
-    });
     return this.get(id);
   }
 
@@ -1047,7 +1047,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
   async approvePrice(id: bigint) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const approvedBy = await this.support.withRetry(() =>
+    await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         await lockCompanySales(tx, tenantId, companyId);
         const [inv] = await tx.$queryRaw<
@@ -1093,15 +1093,14 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         });
         // An approval is not an edit: updated_by stays the last editor.
         await tx.salesInvoice.update({ where: { id }, data: { priceApprovedAt: new Date(), priceApprovedBy: approver.userId } });
-        return approver.userId;
+        await this.audit.log({
+          action: 'sales_invoice.approve_price',
+          entityType: 'sales_invoice',
+          entityId: id,
+          after: { approvedBy: approver.userId?.toString() ?? null },
+        }, tx);
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({
-      action: 'sales_invoice.approve_price',
-      entityType: 'sales_invoice',
-      entityId: id,
-      after: { approvedBy: approvedBy?.toString() ?? null },
-    });
     return this.get(id);
   }
 
@@ -1380,16 +1379,16 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           documentNo: invoiceNo,
           branchId: draft.branchId,
         });
+        await this.audit.log({
+          action: 'sales_invoice.post',
+          entityType: 'sales_invoice',
+          entityId: draft.id,
+          after: { invoiceNo },
+        }, tx);
         return { id: draft.id, invoiceNo };
       }, POSTING_TX_OPTIONS),
     );
 
-    await this.audit.log({
-      action: 'sales_invoice.post',
-      entityType: 'sales_invoice',
-      entityId: result.id,
-      after: { invoiceNo: result.invoiceNo },
-    });
     return this.get(result.id);
   }
 

@@ -225,7 +225,7 @@ export class GoodsNotesService implements OnModuleInit {
     return note;
   }
 
-  async create(dto: CreateGoodsNoteDto) {
+  async create(dto: CreateGoodsNoteDto, auditInTransaction = false) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     this.assertShape(dto);
@@ -236,20 +236,36 @@ export class GoodsNotesService implements OnModuleInit {
       db.$transaction(async (tx) => {
         const locks = await this.lockSources(tx, tenantId, companyId, orderId, requestId, true);
         const p = await this.prepare(tx, tenantId, companyId, dto, locks, null);
-        return this.writeNote(tx, tenantId, companyId, dto, p, orderId, requestId);
+        const note = await this.writeNote(tx, tenantId, companyId, dto, p, orderId, requestId);
+        if (auditInTransaction) {
+          await this.audit.log({
+            action: 'goods_note.create',
+            entityType: 'goods_note',
+            entityId: note.id,
+            after: {
+              noteType: dto.noteType,
+              lines: dto.lines.length,
+              ...(orderId ? { purchaseOrderId: orderId.toString() } : {}),
+              ...(requestId ? { issueRequestId: requestId.toString() } : {}),
+            },
+          }, tx);
+        }
+        return note;
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({
-      action: 'goods_note.create',
-      entityType: 'goods_note',
-      entityId: note.id,
-      after: {
-        noteType: dto.noteType,
-        lines: dto.lines.length,
-        ...(orderId ? { purchaseOrderId: orderId.toString() } : {}),
-        ...(requestId ? { issueRequestId: requestId.toString() } : {}),
-      },
-    });
+    if (!auditInTransaction) {
+      await this.audit.log({
+        action: 'goods_note.create',
+        entityType: 'goods_note',
+        entityId: note.id,
+        after: {
+          noteType: dto.noteType,
+          lines: dto.lines.length,
+          ...(orderId ? { purchaseOrderId: orderId.toString() } : {}),
+          ...(requestId ? { issueRequestId: requestId.toString() } : {}),
+        },
+      });
+    }
     return this.get(note.id);
   }
 
@@ -332,16 +348,28 @@ export class GoodsNotesService implements OnModuleInit {
         const locks = await this.lockSources(tx, tenantId, companyId, orderId, null, false);
         const p = await this.prepare(tx, tenantId, companyId, body, locks, null);
         const created = await this.writeNote(tx, tenantId, companyId, body, p, orderId, null);
-        return this.postLocked(tx, companyId, created.id, { purchaseOrderId: orderId, issueRequestId: null }, locks);
+        const posted = await this.postLocked(
+          tx,
+          companyId,
+          created.id,
+          { purchaseOrderId: orderId, issueRequestId: null },
+          locks,
+        );
+        await this.audit.log({
+          action: 'goods_note.create',
+          entityType: 'goods_note',
+          entityId: posted.id,
+          after: {
+            noteType: 'GRN',
+            lines: body.lines.length,
+            purchaseOrderId: orderId.toString(),
+            via: 'receive',
+          },
+        }, tx);
+        await this.auditPost(tx, posted);
+        return posted;
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({
-      action: 'goods_note.create',
-      entityType: 'goods_note',
-      entityId: result.id,
-      after: { noteType: 'GRN', lines: body.lines.length, purchaseOrderId: orderId.toString(), via: 'receive' },
-    });
-    await this.auditPost(result);
     return this.get(result.id);
   }
 
@@ -397,7 +425,7 @@ export class GoodsNotesService implements OnModuleInit {
       expenseAccountId: req.expenseAccountId?.toString(),
       costCenterId: req.costCenterId?.toString(),
       lines: wanted,
-    });
+    }, true);
   }
 
   // ------------------------------------------------------ billing (purchases)
@@ -538,22 +566,31 @@ export class GoodsNotesService implements OnModuleInit {
         // state and two concurrent requests cannot both post it or both take
         // the same order quantity.
         const locks = await this.lockSources(tx, tenantId, companyId, head.purchaseOrderId, head.issueRequestId, false);
-        return this.postLocked(tx, companyId, id, head, locks);
+        const result = await this.postLocked(tx, companyId, id, head, locks);
+        await this.auditPost(tx, result);
+        return result;
       }, POSTING_TX_OPTIONS),
     );
-    await this.auditPost(result);
     return this.get(result.id);
   }
 
-  private async auditPost(result: { id: bigint; docNo: string; closedRequest: bigint | null }) {
+  private async auditPost(
+    tx: Prisma.TransactionClient,
+    result: { id: bigint; docNo: string; closedRequest: bigint | null },
+  ) {
     await this.audit.log({
       action: 'goods_note.post',
       entityType: 'goods_note',
       entityId: result.id,
       after: { docNo: result.docNo },
-    });
+    }, tx);
     if (result.closedRequest) {
-      await this.audit.log({ action: 'issue_request.close', entityType: 'issue_request', entityId: result.closedRequest, after: { reason: 'fully_issued' } });
+      await this.audit.log({
+        action: 'issue_request.close',
+        entityType: 'issue_request',
+        entityId: result.closedRequest,
+        after: { reason: 'fully_issued' },
+      }, tx);
     }
   }
 

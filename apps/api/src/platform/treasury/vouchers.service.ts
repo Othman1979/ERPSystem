@@ -293,16 +293,16 @@ export class VouchersService implements OnModuleInit {
           userId,
         });
 
+        await this.audit.log({
+          action: 'receipt.create',
+          entityType: 'receipt',
+          entityId: receipt.id,
+          after: { receiptNo },
+        }, tx);
         return { id: receipt.id, receiptNo };
       }, POSTING_TX_OPTIONS),
     );
 
-    await this.audit.log({
-      action: 'receipt.create',
-      entityType: 'receipt',
-      entityId: result.id,
-      after: { receiptNo: result.receiptNo },
-    });
     return this.getReceipt(result.id);
   }
 
@@ -538,16 +538,16 @@ export class VouchersService implements OnModuleInit {
           });
         }
 
+        await this.audit.log({
+          action: 'payment.create',
+          entityType: 'payment',
+          entityId: payment.id,
+          after: { paymentNo },
+        }, tx);
         return { id: payment.id, paymentNo };
       }, POSTING_TX_OPTIONS),
     );
 
-    await this.audit.log({
-      action: 'payment.create',
-      entityType: 'payment',
-      entityId: result.id,
-      after: { paymentNo: result.paymentNo },
-    });
     return this.getPayment(result.id);
   }
 
@@ -586,9 +586,9 @@ export class VouchersService implements OnModuleInit {
           partyId: v.partyId,
           userId,
         });
+        await this.audit.log({ action: `${kind}.allocate`, entityType: kind, entityId: id }, tx);
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({ action: `${kind}.allocate`, entityType: kind, entityId: id });
     return kind === 'receipt' ? this.getReceipt(id) : this.getPayment(id);
   }
 
@@ -622,12 +622,12 @@ export class VouchersService implements OnModuleInit {
         });
         // Projection: paid_amount on the invoice (§7.8).
         await invoices.addPaid(tx, a.documentId, new Decimal(a.amount.toString()).neg());
+        await this.audit.log({ action: 'allocation.cancel', entityType: 'allocation', entityId: id }, tx);
         return a.receipt
           ? { kind: 'receipt' as const, id: a.receipt.id }
           : { kind: 'payment' as const, id: a.payment!.id };
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({ action: 'allocation.cancel', entityType: 'allocation', entityId: id });
     return result.kind === 'receipt' ? this.getReceipt(result.id) : this.getPayment(result.id);
   }
 
@@ -664,9 +664,9 @@ export class VouchersService implements OnModuleInit {
         const data = { reversedAt: new Date(), reversedBy: userId ?? null, reversalEntryId: reversal.id };
         if (kind === 'receipt') await tx.receipt.update({ where: { id }, data });
         else await tx.payment.update({ where: { id }, data });
+        await this.audit.log({ action: `${kind}.reverse`, entityType: kind, entityId: id }, tx);
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({ action: `${kind}.reverse`, entityType: kind, entityId: id });
     return kind === 'receipt' ? this.getReceipt(id) : this.getPayment(id);
   }
 
