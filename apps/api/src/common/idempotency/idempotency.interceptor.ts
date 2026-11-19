@@ -20,12 +20,6 @@ const KEY_PATTERN = /^[\x21-\x7E]{1,128}$/;
 // A reservation that loses the race may find the winner's row already
 // released (the winner failed); it then tries again a bounded number of times.
 const RESERVE_ATTEMPTS = 3;
-/**
- * An IN_PROGRESS row older than this belongs to a request that never finished
- * (crash or lost connection after reserving): well past any posting
- * transaction (POSTING_TX_OPTIONS and its retries), so a retry takes the key over.
- */
-const STALE_IN_PROGRESS_MS = 10 * 60 * 1000;
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
@@ -123,11 +117,6 @@ export class IdempotencyInterceptor implements NestInterceptor {
         if (existing.expiresAt < new Date()) {
           // An expired key is not a conflict: release it and reserve again (PLAT-17).
           await prisma.idempotencyKey.deleteMany({ where: { key, expiresAt: { lt: new Date() } } });
-          continue;
-        }
-        const staleBefore = new Date(Date.now() - STALE_IN_PROGRESS_MS);
-        if (existing.status === 'IN_PROGRESS' && existing.createdAt < staleBefore) {
-          await prisma.idempotencyKey.deleteMany({ where: { key, status: 'IN_PROGRESS', createdAt: { lt: staleBefore } } });
           continue;
         }
         if (existing.requestHash !== requestHash) {
