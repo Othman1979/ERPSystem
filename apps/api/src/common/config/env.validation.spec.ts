@@ -47,6 +47,9 @@ describe('production rules (ADR-010 §10.1)', () => {
     expect(env.BACKUP_ENCRYPTION_KEY).toBe(good.BACKUP_ENCRYPTION_KEY);
     expect(apiDocsEnabled({ NODE_ENV: 'production', API_DOCS: 'on' })).toBe(true);
     expect(apiDocsEnabled({ NODE_ENV: 'development', API_DOCS: undefined })).toBe(true);
+    // `API_DOCS=` in .env: ConfigService hands back '' from process.env.
+    expect(apiDocsEnabled({ NODE_ENV: 'development', API_DOCS: '' as 'on' })).toBe(true);
+    expect(apiDocsEnabled({ NODE_ENV: 'production', API_DOCS: '' as 'on' })).toBe(false);
   });
 
   it.each([

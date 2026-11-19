@@ -197,13 +197,14 @@ describe('Phase 11B — procurement level and purchase permissions', () => {
   });
 
   describe('purchase permissions per member (ADR-024 §3)', () => {
-    it('GET users: the owner holds all three without a limit, a member none', async () => {
+    it('GET users: the owner holds every member permission without a limit, a member none', async () => {
       const res = await api().get('/api/v1/users').set(auth(ownerA));
       expect(res.status).toBe(200);
       const byId = new Map((res.body as { membershipId: string; purchasePermissions: unknown }[]).map((m) => [m.membershipId, m.purchasePermissions]));
       expect(byId.get(ownerMembershipA)).toEqual([
         { code: 'purchase.direct', amountLimit: null },
         { code: 'purchase.approve', amountLimit: null },
+        { code: 'sales.approve', amountLimit: null },
         { code: 'stock.issue_without_request', amountLimit: null },
       ]);
       expect(byId.get(xMembership)).toEqual([]);
