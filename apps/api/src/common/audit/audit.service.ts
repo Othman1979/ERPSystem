@@ -4,6 +4,9 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { RequestContext } from '../cls/cls.types.js';
 
+const AUDIT_IP_MAX_LENGTH = 64;
+const AUDIT_USER_AGENT_MAX_LENGTH = 512;
+
 export interface AuditEntry {
   action: string;
   /**
@@ -49,6 +52,8 @@ export class AuditService {
           : request?.headers?.['user-agent']) ??
         null,
     };
+    data.ip = data.ip?.slice(0, AUDIT_IP_MAX_LENGTH) ?? null;
+    data.userAgent = data.userAgent?.slice(0, AUDIT_USER_AGENT_MAX_LENGTH) ?? null;
     if (tx) {
       await tx.auditLog.create({ data });
       return;

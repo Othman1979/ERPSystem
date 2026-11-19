@@ -193,6 +193,25 @@ describe('Idempotency-Key — route spellings, concurrency, reuse', () => {
     expect(await postAudits()).toBe(1);
   });
 
+  it('truncates a long User-Agent in the posting audit record', async () => {
+    const id = await draft(a);
+    const userAgent = 'u'.repeat(2000);
+    const response = await api()
+      .post(`/api/v1/stock-adjustments/${id}/post`)
+      .set(auth(a.token))
+      .set('Idempotency-Key', key())
+      .set('User-Agent', userAgent);
+
+    expect(response.status).toBe(201);
+    const [audit] = (await db.query(
+      `SELECT user_agent FROM audit_logs
+        WHERE tenant_id = ? AND action = 'stock_adjustment.post'
+          AND entity_type = 'stock_adjustment' AND entity_id = ?`,
+      [a.tenantId, id],
+    )) as { user_agent: string | null }[];
+    expect(audit.user_agent).toBe(userAgent.slice(0, 512));
+  });
+
   it('two identical requests at the same instant post once and never answer 500', async () => {
     for (let round = 0; round < 3; round++) {
       const id = await draft(a);
