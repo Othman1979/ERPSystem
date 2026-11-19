@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient, type Prisma } from '../generated/prisma/client.js';
 import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../common/cls/cls.types.js';
 import { DomainError } from '../common/errors/domain.error.js';
@@ -172,5 +172,37 @@ export function tenantScopedPrisma(client: PrismaClient, tenantId?: bigint): Pri
       },
     },
   });
-  return extended as unknown as PrismaClient;
+  return new Proxy(extended, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver) as unknown;
+      if (property !== '$transaction' || typeof value !== 'function') return value;
+
+      return (...args: unknown[]) => {
+        const [operation, options] = args;
+        if (typeof operation !== 'function') {
+          return Reflect.apply(value, target, args);
+        }
+        return Reflect.apply(
+          value,
+          target,
+          [
+            async (tx: Prisma.TransactionClient) => {
+              const result = await operation(tx);
+              const cls = ClsServiceManager.getClsService<RequestContext>();
+              const key = cls.isActive() ? cls.get('idempotencyKey') : undefined;
+              if (key) {
+                // The marker commits atomically with the request's work.
+                await tx.idempotencyKey.updateMany({
+                  where: { key, status: 'IN_PROGRESS' },
+                  data: { status: 'COMMITTED' },
+                });
+              }
+              return result;
+            },
+            options,
+          ],
+        );
+      };
+    },
+  }) as unknown as PrismaClient;
 }

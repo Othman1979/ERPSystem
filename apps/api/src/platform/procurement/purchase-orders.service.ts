@@ -407,12 +407,17 @@ export class PurchaseOrdersService {
             await this.writeOrder(tx, tenantId, companyId, branchId, requestId, group.pricesIncludeTax, { ...dto, supplierId }, group.lines),
           );
         }
+        for (const id of created) {
+          await this.audit.log({
+            action: 'purchase_order.create',
+            entityType: 'purchase_order',
+            entityId: id,
+            after: { requestId: requestId.toString(), from: 'comparison' },
+          }, tx);
+        }
         return created;
       }, POSTING_TX_OPTIONS),
     );
-    for (const id of ids) {
-      await this.audit.log({ action: 'purchase_order.create', entityType: 'purchase_order', entityId: id, after: { requestId: requestId.toString(), from: 'comparison' } });
-    }
     return { orders: await Promise.all(ids.map((id) => this.get(id))) };
   }
 
@@ -634,7 +639,7 @@ export class PurchaseOrdersService {
     const companyId = await this.support.companyId(db);
     const requestId = await this.requestIdOf(id);
     const verb = { submit: 'submitted', approve: 'approved', reject: 'rejected', cancel: 'cancelled', close: 'closed' }[action];
-    const { set, closedRequest } = await this.support.withRetry(() =>
+    await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         await this.lockLevel(tx, tenantId, companyId);
         if (requestId) {
@@ -648,23 +653,28 @@ export class PurchaseOrdersService {
         // updated_by stays the last editor of the content: a status change has its own *_by column.
         await tx.purchaseOrder.update({ where: { id }, data });
         const closed = after && requestId ? await after(tx, tenantId, requestId) : null;
+        await this.audit.log({
+          action: `purchase_order.${action}`,
+          entityType: 'purchase_order',
+          entityId: id,
+          after: {
+            status: data.status,
+            ...(data.orderNo ? { orderNo: data.orderNo } : {}),
+            ...(data.cancelReason ? { reason: data.cancelReason } : {}),
+            ...(data.closeReason ? { reason: data.closeReason } : {}),
+          },
+        }, tx);
+        if (closed) {
+          await this.audit.log({
+            action: 'purchase_request.close',
+            entityType: 'purchase_request',
+            entityId: closed,
+            after: { reason: 'fully_ordered' },
+          }, tx);
+        }
         return { set: data, closedRequest: closed };
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({
-      action: `purchase_order.${action}`,
-      entityType: 'purchase_order',
-      entityId: id,
-      after: {
-        status: set.status,
-        ...(set.orderNo ? { orderNo: set.orderNo } : {}),
-        ...(set.cancelReason ? { reason: set.cancelReason } : {}),
-        ...(set.closeReason ? { reason: set.closeReason } : {}),
-      },
-    });
-    if (closedRequest) {
-      await this.audit.log({ action: 'purchase_request.close', entityType: 'purchase_request', entityId: closedRequest, after: { reason: 'fully_ordered' } });
-    }
     return this.get(id);
   }
 }

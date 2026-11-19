@@ -623,16 +623,16 @@ export class PurchaseReturnsService {
             postedBy: userId ?? null,
           },
         });
+        await this.audit.log({
+          action: 'purchase_return.post',
+          entityType: 'purchase_return',
+          entityId: draft.id,
+          after: { returnNo },
+        }, tx);
         return { id: draft.id, returnNo };
       }, POSTING_TX_OPTIONS),
     );
 
-    await this.audit.log({
-      action: 'purchase_return.post',
-      entityType: 'purchase_return',
-      entityId: result.id,
-      after: { returnNo: result.returnNo },
-    });
     return this.get(result.id);
   }
 

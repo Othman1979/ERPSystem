@@ -490,8 +490,8 @@ export class CountsService {
         where: { id },
         data: { status: 'SUBMITTED', submittedAt: new Date(), submittedBy: userId },
       });
+      await this.audit.log({ action: 'stock_count.submit', entityType: 'stock_count', entityId: id }, tx);
     }, POSTING_TX_OPTIONS);
-    await this.audit.log({ action: 'stock_count.submit', entityType: 'stock_count', entityId: id });
     return this.get(id);
   }
 
@@ -504,8 +504,8 @@ export class CountsService {
       if (!count) throw DomainError.notFound('StockCount', id.toString());
       if (count.status !== 'SUBMITTED') throw invalidStatus(count.status, 'submitted');
       await tx.stockCount.update({ where: { id }, data: { status: 'DRAFT', submittedAt: null, submittedBy: null } });
+      await this.audit.log({ action: 'stock_count.reopen', entityType: 'stock_count', entityId: id }, tx);
     }, POSTING_TX_OPTIONS);
-    await this.audit.log({ action: 'stock_count.reopen', entityType: 'stock_count', entityId: id });
     return this.get(id);
   }
 
@@ -523,7 +523,7 @@ export class CountsService {
     const userId = this.userId();
     const today = await this.support.companyTodayDate();
 
-    const result = await retryOnLockConflict(() =>
+    await retryOnLockConflict(() =>
       db.$transaction(async (tx) => {
         // Lock the count first (§10.1 step 7): a second approval waits here, then finds it posted.
         await this.lockCount(tx, tenantId, id);
@@ -608,16 +608,16 @@ export class CountsService {
           where: { id: count.id },
           data: { status: 'POSTED', adjustmentId, docNo, postedAt: new Date(), postedBy: userId },
         });
+        await this.audit.log({
+          action: 'stock_count.approve',
+          entityType: 'stock_count',
+          entityId: id,
+          after: { adjustmentId: adjustmentId?.toString() ?? null, docNo },
+        }, tx);
         return { adjustmentId, docNo };
       }, POSTING_TX_OPTIONS),
     );
 
-    await this.audit.log({
-      action: 'stock_count.approve',
-      entityType: 'stock_count',
-      entityId: id,
-      after: { adjustmentId: result.adjustmentId?.toString() ?? null, docNo: result.docNo },
-    });
     return this.get(id);
   }
 

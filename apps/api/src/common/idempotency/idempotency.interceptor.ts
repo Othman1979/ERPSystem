@@ -15,6 +15,7 @@ import { ErrorCode } from '../errors/error-codes.js';
 import { REQUIRES_IDEMPOTENCY_KEY } from './requires-idempotency-key.decorator.js';
 
 const KEY_TTL_MS = 24 * 60 * 60 * 1000;
+const STALE_IN_PROGRESS_MS = 10 * 60 * 1000;
 /** 1 to 128 visible ASCII characters (PLAT-17). */
 const KEY_PATTERN = /^[\x21-\x7E]{1,128}$/;
 // A reservation that loses the race may find the winner's row already
@@ -119,6 +120,14 @@ export class IdempotencyInterceptor implements NestInterceptor {
           await prisma.idempotencyKey.deleteMany({ where: { key, expiresAt: { lt: new Date() } } });
           continue;
         }
+        const staleBefore = new Date(Date.now() - STALE_IN_PROGRESS_MS);
+        if (existing.status === 'IN_PROGRESS' && existing.createdAt < staleBefore) {
+          // Well past POSTING_TX_OPTIONS plus retries; IN_PROGRESS without COMMITTED proves nothing committed.
+          await prisma.idempotencyKey.deleteMany({
+            where: { key, status: 'IN_PROGRESS', createdAt: { lt: staleBefore } },
+          });
+          continue;
+        }
         if (existing.requestHash !== requestHash) {
           throw new DomainError(
             ErrorCode.IDEMPOTENCY_KEY_REUSED,
@@ -126,6 +135,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
           );
         }
         if (existing.status === 'COMPLETED') return { replay: existing.responseJson };
+        if (existing.status === 'COMMITTED') {
+          throw new DomainError(
+            ErrorCode.IDEMPOTENCY_ALREADY_APPLIED,
+            'This request was already applied; reload to see the result',
+          );
+        }
         throw new DomainError(
           ErrorCode.CONFLICT,
           'A request with this Idempotency-Key is still in progress',
@@ -140,12 +155,15 @@ export class IdempotencyInterceptor implements NestInterceptor {
     return defer(reserve).pipe(
       mergeMap((pre) => {
         if (pre.replay !== undefined) return of(pre.replay);
+        cls.set('idempotencyKey', key);
         return next.handle().pipe(
           // Only a failed handler releases the key so the client may retry.
           // A failure while recording the result keeps the key reserved: the
           // work may have committed, and a retry must not post twice.
           catchError(async (err) => {
-            await prisma.idempotencyKey.deleteMany({ where: { key } }).catch(() => undefined);
+            await prisma.idempotencyKey
+              .deleteMany({ where: { key, status: 'IN_PROGRESS' } })
+              .catch(() => undefined);
             throw err;
           }),
           mergeMap(async (value) => {

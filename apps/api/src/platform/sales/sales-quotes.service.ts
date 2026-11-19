@@ -315,10 +315,15 @@ export class SalesQuotesService {
             note: l.note,
           })),
         });
+        await this.audit.log({
+          action: 'sales_quote.copy',
+          entityType: 'sales_quote',
+          entityId: copy.id,
+          after: { from: id.toString() },
+        }, tx);
         return copy.id;
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({ action: 'sales_quote.copy', entityType: 'sales_quote', entityId: newId, after: { from: id.toString() } });
     return this.get(newId);
   }
 
@@ -445,7 +450,7 @@ export class SalesQuotesService {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     await this.quoteOrNotFound(id);
-    const data = await this.support.withRetry(() =>
+    await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         await lockCompanySales(tx, tenantId, companyId);
         const row = await lockSalesQuote(tx, tenantId, id);
@@ -453,20 +458,20 @@ export class SalesQuotesService {
         assertStatus('sales quote', row.status, from, verb);
         const update = await apply(tx, row, tenantId, companyId);
         await tx.salesQuote.update({ where: { id }, data: update });
+        await this.audit.log({
+          action: `sales_quote.${action}`,
+          entityType: 'sales_quote',
+          entityId: id,
+          after: {
+            status: update.status,
+            ...(update.quoteNo ? { quoteNo: update.quoteNo as string } : {}),
+            ...(update.rejectReason ? { reason: update.rejectReason as string } : {}),
+            ...(update.cancelReason ? { reason: update.cancelReason as string } : {}),
+          },
+        }, tx);
         return update;
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({
-      action: `sales_quote.${action}`,
-      entityType: 'sales_quote',
-      entityId: id,
-      after: {
-        status: data.status,
-        ...(data.quoteNo ? { quoteNo: data.quoteNo as string } : {}),
-        ...(data.rejectReason ? { reason: data.rejectReason as string } : {}),
-        ...(data.cancelReason ? { reason: data.cancelReason as string } : {}),
-      },
-    });
     return this.get(id);
   }
 }

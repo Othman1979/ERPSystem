@@ -157,16 +157,16 @@ export class CashTransfersService {
         });
 
         await tx.cashTransfer.update({ where: { id: transfer.id }, data: { journalEntryId: entry.id } });
+        await this.audit.log({
+          action: 'cash_transfer.create',
+          entityType: 'cash_transfer',
+          entityId: transfer.id,
+          after: { transferNo },
+        }, tx);
         return { id: transfer.id, transferNo };
       }, POSTING_TX_OPTIONS),
     );
 
-    await this.audit.log({
-      action: 'cash_transfer.create',
-      entityType: 'cash_transfer',
-      entityId: result.id,
-      after: { transferNo: result.transferNo },
-    });
     return this.get(result.id);
   }
 
@@ -198,9 +198,9 @@ export class CashTransfersService {
           where: { id },
           data: { reversedAt: new Date(), reversedBy: userId ?? null, reversalEntryId: reversal.id },
         });
+        await this.audit.log({ action: 'cash_transfer.reverse', entityType: 'cash_transfer', entityId: id }, tx);
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({ action: 'cash_transfer.reverse', entityType: 'cash_transfer', entityId: id });
     return this.get(id);
   }
 

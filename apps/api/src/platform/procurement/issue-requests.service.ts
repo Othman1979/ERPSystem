@@ -454,7 +454,7 @@ export class IssueRequestsService {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const verb = { submit: 'submitted', approve: 'approved', reject: 'rejected', cancel: 'cancelled', close: 'closed' }[action];
-    const data = await this.support.withRetry(() =>
+    await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         assertProcurementLevel(await lockProcurementLevel(tx, tenantId, companyId), 'FULL');
         const req = await this.lockRow(tx, tenantId, id);
@@ -463,20 +463,20 @@ export class IssueRequestsService {
         const set = await apply(tx, req, tenantId, companyId);
         // updated_by stays the last editor of the content: a status change has its own *_by column.
         await tx.issueRequest.update({ where: { id }, data: set });
+        await this.audit.log({
+          action: `issue_request.${action}`,
+          entityType: 'issue_request',
+          entityId: id,
+          after: {
+            status: set.status,
+            ...(set.requestNo ? { requestNo: set.requestNo } : {}),
+            ...(set.cancelReason ? { reason: set.cancelReason } : {}),
+            ...(set.rejectReason ? { reason: set.rejectReason } : {}),
+          },
+        }, tx);
         return set;
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({
-      action: `issue_request.${action}`,
-      entityType: 'issue_request',
-      entityId: id,
-      after: {
-        status: data.status,
-        ...(data.requestNo ? { requestNo: data.requestNo } : {}),
-        ...(data.cancelReason ? { reason: data.cancelReason } : {}),
-        ...(data.rejectReason ? { reason: data.rejectReason } : {}),
-      },
-    });
     return this.get(id);
   }
 }

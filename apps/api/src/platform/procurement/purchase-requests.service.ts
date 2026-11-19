@@ -317,7 +317,7 @@ export class PurchaseRequestsService {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
     const verb = { submit: 'submitted', approve: 'approved', reject: 'rejected', cancel: 'cancelled', close: 'closed' }[action];
-    const data = await this.support.withRetry(() =>
+    await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         assertProcurementLevel(await lockProcurementLevel(tx, tenantId, companyId), 'FULL');
         const req = await lockRequest(tx, tenantId, id);
@@ -326,15 +326,15 @@ export class PurchaseRequestsService {
         const set = await apply(tx, req, tenantId, companyId);
         // updated_by stays the last editor of the content: a status change has its own *_by column.
         await tx.purchaseRequest.update({ where: { id }, data: set });
+        await this.audit.log({
+          action: `purchase_request.${action}`,
+          entityType: 'purchase_request',
+          entityId: id,
+          after: { status: set.status, ...(set.requestNo ? { requestNo: set.requestNo } : {}) },
+        }, tx);
         return set;
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({
-      action: `purchase_request.${action}`,
-      entityType: 'purchase_request',
-      entityId: id,
-      after: { status: data.status, ...(data.requestNo ? { requestNo: data.requestNo } : {}) },
-    });
     return this.get(id);
   }
 

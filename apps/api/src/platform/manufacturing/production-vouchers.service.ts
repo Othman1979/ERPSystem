@@ -382,10 +382,16 @@ export class ProductionVouchersService {
       db.$transaction(async (tx) => {
         // The voucher row first: two requests on one voucher queue here (as adjustments do).
         await tx.$queryRaw`SELECT id FROM production_vouchers WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
-        return this.postLocked(tx, companyId, id, userId);
+        const result = await this.postLocked(tx, companyId, id, userId);
+        await this.audit.log({
+          action: 'production.post',
+          entityType: 'production_voucher',
+          entityId: result.id,
+          after: { docNo: result.docNo },
+        }, tx);
+        return result;
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({ action: 'production.post', entityType: 'production_voucher', entityId: result.id, after: { docNo: result.docNo } });
     return this.get(result.id);
   }
 
@@ -549,10 +555,16 @@ export class ProductionVouchersService {
     const result = await retryOnLockConflict(() =>
       db.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM production_vouchers WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
-        return this.reverseLocked(tx, companyId, id, userId, reversalDate);
+        const result = await this.reverseLocked(tx, companyId, id, userId, reversalDate);
+        await this.audit.log({
+          action: 'production.reverse',
+          entityType: 'production_voucher',
+          entityId: result.id,
+          after: { docNo: result.docNo },
+        }, tx);
+        return result;
       }, POSTING_TX_OPTIONS),
     );
-    await this.audit.log({ action: 'production.reverse', entityType: 'production_voucher', entityId: result.id, after: { docNo: result.docNo } });
     return this.get(result.id);
   }
 

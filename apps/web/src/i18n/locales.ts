@@ -1928,6 +1928,7 @@ export const ar = {
     UNBALANCED_ENTRY: 'قيد غير متوازن',
     PLAN_LIMIT_EXCEEDED: 'تم تجاوز حدود الباقة',
     IDEMPOTENCY_KEY_REUSED: 'مفتاح الطلب مستخدم بمحتوى مختلف',
+    IDEMPOTENCY_ALREADY_APPLIED: 'تم تنفيذ هذا الطلب مسبقاً؛ أعد تحميل الصفحة لعرض النتيجة',
     EINVOICE_BUYER_REQUIRED:
       'الفوترة الإلكترونية تتطلب الرقم الضريبي للعميل أو رقمه الوطني/الشخصي (للفاتورة الآجلة، أو النقدية فوق 10,000 دينار)',
     EINVOICE_REASON_REQUIRED: 'المرتجع المُرسل إلى JoFotara يحتاج سبباً',
@@ -3948,6 +3949,7 @@ export const en: typeof ar = {
     UNBALANCED_ENTRY: 'Unbalanced journal entry',
     PLAN_LIMIT_EXCEEDED: 'Plan limit exceeded',
     IDEMPOTENCY_KEY_REUSED: 'Idempotency key reused with different content',
+    IDEMPOTENCY_ALREADY_APPLIED: 'This request was already applied; reload to see the result',
     EINVOICE_BUYER_REQUIRED:
       "E-invoicing needs the customer's tax number or national/personal number (credit invoice, or cash above 10,000 JOD)",
     EINVOICE_REASON_REQUIRED: 'A return sent to JoFotara needs a reason',
