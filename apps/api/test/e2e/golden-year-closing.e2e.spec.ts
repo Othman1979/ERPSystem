@@ -14,12 +14,15 @@ const YEARS = [
   { code: '2033', start: '2033-01-01', end: '2033-12-31' },
   { code: '2034', start: '2034-01-01', end: '2034-12-31' },
   { code: '2035', start: '2035-01-01', end: '2035-12-31' },
+  { code: '2036', start: '2036-01-01', end: '2036-12-31' },
+  { code: '2037', start: '2037-01-01', end: '2037-12-31' },
 ];
 
 let boot: Booted;
 let h: ReturnType<typeof kit>;
 let token = '';
 let cashier = '';
+let branchRestrictedAccountant = '';
 const yearIds: string[] = [];
 const accounts: Record<string, string> = {};
 let branchA = '';
@@ -366,6 +369,16 @@ describe('Phase 18 golden year closing', () => {
     expect(incomeAfter).toEqual(incomeBefore);
     const { active, entry } = await closingEntry(1);
     expect(m3(active.netResult)).toBe('-250.000');
+    expect(h.err(await h.get(branchRestrictedAccountant, `journal-entries/${active.journalEntryId}`))).toEqual([
+      404,
+      'NOT_FOUND',
+    ]);
+    const restrictedList = h.ok(
+      await h.get(branchRestrictedAccountant, 'journal-entries'),
+      200,
+      'restricted journal list',
+    ) as { items: { id: string }[] };
+    expect(restrictedList.items.some((item) => item.id === active.journalEntryId)).toBe(false);
     const line = (accountId: string, branchId: string, costCenterId: string | null) =>
       entry.lines.find(
         (item: { accountId: string; branchId: string | null; costCenterId: string | null }) =>
@@ -416,6 +429,16 @@ describe('Phase 18 golden year closing', () => {
     )) as { isClosing: number; entryDate: string }[];
     expect(Number(reversal?.isClosing)).toBe(1);
     expect(reversal?.entryDate).toBe('2033-12-31');
+    expect(h.err(await h.get(branchRestrictedAccountant, `journal-entries/${reversedClosing!.reversalEntryId}`))).toEqual([
+      404,
+      'NOT_FOUND',
+    ]);
+    const reversalList = h.ok(
+      await h.get(branchRestrictedAccountant, 'journal-entries'),
+      200,
+      'restricted journal list after reversal',
+    ) as { items: { id: string }[] };
+    expect(reversalList.items.some((item) => item.id === String(reversedClosing!.reversalEntryId))).toBe(false);
     await postJournal('2033-11-01', [
       { accountId: accounts['5204'], debit: '30.000' },
       { accountId: accounts['1101'], credit: '30.000' },

@@ -194,12 +194,14 @@ export class JournalService implements OnModuleInit {
   async list(query: ListJournalEntriesQueryDto) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
+    const allBranches = ClsServiceManager.getClsService<RequestContext>().get('branchScope') === 'ALL';
     if (query.from && query.to && query.from > query.to) {
       throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to', { from: query.from, to: query.to });
     }
     const q = query.q;
     const where: Prisma.JournalEntryWhereInput = {
       companyId,
+      ...(allBranches ? {} : { isClosing: false }),
       ...(query.status ? { status: query.status } : {}),
       ...(query.voucherType ? { voucherType: query.voucherType } : {}),
       ...(query.sourceType ? { sourceType: query.sourceType } : {}),
@@ -243,8 +245,9 @@ export class JournalService implements OnModuleInit {
   /** One entry; another branch's answers 404 like another tenant's (ADR-003 §11). */
   async get(id: bigint) {
     const { db } = this.tenant();
+    const allBranches = ClsServiceManager.getClsService<RequestContext>().get('branchScope') === 'ALL';
     const entry = await db.journalEntry.findFirst({
-      where: { id, ...branchWhere() },
+      where: { id, ...branchWhere(), ...(allBranches ? {} : { isClosing: false }) },
       include: {
         lines: {
           orderBy: { lineNo: 'asc' },
