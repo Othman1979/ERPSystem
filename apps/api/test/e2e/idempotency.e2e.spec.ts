@@ -196,6 +196,25 @@ describe('Idempotency-Key — route spellings, concurrency, reuse', () => {
     expect(await movements(a, id)).toBe(1);
   });
 
+  it('a key left IN_PROGRESS by a request that never finished is taken over after 10 minutes', async () => {
+    const id = await draft(a);
+    const k = key();
+    await db.query(
+      `INSERT INTO idempotency_keys (tenant_id, \`key\`, endpoint, request_hash, status, created_at, expires_at)
+       VALUES (?, ?, 'elsewhere', ?, 'IN_PROGRESS', NOW(3) - INTERVAL 11 MINUTE, NOW() + INTERVAL 1 DAY)`,
+      [a.tenantId, k, '0'.repeat(64)],
+    );
+    const send = () => api().post(`/api/v1/stock-adjustments/${id}/post`).set(auth(a.token)).set('Idempotency-Key', k);
+    const res = await send();
+    expect(res.status).toBe(201);
+    expect(await movements(a, id)).toBe(1);
+    // The key now belongs to this request: a retry replays it.
+    const again = await send();
+    expect(again.status).toBe(201);
+    expect(again.body).toEqual(res.body);
+    expect(await movements(a, id)).toBe(1);
+  });
+
   it('a key reserved for another request answers IDEMPOTENCY_KEY_REUSED, not 500', async () => {
     const id = await draft(a);
     const k = key();

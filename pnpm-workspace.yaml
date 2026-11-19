@@ -4,3 +4,9 @@ packages:
 
 onlyBuiltDependencies:
   - argon2
+
+# Security fixes for jofotara-kit's own dependencies (GHSA advisories on
+# @modelcontextprotocol/sdk < 1.32.0 and zod < 4.6.6). Drop once jofotara-kit ships them.
+overrides:
+  "jofotara-kit>@modelcontextprotocol/sdk": 1.32.2
+  "jofotara-kit>zod": 4.6.7

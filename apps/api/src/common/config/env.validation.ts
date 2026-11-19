@@ -217,5 +217,6 @@ export function validateEnv(
 
 /** Whether /api/docs is served (ADR-010 §5). */
 export function apiDocsEnabled(env: Pick<Env, 'API_DOCS' | 'NODE_ENV'>): boolean {
-  return (env.API_DOCS ?? (env.NODE_ENV === 'production' ? 'off' : 'on')) === 'on';
+  // `API_DOCS=` reaches here as '' (ConfigService falls back to process.env): treat it as unset.
+  return (env.API_DOCS || (env.NODE_ENV === 'production' ? 'off' : 'on')) === 'on';
 }

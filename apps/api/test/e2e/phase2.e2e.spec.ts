@@ -106,7 +106,7 @@ describe('Phase 2 — financial setup (erp_test)', () => {
 
     const mappings = await api().get('/api/v1/account-mappings').set(auth(tokenA));
     expect(mappings.status).toBe(200);
-    expect(mappings.body).toHaveLength(15);
+    expect(mappings.body).toHaveLength(16);
     for (const m of mappings.body) {
       expect(m.accountId).not.toBeNull();
     }
