@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import type { JournalLineInput } from '../journal/posting.service.js';
 import { PostingService } from '../journal/posting.service.js';
+import { retryOnLockConflict } from '../shared/document-support.service.js';
 import { FiscalService } from './fiscal.service.js';
 import { MappingsService } from './mappings.service.js';
 
@@ -376,7 +377,7 @@ export class YearClosingService {
     if (!row) throw DomainError.notFound('FiscalYear', yearId.toString());
     const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
 
-    await db.$transaction(async (tx) => {
+    await retryOnLockConflict(() => db.$transaction(async (tx) => {
       await this.lockYear(tx, tenantId, row.companyId, yearId);
       const year = await this.year(tx, tenantId, yearId);
       const previousOpenYears = await this.previousOpenYears(tx, tenantId, year);
@@ -478,7 +479,7 @@ export class YearClosingService {
           netResult: round3(computation.netResult).toString(),
         },
       }, tx);
-    }, POSTING_TX_OPTIONS);
+    }, POSTING_TX_OPTIONS));
 
     return this.fiscal.getYear(yearId);
   }
@@ -497,7 +498,7 @@ export class YearClosingService {
     if (!row) throw DomainError.notFound('FiscalYear', yearId.toString());
     const userId = cls.get('userId') ?? null;
 
-    await db.$transaction(async (tx) => {
+    await retryOnLockConflict(() => db.$transaction(async (tx) => {
       await this.lockYear(tx, tenantId, row.companyId, yearId);
       const year = await this.year(tx, tenantId, yearId);
       const closing = await this.activeClosing(tx, tenantId, year);
@@ -567,7 +568,7 @@ export class YearClosingService {
         before: { status: 'CLOSED', closingId: closing.id.toString() },
         after: { status: 'OPEN', reversalEntryId: reversalEntryId?.toString() ?? null },
       }, tx);
-    }, POSTING_TX_OPTIONS);
+    }, POSTING_TX_OPTIONS));
 
     return this.fiscal.getYear(yearId);
   }
