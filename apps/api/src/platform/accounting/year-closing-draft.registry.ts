@@ -32,6 +32,7 @@ export interface YearClosingDraft {
   id: string;
   date: string;
   reference: string | null;
+  description: string | null;
 }
 
 export type YearClosingDraftReader = (
@@ -47,8 +48,19 @@ export function yearClosingDraft(
   id: bigint,
   date: Date,
   reference: string | null,
+  description: string | null,
 ): YearClosingDraft {
-  return { type, id: id.toString(), date: date.toISOString().slice(0, 10), reference };
+  return {
+    type,
+    id: id.toString(),
+    date: date.toISOString().slice(0, 10),
+    reference,
+    description: description?.trim() || null,
+  };
+}
+
+export function yearClosingDraftText(...values: (string | null | undefined)[]): string | null {
+  return values.find((value) => value?.trim())?.trim() ?? null;
 }
 
 @Injectable()

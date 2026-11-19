@@ -529,6 +529,8 @@ export interface YearClosingDraftDto {
   date: string;
   /** @nullable */
   reference: string | null;
+  /** @nullable */
+  description: string | null;
 }
 
 export type YearClosingWarningDtoDetails = { [key: string]: unknown };

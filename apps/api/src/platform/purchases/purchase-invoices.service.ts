@@ -69,7 +69,7 @@ import {
 import type { BillPurchaseOrderDto } from './dto/purchases.dto.js';
 import { clearedThrough } from '../shared/receipt-clearing.js';
 import { isStocked, ItemKindValue, assertNotRecipe } from '../../common/inventory/item-kind.js';
-import { YearClosingDraftRegistry, yearClosingDraft } from '../accounting/year-closing-draft.registry.js';
+import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
 
 const SOURCE = 'PURCHASE_INVOICE';
 
@@ -122,16 +122,28 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     this.yearClosingDrafts.register('PURCHASE_INVOICE', async (tx, tenantId, companyId, from, to) => {
       const rows = await tx.purchaseInvoice.findMany({
         where: { tenantId, companyId, status: 'DRAFT', invoiceDate: { gte: from, lte: to } },
-        select: { id: true, invoiceDate: true, invoiceNo: true },
+        select: { id: true, invoiceDate: true, invoiceNo: true, description: true, supplier: { select: { nameAr: true } } },
       });
-      return rows.map((row) => yearClosingDraft('PURCHASE_INVOICE', row.id, row.invoiceDate, row.invoiceNo));
+      return rows.map((row) => yearClosingDraft(
+        'PURCHASE_INVOICE',
+        row.id,
+        row.invoiceDate,
+        row.invoiceNo,
+        yearClosingDraftText(row.description, row.supplier.nameAr),
+      ));
     });
     this.yearClosingDrafts.register('PURCHASE_RETURN', async (tx, tenantId, companyId, from, to) => {
       const rows = await tx.purchaseReturn.findMany({
         where: { tenantId, companyId, status: 'DRAFT', returnDate: { gte: from, lte: to } },
-        select: { id: true, returnDate: true, returnNo: true },
+        select: { id: true, returnDate: true, returnNo: true, reason: true, supplier: { select: { nameAr: true } } },
       });
-      return rows.map((row) => yearClosingDraft('PURCHASE_RETURN', row.id, row.returnDate, row.returnNo));
+      return rows.map((row) => yearClosingDraft(
+        'PURCHASE_RETURN',
+        row.id,
+        row.returnDate,
+        row.returnNo,
+        yearClosingDraftText(row.reason, row.supplier.nameAr),
+      ));
     });
   }
 

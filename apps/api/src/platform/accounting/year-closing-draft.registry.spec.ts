@@ -24,6 +24,7 @@ describe('YearClosingDraftRegistry', () => {
         id: type,
         date: '2031-06-01',
         reference: null,
+        description: `${type} draft`,
       }]);
     }
 

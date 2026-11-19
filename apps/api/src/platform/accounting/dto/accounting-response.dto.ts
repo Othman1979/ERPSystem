@@ -118,6 +118,9 @@ export class YearClosingDraftDto {
 
   @ApiProperty({ type: 'string', nullable: true })
   reference!: string | null;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  description!: string | null;
 }
 
 export class YearClosingWarningDto {

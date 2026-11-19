@@ -238,6 +238,7 @@ describe('Phase 18 golden year closing', () => {
     const draft = h.ok(
       await h.api().post('/api/v1/journal-entries').set(h.auth(token)).send({
         entryDate: '2031-03-01',
+        description: 'Year-end adjustment draft',
         lines: [
           { accountId: accounts['1101'], debit: '1.000' },
           { accountId: accounts['4101'], credit: '1.000' },
@@ -253,7 +254,13 @@ describe('Phase 18 golden year closing', () => {
     );
     expect(preview.canClose).toBe(false);
     expect(preview.drafts).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: 'JOURNAL_ENTRY', id: String(draft.id) })]),
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'JOURNAL_ENTRY',
+          id: String(draft.id),
+          description: 'Year-end adjustment draft',
+        }),
+      ]),
     );
     expect(h.err(await h.act(token, `fiscal-years/${yearIds[0]}/close`))).toEqual([409, 'YEAR_HAS_DRAFTS']);
     expect(h.ok(

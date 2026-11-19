@@ -52,7 +52,10 @@ vi.mock('@erp/api-client', async (original) => ({
       canClose: true,
       netResult: '5.000',
       lines: [],
-      drafts: [],
+      drafts: [
+        { type: 'JOURNAL_ENTRY', id: '11', date: '2031-03-01', reference: null, description: 'Manual adjustment' },
+        { type: 'SALES_INVOICE', id: '42', date: '2031-03-02', reference: null, description: 'Service invoice' },
+      ],
       warnings: [],
     }),
   fiscalControllerCloseYear: vi.fn(() => ok({})),
@@ -116,6 +119,9 @@ describe('FiscalPage year closing', () => {
     expect(document.body.textContent).toContain('Preview year closing 2031');
     expect(document.body.textContent).toContain('Year net result');
     expect(document.body.textContent).toContain('Confirm year close');
+    expect(document.body.textContent).toContain('Manual adjustment');
+    const invoiceLink = document.querySelector<HTMLAnchorElement>('a[href="/sales?invoiceId=42"]');
+    expect(invoiceLink?.textContent).toBe('Service invoice');
   });
 
   it('shows the reopen action to the owner only', async () => {
@@ -137,6 +143,8 @@ describe('FiscalPage year closing', () => {
   it('shows close year when every period is closed but there is no active closing', async () => {
     state.closed = true;
     await renderPage();
+    expect(document.body.textContent).toContain('Periods closed');
+    expect(document.body.textContent).not.toContain('Closed');
     expect(document.body.textContent).toContain('Close year');
     expect(document.body.textContent).not.toContain('Reopen year');
   });

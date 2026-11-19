@@ -69,7 +69,7 @@ import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 import { isRecipe, ItemKindValue } from '../../common/inventory/item-kind.js';
 import { BomService, type StockExplosion } from '../manufacturing/bom.service.js';
-import { YearClosingDraftRegistry, yearClosingDraft } from '../accounting/year-closing-draft.registry.js';
+import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
 
 const SOURCE = 'SALES_INVOICE';
 
@@ -193,30 +193,54 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     this.yearClosingDrafts.register('SALES_INVOICE', async (tx, tenantId, companyId, from, to) => {
       const rows = await tx.salesInvoice.findMany({
         where: { tenantId, companyId, status: 'DRAFT', invoiceDate: { gte: from, lte: to } },
-        select: { id: true, invoiceDate: true, invoiceNo: true },
+        select: { id: true, invoiceDate: true, invoiceNo: true, description: true, customer: { select: { nameAr: true } } },
       });
-      return rows.map((row) => yearClosingDraft('SALES_INVOICE', row.id, row.invoiceDate, row.invoiceNo));
+      return rows.map((row) => yearClosingDraft(
+        'SALES_INVOICE',
+        row.id,
+        row.invoiceDate,
+        row.invoiceNo,
+        yearClosingDraftText(row.description, row.customer.nameAr),
+      ));
     });
     this.yearClosingDrafts.register('SALES_RETURN', async (tx, tenantId, companyId, from, to) => {
       const rows = await tx.salesReturn.findMany({
         where: { tenantId, companyId, status: 'DRAFT', returnDate: { gte: from, lte: to } },
-        select: { id: true, returnDate: true, returnNo: true },
+        select: { id: true, returnDate: true, returnNo: true, reason: true, customer: { select: { nameAr: true } } },
       });
-      return rows.map((row) => yearClosingDraft('SALES_RETURN', row.id, row.returnDate, row.returnNo));
+      return rows.map((row) => yearClosingDraft(
+        'SALES_RETURN',
+        row.id,
+        row.returnDate,
+        row.returnNo,
+        yearClosingDraftText(row.reason, row.customer.nameAr),
+      ));
     });
     this.yearClosingDrafts.register('SALES_QUOTE', async (tx, tenantId, companyId, from, to) => {
       const rows = await tx.salesQuote.findMany({
         where: { tenantId, companyId, status: 'DRAFT', quoteDate: { gte: from, lte: to } },
-        select: { id: true, quoteDate: true, quoteNo: true },
+        select: { id: true, quoteDate: true, quoteNo: true, description: true, customer: { select: { nameAr: true } } },
       });
-      return rows.map((row) => yearClosingDraft('SALES_QUOTE', row.id, row.quoteDate, row.quoteNo));
+      return rows.map((row) => yearClosingDraft(
+        'SALES_QUOTE',
+        row.id,
+        row.quoteDate,
+        row.quoteNo,
+        yearClosingDraftText(row.description, row.customer.nameAr),
+      ));
     });
     this.yearClosingDrafts.register('SALES_ORDER', async (tx, tenantId, companyId, from, to) => {
       const rows = await tx.salesOrder.findMany({
         where: { tenantId, companyId, status: 'DRAFT', orderDate: { gte: from, lte: to } },
-        select: { id: true, orderDate: true, orderNo: true },
+        select: { id: true, orderDate: true, orderNo: true, description: true, customer: { select: { nameAr: true } } },
       });
-      return rows.map((row) => yearClosingDraft('SALES_ORDER', row.id, row.orderDate, row.orderNo));
+      return rows.map((row) => yearClosingDraft(
+        'SALES_ORDER',
+        row.id,
+        row.orderDate,
+        row.orderNo,
+        yearClosingDraftText(row.description, row.customer.nameAr),
+      ));
     });
   }
 

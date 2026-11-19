@@ -15,6 +15,7 @@ import {
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import {
   ApiError,
   type FiscalPeriodDto,
@@ -43,6 +44,22 @@ type FiscalYear = FiscalYearListItemDto;
 
 function fmtDate(v: string): string {
   return v ? v.slice(0, 10) : '';
+}
+
+function draftHref(type: string, id: string): string | undefined {
+  const encodedId = encodeURIComponent(id);
+  switch (type) {
+    case 'SALES_INVOICE':
+      return `/sales?invoiceId=${encodedId}`;
+    case 'SALES_QUOTE':
+      return `/sales-quotes?quoteId=${encodedId}`;
+    case 'SALES_ORDER':
+      return `/sales-orders?orderId=${encodedId}`;
+    case 'PRODUCTION_VOUCHER':
+      return `/production?voucherId=${encodedId}`;
+    default:
+      return undefined;
+  }
 }
 
 export function FiscalPage() {
@@ -180,11 +197,17 @@ export function FiscalPage() {
             title: t('common.status'),
             dataIndex: 'status',
             width: 100,
-            render: (v: string) => (
-              <Tag color={v === 'OPEN' ? 'green' : 'default'}>
-                {t(`fiscal.status.${v}`, { defaultValue: v })}
-              </Tag>
-            ),
+            render: (status: string, year: FiscalYear) => {
+              const periodsClosed = status === 'CLOSED' && !year.activeClosing;
+              const displayStatus = year.activeClosing ? 'CLOSED' : status;
+              return (
+                <Tag color={periodsClosed ? 'blue' : displayStatus === 'OPEN' ? 'green' : 'default'}>
+                  {periodsClosed
+                    ? t('fiscal.periodsClosed')
+                    : t(`fiscal.status.${displayStatus}`, { defaultValue: displayStatus })}
+                </Tag>
+              );
+            },
           },
           {
             title: t('fiscal.periods'),
@@ -339,7 +362,15 @@ export function FiscalPage() {
                     render: (type: string) =>
                       t(`fiscal.draftTypes.${type}`, { defaultValue: type }),
                   },
-                  { title: t('fiscal.draftReference'), dataIndex: 'reference' },
+                  {
+                    title: t('fiscal.draftDescription'),
+                    dataIndex: 'description',
+                    render: (description: string | null, draft) => {
+                      const href = draftHref(draft.type, draft.id);
+                      const text = description || '—';
+                      return href ? <Link to={href}>{text}</Link> : text;
+                    },
+                  },
                   { title: t('fiscal.draftDate'), dataIndex: 'date', render: fmtDate },
                 ]}
               />

@@ -27,7 +27,7 @@ import {
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
-import { YearClosingDraftRegistry, yearClosingDraft } from '../accounting/year-closing-draft.registry.js';
+import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
 
 const MANUAL_SOURCE = 'MANUAL_JOURNAL';
 const OPENING_SOURCE = 'OPENING_ENTRY';
@@ -61,9 +61,15 @@ export class JournalService implements OnModuleInit {
     this.yearClosingDrafts.register('JOURNAL_ENTRY', async (tx, tenantId, companyId, from, to) => {
       const rows = await tx.journalEntry.findMany({
         where: { tenantId, companyId, status: 'DRAFT', entryDate: { gte: from, lte: to } },
-        select: { id: true, entryDate: true, entryNo: true },
+        select: { id: true, entryDate: true, entryNo: true, description: true },
       });
-      return rows.map((row) => yearClosingDraft('JOURNAL_ENTRY', row.id, row.entryDate, row.entryNo));
+      return rows.map((row) => yearClosingDraft(
+        'JOURNAL_ENTRY',
+        row.id,
+        row.entryDate,
+        row.entryNo,
+        yearClosingDraftText(row.description),
+      ));
     });
   }
 

@@ -18,7 +18,7 @@ import { DocumentSupportService, retryOnLockConflict } from '../shared/document-
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import { BomService, type ExplodedLine } from './bom.service.js';
 import type { CreateProductionVoucherDto, ListProductionVouchersQueryDto, ProductionLineDto, UpdateProductionVoucherDto } from './dto/production-voucher.dto.js';
-import { YearClosingDraftRegistry, yearClosingDraft } from '../accounting/year-closing-draft.registry.js';
+import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -159,9 +159,15 @@ export class ProductionVouchersService implements OnModuleInit {
     this.yearClosingDrafts.register('PRODUCTION_VOUCHER', async (tx, tenantId, companyId, from, to) => {
       const rows = await tx.productionVoucher.findMany({
         where: { tenantId, companyId, status: 'DRAFT', voucherDate: { gte: from, lte: to } },
-        select: { id: true, voucherDate: true, docNo: true },
+        select: { id: true, voucherDate: true, docNo: true, description: true },
       });
-      return rows.map((row) => yearClosingDraft('PRODUCTION_VOUCHER', row.id, row.voucherDate, row.docNo));
+      return rows.map((row) => yearClosingDraft(
+        'PRODUCTION_VOUCHER',
+        row.id,
+        row.voucherDate,
+        row.docNo,
+        yearClosingDraftText(row.description),
+      ));
     });
   }
 
