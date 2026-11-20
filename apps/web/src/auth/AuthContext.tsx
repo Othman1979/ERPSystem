@@ -296,8 +296,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       storeCompany(tenantId, id);
       companyRef.current = id;
       setCompanyId(id);
-      setCompanyState(id);
-      // Another company's data: drop every cached list, then reload /me for its branches.
+      // The old branch belongs to the other company: let the server pick until /me answers.
+      setBranchId(null);
+      // Another company's data: drop every cached list. refreshMe then sets the company and its
+      // branch together, so the pages remount once, with matching headers.
       queryClient.clear();
       void refreshMe();
     },
