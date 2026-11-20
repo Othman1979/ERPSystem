@@ -741,4 +741,106 @@ describe('Payroll PY1–PY3', () => {
     expect(deactivation.body.error.code).toBe('VALIDATION');
     expect(deactivation.body.error.message).toBe('Employee cannot be deactivated while posted payroll movements await a run');
   });
+
+  it('posts, pays, lists and reverses a movement-only run without a journal entry', async () => {
+    const company = h.ok(
+      await h.api().post('/api/v1/companies').set(h.auth(tokenA)).send({ legalNameAr: `Movement-only ${RUN}` }),
+      201,
+      'create movement-only company',
+    ) as { id: string };
+    h.ok(
+      await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).send({
+        code: '2033', startDate: '2033-01-01', endDate: '2033-12-31',
+      }),
+      201,
+      'create movement-only fiscal year',
+    );
+    await post(tokenA, 'payroll/settings', { effectiveFrom: '2033-01-01' }, 'movement-only settings', company.id);
+    const elements = h.ok(await get(tokenA, 'payroll/elements', company.id), 200, 'movement-only pay elements') as {
+      id: string; code: string;
+    }[];
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `MOVEONLY-${RUN}`, nameAr: 'Movement-only employee', hireDate: '2033-01-01',
+      payMethod: 'BANK', sscCovered: false,
+    }, 'movement-only employee', company.id);
+    await post(tokenA, `payroll/employees/${employee.id}/salaries`, {
+      effectiveFrom: '2033-01-01', basicSalary: '0.000',
+    }, 'movement-only salary', company.id);
+    await post(tokenA, 'payroll/movements', {
+      employeeId: employee.id,
+      payElementId: elements.find((element) => element.code === 'TRANSPORT')!.id,
+      movementDate: '2033-01-10',
+      amount: '10.000',
+      description: 'Movement-only earnings',
+    }, 'movement-only earning', company.id);
+    const accounts = h.ok(await get(tokenA, 'accounts', company.id), 200, 'movement-only accounts') as {
+      id: string; code: string;
+    }[];
+    const bankAccount = h.ok(
+      await h.api().post('/api/v1/bank-accounts').set(h.auth(tokenA)).set('X-Company-Id', company.id).send({
+        bankName: 'Movement-only bank',
+        accountId: accounts.find((account) => account.code === '1102')!.id,
+      }),
+      201,
+      'movement-only bank account',
+    ) as { id: string };
+
+    const draft = h.ok(await act(tokenA, 'payroll/runs', { period: '2033-01' }, company.id), 201, 'create movement-only run') as {
+      id: string;
+    };
+    const posted = h.ok(await act(tokenA, `payroll/runs/${draft.id}/post`, {}, company.id), 201, 'post movement-only run') as {
+      id: string; status: string; runNo: string | null;
+    };
+    expect(posted.status).toBe('POSTED');
+    expect(posted.runNo).toBeTruthy();
+    const [postedRun] = (await boot.db.query(
+      'SELECT journal_entry_id FROM payroll_runs WHERE tenant_id = ? AND company_id = ? AND id = ?',
+      [tenantId, company.id, draft.id],
+    )) as { journal_entry_id: bigint | null }[];
+    expect(postedRun!.journal_entry_id).toBeNull();
+
+    const statement = h.ok(
+      await get(tokenA, `payroll/employees/${employee.id}/statement?from=2033-01-01&to=2033-01-31`, company.id),
+      200,
+      'movement-only statement',
+    ) as { rows: Array<{ documentNo: string; documentType: string }> };
+    expect(statement.rows.find((row) => row.documentType === 'PAYROLL_RUN')?.documentNo).toBe(posted.runNo);
+
+    const paid = h.ok(
+      await act(tokenA, `payroll/runs/${draft.id}/pay`, { bankAccountId: bankAccount.id, date: '2033-01-20' }, company.id),
+      201,
+      'pay movement-only run',
+    ) as { status: string };
+    expect(paid.status).toBe('PAID');
+    const reversed = h.ok(
+      await act(tokenA, `payroll/runs/${draft.id}/reverse`, { date: '2033-01-21' }, company.id),
+      201,
+      'reverse movement-only run',
+    ) as { status: string };
+    expect(reversed.status).toBe('REVERSED');
+    const [reversedRun] = (await boot.db.query(
+      'SELECT journal_entry_id FROM payroll_runs WHERE tenant_id = ? AND company_id = ? AND id = ?',
+      [tenantId, company.id, draft.id],
+    )) as { journal_entry_id: bigint | null }[];
+    expect(reversedRun!.journal_entry_id).toBeNull();
+
+    const entries = (await boot.db.query(
+      `SELECT source_type FROM journal_entries
+        WHERE tenant_id = ? AND company_id = ? AND source_id = ?
+          AND source_type IN ('PAYROLL_RUN', 'PAYROLL_PAYMENT')`,
+      [tenantId, company.id, draft.id],
+    )) as { source_type: string }[];
+    expect(entries.map((entry) => entry.source_type)).toEqual(['PAYROLL_PAYMENT']);
+    const reversedStatement = h.ok(
+      await get(tokenA, `payroll/employees/${employee.id}/statement?from=2033-01-01&to=2033-01-31`, company.id),
+      200,
+      'reversed movement-only statement',
+    ) as { closingBalance: string; rows: Array<{ documentType: string }> };
+    const documentTypes = reversedStatement.rows.map((row) => row.documentType);
+    expect(documentTypes).toContain('PAYROLL_RUN');
+    expect(documentTypes).toContain('PAYROLL_PAYMENT');
+    expect(documentTypes).toContain('PAYROLL_PAYMENT_REVERSAL');
+    expect(documentTypes).not.toContain('PAYROLL_RUN_REVERSAL');
+    expect(reversedStatement.closingBalance).toBe('10.000');
+  });
 });

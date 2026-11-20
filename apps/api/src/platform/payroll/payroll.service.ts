@@ -933,28 +933,31 @@ export class PayrollService {
       );
       const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, run.runDate);
       const runNo = await allocateDocumentNo(tx, tenantId, companyId, 'PAYROLL_RUN', run.runDate);
-      const entry = await this.posting.postEntry(tx, {
-        tenantId,
-        companyId,
-        entryDate: run.runDate,
-        fiscalPeriodId: period.id,
-        sourceType: 'PAYROLL_RUN',
-        sourceId: run.id,
-        description: `Payroll ${run.period}`,
-        lines: [...grouped.values()].map((line): JournalLineInput => ({
-          accountId: line.accountId,
-          debit: line.debit,
-          credit: line.credit,
-          branchId: line.branchId,
-          costCenterId: line.costCenterId,
-          description: line.description,
-        })),
-        requireCostCenters: true,
-        postedBy: ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null,
-      });
+      const journalLines = [...grouped.values()].map((line): JournalLineInput => ({
+        accountId: line.accountId,
+        debit: line.debit,
+        credit: line.credit,
+        branchId: line.branchId,
+        costCenterId: line.costCenterId,
+        description: line.description,
+      }));
+      const entry = journalLines.length
+        ? await this.posting.postEntry(tx, {
+            tenantId,
+            companyId,
+            entryDate: run.runDate,
+            fiscalPeriodId: period.id,
+            sourceType: 'PAYROLL_RUN',
+            sourceId: run.id,
+            description: `Payroll ${run.period}`,
+            lines: journalLines,
+            requireCostCenters: true,
+            postedBy: ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null,
+          })
+        : null;
       await tx.payrollRun.update({
         where: { id },
-        data: { status: 'POSTED', runNo, journalEntryId: entry.id },
+        data: { status: 'POSTED', runNo, journalEntryId: entry?.id ?? null },
       });
       await this.audit.log({ action: 'payroll.post', entityType: 'payroll_run', entityId: id, after: { status: 'POSTED' } }, tx);
     }, POSTING_TX_OPTIONS);
@@ -1050,7 +1053,6 @@ export class PayrollService {
     const runs = await db.payrollRun.findMany({
       where: {
         status: { in: ['POSTED', 'PAID', 'REVERSED'] },
-        journalEntryId: { not: null },
         lines: { some: { employeeId } },
       },
       include: {
@@ -1095,7 +1097,7 @@ export class PayrollService {
     }
     for (const run of runs) {
       const line = run.lines[0];
-      if (!line || !run.journalEntry) continue;
+      if (!line) continue;
       const movementNet = line.items.reduce((sum, item) => {
         if (item.payrollMovementId === null) return sum;
         return item.kind === 'EARNING' ? sum.plus(item.amount) : sum.minus(item.amount);
@@ -1109,7 +1111,7 @@ export class PayrollService {
         description: `Payroll ${run.period}`,
         signed: runBalance,
       });
-      const runReversal = run.journalEntry.reversals[0];
+      const runReversal = run.journalEntry?.reversals[0];
       if (run.status === 'REVERSED' && runReversal) {
         addEvent({
           date: runReversal.entryDate,
