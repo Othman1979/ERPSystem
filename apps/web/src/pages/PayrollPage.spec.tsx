@@ -4,6 +4,7 @@ import {
   buildElementPayload,
   buildEmployeePayload,
   buildInputPayload,
+  buildPaymentSourceOptions,
   buildSettingsPayload,
   employeeEditDateValues,
   payrollTabSearchParams,
@@ -27,6 +28,18 @@ describe('payroll page payloads and run actions', () => {
       .toEqual({ code: 'E1', nameAr: 'Element' });
     expect(buildElementPayload({ code: 'E1', nameAr: 'Element', isActive: false }, true))
       .toEqual({ nameAr: 'Element', isActive: false });
+  });
+
+  it('labels cash boxes by name and bank accounts by bank plus account number or IBAN', () => {
+    expect(buildPaymentSourceOptions('cash', [{ id: 'cash-1', name: 'Main cash' }], []))
+      .toEqual([{ value: 'cash-1', label: 'Main cash' }]);
+    expect(buildPaymentSourceOptions('bank', [], [
+      { id: 'bank-1', bankName: 'Arab Bank', accountNoMasked: '****1234', ibanMasked: 'JO****' },
+      { id: 'bank-2', bankName: 'Housing Bank', accountNoMasked: null, ibanMasked: 'JO****9876' },
+    ])).toEqual([
+      { value: 'bank-1', label: 'Arab Bank — ****1234' },
+      { value: 'bank-2', label: 'Housing Bank — JO****9876' },
+    ]);
   });
 
   it('loads saved employee edit dates and sends date-only strings', () => {

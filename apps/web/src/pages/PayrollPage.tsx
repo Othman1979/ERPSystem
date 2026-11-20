@@ -32,6 +32,8 @@ import {
   type PayrollEmployeeDetailDto,
   type PayrollElementDto,
   type PayrollRunDto,
+  type CashBoxListItemDto,
+  type BankAccountListItemDto,
 } from '@erp/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Button, Form, Input, Radio, Select, Space, Switch, Table, Tabs } from 'antd';
@@ -85,6 +87,18 @@ export function buildElementPayload(values: Record<string, unknown>, editing: bo
   }
   const { isActive: _isActive, ...create } = values;
   return create;
+}
+
+export function buildPaymentSourceOptions(
+  sourceType: 'cash' | 'bank',
+  cashBoxes: Array<Pick<CashBoxListItemDto, 'id' | 'name'>>,
+  bankAccounts: Array<Pick<BankAccountListItemDto, 'id' | 'bankName' | 'accountNoMasked' | 'ibanMasked'>>,
+) {
+  if (sourceType === 'cash') return cashBoxes.map(({ id, name }) => ({ value: id, label: name }));
+  return bankAccounts.map(({ id, bankName, accountNoMasked, ibanMasked }) => {
+    const identifier = accountNoMasked || ibanMasked;
+    return { value: id, label: identifier ? `${bankName} — ${identifier}` : bankName };
+  });
 }
 
 export function buildEmployeePayload(values: EmployeeForm) {
@@ -342,9 +356,11 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
   const [sourceId, setSourceId] = useState<string>();
   const cashBoxes = useQuery({ queryKey: ['payroll', 'cashBoxes'], queryFn: async () => (await treasuryControllerListCashBoxes()).data });
   const bankAccounts = useQuery({ queryKey: ['payroll', 'bankAccounts'], queryFn: async () => (await treasuryControllerListBankAccounts()).data });
-  const sourceOptions = sourceType === 'cash'
-    ? (cashBoxes.data as Array<{ id: string; nameAr: string }> | undefined)?.map((x) => ({ value: x.id, label: x.nameAr }))
-    : (bankAccounts.data as Array<{ id: string; nameAr: string }> | undefined)?.map((x) => ({ value: x.id, label: x.nameAr }));
+  const sourceOptions = buildPaymentSourceOptions(
+    sourceType,
+    (cashBoxes.data ?? []) as Array<Pick<CashBoxListItemDto, 'id' | 'name'>>,
+    (bankAccounts.data ?? []) as Array<Pick<BankAccountListItemDto, 'id' | 'bankName' | 'accountNoMasked' | 'ibanMasked'>>,
+  );
   const create = useMutation({ mutationFn: () => payrollControllerCreateRun({ period }), onSuccess: (r) => { setRunId(r.data.id); void qc.invalidateQueries({ queryKey: ['payroll', 'runs'] }); }, onError: () => message.error(t('payroll.saveError')) });
   const { mutate: createRun } = create;
   const createdFromQuickAction = useRef(false);
