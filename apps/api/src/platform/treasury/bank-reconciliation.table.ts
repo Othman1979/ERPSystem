@@ -37,6 +37,7 @@ export function bankReconciliationTable(data: Detail, lang: 'ar' | 'en'): Report
       ...data.outstandingPayments.map(item(t('دفعة معلقة', 'Outstanding payment'))),
     ],
     totals: [
+      balance(t('الرصيد الافتتاحي للكشف', 'Statement opening balance'), data.openingBalance),
       balance(t('رصيد الدفاتر', 'Book balance'), data.summary.bookBalance),
       balance(t('الإيداعات المعلقة', 'Deposits in transit'), data.summary.outstandingDeposits),
       balance(t('المدفوعات المعلقة', 'Outstanding payments'), data.summary.outstandingPayments),
