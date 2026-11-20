@@ -69,10 +69,11 @@ export function monthToPayrollPeriod(value: Dayjs | null) {
   return value?.format('YYYY-MM');
 }
 
-function PayrollMonthPicker({ period, onChange }: { period: string; onChange: (period: string) => void }) {
+export function PayrollMonthPicker({ period, onChange }: { period: string; onChange: (period: string) => void }) {
   return (
     <AntDatePicker
       picker="month"
+      allowClear={false}
       format="MM/YYYY"
       value={dayjs(`${period}-01`)}
       onChange={(month) => {

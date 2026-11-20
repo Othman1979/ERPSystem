@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildElementPayload,
   buildEmployeePayload,
@@ -8,6 +8,7 @@ import {
   buildSettingsPayload,
   employeeEditDateValues,
   monthToPayrollPeriod,
+  PayrollMonthPicker,
   payrollTabSearchParams,
   runAvailability,
 } from './PayrollPage';
@@ -20,6 +21,17 @@ describe('payroll page payloads and run actions', () => {
 
   it('formats a selected payroll month as YYYY-MM for the API', () => {
     expect(monthToPayrollPeriod(dayjs('2026-11-01'))).toBe('2026-11');
+  });
+
+  it('does not expose a clear control or clear the selected API period', () => {
+    const onChange = vi.fn();
+    const picker = PayrollMonthPicker({ period: '2026-11', onChange });
+
+    expect(picker.props.allowClear).toBe(false);
+    expect(picker.props.value.format('YYYY-MM')).toBe('2026-11');
+    picker.props.onChange?.(null, '');
+    expect(onChange).not.toHaveBeenCalled();
+    expect(picker.props.value.format('YYYY-MM')).toBe('2026-11');
   });
 
   it('defaults employee SSC flags in create payload', () => {
