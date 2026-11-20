@@ -662,6 +662,14 @@ export class VouchersService implements OnModuleInit {
         if (!v.partyId || !v.partyType) {
           throw new DomainError(ErrorCode.VALIDATION, 'Only vouchers with a party can be allocated');
         }
+        // ADR-037 §2: a returned cheque paid nothing, so its voucher settles no invoice.
+        const cheque = await tx.cheque.findFirst({
+          where: kind === 'receipt' ? { receiptId: id } : { paymentId: id },
+          select: { status: true },
+        });
+        if (cheque?.status === 'RETURNED') {
+          throw new DomainError(ErrorCode.CHEQUE_INVALID_STATUS, 'The voucher cheque was returned');
+        }
         const left = new Decimal(v.amount.toString()).minus(await this.activeAllocated(tx, kind, id));
         if (left.lte(0)) throw new DomainError(ErrorCode.VALIDATION, 'The voucher is fully allocated');
         const plan = await this.planAllocations(tx, companyId, {
