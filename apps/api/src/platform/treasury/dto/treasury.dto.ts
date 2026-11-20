@@ -158,6 +158,23 @@ export class AllocationDto {
   amount!: string;
 }
 
+/** ADR-037 §1: the cheque a receipt receives or a payment issues. */
+export class VoucherChequeDto {
+  @IsString()
+  @MaxLength(50)
+  @Matches(/\S/)
+  chequeNo!: string;
+
+  /** Drawee bank of a received cheque (required on a receipt). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(191)
+  bankName?: string;
+
+  @Matches(DATE_PATTERN)
+  dueDate!: string;
+}
+
 export class CreateReceiptDto {
   @IsDateString()
   receiptDate!: string;
@@ -169,9 +186,17 @@ export class CreateReceiptDto {
   @Matches(INT_STRING)
   partyId!: string;
 
+  /** Optional with `cheque`: the cheque posts on the CHEQUES_RECEIVABLE account. */
+  @IsOptional()
   @IsString()
   @Matches(INT_STRING)
-  cashAccountId!: string;
+  cashAccountId?: string;
+
+  /** Paid by cheque (ADR-037): posted on the cheques account instead of `cashAccountId`. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => VoucherChequeDto)
+  cheque?: VoucherChequeDto;
 
   /**
    * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
@@ -231,9 +256,16 @@ export class CreatePaymentDto {
   @Matches(INT_STRING)
   expenseAccountId?: string;
 
+  /** With `cheque`: the bank account (BANK) the cheque is drawn on. */
   @IsString()
   @Matches(INT_STRING)
   cashAccountId!: string;
+
+  /** Paid by cheque (ADR-037): posted on the cheques account instead of `cashAccountId`. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => VoucherChequeDto)
+  cheque?: VoucherChequeDto;
 
   /**
    * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,

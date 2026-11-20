@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@erp/api-client';
 import { useAuth } from '../auth/AuthContext';
+import { EnterNav } from '../components/EnterNav';
 
 export function LoginPage({ onSwitchToRegister }: { onSwitchToRegister: () => void }) {
   const { t } = useTranslation();
@@ -33,17 +34,19 @@ export function LoginPage({ onSwitchToRegister }: { onSwitchToRegister: () => vo
           {t('auth.loginTitle')}
         </Typography.Title>
         {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} />}
-        <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
-          <Form.Item name="email" label={t('auth.email')} rules={[{ required: true }]}>
-            <Input type="email" autoComplete="email" />
-          </Form.Item>
-          <Form.Item name="password" label={t('auth.password')} rules={[{ required: true }]}>
-            <Input.Password autoComplete="current-password" />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" block loading={loading}>
-            {t('auth.login')}
-          </Button>
-        </Form>
+        <EnterNav>
+          <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
+            <Form.Item name="email" label={t('auth.email')} rules={[{ required: true }]}>
+              <Input type="email" autoComplete="email" />
+            </Form.Item>
+            <Form.Item name="password" label={t('auth.password')} rules={[{ required: true }]}>
+              <Input.Password autoComplete="current-password" />
+            </Form.Item>
+            <Button type="primary" htmlType="submit" block loading={loading}>
+              {t('auth.login')}
+            </Button>
+          </Form>
+        </EnterNav>
         <Button type="link" block onClick={onSwitchToRegister}>
           {t('auth.noAccount')}
         </Button>

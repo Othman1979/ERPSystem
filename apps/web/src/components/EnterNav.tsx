@@ -7,9 +7,13 @@ const FIELD_SELECTOR = [
   '.ant-picker:not(.ant-picker-disabled)',
   '.ant-input-number:not(.ant-input-number-disabled)',
   'input.ant-input:not([disabled])',
-  // A dialog's primary button ends the chain: Enter there saves.
+  // A dialog's primary button, or a page form's submit button, ends the chain: Enter there saves.
   '.ant-modal-footer .ant-btn-primary:not([disabled])',
+  'button[type="submit"]:not([disabled])',
 ].join(', ');
+
+/** Enter presses one EnterNav already handled, so an outer (nesting) EnterNav leaves them alone. */
+const handledEnters = new WeakSet<Event>();
 
 function isVisible(el: Element): boolean {
   return el.getClientRects().length > 0;
@@ -75,7 +79,8 @@ export function EnterNav({
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(e);
-    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    // Not `defaultPrevented`: antd's Select prevents Enter itself before it bubbles here.
+    if (handledEnters.has(e.nativeEvent) || e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     const target = e.target as HTMLElement;
     // Grids, buttons and multi-line text keep their own Enter behaviour.
     if (target.closest('[data-cell]') || target.tagName === 'BUTTON' || target.tagName === 'TEXTAREA') {
@@ -86,6 +91,7 @@ export function EnterNav({
 
     // Always stop the browser's implicit form submit on Enter.
     e.preventDefault();
+    handledEnters.add(e.nativeEvent);
     const scope = e.currentTarget.closest('.ant-modal-content') ?? e.currentTarget;
     const fields = fieldsIn(scope);
     const next = fields[fields.indexOf(field) + 1];

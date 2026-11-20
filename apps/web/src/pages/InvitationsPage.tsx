@@ -27,6 +27,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
+import { EnterNav } from '../components/EnterNav';
 
 type Invitation = MyInvitationDto;
 
@@ -225,27 +226,29 @@ export function InvitationsPage() {
             style={{ marginBottom: 16 }}
           />
         )}
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={({ code }) =>
-            accepting && accept.mutate({ membershipId: accepting.membershipId, code: code.trim() })
-          }
-        >
-          <Form.Item
-            name="code"
-            label={t('invitations.codeLabel')}
-            normalize={(v: string) => v.toUpperCase()}
-            rules={[{ required: true, whitespace: true }]}
+        <EnterNav>
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={({ code }) =>
+              accepting && accept.mutate({ membershipId: accepting.membershipId, code: code.trim() })
+            }
           >
-            <Input
-              autoFocus
-              autoComplete="one-time-code"
-              spellCheck={false}
-              style={{ fontFamily: CODE_FONT, direction: 'ltr', letterSpacing: 2 }}
-            />
-          </Form.Item>
-        </Form>
+            <Form.Item
+              name="code"
+              label={t('invitations.codeLabel')}
+              normalize={(v: string) => v.toUpperCase()}
+              rules={[{ required: true, whitespace: true }]}
+            >
+              <Input
+                autoFocus
+                autoComplete="one-time-code"
+                spellCheck={false}
+                style={{ fontFamily: CODE_FONT, direction: 'ltr', letterSpacing: 2 }}
+              />
+            </Form.Item>
+          </Form>
+        </EnterNav>
       </Modal>
     </div>
   );

@@ -76,6 +76,8 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.BANK_MATCH_AMOUNT_MISMATCH]: HttpStatus.CONFLICT,
   [ErrorCode.BANK_LINE_ALREADY_MATCHED]: HttpStatus.CONFLICT,
   [ErrorCode.BANK_RECONCILIATION_UNBALANCED]: HttpStatus.CONFLICT,
+  [ErrorCode.CHEQUE_INVALID_STATUS]: HttpStatus.CONFLICT,
+  [ErrorCode.CHEQUE_DUPLICATE]: HttpStatus.CONFLICT,
   [ErrorCode.LATER_YEAR_CLOSED]: HttpStatus.CONFLICT,
   [ErrorCode.DUPLICATE_CODE]: HttpStatus.CONFLICT,
   [ErrorCode.INVALID_DATE_RANGE]: HttpStatus.BAD_REQUEST,

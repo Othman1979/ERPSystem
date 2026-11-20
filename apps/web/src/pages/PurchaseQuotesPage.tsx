@@ -75,6 +75,7 @@ import {
   type QuotePicks,
 } from './procurement/quotePayload';
 import { invalidateProcurement, procurementKeys } from './procurement/queryKeys';
+import { EnterNav } from '../components/EnterNav';
 
 // ------------------------------------------------------------------ shared
 
@@ -578,96 +579,98 @@ function QuoteForm({
         </Button>
       }
     >
-      <DocFields>
-        <DocField label={t('procurement.request')} required error={requiredError(missing.request)}>
-          <ApprovedRequestPicker
-            value={requestId}
-            selected={requestOption(request.data)}
-            status={requiredError(missing.request) ? 'error' : undefined}
-            // The lines of a saved quote stay with its request.
-            disabled={!!quote}
-            onChange={changeRequest}
-          />
-        </DocField>
-        <DocField label={t('procurement.supplier')} required error={requiredError(missing.supplier)}>
-          <RemoteSelect
-            queryKey={['parties', 'pick', 'SUPPLIER']}
-            fetchOptions={(q, signal) =>
-              partiesControllerList(
-                { partyType: 'SUPPLIER', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) },
-                { signal },
-              ).then((r) => r.data.items.map((p) => ({ value: p.id, label: codeAndName(p) ?? p.id })))
-            }
-            selected={
-              quote?.supplier ? { value: quote.supplier.id, label: codeAndName(quote.supplier) ?? quote.supplier.id } : undefined
-            }
-            status={requiredError(missing.supplier) ? 'error' : undefined}
-            value={supplierId}
-            onChange={setSupplierId}
-          />
-        </DocField>
-        <DocField label={t('procurement.quoteDate')} required>
-          <DatePicker value={quoteDate} onChange={(d) => d && setQuoteDate(d)} />
-        </DocField>
-        <DocField label={t('procurement.validUntil')}>
-          <DatePicker value={validUntil} onChange={setValidUntil} allowClear />
-        </DocField>
-        <DocField label={t('procurement.notes')} wide>
-          <Input value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} />
-        </DocField>
-      </DocFields>
+      <EnterNav>
+        <DocFields>
+          <DocField label={t('procurement.request')} required error={requiredError(missing.request)}>
+            <ApprovedRequestPicker
+              value={requestId}
+              selected={requestOption(request.data)}
+              status={requiredError(missing.request) ? 'error' : undefined}
+              // The lines of a saved quote stay with its request.
+              disabled={!!quote}
+              onChange={changeRequest}
+            />
+          </DocField>
+          <DocField label={t('procurement.supplier')} required error={requiredError(missing.supplier)}>
+            <RemoteSelect
+              queryKey={['parties', 'pick', 'SUPPLIER']}
+              fetchOptions={(q, signal) =>
+                partiesControllerList(
+                  { partyType: 'SUPPLIER', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) },
+                  { signal },
+                ).then((r) => r.data.items.map((p) => ({ value: p.id, label: codeAndName(p) ?? p.id })))
+              }
+              selected={
+                quote?.supplier ? { value: quote.supplier.id, label: codeAndName(quote.supplier) ?? quote.supplier.id } : undefined
+              }
+              status={requiredError(missing.supplier) ? 'error' : undefined}
+              value={supplierId}
+              onChange={setSupplierId}
+            />
+          </DocField>
+          <DocField label={t('procurement.quoteDate')} required>
+            <DatePicker value={quoteDate} onChange={(d) => d && setQuoteDate(d)} />
+          </DocField>
+          <DocField label={t('procurement.validUntil')}>
+            <DatePicker value={validUntil} onChange={setValidUntil} allowClear />
+          </DocField>
+          <DocField label={t('procurement.notes')} wide>
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} />
+          </DocField>
+        </DocFields>
 
-      <Table
-        rowKey="requestLineId"
-        size="small"
-        pagination={false}
-        loading={!!requestId && request.isLoading}
-        dataSource={lines ?? []}
-        locale={{ emptyText: t('procurement.noLinesLeft') }}
-        columns={[
-          { title: '#', dataIndex: 'lineNo', width: 50 },
-          { title: t('procurement.item'), dataIndex: 'label' },
-          {
-            title: t('procurement.remaining'),
-            width: 120,
-            align: 'right' as const,
-            render: (_: unknown, l: DraftLine) => qtyCell(remainingOf(l.requestLineId)),
-          },
-          {
-            title: t('procurement.qty'),
-            width: 140,
-            render: (_: unknown, l: DraftLine) => (
-              <InputNumber<string>
-                stringMode
-                min="0"
-                size="small"
-                aria-label={t('procurement.qty')}
-                value={l.qty}
-                style={{ width: '100%' }}
-                onChange={(v) =>
-                  setLines((ls) =>
-                    ls?.map((x) => (x.requestLineId === l.requestLineId ? { ...x, qty: v ?? '' } : x)) ?? null,
-                  )
-                }
-              />
-            ),
-          },
-          {
-            title: '',
-            width: 60,
-            render: (_: unknown, l: DraftLine) => (
-              <Button
-                size="small"
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                aria-label={t('common.delete')}
-                onClick={() => setLines((ls) => ls?.filter((x) => x.requestLineId !== l.requestLineId) ?? null)}
-              />
-            ),
-          },
-        ]}
-      />
+        <Table
+          rowKey="requestLineId"
+          size="small"
+          pagination={false}
+          loading={!!requestId && request.isLoading}
+          dataSource={lines ?? []}
+          locale={{ emptyText: t('procurement.noLinesLeft') }}
+          columns={[
+            { title: '#', dataIndex: 'lineNo', width: 50 },
+            { title: t('procurement.item'), dataIndex: 'label' },
+            {
+              title: t('procurement.remaining'),
+              width: 120,
+              align: 'right' as const,
+              render: (_: unknown, l: DraftLine) => qtyCell(remainingOf(l.requestLineId)),
+            },
+            {
+              title: t('procurement.qty'),
+              width: 140,
+              render: (_: unknown, l: DraftLine) => (
+                <InputNumber<string>
+                  stringMode
+                  min="0"
+                  size="small"
+                  aria-label={t('procurement.qty')}
+                  value={l.qty}
+                  style={{ width: '100%' }}
+                  onChange={(v) =>
+                    setLines((ls) =>
+                      ls?.map((x) => (x.requestLineId === l.requestLineId ? { ...x, qty: v ?? '' } : x)) ?? null,
+                    )
+                  }
+                />
+              ),
+            },
+            {
+              title: '',
+              width: 60,
+              render: (_: unknown, l: DraftLine) => (
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  aria-label={t('common.delete')}
+                  onClick={() => setLines((ls) => ls?.filter((x) => x.requestLineId !== l.requestLineId) ?? null)}
+                />
+              ),
+            },
+          ]}
+        />
+      </EnterNav>
     </DocLayout>
   );
 }
@@ -759,96 +762,98 @@ function QuoteView({
         </>
       }
     >
-      <DocFields>
-        <DocField label={t('common.status')}>
-          <DocValue>
-            <QuoteStatus status={quote.status} />
-          </DocValue>
-        </DocField>
-        <DocField label={t('procurement.request')}>
-          <DocValue>{quote.request.requestNo ?? `#${quote.request.id}`}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.supplier')}>
-          <DocValue>{displayName(quote.supplier) ?? '—'}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.quoteDate')}>
-          <DocValue>{dayjs(quote.quoteDate).format('YYYY-MM-DD')}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.validUntil')}>
-          <DocValue>{quote.validUntil ? dayjs(quote.validUntil).format('YYYY-MM-DD') : '—'}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.supplierRef')}>
-          <DocValue>{quote.supplierRef ?? '—'}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.net')}>
-          <DocValue>{amountCell(quote.netTotal)}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.tax')}>
-          <DocValue>{amountCell(quote.taxTotal)}</DocValue>
-        </DocField>
-        <DocField label={t('purchases.grandTotal')}>
-          <DocValue>{amountCell(quote.grandTotal)}</DocValue>
-        </DocField>
-        {quote.notes && (
-          <DocField label={t('procurement.notes')} wide>
-            <DocValue>{quote.notes}</DocValue>
+      <EnterNav>
+        <DocFields>
+          <DocField label={t('common.status')}>
+            <DocValue>
+              <QuoteStatus status={quote.status} />
+            </DocValue>
           </DocField>
-        )}
-        {quote.status === 'CANCELLED' && quote.cancelReason && (
-          <DocField label={t('procurement.reason')} wide>
-            <DocValue>{t('procurement.cancelledReason', { reason: quote.cancelReason })}</DocValue>
+          <DocField label={t('procurement.request')}>
+            <DocValue>{quote.request.requestNo ?? `#${quote.request.id}`}</DocValue>
           </DocField>
-        )}
-      </DocFields>
-      <Typography.Text type="secondary">
-        {quote.pricesIncludeTax ? t('procurement.pricesIncludeTax') : t('procurement.pricesExcludeTax')}
-      </Typography.Text>
+          <DocField label={t('procurement.supplier')}>
+            <DocValue>{displayName(quote.supplier) ?? '—'}</DocValue>
+          </DocField>
+          <DocField label={t('procurement.quoteDate')}>
+            <DocValue>{dayjs(quote.quoteDate).format('YYYY-MM-DD')}</DocValue>
+          </DocField>
+          <DocField label={t('procurement.validUntil')}>
+            <DocValue>{quote.validUntil ? dayjs(quote.validUntil).format('YYYY-MM-DD') : '—'}</DocValue>
+          </DocField>
+          <DocField label={t('procurement.supplierRef')}>
+            <DocValue>{quote.supplierRef ?? '—'}</DocValue>
+          </DocField>
+          <DocField label={t('procurement.net')}>
+            <DocValue>{amountCell(quote.netTotal)}</DocValue>
+          </DocField>
+          <DocField label={t('procurement.tax')}>
+            <DocValue>{amountCell(quote.taxTotal)}</DocValue>
+          </DocField>
+          <DocField label={t('purchases.grandTotal')}>
+            <DocValue>{amountCell(quote.grandTotal)}</DocValue>
+          </DocField>
+          {quote.notes && (
+            <DocField label={t('procurement.notes')} wide>
+              <DocValue>{quote.notes}</DocValue>
+            </DocField>
+          )}
+          {quote.status === 'CANCELLED' && quote.cancelReason && (
+            <DocField label={t('procurement.reason')} wide>
+              <DocValue>{t('procurement.cancelledReason', { reason: quote.cancelReason })}</DocValue>
+            </DocField>
+          )}
+        </DocFields>
+        <Typography.Text type="secondary">
+          {quote.pricesIncludeTax ? t('procurement.pricesIncludeTax') : t('procurement.pricesExcludeTax')}
+        </Typography.Text>
 
-      <Table
-        rowKey="id"
-        size="small"
-        pagination={false}
-        dataSource={quote.lines}
-        columns={[
-          { title: '#', dataIndex: 'lineNo', width: 50 },
-          { title: t('procurement.item'), render: (_: unknown, l: PurchaseQuoteLineViewDto) => codeAndName(l.item) ?? l.itemId },
-          { title: t('procurement.qty'), dataIndex: 'qty', width: 100, align: 'right' as const, render: qtyCell },
-          { title: t('procurement.unitPrice'), dataIndex: 'unitPrice', width: 110, align: 'right' as const, render: unitCostCell },
-          { title: t('procurement.discountPct'), dataIndex: 'discountPct', width: 90, align: 'right' as const },
-          { title: t('procurement.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, render: amountCell },
-          { title: t('procurement.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
-          { title: t('procurement.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
-        ]}
-      />
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={quote.lines}
+          columns={[
+            { title: '#', dataIndex: 'lineNo', width: 50 },
+            { title: t('procurement.item'), render: (_: unknown, l: PurchaseQuoteLineViewDto) => codeAndName(l.item) ?? l.itemId },
+            { title: t('procurement.qty'), dataIndex: 'qty', width: 100, align: 'right' as const, render: qtyCell },
+            { title: t('procurement.unitPrice'), dataIndex: 'unitPrice', width: 110, align: 'right' as const, render: unitCostCell },
+            { title: t('procurement.discountPct'), dataIndex: 'discountPct', width: 90, align: 'right' as const },
+            { title: t('procurement.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, render: amountCell },
+            { title: t('procurement.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
+            { title: t('procurement.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
+          ]}
+        />
 
-      <Modal
-        open={cancelOpen}
-        title={t('procurement.cancelTitle')}
-        okText={t('procurement.cancel')}
-        okButtonProps={{ danger: true, loading: busy }}
-        cancelText={t('common.close')}
-        onOk={() => void confirmCancel()}
-        onCancel={() => {
-          setCancelOpen(false);
-          setReasonTried(false);
-        }}
-      >
-        <Form layout="vertical">
-          <Form.Item
-            label={t('procurement.reason')}
-            required
-            validateStatus={reasonTried && !reason.trim() ? 'error' : undefined}
-            help={reasonTried && !reason.trim() ? t('procurement.reasonRequired') : undefined}
-          >
-            <Input.TextArea
-              value={reason}
-              maxLength={500}
-              autoSize={{ minRows: 2, maxRows: 5 }}
-              onChange={(e) => setReason(e.target.value)}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
+        <Modal
+          open={cancelOpen}
+          title={t('procurement.cancelTitle')}
+          okText={t('procurement.cancel')}
+          okButtonProps={{ danger: true, loading: busy }}
+          cancelText={t('common.close')}
+          onOk={() => void confirmCancel()}
+          onCancel={() => {
+            setCancelOpen(false);
+            setReasonTried(false);
+          }}
+        >
+          <Form layout="vertical">
+            <Form.Item
+              label={t('procurement.reason')}
+              required
+              validateStatus={reasonTried && !reason.trim() ? 'error' : undefined}
+              help={reasonTried && !reason.trim() ? t('procurement.reasonRequired') : undefined}
+            >
+              <Input.TextArea
+                value={reason}
+                maxLength={500}
+                autoSize={{ minRows: 2, maxRows: 5 }}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            </Form.Item>
+          </Form>
+        </Modal>
+      </EnterNav>
     </DocLayout>
   );
 }
@@ -925,64 +930,66 @@ function QuoteReceive({
         </Button>
       }
     >
-      {tried && missing.size > 0 && (
-        <Alert type="warning" showIcon message={t('procurement.quotesUi.missingPrices')} />
-      )}
-      <DocFields>
-        <DocField label={t('procurement.supplierRef')}>
-          <Input value={supplierRef} maxLength={100} onChange={(e) => setSupplierRef(e.target.value)} />
-        </DocField>
-        <DocField label={t('procurement.validUntil')}>
-          <DatePicker value={validUntil} onChange={setValidUntil} allowClear />
-        </DocField>
-      </DocFields>
-      <Typography.Text type="secondary">
-        {quote.pricesIncludeTax ? t('procurement.pricesIncludeTax') : t('procurement.pricesExcludeTax')}
-      </Typography.Text>
+      <EnterNav>
+        {tried && missing.size > 0 && (
+          <Alert type="warning" showIcon message={t('procurement.quotesUi.missingPrices')} />
+        )}
+        <DocFields>
+          <DocField label={t('procurement.supplierRef')}>
+            <Input value={supplierRef} maxLength={100} onChange={(e) => setSupplierRef(e.target.value)} />
+          </DocField>
+          <DocField label={t('procurement.validUntil')}>
+            <DatePicker value={validUntil} onChange={setValidUntil} allowClear />
+          </DocField>
+        </DocFields>
+        <Typography.Text type="secondary">
+          {quote.pricesIncludeTax ? t('procurement.pricesIncludeTax') : t('procurement.pricesExcludeTax')}
+        </Typography.Text>
 
-      <Table
-        rowKey="id"
-        size="small"
-        pagination={false}
-        dataSource={quote.lines}
-        columns={[
-          { title: '#', dataIndex: 'lineNo', width: 50 },
-          { title: t('procurement.item'), render: (_: unknown, l: PurchaseQuoteLineViewDto) => codeAndName(l.item) ?? l.itemId },
-          { title: t('procurement.qty'), dataIndex: 'qty', width: 100, align: 'right' as const, render: qtyCell },
-          {
-            title: t('procurement.unitPrice'),
-            width: 150,
-            render: (_: unknown, l: PurchaseQuoteLineViewDto) => (
-              <InputNumber<string>
-                stringMode
-                min="0"
-                size="small"
-                aria-label={t('procurement.quotesUi.priceFor', { item: l.item.code, line: l.lineNo })}
-                status={tried && missing.has(l.id) ? 'error' : undefined}
-                value={priceOf(l.id).unitPrice}
-                style={{ width: '100%' }}
-                onChange={(v) => setPrice(l.id, { unitPrice: v ?? '' })}
-              />
-            ),
-          },
-          {
-            title: t('procurement.discountPct'),
-            width: 110,
-            render: (_: unknown, l: PurchaseQuoteLineViewDto) => (
-              <InputNumber<string>
-                stringMode
-                min="0"
-                max="100"
-                size="small"
-                aria-label={t('procurement.quotesUi.discountFor', { item: l.item.code, line: l.lineNo })}
-                value={priceOf(l.id).discountPct}
-                style={{ width: '100%' }}
-                onChange={(v) => setPrice(l.id, { discountPct: v ?? '' })}
-              />
-            ),
-          },
-        ]}
-      />
+        <Table
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={quote.lines}
+          columns={[
+            { title: '#', dataIndex: 'lineNo', width: 50 },
+            { title: t('procurement.item'), render: (_: unknown, l: PurchaseQuoteLineViewDto) => codeAndName(l.item) ?? l.itemId },
+            { title: t('procurement.qty'), dataIndex: 'qty', width: 100, align: 'right' as const, render: qtyCell },
+            {
+              title: t('procurement.unitPrice'),
+              width: 150,
+              render: (_: unknown, l: PurchaseQuoteLineViewDto) => (
+                <InputNumber<string>
+                  stringMode
+                  min="0"
+                  size="small"
+                  aria-label={t('procurement.quotesUi.priceFor', { item: l.item.code, line: l.lineNo })}
+                  status={tried && missing.has(l.id) ? 'error' : undefined}
+                  value={priceOf(l.id).unitPrice}
+                  style={{ width: '100%' }}
+                  onChange={(v) => setPrice(l.id, { unitPrice: v ?? '' })}
+                />
+              ),
+            },
+            {
+              title: t('procurement.discountPct'),
+              width: 110,
+              render: (_: unknown, l: PurchaseQuoteLineViewDto) => (
+                <InputNumber<string>
+                  stringMode
+                  min="0"
+                  max="100"
+                  size="small"
+                  aria-label={t('procurement.quotesUi.discountFor', { item: l.item.code, line: l.lineNo })}
+                  value={priceOf(l.id).discountPct}
+                  style={{ width: '100%' }}
+                  onChange={(v) => setPrice(l.id, { discountPct: v ?? '' })}
+                />
+              ),
+            },
+          ]}
+        />
+      </EnterNav>
     </DocLayout>
   );
 }
