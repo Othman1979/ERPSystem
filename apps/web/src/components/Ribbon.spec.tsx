@@ -85,6 +85,7 @@ describe('tabs follow the allowed groups', () => {
     expect(tabLabels()).toEqual(
       [
         'nav.home',
+        'nav.groupPayroll',
         'nav.groupAccounting',
         'nav.groupTreasury',
         'nav.groupSales',

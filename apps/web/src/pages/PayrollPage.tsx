@@ -106,7 +106,7 @@ export function buildEmployeePayload(values: EmployeeForm) {
   return {
     ...card,
     hireDate: dateOnly(card.hireDate)!,
-    leaveDate: card.leaveDate === null ? null : dateOnly(card.leaveDate),
+    leaveDate: dateOnly(card.leaveDate),
     sscCovered: card.sscCovered ?? true,
     sscHazardous: card.sscHazardous ?? false,
   };

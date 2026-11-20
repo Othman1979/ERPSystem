@@ -304,7 +304,7 @@ export class PayrollService {
       if (!element) throw DomainError.notFound('PayElement', id.toString());
       if ((dto.kind !== undefined && dto.kind !== element.kind) || (dto.amountType !== undefined && dto.amountType !== element.amountType)) {
         const input = await tx.payrollInput.findFirst({ where: { payElementId: id }, select: { id: true } });
-        const recurring = await tx.payrollRecurringElement.findFirst({ where: { payElementId: id }, select: { id: true } });
+        const recurring = await tx.employeeRecurringElement.findFirst({ where: { payElementId: id }, select: { id: true } });
         const lineItem = await tx.payrollLineItem.findFirst({ where: { payElementId: id }, select: { id: true } });
         if (input || recurring || lineItem) {
           throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Used pay element type cannot be changed');
