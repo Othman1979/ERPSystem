@@ -420,7 +420,7 @@ export class AuthService {
         // same row TenantGuard loads permissions from, so the web shows exactly
         // what the guards enforce in this tenant.
         // A tenant role (ADR-038) replaces the system role's permissions, as in TenantGuard.
-        current.customRoleId
+        current.customRoleId && current.role.code !== 'OWNER'
           ? db.tenantRolePermission.findMany({
               where: { tenantRoleId: current.customRoleId },
               select: { permissionCode: true },
