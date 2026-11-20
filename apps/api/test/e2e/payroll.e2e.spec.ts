@@ -900,4 +900,44 @@ describe('Payroll PY1–PY3', () => {
         ['5201', branches[0]!.id, costCenterId, '0.000', '3.000'],
       ]);
   });
+
+  it('rejects impossible calendar dates in every payroll date DTO', async () => {
+    const invalidDate = '2026-11-31';
+    const missingId = '999999999999999999';
+    const responses = [
+      await act(tokenA, 'payroll/employees', {
+        code: `BAD-HIRE-${RUN}`, nameAr: 'Invalid hire date', hireDate: invalidDate, payMethod: 'CASH',
+      }, companyAId),
+      await act(tokenA, 'payroll/employees', {
+        code: `BAD-LEAVE-${RUN}`, nameAr: 'Invalid leave date', hireDate: '2026-11-01',
+        leaveDate: invalidDate, payMethod: 'CASH',
+      }, companyAId),
+      await h.api().patch(`/api/v1/payroll/employees/${missingId}`).set(h.auth(tokenA)).set('X-Company-Id', companyAId)
+        .send({ hireDate: invalidDate }),
+      await h.api().patch(`/api/v1/payroll/employees/${missingId}`).set(h.auth(tokenA)).set('X-Company-Id', companyAId)
+        .send({ leaveDate: invalidDate }),
+      await h.api().post(`/api/v1/payroll/employees/${missingId}/salaries`).set(h.auth(tokenA)).set('X-Company-Id', companyAId)
+        .send({ effectiveFrom: invalidDate, basicSalary: '1.000' }),
+      await act(tokenA, `payroll/employees/${missingId}/recurring-elements`, {
+        payElementId: '1', amount: '1.000', validFrom: invalidDate,
+      }, companyAId),
+      await act(tokenA, `payroll/employees/${missingId}/recurring-elements`, {
+        payElementId: '1', amount: '1.000', validFrom: '2026-11-01', validTo: invalidDate,
+      }, companyAId),
+      await act(tokenA, 'payroll/settings', { effectiveFrom: invalidDate }, companyAId),
+      await act(tokenA, 'payroll/movements', {
+        employeeId: missingId, payElementId: '1', movementDate: invalidDate, amount: '1.000', description: 'Invalid date',
+      }, companyAId),
+      await get(tokenA, `payroll/employees/${missingId}/statement?from=${invalidDate}&to=2099-12-31`, companyAId),
+      await get(tokenA, `payroll/employees/${missingId}/statement?from=2000-01-01&to=${invalidDate}`, companyAId),
+      await get(tokenA, `payroll/reports/employee-statement?employeeId=${missingId}&from=${invalidDate}&to=2099-12-31`, companyAId),
+      await get(tokenA, `payroll/reports/employee-statement?employeeId=${missingId}&from=2000-01-01&to=${invalidDate}`, companyAId),
+      await act(tokenA, `payroll/movements/${missingId}/reverse`, { date: invalidDate }, companyAId),
+      await act(tokenA, `payroll/runs/${missingId}/reverse`, { date: invalidDate }, companyAId),
+      await act(tokenA, `payroll/runs/${missingId}/pay`, { bankAccountId: '1', date: invalidDate }, companyAId),
+    ];
+    expect(responses).toHaveLength(16);
+    expect(responses.map((response) => response.status)).toEqual(Array(16).fill(400));
+    expect(responses.every((response) => response.body.error.code === 'VALIDATION')).toBe(true);
+  });
 });
