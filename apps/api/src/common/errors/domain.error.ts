@@ -35,6 +35,7 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.PAYROLL_NEGATIVE_NET]: HttpStatus.CONFLICT,
   [ErrorCode.PAYROLL_RUN_EXISTS]: HttpStatus.CONFLICT,
   [ErrorCode.PAYROLL_SETTINGS_REQUIRED]: HttpStatus.CONFLICT,
+  [ErrorCode.PAYROLL_NO_EMPLOYEES]: HttpStatus.CONFLICT,
   [ErrorCode.PAYROLL_ACCOUNT_INVALID]: HttpStatus.BAD_REQUEST,
   [ErrorCode.DOCUMENT_TOO_MANY_LINES]: HttpStatus.BAD_REQUEST,
   [ErrorCode.INVOICE_DISCOUNT_INVALID]: HttpStatus.BAD_REQUEST,

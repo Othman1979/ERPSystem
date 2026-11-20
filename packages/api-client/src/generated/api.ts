@@ -9603,6 +9603,7 @@ export const ErrorCode = {
   VOUCHER_HAS_ALLOCATIONS: 'VOUCHER_HAS_ALLOCATIONS',
   PAYROLL_NEGATIVE_NET: 'PAYROLL_NEGATIVE_NET',
   PAYROLL_RUN_EXISTS: 'PAYROLL_RUN_EXISTS',
+  PAYROLL_NO_EMPLOYEES: 'PAYROLL_NO_EMPLOYEES',
   PAYROLL_SETTINGS_REQUIRED: 'PAYROLL_SETTINGS_REQUIRED',
   PAYROLL_ACCOUNT_INVALID: 'PAYROLL_ACCOUNT_INVALID',
   OPENING_INVENTORY_VIA_STOCK: 'OPENING_INVENTORY_VIA_STOCK',
@@ -26780,6 +26781,44 @@ export const payrollControllerGetRun = async (id: string, options?: Parameters<t
   {
     ...options,
     method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerDeleteRunResponse200 = {
+  data: void
+  status: 200
+}
+
+export type payrollControllerDeleteRunResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerDeleteRunResponseSuccess = (payrollControllerDeleteRunResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerDeleteRunResponseError = (payrollControllerDeleteRunResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerDeleteRunUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/runs/${id}`
+}
+
+export const payrollControllerDeleteRun = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerDeleteRunResponseSuccess> => {
+
+  return apiFetch<payrollControllerDeleteRunResponseSuccess>(getPayrollControllerDeleteRunUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
 
 
   }

@@ -292,7 +292,14 @@ describe('Phase 18 golden year closing', () => {
       200,
       'delete draft',
     )).toBeDefined();
-    await boot.db.query('DELETE FROM payroll_runs WHERE id = ?', [payrollRun.id]);
+    expect(h.ok(
+      await h.api().delete(`/api/v1/payroll/runs/${payrollRun.id}`).set(h.auth(token)),
+      200,
+      'delete payroll draft',
+    )).toEqual({ id: String(payrollRun.id), deleted: true });
+    const afterDelete = h.ok(await h.get(token, `fiscal-years/${yearIds[0]}/closing-preview`), 200, 'preview after deleting drafts');
+    expect(afterDelete.canClose).toBe(true);
+    expect(afterDelete.drafts).toEqual([]);
     await verify(0);
     await verify(1);
   });

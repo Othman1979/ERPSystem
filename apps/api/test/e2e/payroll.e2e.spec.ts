@@ -116,6 +116,9 @@ describe('Payroll PY1–PY3', () => {
       201,
       'create second company',
     ) as { id: string };
+    const noEmployees = await act(tokenA, 'payroll/runs', { period: '2031-01' }, companyAId);
+    expect(noEmployees.status).toBe(409);
+    expect(noEmployees.body.error.code).toBe('PAYROLL_NO_EMPLOYEES');
 
     const elements = h.ok(await get(tokenA, 'payroll/elements', companyAId), 200, 'pay elements') as { id: string; code: string }[];
     const elementId = Object.fromEntries(elements.map((item) => [item.code, item.id])) as Record<string, string>;
@@ -210,9 +213,14 @@ describe('Payroll PY1–PY3', () => {
     expect(companyList.some((employee) => employee.id === employeeA.id)).toBe(false);
     const foreignRun = await get(tokenB, `payroll/runs/${run.id}`);
     expect(foreignRun.status).toBe(404);
+    const foreignDelete = await h.api().delete(`/api/v1/payroll/runs/${run.id}`).set(h.auth(tokenA)).set('X-Company-Id', otherCompany.id);
+    expect(foreignDelete.status).toBe(404);
 
     const posted = await act(tokenA, `payroll/runs/${run.id}/post`, {}, companyAId);
     h.ok(posted, 201, 'post payroll run');
+    const deletePosted = await h.api().delete(`/api/v1/payroll/runs/${run.id}`).set(h.auth(tokenA)).set('X-Company-Id', companyAId);
+    expect(deletePosted.status).toBe(409);
+    expect(deletePosted.body.error.code).toBe('INVALID_STATUS_TRANSITION');
     const journalLines = (await boot.db.query(
       `SELECT a.code, CAST(SUM(l.debit) AS CHAR) AS debit, CAST(SUM(l.credit) AS CHAR) AS credit
          FROM journal_entries j
@@ -283,5 +291,15 @@ describe('Payroll PY1–PY3', () => {
       [tenantId, march.id],
     )) as { debit: string }[];
     expect(marchExpense!.debit).toBe('901.000');
+
+    const disposableRun = h.ok(await act(tokenA, 'payroll/runs', { period: '2031-04' }, companyAId), 201, 'draft disposable April') as { id: string };
+    const deletedRun = await h.api().delete(`/api/v1/payroll/runs/${disposableRun.id}`).set(h.auth(tokenA)).set('X-Company-Id', companyAId);
+    expect(deletedRun.status).toBe(200);
+    expect(deletedRun.body).toEqual({ id: disposableRun.id, deleted: true });
+    const [deleteAudit] = (await boot.db.query(
+      'SELECT action FROM audit_logs WHERE tenant_id = ? AND entity_type = ? AND entity_id = ?',
+      [tenantId, 'payroll_run', disposableRun.id],
+    )) as { action: string }[];
+    expect(deleteAudit?.action).toBe('payroll.run.delete');
   }, 90_000);
 });
