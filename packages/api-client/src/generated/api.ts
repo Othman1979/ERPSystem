@@ -3893,6 +3893,7 @@ export interface SalesReturnLineViewDto {
   discountPct: string;
   discountAmount: string;
   invoiceDiscountShare: string;
+  invoiceDiscountNetShare: string;
   netAmount: string;
   /** @nullable */
   taxCategoryId: string | null;
@@ -7900,6 +7901,136 @@ export interface CashBalancesDto {
   total: string;
 }
 
+export type BankStatementListItemDtoStatus = typeof BankStatementListItemDtoStatus[keyof typeof BankStatementListItemDtoStatus];
+
+
+export const BankStatementListItemDtoStatus = {
+  DRAFT: 'DRAFT',
+  RECONCILED: 'RECONCILED',
+} as const;
+
+export interface BankStatementListItemDto {
+  id: string;
+  bankAccountId: string;
+  bankName: string;
+  /** @nullable */
+  accountNoMasked: string | null;
+  startDate: string;
+  endDate: string;
+  openingBalance: string;
+  closingBalance: string;
+  status: BankStatementListItemDtoStatus;
+  /** @nullable */
+  reconciledAt: string | null;
+  lineCount: number;
+}
+
+export interface CreateBankStatementDto {
+  startDate: string;
+  endDate: string;
+  openingBalance: string;
+  closingBalance: string;
+  bankAccountId: string;
+}
+
+export interface BankBookLineDto {
+  id: string;
+  journalEntryId: string;
+  /** @nullable */
+  entryNo: string | null;
+  sourceType: string;
+  entryDate: string;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  reference: string | null;
+  /** Debit minus credit: deposits positive. */
+  amount: string;
+}
+
+export interface BankStatementLineDto {
+  id: string;
+  lineNo: number;
+  lineDate: string;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  reference: string | null;
+  deposit: string;
+  withdrawal: string;
+  matched: boolean;
+  matches: BankBookLineDto[];
+}
+
+export interface BankReconciliationSummaryDto {
+  bookBalance: string;
+  outstandingDeposits: string;
+  outstandingPayments: string;
+  adjustedBookBalance: string;
+  computedClosingBalance: string;
+  statementDifference: string;
+  difference: string;
+  unmatchedLines: number;
+}
+
+export type BankStatementDetailDtoStatus = typeof BankStatementDetailDtoStatus[keyof typeof BankStatementDetailDtoStatus];
+
+
+export const BankStatementDetailDtoStatus = {
+  DRAFT: 'DRAFT',
+  RECONCILED: 'RECONCILED',
+} as const;
+
+export interface BankStatementDetailDto {
+  id: string;
+  bankAccountId: string;
+  bankName: string;
+  /** @nullable */
+  accountNoMasked: string | null;
+  startDate: string;
+  endDate: string;
+  openingBalance: string;
+  closingBalance: string;
+  status: BankStatementDetailDtoStatus;
+  /** @nullable */
+  reconciledAt: string | null;
+  lines: BankStatementLineDto[];
+  summary: BankReconciliationSummaryDto;
+  outstandingDeposits: BankBookLineDto[];
+  outstandingPayments: BankBookLineDto[];
+}
+
+export interface BankStatementHeaderDto {
+  startDate: string;
+  endDate: string;
+  openingBalance: string;
+  closingBalance: string;
+}
+
+export interface BankStatementLineInputDto {
+  lineDate: string;
+  /** @maxLength 500 */
+  description?: string;
+  /** @maxLength 100 */
+  reference?: string;
+  deposit?: string;
+  withdrawal?: string;
+}
+
+export interface MatchBankStatementLineDto {
+  statementLineId: string;
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  journalLineIds: string[];
+}
+
+export interface BankAutoMatchResultDto {
+  matched: number;
+  statement: BankStatementDetailDto;
+}
+
 export type EInvoiceTrack = typeof EInvoiceTrack[keyof typeof EInvoiceTrack];
 
 
@@ -8944,6 +9075,15 @@ export const ErrorCode = {
   ISSUE_REQUEST_REQUIRED: 'ISSUE_REQUEST_REQUIRED',
   ISSUE_REQUEST_QTY_EXCEEDED: 'ISSUE_REQUEST_QTY_EXCEEDED',
   ISSUE_REQUEST_DEPARTMENT_MISMATCH: 'ISSUE_REQUEST_DEPARTMENT_MISMATCH',
+  BANK_STATEMENT_NOT_DRAFT: 'BANK_STATEMENT_NOT_DRAFT',
+  BANK_STATEMENT_DRAFT_EXISTS: 'BANK_STATEMENT_DRAFT_EXISTS',
+  BANK_STATEMENT_OVERLAP: 'BANK_STATEMENT_OVERLAP',
+  BANK_STATEMENT_OPENING_MISMATCH: 'BANK_STATEMENT_OPENING_MISMATCH',
+  BANK_STATEMENT_NOT_LATEST: 'BANK_STATEMENT_NOT_LATEST',
+  BANK_STATEMENT_UNMATCHED: 'BANK_STATEMENT_UNMATCHED',
+  BANK_MATCH_AMOUNT_MISMATCH: 'BANK_MATCH_AMOUNT_MISMATCH',
+  BANK_LINE_ALREADY_MATCHED: 'BANK_LINE_ALREADY_MATCHED',
+  BANK_RECONCILIATION_UNBALANCED: 'BANK_RECONCILIATION_UNBALANCED',
   INTERNAL: 'INTERNAL',
 } as const;
 
@@ -10692,6 +10832,36 @@ export type TreasuryControllerAgingPartyType = typeof TreasuryControllerAgingPar
 export const TreasuryControllerAgingPartyType = {
   CUSTOMER: 'CUSTOMER',
   SUPPLIER: 'SUPPLIER',
+} as const;
+
+export type BankReconciliationControllerListParams = {
+  bankAccountId?: string;
+};
+
+export type BankReconciliationControllerImportLinesBody = {
+  file: Blob | File;
+};
+
+export type BankReconciliationControllerReportParams = {
+  format?: BankReconciliationControllerReportFormat;
+  lang?: BankReconciliationControllerReportLang;
+};
+
+export type BankReconciliationControllerReportFormat = typeof BankReconciliationControllerReportFormat[keyof typeof BankReconciliationControllerReportFormat];
+
+
+export const BankReconciliationControllerReportFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type BankReconciliationControllerReportLang = typeof BankReconciliationControllerReportLang[keyof typeof BankReconciliationControllerReportLang];
+
+
+export const BankReconciliationControllerReportLang = {
+  ar: 'ar',
+  en: 'en',
 } as const;
 
 export type EInvoiceControllerListSubmissionsParams = {
@@ -23663,6 +23833,664 @@ export const getTreasuryControllerCashBalancesUrl = () => {
 export const treasuryControllerCashBalances = async ( options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerCashBalancesResponseSuccess> => {
 
   return apiFetch<treasuryControllerCashBalancesResponseSuccess>(getTreasuryControllerCashBalancesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type bankReconciliationControllerListResponse200 = {
+  data: BankStatementListItemDto[]
+  status: 200
+}
+
+export type bankReconciliationControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bankReconciliationControllerListResponseSuccess = (bankReconciliationControllerListResponse200) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerListResponseError = (bankReconciliationControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerListUrl = (params?: BankReconciliationControllerListParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/bank-statements?${stringifiedParams}` : `/api/v1/bank-statements`
+}
+
+export const bankReconciliationControllerList = async (params?: BankReconciliationControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerListResponseSuccess> => {
+
+  return apiFetch<bankReconciliationControllerListResponseSuccess>(getBankReconciliationControllerListUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type bankReconciliationControllerCreateResponse201 = {
+  data: BankStatementDetailDto
+  status: 201
+}
+
+export type bankReconciliationControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type bankReconciliationControllerCreateResponseSuccess = (bankReconciliationControllerCreateResponse201) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerCreateResponseError = (bankReconciliationControllerCreateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/bank-statements`
+}
+
+export const bankReconciliationControllerCreate = async (createBankStatementDto: CreateBankStatementDto, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerCreateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<bankReconciliationControllerCreateResponseSuccess>(getBankReconciliationControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createBankStatementDto)
+  }
+);}
+
+
+
+export type bankReconciliationControllerDetailResponse200 = {
+  data: BankStatementDetailDto
+  status: 200
+}
+
+export type bankReconciliationControllerDetailResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bankReconciliationControllerDetailResponseSuccess = (bankReconciliationControllerDetailResponse200) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerDetailResponseError = (bankReconciliationControllerDetailResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerDetailUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}`
+}
+
+export const bankReconciliationControllerDetail = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerDetailResponseSuccess> => {
+
+  return apiFetch<bankReconciliationControllerDetailResponseSuccess>(getBankReconciliationControllerDetailUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type bankReconciliationControllerUpdateResponse200 = {
+  data: BankStatementDetailDto
+  status: 200
+}
+
+export type bankReconciliationControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bankReconciliationControllerUpdateResponseSuccess = (bankReconciliationControllerUpdateResponse200) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerUpdateResponseError = (bankReconciliationControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}`
+}
+
+export const bankReconciliationControllerUpdate = async (id: string,
+    bankStatementHeaderDto: BankStatementHeaderDto, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerUpdateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<bankReconciliationControllerUpdateResponseSuccess>(getBankReconciliationControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(bankStatementHeaderDto)
+  }
+);}
+
+
+
+export type bankReconciliationControllerRemoveResponse200 = {
+  data: DeletedDto
+  status: 200
+}
+
+export type bankReconciliationControllerRemoveResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bankReconciliationControllerRemoveResponseSuccess = (bankReconciliationControllerRemoveResponse200) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerRemoveResponseError = (bankReconciliationControllerRemoveResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerRemoveUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}`
+}
+
+export const bankReconciliationControllerRemove = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerRemoveResponseSuccess> => {
+
+  return apiFetch<bankReconciliationControllerRemoveResponseSuccess>(getBankReconciliationControllerRemoveUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type bankReconciliationControllerAddLineResponse201 = {
+  data: BankStatementDetailDto
+  status: 201
+}
+
+export type bankReconciliationControllerAddLineResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type bankReconciliationControllerAddLineResponseSuccess = (bankReconciliationControllerAddLineResponse201) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerAddLineResponseError = (bankReconciliationControllerAddLineResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerAddLineUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}/lines`
+}
+
+export const bankReconciliationControllerAddLine = async (id: string,
+    bankStatementLineInputDto: BankStatementLineInputDto, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerAddLineResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<bankReconciliationControllerAddLineResponseSuccess>(getBankReconciliationControllerAddLineUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(bankStatementLineInputDto)
+  }
+);}
+
+
+
+export type bankReconciliationControllerRemoveLineResponse200 = {
+  data: BankStatementDetailDto
+  status: 200
+}
+
+export type bankReconciliationControllerRemoveLineResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bankReconciliationControllerRemoveLineResponseSuccess = (bankReconciliationControllerRemoveLineResponse200) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerRemoveLineResponseError = (bankReconciliationControllerRemoveLineResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerRemoveLineUrl = (id: string,
+    lineId: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}/lines/${lineId}`
+}
+
+export const bankReconciliationControllerRemoveLine = async (id: string,
+    lineId: string, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerRemoveLineResponseSuccess> => {
+
+  return apiFetch<bankReconciliationControllerRemoveLineResponseSuccess>(getBankReconciliationControllerRemoveLineUrl(id,lineId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type bankReconciliationControllerImportLinesResponse201 = {
+  data: BankStatementDetailDto
+  status: 201
+}
+
+export type bankReconciliationControllerImportLinesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type bankReconciliationControllerImportLinesResponseSuccess = (bankReconciliationControllerImportLinesResponse201) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerImportLinesResponseError = (bankReconciliationControllerImportLinesResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerImportLinesUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}/import`
+}
+
+/**
+ * @summary Adds the rows of an xlsx bank statement, all or nothing (ADR-035 §2).
+ */
+export const bankReconciliationControllerImportLines = async (id: string,
+    bankReconciliationControllerImportLinesBody: BankReconciliationControllerImportLinesBody, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerImportLinesResponseSuccess> => {
+    const formData = new FormData();
+formData.append(`file`, bankReconciliationControllerImportLinesBody.file);
+
+  return apiFetch<bankReconciliationControllerImportLinesResponseSuccess>(getBankReconciliationControllerImportLinesUrl(id),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+export type bankReconciliationControllerCandidatesResponse200 = {
+  data: BankBookLineDto[]
+  status: 200
+}
+
+export type bankReconciliationControllerCandidatesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bankReconciliationControllerCandidatesResponseSuccess = (bankReconciliationControllerCandidatesResponse200) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerCandidatesResponseError = (bankReconciliationControllerCandidatesResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerCandidatesUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}/candidates`
+}
+
+export const bankReconciliationControllerCandidates = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerCandidatesResponseSuccess> => {
+
+  return apiFetch<bankReconciliationControllerCandidatesResponseSuccess>(getBankReconciliationControllerCandidatesUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type bankReconciliationControllerMatchResponse201 = {
+  data: BankStatementDetailDto
+  status: 201
+}
+
+export type bankReconciliationControllerMatchResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type bankReconciliationControllerMatchResponseSuccess = (bankReconciliationControllerMatchResponse201) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerMatchResponseError = (bankReconciliationControllerMatchResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerMatchUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}/matches`
+}
+
+export const bankReconciliationControllerMatch = async (id: string,
+    matchBankStatementLineDto: MatchBankStatementLineDto, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerMatchResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<bankReconciliationControllerMatchResponseSuccess>(getBankReconciliationControllerMatchUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(matchBankStatementLineDto)
+  }
+);}
+
+
+
+export type bankReconciliationControllerUnmatchResponse200 = {
+  data: BankStatementDetailDto
+  status: 200
+}
+
+export type bankReconciliationControllerUnmatchResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bankReconciliationControllerUnmatchResponseSuccess = (bankReconciliationControllerUnmatchResponse200) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerUnmatchResponseError = (bankReconciliationControllerUnmatchResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerUnmatchUrl = (id: string,
+    lineId: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}/matches/${lineId}`
+}
+
+export const bankReconciliationControllerUnmatch = async (id: string,
+    lineId: string, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerUnmatchResponseSuccess> => {
+
+  return apiFetch<bankReconciliationControllerUnmatchResponseSuccess>(getBankReconciliationControllerUnmatchUrl(id,lineId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type bankReconciliationControllerAutoMatchResponse201 = {
+  data: BankAutoMatchResultDto
+  status: 201
+}
+
+export type bankReconciliationControllerAutoMatchResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type bankReconciliationControllerAutoMatchResponseSuccess = (bankReconciliationControllerAutoMatchResponse201) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerAutoMatchResponseError = (bankReconciliationControllerAutoMatchResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerAutoMatchUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}/auto-match`
+}
+
+export const bankReconciliationControllerAutoMatch = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerAutoMatchResponseSuccess> => {
+
+  return apiFetch<bankReconciliationControllerAutoMatchResponseSuccess>(getBankReconciliationControllerAutoMatchUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type bankReconciliationControllerReconcileResponse201 = {
+  data: BankStatementDetailDto
+  status: 201
+}
+
+export type bankReconciliationControllerReconcileResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type bankReconciliationControllerReconcileResponseSuccess = (bankReconciliationControllerReconcileResponse201) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerReconcileResponseError = (bankReconciliationControllerReconcileResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerReconcileUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}/reconcile`
+}
+
+export const bankReconciliationControllerReconcile = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerReconcileResponseSuccess> => {
+
+  return apiFetch<bankReconciliationControllerReconcileResponseSuccess>(getBankReconciliationControllerReconcileUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type bankReconciliationControllerReopenResponse201 = {
+  data: BankStatementDetailDto
+  status: 201
+}
+
+export type bankReconciliationControllerReopenResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type bankReconciliationControllerReopenResponseSuccess = (bankReconciliationControllerReopenResponse201) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerReopenResponseError = (bankReconciliationControllerReopenResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerReopenUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/bank-statements/${id}/reopen`
+}
+
+export const bankReconciliationControllerReopen = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerReopenResponseSuccess> => {
+
+  return apiFetch<bankReconciliationControllerReopenResponseSuccess>(getBankReconciliationControllerReopenUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type bankReconciliationControllerReportResponse200 = {
+  data: BankStatementDetailDto
+  status: 200
+}
+
+export type bankReconciliationControllerReportResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type bankReconciliationControllerReportResponseSuccess = (bankReconciliationControllerReportResponse200) & {
+  headers: Headers;
+};
+export type bankReconciliationControllerReportResponseError = (bankReconciliationControllerReportResponseDefault) & {
+  headers: Headers;
+};
+
+export const getBankReconciliationControllerReportUrl = (id: string,
+    params?: BankReconciliationControllerReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/bank-statements/${id}/report?${stringifiedParams}` : `/api/v1/bank-statements/${id}/report`
+}
+
+/**
+ * @summary The reconciliation report: JSON, or a PDF or xlsx file (ADR-035 §9).
+ */
+export const bankReconciliationControllerReport = async (id: string,
+    params?: BankReconciliationControllerReportParams, options?: Parameters<typeof apiFetch>[1]): Promise<bankReconciliationControllerReportResponseSuccess> => {
+
+  return apiFetch<bankReconciliationControllerReportResponseSuccess>(getBankReconciliationControllerReportUrl(id,params),
   {
     ...options,
     method: 'GET'

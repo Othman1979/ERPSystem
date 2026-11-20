@@ -91,6 +91,10 @@ export const TENANT_MODELS = [
   'ProductionVoucherLine',
   // Phase 17 (ADR-032 §8): the stock components of a recipe sale.
   'SalesInvoiceLineComponent',
+  // Phase 20 (ADR-035): bank statements and their matches.
+  'BankStatement',
+  'BankStatementLine',
+  'BankStatementMatch',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);

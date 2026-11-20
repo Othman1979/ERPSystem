@@ -336,6 +336,9 @@ model Tenant {
   paymentMethods       PaymentMethod[]
   fiscalYears          FiscalYear[]
   fiscalYearClosings   FiscalYearClosing[]
+  bankStatements       BankStatement[]
+  bankStatementLines   BankStatementLine[]
+  bankStatementMatches BankStatementMatch[]
   accounts             Account[]
   documentSequences    DocumentSequence[]
   journalEntries       JournalEntry[]
@@ -461,6 +464,7 @@ model Company {
   branches          Branch[]
   fiscalYears       FiscalYear[]
   fiscalYearClosings FiscalYearClosing[]
+  bankStatements     BankStatement[]
   accounts          Account[]
   accountMappings   AccountMapping[]
   documentSequences DocumentSequence[]
@@ -1016,6 +1020,7 @@ model JournalLine {
   entry   JournalEntry @relation(fields: [tenantId, journalEntryId], references: [tenantId, id], onDelete: Cascade)
   account Account      @relation(fields: [tenantId, accountId], references: [tenantId, id])
   tenant  Tenant       @relation(fields: [tenantId], references: [id])
+  bankStatementMatch BankStatementMatch?
 
   @@unique([tenantId, id])
   @@unique([tenantId, journalEntryId, lineNo])
@@ -1631,8 +1636,88 @@ model BankAccount {
   company Company @relation(fields: [tenantId, companyId], references: [tenantId, id])
   account Account @relation(fields: [tenantId, companyId, accountId], references: [tenantId, companyId, id])
 
+  statements BankStatement[]
+
   @@unique([tenantId, id])
   @@map("bank_accounts")
+}
+
+/// ADR-035: a bank statement of one bank account, reconciled against the posted
+/// journal lines of the account's ledger account. RECONCILED statements are read-only.
+model BankStatement {
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId            BigInt    @map("tenant_id") @db.UnsignedBigInt
+  companyId           BigInt    @map("company_id") @db.UnsignedBigInt
+  bankAccountId       BigInt    @map("bank_account_id") @db.UnsignedBigInt
+  startDate           DateTime  @map("start_date") @db.Date
+  endDate             DateTime  @map("end_date") @db.Date
+  openingBalance      Decimal   @map("opening_balance") @db.Decimal(18, 3)
+  closingBalance      Decimal   @map("closing_balance") @db.Decimal(18, 3)
+  /// DRAFT | RECONCILED
+  status              String    @default("DRAFT") @db.VarChar(20)
+  bookBalance         Decimal?  @map("book_balance") @db.Decimal(18, 3)
+  outstandingDeposits Decimal?  @map("outstanding_deposits") @db.Decimal(18, 3)
+  outstandingPayments Decimal?  @map("outstanding_payments") @db.Decimal(18, 3)
+  reconciledBy        BigInt?   @map("reconciled_by") @db.UnsignedBigInt
+  reconciledAt        DateTime? @map("reconciled_at") @db.DateTime(3)
+  createdBy           BigInt?   @map("created_by") @db.UnsignedBigInt
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company     Company              @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  bankAccount BankAccount          @relation(fields: [tenantId, bankAccountId], references: [tenantId, id])
+  lines       BankStatementLine[]
+  matches     BankStatementMatch[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, bankAccountId, endDate])
+  @@map("bank_statements")
+}
+
+/// ADR-035 §2: one statement line, a deposit or a withdrawal (exactly one is above zero).
+model BankStatementLine {
+  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId    BigInt   @map("tenant_id") @db.UnsignedBigInt
+  statementId BigInt   @map("statement_id") @db.UnsignedBigInt
+  lineNo      Int      @map("line_no")
+  lineDate    DateTime @map("line_date") @db.Date
+  description String?  @db.VarChar(500)
+  reference   String?  @db.VarChar(100)
+  deposit     Decimal  @default(0) @db.Decimal(18, 3)
+  withdrawal  Decimal  @default(0) @db.Decimal(18, 3)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant    Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  statement BankStatement        @relation(fields: [tenantId, statementId], references: [tenantId, id], onDelete: Cascade)
+  matches   BankStatementMatch[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, statementId, lineNo])
+  @@map("bank_statement_lines")
+}
+
+/// ADR-035 §3: a posted journal line cleared by a statement line. A journal line
+/// is matched at most once across all statements (unique key).
+model BankStatementMatch {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt   @map("tenant_id") @db.UnsignedBigInt
+  statementId     BigInt   @map("statement_id") @db.UnsignedBigInt
+  statementLineId BigInt   @map("statement_line_id") @db.UnsignedBigInt
+  journalLineId   BigInt   @map("journal_line_id") @db.UnsignedBigInt
+  createdBy       BigInt?  @map("created_by") @db.UnsignedBigInt
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  statement     BankStatement     @relation(fields: [tenantId, statementId], references: [tenantId, id], onDelete: Cascade)
+  statementLine BankStatementLine @relation(fields: [tenantId, statementLineId], references: [tenantId, id], onDelete: Cascade)
+  journalLine   JournalLine       @relation(fields: [tenantId, journalLineId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, journalLineId])
+  @@index([tenantId, statementLineId])
+  @@index([tenantId, statementId])
+  @@map("bank_statement_matches")
 }
 
 model SalesInvoice {
