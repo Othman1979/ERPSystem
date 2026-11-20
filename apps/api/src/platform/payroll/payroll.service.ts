@@ -905,8 +905,14 @@ export class PayrollService {
           .minus(run.incomeTaxTotal)
           .minus(recurringDeductionCredits),
       );
-      if (payrollPayable.lt(0)) throw new DomainError(ErrorCode.PAYROLL_NEGATIVE_NET, 'Payroll payable cannot be negative');
-      add(accountId('PAYROLL_PAYABLE'), payrollPayable, 'credit', null, null, 'Net salaries payable');
+      add(
+        accountId('PAYROLL_PAYABLE'),
+        payrollPayable.abs(),
+        payrollPayable.lt(0) ? 'debit' : 'credit',
+        null,
+        null,
+        'Net salaries payable',
+      );
       const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, run.runDate);
       const runNo = await allocateDocumentNo(tx, tenantId, companyId, 'PAYROLL_RUN', run.runDate);
       const entry = await this.posting.postEntry(tx, {

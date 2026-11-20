@@ -416,6 +416,71 @@ describe('Payroll PY1–PY3', () => {
     await expectBalanced();
   }, 90_000);
 
+  it('balances payroll payable when tax approaches or exceeds the positive net', async () => {
+    const elements = h.ok(await get(tokenA, 'payroll/elements', companyAId), 200, 'pay elements') as { id: string; code: string }[];
+    const elementId = Object.fromEntries(elements.map(({ id, code }) => [code, id])) as Record<string, string>;
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `BALANCE-${RUN}`, nameAr: 'Payroll balance', hireDate: '2031-05-01', payMethod: 'BANK', sscCovered: true,
+    }, 'payroll balance employee', companyAId);
+    await post(tokenA, `payroll/employees/${employee.id}/salaries`, {
+      effectiveFrom: '2031-05-01', basicSalary: '300.000',
+    }, 'payroll balance salary', companyAId);
+
+    for (const scenario of [
+      { period: '2031-05', movementDate: '2031-05-10', incomeTax: '30.000', net: '305.312', payable: ['0.000', '242.812'] },
+      { period: '2031-06', movementDate: '2031-06-10', incomeTax: '280.000', net: '55.312', payable: ['7.188', '0.000'] },
+    ]) {
+      await post(tokenA, 'payroll/movements', {
+        employeeId: employee.id,
+        payElementId: elementId.OVERTIME_125,
+        movementDate: scenario.movementDate,
+        quantity: '40',
+        description: '40 hours overtime',
+      }, '40-hour overtime movement', companyAId);
+      const run = h.ok(await act(tokenA, 'payroll/runs', { period: scenario.period }, companyAId), 201, 'create balancing run') as {
+        id: string;
+        lines: Array<{ id: string; employeeId: string; sscBase: string; sscEmployee: string; sscEmployer: string }>;
+      };
+      const line = run.lines.find((candidate) => candidate.employeeId === employee.id)!;
+      expect([line.sscBase, line.sscEmployee, line.sscEmployer]).toEqual(['362.5', '27.188', '51.656']);
+      h.ok(await h.api().patch(`/api/v1/payroll/runs/${run.id}/lines/${line.id}/income-tax`)
+        .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ incomeTax: scenario.incomeTax }), 200, 'set balancing tax');
+      const adjustedRun = h.ok(await get(tokenA, `payroll/runs/${run.id}`, companyAId), 200, 'read balancing run') as {
+        lines: Array<{ employeeId: string; net: string }>;
+      };
+      expect(adjustedRun.lines.find((candidate) => candidate.employeeId === employee.id)?.net).toBe(scenario.net);
+      h.ok(await act(tokenA, `payroll/runs/${run.id}/post`, {}, companyAId), 201, 'post balancing run');
+
+      const journal = (await boot.db.query(
+        `SELECT a.code, CAST(SUM(l.debit) AS CHAR) AS debit, CAST(SUM(l.credit) AS CHAR) AS credit
+           FROM journal_entries j
+           JOIN journal_lines l ON l.tenant_id = j.tenant_id AND l.journal_entry_id = j.id
+           JOIN accounts a ON a.tenant_id = l.tenant_id AND a.id = l.account_id
+          WHERE j.tenant_id = ? AND j.company_id = ? AND j.source_type = 'PAYROLL_RUN' AND j.source_id = ?
+          GROUP BY a.code ORDER BY a.code`,
+        [tenantId, companyAId, run.id],
+      )) as Array<{ code: string; debit: string; credit: string }>;
+      expect(Object.fromEntries(journal.map(({ code, debit, credit }) => [code, [debit, credit]]))).toEqual({
+        '2106': scenario.payable,
+        '2107': ['0.000', '78.844'],
+        '2108': ['0.000', scenario.incomeTax],
+        '5201': ['300.000', '0.000'],
+        '5206': ['51.656', '0.000'],
+      });
+    }
+
+    const [junePayableBalance] = (await boot.db.query(
+      `SELECT CAST(SUM(l.credit - l.debit) AS CHAR) AS balance
+         FROM journal_entries j
+         JOIN journal_lines l ON l.tenant_id = j.tenant_id AND l.journal_entry_id = j.id
+         JOIN accounts a ON a.tenant_id = l.tenant_id AND a.id = l.account_id
+        WHERE j.tenant_id = ? AND j.company_id = ? AND j.entry_date >= ? AND j.entry_date < ? AND a.code = '2106'`,
+      [tenantId, companyAId, '2031-06-01', '2031-07-01'],
+    )) as { balance: string }[];
+    expect(junePayableBalance!.balance).toBe('55.312');
+    await expectBalanced();
+  });
+
   it('refuses pay-element type changes while inputs or recurring elements reference them', async () => {
     const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
       code: `TYPE-${RUN}`, nameAr: 'Type lock employee', hireDate: '2031-01-01', payMethod: 'CASH',
