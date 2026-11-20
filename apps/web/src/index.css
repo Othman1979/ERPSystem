@@ -1240,6 +1240,21 @@ textarea:focus-visible,
 
 /* ------------------------------------------- master-data dialogs */
 
+/* FormDialog title bar in ink, like the top bar. */
+.form-dialog .ant-modal-header {
+  background: var(--c-ink-900);
+}
+.form-dialog .ant-modal-title {
+  color: var(--c-on-ink);
+}
+.form-dialog .ant-modal-close {
+  color: var(--c-on-ink-muted);
+}
+.form-dialog .ant-modal-close:hover {
+  color: var(--c-on-ink);
+  background: var(--c-on-ink-hover);
+}
+
 .form-dialog-footer {
   display: flex;
   align-items: center;
