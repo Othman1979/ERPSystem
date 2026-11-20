@@ -785,7 +785,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
   async create(dto: CreateSalesInvoiceDto) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const pricesIncludeTax = await this.support.pricesIncludeTax(db);
+    const pricesIncludeTax = await this.invoicePricesIncludeTax(db);
     assertDirectLines(dto.lines);
     const resolved = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     const calculation = this.applyInvoiceDiscount(resolved, dto, pricesIncludeTax);
@@ -864,8 +864,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     } else {
       assertDirectLines(dto.lines);
     }
-    // An order's invoice keeps the order's price basis (its draft flag), a direct one the company's.
-    const pricesIncludeTax = inv.salesOrderId !== null ? inv.pricesIncludeTax : await this.support.pricesIncludeTax(db);
+    const pricesIncludeTax = await this.invoicePricesIncludeTax(db, inv);
     const resolved = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     const calculation = this.applyInvoiceDiscount(resolved, dto, pricesIncludeTax);
     const lines = calculation.lines;
@@ -950,7 +949,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       assertBranchAllowed(invoice.branchId);
       if (invoice.status !== 'DRAFT') throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be previewed');
     }
-    const pricesIncludeTax = invoice?.pricesIncludeTax ?? await this.support.pricesIncludeTax(db);
+    const pricesIncludeTax = await this.invoicePricesIncludeTax(db, invoice ?? undefined);
     const resolved = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
     const calculation = this.applyInvoiceDiscount(resolved, dto, pricesIncludeTax);
     const lineDiscountAmount = sum(
@@ -1254,6 +1253,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         if (draft.paymentType === 'CASH' && !draft.cashAccountId) {
           throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required for cash invoices');
         }
+        const pricesIncludeTax = await this.invoicePricesIncludeTax(db, draft);
         // ADR-027 §1: while sales_order_required is on, a direct invoice does not post.
         if (settings.salesOrderRequired && draft.salesOrderId === null) {
           throw new DomainError(ErrorCode.SALES_ORDER_REQUIRED, 'Sales invoices are made from a sales order while sales_order_required is on');
@@ -1434,7 +1434,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
               unitPrice: line.unitPrice,
               discountPct: line.discountPct,
               taxRate: line.taxRate,
-              pricesIncludeTax: draft.pricesIncludeTax,
+              pricesIncludeTax,
             }).netAmount;
             return round3(beforeInvoiceDiscount.minus(line.netAmount));
           })));
@@ -1678,6 +1678,13 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       taxTotal: sum(lines.map((l) => l.amounts.taxAmount)),
       grandTotal: sum(lines.map((l) => l.amounts.lineTotal)),
     };
+  }
+
+  private async invoicePricesIncludeTax(
+    db: ReturnType<PrismaService['forTenant']>,
+    invoice?: { pricesIncludeTax: boolean },
+  ): Promise<boolean> {
+    return invoice?.pricesIncludeTax ?? this.support.pricesIncludeTax(db);
   }
 
   private applyInvoiceDiscount(

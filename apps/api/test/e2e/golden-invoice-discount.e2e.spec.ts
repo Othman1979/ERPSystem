@@ -426,6 +426,41 @@ describe('Golden scenarios D1–D3 — invoice-level discount (ADR-034)', () => 
     await verified();
   });
 
+  it('keeps preview and update on the draft price basis after the company setting changes', async () => {
+    const lines = [
+      { itemId: service, qty: '1', unitPrice: '10.000' },
+    ];
+    const body = {
+      invoiceDate: '2025-03-09',
+      customerId,
+      warehouseId,
+      paymentType: 'CREDIT' as const,
+      lines,
+    };
+    const draft = h.ok(
+      await h.api().post('/api/v1/sales-invoices').set(h.auth(token)).send(body),
+      201,
+      'create draft invoice',
+    );
+    h.ok(await h.patchCompany(token, { pricesIncludeTax: true }), 200, 'change company price basis');
+    const preview = h.ok(
+      await h.api().post('/api/v1/sales-invoices/preview').set(h.auth(token)).send({
+        invoiceId: draft.id,
+        lines,
+      }),
+      200,
+      'preview draft invoice',
+    ) as { netTotal: string; taxTotal: string; grandTotal: string };
+    const updated = h.ok(
+      await h.api().put(`/api/v1/sales-invoices/${draft.id}`).set(h.auth(token)).send(body),
+      200,
+      'update draft invoice',
+    ) as { netTotal: string; taxTotal: string; grandTotal: string };
+    expect([m3(preview.netTotal), m3(preview.taxTotal), m3(preview.grandTotal)])
+      .toEqual([m3(updated.netTotal), m3(updated.taxTotal), m3(updated.grandTotal)]);
+    h.ok(await h.patchCompany(token, { pricesIncludeTax: false }), 200, 'restore tax-exclusive prices');
+  });
+
   it('rejects a discount above the line total, a percent with an amount, and a negative discount', async () => {
     const base = {
       invoiceDate: '2025-02-06',
