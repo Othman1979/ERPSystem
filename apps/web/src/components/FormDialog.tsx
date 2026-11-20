@@ -8,7 +8,7 @@ import { EnterNav } from './EnterNav';
 
 // Inline styles so they always win over antd's own; colours are the --c-* tokens.
 const dialogStyles = {
-  content: { padding: 0, borderRadius: 4, border: '1px solid var(--c-grid-frame)' },
+  content: { padding: 0, borderRadius: 4, border: '1px solid var(--c-grid-frame)', overflow: 'hidden' as const },
   header: {
     margin: 0,
     padding: '10px 16px',
@@ -57,7 +57,11 @@ export function FormDialog({
       open={open}
       title={title}
       onCancel={onCancel}
-      width={width}
+      // Never wider than the screen; opens in the middle with a fade, not a zoom from the click.
+      width={`min(${width}px, 96vw)`}
+      centered
+      transitionName="ant-fade"
+      className="form-dialog"
       destroyOnHidden={destroyOnHidden}
       styles={dialogStyles}
       footer={
