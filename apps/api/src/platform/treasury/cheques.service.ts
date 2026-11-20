@@ -178,6 +178,34 @@ export class ChequesService {
   }
 
   /** Voucher reversal (ADR-037 §2): a cheque not yet moved is cancelled with it. */
+  /** ADR-039: a voucher edit carries its new amount and date onto a cheque still in hand or not yet cleared. */
+  async amendForVoucher(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    kind: 'receipt' | 'payment',
+    voucherId: bigint,
+    change: { amount: Decimal; date: Date },
+  ) {
+    const rows = (kind === 'receipt'
+      ? await tx.$queryRaw`SELECT id, status FROM cheques WHERE tenant_id = ${tenantId} AND receipt_id = ${voucherId} FOR UPDATE`
+      : await tx.$queryRaw`SELECT id, status FROM cheques WHERE tenant_id = ${tenantId} AND payment_id = ${voucherId} FOR UPDATE`) as {
+      id: bigint;
+      status: string;
+    }[];
+    const cheque = rows[0];
+    if (!cheque) return;
+    if (cheque.status !== 'IN_HAND' && cheque.status !== 'ISSUED') {
+      throw new DomainError(ErrorCode.CHEQUE_INVALID_STATUS, 'Undo the cheque movements before editing its voucher', {
+        status: cheque.status,
+      });
+    }
+    await tx.cheque.update({ where: { id: cheque.id }, data: { amount: change.amount } });
+    await tx.chequeEvent.updateMany({
+      where: { tenantId, chequeId: cheque.id, action: { in: ['RECEIVE', 'ISSUE'] } },
+      data: { eventDate: change.date },
+    });
+  }
+
   async cancelForVoucher(
     tx: Prisma.TransactionClient,
     tenantId: bigint,

@@ -9,6 +9,7 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { ParseIdPipe } from '../../common/pipes/parse-id.pipe.js';
 import {
+  AmendJournalEntryDto,
   CostCenterStatementQueryDto,
   CreateJournalEntryDto,
   CreateOpeningEntryDto,
@@ -79,6 +80,15 @@ export class JournalController {
   @ApiCreatedResponse({ type: JournalEntryDetailDto })
   post(@Param('id', ParseIdPipe) id: string) {
     return this.journal.postDraft(BigInt(id));
+  }
+
+  /** Direct edit of a posted manual entry while its periods are open (ADR-039). */
+  @Post('journal-entries/:id/amend')
+  @RequiresIdempotencyKey()
+  @RequirePermission(PERMISSIONS.JOURNAL_POST)
+  @ApiCreatedResponse({ type: JournalEntryDetailDto })
+  amend(@Param('id', ParseIdPipe) id: string, @Body() dto: AmendJournalEntryDto) {
+    return this.journal.amend(BigInt(id), dto);
   }
 
   @Post('journal-entries/:id/reverse')
