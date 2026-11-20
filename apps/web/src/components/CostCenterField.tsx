@@ -37,19 +37,15 @@ export function CostCenterSelect({
   rows,
   value,
   onChange,
-  enterOpens = false,
 }: {
   rows: readonly CostCenterRow[];
   value: string | undefined;
   onChange: (id: string | undefined) => void;
-  /** Header fields: Enter on an empty field opens the list. */
-  enterOpens?: boolean;
 }) {
   const { t } = useTranslation();
   return (
     <GridSelect
       aria-label={t('costCenters.documentField')}
-      enterOpens={enterOpens}
       allowClear
       options={costCenterOptions(rows, [value])}
       value={value}

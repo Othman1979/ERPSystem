@@ -276,6 +276,9 @@ export const antdTheme: ThemeConfig = {
     // Shape and type
     borderRadius: 4,
     borderRadiusSM: 2,
+    // Snappier dialogs, lists and panels: open and close in under 0.2 s.
+    motionDurationMid: '0.12s',
+    motionDurationSlow: '0.18s',
     fontFamily: FONT_FAMILY,
     fontFamilyCode: MONO_FAMILY,
     boxShadow: cssVariables['--shadow-float'],

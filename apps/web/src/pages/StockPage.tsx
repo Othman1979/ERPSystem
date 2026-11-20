@@ -4,7 +4,6 @@ import {
   Button,
   Card,
   Checkbox,
-  DatePicker,
   Form,
   Input,
   Modal,
@@ -16,6 +15,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
+import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -278,7 +278,6 @@ function AdjustmentsTab() {
                 </Form.Item>
                 <Form.Item name="adjustmentType" label={t('stock.type')} rules={[{ required: true }]}>
                   <GridSelect
-                    enterOpens
                     options={['OPENING', 'IN', 'OUT'].map((v) => ({
                       value: v,
                       label: t(`stock.types.${v}`),
@@ -286,7 +285,7 @@ function AdjustmentsTab() {
                   />
                 </Form.Item>
                 <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]}>
-                  <GridSelect enterOpens options={whOptions} />
+                  <GridSelect options={whOptions} />
                 </Form.Item>
                 <Form.Item name="description" label={t('common.description')}>
                   <Input maxLength={500} />
@@ -551,10 +550,10 @@ function TransfersTab() {
                   <DatePicker />
                 </Form.Item>
                 <Form.Item name="fromWarehouseId" label={t('stock.from')} rules={[{ required: true }]}>
-                  <GridSelect enterOpens options={whOptions} />
+                  <GridSelect options={whOptions} />
                 </Form.Item>
                 <Form.Item name="toWarehouseId" label={t('stock.to')} rules={[{ required: true }]}>
-                  <GridSelect enterOpens options={whOptions} />
+                  <GridSelect options={whOptions} />
                 </Form.Item>
                 <Form.Item name="description" label={t('common.description')}>
                   <Input maxLength={500} />

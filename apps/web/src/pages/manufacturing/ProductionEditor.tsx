@@ -1,6 +1,7 @@
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, DatePicker, Input, InputNumber, Popconfirm, Select, Space, Table, Typography, message } from 'antd';
+import { Alert, Button, Input, InputNumber, Popconfirm, Select, Space, Table, Typography, message } from 'antd';
+import { DatePicker } from '../../components/DatePicker';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { type Dayjs } from 'dayjs';
 import Decimal from 'decimal.js';
@@ -457,7 +458,6 @@ export function ProductionEditor({
         </DocField>
         <DocField field="materialsWarehouse" label={t('manufacturing.prod.materialsWarehouse')} required error={requiredError('materialsWarehouse')}>
           <GridSelect
-            enterOpens
             disabled={!!voucher}
             status={problemOf('materialsWarehouse') ? 'error' : undefined}
             options={warehouseOptions}
@@ -467,7 +467,6 @@ export function ProductionEditor({
         </DocField>
         <DocField label={t('manufacturing.prod.outputWarehouse')}>
           <GridSelect
-            enterOpens
             disabled={!!voucher}
             options={warehouseOptions}
             value={outputValue}
@@ -480,7 +479,7 @@ export function ProductionEditor({
         {costCenters.enabled && (
           <DocField field="costCenter" label={<CostCenterLabel />} wide>
             <>
-              <CostCenterSelect enterOpens rows={costCenters.rows} value={costCenterId} onChange={setCostCenterId} />
+              <CostCenterSelect rows={costCenters.rows} value={costCenterId} onChange={setCostCenterId} />
               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
                 {t('manufacturing.prod.costCentreHelp')}
               </Typography.Text>

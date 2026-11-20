@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Checkbox, DatePicker, Form, Input, Modal, Select, Space, Table, Tag, Timeline, message } from 'antd';
+import { Button, Checkbox, Form, Input, Modal, Select, Space, Table, Tag, Timeline, message } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +15,7 @@ import {
   type ChequeDto,
   type ChequesControllerListParams,
 } from '@erp/api-client';
+import { DatePicker } from '../../components/DatePicker';
 import { ExportButtons } from '../../components/ExportButtons';
 import { FormDialog } from '../../components/FormDialog';
 import { tableLocale } from '../../components/QueryState';

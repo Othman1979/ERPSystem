@@ -1,5 +1,6 @@
 import { PrinterOutlined } from '@ant-design/icons';
-import { Button, DatePicker } from 'antd';
+import { Button } from 'antd';
+import { DatePicker } from '../../components/DatePicker';
 import type { Dayjs } from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { Num } from '../../components/Num';

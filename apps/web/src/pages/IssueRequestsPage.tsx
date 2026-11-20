@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import {
   Button,
-  DatePicker,
   Input,
   InputNumber,
   Modal,
@@ -12,6 +11,7 @@ import {
   Typography,
   message,
 } from 'antd';
+import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -560,7 +560,6 @@ function IssueRequestEditor({
         {costCenters.enabled && (
           <DocField field="costCenter" label={<CostCenterLabel />}>
             <CostCenterSelect
-              enterOpens
               rows={costCenters.rows}
               value={costCenterId}
               onChange={setCostCenterId}

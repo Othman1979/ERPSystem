@@ -1,5 +1,6 @@
 import { ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
-import { AutoComplete, Button, ConfigProvider, DatePicker, Input, InputNumber, Radio, Select } from 'antd';
+import { AutoComplete, Button, ConfigProvider, Input, InputNumber, Radio, Select } from 'antd';
+import { DatePicker } from './DatePicker';
 import {
   Children,
   cloneElement,

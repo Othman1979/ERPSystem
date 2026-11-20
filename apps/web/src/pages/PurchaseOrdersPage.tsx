@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
-import { Alert, Button, DatePicker, Input, InputNumber, Popconfirm, Select, Table, Typography, message } from 'antd';
+import { Alert, Button, Input, InputNumber, Popconfirm, Select, Table, Typography, message } from 'antd';
+import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -616,7 +617,6 @@ function OrderEditor({
           onKeyDown={enterTo(() => focusNamedField('orderDate'))}
         >
           <GridSelect
-            enterOpens
             status={requiredError(missing.warehouse) ? 'error' : undefined}
             options={warehouseOptions}
             value={warehouseId}
@@ -636,7 +636,7 @@ function OrderEditor({
         )}
         {costCenters.enabled && (
           <DocField field="costCenter" label={<CostCenterLabel />}>
-            <CostCenterSelect enterOpens rows={costCenters.rows} value={costCenterId} onChange={setCostCenterId} />
+            <CostCenterSelect rows={costCenters.rows} value={costCenterId} onChange={setCostCenterId} />
           </DocField>
         )}
         <DocField field="notes" label={t('procurement.notes')} wide>

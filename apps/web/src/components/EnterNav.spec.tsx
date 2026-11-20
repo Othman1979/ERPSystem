@@ -2,7 +2,9 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Select } from 'antd';
 import { EnterNav } from './EnterNav';
+import { isUnfinishedDateText } from './GridSelect';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -87,5 +89,35 @@ describe('EnterNav', () => {
     );
     expect(pressEnter(byLabel('notes')).defaultPrevented).toBe(false);
     expect(document.activeElement).toBe(byLabel('notes'));
+  });
+  it('moves past a closed list on Enter without opening it; ArrowDown opens it', async () => {
+    show(
+      <EnterNav>
+        <Select aria-label="pick" showSearch options={[{ value: '1', label: 'One' }]} />
+        {field('after')}
+      </EnterNav>,
+    );
+    const pick = byLabel('pick');
+    pressEnter(pick);
+    expect(document.activeElement).toBe(byLabel('after'));
+    expect(host.querySelector('.ant-select-open')).toBeNull();
+
+    act(() => pick.focus());
+    act(() => {
+      pick.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    });
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    expect(host.querySelector('.ant-select-open')).not.toBeNull();
+  });
+});
+
+describe('isUnfinishedDateText', () => {
+  it('holds half-typed and impossible days, passes empty and real ones', () => {
+    expect(isUnfinishedDateText('20/11/YYYY')).toBe(true);
+    expect(isUnfinishedDateText('31/02/2026')).toBe(true);
+    expect(isUnfinishedDateText('DD/MM/YYYY')).toBe(false);
+    expect(isUnfinishedDateText('')).toBe(false);
+    expect(isUnfinishedDateText('29/02/2028')).toBe(false);
+    expect(isUnfinishedDateText('20/11/2026')).toBe(false);
   });
 });

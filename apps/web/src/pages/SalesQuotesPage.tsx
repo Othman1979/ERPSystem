@@ -3,7 +3,6 @@ import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
-  DatePicker,
   Form,
   Input,
   Modal,
@@ -15,6 +14,7 @@ import {
   Typography,
   message,
 } from 'antd';
+import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -531,7 +531,7 @@ function QuoteEditor({
           </DocField>
           {costCenters.enabled && (
             <DocField field="costCenter" label={<CostCenterLabel />}>
-              <CostCenterSelect enterOpens rows={costCenters.rows} value={costCenterId} onChange={setCostCenterId} />
+              <CostCenterSelect rows={costCenters.rows} value={costCenterId} onChange={setCostCenterId} />
             </DocField>
           )}
           <DocField label={t('salesCycle.description')} wide>
