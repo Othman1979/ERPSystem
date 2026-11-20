@@ -1,5 +1,5 @@
 import { useEffect, type HTMLAttributes, type KeyboardEvent } from 'react';
-import { focusCellEl, isPartialDateText, isSelectDropdownOpen, openSelect } from './GridSelect';
+import { focusCellEl, isSelectDropdownOpen, isUnfinishedDateText, openSelect } from './GridSelect';
 
 /** Field roots that Enter steps through, in DOM order. */
 const FIELD_SELECTOR = [
@@ -60,9 +60,15 @@ export function focusFirstEmptyField(): void {
  * chain. Lines grids inside handle Enter themselves; the chain jumps into the
  * grid's first cell and, in a dialog, ends on its primary (Save) button.
  */
-/** A masked date still showing format letters (e.g. 20/11/YYYY) is not complete yet. */
-function isPartialDate(field: HTMLElement): boolean {
-  return isPartialDateText(field.querySelector('input')?.value ?? '');
+/**
+ * Enter stays in a date field while its date is unfinished (half typed, or no such
+ * day), and on a range's start date, where the picker moves on to the end date.
+ */
+function dateKeepsEnter(field: HTMLElement, target: HTMLElement): boolean {
+  const inputs = Array.from(field.querySelectorAll('input'));
+  if (target instanceof HTMLInputElement && inputs.length > 1 && target !== inputs[inputs.length - 1]) return true;
+  const input = target instanceof HTMLInputElement ? target : inputs[0];
+  return isUnfinishedDateText(input?.value ?? '');
 }
 
 /** Focus the field after `field` within the dialog (or the EnterNav scope). */
@@ -123,8 +129,8 @@ export function EnterNav({
     if (!field) return;
     const isDate = field.matches('.ant-picker');
     // A typed date: the picker has already taken this Enter (it commits the date); move on
-    // unless the date is half typed. Other open lists keep their Enter.
-    if (isDate ? isPartialDate(field) : isSelectDropdownOpen(field)) return;
+    // unless the date is unfinished or the range's end date comes next. Other open lists keep their Enter.
+    if (isDate ? dateKeepsEnter(field, target) : isSelectDropdownOpen(field)) return;
 
     // Always stop the browser's implicit form submit on Enter.
     e.preventDefault();

@@ -158,18 +158,27 @@ export function isSelectDropdownOpen(scope?: Element | null): boolean {
   const within = (sel: string) => scope.matches(sel) || !!scope.querySelector(sel);
   if (within(OPEN_SELECT)) return true;
   // Date panels render in a portal; count one only if this field owns the
-  // focused picker and its date is half typed — an empty (optional) date is
-  // skipped, and a complete one was already committed by the picker's Enter.
+  // focused picker and its date is unfinished (half typed or not a calendar day) —
+  // an empty (optional) date is skipped, and a valid one was already committed by
+  // the picker's Enter.
   if (!pickerOpen) return false;
   const picker = scope.matches('.ant-picker-focused')
     ? scope
     : scope.querySelector('.ant-picker-focused');
-  return isPartialDateText(picker?.querySelector('input')?.value ?? '');
+  return isUnfinishedDateText(picker?.querySelector('input')?.value ?? '');
 }
 
-/** A masked date with some digits typed and some format letters left (20/11/YYYY). */
-export function isPartialDateText(text: string): boolean {
-  return /\d/.test(text) && /[DMY]/.test(text);
+/**
+ * A masked DD/MM/YYYY date the picker will not commit: some digits typed but
+ * format letters left (20/11/YYYY), or no such calendar day (31/02/2026).
+ */
+export function isUnfinishedDateText(text: string): boolean {
+  if (!/\d/.test(text)) return false;
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text);
+  if (!m) return true;
+  const [day, month, year] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day;
 }
 
 /**
