@@ -830,7 +830,7 @@ describe('Payroll PY1–PY3', () => {
     ) as { status: string };
     expect(paid.status).toBe('PAID');
     const reversed = h.ok(
-      await act(tokenA, `payroll/runs/${draft.id}/reverse`, { date: '2033-01-21' }, company.id),
+      await act(tokenA, `payroll/runs/${draft.id}/reverse`, { date: '2033-01-31' }, company.id),
       201,
       'reverse movement-only run',
     ) as { status: string };
