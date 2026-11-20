@@ -130,7 +130,12 @@ export function EnterNav({
     const isDate = field.matches('.ant-picker');
     // A typed date: the picker has already taken this Enter (it commits the date); move on
     // unless the date is unfinished or the range's end date comes next. Other open lists keep their Enter.
-    if (isDate ? dateKeepsEnter(field, target) : isSelectDropdownOpen(field)) return;
+    if (isDate && dateKeepsEnter(field, target)) {
+      // Stay, but never let this Enter submit the form with the picker's old date.
+      e.preventDefault();
+      return;
+    }
+    if (!isDate && isSelectDropdownOpen(field)) return;
 
     // Always stop the browser's implicit form submit on Enter.
     e.preventDefault();
