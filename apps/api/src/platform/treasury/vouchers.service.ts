@@ -24,6 +24,7 @@ import type {
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
+import { ChequesService } from './cheques.service.js';
 import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
 
 type VoucherKind = 'receipt' | 'payment';
@@ -86,6 +87,7 @@ export class VouchersService implements OnModuleInit {
     private readonly costCenters: CostCentersService,
     private readonly costCenterUsage: CostCenterUsageRegistry,
     private readonly yearClosingDrafts: YearClosingDraftRegistry,
+    private readonly cheques: ChequesService,
   ) {}
 
   onModuleInit(): void {
@@ -743,6 +745,8 @@ export class VouchersService implements OnModuleInit {
           );
         }
         if (!v.journalEntryId) throw new DomainError(ErrorCode.CONFLICT, 'The voucher has no journal entry');
+        // ADR-037 §2: only a cheque still in hand (or not yet cleared) is cancelled with its voucher.
+        await this.cheques.cancelForVoucher(tx, tenantId, kind, id, new Date(dto.reversalDate), userId ?? null);
         const reversal = await this.posting.reverseEntry(tx, {
           tenantId,
           companyId,
