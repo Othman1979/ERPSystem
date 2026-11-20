@@ -62,8 +62,8 @@ async function accountBalance(code: string): Promise<string> {
   return row?.b ?? '0.000';
 }
 
-async function expectBalanced() {
-  const tb = await get(tokenA, 'reports/trial-balance?from=2031-01-01&to=2031-12-31', companyAId);
+async function expectBalanced(companyId = companyAId) {
+  const tb = await get(tokenA, 'reports/trial-balance?from=2031-01-01&to=2031-12-31', companyId);
   expect(tb.status).toBe(200);
   expect(tb.body.balanced).toBe(true);
 }
@@ -417,14 +417,27 @@ describe('Payroll PY1–PY3', () => {
   }, 90_000);
 
   it('balances payroll payable when tax approaches or exceeds the positive net', async () => {
-    const elements = h.ok(await get(tokenA, 'payroll/elements', companyAId), 200, 'pay elements') as { id: string; code: string }[];
+    const balanceCompany = h.ok(
+      await h.api().post('/api/v1/companies').set(h.auth(tokenA)).send({
+        legalNameAr: `Payroll balance ${RUN}`, legalNameEn: `Payroll balance ${RUN}`,
+      }),
+      201,
+      'create isolated payroll balance company',
+    ) as { id: string };
+    h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', balanceCompany.id).send({
+      code: '2031', startDate: '2031-01-01', endDate: '2031-12-31',
+    }), 201, 'create isolated payroll balance fiscal year');
+    const elements = h.ok(await get(tokenA, 'payroll/elements', balanceCompany.id), 200, 'isolated pay elements') as { id: string; code: string }[];
     const elementId = Object.fromEntries(elements.map(({ id, code }) => [code, id])) as Record<string, string>;
+    expect(h.ok(await get(tokenA, 'payroll/employees', balanceCompany.id), 200, 'empty isolated employee list')).toHaveLength(0);
     const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
       code: `BALANCE-${RUN}`, nameAr: 'Payroll balance', hireDate: '2031-05-01', payMethod: 'BANK', sscCovered: true,
-    }, 'payroll balance employee', companyAId);
+    }, 'payroll balance employee', balanceCompany.id);
     await post(tokenA, `payroll/employees/${employee.id}/salaries`, {
       effectiveFrom: '2031-05-01', basicSalary: '300.000',
-    }, 'payroll balance salary', companyAId);
+    }, 'payroll balance salary', balanceCompany.id);
+    const balanceEmployees = h.ok(await get(tokenA, 'payroll/employees', balanceCompany.id), 200, 'isolated employee list') as { id: string; isActive: boolean }[];
+    expect(balanceEmployees).toEqual([expect.objectContaining({ id: employee.id, isActive: true })]);
 
     for (const scenario of [
       { period: '2031-05', movementDate: '2031-05-10', incomeTax: '30.000', net: '305.312', payable: ['0.000', '242.812'] },
@@ -436,20 +449,20 @@ describe('Payroll PY1–PY3', () => {
         movementDate: scenario.movementDate,
         quantity: '40',
         description: '40 hours overtime',
-      }, '40-hour overtime movement', companyAId);
-      const run = h.ok(await act(tokenA, 'payroll/runs', { period: scenario.period }, companyAId), 201, 'create balancing run') as {
+      }, '40-hour overtime movement', balanceCompany.id);
+      const run = h.ok(await act(tokenA, 'payroll/runs', { period: scenario.period }, balanceCompany.id), 201, 'create balancing run') as {
         id: string;
         lines: Array<{ id: string; employeeId: string; sscBase: string; sscEmployee: string; sscEmployer: string }>;
       };
       const line = run.lines.find((candidate) => candidate.employeeId === employee.id)!;
       expect([line.sscBase, line.sscEmployee, line.sscEmployer]).toEqual(['362.5', '27.188', '51.656']);
       h.ok(await h.api().patch(`/api/v1/payroll/runs/${run.id}/lines/${line.id}/income-tax`)
-        .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ incomeTax: scenario.incomeTax }), 200, 'set balancing tax');
-      const adjustedRun = h.ok(await get(tokenA, `payroll/runs/${run.id}`, companyAId), 200, 'read balancing run') as {
+        .set(h.auth(tokenA)).set('X-Company-Id', balanceCompany.id).send({ incomeTax: scenario.incomeTax }), 200, 'set balancing tax');
+      const adjustedRun = h.ok(await get(tokenA, `payroll/runs/${run.id}`, balanceCompany.id), 200, 'read balancing run') as {
         lines: Array<{ employeeId: string; net: string }>;
       };
       expect(adjustedRun.lines.find((candidate) => candidate.employeeId === employee.id)?.net).toBe(scenario.net);
-      h.ok(await act(tokenA, `payroll/runs/${run.id}/post`, {}, companyAId), 201, 'post balancing run');
+      h.ok(await act(tokenA, `payroll/runs/${run.id}/post`, {}, balanceCompany.id), 201, 'post balancing run');
 
       const journal = (await boot.db.query(
         `SELECT a.code, CAST(SUM(l.debit) AS CHAR) AS debit, CAST(SUM(l.credit) AS CHAR) AS credit
@@ -458,7 +471,7 @@ describe('Payroll PY1–PY3', () => {
            JOIN accounts a ON a.tenant_id = l.tenant_id AND a.id = l.account_id
           WHERE j.tenant_id = ? AND j.company_id = ? AND j.source_type = 'PAYROLL_RUN' AND j.source_id = ?
           GROUP BY a.code ORDER BY a.code`,
-        [tenantId, companyAId, run.id],
+        [tenantId, balanceCompany.id, run.id],
       )) as Array<{ code: string; debit: string; credit: string }>;
       expect(Object.fromEntries(journal.map(({ code, debit, credit }) => [code, [debit, credit]]))).toEqual({
         '2106': scenario.payable,
@@ -475,10 +488,10 @@ describe('Payroll PY1–PY3', () => {
          JOIN journal_lines l ON l.tenant_id = j.tenant_id AND l.journal_entry_id = j.id
          JOIN accounts a ON a.tenant_id = l.tenant_id AND a.id = l.account_id
         WHERE j.tenant_id = ? AND j.company_id = ? AND j.entry_date >= ? AND j.entry_date < ? AND a.code = '2106'`,
-      [tenantId, companyAId, '2031-06-01', '2031-07-01'],
+      [tenantId, balanceCompany.id, '2031-06-01', '2031-07-01'],
     )) as { balance: string }[];
     expect(junePayableBalance!.balance).toBe('55.312');
-    await expectBalanced();
+    await expectBalanced(balanceCompany.id);
   });
 
   it('refuses pay-element type changes while inputs or recurring elements reference them', async () => {

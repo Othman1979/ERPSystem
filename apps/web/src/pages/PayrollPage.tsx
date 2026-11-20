@@ -36,6 +36,7 @@ import {
   type PayrollMovementDto,
   type CashBoxListItemDto,
   type BankAccountListItemDto,
+  type AccountDto,
 } from '@erp/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Button, DatePicker as AntDatePicker, Form, Input, Modal, Select, Space, Switch, Table, Tabs } from 'antd';
@@ -108,6 +109,17 @@ export function buildElementPayload(values: Record<string, unknown>, editing: bo
   }
   const { isActive: _isActive, ...create } = values;
   return create;
+}
+
+export function payElementAccountSelectable(
+  account: Pick<AccountDto, 'accountType' | 'isActive' | 'isPostable' | 'isControl' | 'controlType'>,
+  kind?: string,
+) {
+  const validType = kind === 'EARNING'
+    ? account.accountType === 'EXPENSE'
+    : account.accountType === 'ASSET' || account.accountType === 'LIABILITY' ||
+      account.accountType === 'EXPENSE' || account.accountType === 'REVENUE';
+  return account.isActive && account.isPostable && !account.isControl && account.controlType === null && validType;
 }
 
 export function buildPaymentSourceOptions(
@@ -291,8 +303,7 @@ function ElementsTab() {
   const [form] = Form.useForm();
   const kind = Form.useWatch('kind', form) as string | undefined;
   const accountOptions = (accounts.data ?? []).filter((account) =>
-    account.isActive && account.isPostable && !account.isControl && account.controlType === null &&
-    (kind === 'EARNING' ? account.accountType === 'EXPENSE' : account.accountType === 'ASSET' || account.accountType === 'LIABILITY'),
+    payElementAccountSelectable(account, kind),
   ).map((account) => ({ value: account.id, label: `${account.code} — ${i18n.language === 'en' ? account.nameEn ?? account.nameAr : account.nameAr}` }));
   const save = useMutation({ mutationFn: async (value: Record<string, unknown>) => {
     const payload = buildElementPayload(value, Boolean(editing));

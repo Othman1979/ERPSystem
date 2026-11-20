@@ -9,6 +9,7 @@ import {
   employeeEditDateValues,
   monthToPayrollPeriod,
   PayrollMonthPicker,
+  payElementAccountSelectable,
   payrollTabSearchParams,
   runAvailability,
 } from './PayrollPage';
@@ -45,6 +46,19 @@ describe('payroll page payloads and run actions', () => {
       .toEqual({ code: 'E1', nameAr: 'Element' });
     expect(buildElementPayload({ code: 'E1', nameAr: 'Element', isActive: false }, true))
       .toEqual({ nameAr: 'Element', isActive: false });
+  });
+
+  it('allows all non-control account types for deductions and keeps earnings expense-only', () => {
+    const account = (accountType: 'ASSET' | 'LIABILITY' | 'EXPENSE' | 'REVENUE', overrides = {}) => ({
+      accountType, isActive: true, isPostable: true, isControl: false, controlType: null, ...overrides,
+    });
+
+    for (const type of ['ASSET', 'LIABILITY', 'EXPENSE', 'REVENUE'] as const) {
+      expect(payElementAccountSelectable(account(type), 'DEDUCTION')).toBe(true);
+    }
+    expect(payElementAccountSelectable(account('EXPENSE'), 'EARNING')).toBe(true);
+    expect(payElementAccountSelectable(account('REVENUE'), 'EARNING')).toBe(false);
+    expect(payElementAccountSelectable(account('LIABILITY', { controlType: 'BANK' }), 'DEDUCTION')).toBe(false);
   });
 
   it('labels cash boxes by name and bank accounts by bank plus account number or IBAN', () => {
