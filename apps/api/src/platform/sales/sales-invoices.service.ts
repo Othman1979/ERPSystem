@@ -1463,11 +1463,11 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         if (net.gt(0)) {
           journalLines.push({ accountId: mapping.SALES, credit: net.toString() });
         }
-        if (invoiceDiscountNetTotal.gt(0)) {
-          for (const amount of discountByDimension.values()) {
-            if (amount.gt(0)) {
-              journalLines.push({ accountId: mapping.SALES_DISCOUNTS, debit: amount.toString() });
-            }
+        for (const amount of discountByDimension.values()) {
+          if (amount.gt(0)) {
+            journalLines.push({ accountId: mapping.SALES_DISCOUNTS, debit: amount.toString() });
+          } else if (amount.lt(0)) {
+            journalLines.push({ accountId: mapping.SALES_DISCOUNTS, credit: amount.abs().toString() });
           }
         }
         if (tax.gt(0)) {

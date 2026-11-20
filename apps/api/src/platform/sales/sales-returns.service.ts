@@ -582,7 +582,7 @@ export class SalesReturnsService {
           'INVENTORY',
           'INVENTORY_ADJUSTMENT',
           'CUSTOMERS_CONTROL',
-          ...(invoiceDiscountNetTotal.gt(0) ? ['SALES_DISCOUNTS' as const] : []),
+          ...(!invoiceDiscountNetTotal.isZero() ? ['SALES_DISCOUNTS' as const] : []),
         ]);
 
         const journalLines: JournalLineInput[] = [];
@@ -597,6 +597,11 @@ export class SalesReturnsService {
           journalLines.push({
             accountId: mapping.SALES_DISCOUNTS,
             credit: invoiceDiscountNetTotal.toString(),
+          });
+        } else if (invoiceDiscountNetTotal.lt(0)) {
+          journalLines.push({
+            accountId: mapping.SALES_DISCOUNTS,
+            debit: invoiceDiscountNetTotal.abs().toString(),
           });
         }
         if (tax.gt(0)) {

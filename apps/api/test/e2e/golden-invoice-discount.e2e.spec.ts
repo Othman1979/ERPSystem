@@ -84,8 +84,8 @@ describe('Golden scenarios D1–D3 — invoice-level discount (ADR-034)', () => 
     return { ...posted, preview };
   }
 
-  async function postReturn(invoiceId: string, lineId: string, qty: string) {
-    const draft = h.ok(
+  async function createReturn(invoiceId: string, lineId: string, qty: string) {
+    return h.ok(
       await h.api().post('/api/v1/sales-returns').set(h.auth(token)).send({
         returnDate: '2025-03-05',
         originalInvoiceId: invoiceId,
@@ -95,7 +95,12 @@ describe('Golden scenarios D1–D3 — invoice-level discount (ADR-034)', () => 
       201,
       'create return',
     );
+  }
+
+  async function postReturn(invoiceId: string, lineId: string, qty: string) {
+    const draft = await createReturn(invoiceId, lineId, qty);
     return h.ok(await h.act(token, `sales-returns/${draft.id}/post`), 201, 'post return') as {
+      id: string;
       journalEntryId: string;
       netTotal: string;
       taxTotal: string;
@@ -109,6 +114,32 @@ describe('Golden scenarios D1–D3 — invoice-level discount (ADR-034)', () => 
     return (body.lines as { account: { code: string }; debit: string; credit: string }[])
       .map((line) => `${line.account.code} ${new Decimal(line.debit).gt(0) ? `Dr ${m3(line.debit)}` : `Cr ${m3(line.credit)}`}`)
       .sort();
+  }
+
+  async function expectBalanced(entryId: string) {
+    const body = h.ok(await h.get(token, `journal-entries/${entryId}`), 200, 'journal entry');
+    const lines = body.lines as { debit: string; credit: string }[];
+    const debit = lines.reduce((total, line) => total.plus(line.debit), new Decimal(0));
+    const credit = lines.reduce((total, line) => total.plus(line.credit), new Decimal(0));
+    expect(debit.eq(credit)).toBe(true);
+  }
+
+  async function salesDiscountDelta(entryIds: string[]) {
+    const deltas = await Promise.all(entryIds.map(async (entryId) => {
+      const body = h.ok(await h.get(token, `journal-entries/${entryId}`), 200, 'journal entry');
+      return (body.lines as { account: { code: string }; debit: string; credit: string }[])
+        .filter((line) => line.account.code === codes.SALES_DISCOUNTS)
+        .reduce((total, line) => total.plus(line.debit).minus(line.credit), new Decimal(0));
+    }));
+    return deltas.reduce((total, value) => total.plus(value), new Decimal(0));
+  }
+
+  async function storedReturnNetShare(returnId: string) {
+    const [row] = (await boot.db.query(
+      'SELECT invoice_discount_net_share FROM sales_return_lines WHERE tenant_id = ? AND return_id = ?',
+      [tenantId, BigInt(returnId)],
+    )) as { invoice_discount_net_share: string }[];
+    return new Decimal(row.invoice_discount_net_share);
   }
 
   async function verified() {
@@ -307,6 +338,32 @@ describe('Golden scenarios D1–D3 — invoice-level discount (ADR-034)', () => 
     }));
     expect(m3(discountDeltas.reduce((total, value) => total.plus(value), new Decimal(0)))).toBe('0.000');
     await verified();
+  });
+
+  it('balances three one-unit tax-inclusive returns with a 0.002 invoice discount', async () => {
+    h.ok(await h.patchCompany(token, { pricesIncludeTax: true }), 200, 'enable tax-inclusive prices');
+    const invoice = await postInvoice({
+      invoiceDate: '2025-03-06',
+      customerId,
+      warehouseId,
+      paymentType: 'CREDIT',
+      invoiceDiscountAmount: '0.002',
+      lines: [{ itemId: service, qty: '3', unitPrice: '1.002' }],
+    });
+    // 3×1.002 = 3.006 inclusive; discount 0.002 leaves net 2.590, tax 0.414, payable 3.004.
+    expect([m3(invoice.netTotal), m3(invoice.taxTotal), m3(invoice.grandTotal)])
+      .toEqual(['2.590', '0.414', '3.004']);
+    const returns: Awaited<ReturnType<typeof postReturn>>[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      returns.push(await postReturn(invoice.id, invoice.lines[0].id, '1'));
+    }
+    for (const ret of returns) await expectBalanced(ret.journalEntryId);
+    expect(m3(await salesDiscountDelta([
+      invoice.journalEntryId,
+      ...returns.map((ret) => ret.journalEntryId),
+    ]))).toBe('0.000');
+    await verified();
+    h.ok(await h.patchCompany(token, { pricesIncludeTax: false }), 200, 'restore tax-exclusive prices');
   });
 
   it('rejects a discount above the line total, a percent with an amount, and a negative discount', async () => {
