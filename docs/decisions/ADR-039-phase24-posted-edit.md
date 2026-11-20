@@ -27,8 +27,8 @@ entered again under a new number. The owner wants to edit them directly while th
 6. **API.** `POST /journal-entries/:id/amend`, `POST /receipts/:id/amend`, `POST /payments/:id/amend`,
    `Idempotency-Key` required, permissions `journal.post` / `treasury.manage`.
 
-## Deferred
+## Excluded
 
-Sales and purchase invoices: an edit changes stock movements and the cost of every later movement
-(retroactive re-costing, §20 item 8), and an invoice sent to JoFotara is corrected by a credit note only.
-They need their own decision (next PR).
+Sales and purchase invoices are excluded by the owner (2026-11-20): a posted invoice is still corrected
+by a return or credit note. An edit would change stock movements and the cost of every later movement,
+and an invoice sent to JoFotara is corrected by a credit note only.
