@@ -103,10 +103,12 @@ export class UsersService {
     const rows = await this.tenant().tenantMembership.findMany({
       where: {
         status: 'ACTIVE',
-        role: {
-          code: { not: OWNER_ROLE },
-          permissions: { some: { permissionCode: { in: [PERMISSIONS.PURCHASE_MANAGE, PERMISSIONS.PURCHASE_POST] } } },
-        },
+        role: { code: { not: OWNER_ROLE } },
+        // Effective permissions: the company role's when one is set (ADR-038), else the system role's.
+        OR: [
+          { customRoleId: null, role: { permissions: { some: { permissionCode: { in: [PERMISSIONS.PURCHASE_MANAGE, PERMISSIONS.PURCHASE_POST] } } } } },
+          { customRole: { permissions: { some: { permissionCode: { in: [PERMISSIONS.PURCHASE_MANAGE, PERMISSIONS.PURCHASE_POST] } } } } },
+        ],
         extraPermissions: { none: { permissionCode: PERMISSIONS.PURCHASE_DIRECT } },
       },
       select: { id: true, user: { select: { fullName: true, email: true } }, role: { select: { code: true, nameAr: true, nameEn: true } } },
