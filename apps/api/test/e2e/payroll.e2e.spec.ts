@@ -843,4 +843,61 @@ describe('Payroll PY1–PY3', () => {
     expect(documentTypes).not.toContain('PAYROLL_RUN_REVERSAL');
     expect(reversedStatement.closingBalance).toBe('10.000');
   });
+
+  it('posts recurring earnings and deductions on the same account and branch separately', async () => {
+    h.ok(
+      await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).send({
+        code: '2034', startDate: '2034-01-01', endDate: '2034-12-31',
+      }),
+      201,
+      'create side-grouping fiscal year',
+    );
+    await post(tokenA, 'payroll/settings', { effectiveFrom: '2034-01-01' }, 'side-grouping settings', companyAId);
+    const branches = h.ok(await get(tokenA, 'branches', companyAId), 200, 'side-grouping branches') as { id: string }[];
+    const sharedDescription = 'Shared recurring item';
+    const earning = await post<{ id: string }>(tokenA, 'payroll/elements', {
+      code: `SIDE-EARN-${RUN}`, nameAr: sharedDescription, nameEn: sharedDescription,
+      kind: 'EARNING', amountType: 'FIXED', rateFactor: '1.000000',
+      accountId: accounts['5201'], sscSubject: false,
+    }, 'same-account recurring earning', companyAId);
+    const deduction = await post<{ id: string }>(tokenA, 'payroll/elements', {
+      code: `SIDE-DEDUCT-${RUN}`, nameAr: sharedDescription, nameEn: sharedDescription,
+      kind: 'DEDUCTION', amountType: 'FIXED', rateFactor: '1.000000',
+      accountId: accounts['5201'], sscSubject: false,
+    }, 'same-account recurring deduction', companyAId);
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `SIDES-${RUN}`, nameAr: 'Payroll side grouping', hireDate: '2034-01-01',
+      branchId: branches[0]!.id, costCenterId, payMethod: 'CASH', sscCovered: false,
+    }, 'side-grouping employee', companyAId);
+    await post(tokenA, `payroll/employees/${employee.id}/salaries`, {
+      effectiveFrom: '2034-01-01', basicSalary: '0.000',
+    }, 'side-grouping salary', companyAId);
+    await post(tokenA, `payroll/employees/${employee.id}/recurring-elements`, {
+      payElementId: earning.id, amount: '10.000', validFrom: '2034-01-01',
+    }, 'same-account recurring earning assignment', companyAId);
+    await post(tokenA, `payroll/employees/${employee.id}/recurring-elements`, {
+      payElementId: deduction.id, amount: '3.000', validFrom: '2034-01-01',
+    }, 'same-account recurring deduction assignment', companyAId);
+    const run = h.ok(await act(tokenA, 'payroll/runs', { period: '2034-01' }, companyAId), 201, 'create side-grouping run') as {
+      id: string;
+    };
+    h.ok(await act(tokenA, `payroll/runs/${run.id}/post`, {}, companyAId), 201, 'post side-grouping run');
+
+    const lines = (await boot.db.query(
+      `SELECT a.code AS account_code, l.branch_id, l.cost_center_id,
+              CAST(l.debit AS CHAR) AS debit, CAST(l.credit AS CHAR) AS credit
+         FROM journal_entries j
+         JOIN journal_lines l ON l.tenant_id = j.tenant_id AND l.journal_entry_id = j.id
+         JOIN accounts a ON a.tenant_id = l.tenant_id AND a.id = l.account_id
+        WHERE j.tenant_id = ? AND j.company_id = ? AND j.source_type = 'PAYROLL_RUN' AND j.source_id = ?
+          AND l.description = ?
+        ORDER BY l.debit DESC`,
+      [tenantId, companyAId, run.id, sharedDescription],
+    )) as Array<{ account_code: string; branch_id: bigint; cost_center_id: bigint; debit: string; credit: string }>;
+    expect(lines.map((line) => [line.account_code, String(line.branch_id), String(line.cost_center_id), line.debit, line.credit]))
+      .toEqual([
+        ['5201', branches[0]!.id, costCenterId, '10.000', '0.000'],
+        ['5201', branches[0]!.id, costCenterId, '0.000', '3.000'],
+      ]);
+  });
 });

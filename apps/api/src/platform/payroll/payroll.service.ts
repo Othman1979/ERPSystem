@@ -889,7 +889,7 @@ export class PayrollService {
         description: string,
       ) => {
         if (!amount.gt(0)) return;
-        const key = `${glAccount}:${branchId ?? ''}:${costCenterId ?? ''}:${description}`;
+        const key = `${glAccount}:${side}:${branchId ?? ''}:${costCenterId ?? ''}:${description}`;
         const entry = grouped.get(key) ?? {
           accountId: glAccount, branchId, costCenterId, debit: new Decimal(0), credit: new Decimal(0), description,
         };
