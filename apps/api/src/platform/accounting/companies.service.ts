@@ -84,7 +84,7 @@ export class CompaniesService {
   }
 
   async update(id: bigint, dto: UpdateCompanyEntryDto) {
-    const { db, isOwner } = this.context();
+    const { tenantId, db, isOwner } = this.context();
     this.assertOwner(isOwner);
     const before = await db.company.findFirst({
       where: { id },
@@ -93,6 +93,8 @@ export class CompaniesService {
     if (!before) throw DomainError.notFound('Company', id.toString());
     await db.$transaction(async (tx) => {
       if (dto.isActive === false && before.isActive) {
+        // Serialise deactivations: two at once must not both see the other company as active.
+        await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} ORDER BY id FOR UPDATE`;
         const others = await tx.company.count({ where: { isActive: true, id: { not: id } } });
         if (others === 0) {
           throw new DomainError(ErrorCode.CONFLICT, 'The last active company cannot be deactivated');

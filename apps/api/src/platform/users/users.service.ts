@@ -411,12 +411,15 @@ export class UsersService {
           throw new DomainError(ErrorCode.VALIDATION, 'One or more companies are invalid');
         }
       }
-      await prisma.membershipCompany.deleteMany({ where: { membershipId } });
-      if (companyIds.length > 0) {
-        await prisma.membershipCompany.createMany({
-          data: companyIds.map((companyId) => ({ tenantId, membershipId, companyId })),
-        });
-      }
+      // One transaction: between the delete and the insert, no rows would mean every company.
+      await prisma.$transaction(async (tx) => {
+        await tx.membershipCompany.deleteMany({ where: { membershipId } });
+        if (companyIds.length > 0) {
+          await tx.membershipCompany.createMany({
+            data: companyIds.map((companyId) => ({ tenantId, membershipId, companyId })),
+          });
+        }
+      });
     }
 
     await this.audit.log({

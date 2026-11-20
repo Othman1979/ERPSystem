@@ -61,7 +61,7 @@ function isPermissionRefusal(error: unknown): boolean {
   return (
     error instanceof ApiError &&
     error.status === 403 &&
-    (error.code === 'FORBIDDEN' || error.code === 'ALL_BRANCHES_REQUIRED')
+    (error.code === 'FORBIDDEN' || error.code === 'ALL_BRANCHES_REQUIRED' || error.code === 'COMPANY_NOT_ALLOWED')
   );
 }
 
@@ -179,6 +179,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const reloadMe = useCallback(async () => {
     try {
       const res = await meControllerMe();
+      // Access to the current company was revoked: follow /me's fallback, with its branches and data.
+      const company = res.data.currentMembership?.companyId ?? null;
+      if (company !== companyRef.current) {
+        companyRef.current = company;
+        setCompanyId(company);
+        setCompanyState(company);
+        if (res.data.currentTenant) storeCompany(res.data.currentTenant.tenantId, company);
+        const branch = pickBranch(res.data);
+        setBranchId(branch);
+        setBranchState(branch);
+        queryClient.clear();
+      }
       setMe(res.data);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -187,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus('guest');
       }
     }
-  }, []);
+  }, [queryClient]);
 
   const reloadMeSoon = useCallback(() => {
     if (statusRef.current !== 'authed' || pendingMeReload.current) return;
@@ -350,7 +362,8 @@ export function useAuth(): AuthState {
  * the previous session (WEB-01). The query cache itself is cleared by AuthProvider.
  */
 export function SessionBoundary({ children }: { children: ReactNode }) {
-  const { me } = useAuth();
-  const key = `${me?.user.id ?? 'guest'}:${me?.currentTenant?.tenantId ?? 'none'}`;
+  const { me, companyId } = useAuth();
+  // A company switch remounts the pages too: forms must not keep the other company's values.
+  const key = `${me?.user.id ?? 'guest'}:${me?.currentTenant?.tenantId ?? 'none'}:${companyId ?? 'none'}`;
   return <Fragment key={key}>{children}</Fragment>;
 }

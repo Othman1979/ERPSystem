@@ -48,7 +48,8 @@ export class BranchGuard implements CanActivate {
     const db = this.prisma.forTenant(tenantId);
     const [membership, assigned, active] = await Promise.all([
       db.tenantMembership.findFirst({ where: { id: membershipId }, select: { defaultBranchId: true } }),
-      db.membershipBranch.findMany({ where: { membershipId }, select: { branchId: true } }),
+      // ADR-040: assignments in other companies do not restrict this one.
+      db.membershipBranch.findMany({ where: { membershipId, branch: { companyId: cls.get('companyId') } }, select: { branchId: true } }),
       // ADR-040: the branches of the request's company only.
       db.branch.findMany({ where: { isActive: true, companyId: cls.get('companyId') }, select: { id: true, code: true } }),
     ]);

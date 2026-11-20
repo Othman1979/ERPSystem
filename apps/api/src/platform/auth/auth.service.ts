@@ -429,7 +429,10 @@ export class AuthService {
       companies = allowedCompanies.map((c) => ({ ...c, id: c.id.toString() }));
       companyId = picked?.id.toString() ?? null;
       const [assigned, active, granted, extra] = await Promise.all([
-        db.membershipBranch.findMany({ where: { membershipId: current.id }, select: { branchId: true } }),
+        db.membershipBranch.findMany({
+          where: { membershipId: current.id, branch: { companyId: picked?.id ?? BigInt(0) } },
+          select: { branchId: true },
+        }),
         db.branch.findMany({
           where: { isActive: true, companyId: picked?.id ?? BigInt(0) },
           select: { id: true, code: true, nameAr: true, nameEn: true },
