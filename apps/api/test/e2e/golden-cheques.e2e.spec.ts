@@ -238,6 +238,11 @@ describe('K3 — rejections and undo', () => {
     const undone = h.ok(await h.act(token, `cheques/${ch.id}/undo`, { date: '2031-03-21' }), 201, 'undo collect') as Cheque;
     expect(undone.status).toBe('DEPOSITED');
     expect(await balance('1102')).toBe(bankBefore);
+    // A step redone after its undo posts a new entry; a step dated before the previous one is refused.
+    expect(h.err(await h.act(token, `cheques/${ch.id}/collect`, { date: '2031-03-14' }))).toEqual([400, 'VALIDATION']);
+    h.ok(await h.act(token, `cheques/${ch.id}/collect`, { date: '2031-03-21' }), 201, 'collect again');
+    expect(await balance('1102')).toBe(m3(Number(bankBefore) + 70));
+    h.ok(await h.act(token, `cheques/${ch.id}/undo`, { date: '2031-03-21' }), 201, 'undo collect again');
     const undone2 = h.ok(await h.act(token, `cheques/${ch.id}/undo`, { date: '2031-03-21' }), 201, 'undo deposit') as Cheque;
     expect(undone2.status).toBe('IN_HAND');
     expect(undone2.bankAccount).toBeNull();

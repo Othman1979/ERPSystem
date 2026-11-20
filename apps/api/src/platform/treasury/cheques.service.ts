@@ -314,15 +314,19 @@ export class ChequesService {
 
   // ------------------------------------------------------------- movements
 
-  /** Locks the voucher, then the cheque: the order of voucher reversal and allocation. */
+  /**
+   * Locks the cheque, then its voucher (so a return and an allocation serialize).
+   * Locking reads only before the row read: a plain read would fix a stale snapshot.
+   */
   private async lock(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint, id: bigint) {
-    const link = await tx.cheque.findFirst({ where: { id, companyId }, select: { receiptId: true, paymentId: true } });
+    const [link] = (await tx.$queryRaw`
+      SELECT receipt_id AS receiptId, payment_id AS paymentId FROM cheques
+       WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`) as { receiptId: bigint | null; paymentId: bigint | null }[];
     if (link?.receiptId) {
       await tx.$queryRaw`SELECT id FROM receipts WHERE tenant_id = ${tenantId} AND id = ${link.receiptId} FOR UPDATE`;
     } else if (link?.paymentId) {
       await tx.$queryRaw`SELECT id FROM payments WHERE tenant_id = ${tenantId} AND id = ${link.paymentId} FOR UPDATE`;
     }
-    await tx.$queryRaw`SELECT id FROM cheques WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
     const c = await tx.cheque.findFirst({ where: { id, companyId } });
     if (!c) throw DomainError.notFound('Cheque', id.toString());
     assertBranchAllowed(c.branchId);
