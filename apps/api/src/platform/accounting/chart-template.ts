@@ -21,6 +21,8 @@ export const ACCOUNT_MAPPING_KEYS = [
   'PURCHASES',
   'GOODS_RECEIVED_NOT_INVOICED',
   'PRODUCTION_APPLIED_COST',
+  'CHEQUES_RECEIVABLE',
+  'CHEQUES_PAYABLE',
 ] as const;
 
 export type AccountMappingKey = (typeof ACCOUNT_MAPPING_KEYS)[number];
@@ -78,12 +80,14 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('1103', 'العملاء', 'ASSET', { nameEn: 'Customers', parentCode: '11', isControl: true, controlType: 'CUSTOMERS' }),
   acct('1104', 'المخزون', 'ASSET', { nameEn: 'Inventory', parentCode: '11' }),
   acct('1105', 'ضريبة المشتريات', 'ASSET', { nameEn: 'Input tax', parentCode: '11' }),
+  acct('1106', 'شيكات برسم التحصيل', 'ASSET', { nameEn: 'Cheques under collection', parentCode: '11' }),
   acct('1201', 'الأثاث والمعدات', 'ASSET', { nameEn: 'Furniture and equipment', parentCode: '12', cashFlowActivity: 'INVESTING' }),
   acct('1202', 'مجمع الاستهلاك', 'ASSET', { nameEn: 'Accumulated depreciation', normalBalance: 'CREDIT', parentCode: '12' }),
   acct('2101', 'الموردون', 'LIABILITY', { nameEn: 'Suppliers', parentCode: '21', isControl: true, controlType: 'SUPPLIERS' }),
   acct('2102', 'ضريبة المبيعات', 'LIABILITY', { nameEn: 'Output tax', parentCode: '21' }),
   acct('2103', 'مصاريف مستحقة', 'LIABILITY', { nameEn: 'Accrued expenses', parentCode: '21' }),
   acct('2104', 'بضاعة مستلمة غير مفوترة', 'LIABILITY', { nameEn: 'Goods received not invoiced', parentCode: '21' }),
+  acct('2105', 'شيكات آجلة الدفع', 'LIABILITY', { nameEn: 'Post-dated cheques payable', parentCode: '21' }),
   acct('3101', 'رأس المال', 'EQUITY', { nameEn: 'Capital', parentCode: '31' }),
   acct('3102', 'الأرباح المدورة', 'EQUITY', { nameEn: 'Retained earnings', parentCode: '31' }),
   acct('3103', 'أرصدة افتتاحية', 'EQUITY', { nameEn: 'Opening balances', parentCode: '31' }),
@@ -121,6 +125,8 @@ export const TEMPLATE_MAPPINGS: Record<AccountMappingKey, string> = {
   PURCHASES: '5103',
   GOODS_RECEIVED_NOT_INVOICED: '2104',
   PRODUCTION_APPLIED_COST: '5104',
+  CHEQUES_RECEIVABLE: '1106',
+  CHEQUES_PAYABLE: '2105',
 };
 
 /**
@@ -150,6 +156,8 @@ export const MAPPING_RULES: Record<AccountMappingKey, MappingRule> = {
   PURCHASES: { types: ['EXPENSE'] },
   GOODS_RECEIVED_NOT_INVOICED: { types: ['LIABILITY'] },
   PRODUCTION_APPLIED_COST: { types: ['EXPENSE'] },
+  CHEQUES_RECEIVABLE: { types: ['ASSET'] },
+  CHEQUES_PAYABLE: { types: ['LIABILITY'] },
 };
 
 /** Keys whose account accumulates a balance other documents settle: changing them after posting would split it (LEDGER-05). */
@@ -158,6 +166,8 @@ export const LOCKED_AFTER_POSTING: ReadonlySet<AccountMappingKey> = new Set<Acco
   'SUPPLIERS_CONTROL',
   'INVENTORY',
   'GOODS_RECEIVED_NOT_INVOICED',
+  'CHEQUES_RECEIVABLE',
+  'CHEQUES_PAYABLE',
 ]);
 
 export const DEFAULT_UNITS = [

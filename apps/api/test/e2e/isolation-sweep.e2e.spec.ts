@@ -44,6 +44,7 @@ const UNCOVERED: Record<string, string> = {
   'POST /api/v1/stock-transfers/{id}/reverse': 'needs two warehouses; the trial plan allows one',
   'GET /api/v1/einvoice/submissions/{id}': 'needs JoFotara settings (covered by einvoice.e2e isolation)',
   'POST /api/v1/einvoice/submissions/{id}/resend': 'needs JoFotara settings (covered by einvoice.e2e isolation)',
+  'POST /api/v1/bank-statements/{id}/import': 'multipart upload: the file check runs before the lookup, the sweep sends JSON',
 };
 
 type Op = { method: string; path: string; query: string[] };
@@ -251,6 +252,23 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       { transferDate: '2026-03-08', fromAccountId: id.account, toAccountId: id.bankAccountGl, amount: '1.000', description: MARK },
       'cashTransfer',
     );
+    // Phase 20 (ADR-035) and Phase 22 (ADR-037): a bank statement and a received cheque.
+    await create(
+      '/bank-statements',
+      { bankAccountId: id.bankAccount, startDate: '2026-03-01', endDate: '2026-03-31', openingBalance: '0.000', closingBalance: '0.000' },
+      'bankStatement',
+    );
+    await asA('post', '/receipts', {
+      receiptDate: '2026-03-09',
+      partyType: 'CUSTOMER',
+      partyId: id.customer,
+      amount: '3.000',
+      description: MARK,
+      cheque: { chequeNo: `SW-${RUN}`, bankName: 'Bank', dueDate: '2026-04-09' },
+    });
+    const cheques = (await asA('get', `/cheques?q=SW-${RUN}`)).body as { items?: { id: string }[] };
+    if (!cheques.items?.length) throw new Error('setup: the cheque receipt made no cheque');
+    id.cheque = String(cheques.items[0].id);
 
     // Phase 12 (ADR-025): A at FULL with an approved request, a received quote and a
     // draft order; B at FULL too, so B's writes reach the tenant lookup instead of the level gate.
@@ -331,6 +349,8 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       payments: id.payment,
       allocations: id.allocation,
       'cash-transfers': id.cashTransfer,
+      'bank-statements': id.bankStatement,
+      cheques: id.cheque,
       'cost-centers': id.costCenter,
       'purchase-requests': id.purchaseRequest,
       'purchase-quotes': id.purchaseQuote,
@@ -361,6 +381,11 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     if (p.endsWith('/items/{id}/units')) return { units: [{ unitId: id.unit, factorToBase: '1' }] };
     if (p.endsWith('/items/{id}/barcodes')) return { barcode: `X${RUN}` };
     if (p.includes('/lines/{lineId}')) return { countedQty: '1' };
+    if (p === '/api/v1/bank-statements/{id}') return { startDate: '2026-03-01', endDate: '2026-03-31', openingBalance: '0', closingBalance: '0' };
+    if (p.endsWith('/bank-statements/{id}/lines')) return { lineDate: '2026-03-02', deposit: '1.000' };
+    if (p.endsWith('/bank-statements/{id}/matches')) return { statementLineId: '1', journalLineIds: ['1'] };
+    if (p.endsWith('/cheques/{id}/deposit')) return { date: '2026-04-01', bankAccountId: id.bankAccountGl };
+    if (/\/cheques\/\{id\}\/(collect|clear|return|undo)$/.test(p)) return { date: '2026-04-01' };
     if (p.endsWith('/purchase-permissions')) return { permissions: [{ code: 'purchase.direct' }] };
     if (p === '/api/v1/sales-invoices/{id}') return bodies.salesInvoice;
     if (p === '/api/v1/purchase-invoices/{id}') return bodies.purchaseInvoice;

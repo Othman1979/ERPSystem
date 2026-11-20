@@ -225,6 +225,12 @@ export class BankReconciliationService {
     for (const row of [...receipts, ...payments, ...transfers]) {
       if (row.journalEntryId && row.referenceNo) out.set(row.journalEntryId, row.referenceNo);
     }
+    // ADR-037 §6: a cheque collection or clearance is referenced by its cheque number.
+    const steps = await tx.chequeEvent.findMany({
+      where: { tenantId, journalEntryId: { in: [...new Set(entryIds)] } },
+      select: { journalEntryId: true, cheque: { select: { chequeNo: true } } },
+    });
+    for (const step of steps) if (step.journalEntryId) out.set(step.journalEntryId, step.cheque.chequeNo);
     return out;
   }
 

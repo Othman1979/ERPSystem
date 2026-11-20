@@ -433,6 +433,8 @@ export const AccountMappingSlotDtoMappingKey = {
   PURCHASES: 'PURCHASES',
   GOODS_RECEIVED_NOT_INVOICED: 'GOODS_RECEIVED_NOT_INVOICED',
   PRODUCTION_APPLIED_COST: 'PRODUCTION_APPLIED_COST',
+  CHEQUES_RECEIVABLE: 'CHEQUES_RECEIVABLE',
+  CHEQUES_PAYABLE: 'CHEQUES_PAYABLE',
 } as const;
 
 export interface AccountMappingSlotDto {
@@ -7553,6 +7555,20 @@ export interface ReceiptDetailDto {
   unallocatedAmount: string;
 }
 
+export interface VoucherChequeDto {
+  /**
+     * @maxLength 50
+     * @pattern \S
+     */
+  chequeNo: string;
+  /**
+     * Drawee bank of a received cheque (required on a receipt).
+     * @maxLength 191
+     */
+  bankName?: string;
+  dueDate: string;
+}
+
 export type AllocationDtoDocumentType = typeof AllocationDtoDocumentType[keyof typeof AllocationDtoDocumentType];
 
 
@@ -7579,7 +7595,10 @@ export interface CreateReceiptDto {
   receiptDate: string;
   partyType: CreateReceiptDtoPartyType;
   partyId: string;
-  cashAccountId: string;
+  /** Optional with `cheque`: the cheque posts on the CHEQUES_RECEIVABLE account. */
+  cashAccountId?: string;
+  /** Paid by cheque (ADR-037): posted on the cheques account instead of `cashAccountId`. */
+  cheque?: VoucherChequeDto;
   /**
      * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
      * copied onto every income-statement line of its entry.
@@ -7751,7 +7770,10 @@ export interface CreatePaymentDto {
   partyId?: string;
   /** Required when no party (direct expense payment). */
   expenseAccountId?: string;
+  /** With `cheque`: the bank account (BANK) the cheque is drawn on. */
   cashAccountId: string;
+  /** Paid by cheque (ADR-037): posted on the cheques account instead of `cashAccountId`. */
+  cheque?: VoucherChequeDto;
   /**
      * Cost centre of the document (ADR-024 §1.2): an active leaf of the company,
      * copied onto every income-statement line of its entry.
@@ -8079,6 +8101,193 @@ export interface MatchBankStatementLineDto {
 export interface BankAutoMatchResultDto {
   matched: number;
   statement: BankStatementDetailDto;
+}
+
+export interface ChequeRefDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export type ChequeDtoDirection = typeof ChequeDtoDirection[keyof typeof ChequeDtoDirection];
+
+
+export const ChequeDtoDirection = {
+  INCOMING: 'INCOMING',
+  OUTGOING: 'OUTGOING',
+} as const;
+
+export type ChequeDtoStatus = typeof ChequeDtoStatus[keyof typeof ChequeDtoStatus];
+
+
+export const ChequeDtoStatus = {
+  IN_HAND: 'IN_HAND',
+  DEPOSITED: 'DEPOSITED',
+  COLLECTED: 'COLLECTED',
+  ISSUED: 'ISSUED',
+  CLEARED: 'CLEARED',
+  RETURNED: 'RETURNED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type ChequeDtoPartyType = typeof ChequeDtoPartyType[keyof typeof ChequeDtoPartyType];
+
+
+export const ChequeDtoPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+} as const;
+
+export interface ChequeDto {
+  id: string;
+  direction: ChequeDtoDirection;
+  status: ChequeDtoStatus;
+  chequeNo: string;
+  /** @nullable */
+  bankName: string | null;
+  dueDate: string;
+  amount: string;
+  partyType: ChequeDtoPartyType;
+  party: ChequeRefDto;
+  /** @nullable */
+  bankAccount: ChequeRefDto | null;
+  /** @nullable */
+  voucherNo: string | null;
+  /** @nullable */
+  voucherDate: string | null;
+  /** @nullable */
+  receiptId: string | null;
+  /** @nullable */
+  paymentId: string | null;
+  /** @nullable */
+  branchId: string | null;
+}
+
+export interface ChequePageDto {
+  items: ChequeDto[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalAmount: string;
+}
+
+export interface ChequeOutstandingDto {
+  items: ChequeDto[];
+  incomingTotal: string;
+  outgoingTotal: string;
+}
+
+export interface EntryRefDto {
+  id: string;
+  /** @nullable */
+  entryNo: string | null;
+}
+
+export type ChequeEventDtoAction = typeof ChequeEventDtoAction[keyof typeof ChequeEventDtoAction];
+
+
+export const ChequeEventDtoAction = {
+  RECEIVE: 'RECEIVE',
+  ISSUE: 'ISSUE',
+  DEPOSIT: 'DEPOSIT',
+  COLLECT: 'COLLECT',
+  CLEAR: 'CLEAR',
+  RETURN: 'RETURN',
+  CANCEL: 'CANCEL',
+} as const;
+
+export interface ChequeEventDto {
+  id: string;
+  action: ChequeEventDtoAction;
+  /** @nullable */
+  fromStatus: string | null;
+  toStatus: string;
+  eventDate: string;
+  /** @nullable */
+  bankAccountId: string | null;
+  /** @nullable */
+  journalEntry: EntryRefDto | null;
+  /** @nullable */
+  undoEntry: EntryRefDto | null;
+  /** @nullable */
+  notes: string | null;
+  /** @nullable */
+  undoneAt: string | null;
+  createdAt: string;
+}
+
+export type ChequeDetailDtoDirection = typeof ChequeDetailDtoDirection[keyof typeof ChequeDetailDtoDirection];
+
+
+export const ChequeDetailDtoDirection = {
+  INCOMING: 'INCOMING',
+  OUTGOING: 'OUTGOING',
+} as const;
+
+export type ChequeDetailDtoStatus = typeof ChequeDetailDtoStatus[keyof typeof ChequeDetailDtoStatus];
+
+
+export const ChequeDetailDtoStatus = {
+  IN_HAND: 'IN_HAND',
+  DEPOSITED: 'DEPOSITED',
+  COLLECTED: 'COLLECTED',
+  ISSUED: 'ISSUED',
+  CLEARED: 'CLEARED',
+  RETURNED: 'RETURNED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type ChequeDetailDtoPartyType = typeof ChequeDetailDtoPartyType[keyof typeof ChequeDetailDtoPartyType];
+
+
+export const ChequeDetailDtoPartyType = {
+  CUSTOMER: 'CUSTOMER',
+  SUPPLIER: 'SUPPLIER',
+} as const;
+
+export interface ChequeDetailDto {
+  id: string;
+  direction: ChequeDetailDtoDirection;
+  status: ChequeDetailDtoStatus;
+  chequeNo: string;
+  /** @nullable */
+  bankName: string | null;
+  dueDate: string;
+  amount: string;
+  partyType: ChequeDetailDtoPartyType;
+  party: ChequeRefDto;
+  /** @nullable */
+  bankAccount: ChequeRefDto | null;
+  /** @nullable */
+  voucherNo: string | null;
+  /** @nullable */
+  voucherDate: string | null;
+  /** @nullable */
+  receiptId: string | null;
+  /** @nullable */
+  paymentId: string | null;
+  /** @nullable */
+  branchId: string | null;
+  events: ChequeEventDto[];
+}
+
+export interface DepositChequeDto {
+  bankAccountId: string;
+  date: string;
+  /** @maxLength 500 */
+  notes?: string;
+}
+
+export interface ChequeMoveDto {
+  date: string;
+  /** @maxLength 500 */
+  notes?: string;
+}
+
+export interface UndoChequeDto {
+  date: string;
 }
 
 export type EInvoiceTrack = typeof EInvoiceTrack[keyof typeof EInvoiceTrack];
@@ -9165,6 +9374,8 @@ export const ErrorCode = {
   BANK_MATCH_AMOUNT_MISMATCH: 'BANK_MATCH_AMOUNT_MISMATCH',
   BANK_LINE_ALREADY_MATCHED: 'BANK_LINE_ALREADY_MATCHED',
   BANK_RECONCILIATION_UNBALANCED: 'BANK_RECONCILIATION_UNBALANCED',
+  CHEQUE_INVALID_STATUS: 'CHEQUE_INVALID_STATUS',
+  CHEQUE_DUPLICATE: 'CHEQUE_DUPLICATE',
   INTERNAL: 'INTERNAL',
 } as const;
 
@@ -10943,6 +11154,115 @@ export type BankReconciliationControllerReportLang = typeof BankReconciliationCo
 export const BankReconciliationControllerReportLang = {
   ar: 'ar',
   en: 'en',
+} as const;
+
+export type ChequesControllerListParams = {
+  format?: ChequesControllerListFormat;
+  lang?: ChequesControllerListLang;
+  /** Only cheques still outstanding (in hand, deposited, or issued). */
+  open?: boolean;
+  /** @minimum 1 */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
+  pageSize?: number;
+  direction?: ChequesControllerListDirection;
+  status?: ChequesControllerListStatus;
+  dueFrom?: string;
+  dueTo?: string;
+  partyId?: string;
+  /** @maxLength 50 */
+  q?: string;
+};
+
+export type ChequesControllerListFormat = typeof ChequesControllerListFormat[keyof typeof ChequesControllerListFormat];
+
+
+export const ChequesControllerListFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ChequesControllerListLang = typeof ChequesControllerListLang[keyof typeof ChequesControllerListLang];
+
+
+export const ChequesControllerListLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type ChequesControllerListDirection = typeof ChequesControllerListDirection[keyof typeof ChequesControllerListDirection];
+
+
+export const ChequesControllerListDirection = {
+  INCOMING: 'INCOMING',
+  OUTGOING: 'OUTGOING',
+} as const;
+
+export type ChequesControllerListStatus = typeof ChequesControllerListStatus[keyof typeof ChequesControllerListStatus];
+
+
+export const ChequesControllerListStatus = {
+  IN_HAND: 'IN_HAND',
+  DEPOSITED: 'DEPOSITED',
+  COLLECTED: 'COLLECTED',
+  ISSUED: 'ISSUED',
+  CLEARED: 'CLEARED',
+  RETURNED: 'RETURNED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type ChequesControllerOutstandingParams = {
+  format?: ChequesControllerOutstandingFormat;
+  lang?: ChequesControllerOutstandingLang;
+  direction?: ChequesControllerOutstandingDirection;
+  status?: ChequesControllerOutstandingStatus;
+  dueFrom?: string;
+  dueTo?: string;
+  partyId?: string;
+  /** @maxLength 50 */
+  q?: string;
+};
+
+export type ChequesControllerOutstandingFormat = typeof ChequesControllerOutstandingFormat[keyof typeof ChequesControllerOutstandingFormat];
+
+
+export const ChequesControllerOutstandingFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ChequesControllerOutstandingLang = typeof ChequesControllerOutstandingLang[keyof typeof ChequesControllerOutstandingLang];
+
+
+export const ChequesControllerOutstandingLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type ChequesControllerOutstandingDirection = typeof ChequesControllerOutstandingDirection[keyof typeof ChequesControllerOutstandingDirection];
+
+
+export const ChequesControllerOutstandingDirection = {
+  INCOMING: 'INCOMING',
+  OUTGOING: 'OUTGOING',
+} as const;
+
+export type ChequesControllerOutstandingStatus = typeof ChequesControllerOutstandingStatus[keyof typeof ChequesControllerOutstandingStatus];
+
+
+export const ChequesControllerOutstandingStatus = {
+  IN_HAND: 'IN_HAND',
+  DEPOSITED: 'DEPOSITED',
+  COLLECTED: 'COLLECTED',
+  ISSUED: 'ISSUED',
+  CLEARED: 'CLEARED',
+  RETURNED: 'RETURNED',
+  CANCELLED: 'CANCELLED',
 } as const;
 
 export type EInvoiceControllerListSubmissionsParams = {
@@ -24601,6 +24921,402 @@ export const bankReconciliationControllerReport = async (id: string,
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export type chequesControllerListResponse200 = {
+  data: ChequePageDto
+  status: 200
+}
+
+export type chequesControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type chequesControllerListResponseSuccess = (chequesControllerListResponse200) & {
+  headers: Headers;
+};
+export type chequesControllerListResponseError = (chequesControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getChequesControllerListUrl = (params?: ChequesControllerListParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/cheques?${stringifiedParams}` : `/api/v1/cheques`
+}
+
+export const chequesControllerList = async (params?: ChequesControllerListParams, options?: Parameters<typeof apiFetch>[1]): Promise<chequesControllerListResponseSuccess> => {
+
+  return apiFetch<chequesControllerListResponseSuccess>(getChequesControllerListUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type chequesControllerOutstandingResponse200 = {
+  data: ChequeOutstandingDto
+  status: 200
+}
+
+export type chequesControllerOutstandingResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type chequesControllerOutstandingResponseSuccess = (chequesControllerOutstandingResponse200) & {
+  headers: Headers;
+};
+export type chequesControllerOutstandingResponseError = (chequesControllerOutstandingResponseDefault) & {
+  headers: Headers;
+};
+
+export const getChequesControllerOutstandingUrl = (params?: ChequesControllerOutstandingParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/cheques/outstanding?${stringifiedParams}` : `/api/v1/cheques/outstanding`
+}
+
+/**
+ * @summary Outstanding cheques by due date: JSON, or a PDF or xlsx file (ADR-037 §7).
+ */
+export const chequesControllerOutstanding = async (params?: ChequesControllerOutstandingParams, options?: Parameters<typeof apiFetch>[1]): Promise<chequesControllerOutstandingResponseSuccess> => {
+
+  return apiFetch<chequesControllerOutstandingResponseSuccess>(getChequesControllerOutstandingUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type chequesControllerDetailResponse200 = {
+  data: ChequeDetailDto
+  status: 200
+}
+
+export type chequesControllerDetailResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type chequesControllerDetailResponseSuccess = (chequesControllerDetailResponse200) & {
+  headers: Headers;
+};
+export type chequesControllerDetailResponseError = (chequesControllerDetailResponseDefault) & {
+  headers: Headers;
+};
+
+export const getChequesControllerDetailUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cheques/${id}`
+}
+
+export const chequesControllerDetail = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<chequesControllerDetailResponseSuccess> => {
+
+  return apiFetch<chequesControllerDetailResponseSuccess>(getChequesControllerDetailUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type chequesControllerDepositResponse200 = {
+  data: ChequeDetailDto
+  status: 200
+}
+
+export type chequesControllerDepositResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type chequesControllerDepositResponseSuccess = (chequesControllerDepositResponse200) & {
+  headers: Headers;
+};
+export type chequesControllerDepositResponseError = (chequesControllerDepositResponseDefault) & {
+  headers: Headers;
+};
+
+export const getChequesControllerDepositUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cheques/${id}/deposit`
+}
+
+export const chequesControllerDeposit = async (id: string,
+    depositChequeDto: DepositChequeDto, options?: Parameters<typeof apiFetch>[1]): Promise<chequesControllerDepositResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<chequesControllerDepositResponseSuccess>(getChequesControllerDepositUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(depositChequeDto)
+  }
+);}
+
+
+
+export type chequesControllerCollectResponse200 = {
+  data: ChequeDetailDto
+  status: 200
+}
+
+export type chequesControllerCollectResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type chequesControllerCollectResponseSuccess = (chequesControllerCollectResponse200) & {
+  headers: Headers;
+};
+export type chequesControllerCollectResponseError = (chequesControllerCollectResponseDefault) & {
+  headers: Headers;
+};
+
+export const getChequesControllerCollectUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cheques/${id}/collect`
+}
+
+export const chequesControllerCollect = async (id: string,
+    chequeMoveDto: ChequeMoveDto, options?: Parameters<typeof apiFetch>[1]): Promise<chequesControllerCollectResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<chequesControllerCollectResponseSuccess>(getChequesControllerCollectUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(chequeMoveDto)
+  }
+);}
+
+
+
+export type chequesControllerClearResponse200 = {
+  data: ChequeDetailDto
+  status: 200
+}
+
+export type chequesControllerClearResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type chequesControllerClearResponseSuccess = (chequesControllerClearResponse200) & {
+  headers: Headers;
+};
+export type chequesControllerClearResponseError = (chequesControllerClearResponseDefault) & {
+  headers: Headers;
+};
+
+export const getChequesControllerClearUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cheques/${id}/clear`
+}
+
+export const chequesControllerClear = async (id: string,
+    chequeMoveDto: ChequeMoveDto, options?: Parameters<typeof apiFetch>[1]): Promise<chequesControllerClearResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<chequesControllerClearResponseSuccess>(getChequesControllerClearUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(chequeMoveDto)
+  }
+);}
+
+
+
+export type chequesControllerReturnChequeResponse200 = {
+  data: ChequeDetailDto
+  status: 200
+}
+
+export type chequesControllerReturnChequeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type chequesControllerReturnChequeResponseSuccess = (chequesControllerReturnChequeResponse200) & {
+  headers: Headers;
+};
+export type chequesControllerReturnChequeResponseError = (chequesControllerReturnChequeResponseDefault) & {
+  headers: Headers;
+};
+
+export const getChequesControllerReturnChequeUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cheques/${id}/return`
+}
+
+export const chequesControllerReturnCheque = async (id: string,
+    chequeMoveDto: ChequeMoveDto, options?: Parameters<typeof apiFetch>[1]): Promise<chequesControllerReturnChequeResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<chequesControllerReturnChequeResponseSuccess>(getChequesControllerReturnChequeUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(chequeMoveDto)
+  }
+);}
+
+
+
+export type chequesControllerUndoResponse200 = {
+  data: ChequeDetailDto
+  status: 200
+}
+
+export type chequesControllerUndoResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type chequesControllerUndoResponseSuccess = (chequesControllerUndoResponse200) & {
+  headers: Headers;
+};
+export type chequesControllerUndoResponseError = (chequesControllerUndoResponseDefault) & {
+  headers: Headers;
+};
+
+export const getChequesControllerUndoUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/cheques/${id}/undo`
+}
+
+export const chequesControllerUndo = async (id: string,
+    undoChequeDto: UndoChequeDto, options?: Parameters<typeof apiFetch>[1]): Promise<chequesControllerUndoResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<chequesControllerUndoResponseSuccess>(getChequesControllerUndoUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(undoChequeDto)
   }
 );}
 
