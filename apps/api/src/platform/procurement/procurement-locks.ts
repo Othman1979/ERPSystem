@@ -1,6 +1,7 @@
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { Prisma } from '../../generated/prisma/client.js';
 
 /**
@@ -48,7 +49,7 @@ export async function lockRequest(
   const mode = shared ? Prisma.sql`LOCK IN SHARE MODE` : Prisma.sql`FOR UPDATE`;
   const [row] = await tx.$queryRaw<LockedRequest[]>`
     SELECT id, status, branch_id, created_by, updated_by, submitted_by, request_date FROM purchase_requests
-     WHERE tenant_id = ${tenantId} AND id = ${id} ${mode}`;
+     WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} ${mode}`;
   if (!row) throw DomainError.notFound('PurchaseRequest', id.toString());
   return {
     ...row,
@@ -109,10 +110,10 @@ export async function lockDocument(
     table === 'purchase_quotes'
       ? await tx.$queryRaw<LockedDocument[]>`
           SELECT id, status, branch_id, created_by, updated_by, NULL AS submitted_by, request_id
-            FROM purchase_quotes WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`
+            FROM purchase_quotes WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`
       : await tx.$queryRaw<LockedDocument[]>`
           SELECT id, status, branch_id, created_by, updated_by, submitted_by, request_id
-            FROM purchase_orders WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+            FROM purchase_orders WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
   if (!row) throw DomainError.notFound(table === 'purchase_quotes' ? 'PurchaseQuote' : 'PurchaseOrder', id.toString());
   return {
     id: BigInt(row.id),

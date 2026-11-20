@@ -8,7 +8,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { DOCUMENT_TYPE_PREFIXES } from './chart-template.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
-import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/current-company.js';
 
 /** Longest allowed fiscal year: twelve months (LEDGER-25). */
 const MAX_YEAR_MONTHS = 12;
@@ -218,7 +218,7 @@ export class FiscalService {
 
     const result = await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${periodRef.fiscalYear.companyId} FOR UPDATE`;
-      await tx.$queryRaw`SELECT id FROM fiscal_years WHERE tenant_id = ${tenantId} AND id = ${periodRef.fiscalYearId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM fiscal_years WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${periodRef.fiscalYearId} FOR UPDATE`;
       // Postings hold a shared lock on their period until COMMIT
       // (PostingService.resolveOpenPeriod), so the close waits for in-flight
       // postings and no posting lands in a period after it closed (DB-20).

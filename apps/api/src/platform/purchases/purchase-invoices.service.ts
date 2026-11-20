@@ -1,4 +1,5 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { Decimal, round3, round6, sum } from '../../common/decimal/decimal.utils.js';
 import {
   assertBranchAllowed,
@@ -335,7 +336,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     // One locking read in id order (TRADE-18: auto-allocation used to lock every invoice one by one).
     await tx.$queryRaw`
       SELECT id FROM purchase_invoices
-       WHERE tenant_id = ${tenantId} AND id IN (${Prisma.join(sorted)})
+       WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id IN (${Prisma.join(sorted)})
        ORDER BY id FOR UPDATE`;
   }
 
@@ -351,11 +352,11 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const { tenantId } = this.support.tenant();
     const [inv] = await tx.$queryRaw<SettlementRow[]>`
       SELECT supplier_id AS party_id, branch_id, status, payment_type, grand_total, paid_amount
-        FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        FROM purchase_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
     if (!inv) return null;
     const [credited] = await tx.$queryRaw<{ s: { toString(): string } | null }[]>`
       SELECT SUM(grand_total) AS s FROM purchase_returns
-       WHERE tenant_id = ${tenantId} AND original_invoice_id = ${id}
+       WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND original_invoice_id = ${id}
          AND status = 'POSTED' AND refund_type = 'CREDIT' LOCK IN SHARE MODE`;
     return toSettlementState(inv, credited?.s);
   }
@@ -383,7 +384,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         LEFT JOIN (
           SELECT original_invoice_id, SUM(grand_total) AS credited
             FROM purchase_returns
-           WHERE tenant_id = ${tenantId} AND status = 'POSTED' AND refund_type = 'CREDIT'
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND status = 'POSTED' AND refund_type = 'CREDIT'
            GROUP BY original_invoice_id
         ) r ON r.original_invoice_id = i.id
        WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId} AND i.supplier_id = ${partyId}
@@ -627,7 +628,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       // instead of deadlocking, and never rewrites a posted invoice.
       const received = order ? await this.lockReceiptBilling(tx, tenantId, companyId, order.id, noteIds) : null;
       const [locked] = await tx.$queryRaw<{ status: string; branch_id: bigint | null }[]>`
-        SELECT status, branch_id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        SELECT status, branch_id FROM purchase_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
       if (!locked) throw DomainError.notFound('PurchaseInvoice', id.toString());
       if (locked.status !== 'DRAFT') {
         throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
@@ -678,7 +679,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       // Locked and re-checked: a delete racing a post of the same draft never
       // deletes a posted invoice (and its GRN lines' billed quantities).
       const [inv] = await tx.$queryRaw<{ status: string; branch_id: bigint | null }[]>`
-        SELECT status, branch_id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        SELECT status, branch_id FROM purchase_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
       if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
       if (inv.status !== 'DRAFT') {
         throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be deleted');
@@ -708,7 +709,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         // (TRADE-02), both before the first plain read: every later read then
         // sees what was committed before both locks (see assertGrnBillable).
         const [head] = await tx.$queryRaw<{ received_grn_id: bigint | null }[]>`
-          SELECT received_grn_id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+          SELECT received_grn_id FROM purchase_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const lockedGrn =
           head?.received_grn_id != null ? await this.goodsNotes.lockForBilling(tx, BigInt(head.received_grn_id)) : null;
         const draft = await tx.purchaseInvoice.findFirst({
@@ -913,7 +914,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       const grnIds = await this.receiptNoteIds(await this.currentGrnLineIds(id));
       return db.$transaction(async (tx) => {
         const { order, received } = await this.lockReceiptBillingWithOrder(tx, tenantId, companyId, orderId, grnIds);
-        await tx.$queryRaw`SELECT id FROM purchase_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM purchase_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const draft = await tx.purchaseInvoice.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' }, include: { receipts: { orderBy: { id: 'asc' } } } } },
@@ -1098,7 +1099,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           { status: string; branch_id: bigint | null; purchase_order_id: bigint | null; created_by: bigint | null; updated_by: bigint | null }[]
         >`
           SELECT status, branch_id, purchase_order_id, created_by, updated_by FROM purchase_invoices
-           WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
         assertBranchAllowed(inv.branch_id === null ? null : BigInt(inv.branch_id));
         if (inv.status !== 'DRAFT') {

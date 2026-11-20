@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { assertBranchAllowed, branchWhere, currentBranchId } from '../../common/branch/branch-context.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
@@ -177,7 +178,7 @@ export class CashTransfersService {
 
     await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM cash_transfers WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM cash_transfers WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const t = await tx.cashTransfer.findFirst({
           where: { id },
           select: { branchId: true, reversedAt: true, journalEntryId: true },

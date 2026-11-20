@@ -25,7 +25,7 @@ import type {
 import type { ListStockCountsQueryDto } from './dto/list-queries.dto.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import { isStocked, stockedItemKindFilter, assertNotRecipe } from '../../common/inventory/item-kind.js';
-import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/current-company.js';
 
 /** The item fields a count line shows. */
 const ITEM_REF = { select: { id: true, code: true, nameAr: true, baseUnitId: true } } as const;
@@ -909,7 +909,7 @@ export class CountsService {
   }
 
   private async lockCount(tx: Prisma.TransactionClient, tenantId: bigint, id: bigint): Promise<void> {
-    await tx.$queryRaw`SELECT id FROM stock_counts WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM stock_counts WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
   }
 
   /**
@@ -958,13 +958,13 @@ export class CountsService {
       ? await tx.$queryRaw<{ item_id: bigint | number; qty: string }[]>`
           SELECT item_id, CAST(SUM(qty_in - qty_out) AS CHAR) AS qty
             FROM stock_movements
-           WHERE tenant_id = ${tenantId} AND warehouse_id = ${warehouseId}
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND warehouse_id = ${warehouseId}
              AND item_id IN (${Prisma.join(itemIds)}) AND movement_date <= ${date}
            GROUP BY item_id${lockClause}`
       : await tx.$queryRaw<{ item_id: bigint | number; qty: string }[]>`
           SELECT item_id, CAST(SUM(qty_in - qty_out) AS CHAR) AS qty
             FROM stock_movements
-           WHERE tenant_id = ${tenantId} AND warehouse_id = ${warehouseId} AND movement_date <= ${date}
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND warehouse_id = ${warehouseId} AND movement_date <= ${date}
            GROUP BY item_id${lockClause}`;
     return new Map(rows.map((r) => [BigInt(r.item_id), new Decimal(r.qty)]));
   }

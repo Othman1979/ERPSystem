@@ -9,6 +9,7 @@ import { withLineCounts } from '../../common/paging/line-counts.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { assertCanApprove, isAuthor, readApprover } from '../../common/procurement/approval.js';
 import { assertProcurementLevel, lockProcurementLevel } from '../../common/procurement/procurement-level.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { CatalogService } from '../inventory/catalog.service.js';
@@ -244,11 +245,15 @@ export class PurchaseRequestsService {
    * True when it closed it; the caller audits that after COMMIT.
    */
   async closeIfFullyOrdered(tx: Prisma.TransactionClient, tenantId: bigint, requestId: bigint): Promise<boolean> {
+    const companyId = currentCompanyFilter().id;
+    const orderCompanyFilter =
+      companyId === undefined ? Prisma.empty : Prisma.sql`AND o.company_id = ${companyId}`;
     const rows = await tx.$queryRaw<{ id: bigint; qty: { toString(): string }; approved: { toString(): string } | null }[]>`
       SELECT rl.id, rl.qty,
              (SELECT SUM(ol.qty) FROM purchase_order_lines ol
                 JOIN purchase_orders o ON o.tenant_id = ol.tenant_id AND o.id = ol.order_id
-               WHERE ol.tenant_id = ${tenantId} AND ol.request_line_id = rl.id AND o.status = 'APPROVED') AS approved
+               WHERE ol.tenant_id = ${tenantId} AND ol.request_line_id = rl.id
+                 AND o.status = 'APPROVED' ${orderCompanyFilter}) AS approved
         FROM purchase_request_lines rl
        WHERE rl.tenant_id = ${tenantId} AND rl.request_id = ${requestId}`;
     const covered = rows.every((r) => new Decimal(r.approved?.toString() ?? '0').gte(r.qty.toString()));

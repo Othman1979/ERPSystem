@@ -108,6 +108,70 @@ describe('multi-company (ADR-040)', () => {
     expect(rows2.some((r) => b1.has(r.id))).toBe(false);
   });
 
+  it('C4: item, party, and stock reads stay within the selected company', async () => {
+    const headers = auth(ownerA, first);
+    const units = await api().get('/api/v1/units').set(headers);
+    expect(units.status).toBe(200);
+    const baseUnit = (units.body as { id: string; code: string }[]).find((u) => u.code === 'PCS') ?? units.body[0];
+    const item = await api().post('/api/v1/items').set(headers).send({
+      code: `MC-${RUN}`,
+      nameAr: 'صنف الشركة الأولى',
+      baseUnitId: baseUnit.id,
+    });
+    expect(item.status).toBe(201);
+
+    const party = await api().post('/api/v1/parties').set(headers).send({
+      code: `MC-${RUN}`,
+      nameAr: 'عميل الشركة الأولى',
+      partyType: 'CUSTOMER',
+    });
+    expect(party.status).toBe(201);
+
+    const fiscalYear = await api().post('/api/v1/fiscal-years').set(headers).send({
+      code: `MC-${RUN}`,
+      startDate: '2025-01-01',
+      endDate: '2025-12-31',
+    });
+    expect(fiscalYear.status).toBe(201);
+
+    const warehouse = await api().post('/api/v1/warehouses').set(headers).send({
+      code: `MC-${RUN}`,
+      nameAr: 'مستودع الشركة الأولى',
+    });
+    expect(warehouse.status).toBe(201);
+    const adjustment = await api().post('/api/v1/stock-adjustments').set(headers).send({
+      adjustmentDate: '2025-01-13',
+      adjustmentType: 'OPENING',
+      warehouseId: warehouse.body.id,
+      lines: [{ itemId: item.body.id, qty: '7', unitCost: '1.000' }],
+    });
+    expect(adjustment.status).toBe(201);
+    const posted = await api()
+      .post(`/api/v1/stock-adjustments/${adjustment.body.id}/post`)
+      .set(headers)
+      .set('Idempotency-Key', `mc-stock-${RUN}`);
+    expect(posted.status).toBe(201);
+
+    const otherItem = await api().get(`/api/v1/items/${item.body.id}`).set(auth(ownerA, second));
+    const ownItem = await api().get(`/api/v1/items/${item.body.id}`).set(headers);
+    const otherPatch = await api().patch(`/api/v1/items/${item.body.id}`).set(auth(ownerA, second)).send({ nameAr: 'تعديل ممنوع' });
+    expect([otherItem.status, ownItem.status, otherPatch.status]).toEqual([404, 200, 404]);
+
+    const otherParty = await api().get(`/api/v1/parties/${party.body.id}`).set(auth(ownerA, second));
+    const ownParty = await api().get(`/api/v1/parties/${party.body.id}`).set(headers);
+    expect([otherParty.status, ownParty.status]).toEqual([404, 200]);
+
+    const otherItems = await api().get('/api/v1/items').set(auth(ownerA, second));
+    const ownItems = await api().get('/api/v1/items').set(headers);
+    expect(otherItems.body.items.some((row: { id: string }) => row.id === item.body.id)).toBe(false);
+    expect(ownItems.body.items.some((row: { id: string }) => row.id === item.body.id)).toBe(true);
+
+    const otherBalances = await api().get('/api/v1/stock/balances').set(auth(ownerA, second));
+    const ownBalances = await api().get('/api/v1/stock/balances').set(headers);
+    expect(otherBalances.body.some((row: { itemId: string }) => row.itemId === item.body.id)).toBe(false);
+    expect(ownBalances.body.some((row: { itemId: string }) => row.itemId === item.body.id)).toBe(true);
+  });
+
   it('C2: another tenant cannot pick the company, and the header must be an id', async () => {
     const other = await api().get('/api/v1/accounts').set(auth(ownerB, second));
     expect(other.status).toBe(403);

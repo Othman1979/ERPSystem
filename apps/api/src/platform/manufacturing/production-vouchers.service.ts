@@ -19,7 +19,7 @@ import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import { BomService, type ExplodedLine } from './bom.service.js';
 import type { CreateProductionVoucherDto, ListProductionVouchersQueryDto, ProductionLineDto, UpdateProductionVoucherDto } from './dto/production-voucher.dto.js';
 import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
-import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/current-company.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -340,7 +340,7 @@ export class ProductionVouchersService implements OnModuleInit {
     const companyId = await this.companyId(db);
     const userId = this.userId() ?? null;
     await db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM production_vouchers WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM production_vouchers WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
       const current = await this.draftHead(tx, companyId, id);
       const resolved = await this.resolve(
         tx,
@@ -377,7 +377,7 @@ export class ProductionVouchersService implements OnModuleInit {
     const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
     await db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM production_vouchers WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM production_vouchers WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
       await this.draftHead(tx, companyId, id);
       await tx.productionVoucherLine.deleteMany({ where: { voucherId: id } });
       await tx.productionVoucher.delete({ where: { id } });
@@ -400,7 +400,7 @@ export class ProductionVouchersService implements OnModuleInit {
     const result = await retryOnLockConflict(() =>
       db.$transaction(async (tx) => {
         // The voucher row first: two requests on one voucher queue here (as adjustments do).
-        await tx.$queryRaw`SELECT id FROM production_vouchers WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM production_vouchers WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const result = await this.postLocked(tx, companyId, id, userId);
         await this.audit.log({
           action: 'production.post',
@@ -573,7 +573,7 @@ export class ProductionVouchersService implements OnModuleInit {
     const reversalDate = await this.support.companyTodayDate();
     const result = await retryOnLockConflict(() =>
       db.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM production_vouchers WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM production_vouchers WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const result = await this.reverseLocked(tx, companyId, id, userId, reversalDate);
         await this.audit.log({
           action: 'production.reverse',

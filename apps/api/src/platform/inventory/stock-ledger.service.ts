@@ -8,7 +8,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { costMovement, type CostState } from './stock-costing.js';
 import { isStocked, ItemKindValue, assertNotRecipe } from '../../common/inventory/item-kind.js';
-import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/current-company.js';
 
 
 /** True when the loaded item exists and holds stock (ADR-031 §1). */
@@ -588,6 +588,11 @@ export class StockLedgerService {
       SELECT id, item_id, qty_on_hand
         FROM stock_balances
        WHERE tenant_id = ${tenantId} AND warehouse_id = ${warehouseId} AND item_id IN (${Prisma.join(ids)})
+         AND EXISTS (
+           SELECT 1 FROM warehouses w
+            WHERE w.tenant_id = stock_balances.tenant_id AND w.id = stock_balances.warehouse_id
+              ${currentCompanySqlFilter('w')}
+         )
        ORDER BY item_id
          FOR UPDATE
     `;
@@ -658,22 +663,36 @@ export class StockLedgerService {
    */
   async verify(): Promise<VerifyResult> {
     const { tenantId, db } = this.tenant();
+    const companyId = currentCompanyFilter().id;
     // One REPEATABLE READ snapshot for every check: a posting committing
     // between the stock value read and the GL read would otherwise show as a
     // false GL_INVENTORY difference. Reads only.
-    return db.$transaction((tx) => this.verifyOn(tx, tenantId), {
+    return db.$transaction((tx) => this.verifyOn(tx, tenantId, companyId), {
       isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
       timeout: 30_000,
       maxWait: 10_000,
     });
   }
 
-  private async verifyOn(tx: Prisma.TransactionClient, tenantId: bigint): Promise<VerifyResult> {
+  private async verifyOn(tx: Prisma.TransactionClient, tenantId: bigint, companyId?: bigint): Promise<VerifyResult> {
     const mismatches: VerifyMismatch[] = [];
+    const movementCompanyFilter =
+      companyId === undefined ? Prisma.empty : Prisma.sql`AND company_id = ${companyId}`;
+    const balanceCompanyFilter =
+      companyId === undefined
+        ? Prisma.empty
+        : Prisma.sql`AND EXISTS (
+            SELECT 1 FROM warehouses w
+             WHERE w.tenant_id = b.tenant_id AND w.id = b.warehouse_id AND w.company_id = ${companyId}
+          )`;
+    const costCompanyFilter =
+      companyId === undefined ? Prisma.empty : Prisma.sql`AND c.company_id = ${companyId}`;
 
     const [{ pairs }] = await tx.$queryRaw<{ pairs: bigint }[]>`
       SELECT COUNT(*) AS pairs FROM (
-        SELECT 1 FROM stock_movements WHERE tenant_id = ${tenantId} GROUP BY warehouse_id, item_id
+        SELECT 1 FROM stock_movements
+         WHERE tenant_id = ${tenantId} ${movementCompanyFilter}
+         GROUP BY warehouse_id, item_id
       ) p`;
 
     const qtyRows = await tx.$queryRaw<{ warehouse_id: bigint; item_id: bigint; expected: unknown; actual: unknown }[]>`
@@ -681,15 +700,16 @@ export class StockLedgerService {
         FROM stock_balances b
         LEFT JOIN (
           SELECT warehouse_id, item_id, SUM(qty_in) - SUM(qty_out) AS q
-            FROM stock_movements WHERE tenant_id = ${tenantId}
+            FROM stock_movements WHERE tenant_id = ${tenantId} ${movementCompanyFilter}
            GROUP BY warehouse_id, item_id
         ) m ON m.warehouse_id = b.warehouse_id AND m.item_id = b.item_id
-       WHERE b.tenant_id = ${tenantId} AND b.qty_on_hand <> COALESCE(m.q, 0)
+       WHERE b.tenant_id = ${tenantId} ${balanceCompanyFilter}
+         AND b.qty_on_hand <> COALESCE(m.q, 0)
       UNION ALL
       SELECT m.warehouse_id, m.item_id, m.q AS expected, 0 AS actual
         FROM (
           SELECT warehouse_id, item_id, SUM(qty_in) - SUM(qty_out) AS q
-            FROM stock_movements WHERE tenant_id = ${tenantId}
+            FROM stock_movements WHERE tenant_id = ${tenantId} ${movementCompanyFilter}
            GROUP BY warehouse_id, item_id
         ) m
         LEFT JOIN stock_balances b
@@ -713,17 +733,17 @@ export class StockLedgerService {
         LEFT JOIN (
           SELECT company_id, item_id, SUM(qty_in) - SUM(qty_out) AS q,
                  SUM(CASE WHEN movement_type = 'IN' THEN total_cost ELSE -total_cost END) AS v
-            FROM stock_movements WHERE tenant_id = ${tenantId}
+            FROM stock_movements WHERE tenant_id = ${tenantId} ${movementCompanyFilter}
            GROUP BY company_id, item_id
         ) m ON m.company_id = c.company_id AND m.item_id = c.item_id
-       WHERE c.tenant_id = ${tenantId}
+       WHERE c.tenant_id = ${tenantId} ${costCompanyFilter}
          AND (c.total_qty <> COALESCE(m.q, 0) OR c.total_value <> COALESCE(m.v, 0))
       UNION ALL
       SELECT m.company_id, m.item_id, 0, 0, m.q, m.v
         FROM (
           SELECT company_id, item_id, SUM(qty_in) - SUM(qty_out) AS q,
                  SUM(CASE WHEN movement_type = 'IN' THEN total_cost ELSE -total_cost END) AS v
-            FROM stock_movements WHERE tenant_id = ${tenantId}
+            FROM stock_movements WHERE tenant_id = ${tenantId} ${movementCompanyFilter}
            GROUP BY company_id, item_id
         ) m
         LEFT JOIN item_costs c

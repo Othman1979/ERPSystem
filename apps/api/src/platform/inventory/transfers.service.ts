@@ -18,7 +18,7 @@ import type { ListStockTransfersQueryDto } from './dto/list-queries.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { retryOnLockConflict } from '../shared/document-support.service.js';
 import { isStocked, stockedItemKindFilter, assertNotRecipe } from '../../common/inventory/item-kind.js';
-import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/current-company.js';
 
 const SOURCE = 'STOCK_TRANSFER';
 
@@ -243,7 +243,7 @@ export class TransfersService {
         // Lock the document first (§10.1 step 7). As the first statement it also
         // makes every later read see the latest committed state, so two
         // concurrent requests cannot both post or reverse it.
-        await tx.$queryRaw`SELECT id FROM stock_transfers WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM stock_transfers WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const draft = await tx.stockTransfer.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },
@@ -327,7 +327,7 @@ export class TransfersService {
         // Lock the document first (§10.1 step 7). As the first statement it also
         // makes every later read see the latest committed state, so two
         // concurrent requests cannot both post or reverse it.
-        await tx.$queryRaw`SELECT id FROM stock_transfers WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM stock_transfers WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const original = await tx.stockTransfer.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },

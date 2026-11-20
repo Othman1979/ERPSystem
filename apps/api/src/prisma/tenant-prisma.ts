@@ -104,6 +104,53 @@ export const TENANT_MODELS = [
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);
 
+/** Tenant models whose rows belong to one company, enforced from CLS. */
+export const COMPANY_MODELS = [
+  'Branch',
+  'FiscalYear',
+  'FiscalYearClosing',
+  'Account',
+  'AccountMapping',
+  'DocumentSequence',
+  'JournalEntry',
+  'CostCenter',
+  'Item',
+  'Warehouse',
+  'StockMovement',
+  'ItemCost',
+  'StockAdjustment',
+  'StockTransfer',
+  'StockCount',
+  'Party',
+  'CashBox',
+  'BankAccount',
+  'BankStatement',
+  'SalesInvoice',
+  'PurchaseInvoice',
+  'SalesReturn',
+  'PurchaseReturn',
+  'GoodsNote',
+  'Receipt',
+  'Payment',
+  'Allocation',
+  'CashTransfer',
+  'EInvoiceSettings',
+  'EInvoiceSubmission',
+  'PurchaseRequest',
+  'PurchaseQuote',
+  'PurchaseOrder',
+  'IssueRequest',
+  'SalesQuote',
+  'SalesOrder',
+  'Bom',
+  'ProductionVoucher',
+  'Cheque',
+] as const;
+
+/** Company-scoped tenant models deliberately left visible across a request company. */
+export const COMPANY_MODEL_EXCLUSIONS = ['MembershipCompany'] as const;
+
+const COMPANY_MODEL_SET: ReadonlySet<string> = new Set(COMPANY_MODELS);
 const READ_OPS = new Set([
   'findUnique',
   'findUniqueOrThrow',
@@ -131,6 +178,20 @@ function currentTenantId(explicit?: bigint): bigint {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function injectWhere(args: any, tenantId: bigint): void {
   args.where = { ...(args.where ?? {}), tenantId };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function injectCompanyWhere(args: any, companyId: bigint): void {
+  if (args.where?.companyId === undefined) {
+    args.where = { ...(args.where ?? {}), companyId };
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function injectStockBalanceCompanyWhere(args: any, companyId: bigint): void {
+  args.where = {
+    AND: [args.where ?? {}, { warehouse: { companyId } }],
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -163,17 +224,30 @@ export function tenantScopedPrisma(client: PrismaClient, tenantId?: bigint): Pri
           }
           const tid = currentTenantId(tenantId);
           const op = operation as string;
+          const cls = ClsServiceManager.getClsService<RequestContext>();
+          const companyId = cls.isActive() ? cls.get('companyId') : undefined;
 
           if (READ_OPS.has(op)) {
             injectWhere(args, tid);
+            if (companyId !== undefined && COMPANY_MODEL_SET.has(model)) {
+              injectCompanyWhere(args, companyId);
+            } else if (companyId !== undefined && model === 'StockBalance') {
+              injectStockBalanceCompanyWhere(args, companyId);
+            }
           } else if (op === 'create' || op === 'createMany' || op === 'createManyAndReturn') {
             injectData(args, tid);
           } else if (op === 'upsert') {
             injectWhere(args, tid);
+            if (companyId !== undefined && COMPANY_MODEL_SET.has(model)) {
+              injectCompanyWhere(args, companyId);
+            }
             if (args.create) args.create = { ...args.create, tenantId: tid };
             if (args.update) args.update = { ...args.update };
           } else if (WRITE_OPS.has(op)) {
             injectWhere(args, tid);
+            if (companyId !== undefined && COMPANY_MODEL_SET.has(model)) {
+              injectCompanyWhere(args, companyId);
+            }
           }
           // Aggregates/groupBy already covered by READ_OPS via args.where.
 

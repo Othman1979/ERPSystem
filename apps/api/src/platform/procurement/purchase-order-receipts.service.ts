@@ -3,6 +3,7 @@ import { branchWhere } from '../../common/branch/branch-context.js';
 import { Decimal, round6 } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 
@@ -107,7 +108,7 @@ export class PurchaseOrderReceiptsService {
       }[]
     >`
       SELECT id, order_no, status, branch_id, supplier_id, warehouse_id, cost_center_id, prices_include_tax
-        FROM purchase_orders WHERE tenant_id = ${tenantId} AND id = ${orderId} ${mode}`;
+        FROM purchase_orders WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${orderId} ${mode}`;
     if (!o) throw DomainError.notFound('PurchaseOrder', orderId.toString());
     const rows = await tx.$queryRaw<
       {

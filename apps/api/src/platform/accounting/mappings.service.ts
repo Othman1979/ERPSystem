@@ -13,7 +13,7 @@ import {
   MAPPING_RULES,
 } from './chart-template.js';
 import { BulkMappingsDto, UpsertMappingDto } from './dto/accounting.dto.js';
-import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/current-company.js';
 
 // journal_lines is read here, not through JournalModule: JournalModule imports AccountingModule (cycle). Read-only usage checks; both are the accounting domain (CLAUDE.md module list).
 
@@ -151,7 +151,7 @@ export class MappingsService {
       if (current && current.accountId !== accountId) {
         // Re-saving the same account is allowed; moving a balance someone
         // else settles to another account would split it (LEDGER-05).
-        await tx.$queryRaw`SELECT id FROM accounts FORCE INDEX (PRIMARY) WHERE tenant_id = ${tenantId} AND id = ${current.accountId} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM accounts FORCE INDEX (PRIMARY) WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${current.accountId} FOR UPDATE`;
         const posted = await tx.journalLine.count({
           where: { tenantId, accountId: current.accountId, entry: { status: 'POSTED' } },
         });
