@@ -373,27 +373,8 @@ export class ChequesService {
           }
         }
 
-        const lines = await this.entryLines(tx, tenantId, companyId, c, action, bankAccountId);
-        let journalEntryId: bigint | null = null;
-        if (lines) {
-          const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, date);
-          const entry = await this.posting.postEntry(tx, {
-            tenantId,
-            companyId,
-            entryDate: date,
-            fiscalPeriodId: period.id,
-            sourceType: 'CHEQUE',
-            sourceId: c.id,
-            branchId: c.branchId,
-            description: `Cheque ${c.chequeNo} ${action}`,
-            lines,
-            postedBy: userId,
-          });
-          journalEntryId = entry.id;
-        }
-
-        await tx.cheque.update({ where: { id: c.id }, data: { status: rule.to, bankAccountId } });
-        await tx.chequeEvent.create({
+        // The event is the entry's source: a step redone after an undo posts again (one POST per source).
+        const event = await tx.chequeEvent.create({
           data: {
             tenantId,
             chequeId: c.id,
@@ -402,11 +383,29 @@ export class ChequesService {
             toStatus: rule.to,
             eventDate: date,
             bankAccountId,
-            journalEntryId,
             notes: dto.notes ?? null,
             createdBy: userId,
           },
         });
+        const lines = await this.entryLines(tx, tenantId, companyId, c, action, bankAccountId);
+        if (lines) {
+          const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, date);
+          const entry = await this.posting.postEntry(tx, {
+            tenantId,
+            companyId,
+            entryDate: date,
+            fiscalPeriodId: period.id,
+            sourceType: 'CHEQUE_EVENT',
+            sourceId: event.id,
+            branchId: c.branchId,
+            description: `Cheque ${c.chequeNo} ${action}`,
+            lines,
+            postedBy: userId,
+          });
+          await tx.chequeEvent.update({ where: { id: event.id }, data: { journalEntryId: entry.id } });
+        }
+
+        await tx.cheque.update({ where: { id: c.id }, data: { status: rule.to, bankAccountId } });
         await this.audit.log({ action: `cheque.${action}`, entityType: 'cheque', entityId: c.id, after: { status: rule.to } }, tx);
       }, POSTING_TX_OPTIONS),
     );
