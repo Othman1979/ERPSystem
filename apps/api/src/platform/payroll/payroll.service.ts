@@ -28,6 +28,8 @@ import type {
   CreateRecurringElementDto,
   CreateSalaryDto,
   PayrollPaymentDto,
+  UpdateEmployeeDto,
+  UpdatePayElementDto,
 } from './dto/payroll.dto.js';
 
 const MAPPING_KEYS = [
@@ -103,24 +105,39 @@ export class PayrollService {
     if (run) throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Payroll inputs are locked after posting');
   }
 
-  listEmployees() {
+  async listEmployees() {
     const { db } = this.context();
-    return db.employee.findMany({
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const employees = await db.employee.findMany({
       orderBy: [{ code: 'asc' }],
-      select: {
-        id: true,
-        code: true,
-        nameAr: true,
-        nameEn: true,
-        isActive: true,
-        hireDate: true,
-        leaveDate: true,
-        branchId: true,
-        costCenterId: true,
-        payMethod: true,
-        sscCovered: true,
-        sscHazardous: true,
+      include: {
+        branch: { select: { nameAr: true, nameEn: true } },
+        salaries: { where: { effectiveFrom: { lte: today } }, orderBy: [{ effectiveFrom: 'desc' }], take: 1 },
       },
+    });
+    return employees.map(({ branch, salaries, ...employee }) => ({
+      ...employee,
+      branchNameAr: branch?.nameAr ?? null,
+      branchNameEn: branch?.nameEn ?? null,
+      currentBasicSalary: salaries[0]?.basicSalary.toString() ?? null,
+    }));
+  }
+
+  getEmployee(id: bigint) {
+    const { db } = this.context();
+    return db.employee.findFirst({
+      where: { id },
+      include: {
+        salaries: { orderBy: [{ effectiveFrom: 'desc' }, { id: 'desc' }] },
+        recurringElements: {
+          include: { payElement: true },
+          orderBy: [{ validFrom: 'asc' }, { id: 'asc' }],
+        },
+      },
+    }).then((employee) => {
+      if (!employee) throw DomainError.notFound('Employee', id.toString());
+      return employee;
     });
   }
 
@@ -146,6 +163,37 @@ export class PayrollService {
         sscHazardous: dto.sscHazardous ?? false,
       },
     });
+  }
+
+  async updateEmployee(id: bigint, dto: UpdateEmployeeDto) {
+    this.canManage();
+    const { db } = this.context();
+    const employee = await db.employee.findFirst({ where: { id }, select: { id: true } });
+    if (!employee) throw DomainError.notFound('Employee', id.toString());
+    if (dto.code !== undefined) {
+      const duplicate = await db.employee.findFirst({ where: { code: dto.code, id: { not: id } }, select: { id: true } });
+      if (duplicate) throw new DomainError(ErrorCode.DUPLICATE_CODE, 'Employee code already exists');
+    }
+    await db.employee.update({
+      where: { id },
+      data: {
+        code: dto.code,
+        nameAr: dto.nameAr,
+        nameEn: dto.nameEn === undefined ? undefined : dto.nameEn ?? null,
+        nationalId: dto.nationalId === undefined ? undefined : dto.nationalId ?? null,
+        sscNumber: dto.sscNumber === undefined ? undefined : dto.sscNumber ?? null,
+        hireDate: dto.hireDate === undefined ? undefined : date(dto.hireDate),
+        leaveDate: dto.leaveDate === undefined ? undefined : dto.leaveDate ? date(dto.leaveDate) : null,
+        branchId: dto.branchId === undefined ? undefined : dto.branchId ? BigInt(dto.branchId) : null,
+        costCenterId: dto.costCenterId === undefined ? undefined : dto.costCenterId ? BigInt(dto.costCenterId) : null,
+        payMethod: dto.payMethod,
+        iban: dto.iban === undefined ? undefined : dto.iban ?? null,
+        sscCovered: dto.sscCovered,
+        sscHazardous: dto.sscHazardous,
+        isActive: dto.isActive,
+      },
+    });
+    return this.getEmployee(id);
   }
 
   async addSalary(employeeId: bigint, dto: CreateSalaryDto) {
@@ -200,6 +248,20 @@ export class PayrollService {
     });
   }
 
+  async deleteRecurring(employeeId: bigint, recurringId: bigint) {
+    this.canManage();
+    const { db } = this.context();
+    const employee = await db.employee.findFirst({ where: { id: employeeId }, select: { id: true } });
+    if (!employee) throw DomainError.notFound('Employee', employeeId.toString());
+    const recurring = await db.employeeRecurringElement.findFirst({
+      where: { id: recurringId, employeeId },
+      select: { id: true },
+    });
+    if (!recurring) throw DomainError.notFound('EmployeeRecurringElement', recurringId.toString());
+    await db.employeeRecurringElement.delete({ where: { id: recurringId } });
+    return { id: recurringId.toString(), deleted: true };
+  }
+
   listElements() {
     const { db } = this.context();
     return db.payElement.findMany({ orderBy: [{ code: 'asc' }] });
@@ -231,6 +293,50 @@ export class PayrollService {
         accountId,
       },
     });
+  }
+
+  async updateElement(id: bigint, dto: UpdatePayElementDto) {
+    this.canManage();
+    const { tenantId, companyId, db } = this.context();
+    return db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
+      const element = await tx.payElement.findFirst({ where: { id } });
+      if (!element) throw DomainError.notFound('PayElement', id.toString());
+      if ((dto.kind !== undefined && dto.kind !== element.kind) || (dto.amountType !== undefined && dto.amountType !== element.amountType)) {
+        const used = await tx.payrollLineItem.findFirst({
+          where: {
+            payElementId: id,
+            payrollLine: { payrollRun: { status: { in: ['POSTED', 'PAID', 'REVERSED'] } } },
+          },
+          select: { id: true },
+        });
+        if (used) throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Used pay element type cannot be changed');
+      }
+      if (dto.accountId === null) throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Pay element account is not allowed');
+      const accountId = dto.accountId === undefined ? element.accountId : BigInt(dto.accountId);
+      const account = await tx.account.findFirst({ where: { id: accountId } });
+      const kind = dto.kind ?? element.kind;
+      const validType =
+        kind === 'EARNING'
+          ? account?.accountType === 'EXPENSE'
+          : account?.accountType === 'ASSET' || account?.accountType === 'LIABILITY';
+      if (!account || !validType || account.isControl || account.controlType !== null || !account.isPostable || !account.isActive) {
+        throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Pay element account is not allowed');
+      }
+      return tx.payElement.update({
+        where: { id },
+        data: {
+          nameAr: dto.nameAr,
+          nameEn: dto.nameEn === undefined ? undefined : dto.nameEn ?? null,
+          kind: dto.kind,
+          amountType: dto.amountType,
+          rateFactor: dto.rateFactor,
+          sscSubject: dto.sscSubject,
+          accountId: dto.accountId === undefined ? undefined : accountId,
+          isActive: dto.isActive,
+        },
+      });
+    }, POSTING_TX_OPTIONS);
   }
 
   listSettings() {

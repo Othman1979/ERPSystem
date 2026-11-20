@@ -13,6 +13,13 @@ const route = (key: string, extra: Partial<AppRoute> = {}): AppRoute => ({
 });
 
 describe('minProcurementLevel on routes and menu items (ADR-024 §2.3)', () => {
+  it('hides payroll navigation when membership does not cover all branches', () => {
+    const payroll = APP_GROUPS.find((group) => group.label === 'nav.groupPayroll');
+    expect(payroll).toBeDefined();
+    expect(allowedGroups([payroll!], canAll, undefined, false)).toEqual([]);
+    expect(allowedGroups([payroll!], canAll, undefined, true)).toHaveLength(1);
+  });
+
   it('orders SIMPLE < MEDIUM < FULL; no minimum always passes; unknown counts as SIMPLE', () => {
     expect(meetsProcurementLevel('SIMPLE', undefined)).toBe(true);
     expect(meetsProcurementLevel('SIMPLE', 'MEDIUM')).toBe(false);

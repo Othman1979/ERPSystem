@@ -17,6 +17,9 @@ export const PERMISSIONS = {
   /** Create, edit and submit purchase requests (ADR-025 §13). */
   PURCHASE_REQUEST_MANAGE: 'purchase_request.manage',
   TREASURY_MANAGE: 'treasury.manage',
+  PAYROLL_VIEW: 'payroll.view',
+  PAYROLL_MANAGE: 'payroll.manage',
+  PAYROLL_POST: 'payroll.post',
   EINVOICE_MANAGE: 'einvoice.manage',
   REPORTS_VIEW: 'reports.view',
   COST_CENTER_MANAGE: 'cost_center.manage',

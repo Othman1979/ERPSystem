@@ -80,6 +80,7 @@ export interface RibbonProps {
   can: (permission: Permission) => boolean;
   /** The company's procurement level, when known. */
   procurementLevel?: ProcurementLevel;
+  allBranches?: boolean;
   /** Signed in without a company: only the invitations screen is offered. */
   noCompany: boolean;
   isPlatformAdmin: boolean;
@@ -123,7 +124,7 @@ function RibbonButton({ item, pathname }: { item: RibbonItem; pathname: string }
  * under the top bar, and the buttons of the active tab on a strip below it.
  * Replaces the side menu on screens from 768 px; the phone keeps its drawer.
  */
-export function Ribbon({ can, procurementLevel, noCompany, isPlatformAdmin, pendingInvitations, compact }: RibbonProps) {
+export function Ribbon({ can, procurementLevel, allBranches = true, noCompany, isPlatformAdmin, pendingInvitations, compact }: RibbonProps) {
   const { t, i18n } = useTranslation();
   const { pathname } = useLocation();
   const isRtl = i18n.language !== 'en';
@@ -137,7 +138,7 @@ export function Ribbon({ can, procurementLevel, noCompany, isPlatformAdmin, pend
       ? APP_GROUPS.map((g) => ({ ...g, routes: g.routes.filter((r) => r.path === INVITATIONS_PATH) })).filter(
           (g) => g.routes.length > 0,
         )
-      : allowedGroups(APP_GROUPS, can, procurementLevel);
+      : allowedGroups(APP_GROUPS, can, procurementLevel, allBranches);
 
     const routeItem = (route: AppRoute, tone: ModuleTone, count?: number): RibbonItem => ({
       key: route.key,
@@ -186,7 +187,7 @@ export function Ribbon({ can, procurementLevel, noCompany, isPlatformAdmin, pend
         },
       ];
       // Quick actions: only the new documents this role may create (the API answers the rest with 403).
-      const quick = QUICK_ACTIONS.filter((a) => can(a.permission)).map<RibbonItem>((a) => ({
+      const quick = QUICK_ACTIONS.filter((a) => can(a.permission) && (a.key !== 'payrollRun' || allBranches)).map<RibbonItem>((a) => ({
         key: `quick:${a.key}`,
         path: a.path,
         label: t(a.label),

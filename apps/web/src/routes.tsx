@@ -70,6 +70,7 @@ export const PAGE_LOADERS = {
   consumption: () => import('./pages/reports/ConsumptionPage').then((m) => m.ConsumptionPage),
   recipeSales: () => import('./pages/reports/RecipeSalesWithoutBomPage').then((m) => m.RecipeSalesWithoutBomPage),
   production: () => import('./pages/manufacturing/ProductionPage').then((m) => m.ProductionPage),
+  payroll: () => import('./pages/PayrollPage').then((m) => m.PayrollPage),
 };
 
 const AccountsPage = lazyPage(PAGE_LOADERS.accounts);
@@ -101,6 +102,7 @@ const BomsPage = lazyPage(PAGE_LOADERS.boms);
 const ConsumptionPage = lazyPage(PAGE_LOADERS.consumption);
 const RecipeSalesWithoutBomPage = lazyPage(PAGE_LOADERS.recipeSales);
 const ProductionPage = lazyPage(PAGE_LOADERS.production);
+const PayrollPage = lazyPage(PAGE_LOADERS.payroll);
 
 export interface AppRoute {
   key: string;
@@ -137,6 +139,7 @@ export interface AppRoute {
   newPath?: string;
   /** Permission needed to create the document behind newPath; without it the button is not offered. */
   newPermission?: Permission;
+  allBranchesOnly?: boolean;
 }
 
 export interface AppGroup {
@@ -160,6 +163,7 @@ export interface QuickAction {
 
 /** Everyday documents, opened straight into a new form (pages read `?new=1`); shown to roles that may create them. */
 export const QUICK_ACTIONS: QuickAction[] = [
+  { key: 'payrollRun', label: 'payroll.newRun', path: '/payroll?tab=runs&new=1', icon: <ScheduleOutlined />, tone: 'treasury', permission: PERMISSIONS.PAYROLL_MANAGE },
   { key: 'sale', label: 'sales.newInvoice', path: '/sales?new=1', icon: <ShoppingCartOutlined />, tone: 'sales', permission: PERMISSIONS.SALES_MANAGE },
   { key: 'purchase', label: 'purchases.newInvoice', path: '/purchases?new=1', icon: <ShoppingOutlined />, tone: 'purchases', permission: PERMISSIONS.PURCHASE_MANAGE },
   { key: 'receipt', label: 'treasury.newReceipt', path: '/treasury?tab=receipts&new=1', icon: <ImportOutlined />, tone: 'treasury', permission: PERMISSIONS.TREASURY_MANAGE },
@@ -194,6 +198,15 @@ const PARTIES_ROUTE: AppRoute = {
  * A tab is a group; `section` splits its buttons into captioned sub-groups.
  */
 export const APP_GROUPS: AppGroup[] = [
+  {
+    label: 'nav.groupPayroll',
+    tone: 'treasury',
+    routes: [{
+      key: 'payroll', path: '/payroll', label: 'payroll.title', icon: <ScheduleOutlined />, element: <PayrollPage />,
+      permission: PERMISSIONS.PAYROLL_VIEW, allBranchesOnly: true, newPath: '/payroll?tab=runs&new=1',
+      newPermission: PERMISSIONS.PAYROLL_MANAGE,
+    }],
+  },
   {
     label: 'nav.groupAccounting',
     tone: 'accounting',
@@ -439,8 +452,10 @@ export function allowedRoute(
   route: AppRoute,
   can: (permission: Permission) => boolean,
   level?: ProcurementLevel,
+  allBranches = true,
 ): boolean {
-  return (!route.permission || can(route.permission)) && meetsProcurementLevel(level, route.minProcurementLevel);
+  return (!route.permission || can(route.permission)) && meetsProcurementLevel(level, route.minProcurementLevel) &&
+    (!route.allBranchesOnly || allBranches);
 }
 
 /**
@@ -459,9 +474,10 @@ export function allowedGroups(
   groups: AppGroup[],
   can: (permission: Permission) => boolean,
   level?: ProcurementLevel,
+  allBranches = true,
 ): AppGroup[] {
   return groups
-    .map((g) => ({ ...g, routes: g.routes.filter((r) => allowedRoute(r, can, level)) }))
+    .map((g) => ({ ...g, routes: g.routes.filter((r) => allowedRoute(r, can, level, allBranches)) }))
     .filter((g) => g.routes.length > 0);
 }
 

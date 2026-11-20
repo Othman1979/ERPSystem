@@ -10,6 +10,7 @@ import {
   type ValidationArguments,
   type ValidatorConstraintInterface,
 } from 'class-validator';
+import { OmitType, PartialType } from '@nestjs/swagger';
 import { Decimal } from '../../../common/decimal/decimal.utils.js';
 import { DATE_PATTERN, ID_PATTERN } from '../../../common/pipes/parse-id.pipe.js';
 import { ExportQueryDto } from '../../printing/dto/export.dto.js';
@@ -30,6 +31,10 @@ export class CreateEmployeeDto {
   @IsOptional() @IsString() @MaxLength(50) iban?: string;
   @IsOptional() @IsBoolean() sscCovered?: boolean;
   @IsOptional() @IsBoolean() sscHazardous?: boolean;
+}
+
+export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {
+  @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
 export class CreateSalaryDto {
@@ -54,6 +59,10 @@ export class CreatePayElementDto {
   @Matches(DECIMAL_PATTERN) rateFactor!: string;
   @IsOptional() @IsBoolean() sscSubject?: boolean;
   @Matches(ID_PATTERN) accountId!: string;
+}
+
+export class UpdatePayElementDto extends PartialType(OmitType(CreatePayElementDto, ['code'] as const)) {
+  @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
 @ValidatorConstraint({ name: 'PayrollSettingsRange', async: false })

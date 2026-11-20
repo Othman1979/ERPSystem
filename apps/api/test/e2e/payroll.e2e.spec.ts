@@ -141,6 +141,32 @@ describe('Payroll PY1–PY3', () => {
     const employeeB = await post<{ id: string }>(tokenA, 'payroll/employees', {
       code: `B-${RUN}`, nameAr: 'الموظف ب', hireDate: '2031-01-01', payMethod: 'CASH', sscCovered: false, costCenterId,
     }, 'employee B', companyAId);
+    const employeeUpdate = await h.api().patch(`/api/v1/payroll/employees/${employeeA.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ nameEn: 'Employee A', isActive: true });
+    expect(employeeUpdate.status).toBe(200);
+    expect(employeeUpdate.body.nameEn).toBe('Employee A');
+    const duplicateCode = await h.api().patch(`/api/v1/payroll/employees/${employeeA.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ code: `B-${RUN}` });
+    expect(duplicateCode.status).toBe(409);
+    expect(duplicateCode.body.error.code).toBe('DUPLICATE_CODE');
+    const recurring = await post<{ id: string }>(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
+      payElementId: elementId.TRANSPORT, amount: '1.000', validFrom: '2032-01-01',
+    }, 'future recurring element', companyAId);
+    const customElement = await post<{ id: string }>(tokenA, 'payroll/elements', {
+      code: `EDIT-${RUN}`, nameAr: 'Editable', kind: 'EARNING', amountType: 'FIXED',
+      rateFactor: '1.000000', accountId: accounts['5201'],
+    }, 'editable pay element', companyAId);
+    const elementUpdate = await h.api().patch(`/api/v1/payroll/elements/${customElement.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId)
+      .send({ nameAr: 'Updated editable', rateFactor: '1.250000', sscSubject: false, isActive: true });
+    expect(elementUpdate.status).toBe(200);
+    expect(elementUpdate.body.nameAr).toBe('Updated editable');
+    expect((await h.api().get(`/api/v1/payroll/employees/${employeeA.id}`).set(h.auth(tokenA)).set('X-Company-Id', companyAId)).body.recurringElements)
+      .toHaveLength(1);
+    expect((await get(tokenA, `payroll/employees/${employeeA.id}`, otherCompany.id)).status).toBe(404);
+    expect((await get(tokenB, `payroll/employees/${employeeA.id}`)).status).toBe(404);
+    expect((await h.api().patch(`/api/v1/payroll/employees/${employeeA.id}`).set(h.auth(tokenA)).set('X-Company-Id', otherCompany.id).send({ nameAr: 'x' })).status).toBe(404);
+    expect((await h.api().patch(`/api/v1/payroll/employees/${employeeA.id}`).set(h.auth(tokenB)).send({ nameAr: 'x' })).status).toBe(404);
     expect((await act(tokenA, 'payroll/inputs', {
       employeeId: employeeA.id, payElementId: elementId.TRANSPORT, period: '2031-01', amount: null,
     }, companyAId)).status).toBe(400);
@@ -156,6 +182,9 @@ describe('Payroll PY1–PY3', () => {
     h.ok(await act(tokenA, `payroll/employees/${employeeB.id}/salaries`, {
       effectiveFrom: '2031-01-01', basicSalary: '400.000',
     }, companyAId), 201, 'salary B');
+    const employeeDetail = await get(tokenA, `payroll/employees/${employeeA.id}`, companyAId);
+    expect(employeeDetail.body.salaries).toHaveLength(1);
+    expect(employeeDetail.body.salaries[0].basicSalary).toBe('500');
 
     await post(tokenA, 'payroll/inputs', {
       employeeId: employeeA.id, payElementId: elementId.TRANSPORT, period: '2031-01', amount: '50.000',
@@ -213,11 +242,25 @@ describe('Payroll PY1–PY3', () => {
     expect(companyList.some((employee) => employee.id === employeeA.id)).toBe(false);
     const foreignRun = await get(tokenB, `payroll/runs/${run.id}`);
     expect(foreignRun.status).toBe(404);
+    expect((await h.api().patch(`/api/v1/payroll/elements/${customElement.id}`).set(h.auth(tokenA))
+      .set('X-Company-Id', otherCompany.id).send({ nameAr: 'x' })).status).toBe(404);
+    expect((await h.api().patch(`/api/v1/payroll/elements/${customElement.id}`).set(h.auth(tokenB)).send({ nameAr: 'x' })).status).toBe(404);
+    const foreignRecurringDelete = await h.api().delete(`/api/v1/payroll/employees/${employeeA.id}/recurring-elements/${recurring.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', otherCompany.id);
+    expect(foreignRecurringDelete.status).toBe(404);
+    expect((await h.api().delete(`/api/v1/payroll/employees/${employeeA.id}/recurring-elements/${recurring.id}`).set(h.auth(tokenB))).status).toBe(404);
+    const recurringDelete = await h.api().delete(`/api/v1/payroll/employees/${employeeA.id}/recurring-elements/${recurring.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId);
+    expect(recurringDelete.status).toBe(200);
     const foreignDelete = await h.api().delete(`/api/v1/payroll/runs/${run.id}`).set(h.auth(tokenA)).set('X-Company-Id', otherCompany.id);
     expect(foreignDelete.status).toBe(404);
 
     const posted = await act(tokenA, `payroll/runs/${run.id}/post`, {}, companyAId);
     h.ok(posted, 201, 'post payroll run');
+    const lockedElementType = await h.api().patch(`/api/v1/payroll/elements/${elementId.TRANSPORT}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ kind: 'DEDUCTION' });
+    expect(lockedElementType.status).toBe(409);
+    expect(lockedElementType.body.error.code).toBe('INVALID_STATUS_TRANSITION');
     const deletePosted = await h.api().delete(`/api/v1/payroll/runs/${run.id}`).set(h.auth(tokenA)).set('X-Company-Id', companyAId);
     expect(deletePosted.status).toBe(409);
     expect(deletePosted.body.error.code).toBe('INVALID_STATUS_TRANSITION');

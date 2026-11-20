@@ -8432,6 +8432,107 @@ export interface UndoChequeDto {
   date: string;
 }
 
+export interface PayrollEmployeeDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  branchNameAr: string | null;
+  /** @nullable */
+  branchNameEn: string | null;
+  /** @nullable */
+  currentBasicSalary: string | null;
+  sscCovered: boolean;
+  isActive: boolean;
+}
+
+export interface PayrollEmployeeSalaryDto {
+  id: string;
+  effectiveFrom: string;
+  basicSalary: string;
+}
+
+export type PayrollElementDtoKind = typeof PayrollElementDtoKind[keyof typeof PayrollElementDtoKind];
+
+
+export const PayrollElementDtoKind = {
+  EARNING: 'EARNING',
+  DEDUCTION: 'DEDUCTION',
+} as const;
+
+export type PayrollElementDtoAmountType = typeof PayrollElementDtoAmountType[keyof typeof PayrollElementDtoAmountType];
+
+
+export const PayrollElementDtoAmountType = {
+  FIXED: 'FIXED',
+  PER_HOUR: 'PER_HOUR',
+  PER_DAY: 'PER_DAY',
+} as const;
+
+export interface PayrollElementDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  kind: PayrollElementDtoKind;
+  amountType: PayrollElementDtoAmountType;
+  rateFactor: string;
+  sscSubject: boolean;
+  accountId: string;
+  isActive: boolean;
+}
+
+export interface PayrollRecurringElementDto {
+  id: string;
+  payElementId: string;
+  /** @nullable */
+  amount: string | null;
+  /** @nullable */
+  quantity: string | null;
+  validFrom: string;
+  /** @nullable */
+  validTo: string | null;
+  payElement: PayrollElementDto;
+}
+
+export type PayrollEmployeeDetailDtoPayMethod = typeof PayrollEmployeeDetailDtoPayMethod[keyof typeof PayrollEmployeeDetailDtoPayMethod];
+
+
+export const PayrollEmployeeDetailDtoPayMethod = {
+  BANK: 'BANK',
+  CASH: 'CASH',
+} as const;
+
+export interface PayrollEmployeeDetailDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  nationalId: string | null;
+  /** @nullable */
+  sscNumber: string | null;
+  hireDate: string;
+  /** @nullable */
+  leaveDate: string | null;
+  /** @nullable */
+  branchId: string | null;
+  /** @nullable */
+  costCenterId: string | null;
+  payMethod: PayrollEmployeeDetailDtoPayMethod;
+  /** @nullable */
+  iban: string | null;
+  sscCovered: boolean;
+  sscHazardous: boolean;
+  isActive: boolean;
+  salaries: PayrollEmployeeSalaryDto[];
+  recurringElements: PayrollRecurringElementDto[];
+}
+
 export type CreateEmployeeDtoPayMethod = typeof CreateEmployeeDtoPayMethod[keyof typeof CreateEmployeeDtoPayMethod];
 
 
@@ -8460,6 +8561,37 @@ export interface CreateEmployeeDto {
   iban?: string;
   sscCovered?: boolean;
   sscHazardous?: boolean;
+}
+
+export type UpdateEmployeeDtoPayMethod = typeof UpdateEmployeeDtoPayMethod[keyof typeof UpdateEmployeeDtoPayMethod];
+
+
+export const UpdateEmployeeDtoPayMethod = {
+  BANK: 'BANK',
+  CASH: 'CASH',
+} as const;
+
+export interface UpdateEmployeeDto {
+  /** @maxLength 50 */
+  code?: string;
+  /** @maxLength 191 */
+  nameAr?: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  /** @maxLength 50 */
+  nationalId?: string;
+  /** @maxLength 50 */
+  sscNumber?: string;
+  hireDate?: string;
+  leaveDate?: string;
+  branchId?: string;
+  costCenterId?: string;
+  payMethod?: UpdateEmployeeDtoPayMethod;
+  /** @maxLength 50 */
+  iban?: string;
+  sscCovered?: boolean;
+  sscHazardous?: boolean;
+  isActive?: boolean;
 }
 
 export interface CreateSalaryDto {
@@ -8504,6 +8636,36 @@ export interface CreatePayElementDto {
   rateFactor: string;
   sscSubject?: boolean;
   accountId: string;
+}
+
+export type UpdatePayElementDtoKind = typeof UpdatePayElementDtoKind[keyof typeof UpdatePayElementDtoKind];
+
+
+export const UpdatePayElementDtoKind = {
+  EARNING: 'EARNING',
+  DEDUCTION: 'DEDUCTION',
+} as const;
+
+export type UpdatePayElementDtoAmountType = typeof UpdatePayElementDtoAmountType[keyof typeof UpdatePayElementDtoAmountType];
+
+
+export const UpdatePayElementDtoAmountType = {
+  FIXED: 'FIXED',
+  PER_HOUR: 'PER_HOUR',
+  PER_DAY: 'PER_DAY',
+} as const;
+
+export interface UpdatePayElementDto {
+  /** @maxLength 191 */
+  nameAr?: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  kind?: UpdatePayElementDtoKind;
+  amountType?: UpdatePayElementDtoAmountType;
+  rateFactor?: string;
+  sscSubject?: boolean;
+  accountId?: string;
+  isActive?: boolean;
 }
 
 export interface CreatePayrollSettingsDto {
@@ -11600,11 +11762,7 @@ export const ChequesControllerOutstandingStatus = {
   CANCELLED: 'CANCELLED',
 } as const;
 
-export type PayrollControllerListEmployees200 = { [key: string]: unknown };
-
 export type PayrollControllerListRecurring200Item = { [key: string]: unknown };
-
-export type PayrollControllerListElements200 = { [key: string]: unknown };
 
 export type PayrollControllerListSettings200 = { [key: string]: unknown };
 
@@ -26112,7 +26270,7 @@ return apiFetch<chequesControllerUndoResponseSuccess>(getChequesControllerUndoUr
 
 
 export type payrollControllerListEmployeesResponse200 = {
-  data: PayrollControllerListEmployees200
+  data: PayrollEmployeeDto[]
   status: 200
 }
 
@@ -26196,6 +26354,97 @@ return apiFetch<payrollControllerCreateEmployeeResponseSuccess>(getPayrollContro
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(createEmployeeDto)
+  }
+);}
+
+
+
+export type payrollControllerGetEmployeeResponse200 = {
+  data: PayrollEmployeeDetailDto
+  status: 200
+}
+
+export type payrollControllerGetEmployeeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerGetEmployeeResponseSuccess = (payrollControllerGetEmployeeResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerGetEmployeeResponseError = (payrollControllerGetEmployeeResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerGetEmployeeUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/employees/${id}`
+}
+
+export const payrollControllerGetEmployee = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerGetEmployeeResponseSuccess> => {
+
+  return apiFetch<payrollControllerGetEmployeeResponseSuccess>(getPayrollControllerGetEmployeeUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerUpdateEmployeeResponse200 = {
+  data: PayrollEmployeeDetailDto
+  status: 200
+}
+
+export type payrollControllerUpdateEmployeeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerUpdateEmployeeResponseSuccess = (payrollControllerUpdateEmployeeResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerUpdateEmployeeResponseError = (payrollControllerUpdateEmployeeResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerUpdateEmployeeUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/employees/${id}`
+}
+
+export const payrollControllerUpdateEmployee = async (id: string,
+    updateEmployeeDto: UpdateEmployeeDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerUpdateEmployeeResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerUpdateEmployeeResponseSuccess>(getPayrollControllerUpdateEmployeeUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateEmployeeDto)
   }
 );}
 
@@ -26345,8 +26594,48 @@ return apiFetch<payrollControllerCreateRecurringResponseSuccess>(getPayrollContr
 
 
 
+export type payrollControllerDeleteRecurringResponse200 = {
+  data: void
+  status: 200
+}
+
+export type payrollControllerDeleteRecurringResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerDeleteRecurringResponseSuccess = (payrollControllerDeleteRecurringResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerDeleteRecurringResponseError = (payrollControllerDeleteRecurringResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerDeleteRecurringUrl = (id: string,
+    rid: string,) => {
+
+
+
+
+  return `/api/v1/payroll/employees/${id}/recurring-elements/${rid}`
+}
+
+export const payrollControllerDeleteRecurring = async (id: string,
+    rid: string, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerDeleteRecurringResponseSuccess> => {
+
+  return apiFetch<payrollControllerDeleteRecurringResponseSuccess>(getPayrollControllerDeleteRecurringUrl(id,rid),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
 export type payrollControllerListElementsResponse200 = {
-  data: PayrollControllerListElements200
+  data: PayrollElementDto[]
   status: 200
 }
 
@@ -26430,6 +26719,59 @@ return apiFetch<payrollControllerCreateElementResponseSuccess>(getPayrollControl
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(createPayElementDto)
+  }
+);}
+
+
+
+export type payrollControllerUpdateElementResponse200 = {
+  data: void
+  status: 200
+}
+
+export type payrollControllerUpdateElementResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerUpdateElementResponseSuccess = (payrollControllerUpdateElementResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerUpdateElementResponseError = (payrollControllerUpdateElementResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerUpdateElementUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/elements/${id}`
+}
+
+export const payrollControllerUpdateElement = async (id: string,
+    updatePayElementDto: UpdatePayElementDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerUpdateElementResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerUpdateElementResponseSuccess>(getPayrollControllerUpdateElementUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updatePayElementDto)
   }
 );}
 

@@ -20,8 +20,16 @@ import {
   PayrollReportQueryDto,
   ReversePayrollDto,
   SetPayrollTaxDto,
+  UpdateEmployeeDto,
+  UpdatePayElementDto,
 } from './dto/payroll.dto.js';
-import { PayrollRunDetailDto, PayrollRunDto } from './dto/payroll-response.dto.js';
+import {
+  PayrollElementDto,
+  PayrollEmployeeDetailDto,
+  PayrollEmployeeDto,
+  PayrollRunDetailDto,
+  PayrollRunDto,
+} from './dto/payroll-response.dto.js';
 import { PayrollService } from './payroll.service.js';
 
 @ApiTags('payroll')
@@ -32,8 +40,16 @@ export class PayrollController {
 
   @Get('employees')
   @RequirePermission(PERMISSIONS.PAYROLL_VIEW)
+  @ApiOkResponse({ type: PayrollEmployeeDto, isArray: true })
   listEmployees() {
     return this.payroll.listEmployees();
+  }
+
+  @Get('employees/:id')
+  @RequirePermission(PERMISSIONS.PAYROLL_VIEW)
+  @ApiOkResponse({ type: PayrollEmployeeDetailDto })
+  getEmployee(@Param('id') id: string) {
+    return this.payroll.getEmployee(BigInt(id));
   }
 
   @Post('employees')
@@ -41,6 +57,13 @@ export class PayrollController {
   @ApiCreatedResponse()
   createEmployee(@Body() dto: CreateEmployeeDto) {
     return this.payroll.createEmployee(dto);
+  }
+
+  @Patch('employees/:id')
+  @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiOkResponse({ type: PayrollEmployeeDetailDto })
+  updateEmployee(@Param('id') id: string, @Body() dto: UpdateEmployeeDto) {
+    return this.payroll.updateEmployee(BigInt(id), dto);
   }
 
   @Post('employees/:id/salaries')
@@ -61,8 +84,16 @@ export class PayrollController {
     return this.payroll.createRecurring(BigInt(id), dto);
   }
 
+  @Delete('employees/:id/recurring-elements/:rid')
+  @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiOkResponse()
+  deleteRecurring(@Param('id') id: string, @Param('rid') rid: string) {
+    return this.payroll.deleteRecurring(BigInt(id), BigInt(rid));
+  }
+
   @Get('elements')
   @RequirePermission(PERMISSIONS.PAYROLL_VIEW)
+  @ApiOkResponse({ type: PayrollElementDto, isArray: true })
   listElements() {
     return this.payroll.listElements();
   }
@@ -71,6 +102,13 @@ export class PayrollController {
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
   createElement(@Body() dto: CreatePayElementDto) {
     return this.payroll.createElement(dto);
+  }
+
+  @Patch('elements/:id')
+  @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiOkResponse()
+  updateElement(@Param('id') id: string, @Body() dto: UpdatePayElementDto) {
+    return this.payroll.updateElement(BigInt(id), dto);
   }
 
   @Get('settings')
