@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import { RequirePermission } from '../../common/decorators/auth.decorators.js';
+import { RequireAllBranches, RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { ApiFileResponse } from '../../common/openapi/responses.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { RequiresIdempotencyKey } from '../../common/idempotency/requires-idempotency-key.decorator.js';
@@ -26,6 +26,7 @@ import { PayrollService } from './payroll.service.js';
 
 @ApiTags('payroll')
 @Controller('payroll')
+@RequireAllBranches()
 export class PayrollController {
   constructor(private readonly payroll: PayrollService, private readonly printing: PrintingService) {}
 
