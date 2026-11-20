@@ -749,7 +749,7 @@ describe('Payroll PY1–PY3', () => {
       'create movement-only company',
     ) as { id: string };
     h.ok(
-      await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).send({
+      await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', company.id).send({
         code: '2033', startDate: '2033-01-01', endDate: '2033-12-31',
       }),
       201,
