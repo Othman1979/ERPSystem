@@ -18,6 +18,8 @@ export interface SalesInvoiceForm {
   cashAccountId?: string;
   /** Optional header cost centre (ADR-024); left out of the body when empty. */
   costCenterId?: string;
+  invoiceDiscountType: 'PERCENT' | 'AMOUNT';
+  invoiceDiscountValue?: string;
   lines: SalesInvoiceFormLine[];
 }
 
@@ -29,11 +31,17 @@ export function salesInvoiceFormDefaults(invoice?: SalesInvoiceDetailDto): {
   paymentType: 'CASH' | 'CREDIT';
   cashAccountId?: string;
   costCenterId?: string;
+  invoiceDiscountType: 'PERCENT' | 'AMOUNT';
+  invoiceDiscountValue?: string;
 } {
   return {
     paymentType: invoice?.paymentType ?? 'CREDIT',
     cashAccountId: invoice?.cashAccountId ?? undefined,
     costCenterId: invoice?.costCenterId ?? undefined,
+    invoiceDiscountType: invoice?.invoiceDiscountPct !== null && invoice?.invoiceDiscountPct !== undefined ? 'PERCENT' : 'AMOUNT',
+    invoiceDiscountValue: invoice?.invoiceDiscountPct ?? (
+      invoice?.invoiceDiscountAmount && invoice.invoiceDiscountAmount !== '0.000' ? invoice.invoiceDiscountAmount : undefined
+    ),
   };
 }
 
@@ -51,6 +59,8 @@ export function salesInvoiceBody(form: SalesInvoiceForm, invoice?: SalesInvoiceD
     paymentType: form.paymentType,
     cashAccountId: form.paymentType === 'CASH' ? form.cashAccountId : undefined,
     costCenterId: form.costCenterId || undefined,
+    invoiceDiscountPct: form.invoiceDiscountType === 'PERCENT' ? form.invoiceDiscountValue || undefined : undefined,
+    invoiceDiscountAmount: form.invoiceDiscountType === 'AMOUNT' ? form.invoiceDiscountValue || undefined : undefined,
     description: invoice?.description ?? undefined,
     lines: form.lines.flatMap((l) =>
       l.itemId && l.qty

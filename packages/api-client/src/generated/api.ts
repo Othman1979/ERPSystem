@@ -3367,6 +3367,9 @@ export interface SalesInvoiceListItemDto {
   /** ADR-017: line prices were entered including tax (company setting when the draft was saved). */
   pricesIncludeTax: boolean;
   /** @nullable */
+  invoiceDiscountPct: string | null;
+  invoiceDiscountAmount: string;
+  /** @nullable */
   cashAccountId: string | null;
   /**
      * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
@@ -3426,6 +3429,48 @@ export interface SalesInvoiceListItemDtoPage {
      * @minimum 0
      */
   total: number;
+}
+
+export interface SalesInvoiceLineDto {
+  itemId: string;
+  itemUnitId?: string;
+  qty: string;
+  unitPrice: string;
+  /** @pattern ^\d+(\.\d{1,4})?$ */
+  discountPct?: string;
+  taxCategoryId?: string;
+  /** ADR-027 §4: the order line this line bills; allowed only on an invoice made from a sales order. */
+  orderLineId?: string;
+}
+
+export interface PreviewSalesInvoiceDto {
+  invoiceId?: string;
+  /** @pattern ^-?\d+(\.\d{1,4})?$ */
+  invoiceDiscountPct?: string;
+  /** @pattern ^-?\d+(\.\d{1,3})?$ */
+  invoiceDiscountAmount?: string;
+  /** @minItems 1 */
+  lines: SalesInvoiceLineDto[];
+}
+
+export interface SalesInvoicePreviewLineDto {
+  lineNo: number;
+  discountAmount: string;
+  invoiceDiscountShare: string;
+  netAmount: string;
+  taxAmount: string;
+  lineTotal: string;
+}
+
+export interface SalesInvoicePreviewDto {
+  subtotal: string;
+  lineDiscountAmount: string;
+  invoiceDiscountAmount: string;
+  discountAmount: string;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
+  lines: SalesInvoicePreviewLineDto[];
 }
 
 export interface WarehouseRow {
@@ -3512,6 +3557,7 @@ export interface SalesInvoiceLineViewDto {
   unitPrice: string;
   discountPct: string;
   discountAmount: string;
+  invoiceDiscountShare: string;
   netAmount: string;
   /** @nullable */
   taxCategoryId: string | null;
@@ -3621,6 +3667,9 @@ export interface SalesInvoiceDetailDto {
   /** ADR-017: line prices were entered including tax (company setting when the draft was saved). */
   pricesIncludeTax: boolean;
   /** @nullable */
+  invoiceDiscountPct: string | null;
+  invoiceDiscountAmount: string;
+  /** @nullable */
   cashAccountId: string | null;
   /**
      * ADR-024 §1.2: copied onto every income-statement line of the document's entry.
@@ -3707,18 +3756,6 @@ export interface RecipePreviewDto {
   lines: RecipePreviewLineDto[];
 }
 
-export interface SalesInvoiceLineDto {
-  itemId: string;
-  itemUnitId?: string;
-  qty: string;
-  unitPrice: string;
-  /** @pattern ^\d+(\.\d{1,4})?$ */
-  discountPct?: string;
-  taxCategoryId?: string;
-  /** ADR-027 §4: the order line this line bills; allowed only on an invoice made from a sales order. */
-  orderLineId?: string;
-}
-
 export type CreateSalesInvoiceDtoPaymentType = typeof CreateSalesInvoiceDtoPaymentType[keyof typeof CreateSalesInvoiceDtoPaymentType];
 
 
@@ -3728,6 +3765,10 @@ export const CreateSalesInvoiceDtoPaymentType = {
 } as const;
 
 export interface CreateSalesInvoiceDto {
+  /** @pattern ^-?\d+(\.\d{1,4})?$ */
+  invoiceDiscountPct?: string;
+  /** @pattern ^-?\d+(\.\d{1,3})?$ */
+  invoiceDiscountAmount?: string;
   invoiceDate: string;
   dueDate?: string;
   customerId: string;
@@ -3851,6 +3892,7 @@ export interface SalesReturnLineViewDto {
   unitPrice: string;
   discountPct: string;
   discountAmount: string;
+  invoiceDiscountShare: string;
   netAmount: string;
   /** @nullable */
   taxCategoryId: string | null;
@@ -3931,6 +3973,8 @@ export const CreateSalesReturnDtoRefundType = {
 } as const;
 
 export interface CreateSalesReturnDto {
+  /** @minItems 1 */
+  lines: SalesReturnLineDto[];
   returnDate: string;
   originalInvoiceId: string;
   refundType: CreateSalesReturnDtoRefundType;
@@ -3942,8 +3986,6 @@ export interface CreateSalesReturnDto {
   costCenterId?: string;
   /** @maxLength 500 */
   reason?: string;
-  /** @minItems 1 */
-  lines: SalesReturnLineDto[];
 }
 
 export type SalesQuoteStatus = typeof SalesQuoteStatus[keyof typeof SalesQuoteStatus];
@@ -8885,6 +8927,7 @@ export const ErrorCode = {
   SALES_ORDER_OVER_INVOICED: 'SALES_ORDER_OVER_INVOICED',
   SALES_ORDER_NOT_INVOICEABLE: 'SALES_ORDER_NOT_INVOICEABLE',
   SALES_PRICE_APPROVAL_REQUIRED: 'SALES_PRICE_APPROVAL_REQUIRED',
+  INVOICE_DISCOUNT_INVALID: 'INVOICE_DISCOUNT_INVALID',
   BOM_CYCLE: 'BOM_CYCLE',
   BOM_NOT_ACTIVE: 'BOM_NOT_ACTIVE',
   BOM_NOT_DRAFT: 'BOM_NOT_DRAFT',
@@ -16736,6 +16779,58 @@ return apiFetch<salesControllerCreateInvoiceResponseSuccess>(getSalesControllerC
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(createSalesInvoiceDto)
+  }
+);}
+
+
+
+export type salesControllerPreviewInvoiceResponse200 = {
+  data: SalesInvoicePreviewDto
+  status: 200
+}
+
+export type salesControllerPreviewInvoiceResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type salesControllerPreviewInvoiceResponseSuccess = (salesControllerPreviewInvoiceResponse200) & {
+  headers: Headers;
+};
+export type salesControllerPreviewInvoiceResponseError = (salesControllerPreviewInvoiceResponseDefault) & {
+  headers: Headers;
+};
+
+export const getSalesControllerPreviewInvoiceUrl = () => {
+
+
+
+
+  return `/api/v1/sales-invoices/preview`
+}
+
+export const salesControllerPreviewInvoice = async (previewSalesInvoiceDto: PreviewSalesInvoiceDto, options?: Parameters<typeof apiFetch>[1]): Promise<salesControllerPreviewInvoiceResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<salesControllerPreviewInvoiceResponseSuccess>(getSalesControllerPreviewInvoiceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(previewSalesInvoiceDto)
   }
 );}
 

@@ -4,10 +4,10 @@ import {
   Alert,
   App,
   Button,
-  Radio,
-  DatePicker,
   Input,
   InputNumber,
+  Radio,
+  DatePicker,
   Popconfirm,
   Select,
   Space,
@@ -54,6 +54,7 @@ import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { salesInvoiceBody, salesInvoiceFormDefaults } from './sales/invoicePayload';
+import { InvoiceDiscountField } from './sales/InvoiceDiscountField';
 import {
   ApiError,
   catalogControllerListItems,
@@ -70,6 +71,7 @@ import {
   salesControllerPostInvoice,
   salesControllerPostReturn,
   salesControllerUpdateInvoice,
+  salesControllerPreviewInvoice,
   salesCycleControllerApproveInvoicePrice,
   salesCycleControllerGetOrder,
   settingsControllerListTaxCategories,
@@ -82,6 +84,7 @@ import {
   type SalesInvoiceLineViewDto,
   type SalesInvoiceDetailDto,
   type SalesInvoiceListItemDto,
+  type SalesInvoicePreviewDto,
   type SalesReturnLineViewDto,
   type SalesReturnListItemDto,
 } from '@erp/api-client';
@@ -502,6 +505,8 @@ function InvoiceForm({
   const [cashAccountId, setCashAccountId] = useState<string | undefined>(formDefaults.cashAccountId);
   const costCenters = useCostCenters();
   const [costCenterId, setCostCenterId] = useState<string | undefined>(formDefaults.costCenterId);
+  const [invoiceDiscountType, setInvoiceDiscountType] = useState<'PERCENT' | 'AMOUNT'>(formDefaults.invoiceDiscountType);
+  const [invoiceDiscountValue, setInvoiceDiscountValue] = useState<string | undefined>(formDefaults.invoiceDiscountValue);
   const [lines, setLines] = useState<InvoiceLineDraft[]>(() => {
     if (invoice?.lines.length) {
       return invoice.lines.map((l, i) => ({
@@ -555,6 +560,43 @@ function InvoiceForm({
     .withSelected(lines.map((l) => l.itemId))
     .map((row) => itemOption(row, lookups.taxRateById, lookups.defaultTaxId));
 
+  const previewLineKeys = lines.flatMap((line) => line.itemId && line.qty && line.price?.trim() ? [line.key] : []);
+  const hasUnpricedLine = lines.some((line) => line.itemId && line.qty && !line.price?.trim());
+  const previewPayload = useMemo(() => {
+    if (previewLineKeys.length === 0 || hasUnpricedLine) return null;
+    return {
+      ...(invoice?.id ? { invoiceId: invoice.id } : {}),
+      ...(invoiceDiscountValue?.trim()
+        ? invoiceDiscountType === 'PERCENT'
+          ? { invoiceDiscountPct: invoiceDiscountValue.trim() }
+          : { invoiceDiscountAmount: invoiceDiscountValue.trim() }
+        : {}),
+      lines: lines.flatMap((line) =>
+        line.itemId && line.qty
+          ? [{
+              itemId: line.itemId,
+              qty: line.qty,
+              unitPrice: line.price ?? '0',
+              ...(line.discountPct?.trim() ? { discountPct: line.discountPct.trim() } : {}),
+            }]
+          : [],
+      ),
+    };
+  }, [invoice?.id, invoiceDiscountType, invoiceDiscountValue, lines, previewLineKeys.length, hasUnpricedLine]);
+  const preview = useQuery({
+    queryKey: ['sales-invoice-preview', previewPayload],
+    queryFn: () => {
+      if (!previewPayload) throw new Error('invoice preview is not ready');
+      return salesControllerPreviewInvoice(previewPayload).then((response) => response.data);
+    },
+    enabled: previewPayload !== null,
+  });
+  const serverAmounts = lines.map((line) => {
+    const index = previewLineKeys.indexOf(line.key);
+    return index >= 0 ? preview.data?.lines[index] : undefined;
+  });
+  const serverSummary: SalesInvoicePreviewDto | undefined = preview.data;
+
   const save = useMutation({
     mutationFn: async () => {
       // trySave checks these before it saves; this narrows them for the request type.
@@ -569,6 +611,8 @@ function InvoiceForm({
           cashAccountId,
           // A draft keeps its centre while centres are off (ADR-024 §1.6): hidden, still sent.
           costCenterId,
+          invoiceDiscountType,
+          invoiceDiscountValue,
           lines,
         },
         invoice,
@@ -757,7 +801,27 @@ function InvoiceForm({
         onItemSearch={items.onSearch}
         lockedItems={orderLinked}
         maxQtyOf={orderLinked ? (key) => savedQtyByKey.get(key) : undefined}
+        serverAmounts={serverAmounts}
+        serverSummary={serverSummary}
+        serverPreviewRequired
       />
+      <DocFields>
+        <DocField label={t('sales.invoiceDiscount')}>
+          <InvoiceDiscountField
+            type={invoiceDiscountType}
+            value={invoiceDiscountValue}
+            onTypeChange={setInvoiceDiscountType}
+            onValueChange={setInvoiceDiscountValue}
+          />
+        </DocField>
+      </DocFields>
+      {preview.isError && preview.error instanceof ApiError && (
+        <Alert
+          type="warning"
+          showIcon
+          message={t(`errors.${preview.error.code}`, { defaultValue: preview.error.message })}
+        />
+      )}
     </DocLayout>
   );
 }
@@ -803,7 +867,13 @@ function InvoiceView({
   const belowOrder =
     salesPriceLocked && invoice?.salesOrderId && !invoice.priceApprovedAt && linkedOrder.data
       ? linesBelowOrder(
-          invoice.lines.map((l) => ({ orderLineId: l.orderLineId, unitPrice: l.unitPrice, discountPct: l.discountPct })),
+          invoice.lines.map((l) => ({
+            orderLineId: l.orderLineId,
+            unitPrice: l.unitPrice,
+            discountPct: l.discountPct,
+            qty: l.qty,
+            invoiceDiscountShare: l.invoiceDiscountShare,
+          })),
           linkedOrder.data.lines,
         ).size > 0
       : false;
@@ -896,6 +966,11 @@ function InvoiceView({
         <DocField label={t('sales.net')}>
           <DocValue>{amountCell(invoice.netTotal)}</DocValue>
         </DocField>
+        {dec(invoice.invoiceDiscountAmount).gt(0) && (
+          <DocField label={t('sales.invoiceDiscount')}>
+            <DocValue>{amountCell(invoice.invoiceDiscountAmount)}</DocValue>
+          </DocField>
+        )}
         <DocField label={t('sales.tax')}>
           <DocValue>{amountCell(invoice.taxTotal)}</DocValue>
         </DocField>
