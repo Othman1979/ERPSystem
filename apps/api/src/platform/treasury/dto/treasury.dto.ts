@@ -330,6 +330,45 @@ export class ReverseVoucherDto {
   description?: string;
 }
 
+/**
+ * Direct edit of a posted receipt or payment (ADR-039). The party stays; a
+ * cheque voucher keeps its cheques account.
+ */
+export class AmendVoucherDto {
+  @IsDateString()
+  voucherDate!: string;
+
+  @Matches(MONEY)
+  amount!: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  cashAccountId?: string;
+
+  /** A payment without a party: its expense account. */
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  expenseAccountId?: string;
+
+  /** Null clears the cost centre; omitted keeps it. */
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  costCenterId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  referenceNo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+}
+
 export class CreateCashTransferDto {
   @IsDateString()
   transferDate!: string;

@@ -75,6 +75,7 @@ import { BalancesTab } from './treasury/BalancesTab';
 import { BankReconciliationTab } from './treasury/BankReconciliationTab';
 import { ChequesTab } from './treasury/ChequesTab';
 import { TransfersTab } from './treasury/TransfersTab';
+import { AmendVoucherButton } from './treasury/AmendVoucherDialog';
 import { enterTo, focusNamedField, GridSelect } from '../components/GridSelect';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { amountCell } from '../format/cells';
@@ -709,6 +710,19 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                   <Button loading={allocateRest.isPending} onClick={() => allocateRest.mutate(view.id)}>
                     {t('treasury.allocateRemaining')}
                   </Button>
+                )}
+                {!view.reversedAt && dec(view.amount).eq(dec(view.unallocatedAmount)) && (
+                  <AmendVoucherButton
+                    kind={kind}
+                    voucher={{
+                      id: view.id,
+                      date: voucherDateOf(view),
+                      amount: view.amount,
+                      referenceNo: view.referenceNo,
+                      description: view.description,
+                    }}
+                    onDone={invalidate}
+                  />
                 )}
                 {!view.reversedAt && (
                   <ReverseButton

@@ -18,6 +18,8 @@ export interface JournalLineDraft {
   description?: string;
   /** Customer / supplier of a control-account line (party column only). */
   partyId?: string;
+  /** Side kept from a saved line (a posted entry being edited) while its party is unchanged. */
+  partyType?: PartyKind;
   /** Cost centre of an income-statement line (cost centre column only). */
   costCenterId?: string;
 }
@@ -45,6 +47,9 @@ export function partyFields(
   column: PartyColumn | undefined,
 ): { partyType?: PartyKind; partyId?: string } {
   const need = line.accountId ? column?.kindByAccount.get(line.accountId) : undefined;
+  if (need && line.partyId && line.partyType && (need === 'ANY' || need === line.partyType)) {
+    return { partyType: line.partyType, partyId: line.partyId };
+  }
   return (need && lineParty(need, line.partyId, column?.sideOf)) || {};
 }
 
@@ -287,7 +292,7 @@ export function JournalLinesGrid({
                         onRemoteSearch={partyColumn.onSearch[kind]}
                         searching={partyColumn.searching?.[kind]}
                         value={l.partyId}
-                        onChange={(v: string) => update(l.key, { partyId: v })}
+                        onChange={(v: string) => update(l.key, { partyId: v, partyType: undefined })}
                         onEnterSelect={() => advance(row, 5)}
                         style={{ width: '100%' }}
                         size="small"
