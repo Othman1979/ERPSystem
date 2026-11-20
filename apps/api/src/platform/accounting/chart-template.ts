@@ -35,6 +35,8 @@ export interface TemplateAccount {
   isPostable: boolean;
   isControl?: boolean;
   controlType?: 'CUSTOMERS' | 'SUPPLIERS' | 'CASH' | 'BANK';
+  /** ADR-036 §3: unset = the type's default section. */
+  cashFlowActivity?: 'OPERATING' | 'INVESTING' | 'FINANCING';
 }
 
 const DEBIT_TYPES = new Set(['ASSET', 'EXPENSE']);
@@ -76,7 +78,7 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('1103', 'العملاء', 'ASSET', { nameEn: 'Customers', parentCode: '11', isControl: true, controlType: 'CUSTOMERS' }),
   acct('1104', 'المخزون', 'ASSET', { nameEn: 'Inventory', parentCode: '11' }),
   acct('1105', 'ضريبة المشتريات', 'ASSET', { nameEn: 'Input tax', parentCode: '11' }),
-  acct('1201', 'الأثاث والمعدات', 'ASSET', { nameEn: 'Furniture and equipment', parentCode: '12' }),
+  acct('1201', 'الأثاث والمعدات', 'ASSET', { nameEn: 'Furniture and equipment', parentCode: '12', cashFlowActivity: 'INVESTING' }),
   acct('1202', 'مجمع الاستهلاك', 'ASSET', { nameEn: 'Accumulated depreciation', normalBalance: 'CREDIT', parentCode: '12' }),
   acct('2101', 'الموردون', 'LIABILITY', { nameEn: 'Suppliers', parentCode: '21', isControl: true, controlType: 'SUPPLIERS' }),
   acct('2102', 'ضريبة المبيعات', 'LIABILITY', { nameEn: 'Output tax', parentCode: '21' }),

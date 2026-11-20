@@ -21,6 +21,7 @@ import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
 import { bothNames, codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { AgingTab } from './reports/AgingTab';
+import { CashFlowTab } from './reports/CashFlowTab';
 import { BalanceSheetTab } from './reports/BalanceSheetTab';
 import { CostCenterStatementTab } from './reports/CostCenterStatementTab';
 import { IncomeStatementTab } from './reports/IncomeStatementTab';
@@ -53,7 +54,7 @@ const STATEMENT_PAGE_LIMIT = 100;
  * branch. The API refuses them otherwise, so their tabs are hidden and their
  * queries never run for a branch-scoped member.
  */
-const COMPANY_WIDE_TABS = new Set(['tb', 'is', 'bs', 'gl', 'cc']);
+const COMPANY_WIDE_TABS = new Set(['tb', 'is', 'bs', 'cf', 'gl', 'cc']);
 
 
 
@@ -247,6 +248,7 @@ export function ReportsPage() {
     },
     { key: 'is', label: t('reports.incomeStatement'), children: <IncomeStatementTab /> },
     { key: 'bs', label: t('reports.balanceSheet'), children: <BalanceSheetTab /> },
+    { key: 'cf', label: t('cashFlow.title'), children: <CashFlowTab /> },
     {
       key: 'gl',
       label: t('reports.generalLedger'),

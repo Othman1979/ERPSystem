@@ -53,6 +53,7 @@ const account = (
   isControl: false,
   controlType: null,
   costCenterRequired,
+  cashFlowActivity: null,
   isActive: true,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',

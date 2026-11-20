@@ -49,6 +49,9 @@ export interface ChartAccount {
   accountType: AccountTypeCode;
   normalBalance: 'DEBIT' | 'CREDIT';
   isPostable: boolean;
+  /** Set by `accountTotals` (cash flow, ADR-036); not by `chart`. */
+  controlType?: 'CUSTOMERS' | 'SUPPLIERS' | 'CASH' | 'BANK' | null;
+  cashFlowActivity?: 'OPERATING' | 'INVESTING' | 'FINANCING' | null;
 }
 
 /** Posted debit / credit totals of one account over a range. */
@@ -197,7 +200,7 @@ export class ReportsService {
    */
   async accountTotals(
     range: ReportRange = {},
-    opts: { branchScoped?: boolean; excludeClosing?: boolean } = {},
+    opts: { branchScoped?: boolean; excludeClosing?: boolean; opening?: 'exclude' | 'only' } = {},
   ): Promise<AccountTotal[]> {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
@@ -210,6 +213,7 @@ export class ReportsService {
           companyId,
           status: 'POSTED',
           ...(opts.excludeClosing ? { isClosing: false } : {}),
+          ...(opts.opening ? { isOpening: opts.opening === 'only' } : {}),
           ...(Object.keys(dateWhere).length ? { entryDate: dateWhere } : {}),
         },
         ...(opts.branchScoped ? { AND: [branchWhere()] } : {}),
@@ -229,13 +233,15 @@ export class ReportsService {
             accountType: true,
             normalBalance: true,
             isPostable: true,
+            controlType: true,
+            cashFlowActivity: true,
           },
         })
       : [];
     const byId = new Map(accounts.map((a) => [a.id, a]));
 
     return grouped
-      .map((g) => {
+      .map((g): AccountTotal | null => {
         const account = byId.get(g.accountId);
         if (!account) return null;
         return {

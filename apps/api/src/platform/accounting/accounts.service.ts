@@ -17,6 +17,17 @@ import { CreateAccountDto, UpdateAccountDto } from './dto/accounting.dto.js';
 type TenantDb = ReturnType<PrismaService['forTenant']>;
 
 /** ADR-024 §1.1: "cost centre required" only on an income-statement account. */
+/** ADR-036 §3: only non-cash balance sheet accounts carry a cash flow section. */
+function assertCashFlowActivityAllowed(accountType: string, controlType: string | null | undefined): void {
+  if (isIncomeStatement(accountType) || controlType === 'CASH' || controlType === 'BANK') {
+    throw new DomainError(
+      ErrorCode.VALIDATION,
+      'Only non-cash asset, liability and equity accounts take a cash flow activity',
+      { accountType, controlType: controlType ?? null },
+    );
+  }
+}
+
 function assertCostCenterFlagAllowed(accountType: string): void {
   if (!isIncomeStatement(accountType)) {
     throw new DomainError(
@@ -137,6 +148,7 @@ export class AccountsService {
       throw new DomainError(ErrorCode.VALIDATION, 'code is required for a root account');
     }
     if (dto.costCenterRequired) assertCostCenterFlagAllowed(dto.accountType);
+    if (dto.cashFlowActivity) assertCashFlowActivityAllowed(dto.accountType, dto.controlType);
 
     // A contra sub-account may still pass its own normalBalance explicitly.
     const normalBalance =
@@ -181,6 +193,7 @@ export class AccountsService {
               isControl: dto.isControl ?? false,
               controlType: dto.controlType ?? null,
               costCenterRequired: dto.costCenterRequired ?? false,
+              cashFlowActivity: dto.cashFlowActivity ?? null,
               createdBy: cls.get('userId') ?? null,
             },
           });
@@ -321,6 +334,7 @@ export class AccountsService {
         await this.assertCanDeactivate(tx, companyId, existing);
       }
       if (dto.costCenterRequired === true) assertCostCenterFlagAllowed(existing.accountType);
+      if (dto.cashFlowActivity) assertCashFlowActivityAllowed(existing.accountType, existing.controlType);
 
       if (dto.isPostable === true) {
         // Any account with children is a group, root or not (LEDGER-04).
@@ -358,6 +372,7 @@ export class AccountsService {
           isPostable: dto.isPostable,
           isActive: dto.isActive,
           costCenterRequired: dto.costCenterRequired,
+          cashFlowActivity: dto.cashFlowActivity,
           updatedBy: userId,
         },
       });
