@@ -195,6 +195,29 @@ describe('multi-company (ADR-040)', () => {
     expect(branches.map((row) => row[companyIdColumn])).toEqual(expect.arrayContaining([first, second]));
   });
 
+  it('does not deactivate a tenant-wide item group used by another company', async () => {
+    const units = await api().get('/api/v1/units').set(auth(ownerA, first));
+    const baseUnit = (units.body as { id: string; code: string }[]).find((unit) => unit.code === 'PCS') ?? units.body[0];
+    const group = await api().post('/api/v1/item-groups').set(auth(ownerA, first)).send({
+      code: `MC-G-${RUN}`,
+      nameAr: 'مجموعة مشتركة',
+    });
+    expect(group.status).toBe(201);
+    const item = await api().post('/api/v1/items').set(auth(ownerA, first)).send({
+      code: `MC-GI-${RUN}`,
+      nameAr: 'صنف الشركة الأولى',
+      baseUnitId: baseUnit.id,
+      itemGroupId: group.body.id,
+    });
+    expect(item.status).toBe(201);
+    expect(item.body.itemGroupId).toBe(group.body.id);
+    const inSecond = await api().get('/api/v1/items').set(auth(ownerA, second));
+    expect(inSecond.body.items.some((row: { id: string }) => row.id === item.body.id)).toBe(false);
+
+    const deactivate = await api().patch(`/api/v1/item-groups/${group.body.id}`).set(auth(ownerA, second)).send({ isActive: false });
+    expect(deactivate.status).toBe(409);
+    expect(deactivate.body.error.code).toBe('CONFLICT');
+  });
 
   it('C2: another tenant cannot pick the company, and the header must be an id', async () => {
     const other = await api().get('/api/v1/accounts').set(auth(ownerB, second));
