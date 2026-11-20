@@ -8,6 +8,8 @@ import 'dotenv/config';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import path from 'node:path';
+import ExcelJS from 'exceljs';
+import { unzipSync } from 'fflate';
 import request from 'supertest';
 import { addMember } from './support/members.js';
 import { testDatabaseUrl } from './support/test-db.js';
@@ -171,6 +173,28 @@ describe('multi-company (ADR-040)', () => {
     expect(otherBalances.body.some((row: { itemId: string }) => row.itemId === item.body.id)).toBe(false);
     expect(ownBalances.body.some((row: { itemId: string }) => row.itemId === item.body.id)).toBe(true);
   });
+
+  it('exports company-owned records from every company when one company is selected', async () => {
+    const exported = await api()
+      .get('/api/v1/export/tenant-data')
+      .set(auth(ownerA, second))
+      .buffer(true)
+      .parse((res, callback) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+    expect(exported.status).toBe(200);
+    const files = unzipSync(new Uint8Array(exported.body as Buffer));
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(files['01-company.xlsx']!) as unknown as ArrayBuffer);
+    const rows: unknown[][] = [];
+    workbook.getWorksheet('Branch')!.eachRow((row) => rows.push((row.values as unknown[]).slice(1)));
+    const [header, ...branches] = rows;
+    const companyIdColumn = header!.indexOf('companyId');
+    expect(branches.map((row) => row[companyIdColumn])).toEqual(expect.arrayContaining([first, second]));
+  });
+
 
   it('C2: another tenant cannot pick the company, and the header must be an id', async () => {
     const other = await api().get('/api/v1/accounts').set(auth(ownerB, second));
