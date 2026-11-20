@@ -325,6 +325,10 @@ describe('R2 — second statement', () => {
       'RECONCILED',
     );
     await expectBalanced();
+    // January, reconciled, still lists the cheque February cleared.
+    const januaryAfter = await detail(january);
+    expect(januaryAfter.outstandingPayments.map((p) => p.amount)).toEqual(['-300.000']);
+    expect(januaryAfter.summary.outstandingPayments).toBe('300.000');
   });
 });
 
@@ -368,6 +372,12 @@ describe('concurrency', () => {
       { bankAccountId, startDate: '2031-04-01', endDate: '2031-04-30', openingBalance: '1007.500', closingBalance: '1807.500' },
       'create April',
     )) as Detail).id;
+
+    const impossible = await h.api()
+      .post(`/api/v1/bank-statements/${april}/import`)
+      .set(h.auth(token))
+      .attach('file', await sheet([['31/04/2031', 'Deposit', '', '400', '']]), 'statement.xlsx');
+    expect(h.err(impossible)).toEqual([400, 'VALIDATION']);
 
     const bad = await h.api()
       .post(`/api/v1/bank-statements/${april}/import`)
@@ -443,5 +453,53 @@ describe('access', () => {
   it('requires an Idempotency-Key to reconcile', async () => {
     const res = await h.api().post(`/api/v1/bank-statements/${february}/reconcile`).set(h.auth(token));
     expect(res.status).toBe(400);
+  });
+});
+
+describe('opening balance', () => {
+  it('keeps the opening entry out of the first statement (tenant B)', async () => {
+    h.ok(
+      await h.api()
+        .post('/api/v1/fiscal-years')
+        .set(h.auth(tokenB))
+        .send({ code: '2031', startDate: '2031-01-01', endDate: '2031-12-31' }),
+      201,
+      'B year',
+    );
+    const chartB = h.ok(await h.get(tokenB, 'accounts'), 200, 'B accounts') as { id: string; code: string }[];
+    const bankLedger = chartB.find((a) => a.code === '1102')!.id;
+    h.ok(
+      await h.api()
+        .post('/api/v1/journal-entries/opening')
+        .set(h.auth(tokenB))
+        .set(h.idem())
+        .send({ entryDate: '2031-01-01', lines: [{ accountId: bankLedger, debit: '250.000' }] }),
+      201,
+      'B opening entry',
+    );
+    const bank = h.ok(
+      await h.api().post('/api/v1/bank-accounts').set(h.auth(tokenB)).send({ bankName: 'Housing Bank', accountId: bankLedger }),
+      201,
+      'B bank account',
+    ) as { id: string };
+    const statement = h.ok(
+      await h.api().post('/api/v1/bank-statements').set(h.auth(tokenB)).send({
+        bankAccountId: String(bank.id),
+        startDate: '2031-01-01',
+        endDate: '2031-01-31',
+        openingBalance: '250.000',
+        closingBalance: '250.000',
+      }),
+      201,
+      'B statement',
+    ) as Detail;
+    expect(statement.outstandingDeposits).toEqual([]);
+    expect(statement.summary).toMatchObject({ bookBalance: '250.000', adjustedBookBalance: '250.000', difference: '0.000' });
+    const done = h.ok(
+      await h.api().post(`/api/v1/bank-statements/${statement.id}/reconcile`).set(h.auth(tokenB)).set(h.idem()),
+      201,
+      'B reconcile',
+    ) as Detail;
+    expect(done.status).toBe('RECONCILED');
   });
 });

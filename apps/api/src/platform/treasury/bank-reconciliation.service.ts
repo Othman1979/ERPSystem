@@ -156,8 +156,18 @@ export class BankReconciliationService {
     return first!.startDate;
   }
 
-  /** Posted, uncleared ledger lines of the bank account dated from the cutoff to the statement end. */
-  private async openBookLines(tx: Tx, tenantId: bigint, statement: Statement, ids?: bigint[]): Promise<BookLine[]> {
+  /**
+   * Posted, uncleared ledger lines of the bank account dated from the cutoff to the statement end.
+   * Opening entries are left out: their balance is the first statement's opening balance.
+   * `asOfStatement`: also the lines a later statement cleared, so a reconciled statement keeps its outstanding items.
+   */
+  private async openBookLines(
+    tx: Tx,
+    tenantId: bigint,
+    statement: Statement,
+    ids?: bigint[],
+    asOfStatement = false,
+  ): Promise<BookLine[]> {
     const bank = await this.bankAccount(tx, tenantId, statement.bankAccountId);
     const cutoff = await this.cutoff(tx, tenantId, statement.bankAccountId);
     const lines = await tx.journalLine.findMany({
@@ -165,8 +175,15 @@ export class BankReconciliationService {
         tenantId,
         accountId: bank.accountId,
         entryDate: { gte: cutoff, lte: statement.endDate },
-        entry: { companyId: statement.companyId, status: 'POSTED' },
-        bankStatementMatch: { is: null },
+        entry: { companyId: statement.companyId, status: 'POSTED', isOpening: false },
+        ...(asOfStatement
+          ? {
+              OR: [
+                { bankStatementMatch: { is: null } },
+                { bankStatementMatch: { is: { statement: { startDate: { gt: statement.endDate } } } } },
+              ],
+            }
+          : { bankStatementMatch: { is: null } }),
         ...(ids ? { id: { in: ids } } : {}),
       },
       include: { entry: { select: { id: true, entryNo: true, sourceType: true, description: true } } },
@@ -216,7 +233,7 @@ export class BankReconciliationService {
         _sum: { debit: true, credit: true },
       }),
       tx.bankStatementLine.findMany({ where: { tenantId, statementId: statement.id }, select: { deposit: true, withdrawal: true } }),
-      this.openBookLines(tx, tenantId, statement),
+      this.openBookLines(tx, tenantId, statement, undefined, true),
     ]);
     const bookBalance = new Decimal(sums._sum.debit?.toString() ?? '0').minus(sums._sum.credit?.toString() ?? '0');
     const deposits = open.filter((line) => line.amount.gt(0));
@@ -482,7 +499,7 @@ export class BankReconciliationService {
         const date = /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(row.date)
           ? row.date.split('/').reverse().map((part) => part.padStart(2, '0')).join('-')
           : row.date;
-        if (!DATE.test(date) || Number.isNaN(toDate(date).getTime())) {
+        if (!DATE.test(date) || Number.isNaN(toDate(date).getTime()) || dateText(toDate(date)) !== date) {
           errors.push({ row: row.row, reason: 'INVALID_DATE' });
           continue;
         }
