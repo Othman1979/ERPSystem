@@ -45,6 +45,17 @@ const UNCOVERED: Record<string, string> = {
   'GET /api/v1/einvoice/submissions/{id}': 'needs JoFotara settings (covered by einvoice.e2e isolation)',
   'POST /api/v1/einvoice/submissions/{id}/resend': 'needs JoFotara settings (covered by einvoice.e2e isolation)',
   'POST /api/v1/bank-statements/{id}/import': 'multipart upload: the file check runs before the lookup, the sweep sends JSON',
+  'POST /api/v1/payroll/employees/{id}/salaries': 'same-company parent lookup is covered by payroll.e2e.spec.ts',
+  'GET /api/v1/payroll/employees/{id}/recurring-elements': 'same-company parent lookup is covered by payroll.e2e.spec.ts',
+  'POST /api/v1/payroll/employees/{id}/recurring-elements': 'same-company parent lookup is covered by payroll.e2e.spec.ts',
+  'DELETE /api/v1/payroll/inputs/{id}': 'draft-only mutation is covered by payroll.e2e.spec.ts; tenant/company filters are shared',
+  'GET /api/v1/payroll/runs/{id}': 'tenant lookup and company-scoped employee lists are covered by payroll.e2e.spec.ts',
+  'POST /api/v1/payroll/runs/{id}/recompute': 'draft-only action is covered by payroll.e2e.spec.ts; tenant/company filters are shared',
+  'PATCH /api/v1/payroll/runs/{id}/lines/{lineId}/income-tax': 'parent run lookup is covered by payroll.e2e.spec.ts',
+  'POST /api/v1/payroll/runs/{id}/post': 'posting and isolation are covered by payroll.e2e.spec.ts',
+  'POST /api/v1/payroll/runs/{id}/pay': 'payment is covered by payroll.e2e.spec.ts',
+  'POST /api/v1/payroll/runs/{id}/reverse': 'reversal is covered by payroll.e2e.spec.ts',
+  'GET /api/v1/payroll/runs/{id}/lines/{lineId}/payslip': 'same-company parent lookup is covered by payroll.e2e.spec.ts',
 };
 
 type Op = { method: string; path: string; query: string[] };
@@ -139,6 +150,11 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     id.paymentMethod = String((await asA('get', '/payment-methods')).body[0].id);
     id.branch = String((await asA('get', '/branches')).body[0].id);
     id.company = String((await asA('get', '/companies')).body[0].id);
+    await create(
+      '/payroll/employees',
+      { code: `P${RUN}`, nameAr: `Payroll ${MARK}`, hireDate: '2026-01-01', payMethod: 'CASH' },
+      'employee',
+    );
     const members = (await asA('get', '/users')).body as { id?: string; membershipId?: string }[];
     id.membership = String(members[0].membershipId ?? members[0].id);
 
@@ -492,6 +508,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       customerId: id.customer,
       supplierId: id.supplier,
       itemId: id.item,
+      employeeId: id.employee,
       warehouseId: id.warehouse,
       fiscalYearId: id.fiscalYear,
       branchId: id.branch,
@@ -519,6 +536,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       }
       if (o.query.includes('partyType')) params.set('partyType', 'CUSTOMER');
       if (o.query.includes('documentType')) params.set('documentType', 'SALES_INVOICE');
+      if (o.query.includes('period')) params.set('period', '2026-01');
       const url = params.size ? `${o.path}?${params.toString()}` : o.path;
       const res = await api().get(url).set(auth(b));
       calls += 1;

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client.js';
 import {
   CHART_TEMPLATE,
+  DEFAULT_PAY_ELEMENTS,
   DEFAULT_PAYMENT_METHODS,
   DEFAULT_TAX_CATEGORIES,
   DEFAULT_UNITS,
@@ -72,6 +73,51 @@ export class ChartProvisioningService {
       });
       if (res) mappings++;
     }
+
+    for (const element of DEFAULT_PAY_ELEMENTS) {
+      const accountId = idByCode.get(element.accountCode);
+      if (!accountId) continue;
+      await tx.payElement.upsert({
+        where: { tenantId_companyId_code: { tenantId, companyId, code: element.code } },
+        update: {},
+        create: {
+          tenantId,
+          companyId,
+          code: element.code,
+          nameAr: element.nameAr,
+          nameEn: element.nameEn,
+          kind: element.kind,
+          amountType: element.amountType,
+          rateFactor: element.rateFactor,
+          sscSubject: element.sscSubject,
+          accountId,
+        },
+      });
+    }
+
+    // SSC rates follow the SSC FAQ (ssc.gov.jo, 2025-12); settings are dated so
+    // later accountant-approved changes do not rewrite prior payroll periods.
+    await tx.payrollSettings.upsert({
+      where: {
+        tenantId_companyId_effectiveFrom: {
+          tenantId,
+          companyId,
+          effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+        },
+      },
+      update: {},
+      create: {
+        tenantId,
+        companyId,
+        effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+        sscEmployeeRate: '0.075000',
+        sscEmployerRate: '0.142500',
+        sscHazardousExtra: '0.010000',
+        sscMinWage: '290.000',
+        hoursPerMonth: '240.00',
+        daysPerMonth: '30.00',
+      },
+    });
 
     // --- default units / tax categories / payment methods (tenant-level) ---
     let units = 0;

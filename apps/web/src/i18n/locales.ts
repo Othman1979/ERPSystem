@@ -2177,6 +2177,10 @@ export const ar = {
     PLAN_LIMIT_EXCEEDED: 'تم تجاوز حدود الباقة',
     IDEMPOTENCY_KEY_REUSED: 'مفتاح الطلب مستخدم بمحتوى مختلف',
     IDEMPOTENCY_ALREADY_APPLIED: 'تم تنفيذ هذا الطلب مسبقاً؛ أعد تحميل الصفحة لعرض النتيجة',
+    PAYROLL_NEGATIVE_NET: 'صافي الراتب لا يمكن أن يكون سالباً',
+    PAYROLL_RUN_EXISTS: 'توجد مسيرة رواتب غير معكوسة لهذه الفترة',
+    PAYROLL_SETTINGS_REQUIRED: 'لا توجد إعدادات رواتب سارية لهذه الفترة',
+    PAYROLL_ACCOUNT_INVALID: 'حساب عنصر الراتب غير صالح لنوعه',
     EINVOICE_BUYER_REQUIRED:
       'الفوترة الإلكترونية تتطلب الرقم الضريبي للعميل أو رقمه الوطني/الشخصي (للفاتورة الآجلة، أو النقدية فوق 10,000 دينار)',
     EINVOICE_REASON_REQUIRED: 'المرتجع المُرسل إلى JoFotara يحتاج سبباً',
@@ -4448,6 +4452,10 @@ export const en: typeof ar = {
     PLAN_LIMIT_EXCEEDED: 'Plan limit exceeded',
     IDEMPOTENCY_KEY_REUSED: 'Idempotency key reused with different content',
     IDEMPOTENCY_ALREADY_APPLIED: 'This request was already applied; reload to see the result',
+    PAYROLL_NEGATIVE_NET: 'Net pay cannot be negative',
+    PAYROLL_RUN_EXISTS: 'A non-reversed payroll run already exists for this period',
+    PAYROLL_SETTINGS_REQUIRED: 'No payroll settings are effective for this period',
+    PAYROLL_ACCOUNT_INVALID: 'The pay element account is invalid for its type',
     EINVOICE_BUYER_REQUIRED:
       "E-invoicing needs the customer's tax number or national/personal number (credit invoice, or cash above 10,000 JOD)",
     EINVOICE_REASON_REQUIRED: 'A return sent to JoFotara needs a reason',

@@ -23,6 +23,12 @@ export const ACCOUNT_MAPPING_KEYS = [
   'PRODUCTION_APPLIED_COST',
   'CHEQUES_RECEIVABLE',
   'CHEQUES_PAYABLE',
+  'PAYROLL_SALARIES_EXPENSE',
+  'PAYROLL_SSC_EXPENSE',
+  'PAYROLL_PAYABLE',
+  'PAYROLL_SSC_PAYABLE',
+  'PAYROLL_TAX_PAYABLE',
+  'EMPLOYEE_ADVANCES',
 ] as const;
 
 export type AccountMappingKey = (typeof ACCOUNT_MAPPING_KEYS)[number];
@@ -81,6 +87,7 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('1104', 'المخزون', 'ASSET', { nameEn: 'Inventory', parentCode: '11' }),
   acct('1105', 'ضريبة المشتريات', 'ASSET', { nameEn: 'Input tax', parentCode: '11' }),
   acct('1106', 'شيكات برسم التحصيل', 'ASSET', { nameEn: 'Cheques under collection', parentCode: '11' }),
+  acct('1107', 'سلف الموظفين', 'ASSET', { nameEn: 'Employee advances', parentCode: '11' }),
   acct('1201', 'الأثاث والمعدات', 'ASSET', { nameEn: 'Furniture and equipment', parentCode: '12', cashFlowActivity: 'INVESTING' }),
   acct('1202', 'مجمع الاستهلاك', 'ASSET', { nameEn: 'Accumulated depreciation', normalBalance: 'CREDIT', parentCode: '12' }),
   acct('2101', 'الموردون', 'LIABILITY', { nameEn: 'Suppliers', parentCode: '21', isControl: true, controlType: 'SUPPLIERS' }),
@@ -88,6 +95,9 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('2103', 'مصاريف مستحقة', 'LIABILITY', { nameEn: 'Accrued expenses', parentCode: '21' }),
   acct('2104', 'بضاعة مستلمة غير مفوترة', 'LIABILITY', { nameEn: 'Goods received not invoiced', parentCode: '21' }),
   acct('2105', 'شيكات آجلة الدفع', 'LIABILITY', { nameEn: 'Post-dated cheques payable', parentCode: '21' }),
+  acct('2106', 'رواتب مستحقة', 'LIABILITY', { nameEn: 'Salaries payable', parentCode: '21' }),
+  acct('2107', 'الضمان الاجتماعي المستحق', 'LIABILITY', { nameEn: 'Social security payable', parentCode: '21' }),
+  acct('2108', 'ضريبة دخل مقتطعة', 'LIABILITY', { nameEn: 'Income tax withheld', parentCode: '21' }),
   acct('3101', 'رأس المال', 'EQUITY', { nameEn: 'Capital', parentCode: '31' }),
   acct('3102', 'الأرباح المدورة', 'EQUITY', { nameEn: 'Retained earnings', parentCode: '31' }),
   acct('3103', 'أرصدة افتتاحية', 'EQUITY', { nameEn: 'Opening balances', parentCode: '31' }),
@@ -105,6 +115,7 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('5203', 'الكهرباء والمياه والاتصالات', 'EXPENSE', { nameEn: 'Electricity, water and telecom', parentCode: '52' }),
   acct('5204', 'مصاريف عمومية وإدارية', 'EXPENSE', { nameEn: 'General and administrative expenses', parentCode: '52' }),
   acct('5205', 'فروقات التقريب', 'EXPENSE', { nameEn: 'Rounding differences', parentCode: '52' }),
+  acct('5206', 'حصة الشركة في الضمان', 'EXPENSE', { nameEn: 'Employer social security', parentCode: '52' }),
 ];
 
 /** mappingKey → template account code (resolved to account ids on provision). */
@@ -127,6 +138,12 @@ export const TEMPLATE_MAPPINGS: Record<AccountMappingKey, string> = {
   PRODUCTION_APPLIED_COST: '5104',
   CHEQUES_RECEIVABLE: '1106',
   CHEQUES_PAYABLE: '2105',
+  PAYROLL_SALARIES_EXPENSE: '5201',
+  PAYROLL_SSC_EXPENSE: '5206',
+  PAYROLL_PAYABLE: '2106',
+  PAYROLL_SSC_PAYABLE: '2107',
+  PAYROLL_TAX_PAYABLE: '2108',
+  EMPLOYEE_ADVANCES: '1107',
 };
 
 /**
@@ -158,6 +175,12 @@ export const MAPPING_RULES: Record<AccountMappingKey, MappingRule> = {
   PRODUCTION_APPLIED_COST: { types: ['EXPENSE'] },
   CHEQUES_RECEIVABLE: { types: ['ASSET'] },
   CHEQUES_PAYABLE: { types: ['LIABILITY'] },
+  PAYROLL_SALARIES_EXPENSE: { types: ['EXPENSE'] },
+  PAYROLL_SSC_EXPENSE: { types: ['EXPENSE'] },
+  PAYROLL_PAYABLE: { types: ['LIABILITY'] },
+  PAYROLL_SSC_PAYABLE: { types: ['LIABILITY'] },
+  PAYROLL_TAX_PAYABLE: { types: ['LIABILITY'] },
+  EMPLOYEE_ADVANCES: { types: ['ASSET'] },
 };
 
 /** Keys whose account accumulates a balance other documents settle: changing them after posting would split it (LEDGER-05). */
@@ -168,7 +191,94 @@ export const LOCKED_AFTER_POSTING: ReadonlySet<AccountMappingKey> = new Set<Acco
   'GOODS_RECEIVED_NOT_INVOICED',
   'CHEQUES_RECEIVABLE',
   'CHEQUES_PAYABLE',
+  'PAYROLL_PAYABLE',
+  'PAYROLL_SSC_PAYABLE',
+  'PAYROLL_TAX_PAYABLE',
+  'EMPLOYEE_ADVANCES',
 ]);
+
+export const DEFAULT_PAY_ELEMENTS = [
+  {
+    code: 'OVERTIME_125',
+    nameAr: 'عمل إضافي ١٢٥٪',
+    nameEn: 'Overtime 125%',
+    kind: 'EARNING',
+    amountType: 'PER_HOUR',
+    rateFactor: '1.250000',
+    sscSubject: true,
+    accountCode: '5201',
+  },
+  {
+    code: 'HOLIDAY_OVERTIME_150',
+    nameAr: 'عمل إضافي في العطلات ١٥٠٪',
+    nameEn: 'Holiday overtime 150%',
+    kind: 'EARNING',
+    amountType: 'PER_HOUR',
+    rateFactor: '1.500000',
+    sscSubject: true,
+    accountCode: '5201',
+  },
+  {
+    code: 'ABSENCE_DAY',
+    nameAr: 'غياب يوم',
+    nameEn: 'Absence day',
+    kind: 'DEDUCTION',
+    amountType: 'PER_DAY',
+    rateFactor: '1.000000',
+    sscSubject: true,
+    accountCode: '2106',
+  },
+  {
+    code: 'TRANSPORT',
+    nameAr: 'بدل مواصلات',
+    nameEn: 'Transport',
+    kind: 'EARNING',
+    amountType: 'FIXED',
+    rateFactor: '1.000000',
+    sscSubject: false,
+    accountCode: '5201',
+  },
+  {
+    code: 'HOUSING',
+    nameAr: 'بدل سكن',
+    nameEn: 'Housing',
+    kind: 'EARNING',
+    amountType: 'FIXED',
+    rateFactor: '1.000000',
+    sscSubject: true,
+    accountCode: '5201',
+  },
+  {
+    code: 'BONUS',
+    nameAr: 'مكافأة',
+    nameEn: 'Bonus',
+    kind: 'EARNING',
+    amountType: 'FIXED',
+    rateFactor: '1.000000',
+    sscSubject: true,
+    accountCode: '5201',
+  },
+  {
+    code: 'ADVANCE_REPAYMENT',
+    nameAr: 'تسديد سلفة',
+    nameEn: 'Advance repayment',
+    kind: 'DEDUCTION',
+    amountType: 'FIXED',
+    rateFactor: '1.000000',
+    sscSubject: false,
+    accountCode: '1107',
+  },
+  {
+    code: 'PENALTY',
+    nameAr: 'غرامة',
+    nameEn: 'Penalty',
+    kind: 'DEDUCTION',
+    amountType: 'FIXED',
+    rateFactor: '1.000000',
+    sscSubject: false,
+    accountCode: '2106',
+  },
+] as const;
 
 export const DEFAULT_UNITS = [
   { code: 'PCS', nameAr: 'قطعة', nameEn: 'Piece', unEceCode: 'PCE' },
@@ -221,4 +331,5 @@ export const DOCUMENT_TYPE_PREFIXES: Record<string, string> = {
   SALES_ORDER: 'SO',
   // Phase 16 (ADR-031 §7): a production voucher, numbered at posting.
   PRODUCTION: 'MFG',
+  PAYROLL_RUN: 'PAY',
 };

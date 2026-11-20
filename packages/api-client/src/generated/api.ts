@@ -448,6 +448,12 @@ export const AccountMappingSlotDtoMappingKey = {
   PRODUCTION_APPLIED_COST: 'PRODUCTION_APPLIED_COST',
   CHEQUES_RECEIVABLE: 'CHEQUES_RECEIVABLE',
   CHEQUES_PAYABLE: 'CHEQUES_PAYABLE',
+  PAYROLL_SALARIES_EXPENSE: 'PAYROLL_SALARIES_EXPENSE',
+  PAYROLL_SSC_EXPENSE: 'PAYROLL_SSC_EXPENSE',
+  PAYROLL_PAYABLE: 'PAYROLL_PAYABLE',
+  PAYROLL_SSC_PAYABLE: 'PAYROLL_SSC_PAYABLE',
+  PAYROLL_TAX_PAYABLE: 'PAYROLL_TAX_PAYABLE',
+  EMPLOYEE_ADVANCES: 'EMPLOYEE_ADVANCES',
 } as const;
 
 export interface AccountMappingSlotDto {
@@ -1939,6 +1945,9 @@ export const CustomRolePermission = {
   purchasereturn: 'purchase.return',
   purchase_requestmanage: 'purchase_request.manage',
   treasurymanage: 'treasury.manage',
+  payrollview: 'payroll.view',
+  payrollmanage: 'payroll.manage',
+  payrollpost: 'payroll.post',
   einvoicemanage: 'einvoice.manage',
   reportsview: 'reports.view',
   auditview: 'audit.view',
@@ -1966,7 +1975,7 @@ export interface TenantRoleDto {
 export interface SaveTenantRoleDto {
   /** @pattern ^[A-Z0-9_-]{2,50}$ */
   code: string;
-  /** @maxItems 27 */
+  /** @maxItems 30 */
   permissions: CustomRolePermission[];
   /**
      * @minLength 1
@@ -8423,6 +8432,192 @@ export interface UndoChequeDto {
   date: string;
 }
 
+export type CreateEmployeeDtoPayMethod = typeof CreateEmployeeDtoPayMethod[keyof typeof CreateEmployeeDtoPayMethod];
+
+
+export const CreateEmployeeDtoPayMethod = {
+  BANK: 'BANK',
+  CASH: 'CASH',
+} as const;
+
+export interface CreateEmployeeDto {
+  /** @maxLength 50 */
+  code: string;
+  /** @maxLength 191 */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  /** @maxLength 50 */
+  nationalId?: string;
+  /** @maxLength 50 */
+  sscNumber?: string;
+  hireDate: string;
+  leaveDate?: string;
+  branchId?: string;
+  costCenterId?: string;
+  payMethod: CreateEmployeeDtoPayMethod;
+  /** @maxLength 50 */
+  iban?: string;
+  sscCovered?: boolean;
+  sscHazardous?: boolean;
+}
+
+export interface CreateSalaryDto {
+  effectiveFrom: string;
+  basicSalary: string;
+}
+
+export interface CreateRecurringElementDto {
+  payElementId: string;
+  amount?: string;
+  quantity?: string;
+  validFrom: string;
+  validTo?: string;
+}
+
+export type CreatePayElementDtoKind = typeof CreatePayElementDtoKind[keyof typeof CreatePayElementDtoKind];
+
+
+export const CreatePayElementDtoKind = {
+  EARNING: 'EARNING',
+  DEDUCTION: 'DEDUCTION',
+} as const;
+
+export type CreatePayElementDtoAmountType = typeof CreatePayElementDtoAmountType[keyof typeof CreatePayElementDtoAmountType];
+
+
+export const CreatePayElementDtoAmountType = {
+  FIXED: 'FIXED',
+  PER_HOUR: 'PER_HOUR',
+  PER_DAY: 'PER_DAY',
+} as const;
+
+export interface CreatePayElementDto {
+  /** @maxLength 50 */
+  code: string;
+  /** @maxLength 191 */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  kind: CreatePayElementDtoKind;
+  amountType: CreatePayElementDtoAmountType;
+  rateFactor: string;
+  sscSubject?: boolean;
+  accountId: string;
+}
+
+export interface CreatePayrollSettingsDto {
+  effectiveFrom: string;
+  sscEmployeeRate?: string;
+  sscEmployerRate?: string;
+  sscHazardousExtra?: string;
+  sscMinWage?: string;
+  sscMaxWage?: string;
+  hoursPerMonth?: string;
+  daysPerMonth?: string;
+}
+
+export interface CreatePayrollInputDto {
+  employeeId: string;
+  payElementId: string;
+  /** @pattern ^\d{4}-(0[1-9]|1[0-2])$ */
+  period: string;
+  workDate?: string;
+  quantity?: string;
+  amount?: string;
+  /** @maxLength 500 */
+  note?: string;
+}
+
+export type PayrollRunDtoStatus = typeof PayrollRunDtoStatus[keyof typeof PayrollRunDtoStatus];
+
+
+export const PayrollRunDtoStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+  PAID: 'PAID',
+  REVERSED: 'REVERSED',
+} as const;
+
+export interface PayrollRunDto {
+  id: string;
+  period: string;
+  status: PayrollRunDtoStatus;
+  /** @nullable */
+  runNo: string | null;
+  basicTotal: string;
+  earningsTotal: string;
+  grossTotal: string;
+  sscBaseTotal: string;
+  sscEmployeeTotal: string;
+  sscEmployerTotal: string;
+  incomeTaxTotal: string;
+  deductionsTotal: string;
+  netTotal: string;
+}
+
+export interface CreatePayrollRunDto {
+  /** @pattern ^\d{4}-(0[1-9]|1[0-2])$ */
+  period: string;
+}
+
+export interface PayrollLineDto {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  basic: string;
+  earnings: string;
+  gross: string;
+  sscBase: string;
+  sscEmployee: string;
+  sscEmployer: string;
+  incomeTax: string;
+  deductions: string;
+  net: string;
+}
+
+export type PayrollRunDetailDtoStatus = typeof PayrollRunDetailDtoStatus[keyof typeof PayrollRunDetailDtoStatus];
+
+
+export const PayrollRunDetailDtoStatus = {
+  DRAFT: 'DRAFT',
+  POSTED: 'POSTED',
+  PAID: 'PAID',
+  REVERSED: 'REVERSED',
+} as const;
+
+export interface PayrollRunDetailDto {
+  id: string;
+  period: string;
+  status: PayrollRunDetailDtoStatus;
+  /** @nullable */
+  runNo: string | null;
+  basicTotal: string;
+  earningsTotal: string;
+  grossTotal: string;
+  sscBaseTotal: string;
+  sscEmployeeTotal: string;
+  sscEmployerTotal: string;
+  incomeTaxTotal: string;
+  deductionsTotal: string;
+  netTotal: string;
+  lines: PayrollLineDto[];
+}
+
+export interface SetPayrollTaxDto {
+  incomeTax: string;
+}
+
+export interface PayrollPaymentDto {
+  cashBoxId?: string;
+  bankAccountId?: string;
+  date: string;
+}
+
+export interface ReversePayrollDto {
+  date: string;
+}
+
 export type EInvoiceTrack = typeof EInvoiceTrack[keyof typeof EInvoiceTrack];
 
 
@@ -9406,6 +9601,10 @@ export const ErrorCode = {
   BRANCH_NOT_ALLOWED: 'BRANCH_NOT_ALLOWED',
   REVERSE_VIA_DOCUMENT: 'REVERSE_VIA_DOCUMENT',
   VOUCHER_HAS_ALLOCATIONS: 'VOUCHER_HAS_ALLOCATIONS',
+  PAYROLL_NEGATIVE_NET: 'PAYROLL_NEGATIVE_NET',
+  PAYROLL_RUN_EXISTS: 'PAYROLL_RUN_EXISTS',
+  PAYROLL_SETTINGS_REQUIRED: 'PAYROLL_SETTINGS_REQUIRED',
+  PAYROLL_ACCOUNT_INVALID: 'PAYROLL_ACCOUNT_INVALID',
   OPENING_INVENTORY_VIA_STOCK: 'OPENING_INVENTORY_VIA_STOCK',
   UPLOAD_TOO_LARGE: 'UPLOAD_TOO_LARGE',
   UPLOAD_TYPE_NOT_ALLOWED: 'UPLOAD_TYPE_NOT_ALLOWED',
@@ -11399,6 +11598,98 @@ export const ChequesControllerOutstandingStatus = {
   RETURNED: 'RETURNED',
   CANCELLED: 'CANCELLED',
 } as const;
+
+export type PayrollControllerListEmployees200 = { [key: string]: unknown };
+
+export type PayrollControllerListRecurring200Item = { [key: string]: unknown };
+
+export type PayrollControllerListElements200 = { [key: string]: unknown };
+
+export type PayrollControllerListSettings200 = { [key: string]: unknown };
+
+export type PayrollControllerListInputsParams = {
+  /** @pattern ^\d{4}-(0[1-9]|1[0-2])$ */
+  period: string;
+  employeeId?: string;
+};
+
+export type PayrollControllerListInputs200Item = { [key: string]: unknown };
+
+export type PayrollControllerRegisterReportParams = {
+  format?: PayrollControllerRegisterReportFormat;
+  lang?: PayrollControllerRegisterReportLang;
+  /** @pattern ^\d{4}-(0[1-9]|1[0-2])$ */
+  period: string;
+};
+
+export type PayrollControllerRegisterReportFormat = typeof PayrollControllerRegisterReportFormat[keyof typeof PayrollControllerRegisterReportFormat];
+
+
+export const PayrollControllerRegisterReportFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type PayrollControllerRegisterReportLang = typeof PayrollControllerRegisterReportLang[keyof typeof PayrollControllerRegisterReportLang];
+
+
+export const PayrollControllerRegisterReportLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type PayrollControllerSscReportParams = {
+  format?: PayrollControllerSscReportFormat;
+  lang?: PayrollControllerSscReportLang;
+  /** @pattern ^\d{4}-(0[1-9]|1[0-2])$ */
+  period: string;
+};
+
+export type PayrollControllerSscReportFormat = typeof PayrollControllerSscReportFormat[keyof typeof PayrollControllerSscReportFormat];
+
+
+export const PayrollControllerSscReportFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type PayrollControllerSscReportLang = typeof PayrollControllerSscReportLang[keyof typeof PayrollControllerSscReportLang];
+
+
+export const PayrollControllerSscReportLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type PayrollControllerTaxReportParams = {
+  format?: PayrollControllerTaxReportFormat;
+  lang?: PayrollControllerTaxReportLang;
+  /** @pattern ^\d{4}-(0[1-9]|1[0-2])$ */
+  period: string;
+};
+
+export type PayrollControllerTaxReportFormat = typeof PayrollControllerTaxReportFormat[keyof typeof PayrollControllerTaxReportFormat];
+
+
+export const PayrollControllerTaxReportFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type PayrollControllerTaxReportLang = typeof PayrollControllerTaxReportLang[keyof typeof PayrollControllerTaxReportLang];
+
+
+export const PayrollControllerTaxReportLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type PayrollControllerPayslipParams = {
+  lang?: string;
+};
 
 export type EInvoiceControllerListSubmissionsParams = {
   /**
@@ -25814,6 +26105,1119 @@ return apiFetch<chequesControllerUndoResponseSuccess>(getChequesControllerUndoUr
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(undoChequeDto)
+  }
+);}
+
+
+
+export type payrollControllerListEmployeesResponse200 = {
+  data: PayrollControllerListEmployees200
+  status: 200
+}
+
+export type payrollControllerListEmployeesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerListEmployeesResponseSuccess = (payrollControllerListEmployeesResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerListEmployeesResponseError = (payrollControllerListEmployeesResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerListEmployeesUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/employees`
+}
+
+export const payrollControllerListEmployees = async ( options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerListEmployeesResponseSuccess> => {
+
+  return apiFetch<payrollControllerListEmployeesResponseSuccess>(getPayrollControllerListEmployeesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerCreateEmployeeResponse201 = {
+  data: void
+  status: 201
+}
+
+export type payrollControllerCreateEmployeeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type payrollControllerCreateEmployeeResponseSuccess = (payrollControllerCreateEmployeeResponse201) & {
+  headers: Headers;
+};
+export type payrollControllerCreateEmployeeResponseError = (payrollControllerCreateEmployeeResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerCreateEmployeeUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/employees`
+}
+
+export const payrollControllerCreateEmployee = async (createEmployeeDto: CreateEmployeeDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerCreateEmployeeResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerCreateEmployeeResponseSuccess>(getPayrollControllerCreateEmployeeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createEmployeeDto)
+  }
+);}
+
+
+
+export type payrollControllerAddSalaryResponse201 = {
+  data: void
+  status: 201
+}
+
+export type payrollControllerAddSalaryResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type payrollControllerAddSalaryResponseSuccess = (payrollControllerAddSalaryResponse201) & {
+  headers: Headers;
+};
+export type payrollControllerAddSalaryResponseError = (payrollControllerAddSalaryResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerAddSalaryUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/employees/${id}/salaries`
+}
+
+export const payrollControllerAddSalary = async (id: string,
+    createSalaryDto: CreateSalaryDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerAddSalaryResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerAddSalaryResponseSuccess>(getPayrollControllerAddSalaryUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createSalaryDto)
+  }
+);}
+
+
+
+export type payrollControllerListRecurringResponse200 = {
+  data: PayrollControllerListRecurring200Item[]
+  status: 200
+}
+
+export type payrollControllerListRecurringResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerListRecurringResponseSuccess = (payrollControllerListRecurringResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerListRecurringResponseError = (payrollControllerListRecurringResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerListRecurringUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/employees/${id}/recurring-elements`
+}
+
+export const payrollControllerListRecurring = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerListRecurringResponseSuccess> => {
+
+  return apiFetch<payrollControllerListRecurringResponseSuccess>(getPayrollControllerListRecurringUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerCreateRecurringResponse201 = {
+  data: void
+  status: 201
+}
+
+export type payrollControllerCreateRecurringResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type payrollControllerCreateRecurringResponseSuccess = (payrollControllerCreateRecurringResponse201) & {
+  headers: Headers;
+};
+export type payrollControllerCreateRecurringResponseError = (payrollControllerCreateRecurringResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerCreateRecurringUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/employees/${id}/recurring-elements`
+}
+
+export const payrollControllerCreateRecurring = async (id: string,
+    createRecurringElementDto: CreateRecurringElementDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerCreateRecurringResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerCreateRecurringResponseSuccess>(getPayrollControllerCreateRecurringUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createRecurringElementDto)
+  }
+);}
+
+
+
+export type payrollControllerListElementsResponse200 = {
+  data: PayrollControllerListElements200
+  status: 200
+}
+
+export type payrollControllerListElementsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerListElementsResponseSuccess = (payrollControllerListElementsResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerListElementsResponseError = (payrollControllerListElementsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerListElementsUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/elements`
+}
+
+export const payrollControllerListElements = async ( options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerListElementsResponseSuccess> => {
+
+  return apiFetch<payrollControllerListElementsResponseSuccess>(getPayrollControllerListElementsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerCreateElementResponse201 = {
+  data: void
+  status: 201
+}
+
+export type payrollControllerCreateElementResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type payrollControllerCreateElementResponseSuccess = (payrollControllerCreateElementResponse201) & {
+  headers: Headers;
+};
+export type payrollControllerCreateElementResponseError = (payrollControllerCreateElementResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerCreateElementUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/elements`
+}
+
+export const payrollControllerCreateElement = async (createPayElementDto: CreatePayElementDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerCreateElementResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerCreateElementResponseSuccess>(getPayrollControllerCreateElementUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPayElementDto)
+  }
+);}
+
+
+
+export type payrollControllerListSettingsResponse200 = {
+  data: PayrollControllerListSettings200
+  status: 200
+}
+
+export type payrollControllerListSettingsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerListSettingsResponseSuccess = (payrollControllerListSettingsResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerListSettingsResponseError = (payrollControllerListSettingsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerListSettingsUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/settings`
+}
+
+export const payrollControllerListSettings = async ( options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerListSettingsResponseSuccess> => {
+
+  return apiFetch<payrollControllerListSettingsResponseSuccess>(getPayrollControllerListSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerCreateSettingsResponse201 = {
+  data: void
+  status: 201
+}
+
+export type payrollControllerCreateSettingsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type payrollControllerCreateSettingsResponseSuccess = (payrollControllerCreateSettingsResponse201) & {
+  headers: Headers;
+};
+export type payrollControllerCreateSettingsResponseError = (payrollControllerCreateSettingsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerCreateSettingsUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/settings`
+}
+
+export const payrollControllerCreateSettings = async (createPayrollSettingsDto: CreatePayrollSettingsDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerCreateSettingsResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerCreateSettingsResponseSuccess>(getPayrollControllerCreateSettingsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPayrollSettingsDto)
+  }
+);}
+
+
+
+export type payrollControllerListInputsResponse200 = {
+  data: PayrollControllerListInputs200Item[]
+  status: 200
+}
+
+export type payrollControllerListInputsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerListInputsResponseSuccess = (payrollControllerListInputsResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerListInputsResponseError = (payrollControllerListInputsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerListInputsUrl = (params: PayrollControllerListInputsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/inputs?${stringifiedParams}` : `/api/v1/payroll/inputs`
+}
+
+export const payrollControllerListInputs = async (params: PayrollControllerListInputsParams, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerListInputsResponseSuccess> => {
+
+  return apiFetch<payrollControllerListInputsResponseSuccess>(getPayrollControllerListInputsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerCreateInputResponse201 = {
+  data: void
+  status: 201
+}
+
+export type payrollControllerCreateInputResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type payrollControllerCreateInputResponseSuccess = (payrollControllerCreateInputResponse201) & {
+  headers: Headers;
+};
+export type payrollControllerCreateInputResponseError = (payrollControllerCreateInputResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerCreateInputUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/inputs`
+}
+
+export const payrollControllerCreateInput = async (createPayrollInputDto: CreatePayrollInputDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerCreateInputResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerCreateInputResponseSuccess>(getPayrollControllerCreateInputUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPayrollInputDto)
+  }
+);}
+
+
+
+export type payrollControllerDeleteInputResponse200 = {
+  data: void
+  status: 200
+}
+
+export type payrollControllerDeleteInputResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerDeleteInputResponseSuccess = (payrollControllerDeleteInputResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerDeleteInputResponseError = (payrollControllerDeleteInputResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerDeleteInputUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/inputs/${id}`
+}
+
+export const payrollControllerDeleteInput = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerDeleteInputResponseSuccess> => {
+
+  return apiFetch<payrollControllerDeleteInputResponseSuccess>(getPayrollControllerDeleteInputUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type payrollControllerListRunsResponse200 = {
+  data: PayrollRunDto[]
+  status: 200
+}
+
+export type payrollControllerListRunsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerListRunsResponseSuccess = (payrollControllerListRunsResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerListRunsResponseError = (payrollControllerListRunsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerListRunsUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/runs`
+}
+
+export const payrollControllerListRuns = async ( options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerListRunsResponseSuccess> => {
+
+  return apiFetch<payrollControllerListRunsResponseSuccess>(getPayrollControllerListRunsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerCreateRunResponse201 = {
+  data: PayrollRunDetailDto
+  status: 201
+}
+
+export type payrollControllerCreateRunResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type payrollControllerCreateRunResponseSuccess = (payrollControllerCreateRunResponse201) & {
+  headers: Headers;
+};
+export type payrollControllerCreateRunResponseError = (payrollControllerCreateRunResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerCreateRunUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/runs`
+}
+
+export const payrollControllerCreateRun = async (createPayrollRunDto: CreatePayrollRunDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerCreateRunResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerCreateRunResponseSuccess>(getPayrollControllerCreateRunUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPayrollRunDto)
+  }
+);}
+
+
+
+export type payrollControllerGetRunResponse200 = {
+  data: PayrollRunDetailDto
+  status: 200
+}
+
+export type payrollControllerGetRunResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerGetRunResponseSuccess = (payrollControllerGetRunResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerGetRunResponseError = (payrollControllerGetRunResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerGetRunUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/runs/${id}`
+}
+
+export const payrollControllerGetRun = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerGetRunResponseSuccess> => {
+
+  return apiFetch<payrollControllerGetRunResponseSuccess>(getPayrollControllerGetRunUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerRecomputeRunResponse201 = {
+  data: void
+  status: 201
+}
+
+export type payrollControllerRecomputeRunResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type payrollControllerRecomputeRunResponseSuccess = (payrollControllerRecomputeRunResponse201) & {
+  headers: Headers;
+};
+export type payrollControllerRecomputeRunResponseError = (payrollControllerRecomputeRunResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerRecomputeRunUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/runs/${id}/recompute`
+}
+
+export const payrollControllerRecomputeRun = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerRecomputeRunResponseSuccess> => {
+
+  return apiFetch<payrollControllerRecomputeRunResponseSuccess>(getPayrollControllerRecomputeRunUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type payrollControllerSetIncomeTaxResponse200 = {
+  data: void
+  status: 200
+}
+
+export type payrollControllerSetIncomeTaxResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerSetIncomeTaxResponseSuccess = (payrollControllerSetIncomeTaxResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerSetIncomeTaxResponseError = (payrollControllerSetIncomeTaxResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerSetIncomeTaxUrl = (id: string,
+    lineId: string,) => {
+
+
+
+
+  return `/api/v1/payroll/runs/${id}/lines/${lineId}/income-tax`
+}
+
+export const payrollControllerSetIncomeTax = async (id: string,
+    lineId: string,
+    setPayrollTaxDto: SetPayrollTaxDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerSetIncomeTaxResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerSetIncomeTaxResponseSuccess>(getPayrollControllerSetIncomeTaxUrl(id,lineId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(setPayrollTaxDto)
+  }
+);}
+
+
+
+export type payrollControllerPostRunResponse200 = {
+  data: PayrollRunDetailDto
+  status: 200
+}
+
+export type payrollControllerPostRunResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerPostRunResponseSuccess = (payrollControllerPostRunResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerPostRunResponseError = (payrollControllerPostRunResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerPostRunUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/runs/${id}/post`
+}
+
+export const payrollControllerPostRun = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerPostRunResponseSuccess> => {
+
+  return apiFetch<payrollControllerPostRunResponseSuccess>(getPayrollControllerPostRunUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type payrollControllerPayRunResponse200 = {
+  data: PayrollRunDetailDto
+  status: 200
+}
+
+export type payrollControllerPayRunResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerPayRunResponseSuccess = (payrollControllerPayRunResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerPayRunResponseError = (payrollControllerPayRunResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerPayRunUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/runs/${id}/pay`
+}
+
+export const payrollControllerPayRun = async (id: string,
+    payrollPaymentDto: PayrollPaymentDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerPayRunResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerPayRunResponseSuccess>(getPayrollControllerPayRunUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(payrollPaymentDto)
+  }
+);}
+
+
+
+export type payrollControllerReverseRunResponse200 = {
+  data: PayrollRunDetailDto
+  status: 200
+}
+
+export type payrollControllerReverseRunResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerReverseRunResponseSuccess = (payrollControllerReverseRunResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerReverseRunResponseError = (payrollControllerReverseRunResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerReverseRunUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/runs/${id}/reverse`
+}
+
+export const payrollControllerReverseRun = async (id: string,
+    reversePayrollDto: ReversePayrollDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerReverseRunResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerReverseRunResponseSuccess>(getPayrollControllerReverseRunUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reversePayrollDto)
+  }
+);}
+
+
+
+export type payrollControllerRegisterReportResponse200ApplicationPdf = {
+  data: Blob
+  status: 200
+}
+
+export type payrollControllerRegisterReportResponse200ApplicationVndOpenxmlformatsOfficedocumentSpreadsheetmlSheet = {
+  data: Blob
+  status: 200
+}
+
+export type payrollControllerRegisterReportResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerRegisterReportResponseSuccess = (payrollControllerRegisterReportResponse200ApplicationPdf | payrollControllerRegisterReportResponse200ApplicationVndOpenxmlformatsOfficedocumentSpreadsheetmlSheet) & {
+  headers: Headers;
+};
+export type payrollControllerRegisterReportResponseError = (payrollControllerRegisterReportResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerRegisterReportUrl = (params: PayrollControllerRegisterReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/reports/register?${stringifiedParams}` : `/api/v1/payroll/reports/register`
+}
+
+export const payrollControllerRegisterReport = async (params: PayrollControllerRegisterReportParams, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerRegisterReportResponseSuccess> => {
+
+  return apiFetch<payrollControllerRegisterReportResponseSuccess>(getPayrollControllerRegisterReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerSscReportResponse200ApplicationPdf = {
+  data: Blob
+  status: 200
+}
+
+export type payrollControllerSscReportResponse200ApplicationVndOpenxmlformatsOfficedocumentSpreadsheetmlSheet = {
+  data: Blob
+  status: 200
+}
+
+export type payrollControllerSscReportResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerSscReportResponseSuccess = (payrollControllerSscReportResponse200ApplicationPdf | payrollControllerSscReportResponse200ApplicationVndOpenxmlformatsOfficedocumentSpreadsheetmlSheet) & {
+  headers: Headers;
+};
+export type payrollControllerSscReportResponseError = (payrollControllerSscReportResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerSscReportUrl = (params: PayrollControllerSscReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/reports/ssc?${stringifiedParams}` : `/api/v1/payroll/reports/ssc`
+}
+
+export const payrollControllerSscReport = async (params: PayrollControllerSscReportParams, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerSscReportResponseSuccess> => {
+
+  return apiFetch<payrollControllerSscReportResponseSuccess>(getPayrollControllerSscReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerTaxReportResponse200ApplicationPdf = {
+  data: Blob
+  status: 200
+}
+
+export type payrollControllerTaxReportResponse200ApplicationVndOpenxmlformatsOfficedocumentSpreadsheetmlSheet = {
+  data: Blob
+  status: 200
+}
+
+export type payrollControllerTaxReportResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerTaxReportResponseSuccess = (payrollControllerTaxReportResponse200ApplicationPdf | payrollControllerTaxReportResponse200ApplicationVndOpenxmlformatsOfficedocumentSpreadsheetmlSheet) & {
+  headers: Headers;
+};
+export type payrollControllerTaxReportResponseError = (payrollControllerTaxReportResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerTaxReportUrl = (params: PayrollControllerTaxReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/reports/tax-withheld?${stringifiedParams}` : `/api/v1/payroll/reports/tax-withheld`
+}
+
+export const payrollControllerTaxReport = async (params: PayrollControllerTaxReportParams, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerTaxReportResponseSuccess> => {
+
+  return apiFetch<payrollControllerTaxReportResponseSuccess>(getPayrollControllerTaxReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerPayslipResponse200 = {
+  data: Blob
+  status: 200
+}
+
+export type payrollControllerPayslipResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerPayslipResponseSuccess = (payrollControllerPayslipResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerPayslipResponseError = (payrollControllerPayslipResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerPayslipUrl = (id: string,
+    lineId: string,
+    params?: PayrollControllerPayslipParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/runs/${id}/lines/${lineId}/payslip?${stringifiedParams}` : `/api/v1/payroll/runs/${id}/lines/${lineId}/payslip`
+}
+
+export const payrollControllerPayslip = async (id: string,
+    lineId: string,
+    params?: PayrollControllerPayslipParams, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerPayslipResponseSuccess> => {
+
+  return apiFetch<payrollControllerPayslipResponseSuccess>(getPayrollControllerPayslipUrl(id,lineId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 

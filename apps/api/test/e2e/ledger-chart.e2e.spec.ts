@@ -349,12 +349,12 @@ describe('Ledger review fixes (2026-11-13) — chart, mappings, fiscal years, re
     const control = await api()
       .post('/api/v1/accounts')
       .set(auth(token))
-      .send({ code: '1106', nameAr: 'عملاء 2', accountType: 'ASSET', isControl: true, controlType: 'CUSTOMERS' });
+      .send({ code: '1190', nameAr: 'عملاء 2', accountType: 'ASSET', isControl: true, controlType: 'CUSTOMERS' });
     expect(control.status).toBe(201);
     await loadAccounts();
 
     // 1103 has posted lines, so the customers mapping cannot move off it.
-    expectRefused(await save('CUSTOMERS_CONTROL', acct('1106')), 409, 'MAPPING_LOCKED');
+    expectRefused(await save('CUSTOMERS_CONTROL', acct('1190')), 409, 'MAPPING_LOCKED');
     expect((await save('CUSTOMERS_CONTROL', acct('1103'))).status).toBe(201);
 
     const list = await api().get('/api/v1/account-mappings').set(auth(token));

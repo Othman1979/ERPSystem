@@ -32,6 +32,7 @@ import { ManufacturingModule } from './platform/manufacturing/manufacturing.modu
 import { ProcurementModule } from './platform/procurement/procurement.module.js';
 import { GoodsNotesModule } from './platform/goods-notes/goods-notes.module.js';
 import { TreasuryModule } from './platform/treasury/treasury.module.js';
+import { PayrollModule } from './platform/payroll/payroll.module.js';
 import { EInvoiceModule } from './platform/einvoice/einvoice.module.js';
 import { ReportsModule } from './platform/reports/reports.module.js';
 import { ExportModule } from './platform/export/export.module.js';
@@ -66,6 +67,7 @@ import { TestSupportModule } from './platform/monitoring/test-support.module.js'
     ManufacturingModule,
     GoodsNotesModule,
     TreasuryModule,
+    PayrollModule,
     EInvoiceModule,
     ReportsModule,
     ExportModule,
