@@ -45,17 +45,6 @@ const UNCOVERED: Record<string, string> = {
   'GET /api/v1/einvoice/submissions/{id}': 'needs JoFotara settings (covered by einvoice.e2e isolation)',
   'POST /api/v1/einvoice/submissions/{id}/resend': 'needs JoFotara settings (covered by einvoice.e2e isolation)',
   'POST /api/v1/bank-statements/{id}/import': 'multipart upload: the file check runs before the lookup, the sweep sends JSON',
-  'POST /api/v1/payroll/employees/{id}/salaries': 'same-company parent lookup is covered by payroll.e2e.spec.ts',
-  'GET /api/v1/payroll/employees/{id}/recurring-elements': 'same-company parent lookup is covered by payroll.e2e.spec.ts',
-  'POST /api/v1/payroll/employees/{id}/recurring-elements': 'same-company parent lookup is covered by payroll.e2e.spec.ts',
-  'DELETE /api/v1/payroll/inputs/{id}': 'draft-only mutation is covered by payroll.e2e.spec.ts; tenant/company filters are shared',
-  'GET /api/v1/payroll/runs/{id}': 'tenant lookup and company-scoped employee lists are covered by payroll.e2e.spec.ts',
-  'POST /api/v1/payroll/runs/{id}/recompute': 'draft-only action is covered by payroll.e2e.spec.ts; tenant/company filters are shared',
-  'PATCH /api/v1/payroll/runs/{id}/lines/{lineId}/income-tax': 'parent run lookup is covered by payroll.e2e.spec.ts',
-  'POST /api/v1/payroll/runs/{id}/post': 'posting and isolation are covered by payroll.e2e.spec.ts',
-  'POST /api/v1/payroll/runs/{id}/pay': 'payment is covered by payroll.e2e.spec.ts',
-  'POST /api/v1/payroll/runs/{id}/reverse': 'reversal is covered by payroll.e2e.spec.ts',
-  'GET /api/v1/payroll/runs/{id}/lines/{lineId}/payslip': 'same-company parent lookup is covered by payroll.e2e.spec.ts',
 };
 
 type Op = { method: string; path: string; query: string[] };
@@ -155,6 +144,13 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       { code: `P${RUN}`, nameAr: `Payroll ${MARK}`, hireDate: '2026-01-01', payMethod: 'CASH' },
       'employee',
     );
+    const payrollElements = (await asA('get', '/payroll/elements')).body as { id: string; code: string }[];
+    id.transportElement = payrollElements.find((element) => element.code === 'TRANSPORT')!.id;
+    await create(`/payroll/employees/${id.employee}/salaries`, { effectiveFrom: '2026-01-01', basicSalary: '10.000' }, 'payrollSalary');
+    await create('/payroll/inputs', { employeeId: id.employee, payElementId: id.transportElement, period: '2026-01', amount: '1.000' }, 'payrollInput');
+    await create('/payroll/runs', { period: '2026-01' }, 'payrollRun');
+    const payrollRun = (await asA('get', `/payroll/runs/${id.payrollRun}`)).body as { lines: { id: string }[] };
+    id.payrollLine = payrollRun.lines[0]!.id;
     const members = (await asA('get', '/users')).body as { id?: string; membershipId?: string }[];
     id.membership = String(members[0].membershipId ?? members[0].id);
 
@@ -386,7 +382,11 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     for (const [, name] of p.matchAll(/\{(\w+)\}/g)) {
       if (p.startsWith('/api/v1/admin/')) values[name] = name === 'code' ? 'TRIAL' : id.tenant;
       else if (name === 'membershipId') values[name] = id.membership;
+      else if (name === 'lineId' && p.includes('/payroll/')) values[name] = id.payrollLine;
       else if (name === 'lineId') values[name] = id.stockCountLine;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/employees/')) values[name] = id.employee;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/inputs/')) values[name] = id.payrollInput;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/runs/')) values[name] = id.payrollRun;
       else if (name === 'itemId') values[name] = id.item;
       else if (name === 'code' && p.includes('/items/barcode/')) values[name] = id.barcodeCode;
       else if (name === 'id' && byResource[seg]) values[name] = byResource[seg]!;
@@ -397,6 +397,11 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
 
   /** A valid body for each change, so the request reaches the tenant lookup. */
   function bodyFor(p: string): object {
+    if (p.endsWith('/salaries')) return { effectiveFrom: '2026-01-01', basicSalary: '1.000' };
+    if (p.endsWith('/recurring-elements')) return { payElementId: id.transportElement, amount: '1.000', validFrom: '2026-01-01' };
+    if (p.endsWith('/income-tax')) return { incomeTax: '0.000' };
+    if (p.includes('/payroll/runs/{id}/pay')) return { cashBoxId: id.cashBox, date: '2026-04-01' };
+    if (p.includes('/payroll/runs/{id}/reverse')) return { date: '2026-04-01' };
     if (p.endsWith('/reverse')) return { reversalDate: '2026-04-01' };
     if (p === '/api/v1/companies/{id}') return { legalNameAr: 'x' };
     if (p.endsWith('/allocations')) return { auto: true };
