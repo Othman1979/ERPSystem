@@ -54,7 +54,7 @@ const STATEMENT_PAGE_LIMIT = 100;
  * branch. The API refuses them otherwise, so their tabs are hidden and their
  * queries never run for a branch-scoped member.
  */
-const COMPANY_WIDE_TABS = new Set(['tb', 'is', 'bs', 'gl', 'cc']);
+const COMPANY_WIDE_TABS = new Set(['tb', 'is', 'bs', 'cf', 'gl', 'cc']);
 
 
 
