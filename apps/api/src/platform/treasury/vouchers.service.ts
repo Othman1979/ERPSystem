@@ -16,6 +16,7 @@ import { SalesInvoicesService } from '../sales/sales-invoices.service.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import type {
   AllocateVoucherDto,
+  AmendVoucherDto,
   CreatePaymentDto,
   CreateReceiptDto,
   ListPaymentsQueryDto,
@@ -768,6 +769,128 @@ export class VouchersService implements OnModuleInit {
         if (kind === 'receipt') await tx.receipt.update({ where: { id }, data });
         else await tx.payment.update({ where: { id }, data });
         await this.audit.log({ action: `${kind}.reverse`, entityType: kind, entityId: id }, tx);
+      }, POSTING_TX_OPTIONS),
+    );
+    return kind === 'receipt' ? this.getReceipt(id) : this.getPayment(id);
+  }
+
+  /**
+   * Direct edit of a posted receipt or payment (ADR-039): the voucher keeps its
+   * number and journal entry; date, amount, accounts and texts change in place.
+   * Refused when reversed, allocated, bank-matched or its cheque has moved on.
+   */
+  async amendVoucher(kind: VoucherKind, id: bigint, dto: AmendVoucherDto) {
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const amount = new Decimal(dto.amount);
+    if (amount.lte(0)) throw new DomainError(ErrorCode.VALIDATION, 'amount must be > 0');
+    const date = new Date(dto.voucherDate);
+
+    await this.support.withRetry(() =>
+      db.$transaction(async (tx) => {
+        const v = await this.lockVoucher(tx, tenantId, kind, id);
+        assertBranchAllowed(v.branchId);
+        if (v.reversedAt) throw new DomainError(ErrorCode.CONFLICT, 'A reversed voucher cannot be edited');
+        // Cancelled allocations count too: historical aging replays them at their old amounts.
+        const allocations = await tx.allocation.count({ where: kind === 'receipt' ? { receiptId: id } : { paymentId: id } });
+        if (allocations > 0) {
+          throw new DomainError(
+            ErrorCode.VOUCHER_HAS_ALLOCATIONS,
+            'A voucher that was allocated cannot be edited',
+          );
+        }
+        if (!v.journalEntryId) throw new DomainError(ErrorCode.CONFLICT, 'The voucher has no journal entry');
+        const full =
+          kind === 'receipt'
+            ? await tx.receipt.findFirst({ where: { id } })
+            : await tx.payment.findFirst({ where: { id } });
+        if (!full) throw DomainError.notFound(kind === 'receipt' ? 'Receipt' : 'Payment', id.toString());
+        const cheque = await tx.cheque.findFirst({
+          where: kind === 'receipt' ? { receiptId: id } : { paymentId: id },
+          select: { id: true },
+        });
+
+        let cashAccountId = full.cashAccountId;
+        if (dto.cashAccountId && BigInt(dto.cashAccountId) !== full.cashAccountId) {
+          if (cheque) {
+            throw new DomainError(ErrorCode.VALIDATION, 'A cheque voucher keeps its cheques account', { field: 'cashAccountId' });
+          }
+          await this.assertCashAccount(tx, companyId, dto.cashAccountId);
+          cashAccountId = BigInt(dto.cashAccountId);
+        }
+        let expenseAccountId = kind === 'payment' ? (full as { expenseAccountId: bigint | null }).expenseAccountId : null;
+        if (dto.expenseAccountId) {
+          if (expenseAccountId === null) {
+            throw new DomainError(ErrorCode.VALIDATION, 'Only a payment without a party has an expense account', { field: 'expenseAccountId' });
+          }
+          const exp = await tx.account.findFirst({
+            where: { companyId, id: BigInt(dto.expenseAccountId), isActive: true, isPostable: true },
+            select: { id: true },
+          });
+          if (!exp) throw DomainError.notFound('Account', dto.expenseAccountId);
+          expenseAccountId = exp.id;
+        }
+        const costCenterId =
+          dto.costCenterId === undefined ? full.costCenterId : dto.costCenterId ? BigInt(dto.costCenterId) : null;
+        if (costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, costCenterId);
+
+        const lines: JournalLineInput[] = [];
+        if (full.partyId && full.partyType) {
+          const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
+            'CUSTOMERS_CONTROL',
+            'SUPPLIERS_CONTROL',
+          ]);
+          const control = full.partyType === 'CUSTOMER' ? mapping.CUSTOMERS_CONTROL : mapping.SUPPLIERS_CONTROL;
+          const partyLine = { accountId: control, partyType: full.partyType, partyId: full.partyId };
+          if (kind === 'receipt') {
+            lines.push({ accountId: cashAccountId, debit: amount.toString() }, { ...partyLine, credit: amount.toString() });
+          } else {
+            lines.push({ ...partyLine, debit: amount.toString() }, { accountId: cashAccountId, credit: amount.toString() });
+          }
+        } else {
+          lines.push(
+            { accountId: expenseAccountId!, debit: amount.toString() },
+            { accountId: cashAccountId, credit: amount.toString() },
+          );
+        }
+
+        const no = kind === 'receipt' ? (full as { receiptNo: string }).receiptNo : (full as { paymentNo: string }).paymentNo;
+        const description = dto.description ?? full.description;
+        await this.posting.amendEntry(tx, {
+          tenantId,
+          companyId,
+          entryId: v.journalEntryId,
+          entryDate: date,
+          description: description ?? `${kind === 'receipt' ? 'Receipt' : 'Payment'} ${no}`,
+          lines,
+          costCenterId,
+          requireCostCenters: true,
+        });
+        const data = {
+          amount,
+          cashAccountId,
+          costCenterId,
+          referenceNo: dto.referenceNo ?? full.referenceNo,
+          description: description ?? null,
+        };
+        if (kind === 'receipt') await tx.receipt.update({ where: { id }, data: { ...data, receiptDate: date } });
+        else await tx.payment.update({ where: { id }, data: { ...data, paymentDate: date, expenseAccountId } });
+        if (cheque) await this.cheques.amendForVoucher(tx, tenantId, kind, id, { amount, date });
+        await this.audit.log({
+          action: `${kind}.amend`,
+          entityType: kind,
+          entityId: id,
+          before: {
+            date: (kind === 'receipt' ? (full as { receiptDate: Date }).receiptDate : (full as { paymentDate: Date }).paymentDate)
+              .toISOString()
+              .slice(0, 10),
+            amount: full.amount.toString(),
+            cashAccountId: full.cashAccountId.toString(),
+            costCenterId: full.costCenterId?.toString() ?? null,
+            description: full.description,
+          },
+          after: { date: dto.voucherDate, amount: amount.toString(), cashAccountId: cashAccountId.toString(), costCenterId: costCenterId?.toString() ?? null, description },
+        }, tx);
       }, POSTING_TX_OPTIONS),
     );
     return kind === 'receipt' ? this.getReceipt(id) : this.getPayment(id);
