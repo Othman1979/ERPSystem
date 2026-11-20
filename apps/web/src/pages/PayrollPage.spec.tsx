@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import { describe, expect, it } from 'vitest';
 import {
+  buildElementPayload,
   buildEmployeePayload,
   buildInputPayload,
   buildSettingsPayload,
@@ -19,6 +20,13 @@ describe('payroll page payloads and run actions', () => {
     expect(buildEmployeePayload({
       code: 'E1', nameAr: 'Employee', hireDate: '2026-01-01', payMethod: 'BANK',
     })).toMatchObject({ code: 'E1', sscCovered: true, sscHazardous: false });
+  });
+
+  it('omits the active state from pay-element create payloads', () => {
+    expect(buildElementPayload({ code: 'E1', nameAr: 'Element', isActive: true }, false))
+      .toEqual({ code: 'E1', nameAr: 'Element' });
+    expect(buildElementPayload({ code: 'E1', nameAr: 'Element', isActive: false }, true))
+      .toEqual({ nameAr: 'Element', isActive: false });
   });
 
   it('loads saved employee edit dates and sends date-only strings', () => {

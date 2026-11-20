@@ -78,6 +78,15 @@ export function buildSettingsPayload(values: Record<string, unknown> & { effecti
   return { ...values, effectiveFrom: dateOnly(values.effectiveFrom)! };
 }
 
+export function buildElementPayload(values: Record<string, unknown>, editing: boolean) {
+  if (editing) {
+    const { code: _code, ...update } = values;
+    return update;
+  }
+  const { isActive: _isActive, ...create } = values;
+  return create;
+}
+
 export function buildEmployeePayload(values: EmployeeForm) {
   const { salaryEffectiveFrom: _salaryDate, basicSalary: _salary, payElementId: _element, recurringAmount: _amount, recurringQuantity: _quantity, recurringValidFrom: _validFrom, ...card } = values;
   return {
@@ -245,11 +254,9 @@ function ElementsTab() {
     (kind === 'EARNING' ? account.accountType === 'EXPENSE' : account.accountType === 'ASSET' || account.accountType === 'LIABILITY'),
   ).map((account) => ({ value: account.id, label: `${account.code} — ${i18n.language === 'en' ? account.nameEn ?? account.nameAr : account.nameAr}` }));
   const save = useMutation({ mutationFn: async (value: Record<string, unknown>) => {
-    if (editing) {
-      const { code: _code, ...update } = value;
-      await payrollControllerUpdateElement(editing.id, update as never);
-    }
-    else await payrollControllerCreateElement(value as never);
+    const payload = buildElementPayload(value, Boolean(editing));
+    if (editing) await payrollControllerUpdateElement(editing.id, payload as never);
+    else await payrollControllerCreateElement(payload as never);
   }, onSuccess: () => { void client.invalidateQueries({ queryKey: ['payroll', 'elements'] }); setOpen(false); }, onError: () => message.error(t('payroll.saveError')) });
   return <>
     {can(PERMISSIONS.PAYROLL_MANAGE) && <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(undefined); form.resetFields(); setOpen(true); }}>{t('payroll.addElement')}</Button>}
@@ -274,7 +281,7 @@ function ElementsTab() {
         <Form.Item name="amountType" label={t('payroll.amountType')} initialValue="FIXED"><Select options={['FIXED', 'PER_HOUR', 'PER_DAY'].map((v) => ({ value: v, label: t(`payroll.${v === 'PER_HOUR' ? 'perHour' : v === 'PER_DAY' ? 'perDay' : 'fixed'}`) }))} /></Form.Item>
         <Form.Item name="accountId" label={t('payroll.account')} rules={[{ required: true }]}><GridSelect options={accountOptions} /></Form.Item>
         <Form.Item name="sscSubject" label={t('payroll.sscSubject')} valuePropName="checked" initialValue={true}><Switch /></Form.Item>
-        <Form.Item name="isActive" label={t('payroll.active')} valuePropName="checked" initialValue={true}><Switch /></Form.Item>
+        {editing && <Form.Item name="isActive" label={t('payroll.active')} valuePropName="checked"><Switch /></Form.Item>}
       </FormSection></Form>
     </FormDialog>
   </>;
