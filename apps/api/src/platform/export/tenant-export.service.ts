@@ -81,6 +81,10 @@ const WORKBOOKS: { file: string; models: string[] }[] = [
   { file: '14-sales-orders.xlsx', models: ['SalesQuote', 'SalesQuoteLine', 'SalesOrder', 'SalesOrderLine'] },
   // Phase 16 (ADR-031): bills of materials and production vouchers with their lines.
   { file: '15-manufacturing.xlsx', models: ['Bom', 'BomLine', 'ProductionVoucher', 'ProductionVoucherLine'] },
+  {
+    file: '16-payroll.xlsx',
+    models: ['Employee', 'EmployeeSalary', 'EmployeeRecurringElement', 'PayElement', 'PayrollInput', 'PayrollSettings', 'PayrollRun', 'PayrollLine', 'PayrollLineItem'],
+  },
 ];
 
 /** Columns not exported (secrets, leases, raw payloads). */
