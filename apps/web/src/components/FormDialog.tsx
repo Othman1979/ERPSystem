@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { fieldPanelTheme } from '../theme';
 import { useDocShortcuts } from './DocLayout';
+import { EnterNav } from './EnterNav';
 
 // Inline styles so they always win over antd's own; colours are the --c-* tokens.
 const dialogStyles = {
@@ -75,7 +76,9 @@ export function FormDialog({
         </div>
       }
     >
-      <ConfigProvider theme={fieldPanelTheme}>{children}</ConfigProvider>
+      <ConfigProvider theme={fieldPanelTheme}>
+        <EnterNav autoFocusWhen={open}>{children}</EnterNav>
+      </ConfigProvider>
     </Modal>
   );
 }

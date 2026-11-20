@@ -75,6 +75,7 @@ import {
   type QuotePicks,
 } from './procurement/quotePayload';
 import { invalidateProcurement, procurementKeys } from './procurement/queryKeys';
+import { EnterNav } from '../components/EnterNav';
 
 // ------------------------------------------------------------------ shared
 
@@ -578,44 +579,46 @@ function QuoteForm({
         </Button>
       }
     >
-      <DocFields>
-        <DocField label={t('procurement.request')} required error={requiredError(missing.request)}>
-          <ApprovedRequestPicker
-            value={requestId}
-            selected={requestOption(request.data)}
-            status={requiredError(missing.request) ? 'error' : undefined}
-            // The lines of a saved quote stay with its request.
-            disabled={!!quote}
-            onChange={changeRequest}
-          />
-        </DocField>
-        <DocField label={t('procurement.supplier')} required error={requiredError(missing.supplier)}>
-          <RemoteSelect
-            queryKey={['parties', 'pick', 'SUPPLIER']}
-            fetchOptions={(q, signal) =>
-              partiesControllerList(
-                { partyType: 'SUPPLIER', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) },
-                { signal },
-              ).then((r) => r.data.items.map((p) => ({ value: p.id, label: codeAndName(p) ?? p.id })))
-            }
-            selected={
-              quote?.supplier ? { value: quote.supplier.id, label: codeAndName(quote.supplier) ?? quote.supplier.id } : undefined
-            }
-            status={requiredError(missing.supplier) ? 'error' : undefined}
-            value={supplierId}
-            onChange={setSupplierId}
-          />
-        </DocField>
-        <DocField label={t('procurement.quoteDate')} required>
-          <DatePicker value={quoteDate} onChange={(d) => d && setQuoteDate(d)} />
-        </DocField>
-        <DocField label={t('procurement.validUntil')}>
-          <DatePicker value={validUntil} onChange={setValidUntil} allowClear />
-        </DocField>
-        <DocField label={t('procurement.notes')} wide>
-          <Input value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} />
-        </DocField>
-      </DocFields>
+      <EnterNav>
+        <DocFields>
+          <DocField label={t('procurement.request')} required error={requiredError(missing.request)}>
+            <ApprovedRequestPicker
+              value={requestId}
+              selected={requestOption(request.data)}
+              status={requiredError(missing.request) ? 'error' : undefined}
+              // The lines of a saved quote stay with its request.
+              disabled={!!quote}
+              onChange={changeRequest}
+            />
+          </DocField>
+          <DocField label={t('procurement.supplier')} required error={requiredError(missing.supplier)}>
+            <RemoteSelect
+              queryKey={['parties', 'pick', 'SUPPLIER']}
+              fetchOptions={(q, signal) =>
+                partiesControllerList(
+                  { partyType: 'SUPPLIER', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) },
+                  { signal },
+                ).then((r) => r.data.items.map((p) => ({ value: p.id, label: codeAndName(p) ?? p.id })))
+              }
+              selected={
+                quote?.supplier ? { value: quote.supplier.id, label: codeAndName(quote.supplier) ?? quote.supplier.id } : undefined
+              }
+              status={requiredError(missing.supplier) ? 'error' : undefined}
+              value={supplierId}
+              onChange={setSupplierId}
+            />
+          </DocField>
+          <DocField label={t('procurement.quoteDate')} required>
+            <DatePicker value={quoteDate} onChange={(d) => d && setQuoteDate(d)} />
+          </DocField>
+          <DocField label={t('procurement.validUntil')}>
+            <DatePicker value={validUntil} onChange={setValidUntil} allowClear />
+          </DocField>
+          <DocField label={t('procurement.notes')} wide>
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} />
+          </DocField>
+        </DocFields>
+      </EnterNav>
 
       <Table
         rowKey="requestLineId"
@@ -759,47 +762,49 @@ function QuoteView({
         </>
       }
     >
-      <DocFields>
-        <DocField label={t('common.status')}>
-          <DocValue>
-            <QuoteStatus status={quote.status} />
-          </DocValue>
-        </DocField>
-        <DocField label={t('procurement.request')}>
-          <DocValue>{quote.request.requestNo ?? `#${quote.request.id}`}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.supplier')}>
-          <DocValue>{displayName(quote.supplier) ?? '—'}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.quoteDate')}>
-          <DocValue>{dayjs(quote.quoteDate).format('YYYY-MM-DD')}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.validUntil')}>
-          <DocValue>{quote.validUntil ? dayjs(quote.validUntil).format('YYYY-MM-DD') : '—'}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.supplierRef')}>
-          <DocValue>{quote.supplierRef ?? '—'}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.net')}>
-          <DocValue>{amountCell(quote.netTotal)}</DocValue>
-        </DocField>
-        <DocField label={t('procurement.tax')}>
-          <DocValue>{amountCell(quote.taxTotal)}</DocValue>
-        </DocField>
-        <DocField label={t('purchases.grandTotal')}>
-          <DocValue>{amountCell(quote.grandTotal)}</DocValue>
-        </DocField>
-        {quote.notes && (
-          <DocField label={t('procurement.notes')} wide>
-            <DocValue>{quote.notes}</DocValue>
+      <EnterNav>
+        <DocFields>
+          <DocField label={t('common.status')}>
+            <DocValue>
+              <QuoteStatus status={quote.status} />
+            </DocValue>
           </DocField>
-        )}
-        {quote.status === 'CANCELLED' && quote.cancelReason && (
-          <DocField label={t('procurement.reason')} wide>
-            <DocValue>{t('procurement.cancelledReason', { reason: quote.cancelReason })}</DocValue>
+          <DocField label={t('procurement.request')}>
+            <DocValue>{quote.request.requestNo ?? `#${quote.request.id}`}</DocValue>
           </DocField>
-        )}
-      </DocFields>
+          <DocField label={t('procurement.supplier')}>
+            <DocValue>{displayName(quote.supplier) ?? '—'}</DocValue>
+          </DocField>
+          <DocField label={t('procurement.quoteDate')}>
+            <DocValue>{dayjs(quote.quoteDate).format('YYYY-MM-DD')}</DocValue>
+          </DocField>
+          <DocField label={t('procurement.validUntil')}>
+            <DocValue>{quote.validUntil ? dayjs(quote.validUntil).format('YYYY-MM-DD') : '—'}</DocValue>
+          </DocField>
+          <DocField label={t('procurement.supplierRef')}>
+            <DocValue>{quote.supplierRef ?? '—'}</DocValue>
+          </DocField>
+          <DocField label={t('procurement.net')}>
+            <DocValue>{amountCell(quote.netTotal)}</DocValue>
+          </DocField>
+          <DocField label={t('procurement.tax')}>
+            <DocValue>{amountCell(quote.taxTotal)}</DocValue>
+          </DocField>
+          <DocField label={t('purchases.grandTotal')}>
+            <DocValue>{amountCell(quote.grandTotal)}</DocValue>
+          </DocField>
+          {quote.notes && (
+            <DocField label={t('procurement.notes')} wide>
+              <DocValue>{quote.notes}</DocValue>
+            </DocField>
+          )}
+          {quote.status === 'CANCELLED' && quote.cancelReason && (
+            <DocField label={t('procurement.reason')} wide>
+              <DocValue>{t('procurement.cancelledReason', { reason: quote.cancelReason })}</DocValue>
+            </DocField>
+          )}
+        </DocFields>
+      </EnterNav>
       <Typography.Text type="secondary">
         {quote.pricesIncludeTax ? t('procurement.pricesIncludeTax') : t('procurement.pricesExcludeTax')}
       </Typography.Text>
@@ -928,14 +933,16 @@ function QuoteReceive({
       {tried && missing.size > 0 && (
         <Alert type="warning" showIcon message={t('procurement.quotesUi.missingPrices')} />
       )}
-      <DocFields>
-        <DocField label={t('procurement.supplierRef')}>
-          <Input value={supplierRef} maxLength={100} onChange={(e) => setSupplierRef(e.target.value)} />
-        </DocField>
-        <DocField label={t('procurement.validUntil')}>
-          <DatePicker value={validUntil} onChange={setValidUntil} allowClear />
-        </DocField>
-      </DocFields>
+      <EnterNav>
+        <DocFields>
+          <DocField label={t('procurement.supplierRef')}>
+            <Input value={supplierRef} maxLength={100} onChange={(e) => setSupplierRef(e.target.value)} />
+          </DocField>
+          <DocField label={t('procurement.validUntil')}>
+            <DatePicker value={validUntil} onChange={setValidUntil} allowClear />
+          </DocField>
+        </DocFields>
+      </EnterNav>
       <Typography.Text type="secondary">
         {quote.pricesIncludeTax ? t('procurement.pricesIncludeTax') : t('procurement.pricesExcludeTax')}
       </Typography.Text>
@@ -1075,39 +1082,43 @@ function ComparisonTab({ initialRequestId }: { initialRequestId?: string }) {
   return (
     <div>
       {contextHolder}
-      <DocFields>
-        <DocField label={t('procurement.request')} required>
-          <ApprovedRequestPicker
-            value={requestId}
-            selected={requestOption(request.data)}
-            onChange={(id) => {
-              setRequestId(id);
-              setUserPicks(null);
-              setCreated(null);
-            }}
-          />
-        </DocField>
-      </DocFields>
+      <EnterNav>
+        <DocFields>
+          <DocField label={t('procurement.request')} required>
+            <ApprovedRequestPicker
+              value={requestId}
+              selected={requestOption(request.data)}
+              onChange={(id) => {
+                setRequestId(id);
+                setUserPicks(null);
+                setCreated(null);
+              }}
+            />
+          </DocField>
+        </DocFields>
+      </EnterNav>
 
       {requestId &&
         lines.map((line) => {
           const open = dec(line.remainingQty).gt(0);
           return (
             <section key={line.requestLineId} className="doc-section">
-              <DocFields>
-                <DocField label={t('procurement.item')}>
-                  <DocValue>{codeAndName(line.item) ?? line.item.id}</DocValue>
-                </DocField>
-                <DocField label={t('procurement.qty')}>
-                  <DocValue>{qtyCell(line.qty)}</DocValue>
-                </DocField>
-                <DocField label={t('procurement.ordered')}>
-                  <DocValue>{qtyCell(line.orderedQty)}</DocValue>
-                </DocField>
-                <DocField label={t('procurement.remaining')}>
-                  <DocValue>{qtyCell(line.remainingQty)}</DocValue>
-                </DocField>
-              </DocFields>
+              <EnterNav>
+                <DocFields>
+                  <DocField label={t('procurement.item')}>
+                    <DocValue>{codeAndName(line.item) ?? line.item.id}</DocValue>
+                  </DocField>
+                  <DocField label={t('procurement.qty')}>
+                    <DocValue>{qtyCell(line.qty)}</DocValue>
+                  </DocField>
+                  <DocField label={t('procurement.ordered')}>
+                    <DocValue>{qtyCell(line.orderedQty)}</DocValue>
+                  </DocField>
+                  <DocField label={t('procurement.remaining')}>
+                    <DocValue>{qtyCell(line.remainingQty)}</DocValue>
+                  </DocField>
+                </DocFields>
+              </EnterNav>
               {!open && <Typography.Text type="secondary">{t('procurement.noLinesLeft')}</Typography.Text>}
               {open && line.offers.length === 0 && (
                 <Typography.Text type="secondary">{t('procurement.quotesUi.noOfferYet')}</Typography.Text>
@@ -1191,31 +1202,33 @@ function ComparisonTab({ initialRequestId }: { initialRequestId?: string }) {
 
       {requestId && lines.length > 0 && (
         <section className="doc-section">
-          <DocFields>
-            <DocField label={t('procurement.warehouse')} required error={tried && !warehouseId ? t('common.requiredField') : undefined}>
-              <GridSelect
-                enterOpens
-                status={tried && !warehouseId ? 'error' : undefined}
-                options={warehouseOptions}
-                value={warehouseId}
-                onChange={(v: string | undefined) => setWarehouseChoice(v)}
-              />
-            </DocField>
-            <DocField label={t('procurement.orderDate')}>
-              <DatePicker value={orderDate} onChange={(d) => d && setOrderDate(d)} />
-            </DocField>
-            <DocField label={t('procurement.expectedDate')}>
-              <DatePicker value={expectedDate} onChange={setExpectedDate} allowClear />
-            </DocField>
-            {costCenters.enabled && (
-              <DocField label={<CostCenterLabel />}>
-                <CostCenterSelect rows={costCenters.rows} value={costCenterId} onChange={setCostCenterId} />
+          <EnterNav>
+            <DocFields>
+              <DocField label={t('procurement.warehouse')} required error={tried && !warehouseId ? t('common.requiredField') : undefined}>
+                <GridSelect
+                  enterOpens
+                  status={tried && !warehouseId ? 'error' : undefined}
+                  options={warehouseOptions}
+                  value={warehouseId}
+                  onChange={(v: string | undefined) => setWarehouseChoice(v)}
+                />
               </DocField>
-            )}
-            <DocField label={t('procurement.notes')} wide>
-              <Input value={notes} maxLength={500} onChange={(e) => setNotes(e.target.value)} />
-            </DocField>
-          </DocFields>
+              <DocField label={t('procurement.orderDate')}>
+                <DatePicker value={orderDate} onChange={(d) => d && setOrderDate(d)} />
+              </DocField>
+              <DocField label={t('procurement.expectedDate')}>
+                <DatePicker value={expectedDate} onChange={setExpectedDate} allowClear />
+              </DocField>
+              {costCenters.enabled && (
+                <DocField label={<CostCenterLabel />}>
+                  <CostCenterSelect rows={costCenters.rows} value={costCenterId} onChange={setCostCenterId} />
+                </DocField>
+              )}
+              <DocField label={t('procurement.notes')} wide>
+                <Input value={notes} maxLength={500} onChange={(e) => setNotes(e.target.value)} />
+              </DocField>
+            </DocFields>
+          </EnterNav>
           <Space wrap>
             {canManage && (
               <Button type="primary" disabled={!hasPicks} loading={convert.isPending} onClick={submit}>

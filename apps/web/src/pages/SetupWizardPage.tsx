@@ -23,6 +23,7 @@ import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { useAccounts } from '../hooks/useAccounts';
+import { EnterNav } from '../components/EnterNav';
 
 type TaxCategory = TaxCategoryDto;
 
@@ -219,27 +220,31 @@ export function SetupWizardPage() {
       {(warehouses.data?.length ?? 0) > 0 ? (
         <Done>{t('setup.warehouseExists', { names: (warehouses.data ?? []).map((w) => codeAndName(w)).join('، ') })}</Done>
       ) : (
-        <Form form={warehouseForm} layout="inline" initialValues={{ nameAr: t('setup.mainWarehouse') }} onFinish={(v) => createWarehouse.mutate(v)}>
-          <Form.Item name="nameAr" label={t('setup.warehouseName')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" loading={createWarehouse.isPending}>
-            {t('setup.createWarehouse')}
-          </Button>
-        </Form>
+        <EnterNav>
+          <Form form={warehouseForm} layout="inline" initialValues={{ nameAr: t('setup.mainWarehouse') }} onFinish={(v) => createWarehouse.mutate(v)}>
+            <Form.Item name="nameAr" label={t('setup.warehouseName')} rules={[{ required: true }]}>
+              <Input maxLength={191} />
+            </Form.Item>
+            <Button type="primary" htmlType="submit" loading={createWarehouse.isPending}>
+              {t('setup.createWarehouse')}
+            </Button>
+          </Form>
+        </EnterNav>
       )}
       {(cashBoxes.data?.length ?? 0) > 0 ? (
         <Done>{t('setup.cashBoxExists', { names: (cashBoxes.data ?? []).map((c) => `${c.code} — ${c.name}`).join('، ') })}</Done>
       ) : cashAccount ? (
-        <Form form={cashForm} layout="inline" initialValues={{ name: t('setup.mainCashBox') }} onFinish={(v) => createCashBox.mutate(v)}>
-          <Form.Item name="name" label={t('setup.cashBoxName')} rules={[{ required: true }]}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Typography.Text type="secondary">{t('setup.cashBoxAccount', { account: codeAndName(cashAccount) })}</Typography.Text>
-          <Button type="primary" htmlType="submit" loading={createCashBox.isPending}>
-            {t('setup.createCashBox')}
-          </Button>
-        </Form>
+        <EnterNav>
+          <Form form={cashForm} layout="inline" initialValues={{ name: t('setup.mainCashBox') }} onFinish={(v) => createCashBox.mutate(v)}>
+            <Form.Item name="name" label={t('setup.cashBoxName')} rules={[{ required: true }]}>
+              <Input maxLength={191} />
+            </Form.Item>
+            <Typography.Text type="secondary">{t('setup.cashBoxAccount', { account: codeAndName(cashAccount) })}</Typography.Text>
+            <Button type="primary" htmlType="submit" loading={createCashBox.isPending}>
+              {t('setup.createCashBox')}
+            </Button>
+          </Form>
+        </EnterNav>
       ) : (
         <Alert type="warning" showIcon message={t('setup.noCashAccount')} />
       )}

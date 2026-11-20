@@ -10,6 +10,7 @@ import {
   type UpdateCompanyDto,
 } from '@erp/api-client';
 import { useCompany } from './CompanyProfileForm';
+import { EnterNav } from './EnterNav';
 
 const RESERVATIONS: readonly SalesReservation[] = ['NONE', 'SOFT', 'HARD'];
 const APPROVALS: readonly SalesOrderApproval[] = ['NONE', 'OVER_CREDIT_LIMIT', 'ALWAYS'];
@@ -59,54 +60,56 @@ export function SalesSettingsForm() {
   const direct = company.data?.directSalesDraftCount ?? 0;
 
   return (
-    <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} style={{ maxWidth: 720 }}>
-      <Form.Item
-        name="salesOrderRequired"
-        label={t('salesCycle.settings.orderRequired')}
-        valuePropName="checked"
-        extra={t('salesCycle.settings.orderRequiredHint')}
-      >
-        <Switch />
-      </Form.Item>
-      {orderRequired && direct > 0 && (
-        <Alert type="warning" showIcon style={{ marginBottom: 16 }} message={t('salesCycle.settings.orderRequiredWarning', { count: direct })} />
-      )}
-      <Form.Item
-        name="salesReservation"
-        label={t('salesCycle.settings.reservation')}
-        extra={reservation ? t(`salesCycle.settings.reservationHints.${reservation}`) : undefined}
-        style={{ maxWidth: 480 }}
-      >
-        <Select options={RESERVATIONS.map((r) => ({ value: r, label: t(`salesCycle.settings.reservationOptions.${r}`) }))} />
-      </Form.Item>
-      <Form.Item
-        name="salesOrderApproval"
-        label={t('salesCycle.settings.approval')}
-        extra={approval ? t(`salesCycle.settings.approvalHints.${approval}`) : undefined}
-        style={{ maxWidth: 480 }}
-      >
-        <Select options={APPROVALS.map((a) => ({ value: a, label: t(`salesCycle.settings.approvalOptions.${a}`) }))} />
-      </Form.Item>
-      <Form.Item
-        name="salesPriceLocked"
-        label={t('salesCycle.settings.priceLocked')}
-        valuePropName="checked"
-        extra={t('salesCycle.settings.priceLockedHint')}
-      >
-        <Switch />
-      </Form.Item>
-      <Form.Item
-        name="quoteValidityDays"
-        label={t('salesCycle.settings.validityDays')}
-        extra={t('salesCycle.settings.validityDaysHint')}
-        rules={[{ required: true, type: 'number', min: 0, max: 365, message: t('salesCycle.settings.validityDaysHint') }]}
-        style={{ maxWidth: 240 }}
-      >
-        <InputNumber min={0} max={365} precision={0} style={{ width: '100%' }} />
-      </Form.Item>
-      <Button type="primary" htmlType="submit" loading={save.isPending}>
-        {t('salesCycle.settings.save')}
-      </Button>
-    </Form>
+    <EnterNav>
+      <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} style={{ maxWidth: 720 }}>
+        <Form.Item
+          name="salesOrderRequired"
+          label={t('salesCycle.settings.orderRequired')}
+          valuePropName="checked"
+          extra={t('salesCycle.settings.orderRequiredHint')}
+        >
+          <Switch />
+        </Form.Item>
+        {orderRequired && direct > 0 && (
+          <Alert type="warning" showIcon style={{ marginBottom: 16 }} message={t('salesCycle.settings.orderRequiredWarning', { count: direct })} />
+        )}
+        <Form.Item
+          name="salesReservation"
+          label={t('salesCycle.settings.reservation')}
+          extra={reservation ? t(`salesCycle.settings.reservationHints.${reservation}`) : undefined}
+          style={{ maxWidth: 480 }}
+        >
+          <Select options={RESERVATIONS.map((r) => ({ value: r, label: t(`salesCycle.settings.reservationOptions.${r}`) }))} />
+        </Form.Item>
+        <Form.Item
+          name="salesOrderApproval"
+          label={t('salesCycle.settings.approval')}
+          extra={approval ? t(`salesCycle.settings.approvalHints.${approval}`) : undefined}
+          style={{ maxWidth: 480 }}
+        >
+          <Select options={APPROVALS.map((a) => ({ value: a, label: t(`salesCycle.settings.approvalOptions.${a}`) }))} />
+        </Form.Item>
+        <Form.Item
+          name="salesPriceLocked"
+          label={t('salesCycle.settings.priceLocked')}
+          valuePropName="checked"
+          extra={t('salesCycle.settings.priceLockedHint')}
+        >
+          <Switch />
+        </Form.Item>
+        <Form.Item
+          name="quoteValidityDays"
+          label={t('salesCycle.settings.validityDays')}
+          extra={t('salesCycle.settings.validityDaysHint')}
+          rules={[{ required: true, type: 'number', min: 0, max: 365, message: t('salesCycle.settings.validityDaysHint') }]}
+          style={{ maxWidth: 240 }}
+        >
+          <InputNumber min={0} max={365} precision={0} style={{ width: '100%' }} />
+        </Form.Item>
+        <Button type="primary" htmlType="submit" loading={save.isPending}>
+          {t('salesCycle.settings.save')}
+        </Button>
+      </Form>
+    </EnterNav>
   );
 }

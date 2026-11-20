@@ -68,6 +68,7 @@ import { CustomerFilter } from './sales/CustomerFilter';
 import { SalesLinesGrid, type SalesLineDraft } from './sales/SalesLinesGrid';
 import { convertQuoteBody, defaultValidUntil, isQuoteExpired, salesQuoteBody } from './sales/quotePayload';
 import { missingSalesPriceLines } from './sales/salesLines';
+import { EnterNav } from '../components/EnterNav';
 
 // ------------------------------------------------------------------ types
 
@@ -497,45 +498,47 @@ function QuoteEditor({
         </>
       }
     >
-      <DocFields>
-        <DocField field="customer" label={t('sales.customer')} required error={requiredError(missing.customer)}>
-          <RemoteSelect
-            queryKey={['parties', 'pick', 'CUSTOMER']}
-            fetchOptions={(q, signal) =>
-              partiesControllerList({ partyType: 'CUSTOMER', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) }, { signal }).then(
-                (r) => r.data.items.map((p) => ({ value: p.id, label: codeAndName(p) })),
-              )
-            }
-            selected={quote?.customer ? { value: quote.customer.id, label: codeAndName(quote.customer) } : undefined}
-            status={requiredError(missing.customer) ? 'error' : undefined}
-            value={customerId}
-            onChange={setCustomerId}
-          />
-        </DocField>
-        <DocField field="warehouse" label={t('sales.warehouse')}>
-          <GridSelect
-            allowClear
-            placeholder={t('salesCycle.warehouseOptional')}
-            options={warehouseOptions}
-            value={warehouseId}
-            onChange={(v: string | undefined) => setWarehouseId(v)}
-          />
-        </DocField>
-        <DocField label={t('salesCycle.quoteDate')} required>
-          <DatePicker value={quoteDate} onChange={(d) => d && setQuoteDate(d)} />
-        </DocField>
-        <DocField label={t('salesCycle.validUntil')}>
-          <DatePicker value={validUntil} onChange={changeValidUntil} allowClear />
-        </DocField>
-        {costCenters.enabled && (
-          <DocField field="costCenter" label={<CostCenterLabel />}>
-            <CostCenterSelect enterOpens rows={costCenters.rows} value={costCenterId} onChange={setCostCenterId} />
+      <EnterNav>
+        <DocFields>
+          <DocField field="customer" label={t('sales.customer')} required error={requiredError(missing.customer)}>
+            <RemoteSelect
+              queryKey={['parties', 'pick', 'CUSTOMER']}
+              fetchOptions={(q, signal) =>
+                partiesControllerList({ partyType: 'CUSTOMER', pageSize: PICKER_PAGE_SIZE, ...(q ? { q } : {}) }, { signal }).then(
+                  (r) => r.data.items.map((p) => ({ value: p.id, label: codeAndName(p) })),
+                )
+              }
+              selected={quote?.customer ? { value: quote.customer.id, label: codeAndName(quote.customer) } : undefined}
+              status={requiredError(missing.customer) ? 'error' : undefined}
+              value={customerId}
+              onChange={setCustomerId}
+            />
           </DocField>
-        )}
-        <DocField label={t('salesCycle.description')} wide>
-          <Input value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} />
-        </DocField>
-      </DocFields>
+          <DocField field="warehouse" label={t('sales.warehouse')}>
+            <GridSelect
+              allowClear
+              placeholder={t('salesCycle.warehouseOptional')}
+              options={warehouseOptions}
+              value={warehouseId}
+              onChange={(v: string | undefined) => setWarehouseId(v)}
+            />
+          </DocField>
+          <DocField label={t('salesCycle.quoteDate')} required>
+            <DatePicker value={quoteDate} onChange={(d) => d && setQuoteDate(d)} />
+          </DocField>
+          <DocField label={t('salesCycle.validUntil')}>
+            <DatePicker value={validUntil} onChange={changeValidUntil} allowClear />
+          </DocField>
+          {costCenters.enabled && (
+            <DocField field="costCenter" label={<CostCenterLabel />}>
+              <CostCenterSelect enterOpens rows={costCenters.rows} value={costCenterId} onChange={setCostCenterId} />
+            </DocField>
+          )}
+          <DocField label={t('salesCycle.description')} wide>
+            <Input value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} />
+          </DocField>
+        </DocFields>
+      </EnterNav>
 
       <SalesLinesGrid
         lines={lines}
@@ -714,44 +717,46 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
       {quote.status === 'REJECTED' && quote.rejectReason && (
         <Alert type="warning" showIcon message={t('salesCycle.rejectedReason', { reason: quote.rejectReason })} />
       )}
-      <DocFields>
-        <DocField label={t('common.status')}>
-          <DocValue>
-            <QuoteStatusTag status={quote.status} />
-          </DocValue>
-        </DocField>
-        <DocField label={t('sales.customer')}>
-          <DocValue>{displayName(quote.customer) ?? '—'}</DocValue>
-        </DocField>
-        <DocField label={t('sales.warehouse')}>
-          <DocValue>{quote.warehouse ? codeAndName(quote.warehouse) : '—'}</DocValue>
-        </DocField>
-        <DocField label={t('salesCycle.quoteDate')}>
-          <DocValue>{dayjs(quote.quoteDate).format('YYYY-MM-DD')}</DocValue>
-        </DocField>
-        <DocField label={t('salesCycle.validUntil')}>
-          <DocValue>{quote.validUntil ? dayjs(quote.validUntil).format('YYYY-MM-DD') : '—'}</DocValue>
-        </DocField>
-        {quote.costCenter && (
-          <DocField label={t('costCenters.documentField')}>
-            <DocValue>{codeAndName(quote.costCenter)}</DocValue>
+      <EnterNav>
+        <DocFields>
+          <DocField label={t('common.status')}>
+            <DocValue>
+              <QuoteStatusTag status={quote.status} />
+            </DocValue>
           </DocField>
-        )}
-        <DocField label={t('sales.net')}>
-          <DocValue>{amountCell(quote.netTotal)}</DocValue>
-        </DocField>
-        <DocField label={t('sales.tax')}>
-          <DocValue>{amountCell(quote.taxTotal)}</DocValue>
-        </DocField>
-        <DocField label={t('sales.grandTotal')}>
-          <DocValue>{amountCell(quote.grandTotal)}</DocValue>
-        </DocField>
-        {quote.description && (
-          <DocField label={t('salesCycle.description')} wide>
-            <DocValue>{quote.description}</DocValue>
+          <DocField label={t('sales.customer')}>
+            <DocValue>{displayName(quote.customer) ?? '—'}</DocValue>
           </DocField>
-        )}
-      </DocFields>
+          <DocField label={t('sales.warehouse')}>
+            <DocValue>{quote.warehouse ? codeAndName(quote.warehouse) : '—'}</DocValue>
+          </DocField>
+          <DocField label={t('salesCycle.quoteDate')}>
+            <DocValue>{dayjs(quote.quoteDate).format('YYYY-MM-DD')}</DocValue>
+          </DocField>
+          <DocField label={t('salesCycle.validUntil')}>
+            <DocValue>{quote.validUntil ? dayjs(quote.validUntil).format('YYYY-MM-DD') : '—'}</DocValue>
+          </DocField>
+          {quote.costCenter && (
+            <DocField label={t('costCenters.documentField')}>
+              <DocValue>{codeAndName(quote.costCenter)}</DocValue>
+            </DocField>
+          )}
+          <DocField label={t('sales.net')}>
+            <DocValue>{amountCell(quote.netTotal)}</DocValue>
+          </DocField>
+          <DocField label={t('sales.tax')}>
+            <DocValue>{amountCell(quote.taxTotal)}</DocValue>
+          </DocField>
+          <DocField label={t('sales.grandTotal')}>
+            <DocValue>{amountCell(quote.grandTotal)}</DocValue>
+          </DocField>
+          {quote.description && (
+            <DocField label={t('salesCycle.description')} wide>
+              <DocValue>{quote.description}</DocValue>
+            </DocField>
+          )}
+        </DocFields>
+      </EnterNav>
       <Typography.Text type="secondary">
         {quote.pricesIncludeTax ? t('procurement.pricesIncludeTax') : t('procurement.pricesExcludeTax')}
       </Typography.Text>

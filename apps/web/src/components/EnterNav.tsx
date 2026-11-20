@@ -7,8 +7,9 @@ const FIELD_SELECTOR = [
   '.ant-picker:not(.ant-picker-disabled)',
   '.ant-input-number:not(.ant-input-number-disabled)',
   'input.ant-input:not([disabled])',
-  // A dialog's primary button ends the chain: Enter there saves.
+  // A dialog's primary button, or a page form's submit button, ends the chain: Enter there saves.
   '.ant-modal-footer .ant-btn-primary:not([disabled])',
+  'button[type="submit"]:not([disabled])',
 ].join(', ');
 
 function isVisible(el: Element): boolean {
@@ -75,7 +76,8 @@ export function EnterNav({
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(e);
-    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    // An inner EnterNav (or a hand-built chain) already moved the caret.
+    if (e.defaultPrevented || e.key !== 'Enter' || e.nativeEvent.isComposing) return;
     const target = e.target as HTMLElement;
     // Grids, buttons and multi-line text keep their own Enter behaviour.
     if (target.closest('[data-cell]') || target.tagName === 'BUTTON' || target.tagName === 'TEXTAREA') {

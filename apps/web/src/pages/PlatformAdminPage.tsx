@@ -50,6 +50,7 @@ import { usePagedQuery } from '../hooks/usePagedQuery';
 import { tableLocale } from '../components/QueryState';
 import { amountCell } from '../format/cells';
 import { displayName } from '../i18n/displayName';
+import { EnterNav } from '../components/EnterNav';
 
 const STATUSES = ['TRIAL', 'ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED'] as const;
 type Status = (typeof STATUSES)[number];
@@ -251,30 +252,32 @@ function TenantDrawer({ id, onClose }: { id: string | null; onClose: () => void 
           <section>
             <Typography.Title level={5}>{t('platform.recordPayment')}</Typography.Title>
             <Typography.Paragraph type="secondary">{t('platform.recordPaymentHint')}</Typography.Paragraph>
-            <Form form={payment} layout="vertical" onFinish={(v) => recordPayment.mutate(v)}>
-              <Space wrap align="start">
-                <Form.Item name="planCode" label={t('platform.plan')} rules={[{ required: true }]} initialValue={tenant.plan?.code !== 'TRIAL' ? tenant.plan?.code : undefined}>
-                  <Select
-                    style={{ width: 160 }}
-                    options={(plans ?? [])
-                      .filter((p) => p.isActive && p.code !== 'TRIAL')
-                      .map((p) => ({ value: p.code, label: displayName(p) }))}
-                  />
+            <EnterNav>
+              <Form form={payment} layout="vertical" onFinish={(v) => recordPayment.mutate(v)}>
+                <Space wrap align="start">
+                  <Form.Item name="planCode" label={t('platform.plan')} rules={[{ required: true }]} initialValue={tenant.plan?.code !== 'TRIAL' ? tenant.plan?.code : undefined}>
+                    <Select
+                      style={{ width: 160 }}
+                      options={(plans ?? [])
+                        .filter((p) => p.isActive && p.code !== 'TRIAL')
+                        .map((p) => ({ value: p.code, label: displayName(p) }))}
+                    />
+                  </Form.Item>
+                  <Form.Item name="period" label={t('platform.period')} rules={[{ required: true }]}>
+                    <DatePicker.RangePicker />
+                  </Form.Item>
+                  <Form.Item name="amount" label={t('platform.amount')}>
+                    <InputNumber<string> stringMode min="0" style={{ width: 130 }} />
+                  </Form.Item>
+                </Space>
+                <Form.Item name="notes" label={t('platform.paymentNotes')}>
+                  <Input maxLength={500} placeholder={t('platform.paymentNotesHint')} />
                 </Form.Item>
-                <Form.Item name="period" label={t('platform.period')} rules={[{ required: true }]}>
-                  <DatePicker.RangePicker />
-                </Form.Item>
-                <Form.Item name="amount" label={t('platform.amount')}>
-                  <InputNumber<string> stringMode min="0" style={{ width: 130 }} />
-                </Form.Item>
-              </Space>
-              <Form.Item name="notes" label={t('platform.paymentNotes')}>
-                <Input maxLength={500} placeholder={t('platform.paymentNotesHint')} />
-              </Form.Item>
-              <Button type="primary" htmlType="submit" loading={recordPayment.isPending}>
-                {t('platform.recordPayment')}
-              </Button>
-            </Form>
+                <Button type="primary" htmlType="submit" loading={recordPayment.isPending}>
+                  {t('platform.recordPayment')}
+                </Button>
+              </Form>
+            </EnterNav>
           </section>
 
           {tenant.status === 'TRIAL' && (
@@ -412,34 +415,36 @@ function PlansTab() {
         confirmLoading={save.isPending}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <Space wrap>
-            <Form.Item name="nameAr" label={t('settings.nameAr')} rules={[{ required: true }]}>
-              <Input maxLength={191} />
-            </Form.Item>
-            <Form.Item name="nameEn" label={t('settings.nameEn')}>
-              <Input maxLength={191} />
-            </Form.Item>
-          </Space>
-          <Space wrap>
-            {(['maxUsers', 'maxBranches', 'maxWarehouses', 'maxInvoicesPerMonth'] as const).map((k) => (
-              <Form.Item key={k} name={k} label={t(`platform.${k === 'maxInvoicesPerMonth' ? 'maxInvoices' : k}`)} rules={[{ required: true }]}>
-                <InputNumber min={1} precision={0} style={{ width: 120 }} />
+        <EnterNav>
+          <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+            <Space wrap>
+              <Form.Item name="nameAr" label={t('settings.nameAr')} rules={[{ required: true }]}>
+                <Input maxLength={191} />
               </Form.Item>
-            ))}
-          </Space>
-          <Space wrap>
-            <Form.Item name="priceMonthly" label={t('platform.priceMonthly')}>
-              <InputNumber<string> stringMode min="0" style={{ width: 140 }} />
-            </Form.Item>
-            <Form.Item name="priceYearly" label={t('platform.priceYearly')}>
-              <InputNumber<string> stringMode min="0" style={{ width: 140 }} />
-            </Form.Item>
-            <Form.Item name="isActive" label={t('common.active')} valuePropName="checked">
-              <Switch />
-            </Form.Item>
-          </Space>
-        </Form>
+              <Form.Item name="nameEn" label={t('settings.nameEn')}>
+                <Input maxLength={191} />
+              </Form.Item>
+            </Space>
+            <Space wrap>
+              {(['maxUsers', 'maxBranches', 'maxWarehouses', 'maxInvoicesPerMonth'] as const).map((k) => (
+                <Form.Item key={k} name={k} label={t(`platform.${k === 'maxInvoicesPerMonth' ? 'maxInvoices' : k}`)} rules={[{ required: true }]}>
+                  <InputNumber min={1} precision={0} style={{ width: 120 }} />
+                </Form.Item>
+              ))}
+            </Space>
+            <Space wrap>
+              <Form.Item name="priceMonthly" label={t('platform.priceMonthly')}>
+                <InputNumber<string> stringMode min="0" style={{ width: 140 }} />
+              </Form.Item>
+              <Form.Item name="priceYearly" label={t('platform.priceYearly')}>
+                <InputNumber<string> stringMode min="0" style={{ width: 140 }} />
+              </Form.Item>
+              <Form.Item name="isActive" label={t('common.active')} valuePropName="checked">
+                <Switch />
+              </Form.Item>
+            </Space>
+          </Form>
+        </EnterNav>
       </Modal>
     </>
   );
