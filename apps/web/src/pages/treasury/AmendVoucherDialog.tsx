@@ -37,7 +37,8 @@ export function AmendVoucherButton({
   const [description, setDescription] = useState('');
 
   const start = () => {
-    setDate(dayjs(voucher.date));
+    // The API's date is midnight UTC: take the calendar day, not the local instant.
+    setDate(dayjs(voucher.date.slice(0, 10)));
     setAmount(voucher.amount);
     setReferenceNo(voucher.referenceNo ?? '');
     setDescription(voucher.description ?? '');

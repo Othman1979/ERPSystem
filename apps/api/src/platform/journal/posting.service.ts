@@ -528,6 +528,20 @@ export class PostingService {
     if (matched > 0) {
       throw new DomainError(ErrorCode.CONFLICT, 'Unmatch the bank reconciliation lines of this entry before editing it');
     }
+    // An approved statement keeps its totals; its outstanding list is rebuilt from the ledger.
+    const earliest = entry.entryDate < params.entryDate ? entry.entryDate : params.entryDate;
+    const accountIds = [
+      ...new Set([
+        ...(await tx.journalLine.findMany({ where: { tenantId, journalEntryId: entry.id }, select: { accountId: true } })).map((l) => l.accountId),
+        ...params.lines.map((l) => l.accountId),
+      ]),
+    ];
+    const approved = await tx.bankStatement.count({
+      where: { tenantId, status: 'RECONCILED', endDate: { gte: earliest }, bankAccount: { accountId: { in: accountIds } } },
+    });
+    if (approved > 0) {
+      throw new DomainError(ErrorCode.CONFLICT, 'A reconciled bank statement covers this entry; reopen it before editing');
+    }
     await this.resolveOpenPeriod(tx, tenantId, companyId, entry.entryDate);
     const period = await this.resolveOpenPeriod(tx, tenantId, companyId, params.entryDate);
 

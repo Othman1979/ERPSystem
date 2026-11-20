@@ -790,10 +790,12 @@ export class VouchersService implements OnModuleInit {
         const v = await this.lockVoucher(tx, tenantId, kind, id);
         assertBranchAllowed(v.branchId);
         if (v.reversedAt) throw new DomainError(ErrorCode.CONFLICT, 'A reversed voucher cannot be edited');
-        if ((await this.activeAllocated(tx, kind, id)).gt(0)) {
+        // Cancelled allocations count too: historical aging replays them at their old amounts.
+        const allocations = await tx.allocation.count({ where: kind === 'receipt' ? { receiptId: id } : { paymentId: id } });
+        if (allocations > 0) {
           throw new DomainError(
             ErrorCode.VOUCHER_HAS_ALLOCATIONS,
-            'Cancel the allocations of this voucher before editing it',
+            'A voucher that was allocated cannot be edited',
           );
         }
         if (!v.journalEntryId) throw new DomainError(ErrorCode.CONFLICT, 'The voucher has no journal entry');

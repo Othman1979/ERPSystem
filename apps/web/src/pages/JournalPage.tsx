@@ -214,7 +214,8 @@ export function JournalPage() {
 
   const startAmend = (e: JournalEntry) => {
     setAmendTarget(e);
-    setNewDate(dayjs(e.entryDate));
+    // The API's date is midnight UTC: take the calendar day, not the local instant.
+    setNewDate(dayjs(e.entryDate.slice(0, 10)));
     setNewVoucherType(e.voucherType ?? 'JOURNAL');
     setNewDescription(e.description ?? '');
     setLines(
@@ -225,6 +226,7 @@ export function JournalPage() {
         credit: l.credit,
         description: l.description ?? undefined,
         partyId: l.partyId ?? undefined,
+        partyType: l.partyType ?? undefined,
         costCenterId: l.costCenterId ?? undefined,
       })),
     );

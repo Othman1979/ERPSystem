@@ -199,6 +199,15 @@ export class ChequesService {
         status: cheque.status,
       });
     }
+    // Undone movements keep their postings: a cheque that ever moved stays as it is.
+    const moved = await tx.chequeEvent.count({
+      where: { tenantId, chequeId: cheque.id, action: { notIn: ['RECEIVE', 'ISSUE'] } },
+    });
+    if (moved > 0) {
+      throw new DomainError(ErrorCode.CHEQUE_INVALID_STATUS, 'A cheque with movements cannot be edited with its voucher', {
+        status: cheque.status,
+      });
+    }
     await tx.cheque.update({ where: { id: cheque.id }, data: { amount: change.amount } });
     await tx.chequeEvent.updateMany({
       where: { tenantId, chequeId: cheque.id, action: { in: ['RECEIVE', 'ISSUE'] } },
