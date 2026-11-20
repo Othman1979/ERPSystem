@@ -1643,6 +1643,8 @@ export class SalesReturnLineRow {
   @ApiProperty({ type: 'string', format: 'decimal' })
   invoiceDiscountShare!: string;
   @ApiProperty({ type: 'string', format: 'decimal' })
+  invoiceDiscountNetShare!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
   netAmount!: string;
   @ApiProperty({ type: 'string', nullable: true })
   taxCategoryId!: string | null;

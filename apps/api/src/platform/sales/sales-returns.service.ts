@@ -482,6 +482,7 @@ export class SalesReturnsService {
             qtyBase: true,
             discountAmount: true,
             invoiceDiscountShare: true,
+            invoiceDiscountNetShare: true,
             netAmount: true,
             taxAmount: true,
           },
@@ -500,13 +501,6 @@ export class SalesReturnsService {
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Return has no lines');
         }
-        const discountReturns = original && original.invoiceDiscountAmount.gt(0)
-          ? await tx.salesReturnLine.findMany({
-              where: { tenantId, salesReturn: { originalInvoiceId: draft.originalInvoiceId } },
-              orderBy: [{ returnId: 'asc' }, { id: 'asc' }],
-              select: { id: true, returnId: true, originalLineId: true, qtyBase: true, invoiceDiscountShare: true },
-            })
-          : [];
         const invoiceDiscountNetByReturnLine = new Map<bigint, Decimal>();
         if (original && original.invoiceDiscountAmount.gt(0)) {
           for (const line of draft.lines) {
@@ -521,18 +515,18 @@ export class SalesReturnsService {
               pricesIncludeTax: original.pricesIncludeTax,
             }).netAmount;
             const totalNetDiscountShare = round3(preDiscountNet.minus(orig.netAmount));
-            const returnedForLine = discountReturns.filter((returned) => returned.originalLineId === orig.id);
-            const currentIndex = returnedForLine.findIndex((returned) => returned.id === line.id);
-            const prior = returnedForLine.slice(0, currentIndex);
-            const priorNetShare = sum(prior.map((returned) =>
-              round3(totalNetDiscountShare.times(returned.invoiceDiscountShare).div(orig.invoiceDiscountShare)),
-            ));
-            const completesLine = currentIndex === returnedForLine.length - 1 &&
-              sum(returnedForLine.map((returned) => returned.qtyBase)).eq(orig.qtyBase);
+            const postedForLine = posted.filter((returned) => returned.originalLineId === orig.id);
+            const priorQty = sum(postedForLine.map((returned) => returned.qtyBase));
+            const priorNetShare = sum(postedForLine.map((returned) => returned.invoiceDiscountNetShare));
+            const completesLine = priorQty.plus(line.qtyBase).eq(orig.qtyBase);
             const netShare = completesLine
               ? round3(totalNetDiscountShare.minus(priorNetShare))
-              : round3(totalNetDiscountShare.times(line.invoiceDiscountShare).div(orig.invoiceDiscountShare));
+              : round3(totalNetDiscountShare.times(line.qtyBase).div(orig.qtyBase));
             invoiceDiscountNetByReturnLine.set(line.id, netShare);
+            await tx.salesReturnLine.update({
+              where: { tenantId_id: { tenantId, id: line.id } },
+              data: { invoiceDiscountNetShare: netShare },
+            });
           }
         }
         const invoiceDiscountNetTotal = sum([...invoiceDiscountNetByReturnLine.values()]);

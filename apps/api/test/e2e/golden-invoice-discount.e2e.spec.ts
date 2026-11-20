@@ -366,6 +366,66 @@ describe('Golden scenarios D1–D3 — invoice-level discount (ADR-034)', () => 
     h.ok(await h.patchCompany(token, { pricesIncludeTax: false }), 200, 'restore tax-exclusive prices');
   });
 
+  it('uses persisted posted net shares after earlier return drafts are deleted', async () => {
+    h.ok(await h.patchCompany(token, { pricesIncludeTax: true }), 200, 'enable tax-inclusive prices');
+    const invoice = await postInvoice({
+      invoiceDate: '2025-03-07',
+      customerId,
+      warehouseId,
+      paymentType: 'CREDIT',
+      invoiceDiscountAmount: '0.002',
+      lines: [{ itemId: service, qty: '3', unitPrice: '1.002' }],
+    });
+    const earlierDraft = await createReturn(invoice.id, invoice.lines[0].id, '1');
+    const completingDraft = await createReturn(invoice.id, invoice.lines[0].id, '2');
+    const firstPosted = h.ok(
+      await h.act(token, `sales-returns/${completingDraft.id}/post`),
+      201,
+      'post the later draft first',
+    ) as { id: string; journalEntryId: string };
+    expect(m3(await storedReturnNetShare(firstPosted.id))).toBe('0.001');
+    h.ok(
+      await h.api().delete(`/api/v1/sales-returns/${earlierDraft.id}`).set(h.auth(token)),
+      200,
+      'delete earlier draft',
+    );
+    const replacement = await postReturn(invoice.id, invoice.lines[0].id, '1');
+    expect(m3(await storedReturnNetShare(replacement.id))).toBe('0.000');
+    await expectBalanced(firstPosted.journalEntryId);
+    await expectBalanced(replacement.journalEntryId);
+    expect(m3(await salesDiscountDelta([
+      invoice.journalEntryId,
+      firstPosted.journalEntryId,
+      replacement.journalEntryId,
+    ]))).toBe('0.000');
+    await verified();
+    h.ok(await h.patchCompany(token, { pricesIncludeTax: false }), 200, 'restore tax-exclusive prices');
+  });
+
+  it('posts a negative completing return discount share as a SALES_DISCOUNTS debit', async () => {
+    const invoice = await postInvoice({
+      invoiceDate: '2025-03-08',
+      customerId,
+      warehouseId,
+      paymentType: 'CREDIT',
+      invoiceDiscountAmount: '0.002',
+      lines: [{ itemId: service, qty: '4', unitPrice: '1.000' }],
+    });
+    const returns: Awaited<ReturnType<typeof postReturn>>[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      returns.push(await postReturn(invoice.id, invoice.lines[0].id, '1'));
+    }
+    // Net discount shares round to 0.001 on each partial return; the completion is the exact -0.001 remainder.
+    expect(await Promise.all(returns.map((ret) => storedReturnNetShare(ret.id).then(m3))))
+      .toEqual(['0.001', '0.001', '0.001', '-0.001']);
+    for (const ret of returns) await expectBalanced(ret.journalEntryId);
+    expect(m3(await salesDiscountDelta([
+      invoice.journalEntryId,
+      ...returns.map((ret) => ret.journalEntryId),
+    ]))).toBe('0.000');
+    await verified();
+  });
+
   it('rejects a discount above the line total, a percent with an amount, and a negative discount', async () => {
     const base = {
       invoiceDate: '2025-02-06',
