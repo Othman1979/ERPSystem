@@ -871,6 +871,9 @@ export class PayrollService {
         },
       });
       if (!run) throw DomainError.notFound('PayrollRun', id.toString());
+      if (run.lines.length === 0) {
+        throw new DomainError(ErrorCode.PAYROLL_NO_EMPLOYEES, 'No eligible employees for payroll period');
+      }
       if (run.lines.some((line) => line.net.lt(0))) throw new DomainError(ErrorCode.PAYROLL_NEGATIVE_NET, 'Payroll net cannot be negative');
       const mappings = await tx.accountMapping.findMany({ where: { mappingKey: { in: [...MAPPING_KEYS] } } });
       const map = new Map(mappings.map((row) => [row.mappingKey, row.accountId]));

@@ -864,6 +864,54 @@ describe('Payroll PY1–PY3', () => {
     expect(reversedStatement.closingBalance).toBe('10.000');
   });
 
+  it('keeps the draft when its only employee is deactivated before posting', async () => {
+    const company = h.ok(
+      await h.api().post('/api/v1/companies').set(h.auth(tokenA)).send({ legalNameAr: `Empty payroll ${RUN}` }),
+      201,
+      'create empty payroll company',
+    ) as { id: string };
+    h.ok(
+      await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', company.id).send({
+        code: '2035', startDate: '2035-01-01', endDate: '2035-12-31',
+      }),
+      201,
+      'create empty payroll fiscal year',
+    );
+    await post(tokenA, 'payroll/settings', { effectiveFrom: '2035-01-01' }, 'empty payroll settings', company.id);
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `EMPTY-${RUN}`, nameAr: 'Only payroll employee', hireDate: '2035-01-01', payMethod: 'CASH', sscCovered: false,
+    }, 'create only payroll employee', company.id);
+    await post(tokenA, `payroll/employees/${employee.id}/salaries`, {
+      effectiveFrom: '2035-01-01', basicSalary: '100.000',
+    }, 'only payroll employee salary', company.id);
+    const draft = h.ok(
+      await act(tokenA, 'payroll/runs', { period: '2035-01' }, company.id),
+      201,
+      'create single-employee payroll draft',
+    ) as { id: string; status: string; runNo: string | null; lines: Array<{ employeeId: string }> };
+    expect(draft.status).toBe('DRAFT');
+    expect(draft.lines.map((line) => line.employeeId)).toEqual([employee.id]);
+
+    const deactivated = await h.api().patch(`/api/v1/payroll/employees/${employee.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', company.id).send({ isActive: false });
+    expect(deactivated.status).toBe(200);
+
+    const postResult = await act(tokenA, `payroll/runs/${draft.id}/post`, {}, company.id);
+    expect(postResult.status).toBe(409);
+    expect(postResult.body.error.code).toBe('PAYROLL_NO_EMPLOYEES');
+    const unchanged = h.ok(await get(tokenA, `payroll/runs/${draft.id}`, company.id), 200, 'read unchanged payroll draft') as {
+      status: string; runNo: string | null; lines: Array<{ employeeId: string }>;
+    };
+    expect(unchanged.status).toBe('DRAFT');
+    expect(unchanged.runNo).toBeNull();
+    expect(unchanged.lines.map((line) => line.employeeId)).toEqual([employee.id]);
+
+    const deleted = await h.api().delete(`/api/v1/payroll/runs/${draft.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', company.id);
+    expect(deleted.status).toBe(200);
+    expect(deleted.body).toEqual({ id: draft.id, deleted: true });
+  });
+
   it('posts recurring earnings and deductions on the same account and branch separately', async () => {
     h.ok(
       await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).send({
