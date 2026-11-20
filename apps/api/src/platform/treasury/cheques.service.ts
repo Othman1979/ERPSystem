@@ -359,6 +359,8 @@ export class ChequesService {
           });
         }
 
+        await this.assertAfterLastStep(tx, c.id, date);
+
         let bankAccountId = c.bankAccountId;
         if (action === 'deposit') {
           if (!dto.bankAccountId) {
@@ -417,6 +419,14 @@ export class ChequesService {
       }, POSTING_TX_OPTIONS),
     );
     return this.detail(id);
+  }
+
+  /** A step is dated on or after the cheque's last step (the first is its voucher date). */
+  private async assertAfterLastStep(tx: Prisma.TransactionClient, chequeId: bigint, date: Date) {
+    const last = await tx.chequeEvent.findFirst({ where: { chequeId, undoneAt: null }, orderBy: { id: 'desc' } });
+    if (last && date < last.eventDate) {
+      throw new DomainError(ErrorCode.VALIDATION, `date must be on or after ${dateText(last.eventDate)}`, { field: 'date' });
+    }
   }
 
   /** The entry a movement posts, or null (a deposit only records the bank). */
@@ -480,6 +490,7 @@ export class ChequesService {
         if (!last || !['DEPOSIT', 'COLLECT', 'CLEAR', 'RETURN'].includes(last.action) || !last.fromStatus) {
           throw new DomainError(ErrorCode.CHEQUE_INVALID_STATUS, 'The cheque has no movement to undo', { status: c.status });
         }
+        await this.assertAfterLastStep(tx, c.id, date);
         let undoEntryId: bigint | null = null;
         if (last.journalEntryId) {
           const reversal = await this.posting.reverseEntry(tx, {
