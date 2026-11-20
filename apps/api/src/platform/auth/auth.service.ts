@@ -419,10 +419,16 @@ export class AuthService {
         // Scoped by `current`, the ACTIVE membership in the token's tenant: the
         // same row TenantGuard loads permissions from, so the web shows exactly
         // what the guards enforce in this tenant.
-        this.prisma.client.rolePermission.findMany({
-          where: { roleId: current.roleId },
-          select: { permissionCode: true },
-        }),
+        // A tenant role (ADR-038) replaces the system role's permissions, as in TenantGuard.
+        current.customRoleId
+          ? db.tenantRolePermission.findMany({
+              where: { tenantRoleId: current.customRoleId },
+              select: { permissionCode: true },
+            })
+          : this.prisma.client.rolePermission.findMany({
+              where: { roleId: current.roleId },
+              select: { permissionCode: true },
+            }),
         // The member's purchase permissions (ADR-024 §3.4), tenant-scoped client.
         db.memberPermission.findMany({
           where: { membershipId: current.id },

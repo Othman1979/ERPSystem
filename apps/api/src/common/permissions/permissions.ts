@@ -116,3 +116,16 @@ export const ROLE_DEFINITIONS: { code: string; nameAr: string; nameEn: string; d
   { code: 'CASHIER', nameAr: 'أمين صندوق', nameEn: 'Cashier', description: 'Sales, purchasing docs and treasury' },
   { code: 'VIEWER', nameAr: 'مشاهد', nameEn: 'Viewer', description: 'Read-only access' },
 ];
+
+/**
+ * What a company's own role may hold (ADR-038 §3): every tenant permission
+ * except team management (owner only, PLAT-28) and the per-member purchase
+ * permissions (member_permissions, ADR-024 §3).
+ */
+export const CUSTOM_ROLE_PERMISSIONS: PermissionCode[] = ALL_TENANT_PERMISSIONS.filter(
+  (p) =>
+    p !== PERMISSIONS.USER_MANAGE &&
+    p !== PERMISSIONS.PURCHASE_DIRECT &&
+    p !== PERMISSIONS.PURCHASE_APPROVE &&
+    p !== PERMISSIONS.STOCK_ISSUE_WITHOUT_REQUEST,
+);

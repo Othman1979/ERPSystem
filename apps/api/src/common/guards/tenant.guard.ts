@@ -65,6 +65,7 @@ export class TenantGuard implements CanActivate {
       where: { tenantId, userId, status: 'ACTIVE' },
       include: {
         role: { include: { permissions: true } },
+        customRole: { select: { permissions: { select: { permissionCode: true } } } },
         extraPermissions: { select: { permissionCode: true, amountLimit: true } },
       },
     });
@@ -100,7 +101,8 @@ export class TenantGuard implements CanActivate {
     const extra = effectiveMemberPermissions(membership.role.code, membership.extraPermissions);
     cls.set(
       'permissions',
-      new Set([...membership.role.permissions.map((p) => p.permissionCode), ...extra.codes]),
+      // A tenant role (ADR-038) replaces the system role's permissions.
+      new Set([...(membership.customRole ?? membership.role).permissions.map((p) => p.permissionCode), ...extra.codes]),
     );
     return true;
   }
