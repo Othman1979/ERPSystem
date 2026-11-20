@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
+import { AuditService } from '../../common/audit/audit.service.js';
 import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { DomainError } from '../../common/errors/domain.error.js';
@@ -9,6 +10,9 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
+import { YearClosingDraftRegistry, yearClosingDraft } from '../accounting/year-closing-draft.registry.js';
+import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
+import { isIncomeStatement } from '../cost-centers/cost-center-rules.js';
 import { allocateDocumentNo } from '../shared/document-numbering.js';
 import {
   calculatePayroll,
@@ -55,7 +59,21 @@ export class PayrollService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly posting: PostingService,
-  ) {}
+    private readonly audit: AuditService,
+    yearClosingDrafts: YearClosingDraftRegistry,
+    costCenterUsage: CostCenterUsageRegistry,
+  ) {
+    yearClosingDrafts.register('PAYROLL_RUN', async (tx, _tenantId, _companyId, from, to) => {
+      const runs = await tx.payrollRun.findMany({
+        where: { status: 'DRAFT', runDate: { gte: from, lte: to } },
+        select: { id: true, runDate: true, runNo: true, period: true },
+      });
+      return runs.map((run) => yearClosingDraft('PAYROLL_RUN', run.id, run.runDate, run.runNo, `Payroll ${run.period}`));
+    });
+    costCenterUsage.register('payroll', async (tx, costCenterId) =>
+      (await tx.employee.findFirst({ where: { costCenterId }, select: { id: true } })) ? 'employees' : null,
+    );
+  }
 
   private context() {
     const cls = ClsServiceManager.getClsService<RequestContext>();

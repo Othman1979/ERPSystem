@@ -16,7 +16,7 @@ export type CostCenterUsageCheck = (tx: Prisma.TransactionClient, costCenterId: 
  * becomes a group, only when every one of them has answered "unused"; a module
  * that failed to register blocks it instead of letting it through.
  */
-export const COST_CENTER_USAGE_OWNERS = ['journal', 'sales', 'purchases', 'treasury', 'procurement', 'goods-notes'] as const;
+export const COST_CENTER_USAGE_OWNERS = ['journal', 'sales', 'purchases', 'treasury', 'procurement', 'goods-notes', 'payroll'] as const;
 export type CostCenterUsageOwner = (typeof COST_CENTER_USAGE_OWNERS)[number];
 
 /**
