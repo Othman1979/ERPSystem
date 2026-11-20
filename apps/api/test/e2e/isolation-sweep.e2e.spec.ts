@@ -156,6 +156,8 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     await create('/cash-boxes', { code: 'CB', name: `CB ${MARK}`, accountId: id.account }, 'cashBox');
     await create('/bank-accounts', { bankName: `Bank ${MARK}`, accountId: id.bankAccountGl }, 'bankAccount');
     await create('/cost-centers', { code: 'CC', nameAr: `CC ${MARK}` }, 'costCenter');
+    // Phase 23 (ADR-038): a company role, for the /roles/custom routes.
+    await create('/roles/custom', { code: 'CLERK', nameAr: `R ${MARK}`, permissions: ['reports.view'] }, 'tenantRole');
 
     await create(
       '/stock-adjustments',
@@ -332,6 +334,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       allocations: id.allocation,
       'cash-transfers': id.cashTransfer,
       'cost-centers': id.costCenter,
+      roles: id.tenantRole,
       'purchase-requests': id.purchaseRequest,
       'purchase-quotes': id.purchaseQuote,
       'purchase-orders': id.purchaseOrder,
@@ -362,6 +365,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     if (p.endsWith('/items/{id}/barcodes')) return { barcode: `X${RUN}` };
     if (p.includes('/lines/{lineId}')) return { countedQty: '1' };
     if (p.endsWith('/purchase-permissions')) return { permissions: [{ code: 'purchase.direct' }] };
+    if (p === '/api/v1/roles/custom/{id}') return { code: 'CLERK', nameAr: 'x', permissions: ['reports.view'] };
     if (p === '/api/v1/sales-invoices/{id}') return bodies.salesInvoice;
     if (p === '/api/v1/purchase-invoices/{id}') return bodies.purchaseInvoice;
     if (p === '/api/v1/goods-notes/{id}') return bodies.goodsNote;
