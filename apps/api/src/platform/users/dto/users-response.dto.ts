@@ -44,6 +44,12 @@ export class UserMembershipRoleDto {
   nameEn!: string | null;
 }
 
+/** A company's own role held by a member (ADR-038). */
+export class UserMembershipCustomRoleDto extends UserMembershipRoleDto {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+}
+
 /** A branch a member can work in: id, code and Arabic name only. */
 export class UserMembershipBranchDto {
   @ApiProperty({ type: 'string' })
@@ -89,6 +95,9 @@ export class UserMembershipDto {
 
   @ApiProperty({ type: () => UserMembershipRoleDto })
   role!: UserMembershipRoleDto;
+
+  @ApiProperty({ type: () => UserMembershipCustomRoleDto, nullable: true })
+  customRole!: UserMembershipCustomRoleDto | null;
 
   @ApiProperty({ type: () => UserMembershipBranchDto, nullable: true })
   defaultBranch!: UserMembershipBranchDto | null;

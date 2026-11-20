@@ -96,6 +96,13 @@ export class UpdateMembershipDto {
   @MaxLength(50)
   roleCode?: string;
 
+  /** A tenant role (ADR-038) replacing the system role's permissions; null clears it. */
+  @ValidateIf((o: UpdateMembershipDto) => o.customRoleId !== null)
+  @IsOptional()
+  @IsString()
+  @Matches(ID_PATTERN)
+  customRoleId?: string | null;
+
   /** INVITED is never set by an admin: only the invitee accepts (or the inviter cancels). */
   @IsOptional()
   @IsIn(['ACTIVE', 'SUSPENDED'])

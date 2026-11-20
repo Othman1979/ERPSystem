@@ -335,6 +335,7 @@ model Tenant {
   companies            Company[]
   branches             Branch[]
   memberships          TenantMembership[]
+  tenantRoles          TenantRole[]
   auditLogs            AuditLog[]
   attachments          Attachment[]
   idempotencyKeys      IdempotencyKey[]
@@ -554,6 +555,8 @@ model TenantMembership {
   tenantId        BigInt           @map("tenant_id") @db.UnsignedBigInt
   userId          BigInt           @map("user_id") @db.UnsignedBigInt
   roleId          BigInt           @map("role_id") @db.UnsignedBigInt
+  /// A tenant role (ADR-038): when set, its permissions replace the system role's.
+  customRoleId    BigInt?          @map("custom_role_id") @db.UnsignedBigInt
   status          MembershipStatus @default(INVITED)
   defaultBranchId BigInt?          @map("default_branch_id") @db.UnsignedBigInt
   invitedBy       BigInt?          @map("invited_by") @db.UnsignedBigInt
@@ -568,6 +571,7 @@ model TenantMembership {
   tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   role            Role               @relation(fields: [roleId], references: [id])
+  customRole      TenantRole?        @relation(fields: [tenantId, customRoleId], references: [tenantId, id])
   defaultBranch   Branch?            @relation("MembershipDefaultBranch", fields: [tenantId, defaultBranchId], references: [tenantId, id])
   allowedBranches MembershipBranch[]
   extraPermissions MemberPermission[]
@@ -589,6 +593,40 @@ model MembershipBranch {
 
   @@unique([tenantId, membershipId, branchId])
   @@map("membership_branches")
+}
+
+/// A company's own role (ADR-038): a named set of catalog permissions.
+model TenantRole {
+  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId    BigInt   @map("tenant_id") @db.UnsignedBigInt
+  code        String   @db.VarChar(50)
+  nameAr      String   @map("name_ar") @db.VarChar(191)
+  nameEn      String?  @map("name_en") @db.VarChar(191)
+  description String?  @db.Text
+  createdBy   BigInt?  @map("created_by") @db.UnsignedBigInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  permissions TenantRolePermission[]
+  memberships TenantMembership[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+  @@map("tenant_roles")
+}
+
+model TenantRolePermission {
+  id             BigInt @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt @map("tenant_id") @db.UnsignedBigInt
+  tenantRoleId   BigInt @map("tenant_role_id") @db.UnsignedBigInt
+  permissionCode String @map("permission_code") @db.VarChar(100)
+
+  role TenantRole @relation(fields: [tenantId, tenantRoleId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, tenantRoleId, permissionCode])
+  @@map("tenant_role_permissions")
 }
 
 /// Purchase permissions granted to one member on top of the role (ADR-013 §2,

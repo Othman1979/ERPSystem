@@ -7,6 +7,7 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.FORBIDDEN]: HttpStatus.FORBIDDEN,
   [ErrorCode.NOT_FOUND]: HttpStatus.NOT_FOUND,
   [ErrorCode.CONFLICT]: HttpStatus.CONFLICT,
+  [ErrorCode.ROLE_IN_USE]: HttpStatus.CONFLICT,
   [ErrorCode.PLAN_LIMIT_EXCEEDED]: HttpStatus.PAYMENT_REQUIRED,
   [ErrorCode.DB_UNAVAILABLE]: HttpStatus.SERVICE_UNAVAILABLE,
   [ErrorCode.IDEMPOTENCY_KEY_REUSED]: HttpStatus.CONFLICT,

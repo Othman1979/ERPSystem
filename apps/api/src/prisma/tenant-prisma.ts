@@ -16,6 +16,8 @@ export const TENANT_MODELS = [
   'TenantMembership',
   'MembershipBranch',
   'MemberPermission',
+  'TenantRole',
+  'TenantRolePermission',
   'AuditLog',
   'Attachment',
   'IdempotencyKey',

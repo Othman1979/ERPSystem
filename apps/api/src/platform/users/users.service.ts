@@ -25,6 +25,7 @@ import { PERMISSIONS } from '../../common/permissions/permissions.js';
 const membershipInclude = {
   user: { select: { id: true, email: true, fullName: true, isActive: true } },
   role: { select: { code: true, nameAr: true, nameEn: true } },
+  customRole: { select: { id: true, code: true, nameAr: true, nameEn: true } },
   defaultBranch: { select: { id: true, code: true, nameAr: true } },
   allowedBranches: { include: { branch: { select: { id: true, code: true, nameAr: true } } } },
   extraPermissions: { select: { permissionCode: true, amountLimit: true } },
@@ -37,6 +38,7 @@ function serialize(m: {
   updatedAt: Date;
   user: { id: bigint; email: string; fullName: string; isActive: boolean };
   role: { code: string; nameAr: string; nameEn: string | null };
+  customRole: { id: bigint; code: string; nameAr: string; nameEn: string | null } | null;
   defaultBranch: { id: bigint; code: string; nameAr: string } | null;
   allowedBranches: { branch: { id: bigint; code: string; nameAr: string } }[];
   extraPermissions: MemberPermissionGrant[];
@@ -55,6 +57,7 @@ function serialize(m: {
       fullName: m.status === 'INVITED' ? null : m.user.fullName,
     },
     role: m.role,
+    customRole: m.customRole ? { ...m.customRole, id: m.customRole.id.toString() } : null,
     defaultBranch: m.defaultBranch
       ? { ...m.defaultBranch, id: m.defaultBranch.id.toString() }
       : null,
@@ -100,10 +103,12 @@ export class UsersService {
     const rows = await this.tenant().tenantMembership.findMany({
       where: {
         status: 'ACTIVE',
-        role: {
-          code: { not: OWNER_ROLE },
-          permissions: { some: { permissionCode: { in: [PERMISSIONS.PURCHASE_MANAGE, PERMISSIONS.PURCHASE_POST] } } },
-        },
+        role: { code: { not: OWNER_ROLE } },
+        // Effective permissions: the company role's when one is set (ADR-038), else the system role's.
+        OR: [
+          { customRoleId: null, role: { permissions: { some: { permissionCode: { in: [PERMISSIONS.PURCHASE_MANAGE, PERMISSIONS.PURCHASE_POST] } } } } },
+          { customRole: { permissions: { some: { permissionCode: { in: [PERMISSIONS.PURCHASE_MANAGE, PERMISSIONS.PURCHASE_POST] } } } } },
+        ],
         extraPermissions: { none: { permissionCode: PERMISSIONS.PURCHASE_DIRECT } },
       },
       select: { id: true, user: { select: { fullName: true, email: true } }, role: { select: { code: true, nameAr: true, nameEn: true } } },
@@ -301,6 +306,22 @@ export class UsersService {
       removesOwner ||= activeOwner && role.code !== 'OWNER';
       data.roleId = role.id;
       newRoleId = role.id;
+    }
+    // A tenant role (ADR-038 §2) never goes to an owner; becoming owner drops it.
+    const baseRoleCode = dto.roleCode ?? membership.role.code;
+    if (baseRoleCode === 'OWNER') {
+      if (dto.customRoleId) {
+        throw new DomainError(ErrorCode.VALIDATION, 'An owner cannot hold a custom role');
+      }
+      if (membership.customRoleId !== null) data.customRoleId = null;
+    } else if (dto.customRoleId !== undefined) {
+      if (dto.customRoleId === null) {
+        data.customRoleId = null;
+      } else {
+        const custom = await prisma.tenantRole.findFirst({ where: { id: BigInt(dto.customRoleId) } });
+        if (!custom) throw DomainError.notFound('TenantRole', dto.customRoleId);
+        data.customRoleId = custom.id;
+      }
     }
     if (dto.status !== undefined) {
       removesOwner ||= activeOwner && dto.status === 'SUSPENDED';

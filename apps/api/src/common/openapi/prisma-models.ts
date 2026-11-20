@@ -302,6 +302,8 @@ export class TenantMembershipRow {
   userId!: string;
   @ApiProperty({ type: 'string' })
   roleId!: string;
+  @ApiProperty({ type: 'string', nullable: true, description: "A tenant role (ADR-038): when set, its permissions replace the system role's." })
+  customRoleId!: string | null;
   @ApiProperty({ enum: MembershipStatus, enumName: 'MembershipStatus' })
   status!: MembershipStatus;
   @ApiProperty({ type: 'string', nullable: true })
@@ -332,6 +334,40 @@ export class MembershipBranchRow {
   branchId!: string;
   @ApiProperty({ type: 'string', format: 'date-time' })
   createdAt!: string;
+}
+
+/** Scalar columns of the Prisma model `TenantRole`, as JSON. */
+export class TenantRoleRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  code!: string;
+  @ApiProperty({ type: 'string' })
+  nameAr!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  nameEn!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  description!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  createdBy!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  createdAt!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  updatedAt!: string;
+}
+
+/** Scalar columns of the Prisma model `TenantRolePermission`, as JSON. */
+export class TenantRolePermissionRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  tenantRoleId!: string;
+  @ApiProperty({ type: 'string' })
+  permissionCode!: string;
 }
 
 /** Scalar columns of the Prisma model `MemberPermission`, as JSON. */
