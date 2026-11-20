@@ -28,7 +28,7 @@ import {
   type SummaryGroupBy,
   type SummaryRange,
 } from '../shared/document-summary.js';
-import { computeLineAmounts } from '../shared/invoice-math.js';
+import { allocateInvoiceDiscount, computeLineAmounts } from '../shared/invoice-math.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import {
   creditedByInvoice,
@@ -62,7 +62,12 @@ import {
 import type { CreateInvoiceFromOrderDto } from './dto/sales-cycle.dto.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
-import type { CreateSalesInvoiceDto, ListSalesInvoicesQueryDto, SalesInvoiceLineDto } from './dto/sales.dto.js';
+import type {
+  CreateSalesInvoiceDto,
+  ListSalesInvoicesQueryDto,
+  PreviewSalesInvoiceDto,
+  SalesInvoiceLineDto,
+} from './dto/sales.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
@@ -81,6 +86,7 @@ interface ResolvedLine {
   itemKind: ItemKindValue;
   taxRate: Decimal;
   taxCategoryId: bigint | null;
+  invoiceDiscountShare: Decimal;
   amounts: ReturnType<typeof computeLineAmounts>;
 }
 
@@ -149,9 +155,11 @@ interface PostedDraftLine {
   lineNo: number;
   orderLineId: bigint | null;
   itemId: bigint;
+  qty: { toString(): string };
   qtyBase: { toString(): string };
   unitPrice: { toString(): string };
   discountPct: { toString(): string };
+  invoiceDiscountShare: { toString(): string };
 }
 
 /** An invoice's order billing, locked and checked (ADR-027 §4): the order, its lines, what this invoice bills per line. */
@@ -779,7 +787,9 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     const companyId = await this.support.companyId(db);
     const pricesIncludeTax = await this.support.pricesIncludeTax(db);
     assertDirectLines(dto.lines);
-    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
+    const resolved = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
+    const calculation = this.applyInvoiceDiscount(resolved, dto, pricesIncludeTax);
+    const lines = calculation.lines;
     await this.assertHeader(db, companyId, dto);
 
     const inv = await db.$transaction(async (tx) => {
@@ -796,6 +806,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           customerId: BigInt(dto.customerId),
           warehouseId: BigInt(dto.warehouseId),
           paymentType: dto.paymentType,
+          invoiceDiscountPct: dto.invoiceDiscountPct ?? null,
+          invoiceDiscountAmount: calculation.invoiceDiscountAmount,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
           costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
           description: dto.description ?? null,
@@ -816,6 +828,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           unitPrice: l.dto.unitPrice,
           discountPct: l.dto.discountPct ?? '0',
           discountAmount: l.amounts.discountAmount,
+          invoiceDiscountShare: l.invoiceDiscountShare,
           netAmount: l.amounts.netAmount,
           taxCategoryId: l.taxCategoryId,
           taxRate: l.taxRate,
@@ -853,7 +866,9 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     }
     // An order's invoice keeps the order's price basis (its draft flag), a direct one the company's.
     const pricesIncludeTax = inv.salesOrderId !== null ? inv.pricesIncludeTax : await this.support.pricesIncludeTax(db);
-    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
+    const resolved = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
+    const calculation = this.applyInvoiceDiscount(resolved, dto, pricesIncludeTax);
+    const lines = calculation.lines;
     await this.assertHeader(db, companyId, dto);
 
     await db.$transaction(async (tx) => {
@@ -878,6 +893,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           customerId: BigInt(dto.customerId),
           warehouseId: BigInt(dto.warehouseId),
           paymentType: dto.paymentType,
+          invoiceDiscountPct: dto.invoiceDiscountPct ?? null,
+          invoiceDiscountAmount: calculation.invoiceDiscountAmount,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
           costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
           description: dto.description ?? null,
@@ -902,6 +919,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           unitPrice: l.dto.unitPrice,
           discountPct: l.dto.discountPct ?? '0',
           discountAmount: l.amounts.discountAmount,
+          invoiceDiscountShare: l.invoiceDiscountShare,
           netAmount: l.amounts.netAmount,
           taxCategoryId: l.taxCategoryId,
           taxRate: l.taxRate,
@@ -916,6 +934,44 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       entityId: id,
     });
     return this.get(id);
+  }
+
+  async preview(dto: PreviewSalesInvoiceDto) {
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const invoice = dto.invoiceId
+      ? await db.salesInvoice.findFirst({
+          where: { id: BigInt(dto.invoiceId), companyId },
+          select: { id: true, status: true, branchId: true, pricesIncludeTax: true },
+        })
+      : null;
+    if (dto.invoiceId && !invoice) throw DomainError.notFound('SalesInvoice', dto.invoiceId);
+    if (invoice) {
+      assertBranchAllowed(invoice.branchId);
+      if (invoice.status !== 'DRAFT') throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be previewed');
+    }
+    const pricesIncludeTax = invoice?.pricesIncludeTax ?? await this.support.pricesIncludeTax(db);
+    const resolved = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
+    const calculation = this.applyInvoiceDiscount(resolved, dto, pricesIncludeTax);
+    const lineDiscountAmount = sum(
+      calculation.lines.map((line) => line.amounts.discountAmount.minus(line.invoiceDiscountShare)),
+    );
+    const discountAmount = sum(calculation.lines.map((line) => line.amounts.discountAmount));
+    return {
+      subtotal: sum(dto.lines.map((line) => new Decimal(line.qty).times(line.unitPrice))),
+      lineDiscountAmount,
+      invoiceDiscountAmount: calculation.invoiceDiscountAmount,
+      discountAmount,
+      ...this.totals(calculation.lines),
+      lines: calculation.lines.map((line, i) => ({
+        lineNo: i + 1,
+        discountAmount: line.amounts.discountAmount,
+        invoiceDiscountShare: line.invoiceDiscountShare,
+        netAmount: line.amounts.netAmount,
+        taxAmount: line.amounts.taxAmount,
+        lineTotal: line.amounts.lineTotal,
+      })),
+    };
   }
 
   async deleteDraft(id: bigint) {
@@ -993,6 +1049,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
             customerId: header.customerId,
             warehouseId: header.warehouseId,
             paymentType,
+            invoiceDiscountPct: null,
+            invoiceDiscountAmount: new Decimal(0),
             cashAccountId: paymentType === 'CASH' ? BigInt(dto.cashAccountId!) : null,
             costCenterId: header.costCenterId,
             salesOrderId: orderId,
@@ -1017,6 +1075,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
             unitPrice: d.line.unitPrice,
             discountPct: d.line.discountPct,
             discountAmount: d.amounts.discountAmount,
+            invoiceDiscountShare: new Decimal(0),
             netAmount: d.amounts.netAmount,
             taxCategoryId: d.line.taxCategoryId,
             taxRate: d.line.taxRate,
@@ -1128,7 +1187,12 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         const below = draft.some((l) => {
           const ol = l.orderLineId === null ? undefined : orderLines.get(l.orderLineId);
           return ol !== undefined && pricedBelowOrder(
-            { unitPrice: l.unitPrice.toString(), discountPct: l.discountPct.toString() },
+            {
+              unitPrice: l.unitPrice.toString(),
+              discountPct: l.discountPct.toString(),
+              invoiceDiscountShare: l.invoiceDiscountShare.toString(),
+              qty: l.qty.toString(),
+            },
             { unitPrice: ol.unitPrice.toString(), discountPct: ol.discountPct.toString() },
           );
         });
@@ -1356,11 +1420,29 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           'INVENTORY',
           'INVENTORY_ADJUSTMENT',
           'CUSTOMERS_CONTROL',
+          ...(draft.invoiceDiscountAmount.gt(0) ? ['SALES_DISCOUNTS' as const] : []),
         ]);
 
+        const discountByDimension = new Map<string, Decimal>();
+        if (draft.invoiceDiscountAmount.gt(0)) {
+          const key = `${draft.costCenterId?.toString() ?? ''}:${draft.branchId?.toString() ?? ''}`;
+          discountByDimension.set(key, sum(draft.lines.map((line) => {
+            if (line.invoiceDiscountShare.isZero()) return new Decimal(0);
+            const beforeInvoiceDiscount = computeLineAmounts({
+              qty: line.qty,
+              factorToBase: '1',
+              unitPrice: line.unitPrice,
+              discountPct: line.discountPct,
+              taxRate: line.taxRate,
+              pricesIncludeTax: draft.pricesIncludeTax,
+            }).netAmount;
+            return round3(beforeInvoiceDiscount.minus(line.netAmount));
+          })));
+        }
+        const invoiceDiscountNetTotal = sum([...discountByDimension.values()]);
         const journalLines: JournalLineInput[] = [];
         const grand = draft.grandTotal;
-        const net = draft.netTotal;
+        const net = draft.netTotal.plus(invoiceDiscountNetTotal);
         const tax = draft.taxTotal;
 
         if (draft.paymentType === 'CASH') {
@@ -1380,6 +1462,13 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         }
         if (net.gt(0)) {
           journalLines.push({ accountId: mapping.SALES, credit: net.toString() });
+        }
+        if (invoiceDiscountNetTotal.gt(0)) {
+          for (const amount of discountByDimension.values()) {
+            if (amount.gt(0)) {
+              journalLines.push({ accountId: mapping.SALES_DISCOUNTS, debit: amount.toString() });
+            }
+          }
         }
         if (tax.gt(0)) {
           journalLines.push({ accountId: mapping.OUTPUT_TAX, credit: tax.toString() });
@@ -1496,7 +1585,12 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         .filter((l) => {
           const ol = l.orderLineId === null ? undefined : byId.get(l.orderLineId);
           return ol !== undefined && pricedBelowOrder(
-            { unitPrice: l.unitPrice.toString(), discountPct: l.discountPct.toString() },
+            {
+              unitPrice: l.unitPrice.toString(),
+              discountPct: l.discountPct.toString(),
+              invoiceDiscountShare: l.invoiceDiscountShare.toString(),
+              qty: l.qty.toString(),
+            },
             { unitPrice: ol.unitPrice.toString(), discountPct: ol.discountPct.toString() },
           );
         })
@@ -1584,6 +1678,40 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       taxTotal: sum(lines.map((l) => l.amounts.taxAmount)),
       grandTotal: sum(lines.map((l) => l.amounts.lineTotal)),
     };
+  }
+
+  private applyInvoiceDiscount(
+    lines: ResolvedLine[],
+    dto: Pick<CreateSalesInvoiceDto, 'invoiceDiscountPct' | 'invoiceDiscountAmount'>,
+    pricesIncludeTax: boolean,
+  ) {
+    const discount = {
+      ...(dto.invoiceDiscountPct !== undefined ? { pct: dto.invoiceDiscountPct } : {}),
+      ...(dto.invoiceDiscountAmount !== undefined ? { amount: dto.invoiceDiscountAmount } : {}),
+    };
+    const allocation = allocateInvoiceDiscount(
+      lines.map((line) => pricesIncludeTax ? line.amounts.lineTotal : line.amounts.netAmount),
+      discount,
+    );
+    const discountedLines = lines.map((line, i) => {
+      const invoiceDiscountShare = allocation.shares[i];
+      return {
+        ...line,
+        invoiceDiscountShare,
+        amounts: invoiceDiscountShare.isZero()
+          ? line.amounts
+          : computeLineAmounts({
+              qty: line.dto.qty,
+              factorToBase: line.factorToBase,
+              unitPrice: line.dto.unitPrice,
+              discountPct: line.dto.discountPct ?? '0',
+              invoiceDiscountShare,
+              taxRate: line.taxRate,
+              pricesIncludeTax,
+            }),
+      };
+    });
+    return { lines: discountedLines, invoiceDiscountAmount: allocation.amount };
   }
 
   private async assertHeader(
@@ -1708,6 +1836,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         itemKind: item.itemKind,
         taxRate,
         taxCategoryId,
+        invoiceDiscountShare: new Decimal(0),
         amounts,
       });
     }

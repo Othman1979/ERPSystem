@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { ApiFileResponse, ApiPagedResponse, DeletedDto } from '../../common/openapi/responses.js';
@@ -12,6 +12,7 @@ import {
   CreateSalesReturnDto,
   ListSalesInvoicesQueryDto,
   ListSalesReturnsQueryDto,
+  PreviewSalesInvoiceDto,
 } from './dto/sales.dto.js';
 import { ExportQueryDto } from '../printing/dto/export.dto.js';
 import { PrintingService } from '../printing/printing.service.js';
@@ -19,6 +20,7 @@ import { salesInvoicePrint, salesReturnPrint } from './sales.print.js';
 import {
   SalesInvoiceDetailDto,
   SalesInvoiceListItemDto,
+  SalesInvoicePreviewDto,
   SalesReturnDetailDto,
   SalesReturnListItemDto,
 } from './dto/sales-response.dto.js';
@@ -40,6 +42,14 @@ export class SalesController {
   @ApiPagedResponse(SalesInvoiceListItemDto)
   listInvoices(@Query() q: ListSalesInvoicesQueryDto) {
     return this.invoices.list(q);
+  }
+
+  @Post('sales-invoices/preview')
+  @HttpCode(200)
+  @RequirePermission(PERMISSIONS.SALES_MANAGE)
+  @ApiOkResponse({ type: SalesInvoicePreviewDto })
+  previewInvoice(@Body() dto: PreviewSalesInvoiceDto) {
+    return this.invoices.preview(dto);
   }
 
   @Get('sales-invoices/:id')

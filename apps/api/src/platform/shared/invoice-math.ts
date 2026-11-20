@@ -1,4 +1,4 @@
-import { Decimal, round3, round6 } from '../../common/decimal/decimal.utils.js';
+import { Decimal, round3, round6, sum } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 
@@ -8,6 +8,56 @@ export interface ComputedLineAmounts {
   netAmount: Decimal;
   taxAmount: Decimal;
   lineTotal: Decimal;
+}
+
+export interface InvoiceDiscountInput {
+  pct?: Decimal.Value;
+  amount?: Decimal.Value;
+}
+
+export interface InvoiceDiscountAllocation {
+  amount: Decimal;
+  shares: Decimal[];
+}
+
+/** Allocates a header discount to line amounts already reduced by their own discounts. */
+export function allocateInvoiceDiscount(
+  lineAmountsAfterDiscount: readonly Decimal.Value[],
+  discount: InvoiceDiscountInput,
+): InvoiceDiscountAllocation {
+  if (discount.pct !== undefined && discount.amount !== undefined) {
+    throw new DomainError(ErrorCode.INVOICE_DISCOUNT_INVALID, 'Specify either invoice discount percent or amount, not both');
+  }
+  const weights = lineAmountsAfterDiscount.map((value) => new Decimal(value));
+  if (weights.some((weight) => weight.lt(0))) {
+    throw new DomainError(ErrorCode.INVOICE_DISCOUNT_INVALID, 'Invoice discount lines cannot have a negative amount');
+  }
+  const total = sum(weights);
+  let amount: Decimal;
+  if (discount.pct !== undefined) {
+    const pct = new Decimal(discount.pct);
+    if (pct.lt(0) || pct.gt(100)) {
+      throw new DomainError(ErrorCode.INVOICE_DISCOUNT_INVALID, 'Invoice discount percent must be between 0 and 100');
+    }
+    amount = round3(total.times(pct).div(100));
+  } else {
+    amount = round3(new Decimal(discount.amount ?? 0));
+  }
+  if (amount.lt(0) || amount.gt(total)) {
+    throw new DomainError(ErrorCode.INVOICE_DISCOUNT_INVALID, 'Invoice discount must be between zero and the lines total');
+  }
+  if (amount.isZero() || total.isZero()) {
+    return { amount, shares: weights.map(() => new Decimal(0)) };
+  }
+
+  const shares = weights.map((weight) => round3(amount.times(weight).div(total)));
+  const remainder = round3(amount.minus(sum(shares)));
+  let largestIndex = 0;
+  for (let i = 1; i < weights.length; i += 1) {
+    if (weights[i].gt(weights[largestIndex])) largestIndex = i;
+  }
+  shares[largestIndex] = round3(shares[largestIndex].plus(remainder));
+  return { amount, shares };
 }
 
 /**
@@ -29,6 +79,7 @@ export function computeLineAmounts(opts: {
   factorToBase: Decimal.Value;
   unitPrice: Decimal.Value;
   discountPct?: Decimal.Value;
+  invoiceDiscountShare?: Decimal.Value;
   taxRate?: Decimal.Value;
   pricesIncludeTax?: boolean;
 }): ComputedLineAmounts {
@@ -40,7 +91,11 @@ export function computeLineAmounts(opts: {
   const rate = new Decimal(opts.taxRate ?? 0);
   const qtyBase = round6(new Decimal(opts.qty).times(opts.factorToBase));
   const gross = round3(new Decimal(opts.qty).times(opts.unitPrice));
-  const discountAmount = round3(gross.times(pct).div(100));
+  const lineDiscountAmount = round3(gross.times(pct).div(100));
+  const invoiceDiscountShare = new Decimal(opts.invoiceDiscountShare ?? 0);
+  const discountAmount = invoiceDiscountShare.isZero()
+    ? lineDiscountAmount
+    : round3(lineDiscountAmount.plus(invoiceDiscountShare));
   const afterDiscount = gross.minus(discountAmount);
   if (opts.pricesIncludeTax) {
     const netAmount = round3(afterDiscount.div(rate.div(100).plus(1)));

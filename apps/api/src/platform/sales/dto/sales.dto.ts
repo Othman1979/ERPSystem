@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -91,6 +91,44 @@ export class CreateSalesInvoiceDto {
   @MaxLength(500)
   description?: string;
 
+  @IsOptional()
+  @ApiPropertyOptional({ type: String, pattern: '^-?\\d+(\\.\\d{1,4})?$' })
+  @IsString()
+  @Matches(/^-?\d+(\.\d{1,4})?$/)
+  invoiceDiscountPct?: string;
+
+  @IsOptional()
+  @ApiPropertyOptional({ type: String, pattern: '^-?\\d+(\\.\\d{1,3})?$' })
+  @IsString()
+  @Matches(/^-?\d+(\.\d{1,3})?$/)
+  invoiceDiscountAmount?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => SalesInvoiceLineDto)
+  lines!: SalesInvoiceLineDto[];
+}
+
+export class PreviewSalesInvoiceDto {
+  @IsOptional()
+  @ApiPropertyOptional({ type: String })
+  @IsString()
+  @Matches(ID_PATTERN)
+  invoiceId?: string;
+
+  @IsOptional()
+  @ApiPropertyOptional({ type: String, pattern: '^-?\\d+(\\.\\d{1,4})?$' })
+  @IsString()
+  @Matches(/^-?\d+(\.\d{1,4})?$/)
+  invoiceDiscountPct?: string;
+
+  @IsOptional()
+  @ApiPropertyOptional({ type: String, pattern: '^-?\\d+(\\.\\d{1,3})?$' })
+  @IsString()
+  @Matches(/^-?\d+(\.\d{1,3})?$/)
+  invoiceDiscountAmount?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
@@ -139,6 +177,7 @@ export class CreateSalesReturnDto {
   reason?: string;
 
   @IsArray()
+  @ApiProperty({ type: () => SalesReturnLineDto, isArray: true })
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => SalesReturnLineDto)

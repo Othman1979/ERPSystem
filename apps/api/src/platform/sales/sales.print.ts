@@ -71,6 +71,7 @@ interface InvoiceLike {
   netTotal: Dec;
   taxTotal: Dec;
   grandTotal: Dec;
+  invoiceDiscountAmount?: Dec;
   customer: { code: string; nameAr: string; nameEn: string | null; taxNumber: string | null; phone: string | null } | null;
   warehouse: { nameAr: string; nameEn?: string | null } | null;
   lines: {
@@ -78,6 +79,7 @@ interface InvoiceLike {
     qty: Dec;
     unitPrice: Dec;
     discountAmount: Dec;
+    invoiceDiscountShare?: Dec;
     taxAmount: Dec;
     lineTotal: Dec;
     item: { code: string; nameAr: string } | null;
@@ -90,6 +92,9 @@ interface InvoiceLike {
 /** Sales invoice → printed document (§13.7). */
 export function salesInvoicePrint(inv: InvoiceLike, lang: Lang): DocumentPrint {
   const discount = inv.lines.reduce((s, l) => s.plus(l.discountAmount.toString()), new Decimal(0));
+  const invoiceDiscountAmount = new Decimal(inv.invoiceDiscountAmount?.toString() ?? 0);
+  const invoiceDiscountShare = inv.lines.reduce((s, l) => s.plus(l.invoiceDiscountShare?.toString() ?? 0), new Decimal(0));
+  const lineDiscount = discount.minus(invoiceDiscountShare);
   return {
     title: t(lang, 'فاتورة مبيعات', 'Sales invoice'),
     docNo: inv.invoiceNo,
@@ -110,14 +115,17 @@ export function salesInvoicePrint(inv: InvoiceLike, lang: Lang): DocumentPrint {
         unit: l.itemUnit?.unit?.nameAr ?? '',
         qty: l.qty.toString(),
         price: l.unitPrice.toString(),
-        discount: l.discountAmount.toString(),
+        discount: new Decimal(l.discountAmount.toString()).minus(l.invoiceDiscountShare?.toString() ?? 0).toString(),
         tax: l.taxAmount.toString(),
         total: l.lineTotal.toString(),
       })),
     },
     totals: [
       { label: t(lang, 'الإجمالي قبل الخصم', 'Subtotal'), value: discount.plus(inv.netTotal.toString()).toFixed(3) },
-      { label: t(lang, 'الخصم', 'Discount'), value: discount.toFixed(3) },
+      ...(lineDiscount.gt(0) ? [{ label: t(lang, 'الخصم', 'Discount'), value: lineDiscount.toFixed(3) }] : []),
+      ...(invoiceDiscountAmount.gt(0)
+        ? [{ label: t(lang, 'خصم الفاتورة', 'Invoice discount'), value: invoiceDiscountAmount.toFixed(3) }]
+        : []),
       { label: t(lang, 'الصافي', 'Net'), value: inv.netTotal.toString() },
       { label: t(lang, 'الضريبة', 'Tax'), value: inv.taxTotal.toString() },
       { label: t(lang, 'الإجمالي', 'Total'), value: inv.grandTotal.toString(), strong: true },

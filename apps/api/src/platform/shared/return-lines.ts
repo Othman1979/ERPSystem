@@ -13,6 +13,7 @@ export interface ReturnableLine {
   qty: DecimalLike;
   qtyBase: DecimalLike;
   discountAmount: DecimalLike;
+  invoiceDiscountShare?: DecimalLike;
   netAmount: DecimalLike;
   taxAmount: DecimalLike;
 }
@@ -21,6 +22,7 @@ export interface ReturnableLine {
 export interface ReturnedSoFar {
   qtyBase: Decimal;
   discountAmount: Decimal;
+  invoiceDiscountShare: Decimal;
   netAmount: Decimal;
   taxAmount: Decimal;
 }
@@ -31,6 +33,7 @@ export interface ComputedReturnLine<L extends ReturnableLine> {
   qty: Decimal;
   qtyBase: Decimal;
   discountAmount: Decimal;
+  invoiceDiscountShare: Decimal;
   netAmount: Decimal;
   taxAmount: Decimal;
   lineTotal: Decimal;
@@ -38,19 +41,28 @@ export interface ComputedReturnLine<L extends ReturnableLine> {
 
 /** Adds up return lines per original line id. */
 export function returnedByLine(
-  rows: { originalLineId: bigint; qtyBase: DecimalLike; discountAmount: DecimalLike; netAmount: DecimalLike; taxAmount: DecimalLike }[],
+  rows: {
+    originalLineId: bigint;
+    qtyBase: DecimalLike;
+    discountAmount: DecimalLike;
+    invoiceDiscountShare?: DecimalLike;
+    netAmount: DecimalLike;
+    taxAmount: DecimalLike;
+  }[],
 ): Map<bigint, ReturnedSoFar> {
   const map = new Map<bigint, ReturnedSoFar>();
   for (const r of rows) {
     const cur = map.get(r.originalLineId) ?? {
       qtyBase: new Decimal(0),
       discountAmount: new Decimal(0),
+      invoiceDiscountShare: new Decimal(0),
       netAmount: new Decimal(0),
       taxAmount: new Decimal(0),
     };
     map.set(r.originalLineId, {
       qtyBase: cur.qtyBase.plus(r.qtyBase.toString()),
       discountAmount: cur.discountAmount.plus(r.discountAmount.toString()),
+      invoiceDiscountShare: cur.invoiceDiscountShare.plus(r.invoiceDiscountShare?.toString() ?? 0),
       netAmount: cur.netAmount.plus(r.netAmount.toString()),
       taxAmount: cur.taxAmount.plus(r.taxAmount.toString()),
     });
@@ -101,15 +113,19 @@ export function computeReturnLines<L extends ReturnableLine>(
       );
     }
     let discountAmount: Decimal;
+    let invoiceDiscountShare: Decimal;
     let netAmount: Decimal;
     let taxAmount: Decimal;
     if (qtyBase.eq(remaining)) {
       discountAmount = new Decimal(orig.discountAmount.toString()).minus(prior?.discountAmount ?? 0);
+      invoiceDiscountShare = new Decimal(orig.invoiceDiscountShare?.toString() ?? 0)
+        .minus(prior?.invoiceDiscountShare ?? 0);
       netAmount = new Decimal(orig.netAmount.toString()).minus(prior?.netAmount ?? 0);
       taxAmount = new Decimal(orig.taxAmount.toString()).minus(prior?.taxAmount ?? 0);
     } else {
       const ratio = qtyBase.div(origQtyBase);
       discountAmount = round3(new Decimal(orig.discountAmount.toString()).times(ratio));
+      invoiceDiscountShare = round3(new Decimal(orig.invoiceDiscountShare?.toString() ?? 0).times(ratio));
       netAmount = round3(new Decimal(orig.netAmount.toString()).times(ratio));
       taxAmount = round3(new Decimal(orig.taxAmount.toString()).times(ratio));
     }
@@ -118,6 +134,7 @@ export function computeReturnLines<L extends ReturnableLine>(
       qty: round6(qtyBase.times(orig.qty.toString()).div(origQtyBase)),
       qtyBase,
       discountAmount,
+      invoiceDiscountShare,
       netAmount,
       taxAmount,
       lineTotal: netAmount.plus(taxAmount),
