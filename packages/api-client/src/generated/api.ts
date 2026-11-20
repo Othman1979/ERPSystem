@@ -14867,7 +14867,7 @@ export type tenantRolesControllerUpdateResponseError = (tenantRolesControllerUpd
   headers: Headers;
 };
 
-export const getTenantRolesControllerUpdateUrl = (id: number,) => {
+export const getTenantRolesControllerUpdateUrl = (id: string,) => {
 
 
 
@@ -14875,7 +14875,7 @@ export const getTenantRolesControllerUpdateUrl = (id: number,) => {
   return `/api/v1/roles/custom/${id}`
 }
 
-export const tenantRolesControllerUpdate = async (id: number,
+export const tenantRolesControllerUpdate = async (id: string,
     saveTenantRoleDto: SaveTenantRoleDto, options?: Parameters<typeof apiFetch>[1]): Promise<tenantRolesControllerUpdateResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
@@ -14920,7 +14920,7 @@ export type tenantRolesControllerRemoveResponseError = (tenantRolesControllerRem
   headers: Headers;
 };
 
-export const getTenantRolesControllerRemoveUrl = (id: number,) => {
+export const getTenantRolesControllerRemoveUrl = (id: string,) => {
 
 
 
@@ -14928,7 +14928,7 @@ export const getTenantRolesControllerRemoveUrl = (id: number,) => {
   return `/api/v1/roles/custom/${id}`
 }
 
-export const tenantRolesControllerRemove = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<tenantRolesControllerRemoveResponseSuccess> => {
+export const tenantRolesControllerRemove = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<tenantRolesControllerRemoveResponseSuccess> => {
 
   return apiFetch<tenantRolesControllerRemoveResponseSuccess>(getTenantRolesControllerRemoveUrl(id),
   {

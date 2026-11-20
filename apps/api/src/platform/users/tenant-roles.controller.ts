@@ -41,14 +41,14 @@ export class TenantRolesController {
   @Put('custom/:id')
   @RequirePermission(PERMISSIONS.USER_MANAGE)
   @ApiOkResponse({ type: TenantRoleDto })
-  update(@Param('id', ParseIdPipe) id: bigint, @Body() dto: SaveTenantRoleDto) {
-    return this.roles.update(id, dto);
+  update(@Param('id', ParseIdPipe) id: string, @Body() dto: SaveTenantRoleDto) {
+    return this.roles.update(BigInt(id), dto);
   }
 
   @Delete('custom/:id')
   @RequirePermission(PERMISSIONS.USER_MANAGE)
   @ApiOkResponse({ type: TenantRoleDeletedDto })
-  remove(@Param('id', ParseIdPipe) id: bigint) {
-    return this.roles.remove(id);
+  remove(@Param('id', ParseIdPipe) id: string) {
+    return this.roles.remove(BigInt(id));
   }
 }
