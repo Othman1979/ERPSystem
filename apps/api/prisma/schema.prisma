@@ -106,6 +106,29 @@ enum JournalVoucherType {
   PAYMENT_VOUCHER
 }
 
+enum PayMethod {
+  BANK
+  CASH
+}
+
+enum PayElementKind {
+  EARNING
+  DEDUCTION
+}
+
+enum PayElementAmountType {
+  FIXED
+  PER_HOUR
+  PER_DAY
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  POSTED
+  PAID
+  REVERSED
+}
+
 enum ItemKind {
   STOCK
   SERVICE
@@ -269,20 +292,20 @@ model Country {
 }
 
 model User {
-  id              BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  email           String    @unique @db.VarChar(191)
-  passwordHash    String    @map("password_hash") @db.VarChar(255)
-  fullName        String    @map("full_name") @db.VarChar(191)
-  locale          String    @default("ar") @db.VarChar(10)
-  isActive        Boolean   @default(true) @map("is_active")
-  isPlatformAdmin Boolean   @default(false) @map("is_platform_admin")
-  lastLoginAt     DateTime? @map("last_login_at") @db.DateTime(3)
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  email              String    @unique @db.VarChar(191)
+  passwordHash       String    @map("password_hash") @db.VarChar(255)
+  fullName           String    @map("full_name") @db.VarChar(191)
+  locale             String    @default("ar") @db.VarChar(10)
+  isActive           Boolean   @default(true) @map("is_active")
+  isPlatformAdmin    Boolean   @default(false) @map("is_platform_admin")
+  lastLoginAt        DateTime? @map("last_login_at") @db.DateTime(3)
   /// Set for a temporary password (invite without a password, or a reset): the
   /// user may only change the password until this is cleared (AuthGuard).
-  mustChangePassword Boolean  @default(false) @map("must_change_password")
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
   passwordChangedAt  DateTime? @map("password_changed_at") @db.DateTime(3)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
 
   memberships   TenantMembership[]
   refreshTokens RefreshToken[]
@@ -320,95 +343,105 @@ model RefreshToken {
 // ---------------------------------------------------------------------------
 
 model Tenant {
-  id          BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
-  name        String       @db.VarChar(191)
-  status      TenantStatus @default(TRIAL)
-  planId      BigInt?      @map("plan_id") @db.UnsignedBigInt
-  trialEndsAt DateTime?    @map("trial_ends_at") @db.DateTime(3)
+  id              BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  name            String       @db.VarChar(191)
+  status          TenantStatus @default(TRIAL)
+  planId          BigInt?      @map("plan_id") @db.UnsignedBigInt
+  trialEndsAt     DateTime?    @map("trial_ends_at") @db.DateTime(3)
   /// Last status change (ADR-009): grace and post-cancellation retention count from it.
-  statusChangedAt DateTime? @map("status_changed_at") @db.DateTime(3)
-  createdAt   DateTime     @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt   DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+  statusChangedAt DateTime?    @map("status_changed_at") @db.DateTime(3)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
 
-  plan                 Plan?                 @relation(fields: [planId], references: [id])
-  subscriptions        Subscription[]
-  companies            Company[]
-  branches             Branch[]
-  memberships          TenantMembership[]
-  tenantRoles          TenantRole[]
-  auditLogs            AuditLog[]
-  attachments          Attachment[]
-  idempotencyKeys      IdempotencyKey[]
-  units                Unit[]
-  taxCategories        TaxCategory[]
-  paymentMethods       PaymentMethod[]
-  fiscalYears          FiscalYear[]
-  fiscalYearClosings   FiscalYearClosing[]
-  bankStatements       BankStatement[]
-  bankStatementLines   BankStatementLine[]
-  bankStatementMatches BankStatementMatch[]
-  accounts             Account[]
-  documentSequences    DocumentSequence[]
-  journalEntries       JournalEntry[]
-  journalLines         JournalLine[]
-  itemGroups           ItemGroup[]
-  items                Item[]
-  warehouses           Warehouse[]
-  stockMovements       StockMovement[]
-  stockBalances        StockBalance[]
-  itemCosts            ItemCost[]
-  stockAdjustments     StockAdjustment[]
-  boms                   Bom[]
-  bomLines               BomLine[]
-  productionVouchers     ProductionVoucher[]
-  productionVoucherLines ProductionVoucherLine[]
-  stockTransfers       StockTransfer[]
-  stockCounts          StockCount[]
-  itemUnits            ItemUnit[]
-  itemBarcodes         ItemBarcode[]
-  stockAdjustmentLines StockAdjustmentLine[]
-  stockTransferLines   StockTransferLine[]
-  stockCountLines      StockCountLine[]
-  stockCountCounters   StockCountCounter[]
-  parties              Party[]
-  costCenters          CostCenter[]
-  cashBoxes            CashBox[]
-  bankAccounts         BankAccount[]
-  salesInvoices        SalesInvoice[]
-  salesInvoiceLines    SalesInvoiceLine[]
-  purchaseInvoices     PurchaseInvoice[]
-  purchaseInvoiceLines PurchaseInvoiceLine[]
-  salesReturns         SalesReturn[]
-  salesReturnLines     SalesReturnLine[]
-  purchaseReturns      PurchaseReturn[]
-  purchaseReturnLines  PurchaseReturnLine[]
-  goodsNotes           GoodsNote[]
-  goodsNoteLines       GoodsNoteLine[]
-  receipts             Receipt[]
-  payments             Payment[]
-  cashTransfers        CashTransfer[]
-  einvoiceSettings     EInvoiceSettings[]
-  einvoiceSubmissions  EInvoiceSubmission[]
-  einvoiceAttempts     EInvoiceAttempt[]
-  allocations          Allocation[]
-  purchaseRequests     PurchaseRequest[]
-  purchaseRequestLines PurchaseRequestLine[]
-  purchaseQuotes       PurchaseQuote[]
-  purchaseQuoteLines   PurchaseQuoteLine[]
-  purchaseOrders       PurchaseOrder[]
-  purchaseOrderLines   PurchaseOrderLine[]
+  plan                    Plan?                    @relation(fields: [planId], references: [id])
+  subscriptions           Subscription[]
+  companies               Company[]
+  branches                Branch[]
+  memberships             TenantMembership[]
+  tenantRoles             TenantRole[]
+  auditLogs               AuditLog[]
+  attachments             Attachment[]
+  idempotencyKeys         IdempotencyKey[]
+  units                   Unit[]
+  taxCategories           TaxCategory[]
+  paymentMethods          PaymentMethod[]
+  fiscalYears             FiscalYear[]
+  fiscalYearClosings      FiscalYearClosing[]
+  bankStatements          BankStatement[]
+  bankStatementLines      BankStatementLine[]
+  bankStatementMatches    BankStatementMatch[]
+  accounts                Account[]
+  documentSequences       DocumentSequence[]
+  journalEntries          JournalEntry[]
+  journalLines            JournalLine[]
+  itemGroups              ItemGroup[]
+  items                   Item[]
+  warehouses              Warehouse[]
+  stockMovements          StockMovement[]
+  stockBalances           StockBalance[]
+  itemCosts               ItemCost[]
+  stockAdjustments        StockAdjustment[]
+  boms                    Bom[]
+  bomLines                BomLine[]
+  productionVouchers      ProductionVoucher[]
+  productionVoucherLines  ProductionVoucherLine[]
+  stockTransfers          StockTransfer[]
+  stockCounts             StockCount[]
+  itemUnits               ItemUnit[]
+  itemBarcodes            ItemBarcode[]
+  stockAdjustmentLines    StockAdjustmentLine[]
+  stockTransferLines      StockTransferLine[]
+  stockCountLines         StockCountLine[]
+  stockCountCounters      StockCountCounter[]
+  parties                 Party[]
+  costCenters             CostCenter[]
+  cashBoxes               CashBox[]
+  bankAccounts            BankAccount[]
+  salesInvoices           SalesInvoice[]
+  salesInvoiceLines       SalesInvoiceLine[]
+  purchaseInvoices        PurchaseInvoice[]
+  purchaseInvoiceLines    PurchaseInvoiceLine[]
+  salesReturns            SalesReturn[]
+  salesReturnLines        SalesReturnLine[]
+  purchaseReturns         PurchaseReturn[]
+  purchaseReturnLines     PurchaseReturnLine[]
+  goodsNotes              GoodsNote[]
+  goodsNoteLines          GoodsNoteLine[]
+  receipts                Receipt[]
+  payments                Payment[]
+  cashTransfers           CashTransfer[]
+  einvoiceSettings        EInvoiceSettings[]
+  einvoiceSubmissions     EInvoiceSubmission[]
+  einvoiceAttempts        EInvoiceAttempt[]
+  allocations             Allocation[]
+  purchaseRequests        PurchaseRequest[]
+  purchaseRequestLines    PurchaseRequestLine[]
+  purchaseQuotes          PurchaseQuote[]
+  purchaseQuoteLines      PurchaseQuoteLine[]
+  purchaseOrders          PurchaseOrder[]
+  purchaseOrderLines      PurchaseOrderLine[]
   purchaseInvoiceReceipts PurchaseInvoiceReceipt[]
-  issueRequests        IssueRequest[]
-  issueRequestLines    IssueRequestLine[]
+  issueRequests           IssueRequest[]
+  issueRequestLines       IssueRequestLine[]
 
   salesInvoiceLineComponents SalesInvoiceLineComponent[]
-  cheques      Cheque[]
-  chequeEvents ChequeEvent[]
+  cheques                    Cheque[]
+  chequeEvents               ChequeEvent[]
+  salesQuotes                SalesQuote[]
+  salesQuoteLines            SalesQuoteLine[]
+  salesOrders                SalesOrder[]
+  salesOrderLines            SalesOrderLine[]
+  employees                  Employee[]
+  employeeSalaries           EmployeeSalary[]
+  payElements                PayElement[]
+  employeeRecurringElements  EmployeeRecurringElement[]
+  payrollInputs              PayrollInput[]
+  payrollSettings            PayrollSettings[]
+  payrollRuns                PayrollRun[]
+  payrollLines               PayrollLine[]
+  payrollLineItems           PayrollLineItem[]
+
   @@map("tenants")
-  salesQuotes SalesQuote[]
-  salesQuoteLines SalesQuoteLine[]
-  salesOrders SalesOrder[]
-  salesOrderLines SalesOrderLine[]
 }
 
 model Subscription {
@@ -432,86 +465,91 @@ model Subscription {
 }
 
 model Company {
-  id                     BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId               BigInt        @map("tenant_id") @db.UnsignedBigInt
-  legalNameAr            String        @map("legal_name_ar") @db.VarChar(191)
-  legalNameEn            String?       @map("legal_name_en") @db.VarChar(191)
-  taxNumber              String?       @map("tax_number") @db.VarChar(50)
-  commercialRegistration String?       @map("commercial_registration") @db.VarChar(100)
-  address                String?       @db.VarChar(512)
-  phone                  String?       @db.VarChar(50)
-  logoAttachmentId       BigInt?       @map("logo_attachment_id") @db.UnsignedBigInt
-  baseCurrencyId         BigInt?       @map("base_currency_id") @db.UnsignedBigInt
-  timezone               String        @default("Asia/Amman") @db.VarChar(64)
-  costingMethod          CostingMethod @default(WEIGHTED_AVERAGE) @map("costing_method")
-  allowNegativeStock     Boolean       @default(false) @map("allow_negative_stock")
-  pricesIncludeTax       Boolean       @default(false) @map("prices_include_tax")
+  id                     BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId               BigInt             @map("tenant_id") @db.UnsignedBigInt
+  legalNameAr            String             @map("legal_name_ar") @db.VarChar(191)
+  legalNameEn            String?            @map("legal_name_en") @db.VarChar(191)
+  taxNumber              String?            @map("tax_number") @db.VarChar(50)
+  commercialRegistration String?            @map("commercial_registration") @db.VarChar(100)
+  address                String?            @db.VarChar(512)
+  phone                  String?            @db.VarChar(50)
+  logoAttachmentId       BigInt?            @map("logo_attachment_id") @db.UnsignedBigInt
+  baseCurrencyId         BigInt?            @map("base_currency_id") @db.UnsignedBigInt
+  timezone               String             @default("Asia/Amman") @db.VarChar(64)
+  costingMethod          CostingMethod      @default(WEIGHTED_AVERAGE) @map("costing_method")
+  allowNegativeStock     Boolean            @default(false) @map("allow_negative_stock")
+  pricesIncludeTax       Boolean            @default(false) @map("prices_include_tax")
   /// ADR-024 §1: cost centres shown and enforced. Off hides them; posted lines keep theirs.
-  costCentersEnabled     Boolean       @default(false) @map("cost_centers_enabled")
+  costCentersEnabled     Boolean            @default(false) @map("cost_centers_enabled")
   /// Set when the owner finishes the setup wizard (§13.4, ADR-009).
-  onboardingCompletedAt  DateTime?     @map("onboarding_completed_at") @db.DateTime(3)
+  onboardingCompletedAt  DateTime?          @map("onboarding_completed_at") @db.DateTime(3)
   /// Purchasing cycle level (ADR-024 §2): raised any time, lowered only with no open cycle documents.
-  procurementLevel       ProcurementLevel @default(SIMPLE) @map("procurement_level")
+  procurementLevel       ProcurementLevel   @default(SIMPLE) @map("procurement_level")
   /// Sales cycle settings (ADR-027 §1): a sales invoice must come from a confirmed order when on.
-  salesOrderRequired     Boolean          @default(false) @map("sales_order_required")
+  salesOrderRequired     Boolean            @default(false) @map("sales_order_required")
   /// ADR-027 §5: NONE hides reservations, SOFT shows them, HARD refuses over-reserving.
-  salesReservation       SalesReservation @default(SOFT) @map("sales_reservation")
+  salesReservation       SalesReservation   @default(SOFT) @map("sales_reservation")
   /// ADR-027 §6: when a sales order needs approval before it is confirmed.
   salesOrderApproval     SalesOrderApproval @default(OVER_CREDIT_LIMIT) @map("sales_order_approval")
   /// ADR-027 §4: the invoice price and discount may not go below the order without approval.
-  salesPriceLocked       Boolean          @default(false) @map("sales_price_locked")
+  salesPriceLocked       Boolean            @default(false) @map("sales_price_locked")
   /// Default validity of a new quote in days; 0 = no default expiry (ADR-027 §1).
-  quoteValidityDays      Int              @default(30) @map("quote_validity_days")
-  isActive              Boolean       @default(true) @map("is_active")
-  createdAt              DateTime      @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt              DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy              BigInt?       @map("created_by") @db.UnsignedBigInt
-  updatedBy              BigInt?       @map("updated_by") @db.UnsignedBigInt
+  quoteValidityDays      Int                @default(30) @map("quote_validity_days")
+  isActive               Boolean            @default(true) @map("is_active")
+  createdAt              DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt              DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy              BigInt?            @map("created_by") @db.UnsignedBigInt
+  updatedBy              BigInt?            @map("updated_by") @db.UnsignedBigInt
 
-  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  baseCurrency      Currency?          @relation("CompanyBaseCurrency", fields: [baseCurrencyId], references: [id])
-  logoAttachment    Attachment?        @relation("CompanyLogo", fields: [tenantId, logoAttachmentId], references: [tenantId, id])
-  branches          Branch[]
-  fiscalYears       FiscalYear[]
-  fiscalYearClosings FiscalYearClosing[]
-  bankStatements     BankStatement[]
-  accounts          Account[]
-  accountMappings   AccountMapping[]
-  documentSequences DocumentSequence[]
-  journalEntries    JournalEntry[]
-  items             Item[]
-  warehouses        Warehouse[]
-  stockMovements    StockMovement[]
-  itemCosts         ItemCost[]
-  stockAdjustments  StockAdjustment[]
-  boms               Bom[]
-  productionVouchers ProductionVoucher[]
-  stockTransfers    StockTransfer[]
-  stockCounts       StockCount[]
-  parties           Party[]
-  cashBoxes         CashBox[]
-  bankAccounts      BankAccount[]
-  salesInvoices     SalesInvoice[]
-  purchaseInvoices  PurchaseInvoice[]
-  salesReturns      SalesReturn[]
-  purchaseReturns   PurchaseReturn[]
-  goodsNotes        GoodsNote[]
-  receipts          Receipt[]
-  payments          Payment[]
-  cashTransfers        CashTransfer[]
-  einvoiceSettings     EInvoiceSettings[]
-  einvoiceSubmissions  EInvoiceSubmission[]
-  allocations       Allocation[]
-  costCenters       CostCenter[]
-  purchaseRequests  PurchaseRequest[]
-  purchaseQuotes    PurchaseQuote[]
-  purchaseOrders    PurchaseOrder[]
-  issueRequests     IssueRequest[]
-  salesQuotes       SalesQuote[]
-  salesOrders       SalesOrder[]
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  baseCurrency        Currency?            @relation("CompanyBaseCurrency", fields: [baseCurrencyId], references: [id])
+  logoAttachment      Attachment?          @relation("CompanyLogo", fields: [tenantId, logoAttachmentId], references: [tenantId, id])
+  branches            Branch[]
+  fiscalYears         FiscalYear[]
+  fiscalYearClosings  FiscalYearClosing[]
+  bankStatements      BankStatement[]
+  accounts            Account[]
+  accountMappings     AccountMapping[]
+  documentSequences   DocumentSequence[]
+  journalEntries      JournalEntry[]
+  items               Item[]
+  warehouses          Warehouse[]
+  stockMovements      StockMovement[]
+  itemCosts           ItemCost[]
+  stockAdjustments    StockAdjustment[]
+  boms                Bom[]
+  productionVouchers  ProductionVoucher[]
+  stockTransfers      StockTransfer[]
+  stockCounts         StockCount[]
+  parties             Party[]
+  cashBoxes           CashBox[]
+  bankAccounts        BankAccount[]
+  salesInvoices       SalesInvoice[]
+  purchaseInvoices    PurchaseInvoice[]
+  salesReturns        SalesReturn[]
+  purchaseReturns     PurchaseReturn[]
+  goodsNotes          GoodsNote[]
+  receipts            Receipt[]
+  payments            Payment[]
+  cashTransfers       CashTransfer[]
+  einvoiceSettings    EInvoiceSettings[]
+  einvoiceSubmissions EInvoiceSubmission[]
+  allocations         Allocation[]
+  costCenters         CostCenter[]
+  purchaseRequests    PurchaseRequest[]
+  purchaseQuotes      PurchaseQuote[]
+  purchaseOrders      PurchaseOrder[]
+  issueRequests       IssueRequest[]
+  salesQuotes         SalesQuote[]
+  salesOrders         SalesOrder[]
 
-  cheques Cheque[]
+  cheques         Cheque[]
   memberCompanies MembershipCompany[]
+  employees       Employee[]
+  payElements     PayElement[]
+  payrollInputs   PayrollInput[]
+  payrollSettings PayrollSettings[]
+  payrollRuns     PayrollRun[]
 
   @@unique([tenantId, id])
   @@map("companies")
@@ -531,51 +569,53 @@ model Branch {
   createdBy BigInt?  @map("created_by") @db.UnsignedBigInt
   updatedBy BigInt?  @map("updated_by") @db.UnsignedBigInt
 
-  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company            Company            @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  memberships        TenantMembership[] @relation("MembershipDefaultBranch")
-  membershipBranches MembershipBranch[]
-  journalEntries     JournalEntry[]
-  warehouses         Warehouse[]
-  goodsNotes         GoodsNote[]
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company             Company              @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  memberships         TenantMembership[]   @relation("MembershipDefaultBranch")
+  membershipBranches  MembershipBranch[]
+  journalEntries      JournalEntry[]
+  warehouses          Warehouse[]
+  goodsNotes          GoodsNote[]
   einvoiceSubmissions EInvoiceSubmission[]
-  purchaseRequests   PurchaseRequest[]
-  purchaseQuotes     PurchaseQuote[]
-  purchaseOrders     PurchaseOrder[]
-  issueRequests      IssueRequest[]
-  productionVouchers ProductionVoucher[]
+  purchaseRequests    PurchaseRequest[]
+  purchaseQuotes      PurchaseQuote[]
+  purchaseOrders      PurchaseOrder[]
+  issueRequests       IssueRequest[]
+  productionVouchers  ProductionVoucher[]
+  employees           Employee[]
+  salesQuotes         SalesQuote[]
+  salesOrders         SalesOrder[]
 
   @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, code])
   @@map("branches")
-  salesQuotes SalesQuote[]
-  salesOrders SalesOrder[]
 }
 
 model TenantMembership {
-  id              BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId        BigInt           @map("tenant_id") @db.UnsignedBigInt
-  userId          BigInt           @map("user_id") @db.UnsignedBigInt
-  roleId          BigInt           @map("role_id") @db.UnsignedBigInt
+  id                  BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId            BigInt           @map("tenant_id") @db.UnsignedBigInt
+  userId              BigInt           @map("user_id") @db.UnsignedBigInt
+  roleId              BigInt           @map("role_id") @db.UnsignedBigInt
   /// A tenant role (ADR-038): when set, its permissions replace the system role's.
-  customRoleId    BigInt?          @map("custom_role_id") @db.UnsignedBigInt
-  status          MembershipStatus @default(INVITED)
-  defaultBranchId BigInt?          @map("default_branch_id") @db.UnsignedBigInt
-  invitedBy       BigInt?          @map("invited_by") @db.UnsignedBigInt
+  customRoleId        BigInt?          @map("custom_role_id") @db.UnsignedBigInt
+  status              MembershipStatus @default(INVITED)
+  defaultBranchId     BigInt?          @map("default_branch_id") @db.UnsignedBigInt
+  invitedBy           BigInt?          @map("invited_by") @db.UnsignedBigInt
   // Invitation acceptance code (ADR-012, PLAT-10): sha256 of the one-time code
   // the inviting admin hands over; never the code itself.
-  inviteCodeHash      String?   @map("invite_code_hash") @db.Char(64)
-  inviteCodeExpiresAt DateTime? @map("invite_code_expires_at") @db.DateTime(3)
-  inviteCodeAttempts  Int       @default(0) @map("invite_code_attempts")
-  createdAt       DateTime         @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt       DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+  inviteCodeHash      String?          @map("invite_code_hash") @db.Char(64)
+  inviteCodeExpiresAt DateTime?        @map("invite_code_expires_at") @db.DateTime(3)
+  inviteCodeAttempts  Int              @default(0) @map("invite_code_attempts")
+  createdAt           DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role            Role               @relation(fields: [roleId], references: [id])
-  customRole      TenantRole?        @relation(fields: [tenantId, customRoleId], references: [tenantId, id])
-  defaultBranch   Branch?            @relation("MembershipDefaultBranch", fields: [tenantId, defaultBranchId], references: [tenantId, id])
-  allowedBranches MembershipBranch[]
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role             Role                @relation(fields: [roleId], references: [id])
+  customRole       TenantRole?         @relation(fields: [tenantId, customRoleId], references: [tenantId, id])
+  defaultBranch    Branch?             @relation("MembershipDefaultBranch", fields: [tenantId, defaultBranchId], references: [tenantId, id])
+  allowedBranches  MembershipBranch[]
   allowedCompanies MembershipCompany[]
   extraPermissions MemberPermission[]
 
@@ -806,19 +846,19 @@ model TaxCategory {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  items                   Item[]
-  salesInvoiceLines       SalesInvoiceLine[]
-  purchaseInvoiceLines    PurchaseInvoiceLine[]
-  salesReturnLines        SalesReturnLine[]
-  purchaseReturnLines     PurchaseReturnLine[]
-  purchaseQuoteLines      PurchaseQuoteLine[]
-  purchaseOrderLines      PurchaseOrderLine[]
+  items                Item[]
+  salesInvoiceLines    SalesInvoiceLine[]
+  purchaseInvoiceLines PurchaseInvoiceLine[]
+  salesReturnLines     SalesReturnLine[]
+  purchaseReturnLines  PurchaseReturnLine[]
+  purchaseQuoteLines   PurchaseQuoteLine[]
+  purchaseOrderLines   PurchaseOrderLine[]
+  salesQuoteLines      SalesQuoteLine[]
+  salesOrderLines      SalesOrderLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
   @@map("tax_categories")
-  salesQuoteLines SalesQuoteLine[]
-  salesOrderLines SalesOrderLine[]
 }
 
 model PaymentMethod {
@@ -833,8 +873,8 @@ model PaymentMethod {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  receipts  Receipt[]
-  payments  Payment[]
+  receipts Receipt[]
+  payments Payment[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, code])
@@ -853,8 +893,8 @@ model FiscalYear {
   updatedAt DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
   createdBy BigInt?      @map("created_by") @db.UnsignedBigInt
 
-  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company   Company            @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company   Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
   periods   FiscalPeriod[]
   sequences DocumentSequence[]
   closings  FiscalYearClosing[]
@@ -886,26 +926,26 @@ model FiscalPeriod {
 }
 
 model FiscalYearClosing {
-  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId         BigInt    @map("tenant_id") @db.UnsignedBigInt
-  companyId        BigInt    @map("company_id") @db.UnsignedBigInt
-  fiscalYearId     BigInt    @map("fiscal_year_id") @db.UnsignedBigInt
-  journalEntryId   BigInt?   @map("journal_entry_id") @db.UnsignedBigInt
-  reversalEntryId  BigInt?   @map("reversal_entry_id") @db.UnsignedBigInt
-  status           String    @default("ACTIVE") @db.VarChar(20)
-  netResult        Decimal   @default(0) @map("net_result") @db.Decimal(18, 3)
-  closedBy         BigInt?   @map("closed_by") @db.UnsignedBigInt
-  closedAt         DateTime  @map("closed_at") @db.DateTime(3)
-  reversedBy       BigInt?   @map("reversed_by") @db.UnsignedBigInt
-  reversedAt       DateTime? @map("reversed_at") @db.DateTime(3)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  id              BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt    @map("tenant_id") @db.UnsignedBigInt
+  companyId       BigInt    @map("company_id") @db.UnsignedBigInt
+  fiscalYearId    BigInt    @map("fiscal_year_id") @db.UnsignedBigInt
+  journalEntryId  BigInt?   @map("journal_entry_id") @db.UnsignedBigInt
+  reversalEntryId BigInt?   @map("reversal_entry_id") @db.UnsignedBigInt
+  status          String    @default("ACTIVE") @db.VarChar(20)
+  netResult       Decimal   @default(0) @map("net_result") @db.Decimal(18, 3)
+  closedBy        BigInt?   @map("closed_by") @db.UnsignedBigInt
+  closedAt        DateTime  @map("closed_at") @db.DateTime(3)
+  reversedBy      BigInt?   @map("reversed_by") @db.UnsignedBigInt
+  reversedAt      DateTime? @map("reversed_at") @db.DateTime(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company         Company      @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  fiscalYear      FiscalYear   @relation(fields: [tenantId, fiscalYearId], references: [tenantId, id], onDelete: Cascade)
-  journalEntry    JournalEntry? @relation("FiscalYearClosingEntry", fields: [tenantId, journalEntryId], references: [tenantId, id])
-  reversalEntry   JournalEntry? @relation("FiscalYearClosingReversal", fields: [tenantId, reversalEntryId], references: [tenantId, id])
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company       Company       @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  fiscalYear    FiscalYear    @relation(fields: [tenantId, fiscalYearId], references: [tenantId, id], onDelete: Cascade)
+  journalEntry  JournalEntry? @relation("FiscalYearClosingEntry", fields: [tenantId, journalEntryId], references: [tenantId, id])
+  reversalEntry JournalEntry? @relation("FiscalYearClosingReversal", fields: [tenantId, reversalEntryId], references: [tenantId, id])
 
   @@unique([tenantId, id])
   @@index([tenantId, companyId, fiscalYearId, status])
@@ -913,51 +953,53 @@ model FiscalYearClosing {
 }
 
 model Account {
-  id            BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId      BigInt        @map("tenant_id") @db.UnsignedBigInt
-  companyId     BigInt        @map("company_id") @db.UnsignedBigInt
-  code          String        @db.VarChar(50)
-  nameAr        String        @map("name_ar") @db.VarChar(191)
-  nameEn        String?       @map("name_en") @db.VarChar(191)
-  parentId      BigInt?       @map("parent_id") @db.UnsignedBigInt
-  level         Int
-  accountType   AccountType   @map("account_type")
-  normalBalance NormalBalance @map("normal_balance")
-  isPostable    Boolean       @default(true) @map("is_postable")
-  isControl     Boolean       @default(false) @map("is_control")
-  controlType   ControlType?  @map("control_type")
+  id                 BigInt            @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId           BigInt            @map("tenant_id") @db.UnsignedBigInt
+  companyId          BigInt            @map("company_id") @db.UnsignedBigInt
+  code               String            @db.VarChar(50)
+  nameAr             String            @map("name_ar") @db.VarChar(191)
+  nameEn             String?           @map("name_en") @db.VarChar(191)
+  parentId           BigInt?           @map("parent_id") @db.UnsignedBigInt
+  level              Int
+  accountType        AccountType       @map("account_type")
+  normalBalance      NormalBalance     @map("normal_balance")
+  isPostable         Boolean           @default(true) @map("is_postable")
+  isControl          Boolean           @default(false) @map("is_control")
+  controlType        ControlType?      @map("control_type")
   /// ADR-024 §1.3: a posting line needs a cost centre while centres are enabled.
   /// Income-statement accounts (REVENUE, EXPENSE) only.
-  costCenterRequired Boolean  @default(false) @map("cost_center_required")
+  costCenterRequired Boolean           @default(false) @map("cost_center_required")
   /// ADR-036 §3: ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default.
-  cashFlowActivity CashFlowActivity? @map("cash_flow_activity")
-  isActive      Boolean       @default(true) @map("is_active")
-  createdAt     DateTime      @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt     DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy     BigInt?       @map("created_by") @db.UnsignedBigInt
-  updatedBy     BigInt?       @map("updated_by") @db.UnsignedBigInt
+  cashFlowActivity   CashFlowActivity? @map("cash_flow_activity")
+  isActive           Boolean           @default(true) @map("is_active")
+  createdAt          DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime          @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy          BigInt?           @map("created_by") @db.UnsignedBigInt
+  updatedBy          BigInt?           @map("updated_by") @db.UnsignedBigInt
 
-  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company      Company          @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  parent       Account?         @relation("AccountTree", fields: [tenantId, companyId, parentId], references: [tenantId, companyId, id])
-  children     Account[]        @relation("AccountTree")
-  mappings     AccountMapping[]
-  journalLines JournalLine[]
-  cashBoxes         CashBox[]
-  bankAccounts      BankAccount[]
-  salesInvoiceCashAccounts   SalesInvoice[]    @relation("SalesInvoiceCashAccount")
+  tenant                      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company                     Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  parent                      Account?          @relation("AccountTree", fields: [tenantId, companyId, parentId], references: [tenantId, companyId, id])
+  children                    Account[]         @relation("AccountTree")
+  mappings                    AccountMapping[]
+  journalLines                JournalLine[]
+  cashBoxes                   CashBox[]
+  bankAccounts                BankAccount[]
+  salesInvoiceCashAccounts    SalesInvoice[]    @relation("SalesInvoiceCashAccount")
   purchaseInvoiceCashAccounts PurchaseInvoice[] @relation("PurchaseInvoiceCashAccount")
-  salesReturnCashAccounts    SalesReturn[]     @relation("SalesReturnCashAccount")
-  purchaseReturnCashAccounts PurchaseReturn[]  @relation("PurchaseReturnCashAccount")
-  receiptCashAccounts        Receipt[]         @relation("ReceiptCashAccount")
-  paymentCashAccounts        Payment[]         @relation("PaymentCashAccount")
-  paymentExpenseAccounts     Payment[]         @relation("PaymentExpenseAccount")
-  cashTransfersFrom          CashTransfer[]    @relation("CashTransferFrom")
-  cashTransfersTo            CashTransfer[]    @relation("CashTransferTo")
-  goodsNoteExpenseAccounts   GoodsNote[]       @relation("GoodsNoteExpenseAccount")
-  issueRequestExpenseAccounts IssueRequest[]   @relation("IssueRequestExpenseAccount")
+  salesReturnCashAccounts     SalesReturn[]     @relation("SalesReturnCashAccount")
+  purchaseReturnCashAccounts  PurchaseReturn[]  @relation("PurchaseReturnCashAccount")
+  receiptCashAccounts         Receipt[]         @relation("ReceiptCashAccount")
+  paymentCashAccounts         Payment[]         @relation("PaymentCashAccount")
+  paymentExpenseAccounts      Payment[]         @relation("PaymentExpenseAccount")
+  cashTransfersFrom           CashTransfer[]    @relation("CashTransferFrom")
+  cashTransfersTo             CashTransfer[]    @relation("CashTransferTo")
+  goodsNoteExpenseAccounts    GoodsNote[]       @relation("GoodsNoteExpenseAccount")
+  issueRequestExpenseAccounts IssueRequest[]    @relation("IssueRequestExpenseAccount")
+  payElements                 PayElement[]
 
   chequesDrawn Cheque[] @relation("ChequeBankAccount")
+
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, code])
@@ -1032,29 +1074,33 @@ model JournalEntry {
   createdAt      DateTime           @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt      DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company          Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  branch           Branch?           @relation(fields: [tenantId, branchId], references: [tenantId, id])
-  fiscalPeriod     FiscalPeriod?     @relation(fields: [tenantId, fiscalPeriodId], references: [tenantId, id])
-  reversalOf       JournalEntry?     @relation("EntryReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
-  reversals        JournalEntry[]    @relation("EntryReversal")
-  fiscalYearClosings FiscalYearClosing[] @relation("FiscalYearClosingEntry")
+  tenant                     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company                    Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch                     Branch?             @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  fiscalPeriod               FiscalPeriod?       @relation(fields: [tenantId, fiscalPeriodId], references: [tenantId, id])
+  reversalOf                 JournalEntry?       @relation("EntryReversal", fields: [tenantId, reversalOfId], references: [tenantId, id])
+  reversals                  JournalEntry[]      @relation("EntryReversal")
+  fiscalYearClosings         FiscalYearClosing[] @relation("FiscalYearClosingEntry")
   fiscalYearClosingReversals FiscalYearClosing[] @relation("FiscalYearClosingReversal")
-  lines            JournalLine[]
-  stockAdjustments StockAdjustment[]
-  productionVouchers ProductionVoucher[]
-  salesInvoices    SalesInvoice[]
-  purchaseInvoices PurchaseInvoice[]
-  salesReturns     SalesReturn[]
-  purchaseReturns  PurchaseReturn[]
-  goodsNotes       GoodsNote[]
-  receipts         Receipt[]
-  payments         Payment[]
-  cashTransfers    CashTransfer[]
+  lines                      JournalLine[]
+  stockAdjustments           StockAdjustment[]
+  productionVouchers         ProductionVoucher[]
+  salesInvoices              SalesInvoice[]
+  purchaseInvoices           PurchaseInvoice[]
+  salesReturns               SalesReturn[]
+  purchaseReturns            PurchaseReturn[]
+  goodsNotes                 GoodsNote[]
+  receipts                   Receipt[]
+  payments                   Payment[]
+  cashTransfers              CashTransfer[]
 
   chequeEvents     ChequeEvent[] @relation("ChequeEventEntry")
   chequeEventUndos ChequeEvent[] @relation("ChequeEventUndoEntry")
+  payrollRuns      PayrollRun[]  @relation("PayrollRunJournal")
+  payrollPayments  PayrollRun[]  @relation("PayrollPaymentJournal")
+
   @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
   // One POST + one REVERSAL per source document (docs/BUILD_PLAN.md §10.3).
   // MySQL treats NULL source_id as distinct — drafts set source_id = own id.
   @@unique([tenantId, sourceType, sourceId, postingKind])
@@ -1090,9 +1136,9 @@ model JournalLine {
   entryDate      DateTime          @map("entry_date") @db.Date
   createdAt      DateTime          @default(now()) @map("created_at") @db.DateTime(3)
 
-  entry   JournalEntry @relation(fields: [tenantId, journalEntryId], references: [tenantId, id], onDelete: Cascade)
-  account Account      @relation(fields: [tenantId, accountId], references: [tenantId, id])
-  tenant  Tenant       @relation(fields: [tenantId], references: [id])
+  entry              JournalEntry        @relation(fields: [tenantId, journalEntryId], references: [tenantId, id], onDelete: Cascade)
+  account            Account             @relation(fields: [tenantId, accountId], references: [tenantId, id])
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
   bankStatementMatch BankStatementMatch?
 
   @@unique([tenantId, id])
@@ -1137,27 +1183,28 @@ model CostCenter {
   createdBy  BigInt?  @map("created_by") @db.UnsignedBigInt
   updatedBy  BigInt?  @map("updated_by") @db.UnsignedBigInt
 
-  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company          Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  parent           CostCenter?       @relation("CostCenterTree", fields: [tenantId, companyId, parentId], references: [tenantId, companyId, id])
-  children         CostCenter[]      @relation("CostCenterTree")
-  salesInvoices    SalesInvoice[]
-  salesReturns     SalesReturn[]
-  purchaseInvoices PurchaseInvoice[]
-  purchaseReturns  PurchaseReturn[]
-  receipts         Receipt[]
-  payments         Payment[]
-  purchaseOrders   PurchaseOrder[]
-  goodsNotes       GoodsNote[]
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company            Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  parent             CostCenter?         @relation("CostCenterTree", fields: [tenantId, companyId, parentId], references: [tenantId, companyId, id])
+  children           CostCenter[]        @relation("CostCenterTree")
+  salesInvoices      SalesInvoice[]
+  salesReturns       SalesReturn[]
+  purchaseInvoices   PurchaseInvoice[]
+  purchaseReturns    PurchaseReturn[]
+  receipts           Receipt[]
+  payments           Payment[]
+  purchaseOrders     PurchaseOrder[]
+  goodsNotes         GoodsNote[]
   productionVouchers ProductionVoucher[]
-  issueRequests    IssueRequest[]
+  employees          Employee[]
+  issueRequests      IssueRequest[]
+  salesQuotes        SalesQuote[]
+  salesOrders        SalesOrder[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, code])
   @@map("cost_centers")
-  salesQuotes SalesQuote[]
-  salesOrders SalesOrder[]
 }
 
 // ---------------------------------------------------------------------------
@@ -1175,10 +1222,10 @@ model ItemGroup {
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent   ItemGroup?  @relation("ItemGroupTree", fields: [tenantId, parentId], references: [tenantId, id])
-  children ItemGroup[] @relation("ItemGroupTree")
-  items    Item[]
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent      ItemGroup?   @relation("ItemGroupTree", fields: [tenantId, parentId], references: [tenantId, id])
+  children    ItemGroup[]  @relation("ItemGroupTree")
+  items       Item[]
   stockCounts StockCount[]
 
   @@unique([tenantId, id])
@@ -1187,65 +1234,67 @@ model ItemGroup {
 }
 
 model Item {
-  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId      BigInt   @map("tenant_id") @db.UnsignedBigInt
-  companyId     BigInt   @map("company_id") @db.UnsignedBigInt
-  code          String   @db.VarChar(50)
-  nameAr        String   @map("name_ar") @db.VarChar(191)
-  nameEn        String?  @map("name_en") @db.VarChar(191)
-  description   String?  @db.VarChar(500)
-  itemGroupId   BigInt?  @map("item_group_id") @db.UnsignedBigInt
-  itemKind      ItemKind @default(STOCK) @map("item_kind")
-  baseUnitId    BigInt   @map("base_unit_id") @db.UnsignedBigInt
-  taxCategoryId BigInt?  @map("tax_category_id") @db.UnsignedBigInt
-  salePrice     Decimal? @map("sale_price") @db.Decimal(18, 3)
-  purchasePrice Decimal? @map("purchase_price") @db.Decimal(18, 3)
-  minStock      Decimal  @default(0) @map("min_stock") @db.Decimal(18, 6)
-  maxStock      Decimal? @map("max_stock") @db.Decimal(18, 6)
-  defaultWarehouseId BigInt? @map("default_warehouse_id") @db.UnsignedBigInt
-  salePriceIncludesTax Boolean @default(false) @map("sale_price_includes_tax")
-  imageUrl      String?  @map("image_url") @db.VarChar(512)
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy     BigInt?  @map("created_by") @db.UnsignedBigInt
-  updatedBy     BigInt?  @map("updated_by") @db.UnsignedBigInt
+  id                   BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId             BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId            BigInt   @map("company_id") @db.UnsignedBigInt
+  code                 String   @db.VarChar(50)
+  nameAr               String   @map("name_ar") @db.VarChar(191)
+  nameEn               String?  @map("name_en") @db.VarChar(191)
+  description          String?  @db.VarChar(500)
+  itemGroupId          BigInt?  @map("item_group_id") @db.UnsignedBigInt
+  itemKind             ItemKind @default(STOCK) @map("item_kind")
+  baseUnitId           BigInt   @map("base_unit_id") @db.UnsignedBigInt
+  taxCategoryId        BigInt?  @map("tax_category_id") @db.UnsignedBigInt
+  salePrice            Decimal? @map("sale_price") @db.Decimal(18, 3)
+  purchasePrice        Decimal? @map("purchase_price") @db.Decimal(18, 3)
+  minStock             Decimal  @default(0) @map("min_stock") @db.Decimal(18, 6)
+  maxStock             Decimal? @map("max_stock") @db.Decimal(18, 6)
+  defaultWarehouseId   BigInt?  @map("default_warehouse_id") @db.UnsignedBigInt
+  salePriceIncludesTax Boolean  @default(false) @map("sale_price_includes_tax")
+  imageUrl             String?  @map("image_url") @db.VarChar(512)
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy            BigInt?  @map("created_by") @db.UnsignedBigInt
+  updatedBy            BigInt?  @map("updated_by") @db.UnsignedBigInt
 
-  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company         Company               @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  itemGroup       ItemGroup?            @relation(fields: [tenantId, itemGroupId], references: [tenantId, id])
-  baseUnit        Unit                  @relation("ItemBaseUnit", fields: [tenantId, baseUnitId], references: [tenantId, id])
-  taxCategory     TaxCategory?          @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
-  defaultWarehouse Warehouse?           @relation("ItemDefaultWarehouse", fields: [tenantId, defaultWarehouseId], references: [tenantId, id])
-  units           ItemUnit[]
-  barcodes        ItemBarcode[]
-  movements       StockMovement[]
-  balances        StockBalance[]
-  costs           ItemCost[]
-  adjustmentLines    StockAdjustmentLine[]
-  transferLines      StockTransferLine[]
-  countLines         StockCountLine[]
-  salesInvoiceLines  SalesInvoiceLine[]
-  purchaseInvoiceLines PurchaseInvoiceLine[]
-  salesReturnLines   SalesReturnLine[]
-  purchaseReturnLines PurchaseReturnLine[]
-  goodsNoteLines     GoodsNoteLine[]
-  purchaseRequestLines PurchaseRequestLine[]
-  purchaseQuoteLines PurchaseQuoteLine[]
-  purchaseOrderLines PurchaseOrderLine[]
-  issueRequestLines  IssueRequestLine[]
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company                Company                 @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  itemGroup              ItemGroup?              @relation(fields: [tenantId, itemGroupId], references: [tenantId, id])
+  baseUnit               Unit                    @relation("ItemBaseUnit", fields: [tenantId, baseUnitId], references: [tenantId, id])
+  taxCategory            TaxCategory?            @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  defaultWarehouse       Warehouse?              @relation("ItemDefaultWarehouse", fields: [tenantId, defaultWarehouseId], references: [tenantId, id])
+  units                  ItemUnit[]
+  barcodes               ItemBarcode[]
+  movements              StockMovement[]
+  balances               StockBalance[]
+  costs                  ItemCost[]
+  adjustmentLines        StockAdjustmentLine[]
+  transferLines          StockTransferLine[]
+  countLines             StockCountLine[]
+  salesInvoiceLines      SalesInvoiceLine[]
+  purchaseInvoiceLines   PurchaseInvoiceLine[]
+  salesReturnLines       SalesReturnLine[]
+  purchaseReturnLines    PurchaseReturnLine[]
+  goodsNoteLines         GoodsNoteLine[]
+  purchaseRequestLines   PurchaseRequestLine[]
+  purchaseQuoteLines     PurchaseQuoteLine[]
+  purchaseOrderLines     PurchaseOrderLine[]
+  issueRequestLines      IssueRequestLine[]
   boms                   Bom[]
   bomLines               BomLine[]
   productionVouchers     ProductionVoucher[]
   productionVoucherLines ProductionVoucherLine[]
 
   salesLineComponents SalesInvoiceLineComponent[]
+  salesQuoteLines     SalesQuoteLine[]
+  salesOrderLines     SalesOrderLine[]
+
   @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, code])
   @@index([tenantId, itemKind])
   @@map("items")
-  salesQuoteLines SalesQuoteLine[]
-  salesOrderLines SalesOrderLine[]
 }
 
 model ItemUnit {
@@ -1260,11 +1309,11 @@ model ItemUnit {
   createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt         DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  item     Item          @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Cascade)
-  unit     Unit          @relation(fields: [tenantId, unitId], references: [tenantId, id])
-  barcodes ItemBarcode[]
-  stockCountLines StockCountLine[]
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item                   Item                    @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Cascade)
+  unit                   Unit                    @relation(fields: [tenantId, unitId], references: [tenantId, id])
+  barcodes               ItemBarcode[]
+  stockCountLines        StockCountLine[]
   boms                   Bom[]
   bomLines               BomLine[]
   productionVoucherLines ProductionVoucherLine[]
@@ -1275,12 +1324,12 @@ model ItemUnit {
   purchaseRequestLines PurchaseRequestLine[]
   purchaseQuoteLines   PurchaseQuoteLine[]
   purchaseOrderLines   PurchaseOrderLine[]
+  salesQuoteLines      SalesQuoteLine[]
+  salesOrderLines      SalesOrderLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, itemId, unitId])
   @@map("item_units")
-  salesQuoteLines SalesQuoteLine[]
-  salesOrderLines SalesOrderLine[]
 }
 
 model ItemBarcode {
@@ -1315,31 +1364,31 @@ model Warehouse {
   createdBy BigInt?  @map("created_by") @db.UnsignedBigInt
   updatedBy BigInt?  @map("updated_by") @db.UnsignedBigInt
 
-  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company       Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  branch        Branch?           @relation(fields: [tenantId, branchId], references: [tenantId, id])
-  movements     StockMovement[]
-  balances      StockBalance[]
-  adjustments   StockAdjustment[]
+  tenant                        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company                       Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch                        Branch?             @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  movements                     StockMovement[]
+  balances                      StockBalance[]
+  adjustments                   StockAdjustment[]
   productionVouchersAsMaterials ProductionVoucher[] @relation("ProductionMaterials")
   productionVouchersAsOutput    ProductionVoucher[] @relation("ProductionOutput")
-  transfersFrom StockTransfer[]   @relation("TransferFrom")
-  transfersTo   StockTransfer[]   @relation("TransferTo")
-  counts        StockCount[]
-  salesInvoices     SalesInvoice[]
-  purchaseInvoices  PurchaseInvoice[]
-  salesReturns      SalesReturn[]
-  purchaseReturns   PurchaseReturn[]
-  goodsNotes        GoodsNote[]
-  defaultItems      Item[]             @relation("ItemDefaultWarehouse")
-  purchaseOrders    PurchaseOrder[]
-  issueRequests     IssueRequest[]
+  transfersFrom                 StockTransfer[]     @relation("TransferFrom")
+  transfersTo                   StockTransfer[]     @relation("TransferTo")
+  counts                        StockCount[]
+  salesInvoices                 SalesInvoice[]
+  purchaseInvoices              PurchaseInvoice[]
+  salesReturns                  SalesReturn[]
+  purchaseReturns               PurchaseReturn[]
+  goodsNotes                    GoodsNote[]
+  defaultItems                  Item[]              @relation("ItemDefaultWarehouse")
+  purchaseOrders                PurchaseOrder[]
+  issueRequests                 IssueRequest[]
+  salesQuotes                   SalesQuote[]
+  salesOrders                   SalesOrder[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
   @@map("warehouses")
-  salesQuotes SalesQuote[]
-  salesOrders SalesOrder[]
 }
 
 model StockMovement {
@@ -1370,6 +1419,7 @@ model StockMovement {
   reversals  StockMovement[] @relation("MovementReversal")
 
   salesLineComponents SalesInvoiceLineComponent[]
+
   @@unique([tenantId, id])
   @@index([tenantId, warehouseId, itemId])
   @@index([tenantId, itemId, movementDate])
@@ -1547,10 +1597,10 @@ model StockCount {
   createdAt    DateTime         @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt    DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company   Company          @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  warehouse Warehouse        @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
-  itemGroup ItemGroup?       @relation(fields: [tenantId, itemGroupId], references: [tenantId, id])
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company   Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  warehouse Warehouse           @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  itemGroup ItemGroup?          @relation(fields: [tenantId, itemGroupId], references: [tenantId, id])
   lines     StockCountLine[]
   counters  StockCountCounter[]
 
@@ -1563,11 +1613,11 @@ model StockCount {
 }
 
 model StockCountLine {
-  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId      BigInt   @map("tenant_id") @db.UnsignedBigInt
-  countId       BigInt   @map("count_id") @db.UnsignedBigInt
-  itemId        BigInt   @map("item_id") @db.UnsignedBigInt
-  systemQty     Decimal  @map("system_qty") @db.Decimal(18, 6)
+  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt    @map("tenant_id") @db.UnsignedBigInt
+  countId        BigInt    @map("count_id") @db.UnsignedBigInt
+  itemId         BigInt    @map("item_id") @db.UnsignedBigInt
+  systemQty      Decimal   @map("system_qty") @db.Decimal(18, 6)
   /// Counted quantity in the BASE unit (6 dp); the entered quantity is countedUnitQty in itemUnit.
   countedQty     Decimal?  @map("counted_qty") @db.Decimal(18, 6)
   differenceQty  Decimal?  @map("difference_qty") @db.Decimal(18, 6)
@@ -1628,28 +1678,28 @@ enum GoodsNoteType {
 }
 
 model Party {
-  id               BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId         BigInt    @map("tenant_id") @db.UnsignedBigInt
-  companyId        BigInt    @map("company_id") @db.UnsignedBigInt
-  code             String    @db.VarChar(50)
-  nameAr           String    @map("name_ar") @db.VarChar(191)
-  nameEn           String?   @map("name_en") @db.VarChar(191)
-  partyType        PartyType @map("party_type")
-  taxNumber        String?   @map("tax_number") @db.VarChar(50)
-  nationalId       String?   @map("national_id") @db.VarChar(50)
+  id               BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt         @map("tenant_id") @db.UnsignedBigInt
+  companyId        BigInt         @map("company_id") @db.UnsignedBigInt
+  code             String         @db.VarChar(50)
+  nameAr           String         @map("name_ar") @db.VarChar(191)
+  nameEn           String?        @map("name_en") @db.VarChar(191)
+  partyType        PartyType      @map("party_type")
+  taxNumber        String?        @map("tax_number") @db.VarChar(50)
+  nationalId       String?        @map("national_id") @db.VarChar(50)
   /// JoFotara buyer scheme for national_id (0005 §5): NIN Jordanian, PN non-Jordanian.
   nationalIdKind   NationalIdKind @default(NIN) @map("national_id_kind")
-  phone            String?   @db.VarChar(50)
-  address          String?   @db.VarChar(512)
-  city             String?   @db.VarChar(100)
-  creditLimit      Decimal?  @map("credit_limit") @db.Decimal(18, 3)
-  paymentTermsDays Int?      @map("payment_terms_days")
-  isCashCustomer   Boolean   @default(false) @map("is_cash_customer")
-  isActive         Boolean   @default(true) @map("is_active")
-  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy        BigInt?   @map("created_by") @db.UnsignedBigInt
-  updatedBy        BigInt?   @map("updated_by") @db.UnsignedBigInt
+  phone            String?        @db.VarChar(50)
+  address          String?        @db.VarChar(512)
+  city             String?        @db.VarChar(100)
+  creditLimit      Decimal?       @map("credit_limit") @db.Decimal(18, 3)
+  paymentTermsDays Int?           @map("payment_terms_days")
+  isCashCustomer   Boolean        @default(false) @map("is_cash_customer")
+  isActive         Boolean        @default(true) @map("is_active")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy        BigInt?        @map("created_by") @db.UnsignedBigInt
+  updatedBy        BigInt?        @map("updated_by") @db.UnsignedBigInt
 
   tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   company          Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
@@ -1667,6 +1717,7 @@ model Party {
   salesOrders      SalesOrder[]
 
   cheques Cheque[]
+
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
   @@index([tenantId, partyType])
@@ -1685,34 +1736,38 @@ model CashBox {
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  account Account @relation(fields: [tenantId, companyId, accountId], references: [tenantId, companyId, id])
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company     Company      @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  account     Account      @relation(fields: [tenantId, companyId, accountId], references: [tenantId, companyId, id])
+  payrollRuns PayrollRun[] @relation("PayrollRunCashBox")
 
   @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, code])
   @@map("cash_boxes")
 }
 
 model BankAccount {
-  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId       BigInt   @map("tenant_id") @db.UnsignedBigInt
-  companyId      BigInt   @map("company_id") @db.UnsignedBigInt
-  bankName       String   @map("bank_name") @db.VarChar(191)
-  accountNoMasked String? @map("account_no_masked") @db.VarChar(50)
-  ibanMasked     String?  @map("iban_masked") @db.VarChar(50)
-  accountId      BigInt   @map("account_id") @db.UnsignedBigInt
-  isActive       Boolean  @default(true) @map("is_active")
-  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId       BigInt   @map("company_id") @db.UnsignedBigInt
+  bankName        String   @map("bank_name") @db.VarChar(191)
+  accountNoMasked String?  @map("account_no_masked") @db.VarChar(50)
+  ibanMasked      String?  @map("iban_masked") @db.VarChar(50)
+  accountId       BigInt   @map("account_id") @db.UnsignedBigInt
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  account Account @relation(fields: [tenantId, companyId, accountId], references: [tenantId, companyId, id])
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company     Company      @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  account     Account      @relation(fields: [tenantId, companyId, accountId], references: [tenantId, companyId, id])
+  payrollRuns PayrollRun[] @relation("PayrollRunBankAccount")
 
   statements BankStatement[]
 
   @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
   @@map("bank_accounts")
 }
 
@@ -1795,55 +1850,56 @@ model BankStatementMatch {
 }
 
 model SalesInvoice {
-  id             BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId       BigInt              @map("tenant_id") @db.UnsignedBigInt
-  companyId      BigInt              @map("company_id") @db.UnsignedBigInt
-  branchId       BigInt?             @map("branch_id") @db.UnsignedBigInt
-  invoiceNo      String?             @map("invoice_no") @db.VarChar(50)
-  invoiceDate    DateTime            @map("invoice_date") @db.Date
-  dueDate        DateTime?           @map("due_date") @db.Date
-  customerId     BigInt              @map("customer_id") @db.UnsignedBigInt
-  warehouseId    BigInt              @map("warehouse_id") @db.UnsignedBigInt
-  paymentType    InvoicePaymentType  @map("payment_type")
+  id                    BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId              BigInt             @map("tenant_id") @db.UnsignedBigInt
+  companyId             BigInt             @map("company_id") @db.UnsignedBigInt
+  branchId              BigInt?            @map("branch_id") @db.UnsignedBigInt
+  invoiceNo             String?            @map("invoice_no") @db.VarChar(50)
+  invoiceDate           DateTime           @map("invoice_date") @db.Date
+  dueDate               DateTime?          @map("due_date") @db.Date
+  customerId            BigInt             @map("customer_id") @db.UnsignedBigInt
+  warehouseId           BigInt             @map("warehouse_id") @db.UnsignedBigInt
+  paymentType           InvoicePaymentType @map("payment_type")
   /// ADR-017: line prices were entered including tax (company setting when the draft was saved).
-  pricesIncludeTax Boolean           @default(false) @map("prices_include_tax")
-  invoiceDiscountPct Decimal?         @map("invoice_discount_pct") @db.Decimal(9, 4)
-  invoiceDiscountAmount Decimal       @default(0) @map("invoice_discount_amount") @db.Decimal(18, 3)
-  cashAccountId  BigInt?             @map("cash_account_id") @db.UnsignedBigInt
+  pricesIncludeTax      Boolean            @default(false) @map("prices_include_tax")
+  invoiceDiscountPct    Decimal?           @map("invoice_discount_pct") @db.Decimal(9, 4)
+  invoiceDiscountAmount Decimal            @default(0) @map("invoice_discount_amount") @db.Decimal(18, 3)
+  cashAccountId         BigInt?            @map("cash_account_id") @db.UnsignedBigInt
   /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
-  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
+  costCenterId          BigInt?            @map("cost_center_id") @db.UnsignedBigInt
   /// ADR-027 §4: the order this invoice bills (set on the draft, final at posting).
-  salesOrderId   BigInt?             @map("sales_order_id") @db.UnsignedBigInt
+  salesOrderId          BigInt?            @map("sales_order_id") @db.UnsignedBigInt
   /// ADR-027 §4 / ADR-026 §2: price approval of a locked-price invoice (set by approve-price).
-  priceApprovedAt DateTime?          @map("price_approved_at") @db.DateTime(3)
-  priceApprovedBy BigInt?            @map("price_approved_by") @db.UnsignedBigInt
-  status         DocumentStatus      @default(DRAFT)
-  description    String?             @db.VarChar(500)
-  netTotal       Decimal             @default(0) @map("net_total") @db.Decimal(18, 3)
-  taxTotal       Decimal             @default(0) @map("tax_total") @db.Decimal(18, 3)
-  grandTotal     Decimal             @default(0) @map("grand_total") @db.Decimal(18, 3)
-  paidAmount     Decimal             @default(0) @map("paid_amount") @db.Decimal(18, 3)
-  costTotal      Decimal             @default(0) @map("cost_total") @db.Decimal(18, 3)
-  journalEntryId BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
-  postedAt       DateTime?           @map("posted_at") @db.DateTime(3)
-  postedBy       BigInt?             @map("posted_by") @db.UnsignedBigInt
-  createdAt      DateTime            @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt      DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy      BigInt?             @map("created_by") @db.UnsignedBigInt
-  updatedBy      BigInt?             @map("updated_by") @db.UnsignedBigInt
+  priceApprovedAt       DateTime?          @map("price_approved_at") @db.DateTime(3)
+  priceApprovedBy       BigInt?            @map("price_approved_by") @db.UnsignedBigInt
+  status                DocumentStatus     @default(DRAFT)
+  description           String?            @db.VarChar(500)
+  netTotal              Decimal            @default(0) @map("net_total") @db.Decimal(18, 3)
+  taxTotal              Decimal            @default(0) @map("tax_total") @db.Decimal(18, 3)
+  grandTotal            Decimal            @default(0) @map("grand_total") @db.Decimal(18, 3)
+  paidAmount            Decimal            @default(0) @map("paid_amount") @db.Decimal(18, 3)
+  costTotal             Decimal            @default(0) @map("cost_total") @db.Decimal(18, 3)
+  journalEntryId        BigInt?            @map("journal_entry_id") @db.UnsignedBigInt
+  postedAt              DateTime?          @map("posted_at") @db.DateTime(3)
+  postedBy              BigInt?            @map("posted_by") @db.UnsignedBigInt
+  createdAt             DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy             BigInt?            @map("created_by") @db.UnsignedBigInt
+  updatedBy             BigInt?            @map("updated_by") @db.UnsignedBigInt
 
-  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company      Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  customer     Party               @relation(fields: [tenantId, customerId], references: [tenantId, id])
-  warehouse    Warehouse           @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
-  cashAccount  Account?            @relation("SalesInvoiceCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
-  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
-  journalEntry JournalEntry?       @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
-  salesOrder   SalesOrder?         @relation(fields: [tenantId, salesOrderId], references: [tenantId, id])
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company      Company            @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  customer     Party              @relation(fields: [tenantId, customerId], references: [tenantId, id])
+  warehouse    Warehouse          @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  cashAccount  Account?           @relation("SalesInvoiceCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter   CostCenter?        @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  journalEntry JournalEntry?      @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+  salesOrder   SalesOrder?        @relation(fields: [tenantId, salesOrderId], references: [tenantId, id])
   lines        SalesInvoiceLine[]
   returns      SalesReturn[]
 
   lineComponents SalesInvoiceLineComponent[]
+
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, invoiceNo])
   // Invoices of one order (ADR-027 §4): the order's list of billed invoices.
@@ -1858,37 +1914,37 @@ model SalesInvoice {
 }
 
 model SalesInvoiceLine {
-  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId       BigInt    @map("tenant_id") @db.UnsignedBigInt
-  invoiceId      BigInt    @map("invoice_id") @db.UnsignedBigInt
-  lineNo         Int       @map("line_no")
-  itemId         BigInt    @map("item_id") @db.UnsignedBigInt
-  itemUnitId     BigInt?   @map("item_unit_id") @db.UnsignedBigInt
-  qty            Decimal   @db.Decimal(18, 6)
-  qtyBase        Decimal   @map("qty_base") @db.Decimal(18, 6)
-  unitPrice      Decimal   @map("unit_price") @db.Decimal(18, 3)
-  discountPct    Decimal   @default(0) @map("discount_pct") @db.Decimal(9, 4)
-  discountAmount Decimal   @default(0) @map("discount_amount") @db.Decimal(18, 3)
-  invoiceDiscountShare Decimal @default(0) @map("invoice_discount_share") @db.Decimal(18, 3)
-  netAmount      Decimal   @map("net_amount") @db.Decimal(18, 3)
-  taxCategoryId  BigInt?   @map("tax_category_id") @db.UnsignedBigInt
-  taxRate        Decimal   @default(0) @map("tax_rate") @db.Decimal(9, 4)
-  taxAmount      Decimal   @default(0) @map("tax_amount") @db.Decimal(18, 3)
-  lineTotal      Decimal   @map("line_total") @db.Decimal(18, 3)
-  unitCost       Decimal?  @map("unit_cost") @db.Decimal(18, 6)
-  costTotal      Decimal   @default(0) @map("cost_total") @db.Decimal(18, 3)
+  id                   BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId             BigInt   @map("tenant_id") @db.UnsignedBigInt
+  invoiceId            BigInt   @map("invoice_id") @db.UnsignedBigInt
+  lineNo               Int      @map("line_no")
+  itemId               BigInt   @map("item_id") @db.UnsignedBigInt
+  itemUnitId           BigInt?  @map("item_unit_id") @db.UnsignedBigInt
+  qty                  Decimal  @db.Decimal(18, 6)
+  qtyBase              Decimal  @map("qty_base") @db.Decimal(18, 6)
+  unitPrice            Decimal  @map("unit_price") @db.Decimal(18, 3)
+  discountPct          Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
+  discountAmount       Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
+  invoiceDiscountShare Decimal  @default(0) @map("invoice_discount_share") @db.Decimal(18, 3)
+  netAmount            Decimal  @map("net_amount") @db.Decimal(18, 3)
+  taxCategoryId        BigInt?  @map("tax_category_id") @db.UnsignedBigInt
+  taxRate              Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
+  taxAmount            Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
+  lineTotal            Decimal  @map("line_total") @db.Decimal(18, 3)
+  unitCost             Decimal? @map("unit_cost") @db.Decimal(18, 6)
+  costTotal            Decimal  @default(0) @map("cost_total") @db.Decimal(18, 3)
   /// ADR-027 §4: the order line this line bills (set on the draft, final at posting).
-  orderLineId    BigInt?   @map("order_line_id") @db.UnsignedBigInt
+  orderLineId          BigInt?  @map("order_line_id") @db.UnsignedBigInt
   /// ADR-032 §1: a recipe with no ACTIVE bill of materials at posting: sold at cost 0, no components.
-  recipeBomMissing Boolean @default(false) @map("recipe_bom_missing")
-  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  recipeBomMissing     Boolean  @default(false) @map("recipe_bom_missing")
+  createdAt            DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  invoice     SalesInvoice @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Cascade)
-  item        Item        @relation(fields: [tenantId, itemId], references: [tenantId, id])
-  itemUnit    ItemUnit?   @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
-  taxCategory TaxCategory? @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
-  orderLine   SalesOrderLine? @relation(fields: [tenantId, orderLineId], references: [tenantId, id])
+  tenant      Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice     SalesInvoice                @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Cascade)
+  item        Item                        @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  itemUnit    ItemUnit?                   @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  taxCategory TaxCategory?                @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  orderLine   SalesOrderLine?             @relation(fields: [tenantId, orderLineId], references: [tenantId, id])
   returnLines SalesReturnLine[]
   /// ADR-032 §8: the exploded components of a recipe line (a projection of its stock movements).
   components  SalesInvoiceLineComponent[]
@@ -1931,55 +1987,55 @@ model SalesInvoiceLineComponent {
 }
 
 model PurchaseInvoice {
-  id                  BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId            BigInt              @map("tenant_id") @db.UnsignedBigInt
-  companyId           BigInt              @map("company_id") @db.UnsignedBigInt
-  branchId            BigInt?             @map("branch_id") @db.UnsignedBigInt
-  invoiceNo           String?             @map("invoice_no") @db.VarChar(50)
-  invoiceDate         DateTime            @map("invoice_date") @db.Date
-  dueDate             DateTime?           @map("due_date") @db.Date
-  supplierId          BigInt              @map("supplier_id") @db.UnsignedBigInt
-  supplierInvoiceNo   String?             @map("supplier_invoice_no") @db.VarChar(100)
-  supplierInvoiceDate DateTime?           @map("supplier_invoice_date") @db.Date
-  warehouseId         BigInt?             @map("warehouse_id") @db.UnsignedBigInt
-  paymentType         InvoicePaymentType  @map("payment_type")
+  id                  BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId            BigInt             @map("tenant_id") @db.UnsignedBigInt
+  companyId           BigInt             @map("company_id") @db.UnsignedBigInt
+  branchId            BigInt?            @map("branch_id") @db.UnsignedBigInt
+  invoiceNo           String?            @map("invoice_no") @db.VarChar(50)
+  invoiceDate         DateTime           @map("invoice_date") @db.Date
+  dueDate             DateTime?          @map("due_date") @db.Date
+  supplierId          BigInt             @map("supplier_id") @db.UnsignedBigInt
+  supplierInvoiceNo   String?            @map("supplier_invoice_no") @db.VarChar(100)
+  supplierInvoiceDate DateTime?          @map("supplier_invoice_date") @db.Date
+  warehouseId         BigInt?            @map("warehouse_id") @db.UnsignedBigInt
+  paymentType         InvoicePaymentType @map("payment_type")
   /// ADR-017: line costs were entered including tax (company setting when the draft was saved).
-  pricesIncludeTax    Boolean             @default(false) @map("prices_include_tax")
-  cashAccountId       BigInt?             @map("cash_account_id") @db.UnsignedBigInt
+  pricesIncludeTax    Boolean            @default(false) @map("prices_include_tax")
+  cashAccountId       BigInt?            @map("cash_account_id") @db.UnsignedBigInt
   /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
-  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
-  status              DocumentStatus      @default(DRAFT)
-  description         String?             @db.VarChar(500)
-  netTotal            Decimal             @default(0) @map("net_total") @db.Decimal(18, 3)
-  taxTotal            Decimal             @default(0) @map("tax_total") @db.Decimal(18, 3)
-  grandTotal          Decimal             @default(0) @map("grand_total") @db.Decimal(18, 3)
-  paidAmount          Decimal             @default(0) @map("paid_amount") @db.Decimal(18, 3)
-  journalEntryId      BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
+  costCenterId        BigInt?            @map("cost_center_id") @db.UnsignedBigInt
+  status              DocumentStatus     @default(DRAFT)
+  description         String?            @db.VarChar(500)
+  netTotal            Decimal            @default(0) @map("net_total") @db.Decimal(18, 3)
+  taxTotal            Decimal            @default(0) @map("tax_total") @db.Decimal(18, 3)
+  grandTotal          Decimal            @default(0) @map("grand_total") @db.Decimal(18, 3)
+  paidAmount          Decimal            @default(0) @map("paid_amount") @db.Decimal(18, 3)
+  journalEntryId      BigInt?            @map("journal_entry_id") @db.UnsignedBigInt
   /// TRADE-02: the posted GRN this invoice bills; its stock lines clear 2104 instead of moving stock again.
-  receivedGrnId       BigInt?             @map("received_grn_id") @db.UnsignedBigInt
+  receivedGrnId       BigInt?            @map("received_grn_id") @db.UnsignedBigInt
   /// ADR-026 §7: the purchase order whose posted receipts this invoice bills (set at creation, never changed).
-  purchaseOrderId     BigInt?             @map("purchase_order_id") @db.UnsignedBigInt
+  purchaseOrderId     BigInt?            @map("purchase_order_id") @db.UnsignedBigInt
   /// ADR-026 §2: «approve the price difference» for lines above the order price; an edit clears it.
-  priceApprovedAt     DateTime?           @map("price_approved_at") @db.DateTime(3)
-  priceApprovedBy     BigInt?             @map("price_approved_by") @db.UnsignedBigInt
-  postedAt            DateTime?           @map("posted_at") @db.DateTime(3)
-  postedBy            BigInt?             @map("posted_by") @db.UnsignedBigInt
-  createdAt           DateTime            @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt           DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy           BigInt?             @map("created_by") @db.UnsignedBigInt
-  updatedBy           BigInt?             @map("updated_by") @db.UnsignedBigInt
+  priceApprovedAt     DateTime?          @map("price_approved_at") @db.DateTime(3)
+  priceApprovedBy     BigInt?            @map("price_approved_by") @db.UnsignedBigInt
+  postedAt            DateTime?          @map("posted_at") @db.DateTime(3)
+  postedBy            BigInt?            @map("posted_by") @db.UnsignedBigInt
+  createdAt           DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy           BigInt?            @map("created_by") @db.UnsignedBigInt
+  updatedBy           BigInt?            @map("updated_by") @db.UnsignedBigInt
 
-  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company      Company              @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  supplier     Party                @relation(fields: [tenantId, supplierId], references: [tenantId, id])
-  warehouse    Warehouse?           @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
-  cashAccount  Account?             @relation("PurchaseInvoiceCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
-  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
-  journalEntry JournalEntry?        @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
-  receivedGrn  GoodsNote?           @relation(fields: [tenantId, receivedGrnId], references: [tenantId, id])
-  purchaseOrder PurchaseOrder?       @relation(fields: [tenantId, purchaseOrderId], references: [tenantId, id])
-  lines        PurchaseInvoiceLine[]
-  returns      PurchaseReturn[]
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company       Company               @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  supplier      Party                 @relation(fields: [tenantId, supplierId], references: [tenantId, id])
+  warehouse     Warehouse?            @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  cashAccount   Account?              @relation("PurchaseInvoiceCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter    CostCenter?           @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  journalEntry  JournalEntry?         @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+  receivedGrn   GoodsNote?            @relation(fields: [tenantId, receivedGrnId], references: [tenantId, id])
+  purchaseOrder PurchaseOrder?        @relation(fields: [tenantId, purchaseOrderId], references: [tenantId, id])
+  lines         PurchaseInvoiceLine[]
+  returns       PurchaseReturn[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, invoiceNo])
@@ -1997,30 +2053,30 @@ model PurchaseInvoice {
 }
 
 model PurchaseInvoiceLine {
-  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId       BigInt    @map("tenant_id") @db.UnsignedBigInt
-  invoiceId      BigInt    @map("invoice_id") @db.UnsignedBigInt
-  lineNo         Int       @map("line_no")
-  itemId         BigInt    @map("item_id") @db.UnsignedBigInt
-  itemUnitId     BigInt?   @map("item_unit_id") @db.UnsignedBigInt
-  qty            Decimal   @db.Decimal(18, 6)
-  qtyBase        Decimal   @map("qty_base") @db.Decimal(18, 6)
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt   @map("tenant_id") @db.UnsignedBigInt
+  invoiceId      BigInt   @map("invoice_id") @db.UnsignedBigInt
+  lineNo         Int      @map("line_no")
+  itemId         BigInt   @map("item_id") @db.UnsignedBigInt
+  itemUnitId     BigInt?  @map("item_unit_id") @db.UnsignedBigInt
+  qty            Decimal  @db.Decimal(18, 6)
+  qtyBase        Decimal  @map("qty_base") @db.Decimal(18, 6)
   /// Price per unit as entered, 6 dp (an order price, ADR-026 §5).
-  unitCost       Decimal   @map("unit_cost") @db.Decimal(18, 6)
-  discountPct    Decimal   @default(0) @map("discount_pct") @db.Decimal(9, 4)
-  discountAmount Decimal   @default(0) @map("discount_amount") @db.Decimal(18, 3)
-  netAmount      Decimal   @map("net_amount") @db.Decimal(18, 3)
-  taxCategoryId  BigInt?   @map("tax_category_id") @db.UnsignedBigInt
-  taxRate        Decimal   @default(0) @map("tax_rate") @db.Decimal(9, 4)
-  taxAmount      Decimal   @default(0) @map("tax_amount") @db.Decimal(18, 3)
-  lineTotal      Decimal   @map("line_total") @db.Decimal(18, 3)
+  unitCost       Decimal  @map("unit_cost") @db.Decimal(18, 6)
+  discountPct    Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
+  discountAmount Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
+  netAmount      Decimal  @map("net_amount") @db.Decimal(18, 3)
+  taxCategoryId  BigInt?  @map("tax_category_id") @db.UnsignedBigInt
+  taxRate        Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
+  taxAmount      Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
+  lineTotal      Decimal  @map("line_total") @db.Decimal(18, 3)
   createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  invoice     PurchaseInvoice @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Cascade)
-  item        Item            @relation(fields: [tenantId, itemId], references: [tenantId, id])
-  itemUnit    ItemUnit?       @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
-  taxCategory TaxCategory?    @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  tenant      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice     PurchaseInvoice          @relation(fields: [tenantId, invoiceId], references: [tenantId, id], onDelete: Cascade)
+  item        Item                     @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  itemUnit    ItemUnit?                @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  taxCategory TaxCategory?             @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
   returnLines PurchaseReturnLine[]
   receipts    PurchaseInvoiceReceipt[]
 
@@ -2030,40 +2086,40 @@ model PurchaseInvoiceLine {
 }
 
 model SalesReturn {
-  id               BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId         BigInt              @map("tenant_id") @db.UnsignedBigInt
-  companyId        BigInt              @map("company_id") @db.UnsignedBigInt
-  returnNo         String?             @map("return_no") @db.VarChar(50)
-  returnDate       DateTime            @map("return_date") @db.Date
+  id                BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId          BigInt             @map("tenant_id") @db.UnsignedBigInt
+  companyId         BigInt             @map("company_id") @db.UnsignedBigInt
+  returnNo          String?            @map("return_no") @db.VarChar(50)
+  returnDate        DateTime           @map("return_date") @db.Date
   originalInvoiceId BigInt             @map("original_invoice_id") @db.UnsignedBigInt
-  customerId       BigInt              @map("customer_id") @db.UnsignedBigInt
-  warehouseId      BigInt              @map("warehouse_id") @db.UnsignedBigInt
-  refundType       InvoicePaymentType  @map("refund_type")
-  cashAccountId    BigInt?             @map("cash_account_id") @db.UnsignedBigInt
+  customerId        BigInt             @map("customer_id") @db.UnsignedBigInt
+  warehouseId       BigInt             @map("warehouse_id") @db.UnsignedBigInt
+  refundType        InvoicePaymentType @map("refund_type")
+  cashAccountId     BigInt?            @map("cash_account_id") @db.UnsignedBigInt
   /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
-  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
-  reason           String?             @db.VarChar(500)
-  status           DocumentStatus      @default(DRAFT)
-  netTotal         Decimal             @default(0) @map("net_total") @db.Decimal(18, 3)
-  taxTotal         Decimal             @default(0) @map("tax_total") @db.Decimal(18, 3)
-  grandTotal       Decimal             @default(0) @map("grand_total") @db.Decimal(18, 3)
-  costTotal        Decimal             @default(0) @map("cost_total") @db.Decimal(18, 3)
-  journalEntryId   BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
-  postedAt         DateTime?           @map("posted_at") @db.DateTime(3)
-  postedBy         BigInt?             @map("posted_by") @db.UnsignedBigInt
-  createdAt        DateTime            @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt        DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy        BigInt?             @map("created_by") @db.UnsignedBigInt
-  updatedBy        BigInt?             @map("updated_by") @db.UnsignedBigInt
+  costCenterId      BigInt?            @map("cost_center_id") @db.UnsignedBigInt
+  reason            String?            @db.VarChar(500)
+  status            DocumentStatus     @default(DRAFT)
+  netTotal          Decimal            @default(0) @map("net_total") @db.Decimal(18, 3)
+  taxTotal          Decimal            @default(0) @map("tax_total") @db.Decimal(18, 3)
+  grandTotal        Decimal            @default(0) @map("grand_total") @db.Decimal(18, 3)
+  costTotal         Decimal            @default(0) @map("cost_total") @db.Decimal(18, 3)
+  journalEntryId    BigInt?            @map("journal_entry_id") @db.UnsignedBigInt
+  postedAt          DateTime?          @map("posted_at") @db.DateTime(3)
+  postedBy          BigInt?            @map("posted_by") @db.UnsignedBigInt
+  createdAt         DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy         BigInt?            @map("created_by") @db.UnsignedBigInt
+  updatedBy         BigInt?            @map("updated_by") @db.UnsignedBigInt
 
-  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company         Company            @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  originalInvoice SalesInvoice       @relation(fields: [tenantId, originalInvoiceId], references: [tenantId, id])
-  customer        Party              @relation(fields: [tenantId, customerId], references: [tenantId, id])
-  warehouse       Warehouse          @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
-  cashAccount     Account?           @relation("SalesReturnCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
-  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
-  journalEntry    JournalEntry?      @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company         Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  originalInvoice SalesInvoice      @relation(fields: [tenantId, originalInvoiceId], references: [tenantId, id])
+  customer        Party             @relation(fields: [tenantId, customerId], references: [tenantId, id])
+  warehouse       Warehouse         @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  cashAccount     Account?          @relation("SalesReturnCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter      CostCenter?       @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  journalEntry    JournalEntry?     @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   lines           SalesReturnLine[]
 
   @@unique([tenantId, id])
@@ -2076,33 +2132,33 @@ model SalesReturn {
 }
 
 model SalesReturnLine {
-  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId        BigInt   @map("tenant_id") @db.UnsignedBigInt
-  returnId        BigInt   @map("return_id") @db.UnsignedBigInt
-  lineNo          Int      @map("line_no")
-  originalLineId  BigInt   @map("original_line_id") @db.UnsignedBigInt
-  itemId          BigInt   @map("item_id") @db.UnsignedBigInt
-  qty             Decimal  @db.Decimal(18, 6)
-  qtyBase         Decimal  @map("qty_base") @db.Decimal(18, 6)
-  unitPrice       Decimal  @map("unit_price") @db.Decimal(18, 3)
-  discountPct     Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
-  discountAmount  Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
-  invoiceDiscountShare Decimal @default(0) @map("invoice_discount_share") @db.Decimal(18, 3)
-  invoiceDiscountNetShare Decimal @default(0) @map("invoice_discount_net_share") @db.Decimal(18, 3)
-  netAmount       Decimal  @map("net_amount") @db.Decimal(18, 3)
-  taxCategoryId   BigInt?  @map("tax_category_id") @db.UnsignedBigInt
-  taxRate         Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
-  taxAmount       Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
-  lineTotal       Decimal  @map("line_total") @db.Decimal(18, 3)
-  unitCost        Decimal? @map("unit_cost") @db.Decimal(18, 6)
-  costTotal       Decimal  @default(0) @map("cost_total") @db.Decimal(18, 3)
-  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  id                      BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId                BigInt   @map("tenant_id") @db.UnsignedBigInt
+  returnId                BigInt   @map("return_id") @db.UnsignedBigInt
+  lineNo                  Int      @map("line_no")
+  originalLineId          BigInt   @map("original_line_id") @db.UnsignedBigInt
+  itemId                  BigInt   @map("item_id") @db.UnsignedBigInt
+  qty                     Decimal  @db.Decimal(18, 6)
+  qtyBase                 Decimal  @map("qty_base") @db.Decimal(18, 6)
+  unitPrice               Decimal  @map("unit_price") @db.Decimal(18, 3)
+  discountPct             Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
+  discountAmount          Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
+  invoiceDiscountShare    Decimal  @default(0) @map("invoice_discount_share") @db.Decimal(18, 3)
+  invoiceDiscountNetShare Decimal  @default(0) @map("invoice_discount_net_share") @db.Decimal(18, 3)
+  netAmount               Decimal  @map("net_amount") @db.Decimal(18, 3)
+  taxCategoryId           BigInt?  @map("tax_category_id") @db.UnsignedBigInt
+  taxRate                 Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
+  taxAmount               Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
+  lineTotal               Decimal  @map("line_total") @db.Decimal(18, 3)
+  unitCost                Decimal? @map("unit_cost") @db.Decimal(18, 6)
+  costTotal               Decimal  @default(0) @map("cost_total") @db.Decimal(18, 3)
+  createdAt               DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  salesReturn    SalesReturn     @relation(fields: [tenantId, returnId], references: [tenantId, id], onDelete: Cascade)
-  originalLine   SalesInvoiceLine @relation(fields: [tenantId, originalLineId], references: [tenantId, id])
-  item           Item            @relation(fields: [tenantId, itemId], references: [tenantId, id])
-  taxCategory    TaxCategory?    @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  salesReturn  SalesReturn      @relation(fields: [tenantId, returnId], references: [tenantId, id], onDelete: Cascade)
+  originalLine SalesInvoiceLine @relation(fields: [tenantId, originalLineId], references: [tenantId, id])
+  item         Item             @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  taxCategory  TaxCategory?     @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
 
   @@unique([tenantId, id])
   @@unique([tenantId, returnId, lineNo])
@@ -2110,39 +2166,39 @@ model SalesReturnLine {
 }
 
 model PurchaseReturn {
-  id                BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId          BigInt              @map("tenant_id") @db.UnsignedBigInt
-  companyId         BigInt              @map("company_id") @db.UnsignedBigInt
-  returnNo          String?             @map("return_no") @db.VarChar(50)
-  returnDate        DateTime            @map("return_date") @db.Date
-  originalInvoiceId BigInt              @map("original_invoice_id") @db.UnsignedBigInt
-  supplierId        BigInt              @map("supplier_id") @db.UnsignedBigInt
-  warehouseId       BigInt?             @map("warehouse_id") @db.UnsignedBigInt // NULL: service-only invoice (ADR-016 §5)
-  refundType        InvoicePaymentType  @map("refund_type")
-  cashAccountId     BigInt?             @map("cash_account_id") @db.UnsignedBigInt
+  id                BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId          BigInt             @map("tenant_id") @db.UnsignedBigInt
+  companyId         BigInt             @map("company_id") @db.UnsignedBigInt
+  returnNo          String?            @map("return_no") @db.VarChar(50)
+  returnDate        DateTime           @map("return_date") @db.Date
+  originalInvoiceId BigInt             @map("original_invoice_id") @db.UnsignedBigInt
+  supplierId        BigInt             @map("supplier_id") @db.UnsignedBigInt
+  warehouseId       BigInt?            @map("warehouse_id") @db.UnsignedBigInt // NULL: service-only invoice (ADR-016 §5)
+  refundType        InvoicePaymentType @map("refund_type")
+  cashAccountId     BigInt?            @map("cash_account_id") @db.UnsignedBigInt
   /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
-  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
-  reason            String?             @db.VarChar(500)
-  status            DocumentStatus      @default(DRAFT)
-  netTotal          Decimal             @default(0) @map("net_total") @db.Decimal(18, 3)
-  taxTotal          Decimal             @default(0) @map("tax_total") @db.Decimal(18, 3)
-  grandTotal        Decimal             @default(0) @map("grand_total") @db.Decimal(18, 3)
-  journalEntryId    BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
-  postedAt          DateTime?           @map("posted_at") @db.DateTime(3)
-  postedBy          BigInt?             @map("posted_by") @db.UnsignedBigInt
-  createdAt         DateTime            @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt         DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
-  createdBy         BigInt?             @map("created_by") @db.UnsignedBigInt
-  updatedBy         BigInt?             @map("updated_by") @db.UnsignedBigInt
+  costCenterId      BigInt?            @map("cost_center_id") @db.UnsignedBigInt
+  reason            String?            @db.VarChar(500)
+  status            DocumentStatus     @default(DRAFT)
+  netTotal          Decimal            @default(0) @map("net_total") @db.Decimal(18, 3)
+  taxTotal          Decimal            @default(0) @map("tax_total") @db.Decimal(18, 3)
+  grandTotal        Decimal            @default(0) @map("grand_total") @db.Decimal(18, 3)
+  journalEntryId    BigInt?            @map("journal_entry_id") @db.UnsignedBigInt
+  postedAt          DateTime?          @map("posted_at") @db.DateTime(3)
+  postedBy          BigInt?            @map("posted_by") @db.UnsignedBigInt
+  createdAt         DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+  createdBy         BigInt?            @map("created_by") @db.UnsignedBigInt
+  updatedBy         BigInt?            @map("updated_by") @db.UnsignedBigInt
 
-  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company         Company               @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  originalInvoice PurchaseInvoice       @relation(fields: [tenantId, originalInvoiceId], references: [tenantId, id])
-  supplier        Party                 @relation(fields: [tenantId, supplierId], references: [tenantId, id])
-  warehouse       Warehouse?            @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
-  cashAccount     Account?              @relation("PurchaseReturnCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
-  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
-  journalEntry    JournalEntry?         @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company         Company              @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  originalInvoice PurchaseInvoice      @relation(fields: [tenantId, originalInvoiceId], references: [tenantId, id])
+  supplier        Party                @relation(fields: [tenantId, supplierId], references: [tenantId, id])
+  warehouse       Warehouse?           @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  cashAccount     Account?             @relation("PurchaseReturnCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter      CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  journalEntry    JournalEntry?        @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   lines           PurchaseReturnLine[]
 
   @@unique([tenantId, id])
@@ -2155,29 +2211,29 @@ model PurchaseReturn {
 }
 
 model PurchaseReturnLine {
-  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId        BigInt   @map("tenant_id") @db.UnsignedBigInt
-  returnId        BigInt   @map("return_id") @db.UnsignedBigInt
-  lineNo          Int      @map("line_no")
-  originalLineId  BigInt   @map("original_line_id") @db.UnsignedBigInt
-  itemId          BigInt   @map("item_id") @db.UnsignedBigInt
-  qty             Decimal  @db.Decimal(18, 6)
-  qtyBase         Decimal  @map("qty_base") @db.Decimal(18, 6)
-  unitCost        Decimal  @map("unit_cost") @db.Decimal(18, 6)
-  discountPct     Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
-  discountAmount  Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
-  netAmount       Decimal  @map("net_amount") @db.Decimal(18, 3)
-  taxCategoryId   BigInt?  @map("tax_category_id") @db.UnsignedBigInt
-  taxRate         Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
-  taxAmount       Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
-  lineTotal       Decimal  @map("line_total") @db.Decimal(18, 3)
-  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt   @map("tenant_id") @db.UnsignedBigInt
+  returnId       BigInt   @map("return_id") @db.UnsignedBigInt
+  lineNo         Int      @map("line_no")
+  originalLineId BigInt   @map("original_line_id") @db.UnsignedBigInt
+  itemId         BigInt   @map("item_id") @db.UnsignedBigInt
+  qty            Decimal  @db.Decimal(18, 6)
+  qtyBase        Decimal  @map("qty_base") @db.Decimal(18, 6)
+  unitCost       Decimal  @map("unit_cost") @db.Decimal(18, 6)
+  discountPct    Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
+  discountAmount Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
+  netAmount      Decimal  @map("net_amount") @db.Decimal(18, 3)
+  taxCategoryId  BigInt?  @map("tax_category_id") @db.UnsignedBigInt
+  taxRate        Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
+  taxAmount      Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
+  lineTotal      Decimal  @map("line_total") @db.Decimal(18, 3)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   purchaseReturn PurchaseReturn      @relation(fields: [tenantId, returnId], references: [tenantId, id], onDelete: Cascade)
-  originalLine  PurchaseInvoiceLine  @relation(fields: [tenantId, originalLineId], references: [tenantId, id])
-  item          Item                 @relation(fields: [tenantId, itemId], references: [tenantId, id])
-  taxCategory   TaxCategory?         @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  originalLine   PurchaseInvoiceLine @relation(fields: [tenantId, originalLineId], references: [tenantId, id])
+  item           Item                @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  taxCategory    TaxCategory?        @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
 
   @@unique([tenantId, id])
   @@unique([tenantId, returnId, lineNo])
@@ -2185,45 +2241,45 @@ model PurchaseReturnLine {
 }
 
 model GoodsNote {
-  id             BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId       BigInt         @map("tenant_id") @db.UnsignedBigInt
-  companyId      BigInt         @map("company_id") @db.UnsignedBigInt
-  warehouseId    BigInt         @map("warehouse_id") @db.UnsignedBigInt
+  id               BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt         @map("tenant_id") @db.UnsignedBigInt
+  companyId        BigInt         @map("company_id") @db.UnsignedBigInt
+  warehouseId      BigInt         @map("warehouse_id") @db.UnsignedBigInt
   /// ADR-003: branch of the note's warehouse (the request branch if the warehouse has none).
-  branchId       BigInt?        @map("branch_id") @db.UnsignedBigInt
-  noteDate       DateTime       @map("note_date") @db.Date
-  noteType       GoodsNoteType  @map("note_type")
-  status         DocumentStatus @default(DRAFT)
-  docNo          String?        @map("doc_no") @db.VarChar(50)
-  description    String?        @db.VarChar(500)
+  branchId         BigInt?        @map("branch_id") @db.UnsignedBigInt
+  noteDate         DateTime       @map("note_date") @db.Date
+  noteType         GoodsNoteType  @map("note_type")
+  status           DocumentStatus @default(DRAFT)
+  docNo            String?        @map("doc_no") @db.VarChar(50)
+  description      String?        @db.VarChar(500)
   /// ADR-026 §5: a GRN against this purchase order (set at creation, never changed).
-  purchaseOrderId BigInt?       @map("purchase_order_id") @db.UnsignedBigInt
+  purchaseOrderId  BigInt?        @map("purchase_order_id") @db.UnsignedBigInt
   /// ADR-026 §5: the order's supplier, recorded on a GRN against an order.
-  supplierId     BigInt?        @map("supplier_id") @db.UnsignedBigInt
+  supplierId       BigInt?        @map("supplier_id") @db.UnsignedBigInt
   /// ADR-026 §8: a GIN to a department debits this expense account (none: INVENTORY_ADJUSTMENT).
-  expenseAccountId BigInt?      @map("expense_account_id") @db.UnsignedBigInt
+  expenseAccountId BigInt?        @map("expense_account_id") @db.UnsignedBigInt
   /// ADR-026 §8 / ADR-024 §1.2: the department; copied onto the income-statement lines of the entry.
-  costCenterId   BigInt?        @map("cost_center_id") @db.UnsignedBigInt
+  costCenterId     BigInt?        @map("cost_center_id") @db.UnsignedBigInt
   /// ADR-026 §9: a GIN from this approved issue request (set at creation, never changed).
-  issueRequestId BigInt?        @map("issue_request_id") @db.UnsignedBigInt
-  journalEntryId BigInt?        @map("journal_entry_id") @db.UnsignedBigInt
-  postedAt       DateTime?      @map("posted_at") @db.DateTime(3)
-  postedBy       BigInt?        @map("posted_by") @db.UnsignedBigInt
-  createdAt      DateTime       @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt      DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+  issueRequestId   BigInt?        @map("issue_request_id") @db.UnsignedBigInt
+  journalEntryId   BigInt?        @map("journal_entry_id") @db.UnsignedBigInt
+  postedAt         DateTime?      @map("posted_at") @db.DateTime(3)
+  postedBy         BigInt?        @map("posted_by") @db.UnsignedBigInt
+  createdAt        DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company      Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  warehouse    Warehouse         @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
-  branch       Branch?           @relation(fields: [tenantId, branchId], references: [tenantId, id])
-  journalEntry JournalEntry?     @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
-  purchaseOrder PurchaseOrder?   @relation(fields: [tenantId, purchaseOrderId], references: [tenantId, id])
-  supplier     Party?            @relation(fields: [tenantId, supplierId], references: [tenantId, id])
-  expenseAccount Account?        @relation("GoodsNoteExpenseAccount", fields: [tenantId, companyId, expenseAccountId], references: [tenantId, companyId, id])
-  costCenter   CostCenter?       @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
-  issueRequest IssueRequest?     @relation(fields: [tenantId, issueRequestId], references: [tenantId, id])
-  invoices     PurchaseInvoice[]
-  lines        GoodsNoteLine[]
+  tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company        Company           @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  warehouse      Warehouse         @relation(fields: [tenantId, warehouseId], references: [tenantId, id])
+  branch         Branch?           @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  journalEntry   JournalEntry?     @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+  purchaseOrder  PurchaseOrder?    @relation(fields: [tenantId, purchaseOrderId], references: [tenantId, id])
+  supplier       Party?            @relation(fields: [tenantId, supplierId], references: [tenantId, id])
+  expenseAccount Account?          @relation("GoodsNoteExpenseAccount", fields: [tenantId, companyId, expenseAccountId], references: [tenantId, companyId, id])
+  costCenter     CostCenter?       @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  issueRequest   IssueRequest?     @relation(fields: [tenantId, issueRequestId], references: [tenantId, id])
+  invoices       PurchaseInvoice[]
+  lines          GoodsNoteLine[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, docNo])
@@ -2237,28 +2293,28 @@ model GoodsNote {
 }
 
 model GoodsNoteLine {
-  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId  BigInt   @map("tenant_id") @db.UnsignedBigInt
-  noteId    BigInt   @map("note_id") @db.UnsignedBigInt
-  lineNo    Int      @map("line_no")
-  itemId    BigInt   @map("item_id") @db.UnsignedBigInt
-  qty       Decimal  @db.Decimal(18, 6)
-  unitCost  Decimal? @map("unit_cost") @db.Decimal(18, 6)
+  id                 BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId           BigInt   @map("tenant_id") @db.UnsignedBigInt
+  noteId             BigInt   @map("note_id") @db.UnsignedBigInt
+  lineNo             Int      @map("line_no")
+  itemId             BigInt   @map("item_id") @db.UnsignedBigInt
+  qty                Decimal  @db.Decimal(18, 6)
+  unitCost           Decimal? @map("unit_cost") @db.Decimal(18, 6)
   /// ADR-026 §5: the order line this GRN line receives (qty in base units).
-  poLineId  BigInt?  @map("po_line_id") @db.UnsignedBigInt
+  poLineId           BigInt?  @map("po_line_id") @db.UnsignedBigInt
   /// ADR-026 §9: the issue request line this GIN line issues (qty in base units).
-  issueRequestLineId BigInt? @map("issue_request_line_id") @db.UnsignedBigInt
+  issueRequestLineId BigInt?  @map("issue_request_line_id") @db.UnsignedBigInt
   /// ADR-026 §7: base quantity billed by posted invoices, and the value they cleared from 2104.
-  billedQty    Decimal @default(0) @map("billed_qty") @db.Decimal(18, 6)
-  clearedValue Decimal @default(0) @map("cleared_value") @db.Decimal(18, 3)
-  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  billedQty          Decimal  @default(0) @map("billed_qty") @db.Decimal(18, 6)
+  clearedValue       Decimal  @default(0) @map("cleared_value") @db.Decimal(18, 3)
+  createdAt          DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  note   GoodsNote  @relation(fields: [tenantId, noteId], references: [tenantId, id], onDelete: Cascade)
-  item   Item       @relation(fields: [tenantId, itemId], references: [tenantId, id])
-  poLine PurchaseOrderLine? @relation(fields: [tenantId, poLineId], references: [tenantId, id])
-  issueRequestLine IssueRequestLine? @relation(fields: [tenantId, issueRequestLineId], references: [tenantId, id])
-  invoiceReceipts PurchaseInvoiceReceipt[]
+  tenant           Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  note             GoodsNote                @relation(fields: [tenantId, noteId], references: [tenantId, id], onDelete: Cascade)
+  item             Item                     @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  poLine           PurchaseOrderLine?       @relation(fields: [tenantId, poLineId], references: [tenantId, id])
+  issueRequestLine IssueRequestLine?        @relation(fields: [tenantId, issueRequestLineId], references: [tenantId, id])
+  invoiceReceipts  PurchaseInvoiceReceipt[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, noteId, lineNo])
@@ -2268,41 +2324,42 @@ model GoodsNoteLine {
 }
 
 model Receipt {
-  id              BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId        BigInt              @map("tenant_id") @db.UnsignedBigInt
-  companyId       BigInt              @map("company_id") @db.UnsignedBigInt
-  receiptNo       String?             @map("receipt_no") @db.VarChar(50)
-  receiptDate     DateTime            @map("receipt_date") @db.Date
-  partyType       JournalPartyType    @map("party_type")
-  partyId         BigInt              @map("party_id") @db.UnsignedBigInt
-  cashAccountId   BigInt              @map("cash_account_id") @db.UnsignedBigInt
+  id              BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt           @map("tenant_id") @db.UnsignedBigInt
+  companyId       BigInt           @map("company_id") @db.UnsignedBigInt
+  receiptNo       String?          @map("receipt_no") @db.VarChar(50)
+  receiptDate     DateTime         @map("receipt_date") @db.Date
+  partyType       JournalPartyType @map("party_type")
+  partyId         BigInt           @map("party_id") @db.UnsignedBigInt
+  cashAccountId   BigInt           @map("cash_account_id") @db.UnsignedBigInt
   /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
-  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
-  amount          Decimal             @db.Decimal(18, 3)
-  paymentMethodId BigInt?             @map("payment_method_id") @db.UnsignedBigInt
-  referenceNo     String?             @map("reference_no") @db.VarChar(100)
-  description     String?             @db.VarChar(500)
-  status          DocumentStatus      @default(POSTED)
-  journalEntryId  BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
+  costCenterId    BigInt?          @map("cost_center_id") @db.UnsignedBigInt
+  amount          Decimal          @db.Decimal(18, 3)
+  paymentMethodId BigInt?          @map("payment_method_id") @db.UnsignedBigInt
+  referenceNo     String?          @map("reference_no") @db.VarChar(100)
+  description     String?          @db.VarChar(500)
+  status          DocumentStatus   @default(POSTED)
+  journalEntryId  BigInt?          @map("journal_entry_id") @db.UnsignedBigInt
   /// ADR-003: branch from the request context at creation.
-  branchId        BigInt?             @map("branch_id") @db.UnsignedBigInt
+  branchId        BigInt?          @map("branch_id") @db.UnsignedBigInt
   /// Reversal (Phase 6): set once; the original stays POSTED and immutable.
-  reversedAt      DateTime?           @map("reversed_at") @db.DateTime(3)
-  reversedBy      BigInt?             @map("reversed_by") @db.UnsignedBigInt
-  reversalEntryId BigInt?             @map("reversal_entry_id") @db.UnsignedBigInt
-  createdAt       DateTime            @default(now()) @map("created_at") @db.DateTime(3)
-  createdBy       BigInt?             @map("created_by") @db.UnsignedBigInt
+  reversedAt      DateTime?        @map("reversed_at") @db.DateTime(3)
+  reversedBy      BigInt?          @map("reversed_by") @db.UnsignedBigInt
+  reversalEntryId BigInt?          @map("reversal_entry_id") @db.UnsignedBigInt
+  createdAt       DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy       BigInt?          @map("created_by") @db.UnsignedBigInt
 
-  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company        Company      @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  party          Party        @relation(fields: [tenantId, partyId], references: [tenantId, id])
-  cashAccount    Account      @relation("ReceiptCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
-  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
-  paymentMethod  PaymentMethod? @relation(fields: [tenantId, paymentMethodId], references: [tenantId, id])
-  journalEntry   JournalEntry? @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
-  allocations    Allocation[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company       Company        @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  party         Party          @relation(fields: [tenantId, partyId], references: [tenantId, id])
+  cashAccount   Account        @relation("ReceiptCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter    CostCenter?    @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  paymentMethod PaymentMethod? @relation(fields: [tenantId, paymentMethodId], references: [tenantId, id])
+  journalEntry  JournalEntry?  @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+  allocations   Allocation[]
 
   cheque Cheque?
+
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, receiptNo])
   // Lists: ORDER BY receipt_date DESC, id DESC (DB-10).
@@ -2311,43 +2368,44 @@ model Receipt {
 }
 
 model Payment {
-  id              BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId        BigInt              @map("tenant_id") @db.UnsignedBigInt
-  companyId       BigInt              @map("company_id") @db.UnsignedBigInt
-  paymentNo       String?             @map("payment_no") @db.VarChar(50)
-  paymentDate     DateTime            @map("payment_date") @db.Date
-  partyType       JournalPartyType?   @map("party_type")
-  partyId         BigInt?             @map("party_id") @db.UnsignedBigInt
-  expenseAccountId BigInt?            @map("expense_account_id") @db.UnsignedBigInt
-  cashAccountId   BigInt              @map("cash_account_id") @db.UnsignedBigInt
+  id               BigInt            @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt            @map("tenant_id") @db.UnsignedBigInt
+  companyId        BigInt            @map("company_id") @db.UnsignedBigInt
+  paymentNo        String?           @map("payment_no") @db.VarChar(50)
+  paymentDate      DateTime          @map("payment_date") @db.Date
+  partyType        JournalPartyType? @map("party_type")
+  partyId          BigInt?           @map("party_id") @db.UnsignedBigInt
+  expenseAccountId BigInt?           @map("expense_account_id") @db.UnsignedBigInt
+  cashAccountId    BigInt            @map("cash_account_id") @db.UnsignedBigInt
   /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
-  costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
-  amount          Decimal             @db.Decimal(18, 3)
-  paymentMethodId BigInt?             @map("payment_method_id") @db.UnsignedBigInt
-  referenceNo     String?             @map("reference_no") @db.VarChar(100)
-  description     String?             @db.VarChar(500)
-  status          DocumentStatus      @default(POSTED)
-  journalEntryId  BigInt?             @map("journal_entry_id") @db.UnsignedBigInt
+  costCenterId     BigInt?           @map("cost_center_id") @db.UnsignedBigInt
+  amount           Decimal           @db.Decimal(18, 3)
+  paymentMethodId  BigInt?           @map("payment_method_id") @db.UnsignedBigInt
+  referenceNo      String?           @map("reference_no") @db.VarChar(100)
+  description      String?           @db.VarChar(500)
+  status           DocumentStatus    @default(POSTED)
+  journalEntryId   BigInt?           @map("journal_entry_id") @db.UnsignedBigInt
   /// ADR-003: branch from the request context at creation.
-  branchId        BigInt?             @map("branch_id") @db.UnsignedBigInt
+  branchId         BigInt?           @map("branch_id") @db.UnsignedBigInt
   /// Reversal (Phase 6): set once; the original stays POSTED and immutable.
-  reversedAt      DateTime?           @map("reversed_at") @db.DateTime(3)
-  reversedBy      BigInt?             @map("reversed_by") @db.UnsignedBigInt
-  reversalEntryId BigInt?             @map("reversal_entry_id") @db.UnsignedBigInt
-  createdAt       DateTime            @default(now()) @map("created_at") @db.DateTime(3)
-  createdBy       BigInt?             @map("created_by") @db.UnsignedBigInt
+  reversedAt       DateTime?         @map("reversed_at") @db.DateTime(3)
+  reversedBy       BigInt?           @map("reversed_by") @db.UnsignedBigInt
+  reversalEntryId  BigInt?           @map("reversal_entry_id") @db.UnsignedBigInt
+  createdAt        DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy        BigInt?           @map("created_by") @db.UnsignedBigInt
 
-  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company        Company       @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  party          Party?        @relation(fields: [tenantId, partyId], references: [tenantId, id])
-  expenseAccount Account?      @relation("PaymentExpenseAccount", fields: [tenantId, companyId, expenseAccountId], references: [tenantId, companyId, id])
-  cashAccount    Account       @relation("PaymentCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
-  costCenter   CostCenter?          @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company        Company        @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  party          Party?         @relation(fields: [tenantId, partyId], references: [tenantId, id])
+  expenseAccount Account?       @relation("PaymentExpenseAccount", fields: [tenantId, companyId, expenseAccountId], references: [tenantId, companyId, id])
+  cashAccount    Account        @relation("PaymentCashAccount", fields: [tenantId, companyId, cashAccountId], references: [tenantId, companyId, id])
+  costCenter     CostCenter?    @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
   paymentMethod  PaymentMethod? @relation(fields: [tenantId, paymentMethodId], references: [tenantId, id])
-  journalEntry   JournalEntry? @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
+  journalEntry   JournalEntry?  @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   allocations    Allocation[]
 
   cheque Cheque?
+
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, paymentNo])
   // Lists: ORDER BY payment_date DESC, id DESC (DB-10).
@@ -2356,21 +2414,21 @@ model Payment {
 }
 
 model Allocation {
-  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId      BigInt   @map("tenant_id") @db.UnsignedBigInt
-  companyId     BigInt   @map("company_id") @db.UnsignedBigInt
-  receiptId     BigInt?  @map("receipt_id") @db.UnsignedBigInt
-  paymentId     BigInt?  @map("payment_id") @db.UnsignedBigInt
-  partyType     JournalPartyType @map("party_type")
-  partyId       BigInt   @map("party_id") @db.UnsignedBigInt
-  documentType  String   @map("document_type") @db.VarChar(50)
-  documentId    BigInt   @map("document_id") @db.UnsignedBigInt
-  amount        Decimal  @db.Decimal(18, 3)
-  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  createdBy     BigInt?  @map("created_by") @db.UnsignedBigInt
+  id           BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt           @map("tenant_id") @db.UnsignedBigInt
+  companyId    BigInt           @map("company_id") @db.UnsignedBigInt
+  receiptId    BigInt?          @map("receipt_id") @db.UnsignedBigInt
+  paymentId    BigInt?          @map("payment_id") @db.UnsignedBigInt
+  partyType    JournalPartyType @map("party_type")
+  partyId      BigInt           @map("party_id") @db.UnsignedBigInt
+  documentType String           @map("document_type") @db.VarChar(50)
+  documentId   BigInt           @map("document_id") @db.UnsignedBigInt
+  amount       Decimal          @db.Decimal(18, 3)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  createdBy    BigInt?          @map("created_by") @db.UnsignedBigInt
   /// Cancelled allocations are kept for history; only active ones count.
-  cancelledAt   DateTime? @map("cancelled_at") @db.DateTime(3)
-  cancelledBy   BigInt?  @map("cancelled_by") @db.UnsignedBigInt
+  cancelledAt  DateTime?        @map("cancelled_at") @db.DateTime(3)
+  cancelledBy  BigInt?          @map("cancelled_by") @db.UnsignedBigInt
 
   tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   company Company  @relation(fields: [tenantId, companyId], references: [tenantId, id])
@@ -2811,13 +2869,13 @@ model PurchaseOrderLine {
   receivedQty    Decimal  @default(0) @map("received_qty") @db.Decimal(18, 6)
   createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  order       PurchaseOrder        @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Cascade)
-  requestLine PurchaseRequestLine? @relation(fields: [tenantId, requestLineId], references: [tenantId, id])
-  quoteLine   PurchaseQuoteLine?   @relation(fields: [tenantId, quoteLineId], references: [tenantId, id])
-  item        Item                 @relation(fields: [tenantId, itemId], references: [tenantId, id])
-  itemUnit    ItemUnit?            @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
-  taxCategory TaxCategory?         @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order          PurchaseOrder        @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Cascade)
+  requestLine    PurchaseRequestLine? @relation(fields: [tenantId, requestLineId], references: [tenantId, id])
+  quoteLine      PurchaseQuoteLine?   @relation(fields: [tenantId, quoteLineId], references: [tenantId, id])
+  item           Item                 @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  itemUnit       ItemUnit?            @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  taxCategory    TaxCategory?         @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
   goodsNoteLines GoodsNoteLine[]
 
   @@unique([tenantId, id])
@@ -3028,11 +3086,11 @@ model SalesQuoteLine {
   note           String?  @db.VarChar(500)
   createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  quote       SalesQuote      @relation(fields: [tenantId, quoteId], references: [tenantId, id], onDelete: Cascade)
-  item        Item            @relation(fields: [tenantId, itemId], references: [tenantId, id])
-  itemUnit    ItemUnit?       @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
-  taxCategory TaxCategory?    @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quote       SalesQuote       @relation(fields: [tenantId, quoteId], references: [tenantId, id], onDelete: Cascade)
+  item        Item             @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  itemUnit    ItemUnit?        @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  taxCategory TaxCategory?     @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
   orderLines  SalesOrderLine[]
 
   @@unique([tenantId, id])
@@ -3130,12 +3188,12 @@ model SalesOrderLine {
   note           String?  @db.VarChar(500)
   createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  order        SalesOrder          @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Cascade)
-  quoteLine    SalesQuoteLine?     @relation(fields: [tenantId, quoteLineId], references: [tenantId, id])
-  item         Item                @relation(fields: [tenantId, itemId], references: [tenantId, id])
-  itemUnit     ItemUnit?           @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
-  taxCategory  TaxCategory?        @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order        SalesOrder         @relation(fields: [tenantId, orderId], references: [tenantId, id], onDelete: Cascade)
+  quoteLine    SalesQuoteLine?    @relation(fields: [tenantId, quoteLineId], references: [tenantId, id])
+  item         Item               @relation(fields: [tenantId, itemId], references: [tenantId, id])
+  itemUnit     ItemUnit?          @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  taxCategory  TaxCategory?       @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
   invoiceLines SalesInvoiceLine[]
 
   @@unique([tenantId, id])
@@ -3177,11 +3235,12 @@ model Bom {
   tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   company            Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
   item               Item                @relation(fields: [tenantId, itemId], references: [tenantId, id])
-  outputItemUnit     ItemUnit?            @relation(fields: [tenantId, outputItemUnitId], references: [tenantId, id])
+  outputItemUnit     ItemUnit?           @relation(fields: [tenantId, outputItemUnitId], references: [tenantId, id])
   lines              BomLine[]
   productionVouchers ProductionVoucher[]
 
   salesLineComponents SalesInvoiceLineComponent[]
+
   @@unique([tenantId, id])
   @@unique([tenantId, itemId, versionNo])
   @@index([tenantId, companyId, itemId, status])
@@ -3204,9 +3263,9 @@ model BomLine {
   createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  bom           Bom      @relation(fields: [tenantId, bomId], references: [tenantId, id], onDelete: Cascade)
-  componentItem Item     @relation(fields: [tenantId, componentItemId], references: [tenantId, id])
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bom           Bom       @relation(fields: [tenantId, bomId], references: [tenantId, id], onDelete: Cascade)
+  componentItem Item      @relation(fields: [tenantId, componentItemId], references: [tenantId, id])
   itemUnit      ItemUnit? @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
 
   @@unique([tenantId, id])
@@ -3253,7 +3312,7 @@ model ProductionVoucher {
   company            Company                 @relation(fields: [tenantId, companyId], references: [tenantId, id])
   item               Item                    @relation(fields: [tenantId, itemId], references: [tenantId, id])
   bom                Bom                     @relation(fields: [tenantId, bomId], references: [tenantId, id])
-  itemUnit           ItemUnit?                @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  itemUnit           ItemUnit?               @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
   materialsWarehouse Warehouse               @relation("ProductionMaterials", fields: [tenantId, materialsWarehouseId], references: [tenantId, id])
   outputWarehouse    Warehouse               @relation("ProductionOutput", fields: [tenantId, outputWarehouseId], references: [tenantId, id])
   branch             Branch?                 @relation(fields: [tenantId, branchId], references: [tenantId, id])
@@ -3294,7 +3353,7 @@ model ProductionVoucherLine {
   tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   voucher  ProductionVoucher @relation(fields: [tenantId, voucherId], references: [tenantId, id], onDelete: Cascade)
   item     Item              @relation(fields: [tenantId, itemId], references: [tenantId, id])
-  itemUnit ItemUnit?          @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
+  itemUnit ItemUnit?         @relation(fields: [tenantId, itemUnitId], references: [tenantId, id])
 
   @@unique([tenantId, id])
   @@unique([tenantId, voucherId, lineNo])
@@ -3373,4 +3432,249 @@ model ChequeEvent {
   @@unique([tenantId, id])
   @@index([tenantId, chequeId, id])
   @@map("cheque_events")
+}
+
+/// ADR-041: an employee belongs to one company; salary history is kept separately.
+model Employee {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt    @map("tenant_id") @db.UnsignedBigInt
+  companyId    BigInt    @map("company_id") @db.UnsignedBigInt
+  code         String    @db.VarChar(50)
+  nameAr       String    @map("name_ar") @db.VarChar(191)
+  nameEn       String?   @map("name_en") @db.VarChar(191)
+  nationalId   String?   @map("national_id") @db.VarChar(50)
+  sscNumber    String?   @map("ssc_number") @db.VarChar(50)
+  hireDate     DateTime  @map("hire_date") @db.Date
+  leaveDate    DateTime? @map("leave_date") @db.Date
+  branchId     BigInt?   @map("branch_id") @db.UnsignedBigInt
+  costCenterId BigInt?   @map("cost_center_id") @db.UnsignedBigInt
+  payMethod    PayMethod @map("pay_method")
+  iban         String?   @db.VarChar(50)
+  sscCovered   Boolean   @default(true) @map("ssc_covered")
+  sscHazardous Boolean   @default(false) @map("ssc_hazardous")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant            Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company           Company                    @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  branch            Branch?                    @relation(fields: [tenantId, companyId, branchId], references: [tenantId, companyId, id])
+  costCenter        CostCenter?                @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
+  salaries          EmployeeSalary[]
+  recurringElements EmployeeRecurringElement[]
+  payrollInputs     PayrollInput[]
+  payrollLines      PayrollLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId, isActive, code])
+  @@map("employees")
+}
+
+model EmployeeSalary {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId      BigInt   @map("tenant_id") @db.UnsignedBigInt
+  employeeId    BigInt   @map("employee_id") @db.UnsignedBigInt
+  effectiveFrom DateTime @map("effective_from") @db.Date
+  basicSalary   Decimal  @map("basic_salary") @db.Decimal(18, 3)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [tenantId, employeeId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([employeeId, effectiveFrom])
+  @@index([tenantId, employeeId, effectiveFrom])
+  @@map("employee_salaries")
+}
+
+model PayElement {
+  id         BigInt               @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId   BigInt               @map("tenant_id") @db.UnsignedBigInt
+  companyId  BigInt               @map("company_id") @db.UnsignedBigInt
+  code       String               @db.VarChar(50)
+  nameAr     String               @map("name_ar") @db.VarChar(191)
+  nameEn     String?              @map("name_en") @db.VarChar(191)
+  kind       PayElementKind
+  amountType PayElementAmountType @map("amount_type")
+  rateFactor Decimal              @default(1) @map("rate_factor") @db.Decimal(9, 6)
+  sscSubject Boolean              @default(true) @map("ssc_subject")
+  accountId  BigInt               @map("account_id") @db.UnsignedBigInt
+  isActive   Boolean              @default(true) @map("is_active")
+  createdAt  DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime             @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant            Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company           Company                    @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  account           Account                    @relation(fields: [tenantId, companyId, accountId], references: [tenantId, companyId, id])
+  recurringElements EmployeeRecurringElement[]
+  payrollInputs     PayrollInput[]
+  payrollLineItems  PayrollLineItem[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId, kind, isActive])
+  @@map("pay_elements")
+}
+
+model EmployeeRecurringElement {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt    @map("tenant_id") @db.UnsignedBigInt
+  employeeId   BigInt    @map("employee_id") @db.UnsignedBigInt
+  payElementId BigInt    @map("pay_element_id") @db.UnsignedBigInt
+  amount       Decimal?  @db.Decimal(18, 3)
+  quantity     Decimal?  @db.Decimal(18, 6)
+  validFrom    DateTime  @map("valid_from") @db.Date
+  validTo      DateTime? @map("valid_to") @db.Date
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation(fields: [tenantId, employeeId], references: [tenantId, id], onDelete: Cascade)
+  payElement PayElement @relation(fields: [tenantId, payElementId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@index([tenantId, employeeId, validFrom, validTo])
+  @@map("employee_recurring_elements")
+}
+
+model PayrollInput {
+  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt    @map("tenant_id") @db.UnsignedBigInt
+  companyId    BigInt    @map("company_id") @db.UnsignedBigInt
+  employeeId   BigInt    @map("employee_id") @db.UnsignedBigInt
+  payElementId BigInt    @map("pay_element_id") @db.UnsignedBigInt
+  period       String    @db.Char(7)
+  workDate     DateTime? @map("work_date") @db.Date
+  quantity     Decimal?  @db.Decimal(18, 6)
+  amount       Decimal?  @db.Decimal(18, 3)
+  note         String?   @db.VarChar(500)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company    Company    @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  employee   Employee   @relation(fields: [tenantId, companyId, employeeId], references: [tenantId, companyId, id])
+  payElement PayElement @relation(fields: [tenantId, companyId, payElementId], references: [tenantId, companyId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@index([tenantId, companyId, period, employeeId])
+  @@index([tenantId, companyId, employeeId, payElementId, workDate])
+  @@map("payroll_inputs")
+}
+
+/// Social Security Corporation rates are seeded from its FAQ (ssc.gov.jo, 2025-12).
+model PayrollSettings {
+  id                BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId          BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId         BigInt   @map("company_id") @db.UnsignedBigInt
+  effectiveFrom     DateTime @map("effective_from") @db.Date
+  sscEmployeeRate   Decimal  @map("ssc_employee_rate") @db.Decimal(9, 6)
+  sscEmployerRate   Decimal  @map("ssc_employer_rate") @db.Decimal(9, 6)
+  sscHazardousExtra Decimal  @map("ssc_hazardous_extra") @db.Decimal(9, 6)
+  sscMinWage        Decimal  @map("ssc_min_wage") @db.Decimal(18, 3)
+  sscMaxWage        Decimal? @map("ssc_max_wage") @db.Decimal(18, 3)
+  hoursPerMonth     Decimal  @map("hours_per_month") @db.Decimal(9, 2)
+  daysPerMonth      Decimal  @map("days_per_month") @db.Decimal(9, 2)
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, effectiveFrom])
+  @@index([tenantId, companyId, effectiveFrom])
+  @@map("payroll_settings")
+}
+
+model PayrollRun {
+  id                    BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId              BigInt           @map("tenant_id") @db.UnsignedBigInt
+  companyId             BigInt           @map("company_id") @db.UnsignedBigInt
+  period                String           @db.Char(7)
+  runDate               DateTime         @map("run_date") @db.Date
+  status                PayrollRunStatus @default(DRAFT)
+  journalEntryId        BigInt?          @map("journal_entry_id") @db.UnsignedBigInt
+  paymentEntryId        BigInt?          @map("payment_entry_id") @db.UnsignedBigInt
+  paidFromCashBoxId     BigInt?          @map("paid_from_cash_box_id") @db.UnsignedBigInt
+  paidFromBankAccountId BigInt?          @map("paid_from_bank_account_id") @db.UnsignedBigInt
+  runNo                 String?          @map("run_no") @db.VarChar(50)
+  basicTotal            Decimal          @default(0) @map("basic_total") @db.Decimal(18, 3)
+  earningsTotal         Decimal          @default(0) @map("earnings_total") @db.Decimal(18, 3)
+  grossTotal            Decimal          @default(0) @map("gross_total") @db.Decimal(18, 3)
+  sscBaseTotal          Decimal          @default(0) @map("ssc_base_total") @db.Decimal(18, 3)
+  sscEmployeeTotal      Decimal          @default(0) @map("ssc_employee_total") @db.Decimal(18, 3)
+  sscEmployerTotal      Decimal          @default(0) @map("ssc_employer_total") @db.Decimal(18, 3)
+  incomeTaxTotal        Decimal          @default(0) @map("income_tax_total") @db.Decimal(18, 3)
+  deductionsTotal       Decimal          @default(0) @map("deductions_total") @db.Decimal(18, 3)
+  netTotal              Decimal          @default(0) @map("net_total") @db.Decimal(18, 3)
+  createdAt             DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant              Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company             Company       @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  journalEntry        JournalEntry? @relation("PayrollRunJournal", fields: [tenantId, companyId, journalEntryId], references: [tenantId, companyId, id])
+  paymentEntry        JournalEntry? @relation("PayrollPaymentJournal", fields: [tenantId, companyId, paymentEntryId], references: [tenantId, companyId, id])
+  paidFromCashBox     CashBox?      @relation("PayrollRunCashBox", fields: [tenantId, companyId, paidFromCashBoxId], references: [tenantId, companyId, id])
+  paidFromBankAccount BankAccount?  @relation("PayrollRunBankAccount", fields: [tenantId, companyId, paidFromBankAccountId], references: [tenantId, companyId, id])
+  lines               PayrollLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@index([tenantId, companyId, period, status])
+  @@index([tenantId, companyId, runDate])
+  @@map("payroll_runs")
+}
+
+model PayrollLine {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt   @map("tenant_id") @db.UnsignedBigInt
+  payrollRunId BigInt   @map("payroll_run_id") @db.UnsignedBigInt
+  employeeId   BigInt   @map("employee_id") @db.UnsignedBigInt
+  basic        Decimal  @db.Decimal(18, 3)
+  earnings     Decimal  @db.Decimal(18, 3)
+  gross        Decimal  @db.Decimal(18, 3)
+  sscBase      Decimal  @map("ssc_base") @db.Decimal(18, 3)
+  sscEmployee  Decimal  @map("ssc_employee") @db.Decimal(18, 3)
+  sscEmployer  Decimal  @map("ssc_employer") @db.Decimal(18, 3)
+  incomeTax    Decimal  @default(0) @map("income_tax") @db.Decimal(18, 3)
+  deductions   Decimal  @db.Decimal(18, 3)
+  net          Decimal  @db.Decimal(18, 3)
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payrollRun PayrollRun        @relation(fields: [tenantId, payrollRunId], references: [tenantId, id], onDelete: Cascade)
+  employee   Employee          @relation(fields: [tenantId, employeeId], references: [tenantId, id])
+  items      PayrollLineItem[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, payrollRunId, employeeId])
+  @@index([tenantId, payrollRunId])
+  @@map("payroll_lines")
+}
+
+model PayrollLineItem {
+  id            BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId      BigInt         @map("tenant_id") @db.UnsignedBigInt
+  payrollLineId BigInt         @map("payroll_line_id") @db.UnsignedBigInt
+  payElementId  BigInt?        @map("pay_element_id") @db.UnsignedBigInt
+  kind          PayElementKind
+  description   String         @db.VarChar(191)
+  quantity      Decimal?       @db.Decimal(18, 6)
+  rate          Decimal?       @db.Decimal(18, 6)
+  amount        Decimal        @db.Decimal(18, 3)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payrollLine PayrollLine @relation(fields: [tenantId, payrollLineId], references: [tenantId, id], onDelete: Cascade)
+  payElement  PayElement? @relation(fields: [tenantId, payElementId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@index([tenantId, payrollLineId])
+  @@map("payroll_line_items")
 }

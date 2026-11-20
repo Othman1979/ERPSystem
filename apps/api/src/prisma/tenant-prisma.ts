@@ -100,6 +100,15 @@ export const TENANT_MODELS = [
   'BankStatementMatch',
   'Cheque',
   'ChequeEvent',
+  'Employee',
+  'EmployeeSalary',
+  'PayElement',
+  'EmployeeRecurringElement',
+  'PayrollInput',
+  'PayrollSettings',
+  'PayrollRun',
+  'PayrollLine',
+  'PayrollLineItem',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);
@@ -145,6 +154,11 @@ export const COMPANY_MODELS = [
   'Bom',
   'ProductionVoucher',
   'Cheque',
+  'Employee',
+  'PayElement',
+  'PayrollInput',
+  'PayrollSettings',
+  'PayrollRun',
 ] as const;
 
 /** Company-scoped tenant models deliberately left visible across a request company. */

@@ -139,6 +139,18 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     id.paymentMethod = String((await asA('get', '/payment-methods')).body[0].id);
     id.branch = String((await asA('get', '/branches')).body[0].id);
     id.company = String((await asA('get', '/companies')).body[0].id);
+    await create(
+      '/payroll/employees',
+      { code: `P${RUN}`, nameAr: `Payroll ${MARK}`, hireDate: '2026-01-01', payMethod: 'CASH' },
+      'employee',
+    );
+    const payrollElements = (await asA('get', '/payroll/elements')).body as { id: string; code: string }[];
+    id.transportElement = payrollElements.find((element) => element.code === 'TRANSPORT')!.id;
+    await create(`/payroll/employees/${id.employee}/salaries`, { effectiveFrom: '2026-01-01', basicSalary: '10.000' }, 'payrollSalary');
+    await create('/payroll/inputs', { employeeId: id.employee, payElementId: id.transportElement, period: '2026-01', amount: '1.000' }, 'payrollInput');
+    await create('/payroll/runs', { period: '2026-01' }, 'payrollRun');
+    const payrollRun = (await asA('get', `/payroll/runs/${id.payrollRun}`)).body as { lines: { id: string }[] };
+    id.payrollLine = payrollRun.lines[0]!.id;
     const members = (await asA('get', '/users')).body as { id?: string; membershipId?: string }[];
     id.membership = String(members[0].membershipId ?? members[0].id);
 
@@ -370,7 +382,11 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     for (const [, name] of p.matchAll(/\{(\w+)\}/g)) {
       if (p.startsWith('/api/v1/admin/')) values[name] = name === 'code' ? 'TRIAL' : id.tenant;
       else if (name === 'membershipId') values[name] = id.membership;
+      else if (name === 'lineId' && p.includes('/payroll/')) values[name] = id.payrollLine;
       else if (name === 'lineId') values[name] = id.stockCountLine;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/employees/')) values[name] = id.employee;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/inputs/')) values[name] = id.payrollInput;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/runs/')) values[name] = id.payrollRun;
       else if (name === 'itemId') values[name] = id.item;
       else if (name === 'code' && p.includes('/items/barcode/')) values[name] = id.barcodeCode;
       else if (name === 'id' && byResource[seg]) values[name] = byResource[seg]!;
@@ -381,6 +397,11 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
 
   /** A valid body for each change, so the request reaches the tenant lookup. */
   function bodyFor(p: string): object {
+    if (p.endsWith('/salaries')) return { effectiveFrom: '2026-01-01', basicSalary: '1.000' };
+    if (p.endsWith('/recurring-elements')) return { payElementId: id.transportElement, amount: '1.000', validFrom: '2026-01-01' };
+    if (p.endsWith('/income-tax')) return { incomeTax: '0.000' };
+    if (p.includes('/payroll/runs/{id}/pay')) return { cashBoxId: id.cashBox, date: '2026-04-01' };
+    if (p.includes('/payroll/runs/{id}/reverse')) return { date: '2026-04-01' };
     if (p.endsWith('/reverse')) return { reversalDate: '2026-04-01' };
     if (p === '/api/v1/companies/{id}') return { legalNameAr: 'x' };
     if (p.endsWith('/journal-entries/{id}/amend')) {
@@ -434,6 +455,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
   const fill = (p: string, values: Record<string, string>) => p.replace(/\{(\w+)\}/g, (_, n: string) => values[n]);
 
   it("B reaches none of A's records through any route that takes an id", async () => {
+    expect(ops).toContainEqual(expect.objectContaining({ method: 'DELETE', path: '/api/v1/payroll/runs/{id}' }));
     const withParams = ops.filter((o) => o.path.includes('{'));
     const uncovered: string[] = [];
     const wrong: string[] = [];
@@ -496,6 +518,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       customerId: id.customer,
       supplierId: id.supplier,
       itemId: id.item,
+      employeeId: id.employee,
       warehouseId: id.warehouse,
       fiscalYearId: id.fiscalYear,
       branchId: id.branch,
@@ -523,6 +546,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       }
       if (o.query.includes('partyType')) params.set('partyType', 'CUSTOMER');
       if (o.query.includes('documentType')) params.set('documentType', 'SALES_INVOICE');
+      if (o.query.includes('period')) params.set('period', '2026-01');
       const url = params.size ? `${o.path}?${params.toString()}` : o.path;
       const res = await api().get(url).set(auth(b));
       calls += 1;
