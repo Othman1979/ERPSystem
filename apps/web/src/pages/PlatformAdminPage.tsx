@@ -3,7 +3,6 @@ import {
   App,
   Button,
   Card,
-  DatePicker,
   Descriptions,
   Drawer,
   Form,
@@ -18,6 +17,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
+import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';

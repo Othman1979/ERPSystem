@@ -3,7 +3,6 @@ import { DeleteOutlined, SaveOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
-  DatePicker,
   Form,
   Input,
   InputNumber,
@@ -17,6 +16,7 @@ import {
   Typography,
   message,
 } from 'antd';
+import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -1201,7 +1201,6 @@ function ComparisonTab({ initialRequestId }: { initialRequestId?: string }) {
           <DocFields>
             <DocField label={t('procurement.warehouse')} required error={tried && !warehouseId ? t('common.requiredField') : undefined}>
               <GridSelect
-                enterOpens
                 status={tried && !warehouseId ? 'error' : undefined}
                 options={warehouseOptions}
                 value={warehouseId}

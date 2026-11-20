@@ -7,7 +7,6 @@ import {
   Input,
   InputNumber,
   Radio,
-  DatePicker,
   Popconfirm,
   Select,
   Space,
@@ -17,6 +16,7 @@ import {
   Typography,
   message,
 } from 'antd';
+import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
@@ -719,7 +719,6 @@ function InvoiceForm({
           onKeyDown={enterTo(() => focusNamedField('invoiceDate'))}
         >
           <GridSelect
-            enterOpens
             status={requiredError(missing.warehouse) ? 'error' : undefined}
             disabled={orderLinked}
             options={warehouseOptions}
@@ -748,7 +747,6 @@ function InvoiceForm({
             onKeyDown={enterTo(() => focusNamedField('paymentType'))}
           >
             <CostCenterSelect
-              enterOpens
               rows={costCenters.rows}
               value={costCenterId}
               onChange={setCostCenterId}
@@ -784,7 +782,6 @@ function InvoiceForm({
             onKeyDown={enterTo(focusFirstGridCell)}
           >
             <GridSelect
-              enterOpens
               status={requiredError(missing.cashAccount) ? 'error' : undefined}
               options={lookups.cashAccountOptions}
               value={cashAccountId}

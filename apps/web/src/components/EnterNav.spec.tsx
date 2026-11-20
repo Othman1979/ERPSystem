@@ -2,6 +2,7 @@
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Select } from 'antd';
 import { EnterNav } from './EnterNav';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -87,5 +88,24 @@ describe('EnterNav', () => {
     );
     expect(pressEnter(byLabel('notes')).defaultPrevented).toBe(false);
     expect(document.activeElement).toBe(byLabel('notes'));
+  });
+  it('moves past a closed list on Enter without opening it; ArrowDown opens it', async () => {
+    show(
+      <EnterNav>
+        <Select aria-label="pick" showSearch options={[{ value: '1', label: 'One' }]} />
+        {field('after')}
+      </EnterNav>,
+    );
+    const pick = byLabel('pick');
+    pressEnter(pick);
+    expect(document.activeElement).toBe(byLabel('after'));
+    expect(host.querySelector('.ant-select-open')).toBeNull();
+
+    act(() => pick.focus());
+    act(() => {
+      pick.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    });
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    expect(host.querySelector('.ant-select-open')).not.toBeNull();
   });
 });

@@ -1,4 +1,5 @@
-import { Button, DatePicker, Popconfirm, Space, Typography } from 'antd';
+import { Button, Popconfirm, Space, Typography } from 'antd';
+import { DatePicker } from './DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';

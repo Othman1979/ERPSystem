@@ -1,4 +1,5 @@
-import { DatePicker, Input, InputNumber, Radio, Select } from 'antd';
+import { Input, InputNumber, Radio, Select } from 'antd';
+import { DatePicker } from './DatePicker';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import i18n from '../i18n';

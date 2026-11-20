@@ -1,5 +1,5 @@
 import { useEffect, type HTMLAttributes, type KeyboardEvent } from 'react';
-import { focusCellEl, isSelectDropdownOpen } from './GridSelect';
+import { focusCellEl, isPartialDateText, isSelectDropdownOpen, openSelect } from './GridSelect';
 
 /** Field roots that Enter steps through, in DOM order. */
 const FIELD_SELECTOR = [
@@ -60,9 +60,23 @@ export function focusFirstEmptyField(): void {
  * chain. Lines grids inside handle Enter themselves; the chain jumps into the
  * grid's first cell and, in a dialog, ends on its primary (Save) button.
  */
+/** A masked date still showing format letters (e.g. 20/11/YYYY) is not complete yet. */
+function isPartialDate(field: HTMLElement): boolean {
+  return isPartialDateText(field.querySelector('input')?.value ?? '');
+}
+
+/** Focus the field after `field` within the dialog (or the EnterNav scope). */
+function moveNext(field: HTMLElement, container: HTMLElement): void {
+  const scope = container.closest('.ant-modal-content') ?? container;
+  const fields = fieldsIn(scope);
+  const next = fields[fields.indexOf(field) + 1];
+  if (next) focusField(next);
+}
+
 export function EnterNav({
   children,
   onKeyDown,
+  onKeyDownCapture,
   className,
   autoFocusWhen,
   ...rest
@@ -77,6 +91,25 @@ export function EnterNav({
     return () => window.clearTimeout(id);
   }, [autoFocusWhen]);
 
+  // Before the select sees it: Enter on a closed list moves on instead of opening it,
+  // and the arrow keys open it (a list opens on typing or the arrows, like an autocomplete).
+  const handleKeyDownCapture = (e: KeyboardEvent<HTMLDivElement>) => {
+    onKeyDownCapture?.(e);
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-cell]')) return;
+    const select = target.closest<HTMLElement>('.ant-select:not(.ant-select-disabled)');
+    if (!select || isSelectDropdownOpen(select)) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      openSelect(select);
+      return;
+    }
+    if (handledEnters.has(e.nativeEvent) || e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handledEnters.add(e.nativeEvent);
+    moveNext(select, e.currentTarget);
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(e);
     // Not `defaultPrevented`: antd's Select prevents Enter itself before it bubbles here.
@@ -87,19 +120,20 @@ export function EnterNav({
       return;
     }
     const field = target.closest<HTMLElement>(FIELD_SELECTOR);
-    if (!field || isSelectDropdownOpen(field)) return;
+    if (!field) return;
+    const isDate = field.matches('.ant-picker');
+    // A typed date: the picker has already taken this Enter (it commits the date); move on
+    // unless the date is half typed. Other open lists keep their Enter.
+    if (isDate ? isPartialDate(field) : isSelectDropdownOpen(field)) return;
 
     // Always stop the browser's implicit form submit on Enter.
     e.preventDefault();
     handledEnters.add(e.nativeEvent);
-    const scope = e.currentTarget.closest('.ant-modal-content') ?? e.currentTarget;
-    const fields = fieldsIn(scope);
-    const next = fields[fields.indexOf(field) + 1];
-    if (next) focusField(next);
+    moveNext(field, e.currentTarget);
   };
 
   return (
-    <div {...rest} className={['enter-nav', className].filter(Boolean).join(' ')} onKeyDown={handleKeyDown}>
+    <div {...rest} className={['enter-nav', className].filter(Boolean).join(' ')} onKeyDown={handleKeyDown} onKeyDownCapture={handleKeyDownCapture}>
       {children}
     </div>
   );
