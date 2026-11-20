@@ -24,6 +24,7 @@ import type {
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
+import { ChequesService } from './cheques.service.js';
 import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
 
 type VoucherKind = 'receipt' | 'payment';
@@ -86,6 +87,7 @@ export class VouchersService implements OnModuleInit {
     private readonly costCenters: CostCentersService,
     private readonly costCenterUsage: CostCenterUsageRegistry,
     private readonly yearClosingDrafts: YearClosingDraftRegistry,
+    private readonly cheques: ChequesService,
   ) {}
 
   onModuleInit(): void {
@@ -252,7 +254,18 @@ export class VouchersService implements OnModuleInit {
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         await this.assertReceiptParty(tx, tenantId, companyId, dto);
-        await this.assertCashAccount(tx, companyId, dto.cashAccountId);
+        if (dto.cheque) {
+          if (!dto.cheque.bankName?.trim()) {
+            throw new DomainError(ErrorCode.VALIDATION, 'cheque.bankName is required on a receipt', { field: 'cheque.bankName' });
+          }
+        } else {
+          if (!dto.cashAccountId) throw new DomainError(ErrorCode.VALIDATION, 'cashAccountId is required', { field: 'cashAccountId' });
+          await this.assertCashAccount(tx, companyId, dto.cashAccountId);
+        }
+        // ADR-037 §1: a cheque is debited to the cheques-under-collection account.
+        const debitAccount = dto.cheque
+          ? (await this.support.mappingAccounts(tx, tenantId, companyId, ['CHEQUES_RECEIVABLE'])).CHEQUES_RECEIVABLE!
+          : BigInt(dto.cashAccountId!);
         // Share-lock the header centre before the voucher row that references it (ADR-024 §1.4).
         if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
         const period = await this.posting.resolveOpenPeriod(
@@ -283,7 +296,7 @@ export class VouchersService implements OnModuleInit {
             receiptDate: new Date(dto.receiptDate),
             partyType: dto.partyType,
             partyId: BigInt(dto.partyId),
-            cashAccountId: BigInt(dto.cashAccountId),
+            cashAccountId: debitAccount,
             costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
             amount,
             paymentMethodId: dto.paymentMethodId ? BigInt(dto.paymentMethodId) : null,
@@ -311,7 +324,7 @@ export class VouchersService implements OnModuleInit {
           voucherType: 'RECEIPT_VOUCHER',
           description: dto.description ?? `Receipt ${receiptNo}`,
           lines: [
-            { accountId: BigInt(dto.cashAccountId), debit: amount.toString() },
+            { accountId: debitAccount, debit: amount.toString() },
             {
               accountId: controlAccount,
               credit: amount.toString(),
@@ -326,6 +339,21 @@ export class VouchersService implements OnModuleInit {
         });
 
         await tx.receipt.update({ where: { id: receipt.id }, data: { journalEntryId: entry.id } });
+        if (dto.cheque) {
+          await this.cheques.createForVoucher(tx, {
+            tenantId,
+            companyId,
+            branchId,
+            direction: 'INCOMING',
+            cheque: dto.cheque,
+            amount,
+            partyType: dto.partyType,
+            partyId: BigInt(dto.partyId),
+            receiptId: receipt.id,
+            date: new Date(dto.receiptDate),
+            userId: userId ?? null,
+          });
+        }
 
         await this.writeAllocations(tx, tenantId, companyId, plan, {
           receiptId: receipt.id,
@@ -468,7 +496,14 @@ export class VouchersService implements OnModuleInit {
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
-        await this.assertCashAccount(tx, companyId, dto.cashAccountId);
+        await this.assertCashAccount(tx, companyId, dto.cashAccountId, dto.cheque ? ['BANK'] : undefined);
+        if (dto.cheque && !dto.partyId) {
+          throw new DomainError(ErrorCode.VALIDATION, 'A cheque payment needs a party', { field: 'partyId' });
+        }
+        // ADR-037 §1: an issued cheque is credited to post-dated cheques payable, not the bank.
+        const creditAccount = dto.cheque
+          ? (await this.support.mappingAccounts(tx, tenantId, companyId, ['CHEQUES_PAYABLE'])).CHEQUES_PAYABLE!
+          : BigInt(dto.cashAccountId);
         // Share-lock the header centre before the voucher row that references it (ADR-024 §1.4).
         if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
         if (dto.partyId) {
@@ -517,7 +552,7 @@ export class VouchersService implements OnModuleInit {
             partyType: dto.partyType ?? null,
             partyId: dto.partyId ? BigInt(dto.partyId) : null,
             expenseAccountId: dto.expenseAccountId ? BigInt(dto.expenseAccountId) : null,
-            cashAccountId: BigInt(dto.cashAccountId),
+            cashAccountId: creditAccount,
             costCenterId: dto.costCenterId ? BigInt(dto.costCenterId) : null,
             amount,
             paymentMethodId: dto.paymentMethodId ? BigInt(dto.paymentMethodId) : null,
@@ -560,7 +595,7 @@ export class VouchersService implements OnModuleInit {
           description: dto.description ?? `Payment ${paymentNo}`,
           lines: [
             ...debitLines,
-            { accountId: BigInt(dto.cashAccountId), credit: amount.toString() },
+            { accountId: creditAccount, credit: amount.toString() },
           ],
           postedBy: userId ?? null,
           // ADR-024 §1.2: onto the income-statement lines (a payment's expense line).
@@ -569,6 +604,22 @@ export class VouchersService implements OnModuleInit {
         });
 
         await tx.payment.update({ where: { id: payment.id }, data: { journalEntryId: entry.id } });
+        if (dto.cheque) {
+          await this.cheques.createForVoucher(tx, {
+            tenantId,
+            companyId,
+            branchId,
+            direction: 'OUTGOING',
+            cheque: dto.cheque,
+            amount,
+            partyType: dto.partyType!,
+            partyId: BigInt(dto.partyId!),
+            paymentId: payment.id,
+            bankAccountId: BigInt(dto.cashAccountId),
+            date: new Date(dto.paymentDate),
+            userId: userId ?? null,
+          });
+        }
 
         if (dto.partyId && dto.partyType) {
           await this.writeAllocations(tx, tenantId, companyId, plan, {
@@ -610,6 +661,14 @@ export class VouchersService implements OnModuleInit {
         if (v.reversedAt) throw new DomainError(ErrorCode.CONFLICT, 'The voucher is reversed');
         if (!v.partyId || !v.partyType) {
           throw new DomainError(ErrorCode.VALIDATION, 'Only vouchers with a party can be allocated');
+        }
+        // ADR-037 §2: a returned cheque paid nothing, so its voucher settles no invoice.
+        const cheque = await tx.cheque.findFirst({
+          where: kind === 'receipt' ? { receiptId: id } : { paymentId: id },
+          select: { status: true },
+        });
+        if (cheque?.status === 'RETURNED') {
+          throw new DomainError(ErrorCode.CHEQUE_INVALID_STATUS, 'The voucher cheque was returned');
         }
         const left = new Decimal(v.amount.toString()).minus(await this.activeAllocated(tx, kind, id));
         if (left.lte(0)) throw new DomainError(ErrorCode.VALIDATION, 'The voucher is fully allocated');
@@ -694,6 +753,8 @@ export class VouchersService implements OnModuleInit {
           );
         }
         if (!v.journalEntryId) throw new DomainError(ErrorCode.CONFLICT, 'The voucher has no journal entry');
+        // ADR-037 §2: only a cheque still in hand (or not yet cleared) is cancelled with its voucher.
+        await this.cheques.cancelForVoucher(tx, tenantId, kind, id, new Date(dto.reversalDate), userId ?? null);
         const reversal = await this.posting.reverseEntry(tx, {
           tenantId,
           companyId,
@@ -948,6 +1009,7 @@ export class VouchersService implements OnModuleInit {
     tx: Prisma.TransactionClient,
     companyId: bigint,
     accountId: string,
+    controlTypes: ('CASH' | 'BANK')[] = ['CASH', 'BANK'],
   ) {
     const acc = await tx.account.findFirst({
       where: {
@@ -955,7 +1017,7 @@ export class VouchersService implements OnModuleInit {
         id: BigInt(accountId),
         isActive: true,
         isPostable: true,
-        controlType: { in: ['CASH', 'BANK'] },
+        controlType: { in: controlTypes },
       },
       select: { id: true },
     });

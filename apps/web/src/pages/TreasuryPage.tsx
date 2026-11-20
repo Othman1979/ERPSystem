@@ -73,6 +73,7 @@ import { useSearchParams } from 'react-router';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { BalancesTab } from './treasury/BalancesTab';
 import { BankReconciliationTab } from './treasury/BankReconciliationTab';
+import { ChequesTab } from './treasury/ChequesTab';
 import { TransfersTab } from './treasury/TransfersTab';
 import { enterTo, focusNamedField, GridSelect } from '../components/GridSelect';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
@@ -145,8 +146,13 @@ function useTreasuryLookups() {
     () => (accounts.data ?? []).map((a) => ({ value: a.id, label: codeAndName(a) })),
     [accounts.data],
   );
+  // A cheque is drawn on, or deposited into, a bank account only (ADR-037).
+  const bankAccounts = useMemo(
+    () => (accounts.data ?? []).filter((a) => a.controlType === 'BANK').map((a) => ({ value: a.id, label: codeAndName(a) })),
+    [accounts.data],
+  );
 
-  return { cashAccounts };
+  return { cashAccounts, bankAccounts };
 }
 
 /**
@@ -190,6 +196,7 @@ export function TreasuryPage() {
             children: <TransfersTab cashAccounts={lookups.cashAccounts} />,
           },
           { key: 'balances', label: t('treasury.balances'), children: <BalancesTab /> },
+          { key: 'cheques', label: t('cheques.tab'), children: <ChequesTab bankAccounts={lookups.bankAccounts} /> },
           { key: 'reconciliation', label: t('bankRec.tab'), children: <BankReconciliationTab /> },
         ]}
       />
@@ -857,6 +864,14 @@ function VoucherForm({
   const [amount, setAmount] = useState<string | null>(null);
   const [referenceNo, setReferenceNo] = useState('');
   const [description, setDescription] = useState('');
+  // ADR-037: a cheque voucher posts on the cheques account and opens a cheque to follow up.
+  const [method, setMethod] = useState<'CASH' | 'CHEQUE'>('CASH');
+  const [chequeNo, setChequeNo] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [dueDate, setDueDate] = useState<Dayjs | null>(null);
+  const byCheque = method === 'CHEQUE';
+  // A received cheque sits in "cheques under collection" until deposited, so it takes no cash account.
+  const needsCashAccount = !(byCheque && kind === 'receipt');
   const [allocations, setAllocations] = useState<{ documentId: string; amount: string | null }[]>([]);
   const [autoAllocate, setAutoAllocate] = useState(false);
   const costCenters = useCostCenters();
@@ -926,11 +941,13 @@ function VoucherForm({
       const body = {
         partyType,
         partyId: partyId!,
-        cashAccountId: cashAccountId!,
         costCenterId: costCenterId || undefined,
         amount: amount!,
         referenceNo: referenceNo || undefined,
         description: description || undefined,
+        cheque: byCheque
+          ? { chequeNo: chequeNo.trim(), bankName: kind === 'receipt' ? bankName.trim() : undefined, dueDate: dueDate!.format('YYYY-MM-DD') }
+          : undefined,
         allocations: allocations.flatMap((a): AllocationDto[] =>
           a.documentId && a.amount && dec(a.amount).gt(0)
             ? [{ documentType: docType, documentId: a.documentId, amount: a.amount }]
@@ -944,8 +961,11 @@ function VoucherForm({
       const date = voucherDate.format('YYYY-MM-DD');
       const res =
         kind === 'receipt'
-          ? await treasuryControllerCreateReceipt({ receiptDate: date, ...body }, headers)
-          : await treasuryControllerCreatePayment({ paymentDate: date, ...body }, headers);
+          ? await treasuryControllerCreateReceipt(
+              { receiptDate: date, cashAccountId: needsCashAccount ? cashAccountId : undefined, ...body },
+              headers,
+            )
+          : await treasuryControllerCreatePayment({ paymentDate: date, cashAccountId: cashAccountId!, ...body }, headers);
       return res.data;
     },
     onSuccess: () => {
@@ -960,12 +980,17 @@ function VoucherForm({
   const [tried, setTried] = useState(false);
   const missing = {
     party: !partyId,
-    cashAccount: !cashAccountId,
+    chequeNo: byCheque && !chequeNo.trim(),
+    bankName: byCheque && kind === 'receipt' && !bankName.trim(),
+    dueDate: byCheque && !dueDate,
+    cashAccount: needsCashAccount && !cashAccountId,
     amount: !dec(amount).gt(0),
   };
   const trySave = () => {
     if (create.isPending) return;
-    const firstMissing = (['party', 'cashAccount', 'amount'] as const).find((k) => missing[k]);
+    const firstMissing = (['party', 'chequeNo', 'bankName', 'dueDate', 'cashAccount', 'amount'] as const).find(
+      (k) => missing[k],
+    );
     if (firstMissing) {
       setTried(true);
       focusNamedField(firstMissing);
@@ -1031,19 +1056,63 @@ function VoucherForm({
             }}
           />
         </DocField>
-        <DocField
-          field="cashAccount"
-          label={t('treasury.cashAccount')}
-          required
-          error={requiredError(missing.cashAccount)}
-        >
+        <DocField field="method" label={t('cheques.method')}>
           <GridSelect
-            status={requiredError(missing.cashAccount) ? 'error' : undefined}
-            options={lookups.cashAccounts}
-            value={cashAccountId}
-            onChange={setCashAccountId}
+            options={[
+              { value: 'CASH', label: t('cheques.cash') },
+              { value: 'CHEQUE', label: t('cheques.cheque') },
+            ]}
+            value={method}
+            onChange={(v) => {
+              setMethod(v === 'CHEQUE' ? 'CHEQUE' : 'CASH');
+              setCashAccountId(undefined);
+            }}
           />
         </DocField>
+        {byCheque && (
+          <DocField field="chequeNo" label={t('cheques.chequeNo')} required error={requiredError(missing.chequeNo)}>
+            <Input
+              value={chequeNo}
+              maxLength={50}
+              status={requiredError(missing.chequeNo) ? 'error' : undefined}
+              onChange={(e) => setChequeNo(e.target.value)}
+            />
+          </DocField>
+        )}
+        {byCheque && kind === 'receipt' && (
+          <DocField field="bankName" label={t('cheques.bankName')} required error={requiredError(missing.bankName)}>
+            <Input
+              value={bankName}
+              maxLength={191}
+              status={requiredError(missing.bankName) ? 'error' : undefined}
+              onChange={(e) => setBankName(e.target.value)}
+            />
+          </DocField>
+        )}
+        {byCheque && (
+          <DocField field="dueDate" label={t('cheques.dueDate')} required error={requiredError(missing.dueDate)}>
+            <DatePicker
+              value={dueDate}
+              status={requiredError(missing.dueDate) ? 'error' : undefined}
+              onChange={(d) => setDueDate(d)}
+            />
+          </DocField>
+        )}
+        {needsCashAccount && (
+          <DocField
+            field="cashAccount"
+            label={byCheque ? t('cheques.drawnOn') : t('treasury.cashAccount')}
+            required
+            error={requiredError(missing.cashAccount)}
+          >
+            <GridSelect
+                status={requiredError(missing.cashAccount) ? 'error' : undefined}
+              options={byCheque ? lookups.bankAccounts : lookups.cashAccounts}
+              value={cashAccountId}
+              onChange={setCashAccountId}
+            />
+          </DocField>
+        )}
         {costCenters.enabled && (
           <DocField field="costCenter" label={<CostCenterLabel />}>
             <CostCenterSelect

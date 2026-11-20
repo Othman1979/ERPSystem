@@ -401,6 +401,8 @@ model Tenant {
   issueRequestLines    IssueRequestLine[]
 
   salesInvoiceLineComponents SalesInvoiceLineComponent[]
+  cheques      Cheque[]
+  chequeEvents ChequeEvent[]
   @@map("tenants")
   salesQuotes SalesQuote[]
   salesQuoteLines SalesQuoteLine[]
@@ -507,6 +509,7 @@ model Company {
   salesQuotes       SalesQuote[]
   salesOrders       SalesOrder[]
 
+  cheques Cheque[]
   @@unique([tenantId, id])
   @@map("companies")
 }
@@ -896,6 +899,7 @@ model Account {
   goodsNoteExpenseAccounts   GoodsNote[]       @relation("GoodsNoteExpenseAccount")
   issueRequestExpenseAccounts IssueRequest[]   @relation("IssueRequestExpenseAccount")
 
+  chequesDrawn Cheque[] @relation("ChequeBankAccount")
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, code])
@@ -990,6 +994,8 @@ model JournalEntry {
   payments         Payment[]
   cashTransfers    CashTransfer[]
 
+  chequeEvents     ChequeEvent[] @relation("ChequeEventEntry")
+  chequeEventUndos ChequeEvent[] @relation("ChequeEventUndoEntry")
   @@unique([tenantId, id])
   // One POST + one REVERSAL per source document (docs/BUILD_PLAN.md §10.3).
   // MySQL treats NULL source_id as distinct — drafts set source_id = own id.
@@ -1602,6 +1608,7 @@ model Party {
   salesQuotes      SalesQuote[]
   salesOrders      SalesOrder[]
 
+  cheques Cheque[]
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, code])
   @@index([tenantId, partyType])
@@ -2237,6 +2244,7 @@ model Receipt {
   journalEntry   JournalEntry? @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   allocations    Allocation[]
 
+  cheque Cheque?
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, receiptNo])
   // Lists: ORDER BY receipt_date DESC, id DESC (DB-10).
@@ -2281,6 +2289,7 @@ model Payment {
   journalEntry   JournalEntry? @relation(fields: [tenantId, journalEntryId], references: [tenantId, id])
   allocations    Allocation[]
 
+  cheque Cheque?
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, paymentNo])
   // Lists: ORDER BY payment_date DESC, id DESC (DB-10).
@@ -3232,4 +3241,78 @@ model ProductionVoucherLine {
   @@unique([tenantId, id])
   @@unique([tenantId, voucherId, lineNo])
   @@map("production_voucher_lines")
+}
+
+/// ADR-037: a cheque received with a receipt (INCOMING) or issued with a payment (OUTGOING).
+model Cheque {
+  id            BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId      BigInt           @map("tenant_id") @db.UnsignedBigInt
+  companyId     BigInt           @map("company_id") @db.UnsignedBigInt
+  /// INCOMING | OUTGOING
+  direction     String           @db.VarChar(10)
+  /// IN_HAND | DEPOSITED | COLLECTED | ISSUED | CLEARED | RETURNED | CANCELLED
+  status        String           @db.VarChar(20)
+  chequeNo      String           @map("cheque_no") @db.VarChar(50)
+  /// Drawee bank of an incoming cheque.
+  bankName      String?          @map("bank_name") @db.VarChar(191)
+  dueDate       DateTime         @map("due_date") @db.Date
+  amount        Decimal          @db.Decimal(18, 3)
+  partyType     JournalPartyType @map("party_type")
+  partyId       BigInt           @map("party_id") @db.UnsignedBigInt
+  receiptId     BigInt?          @map("receipt_id") @db.UnsignedBigInt
+  paymentId     BigInt?          @map("payment_id") @db.UnsignedBigInt
+  /// Bank ledger account: drawn on (outgoing) or deposited into (incoming).
+  bankAccountId BigInt?          @map("bank_account_id") @db.UnsignedBigInt
+  /// ADR-037 §5: duplicate guard; cleared when the cheque is cancelled.
+  chequeKey     String?          @map("cheque_key") @db.VarChar(260)
+  /// ADR-003: the voucher's branch.
+  branchId      BigInt?          @map("branch_id") @db.UnsignedBigInt
+  createdBy     BigInt?          @map("created_by") @db.UnsignedBigInt
+  createdAt     DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company     Company       @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  party       Party         @relation(fields: [tenantId, partyId], references: [tenantId, id])
+  receipt     Receipt?      @relation(fields: [tenantId, receiptId], references: [tenantId, id])
+  payment     Payment?      @relation(fields: [tenantId, paymentId], references: [tenantId, id])
+  bankAccount Account?      @relation("ChequeBankAccount", fields: [tenantId, companyId, bankAccountId], references: [tenantId, companyId, id])
+  events      ChequeEvent[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, chequeKey])
+  @@unique([tenantId, receiptId])
+  @@unique([tenantId, paymentId])
+  @@index([tenantId, companyId, direction, status, dueDate])
+  @@index([tenantId, partyId])
+  @@map("cheques")
+}
+
+/// ADR-037 §4: one lifecycle step of a cheque, with its journal entry when it posts one.
+model ChequeEvent {
+  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId       BigInt    @map("tenant_id") @db.UnsignedBigInt
+  chequeId       BigInt    @map("cheque_id") @db.UnsignedBigInt
+  /// RECEIVE | ISSUE | DEPOSIT | COLLECT | CLEAR | RETURN | CANCEL
+  action         String    @db.VarChar(20)
+  fromStatus     String?   @map("from_status") @db.VarChar(20)
+  toStatus       String    @map("to_status") @db.VarChar(20)
+  eventDate      DateTime  @map("event_date") @db.Date
+  bankAccountId  BigInt?   @map("bank_account_id") @db.UnsignedBigInt
+  journalEntryId BigInt?   @map("journal_entry_id") @db.UnsignedBigInt
+  notes          String?   @db.VarChar(500)
+  undoneAt       DateTime? @map("undone_at") @db.DateTime(3)
+  undoneBy       BigInt?   @map("undone_by") @db.UnsignedBigInt
+  undoEntryId    BigInt?   @map("undo_entry_id") @db.UnsignedBigInt
+  createdBy      BigInt?   @map("created_by") @db.UnsignedBigInt
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cheque       Cheque        @relation(fields: [tenantId, chequeId], references: [tenantId, id])
+  journalEntry JournalEntry? @relation("ChequeEventEntry", fields: [tenantId, journalEntryId], references: [tenantId, id])
+  undoEntry    JournalEntry? @relation("ChequeEventUndoEntry", fields: [tenantId, undoEntryId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@index([tenantId, chequeId, id])
+  @@map("cheque_events")
 }

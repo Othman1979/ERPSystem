@@ -2975,3 +2975,79 @@ export class ProductionVoucherLineRow {
   @ApiProperty({ type: 'string', format: 'date-time' })
   updatedAt!: string;
 }
+
+/** Scalar columns of the Prisma model `Cheque`, as JSON. */
+export class ChequeRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  companyId!: string;
+  @ApiProperty({ type: 'string', description: "INCOMING | OUTGOING" })
+  direction!: string;
+  @ApiProperty({ type: 'string', description: "IN_HAND | DEPOSITED | COLLECTED | ISSUED | CLEARED | RETURNED | CANCELLED" })
+  status!: string;
+  @ApiProperty({ type: 'string' })
+  chequeNo!: string;
+  @ApiProperty({ type: 'string', nullable: true, description: "Drawee bank of an incoming cheque." })
+  bankName!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  dueDate!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  amount!: string;
+  @ApiProperty({ enum: JournalPartyType, enumName: 'JournalPartyType' })
+  partyType!: JournalPartyType;
+  @ApiProperty({ type: 'string' })
+  partyId!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  receiptId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  paymentId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, description: "Bank ledger account: drawn on (outgoing) or deposited into (incoming)." })
+  bankAccountId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, description: "ADR-037 §5: duplicate guard; cleared when the cheque is cancelled." })
+  chequeKey!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, description: "ADR-003: the voucher's branch." })
+  branchId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  createdBy!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  createdAt!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  updatedAt!: string;
+}
+
+/** Scalar columns of the Prisma model `ChequeEvent`, as JSON. */
+export class ChequeEventRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  chequeId!: string;
+  @ApiProperty({ type: 'string', description: "RECEIVE | ISSUE | DEPOSIT | COLLECT | CLEAR | RETURN | CANCEL" })
+  action!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  fromStatus!: string | null;
+  @ApiProperty({ type: 'string' })
+  toStatus!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  eventDate!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  bankAccountId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  journalEntryId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  notes!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time', nullable: true })
+  undoneAt!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  undoneBy!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  undoEntryId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  createdBy!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  createdAt!: string;
+}
