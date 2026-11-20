@@ -367,6 +367,11 @@ describe('concurrency', () => {
   });
 
   it('matches a ledger line once under two concurrent requests, after an xlsx import', async () => {
+    expect(
+      h.err(await h.api().post('/api/v1/bank-statements').set(h.auth(token)).send({
+        bankAccountId, startDate: '2031-04-01', endDate: '2031-04-31', openingBalance: '1007.500', closingBalance: '1807.500',
+      })),
+    ).toEqual([400, 'VALIDATION']);
     const april = ((await post(
       'bank-statements',
       { bankAccountId, startDate: '2031-04-01', endDate: '2031-04-30', openingBalance: '1007.500', closingBalance: '1807.500' },
@@ -378,6 +383,11 @@ describe('concurrency', () => {
       .set(h.auth(token))
       .attach('file', await sheet([['31/04/2031', 'Deposit', '', '400', '']]), 'statement.xlsx');
     expect(h.err(impossible)).toEqual([400, 'VALIDATION']);
+    expect(
+      h.err(await h.api().post(`/api/v1/bank-statements/${april}/lines`).set(h.auth(token)).send({
+        lineDate: '2031-04-31', deposit: '400',
+      })),
+    ).toEqual([400, 'VALIDATION']);
 
     const bad = await h.api()
       .post(`/api/v1/bank-statements/${april}/import`)

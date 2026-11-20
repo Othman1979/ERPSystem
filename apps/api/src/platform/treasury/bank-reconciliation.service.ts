@@ -54,6 +54,15 @@ function dateText(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
+/** A yyyy-mm-dd that names a real day; `toDate` alone rolls 2031-04-31 over to May 1. */
+function calendarDate(value: string, field: string): Date {
+  const date = toDate(value);
+  if (Number.isNaN(date.getTime()) || dateText(date) !== value) {
+    throw new DomainError(ErrorCode.VALIDATION, `${field} is not a calendar date`, { field });
+  }
+  return date;
+}
+
 function money(value: Decimal.Value): string {
   return round3(value).toFixed(3);
 }
@@ -100,8 +109,8 @@ export class BankReconciliationService {
   }
 
   private parseHeader(input: StatementHeaderInput) {
-    const startDate = toDate(input.startDate);
-    const endDate = toDate(input.endDate);
+    const startDate = calendarDate(input.startDate, 'startDate');
+    const endDate = calendarDate(input.endDate, 'endDate');
     if (endDate < startDate) {
       throw new DomainError(ErrorCode.VALIDATION, 'The statement ends before it starts', { field: 'endDate' });
     }
@@ -444,7 +453,7 @@ export class BankReconciliationService {
   // ---------------------------------------------------------------- lines
 
   private lineData(statement: Statement, input: StatementLineInput) {
-    const lineDate = toDate(input.lineDate);
+    const lineDate = calendarDate(input.lineDate, 'lineDate');
     if (lineDate < statement.startDate || lineDate > statement.endDate) {
       throw new DomainError(ErrorCode.VALIDATION, 'The line date is outside the statement dates', { field: 'lineDate' });
     }
