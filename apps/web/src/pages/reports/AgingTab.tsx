@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { PrinterOutlined } from '@ant-design/icons';
-import { Button, DatePicker, Segmented, Table, Tooltip, Typography } from 'antd';
+import { Button, Segmented, Table, Tooltip, Typography } from 'antd';
+import { DatePicker } from '../../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';

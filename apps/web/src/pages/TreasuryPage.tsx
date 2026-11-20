@@ -4,7 +4,6 @@ import {
   Button,
   Radio,
   Checkbox,
-  DatePicker,
   Form,
   Input,
   InputNumber,
@@ -17,6 +16,7 @@ import {
   Tag,
   message,
 } from 'antd';
+import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -1044,7 +1044,6 @@ function VoucherForm({
         </DocField>
         <DocField field="party" label={t('parties.name')} required error={requiredError(missing.party)}>
           <GridSelect
-            enterOpens
             status={requiredError(missing.party) ? 'error' : undefined}
             options={partyOptions}
             onRemoteSearch={parties.onSearch}
@@ -1059,7 +1058,6 @@ function VoucherForm({
         </DocField>
         <DocField field="method" label={t('cheques.method')}>
           <GridSelect
-            enterOpens
             options={[
               { value: 'CASH', label: t('cheques.cash') },
               { value: 'CHEQUE', label: t('cheques.cheque') },
@@ -1108,8 +1106,7 @@ function VoucherForm({
             error={requiredError(missing.cashAccount)}
           >
             <GridSelect
-              enterOpens
-              status={requiredError(missing.cashAccount) ? 'error' : undefined}
+                status={requiredError(missing.cashAccount) ? 'error' : undefined}
               options={byCheque ? lookups.bankAccounts : lookups.cashAccounts}
               value={cashAccountId}
               onChange={setCashAccountId}
@@ -1119,7 +1116,6 @@ function VoucherForm({
         {costCenters.enabled && (
           <DocField field="costCenter" label={<CostCenterLabel />}>
             <CostCenterSelect
-              enterOpens
               rows={costCenters.rows}
               value={costCenterId}
               onChange={setCostCenterId}
@@ -1176,7 +1172,6 @@ function VoucherForm({
                 title: t('treasury.invoice'),
                 render: (_: unknown, _a: { documentId: string; amount: string | null }, idx: number) => (
                   <GridSelect
-                    enterOpens
                     style={{ width: '100%' }}
                     placeholder={t('treasury.selectInvoice')}
                     options={invoiceOptions}

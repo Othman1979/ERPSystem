@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Select, type SelectProps } from 'antd';
 import { useState } from 'react';
+import { openSelect } from './GridSelect';
 import { useTranslation } from 'react-i18next';
 import { SEARCH_DEBOUNCE_MS } from '../hooks/usePagedQuery';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
@@ -41,6 +42,7 @@ export function RemoteSelect({
   const [search, setSearch] = useState('');
   const q = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS) || undefined;
   const [chosen, setChosen] = useState<RemoteOption | undefined>();
+  const [open, setOpen] = useState(false);
   const query = useQuery({
     queryKey: [...queryKey, q ?? ''],
     queryFn: ({ signal }) => fetchOptions(q, signal),
@@ -66,10 +68,17 @@ export function RemoteSelect({
       loading={loading}
       notFoundContent={loading ? t('common.loading') : undefined}
       onSearch={setSearch}
-      onDropdownVisibleChange={(open) => {
-        rest.onDropdownVisibleChange?.(open);
+      onDropdownVisibleChange={(visible) => {
+        rest.onDropdownVisibleChange?.(visible);
+        setOpen(visible);
         // As GridSelect does: a closed list starts again with no search text.
-        if (!open) setSearch('');
+        if (!visible) setSearch('');
+      }}
+      onKeyDown={(e) => {
+        rest.onKeyDown?.(e);
+        // A closed list opens on the arrow keys (or typing), not on arriving in the field.
+        const select = (e.target as HTMLElement).closest<HTMLElement>('.ant-select');
+        if (!open && select && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) openSelect(select);
       }}
       options={options}
       onChange={(v) => {

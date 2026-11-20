@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Checkbox, DatePicker, Input, Modal, Radio, Select, Table, Typography, message } from 'antd';
+import { Alert, Checkbox, Input, Modal, Radio, Select, Table, Typography, message } from 'antd';
+import { DatePicker } from '../../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -317,7 +318,6 @@ export function BillOrderModal({ order, open, onClose, onBilled }: BillOrderModa
               <Typography.Text>{t('purchases.invoiceDate')}</Typography.Text>
               <DatePicker
                 style={{ width: '100%' }}
-                format="YYYY-MM-DD"
                 value={dayjs(header.invoiceDate)}
                 onChange={(d: Dayjs | null) =>
                   setHeader((h) => ({ ...h, invoiceDate: d ? d.format('YYYY-MM-DD') : h.invoiceDate }))

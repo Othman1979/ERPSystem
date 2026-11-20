@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckOutlined, DeleteOutlined, FileExcelOutlined, PlusOutlined, ThunderboltOutlined, UndoOutlined } from '@ant-design/icons';
-import { Button, Card, DatePicker, Descriptions, Input, InputNumber, Popconfirm, Select, Space, Table, Tag, Upload, message } from 'antd';
+import { Button, Card, Descriptions, Input, InputNumber, Popconfirm, Select, Space, Table, Tag, Upload, message } from 'antd';
+import { DatePicker } from '../../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';

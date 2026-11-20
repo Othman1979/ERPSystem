@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PlusOutlined, SwapOutlined } from '@ant-design/icons';
-import { Button, DatePicker, Form, Input, InputNumber, Table, Tag, message } from 'antd';
+import { Button, Form, Input, InputNumber, Table, Tag, message } from 'antd';
+import { DatePicker } from '../../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -234,11 +235,10 @@ function TransferModal({
               <DatePicker value={date} onChange={(d) => d && setDate(d)} />
             </Form.Item>
             <Form.Item label={t('treasury.fromAccount')} required {...gap(!fromAccountId)}>
-              <GridSelect enterOpens options={cashAccounts} value={fromAccountId} onChange={setFrom} />
+              <GridSelect options={cashAccounts} value={fromAccountId} onChange={setFrom} />
             </Form.Item>
             <Form.Item label={t('treasury.toAccount')} required {...gap(!toAccountId)}>
               <GridSelect
-                enterOpens
                 options={cashAccounts.filter((a) => a.value !== fromAccountId)}
                 value={toAccountId}
                 onChange={setTo}

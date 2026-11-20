@@ -11,7 +11,6 @@ import {
   App,
   Button,
   Card,
-  DatePicker,
   Dropdown,
   Input,
   Modal,
@@ -23,6 +22,7 @@ import {
   Typography,
   message,
 } from 'antd';
+import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -532,7 +532,6 @@ export function JournalPage() {
               onKeyDown={enterTo(() => focusNamedField('date'))}
             >
               <GridSelect
-                enterOpens
                 value={newVoucherType}
                 onChange={setNewVoucherType}
                 options={VOUCHER_TYPES.map((vt) => ({

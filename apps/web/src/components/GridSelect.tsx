@@ -7,14 +7,13 @@ import { useTranslation } from 'react-i18next';
  *  - Enter on an open list picks the option and moves to the next field in one
  *    keystroke (`onEnterSelect`, or the surrounding Enter handler).
  *  - Enter on a closed list moves on — antd would reopen it, which left a list
- *    hanging open behind the next field and swallowed the next Enter. Only an
- *    empty field with `enterOpens` opens on Enter.
+ *    hanging open behind the next field and swallowed the next Enter. A list
+ *    opens only on typing (autocomplete), ArrowDown/ArrowUp, or a click.
  *  - ArrowDown/ArrowUp while closed opens the list.
  *  - Typing a printable character while closed opens the list pre-filled with
  *    it (type-to-search, Excel-like).
  */
 export function GridSelect({
-  enterOpens = false,
   onEnterSelect,
   onRemoteSearch,
   searching = false,
@@ -32,8 +31,6 @@ export function GridSelect({
    * Enter cannot pick a row from the previous search.
    */
   searching?: boolean;
-  /** Header fields: Enter on an empty field opens the list. */
-  enterOpens?: boolean;
   /** Fired when Enter picks an option (grid advance). Without it, the Enter is
    *  re-sent to the surrounding field handler so header chains move on. */
   onEnterSelect?: (value: unknown, option: unknown) => void;
@@ -46,8 +43,6 @@ export function GridSelect({
   // Set (capture phase) when this Enter should navigate, not open the list.
   const passEnter = useRef(false);
 
-  const hasValue = props.value !== undefined && props.value !== null && props.value !== '';
-
   return (
     // display:contents — the wrapper adds no box; it only lets us see the key
     // before antd's own handler runs.
@@ -57,7 +52,7 @@ export function GridSelect({
         // Decide before antd's handler: it picks the option (firing onChange)
         // before our onKeyDown ever runs.
         const isEnter = e.key === 'Enter';
-        passEnter.current = isEnter && !open && (!enterOpens || hasValue);
+        passEnter.current = isEnter && !open;
         enterPending.current = isEnter && open;
       }}
     >
@@ -130,10 +125,6 @@ export function GridSelect({
             e.preventDefault();
             e.stopPropagation();
             setOpen(true);
-          } else if (e.key === 'Enter' && enterOpens) {
-            e.preventDefault();
-            e.stopPropagation();
-            setOpen(true);
           } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
             e.preventDefault();
             e.stopPropagation();
@@ -145,6 +136,11 @@ export function GridSelect({
       />
     </span>
   );
+}
+
+/** Open a closed antd Select from the keyboard, as a click on it would. */
+export function openSelect(select: HTMLElement): void {
+  select.querySelector('.ant-select-selector')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
 }
 
 /**
@@ -162,46 +158,35 @@ export function isSelectDropdownOpen(scope?: Element | null): boolean {
   const within = (sel: string) => scope.matches(sel) || !!scope.querySelector(sel);
   if (within(OPEN_SELECT)) return true;
   // Date panels render in a portal; count one only if this field owns the
-  // focused picker and something is typed in it — Enter on an empty
-  // (optional) date skips the field instead of getting stuck in the panel.
+  // focused picker and its date is unfinished (half typed or not a calendar day) —
+  // an empty (optional) date is skipped, and a valid one was already committed by
+  // the picker's Enter.
   if (!pickerOpen) return false;
   const picker = scope.matches('.ant-picker-focused')
     ? scope
     : scope.querySelector('.ant-picker-focused');
-  return !!picker?.querySelector('input')?.value;
+  return isUnfinishedDateText(picker?.querySelector('input')?.value ?? '');
 }
 
 /**
- * Focus the editable control inside a cell/field wrapper. An empty select
- * opens its list (ready to type or pick); a filled one is only focused, so
- * Enter moves straight on.
+ * A masked DD/MM/YYYY date the picker will not commit: some digits typed but
+ * format letters left (20/11/YYYY), or no such calendar day (31/02/2026).
+ */
+export function isUnfinishedDateText(text: string): boolean {
+  if (!/\d/.test(text)) return false;
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text);
+  if (!m) return true;
+  const [day, month, year] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day;
+}
+
+/**
+ * Focus the editable control inside a cell/field wrapper. A select is only
+ * focused, never opened: its list opens when the user types or presses an arrow.
  */
 export function focusCellEl(el: HTMLElement | null | undefined): void {
   if (!el) return;
-  const select = el.querySelector<HTMLElement>('.ant-select-selector');
-  if (select) {
-    const input = el.querySelector<HTMLInputElement>('input');
-    if (el.querySelector('.ant-select-selection-item')) {
-      input?.focus();
-      return;
-    }
-    // antd moves focus into a select on click, not on mousedown — so focus it
-    // first, then open the list. (Opening alone left the caret in the previous
-    // cell with this cell's list hanging open.)
-    input?.focus();
-    select.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    // Make sure the dropdown actually opens — GridSelect opens on ArrowDown
-    // when closed, so nudge it only if nothing opened after the mousedown.
-    requestAnimationFrame(() => {
-      // A late frame (slow device, background tab) must not reopen a list the
-      // user has already picked from and left.
-      if (document.activeElement !== input) return;
-      if (!el.querySelector('.grid-select-open')) {
-        select.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-      }
-    });
-    return;
-  }
   const input = el.querySelector<HTMLElement>('input, textarea');
   if (input) {
     input.focus();

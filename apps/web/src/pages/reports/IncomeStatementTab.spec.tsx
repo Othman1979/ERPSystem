@@ -87,18 +87,17 @@ async function flush() {
   }
 }
 
-/** Types an ISO day into a period picker and commits it with Enter, as a user does. */
-function typeDay(label: string, value: string) {
+/** Types a day's digits (DDMMYYYY) into a masked period picker and commits it with Enter, as a user does. */
+function typeDay(label: string, digits: string) {
   const input = host?.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
   if (!input) throw new Error(`no picker "${label}"`);
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
-  act(() => {
-    setter.call(input, value);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  act(() => {
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-  });
+  const key = (k: string) =>
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    });
+  act(() => input.focus());
+  for (const d of digits) key(d);
+  key('Enter');
 }
 
 /** The option of the view switch with this label. */
@@ -152,7 +151,7 @@ describe('IncomeStatementTab', () => {
     renderWithProviders(<IncomeStatementTab />);
     await flush();
 
-    typeDay(i18n.t('reports.from'), '2026-03-01');
+    typeDay(i18n.t('reports.from'), '01032026');
     await flush();
     expect(plain).toHaveBeenLastCalledWith({ from: '2026-03-01', to: undefined }, expect.anything());
 
@@ -160,14 +159,14 @@ describe('IncomeStatementTab', () => {
     await flush();
     expect(byCentre).toHaveBeenLastCalledWith({ from: '2026-03-01', to: undefined }, expect.anything());
     expect(host?.querySelector<HTMLInputElement>(`input[aria-label="${i18n.t('reports.from')}"]`)?.value).toBe(
-      '2026-03-01',
+      '01/03/2026',
     );
 
     act(() => viewOption(i18n.t('reports.incomeStatement'))!.click());
     await flush();
     expect(plain).toHaveBeenLastCalledWith({ from: '2026-03-01', to: undefined }, expect.anything());
     expect(host?.querySelector<HTMLInputElement>(`input[aria-label="${i18n.t('reports.from')}"]`)?.value).toBe(
-      '2026-03-01',
+      '01/03/2026',
     );
   });
 });

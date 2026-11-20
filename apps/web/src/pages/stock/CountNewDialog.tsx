@@ -1,6 +1,7 @@
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Checkbox, DatePicker, Form, Input, Radio, Select, Switch, TreeSelect } from 'antd';
+import { Checkbox, Form, Input, Radio, Select, Switch, TreeSelect } from 'antd';
+import { DatePicker } from '../../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import {
@@ -102,7 +103,7 @@ export function CountNewDialog({
               <DatePicker disabledDate={(d: Dayjs) => d.isAfter(dayjs(), 'day')} />
             </Form.Item>
             <Form.Item name="warehouseId" label={t('stock.warehouse')} rules={[{ required: true }]}>
-              <GridSelect enterOpens options={whOptions} />
+              <GridSelect options={whOptions} />
             </Form.Item>
             <Form.Item name="description" label={t('common.description')}>
               <Input maxLength={500} />

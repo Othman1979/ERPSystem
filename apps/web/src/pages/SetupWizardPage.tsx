@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircleFilled } from '@ant-design/icons';
-import { Alert, App, Button, Card, DatePicker, Form, Input, Result, Space, Steps, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Form, Input, Result, Space, Steps, Table, Tag, Typography } from 'antd';
+import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';

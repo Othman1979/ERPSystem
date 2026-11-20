@@ -1,5 +1,5 @@
 import { useEffect, type HTMLAttributes, type KeyboardEvent } from 'react';
-import { focusCellEl, isSelectDropdownOpen } from './GridSelect';
+import { focusCellEl, isSelectDropdownOpen, isUnfinishedDateText, openSelect } from './GridSelect';
 
 /** Field roots that Enter steps through, in DOM order. */
 const FIELD_SELECTOR = [
@@ -60,9 +60,29 @@ export function focusFirstEmptyField(): void {
  * chain. Lines grids inside handle Enter themselves; the chain jumps into the
  * grid's first cell and, in a dialog, ends on its primary (Save) button.
  */
+/**
+ * Enter stays in a date field while its date is unfinished (half typed, or no such
+ * day), and on a range's start date, where the picker moves on to the end date.
+ */
+function dateKeepsEnter(field: HTMLElement, target: HTMLElement): boolean {
+  const inputs = Array.from(field.querySelectorAll('input'));
+  if (target instanceof HTMLInputElement && inputs.length > 1 && target !== inputs[inputs.length - 1]) return true;
+  const input = target instanceof HTMLInputElement ? target : inputs[0];
+  return isUnfinishedDateText(input?.value ?? '');
+}
+
+/** Focus the field after `field` within the dialog (or the EnterNav scope). */
+function moveNext(field: HTMLElement, container: HTMLElement): void {
+  const scope = container.closest('.ant-modal-content') ?? container;
+  const fields = fieldsIn(scope);
+  const next = fields[fields.indexOf(field) + 1];
+  if (next) focusField(next);
+}
+
 export function EnterNav({
   children,
   onKeyDown,
+  onKeyDownCapture,
   className,
   autoFocusWhen,
   ...rest
@@ -77,6 +97,25 @@ export function EnterNav({
     return () => window.clearTimeout(id);
   }, [autoFocusWhen]);
 
+  // Before the select sees it: Enter on a closed list moves on instead of opening it,
+  // and the arrow keys open it (a list opens on typing or the arrows, like an autocomplete).
+  const handleKeyDownCapture = (e: KeyboardEvent<HTMLDivElement>) => {
+    onKeyDownCapture?.(e);
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-cell]')) return;
+    const select = target.closest<HTMLElement>('.ant-select:not(.ant-select-disabled)');
+    if (!select || isSelectDropdownOpen(select)) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      openSelect(select);
+      return;
+    }
+    if (handledEnters.has(e.nativeEvent) || e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handledEnters.add(e.nativeEvent);
+    moveNext(select, e.currentTarget);
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(e);
     // Not `defaultPrevented`: antd's Select prevents Enter itself before it bubbles here.
@@ -87,19 +126,25 @@ export function EnterNav({
       return;
     }
     const field = target.closest<HTMLElement>(FIELD_SELECTOR);
-    if (!field || isSelectDropdownOpen(field)) return;
+    if (!field) return;
+    const isDate = field.matches('.ant-picker');
+    // A typed date: the picker has already taken this Enter (it commits the date); move on
+    // unless the date is unfinished or the range's end date comes next. Other open lists keep their Enter.
+    if (isDate && dateKeepsEnter(field, target)) {
+      // Stay, but never let this Enter submit the form with the picker's old date.
+      e.preventDefault();
+      return;
+    }
+    if (!isDate && isSelectDropdownOpen(field)) return;
 
     // Always stop the browser's implicit form submit on Enter.
     e.preventDefault();
     handledEnters.add(e.nativeEvent);
-    const scope = e.currentTarget.closest('.ant-modal-content') ?? e.currentTarget;
-    const fields = fieldsIn(scope);
-    const next = fields[fields.indexOf(field) + 1];
-    if (next) focusField(next);
+    moveNext(field, e.currentTarget);
   };
 
   return (
-    <div {...rest} className={['enter-nav', className].filter(Boolean).join(' ')} onKeyDown={handleKeyDown}>
+    <div {...rest} className={['enter-nav', className].filter(Boolean).join(' ')} onKeyDown={handleKeyDown} onKeyDownCapture={handleKeyDownCapture}>
       {children}
     </div>
   );

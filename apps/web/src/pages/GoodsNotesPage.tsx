@@ -4,7 +4,6 @@ import {
   Alert,
   App,
   Button,
-  DatePicker,
   Dropdown,
   Input,
   InputNumber,
@@ -15,6 +14,7 @@ import {
   Tag,
   message,
 } from 'antd';
+import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -597,7 +597,6 @@ export function GoodsNotesSection({
               onKeyDown={enterTo(() => focusNamedField('date'))}
             >
               <GridSelect
-                enterOpens
                 value={newType}
                 onChange={setNewType}
                 options={NOTE_TYPES.map((vt) => ({
@@ -621,7 +620,6 @@ export function GoodsNotesSection({
               onKeyDown={enterTo(() => focusNamedField('description'))}
             >
               <GridSelect
-                enterOpens
                 status={warehouseError ? 'error' : undefined}
                 options={warehouseOptions}
                 value={newWarehouseId}
@@ -651,7 +649,6 @@ export function GoodsNotesSection({
                   )}
                 >
                   <GridSelect
-                    enterOpens
                     allowClear
                     options={expenseOptions}
                     value={newExpenseAccountId}
@@ -665,7 +662,6 @@ export function GoodsNotesSection({
                     onKeyDown={enterTo(focusFirstGridCell)}
                   >
                     <CostCenterSelect
-                      enterOpens
                       rows={costCenters.rows}
                       value={newCostCenterId}
                       onChange={setNewCostCenterId}
