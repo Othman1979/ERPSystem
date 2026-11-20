@@ -210,7 +210,8 @@ function HomeScreen() {
 
 function AppShell() {
   const { t } = useTranslation();
-  const { me, logout, switchTenant, branchId, setBranch, can } = useAuth();
+  const { me, logout, switchTenant, branchId, setBranch, companyId, setCompany, can } = useAuth();
+  const companies = me?.currentMembership?.companies ?? [];
   const branches = me?.currentMembership?.branches ?? [];
   const location = useLocation();
   const navigate = useNavigate();
@@ -357,6 +358,22 @@ function AppShell() {
         )}
         {!isMobile && <div style={{ flex: 1 }} />}
         <Space size={isMobile ? 4 : 12}>
+          {companies.length > 1 && (
+            <Select
+              size="small"
+              className="topbar-company"
+              style={{ minWidth: isMobile ? 120 : 180 }}
+              value={companyId ?? undefined}
+              onChange={setCompany}
+              options={companies.map((c) => ({
+                value: c.id,
+                label: (i18n.language === 'en' && c.legalNameEn) || c.legalNameAr,
+              }))}
+              popupMatchSelectWidth={false}
+              aria-label={t('nav.company')}
+              title={t('nav.company')}
+            />
+          )}
           {branches.length > 1 && (
             <Select
               size="small"

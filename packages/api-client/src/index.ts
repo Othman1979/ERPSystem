@@ -24,6 +24,8 @@ export {
   REQUEST_TIMEOUT_MS,
   setAccessToken,
   setBranchId,
+  setCompanyId,
+  getCompanyId,
   tokenSession,
 } from './runtime';
 export type { ApiErrorBody, ApiFile, ApiRequestInit, ApiResponse, ApiWrite } from './runtime';

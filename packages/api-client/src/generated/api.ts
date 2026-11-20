@@ -185,6 +185,13 @@ export interface MeBranchDto {
   nameEn: string | null;
 }
 
+export interface MeCompanyDto {
+  id: string;
+  legalNameAr: string;
+  /** @nullable */
+  legalNameEn: string | null;
+}
+
 export interface MeCurrentMembershipDto {
   membershipId: string;
   roleCode: string;
@@ -200,6 +207,12 @@ export interface MeCurrentMembershipDto {
   branches: MeBranchDto[];
   /** True when no branch is assigned: company-wide access. */
   allBranches: boolean;
+  companies: MeCompanyDto[];
+  /**
+     * Company of this request (X-Company-Id or the first allowed).
+     * @nullable
+     */
+  companyId: string | null;
 }
 
 export interface MeResponseDto {
@@ -899,6 +912,30 @@ export interface CompanyLogoBase64Dto {
   mimeType: string;
   /** Base64 of the image bytes. */
   base64: string;
+}
+
+export interface CompanyEntryDto {
+  id: string;
+  legalNameAr: string;
+  /** @nullable */
+  legalNameEn: string | null;
+  isActive: boolean;
+  current: boolean;
+}
+
+export interface CreateCompanyDto {
+  /** @maxLength 191 */
+  legalNameAr: string;
+  /** @maxLength 191 */
+  legalNameEn?: string;
+}
+
+export interface UpdateCompanyEntryDto {
+  /** @maxLength 191 */
+  legalNameAr?: string;
+  /** @maxLength 191 */
+  legalNameEn?: string;
+  isActive?: boolean;
 }
 
 export type JournalPostingKind = typeof JournalPostingKind[keyof typeof JournalPostingKind];
@@ -1719,6 +1756,8 @@ export interface UserMembershipDto {
   /** @nullable */
   defaultBranch: UserMembershipBranchDto | null;
   branches: UserMembershipBranchDto[];
+  /** ADR-040 §3: the companies the member may use; empty means every company. */
+  companyIds: string[];
   /** Purchase permissions the member holds (ADR-024 §3); an owner holds all three, with no limit. */
   purchasePermissions: UserPurchasePermissionDto[];
 }
@@ -1759,6 +1798,8 @@ export interface UserInviteResultDto {
   /** @nullable */
   defaultBranch: UserMembershipBranchDto | null;
   branches: UserMembershipBranchDto[];
+  /** ADR-040 §3: the companies the member may use; empty means every company. */
+  companyIds: string[];
   /** Purchase permissions the member holds (ADR-024 §3); an owner holds all three, with no limit. */
   purchasePermissions: UserPurchasePermissionDto[];
   /** Only for a brand-new account. */
@@ -1796,6 +1837,11 @@ export interface UpdateMembershipDto {
   defaultBranchId?: string | null;
   /** @maxItems 100 */
   branchIds?: string[];
+  /**
+     * ADR-040 §3: the companies the member may use; empty means every company.
+     * @maxItems 100
+     */
+  companyIds?: string[];
 }
 
 export interface MemberPermissionGrantDto {
@@ -9356,6 +9402,7 @@ export const ErrorCode = {
   PERIOD_CLOSED: 'PERIOD_CLOSED',
   STOCK_INSUFFICIENT: 'STOCK_INSUFFICIENT',
   BACKDATED_STOCK_POSTING: 'BACKDATED_STOCK_POSTING',
+  COMPANY_NOT_ALLOWED: 'COMPANY_NOT_ALLOWED',
   BRANCH_NOT_ALLOWED: 'BRANCH_NOT_ALLOWED',
   REVERSE_VIA_DOCUMENT: 'REVERSE_VIA_DOCUMENT',
   VOUCHER_HAS_ALLOCATIONS: 'VOUCHER_HAS_ALLOCATIONS',
@@ -13567,6 +13614,149 @@ export const companyControllerCompleteOnboarding = async ( options?: Parameters<
     method: 'POST'
 
 
+  }
+);}
+
+
+
+export type companiesControllerListResponse200 = {
+  data: CompanyEntryDto[]
+  status: 200
+}
+
+export type companiesControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type companiesControllerListResponseSuccess = (companiesControllerListResponse200) & {
+  headers: Headers;
+};
+export type companiesControllerListResponseError = (companiesControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getCompaniesControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/companies`
+}
+
+export const companiesControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<companiesControllerListResponseSuccess> => {
+
+  return apiFetch<companiesControllerListResponseSuccess>(getCompaniesControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type companiesControllerCreateResponse201 = {
+  data: CompanyEntryDto
+  status: 201
+}
+
+export type companiesControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type companiesControllerCreateResponseSuccess = (companiesControllerCreateResponse201) & {
+  headers: Headers;
+};
+export type companiesControllerCreateResponseError = (companiesControllerCreateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getCompaniesControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/companies`
+}
+
+export const companiesControllerCreate = async (createCompanyDto: CreateCompanyDto, options?: Parameters<typeof apiFetch>[1]): Promise<companiesControllerCreateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<companiesControllerCreateResponseSuccess>(getCompaniesControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createCompanyDto)
+  }
+);}
+
+
+
+export type companiesControllerUpdateResponse200 = {
+  data: CompanyEntryDto
+  status: 200
+}
+
+export type companiesControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type companiesControllerUpdateResponseSuccess = (companiesControllerUpdateResponse200) & {
+  headers: Headers;
+};
+export type companiesControllerUpdateResponseError = (companiesControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getCompaniesControllerUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/companies/${id}`
+}
+
+export const companiesControllerUpdate = async (id: string,
+    updateCompanyEntryDto: UpdateCompanyEntryDto, options?: Parameters<typeof apiFetch>[1]): Promise<companiesControllerUpdateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<companiesControllerUpdateResponseSuccess>(getCompaniesControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateCompanyEntryDto)
   }
 );}
 

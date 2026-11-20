@@ -32,6 +32,7 @@ const member = (id: string, roleCode: string, purchasePermissions: UserMembershi
   customRole: null,
   defaultBranch: null,
   branches: [],
+  companyIds: [],
   purchasePermissions,
 });
 const ALL = [

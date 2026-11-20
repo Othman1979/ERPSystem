@@ -106,6 +106,8 @@ const REFRESH_LOCK = 'erp-auth-refresh';
 let accessToken: string | null = null;
 // Branch picked in the top bar; sent as X-Branch-Id (checked by BranchGuard, ADR-003).
 let branchId: string | null = null;
+// Company picked in the top bar; sent as X-Company-Id (checked by CompanyGuard, ADR-040).
+let companyId: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
 const writeListeners = new Set<(write: ApiWrite) => void>();
 const sessionListeners = new Set<() => void>();
@@ -150,6 +152,14 @@ export function setBranchId(id: string | null): void {
 
 export function getBranchId(): string | null {
   return branchId;
+}
+
+export function setCompanyId(id: string | null): void {
+  companyId = id;
+}
+
+export function getCompanyId(): string | null {
+  return companyId;
 }
 
 /**
@@ -367,6 +377,9 @@ async function send(url: string, init: RequestInit): Promise<Response> {
     }
     if (accessToken && !headers.has('Authorization')) {
       headers.set('Authorization', `Bearer ${accessToken}`);
+    }
+    if (companyId && !headers.has('X-Company-Id')) {
+      headers.set('X-Company-Id', companyId);
     }
     if (branchId && !headers.has('X-Branch-Id')) {
       headers.set('X-Branch-Id', branchId);

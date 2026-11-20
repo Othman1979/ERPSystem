@@ -1,4 +1,5 @@
 import {
+  Headers,
   Body,
   Controller,
   Get,
@@ -166,8 +167,8 @@ export class MeController {
   @AllowPendingPasswordChange()
   @Get()
   @ApiOkResponse({ type: MeResponseDto })
-  me() {
-    return this.auth.me();
+  me(@Headers('x-company-id') company?: string) {
+    return this.auth.me(company);
   }
 
   @TenantOptional()
