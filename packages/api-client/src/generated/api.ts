@@ -254,6 +254,18 @@ export const ControlType = {
   BANK: 'BANK',
 } as const;
 
+/**
+ * ADR-036 §3: ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default.
+ */
+export type CashFlowActivity = typeof CashFlowActivity[keyof typeof CashFlowActivity];
+
+
+export const CashFlowActivity = {
+  OPERATING: 'OPERATING',
+  INVESTING: 'INVESTING',
+  FINANCING: 'FINANCING',
+} as const;
+
 export interface AccountDto {
   id: string;
   tenantId: string;
@@ -272,6 +284,8 @@ export interface AccountDto {
   controlType: ControlType | null;
   /** ADR-024 §1.3: a posting line needs a cost centre while centres are enabled. Income-statement accounts (REVENUE, EXPENSE) only. */
   costCenterRequired: boolean;
+  /** ADR-036 §3: ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default. */
+  cashFlowActivity: CashFlowActivity | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -280,6 +294,19 @@ export interface AccountDto {
   /** @nullable */
   updatedBy: string | null;
 }
+
+/**
+ * Cash flow section (ADR-036 §3); ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default.
+ * @nullable
+ */
+export type CreateAccountDtoCashFlowActivity = typeof CreateAccountDtoCashFlowActivity[keyof typeof CreateAccountDtoCashFlowActivity] | null;
+
+
+export const CreateAccountDtoCashFlowActivity = {
+  OPERATING: 'OPERATING',
+  INVESTING: 'INVESTING',
+  FINANCING: 'FINANCING',
+} as const;
 
 export type CreateAccountDtoAccountType = typeof CreateAccountDtoAccountType[keyof typeof CreateAccountDtoAccountType];
 
@@ -315,6 +342,11 @@ export const CreateAccountDtoControlType = {
 
 export interface CreateAccountDto {
   /**
+     * Cash flow section (ADR-036 §3); ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default.
+     * @nullable
+     */
+  cashFlowActivity?: CreateAccountDtoCashFlowActivity;
+  /**
      * Optional when parentId is set — the server auto-generates `parent-NN`.
      * @minLength 1
      * @maxLength 50
@@ -338,7 +370,25 @@ export interface CreateAccountDto {
   costCenterRequired?: boolean;
 }
 
+/**
+ * Cash flow section (ADR-036 §3); ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default.
+ * @nullable
+ */
+export type UpdateAccountDtoCashFlowActivity = typeof UpdateAccountDtoCashFlowActivity[keyof typeof UpdateAccountDtoCashFlowActivity] | null;
+
+
+export const UpdateAccountDtoCashFlowActivity = {
+  OPERATING: 'OPERATING',
+  INVESTING: 'INVESTING',
+  FINANCING: 'FINANCING',
+} as const;
+
 export interface UpdateAccountDto {
+  /**
+     * Cash flow section (ADR-036 §3); ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default.
+     * @nullable
+     */
+  cashFlowActivity?: UpdateAccountDtoCashFlowActivity;
   /**
      * @minLength 1
      * @maxLength 191
@@ -8367,6 +8417,37 @@ export interface BalanceSheetDto {
   balanced: boolean;
 }
 
+export interface CashFlowRowDto {
+  accountId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  amount: string;
+}
+
+export interface CashFlowSectionDto {
+  rows: CashFlowRowDto[];
+  total: string;
+}
+
+export interface CashFlowDto {
+  from: string;
+  to: string;
+  /** @nullable */
+  fiscalYear: StatementFiscalYearRefDto | null;
+  netProfit: string;
+  /** Its total includes the net profit. */
+  operating: CashFlowSectionDto;
+  investing: CashFlowSectionDto;
+  financing: CashFlowSectionDto;
+  netChange: string;
+  openingCash: string;
+  closingCash: string;
+  /** openingCash + netChange = closingCash. */
+  reconciles: boolean;
+}
+
 export interface TaxSummaryRowDto {
   salesBase: string;
   salesTax: string;
@@ -10987,6 +11068,30 @@ export type ReportsControllerBalanceSheetLang = typeof ReportsControllerBalanceS
 
 
 export const ReportsControllerBalanceSheetLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type ReportsControllerCashFlowParams = {
+  format?: ReportsControllerCashFlowFormat;
+  lang?: ReportsControllerCashFlowLang;
+  from?: string;
+  to?: string;
+};
+
+export type ReportsControllerCashFlowFormat = typeof ReportsControllerCashFlowFormat[keyof typeof ReportsControllerCashFlowFormat];
+
+
+export const ReportsControllerCashFlowFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type ReportsControllerCashFlowLang = typeof ReportsControllerCashFlowLang[keyof typeof ReportsControllerCashFlowLang];
+
+
+export const ReportsControllerCashFlowLang = {
   ar: 'ar',
   en: 'en',
 } as const;
@@ -24846,6 +24951,54 @@ export const getReportsControllerBalanceSheetUrl = (params?: ReportsControllerBa
 export const reportsControllerBalanceSheet = async (params?: ReportsControllerBalanceSheetParams, options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerBalanceSheetResponseSuccess> => {
 
   return apiFetch<reportsControllerBalanceSheetResponseSuccess>(getReportsControllerBalanceSheetUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type reportsControllerCashFlowResponse200 = {
+  data: CashFlowDto
+  status: 200
+}
+
+export type reportsControllerCashFlowResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type reportsControllerCashFlowResponseSuccess = (reportsControllerCashFlowResponse200) & {
+  headers: Headers;
+};
+export type reportsControllerCashFlowResponseError = (reportsControllerCashFlowResponseDefault) & {
+  headers: Headers;
+};
+
+export const getReportsControllerCashFlowUrl = (params?: ReportsControllerCashFlowParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/reports/cash-flow?${stringifiedParams}` : `/api/v1/reports/cash-flow`
+}
+
+/**
+ * @summary Indirect method (ADR-036); company-wide (ADR-003 §13).
+ */
+export const reportsControllerCashFlow = async (params?: ReportsControllerCashFlowParams, options?: Parameters<typeof apiFetch>[1]): Promise<reportsControllerCashFlowResponseSuccess> => {
+
+  return apiFetch<reportsControllerCashFlowResponseSuccess>(getReportsControllerCashFlowUrl(params),
   {
     ...options,
     method: 'GET'

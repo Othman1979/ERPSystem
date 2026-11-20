@@ -25,6 +25,7 @@ function account(overrides: Pick<AccountRow, 'id' | 'code'> & Partial<AccountRow
     isControl: false,
     controlType: null,
     costCenterRequired: false,
+    cashFlowActivity: null,
     isActive: true,
     createdAt: '2025-01-01T00:00:00.000Z',
     updatedAt: '2025-01-01T00:00:00.000Z',

@@ -1,3 +1,4 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -67,6 +68,7 @@ export class CreateAccountDto {
   costCenterRequired?: boolean;
 
   /** Cash flow section (ADR-036 §3); ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default. */
+  @ApiPropertyOptional({ enum: CASH_FLOW_ACTIVITIES, nullable: true })
   @IsOptional()
   @IsIn(CASH_FLOW_ACTIVITIES)
   cashFlowActivity?: (typeof CASH_FLOW_ACTIVITIES)[number] | null;
@@ -98,6 +100,7 @@ export class UpdateAccountDto {
   costCenterRequired?: boolean;
 
   /** Cash flow section (ADR-036 §3); ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default. */
+  @ApiPropertyOptional({ enum: CASH_FLOW_ACTIVITIES, nullable: true })
   @IsOptional()
   @IsIn(CASH_FLOW_ACTIVITIES)
   cashFlowActivity?: (typeof CASH_FLOW_ACTIVITIES)[number] | null;

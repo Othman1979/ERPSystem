@@ -22,6 +22,7 @@ import {
   accountingControllerUpdateAccount,
   journalControllerTrialBalance,
   type AccountType,
+  type CashFlowActivity,
 } from '@erp/api-client';
 import { BookOutlined } from '@ant-design/icons';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -47,6 +48,8 @@ export interface TreeNode extends Account {
   balCredit: Decimal;
   balBalance: Decimal;
 }
+
+const CASH_FLOW_ACTIVITIES: CashFlowActivity[] = ['OPERATING', 'INVESTING', 'FINANCING'];
 
 export function buildTree(accounts: Account[]): TreeNode[] {
   const byId = new Map<string, TreeNode>();
@@ -143,6 +146,10 @@ export function AccountsPage() {
   const takesCentre = typeForCentre === 'REVENUE' || typeForCentre === 'EXPENSE';
   // Hidden while centres are off (ADR-024 §1.6); the saved flag is then left as it is.
   const showCentreFlag = costCentersOn && takesCentre;
+  // ADR-036 §3: non-cash balance sheet accounts only.
+  const controlForCashFlow = editing ? editing.controlType : null;
+  const showCashFlow =
+    !!typeForCentre && !takesCentre && controlForCashFlow !== 'CASH' && controlForCashFlow !== 'BANK';
   const isCreate = !editing;
   const selectedParent = useMemo(
     () => (data ?? []).find((a) => a.id === watchedParentId) ?? null,
@@ -170,6 +177,7 @@ export function AccountsPage() {
       accountType: AccountType;
       isPostable?: boolean;
       costCenterRequired?: boolean;
+      cashFlowActivity?: CashFlowActivity | null;
     }) => {
       if (editing) {
         return accountingControllerUpdateAccount(editing.id, {
@@ -177,6 +185,7 @@ export function AccountsPage() {
           nameEn: values.nameEn || null,
           isPostable: values.isPostable,
           costCenterRequired: showCentreFlag ? values.costCenterRequired === true : undefined,
+          cashFlowActivity: showCashFlow ? (values.cashFlowActivity ?? null) : undefined,
         });
       }
       return accountingControllerCreateAccount({
@@ -187,6 +196,7 @@ export function AccountsPage() {
         accountType: values.accountType,
         isPostable: values.isPostable ?? true,
         costCenterRequired: showCentreFlag ? values.costCenterRequired === true : undefined,
+        cashFlowActivity: showCashFlow ? (values.cashFlowActivity ?? null) : undefined,
       });
     },
     onSuccess: () => {
@@ -231,6 +241,7 @@ export function AccountsPage() {
       nameEn: a.nameEn,
       isPostable: a.isPostable,
       costCenterRequired: a.costCenterRequired,
+      cashFlowActivity: a.cashFlowActivity ?? null,
     });
     setModalOpen(true);
   };
@@ -441,6 +452,14 @@ export function AccountsPage() {
               ]}
             />
           </Form.Item>
+          {showCashFlow && (
+            <Form.Item name="cashFlowActivity" label={t('cashFlow.activity')} extra={t('cashFlow.activityHint')}>
+              <Select
+                allowClear
+                options={CASH_FLOW_ACTIVITIES.map((value) => ({ value, label: t(`cashFlow.activity_${value}`) }))}
+              />
+            </Form.Item>
+          )}
           {showCentreFlag && (
             <Form.Item
               name="costCenterRequired"
