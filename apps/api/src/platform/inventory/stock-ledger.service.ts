@@ -8,6 +8,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { costMovement, type CostState } from './stock-costing.js';
 import { isStocked, ItemKindValue, assertNotRecipe } from '../../common/inventory/item-kind.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 
 /** True when the loaded item exists and holds stock (ADR-031 §1). */
@@ -736,7 +737,7 @@ export class StockLedgerService {
     }
 
     // GL: the company in context (the one ReportsService reads).
-    const company = await tx.company.findFirst({ where: { isActive: true }, orderBy: { id: 'asc' }, select: { id: true } });
+    const company = await tx.company.findFirst({ where: { isActive: true, ...currentCompanyFilter() }, orderBy: { id: 'asc' }, select: { id: true } });
     let stockValue = new Decimal(0);
     let inventoryAccountBalance: Decimal | null = null;
     if (company) {

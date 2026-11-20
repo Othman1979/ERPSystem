@@ -2139,6 +2139,7 @@ export const ar = {
     OPENING_INVENTORY_VIA_STOCK:
       'لا يُدخل حساب المخزون في القيد الافتتاحي؛ أدخل البضاعة بتسوية مخزون من نوع «افتتاحي»',
     BACKDATED_STOCK_POSTING: 'لا يمكن الترحيل بتاريخ سابق',
+    COMPANY_NOT_ALLOWED: 'لا تملك صلاحية على هذه الشركة',
     PERIOD_CLOSED: 'الفترة المالية مغلقة',
     YEAR_HAS_DRAFTS: 'لا يمكن إقفال السنة قبل ترحيل مستنداتها المسودة أو حذفها',
     BANK_STATEMENT_NOT_DRAFT: 'كشف البنك مسوّى؛ أعد فتحه أولاً',
@@ -4393,6 +4394,7 @@ export const en: typeof ar = {
     OPENING_INVENTORY_VIA_STOCK:
       'The inventory account is not entered in the opening entry; enter stock with an "Opening" stock adjustment',
     BACKDATED_STOCK_POSTING: 'Cannot post with a past date',
+    COMPANY_NOT_ALLOWED: 'You do not have access to this company',
     PERIOD_CLOSED: 'Fiscal period is closed',
     YEAR_HAS_DRAFTS: 'Draft documents must be posted or removed before the year can close',
     BANK_STATEMENT_NOT_DRAFT: 'The bank statement is reconciled; reopen it first',

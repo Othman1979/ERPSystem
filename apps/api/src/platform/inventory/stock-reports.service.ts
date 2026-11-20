@@ -12,6 +12,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { EXPORT_LIMITS } from '../printing/printing.service.js';
 import type { ItemLedgerQueryDto, StockMovementsQueryDto } from './dto/stock-reports.dto.js';
 import { stockedItemKindFilter } from '../../common/inventory/item-kind.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 const ADJUSTMENT_SOURCE = 'STOCK_ADJUSTMENT';
 const TRANSFER_SOURCE = 'STOCK_TRANSFER';
@@ -116,7 +117,7 @@ export class StockReportsService {
 
   private async companyId(db: ReturnType<PrismaService['forTenant']>): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });

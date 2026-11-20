@@ -25,6 +25,7 @@ import type {
 import type { ListStockCountsQueryDto } from './dto/list-queries.dto.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import { isStocked, stockedItemKindFilter, assertNotRecipe } from '../../common/inventory/item-kind.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 /** The item fields a count line shows. */
 const ITEM_REF = { select: { id: true, code: true, nameAr: true, baseUnitId: true } } as const;
@@ -92,7 +93,7 @@ export class CountsService {
 
   private async companyId(db: ReturnType<PrismaService['forTenant']>): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });

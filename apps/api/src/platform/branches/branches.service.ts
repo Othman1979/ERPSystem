@@ -7,6 +7,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PlanLimitsService } from '../../common/plan-limits/plan-limits.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateBranchDto, UpdateBranchDto } from './dto/branches.dto.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 function serialize(b: {
   id: bigint;
@@ -47,13 +48,13 @@ export class BranchesService {
   }
 
   async list() {
-    const rows = await this.tenant().branch.findMany({ orderBy: { code: 'asc' } });
+    const rows = await this.tenant().branch.findMany({ where: { companyId: await this.companyId() }, orderBy: { code: 'asc' } });
     return rows.map(serialize);
   }
 
   private async companyId(): Promise<bigint> {
     const company = await this.tenant().company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
     });
     if (!company) throw new DomainError(ErrorCode.INTERNAL, 'Tenant has no active company');

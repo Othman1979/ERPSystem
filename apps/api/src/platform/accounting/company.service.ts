@@ -11,6 +11,7 @@ import { StorageService } from '../../common/storage/storage.service.js';
 import type { ProcurementLevel } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { UpdateCompanyDto } from './dto/company.dto.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 /** The sales cycle settings (ADR-027 §1), owner only. */
 const SALES_SETTING_KEYS = [
@@ -66,7 +67,7 @@ export class CompanyService {
 
   private async company(db: ReturnType<PrismaService['forTenant']>) {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       include: { logoAttachment: { select: { id: true, fileName: true, mimeType: true, sizeBytes: true, storageKey: true } } },
     });

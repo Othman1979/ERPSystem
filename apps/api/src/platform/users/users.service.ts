@@ -28,6 +28,7 @@ const membershipInclude = {
   customRole: { select: { id: true, code: true, nameAr: true, nameEn: true } },
   defaultBranch: { select: { id: true, code: true, nameAr: true } },
   allowedBranches: { include: { branch: { select: { id: true, code: true, nameAr: true } } } },
+  allowedCompanies: { select: { companyId: true } },
   extraPermissions: { select: { permissionCode: true, amountLimit: true } },
 } as const;
 
@@ -41,6 +42,7 @@ function serialize(m: {
   customRole: { id: bigint; code: string; nameAr: string; nameEn: string | null } | null;
   defaultBranch: { id: bigint; code: string; nameAr: string } | null;
   allowedBranches: { branch: { id: bigint; code: string; nameAr: string } }[];
+  allowedCompanies: { companyId: bigint }[];
   extraPermissions: MemberPermissionGrant[];
 }) {
   // What the member holds (an owner: all three, no limit), as the guard sees it.
@@ -65,6 +67,7 @@ function serialize(m: {
       ...b.branch,
       id: b.branch.id.toString(),
     })),
+    companyIds: m.allowedCompanies.map((c) => c.companyId.toString()),
     purchasePermissions: purchase.codes.map((code) => ({
       code,
       amountLimit: isLimitedMemberPermission(code) ? approvalLimitOf(purchase, code) : null,
@@ -396,6 +399,22 @@ export class UsersService {
       if (branchIds.length > 0) {
         await prisma.membershipBranch.createMany({
           data: branchIds.map((branchId) => ({ tenantId, membershipId, branchId })),
+        });
+      }
+    }
+
+    if (dto.companyIds !== undefined) {
+      const companyIds = dto.companyIds.map(BigInt);
+      if (companyIds.length > 0) {
+        const found = await prisma.company.findMany({ where: { id: { in: companyIds } } });
+        if (found.length !== companyIds.length) {
+          throw new DomainError(ErrorCode.VALIDATION, 'One or more companies are invalid');
+        }
+      }
+      await prisma.membershipCompany.deleteMany({ where: { membershipId } });
+      if (companyIds.length > 0) {
+        await prisma.membershipCompany.createMany({
+          data: companyIds.map((companyId) => ({ tenantId, membershipId, companyId })),
         });
       }
     }

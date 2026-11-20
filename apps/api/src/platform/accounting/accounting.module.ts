@@ -1,3 +1,5 @@
+import { CompaniesController } from './companies.controller.js';
+import { CompaniesService } from './companies.service.js';
 import { forwardRef, Module } from '@nestjs/common';
 import { JournalModule } from '../journal/journal.module.js';
 import { AccountingController } from './accounting.controller.js';
@@ -15,8 +17,9 @@ import { YearClosingDraftRegistry } from './year-closing-draft.registry.js';
 
 @Module({
   imports: [forwardRef(() => JournalModule)],
-  controllers: [AccountingController, FiscalController, SettingsController, CompanyController],
+  controllers: [AccountingController, FiscalController, SettingsController, CompanyController, CompaniesController],
   providers: [
+    CompaniesService,
     AccountsService,
     MappingsService,
     FiscalService,

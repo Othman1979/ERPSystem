@@ -24,6 +24,7 @@ import {
   ChartProvisionResultDto,
 } from './dto/accounting-response.dto.js';
 import { MappingsService } from './mappings.service.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 @ApiTags('accounts')
 @Controller()
@@ -93,7 +94,7 @@ export class AccountingController {
     if (!tenantId) throw new DomainError(ErrorCode.FORBIDDEN, 'No tenant selected');
     const db = this.prisma.forTenant(tenantId);
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });

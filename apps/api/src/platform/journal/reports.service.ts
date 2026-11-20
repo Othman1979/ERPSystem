@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { FiscalService } from '../accounting/fiscal.service.js';
 import { EXPORT_LIMITS } from '../printing/printing.service.js';
 import { afterLine, LINE_ORDER, lineCursor, lineState, type StatementPageQuery } from './statement-cursor.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 /** Accounts closed into equity at year end (their opening restarts each year). */
 const NOMINAL_TYPES: ReadonlySet<string> = new Set(['REVENUE', 'EXPENSE']);
@@ -105,7 +106,7 @@ export class ReportsService {
 
   private async companyId(db: ReturnType<PrismaService['forTenant']>): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });

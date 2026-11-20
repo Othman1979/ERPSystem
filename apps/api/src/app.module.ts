@@ -12,6 +12,7 @@ import { AuthGuard } from './common/guards/auth.guard.js';
 import { PermissionsGuard } from './common/guards/permissions.guard.js';
 import { PlatformAdminGuard } from './common/guards/platform-admin.guard.js';
 import { TenantGuard } from './common/guards/tenant.guard.js';
+import { CompanyGuard } from './common/guards/company.guard.js';
 import { BranchGuard } from './common/guards/branch.guard.js';
 import { AppThrottlerGuard, throttlers } from './common/throttle/throttle.js';
 import { HealthModule } from './health/health.module.js';
@@ -83,6 +84,7 @@ import { TestSupportModule } from './platform/monitoring/test-support.module.js'
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: AppThrottlerGuard },
     { provide: APP_GUARD, useClass: TenantGuard },
+    { provide: APP_GUARD, useClass: CompanyGuard },
     { provide: APP_GUARD, useClass: BranchGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_GUARD, useClass: PlatformAdminGuard },

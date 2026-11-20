@@ -28,6 +28,7 @@ import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 const MANUAL_SOURCE = 'MANUAL_JOURNAL';
 const OPENING_SOURCE = 'OPENING_ENTRY';
@@ -190,7 +191,7 @@ export class JournalService implements OnModuleInit {
 
   private async companyId(db: ReturnType<PrismaService['forTenant']>): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });
