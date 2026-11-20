@@ -24,6 +24,7 @@ import {
   ListPaymentsQueryDto,
   ListReceiptsQueryDto,
   ReverseVoucherDto,
+  AmendVoucherDto,
   UpdateBankAccountDto,
   UpdateCashBoxDto,
 } from './dto/treasury.dto.js';
@@ -197,6 +198,23 @@ export class TreasuryController {
   @ApiCreatedResponse({ type: PaymentDetailDto })
   reversePayment(@Param('id') id: string, @Body() dto: ReverseVoucherDto) {
     return this.vouchers.reverseVoucher('payment', BigInt(id), dto);
+  }
+
+  /** Direct edit of a posted voucher while its periods are open (ADR-039). */
+  @Post('receipts/:id/amend')
+  @RequiresIdempotencyKey()
+  @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
+  @ApiCreatedResponse({ type: ReceiptDetailDto })
+  amendReceipt(@Param('id') id: string, @Body() dto: AmendVoucherDto) {
+    return this.vouchers.amendVoucher('receipt', BigInt(id), dto);
+  }
+
+  @Post('payments/:id/amend')
+  @RequiresIdempotencyKey()
+  @RequirePermission(PERMISSIONS.TREASURY_MANAGE)
+  @ApiCreatedResponse({ type: PaymentDetailDto })
+  amendPayment(@Param('id') id: string, @Body() dto: AmendVoucherDto) {
+    return this.vouchers.amendVoucher('payment', BigInt(id), dto);
   }
 
   @Post('receipts/:id/allocations')

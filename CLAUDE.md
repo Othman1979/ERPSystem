@@ -4,7 +4,7 @@
 المطور: شخص واحد. أنت تعمل كمساعده في التنفيذ.
 
 **المرجع الكامل:** `docs/BUILD_PLAN.md`. اقرأ الأقسام المتعلقة بالمرحلة الحالية قبل أي عمل.
-**المرحلة الحالية:** المرحلة 26، الرواتب (`docs/phase-reports/phase-26.md`؛ [ADR-041](docs/decisions/ADR-041-phase26-payroll.md)). المرحلة 25 (تعدد الشركات) منجزة (`docs/phase-reports/phase-25.md`؛ [ADR-040](docs/decisions/ADR-040-phase25-multi-company.md)). المرحلة 23 منجزة (`docs/phase-reports/phase-23.md`؛ [ADR-038](docs/decisions/ADR-038-phase23-permissions-editor.md)). نقطة البيع مستثناة من النظام بقرار المالك. المراحل 20–22 منجزة (`docs/phase-reports/phase-20.md` إلى `phase-22.md`؛ الشيكات في ADR-037). معلّق عند المالك: بنود المرحلة 10 المفتوحة، واعتماد المحاسب للسيناريوهات الذهبية.
+**المرحلة الحالية:** المرحلة 26، الرواتب (`docs/phase-reports/phase-26.md`؛ [ADR-041](docs/decisions/ADR-041-phase26-payroll.md)). المرحلة 25 (تعدد الشركات) منجزة (`docs/phase-reports/phase-25.md`؛ [ADR-040](docs/decisions/ADR-040-phase25-multi-company.md)). المرحلة 24 (تعديل القيود والسندات المرحّلة) منجزة (`docs/phase-reports/phase-24.md`؛ [ADR-039](docs/decisions/ADR-039-phase24-posted-edit.md)). المرحلة 23 منجزة (`docs/phase-reports/phase-23.md`؛ [ADR-038](docs/decisions/ADR-038-phase23-permissions-editor.md)). نقطة البيع مستثناة من النظام بقرار المالك. المراحل 20–22 منجزة (`docs/phase-reports/phase-20.md` إلى `phase-22.md`؛ الشيكات في ADR-037). معلّق عند المالك: بنود المرحلة 10 المفتوحة، واعتماد المحاسب للسيناريوهات الذهبية.
 
 ---
 
@@ -102,6 +102,7 @@ docs/         الخطة، القرارات، تقارير المراحل
 
 ### البيانات المرحّلة
 - لا `update` ولا `delete` على مستند أو قيد أو حركة بحالة `POSTED`. التصحيح بالعكس فقط.
+  **الاستثناء الوحيد (ADR-039):** القيد اليدوي وسند القبض والصرف (مع شيكه) يُعدَّل مباشرة عبر `PostingService.amendEntry` والفترتان مفتوحتان، بضوابط ADR-039 وسجل تدقيق.
 - لا أرقام حسابات ثابتة في الكود. استخدم `account_mappings` عبر `AccountMappingService`.
 - `stock_balances` و`item_costs` إسقاطات؛ `stock_movements` هو مصدر الحقيقة.
 

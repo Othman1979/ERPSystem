@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DeleteOutlined,
+  EditOutlined,
   PlusOutlined,
   PrinterOutlined,
   SaveOutlined,
@@ -42,6 +43,7 @@ import { costCenterOptions, useCostCenters } from '../hooks/useCostCenters';
 import { selectPostable, useAccounts } from '../hooks/useAccounts';
 import {
   ApiError,
+  journalControllerAmend,
   journalControllerCreateDraft,
   journalControllerDeleteDraft,
   journalControllerGet,
@@ -115,6 +117,8 @@ export function JournalPage() {
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new entry
   const [reverseTarget, setReverseTarget] = useState<JournalEntry | null>(null);
+  // ADR-039: a posted manual entry opened in the entry form for a direct edit.
+  const [amendTarget, setAmendTarget] = useState<JournalEntry | null>(null);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
 
@@ -185,6 +189,7 @@ export function JournalPage() {
 
   const openNew = (voucherType: VoucherType = 'JOURNAL') => {
     setEntryId(null);
+    setAmendTarget(null);
     setNewDate(dayjs());
     setNewVoucherType(voucherType);
     setNewDescription('');
@@ -204,7 +209,42 @@ export function JournalPage() {
   const backToList = () => {
     setScreen('list');
     setEntryId(null);
+    setAmendTarget(null);
   };
+
+  const startAmend = (e: JournalEntry) => {
+    setAmendTarget(e);
+    // The API's date is midnight UTC: take the calendar day, not the local instant.
+    setNewDate(dayjs(e.entryDate.slice(0, 10)));
+    setNewVoucherType(e.voucherType ?? 'JOURNAL');
+    setNewDescription(e.description ?? '');
+    setLines(
+      e.lines.map((l, i) => ({
+        key: i + 1,
+        accountId: l.accountId,
+        debit: l.debit,
+        credit: l.credit,
+        description: l.description ?? undefined,
+        partyId: l.partyId ?? undefined,
+        partyType: l.partyType ?? undefined,
+        costCenterId: l.costCenterId ?? undefined,
+      })),
+    );
+    setMissingParty(null);
+    setMissingCentre(null);
+    setEntryId(null);
+    setGridFocus((g) => g + 1);
+  };
+
+  const sentLines = () =>
+    filledLines(lines).map((l) => ({
+      accountId: l.accountId,
+      debit: l.debit ?? undefined,
+      credit: l.credit ?? undefined,
+      description: l.description || undefined,
+      ...partyFields(l, partyColumn),
+      ...(l.costCenterId ? { costCenterId: l.costCenterId } : {}),
+    }));
 
   const createDraft = useMutation({
     mutationFn: () =>
@@ -212,14 +252,7 @@ export function JournalPage() {
         entryDate: newDate.format('YYYY-MM-DD'),
         description: newDescription || undefined,
         voucherType: newVoucherType,
-        lines: filledLines(lines).map((l) => ({
-          accountId: l.accountId,
-          debit: l.debit ?? undefined,
-          credit: l.credit ?? undefined,
-          description: l.description || undefined,
-          ...partyFields(l, partyColumn),
-          ...(l.costCenterId ? { costCenterId: l.costCenterId } : {}),
-        })),
+        lines: sentLines(),
       }),
     onSuccess: (res) => {
       apiMessage.success(t('common.saved'));
@@ -227,6 +260,32 @@ export function JournalPage() {
       setEntryId(res.data.id);
     },
     // The API counts only the rows sent (those with an account); name the row on screen.
+    onError: (err) =>
+      apiMessage.error(
+        errorText(err, (line) => {
+          const sent = filledLines(lines)[line - 1];
+          return sent ? lines.indexOf(sent) + 1 : undefined;
+        }),
+      ),
+  });
+
+  const amendEntry = useMutation({
+    mutationFn: (id: string) =>
+      journalControllerAmend(
+        id,
+        {
+          entryDate: newDate.format('YYYY-MM-DD'),
+          description: newDescription || undefined,
+          lines: sentLines(),
+        },
+        { headers: idemHeaders() },
+      ),
+    onSuccess: (res) => {
+      apiMessage.success(t('journal.amended'));
+      invalidate();
+      setAmendTarget(null);
+      setEntryId(res.data.id);
+    },
     onError: (err) =>
       apiMessage.error(
         errorText(err, (line) => {
@@ -252,7 +311,8 @@ export function JournalPage() {
       apiMessage.error(lineProblemText(t, problem));
       return;
     }
-    createDraft.mutate();
+    if (amendTarget) amendEntry.mutate(amendTarget.id);
+    else createDraft.mutate();
   };
 
   const postEntry = useMutation({
@@ -300,7 +360,7 @@ export function JournalPage() {
   const { modal } = App.useApp();
   const openDraft = screen === 'entry' && detail?.status === 'DRAFT' ? detail : null;
   useDocShortcuts({
-    onSave: screen === 'entry' && !entryId ? () => !createDraft.isPending && saveNew() : undefined,
+    onSave: screen === 'entry' && !entryId ? () => !createDraft.isPending && !amendEntry.isPending && saveNew() : undefined,
     onPost: openDraft
       ? () => {
           if (postEntry.isPending) return;
@@ -468,23 +528,25 @@ export function JournalPage() {
       {contextHolder}
       <DocLayout
         title={
-          isNew
-            ? t('journal.newEntry')
-            : t(VOUCHER_TYPE_LABEL[entry?.voucherType ?? 'JOURNAL'])
+          amendTarget
+            ? t('journal.amendTitle')
+            : isNew
+              ? t('journal.newEntry')
+              : t(VOUCHER_TYPE_LABEL[entry?.voucherType ?? 'JOURNAL'])
         }
-        docNo={entry?.entryNo}
-        status={isNew ? 'DRAFT' : entry?.status}
+        docNo={amendTarget ? amendTarget.entryNo : entry?.entryNo}
+        status={amendTarget ? amendTarget.status : isNew ? 'DRAFT' : entry?.status}
         onBack={backToList}
         actions={
           isNew ? (
             <Button
               type="primary"
               icon={<SaveOutlined />}
-              loading={createDraft.isPending}
+              loading={createDraft.isPending || amendEntry.isPending}
               disabled={!partyRules.ready}
               onClick={saveNew}
             >
-              {t('journal.saveDraft')}
+              {amendTarget ? t('journal.saveAmend') : t('journal.saveDraft')}
               <span className="doc-kbd">Ctrl+S</span>
             </Button>
           ) : (
@@ -511,6 +573,11 @@ export function JournalPage() {
                     </Popconfirm>
                   </>
                 )}
+                {entry.status === 'POSTED' && !entry.reversals?.length && !entry.reversalOf && entry.sourceType === 'MANUAL_JOURNAL' && (
+                  <Button icon={<EditOutlined />} onClick={() => startAmend(entry)}>
+                    {t('journal.amend')}
+                  </Button>
+                )}
                 {entry.status === 'POSTED' && !entry.reversals?.length && REVERSIBLE_HERE.has(entry.sourceType ?? 'MANUAL_JOURNAL') && (
                   <Button icon={<SwapOutlined />} onClick={() => setReverseTarget(entry)}>
                     {t('journal.reverse')}
@@ -534,6 +601,7 @@ export function JournalPage() {
               <GridSelect
                 value={newVoucherType}
                 onChange={setNewVoucherType}
+                disabled={!!amendTarget}
                 options={VOUCHER_TYPES.map((vt) => ({
                   value: vt,
                   label: t(VOUCHER_TYPE_LABEL[vt]),

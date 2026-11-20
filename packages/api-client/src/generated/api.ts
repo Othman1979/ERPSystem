@@ -1181,6 +1181,17 @@ export interface DeletedDto {
   deleted: true;
 }
 
+export interface AmendJournalEntryDto {
+  entryDate: string;
+  /** @maxLength 500 */
+  description?: string;
+  /**
+     * @minItems 2
+     * @maxItems 200
+     */
+  lines: JournalLineDto[];
+}
+
 export interface ReverseJournalEntryDto {
   reversalDate: string;
   /** @maxLength 500 */
@@ -7938,6 +7949,23 @@ export interface ReverseVoucherDto {
   description?: string;
 }
 
+export interface AmendVoucherDto {
+  voucherDate: string;
+  amount: string;
+  cashAccountId?: string;
+  /** A payment without a party: its expense account. */
+  expenseAccountId?: string;
+  /**
+     * Null clears the cost centre; omitted keeps it.
+     * @nullable
+     */
+  costCenterId?: string | null;
+  /** @maxLength 100 */
+  referenceNo?: string;
+  /** @maxLength 500 */
+  description?: string;
+}
+
 export interface AllocateVoucherDto {
   allocations?: AllocationDto[];
   /** Oldest open invoices first, up to the unallocated amount. */
@@ -14263,6 +14291,62 @@ export const journalControllerPost = async (id: string, options?: Parameters<typ
     method: 'POST'
 
 
+  }
+);}
+
+
+
+export type journalControllerAmendResponse201 = {
+  data: JournalEntryDetailDto
+  status: 201
+}
+
+export type journalControllerAmendResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type journalControllerAmendResponseSuccess = (journalControllerAmendResponse201) & {
+  headers: Headers;
+};
+export type journalControllerAmendResponseError = (journalControllerAmendResponseDefault) & {
+  headers: Headers;
+};
+
+export const getJournalControllerAmendUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/journal-entries/${id}/amend`
+}
+
+/**
+ * @summary Direct edit of a posted manual entry while its periods are open (ADR-039).
+ */
+export const journalControllerAmend = async (id: string,
+    amendJournalEntryDto: AmendJournalEntryDto, options?: Parameters<typeof apiFetch>[1]): Promise<journalControllerAmendResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<journalControllerAmendResponseSuccess>(getJournalControllerAmendUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(amendJournalEntryDto)
   }
 );}
 
@@ -24637,6 +24721,115 @@ return apiFetch<treasuryControllerReversePaymentResponseSuccess>(getTreasuryCont
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(reverseVoucherDto)
+  }
+);}
+
+
+
+export type treasuryControllerAmendReceiptResponse201 = {
+  data: ReceiptDetailDto
+  status: 201
+}
+
+export type treasuryControllerAmendReceiptResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type treasuryControllerAmendReceiptResponseSuccess = (treasuryControllerAmendReceiptResponse201) & {
+  headers: Headers;
+};
+export type treasuryControllerAmendReceiptResponseError = (treasuryControllerAmendReceiptResponseDefault) & {
+  headers: Headers;
+};
+
+export const getTreasuryControllerAmendReceiptUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/receipts/${id}/amend`
+}
+
+/**
+ * @summary Direct edit of a posted voucher while its periods are open (ADR-039).
+ */
+export const treasuryControllerAmendReceipt = async (id: string,
+    amendVoucherDto: AmendVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerAmendReceiptResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerAmendReceiptResponseSuccess>(getTreasuryControllerAmendReceiptUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(amendVoucherDto)
+  }
+);}
+
+
+
+export type treasuryControllerAmendPaymentResponse201 = {
+  data: PaymentDetailDto
+  status: 201
+}
+
+export type treasuryControllerAmendPaymentResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type treasuryControllerAmendPaymentResponseSuccess = (treasuryControllerAmendPaymentResponse201) & {
+  headers: Headers;
+};
+export type treasuryControllerAmendPaymentResponseError = (treasuryControllerAmendPaymentResponseDefault) & {
+  headers: Headers;
+};
+
+export const getTreasuryControllerAmendPaymentUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payments/${id}/amend`
+}
+
+export const treasuryControllerAmendPayment = async (id: string,
+    amendVoucherDto: AmendVoucherDto, options?: Parameters<typeof apiFetch>[1]): Promise<treasuryControllerAmendPaymentResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<treasuryControllerAmendPaymentResponseSuccess>(getTreasuryControllerAmendPaymentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(amendVoucherDto)
   }
 );}
 
