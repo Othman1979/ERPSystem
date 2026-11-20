@@ -35,7 +35,7 @@ import {
 } from '@erp/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Button, Form, Input, Radio, Select, Space, Switch, Table, Tabs } from 'antd';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -48,18 +48,45 @@ import { EnterNav } from '../components/EnterNav';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { GridSelect } from '../components/GridSelect';
 
+type DateFormValue = Dayjs | string | null | undefined;
 type EmployeeForm = {
-  code: string; nameAr: string; nameEn?: string; hireDate: string; payMethod: 'BANK' | 'CASH';
+  code: string; nameAr: string; nameEn?: string; hireDate: DateFormValue; payMethod: 'BANK' | 'CASH';
   branchId?: string; costCenterId?: string; sscCovered?: boolean; sscHazardous?: boolean;
-  nationalId?: string; sscNumber?: string; leaveDate?: string; iban?: string; isActive?: boolean;
-  salaryEffectiveFrom?: string; basicSalary?: string; payElementId?: string; recurringAmount?: string;
-  recurringQuantity?: string; recurringValidFrom?: string;
+  nationalId?: string; sscNumber?: string; leaveDate?: DateFormValue; iban?: string; isActive?: boolean;
+  salaryEffectiveFrom?: DateFormValue; basicSalary?: string; payElementId?: string; recurringAmount?: string;
+  recurringQuantity?: string; recurringValidFrom?: DateFormValue;
 };
-type InputForm = { employeeId: string; payElementId: string; period: string; workDate?: string; quantity?: string; amount?: string; note?: string };
+type InputForm = { employeeId: string; payElementId: string; period: string; workDate?: DateFormValue; quantity?: string; amount?: string; note?: string };
+
+export function dateOnly(value: DateFormValue): string | undefined {
+  if (value == null || value === '') return undefined;
+  return dayjs.isDayjs(value) ? value.format('YYYY-MM-DD') : value.slice(0, 10);
+}
+
+export function datePickerValue(value?: string | null) {
+  return value ? dayjs(value.slice(0, 10)) : undefined;
+}
+
+export function employeeEditDateValues(employee: Pick<PayrollEmployeeDetailDto, 'hireDate' | 'leaveDate'>) {
+  return {
+    hireDate: datePickerValue(employee.hireDate),
+    leaveDate: datePickerValue(employee.leaveDate),
+  };
+}
+
+export function buildSettingsPayload(values: Record<string, unknown> & { effectiveFrom?: DateFormValue }) {
+  return { ...values, effectiveFrom: dateOnly(values.effectiveFrom)! };
+}
 
 export function buildEmployeePayload(values: EmployeeForm) {
   const { salaryEffectiveFrom: _salaryDate, basicSalary: _salary, payElementId: _element, recurringAmount: _amount, recurringQuantity: _quantity, recurringValidFrom: _validFrom, ...card } = values;
-  return { ...card, sscCovered: card.sscCovered ?? true, sscHazardous: card.sscHazardous ?? false };
+  return {
+    ...card,
+    hireDate: dateOnly(card.hireDate)!,
+    leaveDate: card.leaveDate === null ? null : dateOnly(card.leaveDate),
+    sscCovered: card.sscCovered ?? true,
+    sscHazardous: card.sscHazardous ?? false,
+  };
 }
 
 export function buildInputPayload(values: InputForm, amountType: string, daily: boolean) {
@@ -67,7 +94,7 @@ export function buildInputPayload(values: InputForm, amountType: string, daily: 
     employeeId: values.employeeId,
     payElementId: values.payElementId,
     period: values.period,
-    ...(daily && values.workDate ? { workDate: values.workDate } : {}),
+    ...(daily && values.workDate ? { workDate: dateOnly(values.workDate)! } : {}),
     ...(amountType === 'FIXED' ? { amount: values.amount } : { quantity: values.quantity }),
     ...(values.note ? { note: values.note } : {}),
   };
@@ -118,13 +145,13 @@ function EmployeesTab() {
         id = (created.data as PayrollEmployeeDto[]).find((employee) => employee.code === values.code)?.id;
       }
       if (id && values.basicSalary && values.salaryEffectiveFrom) {
-        await payrollControllerAddSalary(id, { effectiveFrom: values.salaryEffectiveFrom, basicSalary: values.basicSalary });
+        await payrollControllerAddSalary(id, { effectiveFrom: dateOnly(values.salaryEffectiveFrom)!, basicSalary: values.basicSalary });
       }
       if (id && values.payElementId && values.recurringValidFrom) {
         await payrollControllerCreateRecurring(id, {
           payElementId: values.payElementId,
           ...(recurringElement?.amountType === 'FIXED' ? { amount: values.recurringAmount } : { quantity: values.recurringQuantity }),
-          validFrom: values.recurringValidFrom,
+          validFrom: dateOnly(values.recurringValidFrom)!,
         } as never);
       }
     },
@@ -136,9 +163,10 @@ function EmployeesTab() {
     if (employee) {
       const employeeDetail = (await payrollControllerGetEmployee(employee.id)).data;
       setDetail(employeeDetail);
+      form.resetFields();
       form.setFieldsValue({
         code: employeeDetail.code, nameAr: employeeDetail.nameAr, nameEn: employeeDetail.nameEn ?? undefined,
-        hireDate: employeeDetail.hireDate, leaveDate: employeeDetail.leaveDate ?? undefined,
+        ...employeeEditDateValues(employeeDetail),
         payMethod: employeeDetail.payMethod as 'BANK' | 'CASH', nationalId: employeeDetail.nationalId ?? undefined,
         sscNumber: employeeDetail.sscNumber ?? undefined, iban: employeeDetail.iban ?? undefined,
         branchId: employeeDetail.branchId ?? undefined, costCenterId: employeeDetail.costCenterId ?? undefined,
@@ -179,7 +207,7 @@ function EmployeesTab() {
         <FormSection title={t('payroll.salaryHistory')}>
           <Form.Item name="salaryEffectiveFrom" label={t('payroll.effectiveFrom')}><DatePicker /></Form.Item>
           <Form.Item name="basicSalary" label={t('payroll.basicSalary')}><Input /></Form.Item>
-          <Space direction="vertical">{detail?.salaries.map((salary) => <span key={salary.id}>{salary.effectiveFrom}: {formatAmount(salary.basicSalary)}</span>)}</Space>
+          <Space direction="vertical">{detail?.salaries.map((salary) => <span key={salary.id}>{dateOnly(salary.effectiveFrom)}: {formatAmount(salary.basicSalary)}</span>)}</Space>
         </FormSection>
         <FormSection title={t('payroll.recurring')}>
           <Form.Item name="payElementId" label={t('payroll.element')}><Select options={(elements.data as PayrollElementDto[] | undefined)?.map((e) => ({ value: e.id, label: i18n.language === 'en' ? e.nameEn ?? e.nameAr : e.nameAr }))} /></Form.Item>
@@ -188,7 +216,7 @@ function EmployeesTab() {
             ? <Form.Item name="recurringAmount" label={t('payroll.amount')} rules={[{ required: Boolean(recurringElementId) }]}><Input /></Form.Item>
             : <Form.Item name="recurringQuantity" label={t('payroll.quantity')} rules={[{ required: Boolean(recurringElementId) }]}><Input /></Form.Item>}
           {detail?.recurringElements.map((recurring) => <Space key={recurring.id}>
-            <span>{i18n.language === 'en' ? recurring.payElement.nameEn ?? recurring.payElement.nameAr : recurring.payElement.nameAr} — {recurring.amount !== null ? formatAmount(recurring.amount) : formatQty(recurring.quantity)} · {recurring.validFrom} – {recurring.validTo ?? '—'}</span>
+            <span>{i18n.language === 'en' ? recurring.payElement.nameEn ?? recurring.payElement.nameAr : recurring.payElement.nameAr} — {recurring.amount !== null ? formatAmount(recurring.amount) : formatQty(recurring.quantity)} · {dateOnly(recurring.validFrom)} – {dateOnly(recurring.validTo) ?? '—'}</span>
             <Button danger title={t('common.delete')} icon={<DeleteOutlined />} onClick={() => void payrollControllerDeleteRecurring(editing!.id, recurring.id)
               .then(async () => {
                 setDetail((await payrollControllerGetEmployee(editing!.id)).data);
@@ -286,7 +314,7 @@ function InputsTab() {
     </Form></EnterNav>}
     <Table rowKey="id" dataSource={inputs.data as Array<{ id: string; amount?: string; quantity?: string; workDate?: string; payElement?: { nameAr: string }; employee?: { nameAr: string } }> | undefined} columns={[
       { title: t('payroll.employee'), render: (_, r) => r.employee?.nameAr }, { title: t('payroll.element'), render: (_, r) => r.payElement?.nameAr },
-      { title: t('payroll.workDate'), dataIndex: 'workDate' },
+      { title: t('payroll.workDate'), dataIndex: 'workDate', render: (value?: string | null) => dateOnly(value) ?? '—' },
       { title: t('payroll.amount'), dataIndex: 'amount', render: (v: string | null) => formatAmount(v) },
       { title: t('payroll.quantity'), dataIndex: 'quantity', render: (v: string | null) => formatQty(v) },
       { title: '', render: (_, r) => can(PERMISSIONS.PAYROLL_MANAGE) && <Button danger title={t('common.delete')} icon={<DeleteOutlined />} onClick={() => remove.mutate(r.id)} /> },
@@ -328,9 +356,9 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
     const options = { headers: { 'Idempotency-Key': crypto.randomUUID() } };
     if (action === 'post') await payrollControllerPostRun(runId, options);
     if (action === 'pay' && sourceId) await payrollControllerPayRun(runId, {
-      date: dayjs().format('YYYY-MM-DD'), ...(sourceType === 'cash' ? { cashBoxId: sourceId } : { bankAccountId: sourceId }),
+      date: dateOnly(dayjs())!, ...(sourceType === 'cash' ? { cashBoxId: sourceId } : { bankAccountId: sourceId }),
     }, options);
-    if (action === 'reverse') await payrollControllerReverseRun(runId, { date: dayjs().format('YYYY-MM-DD') }, options);
+    if (action === 'reverse') await payrollControllerReverseRun(runId, { date: dateOnly(dayjs())! }, options);
     if (action === 'recompute') await (await import('@erp/api-client')).payrollControllerRecomputeRun(runId);
     if (action === 'delete') await payrollControllerDeleteRun(runId);
   }, onSuccess: (_result, action) => { if (action === 'delete') setRunId(undefined); void qc.invalidateQueries({ queryKey: ['payroll'] }); }, onError: () => message.error(t('payroll.saveError')) });
@@ -393,7 +421,7 @@ function SettingsTab() {
   const settings = useQuery({ queryKey: ['payroll', 'settings'], queryFn: async () => (await payrollControllerListSettings()).data });
   const [form] = Form.useForm();
   const { message } = App.useApp();
-  const save = useMutation({ mutationFn: (v: Record<string, string>) => payrollControllerCreateSettings(v as never), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['payroll', 'settings'] }); form.resetFields(); }, onError: () => message.error(t('payroll.saveError')) });
+  const save = useMutation({ mutationFn: (v: Record<string, unknown> & { effectiveFrom?: DateFormValue }) => payrollControllerCreateSettings(buildSettingsPayload(v) as never), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['payroll', 'settings'] }); form.resetFields(); }, onError: () => message.error(t('payroll.saveError')) });
   return <>
     {can(PERMISSIONS.PAYROLL_MANAGE) && <EnterNav><Form form={form} layout="inline" onFinish={(v) => save.mutate(v)}>
       <Form.Item name="effectiveFrom" label={t('payroll.effectiveFrom')} rules={[{ required: true }]}><DatePicker /></Form.Item>
@@ -405,7 +433,9 @@ function SettingsTab() {
         .map((key) => ({
           title: t(`payroll.${key}`),
           dataIndex: key,
-          render: (value: string | null) => key.endsWith('Wage') ? formatAmount(value) : formatQty(value),
+          render: (value: string | null) => key === 'effectiveFrom'
+            ? dateOnly(value) ?? '—'
+            : key.endsWith('Wage') ? formatAmount(value) : formatQty(value),
         })),
     ]} />
   </>;
