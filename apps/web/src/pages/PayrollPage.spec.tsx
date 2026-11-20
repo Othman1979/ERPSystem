@@ -55,6 +55,17 @@ describe('payroll page payloads and run actions', () => {
     expect(buildSettingsPayload({ effectiveFrom: dayjs('2026-03-12') })).toEqual({ effectiveFrom: '2026-03-12' });
   });
 
+  it('sends null for cleared optional employee fields while editing', () => {
+    expect(buildEmployeePayload({
+      code: 'E1', nameAr: 'Employee', payMethod: 'BANK', hireDate: dayjs('2026-03-12'),
+      nameEn: '', nationalId: null, sscNumber: undefined, leaveDate: null,
+      branchId: undefined, costCenterId: null, iban: '',
+    }, true)).toMatchObject({
+      nameEn: null, nationalId: null, sscNumber: null, leaveDate: null,
+      branchId: null, costCenterId: null, iban: null,
+    });
+  });
+
   it('sends a daily input with its work date and quantity', () => {
     expect(buildInputPayload({
       employeeId: '1', payElementId: '2', period: '2026-03', workDate: dayjs('2026-03-12'), quantity: '8',

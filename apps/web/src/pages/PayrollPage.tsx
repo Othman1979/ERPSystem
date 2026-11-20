@@ -52,9 +52,9 @@ import { GridSelect } from '../components/GridSelect';
 
 type DateFormValue = Dayjs | string | null | undefined;
 type EmployeeForm = {
-  code: string; nameAr: string; nameEn?: string; hireDate: DateFormValue; payMethod: 'BANK' | 'CASH';
-  branchId?: string; costCenterId?: string; sscCovered?: boolean; sscHazardous?: boolean;
-  nationalId?: string; sscNumber?: string; leaveDate?: DateFormValue; iban?: string; isActive?: boolean;
+  code: string; nameAr: string; nameEn?: string | null; hireDate: DateFormValue; payMethod: 'BANK' | 'CASH';
+  branchId?: string | null; costCenterId?: string | null; sscCovered?: boolean; sscHazardous?: boolean;
+  nationalId?: string | null; sscNumber?: string | null; leaveDate?: DateFormValue; iban?: string | null; isActive?: boolean;
   salaryEffectiveFrom?: DateFormValue; basicSalary?: string; payElementId?: string; recurringAmount?: string;
   recurringQuantity?: string; recurringValidFrom?: DateFormValue;
 };
@@ -101,12 +101,19 @@ export function buildPaymentSourceOptions(
   });
 }
 
-export function buildEmployeePayload(values: EmployeeForm) {
+export function buildEmployeePayload(values: EmployeeForm, editing = false) {
   const { salaryEffectiveFrom: _salaryDate, basicSalary: _salary, payElementId: _element, recurringAmount: _amount, recurringQuantity: _quantity, recurringValidFrom: _validFrom, ...card } = values;
+  const nullable = (value?: string | null) => editing && (value == null || value === '') ? null : value;
   return {
     ...card,
     hireDate: dateOnly(card.hireDate)!,
-    leaveDate: dateOnly(card.leaveDate),
+    nameEn: nullable(card.nameEn),
+    nationalId: nullable(card.nationalId),
+    sscNumber: nullable(card.sscNumber),
+    leaveDate: editing ? dateOnly(card.leaveDate) ?? null : dateOnly(card.leaveDate),
+    branchId: nullable(card.branchId),
+    costCenterId: nullable(card.costCenterId),
+    iban: nullable(card.iban),
     sscCovered: card.sscCovered ?? true,
     sscHazardous: card.sscHazardous ?? false,
   };
@@ -159,7 +166,7 @@ function EmployeesTab() {
   const recurringElement = (elements.data as PayrollElementDto[] | undefined)?.find((element) => element.id === recurringElementId);
   const save = useMutation({
     mutationFn: async (values: EmployeeForm) => {
-      const card = buildEmployeePayload(values);
+      const card = buildEmployeePayload(values, Boolean(editing));
       if (editing) await payrollControllerUpdateEmployee(editing.id, card);
       else await payrollControllerCreateEmployee(card as never);
       let id = editing?.id;

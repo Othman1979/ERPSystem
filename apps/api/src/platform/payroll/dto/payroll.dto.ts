@@ -10,7 +10,7 @@ import {
   type ValidationArguments,
   type ValidatorConstraintInterface,
 } from 'class-validator';
-import { OmitType, PartialType } from '@nestjs/swagger';
+import { ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { Decimal } from '../../../common/decimal/decimal.utils.js';
 import { DATE_PATTERN, ID_PATTERN } from '../../../common/pipes/parse-id.pipe.js';
 import { ExportQueryDto } from '../../printing/dto/export.dto.js';
@@ -33,7 +33,23 @@ export class CreateEmployeeDto {
   @IsOptional() @IsBoolean() sscHazardous?: boolean;
 }
 
-export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) {
+export class UpdateEmployeeDto extends PartialType(OmitType(CreateEmployeeDto, [
+  'nameEn', 'nationalId', 'sscNumber', 'leaveDate', 'branchId', 'costCenterId', 'iban',
+] as const)) {
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional() @IsString() @MaxLength(191) nameEn?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional() @IsString() @MaxLength(50) nationalId?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional() @IsString() @MaxLength(50) sscNumber?: string | null;
+  @ApiPropertyOptional({ type: String, format: 'date', nullable: true })
+  @IsOptional() @Matches(DATE_PATTERN) leaveDate?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional() @Matches(ID_PATTERN) branchId?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional() @Matches(ID_PATTERN) costCenterId?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional() @IsString() @MaxLength(50) iban?: string | null;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
 

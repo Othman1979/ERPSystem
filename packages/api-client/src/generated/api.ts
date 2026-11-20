@@ -8576,21 +8576,36 @@ export interface UpdateEmployeeDto {
   code?: string;
   /** @maxLength 191 */
   nameAr?: string;
-  /** @maxLength 191 */
-  nameEn?: string;
-  /** @maxLength 50 */
-  nationalId?: string;
-  /** @maxLength 50 */
-  sscNumber?: string;
   hireDate?: string;
-  leaveDate?: string;
-  branchId?: string;
-  costCenterId?: string;
   payMethod?: UpdateEmployeeDtoPayMethod;
-  /** @maxLength 50 */
-  iban?: string;
   sscCovered?: boolean;
   sscHazardous?: boolean;
+  /**
+     * @maxLength 191
+     * @nullable
+     */
+  nameEn?: string | null;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  nationalId?: string | null;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  sscNumber?: string | null;
+  /** @nullable */
+  leaveDate?: string | null;
+  /** @nullable */
+  branchId?: string | null;
+  /** @nullable */
+  costCenterId?: string | null;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  iban?: string | null;
   isActive?: boolean;
 }
 

@@ -374,4 +374,28 @@ describe('Payroll PY1–PY3', () => {
     expect(inputChange.status).toBe(409);
     expect(inputChange.body.error.code).toBe('INVALID_STATUS_TRANSITION');
   });
+
+  it('clears nullable employee fields when the edit payload sends null', async () => {
+    const branch = (h.ok(await get(tokenA, 'branches', companyAId), 200, 'branch list') as { id: string }[])[0]!;
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `CLEAR-${RUN}`, nameAr: 'Clear fields', nameEn: 'Clear fields',
+      nationalId: `N-${RUN}`, sscNumber: `SSC-${RUN}`, hireDate: '2031-01-01', leaveDate: '2031-12-31',
+      branchId: branch.id, costCenterId, payMethod: 'CASH', iban: `JO-${RUN}`,
+    }, 'employee with nullable fields', companyAId);
+    const cleared = await h.api().patch(`/api/v1/payroll/employees/${employee.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId)
+      .send({
+        nameEn: null, nationalId: null, sscNumber: null, leaveDate: null,
+        branchId: null, costCenterId: null, iban: null,
+      });
+    expect(cleared.status).toBe(200);
+    expect({
+      nameEn: cleared.body.nameEn, nationalId: cleared.body.nationalId, sscNumber: cleared.body.sscNumber,
+      leaveDate: cleared.body.leaveDate, branchId: cleared.body.branchId, costCenterId: cleared.body.costCenterId,
+      iban: cleared.body.iban,
+    }).toEqual({
+      nameEn: null, nationalId: null, sscNumber: null, leaveDate: null,
+      branchId: null, costCenterId: null, iban: null,
+    });
+  });
 });
