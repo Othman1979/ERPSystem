@@ -528,18 +528,25 @@ export class PostingService {
     if (matched > 0) {
       throw new DomainError(ErrorCode.CONFLICT, 'Unmatch the bank reconciliation lines of this entry before editing it');
     }
-    // An approved statement keeps its totals; its outstanding list is rebuilt from the ledger.
-    const earliest = entry.entryDate < params.entryDate ? entry.entryDate : params.entryDate;
-    const accountIds = [
-      ...new Set([
-        ...(await tx.journalLine.findMany({ where: { tenantId, journalEntryId: entry.id }, select: { accountId: true } })).map((l) => l.accountId),
-        ...params.lines.map((l) => l.accountId),
-      ]),
+    // A reconciled statement keeps its totals; its outstanding list is rebuilt from the ledger.
+    // The old lines leave it from the old date, the new ones enter it from the new date.
+    const oldAccountIds = [
+      ...new Set(
+        (await tx.journalLine.findMany({ where: { tenantId, journalEntryId: entry.id }, select: { accountId: true } })).map((l) => l.accountId),
+      ),
     ];
-    const approved = await tx.bankStatement.count({
-      where: { tenantId, status: 'RECONCILED', endDate: { gte: earliest }, bankAccount: { accountId: { in: accountIds } } },
+    const newAccountIds = [...new Set(params.lines.map((l) => l.accountId))];
+    const reconciled = await tx.bankStatement.count({
+      where: {
+        tenantId,
+        status: 'RECONCILED',
+        OR: [
+          { endDate: { gte: entry.entryDate }, bankAccount: { accountId: { in: oldAccountIds } } },
+          { endDate: { gte: params.entryDate }, bankAccount: { accountId: { in: newAccountIds } } },
+        ],
+      },
     });
-    if (approved > 0) {
+    if (reconciled > 0) {
       throw new DomainError(ErrorCode.CONFLICT, 'A reconciled bank statement covers this entry; reopen it before editing');
     }
     await this.resolveOpenPeriod(tx, tenantId, companyId, entry.entryDate);
