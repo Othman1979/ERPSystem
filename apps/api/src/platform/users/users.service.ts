@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
+import { withAllCompanies } from '../../common/cls/current-company.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PlanLimitsService } from '../../common/plan-limits/plan-limits.service.js';
@@ -155,16 +156,19 @@ export class UsersService {
 
     const branchIds = dto.branchIds?.map(BigInt) ?? [];
     if (branchIds.length > 0) {
-      const found = await prisma.branch.findMany({ where: { id: { in: branchIds } } });
+      const found = await withAllCompanies(() => prisma.branch.findMany({ where: { id: { in: branchIds } } }));
       if (found.length !== branchIds.length) {
         throw new DomainError(ErrorCode.VALIDATION, 'One or more branches are invalid');
       }
     }
     if (dto.defaultBranchId) {
-      const branch = await prisma.branch.findFirst({
-        where: { id: BigInt(dto.defaultBranchId) },
-      });
-      if (!branch) throw DomainError.notFound('Branch', dto.defaultBranchId);
+      const defaultBranchId = dto.defaultBranchId;
+      const branch = await withAllCompanies(() =>
+        prisma.branch.findFirst({
+          where: { id: BigInt(defaultBranchId) },
+        }),
+      );
+      if (!branch) throw DomainError.notFound('Branch', defaultBranchId);
     }
 
     // Hash before the transaction: it holds the tenant lock (plan limit).
@@ -333,10 +337,13 @@ export class UsersService {
     if (dto.defaultBranchId !== undefined) {
       data.defaultBranchId = dto.defaultBranchId ? BigInt(dto.defaultBranchId) : null;
       if (dto.defaultBranchId) {
-        const branch = await prisma.branch.findFirst({
-          where: { id: BigInt(dto.defaultBranchId) },
-        });
-        if (!branch) throw DomainError.notFound('Branch', dto.defaultBranchId);
+        const defaultBranchId = dto.defaultBranchId;
+        const branch = await withAllCompanies(() =>
+          prisma.branch.findFirst({
+            where: { id: BigInt(defaultBranchId) },
+          }),
+        );
+        if (!branch) throw DomainError.notFound('Branch', defaultBranchId);
       }
     }
 
@@ -390,7 +397,9 @@ export class UsersService {
     if (dto.branchIds !== undefined) {
       const branchIds = dto.branchIds.map(BigInt);
       if (branchIds.length > 0) {
-        const found = await prisma.branch.findMany({ where: { id: { in: branchIds } } });
+        const found = await withAllCompanies(() =>
+          prisma.branch.findMany({ where: { id: { in: branchIds } } }),
+        );
         if (found.length !== branchIds.length) {
           throw new DomainError(ErrorCode.VALIDATION, 'One or more branches are invalid');
         }

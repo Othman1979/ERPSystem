@@ -220,6 +220,25 @@ describe('multi-company (ADR-040)', () => {
     await api().patch(`/api/v1/users/${memberMembership}`).set(auth(ownerA)).send({ branchIds: [] });
   });
 
+  it('C3: a member can be assigned branches from both companies', async () => {
+    const branches1 = await api().get('/api/v1/branches').set(auth(ownerA, first));
+    const branches2 = await api().get('/api/v1/branches').set(auth(ownerA, second));
+    const branch1 = ((branches1.body.items ?? branches1.body) as { id: string }[])[0]!;
+    const branch2 = ((branches2.body.items ?? branches2.body) as { id: string }[])[0]!;
+
+    const assigned = await api()
+      .patch(`/api/v1/users/${memberMembership}`)
+      .set(auth(ownerA, first))
+      .send({ branchIds: [branch1.id, branch2.id] });
+    expect([assigned.status, assigned.body.error?.message]).toEqual([200, undefined]);
+
+    const meFirst = await api().get('/api/v1/me').set(auth(memberToken, first));
+    const meSecond = await api().get('/api/v1/me').set(auth(memberToken, second));
+    expect(meFirst.body.currentMembership.branches.map((branch: { id: string }) => branch.id)).toEqual([branch1.id]);
+    expect(meSecond.body.currentMembership.branches.map((branch: { id: string }) => branch.id)).toEqual([branch2.id]);
+    await api().patch(`/api/v1/users/${memberMembership}`).set(auth(ownerA)).send({ branchIds: [] });
+  });
+
   it('C3: a member restricted to the first company cannot use the second', async () => {
     const before = await api().get('/api/v1/accounts').set(auth(memberToken, second));
     expect(before.status).toBe(200);
