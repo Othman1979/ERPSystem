@@ -7,6 +7,7 @@ import {
   buildPaymentSourceOptions,
   buildSettingsPayload,
   employeeEditDateValues,
+  formatPayrollDate,
   monthToPayrollPeriod,
   PayrollMonthPicker,
   payElementAccountSelectable,
@@ -22,6 +23,10 @@ describe('payroll page payloads and run actions', () => {
 
   it('formats a selected payroll month as YYYY-MM for the API', () => {
     expect(monthToPayrollPeriod(dayjs('2026-11-01'))).toBe('2026-11');
+  });
+
+  it('shows movement table dates as DD/MM/YYYY', () => {
+    expect(formatPayrollDate('2026-11-10')).toBe('10/11/2026');
   });
 
   it('does not expose a clear control or clear the selected API period', () => {

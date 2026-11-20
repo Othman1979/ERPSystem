@@ -47,7 +47,7 @@ import { useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { formatAmount, formatQty } from '../format/number';
-import { DatePicker } from '../components/DatePicker';
+import { DATE_INPUT_FORMAT, DatePicker } from '../components/DatePicker';
 import { ExportButtons, saveBlob } from '../components/ExportButtons';
 import { EnterNav } from '../components/EnterNav';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -66,6 +66,11 @@ type MovementForm = { employeeId: string; payElementId: string; movementDate?: D
 export function dateOnly(value: DateFormValue): string | undefined {
   if (value == null || value === '') return undefined;
   return dayjs.isDayjs(value) ? value.format('YYYY-MM-DD') : value.slice(0, 10);
+}
+
+export function formatPayrollDate(value: DateFormValue): string | undefined {
+  const date = dateOnly(value);
+  return date ? dayjs(date).format(DATE_INPUT_FORMAT) : undefined;
 }
 
 export function monthToPayrollPeriod(value: Dayjs | null) {
@@ -269,7 +274,7 @@ function EmployeesTab() {
         <FormSection title={t('payroll.salaryHistory')}>
           <Form.Item name="salaryEffectiveFrom" label={t('payroll.effectiveFrom')}><DatePicker /></Form.Item>
           <Form.Item name="basicSalary" label={t('payroll.basicSalary')}><Input /></Form.Item>
-          <Space direction="vertical">{detail?.salaries.map((salary) => <span key={salary.id}>{dateOnly(salary.effectiveFrom)}: {formatAmount(salary.basicSalary)}</span>)}</Space>
+          <Space direction="vertical">{detail?.salaries.map((salary) => <span key={salary.id}>{formatPayrollDate(salary.effectiveFrom)}: {formatAmount(salary.basicSalary)}</span>)}</Space>
         </FormSection>
         <FormSection title={t('payroll.recurring')}>
           <Form.Item name="payElementId" label={t('payroll.element')}><Select options={(elements.data as PayrollElementDto[] | undefined)?.map((e) => ({ value: e.id, label: i18n.language === 'en' ? e.nameEn ?? e.nameAr : e.nameAr }))} /></Form.Item>
@@ -278,7 +283,7 @@ function EmployeesTab() {
             ? <Form.Item name="recurringAmount" label={t('payroll.amount')} rules={[{ required: Boolean(recurringElementId) }]}><Input /></Form.Item>
             : <Form.Item name="recurringQuantity" label={t('payroll.quantity')} rules={[{ required: Boolean(recurringElementId) }]}><Input /></Form.Item>}
           {detail?.recurringElements.map((recurring) => <Space key={recurring.id}>
-            <span>{i18n.language === 'en' ? recurring.payElement.nameEn ?? recurring.payElement.nameAr : recurring.payElement.nameAr} — {recurring.amount !== null ? formatAmount(recurring.amount) : formatQty(recurring.quantity)} · {dateOnly(recurring.validFrom)} – {dateOnly(recurring.validTo) ?? '—'}</span>
+            <span>{i18n.language === 'en' ? recurring.payElement.nameEn ?? recurring.payElement.nameAr : recurring.payElement.nameAr} — {recurring.amount !== null ? formatAmount(recurring.amount) : formatQty(recurring.quantity)} · {formatPayrollDate(recurring.validFrom)} – {formatPayrollDate(recurring.validTo) ?? '—'}</span>
             <Button danger title={t('common.delete')} icon={<DeleteOutlined />} onClick={() => void payrollControllerDeleteRecurring(editing!.id, recurring.id)
               .then(async () => {
                 setDetail((await payrollControllerGetEmployee(editing!.id)).data);
@@ -396,7 +401,7 @@ function MovementsTab() {
     </Space>
     <Table rowKey="id" loading={movements.isLoading} dataSource={movements.data as PayrollMovementDto[] | undefined} columns={[
       { title: t('payroll.movementNo'), dataIndex: 'movementNo' },
-      { title: t('payroll.movementDate'), dataIndex: 'movementDate', render: (value: string) => dateOnly(value) },
+      { title: t('payroll.movementDate'), dataIndex: 'movementDate', render: (value: string) => formatPayrollDate(value) },
       { title: t('payroll.employee'), dataIndex: 'employeeName' },
       { title: t('payroll.element'), dataIndex: 'payElementName' },
       { title: t('payroll.quantity'), dataIndex: 'quantity', render: (value: string | null) => formatQty(value) },
@@ -559,7 +564,7 @@ function SettingsTab() {
           title: t(`payroll.${key}`),
           dataIndex: key,
           render: (value: string | null) => key === 'effectiveFrom'
-            ? dateOnly(value) ?? '—'
+            ? formatPayrollDate(value) ?? '—'
             : key.endsWith('Wage') ? formatAmount(value) : formatQty(value),
         })),
     ]} />
@@ -601,7 +606,7 @@ function ReportsTab() {
         <span>{t('payroll.closingBalance')}: {formatAmount(data.closingBalance)}</span>
       </Space>}
       {data && <Table rowKey={(row) => `${row.date}-${row.documentNo}-${row.documentType}`} dataSource={data.rows} columns={[
-        { title: t('payroll.movementDate'), dataIndex: 'date', render: (value: string) => dateOnly(value) },
+        { title: t('payroll.movementDate'), dataIndex: 'date', render: (value: string) => formatPayrollDate(value) },
         { title: t('payroll.documentNo'), dataIndex: 'documentNo' },
         { title: t('payroll.documentType'), dataIndex: 'documentType' },
         { title: t('payroll.description'), dataIndex: 'description' },
