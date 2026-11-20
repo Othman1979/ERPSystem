@@ -380,6 +380,10 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
   /** A valid body for each change, so the request reaches the tenant lookup. */
   function bodyFor(p: string): object {
     if (p.endsWith('/reverse')) return { reversalDate: '2026-04-01' };
+    if (p.endsWith('/journal-entries/{id}/amend')) {
+      return { entryDate: '2026-04-01', lines: [{ accountId: '1', debit: '1' }, { accountId: '2', credit: '1' }] };
+    }
+    if (/\/(receipts|payments)\/\{id\}\/amend$/.test(p)) return { voucherDate: '2026-04-01', amount: '1.000' };
     if (p.endsWith('/allocations')) return { auto: true };
     if (p.endsWith('/items/{id}/units')) return { units: [{ unitId: id.unit, factorToBase: '1' }] };
     if (p.endsWith('/items/{id}/barcodes')) return { barcode: `X${RUN}` };

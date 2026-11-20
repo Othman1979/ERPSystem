@@ -489,6 +489,116 @@ export class PostingService {
   }
 
   /** Finds the OPEN fiscal period covering `date` for the company. */
+  /**
+   * Edits a posted entry in place (ADR-039, owner decision 2026-11-20): same
+   * entry number, new date, description and lines. Both the old and the new
+   * date must fall in an OPEN period; a reversed entry, a reversal and closing
+   * entries are not edited. The caller audits the before/after.
+   */
+  async amendEntry(
+    tx: Prisma.TransactionClient,
+    params: {
+      tenantId: bigint;
+      companyId: bigint;
+      entryId: bigint;
+      entryDate: Date;
+      description?: string | null;
+      lines: JournalLineInput[];
+      costCenterId?: bigint | null;
+      requireCostCenters?: boolean;
+    },
+  ): Promise<{ id: bigint; entryNo: string; totalDebit: Decimal; totalCredit: Decimal }> {
+    const { tenantId, companyId } = params;
+    const locked = (await tx.$queryRaw`
+      SELECT id FROM journal_entries
+      WHERE tenant_id = ${tenantId} AND id = ${params.entryId}
+      FOR UPDATE
+    `) as { id: bigint }[];
+    if (!locked[0]) throw DomainError.notFound('JournalEntry', params.entryId.toString());
+    const entry = await tx.journalEntry.findFirst({ where: { tenantId, id: params.entryId } });
+    if (!entry) throw DomainError.notFound('JournalEntry', params.entryId.toString());
+    if (entry.status !== 'POSTED') throw new DomainError(ErrorCode.CONFLICT, 'Only a posted entry is edited');
+    if (entry.isClosing || entry.reversalOfId !== null) {
+      throw new DomainError(ErrorCode.CONFLICT, 'A closing or reversal entry cannot be edited');
+    }
+    const reversal = await tx.journalEntry.findFirst({ where: { tenantId, reversalOfId: entry.id }, select: { id: true } });
+    if (reversal) throw new DomainError(ErrorCode.ENTRY_ALREADY_REVERSED, 'A reversed entry cannot be edited');
+
+    const matched = await tx.bankStatementMatch.count({ where: { tenantId, journalLine: { journalEntryId: entry.id } } });
+    if (matched > 0) {
+      throw new DomainError(ErrorCode.CONFLICT, 'Unmatch the bank reconciliation lines of this entry before editing it');
+    }
+    // A reconciled statement keeps its totals; its outstanding list is rebuilt from the ledger.
+    // The old lines leave it from the old date, the new ones enter it from the new date.
+    const oldAccountIds = [
+      ...new Set(
+        (await tx.journalLine.findMany({ where: { tenantId, journalEntryId: entry.id }, select: { accountId: true } })).map((l) => l.accountId),
+      ),
+    ];
+    const newAccountIds = [...new Set(params.lines.map((l) => l.accountId))];
+    const reconciled = await tx.bankStatement.count({
+      where: {
+        tenantId,
+        status: 'RECONCILED',
+        OR: [
+          { endDate: { gte: entry.entryDate }, bankAccount: { accountId: { in: oldAccountIds } } },
+          { endDate: { gte: params.entryDate }, bankAccount: { accountId: { in: newAccountIds } } },
+        ],
+      },
+    });
+    if (reconciled > 0) {
+      throw new DomainError(ErrorCode.CONFLICT, 'A reconciled bank statement covers this entry; reopen it before editing');
+    }
+    await this.resolveOpenPeriod(tx, tenantId, companyId, entry.entryDate);
+    const period = await this.resolveOpenPeriod(tx, tenantId, companyId, params.entryDate);
+
+    const normalized = await this.validateLines(tx, tenantId, companyId, params.lines, {
+      costCenterId: params.costCenterId,
+      requireCostCenters: params.requireCostCenters,
+    });
+    let totalDebit = new Decimal(0);
+    let totalCredit = new Decimal(0);
+    for (const n of normalized) {
+      totalDebit = totalDebit.plus(n.debit);
+      totalCredit = totalCredit.plus(n.credit);
+    }
+    if (!totalDebit.eq(totalCredit)) {
+      throw new DomainError(
+        ErrorCode.UNBALANCED_ENTRY,
+        `Entry is unbalanced: debit ${totalDebit.toString()} != credit ${totalCredit.toString()}`,
+      );
+    }
+
+    await tx.journalLine.deleteMany({ where: { tenantId, journalEntryId: entry.id } });
+    await tx.journalLine.createMany({
+      data: normalized.map((n, i) => ({
+        tenantId,
+        journalEntryId: entry.id,
+        lineNo: i + 1,
+        accountId: n.line.accountId,
+        debit: n.debit,
+        credit: n.credit,
+        partyType: n.line.partyType ?? null,
+        partyId: n.line.partyId ?? null,
+        description: n.line.description ?? null,
+        branchId: n.line.branchId ?? entry.branchId ?? null,
+        costCenterId: n.costCenterId,
+        entryDate: params.entryDate,
+      })),
+    });
+    await tx.journalEntry.update({
+      where: { id: entry.id },
+      data: {
+        entryDate: params.entryDate,
+        fiscalPeriodId: period.id,
+        description: params.description === undefined ? entry.description : params.description,
+        totalDebit,
+        totalCredit,
+      },
+    });
+    return { id: entry.id, entryNo: entry.entryNo ?? '', totalDebit, totalCredit };
+  }
+
   async resolveOpenPeriod(
     tx: Prisma.TransactionClient,
     tenantId: bigint,

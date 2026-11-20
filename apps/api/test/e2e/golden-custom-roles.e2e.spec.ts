@@ -23,7 +23,6 @@ let server: ChildProcess;
 
 const api = () => request(BASE);
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
-const sorted = (codes: readonly string[]) => [...codes].sort();
 
 async function waitForHealth(timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;

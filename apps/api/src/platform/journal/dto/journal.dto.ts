@@ -85,6 +85,25 @@ export class CreateJournalEntryDto {
   lines!: JournalLineDto[];
 }
 
+/** Direct edit of a posted manual entry (ADR-039): same number, new date and lines. */
+export class AmendJournalEntryDto {
+  @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
+  @IsDateString({ strict: true })
+  entryDate!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => JournalLineDto)
+  lines!: JournalLineDto[];
+}
+
 export class ReverseJournalEntryDto {
   @Matches(DATE_PATTERN, { message: '$property must be a yyyy-mm-dd date' })
   @IsDateString({ strict: true })
