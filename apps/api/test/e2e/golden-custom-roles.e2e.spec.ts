@@ -139,6 +139,12 @@ describe('custom roles (erp_test)', () => {
   });
 
   it('isolation: tenant B neither sees, edits, deletes nor assigns A\'s role', async () => {
+    // B may reuse A's code: codes are unique per company, and A's role stays as it was.
+    const own = await api().post('/api/v1/roles/custom').set(auth(ownerB)).send({ code: 'CLERK', nameAr: 'B', permissions: [] });
+    expect(own.status).toBe(201);
+    expect(own.body.id).not.toBe(roleId);
+    const listA = await api().get('/api/v1/roles/custom').set(auth(ownerA));
+    expect(listA.body.find((r: { id: string }) => r.id === roleId)).toMatchObject({ nameAr: 'كاتب', permissions: ['tenant.read', 'warehouse.manage'] });
     const list = await api().get('/api/v1/roles/custom').set(auth(ownerB));
     expect(list.status).toBe(200);
     expect(list.body.map((r: { id: string }) => r.id)).not.toContain(roleId);
