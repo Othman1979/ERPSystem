@@ -506,7 +506,7 @@ export class PayrollService {
     await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM payroll_runs WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id = ${id} FOR UPDATE`;
-      const run = await tx.payrollRun.findFirst({
+      const draft = await tx.payrollRun.findFirst({
         where: { id },
         include: {
           lines: {
@@ -517,8 +517,22 @@ export class PayrollService {
           },
         },
       });
+      if (!draft) throw DomainError.notFound('PayrollRun', id.toString());
+      if (draft.status !== 'DRAFT') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only draft runs can be posted');
+      const taxes = new Map(draft.lines.map((line) => [line.employeeId, line.incomeTax.toString()]));
+      await this.computeRun(tx, tenantId, companyId, id, draft.period, taxes);
+      const run = await tx.payrollRun.findFirst({
+        where: { id },
+        include: {
+          lines: {
+            include: {
+              employee: { select: { branchId: true, costCenterId: true } },
+              items: { include: { payElement: { select: { accountId: true, account: { select: { accountType: true } } } } } },
+            },
+          },
+        },
+      });
       if (!run) throw DomainError.notFound('PayrollRun', id.toString());
-      if (run.status !== 'DRAFT') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only draft runs can be posted');
       if (run.lines.some((line) => line.net.lt(0))) throw new DomainError(ErrorCode.PAYROLL_NEGATIVE_NET, 'Payroll net cannot be negative');
       const mappings = await tx.accountMapping.findMany({ where: { mappingKey: { in: [...MAPPING_KEYS] } } });
       const map = new Map(mappings.map((row) => [row.mappingKey, row.accountId]));
@@ -548,13 +562,13 @@ export class PayrollService {
         add(accountId('PAYROLL_SALARIES_EXPENSE'), line.basic, 'debit', line.employee.branchId, line.employee.costCenterId, 'Basic salaries');
         add(accountId('PAYROLL_SSC_EXPENSE'), line.sscEmployer, 'debit', line.employee.branchId, line.employee.costCenterId, 'Employer social security');
         for (const item of line.items) {
-          if (!item.payElement?.accountId) throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Payroll item has no account');
+          if (!item.payElement?.accountId || !item.payElement.account) throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Payroll item has no account');
           add(
             item.payElement.accountId,
             item.amount,
             item.kind === 'EARNING' ? 'debit' : 'credit',
             line.employee.branchId,
-            line.employee.costCenterId,
+            isIncomeStatement(item.payElement.account.accountType) ? line.employee.costCenterId : null,
             item.description,
           );
         }
@@ -581,11 +595,13 @@ export class PayrollService {
           description: line.description,
         })),
         requireCostCenters: true,
+        postedBy: ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null,
       });
       await tx.payrollRun.update({
         where: { id },
         data: { status: 'POSTED', runNo, journalEntryId: entry.id },
       });
+      await this.audit.log({ action: 'payroll.post', entityType: 'payroll_run', entityId: id, after: { status: 'POSTED' } }, tx);
     }, POSTING_TX_OPTIONS);
     return this.getRun(id.toString());
   }
@@ -597,6 +613,7 @@ export class PayrollService {
       throw new DomainError(ErrorCode.VALIDATION, 'Choose exactly one cash box or bank account');
     }
     const payDate = date(dto.date);
+    const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
     await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
       const run = await tx.payrollRun.findFirst({ where: { id } });
@@ -622,6 +639,7 @@ export class PayrollService {
           { accountId: payable.accountId, debit: run.netTotal },
           { accountId: account.accountId, credit: run.netTotal },
         ],
+        postedBy: userId,
       });
       await tx.payrollRun.update({
         where: { id },
@@ -632,6 +650,7 @@ export class PayrollService {
           paidFromBankAccountId: dto.bankAccountId ? BigInt(dto.bankAccountId) : null,
         },
       });
+      await this.audit.log({ action: 'payroll.pay', entityType: 'payroll_run', entityId: id, after: { status: 'PAID' } }, tx);
     }, POSTING_TX_OPTIONS);
     return this.getRun(id.toString());
   }
@@ -639,6 +658,7 @@ export class PayrollService {
   async reverseRun(id: bigint, reversalDate: Date) {
     this.canPost();
     const { tenantId, companyId, db } = this.context();
+    const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
     await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
       const run = await tx.payrollRun.findFirst({ where: { id } });
@@ -647,12 +667,13 @@ export class PayrollService {
         throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only posted or paid runs can be reversed');
       }
       if (run.status === 'PAID' && run.paymentEntryId) {
-        await this.posting.reverseEntry(tx, { tenantId, companyId, entryId: run.paymentEntryId, reversalDate });
+        await this.posting.reverseEntry(tx, { tenantId, companyId, entryId: run.paymentEntryId, reversalDate, postedBy: userId });
       }
       if (run.journalEntryId) {
-        await this.posting.reverseEntry(tx, { tenantId, companyId, entryId: run.journalEntryId, reversalDate });
+        await this.posting.reverseEntry(tx, { tenantId, companyId, entryId: run.journalEntryId, reversalDate, postedBy: userId });
       }
       await tx.payrollRun.update({ where: { id }, data: { status: 'REVERSED' } });
+      await this.audit.log({ action: 'payroll.reverse', entityType: 'payroll_run', entityId: id, after: { status: 'REVERSED' } }, tx);
     }, POSTING_TX_OPTIONS);
     return this.getRun(id.toString());
   }
