@@ -1024,6 +1024,12 @@ export class PayrollService {
       if (run.status !== 'POSTED' && run.status !== 'PAID') {
         throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only posted or paid runs can be reversed');
       }
+      if (!run.journalEntryId) {
+        if (reversalDate < run.runDate) {
+          throw new DomainError(ErrorCode.VALIDATION, 'Payroll reversal date cannot be before the run date');
+        }
+        await this.posting.resolveOpenPeriod(tx, tenantId, companyId, reversalDate);
+      }
       if (run.status === 'PAID' && run.paymentEntryId) {
         await this.posting.reverseEntry(tx, { tenantId, companyId, entryId: run.paymentEntryId, reversalDate, postedBy: userId });
       }

@@ -806,6 +806,23 @@ describe('Payroll PY1–PY3', () => {
     ) as { rows: Array<{ documentNo: string; documentType: string }> };
     expect(statement.rows.find((row) => row.documentType === 'PAYROLL_RUN')?.documentNo).toBe(posted.runNo);
 
+    const beforeRunDate = await act(
+      tokenA,
+      `payroll/runs/${draft.id}/reverse`,
+      { date: '2032-12-31' },
+      company.id,
+    );
+    expect(beforeRunDate.status).toBe(400);
+    expect(beforeRunDate.body.error.code).toBe('VALIDATION');
+    const noPeriod = await act(
+      tokenA,
+      `payroll/runs/${draft.id}/reverse`,
+      { date: '2034-01-01' },
+      company.id,
+    );
+    expect(noPeriod.status).toBe(409);
+    expect(noPeriod.body.error.code).toBe('PERIOD_CLOSED');
+
     const paid = h.ok(
       await act(tokenA, `payroll/runs/${draft.id}/pay`, { bankAccountId: bankAccount.id, date: '2033-01-20' }, company.id),
       201,
