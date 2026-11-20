@@ -98,6 +98,13 @@ describe('Invoice from order helpers (ADR-027 §4)', () => {
     expect(pricedBelowOrder({ unitPrice: '10', discountPct: '0' }, order)).toBe(false);
   });
 
+  it('includes the invoice-discount share in the line net unit price', () => {
+    expect(pricedBelowOrder(
+      { unitPrice: '10', discountPct: '0', invoiceDiscountShare: '2', qty: '2' },
+      order,
+    )).toBe(true);
+  });
+
   it('allows a higher net price', () => {
     expect(pricedBelowOrder({ unitPrice: '10.5', discountPct: '0' }, order)).toBe(false);
   });

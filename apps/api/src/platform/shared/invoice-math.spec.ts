@@ -1,5 +1,7 @@
 import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
-import { computeLineAmounts, netOfTaxLine } from './invoice-math.js';
+import { DomainError } from '../../common/errors/domain.error.js';
+import { ErrorCode } from '../../common/errors/error-codes.js';
+import { allocateInvoiceDiscount, computeLineAmounts, netOfTaxLine } from './invoice-math.js';
 
 const s = (d: Decimal) => d.toString();
 
@@ -32,6 +34,65 @@ describe('computeLineAmounts', () => {
   it('refuses a discount outside 0–100% (TRADE-23)', () => {
     expect(() => computeLineAmounts({ qty: '1', factorToBase: '1', unitPrice: '10', discountPct: '150' })).toThrow(/discountPct/);
     expect(() => computeLineAmounts({ qty: '1', factorToBase: '1', unitPrice: '10', discountPct: '100' })).not.toThrow();
+  });
+});
+
+describe('allocateInvoiceDiscount', () => {
+  it('puts the rounding remainder on the largest line, with ties going to the first line', () => {
+    const allocation = allocateInvoiceDiscount(['1.000', '1.000', '2.000'], { amount: '0.002' });
+    expect(allocation.amount.toFixed(3)).toBe('0.002');
+    expect(allocation.shares.map((share) => share.toFixed(3))).toEqual(['0.001', '0.001', '0.000']);
+
+    const tied = allocateInvoiceDiscount(['1.000', '1.000', '1.000'], { amount: '0.002' });
+    expect(tied.shares.map((share) => share.toFixed(3))).toEqual(['0.000', '0.001', '0.001']);
+  });
+
+  it('allocates tax-inclusive shares using the price terms, then computes net and tax from the discounted total', () => {
+    const weights = [
+      computeLineAmounts({ qty: '1', factorToBase: '1', unitPrice: '116', taxRate: '16', pricesIncludeTax: true }).lineTotal,
+      computeLineAmounts({
+        qty: '1', factorToBase: '1', unitPrice: '58', discountPct: '10', taxRate: '16', pricesIncludeTax: true,
+      }).lineTotal,
+    ];
+    const allocation = allocateInvoiceDiscount(weights, { pct: '10' });
+    expect(allocation.amount.toFixed(3)).toBe('16.820');
+    expect(allocation.shares.map((share) => share.toFixed(3))).toEqual(['11.600', '5.220']);
+
+    const discounted = computeLineAmounts({
+      qty: '1',
+      factorToBase: '1',
+      unitPrice: '116',
+      taxRate: '16',
+      pricesIncludeTax: true,
+      invoiceDiscountShare: allocation.shares[0].toString(),
+    });
+    expect([discounted.discountAmount.toFixed(3), discounted.netAmount.toFixed(3), discounted.taxAmount.toFixed(3)])
+      .toEqual(['11.600', '90.000', '14.400']);
+  });
+
+  it('accepts zero and the maximum discount', () => {
+    expect(allocateInvoiceDiscount(['5', '7'], { amount: '0' }).shares.map((share) => share.toFixed(3)))
+      .toEqual(['0.000', '0.000']);
+    const maximum = allocateInvoiceDiscount(['5', '7'], { pct: '100' });
+    expect(maximum.amount.toFixed(3)).toBe('12.000');
+    expect(maximum.shares.map((share) => share.toFixed(3))).toEqual(['5.000', '7.000']);
+  });
+
+  it('rejects invalid combinations and amounts outside the line total', () => {
+    for (const discount of [
+      { pct: '-1' },
+      { amount: '-0.001' },
+      { amount: '12.001' },
+      { pct: '10', amount: '1' },
+    ]) {
+      try {
+        allocateInvoiceDiscount(['5', '7'], discount);
+        throw new Error('expected invoice discount validation to fail');
+      } catch (error) {
+        expect(error).toBeInstanceOf(DomainError);
+        expect((error as DomainError).code).toBe(ErrorCode.INVOICE_DISCOUNT_INVALID);
+      }
+    }
   });
 });
 

@@ -15,6 +15,31 @@ describe('computeReturnLines (§7.7)', () => {
     expect(rows.map((r) => r.taxAmount)).toEqual(['5.333', '5.333', '5.334']);
   });
 
+  it('reclaims invoice-discount shares pro rata and gives the completing return the exact remainder', () => {
+    const original = { ...line, invoiceDiscountShare: '1.000' };
+    const rows: {
+      originalLineId: bigint;
+      qtyBase: string;
+      discountAmount: string;
+      invoiceDiscountShare: string;
+      netAmount: string;
+      taxAmount: string;
+    }[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const [ret] = computeReturnLines([original], [{ originalLineId: '1', qty: '1' }], returnedByLine(rows));
+      rows.push({
+        originalLineId: 1n,
+        qtyBase: s(ret.qtyBase),
+        discountAmount: s(ret.discountAmount),
+        invoiceDiscountShare: s(ret.invoiceDiscountShare),
+        netAmount: s(ret.netAmount),
+        taxAmount: s(ret.taxAmount),
+      });
+    }
+    expect(rows.map((row) => row.invoiceDiscountShare)).toEqual(['0.333', '0.333', '0.334']);
+    expect(rows.reduce((total, row) => total.plus(row.invoiceDiscountShare), new Decimal(0)).toFixed(3)).toBe('1.000');
+  });
+
   it('refuses more than remains, and a line twice in one return', () => {
     const done = returnedByLine([{ originalLineId: 1n, qtyBase: '2', discountAmount: '0', netAmount: '66.667', taxAmount: '10.667' }]);
     expect(() => computeReturnLines([line], [{ originalLineId: '1', qty: '2' }], done)).toThrow(/remaining 1/);

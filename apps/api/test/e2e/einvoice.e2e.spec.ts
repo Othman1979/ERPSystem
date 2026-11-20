@@ -500,6 +500,39 @@ describe('Phase 7 — JoFotara', () => {
     expect(view.body.einvoice.qrPayload).toBe(firstSubmission.qrPayload);
   });
 
+  slow('D1 JoFotara XML carries the allocated line allowances and consistent monetary totals', async () => {
+    const draft = await api().post('/api/v1/sales-invoices').set(auth(token)).send({
+      invoiceDate: '2025-03-10',
+      customerId: party.TN,
+      warehouseId,
+      paymentType: 'CREDIT',
+      invoiceDiscountPct: '10',
+      lines: [
+        { itemId, qty: '10', unitPrice: '5.000' },
+        { itemId, qty: '3', unitPrice: '7.000' },
+      ],
+    });
+    expect(draft.status).toBe(201);
+    const posted = await post('sales-invoices', draft.body.id);
+    expect(posted.status).toBe(201);
+    // 50.000 + 21.000 = 71.000; ten percent gives line shares 5.000 + 2.100,
+    // so JoFotara's line allowances and AllowanceTotalAmount must both equal 7.100.
+    const submissionId = await waitFor(() => submissionOf('SALES_INVOICE', draft.body.id), 45_000, 'D1 XML submission');
+    const submission = await settled(submissionId);
+    const xml = submission.requestXml!;
+    const allowance = /<cbc:AllowanceTotalAmount currencyID="JO">([\d.]+)<\/cbc:AllowanceTotalAmount>/.exec(xml)?.[1];
+    const taxExclusive = /<cbc:TaxExclusiveAmount currencyID="JO">([\d.]+)<\/cbc:TaxExclusiveAmount>/.exec(xml)?.[1];
+    const payable = /<cbc:PayableAmount currencyID="JO">([\d.]+)<\/cbc:PayableAmount>/.exec(xml)?.[1];
+    const lineAllowances = [...xml.matchAll(/<cac:InvoiceLine>([\s\S]*?)<\/cac:InvoiceLine>/g)].map((match) =>
+      /<cbc:Amount currencyID="JO">([\d.]+)<\/cbc:Amount>/.exec(match[1]!)?.[1],
+    );
+    expect(lineAllowances).toEqual(['5.000', '2.100']);
+    expect(allowance).toBe('7.100');
+    // At 16% the posted net is 63.900, tax is 10.224, and payable is 74.124;
+    // the UBL exclusive amount restores the 7.100 allowance to 63.900 + 7.100 = 71.000.
+    expect([taxExclusive, payable]).toEqual(['71.000', '74.124']);
+  });
+
   slow('a return needs a reason, references the original and is accepted; so is a second one', async () => {
     const draft = (qty: string, reason?: string) =>
       api()
