@@ -63,7 +63,11 @@ export const ar = {
   },
   payroll: {
     title: 'الرواتب', newRun: 'إنشاء مسير جديد', employees: 'الموظفون', elements: 'العناصر',
-    inputs: 'المدخلات', runs: 'المسيرات', settings: 'الإعدادات', addEmployee: 'إضافة موظف',
+    movements: 'الحركات', runs: 'المسيرات', settings: 'الإعدادات', addEmployee: 'إضافة موظف',
+    newMovement: 'حركة جديدة', movementNo: 'رقم الحركة', movementDate: 'تاريخ الحركة',
+    description: 'الوصف', status: 'الحالة', reverseMovement: 'عكس الحركة', reversalDate: 'تاريخ العكس',
+    confirmReverse: 'هل تريد عكس هذه الحركة؟', openingBalance: 'الرصيد الافتتاحي', closingBalance: 'الرصيد الختامي',
+    documentNo: 'رقم المستند', documentType: 'نوع المستند', debit: 'مدين', credit: 'دائن', balance: 'الرصيد',
     editEmployee: 'تعديل موظف', editElement: 'تعديل عنصر', addElement: 'إضافة عنصر', addSetting: 'إضافة إعداد',
     salaryHistory: 'سجل الرواتب', recurring: 'العناصر المتكررة',
     employee: 'الموظف', code: 'الرمز', nameAr: 'الاسم بالعربية', nameEn: 'الاسم بالإنجليزية',
@@ -84,7 +88,7 @@ export const ar = {
     effectiveFrom: 'ساري من', sscEmployeeRate: 'نسبة الموظف', sscEmployerRate: 'نسبة صاحب العمل',
     sscHazardousExtra: 'إضافي مخاطر', sscMinWage: 'الحد الأدنى للأجر', sscMaxWage: 'الحد الأعلى للأجر',
     hoursPerMonth: 'ساعات الشهر', daysPerMonth: 'أيام الشهر', saveError: 'تعذر حفظ بيانات الرواتب',
-    reports: { title: 'التقارير', register: 'سجل الرواتب', ssc: 'كشف الضمان', 'tax-withheld': 'الضريبة المستقطعة' },
+    reports: { title: 'التقارير', register: 'سجل الرواتب', ssc: 'كشف الضمان', 'tax-withheld': 'الضريبة المستقطعة', employeeStatement: 'كشف حساب الموظف' },
   },
   ribbon: {
     label: 'شريط التنقل',
@@ -2373,7 +2377,11 @@ export const en: typeof ar = {
   },
   payroll: {
     title: 'Payroll', newRun: 'New payroll run', employees: 'Employees', elements: 'Pay elements',
-    inputs: 'Inputs', runs: 'Runs', settings: 'Settings', addEmployee: 'Add employee',
+    movements: 'Movements', runs: 'Runs', settings: 'Settings', addEmployee: 'Add employee',
+    newMovement: 'New movement', movementNo: 'Movement no.', movementDate: 'Movement date',
+    description: 'Description', status: 'Status', reverseMovement: 'Reverse movement', reversalDate: 'Reversal date',
+    confirmReverse: 'Reverse this movement?', openingBalance: 'Opening balance', closingBalance: 'Closing balance',
+    documentNo: 'Document no.', documentType: 'Document type', debit: 'Debit', credit: 'Credit', balance: 'Balance',
     editEmployee: 'Edit employee', editElement: 'Edit element', addElement: 'Add element', addSetting: 'Add settings row',
     salaryHistory: 'Salary history', recurring: 'Recurring elements',
     employee: 'Employee', code: 'Code', nameAr: 'Arabic name', nameEn: 'English name',
@@ -2394,7 +2402,7 @@ export const en: typeof ar = {
     effectiveFrom: 'Effective from', sscEmployeeRate: 'Employee SSC rate', sscEmployerRate: 'Employer SSC rate',
     sscHazardousExtra: 'Hazardous extra rate', sscMinWage: 'Minimum wage', sscMaxWage: 'Maximum wage',
     hoursPerMonth: 'Hours per month', daysPerMonth: 'Days per month', saveError: 'Could not save payroll data',
-    reports: { title: 'Reports', register: 'Payroll register', ssc: 'SSC statement', 'tax-withheld': 'Tax withheld' },
+    reports: { title: 'Reports', register: 'Payroll register', ssc: 'SSC statement', 'tax-withheld': 'Tax withheld', employeeStatement: 'Employee statement' },
   },
   ribbon: {
     label: 'Navigation ribbon',

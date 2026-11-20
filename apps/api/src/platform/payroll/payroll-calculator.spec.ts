@@ -1,5 +1,10 @@
 import { Decimal } from '../../common/decimal/decimal.utils.js';
-import { calculatePayroll, type PayrollElement } from './payroll-calculator.js';
+import {
+  calculateMovementPrice,
+  calculatePayroll,
+  latestEffectiveOnDate,
+  type PayrollElement,
+} from './payroll-calculator.js';
 
 const overtime: PayrollElement = {
   id: 1n,
@@ -85,5 +90,68 @@ describe('calculatePayroll', () => {
   it('returns a negative net for the posting workflow to reject', () => {
     const result = calculatePayroll({ ...base, incomeTax: '500.000' })!;
     expect(result.net.eq(new Decimal('-56'))).toBe(true);
+  });
+});
+
+describe('calculateMovementPrice', () => {
+  const common = {
+    salary: '500.000',
+    rateFactor: '1.000000',
+    hoursPerMonth: '240.00',
+    daysPerMonth: '30.00',
+  };
+
+  it('prices hourly, daily, and fixed movements with decimal rounding', () => {
+    expect(calculateMovementPrice({
+      ...common, amountType: 'PER_HOUR', amount: null, quantity: '10', rateFactor: '1.250000',
+    }).amount.toString()).toBe('26.042');
+    expect(calculateMovementPrice({
+      ...common, amountType: 'PER_DAY', amount: null, quantity: '2',
+    }).amount.toString()).toBe('33.333');
+    expect(calculateMovementPrice({
+      ...common, amountType: 'FIXED', amount: '10.000', quantity: null,
+    }).amount.toString()).toBe('10');
+  });
+
+  it('uses the latest salary and settings effective on the movement date', () => {
+    const movementDate = new Date('2026-11-10T00:00:00.000Z');
+    const salary = latestEffectiveOnDate([
+      { effectiveFrom: new Date('2026-01-01T00:00:00.000Z'), basicSalary: '400.000' },
+      { effectiveFrom: new Date('2026-10-01T00:00:00.000Z'), basicSalary: '500.000' },
+      { effectiveFrom: new Date('2026-12-01T00:00:00.000Z'), basicSalary: '600.000' },
+    ], movementDate);
+    const settings = latestEffectiveOnDate([
+      { effectiveFrom: new Date('2026-01-01T00:00:00.000Z'), hoursPerMonth: '200.00', daysPerMonth: '25.00' },
+      { effectiveFrom: new Date('2026-11-01T00:00:00.000Z'), hoursPerMonth: '240.00', daysPerMonth: '30.00' },
+      { effectiveFrom: new Date('2026-12-01T00:00:00.000Z'), hoursPerMonth: '300.00', daysPerMonth: '31.00' },
+    ], movementDate);
+
+    expect(calculateMovementPrice({
+      amountType: 'PER_HOUR',
+      amount: null,
+      quantity: '10',
+      salary: salary!.basicSalary,
+      rateFactor: '1.250000',
+      hoursPerMonth: settings!.hoursPerMonth,
+      daysPerMonth: settings!.daysPerMonth,
+    }).amount.toString()).toBe('26.042');
+  });
+
+  it('keeps movements as fixed amount line items in payroll calculations', () => {
+    const result = calculatePayroll({
+      ...base,
+      inputs: [{
+        element: overtime,
+        amount: '26.042',
+        quantity: '10',
+        rate: '2.604166',
+        payrollMovementId: 17n,
+      }],
+    })!;
+    expect(result.items[0]).toMatchObject({
+      payrollMovementId: 17n,
+      amount: new Decimal('26.042'),
+    });
+    expect(result.sscBase.toString()).toBe('506.042');
   });
 });

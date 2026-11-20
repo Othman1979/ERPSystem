@@ -1,6 +1,7 @@
 import {
   ACCOUNT_MAPPING_KEYS,
   CHART_TEMPLATE,
+  DEFAULT_PAY_ELEMENTS,
   DOCUMENT_TYPE_PREFIXES,
   MAPPING_RULES,
   TEMPLATE_MAPPINGS,
@@ -80,6 +81,7 @@ describe('chart template', () => {
     expect(TEMPLATE_MAPPINGS.PRODUCTION_APPLIED_COST).toBe('5104');
     expect(MAPPING_RULES.PRODUCTION_APPLIED_COST.types).toEqual(['EXPENSE']);
     expect(DOCUMENT_TYPE_PREFIXES.PRODUCTION).toBe('MFG');
+    expect(DOCUMENT_TYPE_PREFIXES.PAYROLL_MOVEMENT).toBe('PM');
   });
 
   it('has a mapping rule for every mapping key', () => {
@@ -87,5 +89,13 @@ describe('chart template', () => {
     for (const key of ACCOUNT_MAPPING_KEYS) {
       expect(MAPPING_RULES[key].types.length).toBeGreaterThan(0);
     }
+  });
+
+  it('defaults absence to salaries expense and penalties to postable other revenue', () => {
+    const defaults = Object.fromEntries(DEFAULT_PAY_ELEMENTS.map(({ code, accountCode }) => [code, accountCode]));
+
+    expect(defaults.ABSENCE_DAY).toBe('5201');
+    expect(defaults.PENALTY).toBe('4201');
+    expect(templateAccount('4201')).toMatchObject({ accountType: 'REVENUE', isPostable: true });
   });
 });

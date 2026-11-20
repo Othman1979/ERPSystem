@@ -3,12 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildElementPayload,
   buildEmployeePayload,
-  buildInputPayload,
+  buildMovementPayload,
   buildPaymentSourceOptions,
   buildSettingsPayload,
   employeeEditDateValues,
+  formatPayrollDate,
   monthToPayrollPeriod,
   PayrollMonthPicker,
+  payElementAccountSelectable,
   payrollTabSearchParams,
   runAvailability,
 } from './PayrollPage';
@@ -21,6 +23,10 @@ describe('payroll page payloads and run actions', () => {
 
   it('formats a selected payroll month as YYYY-MM for the API', () => {
     expect(monthToPayrollPeriod(dayjs('2026-11-01'))).toBe('2026-11');
+  });
+
+  it('shows movement table dates as DD/MM/YYYY', () => {
+    expect(formatPayrollDate('2026-11-10')).toBe('10/11/2026');
   });
 
   it('does not expose a clear control or clear the selected API period', () => {
@@ -45,6 +51,19 @@ describe('payroll page payloads and run actions', () => {
       .toEqual({ code: 'E1', nameAr: 'Element' });
     expect(buildElementPayload({ code: 'E1', nameAr: 'Element', isActive: false }, true))
       .toEqual({ nameAr: 'Element', isActive: false });
+  });
+
+  it('allows all non-control account types for deductions and keeps earnings expense-only', () => {
+    const account = (accountType: 'ASSET' | 'LIABILITY' | 'EXPENSE' | 'REVENUE', overrides = {}) => ({
+      accountType, isActive: true, isPostable: true, isControl: false, controlType: null, ...overrides,
+    });
+
+    for (const type of ['ASSET', 'LIABILITY', 'EXPENSE', 'REVENUE'] as const) {
+      expect(payElementAccountSelectable(account(type), 'DEDUCTION')).toBe(true);
+    }
+    expect(payElementAccountSelectable(account('EXPENSE'), 'EARNING')).toBe(true);
+    expect(payElementAccountSelectable(account('REVENUE'), 'EARNING')).toBe(false);
+    expect(payElementAccountSelectable(account('LIABILITY', { controlType: 'BANK' }), 'DEDUCTION')).toBe(false);
   });
 
   it('labels cash boxes by name and bank accounts by bank plus account number or IBAN', () => {
@@ -83,19 +102,19 @@ describe('payroll page payloads and run actions', () => {
     });
   });
 
-  it('sends a daily input with its work date and quantity', () => {
-    expect(buildInputPayload({
-      employeeId: '1', payElementId: '2', period: '2026-03', workDate: dayjs('2026-03-12'), quantity: '8',
-    }, 'PER_HOUR', true)).toEqual({
-      employeeId: '1', payElementId: '2', period: '2026-03', workDate: '2026-03-12', quantity: '8',
+  it('sends a variable movement with its date and quantity', () => {
+    expect(buildMovementPayload({
+      employeeId: '1', payElementId: '2', movementDate: dayjs('2026-03-12'), quantity: '8', description: 'Overtime',
+    }, 'PER_HOUR')).toEqual({
+      employeeId: '1', payElementId: '2', movementDate: '2026-03-12', quantity: '8', description: 'Overtime',
     });
   });
 
-  it('sends a monthly fixed input without a work date', () => {
-    expect(buildInputPayload({
-      employeeId: '1', payElementId: '2', period: '2026-03', workDate: '2026-03-12', amount: '25.000',
-    }, 'FIXED', false)).toEqual({
-      employeeId: '1', payElementId: '2', period: '2026-03', amount: '25.000',
+  it('sends a fixed movement as a date-only request', () => {
+    expect(buildMovementPayload({
+      employeeId: '1', payElementId: '2', movementDate: '2026-03-12', amount: '25.000', description: 'Bonus',
+    }, 'FIXED')).toEqual({
+      employeeId: '1', payElementId: '2', movementDate: '2026-03-12', amount: '25.000', description: 'Bonus',
     });
   });
 

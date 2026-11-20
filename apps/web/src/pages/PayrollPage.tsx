@@ -3,21 +3,22 @@ import {
   payrollControllerAddSalary,
   payrollControllerCreateEmployee,
   payrollControllerCreateElement,
-  payrollControllerCreateInput,
+  payrollControllerCreateMovement,
   payrollControllerCreateRun,
   payrollControllerCreateSettings,
-  payrollControllerDeleteInput,
   payrollControllerDeleteRecurring,
   payrollControllerGetEmployee,
   payrollControllerGetRun,
   payrollControllerListEmployees,
   payrollControllerListElements,
-  payrollControllerListInputs,
+  payrollControllerListMovements,
   payrollControllerListRuns,
   payrollControllerListSettings,
   payrollControllerPayRun,
   payrollControllerPostRun,
   payrollControllerReverseRun,
+  payrollControllerReverseMovement,
+  payrollControllerEmployeeStatement,
   payrollControllerSetIncomeTax,
   payrollControllerUpdateElement,
   payrollControllerUpdateEmployee,
@@ -32,11 +33,13 @@ import {
   type PayrollEmployeeDetailDto,
   type PayrollElementDto,
   type PayrollRunDto,
+  type PayrollMovementDto,
   type CashBoxListItemDto,
   type BankAccountListItemDto,
+  type AccountDto,
 } from '@erp/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, DatePicker as AntDatePicker, Form, Input, Radio, Select, Space, Switch, Table, Tabs } from 'antd';
+import { App, Button, DatePicker as AntDatePicker, Form, Input, Modal, Select, Space, Switch, Table, Tabs } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -44,7 +47,7 @@ import { useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { formatAmount, formatQty } from '../format/number';
-import { DatePicker } from '../components/DatePicker';
+import { DATE_INPUT_FORMAT, DatePicker } from '../components/DatePicker';
 import { ExportButtons, saveBlob } from '../components/ExportButtons';
 import { EnterNav } from '../components/EnterNav';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -58,11 +61,16 @@ type EmployeeForm = {
   salaryEffectiveFrom?: DateFormValue; basicSalary?: string; payElementId?: string; recurringAmount?: string;
   recurringQuantity?: string; recurringValidFrom?: DateFormValue;
 };
-type InputForm = { employeeId: string; payElementId: string; period: string; workDate?: DateFormValue; quantity?: string; amount?: string; note?: string };
+type MovementForm = { employeeId: string; payElementId: string; movementDate?: DateFormValue; quantity?: string; amount?: string; description?: string };
 
 export function dateOnly(value: DateFormValue): string | undefined {
   if (value == null || value === '') return undefined;
   return dayjs.isDayjs(value) ? value.format('YYYY-MM-DD') : value.slice(0, 10);
+}
+
+export function formatPayrollDate(value: DateFormValue): string | undefined {
+  const date = dateOnly(value);
+  return date ? dayjs(date).format(DATE_INPUT_FORMAT) : undefined;
 }
 
 export function monthToPayrollPeriod(value: Dayjs | null) {
@@ -108,6 +116,17 @@ export function buildElementPayload(values: Record<string, unknown>, editing: bo
   return create;
 }
 
+export function payElementAccountSelectable(
+  account: Pick<AccountDto, 'accountType' | 'isActive' | 'isPostable' | 'isControl' | 'controlType'>,
+  kind?: string,
+) {
+  const validType = kind === 'EARNING'
+    ? account.accountType === 'EXPENSE'
+    : account.accountType === 'ASSET' || account.accountType === 'LIABILITY' ||
+      account.accountType === 'EXPENSE' || account.accountType === 'REVENUE';
+  return account.isActive && account.isPostable && !account.isControl && account.controlType === null && validType;
+}
+
 export function buildPaymentSourceOptions(
   sourceType: 'cash' | 'bank',
   cashBoxes: Array<Pick<CashBoxListItemDto, 'id' | 'name'>>,
@@ -138,14 +157,13 @@ export function buildEmployeePayload(values: EmployeeForm, editing = false) {
   };
 }
 
-export function buildInputPayload(values: InputForm, amountType: string, daily: boolean) {
+export function buildMovementPayload(values: MovementForm, amountType: string) {
   return {
     employeeId: values.employeeId,
     payElementId: values.payElementId,
-    period: values.period,
-    ...(daily && values.workDate ? { workDate: dateOnly(values.workDate)! } : {}),
+    movementDate: dateOnly(values.movementDate)!,
     ...(amountType === 'FIXED' ? { amount: values.amount } : { quantity: values.quantity }),
-    ...(values.note ? { note: values.note } : {}),
+    description: values.description,
   };
 }
 
@@ -256,7 +274,7 @@ function EmployeesTab() {
         <FormSection title={t('payroll.salaryHistory')}>
           <Form.Item name="salaryEffectiveFrom" label={t('payroll.effectiveFrom')}><DatePicker /></Form.Item>
           <Form.Item name="basicSalary" label={t('payroll.basicSalary')}><Input /></Form.Item>
-          <Space direction="vertical">{detail?.salaries.map((salary) => <span key={salary.id}>{dateOnly(salary.effectiveFrom)}: {formatAmount(salary.basicSalary)}</span>)}</Space>
+          <Space direction="vertical">{detail?.salaries.map((salary) => <span key={salary.id}>{formatPayrollDate(salary.effectiveFrom)}: {formatAmount(salary.basicSalary)}</span>)}</Space>
         </FormSection>
         <FormSection title={t('payroll.recurring')}>
           <Form.Item name="payElementId" label={t('payroll.element')}><Select options={(elements.data as PayrollElementDto[] | undefined)?.map((e) => ({ value: e.id, label: i18n.language === 'en' ? e.nameEn ?? e.nameAr : e.nameAr }))} /></Form.Item>
@@ -265,7 +283,7 @@ function EmployeesTab() {
             ? <Form.Item name="recurringAmount" label={t('payroll.amount')} rules={[{ required: Boolean(recurringElementId) }]}><Input /></Form.Item>
             : <Form.Item name="recurringQuantity" label={t('payroll.quantity')} rules={[{ required: Boolean(recurringElementId) }]}><Input /></Form.Item>}
           {detail?.recurringElements.map((recurring) => <Space key={recurring.id}>
-            <span>{i18n.language === 'en' ? recurring.payElement.nameEn ?? recurring.payElement.nameAr : recurring.payElement.nameAr} — {recurring.amount !== null ? formatAmount(recurring.amount) : formatQty(recurring.quantity)} · {dateOnly(recurring.validFrom)} – {dateOnly(recurring.validTo) ?? '—'}</span>
+            <span>{i18n.language === 'en' ? recurring.payElement.nameEn ?? recurring.payElement.nameAr : recurring.payElement.nameAr} — {recurring.amount !== null ? formatAmount(recurring.amount) : formatQty(recurring.quantity)} · {formatPayrollDate(recurring.validFrom)} – {formatPayrollDate(recurring.validTo) ?? '—'}</span>
             <Button danger title={t('common.delete')} icon={<DeleteOutlined />} onClick={() => void payrollControllerDeleteRecurring(editing!.id, recurring.id)
               .then(async () => {
                 setDetail((await payrollControllerGetEmployee(editing!.id)).data);
@@ -290,8 +308,7 @@ function ElementsTab() {
   const [form] = Form.useForm();
   const kind = Form.useWatch('kind', form) as string | undefined;
   const accountOptions = (accounts.data ?? []).filter((account) =>
-    account.isActive && account.isPostable && !account.isControl && account.controlType === null &&
-    (kind === 'EARNING' ? account.accountType === 'EXPENSE' : account.accountType === 'ASSET' || account.accountType === 'LIABILITY'),
+    payElementAccountSelectable(account, kind),
   ).map((account) => ({ value: account.id, label: `${account.code} — ${i18n.language === 'en' ? account.nameEn ?? account.nameAr : account.nameAr}` }));
   const save = useMutation({ mutationFn: async (value: Record<string, unknown>) => {
     const payload = buildElementPayload(value, Boolean(editing));
@@ -327,7 +344,7 @@ function ElementsTab() {
   </>;
 }
 
-function InputsTab() {
+function MovementsTab() {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const { message } = App.useApp();
@@ -335,37 +352,101 @@ function InputsTab() {
   const { employees, elements } = usePayrollData();
   const [period, setPeriod] = useState(dayjs().format('YYYY-MM'));
   const [employeeId, setEmployeeId] = useState<string>();
-  const [payElementId, setPayElementId] = useState<string>();
-  const [daily, setDaily] = useState(false);
-  const [form] = Form.useForm<InputForm>();
-  const inputs = useQuery({ queryKey: ['payroll', 'inputs', period, employeeId], queryFn: async () => (await payrollControllerListInputs({ period, employeeId })).data });
-  const selected = (elements.data as PayrollElementDto[] | undefined)?.find((e) => e.id === payElementId);
-  const save = useMutation({ mutationFn: (values: InputForm) => payrollControllerCreateInput(buildInputPayload(values, selected?.amountType ?? 'FIXED', daily) as never), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['payroll', 'inputs'] }); form.resetFields(); }, onError: () => message.error(t('payroll.saveError')) });
-  const remove = useMutation({
-    mutationFn: (id: string) => payrollControllerDeleteInput(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['payroll', 'inputs'] }),
+  const [open, setOpen] = useState(false);
+  const [reversing, setReversing] = useState<PayrollMovementDto>();
+  const [form] = Form.useForm<MovementForm>();
+  const [reverseForm] = Form.useForm<{ date: DateFormValue }>();
+  const payElementId = Form.useWatch('payElementId', form);
+  const selected = (elements.data as PayrollElementDto[] | undefined)?.find((element) => element.id === payElementId);
+  const movements = useQuery({
+    queryKey: ['payroll', 'movements', period, employeeId],
+    queryFn: async () => (await payrollControllerListMovements({ period, employeeId })).data,
+  });
+  const save = useMutation({
+    mutationFn: (values: MovementForm) => payrollControllerCreateMovement(
+      buildMovementPayload(values, selected?.amountType ?? 'FIXED') as never,
+      { headers: { 'Idempotency-Key': crypto.randomUUID() } },
+    ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['payroll', 'movements'] });
+      void qc.invalidateQueries({ queryKey: ['payroll', 'runs'] });
+      form.resetFields();
+      setOpen(false);
+    },
     onError: () => message.error(t('payroll.saveError')),
   });
+  const reverse = useMutation({
+    mutationFn: ({ id, date }: { id: string; date: string }) => payrollControllerReverseMovement(
+      id,
+      { date },
+      { headers: { 'Idempotency-Key': crypto.randomUUID() } },
+    ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['payroll', 'movements'] });
+      setReversing(undefined);
+      reverseForm.resetFields();
+    },
+    onError: () => message.error(t('payroll.saveError')),
+  });
+  const startNew = () => {
+    form.resetFields();
+    form.setFieldsValue({ movementDate: dayjs() });
+    setOpen(true);
+  };
   return <>
     <Space wrap style={{ marginBottom: 12 }}>
       <PayrollMonthPicker period={period} onChange={setPeriod} />
-      <Select allowClear placeholder={t('payroll.employee')} value={employeeId} onChange={setEmployeeId} options={(employees.data as PayrollEmployeeDto[] | undefined)?.map((e) => ({ value: e.id, label: `${e.code} — ${i18n.language === 'en' ? e.nameEn ?? e.nameAr : e.nameAr}` }))} />
-      <Radio.Group value={daily} onChange={(e) => setDaily(e.target.value)} options={[{ value: false, label: t('payroll.monthlyTotal') }, { value: true, label: t('payroll.dailyDate') }]} />
+      <Select showSearch optionFilterProp="label" allowClear placeholder={t('payroll.employee')} value={employeeId} onChange={setEmployeeId} options={(employees.data as PayrollEmployeeDto[] | undefined)?.map((employee) => ({ value: employee.id, label: `${employee.code} — ${i18n.language === 'en' ? employee.nameEn ?? employee.nameAr : employee.nameAr}` }))} />
+      {can(PERMISSIONS.PAYROLL_POST) && <Button type="primary" icon={<PlusOutlined />} onClick={startNew}>{t('payroll.newMovement')}</Button>}
     </Space>
-    {can(PERMISSIONS.PAYROLL_MANAGE) && <EnterNav><Form form={form} layout="inline" onFinish={(v) => save.mutate({ ...v, period })}>
-      <Form.Item name="employeeId" rules={[{ required: true }]}><Select placeholder={t('payroll.employee')} options={(employees.data as PayrollEmployeeDto[] | undefined)?.map((e) => ({ value: e.id, label: i18n.language === 'en' ? e.nameEn ?? e.nameAr : e.nameAr }))} /></Form.Item>
-      <Form.Item name="payElementId" rules={[{ required: true }]}><Select placeholder={t('payroll.element')} onChange={setPayElementId} options={(elements.data as PayrollElementDto[] | undefined)?.map((e) => ({ value: e.id, label: i18n.language === 'en' ? e.nameEn ?? e.nameAr : e.nameAr }))} /></Form.Item>
-      {daily && <Form.Item name="workDate" rules={[{ required: true }]}><DatePicker /></Form.Item>}
-      <Form.Item name={selected?.amountType === 'FIXED' ? 'amount' : 'quantity'} rules={[{ required: true }]}><Input placeholder={t(selected?.amountType === 'FIXED' ? 'payroll.amount' : 'payroll.quantity')} /></Form.Item>
-      <Button htmlType="submit" type="primary" loading={save.isPending}>{t('common.save')}</Button>
-    </Form></EnterNav>}
-    <Table rowKey="id" dataSource={inputs.data as Array<{ id: string; amount?: string; quantity?: string; workDate?: string; payElement?: { nameAr: string }; employee?: { nameAr: string } }> | undefined} columns={[
-      { title: t('payroll.employee'), render: (_, r) => r.employee?.nameAr }, { title: t('payroll.element'), render: (_, r) => r.payElement?.nameAr },
-      { title: t('payroll.workDate'), dataIndex: 'workDate', render: (value?: string | null) => dateOnly(value) ?? '—' },
+    <Table rowKey="id" loading={movements.isLoading} dataSource={movements.data as PayrollMovementDto[] | undefined} columns={[
+      { title: t('payroll.movementNo'), dataIndex: 'movementNo' },
+      { title: t('payroll.movementDate'), dataIndex: 'movementDate', render: (value: string) => formatPayrollDate(value) },
+      { title: t('payroll.employee'), dataIndex: 'employeeName' },
+      { title: t('payroll.element'), dataIndex: 'payElementName' },
+      { title: t('payroll.quantity'), dataIndex: 'quantity', render: (value: string | null) => formatQty(value) },
       { title: t('payroll.amount'), dataIndex: 'amount', render: (v: string | null) => formatAmount(v) },
-      { title: t('payroll.quantity'), dataIndex: 'quantity', render: (v: string | null) => formatQty(v) },
-      { title: '', render: (_, r) => can(PERMISSIONS.PAYROLL_MANAGE) && <Button danger title={t('common.delete')} icon={<DeleteOutlined />} onClick={() => remove.mutate(r.id)} /> },
+      { title: t('payroll.description'), dataIndex: 'description' },
+      { title: t('payroll.status'), render: (_, row) => t(`payroll.${row.status.toLowerCase()}`) },
+      { title: '', render: (_, row) => can(PERMISSIONS.PAYROLL_POST) && row.status === 'POSTED' && <Button onClick={() => {
+        setReversing(row);
+        reverseForm.setFieldsValue({ date: dayjs() });
+      }}>{t('payroll.reverseMovement')}</Button> },
     ]} />
+    <FormDialog open={open} title={t('payroll.newMovement')} onCancel={() => setOpen(false)} onSave={() => void form.submit()} saving={save.isPending} destroyOnHidden>
+      <Form form={form} layout="vertical" onFinish={(values) => save.mutate(values)}>
+        <FormSection title={t('payroll.newMovement')}>
+          <Form.Item name="movementDate" label={t('payroll.movementDate')} rules={[{ required: true }]}><DatePicker /></Form.Item>
+          <Form.Item name="employeeId" label={t('payroll.employee')} rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label" options={(employees.data as PayrollEmployeeDto[] | undefined)?.map((employee) => ({ value: employee.id, label: `${employee.code} — ${i18n.language === 'en' ? employee.nameEn ?? employee.nameAr : employee.nameAr}` }))} />
+          </Form.Item>
+          <Form.Item name="payElementId" label={t('payroll.element')} rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label" options={(elements.data as PayrollElementDto[] | undefined)?.filter((element) => element.isActive).map((element) => ({ value: element.id, label: `${element.code} — ${i18n.language === 'en' ? element.nameEn ?? element.nameAr : element.nameAr}` }))} />
+          </Form.Item>
+          {selected?.amountType === 'FIXED'
+            ? <Form.Item name="amount" label={t('payroll.amount')} rules={[{ required: true }]}><Input /></Form.Item>
+            : <Form.Item name="quantity" label={t('payroll.quantity')} rules={[{ required: true }]}><Input /></Form.Item>}
+          <Form.Item name="description" label={t('payroll.description')} rules={[{ required: true }]}><Input /></Form.Item>
+        </FormSection>
+      </Form>
+    </FormDialog>
+    <FormDialog
+      open={Boolean(reversing)}
+      title={t('payroll.reverseMovement')}
+      onCancel={() => setReversing(undefined)}
+      onSave={() => void reverseForm.submit()}
+      saving={reverse.isPending}
+      destroyOnHidden
+    >
+      <Form form={reverseForm} layout="vertical" onFinish={(values) => {
+        Modal.confirm({
+          title: t('payroll.confirmReverse'),
+          onOk: () => reversing && reverse.mutate({ id: reversing.id, date: dateOnly(values.date)! }),
+        });
+      }}>
+        <Form.Item name="date" label={t('payroll.reversalDate')} rules={[{ required: true }]}><DatePicker /></Form.Item>
+      </Form>
+    </FormDialog>
   </>;
 }
 
@@ -483,7 +564,7 @@ function SettingsTab() {
           title: t(`payroll.${key}`),
           dataIndex: key,
           render: (value: string | null) => key === 'effectiveFrom'
-            ? dateOnly(value) ?? '—'
+            ? formatPayrollDate(value) ?? '—'
             : key.endsWith('Wage') ? formatAmount(value) : formatQty(value),
         })),
     ]} />
@@ -491,14 +572,50 @@ function SettingsTab() {
 }
 
 function ReportsTab() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { employees } = usePayrollData();
   const [period, setPeriod] = useState(dayjs().format('YYYY-MM'));
-  return <Space wrap><PayrollMonthPicker period={period} onChange={setPeriod} />
-    {(['register', 'ssc', 'tax-withheld'] as const).map((report) => <Space key={report}>
-      <strong>{t(`payroll.reports.${report}`)}</strong>
-      <ExportButtons path={`/payroll/reports/${report}`} params={{ period }} />
-    </Space>)}
-  </Space>;
+  const [employeeId, setEmployeeId] = useState<string>();
+  const [from, setFrom] = useState(dayjs().startOf('month').format('YYYY-MM-DD'));
+  const [to, setTo] = useState(dayjs().format('YYYY-MM-DD'));
+  const statement = useQuery({
+    queryKey: ['payroll', 'statement', employeeId, from, to],
+    queryFn: async () => (await payrollControllerEmployeeStatement(employeeId!, { from, to })).data,
+    enabled: Boolean(employeeId),
+  });
+  const data = statement.data as {
+    employeeName: string; openingBalance: string; closingBalance: string;
+    rows: Array<{ date: string; documentNo: string; documentType: string; description: string; debit: string; credit: string; balance: string }>;
+  } | undefined;
+  return <>
+    <Space wrap style={{ marginBottom: 12 }}>
+      <PayrollMonthPicker period={period} onChange={setPeriod} />
+      {(['register', 'ssc', 'tax-withheld'] as const).map((report) => <Space key={report}>
+        <strong>{t(`payroll.reports.${report}`)}</strong>
+        <ExportButtons path={`/payroll/reports/${report}`} params={{ period }} />
+      </Space>)}
+    </Space>
+    <FormSection title={t('payroll.reports.employeeStatement')} cols={2}>
+      <Select showSearch optionFilterProp="label" value={employeeId} onChange={setEmployeeId} placeholder={t('payroll.employee')}
+        options={(employees.data as PayrollEmployeeDto[] | undefined)?.map((employee) => ({ value: employee.id, label: `${employee.code} — ${i18n.language === 'en' ? employee.nameEn ?? employee.nameAr : employee.nameAr}` }))} />
+      <DatePicker value={datePickerValue(from)} onChange={(value) => value && setFrom(dateOnly(value)!)} />
+      <DatePicker value={datePickerValue(to)} onChange={(value) => value && setTo(dateOnly(value)!)} />
+      <ExportButtons path="/payroll/reports/employee-statement" params={{ employeeId, from, to }} disabled={!employeeId} />
+      {data && <Space wrap>
+        <span>{t('payroll.openingBalance')}: {formatAmount(data.openingBalance)}</span>
+        <span>{t('payroll.closingBalance')}: {formatAmount(data.closingBalance)}</span>
+      </Space>}
+      {data && <Table rowKey={(row) => `${row.date}-${row.documentNo}-${row.documentType}`} dataSource={data.rows} columns={[
+        { title: t('payroll.movementDate'), dataIndex: 'date', render: (value: string) => formatPayrollDate(value) },
+        { title: t('payroll.documentNo'), dataIndex: 'documentNo' },
+        { title: t('payroll.documentType'), dataIndex: 'documentType' },
+        { title: t('payroll.description'), dataIndex: 'description' },
+        { title: t('payroll.debit'), dataIndex: 'debit', render: (value: string) => formatAmount(value) },
+        { title: t('payroll.credit'), dataIndex: 'credit', render: (value: string) => formatAmount(value) },
+        { title: t('payroll.balance'), dataIndex: 'balance', render: (value: string) => formatAmount(value) },
+      ]} />}
+    </FormSection>
+  </>;
 }
 
 export function PayrollPage() {
@@ -510,7 +627,7 @@ export function PayrollPage() {
   const tabs = useMemo(() => [
     { key: 'employees', label: t('payroll.employees'), children: <EmployeesTab /> },
     { key: 'elements', label: t('payroll.elements'), children: <ElementsTab /> },
-    { key: 'inputs', label: t('payroll.inputs'), children: <InputsTab /> },
+    { key: 'movements', label: t('payroll.movements'), children: <MovementsTab /> },
     { key: 'runs', label: t('payroll.runs'), children: <RunsTab createOnLoad={createOnLoad} /> },
     { key: 'settings', label: t('payroll.settings'), children: <SettingsTab /> },
     { key: 'reports', label: t('payroll.reports.title'), children: <ReportsTab /> },

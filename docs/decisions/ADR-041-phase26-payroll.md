@@ -22,5 +22,11 @@
 9. **Reports:** payslip (PDF, pdfmake), payroll register, monthly SSC sheet, tax withheld per employee.
 10. **Permissions:** payroll.view, payroll.manage, payroll.post.
 
+## Daily posted movements (2026-11-20 owner decision)
+
+Daily payroll amounts are posted immediately as immutable payroll movements rather than stored as monthly inputs. A movement is dated, priced from the salary and payroll settings in force on that date, and posted through the journal service to the pay-element account and payroll payable. Reversal creates a reversing journal entry; movements cannot be created or reversed after a payroll run in that period is posted or paid. The payroll run includes posted movements in employee calculations but does not post their journal lines a second time. Reversed movements are excluded from run calculations. Employee statements present movements, runs, payments, and reversals with credits increasing the amount owed to the employee.
+
+An allowed monthly total may be recorded as one movement. Since each voucher is rounded independently, one two-day absence prices to JOD 26.667, while two one-day absence vouchers at JOD 13.333 each total JOD 26.666.
+
 ## Deferred
 End-of-service, leave balances, attendance devices, tax calculation, multi-currency salaries, employee self-service.

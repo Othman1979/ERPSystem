@@ -10,12 +10,14 @@ import type { ReportTable } from '../printing/report-table.js';
 import {
   CreateEmployeeDto,
   CreatePayElementDto,
-  CreatePayrollInputDto,
+  CreatePayrollMovementDto,
   CreatePayrollRunDto,
   CreatePayrollSettingsDto,
   CreateRecurringElementDto,
   CreateSalaryDto,
-  ListPayrollInputsDto,
+  EmployeeStatementExportQueryDto,
+  EmployeeStatementQueryDto,
+  ListPayrollMovementsDto,
   PayrollPaymentDto,
   PayrollReportQueryDto,
   ReversePayrollDto,
@@ -27,6 +29,8 @@ import {
   PayrollElementDto,
   PayrollEmployeeDetailDto,
   PayrollEmployeeDto,
+  PayrollEmployeeStatementDto,
+  PayrollMovementDto,
   PayrollRunDetailDto,
   PayrollRunDto,
 } from './dto/payroll-response.dto.js';
@@ -50,6 +54,13 @@ export class PayrollController {
   @ApiOkResponse({ type: PayrollEmployeeDetailDto })
   getEmployee(@Param('id') id: string) {
     return this.payroll.getEmployee(BigInt(id));
+  }
+
+  @Get('employees/:id/statement')
+  @RequirePermission(PERMISSIONS.PAYROLL_VIEW)
+  @ApiOkResponse({ type: PayrollEmployeeStatementDto })
+  employeeStatement(@Param('id') id: string, @Query() query: EmployeeStatementQueryDto) {
+    return this.payroll.employeeStatement(BigInt(id), query.from, query.to);
   }
 
   @Post('employees')
@@ -123,22 +134,27 @@ export class PayrollController {
     return this.payroll.createSettings(dto);
   }
 
-  @Get('inputs')
+  @Get('movements')
   @RequirePermission(PERMISSIONS.PAYROLL_VIEW)
-  listInputs(@Query() query: ListPayrollInputsDto) {
-    return this.payroll.listInputs(query.period, query.employeeId);
+  @ApiOkResponse({ type: PayrollMovementDto, isArray: true })
+  listMovements(@Query() query: ListPayrollMovementsDto) {
+    return this.payroll.listMovements(query.period, query.employeeId);
   }
 
-  @Post('inputs')
-  @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
-  createInput(@Body() dto: CreatePayrollInputDto) {
-    return this.payroll.createInput(dto);
+  @Post('movements')
+  @RequirePermission(PERMISSIONS.PAYROLL_POST)
+  @RequiresIdempotencyKey()
+  @ApiCreatedResponse({ type: PayrollMovementDto })
+  createMovement(@Body() dto: CreatePayrollMovementDto) {
+    return this.payroll.createMovement(dto);
   }
 
-  @Delete('inputs/:id')
-  @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
-  deleteInput(@Param('id') id: string) {
-    return this.payroll.deleteInput(BigInt(id));
+  @Post('movements/:id/reverse')
+  @RequirePermission(PERMISSIONS.PAYROLL_POST)
+  @RequiresIdempotencyKey()
+  @ApiOkResponse({ type: PayrollMovementDto })
+  reverseMovement(@Param('id') id: string, @Body() dto: ReversePayrollDto) {
+    return this.payroll.reverseMovement(BigInt(id), new Date(`${dto.date}T00:00:00.000Z`));
   }
 
   @Get('runs')
@@ -273,6 +289,28 @@ export class PayrollController {
     }));
   }
 
+  @Get('reports/employee-statement')
+  @RequirePermission(PERMISSIONS.PAYROLL_VIEW)
+  @ApiFileResponse(['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])
+  async employeeStatementReport(@Query() query: EmployeeStatementExportQueryDto) {
+    const statement = await this.payroll.employeeStatement(BigInt(query.employeeId), query.from, query.to);
+    return this.printing.respond(statement, query, (report, lang): ReportTable => ({
+      title: lang === 'ar' ? 'كشف حساب الموظف' : 'Employee statement',
+      fileName: `employee-statement-${query.employeeId}-${query.from}-${query.to}`,
+      columns: [
+        { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+        { key: 'documentNo', label: lang === 'ar' ? 'رقم المستند' : 'Document no.' },
+        { key: 'documentType', label: lang === 'ar' ? 'النوع' : 'Type' },
+        { key: 'description', label: lang === 'ar' ? 'الوصف' : 'Description' },
+        { key: 'debit', label: lang === 'ar' ? 'مدين' : 'Debit', kind: 'amount' },
+        { key: 'credit', label: lang === 'ar' ? 'دائن' : 'Credit', kind: 'amount' },
+        { key: 'balance', label: lang === 'ar' ? 'الرصيد' : 'Balance', kind: 'amount' },
+      ],
+      rows: report.rows,
+      meta: [report.employeeName, report.from, report.to, report.openingBalance, report.closingBalance],
+    }));
+  }
+
   @Get('runs/:id/lines/:lineId/payslip')
   @RequirePermission(PERMISSIONS.PAYROLL_VIEW)
   @ApiFileResponse(['application/pdf'])
@@ -297,6 +335,7 @@ export class PayrollController {
         ],
         rows: [
           { name: language === 'ar' ? 'الراتب الأساسي' : 'Basic salary', amount: line.basic },
+          ...line.items.map((item) => ({ name: item.description, amount: item.amount })),
           { name: language === 'ar' ? 'الإضافات' : 'Earnings', amount: line.earnings },
           { name: language === 'ar' ? 'ضمان الموظف' : 'Employee SSC', amount: line.sscEmployee },
           { name: language === 'ar' ? 'ضريبة الدخل' : 'Income tax', amount: line.incomeTax },

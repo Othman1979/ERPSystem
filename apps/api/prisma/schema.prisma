@@ -129,6 +129,11 @@ enum PayrollRunStatus {
   REVERSED
 }
 
+enum PayrollMovementStatus {
+  POSTED
+  REVERSED
+}
+
 enum ItemKind {
   STOCK
   SERVICE
@@ -435,7 +440,7 @@ model Tenant {
   employeeSalaries           EmployeeSalary[]
   payElements                PayElement[]
   employeeRecurringElements  EmployeeRecurringElement[]
-  payrollInputs              PayrollInput[]
+  payrollMovements           PayrollMovement[]
   payrollSettings            PayrollSettings[]
   payrollRuns                PayrollRun[]
   payrollLines               PayrollLine[]
@@ -547,9 +552,9 @@ model Company {
   memberCompanies MembershipCompany[]
   employees       Employee[]
   payElements     PayElement[]
-  payrollInputs   PayrollInput[]
-  payrollSettings PayrollSettings[]
-  payrollRuns     PayrollRun[]
+  payrollMovements PayrollMovement[]
+  payrollSettings  PayrollSettings[]
+  payrollRuns      PayrollRun[]
 
   @@unique([tenantId, id])
   @@map("companies")
@@ -1098,6 +1103,8 @@ model JournalEntry {
   chequeEventUndos ChequeEvent[] @relation("ChequeEventUndoEntry")
   payrollRuns      PayrollRun[]  @relation("PayrollRunJournal")
   payrollPayments  PayrollRun[]  @relation("PayrollPaymentJournal")
+  payrollMovements PayrollMovement[] @relation("PayrollMovementJournal")
+  payrollMovementReversals PayrollMovement[] @relation("PayrollMovementReversal")
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
@@ -3462,7 +3469,7 @@ model Employee {
   costCenter        CostCenter?                @relation(fields: [tenantId, companyId, costCenterId], references: [tenantId, companyId, id])
   salaries          EmployeeSalary[]
   recurringElements EmployeeRecurringElement[]
-  payrollInputs     PayrollInput[]
+  payrollMovements  PayrollMovement[]
   payrollLines      PayrollLine[]
 
   @@unique([tenantId, id])
@@ -3509,7 +3516,7 @@ model PayElement {
   company           Company                    @relation(fields: [tenantId, companyId], references: [tenantId, id])
   account           Account                    @relation(fields: [tenantId, companyId, accountId], references: [tenantId, companyId, id])
   recurringElements EmployeeRecurringElement[]
-  payrollInputs     PayrollInput[]
+  payrollMovements  PayrollMovement[]
   payrollLineItems  PayrollLineItem[]
 
   @@unique([tenantId, id])
@@ -3540,30 +3547,40 @@ model EmployeeRecurringElement {
   @@map("employee_recurring_elements")
 }
 
-model PayrollInput {
-  id           BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
-  tenantId     BigInt    @map("tenant_id") @db.UnsignedBigInt
-  companyId    BigInt    @map("company_id") @db.UnsignedBigInt
-  employeeId   BigInt    @map("employee_id") @db.UnsignedBigInt
-  payElementId BigInt    @map("pay_element_id") @db.UnsignedBigInt
-  period       String    @db.Char(7)
-  workDate     DateTime? @map("work_date") @db.Date
-  quantity     Decimal?  @db.Decimal(18, 6)
-  amount       Decimal?  @db.Decimal(18, 3)
-  note         String?   @db.VarChar(500)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+model PayrollMovement {
+  id              BigInt                @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt                @map("tenant_id") @db.UnsignedBigInt
+  companyId       BigInt                @map("company_id") @db.UnsignedBigInt
+  employeeId      BigInt                @map("employee_id") @db.UnsignedBigInt
+  payElementId    BigInt                @map("pay_element_id") @db.UnsignedBigInt
+  movementNo      String?               @map("movement_no") @db.VarChar(50)
+  movementDate    DateTime              @map("movement_date") @db.Date
+  period          String                @db.Char(7)
+  quantity        Decimal?              @db.Decimal(18, 6)
+  rate            Decimal?              @db.Decimal(18, 6)
+  amount          Decimal               @db.Decimal(18, 3)
+  description     String                @db.VarChar(500)
+  status          PayrollMovementStatus @default(POSTED)
+  journalEntryId BigInt?               @map("journal_entry_id") @db.UnsignedBigInt
+  reversalEntryId BigInt?               @map("reversal_entry_id") @db.UnsignedBigInt
+  reversedAt      DateTime?             @map("reversed_at") @db.Date
+  postedBy        BigInt?               @map("posted_by") @db.UnsignedBigInt
+  createdAt       DateTime              @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.DateTime(3)
 
-  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  company    Company    @relation(fields: [tenantId, companyId], references: [tenantId, id])
-  employee   Employee   @relation(fields: [tenantId, companyId, employeeId], references: [tenantId, companyId, id])
-  payElement PayElement @relation(fields: [tenantId, companyId, payElementId], references: [tenantId, companyId, id])
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company         Company       @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  employee        Employee      @relation(fields: [tenantId, companyId, employeeId], references: [tenantId, companyId, id])
+  payElement      PayElement    @relation(fields: [tenantId, companyId, payElementId], references: [tenantId, companyId, id])
+  journalEntry    JournalEntry? @relation("PayrollMovementJournal", fields: [tenantId, companyId, journalEntryId], references: [tenantId, companyId, id])
+  reversalEntry   JournalEntry? @relation("PayrollMovementReversal", fields: [tenantId, companyId, reversalEntryId], references: [tenantId, companyId, id])
+  payrollLineItems PayrollLineItem[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
   @@index([tenantId, companyId, period, employeeId])
-  @@index([tenantId, companyId, employeeId, payElementId, workDate])
-  @@map("payroll_inputs")
+  @@index([tenantId, companyId, employeeId, movementDate])
+  @@map("payroll_movements")
 }
 
 /// Social Security Corporation rates are seeded from its FAQ (ssc.gov.jo, 2025-12).
@@ -3663,6 +3680,7 @@ model PayrollLineItem {
   tenantId      BigInt         @map("tenant_id") @db.UnsignedBigInt
   payrollLineId BigInt         @map("payroll_line_id") @db.UnsignedBigInt
   payElementId  BigInt?        @map("pay_element_id") @db.UnsignedBigInt
+  payrollMovementId BigInt?    @map("payroll_movement_id") @db.UnsignedBigInt
   kind          PayElementKind
   description   String         @db.VarChar(191)
   quantity      Decimal?       @db.Decimal(18, 6)
@@ -3673,8 +3691,10 @@ model PayrollLineItem {
   tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payrollLine PayrollLine @relation(fields: [tenantId, payrollLineId], references: [tenantId, id], onDelete: Cascade)
   payElement  PayElement? @relation(fields: [tenantId, payElementId], references: [tenantId, id])
+  payrollMovement PayrollMovement? @relation(fields: [tenantId, payrollMovementId], references: [tenantId, id])
 
   @@unique([tenantId, id])
   @@index([tenantId, payrollLineId])
+  @@index([tenantId, payrollMovementId])
   @@map("payroll_line_items")
 }

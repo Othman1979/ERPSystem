@@ -150,7 +150,9 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       payElementId: id.transportElement, amount: '1.000', validFrom: '2026-01-01',
     }, 'payrollRecurring');
     await create(`/payroll/employees/${id.employee}/salaries`, { effectiveFrom: '2026-01-01', basicSalary: '10.000' }, 'payrollSalary');
-    await create('/payroll/inputs', { employeeId: id.employee, payElementId: id.transportElement, period: '2026-01', amount: '1.000' }, 'payrollInput');
+    await create('/payroll/movements', {
+      employeeId: id.employee, payElementId: id.transportElement, movementDate: '2026-01-15', amount: '1.000', description: MARK,
+    }, 'payrollMovement');
     await create('/payroll/runs', { period: '2026-01' }, 'payrollRun');
     const payrollRun = (await asA('get', `/payroll/runs/${id.payrollRun}`)).body as { lines: { id: string }[] };
     id.payrollLine = payrollRun.lines[0]!.id;
@@ -390,7 +392,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       else if (name === 'id' && seg === 'payroll' && p.includes('/employees/')) values[name] = id.employee;
       else if (name === 'rid' && seg === 'payroll' && p.includes('/recurring-elements/')) values[name] = id.payrollRecurring;
       else if (name === 'id' && seg === 'payroll' && p.includes('/elements/')) values[name] = id.transportElement;
-      else if (name === 'id' && seg === 'payroll' && p.includes('/inputs/')) values[name] = id.payrollInput;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/movements/')) values[name] = id.payrollMovement;
       else if (name === 'id' && seg === 'payroll' && p.includes('/runs/')) values[name] = id.payrollRun;
       else if (name === 'itemId') values[name] = id.item;
       else if (name === 'code' && p.includes('/items/barcode/')) values[name] = id.barcodeCode;
@@ -407,6 +409,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     if (p.endsWith('/income-tax')) return { incomeTax: '0.000' };
     if (p.includes('/payroll/runs/{id}/pay')) return { cashBoxId: id.cashBox, date: '2026-04-01' };
     if (p.includes('/payroll/runs/{id}/reverse')) return { date: '2026-04-01' };
+    if (p.includes('/payroll/movements/{id}/reverse')) return { date: '2026-04-01' };
     if (p.endsWith('/reverse')) return { reversalDate: '2026-04-01' };
     if (p === '/api/v1/companies/{id}') return { legalNameAr: 'x' };
     if (p.endsWith('/journal-entries/{id}/amend')) {
@@ -474,7 +477,10 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       }
       if (key in UNCOVERED) continue;
       // The requirements preview takes a quantity: a valid one reaches the lookup.
-      const url = fill(o.path, values) + (o.path.endsWith('/requirements') ? '?qty=1' : '');
+      const suffix = o.path.endsWith('/requirements')
+        ? '?qty=1'
+        : o.path.endsWith('/payroll/employees/{id}/statement') ? '?from=2026-01-01&to=2026-01-31' : '';
+      const url = fill(o.path, values) + suffix;
       const req = api()[o.method.toLowerCase() as 'get'](url).set(auth(b)).set(idem());
       const res = o.method === 'GET' || o.method === 'DELETE' ? await req : await req.send(bodyFor(o.path));
       exercised += 1;

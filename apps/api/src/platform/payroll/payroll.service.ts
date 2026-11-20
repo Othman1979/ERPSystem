@@ -15,7 +15,9 @@ import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.regis
 import { isIncomeStatement } from '../cost-centers/cost-center-rules.js';
 import { allocateDocumentNo } from '../shared/document-numbering.js';
 import {
+  calculateMovementPrice,
   calculatePayroll,
+  latestEffectiveOnDate,
   type PayrollElement,
   type PayrollElementEntry,
   type PayrollRecurringEntry,
@@ -23,7 +25,7 @@ import {
 import type {
   CreateEmployeeDto,
   CreatePayElementDto,
-  CreatePayrollInputDto,
+  CreatePayrollMovementDto,
   CreatePayrollSettingsDto,
   CreateRecurringElementDto,
   CreateSalaryDto,
@@ -97,12 +99,12 @@ export class PayrollService {
     if (!permissions?.has(PERMISSIONS.PAYROLL_POST)) throw new DomainError(ErrorCode.FORBIDDEN, 'Missing payroll posting permission');
   }
 
-  private async ensureDraftInputAllowed(tx: Prisma.TransactionClient, period: string) {
+  private async ensureMovementPeriodAllowed(tx: Prisma.TransactionClient, period: string) {
     const run = await tx.payrollRun.findFirst({
       where: { period, status: { in: ['POSTED', 'PAID'] } },
       select: { id: true },
     });
-    if (run) throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Payroll inputs are locked after posting');
+    if (run) throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Payroll movements are locked after posting');
   }
 
   async listEmployees() {
@@ -167,9 +169,26 @@ export class PayrollService {
 
   async updateEmployee(id: bigint, dto: UpdateEmployeeDto) {
     this.canManage();
-    const { db } = this.context();
-    const employee = await db.employee.findFirst({ where: { id }, select: { id: true } });
+    const { companyId, db } = this.context();
+    const employee = await db.employee.findFirst({ where: { id }, select: { id: true, isActive: true } });
     if (!employee) throw DomainError.notFound('Employee', id.toString());
+    if (employee.isActive && dto.isActive === false) {
+      const movements = await db.payrollMovement.findMany({
+        where: { companyId, employeeId: id, status: 'POSTED' },
+        select: { period: true },
+      });
+      const periods = [...new Set(movements.map((movement) => movement.period))];
+      if (periods.length) {
+        const completedRuns = await db.payrollRun.findMany({
+          where: { companyId, period: { in: periods }, status: { in: ['POSTED', 'PAID'] } },
+          select: { period: true },
+        });
+        const completedPeriods = new Set(completedRuns.map((run) => run.period));
+        if (movements.some((movement) => !completedPeriods.has(movement.period))) {
+          throw new DomainError(ErrorCode.VALIDATION, 'Employee cannot be deactivated while posted payroll movements await a run');
+        }
+      }
+    }
     if (dto.code !== undefined) {
       const duplicate = await db.employee.findFirst({ where: { code: dto.code, id: { not: id } }, select: { id: true } });
       if (duplicate) throw new DomainError(ErrorCode.DUPLICATE_CODE, 'Employee code already exists');
@@ -272,11 +291,24 @@ export class PayrollService {
     const { tenantId, companyId, db } = this.context();
     const accountId = BigInt(dto.accountId);
     const account = await db.account.findFirst({ where: { id: accountId } });
+    const payable = await db.accountMapping.findFirst({
+      where: { tenantId, companyId, mappingKey: 'PAYROLL_PAYABLE' },
+      select: { accountId: true },
+    });
     const validType =
       dto.kind === 'EARNING'
         ? account?.accountType === 'EXPENSE'
-        : account?.accountType === 'ASSET' || account?.accountType === 'LIABILITY';
-    if (!account || !validType || account.isControl || account.controlType !== null || !account.isPostable || !account.isActive) {
+        : account?.accountType === 'ASSET' || account?.accountType === 'LIABILITY' ||
+          account?.accountType === 'REVENUE' || account?.accountType === 'EXPENSE';
+    if (
+      !account ||
+      !validType ||
+      account.isControl ||
+      account.controlType !== null ||
+      !account.isPostable ||
+      !account.isActive ||
+      payable?.accountId === accountId
+    ) {
       throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Pay element account is not allowed');
     }
     return db.payElement.create({
@@ -303,22 +335,35 @@ export class PayrollService {
       const element = await tx.payElement.findFirst({ where: { id } });
       if (!element) throw DomainError.notFound('PayElement', id.toString());
       if ((dto.kind !== undefined && dto.kind !== element.kind) || (dto.amountType !== undefined && dto.amountType !== element.amountType)) {
-        const input = await tx.payrollInput.findFirst({ where: { payElementId: id }, select: { id: true } });
+        const movement = await tx.payrollMovement.findFirst({ where: { payElementId: id }, select: { id: true } });
         const recurring = await tx.employeeRecurringElement.findFirst({ where: { payElementId: id }, select: { id: true } });
         const lineItem = await tx.payrollLineItem.findFirst({ where: { payElementId: id }, select: { id: true } });
-        if (input || recurring || lineItem) {
+        if (movement || recurring || lineItem) {
           throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Used pay element type cannot be changed');
         }
       }
       if (dto.accountId === null) throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Pay element account is not allowed');
       const accountId = dto.accountId === undefined ? element.accountId : BigInt(dto.accountId);
       const account = await tx.account.findFirst({ where: { id: accountId } });
+      const payable = await tx.accountMapping.findFirst({
+        where: { tenantId, companyId, mappingKey: 'PAYROLL_PAYABLE' },
+        select: { accountId: true },
+      });
       const kind = dto.kind ?? element.kind;
       const validType =
         kind === 'EARNING'
           ? account?.accountType === 'EXPENSE'
-          : account?.accountType === 'ASSET' || account?.accountType === 'LIABILITY';
-      if (!account || !validType || account.isControl || account.controlType !== null || !account.isPostable || !account.isActive) {
+          : account?.accountType === 'ASSET' || account?.accountType === 'LIABILITY' ||
+            account?.accountType === 'REVENUE' || account?.accountType === 'EXPENSE';
+      if (
+        !account ||
+        !validType ||
+        account.isControl ||
+        account.controlType !== null ||
+        !account.isPostable ||
+        !account.isActive ||
+        payable?.accountId === accountId
+      ) {
         throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Pay element account is not allowed');
       }
       return tx.payElement.update({
@@ -375,57 +420,204 @@ export class PayrollService {
     });
   }
 
-  async listInputs(period: string, employeeId?: string) {
+  async listMovements(period: string, employeeId?: string) {
     periodBounds(period);
     const { db } = this.context();
-    return db.payrollInput.findMany({
+    const movements = await db.payrollMovement.findMany({
       where: { period, ...(employeeId ? { employeeId: BigInt(employeeId) } : {}) },
-      include: { employee: { select: { code: true, nameAr: true } }, payElement: { select: { code: true, nameAr: true } } },
-      orderBy: [{ employeeId: 'asc' }, { workDate: 'asc' }, { id: 'asc' }],
+      include: {
+        employee: { select: { nameAr: true } },
+        payElement: { select: { code: true, nameAr: true } },
+      },
+      orderBy: [{ movementDate: 'asc' }, { employeeId: 'asc' }, { id: 'asc' }],
     });
+    return movements.map((movement) => this.movementDto(movement));
   }
 
-  async createInput(dto: CreatePayrollInputDto) {
-    this.canManage();
+  async createMovement(dto: CreatePayrollMovementDto) {
+    this.canPost();
     const { tenantId, companyId, db } = this.context();
-    return db.$transaction(async (tx) => {
+    const movementDate = date(dto.movementDate);
+    const period = dto.movementDate.slice(0, 7);
+    const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
+    const movementId = await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
-      await this.ensureDraftInputAllowed(tx, dto.period);
+      await this.ensureMovementPeriodAllowed(tx, period);
+      const employee = await tx.employee.findFirst({ where: { id: BigInt(dto.employeeId) } });
+      if (!employee) throw DomainError.notFound('Employee', dto.employeeId);
+      if (!employee.isActive) throw new DomainError(ErrorCode.VALIDATION, 'Employee is inactive');
       const element = await tx.payElement.findFirst({
-        where: { id: BigInt(dto.payElementId), isActive: true },
+        where: { id: BigInt(dto.payElementId) },
+        include: { account: { select: { accountType: true } } },
       });
       if (!element) throw DomainError.notFound('PayElement', dto.payElementId);
-      const value = element.amountType === 'FIXED' ? dto.amount : dto.quantity;
-      if (value == null || new Decimal(value).lt('0') || (element.amountType === 'FIXED' ? dto.quantity != null : dto.amount != null)) {
-        throw new DomainError(ErrorCode.VALIDATION, 'Input must match its pay element amount type');
+      if (!element.isActive) throw new DomainError(ErrorCode.VALIDATION, 'Pay element is inactive');
+      const fixed = element.amountType === 'FIXED';
+      const value = fixed ? dto.amount : dto.quantity;
+      if (value == null || !new Decimal(value).gt(0) || (fixed ? dto.quantity != null : dto.amount != null)) {
+        throw new DomainError(ErrorCode.VALIDATION, 'Movement values must match its pay element amount type and be positive');
       }
-      return tx.payrollInput.create({
+      const salaryRows = await tx.employeeSalary.findMany({
+        where: { employeeId: employee.id, effectiveFrom: { lte: movementDate } },
+        orderBy: [{ effectiveFrom: 'desc' }, { id: 'desc' }],
+      });
+      const salary = latestEffectiveOnDate(salaryRows, movementDate);
+      if (!salary) throw new DomainError(ErrorCode.VALIDATION, 'No salary in force');
+      const settingsRows = await tx.payrollSettings.findMany({
+        where: { effectiveFrom: { lte: movementDate } },
+        orderBy: [{ effectiveFrom: 'desc' }],
+      });
+      const settings = latestEffectiveOnDate(settingsRows, movementDate);
+      if (!settings) throw new DomainError(ErrorCode.PAYROLL_SETTINGS_REQUIRED, 'No payroll settings in force');
+      const price = calculateMovementPrice({
+        amountType: element.amountType,
+        amount: dto.amount ?? null,
+        quantity: dto.quantity ?? null,
+        salary: salary.basicSalary,
+        rateFactor: element.rateFactor,
+        hoursPerMonth: settings.hoursPerMonth,
+        daysPerMonth: settings.daysPerMonth,
+      });
+      if (!price.amount.gt(0)) throw new DomainError(ErrorCode.VALIDATION, 'Movement amount must be positive');
+      const payable = await tx.accountMapping.findFirst({ where: { mappingKey: 'PAYROLL_PAYABLE' } });
+      if (!payable) throw new DomainError(ErrorCode.MAPPING_ACCOUNT_INVALID, 'Missing payroll payable mapping');
+      const periodRow = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, movementDate);
+      const movementNo = await allocateDocumentNo(tx, tenantId, companyId, 'PAYROLL_MOVEMENT', movementDate);
+      const movement = await tx.payrollMovement.create({
         data: {
           tenantId,
           companyId,
-          employeeId: BigInt(dto.employeeId),
+          employeeId: employee.id,
           payElementId: element.id,
-          period: dto.period,
-          workDate: dto.workDate ? date(dto.workDate) : null,
-          quantity: dto.quantity ?? null,
-          amount: dto.amount ?? null,
-          note: dto.note ?? null,
+          movementNo,
+          movementDate,
+          period,
+          quantity: price.quantity,
+          rate: price.rate,
+          amount: price.amount,
+          description: dto.description,
+          status: 'POSTED',
+          postedBy: userId,
         },
       });
+      const elementCostCenterId = isIncomeStatement(element.account.accountType) ? employee.costCenterId : null;
+      const lines: JournalLineInput[] = element.kind === 'EARNING'
+        ? [
+            { accountId: element.accountId, debit: price.amount, branchId: employee.branchId, costCenterId: elementCostCenterId, description: dto.description },
+            { accountId: payable.accountId, credit: price.amount, branchId: employee.branchId, description: dto.description },
+          ]
+        : [
+            { accountId: payable.accountId, debit: price.amount, branchId: employee.branchId, description: dto.description },
+            { accountId: element.accountId, credit: price.amount, branchId: employee.branchId, costCenterId: elementCostCenterId, description: dto.description },
+          ];
+      const entry = await this.posting.postEntry(tx, {
+        tenantId,
+        companyId,
+        entryDate: movementDate,
+        fiscalPeriodId: periodRow.id,
+        sourceType: 'PAYROLL_MOVEMENT',
+        sourceId: movement.id,
+        description: dto.description,
+        lines,
+        requireCostCenters: true,
+        postedBy: userId,
+      });
+      await tx.payrollMovement.update({ where: { id: movement.id }, data: { journalEntryId: entry.id } });
+      await this.audit.log({
+        action: 'payroll.movement.post',
+        entityType: 'payroll_movement',
+        entityId: movement.id,
+        after: { movementNo, status: 'POSTED', amount: price.amount.toString() },
+      }, tx);
+      return movement.id;
     }, POSTING_TX_OPTIONS);
+    return this.getMovement(movementId);
   }
 
-  async deleteInput(id: bigint) {
-    this.canManage();
+  async reverseMovement(id: bigint, reversalDate: Date) {
+    this.canPost();
     const { tenantId, companyId, db } = this.context();
-    return db.$transaction(async (tx) => {
+    const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
+    await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
-      const input = await tx.payrollInput.findFirst({ where: { id } });
-      if (!input) throw DomainError.notFound('PayrollInput', id.toString());
-      await this.ensureDraftInputAllowed(tx, input.period);
-      await tx.payrollInput.delete({ where: { id } });
-      return { id: id.toString(), deleted: true };
+      await tx.$queryRaw`SELECT id FROM payroll_movements WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id = ${id} FOR UPDATE`;
+      const movement = await tx.payrollMovement.findFirst({ where: { id } });
+      if (!movement) throw DomainError.notFound('PayrollMovement', id.toString());
+      if (movement.status !== 'POSTED' || !movement.journalEntryId) {
+        throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only posted payroll movements can be reversed');
+      }
+      await this.ensureMovementPeriodAllowed(tx, movement.period);
+      const reversal = await this.posting.reverseEntry(tx, {
+        tenantId,
+        companyId,
+        entryId: movement.journalEntryId,
+        reversalDate,
+        postedBy: userId,
+      });
+      await tx.payrollMovement.update({
+        where: { id },
+        data: { status: 'REVERSED', reversalEntryId: reversal.id, reversedAt: reversalDate },
+      });
+      await this.audit.log({
+        action: 'payroll.movement.reverse',
+        entityType: 'payroll_movement',
+        entityId: id,
+        after: { status: 'REVERSED', reversalEntryId: reversal.id.toString() },
+      }, tx);
     }, POSTING_TX_OPTIONS);
+    return this.getMovement(id);
+  }
+
+  private async getMovement(id: bigint) {
+    const { db } = this.context();
+    const movement = await db.payrollMovement.findFirst({
+      where: { id },
+      include: {
+        employee: { select: { nameAr: true } },
+        payElement: { select: { code: true, nameAr: true } },
+      },
+    });
+    if (!movement) throw DomainError.notFound('PayrollMovement', id.toString());
+    return this.movementDto(movement);
+  }
+
+  private movementDto(movement: {
+    id: bigint;
+    movementNo: string | null;
+    employeeId: bigint;
+    employee: { nameAr: string };
+    payElementId: bigint;
+    payElement: { code: string; nameAr: string };
+    movementDate: Date;
+    period: string;
+    quantity: Decimal | null;
+    rate: Decimal | null;
+    amount: Decimal;
+    description: string;
+    status: string;
+    journalEntryId: bigint | null;
+    reversalEntryId: bigint | null;
+    reversedAt: Date | null;
+  }) {
+    return {
+      id: movement.id.toString(),
+      movementNo: movement.movementNo,
+      employeeId: movement.employeeId.toString(),
+      employeeName: movement.employee.nameAr,
+      payElementId: movement.payElementId.toString(),
+      payElementCode: movement.payElement.code,
+      payElementName: movement.payElement.nameAr,
+      movementDate: movement.movementDate.toISOString().slice(0, 10),
+      period: movement.period,
+      quantity: movement.quantity?.toString() ?? null,
+      rate: movement.rate?.toString() ?? null,
+      amount: movement.amount.toString(),
+      description: movement.description,
+      status: movement.status,
+      journalEntryId: movement.journalEntryId?.toString() ?? null,
+      reversalEntryId: movement.reversalEntryId?.toString() ?? null,
+      reversedAt: movement.reversedAt?.toISOString().slice(0, 10) ?? null,
+    };
   }
 
   async createRun(period: string) {
@@ -511,7 +703,7 @@ export class PayrollService {
           where: { validFrom: { lte: end }, OR: [{ validTo: null }, { validTo: { gte: start } }] },
           include: { payElement: true },
         },
-        payrollInputs: { where: { period }, include: { payElement: true } },
+        payrollMovements: { where: { period, status: 'POSTED' }, include: { payElement: true } },
       },
       orderBy: [{ id: 'asc' }],
     });
@@ -530,12 +722,14 @@ export class PayrollService {
     for (const employee of employees) {
       const salary = employee.salaries[0];
       if (!salary) continue;
-      const toElement = (element: (typeof employee.payrollInputs)[number]['payElement']): PayrollElement =>
+      const toElement = (element: (typeof employee.payrollMovements)[number]['payElement']): PayrollElement =>
         ({ ...element, rateFactor: element.rateFactor.toString() }) as PayrollElement;
-      const inputs: PayrollElementEntry[] = employee.payrollInputs.map((input) => ({
-        element: toElement(input.payElement),
-        amount: input.amount?.toString() ?? null,
-        quantity: input.quantity?.toString() ?? null,
+      const inputs: PayrollElementEntry[] = employee.payrollMovements.map((movement) => ({
+        element: toElement(movement.payElement),
+        amount: movement.amount.toString(),
+        quantity: movement.quantity?.toString() ?? null,
+        rate: movement.rate?.toString() ?? null,
+        payrollMovementId: movement.id,
       }));
       const recurring: PayrollRecurringEntry[] = employee.recurringElements.map((item) => ({
         element: toElement(item.payElement),
@@ -590,6 +784,7 @@ export class PayrollService {
             quantity: item.quantity,
             rate: item.rate,
             amount: item.amount,
+            payrollMovementId: item.payrollMovementId ?? null,
           })),
         });
       }
@@ -676,6 +871,9 @@ export class PayrollService {
         },
       });
       if (!run) throw DomainError.notFound('PayrollRun', id.toString());
+      if (run.lines.length === 0) {
+        throw new DomainError(ErrorCode.PAYROLL_NO_EMPLOYEES, 'No eligible employees for payroll period');
+      }
       if (run.lines.some((line) => line.net.lt(0))) throw new DomainError(ErrorCode.PAYROLL_NEGATIVE_NET, 'Payroll net cannot be negative');
       const mappings = await tx.accountMapping.findMany({ where: { mappingKey: { in: [...MAPPING_KEYS] } } });
       const map = new Map(mappings.map((row) => [row.mappingKey, row.accountId]));
@@ -694,18 +892,21 @@ export class PayrollService {
         description: string,
       ) => {
         if (!amount.gt(0)) return;
-        const key = `${glAccount}:${branchId ?? ''}:${costCenterId ?? ''}`;
+        const key = `${glAccount}:${side}:${branchId ?? ''}:${costCenterId ?? ''}:${description}`;
         const entry = grouped.get(key) ?? {
           accountId: glAccount, branchId, costCenterId, debit: new Decimal(0), credit: new Decimal(0), description,
         };
         entry[side] = entry[side].plus(amount);
         grouped.set(key, entry);
       };
+      let recurringDeductionCredits = new Decimal(0);
       for (const line of run.lines) {
         add(accountId('PAYROLL_SALARIES_EXPENSE'), line.basic, 'debit', line.employee.branchId, line.employee.costCenterId, 'Basic salaries');
         add(accountId('PAYROLL_SSC_EXPENSE'), line.sscEmployer, 'debit', line.employee.branchId, line.employee.costCenterId, 'Employer social security');
         for (const item of line.items) {
           if (!item.payElement?.accountId || !item.payElement.account) throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Payroll item has no account');
+          if (item.payrollMovementId !== null) continue;
+          if (item.kind === 'DEDUCTION') recurringDeductionCredits = recurringDeductionCredits.plus(item.amount);
           add(
             item.payElement.accountId,
             item.amount,
@@ -718,31 +919,48 @@ export class PayrollService {
       }
       add(accountId('PAYROLL_SSC_PAYABLE'), run.sscEmployeeTotal.plus(run.sscEmployerTotal), 'credit', null, null, 'Social security payable');
       add(accountId('PAYROLL_TAX_PAYABLE'), run.incomeTaxTotal, 'credit', null, null, 'Income tax withheld');
-      add(accountId('PAYROLL_PAYABLE'), run.netTotal, 'credit', null, null, 'Net salaries payable');
+      const totalDebits = [...grouped.values()].reduce((sum, line) => sum.plus(line.debit), new Decimal(0));
+      const payrollPayable = round3(
+        totalDebits
+          .minus(run.sscEmployeeTotal.plus(run.sscEmployerTotal))
+          .minus(run.incomeTaxTotal)
+          .minus(recurringDeductionCredits),
+      );
+      add(
+        accountId('PAYROLL_PAYABLE'),
+        payrollPayable.abs(),
+        payrollPayable.lt(0) ? 'debit' : 'credit',
+        null,
+        null,
+        'Net salaries payable',
+      );
       const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, run.runDate);
       const runNo = await allocateDocumentNo(tx, tenantId, companyId, 'PAYROLL_RUN', run.runDate);
-      const entry = await this.posting.postEntry(tx, {
-        tenantId,
-        companyId,
-        entryDate: run.runDate,
-        fiscalPeriodId: period.id,
-        sourceType: 'PAYROLL_RUN',
-        sourceId: run.id,
-        description: `Payroll ${run.period}`,
-        lines: [...grouped.values()].map((line): JournalLineInput => ({
-          accountId: line.accountId,
-          debit: line.debit,
-          credit: line.credit,
-          branchId: line.branchId,
-          costCenterId: line.costCenterId,
-          description: line.description,
-        })),
-        requireCostCenters: true,
-        postedBy: ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null,
-      });
+      const journalLines = [...grouped.values()].map((line): JournalLineInput => ({
+        accountId: line.accountId,
+        debit: line.debit,
+        credit: line.credit,
+        branchId: line.branchId,
+        costCenterId: line.costCenterId,
+        description: line.description,
+      }));
+      const entry = journalLines.length
+        ? await this.posting.postEntry(tx, {
+            tenantId,
+            companyId,
+            entryDate: run.runDate,
+            fiscalPeriodId: period.id,
+            sourceType: 'PAYROLL_RUN',
+            sourceId: run.id,
+            description: `Payroll ${run.period}`,
+            lines: journalLines,
+            requireCostCenters: true,
+            postedBy: ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null,
+          })
+        : null;
       await tx.payrollRun.update({
         where: { id },
-        data: { status: 'POSTED', runNo, journalEntryId: entry.id },
+        data: { status: 'POSTED', runNo, journalEntryId: entry?.id ?? null },
       });
       await this.audit.log({ action: 'payroll.post', entityType: 'payroll_run', entityId: id, after: { status: 'POSTED' } }, tx);
     }, POSTING_TX_OPTIONS);
@@ -809,6 +1027,12 @@ export class PayrollService {
       if (run.status !== 'POSTED' && run.status !== 'PAID') {
         throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only posted or paid runs can be reversed');
       }
+      if (!run.journalEntryId) {
+        if (reversalDate < run.runDate) {
+          throw new DomainError(ErrorCode.VALIDATION, 'Payroll reversal date cannot be before the run date');
+        }
+        await this.posting.resolveOpenPeriod(tx, tenantId, companyId, reversalDate);
+      }
       if (run.status === 'PAID' && run.paymentEntryId) {
         await this.posting.reverseEntry(tx, { tenantId, companyId, entryId: run.paymentEntryId, reversalDate, postedBy: userId });
       }
@@ -819,6 +1043,157 @@ export class PayrollService {
       await this.audit.log({ action: 'payroll.reverse', entityType: 'payroll_run', entityId: id, after: { status: 'REVERSED' } }, tx);
     }, POSTING_TX_OPTIONS);
     return this.getRun(id.toString());
+  }
+
+  async employeeStatement(employeeId: bigint, fromValue: string, toValue: string) {
+    const from = date(fromValue);
+    const to = date(toValue);
+    if (from > to) throw new DomainError(ErrorCode.VALIDATION, 'Statement start date must not be after end date');
+    const { db } = this.context();
+    const employee = await db.employee.findFirst({ where: { id: employeeId }, select: { id: true, nameAr: true } });
+    if (!employee) throw DomainError.notFound('Employee', employeeId.toString());
+    const movements = await db.payrollMovement.findMany({
+      where: { employeeId },
+      include: {
+        payElement: { select: { kind: true } },
+        reversalEntry: { select: { createdAt: true } },
+      },
+    });
+    const runs = await db.payrollRun.findMany({
+      where: {
+        status: { in: ['POSTED', 'PAID', 'REVERSED'] },
+        lines: { some: { employeeId } },
+      },
+      include: {
+        lines: { where: { employeeId }, include: { items: true } },
+        journalEntry: { include: { reversals: { select: { entryDate: true, createdAt: true } } } },
+        paymentEntry: { include: { reversals: { select: { entryDate: true, createdAt: true } } } },
+      },
+    });
+
+    type StatementEvent = {
+      date: Date;
+      createdAt: Date;
+      order: number;
+      documentNo: string;
+      documentType: string;
+      description: string;
+      signed: Decimal;
+    };
+    const events: StatementEvent[] = [];
+    let order = 0;
+    const addEvent = (event: Omit<StatementEvent, 'order'>) => events.push({ ...event, order: order++ });
+    for (const movement of movements) {
+      const signed = movement.payElement.kind === 'EARNING' ? movement.amount : movement.amount.neg();
+      addEvent({
+        date: movement.movementDate,
+        createdAt: movement.createdAt,
+        documentNo: movement.movementNo ?? movement.id.toString(),
+        documentType: 'MOVEMENT',
+        description: movement.description,
+        signed,
+      });
+      if (movement.status === 'REVERSED' && movement.reversalEntry && movement.reversedAt) {
+        addEvent({
+          date: movement.reversedAt,
+          createdAt: movement.reversalEntry.createdAt,
+          documentNo: movement.movementNo ?? movement.id.toString(),
+          documentType: 'MOVEMENT_REVERSAL',
+          description: movement.description,
+          signed: signed.neg(),
+        });
+      }
+    }
+    for (const run of runs) {
+      const line = run.lines[0];
+      if (!line) continue;
+      const movementNet = line.items.reduce((sum, item) => {
+        if (item.payrollMovementId === null) return sum;
+        return item.kind === 'EARNING' ? sum.plus(item.amount) : sum.minus(item.amount);
+      }, new Decimal(0));
+      const runBalance = round3(line.net.minus(movementNet));
+      addEvent({
+        date: run.runDate,
+        createdAt: run.createdAt,
+        documentNo: run.runNo ?? run.id.toString(),
+        documentType: 'PAYROLL_RUN',
+        description: `Payroll ${run.period}`,
+        signed: runBalance,
+      });
+      const runReversal = run.journalEntry?.reversals[0];
+      if (run.status === 'REVERSED' && runReversal) {
+        addEvent({
+          date: runReversal.entryDate,
+          createdAt: runReversal.createdAt,
+          documentNo: run.runNo ?? run.id.toString(),
+          documentType: 'PAYROLL_RUN_REVERSAL',
+          description: `Payroll ${run.period}`,
+          signed: runBalance.neg(),
+        });
+      }
+      if (run.paymentEntry && (run.status === 'PAID' || run.status === 'REVERSED')) {
+        const payment = line.net.neg();
+        addEvent({
+          date: run.paymentEntry.entryDate,
+          createdAt: run.paymentEntry.createdAt,
+          documentNo: run.paymentEntry.entryNo ?? run.runNo ?? run.id.toString(),
+          documentType: 'PAYROLL_PAYMENT',
+          description: `Payroll payment ${run.period}`,
+          signed: payment,
+        });
+        const paymentReversal = run.paymentEntry.reversals[0];
+        if (run.status === 'REVERSED' && paymentReversal) {
+          addEvent({
+            date: paymentReversal.entryDate,
+            createdAt: paymentReversal.createdAt,
+            documentNo: run.paymentEntry.entryNo ?? run.runNo ?? run.id.toString(),
+            documentType: 'PAYROLL_PAYMENT_REVERSAL',
+            description: `Payroll payment ${run.period}`,
+            signed: payment.neg(),
+          });
+        }
+      }
+    }
+    events.sort((a, b) =>
+      a.date.getTime() - b.date.getTime() ||
+      a.createdAt.getTime() - b.createdAt.getTime() ||
+      a.order - b.order,
+    );
+    const openingBalance = events
+      .filter((event) => event.date < from)
+      .reduce((sum, event) => sum.plus(event.signed), new Decimal(0));
+    let balance = openingBalance;
+    const money = (amount: Decimal) => {
+      const value = round3(amount).toString();
+      const separator = value.indexOf('.');
+      const integer = separator < 0 ? value : value.slice(0, separator);
+      const fraction = separator < 0 ? '' : value.slice(separator + 1);
+      return `${integer}.${fraction.padEnd(3, '0')}`;
+    };
+    const rows = events
+      .filter((event) => event.date >= from && event.date <= to)
+      .map((event) => {
+        balance = round3(balance.plus(event.signed));
+        const amount = round3(event.signed.abs());
+        return {
+          date: event.date.toISOString().slice(0, 10),
+          documentNo: event.documentNo,
+          documentType: event.documentType,
+          description: event.description,
+          debit: event.signed.lt(0) ? money(amount) : '0.000',
+          credit: event.signed.gt(0) ? money(amount) : '0.000',
+          balance: money(balance),
+        };
+      });
+    return {
+      employeeId: employee.id.toString(),
+      employeeName: employee.nameAr,
+      from: fromValue,
+      to: toValue,
+      openingBalance: money(openingBalance),
+      closingBalance: money(balance),
+      rows,
+    };
   }
 
   async listRuns() {
@@ -835,7 +1210,7 @@ export class PayrollService {
         lines: {
           include: {
             employee: { select: { nameAr: true } },
-            items: { select: { description: true, kind: true, amount: true, quantity: true, rate: true } },
+            items: { select: { description: true, kind: true, amount: true, quantity: true, rate: true, payrollMovementId: true } },
           },
           orderBy: [{ employeeId: 'asc' }],
         },
@@ -864,6 +1239,7 @@ export class PayrollService {
           amount: item.amount.toString(),
           quantity: item.quantity?.toString() ?? null,
           rate: item.rate?.toString() ?? null,
+          payrollMovementId: item.payrollMovementId?.toString() ?? null,
         })),
       })),
     };
