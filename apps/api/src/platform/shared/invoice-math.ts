@@ -28,10 +28,11 @@ export function allocateInvoiceDiscount(
   if (discount.pct !== undefined && discount.amount !== undefined) {
     throw new DomainError(ErrorCode.INVOICE_DISCOUNT_INVALID, 'Specify either invoice discount percent or amount, not both');
   }
-  const weights = lineAmountsAfterDiscount.map((value) => new Decimal(value));
-  if (weights.some((weight) => weight.lt(0))) {
+  const rawWeights = lineAmountsAfterDiscount.map((value) => new Decimal(value));
+  if (rawWeights.some((weight) => weight.lt(0))) {
     throw new DomainError(ErrorCode.INVOICE_DISCOUNT_INVALID, 'Invoice discount lines cannot have a negative amount');
   }
+  const weights = rawWeights.map((weight) => round3(weight));
   const total = sum(weights);
   let amount: Decimal;
   if (discount.pct !== undefined) {
@@ -50,13 +51,18 @@ export function allocateInvoiceDiscount(
     return { amount, shares: weights.map(() => new Decimal(0)) };
   }
 
-  const shares = weights.map((weight) => round3(amount.times(weight).div(total)));
-  const remainder = round3(amount.minus(sum(shares)));
-  let largestIndex = 0;
-  for (let i = 1; i < weights.length; i += 1) {
-    if (weights[i].gt(weights[largestIndex])) largestIndex = i;
+  const exactShares = weights.map((weight) => amount.times(weight).div(total));
+  const shares = exactShares.map((share) => share.toDecimalPlaces(3, Decimal.ROUND_DOWN));
+  let remainder = round3(amount.minus(sum(shares)));
+  const remainderOrder = exactShares
+    .map((share, index) => ({ index, fraction: share.minus(shares[index]) }))
+    .sort((a, b) => b.fraction.comparedTo(a.fraction) || a.index - b.index);
+  const unit = new Decimal('0.001');
+  for (const { index } of remainderOrder) {
+    if (remainder.lt(unit)) break;
+    shares[index] = shares[index].plus(unit);
+    remainder = remainder.minus(unit);
   }
-  shares[largestIndex] = round3(shares[largestIndex].plus(remainder));
   return { amount, shares };
 }
 

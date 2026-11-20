@@ -1,4 +1,4 @@
-import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
+import { Decimal, round3, sum } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { allocateInvoiceDiscount, computeLineAmounts, netOfTaxLine } from './invoice-math.js';
@@ -38,13 +38,33 @@ describe('computeLineAmounts', () => {
 });
 
 describe('allocateInvoiceDiscount', () => {
-  it('puts the rounding remainder on the largest line, with ties going to the first line', () => {
+  it('uses largest remainders and breaks ties by line order', () => {
     const allocation = allocateInvoiceDiscount(['1.000', '1.000', '2.000'], { amount: '0.002' });
     expect(allocation.amount.toFixed(3)).toBe('0.002');
-    expect(allocation.shares.map((share) => share.toFixed(3))).toEqual(['0.001', '0.001', '0.000']);
+    expect(allocation.shares.map((share) => share.toFixed(3))).toEqual(['0.001', '0.000', '0.001']);
 
     const tied = allocateInvoiceDiscount(['1.000', '1.000', '1.000'], { amount: '0.002' });
-    expect(tied.shares.map((share) => share.toFixed(3))).toEqual(['0.000', '0.001', '0.001']);
+    expect(tied.shares.map((share) => share.toFixed(3))).toEqual(['0.001', '0.001', '0.000']);
+
+    const fourLines = allocateInvoiceDiscount(['1.000', '1.000', '1.000', '1.000'], { amount: '0.002' });
+    expect(fourLines.shares.map((share) => share.toFixed(3))).toEqual(['0.001', '0.001', '0.000', '0.000']);
+  });
+
+  it('keeps every allocated share non-negative, within its line weight, and exactly summed', () => {
+    const cases = [
+      { weights: ['1.000', '1.000', '1.000', '1.000'], amount: '0.002' },
+      { weights: ['0.001', '0.002', '0.007'], amount: '0.006' },
+      { weights: ['10.125', '0.875', '3.000'], amount: '9.999' },
+      { weights: ['2.500', '0.125', '4.375'], amount: '7.000' },
+    ];
+    for (const { weights, amount } of cases) {
+      const allocation = allocateInvoiceDiscount(weights, { amount });
+      expect(sum(allocation.shares).toFixed(3)).toBe(amount);
+      allocation.shares.forEach((share, index) => {
+        expect(share.gte(0)).toBe(true);
+        expect(share.lte(weights[index])).toBe(true);
+      });
+    }
   });
 
   it('allocates tax-inclusive shares using the price terms, then computes net and tax from the discounted total', () => {

@@ -239,7 +239,7 @@ describe('Golden scenarios D1–D3 — invoice-level discount (ADR-034)', () => 
     await verified();
   });
 
-  it('D2: a fixed 0.002 discount on three equal tax-inclusive lines sends the rounding remainder to line one', async () => {
+  it('D2: a fixed 0.002 discount on three equal tax-inclusive lines uses largest remainders', async () => {
     h.ok(await h.patchCompany(token, { pricesIncludeTax: true }), 200, 'enable tax-inclusive prices');
     const invoice = await postInvoice({
       invoiceDate: '2025-02-03',
@@ -253,17 +253,17 @@ describe('Golden scenarios D1–D3 — invoice-level discount (ADR-034)', () => 
         { itemId: service, qty: '1', unitPrice: '11.600' },
       ],
     });
-    // Three equal 11.600 weights and a 0.002 fixed discount each round to 0.001; the −0.001 remainder
-    // goes to the first (largest tied) line: shares 0.000/0.001/0.001. Inclusive net is 10.000/9.999/9.999,
-    // tax is 1.600 per line, and line totals are 11.600/11.599/11.599.
+    // Three equal 11.600 weights give exact shares 0.000667; all floor to 0.000 and the two 0.001
+    // remainder units go to the first two tied lines: shares 0.001/0.001/0.000. Inclusive net is
+    // 9.999/9.999/10.000, tax is 1.600 per line, and line totals are 11.599/11.599/11.600.
     expect(invoice.lines.map((line) => [
       m3(line.invoiceDiscountShare), m3(line.netAmount), m3(line.taxAmount), m3(line.lineTotal),
     ])).toEqual([
+      ['0.001', '9.999', '1.600', '11.599'],
+      ['0.001', '9.999', '1.600', '11.599'],
       ['0.000', '10.000', '1.600', '11.600'],
-      ['0.001', '9.999', '1.600', '11.599'],
-      ['0.001', '9.999', '1.600', '11.599'],
     ]);
-    // Header discount is 0.002; net 29.998, tax 4.800, payable 34.798.
+    // Header discount is 0.002; net 29.998, tax 4.800, payable 34.798, unchanged by which equal line gets the remainder.
     expect([m3(invoice.invoiceDiscountAmount), m3(invoice.netTotal), m3(invoice.taxTotal), m3(invoice.grandTotal)])
       .toEqual(['0.002', '29.998', '4.800', '34.798']);
     // SALES remains 30.000 before the discount; the net-of-tax SALES_DISCOUNTS debit is 0.002.
