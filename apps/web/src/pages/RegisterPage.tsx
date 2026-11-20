@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { ApiError, type RegisterDto } from '@erp/api-client';
 import { useAuth } from '../auth/AuthContext';
+import { EnterNav } from '../components/EnterNav';
 
 export function RegisterPage({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
   const { t } = useTranslation();
@@ -50,40 +51,42 @@ export function RegisterPage({ onSwitchToLogin }: { onSwitchToLogin: () => void 
           {t('auth.registerTitle')}
         </Typography.Title>
         {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} />}
-        <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
-          <Form.Item name="tenantName" label={t('auth.tenantName')} rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="companyNameAr" label={t('auth.companyName')}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="ownerName" label={t('auth.ownerName')} rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="email" label={t('auth.email')} rules={[{ required: true, type: 'email' }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="password"
-            label={t('auth.password')}
-            rules={[{ required: true, min: 8 }]}
-          >
-            <Input.Password autoComplete="new-password" />
-          </Form.Item>
-          <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-            {t('auth.consentBefore')}
-            <a href="/terms" target="_blank" rel="noreferrer">
-              {t('legal.terms.title')}
-            </a>
-            {t('auth.consentAnd')}
-            <a href="/privacy" target="_blank" rel="noreferrer">
-              {t('legal.privacy.title')}
-            </a>
-          </Typography.Paragraph>
-          <Button type="primary" htmlType="submit" block loading={loading}>
-            {t('auth.register')}
-          </Button>
-        </Form>
+        <EnterNav>
+          <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
+            <Form.Item name="tenantName" label={t('auth.tenantName')} rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="companyNameAr" label={t('auth.companyName')}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="ownerName" label={t('auth.ownerName')} rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="email" label={t('auth.email')} rules={[{ required: true, type: 'email' }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item
+              name="password"
+              label={t('auth.password')}
+              rules={[{ required: true, min: 8 }]}
+            >
+              <Input.Password autoComplete="new-password" />
+            </Form.Item>
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+              {t('auth.consentBefore')}
+              <a href="/terms" target="_blank" rel="noreferrer">
+                {t('legal.terms.title')}
+              </a>
+              {t('auth.consentAnd')}
+              <a href="/privacy" target="_blank" rel="noreferrer">
+                {t('legal.privacy.title')}
+              </a>
+            </Typography.Paragraph>
+            <Button type="primary" htmlType="submit" block loading={loading}>
+              {t('auth.register')}
+            </Button>
+          </Form>
+        </EnterNav>
         <Button type="link" block onClick={onSwitchToLogin}>
           {t('auth.haveAccount')}
         </Button>

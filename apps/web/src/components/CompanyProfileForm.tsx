@@ -18,6 +18,7 @@ import {
   type PurchaseDirectGapDto,
   usersControllerPurchaseDirectGaps,
 } from '@erp/api-client';
+import { EnterNav } from './EnterNav';
 
 /** The tenant's company profile (one query shared by the wizard, settings and home). */
 export function useCompany() {
@@ -160,93 +161,95 @@ export function CompanyProfileForm({
   };
 
   return (
-    <Form form={form} layout="vertical" onFinish={(v) => void requestSave(v)} style={{ maxWidth: 720 }}>
-      {/* One aligned two-column grid, the same as the master-data dialogs (UI-11). */}
-      <div className="form-section-grid cols-2 is-flush">
-        <Form.Item name="legalNameAr" label={t('company.legalNameAr')} rules={[{ required: true, whitespace: true }]}>
-          <Input maxLength={191} />
-        </Form.Item>
-        <Form.Item name="legalNameEn" label={t('company.legalNameEn')}>
-          <Input maxLength={191} dir="ltr" />
-        </Form.Item>
-        <Form.Item
-          name="taxNumber"
-          label={t('company.taxNumber')}
-          extra={t('company.taxNumberHint')}
-          rules={[{ pattern: /^\d*$/, message: t('company.taxNumberDigits') }]}
-        >
-          <Input maxLength={50} dir="ltr" inputMode="numeric" />
-        </Form.Item>
-        <Form.Item name="commercialRegistration" label={t('company.commercialRegistration')}>
-          <Input maxLength={100} dir="ltr" />
-        </Form.Item>
-        <Form.Item name="phone" label={t('company.phone')}>
-          <Input maxLength={50} dir="ltr" />
-        </Form.Item>
-        <Form.Item name="address" label={t('company.address')} className="span-all">
-          <Input.TextArea maxLength={512} autoSize={{ minRows: 2, maxRows: 4 }} />
-        </Form.Item>
-      </div>
-      {withTax && (
-        <Form.Item name="pricesIncludeTax" label={t('company.pricesIncludeTax')} valuePropName="checked" extra={t('company.pricesIncludeTaxHint')}>
-          <Switch />
-        </Form.Item>
-      )}
-      {withTax && (
-        <Form.Item
-          name="costCentersEnabled"
-          label={t('costCenters.enableLabel')}
-          valuePropName="checked"
-          extra={t('costCenters.enableHint')}
-        >
-          <Switch />
-        </Form.Item>
-      )}
-      {withProcurement && (
-        <Form.Item
-          name="procurementLevel"
-          label={t('company.procurementLevel')}
-          extra={t('company.procurementLevelHint')}
-          style={{ maxWidth: 480 }}
-        >
-          <Select
-            disabled={!can(PERMISSIONS.COMPANY_MANAGE)}
-            options={PROCUREMENT_LEVELS.map((level) => ({ value: level, label: t(`company.procurementLevels.${level}`) }))}
-          />
-        </Form.Item>
-      )}
-
-      <Form.Item label={t('company.logo')} extra={t('company.logoHint')}>
-        <Space align="center" size={16} wrap>
-          {logo.data && <Image src={logo.data} alt={t('company.logo')} height={56} preview={false} style={{ objectFit: 'contain' }} />}
-          <Upload
-            accept="image/png,image/jpeg"
-            showUploadList={false}
-            beforeUpload={(file) => {
-              if (file.size > LOGO_MAX_BYTES) {
-                message.error(t('errors.UPLOAD_TOO_LARGE'));
-              } else {
-                upload.mutate(file);
-              }
-              return false;
-            }}
+    <EnterNav>
+      <Form form={form} layout="vertical" onFinish={(v) => void requestSave(v)} style={{ maxWidth: 720 }}>
+        {/* One aligned two-column grid, the same as the master-data dialogs (UI-11). */}
+        <div className="form-section-grid cols-2 is-flush">
+          <Form.Item name="legalNameAr" label={t('company.legalNameAr')} rules={[{ required: true, whitespace: true }]}>
+            <Input maxLength={191} />
+          </Form.Item>
+          <Form.Item name="legalNameEn" label={t('company.legalNameEn')}>
+            <Input maxLength={191} dir="ltr" />
+          </Form.Item>
+          <Form.Item
+            name="taxNumber"
+            label={t('company.taxNumber')}
+            extra={t('company.taxNumberHint')}
+            rules={[{ pattern: /^\d*$/, message: t('company.taxNumberDigits') }]}
           >
-            <Button icon={<UploadOutlined />} loading={upload.isPending}>
-              {company.data?.logo ? t('company.replaceLogo') : t('company.uploadLogo')}
-            </Button>
-          </Upload>
-          {company.data?.logo && (
-            <Button danger icon={<DeleteOutlined />} loading={removeLogo.isPending} onClick={() => removeLogo.mutate()}>
-              {t('company.removeLogo')}
-            </Button>
-          )}
-          {company.data?.logo && <Typography.Text type="secondary">{company.data.logo.fileName}</Typography.Text>}
-        </Space>
-      </Form.Item>
+            <Input maxLength={50} dir="ltr" inputMode="numeric" />
+          </Form.Item>
+          <Form.Item name="commercialRegistration" label={t('company.commercialRegistration')}>
+            <Input maxLength={100} dir="ltr" />
+          </Form.Item>
+          <Form.Item name="phone" label={t('company.phone')}>
+            <Input maxLength={50} dir="ltr" />
+          </Form.Item>
+          <Form.Item name="address" label={t('company.address')} className="span-all">
+            <Input.TextArea maxLength={512} autoSize={{ minRows: 2, maxRows: 4 }} />
+          </Form.Item>
+        </div>
+        {withTax && (
+          <Form.Item name="pricesIncludeTax" label={t('company.pricesIncludeTax')} valuePropName="checked" extra={t('company.pricesIncludeTaxHint')}>
+            <Switch />
+          </Form.Item>
+        )}
+        {withTax && (
+          <Form.Item
+            name="costCentersEnabled"
+            label={t('costCenters.enableLabel')}
+            valuePropName="checked"
+            extra={t('costCenters.enableHint')}
+          >
+            <Switch />
+          </Form.Item>
+        )}
+        {withProcurement && (
+          <Form.Item
+            name="procurementLevel"
+            label={t('company.procurementLevel')}
+            extra={t('company.procurementLevelHint')}
+            style={{ maxWidth: 480 }}
+          >
+            <Select
+              disabled={!can(PERMISSIONS.COMPANY_MANAGE)}
+              options={PROCUREMENT_LEVELS.map((level) => ({ value: level, label: t(`company.procurementLevels.${level}`) }))}
+            />
+          </Form.Item>
+        )}
 
-      <Button type="primary" htmlType="submit" loading={save.isPending}>
-        {submitLabel ?? t('common.save')}
-      </Button>
-    </Form>
+        <Form.Item label={t('company.logo')} extra={t('company.logoHint')}>
+          <Space align="center" size={16} wrap>
+            {logo.data && <Image src={logo.data} alt={t('company.logo')} height={56} preview={false} style={{ objectFit: 'contain' }} />}
+            <Upload
+              accept="image/png,image/jpeg"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                if (file.size > LOGO_MAX_BYTES) {
+                  message.error(t('errors.UPLOAD_TOO_LARGE'));
+                } else {
+                  upload.mutate(file);
+                }
+                return false;
+              }}
+            >
+              <Button icon={<UploadOutlined />} loading={upload.isPending}>
+                {company.data?.logo ? t('company.replaceLogo') : t('company.uploadLogo')}
+              </Button>
+            </Upload>
+            {company.data?.logo && (
+              <Button danger icon={<DeleteOutlined />} loading={removeLogo.isPending} onClick={() => removeLogo.mutate()}>
+                {t('company.removeLogo')}
+              </Button>
+            )}
+            {company.data?.logo && <Typography.Text type="secondary">{company.data.logo.fileName}</Typography.Text>}
+          </Space>
+        </Form.Item>
+
+        <Button type="primary" htmlType="submit" loading={save.isPending}>
+          {submitLabel ?? t('common.save')}
+        </Button>
+      </Form>
+    </EnterNav>
   );
 }
