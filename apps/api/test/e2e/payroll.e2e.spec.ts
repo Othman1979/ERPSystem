@@ -825,12 +825,15 @@ describe('Payroll PY1–PY3', () => {
     expect(reversedRun!.journal_entry_id).toBeNull();
 
     const entries = (await boot.db.query(
-      `SELECT source_type FROM journal_entries
+      `SELECT source_type, reversal_of_id FROM journal_entries
         WHERE tenant_id = ? AND company_id = ? AND source_id = ?
           AND source_type IN ('PAYROLL_RUN', 'PAYROLL_PAYMENT')`,
       [tenantId, company.id, draft.id],
-    )) as { source_type: string }[];
-    expect(entries.map((entry) => entry.source_type)).toEqual(['PAYROLL_PAYMENT']);
+    )) as { source_type: string; reversal_of_id: bigint | null }[];
+    expect(entries).toHaveLength(2);
+    expect(new Set(entries.map((entry) => entry.source_type))).toEqual(new Set(['PAYROLL_PAYMENT']));
+    expect(entries.filter((entry) => entry.reversal_of_id === null)).toHaveLength(1);
+    expect(entries.filter((entry) => entry.reversal_of_id !== null)).toHaveLength(1);
     const reversedStatement = h.ok(
       await get(tokenA, `payroll/employees/${employee.id}/statement?from=2033-01-01&to=2033-01-31`, company.id),
       200,
