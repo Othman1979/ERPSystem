@@ -67,6 +67,17 @@ describe('EnterNav', () => {
     expect(document.activeElement).toBe(byLabel('b'));
   });
 
+  it('still moves when the field itself prevented Enter (as antd Select does)', () => {
+    show(
+      <EnterNav>
+        <div onKeyDown={(e) => e.preventDefault()}>{field('picked')}</div>
+        {field('after')}
+      </EnterNav>,
+    );
+    pressEnter(byLabel('picked'));
+    expect(document.activeElement).toBe(byLabel('after'));
+  });
+
   it('leaves Enter in a text area alone', () => {
     show(
       <EnterNav>

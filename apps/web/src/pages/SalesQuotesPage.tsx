@@ -538,31 +538,31 @@ function QuoteEditor({
             <Input value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} />
           </DocField>
         </DocFields>
-      </EnterNav>
 
-      <SalesLinesGrid
-        lines={lines}
-        onChange={setLines}
-        itemOptions={itemOptions}
-        onItemSearch={items.onSearch}
-        priceOf={(itemId) => items.byId(itemId)?.salePrice ?? undefined}
-        nextKey={() => {
-          lineSeq.current += 1;
-          return lineSeq.current;
-        }}
-        lineError={tried && missing.lines ? t('common.requiredField') : undefined}
-        priceGaps={new Set(tried ? priceGaps : [])}
-      />
-
-      {cancelOpen && (
-        <ReasonModal
-          title={t('salesCycle.cancelTitle')}
-          okText={t('procurement.cancel')}
-          busy={cancel.isPending}
-          onClose={() => setCancelOpen(false)}
-          onConfirm={(reason) => cancel.mutate(reason)}
+        <SalesLinesGrid
+          lines={lines}
+          onChange={setLines}
+          itemOptions={itemOptions}
+          onItemSearch={items.onSearch}
+          priceOf={(itemId) => items.byId(itemId)?.salePrice ?? undefined}
+          nextKey={() => {
+            lineSeq.current += 1;
+            return lineSeq.current;
+          }}
+          lineError={tried && missing.lines ? t('common.requiredField') : undefined}
+          priceGaps={new Set(tried ? priceGaps : [])}
         />
-      )}
+
+        {cancelOpen && (
+          <ReasonModal
+            title={t('salesCycle.cancelTitle')}
+            okText={t('procurement.cancel')}
+            busy={cancel.isPending}
+            onClose={() => setCancelOpen(false)}
+            onConfirm={(reason) => cancel.mutate(reason)}
+          />
+        )}
+      </EnterNav>
     </DocLayout>
   );
 }
@@ -692,32 +692,32 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
         </>
       }
     >
-      {quote.expired && (
-        <Alert
-          type="warning"
-          showIcon
-          message={t('salesCycle.expiredNotice', { date: dayjs(quote.validUntil).format('YYYY-MM-DD') })}
-        />
-      )}
-      {linkedOrder && (
-        <Alert
-          type={createdOrder ? 'success' : 'info'}
-          showIcon
-          message={
-            <Space wrap>
-              {createdOrder ? t('salesCycle.orderCreated') : t('salesCycle.convertedTo')}
-              <Link to={`/sales-orders?orderId=${linkedOrder.id}`}>{linkedOrder.orderNo ?? `#${linkedOrder.id}`}</Link>
-            </Space>
-          }
-        />
-      )}
-      {quote.status === 'CANCELLED' && quote.cancelReason && (
-        <Alert type="warning" showIcon message={t('procurement.cancelledReason', { reason: quote.cancelReason })} />
-      )}
-      {quote.status === 'REJECTED' && quote.rejectReason && (
-        <Alert type="warning" showIcon message={t('salesCycle.rejectedReason', { reason: quote.rejectReason })} />
-      )}
       <EnterNav>
+        {quote.expired && (
+          <Alert
+            type="warning"
+            showIcon
+            message={t('salesCycle.expiredNotice', { date: dayjs(quote.validUntil).format('YYYY-MM-DD') })}
+          />
+        )}
+        {linkedOrder && (
+          <Alert
+            type={createdOrder ? 'success' : 'info'}
+            showIcon
+            message={
+              <Space wrap>
+                {createdOrder ? t('salesCycle.orderCreated') : t('salesCycle.convertedTo')}
+                <Link to={`/sales-orders?orderId=${linkedOrder.id}`}>{linkedOrder.orderNo ?? `#${linkedOrder.id}`}</Link>
+              </Space>
+            }
+          />
+        )}
+        {quote.status === 'CANCELLED' && quote.cancelReason && (
+          <Alert type="warning" showIcon message={t('procurement.cancelledReason', { reason: quote.cancelReason })} />
+        )}
+        {quote.status === 'REJECTED' && quote.rejectReason && (
+          <Alert type="warning" showIcon message={t('salesCycle.rejectedReason', { reason: quote.rejectReason })} />
+        )}
         <DocFields>
           <DocField label={t('common.status')}>
             <DocValue>
@@ -756,60 +756,60 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
             </DocField>
           )}
         </DocFields>
-      </EnterNav>
-      <Typography.Text type="secondary">
-        {quote.pricesIncludeTax ? t('procurement.pricesIncludeTax') : t('procurement.pricesExcludeTax')}
-      </Typography.Text>
+        <Typography.Text type="secondary">
+          {quote.pricesIncludeTax ? t('procurement.pricesIncludeTax') : t('procurement.pricesExcludeTax')}
+        </Typography.Text>
 
-      <Table<SalesCycleQuoteLineViewDto>
-        rowKey="id"
-        size="small"
-        pagination={false}
-        dataSource={quote.lines}
-        columns={[
-          { title: '#', dataIndex: 'lineNo', width: 50 },
-          { title: t('procurement.item'), render: (_: unknown, l: SalesCycleQuoteLineViewDto) => codeAndName(l.item) },
-          { title: t('procurement.qty'), dataIndex: 'qty', width: 100, align: 'right' as const, render: qtyCell },
-          { title: t('procurement.unitPrice'), dataIndex: 'unitPrice', width: 110, align: 'right' as const, render: unitCostCell },
-          { title: t('procurement.discountPct'), dataIndex: 'discountPct', width: 90, align: 'right' as const },
-          { title: t('procurement.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, render: amountCell },
-          { title: t('procurement.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
-          { title: t('procurement.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
-        ]}
-      />
-
-      {reasonAction && (
-        <ReasonModal
-          title={t(reasonAction === 'reject' ? 'salesCycle.rejectTitle' : 'salesCycle.cancelTitle')}
-          okText={t(reasonAction === 'reject' ? 'salesCycle.reject' : 'procurement.cancel')}
-          busy={reasonAction === 'reject' ? reject.isPending : cancel.isPending}
-          onClose={() => setReasonAction(null)}
-          onConfirm={(reason) => (reasonAction === 'reject' ? reject.mutate(reason) : cancel.mutate(reason))}
+        <Table<SalesCycleQuoteLineViewDto>
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={quote.lines}
+          columns={[
+            { title: '#', dataIndex: 'lineNo', width: 50 },
+            { title: t('procurement.item'), render: (_: unknown, l: SalesCycleQuoteLineViewDto) => codeAndName(l.item) },
+            { title: t('procurement.qty'), dataIndex: 'qty', width: 100, align: 'right' as const, render: qtyCell },
+            { title: t('procurement.unitPrice'), dataIndex: 'unitPrice', width: 110, align: 'right' as const, render: unitCostCell },
+            { title: t('procurement.discountPct'), dataIndex: 'discountPct', width: 90, align: 'right' as const },
+            { title: t('procurement.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, render: amountCell },
+            { title: t('procurement.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
+            { title: t('procurement.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
+          ]}
         />
-      )}
 
-      <Modal
-        open={convertOpen}
-        title={t('salesCycle.convertTitle')}
-        okText={t('salesCycle.convertToOrder')}
-        cancelText={t('common.cancel')}
-        okButtonProps={{ disabled: !convertWarehouse }}
-        confirmLoading={convert.isPending}
-        onCancel={() => setConvertOpen(false)}
-        onOk={() => convert.mutate(convertWarehouse)}
-      >
-        <Typography.Paragraph type="secondary">{t('salesCycle.convertWarehouseHint')}</Typography.Paragraph>
-        <Form layout="vertical">
-          <Form.Item label={t('sales.warehouse')} required>
-            <Select
-              value={convertWarehouse}
-              onChange={setConvertWarehouse}
-              loading={warehouses.isLoading}
-              options={(warehouses.data ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
+        {reasonAction && (
+          <ReasonModal
+            title={t(reasonAction === 'reject' ? 'salesCycle.rejectTitle' : 'salesCycle.cancelTitle')}
+            okText={t(reasonAction === 'reject' ? 'salesCycle.reject' : 'procurement.cancel')}
+            busy={reasonAction === 'reject' ? reject.isPending : cancel.isPending}
+            onClose={() => setReasonAction(null)}
+            onConfirm={(reason) => (reasonAction === 'reject' ? reject.mutate(reason) : cancel.mutate(reason))}
+          />
+        )}
+
+        <Modal
+          open={convertOpen}
+          title={t('salesCycle.convertTitle')}
+          okText={t('salesCycle.convertToOrder')}
+          cancelText={t('common.cancel')}
+          okButtonProps={{ disabled: !convertWarehouse }}
+          confirmLoading={convert.isPending}
+          onCancel={() => setConvertOpen(false)}
+          onOk={() => convert.mutate(convertWarehouse)}
+        >
+          <Typography.Paragraph type="secondary">{t('salesCycle.convertWarehouseHint')}</Typography.Paragraph>
+          <Form layout="vertical">
+            <Form.Item label={t('sales.warehouse')} required>
+              <Select
+                value={convertWarehouse}
+                onChange={setConvertWarehouse}
+                loading={warehouses.isLoading}
+                options={(warehouses.data ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
+              />
+            </Form.Item>
+          </Form>
+        </Modal>
+      </EnterNav>
     </DocLayout>
   );
 }
