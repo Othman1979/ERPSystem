@@ -72,6 +72,7 @@ import { useNewFromUrl } from '../useNewFromUrl';
 import { useSearchParams } from 'react-router';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { BalancesTab } from './treasury/BalancesTab';
+import { BankReconciliationTab } from './treasury/BankReconciliationTab';
 import { TransfersTab } from './treasury/TransfersTab';
 import { enterTo, focusNamedField, GridSelect } from '../components/GridSelect';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
@@ -189,6 +190,7 @@ export function TreasuryPage() {
             children: <TransfersTab cashAccounts={lookups.cashAccounts} />,
           },
           { key: 'balances', label: t('treasury.balances'), children: <BalancesTab /> },
+          { key: 'reconciliation', label: t('bankRec.tab'), children: <BankReconciliationTab /> },
         ]}
       />
     </div>

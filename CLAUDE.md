@@ -4,7 +4,7 @@
 المطور: شخص واحد. أنت تعمل كمساعده في التنفيذ.
 
 **المرجع الكامل:** `docs/BUILD_PLAN.md`. اقرأ الأقسام المتعلقة بالمرحلة الحالية قبل أي عمل.
-**المرحلة الحالية:** اكتملت المرحلة 19 (`docs/phase-reports/phase-19.md`؛ [ADR-034](docs/decisions/ADR-034-phase19-invoice-discount.md)). المرحلة 20 مؤجلة، ولا توجد مراحل أخرى مخططة حالياً. المرحلتان 17 و18 منجزتان (`docs/phase-reports/phase-17.md` و`docs/phase-reports/phase-18.md`). معلّق عند المالك: بنود المرحلة 10 المفتوحة، واعتماد المحاسب للسيناريوهات الذهبية P1–P7 وS12–S14 وD1–D3. بنود المرحلة 10 المفتوحة في `docs/phase-reports/phase-10.md` §8.
+**المرحلة الحالية:** اكتملت المرحلة 20، التسوية البنكية (`docs/phase-reports/phase-20.md`؛ [ADR-035](docs/decisions/ADR-035-phase20-bank-reconciliation.md)). المرحلة 21 (قائمة التدفقات النقدية) هي التالية. المرحلة 19 منجزة (`docs/phase-reports/phase-19.md`). المرحلتان 17 و18 منجزتان (`docs/phase-reports/phase-17.md` و`docs/phase-reports/phase-18.md`). معلّق عند المالك: بنود المرحلة 10 المفتوحة، واعتماد المحاسب للسيناريوهات الذهبية P1–P7 وS12–S14 وD1–D3 وR1–R3. بنود المرحلة 10 المفتوحة في `docs/phase-reports/phase-10.md` §8.
 
 ---
 

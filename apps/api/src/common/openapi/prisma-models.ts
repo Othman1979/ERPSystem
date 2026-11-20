@@ -1316,6 +1316,86 @@ export class BankAccountRow {
   updatedAt!: string;
 }
 
+/** Scalar columns of the Prisma model `BankStatement`, as JSON. */
+export class BankStatementRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  companyId!: string;
+  @ApiProperty({ type: 'string' })
+  bankAccountId!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  startDate!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  endDate!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  openingBalance!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  closingBalance!: string;
+  @ApiProperty({ type: 'string', description: "DRAFT | RECONCILED" })
+  status!: string;
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  bookBalance!: string | null;
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  outstandingDeposits!: string | null;
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  outstandingPayments!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  reconciledBy!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time', nullable: true })
+  reconciledAt!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  createdBy!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  createdAt!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  updatedAt!: string;
+}
+
+/** Scalar columns of the Prisma model `BankStatementLine`, as JSON. */
+export class BankStatementLineRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  statementId!: string;
+  @ApiProperty({ type: 'integer' })
+  lineNo!: number;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  lineDate!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  description!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  reference!: string | null;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  deposit!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  withdrawal!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  createdAt!: string;
+}
+
+/** Scalar columns of the Prisma model `BankStatementMatch`, as JSON. */
+export class BankStatementMatchRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  statementId!: string;
+  @ApiProperty({ type: 'string' })
+  statementLineId!: string;
+  @ApiProperty({ type: 'string' })
+  journalLineId!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  createdBy!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  createdAt!: string;
+}
+
 /** Scalar columns of the Prisma model `SalesInvoice`, as JSON. */
 export class SalesInvoiceRow {
   @ApiProperty({ type: 'string' })

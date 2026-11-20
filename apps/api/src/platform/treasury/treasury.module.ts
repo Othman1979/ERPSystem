@@ -7,6 +7,8 @@ import { SalesModule } from '../sales/sales.module.js';
 import { SharedModule } from '../shared/shared.module.js';
 import { CostCentersModule } from '../cost-centers/cost-centers.module.js';
 import { AccountingModule } from '../accounting/accounting.module.js';
+import { BankReconciliationController } from './bank-reconciliation.controller.js';
+import { BankReconciliationService } from './bank-reconciliation.service.js';
 import { CashAccountsService } from './cash-accounts.service.js';
 import { CashTransfersService } from './cash-transfers.service.js';
 import { TreasuryReportsService } from './treasury-reports.service.js';
@@ -15,8 +17,8 @@ import { VouchersService } from './vouchers.service.js';
 
 @Module({
   imports: [AccountingModule, SharedModule, JournalModule, PartiesModule, SalesModule, PurchasesModule, PrintingModule, CostCentersModule],
-  controllers: [TreasuryController],
-  providers: [CashAccountsService, VouchersService, CashTransfersService, TreasuryReportsService],
+  controllers: [TreasuryController, BankReconciliationController],
+  providers: [BankReconciliationService, CashAccountsService, VouchersService, CashTransfersService, TreasuryReportsService],
   // The dashboard reads receivables from the aging totals (module boundary).
   exports: [TreasuryReportsService],
 })
