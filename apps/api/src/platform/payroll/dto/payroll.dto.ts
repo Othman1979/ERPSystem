@@ -1,4 +1,16 @@
-import { IsBoolean, IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  Validate,
+  ValidatorConstraint,
+  type ValidationArguments,
+  type ValidatorConstraintInterface,
+} from 'class-validator';
+import { Decimal } from '../../../common/decimal/decimal.utils.js';
 import { DATE_PATTERN, ID_PATTERN } from '../../../common/pipes/parse-id.pipe.js';
 import { ExportQueryDto } from '../../printing/dto/export.dto.js';
 
@@ -44,7 +56,36 @@ export class CreatePayElementDto {
   @Matches(ID_PATTERN) accountId!: string;
 }
 
+@ValidatorConstraint({ name: 'PayrollSettingsRange', async: false })
+class PayrollSettingsRange implements ValidatorConstraintInterface {
+  validate(_value: unknown, args: ValidationArguments) {
+    try {
+      const dto = args.object as CreatePayrollSettingsDto;
+      const zero = new Decimal('0');
+      const one = new Decimal('1');
+      const rates = [dto.sscEmployeeRate, dto.sscEmployerRate, dto.sscHazardousExtra]
+        .filter((value): value is string => value != null)
+        .map((value) => new Decimal(value));
+      const minimum = dto.sscMinWage == null ? null : new Decimal(dto.sscMinWage);
+      const maximum = dto.sscMaxWage == null ? null : new Decimal(dto.sscMaxWage);
+      const hours = dto.hoursPerMonth == null ? new Decimal('240') : new Decimal(dto.hoursPerMonth);
+      const days = dto.daysPerMonth == null ? new Decimal('30') : new Decimal(dto.daysPerMonth);
+      return rates.every((rate) => rate.gte(zero) && rate.lte(one)) &&
+        hours.gt(zero) && days.gt(zero) &&
+        (!minimum || minimum.gte(zero)) && (!maximum || maximum.gte(zero)) &&
+        (!minimum || !maximum || maximum.gte(minimum));
+    } catch {
+      return false;
+    }
+  }
+
+  defaultMessage() {
+    return 'Payroll rates, wages, hours, or days are outside the allowed range';
+  }
+}
+
 export class CreatePayrollSettingsDto {
+  @Validate(PayrollSettingsRange)
   @Matches(DATE_PATTERN) effectiveFrom!: string;
   @IsOptional() @Matches(DECIMAL_PATTERN) sscEmployeeRate?: string;
   @IsOptional() @Matches(DECIMAL_PATTERN) sscEmployerRate?: string;

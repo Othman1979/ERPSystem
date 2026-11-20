@@ -176,10 +176,11 @@ export class PayrollService {
     if (!employee) throw DomainError.notFound('Employee', employeeId.toString());
     const element = await db.payElement.findFirst({ where: { id: BigInt(dto.payElementId), isActive: true } });
     if (!element) throw DomainError.notFound('PayElement', dto.payElementId);
+    const recurringValue = element.amountType === 'FIXED' ? dto.amount : dto.quantity;
     if (
-      element.amountType === 'FIXED'
-        ? dto.amount === undefined || dto.quantity !== undefined
-        : dto.quantity === undefined || dto.amount !== undefined
+      recurringValue == null ||
+      new Decimal(recurringValue).lt('0') ||
+      (element.amountType === 'FIXED' ? dto.quantity != null : dto.amount != null)
     ) {
       throw new DomainError(ErrorCode.VALIDATION, 'Recurring value must match its pay element amount type');
     }
@@ -209,12 +210,11 @@ export class PayrollService {
     const { tenantId, companyId, db } = this.context();
     const accountId = BigInt(dto.accountId);
     const account = await db.account.findFirst({ where: { id: accountId } });
-    const cashOrBank = await db.cashBox.count({ where: { accountId } }) + await db.bankAccount.count({ where: { accountId } });
     const validType =
       dto.kind === 'EARNING'
         ? account?.accountType === 'EXPENSE'
         : account?.accountType === 'ASSET' || account?.accountType === 'LIABILITY';
-    if (!account || !validType || account.isControl || !account.isPostable || !account.isActive || cashOrBank > 0) {
+    if (!account || !validType || account.isControl || account.controlType !== null || !account.isPostable || !account.isActive) {
       throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Pay element account is not allowed');
     }
     return db.payElement.create({
@@ -241,6 +241,20 @@ export class PayrollService {
   async createSettings(dto: CreatePayrollSettingsDto) {
     this.canManage();
     const { tenantId, companyId, db } = this.context();
+    const zero = new Decimal('0');
+    const one = new Decimal('1');
+    const rates = [dto.sscEmployeeRate ?? '0.075000', dto.sscEmployerRate ?? '0.142500', dto.sscHazardousExtra ?? '0.010000'].map((value) => new Decimal(value));
+    const minimum = new Decimal(dto.sscMinWage ?? '290.000');
+    const maximum = dto.sscMaxWage == null ? null : new Decimal(dto.sscMaxWage);
+    if (
+      rates.some((rate) => rate.lt(zero) || rate.gt(one)) ||
+      !new Decimal(dto.hoursPerMonth ?? '240').gt(zero) ||
+      !new Decimal(dto.daysPerMonth ?? '30').gt(zero) ||
+      minimum.lt(zero) ||
+      (maximum !== null && (maximum.lt(zero) || maximum.lt(minimum)))
+    ) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Payroll rates, wages, hours, or days are outside the allowed range');
+    }
     return db.payrollSettings.create({
       data: {
         tenantId,
@@ -277,7 +291,8 @@ export class PayrollService {
         where: { id: BigInt(dto.payElementId), isActive: true },
       });
       if (!element) throw DomainError.notFound('PayElement', dto.payElementId);
-      if (element.amountType === 'FIXED' ? dto.amount === undefined : dto.quantity === undefined) {
+      const value = element.amountType === 'FIXED' ? dto.amount : dto.quantity;
+      if (value == null || new Decimal(value).lt('0') || (element.amountType === 'FIXED' ? dto.quantity != null : dto.amount != null)) {
         throw new DomainError(ErrorCode.VALIDATION, 'Input must match its pay element amount type');
       }
       return tx.payrollInput.create({
