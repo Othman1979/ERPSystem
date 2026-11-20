@@ -9,6 +9,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tooltip,
   Tag,
   Typography,
@@ -27,12 +28,20 @@ import {
   usersControllerRoles,
   usersControllerSuspend,
   usersControllerUpdate,
+  tenantRolesControllerList,
 } from '@erp/api-client';
-import { CheckOutlined, CopyOutlined, EditOutlined, KeyOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  CheckOutlined,
+  CopyOutlined,
+  EditOutlined,
+  KeyOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 import { useAuth } from '../auth/AuthContext';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { formatAmount } from '../format/number';
 import { PurchasePermissionsDialog } from './users/PurchasePermissionsDialog';
+import { RolesTab } from './users/RolesTab';
 import { APPROVE_CODE, PURCHASE_PERMISSIONS } from './users/purchasePermissions';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
@@ -61,8 +70,11 @@ export function PurchasePermissionTags({ member }: { member: Membership }) {
   }
   return (
     <>
-      {PURCHASE_PERMISSIONS.filter((p) => member.purchasePermissions.some((h) => h.code === p.code)).map((p) => {
-        const limit = member.purchasePermissions.find((h) => h.code === p.code)?.amountLimit ?? null;
+      {PURCHASE_PERMISSIONS.filter((p) =>
+        member.purchasePermissions.some((h) => h.code === p.code),
+      ).map((p) => {
+        const limit =
+          member.purchasePermissions.find((h) => h.code === p.code)?.amountLimit ?? null;
         return (
           <Tag key={p.code}>
             {t(`users.purchaseCodes.${p.key}`)}
@@ -100,6 +112,7 @@ export function UsersPage() {
   // The member whose purchase permissions the owner is editing.
   const [purchaseMember, setPurchaseMember] = useState<Membership | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
+  const [tab, setTab] = useState<'members' | 'roles'>('members');
 
   const usersQuery = useQuery({
     queryKey: ['users'],
@@ -110,6 +123,12 @@ export function UsersPage() {
   const { data: roles } = useQuery({
     queryKey: ['roles'],
     queryFn: ({ signal }) => usersControllerRoles({ signal }).then((r) => r.data),
+  });
+
+  // A company's own roles (ADR-038); managed by an owner on the Roles tab.
+  const { data: customRoles } = useQuery({
+    queryKey: ['tenant-roles'],
+    queryFn: ({ signal }) => tenantRolesControllerList({ signal }).then((r) => r.data),
   });
 
   const onError = (err: unknown) => {
@@ -173,6 +192,16 @@ export function UsersPage() {
     onError,
   });
 
+  const changeCustomRole = useMutation({
+    mutationFn: ({ id, customRoleId }: { id: string; customRoleId: string | null }) =>
+      usersControllerUpdate(id, { customRoleId }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
+      void queryClient.invalidateQueries({ queryKey: ['tenant-roles'] });
+    },
+    onError,
+  });
+
   const suspend = useMutation({
     mutationFn: (id: string) => usersControllerSuspend(id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['users'] }),
@@ -228,242 +257,288 @@ export function UsersPage() {
   return (
     <div>
       <PageHeader title={t('users.title')} />
-      <Card>
-      {contextHolder}
-      <ListToolbar
-        search={search}
-        onSearch={setSearch}
-        count={shown.length}
-        actions={
-          <Button type="primary" onClick={() => setInviteOpen(true)}>
-            {t('users.invite')}
-          </Button>
-        }
-      />
-      <Table
-        rowKey="membershipId"
-        loading={isLoading}
-        dataSource={shown}
-        locale={tableLocale(usersQuery)}
-        pagination={false}
-        columns={[
-          {
-            title: t('users.name'),
-            render: (_: unknown, m: Membership) =>
-              m.status === 'INVITED' ? (
-                <Typography.Text type="secondary">{t('users.notAcceptedYet')}</Typography.Text>
-              ) : (
-                m.user.fullName
-              ),
-          },
-          { title: t('users.email'), render: (_: unknown, m: Membership) => m.user.email },
-          {
-            title: t('users.role'),
-            render: (_: unknown, m: Membership) =>
-              roleName(m.role.code, m.role.nameAr, m.role.nameEn),
-          },
-          {
-            title: t('common.status'),
-            dataIndex: 'status',
-            render: (s: string) => <Tag color={STATUS_COLORS[s]}>{t(`users.status.${s}`)}</Tag>,
-          },
-          {
-            title: t('users.purchase'),
-            render: (_: unknown, m: Membership) => (
-              <Space size={4} wrap>
-                <PurchasePermissionTags member={m} />
-                {/* Only an owner grants them, and an owner holds them all (ADR-024 §3.2). */}
-                {isOwner && m.role.code !== 'OWNER' && (
-                  <Tooltip title={t('users.purchaseEdit')}>
-                    <Button
+      {isOwner && (
+        <Tabs
+          activeKey={tab}
+          onChange={(k) => setTab(k === 'roles' ? 'roles' : 'members')}
+          items={[
+            { key: 'members', label: t('users.membersTab') },
+            { key: 'roles', label: t('users.rolesTab') },
+          ]}
+        />
+      )}
+      {isOwner && tab === 'roles' ? (
+        <Card>
+          <RolesTab />
+        </Card>
+      ) : (
+        <Card>
+          {contextHolder}
+          <ListToolbar
+            search={search}
+            onSearch={setSearch}
+            count={shown.length}
+            actions={
+              <Button type="primary" onClick={() => setInviteOpen(true)}>
+                {t('users.invite')}
+              </Button>
+            }
+          />
+          <Table
+            rowKey="membershipId"
+            loading={isLoading}
+            dataSource={shown}
+            locale={tableLocale(usersQuery)}
+            pagination={false}
+            columns={[
+              {
+                title: t('users.name'),
+                render: (_: unknown, m: Membership) =>
+                  m.status === 'INVITED' ? (
+                    <Typography.Text type="secondary">{t('users.notAcceptedYet')}</Typography.Text>
+                  ) : (
+                    m.user.fullName
+                  ),
+              },
+              { title: t('users.email'), render: (_: unknown, m: Membership) => m.user.email },
+              {
+                title: t('users.role'),
+                render: (_: unknown, m: Membership) =>
+                  roleName(m.role.code, m.role.nameAr, m.role.nameEn),
+              },
+              {
+                title: t('users.customRole'),
+                render: (_: unknown, m: Membership) =>
+                  // Never for an owner (ADR-038 §2); only an owner assigns one.
+                  m.role.code === 'OWNER' ? null : isOwner && canManage(m) ? (
+                    <Select
                       size="small"
-                      icon={<EditOutlined />}
-                      aria-label={t('users.purchaseEdit')}
-                      onClick={() => setPurchaseMember(m)}
+                      style={{ width: 170 }}
+                      aria-label={t('users.customRole')}
+                      title={t('users.customRoleHint')}
+                      value={m.customRole?.id ?? ''}
+                      onChange={(v: string) =>
+                        changeCustomRole.mutate({ id: m.membershipId, customRoleId: v || null })
+                      }
+                      options={[
+                        { value: '', label: t('users.customRoleNone') },
+                        ...(customRoles ?? []).map((r) => ({
+                          value: r.id,
+                          label: roleName(r.code, r.nameAr, r.nameEn ?? null),
+                        })),
+                      ]}
                     />
-                  </Tooltip>
-                )}
-              </Space>
-            ),
-          },
-          {
-            title: t('users.actions'),
-            render: (_: unknown, m: Membership) => (
-              <Space wrap>
-                {canManage(m) && (
-                  <Select
-                    size="small"
-                    style={{ width: 140 }}
-                    value={m.role.code}
-                    onChange={(roleCode) => changeRole.mutate({ id: m.membershipId, roleCode })}
-                    options={roleOptions}
-                  />
-                )}
-                {canResetPassword(m) && (
-                  <Popconfirm
-                    title={t('users.resetPasswordConfirm')}
-                    okText={t('common.ok')}
-                    cancelText={t('common.cancel')}
-                    onConfirm={() => resetPassword.mutate(m.membershipId)}
-                  >
-                    {/* Icon only: the actions column stays narrow next to role and suspend. */}
-                    <Tooltip title={t('users.resetPassword')}>
-                      <Button
+                  ) : m.customRole ? (
+                    roleName(m.customRole.code, m.customRole.nameAr, m.customRole.nameEn)
+                  ) : null,
+              },
+              {
+                title: t('common.status'),
+                dataIndex: 'status',
+                render: (s: string) => <Tag color={STATUS_COLORS[s]}>{t(`users.status.${s}`)}</Tag>,
+              },
+              {
+                title: t('users.purchase'),
+                render: (_: unknown, m: Membership) => (
+                  <Space size={4} wrap>
+                    <PurchasePermissionTags member={m} />
+                    {/* Only an owner grants them, and an owner holds them all (ADR-024 §3.2). */}
+                    {isOwner && m.role.code !== 'OWNER' && (
+                      <Tooltip title={t('users.purchaseEdit')}>
+                        <Button
+                          size="small"
+                          icon={<EditOutlined />}
+                          aria-label={t('users.purchaseEdit')}
+                          onClick={() => setPurchaseMember(m)}
+                        />
+                      </Tooltip>
+                    )}
+                  </Space>
+                ),
+              },
+              {
+                title: t('users.actions'),
+                render: (_: unknown, m: Membership) => (
+                  <Space wrap>
+                    {canManage(m) && (
+                      <Select
                         size="small"
-                        icon={<KeyOutlined />}
-                        aria-label={t('users.resetPassword')}
-                        loading={resetPassword.isPending && resetPassword.variables === m.membershipId}
+                        style={{ width: 140 }}
+                        value={m.role.code}
+                        onChange={(roleCode) => changeRole.mutate({ id: m.membershipId, roleCode })}
+                        options={roleOptions}
                       />
-                    </Tooltip>
-                  </Popconfirm>
-                )}
-                {m.status === 'ACTIVE' && canManage(m) && (
-                  <Button
-                    size="small"
-                    danger
-                    onClick={() => suspend.mutate(m.membershipId)}
-                  >
-                    {t('users.suspend')}
-                  </Button>
-                )}
-                {m.status === 'INVITED' && canManage(m) && (
-                  <>
-                    <Tooltip title={t('users.statusLockedInvited')}>
-                      <span>
-                        <Button size="small" disabled>
-                          {t('users.suspend')}
-                        </Button>
-                      </span>
-                    </Tooltip>
-                    <Button
-                      size="small"
-                      loading={reissue.isPending && reissue.variables === m.membershipId}
-                      onClick={() => reissue.mutate(m.membershipId)}
-                    >
-                      {t('users.newCode')}
-                    </Button>
-                    <Popconfirm
-                      title={t('users.cancelInvitationConfirm')}
-                      okText={t('common.ok')}
-                      cancelText={t('common.cancel')}
-                      onConfirm={() => cancelInvitation.mutate(m.membershipId)}
-                    >
-                      <Button
-                        size="small"
-                        danger
-                        loading={cancelInvitation.isPending && cancelInvitation.variables === m.membershipId}
+                    )}
+                    {canResetPassword(m) && (
+                      <Popconfirm
+                        title={t('users.resetPasswordConfirm')}
+                        okText={t('common.ok')}
+                        cancelText={t('common.cancel')}
+                        onConfirm={() => resetPassword.mutate(m.membershipId)}
                       >
-                        {t('users.cancelInvitation')}
+                        {/* Icon only: the actions column stays narrow next to role and suspend. */}
+                        <Tooltip title={t('users.resetPassword')}>
+                          <Button
+                            size="small"
+                            icon={<KeyOutlined />}
+                            aria-label={t('users.resetPassword')}
+                            loading={
+                              resetPassword.isPending && resetPassword.variables === m.membershipId
+                            }
+                          />
+                        </Tooltip>
+                      </Popconfirm>
+                    )}
+                    {m.status === 'ACTIVE' && canManage(m) && (
+                      <Button size="small" danger onClick={() => suspend.mutate(m.membershipId)}>
+                        {t('users.suspend')}
                       </Button>
-                    </Popconfirm>
-                  </>
-                )}
-              </Space>
-            ),
-          },
-        ]}
-      />
+                    )}
+                    {m.status === 'INVITED' && canManage(m) && (
+                      <>
+                        <Tooltip title={t('users.statusLockedInvited')}>
+                          <span>
+                            <Button size="small" disabled>
+                              {t('users.suspend')}
+                            </Button>
+                          </span>
+                        </Tooltip>
+                        <Button
+                          size="small"
+                          loading={reissue.isPending && reissue.variables === m.membershipId}
+                          onClick={() => reissue.mutate(m.membershipId)}
+                        >
+                          {t('users.newCode')}
+                        </Button>
+                        <Popconfirm
+                          title={t('users.cancelInvitationConfirm')}
+                          okText={t('common.ok')}
+                          cancelText={t('common.cancel')}
+                          onConfirm={() => cancelInvitation.mutate(m.membershipId)}
+                        >
+                          <Button
+                            size="small"
+                            danger
+                            loading={
+                              cancelInvitation.isPending &&
+                              cancelInvitation.variables === m.membershipId
+                            }
+                          >
+                            {t('users.cancelInvitation')}
+                          </Button>
+                        </Popconfirm>
+                      </>
+                    )}
+                  </Space>
+                ),
+              },
+            ]}
+          />
 
-      <PurchasePermissionsDialog member={purchaseMember} onClose={() => setPurchaseMember(null)} />
+          <PurchasePermissionsDialog
+            member={purchaseMember}
+            onClose={() => setPurchaseMember(null)}
+          />
 
-      <FormDialog
-        title={t('users.invite')}
-        open={inviteOpen && tempPassword === null}
-        onCancel={() => setInviteOpen(false)}
-        onSave={() => inviteForm.submit()}
-        saving={invite.isPending}
-      >
-        <Form
-          form={inviteForm}
-          layout="vertical"
-          onFinish={(v) => invite.mutate(v)}
-        >
-          <FormSection title={t('users.details')} icon={<UserOutlined />}>
-            <Form.Item name="email" label={t('users.email')} rules={[{ required: true, type: 'email' }]}>
-              <Input />
-            </Form.Item>
-            <Form.Item name="fullName" label={t('users.name')}>
-              <Input />
-            </Form.Item>
-            <Form.Item name="roleCode" label={t('users.role')} rules={[{ required: true }]}>
-              <Select options={roleOptions} />
-            </Form.Item>
-          </FormSection>
-        </Form>
-      </FormDialog>
-
-      <Modal
-        title={
-          tempPassword?.purpose === 'reset'
-            ? t('users.resetPasswordTitle')
-            : t('users.tempPasswordTitle')
-        }
-        open={tempPassword !== null}
-        footer={[
-          <Button
-            key="ok"
-            type="primary"
-            onClick={() => {
-              setTempPassword(null);
-              setInviteOpen(false);
-              inviteForm.resetFields();
-            }}
+          <FormDialog
+            title={t('users.invite')}
+            open={inviteOpen && tempPassword === null}
+            onCancel={() => setInviteOpen(false)}
+            onSave={() => inviteForm.submit()}
+            saving={invite.isPending}
           >
-            {t('common.ok')}
-          </Button>,
-        ]}
-      >
-        <p>
-          {tempPassword?.purpose === 'reset'
-            ? t('users.resetPasswordBody')
-            : t('users.tempPasswordBody')}
-        </p>
-        <Typography.Text code copyable>
-          {tempPassword?.value}
-        </Typography.Text>
-      </Modal>
+            <Form form={inviteForm} layout="vertical" onFinish={(v) => invite.mutate(v)}>
+              <FormSection title={t('users.details')} icon={<UserOutlined />}>
+                <Form.Item
+                  name="email"
+                  label={t('users.email')}
+                  rules={[{ required: true, type: 'email' }]}
+                >
+                  <Input />
+                </Form.Item>
+                <Form.Item name="fullName" label={t('users.name')}>
+                  <Input />
+                </Form.Item>
+                <Form.Item name="roleCode" label={t('users.role')} rules={[{ required: true }]}>
+                  <Select options={roleOptions} />
+                </Form.Item>
+              </FormSection>
+            </Form>
+          </FormDialog>
 
-      <Modal
-        title={t('users.codeTitle')}
-        open={issuedCode !== null}
-        onCancel={() => setIssuedCode(null)}
-        footer={[
-          <Button key="ok" type="primary" onClick={() => setIssuedCode(null)}>
-            {t('common.ok')}
-          </Button>,
-        ]}
-      >
-        <p>{t('users.codeBody')}</p>
-        <Space wrap size={12} align="center">
-          <Typography.Text
-            strong
-            style={{
-              fontFamily: CODE_FONT,
-              fontSize: 28,
-              letterSpacing: 4,
-              direction: 'ltr',
-              unicodeBidi: 'isolate',
-            }}
+          <Modal
+            title={
+              tempPassword?.purpose === 'reset'
+                ? t('users.resetPasswordTitle')
+                : t('users.tempPasswordTitle')
+            }
+            open={tempPassword !== null}
+            footer={[
+              <Button
+                key="ok"
+                type="primary"
+                onClick={() => {
+                  setTempPassword(null);
+                  setInviteOpen(false);
+                  inviteForm.resetFields();
+                }}
+              >
+                {t('common.ok')}
+              </Button>,
+            ]}
           >
-            {issuedCode?.value}
-          </Typography.Text>
-          <Button
-            icon={codeCopied ? <CheckOutlined /> : <CopyOutlined />}
-            onClick={() => void copyCode()}
+            <p>
+              {tempPassword?.purpose === 'reset'
+                ? t('users.resetPasswordBody')
+                : t('users.tempPasswordBody')}
+            </p>
+            <Typography.Text code copyable>
+              {tempPassword?.value}
+            </Typography.Text>
+          </Modal>
+
+          <Modal
+            title={t('users.codeTitle')}
+            open={issuedCode !== null}
+            onCancel={() => setIssuedCode(null)}
+            footer={[
+              <Button key="ok" type="primary" onClick={() => setIssuedCode(null)}>
+                {t('common.ok')}
+              </Button>,
+            ]}
           >
-            {codeCopied ? t('users.codeCopied') : t('users.codeCopy')}
-          </Button>
-        </Space>
-        <p>
-          <Typography.Text type="secondary">
-            {t('users.codeExpires', {
-              // First-strong isolate: the date keeps its left-to-right order inside an Arabic sentence.
-              date: issuedCode ? `⁨${dayjs(issuedCode.expiresAt).format(DATE_FORMAT)}⁩` : '',
-            })}
-          </Typography.Text>
-        </p>
-      </Modal>
-      </Card>
+            <p>{t('users.codeBody')}</p>
+            <Space wrap size={12} align="center">
+              <Typography.Text
+                strong
+                style={{
+                  fontFamily: CODE_FONT,
+                  fontSize: 28,
+                  letterSpacing: 4,
+                  direction: 'ltr',
+                  unicodeBidi: 'isolate',
+                }}
+              >
+                {issuedCode?.value}
+              </Typography.Text>
+              <Button
+                icon={codeCopied ? <CheckOutlined /> : <CopyOutlined />}
+                onClick={() => void copyCode()}
+              >
+                {codeCopied ? t('users.codeCopied') : t('users.codeCopy')}
+              </Button>
+            </Space>
+            <p>
+              <Typography.Text type="secondary">
+                {t('users.codeExpires', {
+                  // First-strong isolate: the date keeps its left-to-right order inside an Arabic sentence.
+                  date: issuedCode ? `⁨${dayjs(issuedCode.expiresAt).format(DATE_FORMAT)}⁩` : '',
+                })}
+              </Typography.Text>
+            </p>
+          </Modal>
+        </Card>
+      )}
     </div>
   );
 }

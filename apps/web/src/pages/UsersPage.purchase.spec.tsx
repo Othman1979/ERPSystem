@@ -29,6 +29,7 @@ const member = (id: string, roleCode: string, purchasePermissions: UserMembershi
   updatedAt: '2026-11-01T00:00:00Z',
   user: { id: `u${id}`, email: `m${id}@a.test`, fullName: `Member ${id}`, isActive: true },
   role: { code: roleCode, nameAr: roleCode, nameEn: roleCode },
+  customRole: null,
   defaultBranch: null,
   branches: [],
   purchasePermissions,
