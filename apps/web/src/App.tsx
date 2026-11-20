@@ -150,10 +150,10 @@ function HomeGroup({ group, onOpen }: { group: AppGroup; onOpen: (route: AppRout
 
 function HomeScreen() {
   const { t } = useTranslation();
-  const { me, can } = useAuth();
+  const { me, can, allBranches } = useAuth();
   // Only what the role can use: the API would refuse the rest with 403.
-  const quickActions = QUICK_ACTIONS.filter((a) => can(a.permission));
-  const groups = allowedGroups(APP_GROUPS, can, useProcurementLevel());
+  const quickActions = QUICK_ACTIONS.filter((a) => can(a.permission) && (a.key !== 'payrollRun' || allBranches));
+  const groups = allowedGroups(APP_GROUPS, can, useProcurementLevel(), allBranches);
   const canSetUp = can(SETUP_PERMISSION);
   const navigate = useNavigate();
   const company = useCompany();
@@ -210,7 +210,7 @@ function HomeScreen() {
 
 function AppShell() {
   const { t } = useTranslation();
-  const { me, logout, switchTenant, branchId, setBranch, companyId, setCompany, can } = useAuth();
+  const { me, logout, switchTenant, branchId, setBranch, companyId, setCompany, can, allBranches } = useAuth();
   const companies = me?.currentMembership?.companies ?? [];
   const branches = me?.currentMembership?.branches ?? [];
   const location = useLocation();
@@ -249,7 +249,7 @@ function AppShell() {
       // Screens the role cannot use are not offered (the API would answer 403).
       ...(noCompany
         ? APP_GROUPS.filter((g) => g.routes.some((r) => r.path === INVITATIONS_PATH))
-        : allowedGroups(APP_GROUPS, can, procurementLevel)
+        : allowedGroups(APP_GROUPS, can, procurementLevel, allBranches)
       ).map((g) => ({
         type: 'group' as const,
         key: g.label,
@@ -465,6 +465,7 @@ function AppShell() {
         <Ribbon
           can={can}
           procurementLevel={procurementLevel}
+          allBranches={allBranches}
           noCompany={noCompany}
           isPlatformAdmin={isPlatformAdmin}
           pendingInvitations={pendingInvitations}

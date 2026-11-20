@@ -146,6 +146,9 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     );
     const payrollElements = (await asA('get', '/payroll/elements')).body as { id: string; code: string }[];
     id.transportElement = payrollElements.find((element) => element.code === 'TRANSPORT')!.id;
+    await create(`/payroll/employees/${id.employee}/recurring-elements`, {
+      payElementId: id.transportElement, amount: '1.000', validFrom: '2026-01-01',
+    }, 'payrollRecurring');
     await create(`/payroll/employees/${id.employee}/salaries`, { effectiveFrom: '2026-01-01', basicSalary: '10.000' }, 'payrollSalary');
     await create('/payroll/inputs', { employeeId: id.employee, payElementId: id.transportElement, period: '2026-01', amount: '1.000' }, 'payrollInput');
     await create('/payroll/runs', { period: '2026-01' }, 'payrollRun');
@@ -385,6 +388,8 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       else if (name === 'lineId' && p.includes('/payroll/')) values[name] = id.payrollLine;
       else if (name === 'lineId') values[name] = id.stockCountLine;
       else if (name === 'id' && seg === 'payroll' && p.includes('/employees/')) values[name] = id.employee;
+      else if (name === 'rid' && seg === 'payroll' && p.includes('/recurring-elements/')) values[name] = id.payrollRecurring;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/elements/')) values[name] = id.transportElement;
       else if (name === 'id' && seg === 'payroll' && p.includes('/inputs/')) values[name] = id.payrollInput;
       else if (name === 'id' && seg === 'payroll' && p.includes('/runs/')) values[name] = id.payrollRun;
       else if (name === 'itemId') values[name] = id.item;
