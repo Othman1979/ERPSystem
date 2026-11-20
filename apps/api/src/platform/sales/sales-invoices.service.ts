@@ -957,7 +957,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     );
     const discountAmount = sum(calculation.lines.map((line) => line.amounts.discountAmount));
     return {
-      subtotal: sum(dto.lines.map((line) => new Decimal(line.qty).times(line.unitPrice))),
+      subtotal: sum(calculation.lines.map((line) => round3(new Decimal(line.dto.qty).times(line.dto.unitPrice)))),
       lineDiscountAmount,
       invoiceDiscountAmount: calculation.invoiceDiscountAmount,
       discountAmount,

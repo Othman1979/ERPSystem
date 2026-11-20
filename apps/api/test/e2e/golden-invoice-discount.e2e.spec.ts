@@ -461,6 +461,20 @@ describe('Golden scenarios D1–D3 — invoice-level discount (ADR-034)', () => 
     h.ok(await h.patchCompany(token, { pricesIncludeTax: false }), 200, 'restore tax-exclusive prices');
   });
 
+  it('rounds each preview line gross before summing the subtotal', async () => {
+    const preview = h.ok(
+      await h.api().post('/api/v1/sales-invoices/preview').set(h.auth(token)).send({
+        lines: [
+          { itemId: service, qty: '1.5', unitPrice: '0.333' },
+          { itemId: service, qty: '1.5', unitPrice: '0.333' },
+        ],
+      }),
+      200,
+      'preview invoice',
+    ) as { subtotal: string };
+    expect(m3(preview.subtotal)).toBe('1.000');
+  });
+
   it('rejects a discount above the line total, a percent with an amount, and a negative discount', async () => {
     const base = {
       invoiceDate: '2025-02-06',
