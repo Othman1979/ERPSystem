@@ -123,6 +123,13 @@ export class PayrollController {
     return this.payroll.getRun(id);
   }
 
+  @Delete('runs/:id')
+  @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiOkResponse()
+  deleteRun(@Param('id') id: string) {
+    return this.payroll.deleteRun(BigInt(id));
+  }
+
   @Post('runs/:id/recompute')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
   recomputeRun(@Param('id') id: string) {

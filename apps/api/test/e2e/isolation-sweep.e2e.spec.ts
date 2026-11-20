@@ -451,6 +451,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
   const fill = (p: string, values: Record<string, string>) => p.replace(/\{(\w+)\}/g, (_, n: string) => values[n]);
 
   it("B reaches none of A's records through any route that takes an id", async () => {
+    expect(ops).toContainEqual(expect.objectContaining({ method: 'DELETE', path: '/api/v1/payroll/runs/{id}' }));
     const withParams = ops.filter((o) => o.path.includes('{'));
     const uncovered: string[] = [];
     const wrong: string[] = [];

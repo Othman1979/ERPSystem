@@ -2179,6 +2179,7 @@ export const ar = {
     IDEMPOTENCY_ALREADY_APPLIED: 'تم تنفيذ هذا الطلب مسبقاً؛ أعد تحميل الصفحة لعرض النتيجة',
     PAYROLL_NEGATIVE_NET: 'صافي الراتب لا يمكن أن يكون سالباً',
     PAYROLL_RUN_EXISTS: 'توجد مسيرة رواتب غير معكوسة لهذه الفترة',
+    PAYROLL_NO_EMPLOYEES: 'لا يوجد موظفون مؤهلون لفترة الرواتب',
     PAYROLL_SETTINGS_REQUIRED: 'لا توجد إعدادات رواتب سارية لهذه الفترة',
     PAYROLL_ACCOUNT_INVALID: 'حساب عنصر الراتب غير صالح لنوعه',
     EINVOICE_BUYER_REQUIRED:
@@ -4454,6 +4455,7 @@ export const en: typeof ar = {
     IDEMPOTENCY_ALREADY_APPLIED: 'This request was already applied; reload to see the result',
     PAYROLL_NEGATIVE_NET: 'Net pay cannot be negative',
     PAYROLL_RUN_EXISTS: 'A non-reversed payroll run already exists for this period',
+    PAYROLL_NO_EMPLOYEES: 'There are no eligible employees for this payroll period',
     PAYROLL_SETTINGS_REQUIRED: 'No payroll settings are effective for this period',
     PAYROLL_ACCOUNT_INVALID: 'The pay element account is invalid for its type',
     EINVOICE_BUYER_REQUIRED:

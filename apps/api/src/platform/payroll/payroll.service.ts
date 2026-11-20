@@ -339,9 +339,33 @@ export class PayrollService {
         data: { tenantId, companyId, period, runDate: bounds.end },
       });
       await this.computeRun(tx, tenantId, companyId, run.id, period, new Map());
+      const lineCount = await tx.payrollLine.count({ where: { payrollRunId: run.id } });
+      if (lineCount === 0) throw new DomainError(ErrorCode.PAYROLL_NO_EMPLOYEES, 'No eligible employees for payroll period');
       return run.id;
     }, POSTING_TX_OPTIONS);
     return this.getRun(runId.toString());
+  }
+
+  async deleteRun(id: bigint) {
+    this.canManage();
+    const { tenantId, companyId, db } = this.context();
+    return db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM payroll_runs WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id = ${id} FOR UPDATE`;
+      const run = await tx.payrollRun.findFirst({ where: { id } });
+      if (!run) throw DomainError.notFound('PayrollRun', id.toString());
+      if (run.status !== 'DRAFT') {
+        throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only draft payroll runs can be deleted');
+      }
+      const lines = await tx.payrollLine.findMany({ where: { payrollRunId: id }, select: { id: true } });
+      if (lines.length) {
+        await tx.payrollLineItem.deleteMany({ where: { payrollLineId: { in: lines.map((line) => line.id) } } });
+      }
+      await tx.payrollLine.deleteMany({ where: { payrollRunId: id } });
+      await tx.payrollRun.delete({ where: { id } });
+      await this.audit.log({ action: 'payroll.run.delete', entityType: 'payroll_run', entityId: id, after: null }, tx);
+      return { id: id.toString(), deleted: true };
+    }, POSTING_TX_OPTIONS);
   }
 
   async recomputeRun(id: bigint) {
