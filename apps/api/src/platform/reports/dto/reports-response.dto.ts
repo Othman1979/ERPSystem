@@ -505,3 +505,65 @@ export class DashboardSummaryDto {
   @ApiProperty({ type: () => DashboardBelowMinimumDto })
   belowMinimum!: DashboardBelowMinimumDto;
 }
+
+/** One account's cash effect, Cr − Dr over the period (ADR-036). */
+export class CashFlowRowDto {
+  @ApiProperty({ type: 'string' })
+  accountId!: string;
+
+  @ApiProperty({ type: 'string' })
+  code!: string;
+
+  @ApiProperty({ type: 'string' })
+  nameAr!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  nameEn!: string | null;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  amount!: string;
+}
+
+export class CashFlowSectionDto {
+  @ApiProperty({ type: () => CashFlowRowDto, isArray: true })
+  rows!: CashFlowRowDto[];
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  total!: string;
+}
+
+/** The cash flow statement as JSON (`format=json`, the default). */
+export class CashFlowDto {
+  @ApiProperty({ type: 'string', format: 'date' })
+  from!: string;
+
+  @ApiProperty({ type: 'string', format: 'date' })
+  to!: string;
+
+  @ApiProperty({ type: () => StatementFiscalYearRefDto, nullable: true })
+  fiscalYear!: StatementFiscalYearRefDto | null;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  netProfit!: string;
+
+  @ApiProperty({ type: () => CashFlowSectionDto, description: 'Its total includes the net profit.' })
+  operating!: CashFlowSectionDto;
+
+  @ApiProperty({ type: () => CashFlowSectionDto })
+  investing!: CashFlowSectionDto;
+
+  @ApiProperty({ type: () => CashFlowSectionDto })
+  financing!: CashFlowSectionDto;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  netChange!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  openingCash!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  closingCash!: string;
+
+  @ApiProperty({ description: 'openingCash + netChange = closingCash.' })
+  reconciles!: boolean;
+}

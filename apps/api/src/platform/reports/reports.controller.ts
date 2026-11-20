@@ -16,6 +16,7 @@ import {
 } from './dto/reports.dto.js';
 import {
   BalanceSheetDto,
+  CashFlowDto,
   DashboardSummaryDto,
   IncomeStatementByCostCenterDto,
   IncomeStatementDto,
@@ -25,7 +26,7 @@ import {
   TaxSummaryDto,
 } from './dto/reports-response.dto.js';
 import { FinancialStatementsService } from './financial-statements.service.js';
-import { balanceSheetTable, incomeByCostCenterTable, incomeStatementTable } from './financial-statements.table.js';
+import { balanceSheetTable, cashFlowTable, incomeByCostCenterTable, incomeStatementTable } from './financial-statements.table.js';
 import { TaxSummaryService } from './tax-summary.service.js';
 import { taxSummaryTable } from './tax-summary.table.js';
 import { TradeSummaryService } from './trade-summary.service.js';
@@ -81,6 +82,15 @@ export class ReportsController {
   @ApiFileResponse(REPORT_FILE_TYPES, BalanceSheetDto)
   async balanceSheet(@Query() q: AsOfQueryDto) {
     return this.printing.respond(await this.statements.balanceSheet(q), q, balanceSheetTable);
+  }
+
+  /** Indirect method (ADR-036); company-wide (ADR-003 §13). */
+  @Get('reports/cash-flow')
+  @RequirePermission(PERMISSIONS.REPORTS_VIEW)
+  @RequireAllBranches()
+  @ApiFileResponse(REPORT_FILE_TYPES, CashFlowDto)
+  async cashFlow(@Query() q: PeriodQueryDto) {
+    return this.printing.respond(await this.statements.cashFlow(q), q, cashFlowTable);
   }
 
   @Get('reports/tax-summary')

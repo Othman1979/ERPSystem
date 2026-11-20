@@ -17,6 +17,7 @@ import { DATE_PATTERN, ID_PATTERN } from '../../../common/pipes/parse-id.pipe.js
 const ACCOUNT_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'] as const;
 const NORMAL_BALANCES = ['DEBIT', 'CREDIT'] as const;
 const CONTROL_TYPES = ['CUSTOMERS', 'SUPPLIERS', 'CASH', 'BANK'] as const;
+const CASH_FLOW_ACTIVITIES = ['OPERATING', 'INVESTING', 'FINANCING'] as const;
 
 export class CreateAccountDto {
   /** Optional when parentId is set — the server auto-generates `parent-NN`. */
@@ -64,6 +65,11 @@ export class CreateAccountDto {
   @IsOptional()
   @IsBoolean()
   costCenterRequired?: boolean;
+
+  /** Cash flow section (ADR-036 §3); ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default. */
+  @IsOptional()
+  @IsIn(CASH_FLOW_ACTIVITIES)
+  cashFlowActivity?: (typeof CASH_FLOW_ACTIVITIES)[number] | null;
 }
 
 export class UpdateAccountDto {
@@ -90,6 +96,11 @@ export class UpdateAccountDto {
   @IsOptional()
   @IsBoolean()
   costCenterRequired?: boolean;
+
+  /** Cash flow section (ADR-036 §3); ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default. */
+  @IsOptional()
+  @IsIn(CASH_FLOW_ACTIVITIES)
+  cashFlowActivity?: (typeof CASH_FLOW_ACTIVITIES)[number] | null;
 }
 
 export class CreateFiscalYearDto {

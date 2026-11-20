@@ -286,3 +286,70 @@ export function incomeStatementByCostCenter(
     netProfit: { amounts: net.map((a) => a.toFixed(3)), total: revenue.total.minus(expenses.total).toFixed(3) },
   };
 }
+
+export type CashFlowActivityCode = 'OPERATING' | 'INVESTING' | 'FINANCING';
+
+export interface CashFlowRow {
+  accountId: string;
+  code: string;
+  nameAr: string;
+  nameEn: string | null;
+  amount: string;
+}
+
+const isCash = (a: ChartAccount) => a.controlType === 'CASH' || a.controlType === 'BANK';
+
+/** ADR-036 §3: the account's section; null for cash and income statement accounts. */
+export function cashFlowActivityOf(a: ChartAccount): CashFlowActivityCode | null {
+  if (isCash(a) || a.accountType === 'REVENUE' || a.accountType === 'EXPENSE') return null;
+  return a.cashFlowActivity ?? (a.accountType === 'EQUITY' ? 'FINANCING' : 'OPERATING');
+}
+
+/** Σ (Dr − Cr) over the cash and bank accounts. */
+export function cashBalance(totals: AccountTotal[]): Decimal {
+  return totals.filter((t) => isCash(t.account)).reduce((s, t) => s.plus(t.debit).minus(t.credit), new Decimal(0));
+}
+
+/**
+ * Cash flow statement, indirect method (ADR-036 §1), over the period's totals
+ * without closing entries:
+ *  - operating = net profit + Σ (Cr − Dr) of OPERATING accounts;
+ *  - investing / financing = Σ (Cr − Dr) of their accounts;
+ *  - net change = Σ sections = Σ (Dr − Cr) of cash accounts, by double entry;
+ *  - closing = opening + net change (`reconciles` checks it against the cash balance at `to`).
+ */
+export function cashFlow(periodTotals: AccountTotal[], openingCash: Decimal, closingCash: Decimal) {
+  const netProfit = profitOf(periodTotals);
+  const sections: Record<CashFlowActivityCode, { rows: CashFlowRow[]; total: Decimal }> = {
+    OPERATING: { rows: [], total: netProfit },
+    INVESTING: { rows: [], total: new Decimal(0) },
+    FINANCING: { rows: [], total: new Decimal(0) },
+  };
+  for (const t of periodTotals) {
+    const activity = cashFlowActivityOf(t.account);
+    if (!activity) continue;
+    const effect = t.credit.minus(t.debit);
+    if (effect.isZero()) continue;
+    sections[activity].rows.push({
+      accountId: t.account.id.toString(),
+      code: t.account.code,
+      nameAr: t.account.nameAr,
+      nameEn: t.account.nameEn,
+      amount: effect.toFixed(3),
+    });
+    sections[activity].total = sections[activity].total.plus(effect);
+  }
+  const netChange = sections.OPERATING.total.plus(sections.INVESTING.total).plus(sections.FINANCING.total);
+  const expectedClosing = openingCash.plus(netChange);
+  const section = (k: CashFlowActivityCode) => ({ rows: sections[k].rows, total: sections[k].total.toFixed(3) });
+  return {
+    netProfit: netProfit.toFixed(3),
+    operating: section('OPERATING'),
+    investing: section('INVESTING'),
+    financing: section('FINANCING'),
+    netChange: netChange.toFixed(3),
+    openingCash: openingCash.toFixed(3),
+    closingCash: closingCash.toFixed(3),
+    reconciles: expectedClosing.equals(closingCash),
+  };
+}

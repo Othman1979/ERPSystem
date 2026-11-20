@@ -7,6 +7,7 @@ import type { StatementRow } from './statements.js';
 type Lang = 'ar' | 'en';
 type IncomeStatement = Awaited<ReturnType<FinancialStatementsService['incomeStatement']>>;
 type BalanceSheet = Awaited<ReturnType<FinancialStatementsService['balanceSheet']>>;
+type CashFlow = Awaited<ReturnType<FinancialStatementsService['cashFlow']>>;
 type IncomeByCostCenter = Awaited<ReturnType<FinancialStatementsService['incomeStatementByCostCenter']>>;
 
 const columns = (lang: Lang) => [
@@ -120,5 +121,33 @@ export function incomeByCostCenterTable(data: IncomeByCostCenter, lang: Lang): R
       { account: t('إجمالي المصروفات', 'Total expenses'), _bold: true, ...amounts(data.expenses.totals, data.expenses.total) },
     ],
     totals: [{ account: t('صافي الربح (الخسارة)', 'Net profit (loss)'), ...amounts(data.netProfit.amounts, data.netProfit.total) }],
+  };
+}
+
+/** Cash flow JSON → export table: net profit and the three sections, then the cash check. */
+export function cashFlowTable(data: CashFlow, lang: Lang): ReportTable {
+  const t = (ar: string, en: string) => L({ lang }, ar, en);
+  const rows = (list: CashFlow['operating']['rows']): ReportRow[] =>
+    list.map((r) => ({ account: `${r.code} ${localName(lang, r.nameAr, r.nameEn)}`, amount: r.amount, _indent: 1 }));
+  return {
+    title: t('قائمة التدفقات النقدية', 'Cash flow statement'),
+    meta: [periodMeta(lang, data.from, data.to)],
+    fileName: `cash-flow-${data.from}-${data.to}`,
+    columns: columns(lang),
+    rows: [
+      heading(t('الأنشطة التشغيلية', 'Operating activities')),
+      { account: t('صافي الربح (الخسارة)', 'Net profit (loss)'), amount: data.netProfit, _indent: 1 },
+      ...rows(data.operating.rows),
+      subtotal(t('صافي النقد من الأنشطة التشغيلية', 'Net cash from operating activities'), data.operating.total),
+      heading(t('الأنشطة الاستثمارية', 'Investing activities')),
+      ...rows(data.investing.rows),
+      subtotal(t('صافي النقد من الأنشطة الاستثمارية', 'Net cash from investing activities'), data.investing.total),
+      heading(t('الأنشطة التمويلية', 'Financing activities')),
+      ...rows(data.financing.rows),
+      subtotal(t('صافي النقد من الأنشطة التمويلية', 'Net cash from financing activities'), data.financing.total),
+      subtotal(t('صافي التغير في النقدية', 'Net change in cash'), data.netChange),
+      { account: t('النقدية أول الفترة', 'Cash at beginning of period'), amount: data.openingCash },
+    ],
+    totals: [{ account: t('النقدية آخر الفترة', 'Cash at end of period'), amount: data.closingCash }],
   };
 }

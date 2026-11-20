@@ -50,6 +50,7 @@ export class ChartProvisioningService {
           isPostable: t.isPostable,
           isControl: t.isControl ?? false,
           controlType: t.controlType ?? null,
+          cashFlowActivity: t.cashFlowActivity ?? null,
           createdBy: userId ?? null,
         },
       });
