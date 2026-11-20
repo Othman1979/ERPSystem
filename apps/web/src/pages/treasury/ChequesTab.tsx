@@ -79,6 +79,7 @@ export function ChequesTab({ bankAccounts }: { bankAccounts: { value: string; la
     ...(direction ? { direction } : {}),
     ...(status ? { status } : {}),
     ...(dueTo ? { dueTo: dueTo.format(DAY) } : {}),
+    ...(search.trim() ? { q: search.trim() } : {}),
   };
   const name = (r: { nameAr: string; nameEn?: string | null } | null) =>
     r ? (i18n.language === 'en' ? r.nameEn || r.nameAr : r.nameAr) : '';
