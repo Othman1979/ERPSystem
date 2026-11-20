@@ -160,6 +160,7 @@ export enum ErrorCode {
   SALES_ORDER_NOT_INVOICEABLE = 'SALES_ORDER_NOT_INVOICEABLE',
   // ADR-027 §4: a line is priced below its order line or discounted more, with no price approval (details.lines).
   SALES_PRICE_APPROVAL_REQUIRED = 'SALES_PRICE_APPROVAL_REQUIRED',
+  INVOICE_DISCOUNT_INVALID = 'INVOICE_DISCOUNT_INVALID',
   // ADR-031 §5 (Phase 16): bill of materials. A loop through active versions is refused at activation.
   BOM_CYCLE = 'BOM_CYCLE',
   // ADR-031 §5: no active version for the item, and none was chosen explicitly.

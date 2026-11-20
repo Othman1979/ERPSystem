@@ -434,12 +434,18 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     expect([invoice.status, bodyText(invoice).includes(MARK)]).toEqual([404, false]);
     const price = await api().post(`/api/v1/sales-invoices/${id.salesDraft}/approve-price`).set(auth(b)).set(idem()).send({});
     expect([price.status, bodyText(price).includes(MARK)]).toEqual([404, false]);
+    const discountPreview = await api()
+      .post('/api/v1/sales-invoices/preview')
+      .set(auth(b))
+      .send({ lines: [{ itemId: id.item, qty: '1', unitPrice: '10.000' }] });
+    expect([discountPreview.status, bodyText(discountPreview).includes(MARK)]).toEqual([404, false]);
     const paths = ops.map((o) => `${o.method} ${o.path}`);
     expect(paths).toEqual(
       expect.arrayContaining([
         'GET /api/v1/sales-orders/{id}/invoiceable',
         'POST /api/v1/sales-orders/{id}/invoice',
         'POST /api/v1/sales-invoices/{id}/approve-price',
+        'POST /api/v1/sales-invoices/preview',
         'GET /api/v1/fiscal-years/{id}/closing-preview',
         'POST /api/v1/fiscal-years/{id}/close',
         'POST /api/v1/fiscal-years/{id}/open',

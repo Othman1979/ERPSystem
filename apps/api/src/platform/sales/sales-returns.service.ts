@@ -27,6 +27,7 @@ import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesReturnDto, ListSalesReturnsQueryDto } from './dto/sales.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { computeReturnLines, returnedByLine } from '../shared/return-lines.js';
+import { computeLineAmounts } from '../shared/invoice-math.js';
 import { assertRefundType } from '../shared/refund-type.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
@@ -331,7 +332,14 @@ export class SalesReturnsService {
       // Already-returned qty per original line (all statuses — drafts reserve qty).
       const prior = await tx.salesReturnLine.findMany({
         where: { tenantId, originalLine: { invoiceId: invoice.id } },
-        select: { originalLineId: true, qtyBase: true, discountAmount: true, netAmount: true, taxAmount: true },
+        select: {
+          originalLineId: true,
+          qtyBase: true,
+          discountAmount: true,
+          invoiceDiscountShare: true,
+          netAmount: true,
+          taxAmount: true,
+        },
       });
       const resolved = computeReturnLines(invoice.lines, dto.lines, returnedByLine(prior));
       const totals = {
@@ -379,6 +387,7 @@ export class SalesReturnsService {
           unitPrice: r.orig.unitPrice,
           discountPct: r.orig.discountPct,
           discountAmount: r.discountAmount,
+          invoiceDiscountShare: r.invoiceDiscountShare,
           netAmount: r.netAmount,
           taxCategoryId: r.orig.taxCategoryId,
           taxRate: r.orig.taxRate,
@@ -443,14 +452,40 @@ export class SalesReturnsService {
         // A return belongs to its original invoice's branch (ADR-003).
         const original = await tx.salesInvoice.findFirst({
           where: { id: draft.originalInvoiceId },
-          select: { branchId: true, paymentType: true, lines: { select: { id: true, lineNo: true, qtyBase: true } } },
+          select: {
+            branchId: true,
+            paymentType: true,
+            pricesIncludeTax: true,
+            invoiceDiscountAmount: true,
+            lines: {
+              select: {
+                id: true,
+                lineNo: true,
+                qty: true,
+                qtyBase: true,
+                unitPrice: true,
+                discountPct: true,
+                taxRate: true,
+                netAmount: true,
+                invoiceDiscountShare: true,
+              },
+            },
+          },
         });
         assertBranchAllowed(original?.branchId);
         if (original) assertRefundType(original.paymentType, draft.refundType);
         // TRADE-01: posted returns of the invoice plus this one stay within each line.
         const posted = await tx.salesReturnLine.findMany({
           where: { tenantId, salesReturn: { originalInvoiceId: draft.originalInvoiceId, status: 'POSTED' } },
-          select: { originalLineId: true, qtyBase: true, discountAmount: true, netAmount: true, taxAmount: true },
+          select: {
+            originalLineId: true,
+            qtyBase: true,
+            discountAmount: true,
+            invoiceDiscountShare: true,
+            invoiceDiscountNetShare: true,
+            netAmount: true,
+            taxAmount: true,
+          },
         });
         const postedByLine = returnedByLine(posted);
         for (const line of draft.lines) {
@@ -466,6 +501,35 @@ export class SalesReturnsService {
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Return has no lines');
         }
+        const invoiceDiscountNetByReturnLine = new Map<bigint, Decimal>();
+        if (original && original.invoiceDiscountAmount.gt(0)) {
+          for (const line of draft.lines) {
+            const orig = original.lines.find((candidate) => candidate.id === line.originalLineId);
+            if (!orig || orig.invoiceDiscountShare.isZero()) continue;
+            const preDiscountNet = computeLineAmounts({
+              qty: orig.qty,
+              factorToBase: '1',
+              unitPrice: orig.unitPrice,
+              discountPct: orig.discountPct,
+              taxRate: orig.taxRate,
+              pricesIncludeTax: original.pricesIncludeTax,
+            }).netAmount;
+            const totalNetDiscountShare = round3(preDiscountNet.minus(orig.netAmount));
+            const postedForLine = posted.filter((returned) => returned.originalLineId === orig.id);
+            const priorQty = sum(postedForLine.map((returned) => returned.qtyBase));
+            const priorNetShare = sum(postedForLine.map((returned) => returned.invoiceDiscountNetShare));
+            const completesLine = priorQty.plus(line.qtyBase).eq(orig.qtyBase);
+            const netShare = completesLine
+              ? round3(totalNetDiscountShare.minus(priorNetShare))
+              : round3(totalNetDiscountShare.times(line.qtyBase).div(orig.qtyBase));
+            invoiceDiscountNetByReturnLine.set(line.id, netShare);
+            await tx.salesReturnLine.update({
+              where: { tenantId_id: { tenantId, id: line.id } },
+              data: { invoiceDiscountNetShare: netShare },
+            });
+          }
+        }
+        const invoiceDiscountNetTotal = sum([...invoiceDiscountNetByReturnLine.values()]);
         await this.einvoice.assertReturnSendable(tx, companyId, {
           originalInvoiceId: draft.originalInvoiceId,
           reason: draft.reason,
@@ -512,15 +576,27 @@ export class SalesReturnsService {
           'INVENTORY',
           'INVENTORY_ADJUSTMENT',
           'CUSTOMERS_CONTROL',
+          ...(!invoiceDiscountNetTotal.isZero() ? ['SALES_DISCOUNTS' as const] : []),
         ]);
 
         const journalLines: JournalLineInput[] = [];
         const grand = draft.grandTotal;
-        const net = draft.netTotal;
+        const net = draft.netTotal.plus(invoiceDiscountNetTotal);
         const tax = draft.taxTotal;
 
         if (net.gt(0)) {
           journalLines.push({ accountId: mapping.SALES_RETURNS, debit: net.toString() });
+        }
+        if (invoiceDiscountNetTotal.gt(0)) {
+          journalLines.push({
+            accountId: mapping.SALES_DISCOUNTS,
+            credit: invoiceDiscountNetTotal.toString(),
+          });
+        } else if (invoiceDiscountNetTotal.lt(0)) {
+          journalLines.push({
+            accountId: mapping.SALES_DISCOUNTS,
+            debit: invoiceDiscountNetTotal.abs().toString(),
+          });
         }
         if (tax.gt(0)) {
           journalLines.push({ accountId: mapping.OUTPUT_TAX, debit: tax.toString() });

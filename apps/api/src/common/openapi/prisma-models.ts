@@ -1340,6 +1340,10 @@ export class SalesInvoiceRow {
   paymentType!: InvoicePaymentType;
   @ApiProperty({ type: 'boolean', description: "ADR-017: line prices were entered including tax (company setting when the draft was saved)." })
   pricesIncludeTax!: boolean;
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  invoiceDiscountPct!: string | null;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  invoiceDiscountAmount!: string;
   @ApiProperty({ type: 'string', nullable: true })
   cashAccountId!: string | null;
   @ApiProperty({ type: 'string', nullable: true, description: "ADR-024 §1.2: copied onto every income-statement line of the document's entry." })
@@ -1404,6 +1408,8 @@ export class SalesInvoiceLineRow {
   discountPct!: string;
   @ApiProperty({ type: 'string', format: 'decimal' })
   discountAmount!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  invoiceDiscountShare!: string;
   @ApiProperty({ type: 'string', format: 'decimal' })
   netAmount!: string;
   @ApiProperty({ type: 'string', nullable: true })
@@ -1634,6 +1640,10 @@ export class SalesReturnLineRow {
   discountPct!: string;
   @ApiProperty({ type: 'string', format: 'decimal' })
   discountAmount!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  invoiceDiscountShare!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  invoiceDiscountNetShare!: string;
   @ApiProperty({ type: 'string', format: 'decimal' })
   netAmount!: string;
   @ApiProperty({ type: 'string', nullable: true })

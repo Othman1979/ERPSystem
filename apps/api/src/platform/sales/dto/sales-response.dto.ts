@@ -112,6 +112,52 @@ export class SalesInvoiceDetailDto extends SalesInvoiceRow {
   einvoice!: EInvoiceStateDto | null;
 }
 
+export class SalesInvoicePreviewLineDto {
+  @ApiProperty({ type: 'integer' })
+  lineNo!: number;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  discountAmount!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  invoiceDiscountShare!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  netAmount!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  taxAmount!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  lineTotal!: string;
+}
+
+export class SalesInvoicePreviewDto {
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  subtotal!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  lineDiscountAmount!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  invoiceDiscountAmount!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  discountAmount!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  netTotal!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  taxTotal!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  grandTotal!: string;
+
+  @ApiProperty({ type: () => SalesInvoicePreviewLineDto, isArray: true })
+  lines!: SalesInvoicePreviewLineDto[];
+}
+
 // -------------------------------------------------------- sales returns
 
 /** Original invoice summary on a return list row. */

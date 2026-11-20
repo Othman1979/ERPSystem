@@ -90,8 +90,14 @@ export function unitQtyFloor(baseQty: Decimal, factorToBase: Decimal): Decimal {
 }
 
 /** A line's net unit price after its discount, exact (ADR-027 §4 compares net prices). */
-export function netUnitPrice(unitPrice: Decimal.Value, discountPct: Decimal.Value): Decimal {
-  return new Decimal(unitPrice).times(new Decimal(100).minus(discountPct)).div(100);
+export function netUnitPrice(
+  unitPrice: Decimal.Value,
+  discountPct: Decimal.Value,
+  invoiceDiscountShare: Decimal.Value = 0,
+  qty: Decimal.Value = 1,
+): Decimal {
+  return new Decimal(unitPrice).times(new Decimal(100).minus(discountPct)).div(100)
+    .minus(new Decimal(invoiceDiscountShare).div(qty));
 }
 
 /**
@@ -99,9 +105,10 @@ export function netUnitPrice(unitPrice: Decimal.Value, discountPct: Decimal.Valu
  * net unit price is lower, or its discount is higher. A higher price is always allowed.
  */
 export function pricedBelowOrder(
-  line: { unitPrice: Decimal.Value; discountPct: Decimal.Value },
+  line: { unitPrice: Decimal.Value; discountPct: Decimal.Value; invoiceDiscountShare?: Decimal.Value; qty?: Decimal.Value },
   order: { unitPrice: Decimal.Value; discountPct: Decimal.Value },
 ): boolean {
-  return netUnitPrice(line.unitPrice, line.discountPct).lt(netUnitPrice(order.unitPrice, order.discountPct)) ||
+  return netUnitPrice(line.unitPrice, line.discountPct, line.invoiceDiscountShare, line.qty)
+    .lt(netUnitPrice(order.unitPrice, order.discountPct)) ||
     new Decimal(line.discountPct).gt(new Decimal(order.discountPct));
 }

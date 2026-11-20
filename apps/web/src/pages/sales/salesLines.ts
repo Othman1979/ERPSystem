@@ -69,7 +69,13 @@ export function reservationShortfalls(
  * price under the order's, or a discount above it (ADR-027 §4).
  */
 export function linesBelowOrder(
-  invoiceLines: readonly { orderLineId: string | null; unitPrice: string; discountPct: string }[],
+  invoiceLines: readonly {
+    orderLineId: string | null;
+    unitPrice: string;
+    discountPct: string;
+    qty?: string;
+    invoiceDiscountShare?: string;
+  }[],
   orderLines: readonly { id: string; unitPrice: string; discountPct: string }[],
 ): Set<string> {
   const byId = new Map(orderLines.map((l) => [l.id, l]));
@@ -77,7 +83,14 @@ export function linesBelowOrder(
   for (const line of invoiceLines) {
     const orderLine = line.orderLineId ? byId.get(line.orderLineId) : undefined;
     if (!orderLine) continue;
-    if (dec(line.unitPrice).lt(dec(orderLine.unitPrice)) || dec(line.discountPct).gt(dec(orderLine.discountPct))) {
+    const effectiveUnitPrice = dec(line.unitPrice)
+      .times(dec(100).minus(dec(line.discountPct)))
+      .div(100)
+      .minus(dec(line.invoiceDiscountShare ?? '0').div(line.qty ?? '1'));
+    const orderNetUnitPrice = dec(orderLine.unitPrice)
+      .times(dec(100).minus(dec(orderLine.discountPct)))
+      .div(100);
+    if (effectiveUnitPrice.lt(orderNetUnitPrice) || dec(line.discountPct).gt(dec(orderLine.discountPct))) {
       below.add(orderLine.id);
     }
   }

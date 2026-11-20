@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { lineAmounts, type LineAmounts } from '../format/invoiceMath';
 import { useCompany } from './CompanyProfileForm';
-import { formatAmount, sum } from '../format/number';
+import { dec, formatAmount, sum } from '../format/number';
 import { GridHint } from './GridHint';
 import { focusCellEl, GridSelect, isSelectDropdownOpen } from './GridSelect';
 import { Num } from './Num';
@@ -49,6 +49,24 @@ interface Props {
   lockedItems?: boolean;
   /** The most a line's quantity may be (an order-linked draft's saved quantity). */
   maxQtyOf?: (key: number) => string | undefined;
+  serverAmounts?: readonly (ServerInvoiceLineAmounts | undefined)[];
+  serverSummary?: ServerInvoiceSummary;
+  serverPreviewRequired?: boolean;
+}
+
+export interface ServerInvoiceLineAmounts {
+  netAmount: string;
+  taxAmount: string;
+  lineTotal: string;
+}
+
+export interface ServerInvoiceSummary {
+  subtotal: string;
+  lineDiscountAmount: string;
+  invoiceDiscountAmount: string;
+  netTotal: string;
+  taxTotal: string;
+  grandTotal: string;
 }
 
 function amountsFor(l: InvoiceLineDraft, items: InvoiceItemOption[], pricesIncludeTax: boolean): LineAmounts {
@@ -76,6 +94,9 @@ export function InvoiceLinesGrid({
   focusSignal,
   lockedItems = false,
   maxQtyOf,
+  serverAmounts,
+  serverSummary,
+  serverPreviewRequired = false,
 }: Props) {
   const { t } = useTranslation();
   const gridRef = useRef<HTMLTableElement>(null);
@@ -271,13 +292,13 @@ export function InvoiceLinesGrid({
                 />
               </td>
               <td className="num-cell">
-                <Num>{formatAmount(a.net)}</Num>
+                <Num>{serverPreviewRequired ? (serverAmounts?.[row] ? formatAmount(serverAmounts[row]!.netAmount) : '—') : formatAmount(a.net)}</Num>
               </td>
               <td className="num-cell">
-                <Num>{formatAmount(a.tax)}</Num>
+                <Num>{serverPreviewRequired ? (serverAmounts?.[row] ? formatAmount(serverAmounts[row]!.taxAmount) : '—') : formatAmount(a.tax)}</Num>
               </td>
               <td className="num-cell" style={{ fontWeight: 600 }}>
-                <Num>{formatAmount(a.total)}</Num>
+                <Num>{serverPreviewRequired ? (serverAmounts?.[row] ? formatAmount(serverAmounts[row]!.lineTotal) : '—') : formatAmount(a.total)}</Num>
               </td>
               <td style={{ textAlign: 'center' }}>
                 {lines.length > 1 && (
@@ -302,13 +323,13 @@ export function InvoiceLinesGrid({
             {t('sales.totals')}
           </td>
           <td className="num-cell" style={{ fontWeight: 600 }}>
-            <Num>{formatAmount(totals.net)}</Num>
+            <Num>{serverPreviewRequired ? (serverSummary ? formatAmount(serverSummary.netTotal) : '—') : formatAmount(totals.net)}</Num>
           </td>
           <td className="num-cell" style={{ fontWeight: 600 }}>
-            <Num>{formatAmount(totals.tax)}</Num>
+            <Num>{serverPreviewRequired ? (serverSummary ? formatAmount(serverSummary.taxTotal) : '—') : formatAmount(totals.tax)}</Num>
           </td>
           <td className="num-cell" style={{ fontWeight: 700 }}>
-            <Num>{formatAmount(totals.total)}</Num>
+            <Num>{serverPreviewRequired ? (serverSummary ? formatAmount(serverSummary.grandTotal) : '—') : formatAmount(totals.total)}</Num>
           </td>
           <td />
         </tr>
@@ -321,30 +342,42 @@ export function InvoiceLinesGrid({
     <dl className="invoice-summary">
       <div>
         <dt>{t('sales.subtotal')}</dt>
-        <dd><Num>{formatAmount(totals.net.plus(discountTotal))}</Num></dd>
+        <dd><Num>{serverPreviewRequired ? (serverSummary ? formatAmount(serverSummary.subtotal) : '—') : formatAmount(totals.net.plus(discountTotal))}</Num></dd>
       </div>
-      {!discountTotal.isZero() && (
+      {serverPreviewRequired
+        ? serverSummary && !dec(serverSummary.lineDiscountAmount).isZero() && (
+            <div>
+              <dt>{t('sales.discount')}</dt>
+              <dd><Num>-{formatAmount(serverSummary.lineDiscountAmount)}</Num></dd>
+            </div>
+          )
+        : !discountTotal.isZero() && (
         <div>
           <dt>{t('sales.discount')}</dt>
           <dd><Num>-{formatAmount(discountTotal)}</Num></dd>
         </div>
       )}
+      {serverPreviewRequired && serverSummary && !dec(serverSummary.invoiceDiscountAmount).isZero() && (
+        <div>
+          <dt>{t('sales.invoiceDiscount')}</dt>
+          <dd><Num>-{formatAmount(serverSummary.invoiceDiscountAmount)}</Num></dd>
+        </div>
+      )}
       <div>
         <dt>{t('sales.net')}</dt>
-        <dd><Num>{formatAmount(totals.net)}</Num></dd>
+        <dd><Num>{serverPreviewRequired ? (serverSummary ? formatAmount(serverSummary.netTotal) : '—') : formatAmount(totals.net)}</Num></dd>
       </div>
       <div>
         <dt>{t('sales.tax')}</dt>
-        <dd><Num>{formatAmount(totals.tax)}</Num></dd>
+        <dd><Num>{serverPreviewRequired ? (serverSummary ? formatAmount(serverSummary.taxTotal) : '—') : formatAmount(totals.tax)}</Num></dd>
       </div>
       <div className="invoice-summary-grand">
         <dt>{t('sales.grandTotal')}</dt>
-        <dd><Num>{formatAmount(totals.total)}</Num></dd>
+        <dd><Num>{serverPreviewRequired ? (serverSummary ? formatAmount(serverSummary.grandTotal) : '—') : formatAmount(totals.total)}</Num></dd>
       </div>
     </dl>
     </div>
     </div>
   );
 }
-
 

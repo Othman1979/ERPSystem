@@ -1648,6 +1648,8 @@ model SalesInvoice {
   paymentType    InvoicePaymentType  @map("payment_type")
   /// ADR-017: line prices were entered including tax (company setting when the draft was saved).
   pricesIncludeTax Boolean           @default(false) @map("prices_include_tax")
+  invoiceDiscountPct Decimal?         @map("invoice_discount_pct") @db.Decimal(9, 4)
+  invoiceDiscountAmount Decimal       @default(0) @map("invoice_discount_amount") @db.Decimal(18, 3)
   cashAccountId  BigInt?             @map("cash_account_id") @db.UnsignedBigInt
   /// ADR-024 §1.2: copied onto every income-statement line of the document's entry.
   costCenterId   BigInt?             @map("cost_center_id") @db.UnsignedBigInt
@@ -1708,6 +1710,7 @@ model SalesInvoiceLine {
   unitPrice      Decimal   @map("unit_price") @db.Decimal(18, 3)
   discountPct    Decimal   @default(0) @map("discount_pct") @db.Decimal(9, 4)
   discountAmount Decimal   @default(0) @map("discount_amount") @db.Decimal(18, 3)
+  invoiceDiscountShare Decimal @default(0) @map("invoice_discount_share") @db.Decimal(18, 3)
   netAmount      Decimal   @map("net_amount") @db.Decimal(18, 3)
   taxCategoryId  BigInt?   @map("tax_category_id") @db.UnsignedBigInt
   taxRate        Decimal   @default(0) @map("tax_rate") @db.Decimal(9, 4)
@@ -1925,6 +1928,8 @@ model SalesReturnLine {
   unitPrice       Decimal  @map("unit_price") @db.Decimal(18, 3)
   discountPct     Decimal  @default(0) @map("discount_pct") @db.Decimal(9, 4)
   discountAmount  Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 3)
+  invoiceDiscountShare Decimal @default(0) @map("invoice_discount_share") @db.Decimal(18, 3)
+  invoiceDiscountNetShare Decimal @default(0) @map("invoice_discount_net_share") @db.Decimal(18, 3)
   netAmount       Decimal  @map("net_amount") @db.Decimal(18, 3)
   taxCategoryId   BigInt?  @map("tax_category_id") @db.UnsignedBigInt
   taxRate         Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)

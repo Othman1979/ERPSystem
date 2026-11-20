@@ -90,12 +90,15 @@
 
 | حقل UBL | المصدر |
 |---|---|
-| `AllowanceCharge/Amount` و`AllowanceTotalAmount` | Σ خصم السطور (لا يوجد خصم على مستوى المستند في النظام) |
+| `AllowanceCharge/Amount` و`AllowanceTotalAmount` | Σ خصم السطور، شاملاً نصيب خصم الفاتورة الموزع عليها |
 | `TaxExclusiveAmount` | Σ (`net_amount` + خصم السطر) = Σ السعر × الكمية |
 | `TaxTotal/TaxAmount` | `tax_total` (= Σ ضريبة السطور) |
 | `TaxTotal/TaxSubtotal` (مرتجعات المبيعات العامة) | واحد لكل (فئة، نسبة): Σ `net_amount` و Σ `tax_amount` |
 | `TaxInclusiveAmount` و`PayableAmount` | `grand_total` |
 | `PrepaidAmount` | ثابت `0` (مرتجعات المبيعات العامة) |
+
+> خصم مستوى المستند يوزع على السطور ويُحفظ نصيب كل سطر في `invoice_discount_share`؛ لذلك يبقى بدل المستند في
+> JoFotara مجموع بدلات السطور.
 
 ## 8. المرتجعات (p.21–30, p.43–55)
 

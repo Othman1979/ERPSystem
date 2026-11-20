@@ -7,6 +7,8 @@ const savedInvoice = {
   description: 'Delivered on site',
   paymentType: 'CASH',
   cashAccountId: '88',
+  invoiceDiscountPct: '10',
+  invoiceDiscountAmount: '0.000',
 } as unknown as SalesInvoiceDetailDto;
 
 const form: SalesInvoiceForm = {
@@ -15,21 +17,42 @@ const form: SalesInvoiceForm = {
   warehouseId: '3',
   paymentType: 'CASH',
   cashAccountId: '88',
+  invoiceDiscountType: 'PERCENT',
+  invoiceDiscountValue: '10',
   lines: [{ itemId: 'i1', qty: '2', price: '12.500', discountPct: null }],
 };
 
 describe('sales invoice defaults', () => {
   it('starts a new invoice as CREDIT with no cash account', () => {
-    expect(salesInvoiceFormDefaults(undefined)).toEqual({ paymentType: 'CREDIT', cashAccountId: undefined });
+    expect(salesInvoiceFormDefaults(undefined)).toEqual({
+      paymentType: 'CREDIT',
+      cashAccountId: undefined,
+      costCenterId: undefined,
+      invoiceDiscountType: 'AMOUNT',
+      invoiceDiscountValue: undefined,
+    });
   });
 
   it('carries the cash account of a saved CASH invoice', () => {
-    expect(salesInvoiceFormDefaults(savedInvoice)).toEqual({ paymentType: 'CASH', cashAccountId: '88', costCenterId: undefined });
+    expect(salesInvoiceFormDefaults(savedInvoice)).toEqual({
+      paymentType: 'CASH',
+      cashAccountId: '88',
+      costCenterId: undefined,
+      invoiceDiscountType: 'PERCENT',
+      invoiceDiscountValue: '10',
+    });
   });
 
   it('carries the cost centre of a saved invoice', () => {
     const withCentre = { ...savedInvoice, costCenterId: '42' } as unknown as SalesInvoiceDetailDto;
     expect(salesInvoiceFormDefaults(withCentre).costCenterId).toBe('42');
+  });
+
+  it('restores the saved invoice discount percentage', () => {
+    expect(salesInvoiceFormDefaults(savedInvoice)).toMatchObject({
+      invoiceDiscountType: 'PERCENT',
+      invoiceDiscountValue: '10',
+    });
   });
 });
 
@@ -47,6 +70,16 @@ describe('sales invoice body', () => {
 
   it('sends the cost centre when one is chosen', () => {
     expect(salesInvoiceBody({ ...form, costCenterId: '42' }).costCenterId).toBe('42');
+  });
+
+  it('sends only the selected invoice discount input', () => {
+    const percent = salesInvoiceBody(form);
+    expect(percent.invoiceDiscountPct).toBe('10');
+    expect(percent.invoiceDiscountAmount).toBeUndefined();
+
+    const fixed = salesInvoiceBody({ ...form, invoiceDiscountType: 'AMOUNT', invoiceDiscountValue: '3.250' });
+    expect(fixed.invoiceDiscountAmount).toBe('3.250');
+    expect(fixed.invoiceDiscountPct).toBeUndefined();
   });
 
   it('leaves the cost centre out of the body when none is chosen', () => {

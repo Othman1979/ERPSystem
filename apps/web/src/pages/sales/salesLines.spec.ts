@@ -83,4 +83,13 @@ describe('invoice lines priced below their order (ADR-027 §4)', () => {
       ...linesBelowOrder([{ orderLineId: 'o2', unitPrice: '20', discountPct: '5' }], orderLines),
     ]).toEqual([]);
   });
+
+  it('includes the invoice-discount share in the effective unit price', () => {
+    expect([
+      ...linesBelowOrder(
+        [{ orderLineId: 'o1', unitPrice: '10', discountPct: '0', qty: '2', invoiceDiscountShare: '2' }],
+        orderLines,
+      ),
+    ]).toEqual(['o1']);
+  });
 });
