@@ -200,7 +200,7 @@ export class ReportsService {
    */
   async accountTotals(
     range: ReportRange = {},
-    opts: { branchScoped?: boolean; excludeClosing?: boolean } = {},
+    opts: { branchScoped?: boolean; excludeClosing?: boolean; opening?: 'exclude' | 'only' } = {},
   ): Promise<AccountTotal[]> {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
@@ -213,6 +213,7 @@ export class ReportsService {
           companyId,
           status: 'POSTED',
           ...(opts.excludeClosing ? { isClosing: false } : {}),
+          ...(opts.opening ? { isOpening: opts.opening === 'only' } : {}),
           ...(Object.keys(dateWhere).length ? { entryDate: dateWhere } : {}),
         },
         ...(opts.branchScoped ? { AND: [branchWhere()] } : {}),

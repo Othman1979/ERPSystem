@@ -78,16 +78,18 @@ export class FinancialStatementsService {
    */
   async cashFlow(q: { from?: string; to?: string }) {
     const period = await this.periods.period(q);
-    const [periodTotals, opening, closing] = await Promise.all([
-      this.ledger.accountTotals({ from: period.from, to: period.to }, { excludeClosing: true }),
+    // Opening entries carry balances in, not cash flows: they count in the opening cash (ADR-036 §5).
+    const [periodTotals, opening, openingEntries, closing] = await Promise.all([
+      this.ledger.accountTotals({ from: period.from, to: period.to }, { excludeClosing: true, opening: 'exclude' }),
       this.ledger.accountTotals({ to: dayBefore(period.from) }),
+      this.ledger.accountTotals({ from: period.from, to: period.to }, { opening: 'only' }),
       this.ledger.accountTotals({ to: period.to }),
     ]);
     return {
       from: period.from,
       to: period.to,
       fiscalYear: period.fiscalYear,
-      ...cashFlow(periodTotals, cashBalance(opening), cashBalance(closing)),
+      ...cashFlow(periodTotals, cashBalance(opening).plus(cashBalance(openingEntries)), cashBalance(closing)),
     };
   }
 }

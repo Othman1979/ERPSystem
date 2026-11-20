@@ -176,6 +176,28 @@ describe('C2 — after the year closes', () => {
   });
 });
 
+describe('opening entries', () => {
+  it('counts an opening entry in the opening cash, not as a cash flow (tenant B)', async () => {
+    h.ok(
+      await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenB)).send({ code: '2033', startDate: '2033-01-01', endDate: '2033-12-31' }),
+      201,
+      'B year',
+    );
+    const chartB = h.ok(await h.get(tokenB, 'accounts'), 200, 'B accounts') as { id: string; code: string }[];
+    h.ok(
+      await h.api()
+        .post('/api/v1/journal-entries/opening')
+        .set(h.auth(tokenB))
+        .set(h.idem())
+        .send({ entryDate: '2033-01-01', lines: [{ accountId: chartB.find((a) => a.code === '1101')!.id, debit: '700.000' }] }),
+      201,
+      'B opening',
+    );
+    const r = await report('2033-01-01', '2033-12-31', tokenB);
+    expect(r).toMatchObject({ financing: { total: '0.000' }, netChange: '0.000', openingCash: '700.000', closingCash: '700.000', reconciles: true });
+  });
+});
+
 describe('C3 — reclassification and refusals', () => {
   it('moves accrued expenses to financing without changing the net change', async () => {
     h.ok(
