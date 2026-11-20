@@ -169,9 +169,26 @@ export class PayrollService {
 
   async updateEmployee(id: bigint, dto: UpdateEmployeeDto) {
     this.canManage();
-    const { db } = this.context();
-    const employee = await db.employee.findFirst({ where: { id }, select: { id: true } });
+    const { companyId, db } = this.context();
+    const employee = await db.employee.findFirst({ where: { id }, select: { id: true, isActive: true } });
     if (!employee) throw DomainError.notFound('Employee', id.toString());
+    if (employee.isActive && dto.isActive === false) {
+      const movements = await db.payrollMovement.findMany({
+        where: { companyId, employeeId: id, status: 'POSTED' },
+        select: { period: true },
+      });
+      const periods = [...new Set(movements.map((movement) => movement.period))];
+      if (periods.length) {
+        const completedRuns = await db.payrollRun.findMany({
+          where: { companyId, period: { in: periods }, status: { in: ['POSTED', 'PAID'] } },
+          select: { period: true },
+        });
+        const completedPeriods = new Set(completedRuns.map((run) => run.period));
+        if (movements.some((movement) => !completedPeriods.has(movement.period))) {
+          throw new DomainError(ErrorCode.VALIDATION, 'Employee cannot be deactivated while posted payroll movements await a run');
+        }
+      }
+    }
     if (dto.code !== undefined) {
       const duplicate = await db.employee.findFirst({ where: { code: dto.code, id: { not: id } }, select: { id: true } });
       if (duplicate) throw new DomainError(ErrorCode.DUPLICATE_CODE, 'Employee code already exists');

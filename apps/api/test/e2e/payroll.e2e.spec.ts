@@ -707,4 +707,38 @@ describe('Payroll PY1–PY3', () => {
     }, companyAId);
     expect(missingSettings.body.error.code).toBe('PAYROLL_SETTINGS_REQUIRED');
   });
+
+  it('prevents deactivation while posted movements are waiting for a payroll run', async () => {
+    h.ok(
+      await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).send({
+        code: '2032', startDate: '2032-01-01', endDate: '2032-12-31',
+      }),
+      201,
+      'create deactivation-test fiscal year',
+    );
+    await post(tokenA, 'payroll/settings', { effectiveFrom: '2032-01-01' }, 'deactivation-test settings', companyAId);
+    const elements = h.ok(await get(tokenA, 'payroll/elements', companyAId), 200, 'deactivation-test pay elements') as {
+      id: string; code: string;
+    }[];
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `PENDING-${RUN}`, nameAr: 'Pending movement', hireDate: '2032-01-01', costCenterId, payMethod: 'CASH',
+    }, 'employee with pending movement', companyAId);
+    await post(tokenA, `payroll/employees/${employee.id}/salaries`, {
+      effectiveFrom: '2032-01-01', basicSalary: '100.000',
+    }, 'pending-movement salary', companyAId);
+    const movement = await act(tokenA, 'payroll/movements', {
+      employeeId: employee.id,
+      payElementId: elements.find((element) => element.code === 'TRANSPORT')!.id,
+      movementDate: '2032-01-10',
+      amount: '5.000',
+      description: 'Awaiting payroll run',
+    }, companyAId);
+    h.ok(movement, 201, 'post movement awaiting a run');
+
+    const deactivation = await h.api().patch(`/api/v1/payroll/employees/${employee.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ isActive: false });
+    expect(deactivation.status).toBe(400);
+    expect(deactivation.body.error.code).toBe('VALIDATION');
+    expect(deactivation.body.error.message).toBe('Employee cannot be deactivated while posted payroll movements await a run');
+  });
 });
