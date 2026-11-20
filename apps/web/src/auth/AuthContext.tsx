@@ -11,6 +11,7 @@ import {
   onSessionChange,
   setAccessToken,
   setBranchId,
+  setCompanyId,
   type MeResponseDto,
   type RegisterDto,
 } from '@erp/api-client';
@@ -33,6 +34,9 @@ interface AuthState {
   /** Branch of every request (X-Branch-Id), chosen in the top bar — ADR-003. */
   branchId: string | null;
   setBranch: (branchId: string) => void;
+  /** ADR-040: the company of every request (X-Company-Id). */
+  companyId: string | null;
+  setCompany: (companyId: string) => void;
   refreshMe: () => Promise<void>;
   /**
    * True when the user's role has `permission` in the current tenant. The web
@@ -57,11 +61,31 @@ function isPermissionRefusal(error: unknown): boolean {
   return (
     error instanceof ApiError &&
     error.status === 403 &&
-    (error.code === 'FORBIDDEN' || error.code === 'ALL_BRANCHES_REQUIRED')
+    (error.code === 'FORBIDDEN' || error.code === 'ALL_BRANCHES_REQUIRED' || error.code === 'COMPANY_NOT_ALLOWED')
   );
 }
 
 const branchStorageKey = (tenantId: string) => `erp.branch.${tenantId}`;
+// One key for the browser: the tenant is unknown before /me answers (ADR-040).
+const COMPANY_STORAGE_KEY = 'erp.company';
+
+function readStoredCompany(): { tenantId: string; companyId: string } | null {
+  try {
+    const [tenantId, companyId] = (window.localStorage.getItem(COMPANY_STORAGE_KEY) ?? '').split(':');
+    return tenantId && companyId ? { tenantId, companyId } : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeCompany(tenantId: string, companyId: string | null): void {
+  try {
+    if (companyId) window.localStorage.setItem(COMPANY_STORAGE_KEY, `${tenantId}:${companyId}`);
+    else window.localStorage.removeItem(COMPANY_STORAGE_KEY);
+  } catch {
+    // Not critical: the first company is used next time.
+  }
+}
 
 function readStoredBranch(tenantId: string): string | null {
   try {
@@ -96,6 +120,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthState['status']>('loading');
   const [me, setMe] = useState<MeData | null>(null);
   const [branchId, setBranchState] = useState<string | null>(null);
+  const [companyId, setCompanyState] = useState<string | null>(null);
+  const companyRef = useRef<string | null>(null);
   // For the /me reloads below: when /me last loaded, a reload waiting for its turn, and the current status.
   const lastMeReload = useRef(0);
   const pendingMeReload = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,8 +133,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshMe = useCallback(async () => {
     lastMeReload.current = Date.now();
     try {
+      if (companyRef.current === null) {
+        companyRef.current = readStoredCompany()?.companyId ?? null;
+        setCompanyId(companyRef.current);
+      }
       const res = await meControllerMe();
       const data = res.data;
+      // /me resolves the company (an unknown or forbidden one falls back to the first allowed).
+      const company = data.currentMembership?.companyId ?? null;
+      companyRef.current = company;
+      setCompanyId(company);
+      setCompanyState(company);
+      if (data.currentTenant) storeCompany(data.currentTenant.tenantId, company);
       const branch = pickBranch(data);
       setBranchId(branch);
       setBranchState(branch);
@@ -143,6 +179,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const reloadMe = useCallback(async () => {
     try {
       const res = await meControllerMe();
+      // Access to the current company was revoked: follow /me's fallback, with its branches and data.
+      const company = res.data.currentMembership?.companyId ?? null;
+      if (company !== companyRef.current) {
+        companyRef.current = company;
+        setCompanyId(company);
+        setCompanyState(company);
+        if (res.data.currentTenant) storeCompany(res.data.currentTenant.tenantId, company);
+        const branch = pickBranch(res.data);
+        setBranchId(branch);
+        setBranchState(branch);
+        queryClient.clear();
+      }
       setMe(res.data);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -151,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus('guest');
       }
     }
-  }, []);
+  }, [queryClient]);
 
   const reloadMeSoon = useCallback(() => {
     if (statusRef.current !== 'authed' || pendingMeReload.current) return;
@@ -199,6 +247,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () =>
       onSessionChange(() => {
         setBranchId(null);
+      companyRef.current = null;
+      setCompanyId(null);
         setBranchState(null);
         setStatus('loading');
         queryClient.clear();
@@ -229,6 +279,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setAccessToken(null);
       setBranchId(null);
+      companyRef.current = null;
+      setCompanyId(null);
       setBranchState(null);
       setMe(null);
       setStatus('guest');
@@ -236,6 +288,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       queryClient.clear();
     }
   }, [queryClient]);
+
+  const setCompany = useCallback(
+    (id: string) => {
+      const tenantId = me?.currentTenant?.tenantId;
+      if (!tenantId || !me?.currentMembership?.companies.some((c) => c.id === id)) return;
+      storeCompany(tenantId, id);
+      companyRef.current = id;
+      setCompanyId(id);
+      setCompanyState(id);
+      // The old branch belongs to the other company: until /me answers, send none and the server
+      // uses the new company's default, so the label and every header always agree.
+      setBranchId(null);
+      setBranchState(null);
+      // Another company's data: drop every cached list, then reload /me for its branches.
+      queryClient.clear();
+      void refreshMe();
+    },
+    [me, queryClient, refreshMe],
+  );
 
   const setBranch = useCallback(
     (id: string) => {
@@ -255,6 +326,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Unmount the tenant-A pages first (App shows a spinner while loading), so none of
     // them refetches with the new token and the old branch before /me answers.
     setBranchId(null);
+      companyRef.current = null;
+      setCompanyId(null);
     setBranchState(null);
     setStatus('loading');
     // Drop every cached query of the previous user/tenant before the new token is used (WEB-01).
@@ -274,8 +347,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // A new object only when something in it changes, so useAuth() consumers do
   // not re-render on every provider render (WEB-18).
   const value = useMemo<AuthState>(
-    () => ({ status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch, can, allBranches }),
-    [status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch, can, allBranches],
+    () => ({ status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch, companyId, setCompany, can, allBranches }),
+    [status, me, login, register, logout, switchTenant, refreshMe, branchId, setBranch, companyId, setCompany, can, allBranches],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -293,7 +366,8 @@ export function useAuth(): AuthState {
  * the previous session (WEB-01). The query cache itself is cleared by AuthProvider.
  */
 export function SessionBoundary({ children }: { children: ReactNode }) {
-  const { me } = useAuth();
-  const key = `${me?.user.id ?? 'guest'}:${me?.currentTenant?.tenantId ?? 'none'}`;
+  const { me, companyId } = useAuth();
+  // A company switch remounts the pages too: forms must not keep the other company's values.
+  const key = `${me?.user.id ?? 'guest'}:${me?.currentTenant?.tenantId ?? 'none'}:${companyId ?? 'none'}`;
   return <Fragment key={key}>{children}</Fragment>;
 }

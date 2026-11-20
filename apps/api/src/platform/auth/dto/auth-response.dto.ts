@@ -135,6 +135,18 @@ export class MeBranchDto {
   nameEn!: string | null;
 }
 
+/** A company the user may work in (ADR-040). */
+export class MeCompanyDto {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+
+  @ApiProperty({ type: 'string' })
+  legalNameAr!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  legalNameEn!: string | null;
+}
+
 /** The user's membership in the current tenant: role, permission codes and branches (AuthService.me). */
 export class MeCurrentMembershipDto {
   @ApiProperty({ type: 'string' })
@@ -166,6 +178,12 @@ export class MeCurrentMembershipDto {
 
   @ApiProperty({ type: 'boolean', description: 'True when no branch is assigned: company-wide access.' })
   allBranches!: boolean;
+
+  @ApiProperty({ type: () => MeCompanyDto, isArray: true })
+  companies!: MeCompanyDto[];
+
+  @ApiProperty({ type: 'string', nullable: true, description: 'Company of this request (X-Company-Id or the first allowed).' })
+  companyId!: string | null;
 }
 
 /** Body of GET /me (AuthService.me). */

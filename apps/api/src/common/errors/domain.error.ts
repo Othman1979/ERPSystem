@@ -87,6 +87,7 @@ const STATUS_BY_CODE: Partial<Record<ErrorCode, HttpStatus>> = {
   [ErrorCode.PERIOD_CLOSED]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_INSUFFICIENT]: HttpStatus.CONFLICT,
   [ErrorCode.BACKDATED_STOCK_POSTING]: HttpStatus.CONFLICT,
+  [ErrorCode.COMPANY_NOT_ALLOWED]: HttpStatus.FORBIDDEN,
   [ErrorCode.GRN_ALREADY_INVOICED]: HttpStatus.CONFLICT,
   [ErrorCode.PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS]: HttpStatus.CONFLICT,
   [ErrorCode.STOCK_COUNT_STALE]: HttpStatus.CONFLICT,

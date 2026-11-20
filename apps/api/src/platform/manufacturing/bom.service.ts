@@ -11,6 +11,7 @@ import { pageWindow } from '../../common/paging/page-query.dto.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { BomLineDto, CreateBomDto, ListBomsQueryDto, UpdateBomDto } from './dto/bom.dto.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -170,7 +171,7 @@ export class BomService {
 
   private async companyId(db: Tx): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });

@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CompaniesTab } from './settings/CompaniesTab';
 import { useNavigate } from 'react-router';
 import { CompanyProfileForm } from '../components/CompanyProfileForm';
 import { SalesSettingsForm } from '../components/SalesSettingsForm';
@@ -331,7 +332,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
 export function SettingsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { can, me } = useAuth();
   return (
     <div>
       <PageHeader title={t('settings.title')} />
@@ -357,6 +358,9 @@ export function SettingsPage() {
               </>
             ),
           },
+          ...(me?.currentMembership?.roleCode === 'OWNER'
+            ? [{ key: 'companies', label: t('companies.title'), children: <CompaniesTab /> }]
+            : []),
           { key: 'units', label: t('settings.units'), children: <LookupTable kind="unit" title={t('settings.units')} /> },
           {
             key: 'tax',

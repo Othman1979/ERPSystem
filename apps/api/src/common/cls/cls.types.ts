@@ -17,6 +17,8 @@ export interface RequestContext {
   permissions?: ReadonlySet<string>;
   /** Set by IdempotencyInterceptor for the request holding the reservation. */
   idempotencyKeyId?: bigint;
+  /** Company of this request (X-Company-Id or the first allowed), set by CompanyGuard (ADR-040). */
+  companyId?: bigint;
   /** Branch of this request (X-Branch-Id or the default), set by BranchGuard. */
   branchId?: bigint;
   /**

@@ -19,6 +19,7 @@ import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import { BomService, type ExplodedLine } from './bom.service.js';
 import type { CreateProductionVoucherDto, ListProductionVouchersQueryDto, ProductionLineDto, UpdateProductionVoucherDto } from './dto/production-voucher.dto.js';
 import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -179,7 +180,7 @@ export class ProductionVouchersService implements OnModuleInit {
 
   private async companyId(db: Tx): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });

@@ -511,6 +511,8 @@ model Company {
   salesOrders       SalesOrder[]
 
   cheques Cheque[]
+  memberCompanies MembershipCompany[]
+
   @@unique([tenantId, id])
   @@map("companies")
 }
@@ -574,6 +576,7 @@ model TenantMembership {
   customRole      TenantRole?        @relation(fields: [tenantId, customRoleId], references: [tenantId, id])
   defaultBranch   Branch?            @relation("MembershipDefaultBranch", fields: [tenantId, defaultBranchId], references: [tenantId, id])
   allowedBranches MembershipBranch[]
+  allowedCompanies MembershipCompany[]
   extraPermissions MemberPermission[]
 
   @@unique([tenantId, id])
@@ -593,6 +596,23 @@ model MembershipBranch {
 
   @@unique([tenantId, membershipId, branchId])
   @@map("membership_branches")
+}
+
+/// ADR-040 §3: the companies a member may use; no row means every company. The owner has all.
+model MembershipCompany {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt   @map("tenant_id") @db.UnsignedBigInt
+  membershipId BigInt   @map("membership_id") @db.UnsignedBigInt
+  companyId    BigInt   @map("company_id") @db.UnsignedBigInt
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  membership TenantMembership @relation(fields: [tenantId, membershipId], references: [tenantId, id], onDelete: Cascade)
+  company    Company          @relation(fields: [tenantId, companyId], references: [tenantId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, membershipId, companyId])
+  @@index([tenantId, companyId])
+  @@map("membership_companies")
 }
 
 /// A company's own role (ADR-038): a named set of catalog permissions.

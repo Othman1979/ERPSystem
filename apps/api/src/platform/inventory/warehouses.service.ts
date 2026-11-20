@@ -7,6 +7,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { CreateWarehouseDto, UpdateWarehouseDto } from './dto/inventory.dto.js';
 import { PlanLimitsService } from '../../common/plan-limits/plan-limits.service.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 @Injectable()
 export class WarehousesService {
@@ -24,7 +25,7 @@ export class WarehousesService {
 
   private async companyId(db: ReturnType<PrismaService['forTenant']>): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });

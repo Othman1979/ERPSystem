@@ -8,6 +8,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { DOCUMENT_TYPE_PREFIXES } from './chart-template.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 /** Longest allowed fiscal year: twelve months (LEDGER-25). */
 const MAX_YEAR_MONTHS = 12;
@@ -27,7 +28,7 @@ export class FiscalService {
 
   private async companyId(db: ReturnType<PrismaService['forTenant']>): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });

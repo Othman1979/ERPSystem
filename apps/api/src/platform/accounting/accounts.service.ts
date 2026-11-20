@@ -11,6 +11,7 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { calendarDateIn, retryOnLockConflict } from '../shared/document-support.service.js';
 import { isIncomeStatement } from '../cost-centers/cost-center-rules.js';
 import { CreateAccountDto, UpdateAccountDto } from './dto/accounting.dto.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 // journal_lines is read here, not through JournalModule: JournalModule imports AccountingModule (cycle). Read-only usage checks; both are the accounting domain (CLAUDE.md module list).
 
@@ -59,7 +60,7 @@ export class AccountsService {
 
   private async companyId(db: TenantDb): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });

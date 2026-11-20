@@ -18,6 +18,7 @@ import type { ListStockTransfersQueryDto } from './dto/list-queries.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { retryOnLockConflict } from '../shared/document-support.service.js';
 import { isStocked, stockedItemKindFilter, assertNotRecipe } from '../../common/inventory/item-kind.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 const SOURCE = 'STOCK_TRANSFER';
 
@@ -43,7 +44,7 @@ export class TransfersService {
 
   private async companyId(db: ReturnType<PrismaService['forTenant']>): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });

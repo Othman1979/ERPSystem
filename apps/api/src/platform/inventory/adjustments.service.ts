@@ -19,6 +19,7 @@ import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { retryOnLockConflict } from '../shared/document-support.service.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import { isStocked, assertNotRecipe } from '../../common/inventory/item-kind.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 const SOURCE = 'STOCK_ADJUSTMENT';
 
@@ -45,7 +46,7 @@ export class AdjustmentsService {
 
   private async companyId(db: ReturnType<PrismaService['forTenant']>): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });

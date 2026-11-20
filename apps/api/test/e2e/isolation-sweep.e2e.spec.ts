@@ -138,6 +138,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     id.taxCategory = String((await asA('get', '/tax-categories')).body[0].id);
     id.paymentMethod = String((await asA('get', '/payment-methods')).body[0].id);
     id.branch = String((await asA('get', '/branches')).body[0].id);
+    id.company = String((await asA('get', '/companies')).body[0].id);
     const members = (await asA('get', '/users')).body as { id?: string; membershipId?: string }[];
     id.membership = String(members[0].membershipId ?? members[0].id);
 
@@ -332,6 +333,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       'tax-categories': id.taxCategory,
       'payment-methods': id.paymentMethod,
       branches: id.branch,
+      companies: id.company,
       'journal-entries': p.endsWith('/post') ? id.journalDraft : id.journal,
       parties: id.customer,
       'item-groups': id.itemGroup,
@@ -380,6 +382,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
   /** A valid body for each change, so the request reaches the tenant lookup. */
   function bodyFor(p: string): object {
     if (p.endsWith('/reverse')) return { reversalDate: '2026-04-01' };
+    if (p === '/api/v1/companies/{id}') return { legalNameAr: 'x' };
     if (p.endsWith('/journal-entries/{id}/amend')) {
       return { entryDate: '2026-04-01', lines: [{ accountId: '1', debit: '1' }, { accountId: '2', credit: '1' }] };
     }

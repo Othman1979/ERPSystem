@@ -19,6 +19,7 @@ import {
 } from './dto/inventory.dto.js';
 import type { ListItemsQueryDto } from './dto/list-queries.dto.js';
 import { isStocked, stockedItemKindFilter, type ItemKindValue } from '../../common/inventory/item-kind.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 /**
  * Item catalog: groups, items, item units and barcodes (§7.4).
@@ -39,7 +40,7 @@ export class CatalogService {
 
   private async companyId(db: ReturnType<PrismaService['forTenant']>): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });
@@ -504,7 +505,7 @@ export class CatalogService {
   async itemsForLines(itemIds: bigint[], itemUnitIds: bigint[], tx?: Prisma.TransactionClient): Promise<CatalogLineRefs> {
     const { tenantId, db: tenantDb } = this.tenant();
     const db = tx ?? tenantDb;
-    const company = await db.company.findFirst({ where: { tenantId, isActive: true }, orderBy: { id: 'asc' }, select: { id: true } });
+    const company = await db.company.findFirst({ where: { tenantId, isActive: true, ...currentCompanyFilter() }, orderBy: { id: 'asc' }, select: { id: true } });
     if (!company) throw new DomainError(ErrorCode.INTERNAL, 'Tenant has no active company');
     const companyId = company.id;
     const items = itemIds.length

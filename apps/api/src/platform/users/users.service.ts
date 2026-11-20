@@ -28,6 +28,7 @@ const membershipInclude = {
   customRole: { select: { id: true, code: true, nameAr: true, nameEn: true } },
   defaultBranch: { select: { id: true, code: true, nameAr: true } },
   allowedBranches: { include: { branch: { select: { id: true, code: true, nameAr: true } } } },
+  allowedCompanies: { select: { companyId: true } },
   extraPermissions: { select: { permissionCode: true, amountLimit: true } },
 } as const;
 
@@ -41,6 +42,7 @@ function serialize(m: {
   customRole: { id: bigint; code: string; nameAr: string; nameEn: string | null } | null;
   defaultBranch: { id: bigint; code: string; nameAr: string } | null;
   allowedBranches: { branch: { id: bigint; code: string; nameAr: string } }[];
+  allowedCompanies: { companyId: bigint }[];
   extraPermissions: MemberPermissionGrant[];
 }) {
   // What the member holds (an owner: all three, no limit), as the guard sees it.
@@ -65,6 +67,7 @@ function serialize(m: {
       ...b.branch,
       id: b.branch.id.toString(),
     })),
+    companyIds: m.allowedCompanies.map((c) => c.companyId.toString()),
     purchasePermissions: purchase.codes.map((code) => ({
       code,
       amountLimit: isLimitedMemberPermission(code) ? approvalLimitOf(purchase, code) : null,
@@ -398,6 +401,25 @@ export class UsersService {
           data: branchIds.map((branchId) => ({ tenantId, membershipId, branchId })),
         });
       }
+    }
+
+    if (dto.companyIds !== undefined) {
+      const companyIds = dto.companyIds.map(BigInt);
+      if (companyIds.length > 0) {
+        const found = await prisma.company.findMany({ where: { id: { in: companyIds } } });
+        if (found.length !== companyIds.length) {
+          throw new DomainError(ErrorCode.VALIDATION, 'One or more companies are invalid');
+        }
+      }
+      // One transaction: between the delete and the insert, no rows would mean every company.
+      await prisma.$transaction(async (tx) => {
+        await tx.membershipCompany.deleteMany({ where: { membershipId } });
+        if (companyIds.length > 0) {
+          await tx.membershipCompany.createMany({
+            data: companyIds.map((companyId) => ({ tenantId, membershipId, companyId })),
+          });
+        }
+      });
     }
 
     await this.audit.log({

@@ -121,4 +121,12 @@ export class UpdateMembershipDto {
   @IsString({ each: true })
   @Matches(ID_PATTERN, { each: true })
   branchIds?: string[];
+
+  /** ADR-040 §3: the companies the member may use; empty means every company. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @Matches(ID_PATTERN, { each: true })
+  companyIds?: string[];
 }

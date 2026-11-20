@@ -97,6 +97,7 @@ const CODE_FONT = "Consolas, 'Cascadia Mono', 'Courier New', monospace";
 export function UsersPage() {
   const { t, i18n } = useTranslation();
   const { me } = useAuth();
+  const companies = me?.currentMembership?.companies ?? [];
   const queryClient = useQueryClient();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm] = Form.useForm();
@@ -188,6 +189,13 @@ export function UsersPage() {
   const changeRole = useMutation({
     mutationFn: ({ id, roleCode }: { id: string; roleCode: string }) =>
       usersControllerUpdate(id, { roleCode }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['users'] }),
+    onError,
+  });
+
+  const changeCompanies = useMutation({
+    mutationFn: ({ id, companyIds }: { id: string; companyIds: string[] }) =>
+      usersControllerUpdate(id, { companyIds }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['users'] }),
     onError,
   });
@@ -306,6 +314,29 @@ export function UsersPage() {
                 render: (_: unknown, m: Membership) =>
                   roleName(m.role.code, m.role.nameAr, m.role.nameEn),
               },
+              // ADR-040 §3: an owner limits a member to some companies; none selected means all.
+              ...(isOwner && companies.length > 1
+                ? [
+                    {
+                      title: t('companies.access'),
+                      render: (_: unknown, m: Membership) =>
+                        m.role.code === 'OWNER' ? (
+                          t('companies.accessAll')
+                        ) : (
+                          <Select
+                            size="small"
+                            mode="multiple"
+                            style={{ minWidth: 180 }}
+                            aria-label={t('companies.access')}
+                            placeholder={t('companies.accessAll')}
+                            value={m.companyIds}
+                            onChange={(v: string[]) => changeCompanies.mutate({ id: m.membershipId, companyIds: v })}
+                            options={companies.map((c) => ({ value: c.id, label: c.legalNameAr }))}
+                          />
+                        ),
+                    },
+                  ]
+                : []),
               {
                 title: t('users.customRole'),
                 render: (_: unknown, m: Membership) =>

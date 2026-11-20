@@ -360,7 +360,7 @@ export class AuthService {
     return tokens;
   }
 
-  async me() {
+  async me(companyHeader?: string) {
     const cls = ClsServiceManager.getClsService<RequestContext>();
     const userId = cls.get('userId');
     const tenantId = cls.get('tenantId');
@@ -406,12 +406,35 @@ export class AuthService {
     let permissions: string[] = [];
     let approvalLimit: string | null = null;
     let allBranches = true;
+    let companies: { id: string; legalNameAr: string; legalNameEn: string | null }[] = [];
+    let companyId: string | null = null;
     if (current) {
       const db = this.prisma.forTenant(current.tenantId);
-      const [assigned, active, granted, extra] = await Promise.all([
-        db.membershipBranch.findMany({ where: { membershipId: current.id }, select: { branchId: true } }),
-        db.branch.findMany({
+      // ADR-040: the companies this member may switch between, as CompanyGuard allows them.
+      const [activeCompanies, assignedCompanies] = await Promise.all([
+        db.company.findMany({
           where: { isActive: true },
+          orderBy: { id: 'asc' },
+          select: { id: true, legalNameAr: true, legalNameEn: true },
+        }),
+        current.role.code === 'OWNER'
+          ? Promise.resolve([])
+          : db.membershipCompany.findMany({ where: { membershipId: current.id }, select: { companyId: true } }),
+      ]);
+      const restricted = new Set(assignedCompanies.map((a) => a.companyId));
+      const allowedCompanies = activeCompanies.filter((c) => restricted.size === 0 || restricted.has(c.id));
+      const picked =
+        allowedCompanies.find((c) => companyHeader !== undefined && c.id.toString() === companyHeader) ??
+        allowedCompanies[0];
+      companies = allowedCompanies.map((c) => ({ ...c, id: c.id.toString() }));
+      companyId = picked?.id.toString() ?? null;
+      const [assigned, active, granted, extra] = await Promise.all([
+        db.membershipBranch.findMany({
+          where: { membershipId: current.id, branch: { companyId: picked?.id ?? BigInt(0) } },
+          select: { branchId: true },
+        }),
+        db.branch.findMany({
+          where: { isActive: true, companyId: picked?.id ?? BigInt(0) },
           select: { id: true, code: true, nameAr: true, nameEn: true },
           orderBy: { code: 'asc' },
         }),
@@ -478,6 +501,9 @@ export class AuthService {
             branches,
             /** No assigned branch: may open the company-wide reports (ADR-003 §13–§14). */
             allBranches,
+            /** ADR-040: the companies this member may use, and the one this request resolved to. */
+            companies,
+            companyId,
           }
         : null,
     };

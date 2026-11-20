@@ -105,6 +105,10 @@ export class UserMembershipDto {
   @ApiProperty({ type: () => UserMembershipBranchDto, isArray: true })
   branches!: UserMembershipBranchDto[];
 
+  /** ADR-040 §3: the companies the member may use; empty means every company. */
+  @ApiProperty({ type: String, isArray: true })
+  companyIds!: string[];
+
   @ApiProperty({
     type: () => UserPurchasePermissionDto,
     isArray: true,

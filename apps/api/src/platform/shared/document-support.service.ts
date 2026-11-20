@@ -5,6 +5,7 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 /** yyyy-mm-dd of `now` on the wall clock of `timeZone`; UTC when the zone is unknown. */
 export function calendarDateIn(timeZone: string, now = new Date()): string {
@@ -53,7 +54,7 @@ export class DocumentSupportService {
 
   async companyId(db: ReturnType<PrismaService['forTenant']>): Promise<bigint> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { id: true },
     });
@@ -64,7 +65,7 @@ export class DocumentSupportService {
   /** Today's calendar date (yyyy-mm-dd) in the company's timezone (`companies.timezone`). */
   async companyToday(db: ReturnType<PrismaService['forTenant']>, now = new Date()): Promise<string> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { timezone: true },
     });
@@ -83,7 +84,7 @@ export class DocumentSupportService {
   /** Company setting: invoice prices are entered including tax (ADR-017). */
   async pricesIncludeTax(db: ReturnType<PrismaService['forTenant']>): Promise<boolean> {
     const company = await db.company.findFirst({
-      where: { isActive: true },
+      where: { isActive: true, ...currentCompanyFilter() },
       orderBy: { id: 'asc' },
       select: { pricesIncludeTax: true },
     });

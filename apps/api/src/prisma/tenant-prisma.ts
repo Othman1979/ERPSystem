@@ -15,6 +15,7 @@ export const TENANT_MODELS = [
   'Branch',
   'TenantMembership',
   'MembershipBranch',
+  'MembershipCompany',
   'MemberPermission',
   'TenantRole',
   'TenantRolePermission',
