@@ -77,6 +77,12 @@ export function runAvailability(status: string) {
   return { taxEditable: status === 'DRAFT', canPost: status === 'DRAFT', canPay: status === 'POSTED', canReverse: status === 'POSTED' || status === 'PAID' };
 }
 
+export function payrollTabSearchParams(current: URLSearchParams, tab: string) {
+  const next = new URLSearchParams(current);
+  next.set('tab', tab);
+  return next;
+}
+
 function usePayrollData() {
   const employees = useQuery({ queryKey: ['payroll', 'employees'], queryFn: async () => (await payrollControllerListEmployees()).data });
   const elements = useQuery({ queryKey: ['payroll', 'elements'], queryFn: async () => (await payrollControllerListElements()).data });
@@ -418,9 +424,10 @@ function ReportsTab() {
 
 export function PayrollPage() {
   const { t } = useTranslation();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const activeKey = params.get('tab') ?? 'employees';
   const createOnLoad = params.get('new') === '1';
+  const changeTab = (tab: string) => setParams(payrollTabSearchParams(params, tab), { replace: true });
   const tabs = useMemo(() => [
     { key: 'employees', label: t('payroll.employees'), children: <EmployeesTab /> },
     { key: 'elements', label: t('payroll.elements'), children: <ElementsTab /> },
@@ -429,5 +436,5 @@ export function PayrollPage() {
     { key: 'settings', label: t('payroll.settings'), children: <SettingsTab /> },
     { key: 'reports', label: t('payroll.reports.title'), children: <ReportsTab /> },
   ], [t, createOnLoad]);
-  return <Tabs activeKey={activeKey} items={tabs} />;
+  return <Tabs activeKey={activeKey} onChange={changeTab} items={tabs} />;
 }

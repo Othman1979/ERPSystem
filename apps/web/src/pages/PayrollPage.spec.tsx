@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildEmployeePayload, buildInputPayload, runAvailability } from './PayrollPage';
+import { buildEmployeePayload, buildInputPayload, payrollTabSearchParams, runAvailability } from './PayrollPage';
 
 describe('payroll page payloads and run actions', () => {
+  it('updates the URL tab parameter without dropping other query parameters', () => {
+    const next = payrollTabSearchParams(new URLSearchParams('new=1'), 'runs');
+    expect(`?${next.toString()}`).toBe('?new=1&tab=runs');
+  });
+
   it('defaults employee SSC flags in create payload', () => {
     expect(buildEmployeePayload({
       code: 'E1', nameAr: 'Employee', hireDate: '2026-01-01', payMethod: 'BANK',
