@@ -7,6 +7,7 @@ import {
   buildPaymentSourceOptions,
   buildSettingsPayload,
   employeeEditDateValues,
+  monthToPayrollPeriod,
   payrollTabSearchParams,
   runAvailability,
 } from './PayrollPage';
@@ -15,6 +16,10 @@ describe('payroll page payloads and run actions', () => {
   it('updates the URL tab parameter without dropping other query parameters', () => {
     const next = payrollTabSearchParams(new URLSearchParams('new=1'), 'runs');
     expect(`?${next.toString()}`).toBe('?new=1&tab=runs');
+  });
+
+  it('formats a selected payroll month as YYYY-MM for the API', () => {
+    expect(monthToPayrollPeriod(dayjs('2026-11-01'))).toBe('2026-11');
   });
 
   it('defaults employee SSC flags in create payload', () => {

@@ -36,7 +36,7 @@ import {
   type BankAccountListItemDto,
 } from '@erp/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, Form, Input, Radio, Select, Space, Switch, Table, Tabs } from 'antd';
+import { App, Button, DatePicker as AntDatePicker, Form, Input, Radio, Select, Space, Switch, Table, Tabs } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -63,6 +63,24 @@ type InputForm = { employeeId: string; payElementId: string; period: string; wor
 export function dateOnly(value: DateFormValue): string | undefined {
   if (value == null || value === '') return undefined;
   return dayjs.isDayjs(value) ? value.format('YYYY-MM-DD') : value.slice(0, 10);
+}
+
+export function monthToPayrollPeriod(value: Dayjs | null) {
+  return value?.format('YYYY-MM');
+}
+
+function PayrollMonthPicker({ period, onChange }: { period: string; onChange: (period: string) => void }) {
+  return (
+    <AntDatePicker
+      picker="month"
+      format="MM/YYYY"
+      value={dayjs(`${period}-01`)}
+      onChange={(month) => {
+        const nextPeriod = monthToPayrollPeriod(month);
+        if (nextPeriod) onChange(nextPeriod);
+      }}
+    />
+  );
 }
 
 export function datePickerValue(value?: string | null) {
@@ -329,7 +347,7 @@ function InputsTab() {
   });
   return <>
     <Space wrap style={{ marginBottom: 12 }}>
-      <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+      <PayrollMonthPicker period={period} onChange={setPeriod} />
       <Select allowClear placeholder={t('payroll.employee')} value={employeeId} onChange={setEmployeeId} options={(employees.data as PayrollEmployeeDto[] | undefined)?.map((e) => ({ value: e.id, label: `${e.code} — ${i18n.language === 'en' ? e.nameEn ?? e.nameAr : e.nameAr}` }))} />
       <Radio.Group value={daily} onChange={(e) => setDaily(e.target.value)} options={[{ value: false, label: t('payroll.monthlyTotal') }, { value: true, label: t('payroll.dailyDate') }]} />
     </Space>
@@ -407,9 +425,9 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
   };
   return <>
     <Space wrap style={{ marginBottom: 12 }}>
-      <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+      <PayrollMonthPicker period={period} onChange={setPeriod} />
       {can(PERMISSIONS.PAYROLL_MANAGE) && <Button type="primary" onClick={() => create.mutate()} loading={create.isPending}>{t('payroll.newRun')}</Button>}
-      <Select placeholder={t('payroll.run')} value={runId} onChange={setRunId} options={(runs.data as PayrollRunDto[] | undefined)?.map((r) => ({ value: r.id, label: `${r.period} · ${t(`payroll.${r.status.toLowerCase()}`)}` }))} />
+      <Select style={{ minWidth: 180 }} placeholder={t('payroll.run')} value={runId} onChange={setRunId} options={(runs.data as PayrollRunDto[] | undefined)?.map((r) => ({ value: r.id, label: `${r.period} · ${t(`payroll.${r.status.toLowerCase()}`)}` }))} />
       <Select value={sourceType} onChange={(value) => { setSourceType(value); setSourceId(undefined); }} options={['cash', 'bank'].map((v) => ({ value: v, label: t(`payroll.${v}`) }))} />
       <Select placeholder={t('payroll.paymentAccount')} value={sourceId} onChange={setSourceId} options={sourceOptions} />
       {can(PERMISSIONS.PAYROLL_MANAGE) && <Button disabled={!runId} onClick={() => mutate.mutate('recompute')}>{t('payroll.recompute')}</Button>}
@@ -474,7 +492,7 @@ function SettingsTab() {
 function ReportsTab() {
   const { t } = useTranslation();
   const [period, setPeriod] = useState(dayjs().format('YYYY-MM'));
-  return <Space wrap><Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+  return <Space wrap><PayrollMonthPicker period={period} onChange={setPeriod} />
     {(['register', 'ssc', 'tax-withheld'] as const).map((report) => <Space key={report}>
       <strong>{t(`payroll.reports.${report}`)}</strong>
       <ExportButtons path={`/payroll/reports/${report}`} params={{ period }} />
