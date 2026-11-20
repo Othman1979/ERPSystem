@@ -1672,6 +1672,14 @@ export interface UserMembershipRoleDto {
   nameEn: string | null;
 }
 
+export interface UserMembershipCustomRoleDto {
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  id: string;
+}
+
 export interface UserMembershipBranchDto {
   id: string;
   code: string;
@@ -1704,6 +1712,8 @@ export interface UserMembershipDto {
   updatedAt: string;
   user: UserMembershipUserDto;
   role: UserMembershipRoleDto;
+  /** @nullable */
+  customRole: UserMembershipCustomRoleDto | null;
   /** @nullable */
   defaultBranch: UserMembershipBranchDto | null;
   branches: UserMembershipBranchDto[];
@@ -1743,6 +1753,8 @@ export interface UserInviteResultDto {
   user: UserMembershipUserDto;
   role: UserMembershipRoleDto;
   /** @nullable */
+  customRole: UserMembershipCustomRoleDto | null;
+  /** @nullable */
   defaultBranch: UserMembershipBranchDto | null;
   branches: UserMembershipBranchDto[];
   /** Purchase permissions the member holds (ADR-024 §3); an owner holds all three, with no limit. */
@@ -1768,6 +1780,11 @@ export const UpdateMembershipDtoStatus = {
 export interface UpdateMembershipDto {
   /** @maxLength 50 */
   roleCode?: string;
+  /**
+     * A tenant role (ADR-038) replacing the system role's permissions; null clears it.
+     * @nullable
+     */
+  customRoleId?: string | null;
   /** INVITED is never set by an admin: only the invitee accepts (or the inviter cancels). */
   status?: UpdateMembershipDtoStatus;
   /**
@@ -1846,6 +1863,77 @@ export interface MyInvitationAcceptedDto {
   membershipId: string;
   tenantId: string;
   tenantName: string;
+}
+
+export type CustomRolePermission = typeof CustomRolePermission[keyof typeof CustomRolePermission];
+
+
+export const CustomRolePermission = {
+  tenantread: 'tenant.read',
+  branchmanage: 'branch.manage',
+  companymanage: 'company.manage',
+  settingsmanage: 'settings.manage',
+  accountmanage: 'account.manage',
+  cost_centermanage: 'cost_center.manage',
+  journalmanage: 'journal.manage',
+  journalpost: 'journal.post',
+  fiscalmanage: 'fiscal.manage',
+  fiscalclose: 'fiscal.close',
+  itemmanage: 'item.manage',
+  warehousemanage: 'warehouse.manage',
+  stockmovement: 'stock.movement',
+  partiesmanage: 'parties.manage',
+  salesmanage: 'sales.manage',
+  salespost: 'sales.post',
+  salesreturn: 'sales.return',
+  salesapprove: 'sales.approve',
+  purchasemanage: 'purchase.manage',
+  purchasepost: 'purchase.post',
+  purchasereturn: 'purchase.return',
+  purchase_requestmanage: 'purchase_request.manage',
+  treasurymanage: 'treasury.manage',
+  einvoicemanage: 'einvoice.manage',
+  reportsview: 'reports.view',
+  auditview: 'audit.view',
+  import_exportmanage: 'import_export.manage',
+  onboardingmanage: 'onboarding.manage',
+} as const;
+
+export interface PermissionCatalogDto {
+  assignable: CustomRolePermission[];
+}
+
+export interface TenantRoleDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn?: string | null;
+  /** @nullable */
+  description?: string | null;
+  permissions: CustomRolePermission[];
+  /** Members (any status) holding this role. */
+  memberCount: number;
+}
+
+export interface SaveTenantRoleDto {
+  /** @pattern ^[A-Z0-9_-]{2,50}$ */
+  code: string;
+  /** @maxItems 28 */
+  permissions: CustomRolePermission[];
+  /**
+     * @minLength 1
+     * @maxLength 191
+     */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  /** @maxLength 1000 */
+  description?: string;
+}
+
+export interface TenantRoleDeletedDto {
+  id: string;
 }
 
 export interface BranchDto {
@@ -9117,6 +9205,7 @@ export const ErrorCode = {
   STOCK_COUNT_STALE: 'STOCK_COUNT_STALE',
   STOCK_COUNT_SELF_APPROVAL: 'STOCK_COUNT_SELF_APPROVAL',
   PARTY_IN_USE: 'PARTY_IN_USE',
+  ROLE_IN_USE: 'ROLE_IN_USE',
   CURSOR_INVALID: 'CURSOR_INVALID',
   ALL_BRANCHES_REQUIRED: 'ALL_BRANCHES_REQUIRED',
   PROCUREMENT_LEVEL_REQUIRED: 'PROCUREMENT_LEVEL_REQUIRED',
@@ -14626,6 +14715,225 @@ export const invitationsControllerDecline = async (membershipId: string, options
   {
     ...options,
     method: 'POST'
+
+
+  }
+);}
+
+
+
+export type tenantRolesControllerCatalogResponse200 = {
+  data: PermissionCatalogDto
+  status: 200
+}
+
+export type tenantRolesControllerCatalogResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type tenantRolesControllerCatalogResponseSuccess = (tenantRolesControllerCatalogResponse200) & {
+  headers: Headers;
+};
+export type tenantRolesControllerCatalogResponseError = (tenantRolesControllerCatalogResponseDefault) & {
+  headers: Headers;
+};
+
+export const getTenantRolesControllerCatalogUrl = () => {
+
+
+
+
+  return `/api/v1/roles/catalog`
+}
+
+export const tenantRolesControllerCatalog = async ( options?: Parameters<typeof apiFetch>[1]): Promise<tenantRolesControllerCatalogResponseSuccess> => {
+
+  return apiFetch<tenantRolesControllerCatalogResponseSuccess>(getTenantRolesControllerCatalogUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type tenantRolesControllerListResponse200 = {
+  data: TenantRoleDto[]
+  status: 200
+}
+
+export type tenantRolesControllerListResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type tenantRolesControllerListResponseSuccess = (tenantRolesControllerListResponse200) & {
+  headers: Headers;
+};
+export type tenantRolesControllerListResponseError = (tenantRolesControllerListResponseDefault) & {
+  headers: Headers;
+};
+
+export const getTenantRolesControllerListUrl = () => {
+
+
+
+
+  return `/api/v1/roles/custom`
+}
+
+export const tenantRolesControllerList = async ( options?: Parameters<typeof apiFetch>[1]): Promise<tenantRolesControllerListResponseSuccess> => {
+
+  return apiFetch<tenantRolesControllerListResponseSuccess>(getTenantRolesControllerListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type tenantRolesControllerCreateResponse201 = {
+  data: TenantRoleDto
+  status: 201
+}
+
+export type tenantRolesControllerCreateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type tenantRolesControllerCreateResponseSuccess = (tenantRolesControllerCreateResponse201) & {
+  headers: Headers;
+};
+export type tenantRolesControllerCreateResponseError = (tenantRolesControllerCreateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getTenantRolesControllerCreateUrl = () => {
+
+
+
+
+  return `/api/v1/roles/custom`
+}
+
+export const tenantRolesControllerCreate = async (saveTenantRoleDto: SaveTenantRoleDto, options?: Parameters<typeof apiFetch>[1]): Promise<tenantRolesControllerCreateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<tenantRolesControllerCreateResponseSuccess>(getTenantRolesControllerCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(saveTenantRoleDto)
+  }
+);}
+
+
+
+export type tenantRolesControllerUpdateResponse200 = {
+  data: TenantRoleDto
+  status: 200
+}
+
+export type tenantRolesControllerUpdateResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type tenantRolesControllerUpdateResponseSuccess = (tenantRolesControllerUpdateResponse200) & {
+  headers: Headers;
+};
+export type tenantRolesControllerUpdateResponseError = (tenantRolesControllerUpdateResponseDefault) & {
+  headers: Headers;
+};
+
+export const getTenantRolesControllerUpdateUrl = (id: number,) => {
+
+
+
+
+  return `/api/v1/roles/custom/${id}`
+}
+
+export const tenantRolesControllerUpdate = async (id: number,
+    saveTenantRoleDto: SaveTenantRoleDto, options?: Parameters<typeof apiFetch>[1]): Promise<tenantRolesControllerUpdateResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<tenantRolesControllerUpdateResponseSuccess>(getTenantRolesControllerUpdateUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(saveTenantRoleDto)
+  }
+);}
+
+
+
+export type tenantRolesControllerRemoveResponse200 = {
+  data: TenantRoleDeletedDto
+  status: 200
+}
+
+export type tenantRolesControllerRemoveResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type tenantRolesControllerRemoveResponseSuccess = (tenantRolesControllerRemoveResponse200) & {
+  headers: Headers;
+};
+export type tenantRolesControllerRemoveResponseError = (tenantRolesControllerRemoveResponseDefault) & {
+  headers: Headers;
+};
+
+export const getTenantRolesControllerRemoveUrl = (id: number,) => {
+
+
+
+
+  return `/api/v1/roles/custom/${id}`
+}
+
+export const tenantRolesControllerRemove = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<tenantRolesControllerRemoveResponseSuccess> => {
+
+  return apiFetch<tenantRolesControllerRemoveResponseSuccess>(getTenantRolesControllerRemoveUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
 
 
   }
