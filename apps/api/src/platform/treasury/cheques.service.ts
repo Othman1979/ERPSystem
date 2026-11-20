@@ -129,6 +129,11 @@ export class ChequesService {
     const chequeNo = p.cheque.chequeNo.trim();
     const bankName = p.direction === 'INCOMING' ? (p.cheque.bankName ?? '').trim() : null;
     const status: ChequeStatus = p.direction === 'INCOMING' ? 'IN_HAND' : 'ISSUED';
+    const key = chequeKey(p.direction, chequeNo, bankName, p.bankAccountId ?? null);
+    // The unique index is the race guard; this read names the error for the usual case.
+    if (await tx.cheque.findFirst({ where: { companyId: p.companyId, chequeKey: key }, select: { id: true } })) {
+      throw new DomainError(ErrorCode.CHEQUE_DUPLICATE, `Cheque ${chequeNo} is already recorded`, { chequeNo });
+    }
     let cheque;
     try {
       cheque = await tx.cheque.create({
@@ -146,7 +151,7 @@ export class ChequesService {
           receiptId: p.receiptId ?? null,
           paymentId: p.paymentId ?? null,
           bankAccountId: p.bankAccountId ?? null,
-          chequeKey: chequeKey(p.direction, chequeNo, bankName, p.bankAccountId ?? null),
+          chequeKey: key,
           branchId: p.branchId,
           createdBy: p.userId,
         },
