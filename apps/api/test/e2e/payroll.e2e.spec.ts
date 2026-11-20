@@ -640,6 +640,19 @@ describe('Payroll PY1–PY3', () => {
     expect(statement.rows.find((row) => row.documentType === 'MOVEMENT' && row.debit === '10.000')?.credit).toBe('0.000');
     expect(statement.rows.find((row) => row.documentType === 'PAYROLL_RUN')?.credit).toBe('498.047');
 
+    const inactiveEmployee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `INACTIVE-${RUN}`, nameAr: 'Inactive employee', hireDate: '2026-11-01', payMethod: 'CASH', sscCovered: false,
+    }, 'inactive movement employee', companyAId);
+    h.ok(await h.api().patch(`/api/v1/payroll/employees/${inactiveEmployee.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ isActive: false }), 200, 'deactivate movement employee');
+    const inactiveMovement = await act(tokenA, 'payroll/movements', {
+      employeeId: inactiveEmployee.id, payElementId: elementId.OVERTIME_125,
+      movementDate: '2026-12-03', quantity: '1', description: 'Inactive employee',
+    }, companyAId);
+    expect(inactiveMovement.status).toBe(400);
+    expect(inactiveMovement.body.error.code).toBe('VALIDATION');
+    expect(inactiveMovement.body.error.message).toBe('Employee is inactive');
+
     const [firstConcurrent, secondConcurrent] = await Promise.all([
       act(tokenA, 'payroll/movements', {
         employeeId: employee.id, payElementId: elementId.TRANSPORT, movementDate: '2026-12-01',

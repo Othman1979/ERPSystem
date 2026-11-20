@@ -428,6 +428,7 @@ export class PayrollService {
       await this.ensureMovementPeriodAllowed(tx, period);
       const employee = await tx.employee.findFirst({ where: { id: BigInt(dto.employeeId) } });
       if (!employee) throw DomainError.notFound('Employee', dto.employeeId);
+      if (!employee.isActive) throw new DomainError(ErrorCode.VALIDATION, 'Employee is inactive');
       const element = await tx.payElement.findFirst({
         where: { id: BigInt(dto.payElementId) },
         include: { account: { select: { accountType: true } } },
