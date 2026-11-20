@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../cls/cls.types.js';
+import { withAllCompanies } from '../cls/current-company.js';
 import { DomainError } from '../errors/domain.error.js';
 import { ErrorCode } from '../errors/error-codes.js';
 import type { Plan, Prisma } from '../../generated/prisma/client.js';
@@ -36,9 +37,11 @@ export class PlanLimitsService {
     const used =
       model === 'tenantMembership'
         ? await tx.tenantMembership.count({ where: { tenantId } })
-        : model === 'warehouse'
-          ? await tx.warehouse.count({ where: { tenantId } })
-          : await tx.branch.count({ where: { tenantId } });
+        : await withAllCompanies(() =>
+            model === 'warehouse'
+              ? tx.warehouse.count({ where: { tenantId } })
+              : tx.branch.count({ where: { tenantId } }),
+          );
     const limit = limitOf(plan);
     if (used >= limit) {
       throw new DomainError(
@@ -65,26 +68,31 @@ export class PlanLimitsService {
   }
 
   /**
-   * Monthly sales-invoice quota (§13.1, ADR-009). `posted` is the number of
-   * sales invoices the tenant already posted in the invoice's calendar month;
-   * the sales module counts its own table and passes it in. Two invoices
-   * posted at the same instant at the limit may both pass: a commercial
-   * limit, not worth serialising every posting of the tenant for. The tenant
-   * row lock used above is unsafe here: about 50 tables have a foreign key to
-   * tenants, so every insert takes a shared lock on that row, and an
-   * exclusive lock taken mid-posting would deadlock with concurrent postings
-   * that hold item locks (PLAT-04).
+   * Monthly sales-invoice quota (§13.1, ADR-009) counts posted sales invoices
+   * across the tenant's companies. Two invoices posted at the same instant at
+   * the limit may both pass: a commercial limit, not worth serialising every
+   * posting of the tenant for. The tenant row lock used above is unsafe here:
+   * about 50 tables have a foreign key to tenants, so every insert takes a
+   * shared lock on that row, and an exclusive lock taken mid-posting would
+   * deadlock with concurrent postings that hold item locks (PLAT-04).
    *
    * The plan is read through the caller's `tx`, never another client: a
    * second pool connection taken while the posting transaction holds one
    * deadlocks the pool once DB_POOL_SIZE postings run at once (each holds a
    * connection and waits for another), and they all fail with 503.
    */
-  async assertMonthlyInvoiceQuota(tx: Prisma.TransactionClient, posted: number): Promise<void> {
+  async assertMonthlyInvoiceQuota(tx: Prisma.TransactionClient, invoiceDate: Date): Promise<void> {
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
     if (!tenantId) return;
     const plan = (await tx.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } }))?.plan;
     if (!plan) return;
+    const monthStart = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth(), 1));
+    const nextMonth = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth() + 1, 1));
+    const posted = await withAllCompanies(() =>
+      tx.salesInvoice.count({
+        where: { tenantId, status: 'POSTED', invoiceDate: { gte: monthStart, lt: nextMonth } },
+      }),
+    );
     if (posted >= plan.maxInvoicesPerMonth) {
       throw new DomainError(
         ErrorCode.PLAN_LIMIT_EXCEEDED,

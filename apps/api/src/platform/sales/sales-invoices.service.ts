@@ -1288,14 +1288,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, invoiceDate);
 
         // Plan quota (§13.1): sales invoices already posted in this invoice's month.
-        const monthStart = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth(), 1));
-        const nextMonth = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth() + 1, 1));
-        await this.limits.assertMonthlyInvoiceQuota(
-          tx,
-          await tx.salesInvoice.count({
-            where: { companyId, status: 'POSTED', invoiceDate: { gte: monthStart, lt: nextMonth } },
-          }),
-        );
+        await this.limits.assertMonthlyInvoiceQuota(tx, invoiceDate);
 
         // An invoice made from an order: the order and its lines locked before any stock lock (ADR-027 §8).
         const billing = draft.salesOrderId === null ? null : await this.lockBilledOrder(tx, tenantId, draft, settings.salesPriceLocked);
