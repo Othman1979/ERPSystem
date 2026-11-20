@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -220,7 +221,8 @@ export class PartiesService {
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
         const [party] = await tx.$queryRaw<{ code: string; party_type: PartyType }[]>`
-          SELECT code, party_type FROM parties WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+          SELECT code, party_type FROM parties
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         if (!party) throw DomainError.notFound('Party', id.toString());
         const usedBy = await this.usage.usage(tx, id);
         if (usedBy.length > 0) {

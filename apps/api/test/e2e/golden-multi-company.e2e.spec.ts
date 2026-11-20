@@ -8,6 +8,8 @@ import 'dotenv/config';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import path from 'node:path';
+import ExcelJS from 'exceljs';
+import { unzipSync } from 'fflate';
 import request from 'supertest';
 import { addMember } from './support/members.js';
 import { testDatabaseUrl } from './support/test-db.js';
@@ -108,6 +110,115 @@ describe('multi-company (ADR-040)', () => {
     expect(rows2.some((r) => b1.has(r.id))).toBe(false);
   });
 
+  it('C4: item, party, and stock reads stay within the selected company', async () => {
+    const headers = auth(ownerA, first);
+    const units = await api().get('/api/v1/units').set(headers);
+    expect(units.status).toBe(200);
+    const baseUnit = (units.body as { id: string; code: string }[]).find((u) => u.code === 'PCS') ?? units.body[0];
+    const item = await api().post('/api/v1/items').set(headers).send({
+      code: `MC-${RUN}`,
+      nameAr: 'صنف الشركة الأولى',
+      baseUnitId: baseUnit.id,
+    });
+    expect(item.status).toBe(201);
+
+    const party = await api().post('/api/v1/parties').set(headers).send({
+      code: `MC-${RUN}`,
+      nameAr: 'عميل الشركة الأولى',
+      partyType: 'CUSTOMER',
+    });
+    expect(party.status).toBe(201);
+
+    const fiscalYear = await api().post('/api/v1/fiscal-years').set(headers).send({
+      code: `MC-${RUN}`,
+      startDate: '2025-01-01',
+      endDate: '2025-12-31',
+    });
+    expect(fiscalYear.status).toBe(201);
+
+    const warehouse = await api().post('/api/v1/warehouses').set(headers).send({
+      code: `MC-${RUN}`,
+      nameAr: 'مستودع الشركة الأولى',
+    });
+    expect(warehouse.status).toBe(201);
+    const adjustment = await api().post('/api/v1/stock-adjustments').set(headers).send({
+      adjustmentDate: '2025-01-13',
+      adjustmentType: 'OPENING',
+      warehouseId: warehouse.body.id,
+      lines: [{ itemId: item.body.id, qty: '7', unitCost: '1.000' }],
+    });
+    expect(adjustment.status).toBe(201);
+    const posted = await api()
+      .post(`/api/v1/stock-adjustments/${adjustment.body.id}/post`)
+      .set(headers)
+      .set('Idempotency-Key', `mc-stock-${RUN}`);
+    expect(posted.status).toBe(201);
+
+    const otherItem = await api().get(`/api/v1/items/${item.body.id}`).set(auth(ownerA, second));
+    const ownItem = await api().get(`/api/v1/items/${item.body.id}`).set(headers);
+    const otherPatch = await api().patch(`/api/v1/items/${item.body.id}`).set(auth(ownerA, second)).send({ nameAr: 'تعديل ممنوع' });
+    expect([otherItem.status, ownItem.status, otherPatch.status]).toEqual([404, 200, 404]);
+
+    const otherParty = await api().get(`/api/v1/parties/${party.body.id}`).set(auth(ownerA, second));
+    const ownParty = await api().get(`/api/v1/parties/${party.body.id}`).set(headers);
+    expect([otherParty.status, ownParty.status]).toEqual([404, 200]);
+
+    const otherItems = await api().get('/api/v1/items').set(auth(ownerA, second));
+    const ownItems = await api().get('/api/v1/items').set(headers);
+    expect(otherItems.body.items.some((row: { id: string }) => row.id === item.body.id)).toBe(false);
+    expect(ownItems.body.items.some((row: { id: string }) => row.id === item.body.id)).toBe(true);
+
+    const otherBalances = await api().get('/api/v1/stock/balances').set(auth(ownerA, second));
+    const ownBalances = await api().get('/api/v1/stock/balances').set(headers);
+    expect(otherBalances.body.some((row: { itemId: string }) => row.itemId === item.body.id)).toBe(false);
+    expect(ownBalances.body.some((row: { itemId: string }) => row.itemId === item.body.id)).toBe(true);
+  });
+
+  it('exports company-owned records from every company when one company is selected', async () => {
+    const exported = await api()
+      .get('/api/v1/export/tenant-data')
+      .set(auth(ownerA, second))
+      .buffer(true)
+      .parse((res, callback) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+    expect(exported.status).toBe(200);
+    const files = unzipSync(new Uint8Array(exported.body as Buffer));
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(files['01-company.xlsx']!) as unknown as ArrayBuffer);
+    const rows: unknown[][] = [];
+    workbook.getWorksheet('Branch')!.eachRow((row) => rows.push((row.values as unknown[]).slice(1)));
+    const [header, ...branches] = rows;
+    const companyIdColumn = header!.indexOf('companyId');
+    expect(branches.map((row) => row[companyIdColumn])).toEqual(expect.arrayContaining([first, second]));
+  });
+
+  it('does not deactivate a tenant-wide item group used by another company', async () => {
+    const units = await api().get('/api/v1/units').set(auth(ownerA, first));
+    const baseUnit = (units.body as { id: string; code: string }[]).find((unit) => unit.code === 'PCS') ?? units.body[0];
+    const group = await api().post('/api/v1/item-groups').set(auth(ownerA, first)).send({
+      code: `MC-G-${RUN}`,
+      nameAr: 'مجموعة مشتركة',
+    });
+    expect(group.status).toBe(201);
+    const item = await api().post('/api/v1/items').set(auth(ownerA, first)).send({
+      code: `MC-GI-${RUN}`,
+      nameAr: 'صنف الشركة الأولى',
+      baseUnitId: baseUnit.id,
+      itemGroupId: group.body.id,
+    });
+    expect(item.status).toBe(201);
+    expect(item.body.itemGroupId).toBe(group.body.id);
+    const inSecond = await api().get('/api/v1/items').set(auth(ownerA, second));
+    expect(inSecond.body.items.some((row: { id: string }) => row.id === item.body.id)).toBe(false);
+
+    const deactivate = await api().patch(`/api/v1/item-groups/${group.body.id}`).set(auth(ownerA, second)).send({ isActive: false });
+    expect(deactivate.status).toBe(409);
+    expect(deactivate.body.error.code).toBe('CONFLICT');
+  });
+
   it('C2: another tenant cannot pick the company, and the header must be an id', async () => {
     const other = await api().get('/api/v1/accounts').set(auth(ownerB, second));
     expect(other.status).toBe(403);
@@ -129,6 +240,25 @@ describe('multi-company (ADR-040)', () => {
     expect(me.body.currentMembership.companyId).toBe(second);
     expect(me.body.currentMembership.branches.map((b: { code: string }) => b.code)).toEqual(['MAIN']);
     expect(me.body.currentMembership.branches[0].id).not.toBe(mainId);
+    await api().patch(`/api/v1/users/${memberMembership}`).set(auth(ownerA)).send({ branchIds: [] });
+  });
+
+  it('C3: a member can be assigned branches from both companies', async () => {
+    const branches1 = await api().get('/api/v1/branches').set(auth(ownerA, first));
+    const branches2 = await api().get('/api/v1/branches').set(auth(ownerA, second));
+    const branch1 = ((branches1.body.items ?? branches1.body) as { id: string }[])[0]!;
+    const branch2 = ((branches2.body.items ?? branches2.body) as { id: string }[])[0]!;
+
+    const assigned = await api()
+      .patch(`/api/v1/users/${memberMembership}`)
+      .set(auth(ownerA, first))
+      .send({ branchIds: [branch1.id, branch2.id] });
+    expect([assigned.status, assigned.body.error?.message]).toEqual([200, undefined]);
+
+    const meFirst = await api().get('/api/v1/me').set(auth(memberToken, first));
+    const meSecond = await api().get('/api/v1/me').set(auth(memberToken, second));
+    expect(meFirst.body.currentMembership.branches.map((branch: { id: string }) => branch.id)).toEqual([branch1.id]);
+    expect(meSecond.body.currentMembership.branches.map((branch: { id: string }) => branch.id)).toEqual([branch2.id]);
     await api().patch(`/api/v1/users/${memberMembership}`).set(auth(ownerA)).send({ branchIds: [] });
   });
 

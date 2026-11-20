@@ -19,7 +19,7 @@ import {
 } from './dto/inventory.dto.js';
 import type { ListItemsQueryDto } from './dto/list-queries.dto.js';
 import { isStocked, stockedItemKindFilter, type ItemKindValue } from '../../common/inventory/item-kind.js';
-import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { currentCompanyFilter, withAllCompanies } from '../../common/cls/current-company.js';
 
 /**
  * Item catalog: groups, items, item units and barcodes (§7.4).
@@ -91,7 +91,7 @@ export class CatalogService {
     const existing = await db.itemGroup.findFirst({ where: { id } });
     if (!existing) throw DomainError.notFound('ItemGroup', id.toString());
     if (dto.isActive === false) {
-      const items = await db.item.count({ where: { itemGroupId: id, isActive: true } });
+      const items = await withAllCompanies(() => db.item.count({ where: { itemGroupId: id, isActive: true } }));
       if (items > 0) {
         throw new DomainError(
           ErrorCode.CONFLICT,

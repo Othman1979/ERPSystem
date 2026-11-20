@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { hasAllBranches } from '../../common/branch/branch-context.js';
 import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
@@ -89,7 +90,7 @@ export class BankReconciliationService {
   }
 
   private async lockBankAccount(tx: Tx, tenantId: bigint, bankAccountId: bigint): Promise<void> {
-    await tx.$queryRaw`SELECT id FROM bank_accounts WHERE tenant_id = ${tenantId} AND id = ${bankAccountId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM bank_accounts WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${bankAccountId} FOR UPDATE`;
   }
 
   /**
@@ -98,7 +99,7 @@ export class BankReconciliationService {
    */
   private async lockStatement(tx: Tx, tenantId: bigint, id: bigint, draft = true): Promise<Statement> {
     const rows = await tx.$queryRaw<{ bank_account_id: bigint }[]>`
-      SELECT bank_account_id FROM bank_statements WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      SELECT bank_account_id FROM bank_statements WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
     if (!rows[0]) throw DomainError.notFound('BankStatement', id.toString());
     await this.lockBankAccount(tx, tenantId, BigInt(rows[0].bank_account_id));
     const statement = await tx.bankStatement.findFirstOrThrow({ where: { tenantId, id } });

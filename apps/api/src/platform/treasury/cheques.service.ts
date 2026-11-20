@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, branchWhere } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
@@ -224,8 +225,8 @@ export class ChequesService {
     userId: bigint | null,
   ) {
     const rows = (kind === 'receipt'
-      ? await tx.$queryRaw`SELECT id FROM cheques WHERE tenant_id = ${tenantId} AND receipt_id = ${voucherId} FOR UPDATE`
-      : await tx.$queryRaw`SELECT id FROM cheques WHERE tenant_id = ${tenantId} AND payment_id = ${voucherId} FOR UPDATE`) as {
+      ? await tx.$queryRaw`SELECT id FROM cheques WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND receipt_id = ${voucherId} FOR UPDATE`
+      : await tx.$queryRaw`SELECT id FROM cheques WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND payment_id = ${voucherId} FOR UPDATE`) as {
       id: bigint;
     }[];
     if (!rows[0]) return;
@@ -358,11 +359,11 @@ export class ChequesService {
   private async lock(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint, id: bigint) {
     const [link] = (await tx.$queryRaw`
       SELECT receipt_id AS receiptId, payment_id AS paymentId FROM cheques
-       WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`) as { receiptId: bigint | null; paymentId: bigint | null }[];
+       WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`) as { receiptId: bigint | null; paymentId: bigint | null }[];
     if (link?.receiptId) {
-      await tx.$queryRaw`SELECT id FROM receipts WHERE tenant_id = ${tenantId} AND id = ${link.receiptId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM receipts WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${link.receiptId} FOR UPDATE`;
     } else if (link?.paymentId) {
-      await tx.$queryRaw`SELECT id FROM payments WHERE tenant_id = ${tenantId} AND id = ${link.paymentId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM payments WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${link.paymentId} FOR UPDATE`;
     }
     const c = await tx.cheque.findFirst({ where: { id, companyId } });
     if (!c) throw DomainError.notFound('Cheque', id.toString());

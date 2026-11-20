@@ -1,5 +1,6 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, branchWhere, currentBranchId } from '../../common/branch/branch-context.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
@@ -453,7 +454,7 @@ export class GoodsNotesService implements OnModuleInit {
   async lockForBilling(tx: Prisma.TransactionClient, id: bigint): Promise<GrnBillingSource | null> {
     const { tenantId } = this.support.tenant();
     const [locked] = await tx.$queryRaw<{ id: bigint }[]>`
-      SELECT id FROM goods_notes WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      SELECT id FROM goods_notes WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
     if (!locked) return null;
     return this.billingSource(tx, id);
   }
@@ -500,12 +501,18 @@ export class GoodsNotesService implements OnModuleInit {
       { id: bigint; doc_no: string | null; status: 'DRAFT' | 'POSTED'; note_type: 'GRN' | 'GIN'; purchase_order_id: bigint | null; warehouse_id: bigint }[]
     >`
       SELECT id, doc_no, status, note_type, purchase_order_id, warehouse_id FROM goods_notes
-       WHERE tenant_id = ${tenantId} AND id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
+       WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
     const rows = await tx.$queryRaw<
       { id: bigint; note_id: bigint; item_id: bigint; po_line_id: bigint | null; qty: Num; unit_cost: Num | null; billed_qty: Num; cleared_value: Num }[]
     >`
       SELECT id, note_id, item_id, po_line_id, qty, unit_cost, billed_qty, cleared_value FROM goods_note_lines
-       WHERE tenant_id = ${tenantId} AND note_id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
+       WHERE tenant_id = ${tenantId} AND note_id IN (${Prisma.join(ids)})
+         AND EXISTS (
+           SELECT 1 FROM goods_notes n
+            WHERE n.tenant_id = goods_note_lines.tenant_id AND n.id = goods_note_lines.note_id
+              ${currentCompanySqlFilter('n')}
+         )
+       ORDER BY id FOR UPDATE`;
     return this.receiptLines(notes, rows);
   }
 
@@ -811,7 +818,8 @@ export class GoodsNotesService implements OnModuleInit {
 
   private async lockNote(tx: Prisma.TransactionClient, tenantId: bigint, id: bigint) {
     const [row] = await tx.$queryRaw<{ id: bigint; status: string; branch_id: bigint | null; warehouse_id: bigint }[]>`
-      SELECT id, status, branch_id, warehouse_id FROM goods_notes WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      SELECT id, status, branch_id, warehouse_id FROM goods_notes
+       WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
     if (!row) throw DomainError.notFound('GoodsNote', id.toString());
     return { ...row, branch_id: row.branch_id === null ? null : BigInt(row.branch_id), warehouse_id: BigInt(row.warehouse_id) };
   }

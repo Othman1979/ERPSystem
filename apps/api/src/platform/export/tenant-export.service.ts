@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { zipSync, strToU8 } from 'fflate';
 import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
+import { withAllCompanies } from '../../common/cls/current-company.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
@@ -124,6 +125,10 @@ export class TenantExportService {
   ) {}
 
   async export(): Promise<{ zip: Buffer; fileName: string; counts: Record<string, number> }> {
+    return withAllCompanies(() => this.exportTenantData());
+  }
+
+  private async exportTenantData(): Promise<{ zip: Buffer; fileName: string; counts: Record<string, number> }> {
     const cls = ClsServiceManager.getClsService<RequestContext>();
     const tenantId = cls.get('tenantId');
     if (!tenantId) throw new DomainError(ErrorCode.FORBIDDEN, 'No tenant selected');

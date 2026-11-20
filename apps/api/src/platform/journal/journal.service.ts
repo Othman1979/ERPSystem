@@ -29,7 +29,7 @@ import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
-import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/current-company.js';
 
 const MANUAL_SOURCE = 'MANUAL_JOURNAL';
 const OPENING_SOURCE = 'OPENING_ENTRY';
@@ -346,7 +346,7 @@ export class JournalService implements OnModuleInit {
     await this.withRetry(() => db.$transaction(async (tx) => {
       const rows = (await tx.$queryRaw`
         SELECT id, status, branch_id FROM journal_entries
-        WHERE tenant_id = ${tenantId} AND id = ${id}
+        WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id}
         FOR UPDATE
       `) as { id: bigint; status: string; branch_id: bigint | null }[];
       const entry = rows[0];
@@ -385,7 +385,7 @@ export class JournalService implements OnModuleInit {
         const rows = (await tx.$queryRaw`
           SELECT id, status, entry_date, description, branch_id, voucher_type
           FROM journal_entries
-          WHERE tenant_id = ${tenantId} AND id = ${id}
+          WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id}
           FOR UPDATE
         `) as {
           id: bigint;
@@ -570,7 +570,7 @@ export class JournalService implements OnModuleInit {
         // LEDGER-02: lock first, so this transaction's reads see a concurrent reversal.
         const rows = (await tx.$queryRaw`
           SELECT id, source_type FROM journal_entries
-          WHERE tenant_id = ${tenantId} AND id = ${id}
+          WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id}
           FOR UPDATE
         `) as { id: bigint; source_type: string }[];
         const original = rows[0];

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { isRecipe } from '../../common/inventory/item-kind.js';
 import { Decimal, round3, sum } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, assertWarehouseBranchAllowed, branchWhere } from '../../common/branch/branch-context.js';
@@ -315,7 +316,7 @@ export class SalesReturnsService {
       // TRADE-01: lock the original invoice first. Every return of it is
       // created and posted under this lock, so the returned-so-far read below
       // (this transaction's first plain read) sees all of them.
-      await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${BigInt(dto.originalInvoiceId)} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${BigInt(dto.originalInvoiceId)} FOR UPDATE`;
       const invoice = await tx.salesInvoice.findFirst({
         where: { id: BigInt(dto.originalInvoiceId), companyId },
         include: { lines: true },
@@ -438,8 +439,8 @@ export class SalesReturnsService {
         // the invoice is created and posted under the invoice lock (TRADE-01),
         // and as locking reads ahead of any plain read they make the reads
         // below see the latest committed state.
-        await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${head.originalInvoiceId} FOR UPDATE`;
-        await tx.$queryRaw`SELECT id FROM sales_returns WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${head.originalInvoiceId} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM sales_returns WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const draft = await tx.salesReturn.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },

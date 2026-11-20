@@ -11,7 +11,7 @@ import { pageWindow } from '../../common/paging/page-query.dto.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { BomLineDto, CreateBomDto, ListBomsQueryDto, UpdateBomDto } from './dto/bom.dto.js';
-import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/current-company.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -143,7 +143,7 @@ const EXPLODE_BOM_SELECT = {
 
 /** Lock one item row (the first lock of every BOM write, ADR-031 §5). */
 async function lockItem(tx: Tx, tenantId: bigint, itemId: bigint): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM items WHERE tenant_id = ${tenantId} AND id = ${itemId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM items WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${itemId} FOR UPDATE`;
 }
 
 /**
@@ -609,7 +609,7 @@ export class BomService {
       }
       if (lock) {
         if (explicitBomId !== undefined) {
-          await tx.$queryRaw`SELECT id FROM boms WHERE tenant_id = ${tenantId} AND id = ${explicitBomId} LOCK IN SHARE MODE`;
+          await tx.$queryRaw`SELECT id FROM boms WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${explicitBomId} LOCK IN SHARE MODE`;
         } else {
           await tx.$queryRaw`SELECT id FROM boms WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND item_id = ${itemId} AND status = 'ACTIVE' LOCK IN SHARE MODE`;
         }

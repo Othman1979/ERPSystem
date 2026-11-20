@@ -3,6 +3,7 @@ import { ClsServiceManager } from 'nestjs-cls';
 import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -70,7 +71,7 @@ export class YearClosingService {
     yearId: bigint,
   ): Promise<void> {
     await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
-    await tx.$queryRaw`SELECT id FROM fiscal_years WHERE tenant_id = ${tenantId} AND id = ${yearId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM fiscal_years WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${yearId} FOR UPDATE`;
     await tx.$queryRaw`SELECT id FROM fiscal_periods WHERE tenant_id = ${tenantId} AND fiscal_year_id = ${yearId} ORDER BY id FOR UPDATE`;
   }
 

@@ -9,6 +9,7 @@ import { withLineCounts } from '../../common/paging/line-counts.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { assertCanApprove, isAuthor, readApprover } from '../../common/procurement/approval.js';
 import { assertProcurementLevel, lockProcurementLevel } from '../../common/procurement/procurement-level.js';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
@@ -322,7 +323,7 @@ export class IssueRequestsService {
       }[]
     >`
       SELECT id, request_no, status, branch_id, warehouse_id, cost_center_id, expense_account_id
-        FROM issue_requests WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        FROM issue_requests WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
     if (!row) throw DomainError.notFound('IssueRequest', id.toString());
     return {
       id: BigInt(row.id),
@@ -379,7 +380,7 @@ export class IssueRequestsService {
   private async lockRow(tx: Prisma.TransactionClient, tenantId: bigint, id: bigint): Promise<LockedRow> {
     const [row] = await tx.$queryRaw<LockedRow[]>`
       SELECT id, status, branch_id, created_by, updated_by, submitted_by, request_date FROM issue_requests
-       WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+       WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
     if (!row) throw DomainError.notFound('IssueRequest', id.toString());
     return {
       ...row,

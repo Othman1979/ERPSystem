@@ -71,7 +71,14 @@ export class CompaniesService {
       await tx.branch.create({
         data: { tenantId, companyId: created.id, code: 'MAIN', nameAr: 'الفرع الرئيسي' },
       });
-      await this.provisioning.provision(tx, tenantId, created.id, userId);
+      const cls = ClsServiceManager.getClsService<RequestContext>();
+      const previousCompanyId = cls.get('companyId');
+      cls.set('companyId', created.id);
+      try {
+        await this.provisioning.provision(tx, tenantId, created.id, userId);
+      } finally {
+        cls.set('companyId', previousCompanyId);
+      }
       return created;
     });
     await this.audit.log({

@@ -19,7 +19,7 @@ import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { retryOnLockConflict } from '../shared/document-support.service.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
 import { isStocked, assertNotRecipe } from '../../common/inventory/item-kind.js';
-import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/current-company.js';
 
 const SOURCE = 'STOCK_ADJUSTMENT';
 
@@ -251,7 +251,7 @@ export class AdjustmentsService {
         // Lock the document first (§10.1 step 7). As the first statement it also
         // makes every later read see the latest committed state, so two
         // concurrent requests cannot both post or reverse it.
-        await tx.$queryRaw`SELECT id FROM stock_adjustments WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM stock_adjustments WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const result = await this.postLocked(tx, id, companyId, userId);
         await this.audit.log({
           action: 'stock_adjustment.post',
@@ -422,7 +422,7 @@ export class AdjustmentsService {
         // Lock the document first (§10.1 step 7). As the first statement it also
         // makes every later read see the latest committed state, so two
         // concurrent requests cannot both post or reverse it.
-        await tx.$queryRaw`SELECT id FROM stock_adjustments WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM stock_adjustments WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const original = await tx.stockAdjustment.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },

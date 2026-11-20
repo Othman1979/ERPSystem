@@ -217,7 +217,7 @@ export class CostCentersService {
 
   /** The company's centre, locked FOR UPDATE; 404 for another company's or tenant's. */
   private async lockRow(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint, id: bigint) {
-    await tx.$queryRaw`SELECT id FROM cost_centers FORCE INDEX (PRIMARY) WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM cost_centers FORCE INDEX (PRIMARY) WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id = ${id} FOR UPDATE`;
     const row = await tx.costCenter.findFirst({ where: { id, companyId } });
     if (!row) throw DomainError.notFound('CostCenter', id.toString());
     return row;

@@ -1,4 +1,5 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { assertBranchAllowed, branchWhere, currentBranchId } from '../../common/branch/branch-context.js';
 import { findPage } from '../../common/paging/find-page.js';
@@ -702,7 +703,7 @@ export class VouchersService implements OnModuleInit {
       db.$transaction(async (tx) => {
         // Lock first, so the read below sees the latest state: two cancels of
         // the same allocation must not both decrement paid_amount.
-        await tx.$queryRaw`SELECT id FROM allocations WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM allocations WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const a = await tx.allocation.findFirst({
           where: { id },
           include: {
@@ -906,12 +907,12 @@ export class VouchersService implements OnModuleInit {
       journalEntryId: true,
     } as const;
     if (kind === 'receipt') {
-      await tx.$queryRaw`SELECT id FROM receipts WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM receipts WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
       const r = await tx.receipt.findFirst({ where: { id }, select });
       if (!r) throw DomainError.notFound('Receipt', id.toString());
       return r;
     }
-    await tx.$queryRaw`SELECT id FROM payments WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM payments WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
     const p = await tx.payment.findFirst({ where: { id }, select });
     if (!p) throw DomainError.notFound('Payment', id.toString());
     return p;

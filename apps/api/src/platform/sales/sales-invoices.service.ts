@@ -1,4 +1,5 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { Decimal, round3, round6, sum } from '../../common/decimal/decimal.utils.js';
 import {
   assertBranchAllowed,
@@ -446,7 +447,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     // One locking read in id order (TRADE-18: auto-allocation used to lock every invoice one by one).
     await tx.$queryRaw`
       SELECT id FROM sales_invoices
-       WHERE tenant_id = ${tenantId} AND id IN (${Prisma.join(sorted)})
+       WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id IN (${Prisma.join(sorted)})
        ORDER BY id FOR UPDATE`;
   }
 
@@ -462,11 +463,11 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     const { tenantId } = this.support.tenant();
     const [inv] = await tx.$queryRaw<SettlementRow[]>`
       SELECT customer_id AS party_id, branch_id, status, payment_type, grand_total, paid_amount
-        FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        FROM sales_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
     if (!inv) return null;
     const [credited] = await tx.$queryRaw<{ s: { toString(): string } | null }[]>`
       SELECT SUM(grand_total) AS s FROM sales_returns
-       WHERE tenant_id = ${tenantId} AND original_invoice_id = ${id}
+       WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND original_invoice_id = ${id}
          AND status = 'POSTED' AND refund_type = 'CREDIT' LOCK IN SHARE MODE`;
     return toSettlementState(inv, credited?.s);
   }
@@ -495,7 +496,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         LEFT JOIN (
           SELECT original_invoice_id, SUM(grand_total) AS credited
             FROM sales_returns
-           WHERE tenant_id = ${tenantId} AND status = 'POSTED' AND refund_type = 'CREDIT'
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND status = 'POSTED' AND refund_type = 'CREDIT'
            GROUP BY original_invoice_id
         ) r ON r.original_invoice_id = i.id
        WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId} AND i.customer_id = ${partyId}
@@ -632,7 +633,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       SELECT c.component_item_id AS itemId, COALESCE(SUM(c.qty_base), 0) AS qty
         FROM sales_invoice_line_components c
         JOIN sales_invoices i ON i.tenant_id = c.tenant_id AND i.id = c.invoice_id
-       WHERE c.tenant_id = ${tenantId} AND i.warehouse_id = ${warehouseId} AND i.status = 'POSTED'
+       WHERE c.tenant_id = ${tenantId} ${currentCompanySqlFilter('i')}
+         AND i.warehouse_id = ${warehouseId} AND i.status = 'POSTED'
          AND i.invoice_date > ${from} AND i.invoice_date <= ${to}
        GROUP BY c.component_item_id`;
     return new Map(rows.map((r) => [BigInt(r.itemId), new Decimal(r.qty)]));
@@ -876,7 +878,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       // Lock the invoice and re-check it first: a save racing a post of the
       // same draft must not delete and rewrite the lines of a posted invoice.
       const [locked] = await tx.$queryRaw<{ status: string }[]>`
-        SELECT status FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        SELECT status FROM sales_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
       if (!locked || locked.status !== 'DRAFT') {
         throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
       }
@@ -1166,7 +1168,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           { status: string; branch_id: bigint | null; sales_order_id: bigint | null; created_by: bigint | null; updated_by: bigint | null }[]
         >`
           SELECT status, branch_id, sales_order_id, created_by, updated_by FROM sales_invoices
-           WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         if (!inv) throw DomainError.notFound('SalesInvoice', id.toString());
         assertBranchAllowed(inv.branch_id === null ? null : BigInt(inv.branch_id));
         if (inv.status !== 'DRAFT') {
@@ -1236,7 +1238,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         // Lock the document first (§10.1 step 7). As the first statement it also
         // makes every later read see the latest committed state, so two
         // concurrent requests cannot both post or reverse it.
-        await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} AND id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         const draft = await tx.salesInvoice.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },
@@ -1286,14 +1288,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, invoiceDate);
 
         // Plan quota (§13.1): sales invoices already posted in this invoice's month.
-        const monthStart = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth(), 1));
-        const nextMonth = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth() + 1, 1));
-        await this.limits.assertMonthlyInvoiceQuota(
-          tx,
-          await tx.salesInvoice.count({
-            where: { companyId, status: 'POSTED', invoiceDate: { gte: monthStart, lt: nextMonth } },
-          }),
-        );
+        await this.limits.assertMonthlyInvoiceQuota(tx, invoiceDate);
 
         // An invoice made from an order: the order and its lines locked before any stock lock (ADR-027 §8).
         const billing = draft.salesOrderId === null ? null : await this.lockBilledOrder(tx, tenantId, draft, settings.salesPriceLocked);

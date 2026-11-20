@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { currentCompanySqlFilter } from '../../common/cls/current-company.js';
 import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -410,7 +411,7 @@ export class PostingService {
     // Lock the original row first, so every read below sees a consistent state.
     const locked = (await tx.$queryRaw`
       SELECT id FROM journal_entries
-      WHERE tenant_id = ${tenantId} AND id = ${params.entryId}
+      WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${params.entryId}
       FOR UPDATE
     `) as { id: bigint }[];
     if (!locked[0]) throw DomainError.notFound('JournalEntry', params.entryId.toString());
