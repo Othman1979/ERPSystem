@@ -336,6 +336,20 @@ export class MembershipBranchRow {
   createdAt!: string;
 }
 
+/** Scalar columns of the Prisma model `MembershipCompany`, as JSON. */
+export class MembershipCompanyRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  membershipId!: string;
+  @ApiProperty({ type: 'string' })
+  companyId!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  createdAt!: string;
+}
+
 /** Scalar columns of the Prisma model `TenantRole`, as JSON. */
 export class TenantRoleRow {
   @ApiProperty({ type: 'string' })
