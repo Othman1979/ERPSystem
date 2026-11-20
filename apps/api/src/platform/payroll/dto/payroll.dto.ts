@@ -1,6 +1,7 @@
 import {
   IsBoolean,
   IsIn,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
@@ -121,19 +122,29 @@ export class CreatePayrollSettingsDto {
   @IsOptional() @Matches(DECIMAL_PATTERN) daysPerMonth?: string;
 }
 
-export class CreatePayrollInputDto {
+export class CreatePayrollMovementDto {
   @Matches(ID_PATTERN) employeeId!: string;
   @Matches(ID_PATTERN) payElementId!: string;
-  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/) period!: string;
-  @IsOptional() @Matches(DATE_PATTERN) workDate?: string;
+  @Matches(DATE_PATTERN) movementDate!: string;
   @IsOptional() @Matches(DECIMAL_PATTERN) quantity?: string;
   @IsOptional() @Matches(DECIMAL_PATTERN) amount?: string;
-  @IsOptional() @IsString() @MaxLength(500) note?: string;
+  @IsString() @IsNotEmpty() @MaxLength(500) description!: string;
 }
 
-export class ListPayrollInputsDto {
+export class ListPayrollMovementsDto {
   @Matches(/^\d{4}-(0[1-9]|1[0-2])$/) period!: string;
   @IsOptional() @Matches(ID_PATTERN) employeeId?: string;
+}
+
+export class EmployeeStatementQueryDto {
+  @Matches(DATE_PATTERN) from!: string;
+  @Matches(DATE_PATTERN) to!: string;
+}
+
+export class EmployeeStatementExportQueryDto extends ExportQueryDto {
+  @Matches(ID_PATTERN) employeeId!: string;
+  @Matches(DATE_PATTERN) from!: string;
+  @Matches(DATE_PATTERN) to!: string;
 }
 
 export class CreatePayrollRunDto {

@@ -226,7 +226,7 @@ export const DEFAULT_PAY_ELEMENTS = [
     amountType: 'PER_DAY',
     rateFactor: '1.000000',
     sscSubject: true,
-    accountCode: '2106',
+    accountCode: '5201',
   },
   {
     code: 'TRANSPORT',
@@ -276,7 +276,7 @@ export const DEFAULT_PAY_ELEMENTS = [
     amountType: 'FIXED',
     rateFactor: '1.000000',
     sscSubject: false,
-    accountCode: '2106',
+    accountCode: '4201',
   },
 ] as const;
 
@@ -332,4 +332,5 @@ export const DOCUMENT_TYPE_PREFIXES: Record<string, string> = {
   // Phase 16 (ADR-031 §7): a production voucher, numbered at posting.
   PRODUCTION: 'MFG',
   PAYROLL_RUN: 'PAY',
+  PAYROLL_MOVEMENT: 'PM',
 };

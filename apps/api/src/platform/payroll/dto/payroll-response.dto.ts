@@ -77,6 +77,15 @@ export class PayrollRunDto {
   @ApiProperty({ type: 'string', format: 'decimal' }) netTotal!: string;
 }
 
+export class PayrollLineItemDto {
+  @ApiProperty({ type: 'string' }) description!: string;
+  @ApiProperty({ type: 'string', enum: ['EARNING', 'DEDUCTION'] }) kind!: string;
+  @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) quantity!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) rate!: string | null;
+  @ApiProperty({ type: 'string', format: 'decimal' }) amount!: string;
+  @ApiProperty({ type: 'string', nullable: true }) payrollMovementId!: string | null;
+}
+
 export class PayrollLineDto {
   @ApiProperty({ type: 'string' }) id!: string;
   @ApiProperty({ type: 'string' }) employeeId!: string;
@@ -90,8 +99,49 @@ export class PayrollLineDto {
   @ApiProperty({ type: 'string', format: 'decimal' }) incomeTax!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) deductions!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) net!: string;
+  @ApiProperty({ type: PayrollLineItemDto, isArray: true }) items!: PayrollLineItemDto[];
 }
 
 export class PayrollRunDetailDto extends PayrollRunDto {
   @ApiProperty({ type: PayrollLineDto, isArray: true }) lines!: PayrollLineDto[];
+}
+
+export class PayrollMovementDto {
+  @ApiProperty({ type: 'string' }) id!: string;
+  @ApiProperty({ type: 'string', nullable: true }) movementNo!: string | null;
+  @ApiProperty({ type: 'string' }) employeeId!: string;
+  @ApiProperty({ type: 'string' }) employeeName!: string;
+  @ApiProperty({ type: 'string' }) payElementId!: string;
+  @ApiProperty({ type: 'string' }) payElementCode!: string;
+  @ApiProperty({ type: 'string' }) payElementName!: string;
+  @ApiProperty({ type: 'string', format: 'date' }) movementDate!: string;
+  @ApiProperty({ type: 'string', format: 'period' }) period!: string;
+  @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) quantity!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) rate!: string | null;
+  @ApiProperty({ type: 'string', format: 'decimal' }) amount!: string;
+  @ApiProperty({ type: 'string' }) description!: string;
+  @ApiProperty({ type: 'string', enum: ['POSTED', 'REVERSED'] }) status!: string;
+  @ApiProperty({ type: 'string', nullable: true }) journalEntryId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true }) reversalEntryId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, format: 'date' }) reversedAt!: string | null;
+}
+
+export class PayrollEmployeeStatementRowDto {
+  @ApiProperty({ type: 'string', format: 'date' }) date!: string;
+  @ApiProperty({ type: 'string' }) documentNo!: string;
+  @ApiProperty({ type: 'string' }) documentType!: string;
+  @ApiProperty({ type: 'string' }) description!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) debit!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) credit!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) balance!: string;
+}
+
+export class PayrollEmployeeStatementDto {
+  @ApiProperty({ type: 'string' }) employeeId!: string;
+  @ApiProperty({ type: 'string' }) employeeName!: string;
+  @ApiProperty({ type: 'string', format: 'date' }) from!: string;
+  @ApiProperty({ type: 'string', format: 'date' }) to!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) openingBalance!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) closingBalance!: string;
+  @ApiProperty({ type: PayrollEmployeeStatementRowDto, isArray: true }) rows!: PayrollEmployeeStatementRowDto[];
 }

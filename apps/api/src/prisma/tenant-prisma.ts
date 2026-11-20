@@ -104,7 +104,7 @@ export const TENANT_MODELS = [
   'EmployeeSalary',
   'PayElement',
   'EmployeeRecurringElement',
-  'PayrollInput',
+  'PayrollMovement',
   'PayrollSettings',
   'PayrollRun',
   'PayrollLine',
@@ -156,7 +156,7 @@ export const COMPANY_MODELS = [
   'Cheque',
   'Employee',
   'PayElement',
-  'PayrollInput',
+  'PayrollMovement',
   'PayrollSettings',
   'PayrollRun',
 ] as const;

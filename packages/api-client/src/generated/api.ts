@@ -8561,6 +8561,26 @@ export interface PayrollEmployeeDetailDto {
   recurringElements: PayrollRecurringElementDto[];
 }
 
+export interface PayrollEmployeeStatementRowDto {
+  date: string;
+  documentNo: string;
+  documentType: string;
+  description: string;
+  debit: string;
+  credit: string;
+  balance: string;
+}
+
+export interface PayrollEmployeeStatementDto {
+  employeeId: string;
+  employeeName: string;
+  from: string;
+  to: string;
+  openingBalance: string;
+  closingBalance: string;
+  rows: PayrollEmployeeStatementRowDto[];
+}
+
 export type CreateEmployeeDtoPayMethod = typeof CreateEmployeeDtoPayMethod[keyof typeof CreateEmployeeDtoPayMethod];
 
 
@@ -8722,16 +8742,52 @@ export interface CreatePayrollSettingsDto {
   daysPerMonth?: string;
 }
 
-export interface CreatePayrollInputDto {
+export type PayrollMovementDtoStatus = typeof PayrollMovementDtoStatus[keyof typeof PayrollMovementDtoStatus];
+
+
+export const PayrollMovementDtoStatus = {
+  POSTED: 'POSTED',
+  REVERSED: 'REVERSED',
+} as const;
+
+export interface PayrollMovementDto {
+  id: string;
+  /** @nullable */
+  movementNo: string | null;
+  employeeId: string;
+  employeeName: string;
+  payElementId: string;
+  payElementCode: string;
+  payElementName: string;
+  movementDate: string;
+  period: string;
+  /** @nullable */
+  quantity: string | null;
+  /** @nullable */
+  rate: string | null;
+  amount: string;
+  description: string;
+  status: PayrollMovementDtoStatus;
+  /** @nullable */
+  journalEntryId: string | null;
+  /** @nullable */
+  reversalEntryId: string | null;
+  /** @nullable */
+  reversedAt: string | null;
+}
+
+export interface CreatePayrollMovementDto {
   employeeId: string;
   payElementId: string;
-  /** @pattern ^\d{4}-(0[1-9]|1[0-2])$ */
-  period: string;
-  workDate?: string;
+  movementDate: string;
   quantity?: string;
   amount?: string;
   /** @maxLength 500 */
-  note?: string;
+  description: string;
+}
+
+export interface ReversePayrollDto {
+  date: string;
 }
 
 export type PayrollRunDtoStatus = typeof PayrollRunDtoStatus[keyof typeof PayrollRunDtoStatus];
@@ -8766,6 +8822,26 @@ export interface CreatePayrollRunDto {
   period: string;
 }
 
+export type PayrollLineItemDtoKind = typeof PayrollLineItemDtoKind[keyof typeof PayrollLineItemDtoKind];
+
+
+export const PayrollLineItemDtoKind = {
+  EARNING: 'EARNING',
+  DEDUCTION: 'DEDUCTION',
+} as const;
+
+export interface PayrollLineItemDto {
+  description: string;
+  kind: PayrollLineItemDtoKind;
+  /** @nullable */
+  quantity: string | null;
+  /** @nullable */
+  rate: string | null;
+  amount: string;
+  /** @nullable */
+  payrollMovementId: string | null;
+}
+
 export interface PayrollLineDto {
   id: string;
   employeeId: string;
@@ -8779,6 +8855,7 @@ export interface PayrollLineDto {
   incomeTax: string;
   deductions: string;
   net: string;
+  items: PayrollLineItemDto[];
 }
 
 export type PayrollRunDetailDtoStatus = typeof PayrollRunDetailDtoStatus[keyof typeof PayrollRunDetailDtoStatus];
@@ -8816,10 +8893,6 @@ export interface SetPayrollTaxDto {
 export interface PayrollPaymentDto {
   cashBoxId?: string;
   bankAccountId?: string;
-  date: string;
-}
-
-export interface ReversePayrollDto {
   date: string;
 }
 
@@ -11805,17 +11878,20 @@ export const ChequesControllerOutstandingStatus = {
   CANCELLED: 'CANCELLED',
 } as const;
 
+export type PayrollControllerEmployeeStatementParams = {
+  from: string;
+  to: string;
+};
+
 export type PayrollControllerListRecurring200Item = { [key: string]: unknown };
 
 export type PayrollControllerListSettings200 = { [key: string]: unknown };
 
-export type PayrollControllerListInputsParams = {
+export type PayrollControllerListMovementsParams = {
   /** @pattern ^\d{4}-(0[1-9]|1[0-2])$ */
   period: string;
   employeeId?: string;
 };
-
-export type PayrollControllerListInputs200Item = { [key: string]: unknown };
 
 export type PayrollControllerRegisterReportParams = {
   format?: PayrollControllerRegisterReportFormat;
@@ -11885,6 +11961,31 @@ export type PayrollControllerTaxReportLang = typeof PayrollControllerTaxReportLa
 
 
 export const PayrollControllerTaxReportLang = {
+  ar: 'ar',
+  en: 'en',
+} as const;
+
+export type PayrollControllerEmployeeStatementReportParams = {
+  format?: PayrollControllerEmployeeStatementReportFormat;
+  lang?: PayrollControllerEmployeeStatementReportLang;
+  employeeId: string;
+  from: string;
+  to: string;
+};
+
+export type PayrollControllerEmployeeStatementReportFormat = typeof PayrollControllerEmployeeStatementReportFormat[keyof typeof PayrollControllerEmployeeStatementReportFormat];
+
+
+export const PayrollControllerEmployeeStatementReportFormat = {
+  json: 'json',
+  pdf: 'pdf',
+  xlsx: 'xlsx',
+} as const;
+
+export type PayrollControllerEmployeeStatementReportLang = typeof PayrollControllerEmployeeStatementReportLang[keyof typeof PayrollControllerEmployeeStatementReportLang];
+
+
+export const PayrollControllerEmployeeStatementReportLang = {
   ar: 'ar',
   en: 'en',
 } as const;
@@ -26658,6 +26759,53 @@ return apiFetch<payrollControllerUpdateEmployeeResponseSuccess>(getPayrollContro
 
 
 
+export type payrollControllerEmployeeStatementResponse200 = {
+  data: PayrollEmployeeStatementDto
+  status: 200
+}
+
+export type payrollControllerEmployeeStatementResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerEmployeeStatementResponseSuccess = (payrollControllerEmployeeStatementResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerEmployeeStatementResponseError = (payrollControllerEmployeeStatementResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerEmployeeStatementUrl = (id: string,
+    params: PayrollControllerEmployeeStatementParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/employees/${id}/statement?${stringifiedParams}` : `/api/v1/payroll/employees/${id}/statement`
+}
+
+export const payrollControllerEmployeeStatement = async (id: string,
+    params: PayrollControllerEmployeeStatementParams, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerEmployeeStatementResponseSuccess> => {
+
+  return apiFetch<payrollControllerEmployeeStatementResponseSuccess>(getPayrollControllerEmployeeStatementUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export type payrollControllerAddSalaryResponse201 = {
   data: void
   status: 201
@@ -27075,24 +27223,24 @@ return apiFetch<payrollControllerCreateSettingsResponseSuccess>(getPayrollContro
 
 
 
-export type payrollControllerListInputsResponse200 = {
-  data: PayrollControllerListInputs200Item[]
+export type payrollControllerListMovementsResponse200 = {
+  data: PayrollMovementDto[]
   status: 200
 }
 
-export type payrollControllerListInputsResponseDefault = {
+export type payrollControllerListMovementsResponseDefault = {
   data: ErrorResponseDto
   status: Exclude<HTTPStatusCodes, 200>
 }
 
-export type payrollControllerListInputsResponseSuccess = (payrollControllerListInputsResponse200) & {
+export type payrollControllerListMovementsResponseSuccess = (payrollControllerListMovementsResponse200) & {
   headers: Headers;
 };
-export type payrollControllerListInputsResponseError = (payrollControllerListInputsResponseDefault) & {
+export type payrollControllerListMovementsResponseError = (payrollControllerListMovementsResponseDefault) & {
   headers: Headers;
 };
 
-export const getPayrollControllerListInputsUrl = (params: PayrollControllerListInputsParams,) => {
+export const getPayrollControllerListMovementsUrl = (params: PayrollControllerListMovementsParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -27104,12 +27252,12 @@ export const getPayrollControllerListInputsUrl = (params: PayrollControllerListI
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/v1/payroll/inputs?${stringifiedParams}` : `/api/v1/payroll/inputs`
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/movements?${stringifiedParams}` : `/api/v1/payroll/movements`
 }
 
-export const payrollControllerListInputs = async (params: PayrollControllerListInputsParams, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerListInputsResponseSuccess> => {
+export const payrollControllerListMovements = async (params: PayrollControllerListMovementsParams, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerListMovementsResponseSuccess> => {
 
-  return apiFetch<payrollControllerListInputsResponseSuccess>(getPayrollControllerListInputsUrl(params),
+  return apiFetch<payrollControllerListMovementsResponseSuccess>(getPayrollControllerListMovementsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -27120,32 +27268,32 @@ export const payrollControllerListInputs = async (params: PayrollControllerListI
 
 
 
-export type payrollControllerCreateInputResponse201 = {
-  data: void
+export type payrollControllerCreateMovementResponse201 = {
+  data: PayrollMovementDto
   status: 201
 }
 
-export type payrollControllerCreateInputResponseDefault = {
+export type payrollControllerCreateMovementResponseDefault = {
   data: ErrorResponseDto
   status: Exclude<HTTPStatusCodes, 201>
 }
 
-export type payrollControllerCreateInputResponseSuccess = (payrollControllerCreateInputResponse201) & {
+export type payrollControllerCreateMovementResponseSuccess = (payrollControllerCreateMovementResponse201) & {
   headers: Headers;
 };
-export type payrollControllerCreateInputResponseError = (payrollControllerCreateInputResponseDefault) & {
+export type payrollControllerCreateMovementResponseError = (payrollControllerCreateMovementResponseDefault) & {
   headers: Headers;
 };
 
-export const getPayrollControllerCreateInputUrl = () => {
+export const getPayrollControllerCreateMovementUrl = () => {
 
 
 
 
-  return `/api/v1/payroll/inputs`
+  return `/api/v1/payroll/movements`
 }
 
-export const payrollControllerCreateInput = async (createPayrollInputDto: CreatePayrollInputDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerCreateInputResponseSuccess> => {
+export const payrollControllerCreateMovement = async (createPayrollMovementDto: CreatePayrollMovementDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerCreateMovementResponseSuccess> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -27161,50 +27309,65 @@ export const payrollControllerCreateInput = async (createPayrollInputDto: Create
     }
     return headers;
   };
-return apiFetch<payrollControllerCreateInputResponseSuccess>(getPayrollControllerCreateInputUrl(),
+return apiFetch<payrollControllerCreateMovementResponseSuccess>(getPayrollControllerCreateMovementUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(createPayrollInputDto)
+    body: JSON.stringify(createPayrollMovementDto)
   }
 );}
 
 
 
-export type payrollControllerDeleteInputResponse200 = {
-  data: void
+export type payrollControllerReverseMovementResponse200 = {
+  data: PayrollMovementDto
   status: 200
 }
 
-export type payrollControllerDeleteInputResponseDefault = {
+export type payrollControllerReverseMovementResponseDefault = {
   data: ErrorResponseDto
   status: Exclude<HTTPStatusCodes, 200>
 }
 
-export type payrollControllerDeleteInputResponseSuccess = (payrollControllerDeleteInputResponse200) & {
+export type payrollControllerReverseMovementResponseSuccess = (payrollControllerReverseMovementResponse200) & {
   headers: Headers;
 };
-export type payrollControllerDeleteInputResponseError = (payrollControllerDeleteInputResponseDefault) & {
+export type payrollControllerReverseMovementResponseError = (payrollControllerReverseMovementResponseDefault) & {
   headers: Headers;
 };
 
-export const getPayrollControllerDeleteInputUrl = (id: string,) => {
+export const getPayrollControllerReverseMovementUrl = (id: string,) => {
 
 
 
 
-  return `/api/v1/payroll/inputs/${id}`
+  return `/api/v1/payroll/movements/${id}/reverse`
 }
 
-export const payrollControllerDeleteInput = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerDeleteInputResponseSuccess> => {
+export const payrollControllerReverseMovement = async (id: string,
+    reversePayrollDto: ReversePayrollDto, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerReverseMovementResponseSuccess> => {
 
-  return apiFetch<payrollControllerDeleteInputResponseSuccess>(getPayrollControllerDeleteInputUrl(id),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<payrollControllerReverseMovementResponseSuccess>(getPayrollControllerReverseMovementUrl(id),
   {
     ...options,
-    method: 'DELETE'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reversePayrollDto)
   }
 );}
 
@@ -27753,6 +27916,56 @@ export const getPayrollControllerTaxReportUrl = (params: PayrollControllerTaxRep
 export const payrollControllerTaxReport = async (params: PayrollControllerTaxReportParams, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerTaxReportResponseSuccess> => {
 
   return apiFetch<payrollControllerTaxReportResponseSuccess>(getPayrollControllerTaxReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type payrollControllerEmployeeStatementReportResponse200ApplicationPdf = {
+  data: Blob
+  status: 200
+}
+
+export type payrollControllerEmployeeStatementReportResponse200ApplicationVndOpenxmlformatsOfficedocumentSpreadsheetmlSheet = {
+  data: Blob
+  status: 200
+}
+
+export type payrollControllerEmployeeStatementReportResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerEmployeeStatementReportResponseSuccess = (payrollControllerEmployeeStatementReportResponse200ApplicationPdf | payrollControllerEmployeeStatementReportResponse200ApplicationVndOpenxmlformatsOfficedocumentSpreadsheetmlSheet) & {
+  headers: Headers;
+};
+export type payrollControllerEmployeeStatementReportResponseError = (payrollControllerEmployeeStatementReportResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerEmployeeStatementReportUrl = (params: PayrollControllerEmployeeStatementReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/reports/employee-statement?${stringifiedParams}` : `/api/v1/payroll/reports/employee-statement`
+}
+
+export const payrollControllerEmployeeStatementReport = async (params: PayrollControllerEmployeeStatementReportParams, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerEmployeeStatementReportResponseSuccess> => {
+
+  return apiFetch<payrollControllerEmployeeStatementReportResponseSuccess>(getPayrollControllerEmployeeStatementReportUrl(params),
   {
     ...options,
     method: 'GET'

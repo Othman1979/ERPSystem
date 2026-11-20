@@ -15,6 +15,8 @@ export interface PayrollElementEntry {
   element: PayrollElement;
   amount: Decimal.Value | null;
   quantity: Decimal.Value | null;
+  rate?: Decimal.Value | null;
+  payrollMovementId?: bigint;
 }
 
 export interface PayrollRecurringEntry extends PayrollElementEntry {
@@ -51,6 +53,7 @@ export interface PayrollCalculatedItem {
   quantity: Decimal | null;
   rate: Decimal | null;
   amount: Decimal;
+  payrollMovementId?: bigint;
 }
 
 export interface PayrollCalculation {
@@ -71,6 +74,32 @@ type ElementAccumulator = {
   amount: Decimal;
   quantity: Decimal;
 };
+
+export function latestEffectiveOnDate<T extends { effectiveFrom: Date }>(rows: readonly T[], date: Date): T | undefined {
+  return rows.reduce<T | undefined>((latest, row) => {
+    if (row.effectiveFrom > date) return latest;
+    return !latest || row.effectiveFrom > latest.effectiveFrom ? row : latest;
+  }, undefined);
+}
+
+export function calculateMovementPrice(input: {
+  amountType: PayrollElement['amountType'];
+  amount: Decimal.Value | null;
+  quantity: Decimal.Value | null;
+  salary: Decimal.Value;
+  rateFactor: Decimal.Value;
+  hoursPerMonth: Decimal.Value;
+  daysPerMonth: Decimal.Value;
+}) {
+  if (input.amountType === 'FIXED') {
+    return { quantity: null, rate: null, amount: round3(input.amount ?? 0) };
+  }
+  const units = input.amountType === 'PER_HOUR' ? input.hoursPerMonth : input.daysPerMonth;
+  const baseRate = round6(new Decimal(input.salary).div(units));
+  const rate = round6(baseRate.mul(input.rateFactor));
+  const quantity = round6(input.quantity ?? 0);
+  return { quantity, rate, amount: round3(quantity.mul(rate)) };
+}
 
 export function calculatePayroll(input: PayrollCalculationInput): PayrollCalculation | null {
   if (input.employee.hireDate > input.periodEnd || (input.employee.leaveDate && input.employee.leaveDate < input.periodStart)) {
@@ -98,7 +127,7 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
     grouped.set(entry.element.id, existing);
   };
 
-  input.inputs.forEach(add);
+  input.inputs.filter((entry) => entry.payrollMovementId === undefined).forEach(add);
   input.recurring
     .filter((entry) => entry.validFrom <= input.periodEnd && (!entry.validTo || entry.validTo >= input.periodStart))
     .forEach(add);
@@ -106,7 +135,27 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
   let earnings = new Decimal(0);
   let deductions = new Decimal(0);
   let sscBase = basic;
-  const items = [...grouped.values()].map(({ element, amount, quantity }) => {
+  const movementItems = input.inputs
+    .filter((entry) => entry.payrollMovementId !== undefined)
+    .map((entry): PayrollCalculatedItem => {
+      if (entry.amount === null) throw new Error(`Payroll movement ${entry.payrollMovementId} requires a fixed amount`);
+      const amount = round3(entry.amount);
+      if (entry.element.kind === 'EARNING') {
+        earnings = earnings.plus(amount);
+        if (entry.element.sscSubject) sscBase = sscBase.plus(amount);
+      } else {
+        deductions = deductions.plus(amount);
+        if (entry.element.sscSubject) sscBase = sscBase.minus(amount);
+      }
+      return {
+        element: entry.element,
+        quantity: entry.quantity === null ? null : round6(entry.quantity),
+        rate: entry.rate == null ? null : round6(entry.rate),
+        amount,
+        payrollMovementId: entry.payrollMovementId,
+      };
+    });
+  const items = [...movementItems, ...[...grouped.values()].map(({ element, amount, quantity }) => {
     const rate =
       element.amountType === 'PER_HOUR' ? hourlyRate : element.amountType === 'PER_DAY' ? dailyRate : null;
     const calculatedAmount =
@@ -128,7 +177,7 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
       rate,
       amount: calculatedAmount,
     };
-  });
+  })];
 
   earnings = round3(earnings);
   deductions = round3(deductions);

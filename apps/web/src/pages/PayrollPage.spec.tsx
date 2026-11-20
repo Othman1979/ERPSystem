@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildElementPayload,
   buildEmployeePayload,
-  buildInputPayload,
+  buildMovementPayload,
   buildPaymentSourceOptions,
   buildSettingsPayload,
   employeeEditDateValues,
@@ -83,19 +83,19 @@ describe('payroll page payloads and run actions', () => {
     });
   });
 
-  it('sends a daily input with its work date and quantity', () => {
-    expect(buildInputPayload({
-      employeeId: '1', payElementId: '2', period: '2026-03', workDate: dayjs('2026-03-12'), quantity: '8',
-    }, 'PER_HOUR', true)).toEqual({
-      employeeId: '1', payElementId: '2', period: '2026-03', workDate: '2026-03-12', quantity: '8',
+  it('sends a variable movement with its date and quantity', () => {
+    expect(buildMovementPayload({
+      employeeId: '1', payElementId: '2', movementDate: dayjs('2026-03-12'), quantity: '8', description: 'Overtime',
+    }, 'PER_HOUR')).toEqual({
+      employeeId: '1', payElementId: '2', movementDate: '2026-03-12', quantity: '8', description: 'Overtime',
     });
   });
 
-  it('sends a monthly fixed input without a work date', () => {
-    expect(buildInputPayload({
-      employeeId: '1', payElementId: '2', period: '2026-03', workDate: '2026-03-12', amount: '25.000',
-    }, 'FIXED', false)).toEqual({
-      employeeId: '1', payElementId: '2', period: '2026-03', amount: '25.000',
+  it('sends a fixed movement as a date-only request', () => {
+    expect(buildMovementPayload({
+      employeeId: '1', payElementId: '2', movementDate: '2026-03-12', amount: '25.000', description: 'Bonus',
+    }, 'FIXED')).toEqual({
+      employeeId: '1', payElementId: '2', movementDate: '2026-03-12', amount: '25.000', description: 'Bonus',
     });
   });
 

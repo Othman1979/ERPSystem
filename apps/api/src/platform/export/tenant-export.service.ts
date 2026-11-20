@@ -83,7 +83,7 @@ const WORKBOOKS: { file: string; models: string[] }[] = [
   { file: '15-manufacturing.xlsx', models: ['Bom', 'BomLine', 'ProductionVoucher', 'ProductionVoucherLine'] },
   {
     file: '16-payroll.xlsx',
-    models: ['Employee', 'EmployeeSalary', 'EmployeeRecurringElement', 'PayElement', 'PayrollInput', 'PayrollSettings', 'PayrollRun', 'PayrollLine', 'PayrollLineItem'],
+    models: ['Employee', 'EmployeeSalary', 'EmployeeRecurringElement', 'PayElement', 'PayrollMovement', 'PayrollSettings', 'PayrollRun', 'PayrollLine', 'PayrollLineItem'],
   },
 ];
 
