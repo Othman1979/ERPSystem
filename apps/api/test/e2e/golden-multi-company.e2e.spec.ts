@@ -186,6 +186,10 @@ describe('multi-company (ADR-040)', () => {
       });
     expect(exported.status).toBe(200);
     const files = unzipSync(new Uint8Array(exported.body as Buffer));
+    const payroll = new ExcelJS.Workbook();
+    await payroll.xlsx.load(Buffer.from(files['16-payroll.xlsx']!) as unknown as ArrayBuffer);
+    expect(payroll.getWorksheet('Employee')).toBeDefined();
+    expect(payroll.getWorksheet('PayrollRun')).toBeDefined();
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(Buffer.from(files['01-company.xlsx']!) as unknown as ArrayBuffer);
     const rows: unknown[][] = [];

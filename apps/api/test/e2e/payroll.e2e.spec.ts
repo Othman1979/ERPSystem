@@ -5,6 +5,7 @@
  */
 import 'dotenv/config';
 import { bootApi, kit, PASS, stopApi, type Booted } from './support/sales-order-kit.js';
+import { addMember } from './support/members.js';
 
 const RUN = Date.now().toString(36);
 let boot: Booted;
@@ -14,6 +15,7 @@ let tokenB = '';
 let companyAId = '';
 let tenantId = 0n;
 let bankAccountId = '';
+let costCenterId = '';
 const accounts: Record<string, string> = {};
 
 const register = async (prefix: string) =>
@@ -72,6 +74,19 @@ beforeAll(async () => {
   tokenB = await register('b');
   const companies = h.ok(await h.get(tokenA, 'companies'), 200, 'companies') as { id: string }[];
   companyAId = companies[0]!.id;
+  const branch = (h.ok(await get(tokenA, 'branches', companyAId), 200, 'company branch') as { id: string }[])[0]!;
+  const costCenter = await post<{ id: string }>(tokenA, 'cost-centers', { code: `PAY-${RUN}`, nameAr: 'Payroll' }, 'payroll cost centre', companyAId);
+  costCenterId = costCenter.id;
+  const restricted = await addMember(boot.base, tokenA, {
+    email: `payroll-restricted-${RUN}@test.dev`,
+    roleCode: 'ACCOUNTANT',
+    password: PASS,
+    branchIds: [branch.id],
+    defaultBranchId: branch.id,
+  });
+  const restrictedPayroll = await get(restricted.token, 'payroll/employees', companyAId);
+  expect(restrictedPayroll.status).toBe(403);
+  expect(restrictedPayroll.body.error.code).toBe('ALL_BRANCHES_REQUIRED');
   const [tenant] = (await boot.db.query('SELECT id FROM tenants WHERE name = ?', [`Payroll a ${RUN}`])) as { id: bigint }[];
   tenantId = tenant!.id;
   h.ok(
@@ -104,12 +119,34 @@ describe('Payroll PY1–PY3', () => {
 
     const elements = h.ok(await get(tokenA, 'payroll/elements', companyAId), 200, 'pay elements') as { id: string; code: string }[];
     const elementId = Object.fromEntries(elements.map((item) => [item.code, item.id])) as Record<string, string>;
+    expect((await act(tokenA, 'payroll/settings', {
+      effectiveFrom: '2031-01-01', hoursPerMonth: '0',
+    }, companyAId)).status).toBe(400);
+    expect((await act(tokenA, 'payroll/settings', {
+      effectiveFrom: '2031-01-01', sscEmployeeRate: '1.1',
+    }, companyAId)).status).toBe(400);
+    expect((await act(tokenA, 'payroll/settings', {
+      effectiveFrom: '2031-01-01', sscMinWage: '500', sscMaxWage: '400',
+    }, companyAId)).status).toBe(400);
+    expect((await act(tokenA, 'payroll/elements', {
+      code: `CASH-${RUN}`, nameAr: 'Cash', kind: 'EARNING', amountType: 'FIXED',
+      rateFactor: '1.000000', accountId: accounts['1101'],
+    }, companyAId)).status).toBe(400);
     const employeeA = await post<{ id: string }>(tokenA, 'payroll/employees', {
       code: `A-${RUN}`, nameAr: 'الموظف أ', hireDate: '2031-01-01', payMethod: 'BANK',
     }, 'employee A', companyAId);
     const employeeB = await post<{ id: string }>(tokenA, 'payroll/employees', {
-      code: `B-${RUN}`, nameAr: 'الموظف ب', hireDate: '2031-01-01', payMethod: 'CASH', sscCovered: false,
+      code: `B-${RUN}`, nameAr: 'الموظف ب', hireDate: '2031-01-01', payMethod: 'CASH', sscCovered: false, costCenterId,
     }, 'employee B', companyAId);
+    expect((await act(tokenA, 'payroll/inputs', {
+      employeeId: employeeA.id, payElementId: elementId.TRANSPORT, period: '2031-01', amount: null,
+    }, companyAId)).status).toBe(400);
+    expect((await act(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
+      payElementId: elementId.TRANSPORT, amount: null, validFrom: '2031-01-01',
+    }, companyAId)).status).toBe(400);
+    const costCenterDelete = await h.api().delete(`/api/v1/cost-centers/${costCenterId}`).set(h.auth(tokenA)).set('X-Company-Id', companyAId);
+    expect(costCenterDelete.status).toBe(409);
+    expect(costCenterDelete.body.error.code).toBe('COST_CENTER_IN_USE');
     h.ok(await act(tokenA, `payroll/employees/${employeeA.id}/salaries`, {
       effectiveFrom: '2031-01-01', basicSalary: '500.000',
     }, companyAId), 201, 'salary A');
@@ -204,6 +241,19 @@ describe('Payroll PY1–PY3', () => {
     h.ok(paid, 201, 'pay payroll run');
     const reversed = await act(tokenA, `payroll/runs/${run.id}/reverse`, { date: '2031-01-31' }, companyAId);
     h.ok(reversed, 201, 'reverse payroll run');
+    const [auditUser] = (await boot.db.query('SELECT user_id FROM tenant_memberships WHERE tenant_id = ? ORDER BY id LIMIT 1', [tenantId])) as { user_id: bigint }[];
+    const payrollAudits = (await boot.db.query(
+      'SELECT action, user_id FROM audit_logs WHERE tenant_id = ? AND entity_type = ? AND entity_id = ? ORDER BY id',
+      [tenantId, 'payroll_run', run.id],
+    )) as { action: string; user_id: bigint | null }[];
+    expect(payrollAudits.map((row) => row.action)).toEqual(['payroll.post', 'payroll.pay', 'payroll.reverse']);
+    expect(payrollAudits.every((row) => row.user_id === auditUser!.user_id)).toBe(true);
+    const postedBy = (await boot.db.query(
+      'SELECT posted_by FROM journal_entries WHERE tenant_id = ? AND source_id = ? AND source_type IN (?, ?)',
+      [tenantId, run.id, 'PAYROLL_RUN', 'PAYROLL_PAYMENT'],
+    )) as { posted_by: bigint | null }[];
+    expect(postedBy.length).toBeGreaterThanOrEqual(2);
+    expect(postedBy.every((row) => row.posted_by === auditUser!.user_id)).toBe(true);
     for (const code of ['1102', '1107', '2106', '2107', '2108', '5201', '5206']) {
       expect(await accountBalance(code)).toBe('0.000');
     }
@@ -215,5 +265,23 @@ describe('Payroll PY1–PY3', () => {
       act(tokenA, `payroll/runs/${feb.id}/post`, {}, companyAId),
     ]);
     expect([first.status, second.status].filter((status) => status === 201)).toHaveLength(1);
+
+    const march = h.ok(await act(tokenA, 'payroll/runs', { period: '2031-03' }, companyAId), 201, 'draft March') as { id: string };
+    h.ok(await act(tokenA, 'payroll/inputs', {
+      employeeId: employeeA.id, payElementId: elementId.TRANSPORT, period: '2031-03', amount: '1.000',
+    }, companyAId), 201, 'add late March input');
+    h.ok(await act(tokenA, `payroll/runs/${march.id}/post`, {}, companyAId), 201, 'post recomputed March');
+    const marchRun = h.ok(await get(tokenA, `payroll/runs/${march.id}`, companyAId), 200, 'read March') as {
+      lines: { employeeId: string; items: { amount: string }[] }[];
+    };
+    expect(marchRun.lines.find((line) => line.employeeId === employeeA.id)?.items.map((item) => item.amount)).toContain('1');
+    const [marchExpense] = (await boot.db.query(
+      `SELECT CAST(SUM(l.debit) AS CHAR) AS debit FROM journal_entries j
+       JOIN journal_lines l ON l.tenant_id = j.tenant_id AND l.journal_entry_id = j.id
+       JOIN accounts a ON a.tenant_id = l.tenant_id AND a.id = l.account_id
+       WHERE j.tenant_id = ? AND j.source_type = 'PAYROLL_RUN' AND j.source_id = ? AND a.code = '5201'`,
+      [tenantId, march.id],
+    )) as { debit: string }[];
+    expect(marchExpense!.debit).toBe('901.000');
   }, 90_000);
 });

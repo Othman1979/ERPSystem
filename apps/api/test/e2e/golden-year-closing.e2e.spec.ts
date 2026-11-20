@@ -247,6 +247,25 @@ describe('Phase 18 golden year closing', () => {
       201,
       'draft for year four',
     );
+    const payrollEmployee = h.ok(
+      await h.api().post('/api/v1/payroll/employees').set(h.auth(token)).send({
+        code: `PAY-${RUN}`, nameAr: 'Payroll draft', hireDate: '2031-01-01', payMethod: 'CASH',
+      }),
+      201,
+      'payroll employee',
+    );
+    h.ok(
+      await h.api().post(`/api/v1/payroll/employees/${payrollEmployee.id}/salaries`).set(h.auth(token)).send({
+        effectiveFrom: '2031-01-01', basicSalary: '1.000',
+      }),
+      201,
+      'payroll salary',
+    );
+    const payrollRun = h.ok(
+      await h.api().post('/api/v1/payroll/runs').set(h.auth(token)).send({ period: '2031-03' }),
+      201,
+      'payroll draft run',
+    );
     const preview = h.ok(
       await h.get(token, `fiscal-years/${yearIds[0]}/closing-preview`),
       200,
@@ -255,6 +274,11 @@ describe('Phase 18 golden year closing', () => {
     expect(preview.canClose).toBe(false);
     expect(preview.drafts).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          type: 'PAYROLL_RUN',
+          id: String(payrollRun.id),
+          description: 'Payroll 2031-03',
+        }),
         expect.objectContaining({
           type: 'JOURNAL_ENTRY',
           id: String(draft.id),
@@ -268,6 +292,7 @@ describe('Phase 18 golden year closing', () => {
       200,
       'delete draft',
     )).toBeDefined();
+    await boot.db.query('DELETE FROM payroll_runs WHERE id = ?', [payrollRun.id]);
     await verify(0);
     await verify(1);
   });
