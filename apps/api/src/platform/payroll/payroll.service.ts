@@ -303,14 +303,12 @@ export class PayrollService {
       const element = await tx.payElement.findFirst({ where: { id } });
       if (!element) throw DomainError.notFound('PayElement', id.toString());
       if ((dto.kind !== undefined && dto.kind !== element.kind) || (dto.amountType !== undefined && dto.amountType !== element.amountType)) {
-        const used = await tx.payrollLineItem.findFirst({
-          where: {
-            payElementId: id,
-            payrollLine: { payrollRun: { status: { in: ['POSTED', 'PAID', 'REVERSED'] } } },
-          },
-          select: { id: true },
-        });
-        if (used) throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Used pay element type cannot be changed');
+        const input = await tx.payrollInput.findFirst({ where: { payElementId: id }, select: { id: true } });
+        const recurring = await tx.payrollRecurringElement.findFirst({ where: { payElementId: id }, select: { id: true } });
+        const lineItem = await tx.payrollLineItem.findFirst({ where: { payElementId: id }, select: { id: true } });
+        if (input || recurring || lineItem) {
+          throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Used pay element type cannot be changed');
+        }
       }
       if (dto.accountId === null) throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Pay element account is not allowed');
       const accountId = dto.accountId === undefined ? element.accountId : BigInt(dto.accountId);

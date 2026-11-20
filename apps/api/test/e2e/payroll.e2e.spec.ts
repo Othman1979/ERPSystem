@@ -345,4 +345,33 @@ describe('Payroll PY1–PY3', () => {
     )) as { action: string }[];
     expect(deleteAudit?.action).toBe('payroll.run.delete');
   }, 90_000);
+
+  it('refuses pay-element type changes while inputs or recurring elements reference them', async () => {
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `TYPE-${RUN}`, nameAr: 'Type lock employee', hireDate: '2031-01-01', payMethod: 'CASH',
+    }, 'type lock employee', companyAId);
+    const recurringElement = await post<{ id: string }>(tokenA, 'payroll/elements', {
+      code: `REC-${RUN}`, nameAr: 'Recurring lock', kind: 'EARNING', amountType: 'FIXED',
+      rateFactor: '1.000000', accountId: accounts['5201'],
+    }, 'recurring type lock element', companyAId);
+    await post(tokenA, `payroll/employees/${employee.id}/recurring-elements`, {
+      payElementId: recurringElement.id, amount: '1.000', validFrom: '2031-04-01',
+    }, 'recurring type lock reference', companyAId);
+    const recurringChange = await h.api().patch(`/api/v1/payroll/elements/${recurringElement.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ kind: 'DEDUCTION' });
+    expect(recurringChange.status).toBe(409);
+    expect(recurringChange.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+
+    const inputElement = await post<{ id: string }>(tokenA, 'payroll/elements', {
+      code: `INP-${RUN}`, nameAr: 'Input lock', kind: 'EARNING', amountType: 'FIXED',
+      rateFactor: '1.000000', accountId: accounts['5201'],
+    }, 'input type lock element', companyAId);
+    await post(tokenA, 'payroll/inputs', {
+      employeeId: employee.id, payElementId: inputElement.id, period: '2031-04', amount: '1.000',
+    }, 'input type lock reference', companyAId);
+    const inputChange = await h.api().patch(`/api/v1/payroll/elements/${inputElement.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ amountType: 'PER_HOUR' });
+    expect(inputChange.status).toBe(409);
+    expect(inputChange.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+  });
 });
