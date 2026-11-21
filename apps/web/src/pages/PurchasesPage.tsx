@@ -869,6 +869,7 @@ function PurchaseInvoiceForm({
       <ItemFormDialog
         open={quickCreate?.kind === 'item'}
         initialValues={quickCreate?.kind === 'item' ? { nameAr: quickCreate.typedText } : undefined}
+        excludeKinds={['RECIPE']}
         onCancel={() => {
           const row = quickCreate?.kind === 'item' ? quickCreate.row : undefined;
           setQuickCreate(null);

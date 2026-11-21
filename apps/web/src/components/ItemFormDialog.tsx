@@ -23,7 +23,14 @@ import {
 import { FormDialog, FormSection } from './FormDialog';
 import { codeAndName } from '../i18n/displayName';
 import { itemCreateBody, itemUpdateBody, type ItemFormValues } from '../pages/items/itemPayload';
-import { holdsStock, isRecipe, ITEM_KIND_LABEL_KEY, ITEM_KINDS, ownsFormula } from '../pages/items/itemKinds';
+import {
+  holdsStock,
+  isRecipe,
+  ITEM_KIND_LABEL_KEY,
+  ITEM_KINDS,
+  ownsFormula,
+  type ItemKindValue,
+} from '../pages/items/itemKinds';
 import { ItemFormulas } from '../pages/manufacturing/ItemFormulas';
 
 export type ItemFormDialogSaved = ItemDetailDto | ItemDto;
@@ -32,6 +39,7 @@ export interface ItemFormDialogProps {
   open: boolean;
   editing?: ItemListItemDto | null;
   initialValues?: Partial<ItemFormValues>;
+  excludeKinds?: ItemKindValue[];
   onSaved: (created: ItemFormDialogSaved) => void;
   onCancel: () => void;
 }
@@ -40,6 +48,7 @@ export function ItemFormDialog({
   open,
   editing,
   initialValues,
+  excludeKinds,
   onSaved,
   onCancel,
 }: ItemFormDialogProps) {
@@ -157,7 +166,10 @@ export function ItemFormDialog({
                 optionType="button"
                 buttonStyle="solid"
                 disabled={!!editing}
-                options={ITEM_KINDS.map((kind) => ({ value: kind, label: t(ITEM_KIND_LABEL_KEY[kind]) }))}
+                options={ITEM_KINDS.filter((kind) => !excludeKinds?.includes(kind)).map((kind) => ({
+                  value: kind,
+                  label: t(ITEM_KIND_LABEL_KEY[kind]),
+                }))}
               />
             </Form.Item>
             <Form.Item name="nameAr" label={t('items.nameAr')} rules={[{ required: true }]} className="span-2">
