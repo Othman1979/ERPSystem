@@ -1,14 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert,
   Button,
   Card,
-  Form,
-  Input,
   Popconfirm,
-  Select,
   Space,
-  Switch,
   Table,
   Tag,
   message,
@@ -18,26 +13,23 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import {
   ApiError,
-  accountingControllerCreateAccount,
   accountingControllerUpdateAccount,
   journalControllerTrialBalance,
   type AccountType,
-  type CashFlowActivity,
 } from '@erp/api-client';
-import { BookOutlined } from '@ant-design/icons';
-import { FormDialog, FormSection } from '../components/FormDialog';
+import { AccountFormDialog } from '../components/AccountFormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { tableLocale } from '../components/QueryState';
-import { bothNames, codeAndName } from '../i18n/displayName';
+import { bothNames } from '../i18n/displayName';
 import { palette } from '../theme';
 import { Num } from '../components/Num';
 import type Decimal from 'decimal.js';
 import { amountCell } from '../format/cells';
 import { dec, formatAmount } from '../format/number';
 import { ACCOUNTS_QUERY_KEY, useAccounts, type AccountRow } from '../hooks/useAccounts';
-import { useCostCenters } from '../hooks/useCostCenters';
 import { useAuth } from '../auth/AuthContext';
+import { useCostCenters } from '../hooks/useCostCenters';
 
 export type Account = AccountRow;
 
@@ -48,8 +40,6 @@ export interface TreeNode extends Account {
   balCredit: Decimal;
   balBalance: Decimal;
 }
-
-const CASH_FLOW_ACTIVITIES: CashFlowActivity[] = ['OPERATING', 'INVESTING', 'FINANCING'];
 
 export function buildTree(accounts: Account[]): TreeNode[] {
   const byId = new Map<string, TreeNode>();
@@ -108,11 +98,11 @@ export function AccountsPage() {
   const navigate = useNavigate();
   // The account statement is company-wide (ADR-003 §13): shown only to members with every branch.
   const { allBranches } = useAuth();
+  const { enabled: costCentersOn } = useCostCenters();
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
   const [search, setSearch] = useState('');
-  const [form] = Form.useForm();
   const [apiMessage, contextHolder] = message.useMessage();
 
   const accountsQuery = useAccounts();
@@ -138,83 +128,6 @@ export function AccountsPage() {
     return nodes;
   }, [data, trial]);
 
-  const watchedParentId = Form.useWatch('parentId', form) as string | undefined;
-  const watchedAccountType = Form.useWatch('accountType', form) as AccountType | undefined;
-  const { enabled: costCentersOn } = useCostCenters();
-  // The cost-centre flag applies to revenue and expense accounts only (ADR-024 §1.5).
-  const typeForCentre = editing ? editing.accountType : watchedAccountType;
-  const takesCentre = typeForCentre === 'REVENUE' || typeForCentre === 'EXPENSE';
-  // Hidden while centres are off (ADR-024 §1.6); the saved flag is then left as it is.
-  const showCentreFlag = costCentersOn && takesCentre;
-  // ADR-036 §3: non-cash balance sheet accounts only.
-  const controlForCashFlow = editing ? editing.controlType : null;
-  const showCashFlow =
-    !!typeForCentre && !takesCentre && controlForCashFlow !== 'CASH' && controlForCashFlow !== 'BANK';
-  const isCreate = !editing;
-  const selectedParent = useMemo(
-    () => (data ?? []).find((a) => a.id === watchedParentId) ?? null,
-    [data, watchedParentId],
-  );
-  const autoCode = useMemo(() => {
-    if (!selectedParent) return null;
-    const prefix = `${selectedParent.code}-`;
-    let max = 0;
-    for (const a of data ?? []) {
-      if (a.code.startsWith(prefix)) {
-        const suffix = a.code.slice(prefix.length);
-        if (/^\d+$/.test(suffix)) max = Math.max(max, Number(suffix));
-      }
-    }
-    return `${prefix}${String(max + 1).padStart(2, '0')}`;
-  }, [data, selectedParent]);
-
-  const save = useMutation({
-    mutationFn: async (values: {
-      code?: string;
-      nameAr: string;
-      nameEn?: string;
-      parentId?: string;
-      accountType: AccountType;
-      isPostable?: boolean;
-      costCenterRequired?: boolean;
-      cashFlowActivity?: CashFlowActivity | null;
-    }) => {
-      if (editing) {
-        return accountingControllerUpdateAccount(editing.id, {
-          nameAr: values.nameAr,
-          nameEn: values.nameEn || null,
-          isPostable: values.isPostable,
-          costCenterRequired: showCentreFlag ? values.costCenterRequired === true : undefined,
-          cashFlowActivity: showCashFlow ? (values.cashFlowActivity ?? null) : undefined,
-        });
-      }
-      return accountingControllerCreateAccount({
-        code: values.parentId ? undefined : values.code!,
-        nameAr: values.nameAr,
-        nameEn: values.nameEn || undefined,
-        parentId: values.parentId || undefined,
-        accountType: values.accountType,
-        isPostable: values.isPostable ?? true,
-        costCenterRequired: showCentreFlag ? values.costCenterRequired === true : undefined,
-        cashFlowActivity: showCashFlow ? (values.cashFlowActivity ?? null) : undefined,
-      });
-    },
-    onSuccess: () => {
-      apiMessage.success(t('common.saved'));
-      setModalOpen(false);
-      setEditing(null);
-      form.resetFields();
-      void queryClient.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
-    },
-    onError: (err) => {
-      apiMessage.error(
-        err instanceof ApiError
-          ? t(`errors.${err.code}`, { defaultValue: err.message })
-          : t('errors.INTERNAL'),
-      );
-    },
-  });
-
   const deactivate = useMutation({
     mutationFn: (id: string) =>
       accountingControllerUpdateAccount(id, { isActive: false }),
@@ -230,25 +143,13 @@ export function AccountsPage() {
 
   const openCreate = () => {
     setEditing(null);
-    form.resetFields();
     setModalOpen(true);
   };
 
   const openEdit = (a: Account) => {
     setEditing(a);
-    form.setFieldsValue({
-      nameAr: a.nameAr,
-      nameEn: a.nameEn,
-      isPostable: a.isPostable,
-      costCenterRequired: a.costCenterRequired,
-      cashFlowActivity: a.cashFlowActivity ?? null,
-    });
     setModalOpen(true);
   };
-
-  const parentOptions = (data ?? [])
-    .filter((a) => a.isActive && a.id !== editing?.id)
-    .map((a) => ({ value: a.id, label: codeAndName(a) }));
 
   // Keep matching accounts plus their ancestors so the tree stays intact;
   // balances were rolled up on the full tree above, so they are unaffected.
@@ -381,98 +282,15 @@ export function AccountsPage() {
           },
         ]}
       />
-      <FormDialog
-        title={editing ? t('accounts.edit') : t('accounts.add')}
+      <AccountFormDialog
         open={modalOpen}
+        editing={editing}
         onCancel={() => setModalOpen(false)}
-        onSave={() => form.submit()}
-        saving={save.isPending}
-      >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          {!editing && isCreate && selectedParent && autoCode && (
-            <Alert
-              type="warning"
-              showIcon
-              style={{ margin: 12, marginBottom: 0 }}
-              message={t('accounts.childUnder', { code: selectedParent.code })}
-              description={
-                <>
-                  {t('accounts.autoCodePreview', { code: autoCode })}
-                  <br />
-                  {t('accounts.parentNonPostableWarning')}
-                </>
-              }
-            />
-          )}
-          <FormSection title={t('accounts.details')} icon={<BookOutlined />}>
-          {!editing && (
-            <>
-              {!(isCreate && watchedParentId) && (
-                <Form.Item
-                  name="code"
-                  label={t('accounts.code')}
-                  rules={[{ required: !(isCreate && watchedParentId) }]}
-                >
-                  <Input maxLength={50} />
-                </Form.Item>
-              )}
-              <Form.Item name="parentId" label={t('accounts.parent')}>
-                <Select
-                  allowClear
-                  showSearch
-                  optionFilterProp="label"
-                  options={parentOptions}
-                />
-              </Form.Item>
-              <Form.Item
-                name="accountType"
-                label={t('accounts.type')}
-                rules={[{ required: true }]}
-              >
-                <Select
-                  options={(['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'] as const).map(
-                    (v) => ({ value: v, label: t(`accounts.types.${v}`) }),
-                  )}
-                />
-              </Form.Item>
-            </>
-          )}
-          <Form.Item name="nameAr" label={t('accounts.nameAr')} rules={[{ required: true }]} className="span-2">
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="nameEn" label={t('accounts.nameEn')}>
-            <Input maxLength={191} />
-          </Form.Item>
-          <Form.Item name="isPostable" label={t('accounts.postable')}>
-            <Select
-              allowClear
-              options={[
-                { value: true, label: t('common.active') },
-                { value: false, label: '—' },
-              ]}
-            />
-          </Form.Item>
-          {showCashFlow && (
-            <Form.Item name="cashFlowActivity" label={t('cashFlow.activity')} extra={t('cashFlow.activityHint')}>
-              <Select
-                allowClear
-                options={CASH_FLOW_ACTIVITIES.map((value) => ({ value, label: t(`cashFlow.activity_${value}`) }))}
-              />
-            </Form.Item>
-          )}
-          {showCentreFlag && (
-            <Form.Item
-              name="costCenterRequired"
-              label={t('costCenters.required')}
-              valuePropName="checked"
-              extra={t('costCenters.requiredHint')}
-            >
-              <Switch />
-            </Form.Item>
-          )}
-          </FormSection>
-        </Form>
-      </FormDialog>
+        onSaved={() => {
+          setModalOpen(false);
+          setEditing(null);
+        }}
+      />
       </Card>
     </div>
   );
