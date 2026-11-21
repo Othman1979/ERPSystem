@@ -1522,6 +1522,7 @@ describe('Leave payroll effects and provision', () => {
     }>;
     const unpaidType = types.find((type) => type.code === 'UNPAID')!;
     const maternityType = types.find((type) => type.code === 'MATERNITY')!;
+    const annualType = types.find((type) => type.code === 'ANNUAL')!;
     expect(unpaidType.payElementId).toBeTruthy();
     expect(maternityType.payElementId).toBeTruthy();
     const unpaidEmployee = await createEmployee('LV3', '600.000');
@@ -1572,6 +1573,18 @@ describe('Leave payroll effects and provision', () => {
     const cancelAfterPost = await act(token, `payroll/leave-requests/${unpaidRequest.id}/cancel`, {}, company.id);
     expect(cancelAfterPost.status).toBe(409);
     expect(cancelAfterPost.body.error.code).toBe('LEAVE_RUN_ALREADY_POSTED');
+
+    const postedPeriodEmployee = await createEmployee('LV-POSTED-APPROVAL', '600.000');
+    const unpaidAfterPost = await post<{ id: string }>(token, 'payroll/leave-requests', {
+      employeeId: postedPeriodEmployee.id, leaveTypeId: unpaidType.id, startDate: '2026-12-07', endDate: '2026-12-08',
+    }, 'unpaid leave after posting', company.id);
+    const deniedApproval = await act(token, `payroll/leave-requests/${unpaidAfterPost.id}/approve`, {}, company.id);
+    expect(deniedApproval.status).toBe(409);
+    expect(deniedApproval.body.error.code).toBe('LEAVE_RUN_ALREADY_POSTED');
+    const annualAfterPost = await post<{ id: string }>(token, 'payroll/leave-requests', {
+      employeeId: postedPeriodEmployee.id, leaveTypeId: annualType.id, startDate: '2026-12-09', endDate: '2026-12-10',
+    }, 'annual leave after posting', company.id);
+    h.ok(await act(token, `payroll/leave-requests/${annualAfterPost.id}/approve`, {}, company.id), 200, 'approve annual leave after posted run');
   });
 
   it('posts and reverses the per-employee annual leave provision delta', async () => {

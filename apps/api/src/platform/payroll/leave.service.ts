@@ -344,6 +344,9 @@ export class LeaveService {
       const request = await this.findRequest(tx, id);
       if (!request) throw DomainError.notFound('LeaveRequest', id.toString());
       if (request.status !== 'SUBMITTED') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only submitted leave requests can be approved');
+      if (request.leaveType.payElementId) {
+        await this.assertNoPostedPayrollForPeriod(tx, request.startDate, request.endDate);
+      }
       await this.validateApproval(tx, request);
       const requestNo = await allocateDocumentNo(tx, tenantId, companyId, 'LEAVE_REQUEST', request.startDate);
       const updated = await tx.leaveRequest.update({
@@ -391,14 +394,7 @@ export class LeaveService {
         throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only submitted or approved requests can be cancelled');
       }
       if (request.status === 'APPROVED') {
-        const postedRun = await tx.payrollRun.findFirst({
-          where: {
-            status: { in: ['POSTED', 'PAID'] },
-            period: { gte: yearMonth(request.startDate), lte: yearMonth(request.endDate) },
-          },
-          select: { id: true },
-        });
-        if (postedRun) throw new DomainError(ErrorCode.LEAVE_RUN_ALREADY_POSTED, 'Payroll is already posted for a leave period');
+        await this.assertNoPostedPayrollForPeriod(tx, request.startDate, request.endDate);
       }
       const updated = await tx.leaveRequest.update({
         where: { id },
@@ -529,6 +525,17 @@ export class LeaveService {
         totalTaken.plus(days).gt(new Decimal(request.leaveType.maxDaysPerYear).plus(adjustment._sum.days ?? 0))) {
       throw new DomainError(ErrorCode.LEAVE_LIMIT_EXCEEDED, 'Annual leave-type limit is exceeded');
     }
+  }
+
+  private async assertNoPostedPayrollForPeriod(tx: Prisma.TransactionClient, startDate: Date, endDate: Date) {
+    const postedRun = await tx.payrollRun.findFirst({
+      where: {
+        status: { in: ['POSTED', 'PAID'] },
+        period: { gte: yearMonth(startDate), lte: yearMonth(endDate) },
+      },
+      select: { id: true },
+    });
+    if (postedRun) throw new DomainError(ErrorCode.LEAVE_RUN_ALREADY_POSTED, 'Payroll is already posted for a leave period');
   }
 
   async listBalances(query: LeaveBalanceQueryDto) {

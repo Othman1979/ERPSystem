@@ -2270,7 +2270,7 @@ export const ar = {
     LEAVE_REQUEST_OVERLAP: 'يتداخل طلب الإجازة مع طلب آخر قيد التقديم أو معتمد',
     LEAVE_BALANCE_INSUFFICIENT: 'رصيد الإجازة غير كافٍ',
     LEAVE_LIMIT_EXCEEDED: 'يتجاوز طلب الإجازة الحد المسموح',
-    LEAVE_RUN_ALREADY_POSTED: 'لا يمكن إلغاء الإجازة بعد ترحيل مسيرة رواتب للفترة',
+    LEAVE_RUN_ALREADY_POSTED: 'لا يمكن اعتماد الإجازة أو إلغاؤها بعد ترحيل مسيرة رواتب لفترتها',
     EINVOICE_BUYER_REQUIRED:
       'الفوترة الإلكترونية تتطلب الرقم الضريبي للعميل أو رقمه الوطني/الشخصي (للفاتورة الآجلة، أو النقدية فوق 10,000 دينار)',
     EINVOICE_REASON_REQUIRED: 'المرتجع المُرسل إلى JoFotara يحتاج سبباً',
@@ -4635,7 +4635,7 @@ export const en: typeof ar = {
     LEAVE_REQUEST_OVERLAP: 'The leave request overlaps another submitted or approved request',
     LEAVE_BALANCE_INSUFFICIENT: 'The available leave balance is insufficient',
     LEAVE_LIMIT_EXCEEDED: 'The leave request exceeds the allowed limit',
-    LEAVE_RUN_ALREADY_POSTED: 'Leave cannot be cancelled after a payroll run for its period is posted',
+    LEAVE_RUN_ALREADY_POSTED: 'Leave cannot be approved or cancelled after a payroll run for its period is posted',
     EINVOICE_BUYER_REQUIRED:
       "E-invoicing needs the customer's tax number or national/personal number (credit invoice, or cash above 10,000 JOD)",
     EINVOICE_REASON_REQUIRED: 'A return sent to JoFotara needs a reason',
