@@ -204,12 +204,19 @@ function EmployeesTab() {
   const save = useMutation({
     mutationFn: async (values: EmployeeForm) => {
       const card = buildEmployeePayload(values, Boolean(editing));
-      if (editing) await payrollControllerUpdateEmployee(editing.id, card);
-      else await payrollControllerCreateEmployee(card as never);
       let id = editing?.id;
+      if (editing) {
+        await payrollControllerUpdateEmployee(editing.id, card);
+      } else {
+        const created = await payrollControllerCreateEmployee(card as never);
+        id = created.data.id;
+        if (id) setEditing(created.data);
+      }
       if (!id) {
         const created = await payrollControllerListEmployees();
-        id = (created.data as PayrollEmployeeDto[]).find((employee) => employee.code === values.code)?.id;
+        const listedEmployee = (created.data as PayrollEmployeeDto[]).find((employee) => employee.code === values.code);
+        id = listedEmployee?.id;
+        if (listedEmployee) setEditing(listedEmployee);
       }
       if (id && values.basicSalary && values.salaryEffectiveFrom) {
         await payrollControllerAddSalary(id, { effectiveFrom: dateOnly(values.salaryEffectiveFrom)!, basicSalary: values.basicSalary });

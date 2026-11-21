@@ -224,6 +224,57 @@ describe('payroll page payloads and run actions', () => {
     await until(() => expect(api.postRun).toHaveBeenCalledTimes(1));
   });
 
+  it('retries a partial employee save as an update', async () => {
+    api.addSalary.mockRejectedValueOnce(new Error('salary save failed'));
+    await mount('/payroll?tab=employees');
+    await until(() => expect(
+      [...(host?.querySelectorAll('button') ?? [])].some((button) => button.textContent?.includes(i18n.t('payroll.addEmployee'))),
+    ).toBe(true));
+    const addEmployee = [...host!.querySelectorAll('button')]
+      .find((button) => button.textContent?.includes(i18n.t('payroll.addEmployee')))!;
+    act(() => addEmployee.click());
+    await until(() => expect(document.querySelector('.ant-modal')).not.toBeNull());
+    const modal = document.querySelector<HTMLElement>('.ant-modal')!;
+    const inputFor = (labelKey: string) => {
+      const label = [...modal.querySelectorAll('label')].find((candidate) => candidate.textContent?.includes(i18n.t(labelKey)));
+      const input = label?.closest('.ant-form-item')?.querySelector<HTMLInputElement>('input');
+      if (!input) throw new Error(`Missing input for ${labelKey}`);
+      return input;
+    };
+    setInputValue(inputFor('payroll.code'), 'EMP-RETRY');
+    setInputValue(inputFor('payroll.nameAr'), 'Retry employee');
+    setInputValue(inputFor('payroll.hireDate'), '01/01/2026');
+    setInputValue(inputFor('payroll.effectiveFrom'), '01/01/2026');
+    setInputValue(inputFor('payroll.basicSalary'), '100.000');
+
+    const payMethodLabel = [...modal.querySelectorAll('label')]
+      .find((candidate) => candidate.textContent?.includes(i18n.t('payroll.payMethod')));
+    const payMethodSelect = payMethodLabel?.closest('.ant-form-item')?.querySelector<HTMLElement>('.ant-select-selector');
+    if (!payMethodSelect) throw new Error('Missing pay method selector');
+    act(() => payMethodSelect.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+    await until(() => expect(
+      [...document.querySelectorAll('.ant-select-item-option')].some((option) => option.textContent?.includes(i18n.t('payroll.cash'))),
+    ).toBe(true));
+    const cashOption = [...document.querySelectorAll<HTMLElement>('.ant-select-item-option')]
+      .find((option) => option.textContent?.includes(i18n.t('payroll.cash')))!;
+    act(() => cashOption.click());
+
+    const save = () => {
+      const button = [...document.querySelectorAll('.ant-modal .form-dialog-footer button')]
+        .find((candidate) => candidate.textContent?.includes(i18n.t('common.save')))!;
+      act(() => button.click());
+    };
+    save();
+    await until(() => expect(api.addSalary).toHaveBeenCalledTimes(1));
+    expect(api.createEmployee).toHaveBeenCalledTimes(1);
+    expect(api.listEmployees).toHaveBeenCalledTimes(1);
+
+    save();
+    await until(() => expect(api.updateEmployee).toHaveBeenCalledTimes(1));
+    expect(api.createEmployee).toHaveBeenCalledTimes(1);
+    expect(api.updateEmployee).toHaveBeenCalledWith(employee.id, expect.objectContaining({ code: 'EMP-RETRY' }));
+  });
+
   it('updates the URL tab parameter without dropping other query parameters', () => {
     const next = payrollTabSearchParams(new URLSearchParams('new=1'), 'runs');
     expect(`?${next.toString()}`).toBe('?new=1&tab=runs');
