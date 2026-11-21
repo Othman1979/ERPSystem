@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { dec } from '../format/number';
+import { selectCashBank } from '../hooks/useAccounts';
 import { applyBalances, buildTree, type Account } from './AccountsPage';
 
 const acc = (
@@ -18,6 +19,9 @@ const acc = (
     accountType: normalBalance === 'DEBIT' ? 'ASSET' : 'LIABILITY',
     normalBalance,
     isActive: true,
+    isPostable: true,
+    isControl: false,
+    controlType: null,
   }) as Account;
 
 describe('applyBalances', () => {
@@ -45,5 +49,23 @@ describe('applyBalances', () => {
     applyBalances(tree, new Map([['9', { debit: dec('500'), credit: dec('300') }]]));
     expect(tree[0].balBalance.toString()).toBe('-200');
     expect(tree[0].balBalance.isNegative()).toBe(true);
+  });
+
+  it('rolls a bank child balance up to its non-postable parent', () => {
+    const parent = { ...acc('10', '1102', null, 'DEBIT'), isPostable: false, controlType: 'BANK' as const };
+    const child = { ...acc('11', '1102-01', '10', 'DEBIT'), controlType: 'BANK' as const };
+    const tree = buildTree([parent, child]);
+    applyBalances(tree, new Map([['11', { debit: dec('10'), credit: dec('0') }]]));
+    expect(tree[0].balDebit.toString()).toBe('10');
+  });
+});
+
+describe('selectCashBank', () => {
+  it('offers only postable cash and bank leaves', () => {
+    const parent = { ...acc('1', '1102', null, 'DEBIT'), controlType: 'BANK' as const, isPostable: false };
+    const child = { ...acc('2', '1102-01', '1', 'DEBIT'), controlType: 'BANK' as const };
+    const inactive = { ...acc('3', '1101-02', null, 'DEBIT'), controlType: 'CASH' as const, isActive: false };
+    const otherControl = { ...acc('4', '1201', null, 'DEBIT'), controlType: null };
+    expect(selectCashBank([parent, child, inactive, otherControl])).toEqual([child, inactive]);
   });
 });

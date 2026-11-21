@@ -11,6 +11,7 @@ import {
   type AccountMappingKey,
   LOCKED_AFTER_POSTING,
   MAPPING_RULES,
+  type MappingRule,
 } from './chart-template.js';
 import { BulkMappingsDto, UpsertMappingDto } from './dto/accounting.dto.js';
 import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/current-company.js';
@@ -19,8 +20,54 @@ import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/
 
 type TenantDb = ReturnType<PrismaService['forTenant']>;
 
-function isMappingKey(value: string): value is AccountMappingKey {
+export function isMappingKey(value: string): value is AccountMappingKey {
   return (ACCOUNT_MAPPING_KEYS as readonly string[]).includes(value);
+}
+
+export type MappingAccountCandidate = {
+  isActive: boolean;
+  isPostable: boolean;
+  accountType: MappingRule['types'][number];
+  isControl: boolean;
+  controlType: string | null;
+};
+
+export function mappingAccountValidationError(
+  key: AccountMappingKey,
+  account: MappingAccountCandidate,
+): DomainError | null {
+  if (!account.isActive) {
+    return new DomainError(ErrorCode.ACCOUNT_INACTIVE, 'Mapped accounts must be active');
+  }
+  if (!account.isPostable) {
+    return new DomainError(ErrorCode.ACCOUNT_NOT_POSTABLE, 'Mapped accounts must be postable');
+  }
+
+  const rule = MAPPING_RULES[key];
+  if (!rule.types.includes(account.accountType)) {
+    return new DomainError(
+      ErrorCode.MAPPING_ACCOUNT_INVALID,
+      `Account type ${account.accountType} cannot be mapped to ${key}`,
+      { mappingKey: key, expected: rule.types, accountType: account.accountType },
+    );
+  }
+
+  if (rule.controlType) {
+    if (account.controlType !== rule.controlType) {
+      return new DomainError(
+        ErrorCode.MAPPING_ACCOUNT_INVALID,
+        `${key} must be mapped to a ${rule.controlType} control account`,
+        { mappingKey: key, expectedControlType: rule.controlType },
+      );
+    }
+  } else if (account.isControl || account.controlType !== null) {
+    return new DomainError(
+      ErrorCode.MAPPING_ACCOUNT_INVALID,
+      `A control or cash/bank account cannot be mapped to ${key}`,
+      { mappingKey: key },
+    );
+  }
+  return null;
 }
 
 @Injectable()
@@ -94,37 +141,8 @@ export class MappingsService {
       where: { id: accountId, companyId },
     });
     if (!account) throw DomainError.notFound('Account', accountId.toString());
-    if (!account.isActive) {
-      throw new DomainError(ErrorCode.ACCOUNT_INACTIVE, 'Mapped accounts must be active');
-    }
-    if (!account.isPostable) {
-      throw new DomainError(ErrorCode.ACCOUNT_NOT_POSTABLE, 'Mapped accounts must be postable');
-    }
-
-    const rule = MAPPING_RULES[key];
-    if (!rule.types.includes(account.accountType)) {
-      throw new DomainError(
-        ErrorCode.MAPPING_ACCOUNT_INVALID,
-        `Account type ${account.accountType} cannot be mapped to ${key}`,
-        { mappingKey: key, expected: rule.types, accountType: account.accountType },
-      );
-    }
-
-    if (rule.controlType) {
-      if (account.controlType !== rule.controlType) {
-        throw new DomainError(
-          ErrorCode.MAPPING_ACCOUNT_INVALID,
-          `${key} must be mapped to a ${rule.controlType} control account`,
-          { mappingKey: key, expectedControlType: rule.controlType },
-        );
-      }
-    } else if (account.isControl || account.controlType !== null) {
-      throw new DomainError(
-        ErrorCode.MAPPING_ACCOUNT_INVALID,
-        `A control or cash/bank account cannot be mapped to ${key}`,
-        { mappingKey: key },
-      );
-    }
+    const validationError = mappingAccountValidationError(key, account);
+    if (validationError) throw validationError;
     return account;
   }
 

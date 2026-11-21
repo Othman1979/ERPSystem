@@ -191,7 +191,12 @@ export function AccountsPage() {
         pagination={false}
         expandable={{ defaultExpandAllRows: true }}
         columns={[
-          { title: t('accounts.code'), dataIndex: 'code', width: 110 },
+          {
+            title: t('accounts.code'),
+            dataIndex: 'code',
+            width: 160,
+            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+          },
           {
             title: t('common.name'),
             key: 'name',

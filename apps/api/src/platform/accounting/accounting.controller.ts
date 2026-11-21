@@ -18,6 +18,7 @@ import {
   UpsertMappingDto,
 } from './dto/accounting.dto.js';
 import {
+  AccountCreatedDto,
   AccountDto,
   AccountMappingDto,
   AccountMappingSlotDto,
@@ -46,7 +47,7 @@ export class AccountingController {
 
   @Post('accounts')
   @RequirePermission(PERMISSIONS.ACCOUNT_MANAGE)
-  @ApiCreatedResponse({ type: AccountDto })
+  @ApiCreatedResponse({ type: AccountCreatedDto })
   createAccount(@Body() dto: CreateAccountDto) {
     return this.accounts.create(dto);
   }
