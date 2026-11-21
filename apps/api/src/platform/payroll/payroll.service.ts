@@ -91,9 +91,9 @@ export class PayrollService {
       });
       return runs.map((run) => yearClosingDraft('PAYROLL_RUN', run.id, run.runDate, run.runNo, `Payroll ${run.period}`));
     });
-    yearClosingDrafts.register('PAYROLL_SETTLEMENT', async (tx, _tenantId, _companyId, from, to) => {
+    yearClosingDrafts.register('PAYROLL_SETTLEMENT', async (tx, tenantId, companyId, from, to) => {
       const settlements = await tx.payrollSettlement.findMany({
-        where: { status: 'DRAFT', settlementDate: { gte: from, lte: to } },
+        where: { tenantId, companyId, status: 'DRAFT', settlementDate: { gte: from, lte: to } },
         select: { id: true, settlementDate: true, settlementNo: true },
       });
       return settlements.map((settlement) =>
