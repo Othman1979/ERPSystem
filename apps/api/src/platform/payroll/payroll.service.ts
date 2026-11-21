@@ -26,6 +26,7 @@ import {
 import {
   annualLeaveEntitlement,
   carryIntoYear,
+  countLeaveDays,
   leavePeriodQuantity,
   leaveProvision as calculateLeaveProvision,
 } from './leave-calculator.js';
@@ -1073,7 +1074,7 @@ export class PayrollService {
       const year = periodEnd.getUTCFullYear();
       const annualLeaveType = await tx.leaveType.findFirst({ where: { category: 'ANNUAL', isActive: true } });
       const employeesWithLines = run.lines.map((line) => line.employeeId);
-      const [leaveSettings, annualRequests, leaveAdjustments, priorRuns] = annualLeaveType
+      const [leaveSettings, annualRequests, leaveAdjustments, priorRuns, leaveHolidays] = annualLeaveType
         ? await Promise.all([
             tx.payrollSettings.findMany({ where: { effectiveFrom: { lte: periodEnd } }, orderBy: [{ effectiveFrom: 'asc' }] }),
             tx.leaveRequest.findMany({
@@ -1083,7 +1084,7 @@ export class PayrollService {
                 status: 'APPROVED',
                 startDate: { lte: periodEnd },
               },
-              select: { employeeId: true, startDate: true, days: true },
+              select: { employeeId: true, startDate: true, endDate: true },
             }),
             tx.leaveBalanceAdjustment.findMany({
               where: { employeeId: { in: employeesWithLines }, leaveTypeId: annualLeaveType.id, year: { lte: year } },
@@ -1098,8 +1099,9 @@ export class PayrollService {
               include: { lines: { where: { employeeId: { in: employeesWithLines } }, select: { employeeId: true, leaveProvision: true } } },
               orderBy: [{ period: 'desc' }],
             }),
+            tx.publicHoliday.findMany({ where: { date: { lte: periodEnd } }, select: { date: true } }),
           ])
-        : [[], [], [], []] as const;
+        : [[], [], [], [], []] as const;
       const priorProvision = new Map<bigint, Decimal>();
       for (const prior of priorRuns) {
         for (const priorLine of prior.lines) {
@@ -1121,7 +1123,20 @@ export class PayrollService {
           for (const request of annualRequests) {
             if (request.employeeId === line.employeeId) {
               const requestYear = request.startDate.getUTCFullYear();
-              taken.set(requestYear, (taken.get(requestYear) ?? new Decimal(0)).plus(request.days));
+              const yearStart = new Date(Date.UTC(requestYear, 0, 1));
+              const startDate = request.startDate > yearStart ? request.startDate : yearStart;
+              const endDate = request.endDate < periodEnd ? request.endDate : periodEnd;
+              if (endDate >= startDate) {
+                const settings = leaveSettings.filter((setting) => setting.effectiveFrom <= endDate).at(-1);
+                const days = countLeaveDays({
+                  startDate,
+                  endDate,
+                  countBasis: annualLeaveType.countBasis,
+                  weeklyRestDays: (settings?.weeklyRestDays ?? '5').split(',').map(Number),
+                  holidays: leaveHolidays.map((holiday) => holiday.date),
+                }).days;
+                taken.set(requestYear, (taken.get(requestYear) ?? new Decimal(0)).plus(days));
+              }
             }
           }
           for (let balanceYear = startYear; balanceYear < year; balanceYear++) {
