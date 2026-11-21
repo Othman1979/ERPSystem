@@ -1527,6 +1527,23 @@ describe('Leave payroll effects and provision', () => {
     const unpaidType = types.find((type) => type.code === 'UNPAID')!;
     const maternityType = types.find((type) => type.code === 'MATERNITY')!;
     const annualType = types.find((type) => type.code === 'ANNUAL')!;
+    const yearLimitedType = await post<{ id: string }>(token, 'payroll/leave-types', {
+      code: `OTHER-LIMIT-${RUN}`, nameAr: 'Year limited', category: 'OTHER', countBasis: 'CALENDAR_DAYS',
+      maxDaysPerYear: '5',
+    }, 'create yearly leave limit', company.id);
+    const yearLimitedEmployee = await createEmployee('LV-YEAR-LIMIT', '600.000');
+    const crossYear = await post<{ id: string }>(token, 'payroll/leave-requests', {
+      employeeId: yearLimitedEmployee.id, leaveTypeId: yearLimitedType.id,
+      startDate: '2026-12-30', endDate: '2027-01-02',
+    }, 'create cross-year limit request', company.id);
+    h.ok(await act(token, `payroll/leave-requests/${crossYear.id}/approve`, {}, company.id), 200, 'approve cross-year limit request');
+    const overYearLimit = await post<{ id: string }>(token, 'payroll/leave-requests', {
+      employeeId: yearLimitedEmployee.id, leaveTypeId: yearLimitedType.id,
+      startDate: '2027-01-03', endDate: '2027-01-06',
+    }, 'create over-limit request', company.id);
+    const deniedYearLimit = await act(token, `payroll/leave-requests/${overYearLimit.id}/approve`, {}, company.id);
+    expect(deniedYearLimit.status).toBe(400);
+    expect(deniedYearLimit.body.error.code).toBe('LEAVE_LIMIT_EXCEEDED');
     const impossibleHoliday = await act(token, 'payroll/holidays', {
       date: '2026-02-30', nameAr: 'Invalid date',
     }, company.id);
