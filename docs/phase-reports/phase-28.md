@@ -1,7 +1,7 @@
 # Phase 28 — Payroll completion
 
 **Reference:** [ADR-043](../decisions/ADR-043-phase28-payroll-completion.md).
-**Scope of this delivery:** 28A automatic Jordanian income-tax withholding and 28B leave balances, requests, payroll effects, and provisions. End of service (28C) is not included.
+**Scope of this delivery:** 28A automatic Jordanian income-tax withholding, 28B leave balances, requests, payroll effects, and provisions, and 28C end-of-service provisions and final settlements.
 
 ## PY5 — salary, bonus, and absence
 
@@ -107,3 +107,53 @@ Leave approval, adjustment, and cancellation are company-scoped and audited; the
 - The other failures were `phase14-invoicing.e2e.spec.ts` (one concurrent post/cancel round returned `INVALID_STATUS_TRANSITION` instead of `SALES_ORDER_NOT_CANCELLABLE`) and `session-access.e2e.spec.ts` (setup timed out at 5 seconds under full-suite load, with a transaction-start timeout). Phase 14 source and test files are unchanged from the branch base; the focused Phase 14 suite passed **18/18** afterward. Focused session-access passed **13/13** afterward. The full suite was not rerun after the targeted follow-ups.
 
 There is no standalone chart-provisioning spec in the repository; new-company leave defaults are exercised through the MariaDB E2E provisioning path. Visual verification was not performed.
+
+## 28C — End of service and final settlement
+
+The settled rules are recorded verbatim in [ADR-043 §28C](../decisions/ADR-043-phase28-payroll-completion.md#28c-implementation-rules-settled). The Phase 28C migration is `apps/api/prisma/migrations/20261121154619_phase28c_settlement/migration.sql`; it adds dated EOS tax settings, `PayrollLine.eosProvision`, company-scoped `PayrollSettlement` and its composite relations, accounts 2110/5208 and their mappings, `LEAVE_ENCASHMENT`, and `PAYROLL_SETTLEMENT` (`FS`) document numbering. Existing companies are backfilled in the migration with `INSERT ... SELECT`; new companies receive the same defaults through chart provisioning. The migration was applied only to isolated test database `erp_phase28c_test`; `erp_test` was not reset and preview was not touched.
+
+### EOS1 — service split and tax
+
+Non-SSC employee hired 01/01/2008 and leaving 31/12/2026, with basic JOD 1,000.000 plus fixed transport JOD 100.000:
+
+- Service is 19.000000 years at a last wage of JOD 1,100.000, so EOS is `1,100 × 19 = 20,900.000`.
+- The 6,940 service days split into 731 before 2010, 1,826 from 2010–2014, and 4,383 from 2015 onward.
+- Taxable amount is `round3(0.5 × 20,900 × 1,826 / 6,940 + max(20,900 × 4,383 / 6,940 − 15,000, 0))` = **JOD 2,749.524**. EOS tax is **JOD 247.457**; national contribution is **JOD 0.000**.
+
+### EOS2 — unpaid service and provision true-up
+
+Non-SSC employee hired 01/03/2020 and leaving 31/08/2026, basic JOD 3,000.000, with an approved 10-calendar-day unpaid request earlier in 2026 and that period's run posted:
+
+- Service years are **6.476712** and EOS is **JOD 19,430.136**. Taxable amount is **JOD 4,430.136**, EOS tax **JOD 398.712**, and national contribution **JOD 0.000**.
+- July 2026 `eosProvision` is **JOD 19,175.343**; August is **JOD 19,430.136**, giving a **JOD 254.793** provision delta.
+- Settlement posting debits 2110 for JOD 19,430.136, credits 2108 for JOD 398.712 and 2106 for JOD 19,031.424, and has no 5208 difference line. Payment debits 2106 and credits the bank for JOD 19,031.424. Reversing payment then posting restores the balances; the trial balance remains balanced.
+
+### EN1 — leave encashment for an SSC-covered employee
+
+SSC-covered employee hired 01/07/2026 and leaving 20/09/2026, basic JOD 600.000 plus fixed transport JOD 40.000 (not SSC-subject):
+
+- July and August leave provisions are **JOD 25.387** and **JOD 50.773**.
+- September run: basic **400.000**, transport **26.667**, `LEAVE_ENCASHMENT` **67.200**, gross **493.867**, SSC base **400.000**, employee SSC **30.000**, employer SSC **57.000**, tax **0.000**, net **463.867**, and ending leave provision **0.000**.
+- The September leave-provision release is Dr 2109 / Cr 5207 for **JOD 50.773**. Final settlement is refused because the employee is SSC-covered.
+
+### 28C acceptance and implementation
+
+- Payroll E2E: **16/16 passed**, including PY1–PY7 and LV1–LV5 with all expected golden values unchanged, plus the leave-period payroll effects. Settlement E2E: **2/2 passed**, covering EOS1, EOS2, EN1, and the refusals for settlement before the leaving-period run is posted, a second active settlement, an SSC-covered employee, and payment before the settlement date. No required golden changed or failed.
+- Settlement and payroll calculator specs: **18/18 passed**, including full-period proration returning exactly 1 in short and long months and the requested February, partial-February, and September-leaver cases. The leave-calculator spec remains covered by the 28B results above and the final full suite.
+- Isolation sweep: **5/5 passed**; OpenAPI lifecycle contract: **14/14 passed**; static idempotency-route check: **3/3 passed**.
+- Chart-template spec: **8/8 passed**. PayrollPage spec: **25/25 passed**, including eligible-employee filtering and settlement post/pay/reverse idempotency headers and date-only forms.
+- API build, API typecheck/lint, web typecheck/lint, and API-client typecheck passed. Prisma client, OpenAPI Prisma models, and API-client generation passed.
+- Settlement list/create, recompute, post, pay, reverse, and draft-delete routes are company-scoped; manage/post permissions, idempotency keys, audit events, DTOs, and bilingual UI/error messages are included. The PayrollPage settlement tab shows eligibility-filtered employee selection, service periods, EOS/tax/provision/net values, and permission-gated lifecycle actions. The existing payslip item renderer displays `LEAVE_ENCASHMENT` without a separate rendering path.
+- No new run/deploy command was added; deploy the migration through the existing migration workflow and build the API before E2E tests.
+- Visual verification was not performed. The single full root `pnpm test` is the final verification step after this report update; its outcome and any failure classification will be recorded in the delivery follow-up.
+
+## Phase 28 final report (BUILD_PLAN §22)
+
+1. **Completed outputs:** 28A income-tax withholding, 28B leave balances/requests/payroll deductions and provision, and 28C proration, leave encashment, EOS provisions, and settlement lifecycle are implemented.
+2. **Tables and migrations:** 28A — `20261121133409_phase28a_income_tax`; 28B — `20261121141806_phase28b_leave`; 28C — `20261121154619_phase28c_settlement`. All are under `apps/api/prisma/migrations/`. The 28B/28C company defaults are backfilled for existing companies and provisioned for new companies.
+3. **Endpoints and screens:** payroll tax and leave routes from the preceding sections; 28C `GET|POST /payroll/settlements`, `POST /payroll/settlements/:id/recompute|post|pay|reverse`, and `DELETE /payroll/settlements/:id`; PayrollPage includes payroll, leave, balances/settings, and final-settlement tabs.
+4. **Acceptance tests:** PY1–PY7, LV1–LV5, EOS1, EOS2, EN1 and settlement refusals are unchanged and passed; isolation, OpenAPI, idempotency, calculators, chart-template and PayrollPage results are listed above. The one required full `pnpm test` is pending and will be recorded after it runs.
+5. **Operational commands:** no new commands. Build the API before E2E runs; use the standard Prisma migration deployment process.
+6. **Known issues and technical debt:** visual verification was not performed. Any failures from the final full suite will be classified in the follow-up; no 28C design deviation or failed golden is currently known.
+7. **Decisions:** [ADR-043](../decisions/ADR-043-phase28-payroll-completion.md) records 28A, 28B, and the settled 28C implementation rules.
+8. **Next phase:** Phase 28 is complete; no later phase was started. Existing owner follow-ups (Phase 10 items and accountant review of golden scenarios) remain as listed in `CLAUDE.md`.
