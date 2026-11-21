@@ -379,4 +379,22 @@ describe('Phase 28C payroll settlements', () => {
     };
     expect(secondPosted.settlementNo).toBe('FS-2027-000001');
   });
+
+  it('prorates from active days before rounding and posts a fully unpaid partial month', async () => {
+    const company = await createCompany('PRORATE', true);
+    const employeeRecord = await employee(company, 'PRORATE', '2026-12-22', '2026-12-31', '3000.000', false);
+    const unpaid = (h.ok(await get('payroll/leave-types', company.id), 200, 'proration leave types') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'UNPAID')!;
+    h.ok(await h.api().patch(`/api/v1/payroll/leave-types/${unpaid.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ countBasis: 'CALENDAR_DAYS' }), 200, 'set calendar unpaid days');
+    const request = await post<{ id: string }>('payroll/leave-requests', {
+      employeeId: employeeRecord.id, leaveTypeId: unpaid.id, startDate: '2026-12-22', endDate: '2026-12-31',
+    }, company.id, 'create full active unpaid leave');
+    h.ok(await act(`payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve full active unpaid leave');
+    const payroll = await run(company.id, '2026-12');
+    expect(employeeLine(payroll, employeeRecord.id)).toEqual(expect.objectContaining({
+      basic: '1000', deductions: '1000', net: '0',
+    }));
+  });
 });

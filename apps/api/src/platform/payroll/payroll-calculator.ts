@@ -1,5 +1,5 @@
 import { Decimal, round3, round6 } from '../../common/decimal/decimal.utils.js';
-import { calculateProrationFactor } from './settlement-calculator.js';
+import { calculateProration } from './settlement-calculator.js';
 
 export interface PayrollElement {
   id: bigint;
@@ -145,14 +145,17 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
   }
 
   const fullBasic = round3(input.salary);
-  const prorationFactor = calculateProrationFactor({
+  const proration = calculateProration({
     hireDate: input.employee.hireDate,
     leaveDate: input.employee.leaveDate,
     periodStart: input.periodStart,
     periodEnd: input.periodEnd,
     daysPerMonth: input.settings.daysPerMonth,
   });
-  const basic = round3(fullBasic.mul(prorationFactor));
+  const prorate = (amount: Decimal) => proration.fullPeriod
+    ? amount
+    : round3(amount.mul(proration.activeDays).div(input.settings.daysPerMonth));
+  const basic = prorate(fullBasic);
   const hourlyRate = round6(fullBasic.div(input.settings.hoursPerMonth));
   const dailyRate = round6(fullBasic.div(input.settings.daysPerMonth));
   const grouped = new Map<bigint, ElementAccumulator>();
@@ -181,7 +184,7 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
     .forEach((entry) => add({
       ...entry,
       amount: entry.element.isFixedAllowance && entry.amount !== null
-        ? round3(new Decimal(entry.amount).mul(prorationFactor))
+        ? prorate(new Decimal(entry.amount))
         : entry.amount,
     }));
 

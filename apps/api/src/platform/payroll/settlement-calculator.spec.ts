@@ -2,36 +2,36 @@ import {
   calculateEos,
   calculateEosTax,
   calculateLeaveEncashment,
-  calculateProrationFactor,
+  calculateProration,
   calculateServiceYears,
 } from './settlement-calculator.js';
 
 describe('settlement calculator', () => {
-  it('prorates inclusive hire and leave dates and caps a full month at one', () => {
-    expect(calculateProrationFactor({
+  it('returns active days and full-period status for proration', () => {
+    expect(calculateProration({
       hireDate: new Date('2026-07-01Z'), leaveDate: null,
       periodStart: new Date('2026-07-01Z'), periodEnd: new Date('2026-07-31Z'), daysPerMonth: '30',
-    }).toString()).toBe('1');
-    expect(calculateProrationFactor({
+    })).toEqual({ activeDays: 31, fullPeriod: true });
+    expect(calculateProration({
       hireDate: new Date('2026-07-15Z'), leaveDate: new Date('2026-07-31Z'),
       periodStart: new Date('2026-07-01Z'), periodEnd: new Date('2026-07-31Z'), daysPerMonth: '30',
-    }).toString()).toBe('0.566667');
+    })).toEqual({ activeDays: 17, fullPeriod: false });
   });
 
-  it('returns full pay for a complete period and prorates only partial periods', () => {
-    const factor = (hireDate: string, leaveDate: string | null, periodStart: string, periodEnd: string) =>
-      calculateProrationFactor({
+  it('marks full short and long months as full periods and returns inclusive partial days', () => {
+    const proration = (hireDate: string, leaveDate: string | null, periodStart: string, periodEnd: string) =>
+      calculateProration({
         hireDate: new Date(`${hireDate}Z`),
         leaveDate: leaveDate ? new Date(`${leaveDate}Z`) : null,
         periodStart: new Date(`${periodStart}Z`),
         periodEnd: new Date(`${periodEnd}Z`),
         daysPerMonth: '30',
-      }).toString();
+      });
 
-    expect(factor('2026-01-01', null, '2026-02-01', '2026-02-28')).toBe('1');
-    expect(factor('2026-02-15', null, '2026-02-01', '2026-02-28')).toBe('0.466667');
-    expect(factor('2020-01-01', '2026-09-20', '2026-09-01', '2026-09-30')).toBe('0.666667');
-    expect(factor('2026-01-01', null, '2026-01-01', '2026-01-31')).toBe('1');
+    expect(proration('2026-01-01', null, '2026-02-01', '2026-02-28')).toEqual({ activeDays: 28, fullPeriod: true });
+    expect(proration('2026-02-15', null, '2026-02-01', '2026-02-28')).toEqual({ activeDays: 14, fullPeriod: false });
+    expect(proration('2020-01-01', '2026-09-20', '2026-09-01', '2026-09-30')).toEqual({ activeDays: 20, fullPeriod: false });
+    expect(proration('2026-01-01', null, '2026-01-01', '2026-01-31')).toEqual({ activeDays: 31, fullPeriod: true });
   });
 
   it('splits EOS service days and calculates the EOS1 entitlement and tax', () => {

@@ -29,26 +29,23 @@ function addAnniversaryYears(date: Date, years: number): Date {
   return new Date(Date.UTC(year, month, Math.min(date.getUTCDate(), lastDay)));
 }
 
-export function calculateProrationFactor(input: {
+export function calculateProration(input: {
   hireDate: Date;
   leaveDate: Date | null;
   periodStart: Date;
   periodEnd: Date;
   daysPerMonth: Decimal.Value;
-}): Decimal {
-  if (
+}): { activeDays: number; fullPeriod: boolean } {
+  const fullPeriod =
     utcDate(input.hireDate) <= utcDate(input.periodStart)
-    && (!input.leaveDate || utcDate(input.leaveDate) >= utcDate(input.periodEnd))
-  ) {
-    return new Decimal(1);
-  }
+    && (!input.leaveDate || utcDate(input.leaveDate) >= utcDate(input.periodEnd));
   const activeStart = new Date(Math.max(utcDate(input.hireDate).getTime(), utcDate(input.periodStart).getTime()));
   const activeEndExclusive = new Date(Math.min(
     addDays(input.leaveDate ?? input.periodEnd, 1).getTime(),
     addDays(input.periodEnd, 1).getTime(),
   ));
   const activeDays = daysBetween(activeStart, activeEndExclusive);
-  return round6(Decimal.min(new Decimal(activeDays).div(input.daysPerMonth), 1));
+  return { activeDays: fullPeriod ? Number(daysBetween(utcDate(input.periodStart), addDays(input.periodEnd, 1))) : activeDays, fullPeriod };
 }
 
 export function calculateServiceYears(input: {
