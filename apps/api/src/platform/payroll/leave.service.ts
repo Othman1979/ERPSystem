@@ -406,6 +406,7 @@ export class LeaveService {
       }
       if (
         request.employee.leaveDate
+        && request.startDate <= request.employee.leaveDate
         && (
           request.leaveType.category === 'ANNUAL'
           || request.leaveType.category === 'UNPAID'

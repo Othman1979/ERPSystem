@@ -562,6 +562,24 @@ describe('Phase 28C payroll settlements', () => {
     expect(adjustment.body.error.code).toBe('LEAVE_RUN_ALREADY_POSTED');
   });
 
+  it('allows cancellation of leave entirely after departure payroll', async () => {
+    const company = await createCompany('POST-DEPARTURE-CANCEL', true);
+    const leaver = await employee(company, 'POST-DEPARTURE-CANCEL', '2020-01-01', '2026-12-31', '1000.000', false);
+    const unpaid = (h.ok(await get('payroll/leave-types', company.id), 200, 'post-departure unpaid type') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'UNPAID')!;
+    const request = await post<{ id: string }>('payroll/leave-requests', {
+      employeeId: leaver.id, leaveTypeId: unpaid.id, startDate: '2026-12-16', endDate: '2026-12-20',
+    }, company.id, 'create leave after departure date');
+    h.ok(await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: '2026-12-15' }), 200, 'move departure before leave');
+    await run(company.id, '2026-12');
+
+    const cancel = await act(`payroll/leave-requests/${request.id}/cancel`, {}, company.id);
+    expect(cancel.status).toBe(200);
+    expect(cancel.body.status).toBe('CANCELLED');
+  });
+
   it('includes inactive employees whose departure date is in the payroll period', async () => {
     const company = await createCompany('INACTIVE-LEAVER', true);
     const leaver = await employee(company, 'INACTIVE-LEAVER', '2020-01-01', '2026-12-10', '1000.000', false);
