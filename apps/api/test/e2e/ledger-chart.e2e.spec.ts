@@ -572,6 +572,29 @@ describe('Ledger review fixes (2026-11-13) — chart, mappings, fiscal years, re
 
     const accounts = (await api().get('/api/v1/accounts').set(auth(tokenB))).body as AccountRow[];
     const cashParent = accounts.find((account) => account.code === '1101')!;
+    const cashBoxResponse = await api()
+      .post('/api/v1/cash-boxes')
+      .set(auth(tokenB))
+      .send({ code: `TREE-${RUN}`, name: 'Tree cash box', accountId: cashParent.id });
+    expect(cashBoxResponse.status).toBe(201);
+    const [cashParentRow] = (await db.query('SELECT tenant_id AS tenantId FROM accounts WHERE id = ?', [
+      cashParent.id,
+    ])) as { tenantId: bigint }[];
+    const refusedCashChild = await api()
+      .post('/api/v1/accounts')
+      .set(auth(tokenB))
+      .send({ nameAr: 'Non-postable cash child', parentId: cashParent.id, accountType: 'ASSET', isPostable: false });
+    expectRefused(refusedCashChild, 400, 'VALIDATION');
+    expect(errorOf(refusedCashChild).details).toMatchObject({
+      reason: 'LINKS_NEED_POSTABLE_CHILD',
+      parentCode: '1101',
+    });
+    const [cashBoxLinkAfterRefusal] = (await db.query(
+      'SELECT account_id AS accountId FROM cash_boxes WHERE tenant_id = ? AND id = ?',
+      [cashParentRow.tenantId, cashBoxResponse.body.id],
+    )) as { accountId: bigint }[];
+    expect(String(cashBoxLinkAfterRefusal.accountId)).toBe(cashParent.id);
+
     const cashChildResponse = await api()
       .post('/api/v1/accounts')
       .set(auth(tokenB))
@@ -580,7 +603,12 @@ describe('Ledger review fixes (2026-11-13) — chart, mappings, fiscal years, re
     const cashChild = cashChildResponse.body as CreatedAccount;
     tokenBCashChildId = cashChild.id;
     expect(cashChild.controlType).toBe('CASH');
-    expect(cashChild.movedLinks).toEqual({ mappings: 0, cashBoxes: 0, bankAccounts: 0, payElements: 0 });
+    expect(cashChild.movedLinks).toEqual({ mappings: 0, cashBoxes: 1, bankAccounts: 0, payElements: 0 });
+    const [cashBoxLinkAfterMove] = (await db.query(
+      'SELECT account_id AS accountId FROM cash_boxes WHERE tenant_id = ? AND id = ?',
+      [cashParentRow.tenantId, cashBoxResponse.body.id],
+    )) as { accountId: bigint }[];
+    expect(String(cashBoxLinkAfterMove.accountId)).toBe(cashChild.id);
     const grandchildResponse = await api()
       .post('/api/v1/accounts')
       .set(auth(tokenB))
@@ -594,6 +622,24 @@ describe('Ledger review fixes (2026-11-13) — chart, mappings, fiscal years, re
       .set(auth(tokenB))
       .send({ bankName: 'Housing Bank', accountId: bankParent.id });
     expect(bankAccountResponse.status).toBe(201);
+    const [tenantRow] = (await db.query('SELECT tenant_id AS tenantId FROM accounts WHERE id = ?', [
+      bankParent.id,
+    ])) as { tenantId: bigint }[];
+    const refusedBankChild = await api()
+      .post('/api/v1/accounts')
+      .set(auth(tokenB))
+      .send({ nameAr: 'Non-postable bank child', parentId: bankParent.id, accountType: 'ASSET', isPostable: false });
+    expectRefused(refusedBankChild, 400, 'VALIDATION');
+    expect(errorOf(refusedBankChild).details).toMatchObject({
+      reason: 'LINKS_NEED_POSTABLE_CHILD',
+      parentCode: '1102',
+    });
+    const [bankLinkAfterRefusal] = (await db.query(
+      'SELECT account_id AS accountId FROM bank_accounts WHERE tenant_id = ? AND id = ?',
+      [tenantRow.tenantId, bankAccountResponse.body.id],
+    )) as { accountId: bigint }[];
+    expect(String(bankLinkAfterRefusal.accountId)).toBe(bankParent.id);
+
     const bankChildResponse = await api()
       .post('/api/v1/accounts')
       .set(auth(tokenB))
@@ -602,9 +648,6 @@ describe('Ledger review fixes (2026-11-13) — chart, mappings, fiscal years, re
     const bankChild = bankChildResponse.body as CreatedAccount;
     expect(bankChild.controlType).toBe('BANK');
     expect(bankChild.movedLinks).toEqual({ mappings: 0, cashBoxes: 0, bankAccounts: 1, payElements: 0 });
-    const [tenantRow] = (await db.query('SELECT tenant_id AS tenantId FROM accounts WHERE id = ?', [
-      bankParent.id,
-    ])) as { tenantId: bigint }[];
     const [bankLink] = (await db.query(
       'SELECT account_id AS accountId FROM bank_accounts WHERE tenant_id = ? AND id = ?',
       [tenantRow.tenantId, bankAccountResponse.body.id],
@@ -641,6 +684,55 @@ describe('Ledger review fixes (2026-11-13) — chart, mappings, fiscal years, re
     const refreshedAccounts = (await api().get('/api/v1/accounts').set(auth(tokenB))).body as AccountRow[];
     expect(refreshedAccounts.find((account) => account.code === '1101')?.isPostable).toBe(false);
     expect(refreshedAccounts.find((account) => account.code === '1102')?.isPostable).toBe(false);
+  });
+
+  it('refuses first children that cannot keep a mapped account usable', async () => {
+    const rootCode = `9${Date.now()}`;
+    const parentResponse = await api()
+      .post('/api/v1/accounts')
+      .set(auth(tokenB))
+      .send({ code: rootCode, nameAr: 'Mapped revenue parent', accountType: 'REVENUE' });
+    expect(parentResponse.status).toBe(201);
+    const parent = parentResponse.body as AccountRow;
+    const mappingsBefore = (await api().get('/api/v1/account-mappings').set(auth(tokenB))).body as MappingRow[];
+    const originalSalesAccountId = mappingsBefore.find((row) => row.mappingKey === 'SALES')?.accountId;
+    if (!originalSalesAccountId) throw new Error('Expected the provisioned SALES mapping');
+
+    const moveMapping = (accountId: string) =>
+      api()
+        .post('/api/v1/account-mappings')
+        .set(auth(tokenB))
+        .send({ mappingKey: 'SALES', accountId });
+    expect((await moveMapping(parent.id)).status).toBe(201);
+
+    const nonPostableChild = await api()
+      .post('/api/v1/accounts')
+      .set(auth(tokenB))
+      .send({ nameAr: 'Non-postable mapped child', parentId: parent.id, accountType: 'REVENUE', isPostable: false });
+    expectRefused(nonPostableChild, 400, 'VALIDATION');
+    expect(errorOf(nonPostableChild).details).toMatchObject({
+      reason: 'LINKS_NEED_POSTABLE_CHILD',
+      parentCode: rootCode,
+    });
+    let currentMappings = (await api().get('/api/v1/account-mappings').set(auth(tokenB))).body as MappingRow[];
+    expect(currentMappings.find((row) => row.mappingKey === 'SALES')?.accountId).toBe(parent.id);
+
+    const invalidMappingChild = await api()
+      .post('/api/v1/accounts')
+      .set(auth(tokenB))
+      .send({ nameAr: 'Control mapped child', parentId: parent.id, accountType: 'REVENUE', isControl: true });
+    expectRefused(invalidMappingChild, 400, 'VALIDATION');
+    expect(errorOf(invalidMappingChild).details).toMatchObject({
+      reason: 'MAPPING_RULE',
+      mappingKey: 'SALES',
+    });
+    currentMappings = (await api().get('/api/v1/account-mappings').set(auth(tokenB))).body as MappingRow[];
+    expect(currentMappings.find((row) => row.mappingKey === 'SALES')?.accountId).toBe(parent.id);
+    const accounts = (await api().get('/api/v1/accounts').set(auth(tokenB))).body as AccountRow[];
+    expect(accounts.find((account) => account.id === parent.id)?.isPostable).toBe(true);
+    expect(accounts.some((account) => account.code.startsWith(`${rootCode}-`))).toBe(false);
+
+    expect((await moveMapping(originalSalesAccountId)).status).toBe(201);
   });
 
   it('moves the suppliers mapping to the first child and uses that child for purchase posting', async () => {

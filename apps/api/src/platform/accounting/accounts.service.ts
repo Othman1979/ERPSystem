@@ -12,6 +12,7 @@ import { calendarDateIn, retryOnLockConflict } from '../shared/document-support.
 import { isIncomeStatement } from '../cost-centers/cost-center-rules.js';
 import { CreateAccountDto, UpdateAccountDto } from './dto/accounting.dto.js';
 import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/current-company.js';
+import { isMappingKey, mappingAccountValidationError } from './mappings.service.js';
 
 // journal_lines is read here, not through JournalModule: JournalModule imports AccountingModule (cycle). Read-only usage checks; both are the accounting domain (CLAUDE.md module list).
 
@@ -214,6 +215,21 @@ export class AccountsService {
     return movedLinks;
   }
 
+  private async countConfigurationLinks(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    parent: { id: bigint },
+  ): Promise<MovedLinks> {
+    const [mappings, cashBoxes, bankAccounts, payElements] = await Promise.all([
+      tx.accountMapping.count({ where: { tenantId, companyId, accountId: parent.id } }),
+      tx.cashBox.count({ where: { tenantId, companyId, accountId: parent.id } }),
+      tx.bankAccount.count({ where: { tenantId, companyId, accountId: parent.id } }),
+      tx.payElement.count({ where: { tenantId, companyId, accountId: parent.id } }),
+    ]);
+    return { mappings, cashBoxes, bankAccounts, payElements };
+  }
+
   async create(dto: CreateAccountDto) {
     const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
@@ -315,6 +331,43 @@ export class AccountsService {
               : dto.cashFlowActivity;
           if (costCenterRequired) assertCostCenterFlagAllowed(dto.accountType);
           if (cashFlowActivity) assertCashFlowActivityAllowed(dto.accountType, controlType);
+
+          if (firstChild && currentParent) {
+            const linkCounts = await this.countConfigurationLinks(tx, tenantId, companyId, currentParent);
+            const isPostable = dto.isPostable ?? true;
+            if (!isPostable && Object.values(linkCounts).some((count) => count > 0)) {
+              throw new DomainError(
+                ErrorCode.VALIDATION,
+                'A child account with configuration links must be postable',
+                { reason: 'LINKS_NEED_POSTABLE_CHILD', parentCode: currentParent.code },
+              );
+            }
+            if (linkCounts.mappings > 0) {
+              const mappings = await tx.accountMapping.findMany({
+                where: { tenantId, companyId, accountId: currentParent.id },
+                select: { mappingKey: true },
+              });
+              const candidate = {
+                isActive: true,
+                isPostable,
+                accountType: dto.accountType,
+                isControl,
+                controlType,
+              };
+              for (const mapping of mappings) {
+                if (
+                  !isMappingKey(mapping.mappingKey) ||
+                  mappingAccountValidationError(mapping.mappingKey, candidate)
+                ) {
+                  throw new DomainError(
+                    ErrorCode.VALIDATION,
+                    'A moved account mapping is not valid for the child account',
+                    { reason: 'MAPPING_RULE', mappingKey: mapping.mappingKey },
+                  );
+                }
+              }
+            }
+          }
 
           const code =
             dto.code ??
