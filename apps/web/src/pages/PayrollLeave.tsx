@@ -145,6 +145,12 @@ function RequestsTab() {
   </>;
 }
 
+export function leaveTypeUpdatePayload(values: Record<string, unknown>): Record<string, unknown> {
+  const payload = { ...values };
+  delete payload.code;
+  return payload;
+}
+
 function BalancesTab() {
   const { t, i18n } = useTranslation();
   const { can } = useAuth();
@@ -249,7 +255,7 @@ export function LeaveSettingsPanel() {
   });
   const saveType = useMutation({
     mutationFn: async (values: Record<string, unknown>) => editing
-      ? leaveControllerUpdateType(editing.id, values as never)
+      ? leaveControllerUpdateType(editing.id, leaveTypeUpdatePayload(values) as never)
       : leaveControllerCreateType(values as never),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['payroll', 'leaveTypes'] }); setTypeOpen(false); setEditing(undefined); typeForm.resetFields(); },
     onError: () => message.error(t('payroll.saveError')),

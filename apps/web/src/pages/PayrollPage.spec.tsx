@@ -6,6 +6,7 @@ import { App as AntApp } from 'antd';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
+import { leaveTypeUpdatePayload } from './PayrollLeave';
 import {
   buildElementPayload,
   buildEmployeePayload,
@@ -252,6 +253,13 @@ afterEach(() => {
 });
 
 describe('payroll page payloads and run actions', () => {
+  it('omits the leave type code from edit payloads', () => {
+    expect(leaveTypeUpdatePayload({ code: 'ANNUAL', nameAr: 'سنوية', isActive: true })).toEqual({
+      nameAr: 'سنوية',
+      isActive: true,
+    });
+  });
+
   it('shows leave requests and gates approval actions by permission', async () => {
     api.listLeaveTypes.mockResolvedValue(response([{
       id: 'leave-type-1', code: 'ANNUAL', nameAr: 'سنوية', nameEn: 'Annual', category: 'ANNUAL',
