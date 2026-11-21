@@ -238,32 +238,35 @@ export class PayrollService {
 
   async createRecurring(employeeId: bigint, dto: CreateRecurringElementDto) {
     this.canManage();
-    const { tenantId, db } = this.context();
-    const employee = await db.employee.findFirst({ where: { id: employeeId }, select: { id: true } });
-    if (!employee) throw DomainError.notFound('Employee', employeeId.toString());
-    const element = await db.payElement.findFirst({ where: { id: BigInt(dto.payElementId), isActive: true } });
-    if (!element) throw DomainError.notFound('PayElement', dto.payElementId);
-    const recurringValue = element.amountType === 'FIXED' ? dto.amount : dto.quantity;
-    if (
-      recurringValue == null ||
-      new Decimal(recurringValue).lt('0') ||
-      (element.amountType === 'FIXED' ? dto.quantity != null : dto.amount != null)
-    ) {
-      throw new DomainError(ErrorCode.VALIDATION, 'Recurring value must match its pay element amount type');
-    }
-    const validFrom = date(dto.validFrom);
-    const validTo = dto.validTo ? date(dto.validTo) : null;
-    if (validTo && validTo < validFrom) throw new DomainError(ErrorCode.VALIDATION, 'validTo must not precede validFrom');
-    return db.employeeRecurringElement.create({
-      data: {
-        tenantId,
-        employeeId,
-        payElementId: element.id,
-        amount: dto.amount ?? null,
-        quantity: dto.quantity ?? null,
-        validFrom,
-        validTo,
-      },
+    const { tenantId, companyId, db } = this.context();
+    return db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
+      const employee = await tx.employee.findFirst({ where: { id: employeeId }, select: { id: true } });
+      if (!employee) throw DomainError.notFound('Employee', employeeId.toString());
+      const element = await tx.payElement.findFirst({ where: { id: BigInt(dto.payElementId), isActive: true } });
+      if (!element) throw DomainError.notFound('PayElement', dto.payElementId);
+      const recurringValue = element.amountType === 'FIXED' ? dto.amount : dto.quantity;
+      if (
+        recurringValue == null ||
+        new Decimal(recurringValue).lt('0') ||
+        (element.amountType === 'FIXED' ? dto.quantity != null : dto.amount != null)
+      ) {
+        throw new DomainError(ErrorCode.VALIDATION, 'Recurring value must match its pay element amount type');
+      }
+      const validFrom = date(dto.validFrom);
+      const validTo = dto.validTo ? date(dto.validTo) : null;
+      if (validTo && validTo < validFrom) throw new DomainError(ErrorCode.VALIDATION, 'validTo must not precede validFrom');
+      return tx.employeeRecurringElement.create({
+        data: {
+          tenantId,
+          employeeId,
+          payElementId: element.id,
+          amount: dto.amount ?? null,
+          quantity: dto.quantity ?? null,
+          validFrom,
+          validTo,
+        },
+      });
     });
   }
 

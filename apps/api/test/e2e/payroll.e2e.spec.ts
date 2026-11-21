@@ -526,6 +526,53 @@ describe('Payroll PY1–PY3', () => {
     expect(inputChange.body.error.code).toBe('INVALID_STATUS_TRANSITION');
   });
 
+  it('serializes recurring creation with concurrent pay-element type changes', async () => {
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `RACE-${RUN}`, nameAr: 'Recurring race employee', hireDate: '2031-01-01', payMethod: 'CASH',
+    }, 'recurring race employee', companyAId);
+    const element = await post<{ id: string }>(tokenA, 'payroll/elements', {
+      code: `RACE-ELEMENT-${RUN}`, nameAr: 'Recurring race element', kind: 'EARNING',
+      amountType: 'FIXED', rateFactor: '1.000000', accountId: accounts['5201'],
+    }, 'recurring race element', companyAId);
+
+    const [typeChange, recurringCreate] = await Promise.all([
+      h.api().patch(`/api/v1/payroll/elements/${element.id}`)
+        .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ amountType: 'PER_HOUR' }),
+      act(tokenA, `payroll/employees/${employee.id}/recurring-elements`, {
+        payElementId: element.id, amount: '10.000', validFrom: '2031-01-01',
+      }, companyAId),
+    ]);
+    const recurringRows = h.ok(
+      await get(tokenA, `payroll/employees/${employee.id}/recurring-elements`, companyAId),
+      200,
+      'read recurring race result',
+    ) as Array<{ amount: string | null; quantity: string | null; payElement: { amountType: string } }>;
+    const elements = h.ok(await get(tokenA, 'payroll/elements', companyAId), 200, 'read recurring race element') as Array<{
+      id: string; amountType: string;
+    }>;
+    const currentElement = elements.find((candidate) => candidate.id === element.id)!;
+    for (const row of recurringRows) {
+      expect(row.payElement.amountType).toBe(currentElement.amountType);
+      if (currentElement.amountType === 'FIXED') {
+        expect(row.amount).not.toBeNull();
+        expect(row.quantity).toBeNull();
+      } else {
+        expect(row.amount).toBeNull();
+        expect(row.quantity).not.toBeNull();
+      }
+    }
+    if (recurringRows.length > 0) {
+      expect(recurringCreate.status).toBe(201);
+      expect(typeChange.status).toBe(409);
+      expect(typeChange.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+    } else {
+      expect(recurringCreate.status).toBe(400);
+      expect(recurringCreate.body.error.code).toBe('VALIDATION');
+      expect(typeChange.status).toBe(200);
+      expect(currentElement.amountType).toBe('PER_HOUR');
+    }
+  });
+
   it('clears nullable employee fields when the edit payload sends null', async () => {
     const branch = (h.ok(await get(tokenA, 'branches', companyAId), 200, 'branch list') as { id: string }[])[0]!;
     const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
