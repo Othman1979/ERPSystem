@@ -94,6 +94,10 @@ export class PayrollSettingsDto {
   @ApiProperty({ type: 'string', format: 'decimal' }) taxDependantsExemption!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) taxNationalThreshold!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) taxNationalRate!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) eosTaxExemption!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) eosTaxRate!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) eosNationalThreshold!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) eosNationalRate!: string;
   @ApiProperty({ type: () => PayrollTaxBracketDto, isArray: true }) taxBrackets!: PayrollTaxBracketDto[];
   @ApiProperty({ type: 'string', format: 'date-time' }) createdAt!: string;
 }
@@ -215,6 +219,7 @@ export class PayrollLineDto {
   @ApiProperty({ type: 'string', format: 'decimal' }) deductions!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) net!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) leaveProvision!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) eosProvision!: string;
   @ApiProperty({ type: PayrollLineItemDto, isArray: true }) items!: PayrollLineItemDto[];
 }
 

@@ -30,6 +30,8 @@ export const ACCOUNT_MAPPING_KEYS = [
   'PAYROLL_TAX_PAYABLE',
   'PAYROLL_LEAVE_PROVISION',
   'PAYROLL_LEAVE_EXPENSE',
+  'PAYROLL_EOS_PROVISION',
+  'PAYROLL_EOS_EXPENSE',
   'EMPLOYEE_ADVANCES',
 ] as const;
 
@@ -101,6 +103,7 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('2107', 'الضمان الاجتماعي المستحق', 'LIABILITY', { nameEn: 'Social security payable', parentCode: '21' }),
   acct('2108', 'ضريبة دخل مقتطعة', 'LIABILITY', { nameEn: 'Income tax withheld', parentCode: '21' }),
   acct('2109', 'مخصص الإجازات المستحقة', 'LIABILITY', { nameEn: 'Accrued leave provision', parentCode: '21' }),
+  acct('2110', 'مخصص مكافأة نهاية الخدمة', 'LIABILITY', { nameEn: 'End-of-service provision', parentCode: '21' }),
   acct('3101', 'رأس المال', 'EQUITY', { nameEn: 'Capital', parentCode: '31' }),
   acct('3102', 'الأرباح المدورة', 'EQUITY', { nameEn: 'Retained earnings', parentCode: '31' }),
   acct('3103', 'أرصدة افتتاحية', 'EQUITY', { nameEn: 'Opening balances', parentCode: '31' }),
@@ -120,6 +123,7 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('5205', 'فروقات التقريب', 'EXPENSE', { nameEn: 'Rounding differences', parentCode: '52' }),
   acct('5206', 'حصة الشركة في الضمان', 'EXPENSE', { nameEn: 'Employer social security', parentCode: '52' }),
   acct('5207', 'مصروف الإجازات', 'EXPENSE', { nameEn: 'Leave expense', parentCode: '52' }),
+  acct('5208', 'مصروف مكافأة نهاية الخدمة', 'EXPENSE', { nameEn: 'End-of-service expense', parentCode: '52' }),
 ];
 
 /** mappingKey → template account code (resolved to account ids on provision). */
@@ -149,6 +153,8 @@ export const TEMPLATE_MAPPINGS: Record<AccountMappingKey, string> = {
   PAYROLL_TAX_PAYABLE: '2108',
   PAYROLL_LEAVE_PROVISION: '2109',
   PAYROLL_LEAVE_EXPENSE: '5207',
+  PAYROLL_EOS_PROVISION: '2110',
+  PAYROLL_EOS_EXPENSE: '5208',
   EMPLOYEE_ADVANCES: '1107',
 };
 
@@ -188,6 +194,8 @@ export const MAPPING_RULES: Record<AccountMappingKey, MappingRule> = {
   PAYROLL_TAX_PAYABLE: { types: ['LIABILITY'] },
   PAYROLL_LEAVE_PROVISION: { types: ['LIABILITY'] },
   PAYROLL_LEAVE_EXPENSE: { types: ['EXPENSE'] },
+  PAYROLL_EOS_PROVISION: { types: ['LIABILITY'] },
+  PAYROLL_EOS_EXPENSE: { types: ['EXPENSE'] },
   EMPLOYEE_ADVANCES: { types: ['ASSET'] },
 };
 
@@ -203,6 +211,7 @@ export const LOCKED_AFTER_POSTING: ReadonlySet<AccountMappingKey> = new Set<Acco
   'PAYROLL_SSC_PAYABLE',
   'PAYROLL_TAX_PAYABLE',
   'PAYROLL_LEAVE_PROVISION',
+  'PAYROLL_EOS_PROVISION',
   'EMPLOYEE_ADVANCES',
 ]);
 
@@ -327,6 +336,18 @@ export const DEFAULT_PAY_ELEMENTS = [
     isFixedAllowance: false,
     accountCode: '5201',
   },
+  {
+    code: 'LEAVE_ENCASHMENT',
+    nameAr: 'بدل إجازات غير مستعملة',
+    nameEn: 'Unused leave encashment',
+    kind: 'EARNING',
+    amountType: 'FIXED',
+    rateFactor: '1.000000',
+    sscSubject: false,
+    taxSubject: true,
+    isFixedAllowance: false,
+    accountCode: '5207',
+  },
 ] as const;
 
 export const DEFAULT_LEAVE_TYPES = [
@@ -401,4 +422,5 @@ export const DOCUMENT_TYPE_PREFIXES: Record<string, string> = {
   PAYROLL_RUN: 'PAY',
   PAYROLL_MOVEMENT: 'PM',
   LEAVE_REQUEST: 'LV',
+  PAYROLL_SETTLEMENT: 'FS',
 };

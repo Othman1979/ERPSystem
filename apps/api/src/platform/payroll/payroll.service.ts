@@ -30,6 +30,11 @@ import {
   leavePeriodQuantity,
   leaveProvision as calculateLeaveProvision,
 } from './leave-calculator.js';
+import {
+  calculateEos,
+  calculateLeaveEncashment,
+  calculateServiceYears,
+} from './settlement-calculator.js';
 import type {
   CreateEmployeeDto,
   CreatePayElementDto,
@@ -50,6 +55,8 @@ const MAPPING_KEYS = [
   'PAYROLL_TAX_PAYABLE',
   'PAYROLL_LEAVE_PROVISION',
   'PAYROLL_LEAVE_EXPENSE',
+  'PAYROLL_EOS_PROVISION',
+  'PAYROLL_EOS_EXPENSE',
 ] as const;
 
 function date(value: string): Date {
@@ -454,6 +461,10 @@ export class PayrollService {
     const taxDependantsExemption = new Decimal(dto.taxDependantsExemption ?? '9000.000');
     const taxNationalThreshold = new Decimal(dto.taxNationalThreshold ?? '16666.000');
     const taxNationalRate = new Decimal(dto.taxNationalRate ?? '0.010000');
+    const eosTaxExemption = new Decimal(dto.eosTaxExemption ?? '15000.000');
+    const eosTaxRate = new Decimal(dto.eosTaxRate ?? '0.090000');
+    const eosNationalThreshold = new Decimal(dto.eosNationalThreshold ?? '200000.000');
+    const eosNationalRate = new Decimal(dto.eosNationalRate ?? '0.010000');
     const annualLeaveDays = new Decimal(dto.annualLeaveDays ?? '14.00');
     const annualLeaveDaysSenior = new Decimal(dto.annualLeaveDaysSenior ?? '21.00');
     const annualLeaveSeniorYears = dto.annualLeaveSeniorYears ?? 5;
@@ -481,6 +492,8 @@ export class PayrollService {
       (maximum !== null && (maximum.lt(zero) || maximum.lt(minimum))) ||
       taxPersonalExemption.lt(zero) || taxDependantsExemption.lt(zero) || taxNationalThreshold.lt(zero) ||
       taxNationalRate.lt(zero) || taxNationalRate.gt(one) || !validTaxBrackets
+      || eosTaxExemption.lt(zero) || eosTaxRate.lt(zero) || eosTaxRate.gt(one)
+      || eosNationalThreshold.lt(zero) || eosNationalRate.lt(zero) || eosNationalRate.gt(one)
       || annualLeaveDays.lt(zero) || annualLeaveDaysSenior.lt(zero)
       || !Number.isInteger(annualLeaveSeniorYears) || annualLeaveSeniorYears < 0
       || restDays.length < 1 || restDays.length > 6 || new Set(restDays).size !== restDays.length
@@ -509,6 +522,10 @@ export class PayrollService {
           taxDependantsExemption,
           taxNationalThreshold,
           taxNationalRate,
+          eosTaxExemption,
+          eosTaxRate,
+          eosNationalThreshold,
+          eosNationalRate,
         },
       });
       await tx.payrollTaxBracket.createMany({
@@ -810,7 +827,7 @@ export class PayrollService {
     const employees = await tx.employee.findMany({
       where: { isActive: true },
       include: {
-        salaries: { where: { effectiveFrom: { lte: end } }, orderBy: [{ effectiveFrom: 'desc' }], take: 1 },
+        salaries: { where: { effectiveFrom: { lte: end } }, orderBy: [{ effectiveFrom: 'desc' }] },
         recurringElements: {
           where: { validFrom: { lte: end }, OR: [{ validTo: null }, { validTo: { gte: start } }] },
           include: { payElement: true },
@@ -827,6 +844,30 @@ export class PayrollService {
       where: { date: { gte: start, lte: end } },
       select: { date: true },
     });
+    const employeeIds = employees.map((employee) => employee.id);
+    const annualLeaveType = await tx.leaveType.findFirst({ where: { category: 'ANNUAL', isActive: true } });
+    const [unpaidLeaveRanges, annualRequests, annualAdjustments, leaveSettings, encashmentElement] = employeeIds.length
+      ? await Promise.all([
+          tx.leaveRequest.findMany({
+            where: { employeeId: { in: employeeIds }, status: 'APPROVED', startDate: { lte: end }, leaveType: { category: 'UNPAID' } },
+            select: { employeeId: true, startDate: true, endDate: true },
+          }),
+          annualLeaveType
+            ? tx.leaveRequest.findMany({
+                where: { employeeId: { in: employeeIds }, leaveTypeId: annualLeaveType.id, status: 'APPROVED', startDate: { lte: end } },
+                select: { employeeId: true, startDate: true, endDate: true, days: true },
+              })
+            : Promise.resolve([]),
+          annualLeaveType
+            ? tx.leaveBalanceAdjustment.findMany({
+                where: { employeeId: { in: employeeIds }, leaveTypeId: annualLeaveType.id, year: { lte: end.getUTCFullYear() } },
+                select: { employeeId: true, year: true, days: true },
+              })
+            : Promise.resolve([]),
+          tx.payrollSettings.findMany({ where: { effectiveFrom: { lte: end } }, orderBy: [{ effectiveFrom: 'asc' }] }),
+          tx.payElement.findFirst({ where: { code: 'LEAVE_ENCASHMENT', isActive: true } }),
+        ])
+      : [[], [], [], [], null] as const;
     await tx.payrollLine.deleteMany({ where: { payrollRunId: runId } });
     const totals = {
       basic: new Decimal(0),
@@ -840,7 +881,7 @@ export class PayrollService {
       net: new Decimal(0),
     };
     for (const employee of employees) {
-      const salary = employee.salaries[0];
+      const salary = latestEffectiveOnDate(employee.salaries, end);
       if (!salary) continue;
       const toElement = (element: (typeof employee.payrollMovements)[number]['payElement']): PayrollElement =>
         ({ ...element, rateFactor: element.rateFactor.toString() }) as PayrollElement;
@@ -885,6 +926,79 @@ export class PayrollService {
         validFrom: item.validFrom,
         validTo: item.validTo,
       }));
+      const leaveDateInPeriod = employee.leaveDate !== null && employee.leaveDate >= start && employee.leaveDate <= end;
+      const asOfDate = employee.leaveDate && employee.leaveDate < end ? employee.leaveDate : end;
+      const asOfSalary = latestEffectiveOnDate(employee.salaries, asOfDate) ?? salary;
+      const fullAllowances = employee.recurringElements
+        .filter((item) => item.payElement.isFixedAllowance && item.validFrom <= asOfDate && (!item.validTo || item.validTo >= asOfDate))
+        .map((item) => item.amount ?? new Decimal(0));
+      const lastWage = fullAllowances.reduce<Decimal>((sum, amount) => sum.plus(amount), asOfSalary.basicSalary);
+      const unpaidRanges = unpaidLeaveRanges
+        .filter((request) => request.employeeId === employee.id && request.startDate <= asOfDate)
+        .map(({ startDate, endDate }) => ({ startDate, endDate }));
+      const service = calculateServiceYears({
+        hireDate: employee.hireDate,
+        leaveDate: asOfDate,
+        unpaidLeaveRanges: unpaidRanges,
+      });
+      const eosProvision = employee.sscCovered ? new Decimal(0) : calculateEos(lastWage, service.serviceYears);
+      if (leaveDateInPeriod && annualLeaveType && encashmentElement) {
+        const annualSettings = leaveSettings.filter((row) => row.effectiveFrom <= asOfDate);
+        const startYear = employee.hireDate.getUTCFullYear();
+        const year = asOfDate.getUTCFullYear();
+        const entitlements = new Map<number, Decimal>();
+        const taken = new Map<number, Decimal>();
+        const adjustments = new Map<number, Decimal>();
+        for (const adjustment of annualAdjustments) {
+          if (adjustment.employeeId === employee.id) {
+            adjustments.set(adjustment.year, (adjustments.get(adjustment.year) ?? new Decimal(0)).plus(adjustment.days));
+          }
+        }
+        for (const request of annualRequests) {
+          if (request.employeeId === employee.id) {
+            const requestYear = request.startDate.getUTCFullYear();
+            taken.set(requestYear, (taken.get(requestYear) ?? new Decimal(0)).plus(request.days));
+          }
+        }
+        for (let balanceYear = startYear; balanceYear < year; balanceYear++) {
+          const yearEnd = periodBounds(`${balanceYear}-12`).end;
+          const annualSetting = annualSettings.filter((row) => row.effectiveFrom <= yearEnd).at(-1);
+          entitlements.set(balanceYear, annualLeaveEntitlement({
+            year: balanceYear,
+            hireDate: employee.hireDate,
+            leaveDate: employee.leaveDate,
+            annualLeaveDays: annualSetting?.annualLeaveDays ?? '14',
+            annualLeaveDaysSenior: annualSetting?.annualLeaveDaysSenior ?? '21',
+            annualLeaveSeniorYears: annualSetting?.annualLeaveSeniorYears ?? 5,
+            adjustments: adjustments.get(balanceYear) ?? 0,
+          }));
+        }
+        const annualSetting = annualSettings.at(-1);
+        const unusedDays = carryIntoYear({ year, startYear, entitlements, taken })
+          .plus(annualLeaveEntitlement({
+            year,
+            hireDate: employee.hireDate,
+            leaveDate: employee.leaveDate,
+            annualLeaveDays: annualSetting?.annualLeaveDays ?? '14',
+            annualLeaveDaysSenior: annualSetting?.annualLeaveDaysSenior ?? '21',
+            annualLeaveSeniorYears: annualSetting?.annualLeaveSeniorYears ?? 5,
+            asOfDate,
+          }))
+          .plus(adjustments.get(year) ?? 0)
+          .minus(taken.get(year) ?? 0);
+        const encashment = calculateLeaveEncashment({
+          unusedDays,
+          lastWage,
+          daysPerMonth: annualSetting?.daysPerMonth ?? settings.daysPerMonth,
+        });
+        if (encashment.gt(0)) {
+          inputs.push({
+            element: toElement(encashmentElement),
+            amount: encashment,
+            quantity: null,
+          });
+        }
+      }
       const calculation = calculatePayroll({
         employee,
         salary: salary.basicSalary.toString(),
@@ -929,6 +1043,7 @@ export class PayrollService {
           taxManual: oldTaxes.has(employee.id),
           deductions: calculation.deductions,
           net: calculation.net,
+          eosProvision,
         },
       });
       if (calculation.items.length) {
@@ -1109,21 +1224,23 @@ export class PayrollService {
                 status: { in: ['POSTED', 'PAID'] },
                 lines: { some: { employeeId: { in: employeesWithLines } } },
               },
-              include: { lines: { where: { employeeId: { in: employeesWithLines } }, select: { employeeId: true, leaveProvision: true } } },
+              include: { lines: { where: { employeeId: { in: employeesWithLines } }, select: { employeeId: true, leaveProvision: true, eosProvision: true } } },
               orderBy: [{ period: 'desc' }],
             }),
             tx.publicHoliday.findMany({ where: { date: { lte: periodEnd } }, select: { date: true } }),
           ])
         : [[], [], [], [], []] as const;
       const priorProvision = new Map<bigint, Decimal>();
+      const priorEosProvision = new Map<bigint, Decimal>();
       for (const prior of priorRuns) {
         for (const priorLine of prior.lines) {
           if (!priorProvision.has(priorLine.employeeId)) priorProvision.set(priorLine.employeeId, priorLine.leaveProvision);
+          if (!priorEosProvision.has(priorLine.employeeId)) priorEosProvision.set(priorLine.employeeId, priorLine.eosProvision);
         }
       }
       for (const line of run.lines) {
         let provision = new Decimal(0);
-        if (annualLeaveType) {
+        if (annualLeaveType && !(line.employee.leaveDate && line.employee.leaveDate <= periodEnd)) {
           const startYear = line.employee.hireDate.getUTCFullYear();
           const entitlements = new Map<number, Decimal>();
           const taken = new Map<number, Decimal>();
@@ -1232,6 +1349,8 @@ export class PayrollService {
       }
       const leaveExpenseAccount = accountId('PAYROLL_LEAVE_EXPENSE');
       const leaveProvisionAccount = accountId('PAYROLL_LEAVE_PROVISION');
+      const eosExpenseAccount = accountId('PAYROLL_EOS_EXPENSE');
+      const eosProvisionAccount = accountId('PAYROLL_EOS_PROVISION');
       const leaveProvisionLines: JournalLineInput[] = [];
       for (const line of run.lines) {
         const delta = round3(line.leaveProvision.minus(priorProvision.get(line.employeeId) ?? 0));
@@ -1253,6 +1372,29 @@ export class PayrollService {
             credit: debitExpense ? amount : 0,
             branchId: line.employee.branchId,
             description: 'Accrued leave provision',
+          },
+        );
+      }
+      for (const line of run.lines) {
+        const delta = round3(line.eosProvision.minus(priorEosProvision.get(line.employeeId) ?? 0));
+        if (delta.isZero()) continue;
+        const amount = delta.abs();
+        const debitExpense = delta.gt(0);
+        leaveProvisionLines.push(
+          {
+            accountId: eosExpenseAccount,
+            debit: debitExpense ? amount : 0,
+            credit: debitExpense ? 0 : amount,
+            branchId: line.employee.branchId,
+            costCenterId: line.employee.costCenterId,
+            description: 'End-of-service provision expense',
+          },
+          {
+            accountId: eosProvisionAccount,
+            debit: debitExpense ? 0 : amount,
+            credit: debitExpense ? amount : 0,
+            branchId: line.employee.branchId,
+            description: 'End-of-service provision',
           },
         );
       }
@@ -1601,6 +1743,7 @@ export class PayrollService {
         deductions: line.deductions.toString(),
         net: line.net.toString(),
         leaveProvision: line.leaveProvision.toString(),
+        eosProvision: line.eosProvision.toString(),
         items: line.items.map((item) => ({
           description: item.description,
           kind: item.kind,

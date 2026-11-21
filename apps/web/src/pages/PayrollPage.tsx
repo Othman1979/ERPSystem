@@ -627,6 +627,7 @@ function SettingsTab() {
     {can(PERMISSIONS.PAYROLL_MANAGE) && <EnterNav><Form form={form} layout="vertical" initialValues={{
       taxPersonalExemption: '9000.000', taxDependantsExemption: '9000.000', taxNationalThreshold: '16666.000',
       annualLeaveDays: '14.00', annualLeaveDaysSenior: '21.00', annualLeaveSeniorYears: 5, weeklyRestDays: [5],
+      eosTaxExemption: '15000.000', eosTaxRate: '0.090000', eosNationalThreshold: '200000.000', eosNationalRate: '0.010000',
       taxNationalRate: '0.010000', taxBrackets: [
         { upTo: '416.000', rate: '0.050000' }, { upTo: '832.000', rate: '0.100000' },
         { upTo: '1248.000', rate: '0.150000' }, { upTo: '1664.000', rate: '0.200000' },
@@ -639,6 +640,7 @@ function SettingsTab() {
       {['annualLeaveDays', 'annualLeaveDaysSenior'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}><Input /></Form.Item>)}
       <Form.Item name="annualLeaveSeniorYears" label={t('payroll.annualLeaveSeniorYears')} rules={[{ required: true }]}><InputNumber min={0} precision={0} /></Form.Item>
       {['taxPersonalExemption', 'taxDependantsExemption', 'taxNationalThreshold', 'taxNationalRate'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}><Input /></Form.Item>)}
+      {['eosTaxExemption', 'eosTaxRate', 'eosNationalThreshold', 'eosNationalRate'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}><Input /></Form.Item>)}
       <Form.List name="taxBrackets">{(fields, { add, remove }) => <Space direction="vertical">
         {fields.map((field, index) => <Space key={field.key}>
           <Form.Item name={[field.name, 'upTo']} label={index === fields.length - 1 ? t('payroll.bracketTop') : t('payroll.bracketUpTo')}><Input /></Form.Item>
@@ -652,7 +654,8 @@ function SettingsTab() {
     <Table rowKey="id" dataSource={settings.data as Array<Record<string, unknown>> | undefined} columns={[
       ...['effectiveFrom', 'sscEmployeeRate', 'sscEmployerRate', 'sscHazardousExtra', 'sscMinWage', 'sscMaxWage', 'hoursPerMonth', 'daysPerMonth',
         'weeklyRestDays', 'annualLeaveDays', 'annualLeaveDaysSenior', 'annualLeaveSeniorYears',
-        'taxPersonalExemption', 'taxDependantsExemption', 'taxNationalThreshold', 'taxNationalRate']
+        'taxPersonalExemption', 'taxDependantsExemption', 'taxNationalThreshold', 'taxNationalRate',
+        'eosTaxExemption', 'eosTaxRate', 'eosNationalThreshold', 'eosNationalRate']
         .map((key) => ({
           title: t(`payroll.${key}`),
           dataIndex: key,

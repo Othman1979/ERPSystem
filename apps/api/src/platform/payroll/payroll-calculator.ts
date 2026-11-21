@@ -1,4 +1,5 @@
 import { Decimal, round3, round6 } from '../../common/decimal/decimal.utils.js';
+import { calculateProrationFactor } from './settlement-calculator.js';
 
 export interface PayrollElement {
   id: bigint;
@@ -10,6 +11,7 @@ export interface PayrollElement {
   rateFactor: Decimal.Value;
   sscSubject: boolean;
   taxSubject: boolean;
+  isFixedAllowance?: boolean;
 }
 
 export interface PayrollTaxBracket {
@@ -142,9 +144,17 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
     return null;
   }
 
-  const basic = round3(input.salary);
-  const hourlyRate = round6(basic.div(input.settings.hoursPerMonth));
-  const dailyRate = round6(basic.div(input.settings.daysPerMonth));
+  const fullBasic = round3(input.salary);
+  const prorationFactor = calculateProrationFactor({
+    hireDate: input.employee.hireDate,
+    leaveDate: input.employee.leaveDate,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+    daysPerMonth: input.settings.daysPerMonth,
+  });
+  const basic = round3(fullBasic.mul(prorationFactor));
+  const hourlyRate = round6(fullBasic.div(input.settings.hoursPerMonth));
+  const dailyRate = round6(fullBasic.div(input.settings.daysPerMonth));
   const grouped = new Map<bigint, ElementAccumulator>();
 
   const add = (entry: PayrollElementEntry) => {
@@ -168,7 +178,12 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
     .forEach(add);
   input.recurring
     .filter((entry) => entry.validFrom <= input.periodEnd && (!entry.validTo || entry.validTo >= input.periodStart))
-    .forEach(add);
+    .forEach((entry) => add({
+      ...entry,
+      amount: entry.element.isFixedAllowance && entry.amount !== null
+        ? round3(new Decimal(entry.amount).mul(prorationFactor))
+        : entry.amount,
+    }));
 
   let earnings = new Decimal(0);
   let deductions = new Decimal(0);

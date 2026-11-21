@@ -134,6 +134,13 @@ enum PayrollMovementStatus {
   REVERSED
 }
 
+enum PayrollSettlementStatus {
+  DRAFT
+  POSTED
+  PAID
+  REVERSED
+}
+
 enum LeaveCategory {
   ANNUAL
   SICK
@@ -475,6 +482,7 @@ model Tenant {
   payrollSettings            PayrollSettings[]
   payrollTaxBrackets         PayrollTaxBracket[]
   payrollRuns                PayrollRun[]
+  payrollSettlements         PayrollSettlement[]
   payrollLines               PayrollLine[]
   payrollLineItems           PayrollLineItem[]
   publicHolidays             PublicHoliday[]
@@ -592,6 +600,7 @@ model Company {
   payrollMovements PayrollMovement[]
   payrollSettings  PayrollSettings[]
   payrollRuns      PayrollRun[]
+  payrollSettlements PayrollSettlement[]
   publicHolidays   PublicHoliday[]
   leaveTypes       LeaveType[]
   leaveRequests    LeaveRequest[]
@@ -1170,6 +1179,10 @@ model JournalEntry {
   payrollPayments  PayrollRun[]  @relation("PayrollPaymentJournal")
   payrollMovements PayrollMovement[] @relation("PayrollMovementJournal")
   payrollMovementReversals PayrollMovement[] @relation("PayrollMovementReversal")
+  payrollSettlements PayrollSettlement[] @relation("PayrollSettlementJournal")
+  payrollSettlementPayments PayrollSettlement[] @relation("PayrollSettlementPaymentJournal")
+  payrollSettlementReversals PayrollSettlement[] @relation("PayrollSettlementReversalJournal")
+  payrollSettlementPaymentReversals PayrollSettlement[] @relation("PayrollSettlementPaymentReversalJournal")
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
@@ -1812,6 +1825,7 @@ model CashBox {
   company     Company      @relation(fields: [tenantId, companyId], references: [tenantId, id])
   account     Account      @relation(fields: [tenantId, companyId, accountId], references: [tenantId, companyId, id])
   payrollRuns PayrollRun[] @relation("PayrollRunCashBox")
+  payrollSettlements PayrollSettlement[] @relation("PayrollSettlementCashBox")
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
@@ -1835,6 +1849,7 @@ model BankAccount {
   company     Company      @relation(fields: [tenantId, companyId], references: [tenantId, id])
   account     Account      @relation(fields: [tenantId, companyId, accountId], references: [tenantId, companyId, id])
   payrollRuns PayrollRun[] @relation("PayrollRunBankAccount")
+  payrollSettlements PayrollSettlement[] @relation("PayrollSettlementBankAccount")
 
   statements BankStatement[]
 
@@ -3539,6 +3554,7 @@ model Employee {
   recurringElements EmployeeRecurringElement[]
   payrollMovements  PayrollMovement[]
   payrollLines      PayrollLine[]
+  payrollSettlements PayrollSettlement[]
   leaveRequests     LeaveRequest[]
   leaveBalanceAdjustments LeaveBalanceAdjustment[]
 
@@ -3677,6 +3693,10 @@ model PayrollSettings {
   taxDependantsExemption Decimal @default(9000) @map("tax_dependants_exemption") @db.Decimal(18, 3)
   taxNationalThreshold   Decimal @default(16666) @map("tax_national_threshold") @db.Decimal(18, 3)
   taxNationalRate        Decimal @default(0.01) @map("tax_national_rate") @db.Decimal(9, 6)
+  eosTaxExemption        Decimal @default(15000) @map("eos_tax_exemption") @db.Decimal(18, 3)
+  eosTaxRate             Decimal @default(0.09) @map("eos_tax_rate") @db.Decimal(9, 6)
+  eosNationalThreshold   Decimal @default(200000) @map("eos_national_threshold") @db.Decimal(18, 3)
+  eosNationalRate        Decimal @default(0.01) @map("eos_national_rate") @db.Decimal(9, 6)
   createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -3766,6 +3786,7 @@ model PayrollLine {
   deductions   Decimal  @db.Decimal(18, 3)
   net          Decimal  @db.Decimal(18, 3)
   leaveProvision Decimal @default(0) @map("leave_provision") @db.Decimal(18, 3)
+  eosProvision   Decimal @default(0) @map("eos_provision") @db.Decimal(18, 3)
   createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
@@ -3913,4 +3934,56 @@ model LeaveBalanceAdjustment {
   @@unique([tenantId, companyId, id])
   @@index([tenantId, companyId, employeeId, leaveTypeId, year])
   @@map("leave_balance_adjustments")
+}
+
+model PayrollSettlement {
+  id                     BigInt                  @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId               BigInt                  @map("tenant_id") @db.UnsignedBigInt
+  companyId              BigInt                  @map("company_id") @db.UnsignedBigInt
+  employeeId             BigInt                  @map("employee_id") @db.UnsignedBigInt
+  settlementNo           String?                 @map("settlement_no") @db.VarChar(50)
+  settlementDate         DateTime                @map("settlement_date") @db.Date
+  status                 PayrollSettlementStatus @default(DRAFT)
+  serviceYears           Decimal                 @map("service_years") @db.Decimal(9, 6)
+  lastWage               Decimal                 @map("last_wage") @db.Decimal(18, 3)
+  eosAmount              Decimal                 @map("eos_amount") @db.Decimal(18, 3)
+  serviceDaysBefore2010  Int                     @map("service_days_before_2010")
+  serviceDays2010To2014  Int                     @map("service_days_2010_to_2014")
+  serviceDaysFrom2015    Int                     @map("service_days_from_2015")
+  taxableAmount          Decimal                 @map("taxable_amount") @db.Decimal(18, 3)
+  eosTax                 Decimal                 @map("eos_tax") @db.Decimal(18, 3)
+  nationalContribution   Decimal                 @map("national_contribution") @db.Decimal(18, 3)
+  provisionUsed          Decimal                 @map("provision_used") @db.Decimal(18, 3)
+  net                    Decimal                 @db.Decimal(18, 3)
+  journalEntryId         BigInt?                 @map("journal_entry_id") @db.UnsignedBigInt
+  paymentEntryId         BigInt?                 @map("payment_entry_id") @db.UnsignedBigInt
+  reversalEntryId        BigInt?                 @map("reversal_entry_id") @db.UnsignedBigInt
+  paymentReversalEntryId BigInt?                 @map("payment_reversal_entry_id") @db.UnsignedBigInt
+  paidFromCashBoxId      BigInt?                 @map("paid_from_cash_box_id") @db.UnsignedBigInt
+  paidFromBankAccountId  BigInt?                 @map("paid_from_bank_account_id") @db.UnsignedBigInt
+  postedAt               DateTime?               @map("posted_at") @db.DateTime(3)
+  postedBy               BigInt?                 @map("posted_by") @db.UnsignedBigInt
+  paidAt                 DateTime?               @map("paid_at") @db.DateTime(3)
+  paidBy                 BigInt?                 @map("paid_by") @db.UnsignedBigInt
+  reversedAt             DateTime?               @map("reversed_at") @db.DateTime(3)
+  reversedBy             BigInt?                 @map("reversed_by") @db.UnsignedBigInt
+  createdAt              DateTime                @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt              DateTime                @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant               Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company              Company       @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Cascade)
+  employee             Employee      @relation(fields: [tenantId, companyId, employeeId], references: [tenantId, companyId, id])
+  journalEntry         JournalEntry? @relation("PayrollSettlementJournal", fields: [tenantId, companyId, journalEntryId], references: [tenantId, companyId, id])
+  paymentEntry         JournalEntry? @relation("PayrollSettlementPaymentJournal", fields: [tenantId, companyId, paymentEntryId], references: [tenantId, companyId, id])
+  reversalEntry        JournalEntry? @relation("PayrollSettlementReversalJournal", fields: [tenantId, companyId, reversalEntryId], references: [tenantId, companyId, id])
+  paymentReversalEntry JournalEntry? @relation("PayrollSettlementPaymentReversalJournal", fields: [tenantId, companyId, paymentReversalEntryId], references: [tenantId, companyId, id])
+  paidFromCashBox      CashBox?      @relation("PayrollSettlementCashBox", fields: [tenantId, companyId, paidFromCashBoxId], references: [tenantId, companyId, id])
+  paidFromBankAccount  BankAccount?  @relation("PayrollSettlementBankAccount", fields: [tenantId, companyId, paidFromBankAccountId], references: [tenantId, companyId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, settlementNo])
+  @@index([tenantId, companyId, employeeId, status])
+  @@index([tenantId, companyId, settlementDate, status])
+  @@map("payroll_settlements")
 }
