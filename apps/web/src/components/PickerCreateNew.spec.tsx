@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import '../i18n';
 import { SEARCH_DEBOUNCE_MS } from '../hooks/usePagedQuery';
+import { PICKER_FRESH_MS } from '../liveRefresh';
 import { GridSelect } from './GridSelect';
 import { RemoteSelect } from './RemoteSelect';
 
@@ -64,6 +65,22 @@ function openPicker() {
 }
 
 describe('GridSelect create-new', () => {
+  it('calls onOpen when ArrowDown opens the picker', () => {
+    const onOpen = vi.fn();
+    mount(<GridSelect options={[]} onOpen={onOpen} />);
+    openPicker();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onOpen when typing opens a closed picker', () => {
+    const onOpen = vi.fn();
+    mount(<GridSelect options={[]} onOpen={onOpen} />);
+    const input = host.querySelector<HTMLInputElement>('[role="combobox"]')!;
+    act(() => input.focus());
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'A', bubbles: true, cancelable: true })));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
   it('creates from the footer with empty search text', async () => {
     const onCreateNew = vi.fn();
     mount(<GridSelect options={[]} onCreateNew={onCreateNew} />);
@@ -170,6 +187,31 @@ describe('GridSelect create-new', () => {
 
 describe('RemoteSelect create-new', () => {
   const fetchOptions = async () => [];
+
+  it('refetches when opened if its cached results are older than 10 seconds', async () => {
+    const queryKey = ['remote-open-stale'];
+    const fetch = vi.fn(async () => []);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData([...queryKey, ''], [], { updatedAt: Date.now() - PICKER_FRESH_MS - 1 });
+    mount(<RemoteSelect queryKey={queryKey} fetchOptions={fetch} />, true, client);
+    await settle(20);
+    expect(fetch).not.toHaveBeenCalled();
+    openPicker();
+    await settle(20);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refetch when its cached results are fresh', async () => {
+    const queryKey = ['remote-open-fresh'];
+    const fetch = vi.fn(async () => []);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData([...queryKey, ''], [], { updatedAt: Date.now() });
+    mount(<RemoteSelect queryKey={queryKey} fetchOptions={fetch} />, true, client);
+    await settle(20);
+    openPicker();
+    await settle(20);
+    expect(fetch).not.toHaveBeenCalled();
+  });
 
   it('creates from the footer with empty search text', async () => {
     const onCreateNew = vi.fn();

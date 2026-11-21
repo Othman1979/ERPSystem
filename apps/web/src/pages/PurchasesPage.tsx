@@ -7,13 +7,13 @@ import {
   Radio,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Select,
   Space,
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
@@ -21,7 +21,6 @@ import { PartyFormDialog } from '../components/PartyFormDialog';
 import { ItemFormDialog } from '../components/ItemFormDialog';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
-import { formatDateTime } from '../format/date';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { useTranslation } from 'react-i18next';
@@ -44,9 +43,12 @@ import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../co
 import { ListToolbar } from '../components/ListToolbar';
 import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
 import { usePagedQuery } from '../hooks/usePagedQuery';
+import { LIVE_REFRESH_MS, PICKER_FRESH_MS, refetchIfOlderThan } from '../liveRefresh';
 import { useRemoteOptions } from '../hooks/useRemoteOptions';
 import { entryDraftStorageKey, useEntryDraft } from '../hooks/useEntryDraft';
 import { documentLockHeaders, useDocumentLock } from '../hooks/useDocumentLock';
+import { useDocumentLockStatus } from '../hooks/useDocumentLockStatus';
+import { DocumentLockBanner } from '../components/DocumentLockBanner';
 import { useCostCenters } from '../hooks/useCostCenters';
 import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
 import { PrintPdfButton } from '../components/PrintPdfButton';
@@ -108,12 +110,6 @@ type ItemRow = Pick<
   ItemListItemDto,
   'id' | 'code' | 'nameAr' | 'nameEn' | 'itemKind' | 'purchasePrice' | 'taxCategoryId'
 > & { taxRate?: string };
-
-type LockedInvoiceNotice = {
-  userName: string;
-  acquiredAt: string;
-  forceRelease: () => Promise<unknown>;
-};
 
 interface PurchaseInvoiceDraft {
   invoiceDate: string;
@@ -208,6 +204,7 @@ function usePurchaseLookups() {
     taxRateById,
     defaultTaxId,
     cashAccountOptions,
+    accountsQuery: accounts,
   };
 }
 
@@ -220,7 +217,6 @@ function PurchaseInvoicesTab() {
   const [paymentFilter, setPaymentFilter] = useState<PurchasesControllerListInvoicesPaymentType | undefined>(undefined);
   const [screen, setScreen] = useState<'list' | 'form' | 'view'>('list');
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
-  const [lockedNotice, setLockedNotice] = useState<LockedInvoiceNotice | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
   const lookups = usePurchaseLookups();
   useNewFromUrl(() => {
@@ -239,6 +235,7 @@ function PurchaseInvoicesTab() {
     defaultSort: '-invoiceDate',
     fetch: (params, signal) => purchasesControllerListInvoices(params, { signal }).then((r) => r.data),
     enabled: screen === 'list',
+    refetchInterval: LIVE_REFRESH_MS,
   });
 
   const { data: detail, isLoading: detailLoading } = useQuery({
@@ -246,8 +243,12 @@ function PurchaseInvoicesTab() {
     queryFn: ({ signal }) =>
       purchasesControllerGetInvoice(invoiceId!, { signal }).then((r) => r.data),
     enabled: (screen === 'view' || screen === 'form') && !!invoiceId,
+    refetchInterval: screen === 'view' ? LIVE_REFRESH_MS : false,
   });
-  const { me: currentUser, companyId, can } = useAuth();
+  const lockStatus = useDocumentLockStatus('PURCHASE_INVOICE', invoiceId, screen === 'view');
+  const lockedByOther = !!lockStatus.data?.holder && !lockStatus.data.holder.mine;
+  const lockActionTooltip = lockedByOther ? t('common.documentLockActionDisabled') : undefined;
+  const { me: currentUser, companyId } = useAuth();
   const lockHeaders = documentLockHeaders();
   useEffect(() => {
     if (screen !== 'view' || !invoiceId || detailLoading || !detail || detail.status === 'DRAFT') return;
@@ -362,10 +363,7 @@ function PurchaseInvoicesTab() {
         invoice={invoiceId ? detail : undefined}
         loading={detailLoading}
         isNew={!invoiceId}
-        onLockBlocked={(notice) => {
-          setLockedNotice(notice);
-          setScreen('view');
-        }}
+        onLockBlocked={() => setScreen('view')}
         onBack={() => {
           setScreen('list');
           setInvoiceId(null);
@@ -382,46 +380,17 @@ function PurchaseInvoicesTab() {
   if (screen === 'view' && invoiceId) {
     return (
       <div>
-        {lockedNotice && (
-          <Alert
-            type="warning"
-            showIcon
-            message={t('common.documentLockLocked', {
-              name: lockedNotice.userName,
-              time: formatDateTime(lockedNotice.acquiredAt),
-            })}
-            action={
-              can(PERMISSIONS.DOCUMENT_UNLOCK) ? (
-                <Button
-                  onClick={() =>
-                    Modal.confirm({
-                      title: t('common.documentLockUnlockConfirm'),
-                      onOk: async () => {
-                        await lockedNotice.forceRelease();
-                        setLockedNotice(null);
-                        setScreen('form');
-                      },
-                    })
-                  }
-                >
-                  {t('common.documentLockUnlock')}
-                </Button>
-              ) : undefined
-            }
-          />
-        )}
+        <DocumentLockBanner docType="PURCHASE_INVOICE" id={invoiceId} query={lockStatus} />
         <PurchaseInvoiceView
           invoice={detail}
           loading={detailLoading}
+          lockedByOther={lockedByOther}
+          lockActionTooltip={lockActionTooltip}
           onBack={() => {
             setScreen('list');
             setInvoiceId(null);
-            setLockedNotice(null);
           }}
-          onEdit={() => {
-            setLockedNotice(null);
-            setScreen('form');
-          }}
+          onEdit={() => setScreen('form')}
           onPost={(id) => post.mutate(id)}
           onDelete={(id) => del.mutate(id)}
           posting={post.isPending}
@@ -506,20 +475,16 @@ function PurchaseInvoiceForm({
   isNew: boolean;
   onBack: () => void;
   onSaved: (id: string) => void;
-  onLockBlocked?: (notice: LockedInvoiceNotice) => void;
+  onLockBlocked?: () => void;
 }) {
   const { t } = useTranslation();
   const { can, me, companyId } = useAuth();
   const editLock = useDocumentLock('PURCHASE_INVOICE', isNew ? null : invoice?.id, !isNew && !loading && invoice?.status === 'DRAFT');
   useEffect(() => {
     if (editLock.state.status === 'locked' && invoice?.id) {
-      onLockBlocked?.({
-        userName: editLock.state.userName,
-        acquiredAt: editLock.state.acquiredAt,
-        forceRelease: editLock.forceRelease,
-      });
+      onLockBlocked?.();
     }
-  }, [editLock.forceRelease, editLock.state, invoice?.id, onLockBlocked]);
+  }, [editLock.state, invoice?.id, onLockBlocked]);
   const queryClient = useQueryClient();
   const [apiMessage, contextHolder] = message.useMessage();
   const [quickCreate, setQuickCreate] = useState<
@@ -922,6 +887,7 @@ function PurchaseInvoiceForm({
             <GridSelect
               status={requiredError(missing.cashAccount) ? 'error' : undefined}
               options={cashAccountOptions}
+              onOpen={() => refetchIfOlderThan(lookups.accountsQuery, PICKER_FRESH_MS)}
               value={cashAccountId}
               onChange={setCashAccountId}
             />
@@ -934,6 +900,7 @@ function PurchaseInvoiceForm({
         onChange={setLines}
         itemOptions={itemOptions}
         onItemSearch={items.onSearch}
+        onItemOpen={items.onOpen}
         onCreateItem={
           can(PERMISSIONS.ITEM_MANAGE)
             ? (lineKey, row, typedText) => setQuickCreate({ kind: 'item', lineKey, row, typedText })
@@ -1002,6 +969,8 @@ function PurchaseInvoiceForm({
 function PurchaseInvoiceView({
   invoice,
   loading,
+  lockedByOther,
+  lockActionTooltip,
   onBack,
   onEdit,
   onPost,
@@ -1010,6 +979,8 @@ function PurchaseInvoiceView({
 }: {
   invoice?: PurchaseInvoiceDetailDto;
   loading: boolean;
+  lockedByOther: boolean;
+  lockActionTooltip?: string;
   onBack: () => void;
   onEdit: () => void;
   onPost: (id: string) => void;
@@ -1051,7 +1022,7 @@ function PurchaseInvoiceView({
   });
   // Ctrl+Enter posts a draft, behind the same confirmation as the button.
   const confirmPost = () => {
-    if (!invoice || !isDraft || posting) return;
+    if (!invoice || !isDraft || posting || lockedByOther) return;
     modal.confirm({ title: t('purchases.postConfirm'), onOk: () => onPost(invoice.id) });
   };
   useDocShortcuts({ onPost: confirmPost });
@@ -1071,7 +1042,13 @@ function PurchaseInvoiceView({
           {isDraft && (
             <>
               {/* A bill of an order's receipts is made from the order (ADR-026 §7): delete it and bill again to change it. */}
-              {!invoice.purchaseOrder && <Button onClick={onEdit}>{t('common.edit')}</Button>}
+              {!invoice.purchaseOrder && (
+                <Tooltip title={lockActionTooltip}>
+                  <span>
+                    <Button onClick={onEdit} disabled={lockedByOther}>{t('common.edit')}</Button>
+                  </span>
+                </Tooltip>
+              )}
               {needsPriceApproval && can(PERMISSIONS.PURCHASE_APPROVE) &&
                 (priceApprovalBlocked ? (
                   <>
@@ -1079,19 +1056,43 @@ function PurchaseInvoiceView({
                     <Typography.Text type="secondary">{t('procurement.ownDocument')}</Typography.Text>
                   </>
                 ) : (
-                  <Popconfirm title={t('billing.approvePriceConfirm')} onConfirm={() => approvePrice.mutate(invoice.id)}>
-                    <Button loading={approvePrice.isPending}>{t('billing.approvePrice')}</Button>
-                  </Popconfirm>
+                  <Tooltip title={lockActionTooltip}>
+                    <span>
+                      <Popconfirm
+                        disabled={lockedByOther}
+                        title={t('billing.approvePriceConfirm')}
+                        onConfirm={() => approvePrice.mutate(invoice.id)}
+                      >
+                        <Button loading={approvePrice.isPending} disabled={lockedByOther}>{t('billing.approvePrice')}</Button>
+                      </Popconfirm>
+                    </span>
+                  </Tooltip>
                 ))}
-              <Popconfirm title={t('purchases.postConfirm')} onConfirm={() => onPost(invoice.id)}>
-                <Button type="primary" loading={posting}>
-                  {t('common.post')}
-                  <span className="doc-kbd">Ctrl+Enter</span>
-                </Button>
-              </Popconfirm>
-              <Popconfirm title={t('common.deleteConfirm')} onConfirm={() => onDelete(invoice.id)}>
-                <Button danger icon={<DeleteOutlined />} aria-label={t('common.delete')} />
-              </Popconfirm>
+              <Tooltip title={lockActionTooltip}>
+                <span>
+                  <Popconfirm
+                    disabled={lockedByOther}
+                    title={t('purchases.postConfirm')}
+                    onConfirm={() => onPost(invoice.id)}
+                  >
+                    <Button type="primary" loading={posting} disabled={lockedByOther}>
+                      {t('common.post')}
+                      <span className="doc-kbd">Ctrl+Enter</span>
+                    </Button>
+                  </Popconfirm>
+                </span>
+              </Tooltip>
+              <Tooltip title={lockActionTooltip}>
+                <span>
+                  <Popconfirm
+                    disabled={lockedByOther}
+                    title={t('common.deleteConfirm')}
+                    onConfirm={() => onDelete(invoice.id)}
+                  >
+                    <Button danger icon={<DeleteOutlined />} aria-label={t('common.delete')} disabled={lockedByOther} />
+                  </Popconfirm>
+                </span>
+              </Tooltip>
             </>
           )}
           <PrintPdfButton path={`/purchase-invoices/${invoice.id}/pdf`} />

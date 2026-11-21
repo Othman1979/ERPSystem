@@ -2,8 +2,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../i18n';
+import { PICKER_FRESH_MS } from '../liveRefresh';
 import { SEARCH_DEBOUNCE_MS } from './usePagedQuery';
 import { useRemoteOptions } from './useRemoteOptions';
 
@@ -28,8 +29,8 @@ const settle = (ms = SEARCH_DEBOUNCE_MS + 50) => act(() => new Promise((r) => se
 function mount(
   a: { key: readonly unknown[]; rows: (q: string | undefined) => Row[] },
   b?: { key: readonly unknown[]; rows: (q: string | undefined) => Row[] },
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
 ) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const pickers: { a?: Picker; b?: Picker } = {};
   function Harness() {
     pickers.a = useRemoteOptions<Row>({ key: a.key, fetch: async (q) => a.rows(q) });
@@ -89,5 +90,22 @@ describe('useRemoteOptions (W1: pickers with other filters do not share results)
     await settle();
     expect(active.a!.results.map((r) => r.id)).toEqual(['active-1']);
     expect(active.b!.results.map((r) => r.id)).toEqual(['stock-1']);
+  });
+});
+
+describe('useRemoteOptions freshness', () => {
+  it('refetches stale picker results when opened', async () => {
+    const fetchRows = vi.fn(() => ITEMS);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(['items', 'pick', ''], ITEMS, {
+      updatedAt: Date.now() - PICKER_FRESH_MS - 1,
+    });
+    const picker = mount({ key: ['items', 'pick'], rows: fetchRows }, undefined, client);
+    await settle(20);
+    expect(fetchRows).not.toHaveBeenCalled();
+
+    act(() => picker.a!.onOpen());
+    await settle(20);
+    expect(fetchRows).toHaveBeenCalledTimes(1);
   });
 });

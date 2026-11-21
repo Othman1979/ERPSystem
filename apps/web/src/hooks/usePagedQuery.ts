@@ -52,6 +52,7 @@ export function usePagedQuery<
   enabled = true,
   defaultSort,
   defaultPageSize = PAGE_SIZE_OPTIONS[0],
+  refetchInterval,
 }: {
   key: readonly unknown[];
   filters: F;
@@ -60,6 +61,7 @@ export function usePagedQuery<
   /** The API's default sort; the table shows it as the active column. */
   defaultSort?: string;
   defaultPageSize?: number;
+  refetchInterval?: number;
 }) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
@@ -93,6 +95,8 @@ export function usePagedQuery<
     queryFn: ({ signal }) => fetch(params, signal),
     enabled,
     placeholderData: keepPreviousData,
+    refetchInterval,
+    refetchIntervalInBackground: false,
   });
   const data = query.data;
 

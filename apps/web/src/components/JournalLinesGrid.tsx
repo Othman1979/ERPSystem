@@ -35,6 +35,8 @@ export interface PartyColumn {
   options: Record<PartyNeed, Option[]>;
   /** Server search for each picker (ADR-022 §8): every typed text goes here. */
   onSearch: Record<PartyNeed, (text: string) => void>;
+  /** Refresh stale party options when a picker opens. */
+  onOpen?: Partial<Record<PartyNeed, () => void>>;
   /** A picker's matches are still on their way: no stale row is offered meanwhile. */
   searching?: Partial<Record<PartyNeed, boolean>>;
   /** The side a party takes on a control account of no side ('ANY'). */
@@ -67,6 +69,7 @@ interface Props {
   lines: JournalLineDraft[];
   onChange: (lines: JournalLineDraft[]) => void;
   accountOptions: Option[];
+  accountOnOpen?: () => void;
   /** Increment to auto-focus the first cell (e.g. when a form opens). */
   focusSignal?: number;
   /** Adds the customer / supplier column. */
@@ -100,6 +103,7 @@ export function JournalLinesGrid({
   lines,
   onChange,
   accountOptions,
+  accountOnOpen,
   focusSignal,
   partyColumn,
   costCenterColumn,
@@ -267,6 +271,7 @@ export function JournalLinesGrid({
                     variant="borderless"
                     placeholder={t('journal.account')}
                     options={accountOptions}
+                    onOpen={accountOnOpen}
                     value={l.accountId}
                     onChange={(v: string) => {
                       // A party belongs to its kind of control account: drop it when that changes.
@@ -296,6 +301,7 @@ export function JournalLinesGrid({
                         placeholder={t(PARTY_PLACEHOLDER[kind])}
                         options={partyColumn.options[kind]}
                         onRemoteSearch={partyColumn.onSearch[kind]}
+                        onOpen={partyColumn.onOpen?.[kind]}
                         searching={partyColumn.searching?.[kind]}
                         value={l.partyId}
                         onChange={(v: string) => update(l.key, { partyId: v, partyType: undefined })}

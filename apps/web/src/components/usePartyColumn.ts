@@ -135,6 +135,7 @@ export function usePartyColumn(
       kindByAccount,
       options: { CUSTOMER: optionsOf('CUSTOMER'), SUPPLIER: optionsOf('SUPPLIER'), ANY: optionsOf('ANY') },
       onSearch: { CUSTOMER: customers.onSearch, SUPPLIER: suppliers.onSearch, ANY: either.onSearch },
+      onOpen: { CUSTOMER: customers.onOpen, SUPPLIER: suppliers.onOpen, ANY: either.onOpen },
       searching: { CUSTOMER: customers.pending, SUPPLIER: suppliers.pending, ANY: either.pending },
       // On an account of no side the line takes the party's own side; a BOTH party counts as a customer.
       sideOf: (partyId): PartyKind | undefined => {

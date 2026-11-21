@@ -13,6 +13,7 @@ import { amountCell } from '../../format/cells';
 import { formatAmount } from '../../format/number';
 import { codeAndName } from '../../i18n/displayName';
 import { useAuth } from '../../auth/AuthContext';
+import { LIVE_REFRESH_MS } from '../../liveRefresh';
 
 type BalanceRow = CashBalanceRowDto;
 
@@ -29,6 +30,8 @@ export function BalancesTab() {
     queryKey: ['treasury-balances'],
     queryFn: ({ signal }) =>
       treasuryControllerCashBalances({ signal }).then((r) => r.data),
+    refetchInterval: LIVE_REFRESH_MS,
+    refetchIntervalInBackground: false,
   });
   const { data, isLoading } = listQuery;
 

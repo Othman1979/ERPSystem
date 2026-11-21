@@ -1,13 +1,10 @@
 import { EditOutlined } from '@ant-design/icons';
-import { useMutation } from '@tanstack/react-query';
-import { Alert, Button, Form, Input, InputNumber, message, Modal } from 'antd';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Alert, Button, Form, Input, InputNumber, message, Tooltip } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { formatDateTime } from '../../format/date';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError, treasuryControllerAmendPayment, treasuryControllerAmendReceipt } from '@erp/api-client';
-import { useAuth } from '../../auth/AuthContext';
-import { PERMISSIONS } from '../../auth/permissions';
 import { DatePicker } from '../../components/DatePicker';
 import { EnterNav } from '../../components/EnterNav';
 import { FormDialog, FormSection } from '../../components/FormDialog';
@@ -27,26 +24,33 @@ export function AmendVoucherButton({
   kind,
   voucher,
   onDone,
+  onDialogOpenChange,
+  disabled = false,
+  disabledTooltip,
 }: {
   kind: 'receipt' | 'payment';
   voucher: AmendableVoucher;
   onDone: () => void;
+  onDialogOpenChange?: (open: boolean) => void;
+  disabled?: boolean;
+  disabledTooltip?: string;
 }) {
   const { t } = useTranslation();
-  const { can } = useAuth();
+  const queryClient = useQueryClient();
   const [api, contextHolder] = message.useMessage();
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState<Dayjs | null>(null);
   const [amount, setAmount] = useState<string | null>(null);
   const [referenceNo, setReferenceNo] = useState('');
   const [description, setDescription] = useState('');
-  const [lockedBy, setLockedBy] = useState<{ userName: string; acquiredAt: string } | null>(null);
-  const lock = useDocumentLock(kind === 'receipt' ? 'RECEIPT' : 'PAYMENT', voucher.id, open);
+  const docType = kind === 'receipt' ? 'RECEIPT' : 'PAYMENT';
+  const lock = useDocumentLock(docType, voucher.id, open);
   useEffect(() => {
     if (lock.state.status !== 'locked') return;
-    setLockedBy({ userName: lock.state.userName, acquiredAt: lock.state.acquiredAt });
+    void queryClient.invalidateQueries({ queryKey: ['document-lock-status', docType, voucher.id] });
     setOpen(false);
-  }, [lock.state]);
+  }, [docType, lock.state, queryClient, voucher.id]);
+  useEffect(() => onDialogOpenChange?.(open), [onDialogOpenChange, open]);
 
   const start = () => {
     // The API's date is midnight UTC: take the calendar day, not the local instant.
@@ -100,37 +104,13 @@ export function AmendVoucherButton({
   return (
     <>
       {contextHolder}
-      {lockedBy && (
-        <Alert
-          type="warning"
-          showIcon
-          message={t('common.documentLockLocked', {
-            name: lockedBy.userName,
-            time: formatDateTime(lockedBy.acquiredAt),
-          })}
-          action={
-            can(PERMISSIONS.DOCUMENT_UNLOCK) ? (
-              <Button
-                onClick={() =>
-                  Modal.confirm({
-                    title: t('common.documentLockUnlockConfirm'),
-                    onOk: async () => {
-                      await lock.forceRelease();
-                      setLockedBy(null);
-                      start();
-                    },
-                  })
-                }
-              >
-                {t('common.documentLockUnlock')}
-              </Button>
-            ) : undefined
-          }
-        />
-      )}
-      <Button icon={<EditOutlined />} onClick={start}>
-        {t('journal.amend')}
-      </Button>
+      <Tooltip title={disabledTooltip}>
+        <span>
+          <Button icon={<EditOutlined />} onClick={start} disabled={disabled}>
+            {t('journal.amend')}
+          </Button>
+        </span>
+      </Tooltip>
       <FormDialog
         open={open}
         title={t('treasury.amendTitle')}

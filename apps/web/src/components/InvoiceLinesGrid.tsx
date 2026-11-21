@@ -38,6 +38,7 @@ interface Props {
   itemOptions: InvoiceItemOption[];
   /** Server search of the item picker (ADR-022 §8); without it the options are filtered locally. */
   onItemSearch?: (text: string) => void;
+  onItemOpen?: () => void;
   onCreateItem?: (lineKey: number, row: number, typedText: string) => void;
   /** Column header for the price field (unit price vs unit cost). */
   priceLabel?: string;
@@ -91,6 +92,7 @@ export function InvoiceLinesGrid({
   onChange,
   itemOptions,
   onItemSearch,
+  onItemOpen,
   onCreateItem,
   priceLabel,
   focusSignal,
@@ -239,6 +241,7 @@ export function InvoiceLinesGrid({
                     label: `${o.label}${o.price != null ? ` — ${formatAmount(o.price)}` : ''}`,
                   }))}
                   onRemoteSearch={onItemSearch}
+                  onOpen={onItemOpen}
                   onCreateNew={onCreateItem ? (text) => onCreateItem(l.key, row, text) : undefined}
                   createNewLabel={t('items.add')}
                   value={l.itemId}

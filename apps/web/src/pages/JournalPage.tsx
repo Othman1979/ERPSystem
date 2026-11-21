@@ -20,18 +20,20 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
-import { formatDateTime } from '../format/date';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { useEntryDraft } from '../hooks/useEntryDraft';
 import { useDocumentLock } from '../hooks/useDocumentLock';
+import { useDocumentLockStatus } from '../hooks/useDocumentLockStatus';
+import { DocumentLockBanner } from '../components/DocumentLockBanner';
 import { AccountFormDialog } from '../components/AccountFormDialog';
 import { PartyFormDialog } from '../components/PartyFormDialog';
 import {
@@ -84,6 +86,7 @@ import { PageHeader } from '../components/PageHeader';
 import { queryErrorMessage, tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
 import { usePagedQuery } from '../hooks/usePagedQuery';
+import { LIVE_REFRESH_MS, PICKER_FRESH_MS, refetchIfOlderThan } from '../liveRefresh';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
@@ -143,20 +146,9 @@ export function JournalPage() {
   const [reverseTarget, setReverseTarget] = useState<JournalEntry | null>(null);
   // ADR-039: a posted manual entry opened in the entry form for a direct edit.
   const [amendTarget, setAmendTarget] = useState<JournalEntry | null>(null);
-  const [blockedAmendment, setBlockedAmendment] = useState<{
-    entry: JournalEntry;
-    userName: string;
-    acquiredAt: string;
-  } | null>(null);
-  const lockId = amendTarget?.id ?? blockedAmendment?.entry.id;
-  const editLock = useDocumentLock('JOURNAL_ENTRY', lockId, !!amendTarget);
+  const editLock = useDocumentLock('JOURNAL_ENTRY', amendTarget?.id, !!amendTarget);
   useEffect(() => {
     if (editLock.state.status !== 'locked' || !amendTarget) return;
-    setBlockedAmendment({
-      entry: amendTarget,
-      userName: editLock.state.userName,
-      acquiredAt: editLock.state.acquiredAt,
-    });
     setEntryId(amendTarget.id);
     setAmendTarget(null);
   }, [amendTarget, editLock.state]);
@@ -192,9 +184,11 @@ export function JournalPage() {
     defaultSort: '-entryDate',
     fetch: (params, signal) => journalControllerList(params, { signal }).then((r) => r.data),
     enabled: screen === 'list',
+    refetchInterval: LIVE_REFRESH_MS,
   });
 
-  const { data: accounts } = useAccounts();
+  const accountsQuery = useAccounts();
+  const { data: accounts } = accountsQuery;
   const centres = useCostCenters();
 
   const accountOptions = selectPostable(accounts ?? []).map((a) => ({ value: a.id, label: codeAndName(a) }));
@@ -216,7 +210,16 @@ export function JournalPage() {
     queryKey: ['journal-entry', entryId],
     queryFn: ({ signal }) => journalControllerGet(entryId!, { signal }).then((r) => r.data),
     enabled: screen === 'entry' && !!entryId,
+    refetchInterval: screen === 'entry' && !!entryId && !amendTarget ? LIVE_REFRESH_MS : false,
   });
+  const lockStatus = useDocumentLockStatus(
+    'JOURNAL_ENTRY',
+    entryId,
+    screen === 'entry' && !!entryId && !amendTarget,
+  );
+  const lockHolder = lockStatus.data?.holder;
+  const lockedByOther = !!lockHolder && !lockHolder.mine;
+  const lockActionTooltip = lockedByOther ? t('common.documentLockActionDisabled') : undefined;
 
   // The picker and labels follow the lines on screen: the draft's, or a saved entry's.
   const { partyColumn, partyName, rules: partyRules, rememberParty } = usePartyColumn(accounts, {
@@ -313,7 +316,6 @@ export function JournalPage() {
     };
     setEntryId(null);
     setAmendTarget(null);
-    setBlockedAmendment(null);
     setNewDate(date);
     setNewVoucherType(voucherType);
     setNewDescription('');
@@ -328,7 +330,6 @@ export function JournalPage() {
   useNewFromUrl(() => openNew('JOURNAL'));
 
   const openEntry = (id: string) => {
-    setBlockedAmendment(null);
     setEntryId(id);
     setScreen('entry');
   };
@@ -337,11 +338,9 @@ export function JournalPage() {
     setScreen('list');
     setEntryId(null);
     setAmendTarget(null);
-    setBlockedAmendment(null);
   };
 
   const startAmend = (e: JournalEntry) => {
-    setBlockedAmendment(null);
     setAmendTarget(e);
     // The API's date is midnight UTC: take the calendar day, not the local instant.
     setNewDate(dayjs(e.entryDate.slice(0, 10)));
@@ -494,7 +493,7 @@ export function JournalPage() {
     onSave: screen === 'entry' && !entryId ? () => !createDraft.isPending && !amendEntry.isPending && saveNew() : undefined,
     onPost: openDraft
       ? () => {
-          if (postEntry.isPending) return;
+          if (postEntry.isPending || lockedByOther) return;
           modal.confirm({
             title: t('journal.confirmPost'),
             onOk: () => postEntry.mutate(openDraft.id),
@@ -666,32 +665,8 @@ export function JournalPage() {
   return (
     <div>
       {contextHolder}
-      {blockedAmendment && (
-        <Alert
-          type="warning"
-          showIcon
-          message={t('common.documentLockLocked', {
-            name: blockedAmendment.userName,
-            time: formatDateTime(blockedAmendment.acquiredAt),
-          })}
-          action={
-            can(PERMISSIONS.DOCUMENT_UNLOCK) ? (
-              <Button
-                onClick={() =>
-                  Modal.confirm({
-                    title: t('common.documentLockUnlockConfirm'),
-                    onOk: async () => {
-                      await editLock.forceRelease();
-                      startAmend(blockedAmendment.entry);
-                    },
-                  })
-                }
-              >
-                {t('common.documentLockUnlock')}
-              </Button>
-            ) : undefined
-          }
-        />
+      {entryId && !amendTarget && (
+        <DocumentLockBanner docType="JOURNAL_ENTRY" id={entryId} query={lockStatus} />
       )}
       <DocLayout
         title={
@@ -726,34 +701,52 @@ export function JournalPage() {
               <>
                 {entry.status === 'DRAFT' && (
                   <>
-                    <Popconfirm
-                      title={t('journal.confirmPost')}
-                      onConfirm={() => postEntry.mutate(entry.id)}
-                    >
-                      <Button type="primary" loading={postEntry.isPending}>
-                        {t('journal.post')}
-                        <span className="doc-kbd">Ctrl+Enter</span>
-                      </Button>
-                    </Popconfirm>
-                    <Popconfirm
-                      title={t('common.confirmDelete')}
-                      onConfirm={() => deleteDraft.mutate(entry.id)}
-                    >
-                      <Button danger icon={<DeleteOutlined />}>
-                        {t('common.delete')}
-                      </Button>
-                    </Popconfirm>
+                    <Tooltip title={lockActionTooltip}>
+                      <span>
+                        <Popconfirm
+                          disabled={lockedByOther}
+                          title={t('journal.confirmPost')}
+                          onConfirm={() => postEntry.mutate(entry.id)}
+                        >
+                          <Button type="primary" loading={postEntry.isPending} disabled={lockedByOther}>
+                            {t('journal.post')}
+                            <span className="doc-kbd">Ctrl+Enter</span>
+                          </Button>
+                        </Popconfirm>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title={lockActionTooltip}>
+                      <span>
+                        <Popconfirm
+                          disabled={lockedByOther}
+                          title={t('common.confirmDelete')}
+                          onConfirm={() => deleteDraft.mutate(entry.id)}
+                        >
+                          <Button danger icon={<DeleteOutlined />} disabled={lockedByOther}>
+                            {t('common.delete')}
+                          </Button>
+                        </Popconfirm>
+                      </span>
+                    </Tooltip>
                   </>
                 )}
                 {entry.status === 'POSTED' && !entry.reversals?.length && !entry.reversalOf && entry.sourceType === 'MANUAL_JOURNAL' && (
-                  <Button icon={<EditOutlined />} onClick={() => startAmend(entry)}>
-                    {t('journal.amend')}
-                  </Button>
+                  <Tooltip title={lockActionTooltip}>
+                    <span>
+                      <Button icon={<EditOutlined />} disabled={lockedByOther} onClick={() => startAmend(entry)}>
+                        {t('journal.amend')}
+                      </Button>
+                    </span>
+                  </Tooltip>
                 )}
                 {entry.status === 'POSTED' && !entry.reversals?.length && REVERSIBLE_HERE.has(entry.sourceType ?? 'MANUAL_JOURNAL') && (
-                  <Button icon={<SwapOutlined />} onClick={() => setReverseTarget(entry)}>
-                    {t('journal.reverse')}
-                  </Button>
+                  <Tooltip title={lockActionTooltip}>
+                    <span>
+                      <Button icon={<SwapOutlined />} disabled={lockedByOther} onClick={() => setReverseTarget(entry)}>
+                        {t('journal.reverse')}
+                      </Button>
+                    </span>
+                  </Tooltip>
                 )}
                 <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
                   {t('common.print')}
@@ -855,6 +848,7 @@ export function JournalPage() {
             lines={lines}
             onChange={setLines}
             accountOptions={accountOptions}
+            accountOnOpen={() => refetchIfOlderThan(accountsQuery, PICKER_FRESH_MS)}
             focusSignal={gridFocus}
             partyColumn={partyColumnWithDraftLabels}
             costCenterColumn={costCenterColumn}
