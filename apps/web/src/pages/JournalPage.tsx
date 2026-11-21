@@ -905,15 +905,30 @@ export function JournalPage() {
           const pending = quickCreate;
           setQuickCreate(null);
           if (pending?.kind === 'account') {
+            const isIncomeStatement = costCenterRulesByAccount([created]).income.has(created.id);
             if (created.isPostable) {
               setLines((current) =>
-                current.map((line) => (line.key === pending.lineKey ? { ...line, accountId: created.id } : line)),
+                current.map((line) =>
+                  line.key === pending.lineKey
+                    ? {
+                        ...line,
+                        accountId: created.id,
+                        ...(isIncomeStatement ? {} : { costCenterId: undefined }),
+                      }
+                    : line,
+                ),
               );
             } else {
               setLines((current) =>
                 current.map((line) =>
                   line.key === pending.lineKey
-                    ? { ...line, accountId: undefined, partyId: undefined, partyType: undefined }
+                    ? {
+                        ...line,
+                        accountId: undefined,
+                        partyId: undefined,
+                        partyType: undefined,
+                        costCenterId: undefined,
+                      }
                     : line,
                 ),
               );
