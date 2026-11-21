@@ -17,6 +17,9 @@ export function GridSelect({
   onEnterSelect,
   onRemoteSearch,
   searching = false,
+  onCreateNew,
+  createNewLabel,
+  dropdownRender,
   ...props
 }: SelectProps & {
   /**
@@ -34,6 +37,8 @@ export function GridSelect({
   /** Fired when Enter picks an option (grid advance). Without it, the Enter is
    *  re-sent to the surrounding field handler so header chains move on. */
   onEnterSelect?: (value: unknown, option: unknown) => void;
+  onCreateNew?: (typedText: string) => void;
+  createNewLabel?: string;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -42,6 +47,20 @@ export function GridSelect({
   const enterPending = useRef(false);
   // Set (capture phase) when this Enter should navigate, not open the list.
   const passEnter = useRef(false);
+  const hasMatchingOption = (text: string) =>
+    onRemoteSearch
+      ? (props.options ?? []).some((option) => option.value !== props.value)
+      : (props.options ?? []).some((option) =>
+          String(option.label ?? option.value ?? '').toLocaleLowerCase().includes(text.toLocaleLowerCase()),
+        );
+
+  const createNew = () => {
+    const typedText = search.trim();
+    setOpen(false);
+    setSearch('');
+    onRemoteSearch?.('');
+    onCreateNew?.(typedText);
+  };
 
   return (
     // display:contents — the wrapper adds no box; it only lets us see the key
@@ -52,6 +71,21 @@ export function GridSelect({
         // Decide before antd's handler: it picks the option (firing onChange)
         // before our onKeyDown ever runs.
         const isEnter = e.key === 'Enter';
+        if (
+          isEnter &&
+          open &&
+          onCreateNew &&
+          !(searching || props.loading) &&
+          search.trim() &&
+          !hasMatchingOption(search.trim())
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          passEnter.current = false;
+          enterPending.current = false;
+          createNew();
+          return;
+        }
         passEnter.current = isEnter && !open;
         enterPending.current = isEnter && open;
       }}
@@ -64,6 +98,30 @@ export function GridSelect({
         open={open}
         loading={searching || props.loading}
         notFoundContent={searching ? t('common.loading') : props.notFoundContent}
+        dropdownRender={(menu) => (
+          <>
+            {dropdownRender ? dropdownRender(menu) : menu}
+            {onCreateNew && (
+              <div
+                role="button"
+                tabIndex={0}
+                className="grid-select-create-new"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={createNew}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') createNew();
+                }}
+                style={{
+                  padding: '8px 12px',
+                  borderTop: '1px solid var(--c-grid-frame)',
+                  cursor: 'pointer',
+                }}
+              >
+                + {createNewLabel ?? t('common.createNew')}
+              </div>
+            )}
+          </>
+        )}
         options={
           searching ? (props.options ?? []).filter((o) => o.value === props.value) : props.options
         }

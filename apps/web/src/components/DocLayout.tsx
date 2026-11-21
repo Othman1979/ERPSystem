@@ -212,12 +212,16 @@ export function DocValue({ children }: { children: ReactNode }) {
  * physical key (KeyS) so it also works on an Arabic keyboard layout, and runs
  * in the capture phase so a grid cell's own Enter handling doesn't also fire.
  */
-export function useDocShortcuts(handlers: { onSave?: () => void; onPost?: () => void }) {
+export function useDocShortcuts(
+  handlers: { onSave?: () => void; onPost?: () => void },
+  { allowInModal = false }: { allowInModal?: boolean } = {},
+) {
   const ref = useRef(handlers);
   ref.current = handlers;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.isComposing) return;
+      if (!allowInModal && (e.target as Element | null)?.closest?.('.ant-modal-root')) return;
       const handler =
         e.code === 'KeyS' ? ref.current.onSave : e.key === 'Enter' ? ref.current.onPost : undefined;
       if (!handler) return;
@@ -227,5 +231,5 @@ export function useDocShortcuts(handlers: { onSave?: () => void; onPost?: () => 
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, []);
+  }, [allowInModal]);
 }

@@ -1,17 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarcodeOutlined,
-  DatabaseOutlined,
-  InfoCircleOutlined,
   MoreOutlined,
   ProfileOutlined,
   AppstoreOutlined,
-  TagOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
 import JsBarcode from 'jsbarcode';
 import {
-  Alert,
   App,
   Button,
   Card,
@@ -19,15 +15,12 @@ import {
   Dropdown,
   Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
-  Radio,
   Row,
   Segmented,
   Select,
   Space,
-  Switch,
   Table,
   Tabs,
   Tag,
@@ -36,19 +29,16 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
   catalogControllerCreateGroup,
-  catalogControllerCreateItem,
   catalogControllerGetItem,
   catalogControllerListGroups,
   catalogControllerListItems,
   catalogControllerUpdateGroup,
   catalogControllerUpdateItem,
-  settingsControllerListTaxCategories,
-  settingsControllerListUnits,
   stockReportsControllerBalances,
   stockReportsControllerItemLedger,
   warehousesControllerList,
@@ -68,20 +58,18 @@ import { useKeysetQuery } from '../hooks/useKeysetQuery';
 import { LoadMore } from '../components/LoadMore';
 import { ExportButtons } from '../components/ExportButtons';
 import { FormDialog, FormSection } from '../components/FormDialog';
+import { ItemFormDialog } from '../components/ItemFormDialog';
 import { codeAndName, displayName, type Named } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import type Decimal from 'decimal.js';
 import { amountCell, unitCostCell } from '../format/cells';
 import { dec, formatAmount, formatQty } from '../format/number';
-import { itemCreateBody, itemUpdateBody, type ItemFormValues } from './items/itemPayload';
-import { holdsStock, isRecipe, ITEM_KIND_LABEL_KEY, ITEM_KINDS, ownsFormula } from './items/itemKinds';
-import { ItemFormulas } from './manufacturing/ItemFormulas';
+import { holdsStock, ITEM_KINDS, ITEM_KIND_LABEL_KEY } from './items/itemKinds';
 
 type Group = ItemGroupDto;
 type Item = ItemListItemDto;
 type Warehouse = WarehouseListItemDto;
 
-/** Form values of the item dialog (antd gives them untyped). Code and base unit are set on create only. */
 /** A row of the item card: a movement, or the opening position the screen adds on top (ADR-008). */
 type LedgerRow =
   | (ItemCardRowDto & { kind?: undefined })
@@ -96,9 +84,6 @@ type LedgerRow =
       balanceQtyAfter: string;
       avgCostAfter: string;
     };
-
-// API decimals stay strings in forms (InputNumber stringMode); blank becomes undefined.
-const num = (v?: string | null) => v ?? undefined;
 
 function useApiError() {
   const { t } = useTranslation();
@@ -134,8 +119,6 @@ function ItemsTab() {
   const [view, setView] = useState<'table' | 'cards'>('table');
   const [ledgerItem, setLedgerItem] = useState<Item | null>(null);
   const [barcodeItem, setBarcodeItem] = useState<Item | null>(null);
-  const [form] = Form.useForm();
-  const saveAndNew = useRef(false);
 
   // Server-paged (ADR-022): search, sort and page go to the API.
   const list = usePagedQuery<Item, { itemKind?: CatalogControllerListItemsItemKind }, CatalogControllerListItemsSort>({
@@ -147,21 +130,9 @@ function ItemsTab() {
   const itemsQuery = list.query;
   const { isLoading } = itemsQuery;
   const items = list.rows;
-  const { data: units } = useQuery({
-    queryKey: ['units'],
-    queryFn: ({ signal }) => settingsControllerListUnits({ signal }).then((r) => r.data),
-  });
-  const { data: groups } = useQuery({
-    queryKey: ['item-groups'],
-    queryFn: ({ signal }) => catalogControllerListGroups({ signal }).then((r) => r.data),
-  });
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
     queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
-  });
-  const { data: taxCategories } = useQuery({
-    queryKey: ['tax-categories'],
-    queryFn: ({ signal }) => settingsControllerListTaxCategories({ signal }).then((r) => r.data),
   });
   // On-hand quantities only for the stock items on this page (not every balance of the company).
   // Stocked kinds (STOCK and MANUFACTURED) hold balances; a service does not (ADR-031 §1).
@@ -180,25 +151,6 @@ function ItemsTab() {
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['items'] });
 
-  const save = useMutation({
-    mutationFn: async (v: ItemFormValues) =>
-      editing ? catalogControllerUpdateItem(editing.id, itemUpdateBody(v)) : catalogControllerCreateItem(itemCreateBody(v)),
-    onSuccess: () => {
-      invalidate();
-      form.resetFields();
-      if (saveAndNew.current) {
-        // Save & new: keep the dialog open on an empty form for the next item.
-        saveAndNew.current = false;
-        setEditing(null);
-        requestAnimationFrame(() => form.getFieldInstance('code')?.focus?.());
-        return;
-      }
-      setModalOpen(false);
-      setEditing(null);
-    },
-    onError: show,
-  });
-
   const deactivate = useMutation({
     mutationFn: (id: string) => catalogControllerUpdateItem(id, { isActive: false }),
     onSuccess: invalidate,
@@ -207,29 +159,10 @@ function ItemsTab() {
 
   const openCreate = () => {
     setEditing(null);
-    form.resetFields();
-    form.setFieldsValue({ itemKind: 'STOCK', salePriceIncludesTax: false });
     setModalOpen(true);
   };
   const openEdit = (row: Item) => {
     setEditing(row);
-    form.setFieldsValue({
-      code: row.code,
-      nameAr: row.nameAr,
-      nameEn: row.nameEn,
-      description: row.description,
-      itemKind: row.itemKind,
-      baseUnitId: undefined,
-      itemGroupId: row.itemGroup?.id ?? undefined,
-      taxCategoryId: row.taxCategory?.id ?? undefined,
-      defaultWarehouseId: row.defaultWarehouse?.id ?? undefined,
-      salePrice: num(row.salePrice),
-      purchasePrice: num(row.purchasePrice),
-      minStock: num(row.minStock),
-      maxStock: num(row.maxStock),
-      salePriceIncludesTax: row.salePriceIncludesTax,
-      imageUrl: row.imageUrl ?? undefined,
-    });
     setModalOpen(true);
   };
 
@@ -438,124 +371,15 @@ function ItemsTab() {
         </Row>
       )}
 
-      <FormDialog
-        title={editing ? t('items.edit') : t('items.add')}
+      <ItemFormDialog
         open={modalOpen}
+        editing={editing}
         onCancel={() => setModalOpen(false)}
-        onSave={() => {
-          saveAndNew.current = false;
-          form.submit();
+        onSaved={() => {
+          setModalOpen(false);
+          setEditing(null);
         }}
-        onSaveAndNew={
-          editing
-            ? undefined
-            : () => {
-                saveAndNew.current = true;
-                form.submit();
-              }
-        }
-        saving={save.isPending}
-      >
-        <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <FormSection title={t('common.basicInfo')} icon={<InfoCircleOutlined />}>
-            <Form.Item name="code" label={t('items.code')} rules={[{ required: true }]}>
-              <Input maxLength={50} disabled={!!editing} />
-            </Form.Item>
-            <Form.Item name="itemKind" label={t('items.kind')} initialValue="STOCK" className="span-2">
-              <Radio.Group
-                optionType="button"
-                buttonStyle="solid"
-                disabled={!!editing}
-                options={ITEM_KINDS.map((k) => ({ value: k, label: t(ITEM_KIND_LABEL_KEY[k]) }))}
-              />
-            </Form.Item>
-            <Form.Item name="nameAr" label={t('items.nameAr')} rules={[{ required: true }]} className="span-2">
-              <Input maxLength={191} />
-            </Form.Item>
-            <Form.Item name="nameEn" label={t('items.nameEn')}>
-              <Input maxLength={191} />
-            </Form.Item>
-            <Form.Item name="description" label={t('common.description')} className="span-all">
-              <Input.TextArea rows={2} maxLength={500} />
-            </Form.Item>
-            <Form.Item name="imageUrl" label={t('items.imageUrl')} className="span-all">
-              <Input maxLength={512} placeholder="https://…" />
-            </Form.Item>
-          </FormSection>
-
-          <FormSection title={t('items.classification')} icon={<AppstoreOutlined />}>
-            <Form.Item name="baseUnitId" label={t('items.baseUnit')} rules={[{ required: true }]}>
-              <Select
-                showSearch
-                optionFilterProp="label"
-                disabled={!!editing}
-                options={(units ?? [])
-                  .filter((u) => u.id)
-                  .map((u) => ({
-                    value: u.id,
-                    label: `${codeAndName(u)}${u.unEceCode ? ` (${u.unEceCode})` : ''}`,
-                  }))}
-              />
-            </Form.Item>
-            <Form.Item name="itemGroupId" label={t('items.group')}>
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                options={(groups ?? [])
-                  .filter((g) => g.isActive)
-                  .map((g) => ({ value: g.id, label: codeAndName(g) }))}
-              />
-            </Form.Item>
-            <Form.Item name="taxCategoryId" label={t('items.taxCategory')}>
-              <Select
-                allowClear
-                options={(taxCategories ?? []).map((tc) => ({
-                  value: tc.id,
-                  label: `${codeAndName(tc)} (${tc.rate}%)`,
-                }))}
-              />
-            </Form.Item>
-          </FormSection>
-
-          <FormSection title={t('items.pricing')} icon={<TagOutlined />}>
-            <Form.Item name="salePrice" label={t('items.salePrice')}>
-              <InputNumber<string> stringMode min="0" step="0.001" />
-            </Form.Item>
-            <Form.Item name="purchasePrice" label={t('items.purchasePrice')}>
-              <InputNumber<string> stringMode min="0" step="0.001" />
-            </Form.Item>
-            <Form.Item name="salePriceIncludesTax" label={t('items.priceIncludesTax')} valuePropName="checked">
-              <Switch />
-            </Form.Item>
-          </FormSection>
-
-          {/* Stock settings only apply to stocked items. */}
-          <Form.Item noStyle shouldUpdate>
-            {({ getFieldValue }) =>
-              holdsStock(getFieldValue('itemKind')) ? (
-                <FormSection title={t('items.inventory')} icon={<DatabaseOutlined />}>
-                  <Form.Item name="minStock" label={t('items.minStock')}>
-                    <InputNumber<string> stringMode min="0" step="0.000001" />
-                  </Form.Item>
-                  <Form.Item name="maxStock" label={t('items.maxStock')}>
-                    <InputNumber<string> stringMode min="0" step="0.000001" />
-                  </Form.Item>
-                  <Form.Item name="defaultWarehouseId" label={t('items.defaultWarehouse')}>
-                    <Select
-                      allowClear
-                      options={(warehouses ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
-                    />
-                  </Form.Item>
-                </FormSection>
-              ) : isRecipe(getFieldValue('itemKind')) ? (
-                <Alert type="info" showIcon style={{ marginBottom: 16 }} message={t('items.recipeHint')} />
-              ) : null
-            }
-          </Form.Item>
-        </Form>
-        {editing && ownsFormula(editing.itemKind) && <ItemFormulas itemId={editing.id} />}
-      </FormDialog>
+      />
 
       <LedgerModal item={ledgerItem} onClose={() => setLedgerItem(null)} warehouses={warehouses ?? []} />
       <BarcodeModal item={barcodeItem} onClose={() => setBarcodeItem(null)} />

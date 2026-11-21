@@ -18,12 +18,14 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
+import { PartyFormDialog } from '../components/PartyFormDialog';
+import { ItemFormDialog } from '../components/ItemFormDialog';
 import { useCompany } from '../components/CompanyProfileForm';
 import { isAuthoredBy } from './procurement/orderPayload';
 import { invalidateSalesCycle, salesCycleKeys } from './sales/cycleQueryKeys';
@@ -38,6 +40,7 @@ import {
 } from '../components/InvoiceLinesGrid';
 import {
   enterTo,
+  focusCellEl,
   focusFirstGridCell,
   focusNamedField,
   GridSelect,
@@ -49,6 +52,7 @@ import { ListToolbar } from '../components/ListToolbar';
 import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { useRemoteOptions } from '../hooks/useRemoteOptions';
+import { entryDraftStorageKey, useEntryDraft } from '../hooks/useEntryDraft';
 import { useCostCenters } from '../hooks/useCostCenters';
 import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
 import { PrintPdfButton } from '../components/PrintPdfButton';
@@ -114,6 +118,22 @@ type ItemRow = Pick<
   ItemListItemDto,
   'id' | 'code' | 'nameAr' | 'nameEn' | 'itemKind' | 'salePrice' | 'taxCategoryId'
 > & { taxRate?: string };
+
+interface SalesInvoiceDraft {
+  invoiceDate: string;
+  dueDate: string | null;
+  customerId: string | null;
+  customerOption: { value: string; label: string } | null;
+  warehouseId: string | null;
+  paymentType: 'CASH' | 'CREDIT';
+  cashAccountId: string | null;
+  cashAccountLabel: string | null;
+  costCenterId: string | null;
+  invoiceDiscountType: 'PERCENT' | 'AMOUNT';
+  invoiceDiscountValue: string | null;
+  lines: InvoiceLineDraft[];
+  selectedItems: ItemRow[];
+}
 
 const money = (v?: string | null) => formatAmount(v);
 
@@ -226,7 +246,7 @@ function InvoicesTab() {
       { replace: true },
     );
   }, [linkedInvoiceId, setParams]);
-  const { can, me } = useAuth();
+  const { can, me, companyId } = useAuth();
   const company = useCompany();
   const [apiMessage, contextHolder] = message.useMessage();
   const lookups = useSalesLookups();
@@ -259,6 +279,21 @@ function InvoicesTab() {
     // Just posted: follow the e-invoice until JoFotara answers, so the QR shows up.
     refetchInterval: (query) => (screen === 'view' && isInFlight(query.state.data?.einvoice?.status) ? 4000 : false),
   });
+  useEffect(() => {
+    if (screen !== 'view' || !invoiceId || detailLoading || !detail || detail.status === 'DRAFT') return;
+    const key = entryDraftStorageKey({
+      userId: me?.user.id,
+      tenantId: me?.currentTenant?.tenantId,
+      companyId,
+      screenKey: `sales-invoice:${invoiceId}`,
+    });
+    if (!key) return;
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Storage may be unavailable in private browsing.
+    }
+  }, [companyId, detail, detailLoading, invoiceId, me?.currentTenant?.tenantId, me?.user.id, screen]);
 
   // A posted invoice moves its order's invoiced quantities and the reservations too.
   const invalidate = () => {
@@ -481,7 +516,16 @@ function InvoiceForm({
   onSaved: (id: string) => void;
 }) {
   const { t } = useTranslation();
+  const { can, me, companyId } = useAuth();
+  const queryClient = useQueryClient();
   const [apiMessage, contextHolder] = message.useMessage();
+  const [quickCreate, setQuickCreate] = useState<
+    | { kind: 'party'; typedText: string }
+    | { kind: 'item'; lineKey: number; row: number; typedText: string }
+    | null
+  >(null);
+  const [createdCustomer, setCreatedCustomer] = useState<{ value: string; label: string }>();
+  const [restoredCashAccount, setRestoredCashAccount] = useState<{ value: string; label: string }>();
   // An invoice made from a sales order (ADR-027 §4) keeps its customer, warehouse and items; only lowering is allowed.
   const orderLinked = !!invoice?.salesOrderId;
   const linkedOrder = useSalesOrder(invoice?.salesOrderId);
@@ -524,6 +568,13 @@ function InvoiceForm({
     value: w.id,
     label: codeAndName(w),
   }));
+  const cashAccountOptions = [...lookups.cashAccountOptions];
+  if (
+    restoredCashAccount &&
+    !cashAccountOptions.some((option) => option.value === restoredCashAccount.value)
+  ) {
+    cashAccountOptions.push(restoredCashAccount);
+  }
 
   // Items are searched on the server; the lines' own items stay labelled and priced.
   const items = useRemoteOptions<ItemRow>({
@@ -559,6 +610,86 @@ function InvoiceForm({
   const itemOptions = items
     .withSelected(lines.map((l) => l.itemId))
     .map((row) => itemOption(row, lookups.taxRateById, lookups.defaultTaxId));
+  const selectedItems = items.withSelected(lines.map((line) => line.itemId)).filter((row) =>
+    lines.some((line) => line.itemId === row.id),
+  );
+  const customerOption =
+    createdCustomer ??
+    (invoice?.customer ? { value: invoice.customer.id, label: codeAndName(invoice.customer) } : null);
+  const draftValue: SalesInvoiceDraft = {
+    invoiceDate: invoiceDate.format('YYYY-MM-DD'),
+    dueDate: dueDate?.format('YYYY-MM-DD') ?? null,
+    customerId: customerId ?? null,
+    customerOption: customerOption ?? null,
+    warehouseId: warehouseId ?? null,
+    paymentType,
+    cashAccountId: cashAccountId ?? null,
+    cashAccountLabel:
+      cashAccountOptions.find((option) => option.value === cashAccountId)?.label ?? null,
+    costCenterId: costCenterId ?? null,
+    invoiceDiscountType,
+    invoiceDiscountValue: invoiceDiscountValue ?? null,
+    lines,
+    selectedItems,
+  };
+  const initialDraft = useRef<SalesInvoiceDraft | null>(null);
+  initialDraft.current ??= draftValue;
+  const initialBusinessValue = {
+    invoiceDate: initialDraft.current.invoiceDate,
+    dueDate: initialDraft.current.dueDate,
+    customerId: initialDraft.current.customerId,
+    warehouseId: initialDraft.current.warehouseId,
+    paymentType: initialDraft.current.paymentType,
+    cashAccountId: initialDraft.current.cashAccountId,
+    costCenterId: initialDraft.current.costCenterId,
+    invoiceDiscountType: initialDraft.current.invoiceDiscountType,
+    invoiceDiscountValue: initialDraft.current.invoiceDiscountValue,
+    lines: initialDraft.current.lines,
+  };
+  const { clear: clearEntryDraft, confirmLeave } = useEntryDraft({
+    scope: {
+      userId: me?.user.id,
+      tenantId: me?.currentTenant?.tenantId,
+      companyId,
+      screenKey: `sales-invoice:${isNew ? 'new' : invoice?.id ?? 'pending'}`,
+    },
+    value: draftValue,
+    initialValue: initialDraft.current,
+    dirtyValue: {
+      invoiceDate: draftValue.invoiceDate,
+      dueDate: draftValue.dueDate,
+      customerId: draftValue.customerId,
+      warehouseId: draftValue.warehouseId,
+      paymentType: draftValue.paymentType,
+      cashAccountId: draftValue.cashAccountId,
+      costCenterId: draftValue.costCenterId,
+      invoiceDiscountType: draftValue.invoiceDiscountType,
+      invoiceDiscountValue: draftValue.invoiceDiscountValue,
+      lines: draftValue.lines,
+    },
+    initialDirtyValue: initialBusinessValue,
+    enabled: !loading && (isNew || invoice?.status === 'DRAFT'),
+    discardWhenDisabled: !loading && !isNew && !!invoice && invoice.status !== 'DRAFT',
+    onRestore: (draft) => {
+      setInvoiceDate(dayjs(draft.invoiceDate));
+      setDueDate(draft.dueDate ? dayjs(draft.dueDate) : null);
+      setCustomerId(draft.customerId ?? undefined);
+      setCreatedCustomer(draft.customerOption ?? undefined);
+      setWarehouseId(draft.warehouseId ?? undefined);
+      setPaymentType(draft.paymentType);
+      setCashAccountId(draft.cashAccountId ?? undefined);
+      setRestoredCashAccount(
+        draft.cashAccountId && draft.cashAccountLabel
+          ? { value: draft.cashAccountId, label: draft.cashAccountLabel }
+          : undefined,
+      );
+      setCostCenterId(draft.costCenterId ?? undefined);
+      setInvoiceDiscountType(draft.invoiceDiscountType);
+      setInvoiceDiscountValue(draft.invoiceDiscountValue ?? undefined);
+      setLines(draft.lines);
+      items.remember(draft.selectedItems);
+    },
+  });
 
   const previewLineKeys = lines.flatMap((line) => line.itemId && line.qty && line.price?.trim() ? [line.key] : []);
   const hasUnpricedLine = lines.some((line) => line.itemId && line.qty && !line.price?.trim());
@@ -624,6 +755,7 @@ function InvoiceForm({
     },
     onSuccess: (res) => {
       apiMessage.success(t('common.saved'));
+      clearEntryDraft();
       onSaved(res.data.id);
     },
     onError: (err) =>
@@ -663,7 +795,7 @@ function InvoiceForm({
       title={isNew ? t('sales.newInvoice') : t('sales.invoiceTitle')}
       docNo={invoice?.invoiceNo}
       status="DRAFT"
-      onBack={onBack}
+      onBack={() => confirmLeave(onBack)}
       actions={
         <Button type="primary" icon={<SaveOutlined />} loading={save.isPending} onClick={trySave}>
           {isNew ? t('common.saveDraft') : t('common.save')}
@@ -701,14 +833,21 @@ function InvoiceForm({
               )
             }
             selected={
-              invoice?.customer
+              createdCustomer ??
+              (invoice?.customer
                 ? { value: invoice.customer.id, label: codeAndName(invoice.customer) }
-                : undefined
+                : undefined)
             }
             status={requiredError(missing.customer) ? 'error' : undefined}
             disabled={orderLinked}
             value={customerId}
             onChange={setCustomerId}
+            onCreateNew={
+              can(PERMISSIONS.PARTIES_MANAGE)
+                ? (typedText) => setQuickCreate({ kind: 'party', typedText })
+                : undefined
+            }
+            createNewLabel={t('parties.new')}
           />
         </DocField>
         <DocField
@@ -783,7 +922,7 @@ function InvoiceForm({
           >
             <GridSelect
               status={requiredError(missing.cashAccount) ? 'error' : undefined}
-              options={lookups.cashAccountOptions}
+              options={cashAccountOptions}
               value={cashAccountId}
               onChange={setCashAccountId}
             />
@@ -796,11 +935,67 @@ function InvoiceForm({
         onChange={setLines}
         itemOptions={itemOptions}
         onItemSearch={items.onSearch}
+        onCreateItem={
+          can(PERMISSIONS.ITEM_MANAGE)
+            ? (lineKey, row, typedText) => setQuickCreate({ kind: 'item', lineKey, row, typedText })
+            : undefined
+        }
         lockedItems={orderLinked}
         maxQtyOf={orderLinked ? (key) => savedQtyByKey.get(key) : undefined}
         serverAmounts={serverAmounts}
         serverSummary={serverSummary}
         serverPreviewRequired
+      />
+      <PartyFormDialog
+        open={quickCreate?.kind === 'party'}
+        initialValues={quickCreate?.kind === 'party' ? { nameAr: quickCreate.typedText, partyType: 'CUSTOMER' } : undefined}
+        lockPartyType
+        onCancel={() => {
+          setQuickCreate(null);
+          requestAnimationFrame(() => focusNamedField('customer'));
+        }}
+        onSaved={(created) => {
+          setCreatedCustomer({ value: created.id, label: codeAndName(created) });
+          setCustomerId(created.id);
+          void queryClient.invalidateQueries({ queryKey: ['parties'] });
+          setQuickCreate(null);
+          requestAnimationFrame(() => focusNamedField('customer'));
+        }}
+      />
+      <ItemFormDialog
+        open={quickCreate?.kind === 'item'}
+        initialValues={quickCreate?.kind === 'item' ? { nameAr: quickCreate.typedText } : undefined}
+        onCancel={() => {
+          const row = quickCreate?.kind === 'item' ? quickCreate.row : undefined;
+          setQuickCreate(null);
+          if (row !== undefined) requestAnimationFrame(() => focusCellEl(document.querySelector<HTMLElement>(`[data-cell="${row}-1"]`)));
+        }}
+        onSaved={(created) => {
+          const row: ItemRow = {
+            id: created.id,
+            code: created.code,
+            nameAr: created.nameAr,
+            nameEn: created.nameEn,
+            itemKind: created.itemKind,
+            salePrice: created.salePrice,
+            taxCategoryId: created.taxCategoryId,
+          };
+          items.remember([row]);
+          void queryClient.invalidateQueries({ queryKey: ['items'] });
+          const pending = quickCreate;
+          setQuickCreate(null);
+          if (pending?.kind === 'item') {
+            const option = itemOption(row, lookups.taxRateById, lookups.defaultTaxId);
+            setLines((current) =>
+              current.map((line) =>
+                line.key === pending.lineKey
+                  ? { ...line, itemId: created.id, ...(line.price == null && option.price != null ? { price: option.price } : {}) }
+                  : line,
+              ),
+            );
+            requestAnimationFrame(() => focusCellEl(document.querySelector<HTMLElement>(`[data-cell="${pending.row}-1"]`)));
+          }
+        }}
       />
       <DocFields>
         <DocField label={t('sales.invoiceDiscount')}>

@@ -38,6 +38,7 @@ interface Props {
   itemOptions: InvoiceItemOption[];
   /** Server search of the item picker (ADR-022 §8); without it the options are filtered locally. */
   onItemSearch?: (text: string) => void;
+  onCreateItem?: (lineKey: number, row: number, typedText: string) => void;
   /** Column header for the price field (unit price vs unit cost). */
   priceLabel?: string;
   /** Increment to auto-focus the first cell (e.g. when a form opens). */
@@ -90,6 +91,7 @@ export function InvoiceLinesGrid({
   onChange,
   itemOptions,
   onItemSearch,
+  onCreateItem,
   priceLabel,
   focusSignal,
   lockedItems = false,
@@ -111,7 +113,7 @@ export function InvoiceLinesGrid({
   };
 
   const addRow = () => {
-    nextKey.current += 1;
+    nextKey.current = Math.max(nextKey.current, ...lines.map((line) => line.key)) + 1;
     onChange([...lines, { key: nextKey.current }]);
   };
 
@@ -237,6 +239,8 @@ export function InvoiceLinesGrid({
                     label: `${o.label}${o.price != null ? ` — ${formatAmount(o.price)}` : ''}`,
                   }))}
                   onRemoteSearch={onItemSearch}
+                  onCreateNew={onCreateItem ? (text) => onCreateItem(l.key, row, text) : undefined}
+                  createNewLabel={t('items.add')}
                   value={l.itemId}
                   onChange={(v) => {
                     const item = itemOptions.find((o) => o.id === v);
@@ -380,4 +384,3 @@ export function InvoiceLinesGrid({
     </div>
   );
 }
-

@@ -75,6 +75,8 @@ interface Props {
   costCenterColumn?: CostCenterColumn;
   /** Replaces the balanced / unbalanced note in the footer. */
   footerNote?: ReactNode;
+  onCreateAccount?: (lineKey: number, row: number, typedText: string) => void;
+  onCreateParty?: (lineKey: number, row: number, need: PartyNeed, typedText: string) => void;
   /** Key of a line to mark as missing its party (after the check before saving). */
   missingParty?: number | null;
   /** Key of a line to mark as missing its cost centre (after the check before saving). */
@@ -102,6 +104,8 @@ export function JournalLinesGrid({
   partyColumn,
   costCenterColumn,
   footerNote,
+  onCreateAccount,
+  onCreateParty,
   missingParty,
   missingCostCenter,
 }: Props) {
@@ -131,7 +135,7 @@ export function JournalLinesGrid({
   };
 
   const addRow = () => {
-    nextKey.current += 1;
+    nextKey.current = Math.max(nextKey.current, ...linesRef.current.map((line) => line.key)) + 1;
     onChange([...linesRef.current, { key: nextKey.current }]);
   };
 
@@ -273,6 +277,8 @@ export function JournalLinesGrid({
                       update(l.key, patch);
                     }}
                     onEnterSelect={() => advance(row, 1)}
+                    onCreateNew={onCreateAccount ? (text) => onCreateAccount(l.key, row, text) : undefined}
+                    createNewLabel={t('accounts.add')}
                     style={{ width: '100%' }}
                     size="small"
                   />
@@ -294,6 +300,10 @@ export function JournalLinesGrid({
                         value={l.partyId}
                         onChange={(v: string) => update(l.key, { partyId: v, partyType: undefined })}
                         onEnterSelect={() => advance(row, 5)}
+                        onCreateNew={
+                          onCreateParty ? (text) => onCreateParty(l.key, row, kind, text) : undefined
+                        }
+                        createNewLabel={t('parties.new')}
                         style={{ width: '100%' }}
                         size="small"
                       />

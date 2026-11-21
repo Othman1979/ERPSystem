@@ -27,6 +27,9 @@ export function RemoteSelect({
   onChange,
   enabled = true,
   selected,
+  onCreateNew,
+  createNewLabel,
+  dropdownRender,
   ...rest
 }: {
   /** Query key prefix, e.g. ['sales-invoices', 'pick']; the search text is appended. */
@@ -37,6 +40,8 @@ export function RemoteSelect({
   enabled?: boolean;
   /** Label of the current value when it was not picked here (e.g. a saved document's party). */
   selected?: RemoteOption;
+  onCreateNew?: (typedText: string) => void;
+  createNewLabel?: string;
 } & Omit<SelectProps<string>, 'options' | 'onChange' | 'onSearch' | 'filterOption' | 'showSearch' | 'value'>) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
@@ -57,36 +62,100 @@ export function RemoteSelect({
   const options = current && !found.some((o) => o.value === current.value) ? [current, ...found] : found;
   const loading = pending || query.isFetching;
 
+  const createNew = () => {
+    const typedText = search.trim();
+    setOpen(false);
+    setSearch('');
+    onCreateNew?.(typedText);
+  };
+
   return (
-    <Select<string>
-      {...rest}
-      showSearch
-      allowClear
-      filterOption={false}
-      value={value}
-      searchValue={search}
-      loading={loading}
-      notFoundContent={loading ? t('common.loading') : undefined}
-      onSearch={setSearch}
-      onDropdownVisibleChange={(visible) => {
-        rest.onDropdownVisibleChange?.(visible);
-        setOpen(visible);
-        // As GridSelect does: a closed list starts again with no search text.
-        if (!visible) setSearch('');
+    <span
+      style={{ display: 'contents' }}
+      onKeyDownCapture={(e) => {
+        const typedText = search.trim();
+        if (
+          e.key === 'Enter' &&
+          open &&
+          onCreateNew &&
+          !loading &&
+          typedText &&
+          found.length === 0
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          createNew();
+        }
       }}
-      onKeyDown={(e) => {
-        rest.onKeyDown?.(e);
-        // A closed list opens on the arrow keys (or typing), not on arriving in the field.
-        const select = (e.target as HTMLElement).closest<HTMLElement>('.ant-select');
-        if (!open && select && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) openSelect(select);
-      }}
-      options={options}
-      onChange={(v) => {
-        const option = options.find((o) => o.value === v);
-        setChosen(option);
-        setSearch('');
-        onChange?.(v, option);
-      }}
-    />
+    >
+      <Select<string>
+        {...rest}
+        showSearch
+        allowClear
+        filterOption={false}
+        value={value}
+        searchValue={search}
+        loading={loading}
+        notFoundContent={loading ? t('common.loading') : undefined}
+        dropdownRender={(menu) => (
+          <>
+            {dropdownRender ? dropdownRender(menu) : menu}
+            {onCreateNew && (
+              <div
+                role="button"
+                tabIndex={0}
+                className="grid-select-create-new"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={createNew}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') createNew();
+                }}
+                style={{
+                  padding: '8px 12px',
+                  borderTop: '1px solid var(--c-grid-frame)',
+                  cursor: 'pointer',
+                }}
+              >
+                + {createNewLabel ?? t('common.createNew')}
+              </div>
+            )}
+          </>
+        )}
+        onSearch={setSearch}
+        onDropdownVisibleChange={(visible) => {
+          rest.onDropdownVisibleChange?.(visible);
+          setOpen(visible);
+          if (!visible) setSearch('');
+        }}
+        onInputKeyDown={(e) => {
+          rest.onInputKeyDown?.(e);
+          const typedText = search.trim();
+          if (
+            e.key === 'Enter' &&
+            open &&
+            onCreateNew &&
+            !loading &&
+            typedText &&
+            found.length === 0
+          ) {
+            e.preventDefault();
+            e.stopPropagation();
+            createNew();
+          }
+        }}
+        onKeyDown={(e) => {
+          rest.onKeyDown?.(e);
+          const select = (e.target as HTMLElement).closest<HTMLElement>('.ant-select');
+          if (!open && select && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) openSelect(select);
+        }}
+        options={options}
+        onChange={(v) => {
+          const option = options.find((o) => o.value === v);
+          setChosen(option);
+          setSearch('');
+          onChange?.(v, option);
+        }}
+      />
+    </span>
   );
 }

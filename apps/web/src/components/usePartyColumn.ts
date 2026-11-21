@@ -70,6 +70,7 @@ export function usePartyColumn(
    * would pass the check before saving and then fail at posting.
    */
   rules: PartyRulesState;
+  rememberParty: (party: Party) => void;
 } {
   // A legacy chart maps CUSTOMERS_CONTROL / SUPPLIERS_CONTROL to an account
   // without control flags; the mappings say which one needs a party. Only
@@ -99,6 +100,11 @@ export function usePartyColumn(
     enabled: enabled && anyNeeded,
   });
   const pickers = { CUSTOMER: customers, SUPPLIER: suppliers, ANY: either } as const;
+  const rememberParty = (party: Party) => {
+    if (party.partyType === 'CUSTOMER' || party.partyType === 'BOTH') customers.remember([party]);
+    if (party.partyType === 'SUPPLIER' || party.partyType === 'BOTH') suppliers.remember([party]);
+    either.remember([party]);
+  };
 
   const rememberedParty = (id: string | null | undefined): Party | undefined =>
     customers.byId(id) ?? suppliers.byId(id) ?? either.byId(id);
@@ -140,6 +146,7 @@ export function usePartyColumn(
       const party = partyOf(partyId);
       return party ? codeAndName(party) : undefined;
     },
+    rememberParty,
     rules: {
       ready: mappings.isSuccess,
       failed: mappings.isError,
