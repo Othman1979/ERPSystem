@@ -345,6 +345,20 @@ export class LeaveService {
       const request = await this.findRequest(tx, id);
       if (!request) throw DomainError.notFound('LeaveRequest', id.toString());
       if (request.status !== 'SUBMITTED') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only submitted leave requests can be approved');
+      if (request.employee.leaveDate) {
+        const departureRun = await tx.payrollRun.findFirst({
+          where: {
+            companyId,
+            period: yearMonth(request.employee.leaveDate),
+            status: { in: ['POSTED', 'PAID'] },
+            lines: { some: { employeeId: request.employeeId } },
+          },
+          select: { id: true },
+        });
+        if (departureRun) {
+          throw new DomainError(ErrorCode.LEAVE_RUN_ALREADY_POSTED, 'The employee departure payroll run is already posted');
+        }
+      }
       if (request.leaveType.payElementId) {
         await this.assertNoPostedPayrollForPeriod(tx, request.startDate, request.endDate);
       }

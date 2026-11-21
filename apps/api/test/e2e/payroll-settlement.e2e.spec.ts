@@ -309,6 +309,15 @@ describe('Phase 28C payroll settlements', () => {
     }), 201, 'create settlement guard FY 2027');
     const leaver = await employee(company, 'GUARD', '2020-01-01', '2026-12-31', '1000.000', false);
     const payroll = await run(company.id, '2026-12');
+    const annual = (h.ok(await get('payroll/leave-types', company.id), 200, 'departure leave types') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'ANNUAL')!;
+    const leave = await post<{ id: string }>('payroll/leave-requests', {
+      employeeId: leaver.id, leaveTypeId: annual.id, startDate: '2026-12-01', endDate: '2026-12-02',
+    }, company.id, 'create post-departure-run annual leave');
+    const deniedApproval = await act(`payroll/leave-requests/${leave.id}/approve`, {}, company.id);
+    expect(deniedApproval.status).toBe(409);
+    expect(deniedApproval.body.error.code).toBe('LEAVE_RUN_ALREADY_POSTED');
     const settlement = await post<{ id: string }>('payroll/settlements', { employeeId: leaver.id }, company.id, 'create guarded settlement');
 
     const draftEdit = await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
