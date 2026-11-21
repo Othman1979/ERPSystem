@@ -340,7 +340,13 @@ describe('Phase 28C payroll settlements', () => {
     h.ok(await act(`payroll/settlements/${settlement.id}/reverse`, {
       reversalDate: '2027-01-02',
     }, company.id), 200, 'reverse guarded settlement');
+    const blockedDepartureEdit = await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: '2026-12-30' });
+    expect(blockedDepartureEdit.status).toBe(409);
+    expect(blockedDepartureEdit.body.error.code).toBe('PAYROLL_SETTLEMENT_ACTIVE');
     h.ok(await act(`payroll/runs/${payroll.id}/reverse`, { date: '2027-01-03' }, company.id), 201, 'reverse run after settlement');
+    expect((await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: '2026-12-30' })).status).toBe(200);
   });
 
   it('allocates distinct first settlement numbers in separate fiscal years', async () => {

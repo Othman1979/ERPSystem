@@ -210,6 +210,21 @@ export class PayrollService {
         select: { id: true },
       });
       if (settlement) throw new DomainError(ErrorCode.PAYROLL_SETTLEMENT_ACTIVE, 'Employee has an active final settlement');
+      if (employee.leaveDate) {
+        const period = `${employee.leaveDate.getUTCFullYear()}-${String(employee.leaveDate.getUTCMonth() + 1).padStart(2, '0')}`;
+        const departureRun = await db.payrollRun.findFirst({
+          where: {
+            companyId,
+            period,
+            status: { in: ['POSTED', 'PAID'] },
+            lines: { some: { employeeId: id } },
+          },
+          select: { id: true },
+        });
+        if (departureRun) {
+          throw new DomainError(ErrorCode.PAYROLL_SETTLEMENT_ACTIVE, 'Employee has a posted departure payroll run');
+        }
+      }
     }
     if (employee.isActive && dto.isActive === false) {
       const movements = await db.payrollMovement.findMany({
