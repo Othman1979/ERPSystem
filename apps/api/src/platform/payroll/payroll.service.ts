@@ -9,6 +9,7 @@ import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
+import { DEFAULT_PAYROLL_TAX_BRACKETS } from '../accounting/chart-template.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
 import { YearClosingDraftRegistry, yearClosingDraft } from '../accounting/year-closing-draft.registry.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
@@ -118,8 +119,9 @@ export class PayrollService {
         salaries: { where: { effectiveFrom: { lte: today } }, orderBy: [{ effectiveFrom: 'desc' }], take: 1 },
       },
     });
-    return employees.map(({ branch, salaries, ...employee }) => ({
+    return employees.map(({ branch, salaries, taxOtherExemption, ...employee }) => ({
       ...employee,
+      taxOtherExemption: taxOtherExemption.toString(),
       branchNameAr: branch?.nameAr ?? null,
       branchNameEn: branch?.nameEn ?? null,
       currentBasicSalary: salaries[0]?.basicSalary.toString() ?? null,
@@ -139,7 +141,7 @@ export class PayrollService {
       },
     }).then((employee) => {
       if (!employee) throw DomainError.notFound('Employee', id.toString());
-      return employee;
+      return { ...employee, taxOtherExemption: employee.taxOtherExemption.toString() };
     });
   }
 
@@ -163,6 +165,9 @@ export class PayrollService {
         iban: dto.iban ?? null,
         sscCovered: dto.sscCovered ?? true,
         sscHazardous: dto.sscHazardous ?? false,
+        taxSubject: dto.taxSubject ?? true,
+        taxDependants: dto.taxDependants ?? false,
+        taxOtherExemption: dto.taxOtherExemption ?? '0.000',
       },
     });
   }
@@ -209,6 +214,9 @@ export class PayrollService {
         iban: dto.iban === undefined ? undefined : dto.iban ?? null,
         sscCovered: dto.sscCovered,
         sscHazardous: dto.sscHazardous,
+        taxSubject: dto.taxSubject,
+        taxDependants: dto.taxDependants,
+        taxOtherExemption: dto.taxOtherExemption,
         isActive: dto.isActive,
       },
     });
@@ -326,6 +334,7 @@ export class PayrollService {
         amountType: dto.amountType,
         rateFactor: dto.rateFactor,
         sscSubject: dto.sscSubject ?? true,
+        taxSubject: dto.taxSubject ?? true,
         isFixedAllowance: dto.isFixedAllowance ?? false,
         accountId,
       },
@@ -397,6 +406,7 @@ export class PayrollService {
           amountType: dto.amountType,
           rateFactor: dto.rateFactor,
           sscSubject: dto.sscSubject,
+          taxSubject: dto.taxSubject,
           isFixedAllowance: dto.isFixedAllowance,
           accountId: dto.accountId === undefined ? undefined : accountId,
           isActive: dto.isActive,
@@ -407,7 +417,10 @@ export class PayrollService {
 
   listSettings() {
     const { db } = this.context();
-    return db.payrollSettings.findMany({ orderBy: [{ effectiveFrom: 'desc' }] });
+    return db.payrollSettings.findMany({
+      include: { taxBrackets: { orderBy: [{ seq: 'asc' }] } },
+      orderBy: [{ effectiveFrom: 'desc' }],
+    });
   }
 
   async createSettings(dto: CreatePayrollSettingsDto) {
@@ -418,29 +431,72 @@ export class PayrollService {
     const rates = [dto.sscEmployeeRate ?? '0.075000', dto.sscEmployerRate ?? '0.142500', dto.sscHazardousExtra ?? '0.010000'].map((value) => new Decimal(value));
     const minimum = new Decimal(dto.sscMinWage ?? '290.000');
     const maximum = dto.sscMaxWage == null ? null : new Decimal(dto.sscMaxWage);
+    const taxPersonalExemption = new Decimal(dto.taxPersonalExemption ?? '9000.000');
+    const taxDependantsExemption = new Decimal(dto.taxDependantsExemption ?? '9000.000');
+    const taxNationalThreshold = new Decimal(dto.taxNationalThreshold ?? '16666.000');
+    const taxNationalRate = new Decimal(dto.taxNationalRate ?? '0.010000');
+    const taxBrackets = dto.taxBrackets ?? DEFAULT_PAYROLL_TAX_BRACKETS.map(({ upTo, rate }) => ({ upTo, rate }));
+    let previousUpTo: Decimal | null = null;
+    let unbounded = false;
+    const validTaxBrackets = taxBrackets.length > 0 && taxBrackets.every((bracket, index) => {
+      const rate = new Decimal(bracket.rate);
+      if (rate.lt(zero) || rate.gt(one) || bracket.upTo === undefined || unbounded) return false;
+      if (bracket.upTo === null) {
+        unbounded = true;
+        return index === taxBrackets.length - 1;
+      }
+      const upTo = new Decimal(bracket.upTo);
+      if (upTo.lt(zero) || (previousUpTo !== null && !upTo.gt(previousUpTo))) return false;
+      previousUpTo = upTo;
+      return true;
+    });
     if (
       rates.some((rate) => rate.lt(zero) || rate.gt(one)) ||
       !new Decimal(dto.hoursPerMonth ?? '240').gt(zero) ||
       !new Decimal(dto.daysPerMonth ?? '30').gt(zero) ||
       minimum.lt(zero) ||
-      (maximum !== null && (maximum.lt(zero) || maximum.lt(minimum)))
+      (maximum !== null && (maximum.lt(zero) || maximum.lt(minimum))) ||
+      taxPersonalExemption.lt(zero) || taxDependantsExemption.lt(zero) || taxNationalThreshold.lt(zero) ||
+      taxNationalRate.lt(zero) || taxNationalRate.gt(one) || !validTaxBrackets
     ) {
       throw new DomainError(ErrorCode.VALIDATION, 'Payroll rates, wages, hours, or days are outside the allowed range');
     }
-    return db.payrollSettings.create({
-      data: {
-        tenantId,
-        companyId,
-        effectiveFrom: date(dto.effectiveFrom),
-        sscEmployeeRate: dto.sscEmployeeRate ?? '0.075000',
-        sscEmployerRate: dto.sscEmployerRate ?? '0.142500',
-        sscHazardousExtra: dto.sscHazardousExtra ?? '0.010000',
-        sscMinWage: dto.sscMinWage ?? '290.000',
-        sscMaxWage: dto.sscMaxWage ?? null,
-        hoursPerMonth: dto.hoursPerMonth ?? '240.00',
-        daysPerMonth: dto.daysPerMonth ?? '30.00',
-      },
-    });
+    return db.$transaction(async (tx) => {
+      const settings = await tx.payrollSettings.create({
+        data: {
+          tenantId,
+          companyId,
+          effectiveFrom: date(dto.effectiveFrom),
+          sscEmployeeRate: dto.sscEmployeeRate ?? '0.075000',
+          sscEmployerRate: dto.sscEmployerRate ?? '0.142500',
+          sscHazardousExtra: dto.sscHazardousExtra ?? '0.010000',
+          sscMinWage: dto.sscMinWage ?? '290.000',
+          sscMaxWage: dto.sscMaxWage ?? null,
+          hoursPerMonth: dto.hoursPerMonth ?? '240.00',
+          daysPerMonth: dto.daysPerMonth ?? '30.00',
+          taxPersonalExemption,
+          taxDependantsExemption,
+          taxNationalThreshold,
+          taxNationalRate,
+        },
+      });
+      await tx.payrollTaxBracket.createMany({
+        data: taxBrackets.map((bracket, index) => ({
+          tenantId,
+          payrollSettingsId: settings.id,
+          seq: index + 1,
+          upTo: bracket.upTo,
+          rate: bracket.rate,
+        })),
+      });
+      return {
+        ...settings,
+        taxBrackets: await tx.payrollTaxBracket.findMany({
+          where: { payrollSettingsId: settings.id },
+          orderBy: [{ seq: 'asc' }],
+        }),
+      };
+    }, POSTING_TX_OPTIONS);
   }
 
   async listMovements(period: string, employeeId?: string) {
@@ -697,7 +753,7 @@ export class PayrollService {
       if (!run) throw DomainError.notFound('PayrollRun', id.toString());
       if (run.status !== 'DRAFT') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only draft payroll runs can be recomputed');
       const oldLines = await tx.payrollLine.findMany({ where: { payrollRunId: id } });
-      const taxes = new Map(oldLines.map((line) => [line.employeeId, line.incomeTax.toString()]));
+      const taxes = new Map(oldLines.filter((line) => line.taxManual).map((line) => [line.employeeId, line.incomeTax.toString()]));
       await this.computeRun(tx, tenantId, companyId, id, run.period, taxes);
     }, POSTING_TX_OPTIONS);
     return this.getRun(id.toString());
@@ -715,6 +771,7 @@ export class PayrollService {
     const settings = await tx.payrollSettings.findFirst({
       where: { effectiveFrom: { lte: end } },
       orderBy: [{ effectiveFrom: 'desc' }],
+      include: { taxBrackets: { orderBy: [{ seq: 'asc' }] } },
     });
     if (!settings) throw new DomainError(ErrorCode.PAYROLL_SETTINGS_REQUIRED, 'No payroll settings for period');
 
@@ -774,10 +831,18 @@ export class PayrollService {
           maximumWage: settings.sscMaxWage?.toString() ?? null,
           hoursPerMonth: settings.hoursPerMonth.toString(),
           daysPerMonth: settings.daysPerMonth.toString(),
+          taxPersonalExemption: settings.taxPersonalExemption.toString(),
+          taxDependantsExemption: settings.taxDependantsExemption.toString(),
+          taxNationalThreshold: settings.taxNationalThreshold.toString(),
+          taxNationalRate: settings.taxNationalRate.toString(),
+          taxBrackets: settings.taxBrackets.map((bracket) => ({
+            upTo: bracket.upTo?.toString() ?? null,
+            rate: bracket.rate.toString(),
+          })),
         },
         inputs,
         recurring,
-        incomeTax: oldTaxes.get(employee.id) ?? '0',
+        incomeTax: oldTaxes.get(employee.id),
       });
       if (!calculation) continue;
       const line = await tx.payrollLine.create({
@@ -791,7 +856,10 @@ export class PayrollService {
           sscBase: calculation.sscBase,
           sscEmployee: calculation.sscEmployee,
           sscEmployer: calculation.sscEmployer,
+          taxableIncome: calculation.taxableIncome,
           incomeTax: calculation.incomeTax,
+          nationalContribution: calculation.nationalContribution,
+          taxManual: oldTaxes.has(employee.id),
           deductions: calculation.deductions,
           net: calculation.net,
         },
@@ -849,7 +917,7 @@ export class PayrollService {
       if (run.status !== 'DRAFT') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Tax can only be edited on a draft');
       const incomeTax = round3(amount);
       const net = round3(line.gross.minus(line.sscEmployee).minus(incomeTax).minus(line.deductions));
-      await tx.payrollLine.update({ where: { id: lineId }, data: { incomeTax, net } });
+      await tx.payrollLine.update({ where: { id: lineId }, data: { incomeTax, net, taxManual: true } });
       await tx.payrollRun.update({
         where: { id: runId },
         data: {
@@ -857,7 +925,38 @@ export class PayrollService {
           netTotal: round3(run.netTotal.minus(line.net).plus(net)),
         },
       });
-      return { id: lineId.toString(), incomeTax: incomeTax.toString(), net: net.toString() };
+      return { id: lineId.toString(), incomeTax: incomeTax.toString(), net: net.toString(), taxManual: true };
+    }, POSTING_TX_OPTIONS);
+  }
+
+  async clearIncomeTax(runId: bigint, lineId: bigint) {
+    this.canManage();
+    const { tenantId, companyId, db } = this.context();
+    return db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM payroll_runs WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id = ${runId} FOR UPDATE`;
+      const run = await tx.payrollRun.findFirst({ where: { id: runId } });
+      const line = await tx.payrollLine.findFirst({ where: { id: lineId, payrollRunId: runId } });
+      if (!run || !line) throw DomainError.notFound('PayrollLine', lineId.toString());
+      if (run.status !== 'DRAFT') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Tax can only be edited on a draft');
+      await tx.payrollLine.update({ where: { id: lineId }, data: { taxManual: false } });
+      const manualLines = await tx.payrollLine.findMany({ where: { payrollRunId: runId, taxManual: true } });
+      await this.computeRun(
+        tx,
+        tenantId,
+        companyId,
+        runId,
+        run.period,
+        new Map(manualLines.map((manualLine) => [manualLine.employeeId, manualLine.incomeTax.toString()])),
+      );
+      const updated = await tx.payrollLine.findFirst({ where: { payrollRunId: runId, employeeId: line.employeeId } });
+      if (!updated) throw DomainError.notFound('PayrollLine', lineId.toString());
+      return {
+        id: updated.id.toString(),
+        incomeTax: updated.incomeTax.toString(),
+        net: updated.net.toString(),
+        taxManual: updated.taxManual,
+      };
     }, POSTING_TX_OPTIONS);
   }
 
@@ -1256,7 +1355,10 @@ export class PayrollService {
         sscBase: line.sscBase.toString(),
         sscEmployee: line.sscEmployee.toString(),
         sscEmployer: line.sscEmployer.toString(),
+        taxableIncome: line.taxableIncome.toString(),
         incomeTax: line.incomeTax.toString(),
+        nationalContribution: line.nationalContribution.toString(),
+        taxManual: line.taxManual,
         deductions: line.deductions.toString(),
         net: line.net.toString(),
         items: line.items.map((item) => ({

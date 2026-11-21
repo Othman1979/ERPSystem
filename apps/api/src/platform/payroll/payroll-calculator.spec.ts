@@ -15,6 +15,7 @@ const overtime: PayrollElement = {
   amountType: 'PER_HOUR',
   rateFactor: '1.250000',
   sscSubject: true,
+  taxSubject: true,
 };
 
 const daily: PayrollElement = {
@@ -34,7 +35,10 @@ const holiday: PayrollElement = {
 };
 
 const base = {
-  employee: { hireDate: new Date('2025-01-01'), leaveDate: null, sscCovered: true, sscHazardous: false },
+  employee: {
+    hireDate: new Date('2025-01-01'), leaveDate: null, sscCovered: true, sscHazardous: false,
+    taxSubject: true, taxDependants: false, taxOtherExemption: '0.000',
+  },
   salary: '480.000',
   periodStart: new Date('2026-01-01'),
   periodEnd: new Date('2026-01-31'),
@@ -46,12 +50,81 @@ const base = {
     maximumWage: null,
     hoursPerMonth: '240.00',
     daysPerMonth: '30.00',
+    taxPersonalExemption: '9000.000',
+    taxDependantsExemption: '9000.000',
+    taxNationalThreshold: '16666.000',
+    taxNationalRate: '0.010000',
+    taxBrackets: [
+      { upTo: '416.000', rate: '0.050000' },
+      { upTo: '832.000', rate: '0.100000' },
+      { upTo: '1248.000', rate: '0.150000' },
+      { upTo: '1664.000', rate: '0.200000' },
+      { upTo: '83333.000', rate: '0.250000' },
+      { upTo: null, rate: '0.300000' },
+    ],
   },
   inputs: [],
   recurring: [],
 };
 
 describe('calculatePayroll', () => {
+  it('calculates taxable pay after exempting monthly personal and dependant exemptions', () => {
+    const bonus = { ...overtime, id: 4n, code: 'BONUS', amountType: 'FIXED' as const };
+    const absence = { ...daily, taxSubject: true };
+    const result = calculatePayroll({
+      ...base,
+      salary: '2000.000',
+      inputs: [
+        { element: bonus, amount: '500.000', quantity: null },
+        { element: absence, amount: '66.667', quantity: '1' },
+      ],
+    })!;
+    expect(result.taxableIncome.toString()).toBe('2433.333');
+    expect(result.incomeTax.toString()).toBe('212.833');
+    expect(result.nationalContribution.toString()).toBe('0');
+  });
+
+  it('uses the dependant exemption and includes fixed recurring allowances in taxable pay', () => {
+    const transport = { ...overtime, id: 5n, code: 'TRANSPORT', amountType: 'FIXED' as const };
+    const result = calculatePayroll({
+      ...base,
+      salary: '1200.000',
+      employee: { ...base.employee, taxDependants: true },
+      recurring: [{
+        element: transport,
+        amount: '50.000',
+        quantity: null,
+        validFrom: new Date('2026-01-01'),
+        validTo: null,
+      }],
+    })!;
+    expect(result.taxableIncome.toString()).toBe('1250');
+    expect(result.incomeTax.toString()).toBe('0');
+  });
+
+  it('calculates the national contribution and annual exemption adjustment with Decimal rounding', () => {
+    const standard = calculatePayroll({ ...base, salary: '20000.000', employee: { ...base.employee, sscCovered: false } })!;
+    const otherExemption = calculatePayroll({
+      ...base,
+      salary: '20000.000',
+      employee: { ...base.employee, sscCovered: false, taxOtherExemption: '2000.000' },
+    })!;
+    expect([standard.incomeTax.toString(), standard.nationalContribution.toString()])
+      .toEqual(['4630.34', '25.84']);
+    expect([otherExemption.incomeTax.toString(), otherExemption.nationalContribution.toString()])
+      .toEqual(['4587.007', '24.173']);
+  });
+
+  it('stores taxable income but applies no automatic tax when the employee is not subject', () => {
+    const result = calculatePayroll({
+      ...base,
+      salary: '20000.000',
+      employee: { ...base.employee, taxSubject: false },
+    })!;
+    expect(result.taxableIncome.toString()).toBe('20000');
+    expect([result.incomeTax.toString(), result.nationalContribution.toString()]).toEqual(['0', '0']);
+  });
+
   it('uses six-place hourly/daily rates and applies element factors', () => {
     const result = calculatePayroll({
       ...base,

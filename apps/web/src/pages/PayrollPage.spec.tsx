@@ -36,6 +36,7 @@ const api = vi.hoisted(() => ({
   postRun: vi.fn(),
   reverseRun: vi.fn(),
   setIncomeTax: vi.fn(),
+  clearIncomeTax: vi.fn(),
   updateEmployee: vi.fn(),
   costCenters: vi.fn(),
 }));
@@ -60,6 +61,7 @@ vi.mock('@erp/api-client', async (importOriginal) => {
     payrollControllerPostRun: (...args: unknown[]) => api.postRun(...args),
     payrollControllerReverseRun: (...args: unknown[]) => api.reverseRun(...args),
     payrollControllerSetIncomeTax: (...args: unknown[]) => api.setIncomeTax(...args),
+    payrollControllerClearIncomeTax: (...args: unknown[]) => api.clearIncomeTax(...args),
     payrollControllerUpdateEmployee: (...args: unknown[]) => api.updateEmployee(...args),
     treasuryControllerListBankAccounts: (...args: unknown[]) => api.listBankAccounts(...args),
     treasuryControllerListCashBoxes: (...args: unknown[]) => api.listCashBoxes(...args),
@@ -91,6 +93,9 @@ const employee = {
   payMethod: 'CASH',
   sscCovered: true,
   sscHazardous: false,
+  taxSubject: true,
+  taxDependants: false,
+  taxOtherExemption: '0.000',
   isActive: true,
 };
 const run = {
@@ -117,7 +122,10 @@ const run = {
     sscBase: '100.000',
     sscEmployee: '0.000',
     sscEmployer: '0.000',
+    taxableIncome: '100.000',
     incomeTax: '0.000',
+    nationalContribution: '0.000',
+    taxManual: false,
     deductions: '0.000',
     net: '100.000',
   }],
@@ -261,6 +269,21 @@ describe('payroll page payloads and run actions', () => {
       await taxSave.promise;
     });
     await until(() => expect(api.postRun).toHaveBeenCalledTimes(1));
+  });
+
+  it('resets a manual tax override from the run line', async () => {
+    const manualRun = {
+      ...run,
+      lines: [{ ...run.lines[0]!, incomeTax: '4000.000', taxManual: true }],
+    };
+    api.getRun.mockResolvedValue(response(manualRun));
+    api.clearIncomeTax.mockResolvedValue(response({ id: 'line-2', incomeTax: '0.000', net: '100.000', taxManual: false }));
+    await mount('/payroll?tab=runs&new=1');
+    const resetTitle = i18n.t('payroll.resetTax');
+    await until(() => expect(host?.querySelector(`button[title="${resetTitle}"]`)).not.toBeNull());
+    const reset = host!.querySelector<HTMLButtonElement>(`button[title="${resetTitle}"]`)!;
+    act(() => reset.click());
+    await until(() => expect(api.clearIncomeTax).toHaveBeenCalledWith(run.id, run.lines[0]!.id));
   });
 
   it('defaults the payment and reversal date to the run date and sends the selected date', async () => {

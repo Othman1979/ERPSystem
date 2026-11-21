@@ -9,6 +9,12 @@ export interface PayrollElement {
   amountType: 'FIXED' | 'PER_HOUR' | 'PER_DAY';
   rateFactor: Decimal.Value;
   sscSubject: boolean;
+  taxSubject: boolean;
+}
+
+export interface PayrollTaxBracket {
+  upTo: Decimal.Value | null;
+  rate: Decimal.Value;
 }
 
 export interface PayrollElementEntry {
@@ -30,6 +36,9 @@ export interface PayrollCalculationInput {
     leaveDate: Date | null;
     sscCovered: boolean;
     sscHazardous: boolean;
+    taxSubject: boolean;
+    taxDependants: boolean;
+    taxOtherExemption: Decimal.Value;
   };
   salary: Decimal.Value;
   periodStart: Date;
@@ -42,6 +51,11 @@ export interface PayrollCalculationInput {
     maximumWage: Decimal.Value | null;
     hoursPerMonth: Decimal.Value;
     daysPerMonth: Decimal.Value;
+    taxPersonalExemption: Decimal.Value;
+    taxDependantsExemption: Decimal.Value;
+    taxNationalThreshold: Decimal.Value;
+    taxNationalRate: Decimal.Value;
+    taxBrackets: PayrollTaxBracket[];
   };
   inputs: PayrollElementEntry[];
   recurring: PayrollRecurringEntry[];
@@ -63,7 +77,9 @@ export interface PayrollCalculation {
   sscBase: Decimal;
   sscEmployee: Decimal;
   sscEmployer: Decimal;
+  taxableIncome: Decimal;
   incomeTax: Decimal;
+  nationalContribution: Decimal;
   deductions: Decimal;
   net: Decimal;
   items: PayrollCalculatedItem[];
@@ -99,6 +115,24 @@ export function calculateMovementPrice(input: {
   const rate = round6(baseRate.mul(input.rateFactor));
   const quantity = round6(input.quantity ?? 0);
   return { quantity, rate, amount: round3(quantity.mul(rate)) };
+}
+
+function bracketTax(excess: Decimal, brackets: PayrollTaxBracket[]): Decimal {
+  let lower = new Decimal(0);
+  let tax = new Decimal(0);
+  for (const [index, bracket] of brackets.entries()) {
+    const rate = new Decimal(bracket.rate);
+    if (bracket.upTo === null) {
+      tax = tax.plus(Decimal.max(excess.minus(lower), 0).mul(rate));
+      break;
+    }
+    const upper = new Decimal(bracket.upTo);
+    tax = tax.plus(Decimal.max(Decimal.min(excess, upper).minus(lower), 0).mul(rate));
+    if (excess.lte(upper)) break;
+    lower = upper;
+    if (index === brackets.length - 1) tax = tax.plus(excess.minus(upper).mul(rate));
+  }
+  return tax;
 }
 
 export function calculatePayroll(input: PayrollCalculationInput): PayrollCalculation | null {
@@ -179,6 +213,27 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
     };
   })];
 
+  const taxableBase = items.reduce((base, item) => {
+    if (!item.element.taxSubject) return base;
+    return item.element.kind === 'EARNING' ? base.plus(item.amount) : base.minus(item.amount);
+  }, basic);
+  const taxableIncome = round3(taxableBase);
+  const monthlyExemption = round3(
+    new Decimal(input.settings.taxPersonalExemption)
+      .plus(input.employee.taxDependants ? input.settings.taxDependantsExemption : 0)
+      .plus(input.employee.taxOtherExemption)
+      .div(12),
+  );
+  const excess = Decimal.max(taxableIncome.minus(monthlyExemption), 0);
+  const subjectToTax = input.employee.taxSubject;
+  const national = subjectToTax
+    ? Decimal.max(excess.minus(input.settings.taxNationalThreshold), 0).mul(input.settings.taxNationalRate)
+    : new Decimal(0);
+  const nationalContribution = round3(national);
+  const automaticIncomeTax = subjectToTax
+    ? round3(bracketTax(excess, input.settings.taxBrackets).plus(national))
+    : new Decimal(0);
+
   earnings = round3(earnings);
   deductions = round3(deductions);
   const gross = round3(basic.plus(earnings));
@@ -197,7 +252,7 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
     sscBase = new Decimal(0);
   }
 
-  const incomeTax = round3(input.incomeTax ?? 0);
+  const incomeTax = round3(input.incomeTax ?? automaticIncomeTax);
   const net = round3(gross.minus(sscEmployee).minus(incomeTax).minus(deductions));
   return {
     basic,
@@ -206,7 +261,9 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
     sscBase,
     sscEmployee,
     sscEmployer,
+    taxableIncome,
     incomeTax,
+    nationalContribution,
     deductions,
     net,
     items,

@@ -1,4 +1,4 @@
-import { DeleteOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, FilePdfOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   payrollControllerAddSalary,
   payrollControllerCreateEmployee,
@@ -20,6 +20,7 @@ import {
   payrollControllerReverseMovement,
   payrollControllerEmployeeStatement,
   payrollControllerSetIncomeTax,
+  payrollControllerClearIncomeTax,
   payrollControllerUpdateElement,
   payrollControllerUpdateEmployee,
   accountingControllerListAccounts,
@@ -39,7 +40,7 @@ import {
   type AccountDto,
 } from '@erp/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, Checkbox, DatePicker as AntDatePicker, Form, Input, Modal, Select, Space, Switch, Table, Tabs } from 'antd';
+import { App, Button, Checkbox, DatePicker as AntDatePicker, Form, Input, Modal, Select, Space, Switch, Table, Tabs, Tag } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -61,6 +62,7 @@ type EmployeeForm = {
   nationalId?: string | null; sscNumber?: string | null; leaveDate?: DateFormValue; iban?: string | null; isActive?: boolean;
   salaryEffectiveFrom?: DateFormValue; basicSalary?: string; payElementId?: string; recurringAmount?: string;
   recurringValidFrom?: DateFormValue;
+  taxSubject?: boolean; taxDependants?: boolean; taxOtherExemption?: string;
 };
 type MovementForm = { employeeId: string; payElementId: string; movementDate?: DateFormValue; quantity?: string; amount?: string; description?: string };
 
@@ -111,7 +113,13 @@ export function employeeEditDateValues(employee: Pick<PayrollEmployeeDetailDto, 
 }
 
 export function buildSettingsPayload(values: Record<string, unknown> & { effectiveFrom?: DateFormValue }) {
-  return { ...values, effectiveFrom: dateOnly(values.effectiveFrom)! };
+  const taxBrackets = Array.isArray(values.taxBrackets)
+    ? values.taxBrackets.map((value) => {
+      const bracket = value as { upTo?: string; rate: string };
+      return { ...bracket, upTo: bracket.upTo || null };
+    })
+    : undefined;
+  return { ...values, ...(taxBrackets ? { taxBrackets } : {}), effectiveFrom: dateOnly(values.effectiveFrom)! };
 }
 
 export function buildElementPayload(values: Record<string, unknown>, editing: boolean) {
@@ -165,6 +173,9 @@ export function buildEmployeePayload(values: EmployeeForm, editing = false) {
     iban: nullable(card.iban),
     sscCovered: card.sscCovered ?? true,
     sscHazardous: card.sscHazardous ?? false,
+    taxSubject: card.taxSubject ?? true,
+    taxDependants: card.taxDependants ?? false,
+    taxOtherExemption: card.taxOtherExemption ?? '0.000',
   };
 }
 
@@ -255,6 +266,8 @@ function EmployeesTab() {
         sscNumber: employeeDetail.sscNumber ?? undefined, iban: employeeDetail.iban ?? undefined,
         branchId: employeeDetail.branchId ?? undefined, costCenterId: employeeDetail.costCenterId ?? undefined,
         sscCovered: employeeDetail.sscCovered, sscHazardous: employeeDetail.sscHazardous, isActive: employeeDetail.isActive,
+        taxSubject: employeeDetail.taxSubject, taxDependants: employeeDetail.taxDependants,
+        taxOtherExemption: employeeDetail.taxOtherExemption,
       });
     } else { setDetail(undefined); form.resetFields(); }
     setOpen(true);
@@ -286,6 +299,9 @@ function EmployeesTab() {
           <Form.Item name="iban" label={t('payroll.iban')}><Input /></Form.Item>
         <Form.Item name="sscCovered" label={t('payroll.sscCovered')} valuePropName="checked" initialValue={true}><Switch /></Form.Item>
           <Form.Item name="sscHazardous" label={t('payroll.sscHazardous')} valuePropName="checked"><Switch /></Form.Item>
+          <Form.Item name="taxSubject" label={t('payroll.taxSubject')} valuePropName="checked" initialValue={true}><Switch /></Form.Item>
+          <Form.Item name="taxDependants" label={t('payroll.taxDependants')} valuePropName="checked"><Switch /></Form.Item>
+          <Form.Item name="taxOtherExemption" label={t('payroll.taxOtherExemption')} initialValue="0.000"><Input /></Form.Item>
           {editing && <Form.Item name="isActive" label={t('payroll.active')} valuePropName="checked"><Switch /></Form.Item>}
         </FormSection>
         <FormSection title={t('payroll.salaryHistory')}>
@@ -340,6 +356,7 @@ function ElementsTab() {
       { title: t('payroll.amountType'), dataIndex: 'amountType', render: (v: string) => t(`payroll.${v === 'PER_HOUR' ? 'perHour' : v === 'PER_DAY' ? 'perDay' : 'fixed'}`) },
       { title: t('payroll.factor'), dataIndex: 'rateFactor', render: (v: string) => formatQty(v) },
       { title: t('payroll.sscSubject'), dataIndex: 'sscSubject', render: (v: boolean) => v ? t('common.yes') : t('common.no') },
+      { title: t('payroll.taxSubject'), dataIndex: 'taxSubject', render: (v: boolean) => v ? t('common.yes') : t('common.no') },
       { title: t('payroll.account'), dataIndex: 'accountId', render: (id: string) => {
         const account = accounts.data?.find((row) => row.id === id);
         return account ? `${account.code} — ${i18n.language === 'en' ? account.nameEn ?? account.nameAr : account.nameAr}` : id;
@@ -359,6 +376,7 @@ function ElementsTab() {
         )}
         <Form.Item name="accountId" label={t('payroll.account')} rules={[{ required: true }]}><GridSelect options={accountOptions} /></Form.Item>
         <Form.Item name="sscSubject" label={t('payroll.sscSubject')} valuePropName="checked" initialValue={true}><Switch /></Form.Item>
+        <Form.Item name="taxSubject" label={t('payroll.taxSubject')} valuePropName="checked" initialValue={true}><Switch /></Form.Item>
         {editing && <Form.Item name="isActive" label={t('payroll.active')} valuePropName="checked"><Switch /></Form.Item>}
       </FormSection></Form>
     </FormDialog>
@@ -519,7 +537,7 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
     if (action === 'recompute') await (await import('@erp/api-client')).payrollControllerRecomputeRun(runId);
     if (action === 'delete') await payrollControllerDeleteRun(runId);
   }, onSuccess: (_result, action) => { if (action === 'delete') setRunId(undefined); void qc.invalidateQueries({ queryKey: ['payroll'] }); }, onError: () => message.error(t('payroll.saveError')) });
-  const data = run.data as (PayrollRunDto & { lines?: Array<{ id: string; employeeName: string; basic: string; earnings: string; gross: string; sscBase: string; sscEmployee: string; sscEmployer: string; incomeTax: string; deductions: string; net: string }> }) | undefined;
+  const data = run.data as (PayrollRunDto & { lines?: Array<{ id: string; employeeName: string; basic: string; earnings: string; gross: string; sscBase: string; sscEmployee: string; sscEmployer: string; taxableIncome: string; incomeTax: string; taxManual: boolean; deductions: string; net: string }> }) | undefined;
   const available = runAvailability(data?.status ?? '');
   useEffect(() => {
     setActionDate(defaultPayrollActionDate(data?.runDate));
@@ -570,13 +588,19 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
       { title: t('payroll.sscBase'), dataIndex: 'sscBase', render: (v: string) => formatAmount(v) },
       { title: t('payroll.sscEmployeeTotal'), dataIndex: 'sscEmployee', render: (v: string) => formatAmount(v) },
       { title: t('payroll.sscEmployerTotal'), dataIndex: 'sscEmployer', render: (v: string) => formatAmount(v) },
-      { title: t('payroll.incomeTax'), dataIndex: 'incomeTax', render: (v: string, row) => available.taxEditable && can(PERMISSIONS.PAYROLL_MANAGE) ? <Input defaultValue={v} onBlur={(e) => {
+      { title: t('payroll.taxableIncome'), dataIndex: 'taxableIncome', render: (v: string) => formatAmount(v) },
+      { title: t('payroll.incomeTax'), dataIndex: 'incomeTax', render: (v: string, row) => available.taxEditable && can(PERMISSIONS.PAYROLL_MANAGE) ? <Space>
+        <Input defaultValue={v} onBlur={(e) => {
         const save = payrollControllerSetIncomeTax(data.id, row.id, { incomeTax: e.target.value });
         pendingIncomeTaxSaves.current.add(save);
         void save.then(() => qc.invalidateQueries({ queryKey: ['payroll', 'run', runId] }))
           .catch(() => message.error(t('payroll.saveError')))
           .finally(() => pendingIncomeTaxSaves.current.delete(save));
-      }} /> : formatAmount(v) },
+      }} />
+        {row.taxManual && <><Tag>{t('payroll.manual')}</Tag><Button icon={<ReloadOutlined />} title={t('payroll.resetTax')} onClick={() => {
+          void payrollControllerClearIncomeTax(data.id, row.id).then(() => qc.invalidateQueries({ queryKey: ['payroll', 'run', runId] })).catch(() => message.error(t('payroll.saveError')));
+        }} /></>}
+      </Space> : <Space>{formatAmount(v)}{row.taxManual && <Tag>{t('payroll.manual')}</Tag>}</Space> },
       { title: t('payroll.deductions'), dataIndex: 'deductions', render: (v: string) => formatAmount(v) },
       { title: t('payroll.net'), dataIndex: 'net', render: (v: string) => formatAmount(v) },
       { title: t('payroll.payslip'), render: (_, row) => <Button icon={<FilePdfOutlined />} onClick={() => void printPayslip(row.id)}>{t('payroll.print')}</Button> },
@@ -593,13 +617,30 @@ function SettingsTab() {
   const { message } = App.useApp();
   const save = useMutation({ mutationFn: (v: Record<string, unknown> & { effectiveFrom?: DateFormValue }) => payrollControllerCreateSettings(buildSettingsPayload(v) as never), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['payroll', 'settings'] }); form.resetFields(); }, onError: () => message.error(t('payroll.saveError')) });
   return <>
-    {can(PERMISSIONS.PAYROLL_MANAGE) && <EnterNav><Form form={form} layout="inline" onFinish={(v) => save.mutate(v)}>
+    {can(PERMISSIONS.PAYROLL_MANAGE) && <EnterNav><Form form={form} layout="vertical" initialValues={{
+      taxPersonalExemption: '9000.000', taxDependantsExemption: '9000.000', taxNationalThreshold: '16666.000',
+      taxNationalRate: '0.010000', taxBrackets: [
+        { upTo: '416.000', rate: '0.050000' }, { upTo: '832.000', rate: '0.100000' },
+        { upTo: '1248.000', rate: '0.150000' }, { upTo: '1664.000', rate: '0.200000' },
+        { upTo: '83333.000', rate: '0.250000' }, { upTo: '', rate: '0.300000' },
+      ],
+    }} onFinish={(v) => save.mutate(v)}>
       <Form.Item name="effectiveFrom" label={t('payroll.effectiveFrom')} rules={[{ required: true }]}><DatePicker /></Form.Item>
       {['sscEmployeeRate', 'sscEmployerRate', 'sscHazardousExtra', 'sscMinWage', 'sscMaxWage', 'hoursPerMonth', 'daysPerMonth'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)}><Input /></Form.Item>)}
+      {['taxPersonalExemption', 'taxDependantsExemption', 'taxNationalThreshold', 'taxNationalRate'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}><Input /></Form.Item>)}
+      <Form.List name="taxBrackets">{(fields, { add, remove }) => <Space direction="vertical">
+        {fields.map((field, index) => <Space key={field.key}>
+          <Form.Item name={[field.name, 'upTo']} label={index === fields.length - 1 ? t('payroll.bracketTop') : t('payroll.bracketUpTo')}><Input /></Form.Item>
+          <Form.Item name={[field.name, 'rate']} label={t('payroll.bracketRate')} rules={[{ required: true }]}><Input /></Form.Item>
+          <Button danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} />
+        </Space>)}
+        <Button icon={<PlusOutlined />} onClick={() => add({ upTo: '', rate: '' })}>{t('payroll.addBracket')}</Button>
+      </Space>}</Form.List>
       <Button type="primary" htmlType="submit">{t('payroll.addSetting')}</Button>
     </Form></EnterNav>}
     <Table rowKey="id" dataSource={settings.data as Array<Record<string, string | null>> | undefined} columns={[
-      ...['effectiveFrom', 'sscEmployeeRate', 'sscEmployerRate', 'sscHazardousExtra', 'sscMinWage', 'sscMaxWage', 'hoursPerMonth', 'daysPerMonth']
+      ...['effectiveFrom', 'sscEmployeeRate', 'sscEmployerRate', 'sscHazardousExtra', 'sscMinWage', 'sscMaxWage', 'hoursPerMonth', 'daysPerMonth',
+        'taxPersonalExemption', 'taxDependantsExemption', 'taxNationalThreshold', 'taxNationalRate']
         .map((key) => ({
           title: t(`payroll.${key}`),
           dataIndex: key,
@@ -607,6 +648,9 @@ function SettingsTab() {
             ? formatPayrollDate(value) ?? '—'
             : key.endsWith('Wage') ? formatAmount(value) : formatQty(value),
         })),
+      { title: t('payroll.taxBrackets'), render: (_: unknown, row: Record<string, unknown>) =>
+        (row.taxBrackets as Array<{ upTo: string | null; rate: string }> | undefined)
+          ?.map((bracket) => `${bracket.upTo ?? '∞'}: ${bracket.rate}`).join(', ') ?? '—' },
     ]} />
   </>;
 }

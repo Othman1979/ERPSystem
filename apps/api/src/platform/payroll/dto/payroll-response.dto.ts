@@ -9,6 +9,9 @@ export class PayrollEmployeeDto {
   @ApiProperty({ type: 'string', nullable: true }) branchNameEn!: string | null;
   @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) currentBasicSalary!: string | null;
   @ApiProperty({ type: 'boolean' }) sscCovered!: boolean;
+  @ApiProperty({ type: 'boolean' }) taxSubject!: boolean;
+  @ApiProperty({ type: 'boolean' }) taxDependants!: boolean;
+  @ApiProperty({ type: 'string', format: 'decimal' }) taxOtherExemption!: string;
   @ApiProperty({ type: 'boolean' }) isActive!: boolean;
 }
 
@@ -29,6 +32,9 @@ export class PayrollEmployeeCreatedDto {
   @ApiProperty({ type: 'string', nullable: true }) iban!: string | null;
   @ApiProperty({ type: 'boolean' }) sscCovered!: boolean;
   @ApiProperty({ type: 'boolean' }) sscHazardous!: boolean;
+  @ApiProperty({ type: 'boolean' }) taxSubject!: boolean;
+  @ApiProperty({ type: 'boolean' }) taxDependants!: boolean;
+  @ApiProperty({ type: 'string', format: 'decimal' }) taxOtherExemption!: string;
   @ApiProperty({ type: 'boolean' }) isActive!: boolean;
   @ApiProperty({ type: 'string', format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: 'string', format: 'date-time' }) updatedAt!: string;
@@ -60,6 +66,7 @@ export class PayrollElementDto {
   @ApiProperty({ type: 'string', enum: ['FIXED', 'PER_HOUR', 'PER_DAY'] }) amountType!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) rateFactor!: string;
   @ApiProperty({ type: 'boolean' }) sscSubject!: boolean;
+  @ApiProperty({ type: 'boolean' }) taxSubject!: boolean;
   @ApiProperty({ type: 'boolean' }) isFixedAllowance!: boolean;
   @ApiProperty({ type: 'string' }) accountId!: string;
   @ApiProperty({ type: 'boolean' }) isActive!: boolean;
@@ -79,7 +86,21 @@ export class PayrollSettingsDto {
   @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) sscMaxWage!: string | null;
   @ApiProperty({ type: 'string', format: 'decimal' }) hoursPerMonth!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) daysPerMonth!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) taxPersonalExemption!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) taxDependantsExemption!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) taxNationalThreshold!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) taxNationalRate!: string;
+  @ApiProperty({ type: () => PayrollTaxBracketDto, isArray: true }) taxBrackets!: PayrollTaxBracketDto[];
   @ApiProperty({ type: 'string', format: 'date-time' }) createdAt!: string;
+}
+
+export class PayrollTaxBracketDto {
+  @ApiProperty({ type: 'string' }) id!: string;
+  @ApiProperty({ type: 'string' }) tenantId!: string;
+  @ApiProperty({ type: 'string' }) payrollSettingsId!: string;
+  @ApiProperty({ type: 'integer' }) seq!: number;
+  @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) upTo!: string | null;
+  @ApiProperty({ type: 'string', format: 'decimal' }) rate!: string;
 }
 
 export class PayrollDeletedDto {
@@ -138,6 +159,9 @@ export class PayrollEmployeeDetailDto {
   @ApiProperty({ type: 'string', nullable: true }) iban!: string | null;
   @ApiProperty({ type: 'boolean' }) sscCovered!: boolean;
   @ApiProperty({ type: 'boolean' }) sscHazardous!: boolean;
+  @ApiProperty({ type: 'boolean' }) taxSubject!: boolean;
+  @ApiProperty({ type: 'boolean' }) taxDependants!: boolean;
+  @ApiProperty({ type: 'string', format: 'decimal' }) taxOtherExemption!: string;
   @ApiProperty({ type: 'boolean' }) isActive!: boolean;
   @ApiProperty({ type: PayrollEmployeeSalaryDto, isArray: true }) salaries!: PayrollEmployeeSalaryDto[];
   @ApiProperty({ type: PayrollRecurringElementDto, isArray: true }) recurringElements!: PayrollRecurringElementDto[];
@@ -180,6 +204,9 @@ export class PayrollLineDto {
   @ApiProperty({ type: 'string', format: 'decimal' }) sscEmployee!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) sscEmployer!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) incomeTax!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) taxableIncome!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) nationalContribution!: string;
+  @ApiProperty({ type: 'boolean' }) taxManual!: boolean;
   @ApiProperty({ type: 'string', format: 'decimal' }) deductions!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) net!: string;
   @ApiProperty({ type: PayrollLineItemDto, isArray: true }) items!: PayrollLineItemDto[];
@@ -189,6 +216,7 @@ export class PayrollRunLineTaxDto {
   @ApiProperty({ type: 'string' }) id!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) incomeTax!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) net!: string;
+  @ApiProperty({ type: 'boolean' }) taxManual!: boolean;
 }
 
 export class PayrollRunDetailDto extends PayrollRunDto {

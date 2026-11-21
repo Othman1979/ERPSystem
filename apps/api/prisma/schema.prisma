@@ -451,6 +451,7 @@ model Tenant {
   employeeRecurringElements  EmployeeRecurringElement[]
   payrollMovements           PayrollMovement[]
   payrollSettings            PayrollSettings[]
+  payrollTaxBrackets         PayrollTaxBracket[]
   payrollRuns                PayrollRun[]
   payrollLines               PayrollLine[]
   payrollLineItems           PayrollLineItem[]
@@ -3490,6 +3491,9 @@ model Employee {
   costCenterId BigInt?   @map("cost_center_id") @db.UnsignedBigInt
   payMethod    PayMethod @map("pay_method")
   iban         String?   @db.VarChar(50)
+  taxSubject        Boolean  @default(true) @map("tax_subject")
+  taxDependants     Boolean  @default(false) @map("tax_dependants")
+  taxOtherExemption Decimal @default(0) @map("tax_other_exemption") @db.Decimal(18, 3)
   sscCovered   Boolean   @default(true) @map("ssc_covered")
   sscHazardous Boolean   @default(false) @map("ssc_hazardous")
   isActive     Boolean   @default(true) @map("is_active")
@@ -3540,6 +3544,7 @@ model PayElement {
   amountType PayElementAmountType @map("amount_type")
   rateFactor Decimal              @default(1) @map("rate_factor") @db.Decimal(9, 6)
   sscSubject Boolean              @default(true) @map("ssc_subject")
+  taxSubject Boolean              @default(true) @map("tax_subject")
   isFixedAllowance Boolean        @default(false) @map("is_fixed_allowance")
   accountId  BigInt               @map("account_id") @db.UnsignedBigInt
   isActive   Boolean              @default(true) @map("is_active")
@@ -3630,16 +3635,38 @@ model PayrollSettings {
   sscMaxWage        Decimal? @map("ssc_max_wage") @db.Decimal(18, 3)
   hoursPerMonth     Decimal  @map("hours_per_month") @db.Decimal(9, 2)
   daysPerMonth      Decimal  @map("days_per_month") @db.Decimal(9, 2)
+  taxPersonalExemption   Decimal @default(9000) @map("tax_personal_exemption") @db.Decimal(18, 3)
+  taxDependantsExemption Decimal @default(9000) @map("tax_dependants_exemption") @db.Decimal(18, 3)
+  taxNationalThreshold   Decimal @default(16666) @map("tax_national_threshold") @db.Decimal(18, 3)
+  taxNationalRate        Decimal @default(0.01) @map("tax_national_rate") @db.Decimal(9, 6)
   createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   company Company @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  taxBrackets PayrollTaxBracket[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, effectiveFrom])
   @@index([tenantId, companyId, effectiveFrom])
   @@map("payroll_settings")
+}
+
+model PayrollTaxBracket {
+  id               BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt   @map("tenant_id") @db.UnsignedBigInt
+  payrollSettingsId BigInt  @map("payroll_settings_id") @db.UnsignedBigInt
+  seq              Int
+  upTo             Decimal? @map("up_to") @db.Decimal(18, 3)
+  rate             Decimal  @db.Decimal(9, 6)
+
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payrollSettings PayrollSettings @relation(fields: [tenantId, payrollSettingsId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, payrollSettingsId, seq])
+  @@index([tenantId, payrollSettingsId])
+  @@map("payroll_tax_brackets")
 }
 
 model PayrollRun {
@@ -3693,6 +3720,9 @@ model PayrollLine {
   sscEmployee  Decimal  @map("ssc_employee") @db.Decimal(18, 3)
   sscEmployer  Decimal  @map("ssc_employer") @db.Decimal(18, 3)
   incomeTax    Decimal  @default(0) @map("income_tax") @db.Decimal(18, 3)
+  taxableIncome Decimal @default(0) @map("taxable_income") @db.Decimal(18, 3)
+  nationalContribution Decimal @default(0) @map("national_contribution") @db.Decimal(18, 3)
+  taxManual    Boolean  @default(false) @map("tax_manual")
   deductions   Decimal  @db.Decimal(18, 3)
   net          Decimal  @db.Decimal(18, 3)
   createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)

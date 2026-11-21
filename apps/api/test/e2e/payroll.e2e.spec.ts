@@ -1137,4 +1137,116 @@ describe('Payroll PY1–PY3', () => {
     expect(responses.map((response) => response.status)).toEqual(Array(16).fill(400));
     expect(responses.every((response) => response.body.error.code === 'VALIDATION')).toBe(true);
   });
+
+  it('withholds Jordanian income tax, preserves manual overrides, and scopes reset by tenant', async () => {
+    const period = '2040-01';
+    h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).send({
+      code: '2040',
+      startDate: '2040-01-01',
+      endDate: '2040-12-31',
+    }), 201, 'create tax fiscal year');
+    const chartProvisionedSettings = h.ok(await get(tokenA, 'payroll/settings', companyAId), 200, 'provisioned tax settings') as Array<{
+      taxBrackets: Array<{ upTo: string | null; rate: string }>;
+    }>;
+    expect(chartProvisionedSettings.some((setting) => setting.taxBrackets.length === 6)).toBe(true);
+    await post(tokenA, 'payroll/settings', { effectiveFrom: '2040-01-01' }, 'tax settings', companyAId);
+    const taxSettings = h.ok(await get(tokenA, 'payroll/settings', companyAId), 200, 'list tax settings') as Array<{
+      effectiveFrom: string; taxBrackets: Array<{ upTo: string | null; rate: string }>;
+    }>;
+    expect(taxSettings.find((setting) => setting.effectiveFrom.startsWith('2040-01-01'))?.taxBrackets).toHaveLength(6);
+    const invalidBrackets = await act(tokenA, 'payroll/settings', {
+      effectiveFrom: '2041-01-01',
+      taxBrackets: [{ upTo: '832.000', rate: '0.10' }, { upTo: '416.000', rate: '0.05' }],
+    }, companyAId);
+    expect(invalidBrackets.status).toBe(400);
+    const branch = (h.ok(await get(tokenA, 'branches', companyAId), 200, 'tax branch') as { id: string }[])[0]!;
+    const createEmployee = async (code: string, basicSalary: string, tax: Record<string, unknown> = {}) => {
+      const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+        code: `${code}-${RUN}`,
+        nameAr: code,
+        hireDate: '2040-01-01',
+        payMethod: 'CASH',
+        sscCovered: code !== 'PY7',
+        branchId: branch.id,
+        costCenterId,
+        ...tax,
+      }, code, companyAId);
+      await post(tokenA, `payroll/employees/${employee.id}/salaries`, {
+        effectiveFrom: '2040-01-01', basicSalary,
+      }, `${code} salary`, companyAId);
+      return employee;
+    };
+    const createElement = (code: string, kind: 'EARNING' | 'DEDUCTION', amountType: 'FIXED' | 'PER_DAY', allowance = false) =>
+      post<{ id: string }>(tokenA, 'payroll/elements', {
+        code: `${code}-${RUN}`, nameAr: code, kind, amountType, rateFactor: '1.000000',
+        sscSubject: false, taxSubject: true, isFixedAllowance: allowance, accountId: accounts['5201'],
+      }, `${code} element`, companyAId);
+    const bonus = await createElement('TAX-BONUS', 'EARNING', 'FIXED');
+    const absence = await createElement('TAX-ABSENCE', 'DEDUCTION', 'PER_DAY');
+    const transport = await createElement('TAX-TRANSPORT', 'EARNING', 'FIXED', true);
+    const py5 = await createEmployee('PY5', '2000.000');
+    const py6 = await createEmployee('PY6', '1200.000', { taxDependants: true });
+    const py7 = await createEmployee('PY7', '20000.000', { sscCovered: false });
+    const py7b = await createEmployee('PY7B', '20000.000', { sscCovered: false, taxOtherExemption: '2000.000' });
+    await post(tokenA, `payroll/employees/${py6.id}/recurring-elements`, {
+      payElementId: transport.id, amount: '50.000', validFrom: '2040-01-01',
+    }, 'PY6 recurring allowance', companyAId);
+    await post(tokenA, 'payroll/movements', {
+      employeeId: py5.id, payElementId: bonus.id, movementDate: '2040-01-15', amount: '500.000', description: 'Tax bonus',
+    }, 'PY5 bonus movement', companyAId);
+    await post(tokenA, 'payroll/movements', {
+      employeeId: py5.id, payElementId: absence.id, movementDate: '2040-01-16', quantity: '1', description: 'PY5 absence',
+    }, 'PY5 absence movement', companyAId);
+
+    const draft = h.ok(await act(tokenA, 'payroll/runs', { period }, companyAId), 201, 'create tax run') as { id: string };
+    const initial = h.ok(await get(tokenA, `payroll/runs/${draft.id}`, companyAId), 200, 'read tax run') as {
+      lines: Array<{ id: string; employeeId: string; taxableIncome: string; incomeTax: string; nationalContribution: string; taxManual: boolean }>;
+    };
+    const lineFor = (employeeId: string) => initial.lines.find((line) => line.employeeId === employeeId)!;
+    expect(lineFor(py5.id)).toEqual(expect.objectContaining({
+      taxableIncome: '2433.333', incomeTax: '212.833', nationalContribution: '0', taxManual: false,
+    }));
+    expect(lineFor(py6.id)).toEqual(expect.objectContaining({
+      taxableIncome: '1250', incomeTax: '0', nationalContribution: '0',
+    }));
+    expect(lineFor(py7.id)).toEqual(expect.objectContaining({
+      taxableIncome: '20000', incomeTax: '4630.34', nationalContribution: '25.84',
+    }));
+    expect(lineFor(py7b.id)).toEqual(expect.objectContaining({
+      taxableIncome: '20000', incomeTax: '4587.007', nationalContribution: '24.173',
+    }));
+
+    const py7Line = lineFor(py7.id);
+    h.ok(await h.api().patch(`/api/v1/payroll/runs/${draft.id}/lines/${py7Line.id}/income-tax`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ incomeTax: '4000.000' }), 200, 'manual tax override');
+    const recomputed = h.ok(await act(tokenA, `payroll/runs/${draft.id}/recompute`, {}, companyAId), 201, 'recompute tax run') as {
+      lines: Array<{ id: string; employeeId: string; incomeTax: string; taxManual: boolean }>;
+    };
+    expect(recomputed.lines.find((line) => line.employeeId === py7.id))
+      .toEqual(expect.objectContaining({ incomeTax: '4000', taxManual: true }));
+    const updatedLine = recomputed.lines.find((line) => line.employeeId === py7.id)!;
+    const companyB = (h.ok(await h.get(tokenB, 'companies'), 200, 'tenant B companies') as { id: string }[])[0]!;
+    const foreignReset = await h.api().delete(`/api/v1/payroll/runs/${draft.id}/lines/${updatedLine.id}/income-tax`)
+      .set(h.auth(tokenB)).set('X-Company-Id', companyB.id);
+    expect(foreignReset.status).toBe(404);
+    h.ok(await h.api().delete(`/api/v1/payroll/runs/${draft.id}/lines/${updatedLine.id}/income-tax`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId), 200, 'reset manual tax');
+    const restored = h.ok(await get(tokenA, `payroll/runs/${draft.id}`, companyAId), 200, 'read restored tax') as {
+      incomeTaxTotal: string;
+      lines: Array<{ employeeId: string; incomeTax: string; taxManual: boolean }>;
+    };
+    expect(restored.lines.find((line) => line.employeeId === py7.id))
+      .toEqual(expect.objectContaining({ incomeTax: '4630.34', taxManual: false }));
+    const posted = await act(tokenA, `payroll/runs/${draft.id}/post`, {}, companyAId);
+    h.ok(posted, 201, 'post automatic-tax run');
+    const credits = await boot.db.query(
+      `SELECT CAST(COALESCE(SUM(l.credit), 0) AS CHAR) AS tax_credit
+         FROM journal_entries j
+         JOIN journal_lines l ON l.tenant_id = j.tenant_id AND l.journal_entry_id = j.id
+        WHERE j.tenant_id = ? AND j.company_id = ? AND j.source_type = 'PAYROLL_RUN'
+          AND j.source_id = ? AND l.account_id = ?`,
+      [tenantId, companyAId, draft.id, accounts['2108']],
+    ) as Array<{ tax_credit: string }>;
+    expect(new Decimal(credits[0]?.tax_credit ?? '0').eq(restored.incomeTaxTotal)).toBe(true);
+  });
 });

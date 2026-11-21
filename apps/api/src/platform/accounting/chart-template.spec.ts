@@ -2,6 +2,7 @@ import {
   ACCOUNT_MAPPING_KEYS,
   CHART_TEMPLATE,
   DEFAULT_PAY_ELEMENTS,
+  DEFAULT_PAYROLL_TAX_BRACKETS,
   DOCUMENT_TYPE_PREFIXES,
   MAPPING_RULES,
   TEMPLATE_MAPPINGS,
@@ -105,5 +106,20 @@ describe('chart template', () => {
     expect(defaults.TRANSPORT).toBe(true);
     expect(defaults.HOUSING).toBe(true);
     expect(defaults.BONUS).toBe(false);
+  });
+
+  it('sets taxability for default payroll elements and supplies the progressive tax brackets', () => {
+    const taxSubjects = Object.fromEntries(DEFAULT_PAY_ELEMENTS.map(({ code, taxSubject }) => [code, taxSubject]));
+    expect(taxSubjects.ADVANCE_REPAYMENT).toBe(false);
+    expect(taxSubjects.PENALTY).toBe(false);
+    expect(taxSubjects.ABSENCE_DAY).toBe(true);
+    expect(DEFAULT_PAYROLL_TAX_BRACKETS.map(({ upTo, rate }) => [upTo, rate])).toEqual([
+      ['416.000', '0.050000'],
+      ['832.000', '0.100000'],
+      ['1248.000', '0.150000'],
+      ['1664.000', '0.200000'],
+      ['83333.000', '0.250000'],
+      [null, '0.300000'],
+    ]);
   });
 });

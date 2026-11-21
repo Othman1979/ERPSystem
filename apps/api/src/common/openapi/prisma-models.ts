@@ -3157,6 +3157,12 @@ export class EmployeeRow {
   @ApiProperty({ type: 'string', nullable: true })
   iban!: string | null;
   @ApiProperty({ type: 'boolean' })
+  taxSubject!: boolean;
+  @ApiProperty({ type: 'boolean' })
+  taxDependants!: boolean;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  taxOtherExemption!: string;
+  @ApiProperty({ type: 'boolean' })
   sscCovered!: boolean;
   @ApiProperty({ type: 'boolean' })
   sscHazardous!: boolean;
@@ -3206,6 +3212,8 @@ export class PayElementRow {
   rateFactor!: string;
   @ApiProperty({ type: 'boolean' })
   sscSubject!: boolean;
+  @ApiProperty({ type: 'boolean' })
+  taxSubject!: boolean;
   @ApiProperty({ type: 'boolean' })
   isFixedAllowance!: boolean;
   @ApiProperty({ type: 'string' })
@@ -3308,8 +3316,32 @@ export class PayrollSettingsRow {
   hoursPerMonth!: string;
   @ApiProperty({ type: 'string', format: 'decimal' })
   daysPerMonth!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  taxPersonalExemption!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  taxDependantsExemption!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  taxNationalThreshold!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  taxNationalRate!: string;
   @ApiProperty({ type: 'string', format: 'date-time' })
   createdAt!: string;
+}
+
+/** Scalar columns of the Prisma model `PayrollTaxBracket`, as JSON. */
+export class PayrollTaxBracketRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  tenantId!: string;
+  @ApiProperty({ type: 'string' })
+  payrollSettingsId!: string;
+  @ApiProperty({ type: 'integer' })
+  seq!: number;
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  upTo!: string | null;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  rate!: string;
 }
 
 /** Scalar columns of the Prisma model `PayrollRun`, as JSON. */
@@ -3384,6 +3416,12 @@ export class PayrollLineRow {
   sscEmployer!: string;
   @ApiProperty({ type: 'string', format: 'decimal' })
   incomeTax!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  taxableIncome!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  nationalContribution!: string;
+  @ApiProperty({ type: 'boolean' })
+  taxManual!: boolean;
   @ApiProperty({ type: 'string', format: 'decimal' })
   deductions!: string;
   @ApiProperty({ type: 'string', format: 'decimal' })
