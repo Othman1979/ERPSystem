@@ -129,6 +129,7 @@ export class LeaveController {
 
   @Post('leave-adjustments')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @RequiresIdempotencyKey()
   @ApiCreatedResponse({ type: LeaveAdjustmentResponseDto })
   createAdjustment(@Body() dto: CreateLeaveAdjustmentDto) {
     return this.leave.createAdjustment(dto);

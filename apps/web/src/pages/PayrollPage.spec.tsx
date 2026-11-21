@@ -272,6 +272,29 @@ describe('payroll page payloads and run actions', () => {
     expect(host?.textContent).not.toContain('Approve');
   });
 
+  it('sends an idempotency key when approving a leave request', async () => {
+    api.listLeaveTypes.mockResolvedValue(response([{
+      id: 'leave-type-1', code: 'ANNUAL', nameAr: 'سنوية', nameEn: 'Annual', category: 'ANNUAL',
+      countBasis: 'WORKING_DAYS', isActive: true,
+    }]));
+    api.listLeaveRequests.mockResolvedValue(response([{
+      id: 'leave-request-1', employeeId: employee.id, employeeName: employee.nameAr,
+      leaveTypeId: 'leave-type-1', leaveTypeCode: 'ANNUAL', leaveTypeNameAr: 'سنوية', leaveTypeNameEn: 'Annual',
+      startDate: '2026-03-02', endDate: '2026-03-03', days: '2.00', calendarDays: 2, hospitalised: false,
+      status: 'SUBMITTED',
+    }]));
+    await mount('/payroll?tab=leave');
+    const approve = i18n.t('payroll.approveLeave');
+    await until(() => expect(
+      [...(host?.querySelectorAll('button') ?? [])].some((button) => button.textContent?.includes(approve)),
+    ).toBe(true));
+    act(() => [...host!.querySelectorAll('button')].find((button) => button.textContent?.includes(approve))!.click());
+    await until(() => expect(api.approveLeave).toHaveBeenCalledTimes(1));
+    expect(api.approveLeave).toHaveBeenCalledWith('leave-request-1', {
+      headers: { 'Idempotency-Key': expect.any(String) },
+    });
+  });
+
   it('offers only active fixed earning elements for recurring allowances', async () => {
     api.listElements.mockResolvedValue(response([
       { id: 'fixed-earning', nameAr: 'بدل النقل', nameEn: 'Transport allowance', kind: 'EARNING', amountType: 'FIXED', isFixedAllowance: true, isActive: true },

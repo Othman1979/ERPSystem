@@ -1385,15 +1385,16 @@ describe('Leave endpoints', () => {
     expect(balancesA.length).toBeGreaterThan(0);
     expect(await get(tokenB, `payroll/leave-balances?year=2031&employeeId=${employee.id}`, companyBId)).toMatchObject({ status: 200, body: [] });
 
-    await post(tokenA, 'payroll/leave-adjustments', {
-      employeeId: employee.id, leaveTypeId: annual.id, year: '2031', days: '1.00', reason: 'Test adjustment',
-    }, 'create leave adjustment', companyAId);
+    h.ok(await h.api().post('/api/v1/payroll/leave-adjustments').set(h.auth(tokenA)).set('X-Company-Id', companyAId)
+      .set('Idempotency-Key', `leave-adjustment-${RUN}`).send({
+        employeeId: employee.id, leaveTypeId: annual.id, year: '2031', days: '1.00', reason: 'Test adjustment',
+      }), 201, 'create leave adjustment');
     const adjustmentsA = h.ok(await get(tokenA, `payroll/leave-adjustments?year=2031&employeeId=${employee.id}`, companyAId), 200, 'tenant A adjustments') as Array<{ employeeId: string }>;
     expect(adjustmentsA).toHaveLength(1);
     expect(await get(tokenB, 'payroll/leave-adjustments?year=2031', companyBId)).toMatchObject({ status: 200, body: [] });
-    expect((await act(tokenB, 'payroll/leave-adjustments', {
-      employeeId: employee.id, leaveTypeId: annual.id, year: '2031', days: '1', reason: 'Foreign',
-    }, companyBId)).status).toBe(404);
+    expect((await h.api().post('/api/v1/payroll/leave-adjustments').set(h.auth(tokenB)).set('X-Company-Id', companyBId)
+      .set('Idempotency-Key', `foreign-adjustment-${RUN}`)
+      .send({ employeeId: employee.id, leaveTypeId: annual.id, year: '2031', days: '1', reason: 'Foreign' })).status).toBe(404);
 
     const rejectRequest = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
       ...requestBody, startDate: '2031-03-10', endDate: '2031-03-11',

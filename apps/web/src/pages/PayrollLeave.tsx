@@ -35,6 +35,7 @@ import { DatePicker } from '../components/DatePicker';
 import { EnterNav } from '../components/EnterNav';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { GridSelect } from '../components/GridSelect';
+import { idemHeaders } from '../idempotency';
 
 type DateValue = Dayjs | string | null | undefined;
 const dateText = (value: DateValue) => dayjs.isDayjs(value) ? value.format('YYYY-MM-DD') : typeof value === 'string' ? value.slice(0, 10) : undefined;
@@ -93,9 +94,10 @@ function RequestsTab() {
   });
   const action = useMutation({
     mutationFn: async ({ id, action: actionName }: { id: string; action: 'approve' | 'reject' | 'cancel' }) => {
-      if (actionName === 'approve') return leaveControllerApprove(id);
-      if (actionName === 'reject') return leaveControllerReject(id);
-      return leaveControllerCancel(id);
+      const options = { headers: idemHeaders() };
+      if (actionName === 'approve') return leaveControllerApprove(id, options);
+      if (actionName === 'reject') return leaveControllerReject(id, options);
+      return leaveControllerCancel(id, options);
     },
     onSuccess: invalidate,
     onError: () => message.error(t('payroll.saveError')),
@@ -169,7 +171,7 @@ function BalancesTab() {
       year: String(values.year),
       days: values.days as string,
       reason: values.reason as string,
-    }),
+    }, { headers: idemHeaders() }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['payroll', 'leaveBalances'] });
       void queryClient.invalidateQueries({ queryKey: ['payroll', 'leaveAdjustments'] });
