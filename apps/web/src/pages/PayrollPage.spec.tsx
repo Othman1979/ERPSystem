@@ -176,7 +176,12 @@ const run = {
 };
 
 it('hides the employee branch column when the company has one branch', () => {
-  expect(employeeBranchColumnVisible(1, [{ branchNameAr: 'الفرع الرئيسي', branchNameEn: 'Main branch' }])).toBe(false);
+  expect(employeeBranchColumnVisible(['الفرع الرئيسي'], [{ branchNameAr: 'الفرع الرئيسي', branchNameEn: 'Main branch' }])).toBe(false);
+});
+
+it('shows the employee branch column when an employee is on another (inactive) branch', () => {
+  expect(employeeBranchColumnVisible(['الفرع الرئيسي'], [{ branchNameAr: 'فرع العقبة', branchNameEn: null }])).toBe(true);
+  expect(employeeBranchColumnVisible(['أ', 'ب'], [{ branchNameAr: null, branchNameEn: null }])).toBe(false);
 });
 
 function deferred<T>() {

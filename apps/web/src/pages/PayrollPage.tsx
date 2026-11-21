@@ -215,11 +215,15 @@ function usePayrollData() {
   return { employees, elements };
 }
 
+// Hidden only when every assigned employee is on the company's single available branch.
 export function employeeBranchColumnVisible(
-  branchCount: number,
+  branchNamesAr: string[],
   employees: Array<Pick<PayrollEmployeeDto, 'branchNameAr' | 'branchNameEn'>> | undefined,
 ): boolean {
-  return branchCount > 1 && !!employees?.some((employee) => employee.branchNameAr || employee.branchNameEn);
+  const assigned = (employees ?? []).filter((employee) => employee.branchNameAr || employee.branchNameEn);
+  if (assigned.length === 0) return false;
+  if (branchNamesAr.length > 1) return true;
+  return assigned.some((employee) => employee.branchNameAr !== branchNamesAr[0]);
 }
 
 function EmployeesTab() {
@@ -294,7 +298,7 @@ function EmployeesTab() {
     <Table rowKey="id" loading={employees.isLoading} dataSource={employees.data as PayrollEmployeeDto[] | undefined} locale={tableLocale(employees, can(PERMISSIONS.PAYROLL_MANAGE) ? <EmptyCta description={t('common.emptyCta.employee')} actionLabel={t('payroll.addEmployee')} onClick={() => void start()} /> : t('common.noResults'))} onRow={(row) => ({ onDoubleClick: () => void start(row) })} columns={[
       { title: t('payroll.code'), dataIndex: 'code' },
       { title: t('payroll.employee'), render: (_, row: PayrollEmployeeDto) => i18n.language === 'en' ? row.nameEn ?? row.nameAr : row.nameAr },
-      ...(employeeBranchColumnVisible(branchOptions.length, employees.data as PayrollEmployeeDto[] | undefined)
+      ...(employeeBranchColumnVisible(me?.currentMembership?.branches.map((branch) => branch.nameAr) ?? [], employees.data as PayrollEmployeeDto[] | undefined)
         ? [{
             title: t('payroll.branch'),
             render: (_: unknown, row: PayrollEmployeeDto) =>
