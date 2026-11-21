@@ -1804,7 +1804,7 @@ export class PayrollService {
     return runs.map((run) => this.runDto(run));
   }
 
-  async getRun(idOrPeriod: string, byPeriod = false) {
+  async getRun(idOrPeriod: string, byPeriod = false, language: 'ar' | 'en' = 'en') {
     const { db } = this.context();
     const run = await db.payrollRun.findFirst({
       where: byPeriod ? { period: idOrPeriod } : { id: BigInt(idOrPeriod) },
@@ -1812,7 +1812,13 @@ export class PayrollService {
         lines: {
           include: {
             employee: { select: { nameAr: true } },
-            items: { select: { description: true, kind: true, amount: true, quantity: true, rate: true, payrollMovementId: true, leaveRequestId: true } },
+            items: {
+              select: {
+                description: true, kind: true, amount: true, quantity: true, rate: true,
+                payrollMovementId: true, leaveRequestId: true,
+                payElement: { select: { nameAr: true, nameEn: true } },
+              },
+            },
           },
           orderBy: [{ employeeId: 'asc' }],
         },
@@ -1841,7 +1847,9 @@ export class PayrollService {
         leaveProvision: line.leaveProvision.toString(),
         eosProvision: line.eosProvision.toString(),
         items: line.items.map((item) => ({
-          description: item.description,
+          description: language === 'ar'
+            ? item.payElement?.nameAr ?? item.description
+            : item.payElement?.nameEn ?? item.payElement?.nameAr ?? item.description,
           kind: item.kind,
           amount: item.amount.toString(),
           quantity: item.quantity?.toString() ?? null,

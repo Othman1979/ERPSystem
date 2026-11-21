@@ -186,8 +186,8 @@ export class PayrollController {
   @Get('runs/:id')
   @RequirePermission(PERMISSIONS.PAYROLL_VIEW)
   @ApiOkResponse({ type: PayrollRunDetailDto })
-  getRun(@Param('id') id: string) {
-    return this.payroll.getRun(id);
+  getRun(@Param('id') id: string, @Query('lang') lang?: string) {
+    return this.payroll.getRun(id, false, lang === 'ar' ? 'ar' : 'en');
   }
 
   @Delete('runs/:id')
@@ -340,10 +340,10 @@ export class PayrollController {
   @RequirePermission(PERMISSIONS.PAYROLL_VIEW)
   @ApiFileResponse(['application/pdf'])
   async payslip(@Param('id') id: string, @Param('lineId') lineId: string, @Query('lang') lang?: string) {
-    const run = await this.payroll.getRun(id);
+    const language = lang === 'en' ? 'en' : 'ar';
+    const run = await this.payroll.getRun(id, false, language);
     const line = run.lines.find((item) => item.id === lineId);
     if (!line) throw DomainError.notFound('PayrollLine', lineId);
-    const language = lang === 'en' ? 'en' : 'ar';
     return this.printing.exportDocument({
       title: language === 'ar' ? 'قسيمة راتب' : 'Payslip',
       docNo: run.runNo,
