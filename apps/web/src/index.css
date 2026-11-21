@@ -159,6 +159,10 @@ textarea:focus-visible,
   flex: 0 0 auto;
 }
 
+.branding-display-compact .branding-logo {
+  max-width: 72px;
+}
+
 .branding-logo {
   display: block;
   width: auto;
@@ -206,6 +210,7 @@ textarea:focus-visible,
   text-overflow: ellipsis;
   min-width: 0;
   flex: 1;
+  flex-shrink: 1;
 }
 
 .topbar-user {
