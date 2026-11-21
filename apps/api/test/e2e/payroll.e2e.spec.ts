@@ -1755,12 +1755,19 @@ describe('Leave payroll effects and provision', () => {
     const annualType = (h.ok(await get(token, 'payroll/leave-types', company.id), 200, 'clipped annual type') as Array<{
       id: string; code: string;
     }>).find((type) => type.code === 'ANNUAL')!;
-    for (const [startDate, endDate] of [['2026-11-30', '2026-12-02'], ['2026-12-28', '2026-12-31']]) {
-      const request = await post<{ id: string }>(token, 'payroll/leave-requests', {
-        employeeId: employee.id, leaveTypeId: annualType.id, startDate, endDate, hospitalised: false,
-      }, 'create clipped annual request', company.id);
-      h.ok(await act(token, `payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve clipped annual request');
-    }
+    const firstRequest = await post<{ id: string }>(token, 'payroll/leave-requests', {
+      employeeId: employee.id, leaveTypeId: annualType.id,
+      startDate: '2026-11-30', endDate: '2026-12-02', hospitalised: false,
+    }, 'create clipped annual request', company.id);
+    h.ok(await act(token, `payroll/leave-requests/${firstRequest.id}/approve`, {}, company.id), 200, 'approve clipped annual request');
+    await post(token, 'payroll/holidays', {
+      date: '2026-12-02', nameAr: 'Holiday added after approval',
+    }, 'add holiday after annual approval', company.id);
+    const secondRequest = await post<{ id: string }>(token, 'payroll/leave-requests', {
+      employeeId: employee.id, leaveTypeId: annualType.id,
+      startDate: '2026-12-28', endDate: '2026-12-31', hospitalised: false,
+    }, 'create second clipped annual request', company.id);
+    h.ok(await act(token, `payroll/leave-requests/${secondRequest.id}/approve`, {}, company.id), 200, 'approve second clipped annual request');
     const postAndReadProvision = async (period: string) => {
       const draft = h.ok(await act(token, 'payroll/runs', { period }, company.id), 201, `${period} clipped run`) as { id: string };
       await post(token, `payroll/runs/${draft.id}/post`, {}, `post ${period} clipped run`, company.id);

@@ -1097,7 +1097,7 @@ export class PayrollService {
                 status: 'APPROVED',
                 startDate: { lte: periodEnd },
               },
-              select: { employeeId: true, startDate: true, endDate: true },
+              select: { employeeId: true, startDate: true, endDate: true, days: true },
             }),
             tx.leaveBalanceAdjustment.findMany({
               where: { employeeId: { in: employeesWithLines }, leaveTypeId: annualLeaveType.id, year: { lte: year } },
@@ -1141,13 +1141,15 @@ export class PayrollService {
               const endDate = request.endDate < periodEnd ? request.endDate : periodEnd;
               if (endDate >= startDate) {
                 const settings = leaveSettings.filter((setting) => setting.effectiveFrom <= endDate).at(-1);
-                const days = countLeaveDays({
-                  startDate,
-                  endDate,
-                  countBasis: annualLeaveType.countBasis,
-                  weeklyRestDays: (settings?.weeklyRestDays ?? '5').split(',').map(Number),
-                  holidays: leaveHolidays.map((holiday) => holiday.date),
-                }).days;
+                const days = request.endDate <= periodEnd
+                  ? request.days
+                  : countLeaveDays({
+                      startDate,
+                      endDate,
+                      countBasis: annualLeaveType.countBasis,
+                      weeklyRestDays: (settings?.weeklyRestDays ?? '5').split(',').map(Number),
+                      holidays: leaveHolidays.map((holiday) => holiday.date),
+                    }).days;
                 taken.set(requestYear, (taken.get(requestYear) ?? new Decimal(0)).plus(days));
               }
             }
