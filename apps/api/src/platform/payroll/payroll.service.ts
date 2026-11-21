@@ -1758,7 +1758,7 @@ export class PayrollService {
   }
 
   private runDto(run: {
-    id: bigint; period: string; runDate: Date; status: string; runNo: string | null; basicTotal: Decimal; earningsTotal: Decimal;
+    id: bigint; period: string; runDate: Date; status: string; runNo: string | null; leaveProvisionEntryId: bigint | null; basicTotal: Decimal; earningsTotal: Decimal;
     grossTotal: Decimal; sscBaseTotal: Decimal; sscEmployeeTotal: Decimal; sscEmployerTotal: Decimal;
     incomeTaxTotal: Decimal; deductionsTotal: Decimal; netTotal: Decimal;
   }) {
@@ -1768,6 +1768,7 @@ export class PayrollService {
       runDate: run.runDate.toISOString().slice(0, 10),
       status: run.status,
       runNo: run.runNo,
+      leaveProvisionEntryId: run.leaveProvisionEntryId?.toString() ?? null,
       basicTotal: run.basicTotal.toString(),
       earningsTotal: run.earningsTotal.toString(),
       grossTotal: run.grossTotal.toString(),

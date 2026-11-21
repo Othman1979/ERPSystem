@@ -181,6 +181,7 @@ export class PayrollRunDto {
   @ApiProperty({ type: 'string', format: 'date' }) runDate!: string;
   @ApiProperty({ type: 'string', enum: ['DRAFT', 'POSTED', 'PAID', 'REVERSED'] }) status!: string;
   @ApiProperty({ type: 'string', nullable: true }) runNo!: string | null;
+  @ApiProperty({ type: 'string', nullable: true }) leaveProvisionEntryId!: string | null;
   @ApiProperty({ type: 'string', format: 'decimal' }) basicTotal!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) earningsTotal!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) grossTotal!: string;
