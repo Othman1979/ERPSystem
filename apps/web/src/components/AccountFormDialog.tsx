@@ -145,8 +145,23 @@ export function AccountFormDialog({
     },
     onSuccess: (created) => {
       apiMessage.success(t('common.saved'));
-      if ('movedLinks' in created && Object.values(created.movedLinks).some((count) => count > 0)) {
-        apiMessage.info(t('accounts.linksMoved', { ...created.movedLinks }));
+      if ('movedLinks' in created) {
+        const { movedLinks } = created;
+        if (Object.values(movedLinks).some((count) => count > 0)) {
+          apiMessage.info(t('accounts.linksMoved', { ...movedLinks }));
+        }
+        if (movedLinks.mappings > 0) {
+          void queryClient.invalidateQueries({ queryKey: ['account-mappings'] });
+        }
+        if (movedLinks.cashBoxes > 0) {
+          void queryClient.invalidateQueries({ queryKey: ['cash-boxes'] });
+          void queryClient.invalidateQueries({ queryKey: ['payroll', 'cashBoxes'] });
+        }
+        if (movedLinks.bankAccounts > 0) {
+          void queryClient.invalidateQueries({ queryKey: ['bank-accounts'] });
+          void queryClient.invalidateQueries({ queryKey: ['treasury-bank-accounts'] });
+          void queryClient.invalidateQueries({ queryKey: ['payroll', 'bankAccounts'] });
+        }
       }
       void queryClient.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
       onSaved(created);
@@ -160,6 +175,18 @@ export function AccountFormDialog({
       if (reason === 'CODE_PREFIX') {
         apiMessage.error(
           t('accounts.errors.codePrefix', { parentCode: String(err.details?.parentCode ?? '') }),
+        );
+        return;
+      }
+      if (err.code === 'VALIDATION' && reason === 'LINKS_NEED_POSTABLE_CHILD') {
+        apiMessage.error(
+          t('accounts.errors.linksNeedPostableChild', { parentCode: String(err.details?.parentCode ?? '') }),
+        );
+        return;
+      }
+      if (err.code === 'VALIDATION' && reason === 'MAPPING_RULE') {
+        apiMessage.error(
+          t('accounts.errors.mappingRule', { mappingKey: String(err.details?.mappingKey ?? '') }),
         );
         return;
       }

@@ -74,13 +74,13 @@ afterEach(() => {
 
 const settle = (ms = 60) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
 
-async function renderDialog() {
+async function renderDialog(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
   act(() =>
     root!.render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <QueryClientProvider client={queryClient}>
         <AntApp>
           <AccountFormDialog
             open
@@ -93,6 +93,7 @@ async function renderDialog() {
     ),
   );
   await settle();
+  return queryClient;
 }
 
 function childCodeInput(): HTMLInputElement {
@@ -131,5 +132,29 @@ describe('AccountFormDialog child codes', () => {
     expect(createAccount).toHaveBeenCalled();
     const body = createAccount.mock.calls[0][0] as { code?: string; parentId?: string };
     expect(body).toMatchObject({ code: undefined, parentId: '1' });
+  });
+
+  it('invalidates mappings when a mapping link moves', async () => {
+    createAccount.mockResolvedValue({
+      data: {
+        id: '2',
+        code: '1102-01',
+        movedLinks: { mappings: 1, cashBoxes: 0, bankAccounts: 0, payElements: 0 },
+      },
+      status: 201,
+      headers: new Headers(),
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
+    await renderDialog(queryClient);
+    const save = [...document.querySelectorAll<HTMLButtonElement>('.ant-modal button')].find((button) =>
+      button.textContent?.includes(i18n.t('common.save')),
+    )!;
+    act(() => save.click());
+    await settle();
+
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['account-mappings'] });
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['cash-boxes'] });
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['bank-accounts'] });
   });
 });

@@ -374,6 +374,8 @@ export const ar = {
       hasLines: 'لا يمكن تحويل الحساب إلى مجموعة لأنه يحتوي على قيود يومية.',
       usedInDocuments: 'لا يمكن تحويل الحساب إلى مجموعة لأنه مستخدم في المستندات التالية: {{documents}}.',
       codePrefix: 'يجب أن يبدأ رمز الحساب الفرعي برمز الحساب الأب ({{parentCode}}) وأن يكون أطول منه.',
+      linksNeedPostableChild: 'يجب أن يكون الحساب الفرعي قابلاً للترحيل لنقل روابط الإعدادات من الحساب الأب {{parentCode}}.',
+      mappingRule: 'خصائص الحساب الفرعي لا تتوافق مع قواعد ربط الحساب {{mappingKey}}.',
     },
     documentTypes: {
       payments: 'سندات الصرف',
@@ -2783,6 +2785,8 @@ export const en: typeof ar = {
       hasLines: 'This account has journal lines and cannot become a group.',
       usedInDocuments: 'This account is referenced by these documents and cannot become a group: {{documents}}.',
       codePrefix: 'The child code must start with the parent code ({{parentCode}}) and be longer.',
+      linksNeedPostableChild: 'The child account must be postable to receive configuration links from parent {{parentCode}}.',
+      mappingRule: 'The child account does not meet the rules for the {{mappingKey}} mapping.',
     },
     documentTypes: {
       payments: 'Payments',
