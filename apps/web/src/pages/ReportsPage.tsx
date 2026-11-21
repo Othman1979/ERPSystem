@@ -36,6 +36,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import { useCostCenters } from '../hooks/useCostCenters';
 import { useAuth } from '../auth/AuthContext';
 import { useKeysetQuery } from '../hooks/useKeysetQuery';
+import { isReportTabAvailable } from './reports/reportAccess';
 
 /** Opening / movement / closing, each debit and credit (ADR-008). */
 const TB_COLUMNS = [
@@ -55,11 +56,6 @@ const STATEMENT_PAGE_LIMIT = 100;
  * branch. The API refuses them otherwise, so their tabs are hidden and their
  * queries never run for a branch-scoped member.
  */
-const COMPANY_WIDE_TABS = new Set(['tb', 'is', 'bs', 'cf', 'gl', 'cc']);
-
-
-
-
 export function ReportsPage() {
   const { t } = useTranslation();
   const { allBranches } = useAuth();
@@ -433,7 +429,7 @@ export function ReportsPage() {
 
   // A branch-scoped member sees only the branch reports; a hidden or unknown
   // tab (e.g. ?tab=gl from a shortcut) falls back to the first visible one.
-  const visibleTabs = (allTabs ?? []).filter((item) => allBranches || !COMPANY_WIDE_TABS.has(String(item.key)));
+  const visibleTabs = (allTabs ?? []).filter((item) => isReportTabAvailable(String(item.key), allBranches));
   const activeTab = visibleTabs.some((item) => item.key === tab) ? tab : String(visibleTabs[0]?.key ?? 'statement');
 
   return (

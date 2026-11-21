@@ -8,11 +8,12 @@ import type { DashboardSummaryDto } from '@erp/api-client';
 import i18n from '../i18n';
 import { HomeDashboard, MonthlyBars } from './HomeDashboard';
 
-const mocks = vi.hoisted(() => ({ tenantRead: true, summary: null as unknown }));
+const mocks = vi.hoisted(() => ({ tenantRead: true, allBranches: true, summary: null as unknown }));
 
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({
     can: (permission: string) => permission === 'reports.view' || (permission === 'tenant.read' && mocks.tenantRead),
+    allBranches: mocks.allBranches,
   }),
 }));
 
@@ -83,6 +84,7 @@ async function until(check: () => void): Promise<void> {
 beforeEach(async () => {
   await i18n.changeLanguage('en');
   mocks.tenantRead = true;
+  mocks.allBranches = true;
   mocks.summary = summary;
 });
 
@@ -109,5 +111,16 @@ describe('home dashboard blocks', () => {
     expect(container.textContent).not.toContain(i18n.t('dashboard.receivablesAging'));
     expect(container.textContent).not.toContain(i18n.t('dashboard.chequesDue'));
     expect(container.textContent).not.toContain(i18n.t('dashboard.pendingDrafts'));
+  });
+
+  it('renders cash accounts as plain text when the general-ledger tab is unavailable', async () => {
+    mocks.allBranches = false;
+    await mount(<HomeDashboard />);
+    await until(() => expect(container.querySelector('.home-cash-row')).not.toBeNull());
+
+    const row = container.querySelector('.home-cash-row');
+    expect(row?.tagName).toBe('DIV');
+    expect(row?.textContent).toContain('Cash');
+    expect(container.querySelector('a.home-cash-row[href*="accountId=1"]')).toBeNull();
   });
 });

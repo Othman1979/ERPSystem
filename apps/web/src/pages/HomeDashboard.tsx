@@ -16,6 +16,7 @@ import { Num } from '../components/Num';
 import { dec, formatAmount, formatQty } from '../format/number';
 import { codeAndName } from '../i18n/displayName';
 import { palette } from '../theme';
+import { isReportTabAvailable } from './reports/reportAccess';
 
 /** Items listed on the card; the rest are counted. */
 const SHOWN_ITEMS = 3;
@@ -83,21 +84,40 @@ function DashboardPanel({ title, to, children }: { title: string; to?: string; c
   );
 }
 
-function CashBankPanel({ accounts, total }: { accounts: CashBankAccount[]; total: string }) {
+function CashBankPanel({
+  accounts,
+  total,
+  canOpenStatement,
+}: {
+  accounts: CashBankAccount[];
+  total: string;
+  canOpenStatement: boolean;
+}) {
   const { t } = useTranslation();
   return (
     <DashboardPanel title={t('dashboard.cashBank')}>
       <div className="home-cash-rows">
-        {accounts.map((account) => (
-          <Link
-            key={account.accountId}
-            className="home-cash-row"
-            to={`/reports?tab=gl&accountId=${encodeURIComponent(account.accountId)}`}
-          >
-            <span>{codeAndName(account)}</span>
-            <Num>{formatAmount(account.balance)}</Num>
-          </Link>
-        ))}
+        {accounts.map((account) => {
+          const content = (
+            <>
+              <span>{codeAndName(account)}</span>
+              <Num>{formatAmount(account.balance)}</Num>
+            </>
+          );
+          return canOpenStatement ? (
+            <Link
+              key={account.accountId}
+              className="home-cash-row"
+              to={`/reports?tab=gl&accountId=${encodeURIComponent(account.accountId)}`}
+            >
+              {content}
+            </Link>
+          ) : (
+            <div key={account.accountId} className="home-cash-row">
+              {content}
+            </div>
+          );
+        })}
       </div>
       <div className="home-cash-total">
         <span>{t('dashboard.cashBankTotal')}</span>
@@ -139,8 +159,9 @@ function StatCard({
 /** Short dashboard on the home screen (Phase 8): today's and the month's sales, receivables, low stock. */
 export function HomeDashboard() {
   const { t } = useTranslation();
-  const { can } = useAuth();
+  const { can, allBranches } = useAuth();
   const canReadModules = can(PERMISSIONS.TENANT_READ);
+  const canOpenCashBankStatement = isReportTabAvailable('gl', allBranches);
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: ({ signal }) => reportsControllerDashboardSummary({}, { signal }).then((r) => r.data),
@@ -228,7 +249,11 @@ export function HomeDashboard() {
             <MonthlyBars monthly={data.monthly} />
           </DashboardPanel>
           {canReadModules && data.cashBank && data.cashBankTotal !== null && (
-            <CashBankPanel accounts={data.cashBank} total={data.cashBankTotal} />
+            <CashBankPanel
+              accounts={data.cashBank}
+              total={data.cashBankTotal}
+              canOpenStatement={canOpenCashBankStatement}
+            />
           )}
           {canReadModules && data.receivablesAging && (
             <DashboardPanel title={t('dashboard.receivablesAging')} to="/reports?tab=aging">
