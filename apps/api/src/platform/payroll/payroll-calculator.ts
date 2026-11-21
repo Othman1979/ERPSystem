@@ -154,7 +154,7 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
   });
   const prorate = (amount: Decimal) => proration.fullPeriod
     ? amount
-    : round3(amount.mul(proration.activeDays).div(input.settings.daysPerMonth));
+    : round3(amount.mul(Decimal.min(new Decimal(proration.activeDays).div(input.settings.daysPerMonth), 1)));
   const basic = prorate(fullBasic);
   const hourlyRate = round6(fullBasic.div(input.settings.hoursPerMonth));
   const dailyRate = round6(fullBasic.div(input.settings.daysPerMonth));

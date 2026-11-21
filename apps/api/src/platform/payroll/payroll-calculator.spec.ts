@@ -196,6 +196,16 @@ describe('calculatePayroll', () => {
       .toEqual(['340', '22.667', '362.667']);
   });
 
+  it('caps a partial-month ratio at one when active days exceed configured days per month', () => {
+    const result = calculatePayroll({
+      ...base,
+      salary: '3000.000',
+      employee: { ...base.employee, hireDate: new Date('2026-01-04T00:00:00Z') },
+      settings: { ...base.settings, daysPerMonth: '26' },
+    })!;
+    expect(result.basic.toString()).toBe('3000');
+  });
+
   it('clamps covered employees to minimum wage and adds hazardous employer rate', () => {
     const result = calculatePayroll({
       ...base,
