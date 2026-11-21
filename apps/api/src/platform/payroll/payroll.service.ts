@@ -899,7 +899,7 @@ export class PayrollService {
       orderBy: [{ id: 'asc' }],
     });
     const holidays = await tx.publicHoliday.findMany({
-      where: { date: { gte: start, lte: end } },
+      where: { date: { lte: end } },
       select: { date: true },
     });
     const employeeIds = employees.map((employee) => employee.id);
@@ -1018,7 +1018,23 @@ export class PayrollService {
         for (const request of annualRequests) {
           if (request.employeeId === employee.id) {
             const requestYear = request.startDate.getUTCFullYear();
-            taken.set(requestYear, (taken.get(requestYear) ?? new Decimal(0)).plus(request.days));
+            const yearStart = new Date(Date.UTC(requestYear, 0, 1));
+            const startDate = request.startDate > yearStart ? request.startDate : yearStart;
+            const cutoff = employee.leaveDate && employee.leaveDate < end ? employee.leaveDate : end;
+            const endDate = request.endDate < cutoff ? request.endDate : cutoff;
+            if (endDate >= startDate) {
+              const leaveSetting = leaveSettings.filter((row) => row.effectiveFrom <= endDate).at(-1);
+              const days = request.endDate <= cutoff
+                ? request.days
+                : countLeaveDays({
+                    startDate,
+                    endDate,
+                    countBasis: annualLeaveType.countBasis,
+                    weeklyRestDays: (leaveSetting?.weeklyRestDays ?? settings.weeklyRestDays).split(',').map(Number),
+                    holidays: holidays.map((holiday) => holiday.date),
+                  }).days;
+              taken.set(requestYear, (taken.get(requestYear) ?? new Decimal(0)).plus(days));
+            }
           }
         }
         for (let balanceYear = startYear; balanceYear < year; balanceYear++) {
@@ -1331,10 +1347,13 @@ export class PayrollService {
               const requestYear = request.startDate.getUTCFullYear();
               const yearStart = new Date(Date.UTC(requestYear, 0, 1));
               const startDate = request.startDate > yearStart ? request.startDate : yearStart;
-              const endDate = request.endDate < periodEnd ? request.endDate : periodEnd;
+              const cutoff = line.employee.leaveDate && line.employee.leaveDate < periodEnd
+                ? line.employee.leaveDate
+                : periodEnd;
+              const endDate = request.endDate < cutoff ? request.endDate : cutoff;
               if (endDate >= startDate) {
                 const settings = leaveSettings.filter((setting) => setting.effectiveFrom <= endDate).at(-1);
-                const days = request.endDate <= periodEnd
+                const days = request.endDate <= cutoff
                   ? request.days
                   : countLeaveDays({
                       startDate,

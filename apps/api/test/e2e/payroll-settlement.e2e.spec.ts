@@ -332,6 +332,23 @@ describe('Phase 28C payroll settlements', () => {
     }));
   });
 
+  it('clips approved annual leave usage at the departure date for encashment', async () => {
+    const company = await createCompany('CLIP-LEAVE', true);
+    const baseline = await employee(company, 'CLIP-BASE', '2020-01-01', '2026-12-10', '1000.000', false);
+    const withLeave = await employee(company, 'CLIP-REQUEST', '2020-01-01', '2026-12-10', '1000.000', false);
+    const annual = (h.ok(await get('payroll/leave-types', company.id), 200, 'annual leave type for departure clipping') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'ANNUAL')!;
+    const request = await post<{ id: string }>('payroll/leave-requests', {
+      employeeId: withLeave.id, leaveTypeId: annual.id, startDate: '2026-12-08', endDate: '2026-12-20',
+    }, company.id, 'create annual leave crossing departure date');
+    h.ok(await act(`payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve annual leave crossing departure date');
+    const december = await run(company.id, '2026-12');
+    const encashment = (employeeId: string) => employeeLine(december, employeeId).items
+      .find((item) => item.description === 'Unused leave encashment')!.amount;
+    expect(new Decimal(encashment(baseline.id)).minus(encashment(withLeave.id)).toFixed(3)).toBe('100.000');
+  });
+
   it('prorates EN1, encashes annual leave, releases leave provision, and refuses settlement for SSC staff', async () => {
     const company = await createCompany('EN1', true);
     const leaver = await employee(company, 'EN1', '2026-07-01', '2026-09-20', '600.000', true, '40.000');
