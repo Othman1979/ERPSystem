@@ -15,31 +15,31 @@ const LOCK_TOKEN_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9
 
 const DOCUMENTS: Record<
   DocumentLockDocType,
-  { table: string; managePermission: string; readPermission: string }
+  { table: string; editPermission: string; readPermission: string }
 > = {
   JOURNAL_ENTRY: {
     table: 'journal_entries',
-    managePermission: PERMISSIONS.JOURNAL_MANAGE,
+    editPermission: PERMISSIONS.JOURNAL_POST,
     readPermission: PERMISSIONS.TENANT_READ,
   },
   RECEIPT: {
     table: 'receipts',
-    managePermission: PERMISSIONS.TREASURY_MANAGE,
+    editPermission: PERMISSIONS.TREASURY_MANAGE,
     readPermission: PERMISSIONS.TENANT_READ,
   },
   PAYMENT: {
     table: 'payments',
-    managePermission: PERMISSIONS.TREASURY_MANAGE,
+    editPermission: PERMISSIONS.TREASURY_MANAGE,
     readPermission: PERMISSIONS.TENANT_READ,
   },
   SALES_INVOICE: {
     table: 'sales_invoices',
-    managePermission: PERMISSIONS.SALES_MANAGE,
+    editPermission: PERMISSIONS.SALES_MANAGE,
     readPermission: PERMISSIONS.TENANT_READ,
   },
   PURCHASE_INVOICE: {
     table: 'purchase_invoices',
-    managePermission: PERMISSIONS.PURCHASE_MANAGE,
+    editPermission: PERMISSIONS.PURCHASE_MANAGE,
     readPermission: PERMISSIONS.TENANT_READ,
   },
 };
@@ -74,7 +74,7 @@ export class DocumentLocksService {
 
   async acquire(docType: DocumentLockDocType, docId: bigint, token?: string) {
     const { tenantId, companyId, userId, permissions } = this.context();
-    this.requirePermission(permissions, DOCUMENTS[docType].managePermission);
+    this.requirePermission(permissions, DOCUMENTS[docType].editPermission);
     const holderToken = this.requireToken(token);
 
     return this.withRetry(() =>
@@ -129,7 +129,7 @@ export class DocumentLocksService {
 
   async heartbeat(docType: DocumentLockDocType, docId: bigint, token?: string) {
     const { tenantId, companyId, userId, permissions } = this.context();
-    this.requirePermission(permissions, DOCUMENTS[docType].managePermission);
+    this.requirePermission(permissions, DOCUMENTS[docType].editPermission);
     const holderToken = this.requireToken(token);
 
     return this.prisma.client.$transaction(async (tx) => {

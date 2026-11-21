@@ -13,6 +13,7 @@ let h: ReturnType<typeof kit>;
 let token = '';
 let tokenB = '';
 let accountantToken = '';
+let accountantMembershipId = '';
 let tenantId: bigint;
 let yearId = '';
 const accounts: Record<string, string> = {};
@@ -74,13 +75,13 @@ beforeAll(async () => {
   h = kit(boot.base, `edit-${RUN}`);
   token = await register('a');
   tokenB = await register('b');
-  accountantToken = (
-    await addMember(boot.base, token, {
-      email: `edit-accountant-${RUN}@test.dev`,
-      roleCode: 'ACCOUNTANT',
-      password: PASS,
-    })
-  ).token;
+  const accountant = await addMember(boot.base, token, {
+    email: `edit-accountant-${RUN}@test.dev`,
+    roleCode: 'ACCOUNTANT',
+    password: PASS,
+  });
+  accountantToken = accountant.token;
+  accountantMembershipId = accountant.membershipId;
   const [tenant] = (await boot.db.query('SELECT id FROM tenants WHERE name = ?', [`Edit a ${RUN}`])) as { id: bigint }[];
   tenantId = tenant!.id;
   const year = h.ok(
@@ -563,5 +564,41 @@ describe('document edit locks', () => {
       [tenantId, 'JOURNAL_ENTRY', entry.id],
     )) as { n: bigint }[];
     expect(Number(locks!.n)).toBe(0);
+  });
+
+  it('allows a journal.post-only role to acquire a lock and amend an entry', async () => {
+    const entry = await postJournal('2031-08-09', sale('20.000'));
+    const role = h.ok(
+      await h.api().post('/api/v1/roles/custom').set(h.auth(token)).send({
+        code: `JPOST_${RUN.toUpperCase()}`,
+        nameAr: 'مرحل القيود',
+        permissions: ['journal.post'],
+      }),
+      201,
+      'create journal poster role',
+    ) as { id: string; permissions: string[] };
+    expect(role.permissions).toContain('journal.post');
+    expect(role.permissions).not.toContain('journal.manage');
+
+    const assigned = await h.api().patch(`/api/v1/users/${accountantMembershipId}`)
+      .set(h.auth(token))
+      .send({ customRoleId: role.id });
+    expect(assigned.status).toBe(200);
+    try {
+      h.ok(
+        await h.actLocked(accountantToken, 'JOURNAL_ENTRY', entry.id, `journal-entries/${entry.id}/amend`, {
+          entryDate: '2031-08-09',
+          lines: sale('21.000'),
+        }),
+        201,
+        'amend with journal.post only',
+      );
+    } finally {
+      expect(
+        (await h.api().patch(`/api/v1/users/${accountantMembershipId}`)
+          .set(h.auth(token))
+          .send({ customRoleId: null })).status,
+      ).toBe(200);
+    }
   });
 });
