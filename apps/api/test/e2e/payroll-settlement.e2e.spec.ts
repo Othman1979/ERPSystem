@@ -87,6 +87,7 @@ async function run(companyId: string, period: string, postRun = true) {
   if (postRun) h.ok(await act(`payroll/runs/${draft.id}/post`, {}, companyId), 201, `post ${period} payroll run`);
   return h.ok(await get(`payroll/runs/${draft.id}`, companyId), 200, `get ${period} payroll run`) as {
     id: string;
+    runDate: string;
     leaveProvisionEntryId: string | null;
     lines: Array<{
       id: string; employeeId: string; basic: string; earnings: string; gross: string; sscBase: string;
@@ -209,11 +210,12 @@ describe('Phase 28C payroll settlements', () => {
     ]);
     const eos2 = await post<{
       id: string; serviceYears: string; eosAmount: string; taxableAmount: string; eosTax: string;
-      provisionUsed: string; net: string;
+      provisionUsed: string; net: string; settlementDate: string;
     }>('payroll/settlements', { employeeId: eos2Employee.id }, eos2Company.id, 'create EOS2 settlement');
     expect(eos2).toEqual(expect.objectContaining({
       serviceYears: '6.476712', eosAmount: '19430.136', taxableAmount: '4430.136',
       eosTax: '398.712', provisionUsed: '19430.136', net: '19031.424',
+      settlementDate: august.runDate > '2026-08-31' ? august.runDate : '2026-08-31',
     }));
     const bankGl = eos2Company.accounts.find((account) => account.code === '1102')!;
     const bank = h.ok(await h.api().post('/api/v1/bank-accounts').set(h.auth(token)).set('X-Company-Id', eos2Company.id).send({

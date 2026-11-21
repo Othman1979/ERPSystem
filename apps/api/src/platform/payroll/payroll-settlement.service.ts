@@ -357,7 +357,7 @@ export class PayrollSettlementService {
       nationalRate: settings.eosNationalRate,
     });
     return {
-      settlementDate: employee.leaveDate,
+      settlementDate: run.runDate > employee.leaveDate ? run.runDate : employee.leaveDate,
       serviceYears: service.serviceYears,
       lastWage,
       eosAmount,
