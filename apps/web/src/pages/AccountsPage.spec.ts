@@ -7,6 +7,7 @@ import {
   debitBalance,
   debitBalanceSide,
   expandedKeysForLevel,
+  expandedKeysForSearch,
   type Account,
 } from './AccountsPage';
 
@@ -79,6 +80,10 @@ describe('account tree expansion and balance display', () => {
     expect(expandedKeysForLevel(tree, 2)).toEqual(['1']);
     expect(expandedKeysForLevel(tree, 3)).toEqual(['1', '2']);
     expect(expandedKeysForLevel(tree, 'all')).toEqual(['1', '2']);
+  });
+
+  it('expands every parent in the filtered tree while searching', () => {
+    expect(expandedKeysForSearch(tree)).toEqual(['1', '2']);
   });
 
   it('shows an absolute balance with its debit or credit side', () => {

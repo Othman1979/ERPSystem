@@ -76,6 +76,10 @@ export function expandedKeysForLevel(nodes: TreeNode[], level: 1 | 2 | 3 | 'all'
   return keys;
 }
 
+export function expandedKeysForSearch(nodes: TreeNode[]): string[] {
+  return expandedKeysForLevel(nodes, 'all');
+}
+
 export function debitBalance(node: TreeNode) {
   return node.balDebit.minus(node.balCredit);
 }
@@ -229,7 +233,9 @@ export function AccountsPage() {
         locale={tableLocale(accountsQuery)}
         pagination={false}
         expandable={{
-          expandedRowKeys: expandedKeys ?? expandedKeysForLevel(shownTree, expandLevel),
+          expandedRowKeys: search.trim()
+            ? expandedKeysForSearch(shownTree)
+            : expandedKeys ?? expandedKeysForLevel(shownTree, expandLevel),
           onExpandedRowsChange: (keys) => setExpandedKeys([...keys]),
         }}
         rowClassName={(account) => (account.isPostable ? '' : 'account-group-row')}
