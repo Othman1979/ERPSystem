@@ -12,7 +12,7 @@
 1. **Company data** (ADR-040): employees, pay elements, payroll settings and runs belong to one company.
 2. **Employee:** code, names, national id, SSC number, hire/leave dates, branch, cost centre, pay method (bank/cash) and IBAN, `sscCovered`, `sscHazardous`, active. Basic salary kept as a dated history (`effectiveFrom`): a raise is a new row.
 3. **Pay elements** (accountant-defined): kind EARNING or DEDUCTION; amount type FIXED, PER_HOUR or PER_DAY with a rate factor (e.g. 1.25, 1.50); `sscSubject`; its own GL account. Seeded: overtime 125%, holiday overtime 150%, absence day, transport, housing, bonus, advance repayment, penalty.
-4. **Recurring elements:** fixed allowance or deduction per employee with from/to dates (allowances, advance instalments).
+4. **Recurring elements:** fixed monthly allowance per employee with from/to dates (e.g. transport or housing).
 5. **Inputs:** per employee and element, either per day (date + hours/days) or one monthly total; both are summed for the month.
 6. **Settings per company, dated:** SSC employee/employer/hazardous rates, minimum and optional maximum subject wage, hours per month and days per month for hourly/daily rates. Seeded from the SSC FAQ; the accountant edits them.
 7. **Income tax:** the accountant enters the month's amount per employee on the run. End-of-service and leave balances stay outside the system (owner).
@@ -27,6 +27,8 @@
 Daily payroll amounts are posted immediately as immutable payroll movements rather than stored as monthly inputs. A movement is dated, priced from the salary and payroll settings in force on that date, and posted through the journal service to the pay-element account and payroll payable. Reversal creates a reversing journal entry; movements cannot be created or reversed after a payroll run in that period is posted or paid. The payroll run includes posted movements in employee calculations but does not post their journal lines a second time. Reversed movements are excluded from run calculations. Employee statements present movements, runs, payments, and reversals with credits increasing the amount owed to the employee.
 
 An allowed monthly total may be recorded as one movement. Since each voucher is rounded independently, one two-day absence prices to JOD 26.667, while two one-day absence vouchers at JOD 13.333 each total JOD 26.666.
+
+Recurring rows on the employee card are limited to pay elements flagged as fixed allowances (EARNING + FIXED, e.g. transport, housing); all other elements are entered as posted movements.
 
 ## Deferred
 End-of-service, leave balances, attendance devices, tax calculation, multi-currency salaries, employee self-service.

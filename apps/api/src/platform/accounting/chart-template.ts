@@ -206,6 +206,7 @@ export const DEFAULT_PAY_ELEMENTS = [
     amountType: 'PER_HOUR',
     rateFactor: '1.250000',
     sscSubject: true,
+    isFixedAllowance: false,
     accountCode: '5201',
   },
   {
@@ -216,6 +217,7 @@ export const DEFAULT_PAY_ELEMENTS = [
     amountType: 'PER_HOUR',
     rateFactor: '1.500000',
     sscSubject: true,
+    isFixedAllowance: false,
     accountCode: '5201',
   },
   {
@@ -226,6 +228,7 @@ export const DEFAULT_PAY_ELEMENTS = [
     amountType: 'PER_DAY',
     rateFactor: '1.000000',
     sscSubject: true,
+    isFixedAllowance: false,
     accountCode: '5201',
   },
   {
@@ -236,6 +239,7 @@ export const DEFAULT_PAY_ELEMENTS = [
     amountType: 'FIXED',
     rateFactor: '1.000000',
     sscSubject: false,
+    isFixedAllowance: true,
     accountCode: '5201',
   },
   {
@@ -246,6 +250,7 @@ export const DEFAULT_PAY_ELEMENTS = [
     amountType: 'FIXED',
     rateFactor: '1.000000',
     sscSubject: true,
+    isFixedAllowance: true,
     accountCode: '5201',
   },
   {
@@ -256,6 +261,7 @@ export const DEFAULT_PAY_ELEMENTS = [
     amountType: 'FIXED',
     rateFactor: '1.000000',
     sscSubject: true,
+    isFixedAllowance: false,
     accountCode: '5201',
   },
   {
@@ -266,6 +272,7 @@ export const DEFAULT_PAY_ELEMENTS = [
     amountType: 'FIXED',
     rateFactor: '1.000000',
     sscSubject: false,
+    isFixedAllowance: false,
     accountCode: '1107',
   },
   {
@@ -276,6 +283,7 @@ export const DEFAULT_PAY_ELEMENTS = [
     amountType: 'FIXED',
     rateFactor: '1.000000',
     sscSubject: false,
+    isFixedAllowance: false,
     accountCode: '4201',
   },
 ] as const;

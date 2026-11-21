@@ -3507,6 +3507,7 @@ model PayElement {
   amountType PayElementAmountType @map("amount_type")
   rateFactor Decimal              @default(1) @map("rate_factor") @db.Decimal(9, 6)
   sscSubject Boolean              @default(true) @map("ssc_subject")
+  isFixedAllowance Boolean        @default(false) @map("is_fixed_allowance")
   accountId  BigInt               @map("account_id") @db.UnsignedBigInt
   isActive   Boolean              @default(true) @map("is_active")
   createdAt  DateTime             @default(now()) @map("created_at") @db.DateTime(3)

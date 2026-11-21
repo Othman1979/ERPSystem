@@ -8509,6 +8509,7 @@ export interface PayrollElementDto {
   amountType: PayrollElementDtoAmountType;
   rateFactor: string;
   sscSubject: boolean;
+  isFixedAllowance: boolean;
   accountId: string;
   isActive: boolean;
 }
@@ -8698,6 +8699,7 @@ export interface CreatePayElementDto {
   amountType: CreatePayElementDtoAmountType;
   rateFactor: string;
   sscSubject?: boolean;
+  isFixedAllowance?: boolean;
   accountId: string;
 }
 
@@ -8727,6 +8729,7 @@ export interface UpdatePayElementDto {
   amountType?: UpdatePayElementDtoAmountType;
   rateFactor?: string;
   sscSubject?: boolean;
+  isFixedAllowance?: boolean;
   accountId?: string;
   isActive?: boolean;
 }
@@ -8803,6 +8806,7 @@ export const PayrollRunDtoStatus = {
 export interface PayrollRunDto {
   id: string;
   period: string;
+  runDate: string;
   status: PayrollRunDtoStatus;
   /** @nullable */
   runNo: string | null;
@@ -8871,6 +8875,7 @@ export const PayrollRunDetailDtoStatus = {
 export interface PayrollRunDetailDto {
   id: string;
   period: string;
+  runDate: string;
   status: PayrollRunDetailDtoStatus;
   /** @nullable */
   runNo: string | null;

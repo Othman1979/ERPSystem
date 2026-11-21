@@ -27,6 +27,7 @@ export class PayrollElementDto {
   @ApiProperty({ type: 'string', enum: ['FIXED', 'PER_HOUR', 'PER_DAY'] }) amountType!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) rateFactor!: string;
   @ApiProperty({ type: 'boolean' }) sscSubject!: boolean;
+  @ApiProperty({ type: 'boolean' }) isFixedAllowance!: boolean;
   @ApiProperty({ type: 'string' }) accountId!: string;
   @ApiProperty({ type: 'boolean' }) isActive!: boolean;
 }
@@ -64,6 +65,7 @@ export class PayrollEmployeeDetailDto {
 export class PayrollRunDto {
   @ApiProperty({ type: 'string' }) id!: string;
   @ApiProperty({ type: 'string', format: 'date' }) period!: string;
+  @ApiProperty({ type: 'string', format: 'date' }) runDate!: string;
   @ApiProperty({ type: 'string', enum: ['DRAFT', 'POSTED', 'PAID', 'REVERSED'] }) status!: string;
   @ApiProperty({ type: 'string', nullable: true }) runNo!: string | null;
   @ApiProperty({ type: 'string', format: 'decimal' }) basicTotal!: string;
