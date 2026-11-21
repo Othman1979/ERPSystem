@@ -45,6 +45,11 @@ import {
   type PartyNeed,
 } from '../components/journalLineChecks';
 import { usePartyColumn } from '../components/usePartyColumn';
+import {
+  partyLabelFromDraft,
+  partyOptionsWithDraftLabels,
+  type JournalDraftPartyLabels,
+} from '../components/journalPartyLabels';
 import { costCenterOptions, useCostCenters } from '../hooks/useCostCenters';
 import { ACCOUNTS_QUERY_KEY, selectPostable, useAccounts, type AccountRow } from '../hooks/useAccounts';
 import {
@@ -91,7 +96,7 @@ interface JournalEntryDraft {
   description: string;
   lines: JournalLineDraft[];
   accountLabels: Record<string, string>;
-  partyLabels: Record<string, string>;
+  partyLabels: JournalDraftPartyLabels;
 }
 
 /** A line of a draft that has its account chosen (the lines the API receives). */
@@ -145,7 +150,7 @@ export function JournalPage() {
   const [newDescription, setNewDescription] = useState('');
   const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
   const [restoredAccountLabels, setRestoredAccountLabels] = useState<Record<string, string>>({});
-  const [restoredPartyLabels, setRestoredPartyLabels] = useState<Record<string, string>>({});
+  const [restoredPartyLabels, setRestoredPartyLabels] = useState<JournalDraftPartyLabels>({});
   // Row whose party cell is marked empty after the check before saving.
   const [missingParty, setMissingParty] = useState<number | null>(null);
   // Row whose cost centre cell is marked after the check before saving.
@@ -201,19 +206,8 @@ export function JournalPage() {
   });
   const partyColumnWithDraftLabels = {
     ...partyColumn,
-    options: {
-      CUSTOMER: [...partyColumn.options.CUSTOMER],
-      SUPPLIER: [...partyColumn.options.SUPPLIER],
-      ANY: [...partyColumn.options.ANY],
-    },
+    options: partyOptionsWithDraftLabels(partyColumn.options, restoredPartyLabels),
   };
-  for (const [id, label] of Object.entries(restoredPartyLabels)) {
-    for (const need of ['CUSTOMER', 'SUPPLIER', 'ANY'] as const) {
-      if (!partyColumnWithDraftLabels.options[need].some((option) => option.value === id)) {
-        partyColumnWithDraftLabels.options[need].push({ value: id, label });
-      }
-    }
-  }
   const initialEntryDraft = useRef<JournalEntryDraft>({
     entryDate: newDate.format('YYYY-MM-DD'),
     voucherType: 'JOURNAL',
@@ -237,8 +231,16 @@ export function JournalPage() {
     ),
     partyLabels: Object.fromEntries(
       lines.flatMap((line) => {
-        const label = partyName(line.partyId) ?? (line.partyId ? restoredPartyLabels[line.partyId] : undefined);
-        return line.partyId && label ? [[line.partyId, label]] : [];
+        const label = partyName(line.partyId) ?? partyLabelFromDraft(restoredPartyLabels, line.partyId);
+        if (!line.partyId || !label) return [];
+        const need = line.accountId ? partyColumn.kindByAccount.get(line.accountId) : undefined;
+        const restored = restoredPartyLabels[line.partyId];
+        const partyType =
+          need === 'CUSTOMER' || need === 'SUPPLIER'
+            ? need
+            : partyColumn.sideOf(line.partyId) ??
+              (typeof restored === 'string' ? undefined : restored?.partyType);
+        return partyType ? [[line.partyId, { label, partyType }]] : [];
       }),
     ),
   };

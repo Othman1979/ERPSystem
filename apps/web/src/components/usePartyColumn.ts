@@ -101,8 +101,8 @@ export function usePartyColumn(
   });
   const pickers = { CUSTOMER: customers, SUPPLIER: suppliers, ANY: either } as const;
   const rememberParty = (party: Party) => {
-    customers.remember([party]);
-    suppliers.remember([party]);
+    if (party.partyType === 'CUSTOMER' || party.partyType === 'BOTH') customers.remember([party]);
+    if (party.partyType === 'SUPPLIER' || party.partyType === 'BOTH') suppliers.remember([party]);
     either.remember([party]);
   };
 
