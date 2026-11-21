@@ -347,7 +347,11 @@ export class LeaveService {
       if (request.status !== 'SUBMITTED') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only submitted leave requests can be approved');
       if (
         request.employee.leaveDate
-        && (request.leaveType.category === 'ANNUAL' || request.leaveType.payElementId)
+        && (
+          request.leaveType.category === 'ANNUAL'
+          || request.leaveType.category === 'UNPAID'
+          || request.leaveType.payElementId
+        )
       ) {
         const departureRun = await tx.payrollRun.findFirst({
           where: {

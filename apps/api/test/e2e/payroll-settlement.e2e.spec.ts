@@ -349,6 +349,16 @@ describe('Phase 28C payroll settlements', () => {
     const deniedApproval = await act(`payroll/leave-requests/${leave.id}/approve`, {}, company.id);
     expect(deniedApproval.status).toBe(409);
     expect(deniedApproval.body.error.code).toBe('LEAVE_RUN_ALREADY_POSTED');
+    const unpaidNoElement = await post<{ id: string }>('payroll/leave-types', {
+      code: `UNPAID-NO-ELEMENT-${RUN}`, nameAr: 'Unpaid without element', category: 'UNPAID',
+      countBasis: 'CALENDAR_DAYS',
+    }, company.id, 'create unpaid leave type without element');
+    const unpaidAfterDeparture = await post<{ id: string }>('payroll/leave-requests', {
+      employeeId: leaver.id, leaveTypeId: unpaidNoElement.id, startDate: '2026-12-03', endDate: '2026-12-04',
+    }, company.id, 'create unpaid request after departure run');
+    const deniedUnpaid = await act(`payroll/leave-requests/${unpaidAfterDeparture.id}/approve`, {}, company.id);
+    expect(deniedUnpaid.status).toBe(409);
+    expect(deniedUnpaid.body.error.code).toBe('LEAVE_RUN_ALREADY_POSTED');
     const otherType = await post<{ id: string }>('payroll/leave-types', {
       code: `OTHER-${RUN}`, nameAr: 'Other', category: 'OTHER', countBasis: 'CALENDAR_DAYS',
     }, company.id, 'create other leave type');
