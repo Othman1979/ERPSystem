@@ -964,7 +964,7 @@ export class PayrollService {
         periodEnd: end,
         daysPerMonth: settings.daysPerMonth,
       }).activeDays;
-      let remainingLeaveQuantity = new Decimal(activeDays);
+      let remainingLeaveQuantity = Decimal.min(activeDays, settings.daysPerMonth);
       const leaveRequests = [...employee.leaveRequests].sort((a, b) =>
         a.startDate.getTime() - b.startDate.getTime() || a.id.toString().localeCompare(b.id.toString()));
       for (const request of leaveRequests) {
