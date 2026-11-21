@@ -526,6 +526,8 @@ export class PostingService {
       entryId: bigint;
       entryDate: Date;
       description?: string | null;
+      descriptionKey?: string | null;
+      descriptionParams?: Prisma.InputJsonValue | null;
       lines: JournalLineInput[];
       costCenterId?: bigint | null;
       requireCostCenters?: boolean;
@@ -615,6 +617,18 @@ export class PostingService {
         entryDate: params.entryDate,
         fiscalPeriodId: period.id,
         description: params.description === undefined ? entry.description : params.description,
+        descriptionKey:
+          params.descriptionKey === undefined
+            ? params.description === undefined
+              ? entry.descriptionKey
+              : null
+            : params.descriptionKey,
+        descriptionParams:
+          params.descriptionParams === undefined
+            ? params.description === undefined
+              ? undefined
+              : Prisma.DbNull
+            : params.descriptionParams ?? Prisma.DbNull,
         totalDebit,
         totalCredit,
       },

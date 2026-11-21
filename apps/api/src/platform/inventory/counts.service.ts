@@ -601,7 +601,10 @@ export class CountsService {
               unitCost: null,
             })),
           });
-          const posted = await this.adjustments.postLocked(tx, created.id, companyId, userId ?? undefined);
+          const posted = await this.adjustments.postLocked(tx, created.id, companyId, userId ?? undefined, {
+            key: 'journal.auto.stockCount',
+            params: { number: count.id.toString() },
+          });
           adjustmentId = created.id;
           docNo = posted.docNo;
         }
