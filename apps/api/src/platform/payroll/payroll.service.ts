@@ -973,19 +973,20 @@ export class PayrollService {
       for (const request of leaveRequests) {
         const element = request.leaveType.payElement;
         if (!element || (request.leaveType.category === 'MATERNITY' && !employee.sscCovered)) continue;
-        const leavePeriodEnd = employee.leaveDate && employee.leaveDate < end ? employee.leaveDate : end;
-        const requestQuantity = leavePeriodEnd < start
-          ? new Decimal(0)
-          : leavePeriodQuantity({
-              requestStart: request.startDate,
-              requestEnd: request.endDate,
-              periodStart: start,
-              periodEnd: leavePeriodEnd,
-              countBasis: request.leaveType.countBasis,
-              weeklyRestDays: settings.weeklyRestDays.split(',').map(Number),
-              holidays: holidays.map((holiday) => holiday.date),
-              daysPerMonth: settings.daysPerMonth,
-            });
+        const requestEnd = employee.leaveDate && employee.leaveDate < request.endDate
+          ? employee.leaveDate
+          : request.endDate;
+        if (requestEnd < request.startDate || requestEnd < start) continue;
+        const requestQuantity = leavePeriodQuantity({
+          requestStart: request.startDate,
+          requestEnd,
+          periodStart: start,
+          periodEnd: end,
+          countBasis: request.leaveType.countBasis,
+          weeklyRestDays: settings.weeklyRestDays.split(',').map(Number),
+          holidays: holidays.map((holiday) => holiday.date),
+          daysPerMonth: settings.daysPerMonth,
+        });
         const quantity = Decimal.min(requestQuantity, remainingLeaveQuantity);
         if (!quantity.gt(0)) continue;
         leaveInputs.push({

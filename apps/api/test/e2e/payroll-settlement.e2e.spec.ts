@@ -389,6 +389,35 @@ describe('Phase 28C payroll settlements', () => {
     }));
   });
 
+  it('counts working days through the departure date for leave deductions', async () => {
+    const company = await createCompany('CLIP-WORKING', true);
+    const leaver = await employee(company, 'CLIP-WORKING', '2020-01-01', '2026-02-15', '3000.000', false);
+    h.ok(await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ taxSubject: false }), 200, 'disable tax for working-day leave');
+    const unpaid = (h.ok(await get('payroll/leave-types', company.id), 200, 'working-day leave element') as Array<{
+      id: string; code: string; payElementId: string | null;
+    }>).find((type) => type.code === 'UNPAID')!;
+    const workingDaysType = await post<{ id: string }>('payroll/leave-types', {
+      code: `UNPAID-WD-${RUN}`,
+      nameAr: 'إجازة غير مدفوعة أيام عمل',
+      nameEn: 'Unpaid working days',
+      category: 'UNPAID',
+      countBasis: 'WORKING_DAYS',
+      payElementId: unpaid.payElementId,
+    }, company.id, 'create working-day unpaid type');
+    const request = await post<{ id: string }>('payroll/leave-requests', {
+      employeeId: leaver.id, leaveTypeId: workingDaysType.id, startDate: '2026-02-01', endDate: '2026-02-15',
+    }, company.id, 'create working-day leave through departure');
+    h.ok(await act(`payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve working-day leave');
+
+    const february = await run(company.id, '2026-02');
+    const line = employeeLine(february, leaver.id);
+    expect(line.items.find((item) => item.description === 'Unpaid leave day')).toEqual(expect.objectContaining({
+      quantity: '13',
+      amount: '1300',
+    }));
+  });
+
   it('prorates EN1, encashes annual leave, releases leave provision, and refuses settlement for SSC staff', async () => {
     const company = await createCompany('EN1', true);
     const leaver = await employee(company, 'EN1', '2026-07-01', '2026-09-20', '600.000', true, '40.000');
