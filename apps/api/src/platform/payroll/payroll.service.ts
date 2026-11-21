@@ -265,7 +265,7 @@ export class PayrollService {
           validTo,
         },
       });
-    });
+    }, POSTING_TX_OPTIONS);
   }
 
   async deleteRecurring(employeeId: bigint, recurringId: bigint) {

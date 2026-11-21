@@ -8501,6 +8501,8 @@ export const PayrollElementDtoAmountType = {
 
 export interface PayrollElementDto {
   id: string;
+  tenantId: string;
+  companyId: string;
   code: string;
   nameAr: string;
   /** @nullable */
@@ -8512,6 +8514,8 @@ export interface PayrollElementDto {
   isFixedAllowance: boolean;
   accountId: string;
   isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PayrollRecurringElementDto {
@@ -8612,6 +8616,43 @@ export interface CreateEmployeeDto {
   sscHazardous?: boolean;
 }
 
+export type PayrollEmployeeCreatedDtoPayMethod = typeof PayrollEmployeeCreatedDtoPayMethod[keyof typeof PayrollEmployeeCreatedDtoPayMethod];
+
+
+export const PayrollEmployeeCreatedDtoPayMethod = {
+  BANK: 'BANK',
+  CASH: 'CASH',
+} as const;
+
+export interface PayrollEmployeeCreatedDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  nationalId: string | null;
+  /** @nullable */
+  sscNumber: string | null;
+  hireDate: string;
+  /** @nullable */
+  leaveDate: string | null;
+  /** @nullable */
+  branchId: string | null;
+  /** @nullable */
+  costCenterId: string | null;
+  payMethod: PayrollEmployeeCreatedDtoPayMethod;
+  /** @nullable */
+  iban: string | null;
+  sscCovered: boolean;
+  sscHazardous: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type UpdateEmployeeDtoPayMethod = typeof UpdateEmployeeDtoPayMethod[keyof typeof UpdateEmployeeDtoPayMethod];
 
 
@@ -8663,12 +8704,85 @@ export interface CreateSalaryDto {
   basicSalary: string;
 }
 
+export interface PayrollEmployeeSalaryCreatedDto {
+  id: string;
+  tenantId: string;
+  employeeId: string;
+  effectiveFrom: string;
+  basicSalary: string;
+  createdAt: string;
+}
+
+export type PayrollRecurringElementListPayElementDtoAmountType = typeof PayrollRecurringElementListPayElementDtoAmountType[keyof typeof PayrollRecurringElementListPayElementDtoAmountType];
+
+
+export const PayrollRecurringElementListPayElementDtoAmountType = {
+  FIXED: 'FIXED',
+  PER_HOUR: 'PER_HOUR',
+  PER_DAY: 'PER_DAY',
+} as const;
+
+export type PayrollRecurringElementListPayElementDtoKind = typeof PayrollRecurringElementListPayElementDtoKind[keyof typeof PayrollRecurringElementListPayElementDtoKind];
+
+
+export const PayrollRecurringElementListPayElementDtoKind = {
+  EARNING: 'EARNING',
+  DEDUCTION: 'DEDUCTION',
+} as const;
+
+export interface PayrollRecurringElementListPayElementDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  amountType: PayrollRecurringElementListPayElementDtoAmountType;
+  kind: PayrollRecurringElementListPayElementDtoKind;
+  isFixedAllowance: boolean;
+}
+
+export interface PayrollRecurringElementListDto {
+  id: string;
+  tenantId: string;
+  employeeId: string;
+  payElementId: string;
+  /** @nullable */
+  amount: string | null;
+  /** @nullable */
+  quantity: string | null;
+  validFrom: string;
+  /** @nullable */
+  validTo: string | null;
+  createdAt: string;
+  updatedAt: string;
+  payElement: PayrollRecurringElementListPayElementDto;
+}
+
 export interface CreateRecurringElementDto {
   payElementId: string;
   amount?: string;
   quantity?: string;
   validFrom: string;
   validTo?: string;
+}
+
+export interface PayrollRecurringElementRecordDto {
+  id: string;
+  tenantId: string;
+  employeeId: string;
+  payElementId: string;
+  /** @nullable */
+  amount: string | null;
+  /** @nullable */
+  quantity: string | null;
+  validFrom: string;
+  /** @nullable */
+  validTo: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollDeletedDto {
+  id: string;
+  deleted: true;
 }
 
 export type CreatePayElementDtoKind = typeof CreatePayElementDtoKind[keyof typeof CreatePayElementDtoKind];
@@ -8732,6 +8846,22 @@ export interface UpdatePayElementDto {
   isFixedAllowance?: boolean;
   accountId?: string;
   isActive?: boolean;
+}
+
+export interface PayrollSettingsDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  effectiveFrom: string;
+  sscEmployeeRate: string;
+  sscEmployerRate: string;
+  sscHazardousExtra: string;
+  sscMinWage: string;
+  /** @nullable */
+  sscMaxWage: string | null;
+  hoursPerMonth: string;
+  daysPerMonth: string;
+  createdAt: string;
 }
 
 export interface CreatePayrollSettingsDto {
@@ -8893,6 +9023,12 @@ export interface PayrollRunDetailDto {
 
 export interface SetPayrollTaxDto {
   incomeTax: string;
+}
+
+export interface PayrollRunLineTaxDto {
+  id: string;
+  incomeTax: string;
+  net: string;
 }
 
 export interface PayrollPaymentDto {
@@ -11887,10 +12023,6 @@ export type PayrollControllerEmployeeStatementParams = {
   from: string;
   to: string;
 };
-
-export type PayrollControllerListRecurring200Item = { [key: string]: unknown };
-
-export type PayrollControllerListSettings200 = { [key: string]: unknown };
 
 export type PayrollControllerListMovementsParams = {
   /** @pattern ^\d{4}-(0[1-9]|1[0-2])$ */
@@ -26622,7 +26754,7 @@ export const payrollControllerListEmployees = async ( options?: Parameters<typeo
 
 
 export type payrollControllerCreateEmployeeResponse201 = {
-  data: void
+  data: PayrollEmployeeCreatedDto
   status: 201
 }
 
@@ -26812,7 +26944,7 @@ export const payrollControllerEmployeeStatement = async (id: string,
 
 
 export type payrollControllerAddSalaryResponse201 = {
-  data: void
+  data: PayrollEmployeeSalaryCreatedDto
   status: 201
 }
 
@@ -26865,7 +26997,7 @@ return apiFetch<payrollControllerAddSalaryResponseSuccess>(getPayrollControllerA
 
 
 export type payrollControllerListRecurringResponse200 = {
-  data: PayrollControllerListRecurring200Item[]
+  data: PayrollRecurringElementListDto[]
   status: 200
 }
 
@@ -26903,7 +27035,7 @@ export const payrollControllerListRecurring = async (id: string, options?: Param
 
 
 export type payrollControllerCreateRecurringResponse201 = {
-  data: void
+  data: PayrollRecurringElementRecordDto
   status: 201
 }
 
@@ -26956,7 +27088,7 @@ return apiFetch<payrollControllerCreateRecurringResponseSuccess>(getPayrollContr
 
 
 export type payrollControllerDeleteRecurringResponse200 = {
-  data: void
+  data: PayrollDeletedDto
   status: 200
 }
 
@@ -27034,7 +27166,7 @@ export const payrollControllerListElements = async ( options?: Parameters<typeof
 
 
 export type payrollControllerCreateElementResponse201 = {
-  data: void
+  data: PayrollElementDto
   status: 201
 }
 
@@ -27086,7 +27218,7 @@ return apiFetch<payrollControllerCreateElementResponseSuccess>(getPayrollControl
 
 
 export type payrollControllerUpdateElementResponse200 = {
-  data: void
+  data: PayrollElementDto
   status: 200
 }
 
@@ -27139,7 +27271,7 @@ return apiFetch<payrollControllerUpdateElementResponseSuccess>(getPayrollControl
 
 
 export type payrollControllerListSettingsResponse200 = {
-  data: PayrollControllerListSettings200
+  data: PayrollSettingsDto[]
   status: 200
 }
 
@@ -27177,7 +27309,7 @@ export const payrollControllerListSettings = async ( options?: Parameters<typeof
 
 
 export type payrollControllerCreateSettingsResponse201 = {
-  data: void
+  data: PayrollSettingsDto
   status: 201
 }
 
@@ -27507,7 +27639,7 @@ export const payrollControllerGetRun = async (id: string, options?: Parameters<t
 
 
 export type payrollControllerDeleteRunResponse200 = {
-  data: void
+  data: PayrollDeletedDto
   status: 200
 }
 
@@ -27545,7 +27677,7 @@ export const payrollControllerDeleteRun = async (id: string, options?: Parameter
 
 
 export type payrollControllerRecomputeRunResponse201 = {
-  data: void
+  data: PayrollRunDetailDto
   status: 201
 }
 
@@ -27583,7 +27715,7 @@ export const payrollControllerRecomputeRun = async (id: string, options?: Parame
 
 
 export type payrollControllerSetIncomeTaxResponse200 = {
-  data: void
+  data: PayrollRunLineTaxDto
   status: 200
 }
 
