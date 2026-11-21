@@ -91,7 +91,7 @@ async function run(companyId: string, period: string, postRun = true) {
     leaveProvisionEntryId: string | null;
     lines: Array<{
       id: string; employeeId: string; basic: string; earnings: string; gross: string; sscBase: string;
-      sscEmployee: string; sscEmployer: string; incomeTax: string; net: string;
+      sscEmployee: string; sscEmployer: string; incomeTax: string; deductions: string; net: string;
       leaveProvision: string; eosProvision: string;
       items: Array<{ description: string; amount: string; kind: string }>;
     }>;
