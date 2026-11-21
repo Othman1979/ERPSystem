@@ -349,6 +349,24 @@ describe('Phase 28C payroll settlements', () => {
     expect(new Decimal(encashment(baseline.id)).minus(encashment(withLeave.id)).toFixed(3)).toBe('100.000');
   });
 
+  it('clips unpaid leave deductions to the active days before departure', async () => {
+    const company = await createCompany('CLIP-UNPAID', true);
+    const leaver = await employee(company, 'CLIP-UNPAID', '2020-01-01', '2026-12-10', '3000.000', false);
+    const unpaid = (h.ok(await get('payroll/leave-types', company.id), 200, 'unpaid leave type for departure clipping') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'UNPAID')!;
+    const request = await post<{ id: string }>('payroll/leave-requests', {
+      employeeId: leaver.id, leaveTypeId: unpaid.id, startDate: '2026-12-08', endDate: '2026-12-20',
+    }, company.id, 'create unpaid leave crossing departure date');
+    h.ok(await act(`payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve unpaid leave crossing departure date');
+    const december = await run(company.id, '2026-12');
+    expect(employeeLine(december, leaver.id)).toEqual(expect.objectContaining({
+      basic: '1000',
+      deductions: '300',
+      net: '700',
+    }));
+  });
+
   it('prorates EN1, encashes annual leave, releases leave provision, and refuses settlement for SSC staff', async () => {
     const company = await createCompany('EN1', true);
     const leaver = await employee(company, 'EN1', '2026-07-01', '2026-09-20', '600.000', true, '40.000');
