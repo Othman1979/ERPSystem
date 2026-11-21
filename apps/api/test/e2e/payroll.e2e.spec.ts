@@ -669,6 +669,18 @@ describe('Payroll PY1–PY3', () => {
   });
 
   it('PY4: posts dated movements, reversals, a netted run, payment and employee statement', async () => {
+    const tokenA = await register('py4');
+    const companyAId = (h.ok(await h.get(tokenA, 'companies'), 200, 'PY4 company') as { id: string }[])[0]!.id;
+    const tenantName = `Payroll py4 ${RUN}`;
+    const [tenant] = await boot.db.query('SELECT id FROM tenants WHERE name = ?', [tenantName]) as { id: bigint }[];
+    const tenantId = tenant!.id;
+    const accounts: Record<string, string> = {};
+    const chart = h.ok(await get(tokenA, 'accounts'), 200, 'PY4 chart') as { id: string; code: string }[];
+    for (const account of chart) accounts[account.code] = account.id;
+    const bank = h.ok(await h.api().post('/api/v1/bank-accounts').set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({
+      bankName: 'Arab Bank', accountId: accounts['1102'],
+    }), 201, 'create isolated PY4 bank account') as { id: string };
+    const bankAccountId = bank.id;
     h.ok(
       await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).send({
         code: '2026', startDate: '2026-01-01', endDate: '2026-12-31',
@@ -1279,7 +1291,7 @@ describe('Payroll PY1–PY3', () => {
 
 describe('Leave endpoints', () => {
   it('validates requests, approves and cancels them, and isolates every company-scoped resource', async () => {
-    for (const year of [2027, 2028]) {
+    for (const year of [2026, 2027, 2028]) {
       h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({
         code: String(year), startDate: `${year}-01-01`, endDate: `${year}-12-31`,
       }), 201, `create leave FY ${year}`);
