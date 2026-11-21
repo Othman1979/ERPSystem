@@ -716,7 +716,9 @@ function ReportsTab() {
         { title: t('payroll.documentType'), dataIndex: 'documentType' },
         { title: t('payroll.description'), dataIndex: 'description', render: (value: string, row: { documentType: string; date: string; documentNo: string }) =>
           row.documentType === 'PAYROLL_SETTLEMENT' ? t('payroll.statementSettlement')
-            : row.documentType === 'PAYROLL_SETTLEMENT_PAYMENT' ? t('payroll.statementSettlementPayment') : value },
+            : row.documentType === 'PAYROLL_SETTLEMENT_PAYMENT' ? t('payroll.statementSettlementPayment')
+              : row.documentType === 'PAYROLL_SETTLEMENT_REVERSAL' ? t('payroll.statementSettlementReversal')
+                : row.documentType === 'PAYROLL_SETTLEMENT_PAYMENT_REVERSAL' ? t('payroll.statementSettlementPaymentReversal') : value },
         { title: t('payroll.debit'), dataIndex: 'debit', render: (value: string) => formatAmount(value) },
         { title: t('payroll.credit'), dataIndex: 'credit', render: (value: string) => formatAmount(value) },
         { title: t('payroll.balance'), dataIndex: 'balance', render: (value: string) => formatAmount(value) },

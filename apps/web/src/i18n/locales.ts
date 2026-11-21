@@ -134,6 +134,7 @@ export const ar = {
     hoursPerMonth: 'ساعات الشهر', daysPerMonth: 'أيام الشهر', saveError: 'تعذر حفظ بيانات الرواتب',
     reports: { title: 'التقارير', register: 'سجل الرواتب', ssc: 'كشف الضمان', 'tax-withheld': 'الضريبة المستقطعة', employeeStatement: 'كشف حساب الموظف' },
     statementSettlement: 'التسوية النهائية', statementSettlementPayment: 'دفع التسوية النهائية',
+    statementSettlementReversal: 'عكس التسوية النهائية', statementSettlementPaymentReversal: 'عكس دفع التسوية النهائية',
   },
   ribbon: {
     label: 'شريط التنقل',
@@ -2520,6 +2521,7 @@ export const en: typeof ar = {
     hoursPerMonth: 'Hours per month', daysPerMonth: 'Days per month', saveError: 'Could not save payroll data',
     reports: { title: 'Reports', register: 'Payroll register', ssc: 'SSC statement', 'tax-withheld': 'Tax withheld', employeeStatement: 'Employee statement' },
     statementSettlement: 'Final settlement', statementSettlementPayment: 'Final settlement payment',
+    statementSettlementReversal: 'Final settlement reversal', statementSettlementPaymentReversal: 'Final settlement payment reversal',
   },
   ribbon: {
     label: 'Navigation ribbon',
