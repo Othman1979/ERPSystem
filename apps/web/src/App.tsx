@@ -35,6 +35,7 @@ import { useAuth } from './auth/AuthContext';
 import { HomeDashboard } from './pages/HomeDashboard';
 import { LoginPage } from './pages/LoginPage';
 import { useCompany } from './components/CompanyProfileForm';
+import { CompanyBranding } from './components/CompanyBranding';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { Ribbon } from './components/Ribbon';
 import { ServerUnreachable } from './components/ServerUnreachable';
@@ -344,7 +345,7 @@ function AppShell() {
         )}
         {!isMobile && (
           <button type="button" className="topbar-brand" onClick={() => navigate('/')}>
-            {t('app.title')}
+            <CompanyBranding />
           </button>
         )}
         {current && !isMobile && !noCompany && (
@@ -353,6 +354,7 @@ function AppShell() {
             items={[{ title: me?.currentTenant?.name ?? '' }, { title: t(current.label) }]}
           />
         )}
+        {isMobile && <CompanyBranding mobile />}
         {isMobile && (
           <span className="topbar-title">{current ? t(current.label) : t('app.title')}</span>
         )}
