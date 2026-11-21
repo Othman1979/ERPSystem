@@ -957,14 +957,17 @@ export class PayrollService {
         payrollMovementId: movement.id,
       }));
       const leaveInputs: PayrollElementEntry[] = [];
-      const activeDays = calculateProration({
+      const proration = calculateProration({
         hireDate: employee.hireDate,
         leaveDate: employee.leaveDate,
         periodStart: start,
         periodEnd: end,
         daysPerMonth: settings.daysPerMonth,
-      }).activeDays;
-      let remainingLeaveQuantity = Decimal.min(activeDays, settings.daysPerMonth);
+      });
+      const activeDays = proration.activeDays;
+      let remainingLeaveQuantity = proration.fullPeriod
+        ? settings.daysPerMonth
+        : Decimal.min(activeDays, settings.daysPerMonth);
       const leaveRequests = [...employee.leaveRequests].sort((a, b) =>
         a.startDate.getTime() - b.startDate.getTime() || a.id.toString().localeCompare(b.id.toString()));
       for (const request of leaveRequests) {

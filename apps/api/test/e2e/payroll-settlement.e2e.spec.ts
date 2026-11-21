@@ -351,6 +351,23 @@ describe('Phase 28C payroll settlements', () => {
     expect(new Decimal(encashment(baseline.id)).minus(encashment(withLeave.id)).toFixed(3)).toBe('100.000');
   });
 
+  it('caps full-month unpaid leave at daysPerMonth in February', async () => {
+    const company = await createCompany('FEB-UNPAID', true);
+    const employeeRecord = await employee(company, 'FEB-UNPAID', '2020-01-01', '2027-12-31', '3000.000', false);
+    h.ok(await h.api().patch(`/api/v1/payroll/employees/${employeeRecord.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ taxSubject: false }), 200, 'disable tax for full-month leave');
+    const unpaid = (h.ok(await get('payroll/leave-types', company.id), 200, 'February unpaid leave type') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'UNPAID')!;
+    const request = await post<{ id: string }>('payroll/leave-requests', {
+      employeeId: employeeRecord.id, leaveTypeId: unpaid.id, startDate: '2026-02-01', endDate: '2026-02-28',
+    }, company.id, 'create full-February unpaid leave');
+    h.ok(await act(`payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve full-February unpaid leave');
+    const february = await run(company.id, '2026-02');
+    const line = employeeLine(february, employeeRecord.id);
+    expect([line.basic, line.deductions, line.net]).toEqual(['3000', '3000', '0']);
+  });
+
   it('clips unpaid leave deductions to the active days before departure', async () => {
     const company = await createCompany('CLIP-UNPAID', true);
     const leaver = await employee(company, 'CLIP-UNPAID', '2020-01-01', '2027-12-31', '3000.000', false);
