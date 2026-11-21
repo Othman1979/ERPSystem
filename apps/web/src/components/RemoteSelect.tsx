@@ -81,6 +81,7 @@ export function RemoteSelect({
           e.key === 'Enter' &&
           open &&
           onCreateNew &&
+          !loading &&
           typedText &&
           !hasMatchingOption(typedText)
         ) {
@@ -136,6 +137,7 @@ export function RemoteSelect({
             e.key === 'Enter' &&
             open &&
             onCreateNew &&
+            !loading &&
             typedText &&
             !hasMatchingOption(typedText)
           ) {

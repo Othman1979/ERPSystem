@@ -35,12 +35,14 @@ afterEach(() => {
 });
 
 const settle = (ms = SEARCH_DEBOUNCE_MS + 80) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
-function mount(node: ReactNode, remote = false) {
+function mount(node: ReactNode, remote = false, client?: QueryClient) {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
   const content = remote ? (
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider
+      client={client ?? new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
       {node}
     </QueryClientProvider>
   ) : node;
@@ -81,8 +83,6 @@ describe('GridSelect create-new', () => {
     mount(
       <GridSelect
         options={[{ value: '1', label: 'Cash' }]}
-        searching
-        onRemoteSearch={() => undefined}
         onCreateNew={onCreateNew}
       />,
     );
@@ -91,6 +91,26 @@ describe('GridSelect create-new', () => {
     await settle(50);
     act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
     expect(onCreateNew).toHaveBeenCalledWith('Receivable');
+  });
+
+  it('does not create on Enter while searching', async () => {
+    const onCreateNew = vi.fn();
+    mount(<GridSelect options={[]} searching onCreateNew={onCreateNew} />);
+    const input = openPicker();
+    typeSearch('Receivable');
+    await settle(50);
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+    expect(onCreateNew).not.toHaveBeenCalled();
+  });
+
+  it('does not create on Enter while loading', async () => {
+    const onCreateNew = vi.fn();
+    mount(<GridSelect options={[]} loading onCreateNew={onCreateNew} />);
+    const input = openPicker();
+    typeSearch('Receivable');
+    await settle(50);
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+    expect(onCreateNew).not.toHaveBeenCalled();
   });
 
   it('keeps Enter behavior without an onCreateNew callback', async () => {
@@ -132,6 +152,9 @@ describe('RemoteSelect create-new', () => {
   it('creates on Enter for a nonmatching remote search', async () => {
     const onCreateNew = vi.fn();
     const onInputKeyDown = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(['remote-create-enter', ''], []);
+    client.setQueryData(['remote-create-enter', 'Acme'], []);
     mount(
       <RemoteSelect
         queryKey={['remote-create-enter']}
@@ -140,16 +163,34 @@ describe('RemoteSelect create-new', () => {
         onInputKeyDown={onInputKeyDown}
       />,
       true,
+      client,
     );
     await settle();
     const input = openPicker();
     typeSearch('Acme');
-    await settle();
+    await settle(1000);
     expect(input.isConnected).toBe(true);
     expect(document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')).not.toBeNull();
     act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
     expect(onInputKeyDown).toHaveBeenCalled();
     expect(onCreateNew).toHaveBeenCalledWith('Acme');
+  });
+
+  it('does not create on Enter while a remote search is loading', async () => {
+    const onCreateNew = vi.fn();
+    const fetchOptions = () => new Promise<[]>(() => {});
+    mount(
+      <RemoteSelect
+        queryKey={['remote-create-loading']}
+        fetchOptions={fetchOptions}
+        onCreateNew={onCreateNew}
+      />,
+      true,
+    );
+    const input = openPicker();
+    typeSearch('Acme');
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+    expect(onCreateNew).not.toHaveBeenCalled();
   });
 
   it('keeps Enter behavior without an onCreateNew callback', async () => {

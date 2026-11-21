@@ -74,6 +74,7 @@ export function GridSelect({
           isEnter &&
           open &&
           onCreateNew &&
+          !(searching || props.loading) &&
           search.trim() &&
           !hasMatchingOption(search.trim())
         ) {
