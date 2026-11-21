@@ -394,6 +394,8 @@ describe('Phase 28C payroll settlements', () => {
       .set(h.auth(token)).set('X-Company-Id', company.id).send({ isActive: false });
     expect(protectedElement.body.error.code).toBe('INVALID_STATUS_TRANSITION');
     const employeeRecord = await employee(company, 'PRORATE', '2026-12-22', '2026-12-31', '3000.000', false);
+    h.ok(await h.api().patch(`/api/v1/payroll/employees/${employeeRecord.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: null }), 200, 'clear proration employee departure date');
     const unpaid = (h.ok(await get('payroll/leave-types', company.id), 200, 'proration leave types') as Array<{
       id: string; code: string;
     }>).find((type) => type.code === 'UNPAID')!;
