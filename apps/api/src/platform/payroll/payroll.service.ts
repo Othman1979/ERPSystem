@@ -198,85 +198,88 @@ export class PayrollService {
 
   async updateEmployee(id: bigint, dto: UpdateEmployeeDto) {
     this.canManage();
-    const { companyId, db } = this.context();
-    const employee = await db.employee.findFirst({
-      where: { id },
-      select: { id: true, isActive: true, hireDate: true, leaveDate: true, sscCovered: true },
-    });
-    if (!employee) throw DomainError.notFound('Employee', id.toString());
-    const sensitiveChange =
-      (dto.hireDate !== undefined && date(dto.hireDate).getTime() !== employee.hireDate.getTime())
-      || (dto.leaveDate !== undefined && (
-        dto.leaveDate === null
-          ? employee.leaveDate !== null
-          : employee.leaveDate === null || date(dto.leaveDate).getTime() !== employee.leaveDate.getTime()
-      ))
-      || (dto.sscCovered !== undefined && dto.sscCovered !== employee.sscCovered);
-    if (sensitiveChange) {
-      const settlement = await db.payrollSettlement.findFirst({
-        where: { companyId, employeeId: id, status: { in: ['DRAFT', 'POSTED', 'PAID'] } },
-        select: { id: true },
+    const { tenantId, companyId, db } = this.context();
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
+      const employee = await tx.employee.findFirst({
+        where: { id },
+        select: { id: true, isActive: true, hireDate: true, leaveDate: true, sscCovered: true },
       });
-      if (settlement) throw new DomainError(ErrorCode.PAYROLL_SETTLEMENT_ACTIVE, 'Employee has an active final settlement');
-      if (employee.leaveDate) {
-        const period = `${employee.leaveDate.getUTCFullYear()}-${String(employee.leaveDate.getUTCMonth() + 1).padStart(2, '0')}`;
-        const departureRun = await db.payrollRun.findFirst({
-          where: {
-            companyId,
-            period,
-            status: { in: ['POSTED', 'PAID'] },
-            lines: { some: { employeeId: id } },
-          },
+      if (!employee) throw DomainError.notFound('Employee', id.toString());
+      const sensitiveChange =
+        (dto.hireDate !== undefined && date(dto.hireDate).getTime() !== employee.hireDate.getTime())
+        || (dto.leaveDate !== undefined && (
+          dto.leaveDate === null
+            ? employee.leaveDate !== null
+            : employee.leaveDate === null || date(dto.leaveDate).getTime() !== employee.leaveDate.getTime()
+        ))
+        || (dto.sscCovered !== undefined && dto.sscCovered !== employee.sscCovered);
+      if (sensitiveChange) {
+        const settlement = await tx.payrollSettlement.findFirst({
+          where: { companyId, employeeId: id, status: { in: ['DRAFT', 'POSTED', 'PAID'] } },
           select: { id: true },
         });
-        if (departureRun) {
-          throw new DomainError(ErrorCode.PAYROLL_SETTLEMENT_ACTIVE, 'Employee has a posted departure payroll run');
+        if (settlement) throw new DomainError(ErrorCode.PAYROLL_SETTLEMENT_ACTIVE, 'Employee has an active final settlement');
+        if (employee.leaveDate) {
+          const period = `${employee.leaveDate.getUTCFullYear()}-${String(employee.leaveDate.getUTCMonth() + 1).padStart(2, '0')}`;
+          const departureRun = await tx.payrollRun.findFirst({
+            where: {
+              companyId,
+              period,
+              status: { in: ['POSTED', 'PAID'] },
+              lines: { some: { employeeId: id } },
+            },
+            select: { id: true },
+          });
+          if (departureRun) {
+            throw new DomainError(ErrorCode.PAYROLL_SETTLEMENT_ACTIVE, 'Employee has a posted departure payroll run');
+          }
         }
       }
-    }
-    if (employee.isActive && dto.isActive === false) {
-      const movements = await db.payrollMovement.findMany({
-        where: { companyId, employeeId: id, status: 'POSTED' },
-        select: { period: true },
-      });
-      const periods = [...new Set(movements.map((movement) => movement.period))];
-      if (periods.length) {
-        const completedRuns = await db.payrollRun.findMany({
-          where: { companyId, period: { in: periods }, status: { in: ['POSTED', 'PAID'] } },
+      if (employee.isActive && dto.isActive === false) {
+        const movements = await tx.payrollMovement.findMany({
+          where: { companyId, employeeId: id, status: 'POSTED' },
           select: { period: true },
         });
-        const completedPeriods = new Set(completedRuns.map((run) => run.period));
-        if (movements.some((movement) => !completedPeriods.has(movement.period))) {
-          throw new DomainError(ErrorCode.VALIDATION, 'Employee cannot be deactivated while posted payroll movements await a run');
+        const periods = [...new Set(movements.map((movement) => movement.period))];
+        if (periods.length) {
+          const completedRuns = await tx.payrollRun.findMany({
+            where: { companyId, period: { in: periods }, status: { in: ['POSTED', 'PAID'] } },
+            select: { period: true },
+          });
+          const completedPeriods = new Set(completedRuns.map((run) => run.period));
+          if (movements.some((movement) => !completedPeriods.has(movement.period))) {
+            throw new DomainError(ErrorCode.VALIDATION, 'Employee cannot be deactivated while posted payroll movements await a run');
+          }
         }
       }
-    }
-    if (dto.code !== undefined) {
-      const duplicate = await db.employee.findFirst({ where: { code: dto.code, id: { not: id } }, select: { id: true } });
-      if (duplicate) throw new DomainError(ErrorCode.DUPLICATE_CODE, 'Employee code already exists');
-    }
-    await db.employee.update({
-      where: { id },
-      data: {
-        code: dto.code,
-        nameAr: dto.nameAr,
-        nameEn: dto.nameEn === undefined ? undefined : dto.nameEn ?? null,
-        nationalId: dto.nationalId === undefined ? undefined : dto.nationalId ?? null,
-        sscNumber: dto.sscNumber === undefined ? undefined : dto.sscNumber ?? null,
-        hireDate: dto.hireDate === undefined ? undefined : date(dto.hireDate),
-        leaveDate: dto.leaveDate === undefined ? undefined : dto.leaveDate ? date(dto.leaveDate) : null,
-        branchId: dto.branchId === undefined ? undefined : dto.branchId ? BigInt(dto.branchId) : null,
-        costCenterId: dto.costCenterId === undefined ? undefined : dto.costCenterId ? BigInt(dto.costCenterId) : null,
-        payMethod: dto.payMethod,
-        iban: dto.iban === undefined ? undefined : dto.iban ?? null,
-        sscCovered: dto.sscCovered,
-        sscHazardous: dto.sscHazardous,
-        taxSubject: dto.taxSubject,
-        taxDependants: dto.taxDependants,
-        taxOtherExemption: dto.taxOtherExemption,
-        isActive: dto.isActive,
-      },
-    });
+      if (dto.code !== undefined) {
+        const duplicate = await tx.employee.findFirst({ where: { code: dto.code, id: { not: id } }, select: { id: true } });
+        if (duplicate) throw new DomainError(ErrorCode.DUPLICATE_CODE, 'Employee code already exists');
+      }
+      await tx.employee.update({
+        where: { id },
+        data: {
+          code: dto.code,
+          nameAr: dto.nameAr,
+          nameEn: dto.nameEn === undefined ? undefined : dto.nameEn ?? null,
+          nationalId: dto.nationalId === undefined ? undefined : dto.nationalId ?? null,
+          sscNumber: dto.sscNumber === undefined ? undefined : dto.sscNumber ?? null,
+          hireDate: dto.hireDate === undefined ? undefined : date(dto.hireDate),
+          leaveDate: dto.leaveDate === undefined ? undefined : dto.leaveDate ? date(dto.leaveDate) : null,
+          branchId: dto.branchId === undefined ? undefined : dto.branchId ? BigInt(dto.branchId) : null,
+          costCenterId: dto.costCenterId === undefined ? undefined : dto.costCenterId ? BigInt(dto.costCenterId) : null,
+          payMethod: dto.payMethod,
+          iban: dto.iban === undefined ? undefined : dto.iban ?? null,
+          sscCovered: dto.sscCovered,
+          sscHazardous: dto.sscHazardous,
+          taxSubject: dto.taxSubject,
+          taxDependants: dto.taxDependants,
+          taxOtherExemption: dto.taxOtherExemption,
+          isActive: dto.isActive,
+        },
+      });
+    }, POSTING_TX_OPTIONS);
     return this.getEmployee(id);
   }
 
