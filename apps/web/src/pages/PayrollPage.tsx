@@ -55,6 +55,7 @@ import { EnterNav } from '../components/EnterNav';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { GridSelect } from '../components/GridSelect';
 import { LeaveSettingsPanel, PayrollLeaveTab } from './PayrollLeave';
+import { PayrollSettlementsTab } from './PayrollSettlements';
 
 type DateFormValue = Dayjs | string | null | undefined;
 type EmployeeForm = {
@@ -735,6 +736,7 @@ export function PayrollPage() {
     { key: 'runs', label: t('payroll.runs'), children: <RunsTab createOnLoad={createOnLoad} /> },
     { key: 'settings', label: t('payroll.settings'), children: <SettingsTab /> },
     { key: 'leave', label: t('payroll.leaveTab'), children: <PayrollLeaveTab /> },
+    { key: 'settlements', label: t('payroll.settlementTab'), children: <PayrollSettlementsTab /> },
     { key: 'reports', label: t('payroll.reports.title'), children: <ReportsTab /> },
   ], [t, createOnLoad]);
   return <Tabs activeKey={activeKey} onChange={changeTab} items={tabs} />;

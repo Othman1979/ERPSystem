@@ -7,6 +7,7 @@ export class PayrollEmployeeDto {
   @ApiProperty({ type: 'string', nullable: true }) nameEn!: string | null;
   @ApiProperty({ type: 'string', nullable: true }) branchNameAr!: string | null;
   @ApiProperty({ type: 'string', nullable: true }) branchNameEn!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, format: 'date-time' }) leaveDate!: string | null;
   @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) currentBasicSalary!: string | null;
   @ApiProperty({ type: 'boolean' }) sscCovered!: boolean;
   @ApiProperty({ type: 'boolean' }) taxSubject!: boolean;

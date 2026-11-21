@@ -54,6 +54,13 @@ const api = vi.hoisted(() => ({
   approveLeave: vi.fn(),
   rejectLeave: vi.fn(),
   cancelLeave: vi.fn(),
+  listSettlements: vi.fn(),
+  createSettlement: vi.fn(),
+  recomputeSettlement: vi.fn(),
+  postSettlement: vi.fn(),
+  paySettlement: vi.fn(),
+  reverseSettlement: vi.fn(),
+  deleteSettlement: vi.fn(),
 }));
 const auth = vi.hoisted(() => ({ can: vi.fn((_permission: string) => true) }));
 
@@ -95,6 +102,13 @@ vi.mock('@erp/api-client', async (importOriginal) => {
     leaveControllerApprove: (...args: unknown[]) => api.approveLeave(...args),
     leaveControllerReject: (...args: unknown[]) => api.rejectLeave(...args),
     leaveControllerCancel: (...args: unknown[]) => api.cancelLeave(...args),
+    payrollSettlementControllerList: (...args: unknown[]) => api.listSettlements(...args),
+    payrollSettlementControllerCreate: (...args: unknown[]) => api.createSettlement(...args),
+    payrollSettlementControllerRecompute: (...args: unknown[]) => api.recomputeSettlement(...args),
+    payrollSettlementControllerPost: (...args: unknown[]) => api.postSettlement(...args),
+    payrollSettlementControllerPay: (...args: unknown[]) => api.paySettlement(...args),
+    payrollSettlementControllerReverse: (...args: unknown[]) => api.reverseSettlement(...args),
+    payrollSettlementControllerDelete: (...args: unknown[]) => api.deleteSettlement(...args),
   };
 });
 
@@ -242,6 +256,13 @@ beforeEach(async () => {
   api.approveLeave.mockResolvedValue(response({}));
   api.rejectLeave.mockResolvedValue(response({}));
   api.cancelLeave.mockResolvedValue(response({}));
+  api.listSettlements.mockResolvedValue(response([]));
+  api.createSettlement.mockResolvedValue(response({}));
+  api.recomputeSettlement.mockResolvedValue(response({}));
+  api.postSettlement.mockResolvedValue(response({}));
+  api.paySettlement.mockResolvedValue(response({}));
+  api.reverseSettlement.mockResolvedValue(response({}));
+  api.deleteSettlement.mockResolvedValue(response({}));
 });
 
 afterEach(() => {
@@ -301,6 +322,150 @@ describe('payroll page payloads and run actions', () => {
     expect(api.approveLeave).toHaveBeenCalledWith('leave-request-1', {
       headers: { 'Idempotency-Key': expect.any(String) },
     });
+  });
+
+  it('limits settlement creation to non-SSC employees with a leave date', async () => {
+    api.listEmployees.mockResolvedValue(response([
+      { id: 'eligible', code: 'ELIGIBLE', nameAr: 'Eligible employee', nameEn: 'Eligible employee', sscCovered: false, leaveDate: '2026-09-20' },
+      { id: 'ssc', code: 'SSC', nameAr: 'SSC employee', nameEn: 'SSC employee', sscCovered: true, leaveDate: '2026-09-20' },
+      { id: 'active', code: 'ACTIVE', nameAr: 'Active employee', nameEn: 'Active employee', sscCovered: false, leaveDate: null },
+    ]));
+    await mount('/payroll?tab=settlements');
+    const create = i18n.t('payroll.createSettlement');
+    await until(() => expect(
+      [...(host?.querySelectorAll('button') ?? [])].some((button) => button.textContent?.includes(create)),
+    ).toBe(true));
+    act(() => [...host!.querySelectorAll('button')].find((button) => button.textContent?.includes(create))!.click());
+    await until(() => expect(document.querySelector('.ant-modal')).not.toBeNull());
+    const modal = document.querySelector<HTMLElement>('.ant-modal')!;
+    const selector = modal.querySelector<HTMLElement>('.ant-select-selector');
+    if (!selector) throw new Error('Missing settlement employee selector');
+    act(() => selector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+    await until(() => expect(
+      [...document.querySelectorAll('.ant-select-item-option')].some((option) => option.textContent?.includes('Eligible employee')),
+    ).toBe(true));
+    const options = [...document.querySelectorAll<HTMLElement>('.ant-select-item-option')]
+      .map((option) => option.textContent?.trim());
+    expect(options).toContain('ELIGIBLE — Eligible employee');
+    expect(options).not.toContain('SSC — SSC employee');
+    expect(options).not.toContain('ACTIVE — Active employee');
+  });
+
+  it('shows settlement details and sends an idempotency key when posting', async () => {
+    api.listSettlements.mockResolvedValue(response([{
+      id: 'settlement-1',
+      employeeId: 'employee-1',
+      employeeNameAr: 'Test employee',
+      settlementNo: null,
+      settlementDate: '2026-01-31',
+      status: 'DRAFT',
+      serviceYears: '1.000000',
+      lastWage: '600.000',
+      eosAmount: '600.000',
+      serviceDaysBefore2010: 0,
+      serviceDays2010To2014: 0,
+      serviceDaysFrom2015: 365,
+      taxableAmount: '0.000',
+      eosTax: '0.000',
+      nationalContribution: '0.000',
+      provisionUsed: '600.000',
+      net: '600.000',
+    }]));
+    await mount('/payroll?tab=settlements');
+    const view = i18n.t('payroll.viewSettlement');
+    await until(() => expect(
+      [...(host?.querySelectorAll('button') ?? [])].some((button) => button.textContent?.includes(view)),
+    ).toBe(true));
+    act(() => [...host!.querySelectorAll('button')].find((button) => button.textContent?.includes(view))!.click());
+    const post = i18n.t('payroll.postSettlement');
+    await until(() => {
+      expect(host?.textContent).toContain(i18n.t('payroll.settlementServiceYears'));
+      expect([...host!.querySelectorAll('button')].some((button) => button.textContent?.includes(post))).toBe(true);
+    });
+    act(() => [...host!.querySelectorAll('button')].find((button) => button.textContent?.includes(post))!.click());
+    await until(() => expect(api.postSettlement).toHaveBeenCalledTimes(1));
+    expect(api.postSettlement).toHaveBeenCalledWith('settlement-1', {
+      headers: { 'Idempotency-Key': expect.any(String) },
+    });
+  });
+
+  it('uses date-only payment and reversal inputs with idempotency keys', async () => {
+    api.listSettlements.mockResolvedValue(response([{
+      id: 'settlement-1',
+      employeeId: 'employee-1',
+      employeeNameAr: 'Test employee',
+      settlementNo: 'FS-2026-00001',
+      settlementDate: '2026-01-31',
+      status: 'POSTED',
+      serviceYears: '1.000000',
+      lastWage: '600.000',
+      eosAmount: '600.000',
+      serviceDaysBefore2010: 0,
+      serviceDays2010To2014: 0,
+      serviceDaysFrom2015: 365,
+      taxableAmount: '0.000',
+      eosTax: '0.000',
+      nationalContribution: '0.000',
+      provisionUsed: '600.000',
+      net: '600.000',
+    }]));
+    api.listCashBoxes.mockResolvedValue(response([{ id: 'cash-1', name: 'Main cash box' }]));
+    await mount('/payroll?tab=settlements');
+    const view = i18n.t('payroll.viewSettlement');
+    await until(() => expect(
+      [...(host?.querySelectorAll('button') ?? [])].some((button) => button.textContent?.includes(view)),
+    ).toBe(true));
+    act(() => [...host!.querySelectorAll('button')].find((button) => button.textContent?.includes(view))!.click());
+    const pay = i18n.t('payroll.paySettlement');
+    await until(() => expect(
+      [...host!.querySelectorAll('button')].some((button) => button.textContent?.includes(pay)),
+    ).toBe(true));
+    act(() => [...host!.querySelectorAll('button')].find((button) => button.textContent?.includes(pay))!.click());
+    const modalFor = (title: string) => [...document.querySelectorAll<HTMLElement>('.ant-modal')]
+      .find((modal) => modal.querySelector('.ant-modal-title')?.textContent?.includes(title));
+    await until(() => expect(modalFor(pay)).toBeDefined());
+    const paymentModal = modalFor(pay)!;
+    const paymentDate = paymentModal.querySelector<HTMLInputElement>('.ant-picker-input input');
+    expect(paymentDate?.value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    const accountLabel = [...paymentModal.querySelectorAll('label')]
+      .find((label) => label.textContent?.includes(i18n.t('payroll.paymentAccount')));
+    const accountSelect = accountLabel?.closest('.ant-form-item')?.querySelector<HTMLElement>('.ant-select-selector');
+    if (!accountSelect) throw new Error('Missing settlement payment source selector');
+    act(() => accountSelect.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+    await until(() => expect(
+      [...document.querySelectorAll('.ant-select-item-option')].some((option) => option.textContent?.includes('Main cash box')),
+    ).toBe(true));
+    const cashOption = [...document.querySelectorAll<HTMLElement>('.ant-select-item-option')]
+      .find((option) => option.textContent?.includes('Main cash box'))!;
+    act(() => cashOption.click());
+    await settle();
+    const save = [...paymentModal.querySelectorAll<HTMLButtonElement>('.form-dialog-footer button')]
+      .find((button) => button.textContent?.includes(i18n.t('common.save')));
+    if (!save) throw new Error('Missing settlement payment save button');
+    act(() => save.click());
+    await until(() => expect(api.paySettlement).toHaveBeenCalledTimes(1));
+    expect(api.paySettlement).toHaveBeenCalledWith('settlement-1', {
+      paymentDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      cashBoxId: 'cash-1',
+    }, { headers: { 'Idempotency-Key': expect.any(String) } });
+
+    const reverse = i18n.t('payroll.reverseSettlement');
+    await until(() => expect(
+      [...host!.querySelectorAll('button')].some((button) => button.textContent?.includes(reverse)),
+    ).toBe(true));
+    act(() => [...host!.querySelectorAll('button')].find((button) => button.textContent?.includes(reverse))!.click());
+    await until(() => expect(modalFor(reverse)).toBeDefined());
+    const reverseModal = modalFor(reverse)!;
+    const reversalDate = reverseModal.querySelector<HTMLInputElement>('.ant-picker-input input');
+    expect(reversalDate?.value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    const reverseSave = [...reverseModal.querySelectorAll<HTMLButtonElement>('.form-dialog-footer button')]
+      .find((button) => button.textContent?.includes(i18n.t('common.save')));
+    if (!reverseSave) throw new Error('Missing settlement reversal save button');
+    act(() => reverseSave.click());
+    await until(() => expect(api.reverseSettlement).toHaveBeenCalledTimes(1));
+    expect(api.reverseSettlement).toHaveBeenCalledWith('settlement-1', {
+      reversalDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    }, { headers: { 'Idempotency-Key': expect.any(String) } });
   });
 
   it('offers only active fixed earning elements for recurring allowances', async () => {
