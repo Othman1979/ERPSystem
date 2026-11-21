@@ -49,6 +49,24 @@ Sources: Labour Law 8/1996 arts. 61, 65, 66, 70; SSC Law 1/2014 art. 45/b as ame
 3. **Final settlement document** on leaving: last days' pay, cash for unused annual leave (art. 63), end of service; posted through `PostingService` against the provisions, paid as a separate entry. Correction by reversal only.
 4. **End-of-service tax (instructions art. 4):** 100% exempt for service before 2010, 50% exempt for 2010–2014, first JOD 15,000 exempt for service from 2015; 9% on the remainder; plus 1% national contribution on what exceeds JOD 200,000.
 
+#### 28C implementation rules (settled)
+Sources: Labour Law 8/1996 arts. 32, 63; Income Tax Executive Instructions 2/2019 art. 4; IAS 19.
+
+1. **Partial months.** A run prorates basic salary and fixed-allowance recurring amounts for an employee hired or leaving inside the period: factor = activeCalendarDays / daysPerMonth (factor 1 when active the whole period, capped at 1). This pays the last days' wage in the leaving month's run.
+2. **Unused annual leave cash (art. 63).** In the run whose period contains the employee's `leaveDate`, add a FIXED earning item from pay element `LEAVE_ENCASHMENT` ("بدل إجازات غير مستعملة"; tax-subject, not SSC-subject, account 5207 PAYROLL_LEAVE_EXPENSE). Amount = round3(max(unused annual days at leaveDate, 0) × dailyWage), where dailyWage = round6((full monthly basic + fixed allowances, not prorated) / daysPerMonth). The leaver's `leaveProvision` on that run is 0, so the provision delta releases the prior balance. Applies to SSC-covered and non-covered employees.
+3. **End of service (art. 32), non-SSC employees only.** serviceYears = round6(full anniversary years from hireDate to leaveDate+1 day + (remaining days − approved UNPAID leave calendar days within service) / 365). EOS = round3(lastWage × serviceYears), lastWage = basic + fixed allowances in force at leaveDate (not prorated).
+4. **EOS provision (IAS 19).** On run posting, each non-SSC employee's line stores `eosProvision` = the EOS formula as of min(period end, leaveDate). The per-employee delta against the previous posted run goes into the same provision entry as leave: Dr PAYROLL_EOS_EXPENSE (5208, cost centre) / Cr PAYROLL_EOS_PROVISION (2110), sides swapped if negative. First recognition is a catch-up expense.
+5. **Final settlement document** `PayrollSettlement` (company-scoped) for a non-SSC employee with `leaveDate` set, once the run for the leaving period is POSTED/PAID. States DRAFT → POSTED → PAID, REVERSED; one non-reversed settlement per employee.
+   - **Stored values:** serviceYears, lastWage, eosAmount, the three service-day splits, taxableAmount, eosTax, nationalContribution, provisionUsed (the employee's latest posted `eosProvision`), net.
+   - **Posting:** via PostingService. Dr 2110 provisionUsed; Dr/Cr 5208 for (eosAmount − provisionUsed); Cr PAYROLL_TAX_PAYABLE eosTax; Cr PAYROLL_PAYABLE net.
+   - **Payment:** a separate entry (cash box or bank, date ≥ settlement date), Dr PAYROLL_PAYABLE / Cr cash.
+   - **Correction:** reverse only, which reverses the payment first, and the same for the posting.
+6. **EOS tax (instructions art. 4).** Split eosAmount pro rata by service days: before 01/01/2010 (d1), 01/01/2010–31/12/2014 (d2), from 01/01/2015 (d3), D = d1+d2+d3.
+   - taxable = round3(0.5 × eos × d2/D + max(eos × d3/D − 15000, 0))
+   - eosTax = round3(taxable × 9% + max(taxable − 200000, 0) × 1%)
+   - nationalContribution = round3(max(taxable − 200000, 0) × 1%), stored separately and included in eosTax.
+   - The 15000, 9%, 200000 and 1% values are dated payroll settings.
+
 ## Consequences
 - Three pull requests: 28A, 28B, 28C. New mapping keys arrive with 28B and 28C.
 - Existing golden scenarios PY1–PY4 keep their manually entered tax as overrides; their numbers do not change.

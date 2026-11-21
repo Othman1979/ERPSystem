@@ -178,6 +178,43 @@ describe('calculatePayroll', () => {
     expect(result.items[1].rate?.toString()).toBe('16');
   });
 
+  it('prorates basic salary and fixed allowances on an employee start or end date', () => {
+    const transport = { ...overtime, id: 10n, code: 'TRANSPORT', amountType: 'FIXED' as const, isFixedAllowance: true };
+    const result = calculatePayroll({
+      ...base,
+      salary: '600.000',
+      employee: { ...base.employee, hireDate: new Date('2026-01-15T00:00:00Z') },
+      recurring: [{
+        element: transport,
+        amount: '40.000',
+        quantity: null,
+        validFrom: new Date('2026-01-01T00:00:00Z'),
+        validTo: null,
+      }],
+    })!;
+    expect([result.basic.toString(), result.earnings.toString(), result.gross.toString()])
+      .toEqual(['340', '22.667', '362.667']);
+  });
+
+  it('caps a partial-month ratio at one when active days exceed configured days per month', () => {
+    const result = calculatePayroll({
+      ...base,
+      salary: '3000.000',
+      employee: { ...base.employee, hireDate: new Date('2026-01-04T00:00:00Z') },
+      settings: { ...base.settings, daysPerMonth: '26' },
+    })!;
+    expect(result.basic.toString()).toBe('3000');
+  });
+
+  it('rounds half-fils from the exact amount-times-active-days product', () => {
+    const result = calculatePayroll({
+      ...base,
+      employee: { ...base.employee, hireDate: new Date('2026-01-17T00:00:00Z'), sscCovered: false },
+      salary: '0.015',
+    })!;
+    expect(result.basic.toString()).toBe('0.008');
+  });
+
   it('clamps covered employees to minimum wage and adds hazardous employer rate', () => {
     const result = calculatePayroll({
       ...base,

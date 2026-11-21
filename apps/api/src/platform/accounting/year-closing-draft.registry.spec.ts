@@ -7,6 +7,10 @@ describe('YearClosingDraftRegistry', () => {
   const from = new Date('2031-01-01T00:00:00.000Z');
   const to = new Date('2031-12-31T00:00:00.000Z');
 
+  it('includes payroll settlements among required draft readers', () => {
+    expect(YEAR_CLOSING_DRAFT_TYPES).toContain('PAYROLL_SETTLEMENT');
+  });
+
   it('requires every expected document type to register', async () => {
     const registry = new YearClosingDraftRegistry();
     await expect(registry.list(tx, 1n, 2n, from, to)).rejects.toBeInstanceOf(DomainError);

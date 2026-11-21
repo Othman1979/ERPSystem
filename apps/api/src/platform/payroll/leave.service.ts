@@ -345,6 +345,16 @@ export class LeaveService {
       const request = await this.findRequest(tx, id);
       if (!request) throw DomainError.notFound('LeaveRequest', id.toString());
       if (request.status !== 'SUBMITTED') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only submitted leave requests can be approved');
+      if (
+        request.employee.leaveDate
+        && (
+          request.leaveType.category === 'ANNUAL'
+          || request.leaveType.category === 'UNPAID'
+          || request.leaveType.payElementId
+        )
+      ) {
+        await this.assertNoPostedDepartureRun(tx, companyId, request.employeeId, request.employee.leaveDate);
+      }
       if (request.leaveType.payElementId) {
         await this.assertNoPostedPayrollForPeriod(tx, request.startDate, request.endDate);
       }
@@ -393,6 +403,17 @@ export class LeaveService {
       if (!request) throw DomainError.notFound('LeaveRequest', id.toString());
       if (!['SUBMITTED', 'APPROVED'].includes(request.status)) {
         throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only submitted or approved requests can be cancelled');
+      }
+      if (
+        request.employee.leaveDate
+        && request.startDate <= request.employee.leaveDate
+        && (
+          request.leaveType.category === 'ANNUAL'
+          || request.leaveType.category === 'UNPAID'
+          || request.leaveType.payElementId
+        )
+      ) {
+        await this.assertNoPostedDepartureRun(tx, companyId, request.employeeId, request.employee.leaveDate);
       }
       if (request.status === 'APPROVED') {
         await this.assertNoPostedPayrollForPeriod(tx, request.startDate, request.endDate);
@@ -595,6 +616,26 @@ export class LeaveService {
     if (postedRun) throw new DomainError(ErrorCode.LEAVE_RUN_ALREADY_POSTED, 'Payroll is already posted for a leave period');
   }
 
+  private async assertNoPostedDepartureRun(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    employeeId: bigint,
+    leaveDate: Date,
+  ) {
+    const departureRun = await tx.payrollRun.findFirst({
+      where: {
+        companyId,
+        period: yearMonth(leaveDate),
+        status: { in: ['POSTED', 'PAID'] },
+        lines: { some: { employeeId } },
+      },
+      select: { id: true },
+    });
+    if (departureRun) {
+      throw new DomainError(ErrorCode.LEAVE_RUN_ALREADY_POSTED, 'The employee departure payroll run is already posted');
+    }
+  }
+
   async listBalances(query: LeaveBalanceQueryDto) {
     const { db } = this.context();
     const year = Number(query.year);
@@ -757,11 +798,16 @@ export class LeaveService {
     if (!createdBy) throw new DomainError(ErrorCode.FORBIDDEN, 'A signed-in user is required');
     return db.$transaction(async (tx) => {
       await this.lockCompany(tx, tenantId, companyId);
-      if (!await tx.employee.findFirst({ where: { id: employeeId }, select: { id: true } })) {
+      const employee = await tx.employee.findFirst({ where: { id: employeeId }, select: { id: true, leaveDate: true } });
+      if (!employee) {
         throw DomainError.notFound('Employee', dto.employeeId);
       }
-      if (!await tx.leaveType.findFirst({ where: { id: leaveTypeId }, select: { id: true } })) {
+      const leaveType = await tx.leaveType.findFirst({ where: { id: leaveTypeId }, select: { id: true, category: true } });
+      if (!leaveType) {
         throw DomainError.notFound('LeaveType', dto.leaveTypeId);
+      }
+      if (leaveType.category === 'ANNUAL' && employee.leaveDate) {
+        await this.assertNoPostedDepartureRun(tx, companyId, employeeId, employee.leaveDate);
       }
       const row = await tx.leaveBalanceAdjustment.create({
         data: {

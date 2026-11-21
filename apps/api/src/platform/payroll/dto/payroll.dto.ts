@@ -132,6 +132,12 @@ class PayrollSettingsRange implements ValidatorConstraintInterface {
         .filter((value): value is string => value != null)
         .map((value) => new Decimal(value));
       const nationalRate = dto.taxNationalRate == null ? new Decimal('0.01') : new Decimal(dto.taxNationalRate);
+      const eosAmounts = [dto.eosTaxExemption, dto.eosNationalThreshold]
+        .filter((value): value is string => value != null)
+        .map((value) => new Decimal(value));
+      const eosRates = [dto.eosTaxRate, dto.eosNationalRate]
+        .filter((value): value is string => value != null)
+        .map((value) => new Decimal(value));
       const brackets = dto.taxBrackets ?? DEFAULT_PAYROLL_TAX_BRACKETS.map(({ upTo, rate }) => ({ upTo, rate }));
       let previous: Decimal | null = null;
       let sawUnbounded = false;
@@ -152,7 +158,9 @@ class PayrollSettingsRange implements ValidatorConstraintInterface {
         (!minimum || minimum.gte(zero)) && (!maximum || maximum.gte(zero)) &&
         (!minimum || !maximum || maximum.gte(minimum)) &&
         taxAmounts.every((amount) => amount.gte(zero)) &&
-        nationalRate.gte(zero) && nationalRate.lte(one) && validBrackets;
+        nationalRate.gte(zero) && nationalRate.lte(one) &&
+        eosAmounts.every((amount) => amount.gte(zero)) &&
+        eosRates.every((rate) => rate.gte(zero) && rate.lte(one)) && validBrackets;
     } catch {
       return false;
     }
@@ -186,6 +194,10 @@ export class CreatePayrollSettingsDto {
   @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) taxDependantsExemption?: string;
   @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) taxNationalThreshold?: string;
   @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) taxNationalRate?: string;
+  @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) eosTaxExemption?: string;
+  @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) eosTaxRate?: string;
+  @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) eosNationalThreshold?: string;
+  @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) eosNationalRate?: string;
   @ApiPropertyOptional({ type: () => PayrollTaxBracketInputDto, isArray: true })
   @IsOptional() @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => PayrollTaxBracketInputDto)
   taxBrackets?: PayrollTaxBracketInputDto[];

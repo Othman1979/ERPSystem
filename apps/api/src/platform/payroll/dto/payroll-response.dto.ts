@@ -7,6 +7,7 @@ export class PayrollEmployeeDto {
   @ApiProperty({ type: 'string', nullable: true }) nameEn!: string | null;
   @ApiProperty({ type: 'string', nullable: true }) branchNameAr!: string | null;
   @ApiProperty({ type: 'string', nullable: true }) branchNameEn!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, format: 'date-time' }) leaveDate!: string | null;
   @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) currentBasicSalary!: string | null;
   @ApiProperty({ type: 'boolean' }) sscCovered!: boolean;
   @ApiProperty({ type: 'boolean' }) taxSubject!: boolean;
@@ -94,6 +95,10 @@ export class PayrollSettingsDto {
   @ApiProperty({ type: 'string', format: 'decimal' }) taxDependantsExemption!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) taxNationalThreshold!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) taxNationalRate!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) eosTaxExemption!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) eosTaxRate!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) eosNationalThreshold!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) eosNationalRate!: string;
   @ApiProperty({ type: () => PayrollTaxBracketDto, isArray: true }) taxBrackets!: PayrollTaxBracketDto[];
   @ApiProperty({ type: 'string', format: 'date-time' }) createdAt!: string;
 }
@@ -173,10 +178,11 @@ export class PayrollEmployeeDetailDto {
 
 export class PayrollRunDto {
   @ApiProperty({ type: 'string' }) id!: string;
-  @ApiProperty({ type: 'string', format: 'date' }) period!: string;
+  @ApiProperty({ type: 'string', pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }) period!: string;
   @ApiProperty({ type: 'string', format: 'date' }) runDate!: string;
   @ApiProperty({ type: 'string', enum: ['DRAFT', 'POSTED', 'PAID', 'REVERSED'] }) status!: string;
   @ApiProperty({ type: 'string', nullable: true }) runNo!: string | null;
+  @ApiProperty({ type: 'string', nullable: true }) leaveProvisionEntryId!: string | null;
   @ApiProperty({ type: 'string', format: 'decimal' }) basicTotal!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) earningsTotal!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) grossTotal!: string;
@@ -215,6 +221,7 @@ export class PayrollLineDto {
   @ApiProperty({ type: 'string', format: 'decimal' }) deductions!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) net!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) leaveProvision!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) eosProvision!: string;
   @ApiProperty({ type: PayrollLineItemDto, isArray: true }) items!: PayrollLineItemDto[];
 }
 
