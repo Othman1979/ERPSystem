@@ -22,6 +22,7 @@ export const PERMISSIONS = {
   DOCUMENT_UNLOCK: 'document.unlock',
   PAYROLL_VIEW: 'payroll.view',
   PAYROLL_MANAGE: 'payroll.manage',
+  PAYROLL_LEAVE_APPROVE: 'payroll.leave.approve',
   PAYROLL_POST: 'payroll.post',
   EINVOICE_MANAGE: 'einvoice.manage',
   REPORTS_VIEW: 'reports.view',

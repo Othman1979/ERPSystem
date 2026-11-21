@@ -453,6 +453,8 @@ export const AccountMappingSlotDtoMappingKey = {
   PAYROLL_PAYABLE: 'PAYROLL_PAYABLE',
   PAYROLL_SSC_PAYABLE: 'PAYROLL_SSC_PAYABLE',
   PAYROLL_TAX_PAYABLE: 'PAYROLL_TAX_PAYABLE',
+  PAYROLL_LEAVE_PROVISION: 'PAYROLL_LEAVE_PROVISION',
+  PAYROLL_LEAVE_EXPENSE: 'PAYROLL_LEAVE_EXPENSE',
   EMPLOYEE_ADVANCES: 'EMPLOYEE_ADVANCES',
 } as const;
 
@@ -1981,6 +1983,7 @@ export const CustomRolePermission = {
   payrollview: 'payroll.view',
   payrollmanage: 'payroll.manage',
   payrollpost: 'payroll.post',
+  payrollleaveapprove: 'payroll.leave.approve',
   einvoicemanage: 'einvoice.manage',
   reportsview: 'reports.view',
   auditview: 'audit.view',
@@ -2008,7 +2011,7 @@ export interface TenantRoleDto {
 export interface SaveTenantRoleDto {
   /** @pattern ^[A-Z0-9_-]{2,50}$ */
   code: string;
-  /** @maxItems 31 */
+  /** @maxItems 32 */
   permissions: CustomRolePermission[];
   /**
      * @minLength 1
@@ -8911,6 +8914,10 @@ export interface PayrollSettingsDto {
   sscMaxWage: string | null;
   hoursPerMonth: string;
   daysPerMonth: string;
+  weeklyRestDays: number[];
+  annualLeaveDays: string;
+  annualLeaveDaysSenior: string;
+  annualLeaveSeniorYears: number;
   taxPersonalExemption: string;
   taxDependantsExemption: string;
   taxNationalThreshold: string;
@@ -8926,6 +8933,17 @@ export interface PayrollTaxBracketInputDto {
 }
 
 export interface CreatePayrollSettingsDto {
+  /**
+     * @minItems 1
+     * @maxItems 6
+     * @items.minimum 0
+     * @items.maximum 6
+     */
+  weeklyRestDays?: number[];
+  annualLeaveDays?: string;
+  annualLeaveDaysSenior?: string;
+  /** @minimum 0 */
+  annualLeaveSeniorYears?: number;
   taxPersonalExemption?: string;
   taxDependantsExemption?: string;
   taxNationalThreshold?: string;
@@ -9041,6 +9059,8 @@ export interface PayrollLineItemDto {
   amount: string;
   /** @nullable */
   payrollMovementId: string | null;
+  /** @nullable */
+  leaveRequestId: string | null;
 }
 
 export interface PayrollLineDto {
@@ -9059,6 +9079,7 @@ export interface PayrollLineDto {
   taxManual: boolean;
   deductions: string;
   net: string;
+  leaveProvision: string;
   items: PayrollLineItemDto[];
 }
 
@@ -9106,6 +9127,249 @@ export interface PayrollPaymentDto {
   cashBoxId?: string;
   bankAccountId?: string;
   date: string;
+}
+
+export type LeaveTypeResponseDtoCategory = typeof LeaveTypeResponseDtoCategory[keyof typeof LeaveTypeResponseDtoCategory];
+
+
+export const LeaveTypeResponseDtoCategory = {
+  ANNUAL: 'ANNUAL',
+  SICK: 'SICK',
+  MATERNITY: 'MATERNITY',
+  PATERNITY: 'PATERNITY',
+  HAJJ: 'HAJJ',
+  UNPAID: 'UNPAID',
+  OTHER: 'OTHER',
+} as const;
+
+export type LeaveTypeResponseDtoCountBasis = typeof LeaveTypeResponseDtoCountBasis[keyof typeof LeaveTypeResponseDtoCountBasis];
+
+
+export const LeaveTypeResponseDtoCountBasis = {
+  WORKING_DAYS: 'WORKING_DAYS',
+  CALENDAR_DAYS: 'CALENDAR_DAYS',
+} as const;
+
+export interface LeaveTypeResponseDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  category: LeaveTypeResponseDtoCategory;
+  countBasis: LeaveTypeResponseDtoCountBasis;
+  /** @nullable */
+  maxDaysPerYear: string | null;
+  /** @nullable */
+  maxDaysPerRequest: string | null;
+  /** @nullable */
+  hospitalExtraDays: string | null;
+  oncePerEmployment: boolean;
+  /** @nullable */
+  minServiceYears: number | null;
+  /** @nullable */
+  payElementId: string | null;
+  /** @nullable */
+  payElementCode: string | null;
+  isActive: boolean;
+}
+
+export type CreateLeaveTypeDtoCategory = typeof CreateLeaveTypeDtoCategory[keyof typeof CreateLeaveTypeDtoCategory];
+
+
+export const CreateLeaveTypeDtoCategory = {
+  ANNUAL: 'ANNUAL',
+  SICK: 'SICK',
+  MATERNITY: 'MATERNITY',
+  PATERNITY: 'PATERNITY',
+  HAJJ: 'HAJJ',
+  UNPAID: 'UNPAID',
+  OTHER: 'OTHER',
+} as const;
+
+export type CreateLeaveTypeDtoCountBasis = typeof CreateLeaveTypeDtoCountBasis[keyof typeof CreateLeaveTypeDtoCountBasis];
+
+
+export const CreateLeaveTypeDtoCountBasis = {
+  WORKING_DAYS: 'WORKING_DAYS',
+  CALENDAR_DAYS: 'CALENDAR_DAYS',
+} as const;
+
+export interface CreateLeaveTypeDto {
+  /** @maxLength 50 */
+  code: string;
+  /** @maxLength 191 */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  category: CreateLeaveTypeDtoCategory;
+  countBasis: CreateLeaveTypeDtoCountBasis;
+  maxDaysPerYear?: string;
+  maxDaysPerRequest?: string;
+  hospitalExtraDays?: string;
+  oncePerEmployment?: boolean;
+  /** @minimum 0 */
+  minServiceYears?: number;
+  /** @nullable */
+  payElementId?: string | null;
+  isActive?: boolean;
+}
+
+export type UpdateLeaveTypeDtoCategory = typeof UpdateLeaveTypeDtoCategory[keyof typeof UpdateLeaveTypeDtoCategory];
+
+
+export const UpdateLeaveTypeDtoCategory = {
+  ANNUAL: 'ANNUAL',
+  SICK: 'SICK',
+  MATERNITY: 'MATERNITY',
+  PATERNITY: 'PATERNITY',
+  HAJJ: 'HAJJ',
+  UNPAID: 'UNPAID',
+  OTHER: 'OTHER',
+} as const;
+
+export type UpdateLeaveTypeDtoCountBasis = typeof UpdateLeaveTypeDtoCountBasis[keyof typeof UpdateLeaveTypeDtoCountBasis];
+
+
+export const UpdateLeaveTypeDtoCountBasis = {
+  WORKING_DAYS: 'WORKING_DAYS',
+  CALENDAR_DAYS: 'CALENDAR_DAYS',
+} as const;
+
+export interface UpdateLeaveTypeDto {
+  /** @maxLength 191 */
+  nameAr?: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+  category?: UpdateLeaveTypeDtoCategory;
+  countBasis?: UpdateLeaveTypeDtoCountBasis;
+  maxDaysPerYear?: string;
+  maxDaysPerRequest?: string;
+  hospitalExtraDays?: string;
+  oncePerEmployment?: boolean;
+  /** @minimum 0 */
+  minServiceYears?: number;
+  /** @nullable */
+  payElementId?: string | null;
+  isActive?: boolean;
+}
+
+export interface PublicHolidayResponseDto {
+  id: string;
+  date: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface CreatePublicHolidayDto {
+  date: string;
+  /** @maxLength 191 */
+  nameAr: string;
+  /** @maxLength 191 */
+  nameEn?: string;
+}
+
+export type LeaveRequestResponseDtoStatus = typeof LeaveRequestResponseDtoStatus[keyof typeof LeaveRequestResponseDtoStatus];
+
+
+export const LeaveRequestResponseDtoStatus = {
+  SUBMITTED: 'SUBMITTED',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export interface LeaveRequestResponseDto {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  /** @nullable */
+  employeeNameEn: string | null;
+  leaveTypeId: string;
+  leaveTypeCode: string;
+  leaveTypeNameAr: string;
+  /** @nullable */
+  leaveTypeNameEn: string | null;
+  /** @nullable */
+  requestNo: string | null;
+  startDate: string;
+  endDate: string;
+  days: string;
+  calendarDays: number;
+  hospitalised: boolean;
+  /** @nullable */
+  notes: string | null;
+  status: LeaveRequestResponseDtoStatus;
+  /** @nullable */
+  approvedBy: string | null;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  createdAt: string;
+}
+
+export interface CreateLeaveRequestDto {
+  employeeId: string;
+  leaveTypeId: string;
+  startDate: string;
+  endDate: string;
+  hospitalised?: boolean;
+  /** @maxLength 500 */
+  notes?: string;
+}
+
+export type LeaveBalanceResponseDtoCategory = typeof LeaveBalanceResponseDtoCategory[keyof typeof LeaveBalanceResponseDtoCategory];
+
+
+export const LeaveBalanceResponseDtoCategory = {
+  ANNUAL: 'ANNUAL',
+  SICK: 'SICK',
+  MATERNITY: 'MATERNITY',
+  PATERNITY: 'PATERNITY',
+  HAJJ: 'HAJJ',
+  UNPAID: 'UNPAID',
+  OTHER: 'OTHER',
+} as const;
+
+export interface LeaveBalanceResponseDto {
+  employeeId: string;
+  employeeName: string;
+  /** @nullable */
+  employeeNameEn: string | null;
+  leaveTypeId: string;
+  leaveTypeCode: string;
+  leaveTypeNameAr: string;
+  /** @nullable */
+  leaveTypeNameEn: string | null;
+  category: LeaveBalanceResponseDtoCategory;
+  entitlement: string;
+  carryInto: string;
+  adjustments: string;
+  taken: string;
+  available: string;
+}
+
+export interface LeaveAdjustmentResponseDto {
+  id: string;
+  employeeId: string;
+  leaveTypeId: string;
+  year: number;
+  days: string;
+  reason: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface CreateLeaveAdjustmentDto {
+  employeeId: string;
+  leaveTypeId: string;
+  /** @pattern ^\d{4}$ */
+  year: string;
+  days: string;
+  /** @maxLength 500 */
+  reason: string;
 }
 
 export type EInvoiceTrack = typeof EInvoiceTrack[keyof typeof EInvoiceTrack];
@@ -10096,6 +10360,11 @@ export const ErrorCode = {
   PAYROLL_NO_EMPLOYEES: 'PAYROLL_NO_EMPLOYEES',
   PAYROLL_SETTINGS_REQUIRED: 'PAYROLL_SETTINGS_REQUIRED',
   PAYROLL_ACCOUNT_INVALID: 'PAYROLL_ACCOUNT_INVALID',
+  LEAVE_REQUEST_SPANS_YEAR: 'LEAVE_REQUEST_SPANS_YEAR',
+  LEAVE_REQUEST_OVERLAP: 'LEAVE_REQUEST_OVERLAP',
+  LEAVE_BALANCE_INSUFFICIENT: 'LEAVE_BALANCE_INSUFFICIENT',
+  LEAVE_LIMIT_EXCEEDED: 'LEAVE_LIMIT_EXCEEDED',
+  LEAVE_RUN_ALREADY_POSTED: 'LEAVE_RUN_ALREADY_POSTED',
   OPENING_INVENTORY_VIA_STOCK: 'OPENING_INVENTORY_VIA_STOCK',
   UPLOAD_TOO_LARGE: 'UPLOAD_TOO_LARGE',
   UPLOAD_TYPE_NOT_ALLOWED: 'UPLOAD_TYPE_NOT_ALLOWED',
@@ -12202,6 +12471,40 @@ export const PayrollControllerEmployeeStatementReportLang = {
 
 export type PayrollControllerPayslipParams = {
   lang?: string;
+};
+
+export type LeaveControllerListHolidaysParams = {
+  /** @pattern ^\d{4}$ */
+  year?: string;
+};
+
+export type LeaveControllerListRequestsParams = {
+  employeeId?: string;
+  status?: LeaveControllerListRequestsStatus;
+  /** @pattern ^\d{4}$ */
+  year?: string;
+};
+
+export type LeaveControllerListRequestsStatus = typeof LeaveControllerListRequestsStatus[keyof typeof LeaveControllerListRequestsStatus];
+
+
+export const LeaveControllerListRequestsStatus = {
+  SUBMITTED: 'SUBMITTED',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type LeaveControllerBalancesParams = {
+  /** @pattern ^\d{4}$ */
+  year: string;
+  employeeId?: string;
+};
+
+export type LeaveControllerAdjustmentsParams = {
+  /** @pattern ^\d{4}$ */
+  year?: string;
+  employeeId?: string;
 };
 
 export type EInvoiceControllerListSubmissionsParams = {
@@ -28470,6 +28773,637 @@ export const payrollControllerPayslip = async (id: string,
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export type leaveControllerListTypesResponse200 = {
+  data: LeaveTypeResponseDto[]
+  status: 200
+}
+
+export type leaveControllerListTypesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type leaveControllerListTypesResponseSuccess = (leaveControllerListTypesResponse200) & {
+  headers: Headers;
+};
+export type leaveControllerListTypesResponseError = (leaveControllerListTypesResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerListTypesUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/leave-types`
+}
+
+export const leaveControllerListTypes = async ( options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerListTypesResponseSuccess> => {
+
+  return apiFetch<leaveControllerListTypesResponseSuccess>(getLeaveControllerListTypesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type leaveControllerCreateTypeResponse201 = {
+  data: LeaveTypeResponseDto
+  status: 201
+}
+
+export type leaveControllerCreateTypeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type leaveControllerCreateTypeResponseSuccess = (leaveControllerCreateTypeResponse201) & {
+  headers: Headers;
+};
+export type leaveControllerCreateTypeResponseError = (leaveControllerCreateTypeResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerCreateTypeUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/leave-types`
+}
+
+export const leaveControllerCreateType = async (createLeaveTypeDto: CreateLeaveTypeDto, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerCreateTypeResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<leaveControllerCreateTypeResponseSuccess>(getLeaveControllerCreateTypeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createLeaveTypeDto)
+  }
+);}
+
+
+
+export type leaveControllerUpdateTypeResponse200 = {
+  data: LeaveTypeResponseDto
+  status: 200
+}
+
+export type leaveControllerUpdateTypeResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type leaveControllerUpdateTypeResponseSuccess = (leaveControllerUpdateTypeResponse200) & {
+  headers: Headers;
+};
+export type leaveControllerUpdateTypeResponseError = (leaveControllerUpdateTypeResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerUpdateTypeUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/leave-types/${id}`
+}
+
+export const leaveControllerUpdateType = async (id: string,
+    updateLeaveTypeDto: UpdateLeaveTypeDto, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerUpdateTypeResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<leaveControllerUpdateTypeResponseSuccess>(getLeaveControllerUpdateTypeUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateLeaveTypeDto)
+  }
+);}
+
+
+
+export type leaveControllerListHolidaysResponse200 = {
+  data: PublicHolidayResponseDto[]
+  status: 200
+}
+
+export type leaveControllerListHolidaysResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type leaveControllerListHolidaysResponseSuccess = (leaveControllerListHolidaysResponse200) & {
+  headers: Headers;
+};
+export type leaveControllerListHolidaysResponseError = (leaveControllerListHolidaysResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerListHolidaysUrl = (params?: LeaveControllerListHolidaysParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/holidays?${stringifiedParams}` : `/api/v1/payroll/holidays`
+}
+
+export const leaveControllerListHolidays = async (params?: LeaveControllerListHolidaysParams, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerListHolidaysResponseSuccess> => {
+
+  return apiFetch<leaveControllerListHolidaysResponseSuccess>(getLeaveControllerListHolidaysUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type leaveControllerCreateHolidayResponse201 = {
+  data: PublicHolidayResponseDto
+  status: 201
+}
+
+export type leaveControllerCreateHolidayResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type leaveControllerCreateHolidayResponseSuccess = (leaveControllerCreateHolidayResponse201) & {
+  headers: Headers;
+};
+export type leaveControllerCreateHolidayResponseError = (leaveControllerCreateHolidayResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerCreateHolidayUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/holidays`
+}
+
+export const leaveControllerCreateHoliday = async (createPublicHolidayDto: CreatePublicHolidayDto, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerCreateHolidayResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<leaveControllerCreateHolidayResponseSuccess>(getLeaveControllerCreateHolidayUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPublicHolidayDto)
+  }
+);}
+
+
+
+export type leaveControllerDeleteHolidayResponse200 = {
+  data: PayrollDeletedDto
+  status: 200
+}
+
+export type leaveControllerDeleteHolidayResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type leaveControllerDeleteHolidayResponseSuccess = (leaveControllerDeleteHolidayResponse200) & {
+  headers: Headers;
+};
+export type leaveControllerDeleteHolidayResponseError = (leaveControllerDeleteHolidayResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerDeleteHolidayUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/holidays/${id}`
+}
+
+export const leaveControllerDeleteHoliday = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerDeleteHolidayResponseSuccess> => {
+
+  return apiFetch<leaveControllerDeleteHolidayResponseSuccess>(getLeaveControllerDeleteHolidayUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type leaveControllerListRequestsResponse200 = {
+  data: LeaveRequestResponseDto[]
+  status: 200
+}
+
+export type leaveControllerListRequestsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type leaveControllerListRequestsResponseSuccess = (leaveControllerListRequestsResponse200) & {
+  headers: Headers;
+};
+export type leaveControllerListRequestsResponseError = (leaveControllerListRequestsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerListRequestsUrl = (params?: LeaveControllerListRequestsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/leave-requests?${stringifiedParams}` : `/api/v1/payroll/leave-requests`
+}
+
+export const leaveControllerListRequests = async (params?: LeaveControllerListRequestsParams, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerListRequestsResponseSuccess> => {
+
+  return apiFetch<leaveControllerListRequestsResponseSuccess>(getLeaveControllerListRequestsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type leaveControllerCreateRequestResponse201 = {
+  data: LeaveRequestResponseDto
+  status: 201
+}
+
+export type leaveControllerCreateRequestResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type leaveControllerCreateRequestResponseSuccess = (leaveControllerCreateRequestResponse201) & {
+  headers: Headers;
+};
+export type leaveControllerCreateRequestResponseError = (leaveControllerCreateRequestResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerCreateRequestUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/leave-requests`
+}
+
+export const leaveControllerCreateRequest = async (createLeaveRequestDto: CreateLeaveRequestDto, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerCreateRequestResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<leaveControllerCreateRequestResponseSuccess>(getLeaveControllerCreateRequestUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createLeaveRequestDto)
+  }
+);}
+
+
+
+export type leaveControllerApproveResponse200 = {
+  data: LeaveRequestResponseDto
+  status: 200
+}
+
+export type leaveControllerApproveResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type leaveControllerApproveResponseSuccess = (leaveControllerApproveResponse200) & {
+  headers: Headers;
+};
+export type leaveControllerApproveResponseError = (leaveControllerApproveResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerApproveUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/leave-requests/${id}/approve`
+}
+
+export const leaveControllerApprove = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerApproveResponseSuccess> => {
+
+  return apiFetch<leaveControllerApproveResponseSuccess>(getLeaveControllerApproveUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type leaveControllerRejectResponse200 = {
+  data: LeaveRequestResponseDto
+  status: 200
+}
+
+export type leaveControllerRejectResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type leaveControllerRejectResponseSuccess = (leaveControllerRejectResponse200) & {
+  headers: Headers;
+};
+export type leaveControllerRejectResponseError = (leaveControllerRejectResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerRejectUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/leave-requests/${id}/reject`
+}
+
+export const leaveControllerReject = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerRejectResponseSuccess> => {
+
+  return apiFetch<leaveControllerRejectResponseSuccess>(getLeaveControllerRejectUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type leaveControllerCancelResponse200 = {
+  data: LeaveRequestResponseDto
+  status: 200
+}
+
+export type leaveControllerCancelResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type leaveControllerCancelResponseSuccess = (leaveControllerCancelResponse200) & {
+  headers: Headers;
+};
+export type leaveControllerCancelResponseError = (leaveControllerCancelResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerCancelUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/payroll/leave-requests/${id}/cancel`
+}
+
+export const leaveControllerCancel = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerCancelResponseSuccess> => {
+
+  return apiFetch<leaveControllerCancelResponseSuccess>(getLeaveControllerCancelUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type leaveControllerBalancesResponse200 = {
+  data: LeaveBalanceResponseDto[]
+  status: 200
+}
+
+export type leaveControllerBalancesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type leaveControllerBalancesResponseSuccess = (leaveControllerBalancesResponse200) & {
+  headers: Headers;
+};
+export type leaveControllerBalancesResponseError = (leaveControllerBalancesResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerBalancesUrl = (params: LeaveControllerBalancesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/leave-balances?${stringifiedParams}` : `/api/v1/payroll/leave-balances`
+}
+
+export const leaveControllerBalances = async (params: LeaveControllerBalancesParams, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerBalancesResponseSuccess> => {
+
+  return apiFetch<leaveControllerBalancesResponseSuccess>(getLeaveControllerBalancesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type leaveControllerAdjustmentsResponse200 = {
+  data: LeaveAdjustmentResponseDto[]
+  status: 200
+}
+
+export type leaveControllerAdjustmentsResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type leaveControllerAdjustmentsResponseSuccess = (leaveControllerAdjustmentsResponse200) & {
+  headers: Headers;
+};
+export type leaveControllerAdjustmentsResponseError = (leaveControllerAdjustmentsResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerAdjustmentsUrl = (params?: LeaveControllerAdjustmentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/leave-adjustments?${stringifiedParams}` : `/api/v1/payroll/leave-adjustments`
+}
+
+export const leaveControllerAdjustments = async (params?: LeaveControllerAdjustmentsParams, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerAdjustmentsResponseSuccess> => {
+
+  return apiFetch<leaveControllerAdjustmentsResponseSuccess>(getLeaveControllerAdjustmentsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type leaveControllerCreateAdjustmentResponse201 = {
+  data: LeaveAdjustmentResponseDto
+  status: 201
+}
+
+export type leaveControllerCreateAdjustmentResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type leaveControllerCreateAdjustmentResponseSuccess = (leaveControllerCreateAdjustmentResponse201) & {
+  headers: Headers;
+};
+export type leaveControllerCreateAdjustmentResponseError = (leaveControllerCreateAdjustmentResponseDefault) & {
+  headers: Headers;
+};
+
+export const getLeaveControllerCreateAdjustmentUrl = () => {
+
+
+
+
+  return `/api/v1/payroll/leave-adjustments`
+}
+
+export const leaveControllerCreateAdjustment = async (createLeaveAdjustmentDto: CreateLeaveAdjustmentDto, options?: Parameters<typeof apiFetch>[1]): Promise<leaveControllerCreateAdjustmentResponseSuccess> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<leaveControllerCreateAdjustmentResponseSuccess>(getLeaveControllerCreateAdjustmentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createLeaveAdjustmentDto)
   }
 );}
 

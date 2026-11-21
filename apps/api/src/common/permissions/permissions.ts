@@ -34,6 +34,7 @@ export const PERMISSIONS = {
   PAYROLL_VIEW: 'payroll.view',
   PAYROLL_MANAGE: 'payroll.manage',
   PAYROLL_POST: 'payroll.post',
+  PAYROLL_LEAVE_APPROVE: 'payroll.leave.approve',
   EINVOICE_MANAGE: 'einvoice.manage',
   REPORTS_VIEW: 'reports.view',
   AUDIT_VIEW: 'audit.view',

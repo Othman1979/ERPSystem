@@ -111,6 +111,10 @@ export const TENANT_MODELS = [
   'PayrollRun',
   'PayrollLine',
   'PayrollLineItem',
+  'PublicHoliday',
+  'LeaveType',
+  'LeaveRequest',
+  'LeaveBalanceAdjustment',
 ] as const;
 
 const TENANT_MODEL_SET: ReadonlySet<string> = new Set(TENANT_MODELS);
@@ -162,6 +166,10 @@ export const COMPANY_MODELS = [
   'PayrollMovement',
   'PayrollSettings',
   'PayrollRun',
+  'PublicHoliday',
+  'LeaveType',
+  'LeaveRequest',
+  'LeaveBalanceAdjustment',
 ] as const;
 
 /** Company-scoped tenant models deliberately left visible across a request company. */

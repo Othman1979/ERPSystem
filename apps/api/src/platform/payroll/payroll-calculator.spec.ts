@@ -125,6 +125,45 @@ describe('calculatePayroll', () => {
     expect([result.incomeTax.toString(), result.nationalContribution.toString()]).toEqual(['0', '0']);
   });
 
+  it('applies approved unpaid leave deductions to SSC and tax bases', () => {
+    const unpaidLeave = { ...daily, id: 28n, code: 'UNPAID_LEAVE_DAY', sscSubject: true, taxSubject: true };
+    const result = calculatePayroll({
+      ...base,
+      salary: '600.000',
+      inputs: [{ element: unpaidLeave, amount: null, quantity: '3', leaveRequestId: 101n }],
+    })!;
+    expect(result.items[0]).toMatchObject({ leaveRequestId: 101n, amount: new Decimal('60.000') });
+    expect([
+      result.sscBase.toString(),
+      result.sscEmployee.toString(),
+      result.sscEmployer.toString(),
+      result.incomeTax.toString(),
+      result.net.toString(),
+    ]).toEqual(['540', '40.5', '76.95', '0', '499.5']);
+  });
+
+  it('uses the SSC floor for a positive partial maternity base but not for zero', () => {
+    const maternity = { ...daily, id: 29n, code: 'MATERNITY_LEAVE_DAY', sscSubject: true, taxSubject: true };
+    const partial = calculatePayroll({
+      ...base,
+      salary: '900.000',
+      inputs: [{ element: maternity, amount: null, quantity: '23', leaveRequestId: 102n }],
+    })!;
+    const zero = calculatePayroll({
+      ...base,
+      salary: '0.000',
+      employee: { ...base.employee, sscCovered: true },
+    })!;
+    expect([
+      partial.deductions.toString(),
+      partial.sscBase.toString(),
+      partial.sscEmployee.toString(),
+      partial.sscEmployer.toString(),
+      partial.net.toString(),
+    ]).toEqual(['690', '290', '21.75', '41.325', '188.25']);
+    expect([zero.sscBase.toString(), zero.sscEmployee.toString(), zero.sscEmployer.toString()]).toEqual(['0', '0', '0']);
+  });
+
   it('uses six-place hourly/daily rates and applies element factors', () => {
     const result = calculatePayroll({
       ...base,

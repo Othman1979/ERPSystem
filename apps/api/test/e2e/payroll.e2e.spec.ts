@@ -1273,3 +1273,376 @@ describe('Payroll PY1–PY3', () => {
     expect(new Decimal(credits[0]?.tax_credit ?? '0').eq(postedRun.incomeTaxTotal)).toBe(true);
   });
 });
+
+describe('Leave endpoints', () => {
+  it('validates requests, approves and cancels them, and isolates every company-scoped resource', async () => {
+    for (const year of [2027, 2028]) {
+      h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({
+        code: String(year), startDate: `${year}-01-01`, endDate: `${year}-12-31`,
+      }), 201, `create leave FY ${year}`);
+    }
+    const settings = h.ok(await get(tokenA, 'payroll/settings', companyAId), 200, 'existing leave settings') as Array<{ effectiveFrom: string }>;
+    for (const year of [2026, 2027, 2028, 2031]) {
+      const effectiveFrom = `${year}-01-01`;
+      if (!settings.some((setting) => setting.effectiveFrom.startsWith(effectiveFrom))) {
+        await post(tokenA, 'payroll/settings', { effectiveFrom }, `leave settings ${year}`, companyAId);
+      }
+    }
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `LV-${RUN}`,
+      nameAr: 'موظف الإجازة',
+      hireDate: '2020-01-01',
+      payMethod: 'CASH',
+    }, 'leave employee', companyAId);
+    const types = h.ok(await get(tokenA, 'payroll/leave-types', companyAId), 200, 'leave types') as Array<{ id: string; code: string }>;
+    const annual = types.find((type) => type.code === 'ANNUAL')!;
+    const custom = await post<{ id: string }>(tokenA, 'payroll/leave-types', {
+      code: `CUSTOM-${RUN}`,
+      nameAr: 'إجازة مخصصة',
+      nameEn: 'Custom leave',
+      category: 'OTHER',
+      countBasis: 'CALENDAR_DAYS',
+      maxDaysPerYear: '10.00',
+    }, 'create leave type', companyAId);
+    const changedType = h.ok(await h.api().patch(`/api/v1/payroll/leave-types/${custom.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ nameEn: 'Updated custom leave' }), 200, 'update leave type') as { nameEn: string };
+    expect(changedType.nameEn).toBe('Updated custom leave');
+    const tokenBCompanies = h.ok(await h.get(tokenB, 'companies'), 200, 'tenant B companies') as Array<{ id: string }>;
+    const companyBId = tokenBCompanies[0]!.id;
+    const typesB = h.ok(await get(tokenB, 'payroll/leave-types', companyBId), 200, 'tenant B leave types') as Array<{ id: string }>;
+    expect(typesB.some((type) => type.id === custom.id)).toBe(false);
+    expect((await h.api().patch(`/api/v1/payroll/leave-types/${custom.id}`).set(h.auth(tokenB))
+      .set('X-Company-Id', companyBId).send({ nameAr: 'Foreign type' })).status).toBe(404);
+
+    const holiday = await post<{ id: string }>(tokenA, 'payroll/holidays', {
+      date: '2031-04-04',
+      nameAr: 'عطلة الاختبار',
+      nameEn: 'Test holiday',
+    }, 'create holiday', companyAId);
+    const holidaysA = h.ok(await get(tokenA, 'payroll/holidays?year=2031', companyAId), 200, 'tenant A holidays') as Array<{ id: string }>;
+    expect(holidaysA.some((row) => row.id === holiday.id)).toBe(true);
+    expect(await get(tokenB, 'payroll/holidays?year=2031', companyBId)).toMatchObject({ status: 200, body: [] });
+    expect((await h.api().delete(`/api/v1/payroll/holidays/${holiday.id}`).set(h.auth(tokenB)).set('X-Company-Id', companyBId)).status).toBe(404);
+
+    const requestBody = {
+      employeeId: employee.id,
+      leaveTypeId: annual.id,
+      startDate: '2031-03-03',
+      endDate: '2031-03-04',
+      notes: 'Leave endpoint test',
+    };
+    const request = await post<{ id: string; days: string; calendarDays: number; status: string }>(
+      tokenA, 'payroll/leave-requests', requestBody, 'create leave request', companyAId,
+    );
+    expect(request).toEqual(expect.objectContaining({ days: '2', calendarDays: 2, status: 'SUBMITTED' }));
+    const overlap = await act(tokenA, 'payroll/leave-requests', {
+      ...requestBody,
+      startDate: '2031-03-04',
+      endDate: '2031-03-05',
+    }, companyAId);
+    expect(overlap.status).toBe(409);
+    expect(overlap.body.error.code).toBe('LEAVE_REQUEST_OVERLAP');
+    const crossYear = await act(tokenA, 'payroll/leave-requests', {
+      ...requestBody,
+      startDate: '2031-12-31',
+      endDate: '2032-01-01',
+    }, companyAId);
+    expect(crossYear.status).toBe(400);
+    expect(crossYear.body.error.code).toBe('LEAVE_REQUEST_SPANS_YEAR');
+    const sick = types.find((type) => type.code === 'SICK')!;
+    const crossYearSick = await act(tokenA, 'payroll/leave-requests', {
+      ...requestBody,
+      leaveTypeId: sick.id,
+      startDate: '2031-12-31',
+      endDate: '2032-01-01',
+    }, companyAId);
+    expect(crossYearSick.status).toBe(400);
+    expect(crossYearSick.body.error.code).toBe('LEAVE_REQUEST_SPANS_YEAR');
+    const requestsA = h.ok(await get(tokenA, `payroll/leave-requests?employeeId=${employee.id}&year=2031`, companyAId), 200, 'tenant A requests') as Array<{ id: string }>;
+    expect(requestsA.some((row) => row.id === request.id)).toBe(true);
+    expect(await get(tokenB, 'payroll/leave-requests', companyBId)).toMatchObject({ status: 200, body: [] });
+    const foreignRequest = await act(tokenB, 'payroll/leave-requests', requestBody, companyBId);
+    expect(foreignRequest.status).toBe(404);
+    const maternity = types.find((type) => type.code === 'MATERNITY')!;
+    const maternityRequest = await post<{ id: string; days: string; calendarDays: number }>(
+      tokenA,
+      'payroll/leave-requests',
+      { ...requestBody, leaveTypeId: maternity.id, startDate: '2031-11-15', endDate: '2032-01-23' },
+      'create cross-year maternity request',
+      companyAId,
+    );
+    expect(maternityRequest).toEqual(expect.objectContaining({ days: '70', calendarDays: 70 }));
+    const nextYearRequests = h.ok(await get(tokenA, 'payroll/leave-requests?year=2032', companyAId), 200, 'cross-year leave filter') as Array<{ id: string }>;
+    expect(nextYearRequests.some((row) => row.id === maternityRequest.id)).toBe(true);
+
+    const approved = h.ok(await act(tokenA, `payroll/leave-requests/${request.id}/approve`, {}, companyAId), 200, 'approve leave') as { requestNo: string };
+    expect(approved.requestNo.startsWith('LV')).toBe(true);
+    for (const action of ['approve', 'reject', 'cancel']) {
+      const response = await act(tokenB, `payroll/leave-requests/${request.id}/${action}`, {}, companyBId);
+      expect(response.status).toBe(404);
+    }
+    const balancesA = h.ok(await get(tokenA, `payroll/leave-balances?year=2031&employeeId=${employee.id}`, companyAId), 200, 'tenant A balances') as Array<{ employeeId: string }>;
+    expect(balancesA.length).toBeGreaterThan(0);
+    expect(await get(tokenB, `payroll/leave-balances?year=2031&employeeId=${employee.id}`, companyBId)).toMatchObject({ status: 200, body: [] });
+
+    await post(tokenA, 'payroll/leave-adjustments', {
+      employeeId: employee.id, leaveTypeId: annual.id, year: '2031', days: '1.00', reason: 'Test adjustment',
+    }, 'create leave adjustment', companyAId);
+    const adjustmentsA = h.ok(await get(tokenA, `payroll/leave-adjustments?year=2031&employeeId=${employee.id}`, companyAId), 200, 'tenant A adjustments') as Array<{ employeeId: string }>;
+    expect(adjustmentsA).toHaveLength(1);
+    expect(await get(tokenB, 'payroll/leave-adjustments?year=2031', companyBId)).toMatchObject({ status: 200, body: [] });
+    expect((await act(tokenB, 'payroll/leave-adjustments', {
+      employeeId: employee.id, leaveTypeId: annual.id, year: '2031', days: '1', reason: 'Foreign',
+    }, companyBId)).status).toBe(404);
+
+    const rejectRequest = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
+      ...requestBody, startDate: '2031-03-10', endDate: '2031-03-11',
+    }, 'create request to reject', companyAId);
+    h.ok(await act(tokenA, `payroll/leave-requests/${rejectRequest.id}/reject`, {}, companyAId), 200, 'reject leave');
+    const cancelRequest = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
+      ...requestBody, startDate: '2028-03-12', endDate: '2028-03-13',
+    }, 'create request to cancel', companyAId);
+    h.ok(await act(tokenA, `payroll/leave-requests/${cancelRequest.id}/approve`, {}, companyAId), 200, 'approve request to cancel');
+    const cancelled = h.ok(await act(tokenA, `payroll/leave-requests/${cancelRequest.id}/cancel`, {}, companyAId), 200, 'cancel leave') as { status: string };
+    expect(cancelled.status).toBe('CANCELLED');
+
+    h.ok(await h.api().delete(`/api/v1/payroll/holidays/${holiday.id}`).set(h.auth(tokenA)).set('X-Company-Id', companyAId), 200, 'delete holiday');
+
+    const createBalanceEmployee = (code: string, hireDate: string) => post<{ id: string }>(
+      tokenA,
+      'payroll/employees',
+      { code: `${code}-${RUN}`, nameAr: code, hireDate, payMethod: 'CASH' },
+      `${code} balance employee`,
+      companyAId,
+    );
+    const lv1 = await createBalanceEmployee('LV1', '2026-07-01');
+    const lv1Start = await get(tokenA, `payroll/leave-balances?year=2026&employeeId=${lv1.id}`, companyAId);
+    const lv1Year1 = (h.ok(lv1Start, 200, 'LV1 2026 balance') as Array<{ category: string; entitlement: string }>).find((row) => row.category === 'ANNUAL')!;
+    expect(lv1Year1.entitlement).toBe('7.06');
+    const lv1Leave2026 = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: lv1.id, leaveTypeId: annual.id, startDate: '2026-07-06', endDate: '2026-07-07',
+    }, 'LV1 2026 leave', companyAId);
+    h.ok(await act(tokenA, `payroll/leave-requests/${lv1Leave2026.id}/approve`, {}, companyAId), 200, 'approve LV1 2026 leave');
+    const lv1Year2 = h.ok(await get(tokenA, `payroll/leave-balances?year=2027&employeeId=${lv1.id}`, companyAId), 200, 'LV1 2027 balance') as Array<{ category: string; available: string }>;
+    expect(lv1Year2.find((row) => row.category === 'ANNUAL')?.available).toBe('19.06');
+    const lv1Leave2027 = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: lv1.id, leaveTypeId: annual.id, startDate: '2027-07-05', endDate: '2027-07-07',
+    }, 'LV1 2027 leave', companyAId);
+    h.ok(await act(tokenA, `payroll/leave-requests/${lv1Leave2027.id}/approve`, {}, companyAId), 200, 'approve LV1 2027 leave');
+    const lv1Year3 = h.ok(await get(tokenA, `payroll/leave-balances?year=2028&employeeId=${lv1.id}`, companyAId), 200, 'LV1 2028 balance') as Array<{ category: string; available: string }>;
+    expect(lv1Year3.find((row) => row.category === 'ANNUAL')?.available).toBe('28');
+
+    const lv1b = await createBalanceEmployee('LV1B', '2021-04-01');
+    const lv1b2026 = h.ok(await get(tokenA, `payroll/leave-balances?year=2026&employeeId=${lv1b.id}`, companyAId), 200, 'LV1b 2026 balance') as Array<{ category: string; entitlement: string }>;
+    expect(lv1b2026.find((row) => row.category === 'ANNUAL')?.entitlement).toBe('19.27');
+    const lv1b2027 = h.ok(await get(tokenA, `payroll/leave-balances?year=2027&employeeId=${lv1b.id}`, companyAId), 200, 'LV1b 2027 balance') as Array<{ category: string; entitlement: string }>;
+    expect(lv1b2027.find((row) => row.category === 'ANNUAL')?.entitlement).toBe('21');
+
+    const lv2 = await createBalanceEmployee('LV2', '2020-01-01');
+    await post(tokenA, 'payroll/holidays', {
+      date: '2026-12-08', nameAr: 'عطلة LV2', nameEn: 'LV2 holiday',
+    }, 'LV2 holiday', companyAId);
+    const lv2Request = await post<{ days: string; calendarDays: number }>(tokenA, 'payroll/leave-requests', {
+      employeeId: lv2.id, leaveTypeId: annual.id, startDate: '2026-12-06', endDate: '2026-12-12',
+    }, 'LV2 annual request', companyAId);
+    expect(lv2Request).toEqual(expect.objectContaining({ days: '5', calendarDays: 7 }));
+
+    const sickType = types.find((type) => type.code === 'SICK')!;
+    const sickEmployee = await createBalanceEmployee('LV-SICK', '2020-01-01');
+    const nonHospital = await post<{ id: string; days: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: sickEmployee.id, leaveTypeId: sickType.id, startDate: '2026-01-04', endDate: '2026-01-19',
+    }, '14 sick days', companyAId);
+    expect(nonHospital.days).toBe('14');
+    h.ok(await act(tokenA, `payroll/leave-requests/${nonHospital.id}/approve`, {}, companyAId), 200, 'approve 14 non-hospital sick days');
+    const extraNonHospital = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: sickEmployee.id, leaveTypeId: sickType.id, startDate: '2026-01-21', endDate: '2026-01-21',
+    }, 'extra non-hospital sick day', companyAId);
+    const nonHospitalLimit = await act(tokenA, `payroll/leave-requests/${extraNonHospital.id}/approve`, {}, companyAId);
+    expect(nonHospitalLimit.status).toBe(400);
+    expect(nonHospitalLimit.body.error.code).toBe('LEAVE_LIMIT_EXCEEDED');
+    const hospitalised = await post<{ id: string; days: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: sickEmployee.id, leaveTypeId: sickType.id, startDate: '2026-01-25', endDate: '2026-02-09', hospitalised: true,
+    }, '14 hospital sick days', companyAId);
+    expect(hospitalised.days).toBe('14');
+    h.ok(await act(tokenA, `payroll/leave-requests/${hospitalised.id}/approve`, {}, companyAId), 200, 'approve hospital sick days');
+    const overSickLimit = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: sickEmployee.id, leaveTypeId: sickType.id, startDate: '2026-02-10', endDate: '2026-02-10', hospitalised: true,
+    }, 'sick request over 28-day limit', companyAId);
+    const sickLimit = await act(tokenA, `payroll/leave-requests/${overSickLimit.id}/approve`, {}, companyAId);
+    expect(sickLimit.status).toBe(400);
+    expect(sickLimit.body.error.code).toBe('LEAVE_LIMIT_EXCEEDED');
+
+    const hajj = types.find((type) => type.code === 'HAJJ')!;
+    const underService = await createBalanceEmployee('LV-HAJJ-UNDER', '2022-01-01');
+    const earlyHajj = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: underService.id, leaveTypeId: hajj.id, startDate: '2026-01-04', endDate: '2026-01-19',
+    }, 'Hajj before service minimum', companyAId);
+    const serviceLimit = await act(tokenA, `payroll/leave-requests/${earlyHajj.id}/approve`, {}, companyAId);
+    expect(serviceLimit.status).toBe(400);
+    expect(serviceLimit.body.error.code).toBe('LEAVE_LIMIT_EXCEEDED');
+    const eligibleHajj = await createBalanceEmployee('LV-HAJJ-ELIGIBLE', '2020-01-01');
+    const firstHajj = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: eligibleHajj.id, leaveTypeId: hajj.id, startDate: '2026-01-04', endDate: '2026-01-19',
+    }, 'eligible Hajj request', companyAId);
+    h.ok(await act(tokenA, `payroll/leave-requests/${firstHajj.id}/approve`, {}, companyAId), 200, 'approve eligible Hajj leave');
+    const secondHajj = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: eligibleHajj.id, leaveTypeId: hajj.id, startDate: '2026-03-01', endDate: '2026-03-16',
+    }, 'second Hajj request', companyAId);
+    const onceLimit = await act(tokenA, `payroll/leave-requests/${secondHajj.id}/approve`, {}, companyAId);
+    expect(onceLimit.status).toBe(400);
+    expect(onceLimit.body.error.code).toBe('LEAVE_LIMIT_EXCEEDED');
+  });
+});
+
+describe('Leave payroll effects and provision', () => {
+  it('applies unpaid and maternity leave across monthly runs and enforces posted-run cancellation', async () => {
+    const token = await register('leave-effects');
+    const company = (h.ok(await h.get(token, 'companies'), 200, 'leave effects company') as { id: string }[])[0]!;
+    const branch = (h.ok(await get(token, 'branches', company.id), 200, 'leave effects branch') as { id: string }[])[0]!;
+    const costCentre = await post<{ id: string }>(token, 'cost-centers', {
+      code: `LE-${RUN}`, nameAr: 'Leave effects',
+    }, 'leave effects cost centre', company.id);
+    for (const year of [2026, 2027]) {
+      h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(token)).set('X-Company-Id', company.id).send({
+        code: String(year), startDate: `${year}-01-01`, endDate: `${year}-12-31`,
+      }), 201, `create leave effects FY ${year}`);
+    }
+    const createEmployee = async (code: string, basicSalary: string, sscCovered = true) => {
+      const employee = await post<{ id: string }>(token, 'payroll/employees', {
+        code: `${code}-${RUN}`, nameAr: code, hireDate: '2026-01-01', payMethod: 'CASH',
+        sscCovered, branchId: branch.id, costCenterId: costCentre.id,
+      }, `${code} employee`, company.id);
+      await post(token, `payroll/employees/${employee.id}/salaries`, {
+        effectiveFrom: '2026-01-01', basicSalary,
+      }, `${code} salary`, company.id);
+      return employee;
+    };
+    const types = h.ok(await get(token, 'payroll/leave-types', company.id), 200, 'leave effect types') as Array<{
+      id: string; code: string; payElementId: string | null;
+    }>;
+    const unpaidType = types.find((type) => type.code === 'UNPAID')!;
+    const maternityType = types.find((type) => type.code === 'MATERNITY')!;
+    expect(unpaidType.payElementId).toBeTruthy();
+    expect(maternityType.payElementId).toBeTruthy();
+    const unpaidEmployee = await createEmployee('LV3', '600.000');
+    const maternityEmployee = await createEmployee('LV4', '900.000');
+    const nonSscEmployee = await createEmployee('LV4-NONSSC', '900.000', false);
+    const unpaidRequest = await post<{ id: string }>(token, 'payroll/leave-requests', {
+      employeeId: unpaidEmployee.id, leaveTypeId: unpaidType.id, startDate: '2026-12-14', endDate: '2026-12-16',
+    }, 'LV3 unpaid leave request', company.id);
+    h.ok(await act(token, `payroll/leave-requests/${unpaidRequest.id}/approve`, {}, company.id), 200, 'approve LV3 leave');
+    const maternityRequest = await post<{ id: string; days: string; calendarDays: number }>(token, 'payroll/leave-requests', {
+      employeeId: maternityEmployee.id, leaveTypeId: maternityType.id, startDate: '2026-11-15', endDate: '2027-01-23',
+    }, 'LV4 cross-year maternity', company.id);
+    expect(maternityRequest).toEqual(expect.objectContaining({ days: '70', calendarDays: 70 }));
+    h.ok(await act(token, `payroll/leave-requests/${maternityRequest.id}/approve`, {}, company.id), 200, 'approve LV4 maternity');
+    const nonSscMaternity = await post<{ id: string }>(token, 'payroll/leave-requests', {
+      employeeId: nonSscEmployee.id, leaveTypeId: maternityType.id, startDate: '2026-11-15', endDate: '2027-01-23',
+    }, 'LV4 non-SSC maternity', company.id);
+    h.ok(await act(token, `payroll/leave-requests/${nonSscMaternity.id}/approve`, {}, company.id), 200, 'approve non-SSC maternity');
+
+    const createRun = async (period: string) => {
+      const draft = h.ok(await act(token, 'payroll/runs', { period }, company.id), 201, `${period} leave run`) as { id: string };
+      return h.ok(await get(token, `payroll/runs/${draft.id}`, company.id), 200, `${period} leave detail`) as {
+        id: string; lines: Array<{ employeeId: string; deductions: string; sscBase: string; sscEmployee: string; sscEmployer: string; incomeTax: string; net: string; items?: Array<{ leaveRequestId: string | null }> }>;
+      };
+    };
+    const lineFor = (run: { lines: Array<{ employeeId: string; deductions: string; sscBase: string; sscEmployee: string; sscEmployer: string; incomeTax: string; net: string; items?: Array<{ leaveRequestId: string | null }> }> }, employeeId: string) =>
+      run.lines.find((line) => line.employeeId === employeeId)!;
+    const november = await createRun('2026-11');
+    expect(lineFor(november, maternityEmployee.id)).toEqual(expect.objectContaining({
+      deductions: '480', sscBase: '420', sscEmployee: '31.5', sscEmployer: '59.85', net: '388.5',
+    }));
+    const december = await createRun('2026-12');
+    expect(lineFor(december, unpaidEmployee.id)).toEqual(expect.objectContaining({
+      deductions: '60', sscBase: '540', sscEmployee: '40.5', sscEmployer: '76.95', incomeTax: '0', net: '499.5',
+    }));
+    expect(lineFor(december, maternityEmployee.id)).toEqual(expect.objectContaining({
+      deductions: '900', sscBase: '0', sscEmployee: '0', sscEmployer: '0', net: '0',
+    }));
+    expect(lineFor(december, nonSscEmployee.id).deductions).toBe('0');
+    const january = await createRun('2027-01');
+    expect(lineFor(january, maternityEmployee.id)).toEqual(expect.objectContaining({
+      deductions: '690', sscBase: '290', sscEmployee: '21.75', sscEmployer: '41.325', net: '188.25',
+    }));
+    const unpaidItems = lineFor(december, unpaidEmployee.id).items ?? [];
+    expect(unpaidItems.some((item) => item.leaveRequestId === unpaidRequest.id)).toBe(true);
+
+    await post(token, `payroll/runs/${december.id}/post`, {}, 'post LV3/LV4 December run', company.id);
+    const cancelAfterPost = await act(token, `payroll/leave-requests/${unpaidRequest.id}/cancel`, {}, company.id);
+    expect(cancelAfterPost.status).toBe(409);
+    expect(cancelAfterPost.body.error.code).toBe('LEAVE_RUN_ALREADY_POSTED');
+  });
+
+  it('posts and reverses the per-employee annual leave provision delta', async () => {
+    const token = await register('leave-provision');
+    const company = (h.ok(await h.get(token, 'companies'), 200, 'leave provision company') as { id: string }[])[0]!;
+    const branch = (h.ok(await get(token, 'branches', company.id), 200, 'leave provision branch') as { id: string }[])[0]!;
+    const costCentre = await post<{ id: string }>(token, 'cost-centers', {
+      code: `LP-${RUN}`, nameAr: 'Leave provision',
+    }, 'leave provision cost centre', company.id);
+    const chart = h.ok(await get(token, 'accounts', company.id), 200, 'leave provision chart') as { id: string; code: string }[];
+    const accountCodes = new Set(chart.map((account) => account.code));
+    expect(accountCodes.has('2109')).toBe(true);
+    expect(accountCodes.has('5207')).toBe(true);
+    for (const year of [2026, 2027]) {
+      h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(token)).set('X-Company-Id', company.id).send({
+        code: String(year), startDate: `${year}-01-01`, endDate: `${year}-12-31`,
+      }), 201, `create leave provision FY ${year}`);
+    }
+    const employee = await post<{ id: string }>(token, 'payroll/employees', {
+      code: `LV5-${RUN}`, nameAr: 'LV5', hireDate: '2026-07-01', payMethod: 'CASH',
+      branchId: branch.id, costCenterId: costCentre.id,
+    }, 'LV5 employee', company.id);
+    await post(token, `payroll/employees/${employee.id}/salaries`, {
+      effectiveFrom: '2026-01-01', basicSalary: '600.000',
+    }, 'LV5 salary', company.id);
+    const elements = h.ok(await get(token, 'payroll/elements', company.id), 200, 'leave provision elements') as Array<{
+      id: string; code: string; kind: string; isFixedAllowance: boolean;
+    }>;
+    const transport = elements.find((element) => element.code === 'TRANSPORT' && element.kind === 'EARNING' && element.isFixedAllowance)!;
+    await post(token, `payroll/employees/${employee.id}/recurring-elements`, {
+      payElementId: transport.id, amount: '40.000', validFrom: '2026-07-01',
+    }, 'LV5 fixed transport', company.id);
+    const postRun = async (period: string) => {
+      const draft = h.ok(await act(token, 'payroll/runs', { period }, company.id), 201, `${period} provision run`) as { id: string };
+      await post(token, `payroll/runs/${draft.id}/post`, {}, `post ${period} provision run`, company.id);
+      const posted = h.ok(await get(token, `payroll/runs/${draft.id}`, company.id), 200, `${period} posted provision detail`) as {
+        id: string; leaveProvisionEntryId: string | null; lines: Array<{ employeeId: string; leaveProvision: string }>;
+      };
+      return { ...posted, line: posted.lines.find((row) => row.employeeId === employee.id)! };
+    };
+    const december = await postRun('2026-12');
+    expect(december.line.leaveProvision).toBe('150.613');
+    const january = await postRun('2027-01');
+    expect(january.line.leaveProvision).toBe('176');
+    const [companyRow] = await boot.db.query('SELECT tenant_id FROM companies WHERE id = ?', [BigInt(company.id)]) as Array<{ tenant_id: bigint }>;
+    const rows = await boot.db.query(
+      `SELECT a.code, CAST(SUM(l.debit) AS CHAR) AS debit, CAST(SUM(l.credit) AS CHAR) AS credit
+         FROM companies c
+         JOIN journal_entries j ON j.tenant_id = c.tenant_id AND j.company_id = c.id
+         JOIN journal_lines l ON l.tenant_id = j.tenant_id AND l.journal_entry_id = j.id
+         JOIN accounts a ON a.tenant_id = l.tenant_id AND a.id = l.account_id
+        WHERE c.tenant_id = ? AND c.id = ? AND j.source_type = 'PAYROLL_LEAVE_PROVISION'
+        GROUP BY a.code`,
+      [companyRow!.tenant_id, BigInt(company.id)],
+    ) as Array<{ code: string; debit: string; credit: string }>;
+    expect(new Decimal(rows.find((row) => row.code === '5207')?.debit ?? 0).toString()).toBe('176');
+    expect(new Decimal(rows.find((row) => row.code === '2109')?.credit ?? 0).toString()).toBe('176');
+
+    h.ok(await act(token, `payroll/runs/${january.id}/reverse`, { date: '2027-02-01' }, company.id), 201, 'reverse January leave provision run');
+    const afterReverse = await boot.db.query(
+      `SELECT a.code, CAST(SUM(l.debit - l.credit) AS CHAR) AS net
+         FROM companies c
+         JOIN journal_entries j ON j.tenant_id = c.tenant_id AND j.company_id = c.id
+         JOIN journal_lines l ON l.tenant_id = j.tenant_id AND l.journal_entry_id = j.id
+         JOIN accounts a ON a.tenant_id = l.tenant_id AND a.id = l.account_id
+        WHERE c.tenant_id = ? AND c.id = ? AND a.code IN ('5207', '2109')
+        GROUP BY a.code`,
+      [companyRow!.tenant_id, BigInt(company.id)],
+    ) as Array<{ code: string; net: string }>;
+    expect(new Decimal(afterReverse.find((row) => row.code === '5207')?.net ?? 0).toString()).toBe('150.613');
+    expect(new Decimal(afterReverse.find((row) => row.code === '2109')?.net ?? 0).toString()).toBe('-150.613');
+    expect(await get(token, 'reports/trial-balance?from=2026-01-01&to=2027-12-31', company.id)).toMatchObject({ status: 200, body: { balanced: true } });
+  });
+});

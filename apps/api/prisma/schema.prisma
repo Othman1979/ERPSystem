@@ -134,6 +134,28 @@ enum PayrollMovementStatus {
   REVERSED
 }
 
+enum LeaveCategory {
+  ANNUAL
+  SICK
+  MATERNITY
+  PATERNITY
+  HAJJ
+  UNPAID
+  OTHER
+}
+
+enum LeaveCountBasis {
+  WORKING_DAYS
+  CALENDAR_DAYS
+}
+
+enum LeaveRequestStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum ItemKind {
   STOCK
   SERVICE
@@ -455,6 +477,10 @@ model Tenant {
   payrollRuns                PayrollRun[]
   payrollLines               PayrollLine[]
   payrollLineItems           PayrollLineItem[]
+  publicHolidays             PublicHoliday[]
+  leaveTypes                 LeaveType[]
+  leaveRequests              LeaveRequest[]
+  leaveBalanceAdjustments    LeaveBalanceAdjustment[]
 
   @@map("tenants")
 }
@@ -566,6 +592,10 @@ model Company {
   payrollMovements PayrollMovement[]
   payrollSettings  PayrollSettings[]
   payrollRuns      PayrollRun[]
+  publicHolidays   PublicHoliday[]
+  leaveTypes       LeaveType[]
+  leaveRequests    LeaveRequest[]
+  leaveBalanceAdjustments LeaveBalanceAdjustment[]
 
   @@unique([tenantId, id])
   @@map("companies")
@@ -1136,6 +1166,7 @@ model JournalEntry {
   chequeEvents     ChequeEvent[] @relation("ChequeEventEntry")
   chequeEventUndos ChequeEvent[] @relation("ChequeEventUndoEntry")
   payrollRuns      PayrollRun[]  @relation("PayrollRunJournal")
+  payrollLeaveProvisionRuns PayrollRun[] @relation("PayrollLeaveProvisionJournal")
   payrollPayments  PayrollRun[]  @relation("PayrollPaymentJournal")
   payrollMovements PayrollMovement[] @relation("PayrollMovementJournal")
   payrollMovementReversals PayrollMovement[] @relation("PayrollMovementReversal")
@@ -3508,6 +3539,8 @@ model Employee {
   recurringElements EmployeeRecurringElement[]
   payrollMovements  PayrollMovement[]
   payrollLines      PayrollLine[]
+  leaveRequests     LeaveRequest[]
+  leaveBalanceAdjustments LeaveBalanceAdjustment[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
@@ -3557,6 +3590,7 @@ model PayElement {
   recurringElements EmployeeRecurringElement[]
   payrollMovements  PayrollMovement[]
   payrollLineItems  PayrollLineItem[]
+  leaveTypes        LeaveType[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, companyId, id])
@@ -3635,6 +3669,10 @@ model PayrollSettings {
   sscMaxWage        Decimal? @map("ssc_max_wage") @db.Decimal(18, 3)
   hoursPerMonth     Decimal  @map("hours_per_month") @db.Decimal(9, 2)
   daysPerMonth      Decimal  @map("days_per_month") @db.Decimal(9, 2)
+  weeklyRestDays    String   @default("5") @map("weekly_rest_days") @db.VarChar(20)
+  annualLeaveDays   Decimal  @default(14) @map("annual_leave_days") @db.Decimal(9, 2)
+  annualLeaveDaysSenior Decimal @default(21) @map("annual_leave_days_senior") @db.Decimal(9, 2)
+  annualLeaveSeniorYears Int @default(5) @map("annual_leave_senior_years")
   taxPersonalExemption   Decimal @default(9000) @map("tax_personal_exemption") @db.Decimal(18, 3)
   taxDependantsExemption Decimal @default(9000) @map("tax_dependants_exemption") @db.Decimal(18, 3)
   taxNationalThreshold   Decimal @default(16666) @map("tax_national_threshold") @db.Decimal(18, 3)
@@ -3690,6 +3728,7 @@ model PayrollRun {
   incomeTaxTotal        Decimal          @default(0) @map("income_tax_total") @db.Decimal(18, 3)
   deductionsTotal       Decimal          @default(0) @map("deductions_total") @db.Decimal(18, 3)
   netTotal              Decimal          @default(0) @map("net_total") @db.Decimal(18, 3)
+  leaveProvisionEntryId BigInt?          @map("leave_provision_entry_id") @db.UnsignedBigInt
   createdAt             DateTime         @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt             DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
 
@@ -3697,6 +3736,7 @@ model PayrollRun {
   company             Company       @relation(fields: [tenantId, companyId], references: [tenantId, id])
   journalEntry        JournalEntry? @relation("PayrollRunJournal", fields: [tenantId, companyId, journalEntryId], references: [tenantId, companyId, id])
   paymentEntry        JournalEntry? @relation("PayrollPaymentJournal", fields: [tenantId, companyId, paymentEntryId], references: [tenantId, companyId, id])
+  leaveProvisionEntry JournalEntry? @relation("PayrollLeaveProvisionJournal", fields: [tenantId, companyId, leaveProvisionEntryId], references: [tenantId, companyId, id])
   paidFromCashBox     CashBox?      @relation("PayrollRunCashBox", fields: [tenantId, companyId, paidFromCashBoxId], references: [tenantId, companyId, id])
   paidFromBankAccount BankAccount?  @relation("PayrollRunBankAccount", fields: [tenantId, companyId, paidFromBankAccountId], references: [tenantId, companyId, id])
   lines               PayrollLine[]
@@ -3725,6 +3765,7 @@ model PayrollLine {
   taxManual    Boolean  @default(false) @map("tax_manual")
   deductions   Decimal  @db.Decimal(18, 3)
   net          Decimal  @db.Decimal(18, 3)
+  leaveProvision Decimal @default(0) @map("leave_provision") @db.Decimal(18, 3)
   createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
@@ -3745,6 +3786,7 @@ model PayrollLineItem {
   payrollLineId BigInt         @map("payroll_line_id") @db.UnsignedBigInt
   payElementId  BigInt?        @map("pay_element_id") @db.UnsignedBigInt
   payrollMovementId BigInt?    @map("payroll_movement_id") @db.UnsignedBigInt
+  leaveRequestId BigInt?       @map("leave_request_id") @db.UnsignedBigInt
   kind          PayElementKind
   description   String         @db.VarChar(191)
   quantity      Decimal?       @db.Decimal(18, 6)
@@ -3756,9 +3798,119 @@ model PayrollLineItem {
   payrollLine PayrollLine @relation(fields: [tenantId, payrollLineId], references: [tenantId, id], onDelete: Cascade)
   payElement  PayElement? @relation(fields: [tenantId, payElementId], references: [tenantId, id])
   payrollMovement PayrollMovement? @relation(fields: [tenantId, payrollMovementId], references: [tenantId, id])
+  leaveRequest LeaveRequest? @relation(fields: [tenantId, leaveRequestId], references: [tenantId, id])
 
   @@unique([tenantId, id])
   @@index([tenantId, payrollLineId])
   @@index([tenantId, payrollMovementId])
+  @@index([tenantId, leaveRequestId])
   @@map("payroll_line_items")
+}
+
+model PublicHoliday {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId  BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId BigInt   @map("company_id") @db.UnsignedBigInt
+  date      DateTime @db.Date
+  nameAr    String   @map("name_ar") @db.VarChar(191)
+  nameEn    String?  @map("name_en") @db.VarChar(191)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, date])
+  @@map("public_holidays")
+}
+
+model LeaveType {
+  id                BigInt          @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId          BigInt          @map("tenant_id") @db.UnsignedBigInt
+  companyId         BigInt          @map("company_id") @db.UnsignedBigInt
+  code              String          @db.VarChar(50)
+  nameAr            String          @map("name_ar") @db.VarChar(191)
+  nameEn            String?         @map("name_en") @db.VarChar(191)
+  category          LeaveCategory
+  countBasis        LeaveCountBasis @map("count_basis")
+  maxDaysPerYear    Decimal?        @map("max_days_per_year") @db.Decimal(9, 2)
+  maxDaysPerRequest Decimal?        @map("max_days_per_request") @db.Decimal(9, 2)
+  hospitalExtraDays Decimal?        @map("hospital_extra_days") @db.Decimal(9, 2)
+  oncePerEmployment Boolean         @default(false) @map("once_per_employment")
+  minServiceYears   Int?            @map("min_service_years")
+  payElementId      BigInt?         @map("pay_element_id") @db.UnsignedBigInt
+  isActive          Boolean         @default(true) @map("is_active")
+  createdAt         DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company     Company      @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Cascade)
+  payElement  PayElement?  @relation(fields: [tenantId, companyId, payElementId], references: [tenantId, companyId, id])
+  requests    LeaveRequest[]
+  adjustments LeaveBalanceAdjustment[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId, category, isActive])
+  @@map("leave_types")
+}
+
+model LeaveRequest {
+  id           BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt             @map("tenant_id") @db.UnsignedBigInt
+  companyId    BigInt             @map("company_id") @db.UnsignedBigInt
+  employeeId   BigInt             @map("employee_id") @db.UnsignedBigInt
+  leaveTypeId  BigInt             @map("leave_type_id") @db.UnsignedBigInt
+  requestNo    String?            @map("request_no") @db.VarChar(50)
+  startDate    DateTime           @map("start_date") @db.Date
+  endDate      DateTime           @map("end_date") @db.Date
+  days         Decimal            @db.Decimal(9, 2)
+  calendarDays Int                @map("calendar_days")
+  hospitalised Boolean            @default(false)
+  notes        String?            @db.VarChar(500)
+  status       LeaveRequestStatus @default(SUBMITTED)
+  approvedBy   BigInt?            @map("approved_by") @db.UnsignedBigInt
+  approvedAt   DateTime?          @map("approved_at") @db.DateTime(3)
+  cancelledAt  DateTime?          @map("cancelled_at") @db.Date
+  createdBy    BigInt             @map("created_by") @db.UnsignedBigInt
+  createdAt    DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant           Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company          Company                  @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Cascade)
+  employee         Employee                 @relation(fields: [tenantId, companyId, employeeId], references: [tenantId, companyId, id])
+  leaveType        LeaveType                @relation(fields: [tenantId, companyId, leaveTypeId], references: [tenantId, companyId, id])
+  payrollLineItems PayrollLineItem[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, requestNo])
+  @@index([tenantId, companyId, employeeId, startDate, endDate, status])
+  @@index([tenantId, companyId, status, startDate])
+  @@map("leave_requests")
+}
+
+model LeaveBalanceAdjustment {
+  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId    BigInt   @map("tenant_id") @db.UnsignedBigInt
+  companyId   BigInt   @map("company_id") @db.UnsignedBigInt
+  employeeId  BigInt   @map("employee_id") @db.UnsignedBigInt
+  leaveTypeId BigInt   @map("leave_type_id") @db.UnsignedBigInt
+  year        Int
+  days        Decimal  @db.Decimal(9, 2)
+  reason      String   @db.VarChar(500)
+  createdBy   BigInt   @map("created_by") @db.UnsignedBigInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company   Company    @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Cascade)
+  employee  Employee   @relation(fields: [tenantId, companyId, employeeId], references: [tenantId, companyId, id])
+  leaveType LeaveType  @relation(fields: [tenantId, companyId, leaveTypeId], references: [tenantId, companyId, id])
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
+  @@index([tenantId, companyId, employeeId, leaveTypeId, year])
+  @@map("leave_balance_adjustments")
 }
