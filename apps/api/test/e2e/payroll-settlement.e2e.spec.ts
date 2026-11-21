@@ -217,6 +217,11 @@ describe('Phase 28C payroll settlements', () => {
       eosTax: '398.712', provisionUsed: '19430.136', net: '19031.424',
       settlementDate: august.runDate > '2026-08-31' ? august.runDate : '2026-08-31',
     }));
+    const shiftDate = (value: string, days: number) => {
+      const result = new Date(`${value}T00:00:00.000Z`);
+      result.setUTCDate(result.getUTCDate() + days);
+      return result.toISOString().slice(0, 10);
+    };
     const bankGl = eos2Company.accounts.find((account) => account.code === '1102')!;
     const bank = h.ok(await h.api().post('/api/v1/bank-accounts').set(h.auth(token)).set('X-Company-Id', eos2Company.id).send({
       bankName: 'EOS2 Bank', accountId: bankGl.id,
@@ -231,18 +236,18 @@ describe('Phase 28C payroll settlements', () => {
       ['2110', '19430.136', '0.000'],
     ]);
     const earlyPayment = await act(`payroll/settlements/${eos2.id}/pay`, {
-      paymentDate: '2026-08-30', bankAccountId: bank.id,
+      paymentDate: shiftDate(eos2.settlementDate, -1), bankAccountId: bank.id,
     }, eos2Company.id);
     expect(earlyPayment.status).toBe(400);
     const paid = h.ok(await act(`payroll/settlements/${eos2.id}/pay`, {
-      paymentDate: '2026-09-01', bankAccountId: bank.id,
+      paymentDate: eos2.settlementDate, bankAccountId: bank.id,
     }, eos2Company.id), 200, 'pay EOS2 settlement') as { paymentEntryId: string };
     expect((await journalLines(paid.paymentEntryId)).map((line) => [line.code, line.debit, line.credit])).toEqual([
       ['1102', '0.000', '19031.424'],
       ['2106', '19031.424', '0.000'],
     ]);
     const reversed = h.ok(await act(`payroll/settlements/${eos2.id}/reverse`, {
-      reversalDate: '2026-10-01',
+      reversalDate: shiftDate(eos2.settlementDate, 1),
     }, eos2Company.id), 200, 'reverse EOS2 settlement') as {
       status: string; reversalEntryId: string; paymentReversalEntryId: string;
     };
