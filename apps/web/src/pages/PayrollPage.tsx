@@ -40,7 +40,7 @@ import {
   type AccountDto,
 } from '@erp/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, Checkbox, DatePicker as AntDatePicker, Form, Input, Modal, Select, Space, Switch, Table, Tabs, Tag } from 'antd';
+import { App, Button, Checkbox, DatePicker as AntDatePicker, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -54,6 +54,7 @@ import { ExportButtons, saveBlob } from '../components/ExportButtons';
 import { EnterNav } from '../components/EnterNav';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { GridSelect } from '../components/GridSelect';
+import { LeaveSettingsPanel, PayrollLeaveTab } from './PayrollLeave';
 
 type DateFormValue = Dayjs | string | null | undefined;
 type EmployeeForm = {
@@ -119,7 +120,12 @@ export function buildSettingsPayload(values: Record<string, unknown> & { effecti
       return { ...bracket, upTo: bracket.upTo || null };
     })
     : undefined;
-  return { ...values, ...(taxBrackets ? { taxBrackets } : {}), effectiveFrom: dateOnly(values.effectiveFrom)! };
+  return {
+    ...values,
+    annualLeaveSeniorYears: values.annualLeaveSeniorYears === undefined ? undefined : Number(values.annualLeaveSeniorYears),
+    ...(taxBrackets ? { taxBrackets } : {}),
+    effectiveFrom: dateOnly(values.effectiveFrom)!,
+  };
 }
 
 export function buildElementPayload(values: Record<string, unknown>, editing: boolean) {
@@ -620,6 +626,7 @@ function SettingsTab() {
   return <>
     {can(PERMISSIONS.PAYROLL_MANAGE) && <EnterNav><Form form={form} layout="vertical" initialValues={{
       taxPersonalExemption: '9000.000', taxDependantsExemption: '9000.000', taxNationalThreshold: '16666.000',
+      annualLeaveDays: '14.00', annualLeaveDaysSenior: '21.00', annualLeaveSeniorYears: 5, weeklyRestDays: [5],
       taxNationalRate: '0.010000', taxBrackets: [
         { upTo: '416.000', rate: '0.050000' }, { upTo: '832.000', rate: '0.100000' },
         { upTo: '1248.000', rate: '0.150000' }, { upTo: '1664.000', rate: '0.200000' },
@@ -628,6 +635,9 @@ function SettingsTab() {
     }} onFinish={(v) => save.mutate(v)}>
       <Form.Item name="effectiveFrom" label={t('payroll.effectiveFrom')} rules={[{ required: true }]}><DatePicker /></Form.Item>
       {['sscEmployeeRate', 'sscEmployerRate', 'sscHazardousExtra', 'sscMinWage', 'sscMaxWage', 'hoursPerMonth', 'daysPerMonth'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)}><Input /></Form.Item>)}
+      <Form.Item name="weeklyRestDays" label={t('payroll.weeklyRestDays')} rules={[{ required: true }]}><Select mode="multiple" options={Array.from({ length: 7 }, (_, day) => ({ value: day, label: t(`payroll.weekday${day}`) }))} /></Form.Item>
+      {['annualLeaveDays', 'annualLeaveDaysSenior'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}><Input /></Form.Item>)}
+      <Form.Item name="annualLeaveSeniorYears" label={t('payroll.annualLeaveSeniorYears')} rules={[{ required: true }]}><InputNumber min={0} precision={0} /></Form.Item>
       {['taxPersonalExemption', 'taxDependantsExemption', 'taxNationalThreshold', 'taxNationalRate'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}><Input /></Form.Item>)}
       <Form.List name="taxBrackets">{(fields, { add, remove }) => <Space direction="vertical">
         {fields.map((field, index) => <Space key={field.key}>
@@ -639,20 +649,26 @@ function SettingsTab() {
       </Space>}</Form.List>
       <Button type="primary" htmlType="submit">{t('payroll.addSetting')}</Button>
     </Form></EnterNav>}
-    <Table rowKey="id" dataSource={settings.data as Array<Record<string, string | null>> | undefined} columns={[
+    <Table rowKey="id" dataSource={settings.data as Array<Record<string, unknown>> | undefined} columns={[
       ...['effectiveFrom', 'sscEmployeeRate', 'sscEmployerRate', 'sscHazardousExtra', 'sscMinWage', 'sscMaxWage', 'hoursPerMonth', 'daysPerMonth',
+        'weeklyRestDays', 'annualLeaveDays', 'annualLeaveDaysSenior', 'annualLeaveSeniorYears',
         'taxPersonalExemption', 'taxDependantsExemption', 'taxNationalThreshold', 'taxNationalRate']
         .map((key) => ({
           title: t(`payroll.${key}`),
           dataIndex: key,
-          render: (value: string | null) => key === 'effectiveFrom'
-            ? formatPayrollDate(value) ?? '—'
-            : key.endsWith('Wage') ? formatAmount(value) : formatQty(value),
+          render: (value: unknown) => key === 'effectiveFrom'
+            ? formatPayrollDate(typeof value === 'string' ? value : null) ?? '—'
+            : key === 'weeklyRestDays'
+              ? (value as number[] | undefined)?.map((day) => t(`payroll.weekday${day}`)).join(', ') ?? '—'
+              : key === 'annualLeaveSeniorYears'
+                ? String(value ?? '')
+                : key.endsWith('Wage') ? formatAmount(typeof value === 'string' ? value : null) : formatQty(typeof value === 'string' ? value : null),
         })),
       { title: t('payroll.taxBrackets'), render: (_: unknown, row: Record<string, unknown>) =>
         (row.taxBrackets as Array<{ upTo: string | null; rate: string }> | undefined)
           ?.map((bracket) => `${bracket.upTo ?? '∞'}: ${bracket.rate}`).join(', ') ?? '—' },
     ]} />
+    <LeaveSettingsPanel />
   </>;
 }
 
@@ -715,6 +731,7 @@ export function PayrollPage() {
     { key: 'movements', label: t('payroll.movements'), children: <MovementsTab /> },
     { key: 'runs', label: t('payroll.runs'), children: <RunsTab createOnLoad={createOnLoad} /> },
     { key: 'settings', label: t('payroll.settings'), children: <SettingsTab /> },
+    { key: 'leave', label: t('payroll.leaveTab'), children: <PayrollLeaveTab /> },
     { key: 'reports', label: t('payroll.reports.title'), children: <ReportsTab /> },
   ], [t, createOnLoad]);
   return <Tabs activeKey={activeKey} onChange={changeTab} items={tabs} />;

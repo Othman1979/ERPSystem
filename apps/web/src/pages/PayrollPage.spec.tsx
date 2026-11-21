@@ -6,6 +6,7 @@ import { App as AntApp } from 'antd';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
+import { leaveTypeUpdatePayload } from './PayrollLeave';
 import {
   buildElementPayload,
   buildEmployeePayload,
@@ -39,8 +40,22 @@ const api = vi.hoisted(() => ({
   clearIncomeTax: vi.fn(),
   updateEmployee: vi.fn(),
   costCenters: vi.fn(),
+  listLeaveTypes: vi.fn(),
+  listLeaveRequests: vi.fn(),
+  listLeaveHolidays: vi.fn(),
+  listLeaveBalances: vi.fn(),
+  listLeaveAdjustments: vi.fn(),
+  createLeaveRequest: vi.fn(),
+  createLeaveType: vi.fn(),
+  updateLeaveType: vi.fn(),
+  createLeaveHoliday: vi.fn(),
+  deleteLeaveHoliday: vi.fn(),
+  createLeaveAdjustment: vi.fn(),
+  approveLeave: vi.fn(),
+  rejectLeave: vi.fn(),
+  cancelLeave: vi.fn(),
 }));
-const auth = vi.hoisted(() => ({ can: vi.fn(() => true) }));
+const auth = vi.hoisted(() => ({ can: vi.fn((_permission: string) => true) }));
 
 vi.mock('../auth/AuthContext', () => ({
   useAuth: () => ({ can: auth.can, me: { currentMembership: { branches: [] } } }),
@@ -66,6 +81,20 @@ vi.mock('@erp/api-client', async (importOriginal) => {
     treasuryControllerListBankAccounts: (...args: unknown[]) => api.listBankAccounts(...args),
     treasuryControllerListCashBoxes: (...args: unknown[]) => api.listCashBoxes(...args),
     costCentersControllerList: (...args: unknown[]) => api.costCenters(...args),
+    leaveControllerListTypes: (...args: unknown[]) => api.listLeaveTypes(...args),
+    leaveControllerListRequests: (...args: unknown[]) => api.listLeaveRequests(...args),
+    leaveControllerListHolidays: (...args: unknown[]) => api.listLeaveHolidays(...args),
+    leaveControllerBalances: (...args: unknown[]) => api.listLeaveBalances(...args),
+    leaveControllerAdjustments: (...args: unknown[]) => api.listLeaveAdjustments(...args),
+    leaveControllerCreateRequest: (...args: unknown[]) => api.createLeaveRequest(...args),
+    leaveControllerCreateType: (...args: unknown[]) => api.createLeaveType(...args),
+    leaveControllerUpdateType: (...args: unknown[]) => api.updateLeaveType(...args),
+    leaveControllerCreateHoliday: (...args: unknown[]) => api.createLeaveHoliday(...args),
+    leaveControllerDeleteHoliday: (...args: unknown[]) => api.deleteLeaveHoliday(...args),
+    leaveControllerCreateAdjustment: (...args: unknown[]) => api.createLeaveAdjustment(...args),
+    leaveControllerApprove: (...args: unknown[]) => api.approveLeave(...args),
+    leaveControllerReject: (...args: unknown[]) => api.rejectLeave(...args),
+    leaveControllerCancel: (...args: unknown[]) => api.cancelLeave(...args),
   };
 });
 
@@ -199,6 +228,20 @@ beforeEach(async () => {
   api.createEmployee.mockResolvedValue(response(employee));
   api.addSalary.mockResolvedValue(response({}));
   api.updateEmployee.mockResolvedValue(response(employee));
+  api.listLeaveTypes.mockResolvedValue(response([]));
+  api.listLeaveRequests.mockResolvedValue(response([]));
+  api.listLeaveHolidays.mockResolvedValue(response([]));
+  api.listLeaveBalances.mockResolvedValue(response([]));
+  api.listLeaveAdjustments.mockResolvedValue(response([]));
+  api.createLeaveRequest.mockResolvedValue(response({}));
+  api.createLeaveType.mockResolvedValue(response({}));
+  api.updateLeaveType.mockResolvedValue(response({}));
+  api.createLeaveHoliday.mockResolvedValue(response({}));
+  api.deleteLeaveHoliday.mockResolvedValue(response({}));
+  api.createLeaveAdjustment.mockResolvedValue(response({}));
+  api.approveLeave.mockResolvedValue(response({}));
+  api.rejectLeave.mockResolvedValue(response({}));
+  api.cancelLeave.mockResolvedValue(response({}));
 });
 
 afterEach(() => {
@@ -210,6 +253,56 @@ afterEach(() => {
 });
 
 describe('payroll page payloads and run actions', () => {
+  it('omits the leave type code from edit payloads', () => {
+    expect(leaveTypeUpdatePayload({ code: 'ANNUAL', nameAr: 'سنوية', isActive: true })).toEqual({
+      nameAr: 'سنوية',
+      isActive: true,
+    });
+  });
+
+  it('shows leave requests and gates approval actions by permission', async () => {
+    api.listLeaveTypes.mockResolvedValue(response([{
+      id: 'leave-type-1', code: 'ANNUAL', nameAr: 'سنوية', nameEn: 'Annual', category: 'ANNUAL',
+      countBasis: 'WORKING_DAYS', isActive: true,
+    }]));
+    api.listLeaveRequests.mockResolvedValue(response([{
+      id: 'leave-request-1', employeeId: employee.id, employeeName: employee.nameAr, employeeNameEn: 'Test employee',
+      leaveTypeId: 'leave-type-1', leaveTypeCode: 'ANNUAL', leaveTypeNameAr: 'سنوية', leaveTypeNameEn: 'Annual',
+      startDate: '2026-03-02', endDate: '2026-03-03', days: '2.00', calendarDays: 2, hospitalised: false,
+      status: 'SUBMITTED',
+    }]));
+    auth.can.mockImplementation((permission: string) => permission !== 'payroll.leave.approve');
+    await mount('/payroll?tab=leave');
+    await until(() => {
+      expect(host?.textContent).toContain('Test employee');
+      expect(host?.textContent).toContain('Annual');
+    });
+    expect(host?.textContent).not.toContain('Approve');
+  });
+
+  it('sends an idempotency key when approving a leave request', async () => {
+    api.listLeaveTypes.mockResolvedValue(response([{
+      id: 'leave-type-1', code: 'ANNUAL', nameAr: 'سنوية', nameEn: 'Annual', category: 'ANNUAL',
+      countBasis: 'WORKING_DAYS', isActive: true,
+    }]));
+    api.listLeaveRequests.mockResolvedValue(response([{
+      id: 'leave-request-1', employeeId: employee.id, employeeName: employee.nameAr,
+      leaveTypeId: 'leave-type-1', leaveTypeCode: 'ANNUAL', leaveTypeNameAr: 'سنوية', leaveTypeNameEn: 'Annual',
+      startDate: '2026-03-02', endDate: '2026-03-03', days: '2.00', calendarDays: 2, hospitalised: false,
+      status: 'SUBMITTED',
+    }]));
+    await mount('/payroll?tab=leave');
+    const approve = i18n.t('payroll.approveLeave');
+    await until(() => expect(
+      [...(host?.querySelectorAll('button') ?? [])].some((button) => button.textContent?.includes(approve)),
+    ).toBe(true));
+    act(() => [...host!.querySelectorAll('button')].find((button) => button.textContent?.includes(approve))!.click());
+    await until(() => expect(api.approveLeave).toHaveBeenCalledTimes(1));
+    expect(api.approveLeave).toHaveBeenCalledWith('leave-request-1', {
+      headers: { 'Idempotency-Key': expect.any(String) },
+    });
+  });
+
   it('offers only active fixed earning elements for recurring allowances', async () => {
     api.listElements.mockResolvedValue(response([
       { id: 'fixed-earning', nameAr: 'بدل النقل', nameEn: 'Transport allowance', kind: 'EARNING', amountType: 'FIXED', isFixedAllowance: true, isActive: true },

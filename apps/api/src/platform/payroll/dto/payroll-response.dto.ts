@@ -86,6 +86,10 @@ export class PayrollSettingsDto {
   @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) sscMaxWage!: string | null;
   @ApiProperty({ type: 'string', format: 'decimal' }) hoursPerMonth!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) daysPerMonth!: string;
+  @ApiProperty({ type: Number, isArray: true, uniqueItems: true }) weeklyRestDays!: number[];
+  @ApiProperty({ type: 'string', format: 'decimal' }) annualLeaveDays!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) annualLeaveDaysSenior!: string;
+  @ApiProperty({ type: Number }) annualLeaveSeniorYears!: number;
   @ApiProperty({ type: 'string', format: 'decimal' }) taxPersonalExemption!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) taxDependantsExemption!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) taxNationalThreshold!: string;
@@ -191,6 +195,7 @@ export class PayrollLineItemDto {
   @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) rate!: string | null;
   @ApiProperty({ type: 'string', format: 'decimal' }) amount!: string;
   @ApiProperty({ type: 'string', nullable: true }) payrollMovementId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true }) leaveRequestId!: string | null;
 }
 
 export class PayrollLineDto {
@@ -209,6 +214,7 @@ export class PayrollLineDto {
   @ApiProperty({ type: 'boolean' }) taxManual!: boolean;
   @ApiProperty({ type: 'string', format: 'decimal' }) deductions!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) net!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) leaveProvision!: string;
   @ApiProperty({ type: PayrollLineItemDto, isArray: true }) items!: PayrollLineItemDto[];
 }
 

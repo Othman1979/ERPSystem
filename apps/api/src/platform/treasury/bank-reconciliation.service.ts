@@ -5,6 +5,7 @@ import { hasAllBranches } from '../../common/branch/branch-context.js';
 import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { calendarDate } from '../../common/validation/calendar-date.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import type { UploadedSheet } from '../inventory/count-sheet-import.js';
@@ -53,15 +54,6 @@ function toDate(value: string): Date {
 
 function dateText(value: Date): string {
   return value.toISOString().slice(0, 10);
-}
-
-/** A yyyy-mm-dd that names a real day; `toDate` alone rolls 2031-04-31 over to May 1. */
-function calendarDate(value: string, field: string): Date {
-  const date = toDate(value);
-  if (Number.isNaN(date.getTime()) || dateText(date) !== value) {
-    throw new DomainError(ErrorCode.VALIDATION, `${field} is not a calendar date`, { field });
-  }
-  return date;
 }
 
 function money(value: Decimal.Value): string {

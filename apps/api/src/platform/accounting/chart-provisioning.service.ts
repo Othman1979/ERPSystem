@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client.js';
 import {
   CHART_TEMPLATE,
+  DEFAULT_LEAVE_TYPES,
   DEFAULT_PAY_ELEMENTS,
   DEFAULT_PAYMENT_METHODS,
   DEFAULT_PAYROLL_TAX_BRACKETS,
@@ -94,6 +95,35 @@ export class ChartProvisioningService {
           taxSubject: element.taxSubject,
           isFixedAllowance: element.isFixedAllowance,
           accountId,
+        },
+      });
+    }
+
+    for (const leaveType of DEFAULT_LEAVE_TYPES) {
+      const payElementCode = 'payElementCode' in leaveType ? leaveType.payElementCode : undefined;
+      const payElement = payElementCode
+        ? await tx.payElement.findUnique({
+          where: { tenantId_companyId_code: { tenantId, companyId, code: payElementCode } },
+          select: { id: true },
+        })
+        : null;
+      await tx.leaveType.upsert({
+        where: { tenantId_companyId_code: { tenantId, companyId, code: leaveType.code } },
+        update: {},
+        create: {
+          tenantId,
+          companyId,
+          code: leaveType.code,
+          nameAr: leaveType.nameAr,
+          nameEn: leaveType.nameEn,
+          category: leaveType.category,
+          countBasis: leaveType.countBasis,
+          maxDaysPerYear: 'maxDaysPerYear' in leaveType ? leaveType.maxDaysPerYear : null,
+          maxDaysPerRequest: 'maxDaysPerRequest' in leaveType ? leaveType.maxDaysPerRequest : null,
+          hospitalExtraDays: 'hospitalExtraDays' in leaveType ? leaveType.hospitalExtraDays : null,
+          oncePerEmployment: 'oncePerEmployment' in leaveType ? leaveType.oncePerEmployment : false,
+          minServiceYears: 'minServiceYears' in leaveType ? leaveType.minServiceYears : null,
+          payElementId: payElement?.id ?? null,
         },
       });
     }

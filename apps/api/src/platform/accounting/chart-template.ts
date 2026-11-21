@@ -28,6 +28,8 @@ export const ACCOUNT_MAPPING_KEYS = [
   'PAYROLL_PAYABLE',
   'PAYROLL_SSC_PAYABLE',
   'PAYROLL_TAX_PAYABLE',
+  'PAYROLL_LEAVE_PROVISION',
+  'PAYROLL_LEAVE_EXPENSE',
   'EMPLOYEE_ADVANCES',
 ] as const;
 
@@ -98,6 +100,7 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('2106', 'رواتب مستحقة', 'LIABILITY', { nameEn: 'Salaries payable', parentCode: '21' }),
   acct('2107', 'الضمان الاجتماعي المستحق', 'LIABILITY', { nameEn: 'Social security payable', parentCode: '21' }),
   acct('2108', 'ضريبة دخل مقتطعة', 'LIABILITY', { nameEn: 'Income tax withheld', parentCode: '21' }),
+  acct('2109', 'مخصص الإجازات المستحقة', 'LIABILITY', { nameEn: 'Accrued leave provision', parentCode: '21' }),
   acct('3101', 'رأس المال', 'EQUITY', { nameEn: 'Capital', parentCode: '31' }),
   acct('3102', 'الأرباح المدورة', 'EQUITY', { nameEn: 'Retained earnings', parentCode: '31' }),
   acct('3103', 'أرصدة افتتاحية', 'EQUITY', { nameEn: 'Opening balances', parentCode: '31' }),
@@ -116,6 +119,7 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('5204', 'مصاريف عمومية وإدارية', 'EXPENSE', { nameEn: 'General and administrative expenses', parentCode: '52' }),
   acct('5205', 'فروقات التقريب', 'EXPENSE', { nameEn: 'Rounding differences', parentCode: '52' }),
   acct('5206', 'حصة الشركة في الضمان', 'EXPENSE', { nameEn: 'Employer social security', parentCode: '52' }),
+  acct('5207', 'مصروف الإجازات', 'EXPENSE', { nameEn: 'Leave expense', parentCode: '52' }),
 ];
 
 /** mappingKey → template account code (resolved to account ids on provision). */
@@ -143,6 +147,8 @@ export const TEMPLATE_MAPPINGS: Record<AccountMappingKey, string> = {
   PAYROLL_PAYABLE: '2106',
   PAYROLL_SSC_PAYABLE: '2107',
   PAYROLL_TAX_PAYABLE: '2108',
+  PAYROLL_LEAVE_PROVISION: '2109',
+  PAYROLL_LEAVE_EXPENSE: '5207',
   EMPLOYEE_ADVANCES: '1107',
 };
 
@@ -180,6 +186,8 @@ export const MAPPING_RULES: Record<AccountMappingKey, MappingRule> = {
   PAYROLL_PAYABLE: { types: ['LIABILITY'] },
   PAYROLL_SSC_PAYABLE: { types: ['LIABILITY'] },
   PAYROLL_TAX_PAYABLE: { types: ['LIABILITY'] },
+  PAYROLL_LEAVE_PROVISION: { types: ['LIABILITY'] },
+  PAYROLL_LEAVE_EXPENSE: { types: ['EXPENSE'] },
   EMPLOYEE_ADVANCES: { types: ['ASSET'] },
 };
 
@@ -194,6 +202,7 @@ export const LOCKED_AFTER_POSTING: ReadonlySet<AccountMappingKey> = new Set<Acco
   'PAYROLL_PAYABLE',
   'PAYROLL_SSC_PAYABLE',
   'PAYROLL_TAX_PAYABLE',
+  'PAYROLL_LEAVE_PROVISION',
   'EMPLOYEE_ADVANCES',
 ]);
 
@@ -294,6 +303,39 @@ export const DEFAULT_PAY_ELEMENTS = [
     isFixedAllowance: false,
     accountCode: '4201',
   },
+  {
+    code: 'UNPAID_LEAVE_DAY',
+    nameAr: 'إجازة بدون أجر',
+    nameEn: 'Unpaid leave day',
+    kind: 'DEDUCTION',
+    amountType: 'PER_DAY',
+    rateFactor: '1.000000',
+    sscSubject: true,
+    taxSubject: true,
+    isFixedAllowance: false,
+    accountCode: '5201',
+  },
+  {
+    code: 'MATERNITY_LEAVE_DAY',
+    nameAr: 'إجازة أمومة',
+    nameEn: 'Maternity leave day',
+    kind: 'DEDUCTION',
+    amountType: 'PER_DAY',
+    rateFactor: '1.000000',
+    sscSubject: true,
+    taxSubject: true,
+    isFixedAllowance: false,
+    accountCode: '5201',
+  },
+] as const;
+
+export const DEFAULT_LEAVE_TYPES = [
+  { code: 'ANNUAL', nameAr: 'سنوية', nameEn: 'Annual', category: 'ANNUAL', countBasis: 'WORKING_DAYS' },
+  { code: 'SICK', nameAr: 'مرضية', nameEn: 'Sick', category: 'SICK', countBasis: 'WORKING_DAYS', maxDaysPerYear: '14.00', hospitalExtraDays: '14.00' },
+  { code: 'MATERNITY', nameAr: 'أمومة', nameEn: 'Maternity', category: 'MATERNITY', countBasis: 'CALENDAR_DAYS', maxDaysPerRequest: '70.00', payElementCode: 'MATERNITY_LEAVE_DAY' },
+  { code: 'PATERNITY', nameAr: 'أبوة', nameEn: 'Paternity', category: 'PATERNITY', countBasis: 'WORKING_DAYS', maxDaysPerRequest: '3.00' },
+  { code: 'HAJJ', nameAr: 'حج', nameEn: 'Hajj', category: 'HAJJ', countBasis: 'WORKING_DAYS', maxDaysPerRequest: '14.00', oncePerEmployment: true, minServiceYears: 5 },
+  { code: 'UNPAID', nameAr: 'بدون أجر', nameEn: 'Unpaid', category: 'UNPAID', countBasis: 'CALENDAR_DAYS', payElementCode: 'UNPAID_LEAVE_DAY' },
 ] as const;
 
 export const DEFAULT_PAYROLL_TAX_BRACKETS = [
@@ -358,4 +400,5 @@ export const DOCUMENT_TYPE_PREFIXES: Record<string, string> = {
   PRODUCTION: 'MFG',
   PAYROLL_RUN: 'PAY',
   PAYROLL_MOVEMENT: 'PM',
+  LEAVE_REQUEST: 'LV',
 };

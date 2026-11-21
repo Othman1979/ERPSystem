@@ -145,6 +145,15 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       { code: `P${RUN}`, nameAr: `Payroll ${MARK}`, hireDate: '2026-01-01', payMethod: 'CASH' },
       'employee',
     );
+    const leaveTypes = (await asA('get', '/payroll/leave-types')).body as { id: string; code: string }[];
+    id.leaveType = leaveTypes.find((leaveType) => leaveType.code === 'ANNUAL')!.id;
+    await create('/payroll/holidays', { date: '2026-01-14', nameAr: `Holiday ${MARK}` }, 'leaveHoliday');
+    await create('/payroll/leave-requests', {
+      employeeId: id.employee,
+      leaveTypeId: id.leaveType,
+      startDate: '2026-02-10',
+      endDate: '2026-02-11',
+    }, 'leaveRequest');
     const payrollElements = (await asA('get', '/payroll/elements')).body as { id: string; code: string }[];
     id.transportElement = payrollElements.find((element) => element.code === 'TRANSPORT')!.id;
     await create(`/payroll/employees/${id.employee}/recurring-elements`, {
@@ -392,6 +401,9 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       else if (name === 'membershipId') values[name] = id.membership;
       else if (name === 'lineId' && p.includes('/payroll/')) values[name] = id.payrollLine;
       else if (name === 'lineId') values[name] = id.stockCountLine;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/leave-requests/')) values[name] = id.leaveRequest;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/leave-types/')) values[name] = id.leaveType;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/holidays/')) values[name] = id.leaveHoliday;
       else if (name === 'id' && seg === 'payroll' && p.includes('/employees/')) values[name] = id.employee;
       else if (name === 'rid' && seg === 'payroll' && p.includes('/recurring-elements/')) values[name] = id.payrollRecurring;
       else if (name === 'id' && seg === 'payroll' && p.includes('/elements/')) values[name] = id.transportElement;
@@ -407,6 +419,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
 
   /** A valid body for each change, so the request reaches the tenant lookup. */
   function bodyFor(p: string): object {
+    if (p.endsWith('/payroll/leave-types/{id}')) return { nameAr: 'Foreign leave type' };
     if (p.endsWith('/salaries')) return { effectiveFrom: '2026-01-01', basicSalary: '1.000' };
     if (p.endsWith('/recurring-elements')) return { payElementId: id.transportElement, amount: '1.000', validFrom: '2026-01-01' };
     if (p.endsWith('/income-tax')) return { incomeTax: '0.000' };

@@ -1,14 +1,19 @@
 import {
+  ArrayMaxSize,
   ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsDateString,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
+  Max,
+  Min,
   Validate,
   ValidateNested,
   ValidatorConstraint,
@@ -170,6 +175,13 @@ export class CreatePayrollSettingsDto {
   @IsOptional() @Matches(DECIMAL_PATTERN) sscMaxWage?: string;
   @IsOptional() @Matches(DECIMAL_PATTERN) hoursPerMonth?: string;
   @IsOptional() @Matches(DECIMAL_PATTERN) daysPerMonth?: string;
+  @ApiPropertyOptional({ type: Number, isArray: true, uniqueItems: true, minItems: 1, maxItems: 6, minimum: 0, maximum: 6 })
+  @IsOptional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(6) @ArrayUnique()
+  @IsInt({ each: true }) @Min(0, { each: true }) @Max(6, { each: true })
+  weeklyRestDays?: number[];
+  @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) annualLeaveDays?: string;
+  @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) annualLeaveDaysSenior?: string;
+  @ApiPropertyOptional({ type: Number }) @IsOptional() @IsInt() @Min(0) annualLeaveSeniorYears?: number;
   @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) taxPersonalExemption?: string;
   @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) taxDependantsExemption?: string;
   @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) taxNationalThreshold?: string;

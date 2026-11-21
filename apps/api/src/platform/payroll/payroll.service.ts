@@ -23,6 +23,13 @@ import {
   type PayrollElementEntry,
   type PayrollRecurringEntry,
 } from './payroll-calculator.js';
+import {
+  annualLeaveEntitlement,
+  carryIntoYear,
+  countLeaveDays,
+  leavePeriodQuantity,
+  leaveProvision as calculateLeaveProvision,
+} from './leave-calculator.js';
 import type {
   CreateEmployeeDto,
   CreatePayElementDto,
@@ -41,6 +48,8 @@ const MAPPING_KEYS = [
   'PAYROLL_PAYABLE',
   'PAYROLL_SSC_PAYABLE',
   'PAYROLL_TAX_PAYABLE',
+  'PAYROLL_LEAVE_PROVISION',
+  'PAYROLL_LEAVE_EXPENSE',
 ] as const;
 
 function date(value: string): Date {
@@ -352,6 +361,13 @@ export class PayrollService {
         (dto.kind !== undefined && dto.kind !== element.kind) ||
         (dto.amountType !== undefined && dto.amountType !== element.amountType);
       const unsettingFixedAllowance = dto.isFixedAllowance === false && element.isFixedAllowance;
+      const removingFromUse = dto.isActive === false && element.isActive;
+      const leaveTypeReference = typeChanged || removingFromUse
+        ? await tx.leaveType.findFirst({ where: { payElementId: id }, select: { id: true } })
+        : null;
+      if (leaveTypeReference) {
+        throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Pay element is referenced by a leave type');
+      }
       const kind = dto.kind ?? element.kind;
       const amountType = dto.amountType ?? element.amountType;
       const recurring = typeChanged || unsettingFixedAllowance
@@ -420,7 +436,10 @@ export class PayrollService {
     return db.payrollSettings.findMany({
       include: { taxBrackets: { orderBy: [{ seq: 'asc' }] } },
       orderBy: [{ effectiveFrom: 'desc' }],
-    });
+    }).then((rows) => rows.map((row) => ({
+      ...row,
+      weeklyRestDays: row.weeklyRestDays.split(',').map(Number),
+    })));
   }
 
   async createSettings(dto: CreatePayrollSettingsDto) {
@@ -435,6 +454,10 @@ export class PayrollService {
     const taxDependantsExemption = new Decimal(dto.taxDependantsExemption ?? '9000.000');
     const taxNationalThreshold = new Decimal(dto.taxNationalThreshold ?? '16666.000');
     const taxNationalRate = new Decimal(dto.taxNationalRate ?? '0.010000');
+    const annualLeaveDays = new Decimal(dto.annualLeaveDays ?? '14.00');
+    const annualLeaveDaysSenior = new Decimal(dto.annualLeaveDaysSenior ?? '21.00');
+    const annualLeaveSeniorYears = dto.annualLeaveSeniorYears ?? 5;
+    const restDays = dto.weeklyRestDays ?? [5];
     const taxBrackets = dto.taxBrackets ?? DEFAULT_PAYROLL_TAX_BRACKETS.map(({ upTo, rate }) => ({ upTo, rate }));
     let previousUpTo: Decimal | null = null;
     let unbounded = false;
@@ -458,6 +481,10 @@ export class PayrollService {
       (maximum !== null && (maximum.lt(zero) || maximum.lt(minimum))) ||
       taxPersonalExemption.lt(zero) || taxDependantsExemption.lt(zero) || taxNationalThreshold.lt(zero) ||
       taxNationalRate.lt(zero) || taxNationalRate.gt(one) || !validTaxBrackets
+      || annualLeaveDays.lt(zero) || annualLeaveDaysSenior.lt(zero)
+      || !Number.isInteger(annualLeaveSeniorYears) || annualLeaveSeniorYears < 0
+      || restDays.length < 1 || restDays.length > 6 || new Set(restDays).size !== restDays.length
+      || restDays.some((day) => !Number.isInteger(day) || day < 0 || day > 6)
     ) {
       throw new DomainError(ErrorCode.VALIDATION, 'Payroll rates, wages, hours, or days are outside the allowed range');
     }
@@ -474,6 +501,10 @@ export class PayrollService {
           sscMaxWage: dto.sscMaxWage ?? null,
           hoursPerMonth: dto.hoursPerMonth ?? '240.00',
           daysPerMonth: dto.daysPerMonth ?? '30.00',
+          weeklyRestDays: restDays.join(','),
+          annualLeaveDays,
+          annualLeaveDaysSenior,
+          annualLeaveSeniorYears,
           taxPersonalExemption,
           taxDependantsExemption,
           taxNationalThreshold,
@@ -491,6 +522,7 @@ export class PayrollService {
       });
       return {
         ...settings,
+        weeklyRestDays: restDays,
         taxBrackets: await tx.payrollTaxBracket.findMany({
           where: { payrollSettingsId: settings.id },
           orderBy: [{ seq: 'asc' }],
@@ -784,8 +816,16 @@ export class PayrollService {
           include: { payElement: true },
         },
         payrollMovements: { where: { period, status: 'POSTED' }, include: { payElement: true } },
+        leaveRequests: {
+          where: { status: 'APPROVED', startDate: { lte: end }, endDate: { gte: start } },
+          include: { leaveType: { include: { payElement: true } } },
+        },
       },
       orderBy: [{ id: 'asc' }],
+    });
+    const holidays = await tx.publicHoliday.findMany({
+      where: { date: { gte: start, lte: end } },
+      select: { date: true },
     });
     await tx.payrollLine.deleteMany({ where: { payrollRunId: runId } });
     const totals = {
@@ -811,6 +851,33 @@ export class PayrollService {
         rate: movement.rate?.toString() ?? null,
         payrollMovementId: movement.id,
       }));
+      const leaveInputs: PayrollElementEntry[] = [];
+      let remainingLeaveQuantity = new Decimal(settings.daysPerMonth.toString());
+      const leaveRequests = [...employee.leaveRequests].sort((a, b) =>
+        a.startDate.getTime() - b.startDate.getTime() || a.id.toString().localeCompare(b.id.toString()));
+      for (const request of leaveRequests) {
+        const element = request.leaveType.payElement;
+        if (!element || (request.leaveType.category === 'MATERNITY' && !employee.sscCovered)) continue;
+        const requestQuantity = leavePeriodQuantity({
+          requestStart: request.startDate,
+          requestEnd: request.endDate,
+          periodStart: start,
+          periodEnd: end,
+          countBasis: request.leaveType.countBasis,
+          weeklyRestDays: settings.weeklyRestDays.split(',').map(Number),
+          holidays: holidays.map((holiday) => holiday.date),
+          daysPerMonth: settings.daysPerMonth,
+        });
+        const quantity = Decimal.min(requestQuantity, remainingLeaveQuantity);
+        if (!quantity.gt(0)) continue;
+        leaveInputs.push({
+          element: toElement(element),
+          amount: null,
+          quantity,
+          leaveRequestId: request.id,
+        });
+        remainingLeaveQuantity = remainingLeaveQuantity.minus(quantity);
+      }
       const recurring: PayrollRecurringEntry[] = employee.recurringElements.map((item) => ({
         element: toElement(item.payElement),
         amount: item.amount?.toString() ?? null,
@@ -840,7 +907,7 @@ export class PayrollService {
             rate: bracket.rate.toString(),
           })),
         },
-        inputs,
+        inputs: [...inputs, ...leaveInputs],
         recurring,
         incomeTax: oldTaxes.get(employee.id),
       });
@@ -876,6 +943,7 @@ export class PayrollService {
             rate: item.rate,
             amount: item.amount,
             payrollMovementId: item.payrollMovementId ?? null,
+            leaveRequestId: item.leaveRequestId ?? null,
           })),
         });
       }
@@ -979,6 +1047,11 @@ export class PayrollService {
       });
       if (!draft) throw DomainError.notFound('PayrollRun', id.toString());
       if (draft.status !== 'DRAFT') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only draft runs can be posted');
+      const laterRun = await tx.payrollRun.findFirst({
+        where: { companyId, period: { gt: draft.period }, status: { in: ['POSTED', 'PAID'] } },
+        select: { id: true },
+      });
+      if (laterRun) throw new DomainError(ErrorCode.PAYROLL_LATER_RUN_POSTED, 'A later payroll period is already posted');
       const taxes = new Map(draft.lines.filter((line) => line.taxManual).map((line) => [line.employeeId, line.incomeTax.toString()]));
       await this.computeRun(tx, tenantId, companyId, id, draft.period, taxes);
       const run = await tx.payrollRun.findFirst({
@@ -986,8 +1059,14 @@ export class PayrollService {
         include: {
           lines: {
             include: {
-              employee: { select: { branchId: true, costCenterId: true } },
-              items: { include: { payElement: { select: { accountId: true, account: { select: { accountType: true } } } } } },
+              employee: { select: { branchId: true, costCenterId: true, hireDate: true, leaveDate: true } },
+              items: {
+                include: {
+                  payElement: {
+                    select: { accountId: true, isFixedAllowance: true, account: { select: { accountType: true } } },
+                  },
+                },
+              },
             },
           },
         },
@@ -1004,6 +1083,118 @@ export class PayrollService {
         if (!idForMapping) throw new DomainError(ErrorCode.MAPPING_ACCOUNT_INVALID, `Missing mapping ${key}`);
         return idForMapping;
       };
+      const periodEnd = periodBounds(run.period).end;
+      const year = periodEnd.getUTCFullYear();
+      const annualLeaveType = await tx.leaveType.findFirst({ where: { category: 'ANNUAL', isActive: true } });
+      const employeesWithLines = run.lines.map((line) => line.employeeId);
+      const [leaveSettings, annualRequests, leaveAdjustments, priorRuns, leaveHolidays] = annualLeaveType
+        ? await Promise.all([
+            tx.payrollSettings.findMany({ where: { effectiveFrom: { lte: periodEnd } }, orderBy: [{ effectiveFrom: 'asc' }] }),
+            tx.leaveRequest.findMany({
+              where: {
+                employeeId: { in: employeesWithLines },
+                leaveTypeId: annualLeaveType.id,
+                status: 'APPROVED',
+                startDate: { lte: periodEnd },
+              },
+              select: { employeeId: true, startDate: true, endDate: true, days: true },
+            }),
+            tx.leaveBalanceAdjustment.findMany({
+              where: { employeeId: { in: employeesWithLines }, leaveTypeId: annualLeaveType.id, year: { lte: year } },
+              select: { employeeId: true, year: true, days: true },
+            }),
+            tx.payrollRun.findMany({
+              where: {
+                period: { lt: run.period },
+                status: { in: ['POSTED', 'PAID'] },
+                lines: { some: { employeeId: { in: employeesWithLines } } },
+              },
+              include: { lines: { where: { employeeId: { in: employeesWithLines } }, select: { employeeId: true, leaveProvision: true } } },
+              orderBy: [{ period: 'desc' }],
+            }),
+            tx.publicHoliday.findMany({ where: { date: { lte: periodEnd } }, select: { date: true } }),
+          ])
+        : [[], [], [], [], []] as const;
+      const priorProvision = new Map<bigint, Decimal>();
+      for (const prior of priorRuns) {
+        for (const priorLine of prior.lines) {
+          if (!priorProvision.has(priorLine.employeeId)) priorProvision.set(priorLine.employeeId, priorLine.leaveProvision);
+        }
+      }
+      for (const line of run.lines) {
+        let provision = new Decimal(0);
+        if (annualLeaveType) {
+          const startYear = line.employee.hireDate.getUTCFullYear();
+          const entitlements = new Map<number, Decimal>();
+          const taken = new Map<number, Decimal>();
+          const adjustmentByYear = new Map<number, Decimal>();
+          for (const adjustment of leaveAdjustments) {
+            if (adjustment.employeeId === line.employeeId) {
+              adjustmentByYear.set(adjustment.year, (adjustmentByYear.get(adjustment.year) ?? new Decimal(0)).plus(adjustment.days));
+            }
+          }
+          for (const request of annualRequests) {
+            if (request.employeeId === line.employeeId) {
+              const requestYear = request.startDate.getUTCFullYear();
+              const yearStart = new Date(Date.UTC(requestYear, 0, 1));
+              const startDate = request.startDate > yearStart ? request.startDate : yearStart;
+              const endDate = request.endDate < periodEnd ? request.endDate : periodEnd;
+              if (endDate >= startDate) {
+                const settings = leaveSettings.filter((setting) => setting.effectiveFrom <= endDate).at(-1);
+                const days = request.endDate <= periodEnd
+                  ? request.days
+                  : countLeaveDays({
+                      startDate,
+                      endDate,
+                      countBasis: annualLeaveType.countBasis,
+                      weeklyRestDays: (settings?.weeklyRestDays ?? '5').split(',').map(Number),
+                      holidays: leaveHolidays.map((holiday) => holiday.date),
+                    }).days;
+                taken.set(requestYear, (taken.get(requestYear) ?? new Decimal(0)).plus(days));
+              }
+            }
+          }
+          for (let balanceYear = startYear; balanceYear < year; balanceYear++) {
+            const yearEnd = periodBounds(`${balanceYear}-12`).end;
+            const yearSettings = leaveSettings.filter((setting) => setting.effectiveFrom <= yearEnd).at(-1);
+            entitlements.set(balanceYear, annualLeaveEntitlement({
+              year: balanceYear,
+              hireDate: line.employee.hireDate,
+              leaveDate: line.employee.leaveDate,
+              annualLeaveDays: yearSettings?.annualLeaveDays ?? '14',
+              annualLeaveDaysSenior: yearSettings?.annualLeaveDaysSenior ?? '21',
+              annualLeaveSeniorYears: yearSettings?.annualLeaveSeniorYears ?? 5,
+              adjustments: adjustmentByYear.get(balanceYear) ?? 0,
+            }));
+          }
+          const currentSettings = leaveSettings.filter((setting) => setting.effectiveFrom <= periodEnd).at(-1);
+          const carry = carryIntoYear({ year, startYear, entitlements, taken });
+          const accruedToDate = annualLeaveEntitlement({
+            year,
+            hireDate: line.employee.hireDate,
+            leaveDate: line.employee.leaveDate,
+            annualLeaveDays: currentSettings?.annualLeaveDays ?? '14',
+            annualLeaveDaysSenior: currentSettings?.annualLeaveDaysSenior ?? '21',
+            annualLeaveSeniorYears: currentSettings?.annualLeaveSeniorYears ?? 5,
+            asOfDate: periodEnd,
+          });
+          const unusedDays = carry
+            .plus(accruedToDate)
+            .plus(adjustmentByYear.get(year) ?? 0)
+            .minus(taken.get(year) ?? 0);
+          const fixedAllowances = line.items
+            .filter((item) => item.payElement?.isFixedAllowance && item.payrollMovementId === null && item.leaveRequestId === null)
+            .map((item) => item.amount);
+          provision = calculateLeaveProvision({
+            unusedDays,
+            basic: line.basic,
+            fixedAllowances,
+            daysPerMonth: currentSettings?.daysPerMonth ?? '30',
+          });
+        }
+        await tx.payrollLine.update({ where: { id: line.id }, data: { leaveProvision: provision } });
+        line.leaveProvision = provision;
+      }
       const grouped = new Map<string, { accountId: bigint; branchId: bigint | null; costCenterId: bigint | null; debit: Decimal; credit: Decimal; description: string }>();
       const add = (
         glAccount: bigint,
@@ -1038,6 +1229,32 @@ export class PayrollService {
             item.description,
           );
         }
+      }
+      const leaveExpenseAccount = accountId('PAYROLL_LEAVE_EXPENSE');
+      const leaveProvisionAccount = accountId('PAYROLL_LEAVE_PROVISION');
+      const leaveProvisionLines: JournalLineInput[] = [];
+      for (const line of run.lines) {
+        const delta = round3(line.leaveProvision.minus(priorProvision.get(line.employeeId) ?? 0));
+        if (delta.isZero()) continue;
+        const amount = delta.abs();
+        const debitExpense = delta.gt(0);
+        leaveProvisionLines.push(
+          {
+            accountId: leaveExpenseAccount,
+            debit: debitExpense ? amount : 0,
+            credit: debitExpense ? 0 : amount,
+            branchId: line.employee.branchId,
+            costCenterId: line.employee.costCenterId,
+            description: 'Leave provision expense',
+          },
+          {
+            accountId: leaveProvisionAccount,
+            debit: debitExpense ? 0 : amount,
+            credit: debitExpense ? amount : 0,
+            branchId: line.employee.branchId,
+            description: 'Accrued leave provision',
+          },
+        );
       }
       add(accountId('PAYROLL_SSC_PAYABLE'), run.sscEmployeeTotal.plus(run.sscEmployerTotal), 'credit', null, null, 'Social security payable');
       add(accountId('PAYROLL_TAX_PAYABLE'), run.incomeTaxTotal, 'credit', null, null, 'Income tax withheld');
@@ -1080,9 +1297,23 @@ export class PayrollService {
             postedBy: ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null,
           })
         : null;
+      const leaveProvisionEntry = leaveProvisionLines.length
+        ? await this.posting.postEntry(tx, {
+            tenantId,
+            companyId,
+            entryDate: run.runDate,
+            fiscalPeriodId: period.id,
+            sourceType: 'PAYROLL_LEAVE_PROVISION',
+            sourceId: run.id,
+            description: `Leave provision ${run.period}`,
+            lines: leaveProvisionLines,
+            requireCostCenters: true,
+            postedBy: ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null,
+          })
+        : null;
       await tx.payrollRun.update({
         where: { id },
-        data: { status: 'POSTED', runNo, journalEntryId: entry?.id ?? null },
+        data: { status: 'POSTED', runNo, journalEntryId: entry?.id ?? null, leaveProvisionEntryId: leaveProvisionEntry?.id ?? null },
       });
       await this.audit.log({ action: 'payroll.post', entityType: 'payroll_run', entityId: id, after: { status: 'POSTED' } }, tx);
     }, POSTING_TX_OPTIONS);
@@ -1152,6 +1383,11 @@ export class PayrollService {
       if (run.status !== 'POSTED' && run.status !== 'PAID') {
         throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only posted or paid runs can be reversed');
       }
+      const laterRun = await tx.payrollRun.findFirst({
+        where: { companyId, period: { gt: run.period }, status: { in: ['POSTED', 'PAID'] } },
+        select: { id: true },
+      });
+      if (laterRun) throw new DomainError(ErrorCode.PAYROLL_LATER_RUN_POSTED, 'A later payroll period is already posted');
       if (reversalDate < run.runDate) {
         throw new DomainError(ErrorCode.VALIDATION, 'Payroll reversal date cannot be before the run date');
       }
@@ -1163,6 +1399,9 @@ export class PayrollService {
       }
       if (run.journalEntryId) {
         await this.posting.reverseEntry(tx, { tenantId, companyId, entryId: run.journalEntryId, reversalDate, postedBy: userId });
+      }
+      if (run.leaveProvisionEntryId) {
+        await this.posting.reverseEntry(tx, { tenantId, companyId, entryId: run.leaveProvisionEntryId, reversalDate, postedBy: userId });
       }
       await tx.payrollRun.update({ where: { id }, data: { status: 'REVERSED' } });
       await this.audit.log({ action: 'payroll.reverse', entityType: 'payroll_run', entityId: id, after: { status: 'REVERSED' } }, tx);
@@ -1335,7 +1574,7 @@ export class PayrollService {
         lines: {
           include: {
             employee: { select: { nameAr: true } },
-            items: { select: { description: true, kind: true, amount: true, quantity: true, rate: true, payrollMovementId: true } },
+            items: { select: { description: true, kind: true, amount: true, quantity: true, rate: true, payrollMovementId: true, leaveRequestId: true } },
           },
           orderBy: [{ employeeId: 'asc' }],
         },
@@ -1361,6 +1600,7 @@ export class PayrollService {
         taxManual: line.taxManual,
         deductions: line.deductions.toString(),
         net: line.net.toString(),
+        leaveProvision: line.leaveProvision.toString(),
         items: line.items.map((item) => ({
           description: item.description,
           kind: item.kind,
@@ -1368,6 +1608,7 @@ export class PayrollService {
           quantity: item.quantity?.toString() ?? null,
           rate: item.rate?.toString() ?? null,
           payrollMovementId: item.payrollMovementId?.toString() ?? null,
+          leaveRequestId: item.leaveRequestId?.toString() ?? null,
         })),
       })),
     };
