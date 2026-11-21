@@ -36,6 +36,12 @@ export function calculateProrationFactor(input: {
   periodEnd: Date;
   daysPerMonth: Decimal.Value;
 }): Decimal {
+  if (
+    utcDate(input.hireDate) <= utcDate(input.periodStart)
+    && (!input.leaveDate || utcDate(input.leaveDate) >= utcDate(input.periodEnd))
+  ) {
+    return new Decimal(1);
+  }
   const activeStart = new Date(Math.max(utcDate(input.hireDate).getTime(), utcDate(input.periodStart).getTime()));
   const activeEndExclusive = new Date(Math.min(
     addDays(input.leaveDate ?? input.periodEnd, 1).getTime(),

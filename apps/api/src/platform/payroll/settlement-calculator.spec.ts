@@ -18,6 +18,22 @@ describe('settlement calculator', () => {
     }).toString()).toBe('0.566667');
   });
 
+  it('returns full pay for a complete period and prorates only partial periods', () => {
+    const factor = (hireDate: string, leaveDate: string | null, periodStart: string, periodEnd: string) =>
+      calculateProrationFactor({
+        hireDate: new Date(`${hireDate}Z`),
+        leaveDate: leaveDate ? new Date(`${leaveDate}Z`) : null,
+        periodStart: new Date(`${periodStart}Z`),
+        periodEnd: new Date(`${periodEnd}Z`),
+        daysPerMonth: '30',
+      }).toString();
+
+    expect(factor('2026-01-01', null, '2026-02-01', '2026-02-28')).toBe('1');
+    expect(factor('2026-02-15', null, '2026-02-01', '2026-02-28')).toBe('0.466667');
+    expect(factor('2020-01-01', '2026-09-20', '2026-09-01', '2026-09-30')).toBe('0.666667');
+    expect(factor('2026-01-01', null, '2026-01-01', '2026-01-31')).toBe('1');
+  });
+
   it('splits EOS service days and calculates the EOS1 entitlement and tax', () => {
     const service = calculateServiceYears({
       hireDate: new Date('2008-01-01Z'), leaveDate: new Date('2026-12-31Z'), unpaidLeaveRanges: [],
