@@ -280,6 +280,26 @@ describe('Phase 28C payroll settlements', () => {
       ['1102', '19031.424', '0.000'],
       ['2106', '0.000', '19031.424'],
     ]);
+    const reversedStatement = h.ok(await get(
+      `payroll/employees/${eos2Employee.id}/statement?from=2026-01-01&to=2026-12-31`,
+      eos2Company.id,
+    ), 200, 'EOS2 reversed employee statement') as {
+      closingBalance: string; rows: Array<{ documentType: string; debit: string; credit: string }>;
+    };
+    const settlementHistory = reversedStatement.rows.filter((row) => row.documentType.startsWith('PAYROLL_SETTLEMENT'));
+    expect(settlementHistory.map((row) => row.documentType).sort()).toEqual([
+      'PAYROLL_SETTLEMENT',
+      'PAYROLL_SETTLEMENT_PAYMENT',
+      'PAYROLL_SETTLEMENT_PAYMENT_REVERSAL',
+      'PAYROLL_SETTLEMENT_REVERSAL',
+    ].sort());
+    expect(settlementHistory.map((row) => [row.debit, row.credit]).sort()).toEqual([
+      ['0.000', '19031.424'],
+      ['19031.424', '0.000'],
+      ['0.000', '19031.424'],
+      ['19031.424', '0.000'],
+    ].sort());
+    expect(reversedStatement.closingBalance).toBe('0.000');
     expect(await settlementAccountBalances(eos2Company.id)).toEqual(balancesBeforeSettlement);
     expect((await get('reports/trial-balance?from=2026-01-01&to=2026-12-31', eos2Company.id)).body.balanced).toBe(true);
   });

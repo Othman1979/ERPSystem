@@ -1648,8 +1648,12 @@ export class PayrollService {
       },
     });
     const settlements = await db.payrollSettlement.findMany({
-      where: { employeeId, status: { in: ['POSTED', 'PAID'] } },
-      include: { paymentEntry: { select: { entryDate: true, createdAt: true, entryNo: true } } },
+      where: { employeeId, status: { in: ['POSTED', 'PAID', 'REVERSED'] } },
+      include: {
+        paymentEntry: { select: { entryDate: true, createdAt: true, entryNo: true } },
+        reversalEntry: { select: { entryDate: true, createdAt: true, entryNo: true } },
+        paymentReversalEntry: { select: { entryDate: true, createdAt: true, entryNo: true } },
+      },
     });
 
     type StatementEvent = {
@@ -1745,13 +1749,33 @@ export class PayrollService {
         description: 'Final settlement',
         signed: settlement.net,
       });
-      if (settlement.status === 'PAID' && settlement.paymentEntry) {
+      if ((settlement.status === 'PAID' || settlement.status === 'REVERSED') && settlement.paymentEntry) {
         addEvent({
           date: settlement.paymentEntry.entryDate,
           createdAt: settlement.paymentEntry.createdAt,
           documentNo: settlement.paymentEntry.entryNo ?? settlementNo,
           documentType: 'PAYROLL_SETTLEMENT_PAYMENT',
           description: 'Final settlement payment',
+          signed: settlement.net.neg(),
+        });
+      }
+      if (settlement.status === 'REVERSED' && settlement.paymentReversalEntry) {
+        addEvent({
+          date: settlement.paymentReversalEntry.entryDate,
+          createdAt: settlement.paymentReversalEntry.createdAt,
+          documentNo: settlement.paymentReversalEntry.entryNo ?? settlementNo,
+          documentType: 'PAYROLL_SETTLEMENT_PAYMENT_REVERSAL',
+          description: 'Final settlement payment',
+          signed: settlement.net,
+        });
+      }
+      if (settlement.status === 'REVERSED' && settlement.reversalEntry) {
+        addEvent({
+          date: settlement.reversalEntry.entryDate,
+          createdAt: settlement.reversalEntry.createdAt,
+          documentNo: settlement.reversalEntry.entryNo ?? settlementNo,
+          documentType: 'PAYROLL_SETTLEMENT_REVERSAL',
+          description: 'Final settlement',
           signed: settlement.net.neg(),
         });
       }
