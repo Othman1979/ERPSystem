@@ -64,6 +64,15 @@ function openPicker() {
 }
 
 describe('GridSelect create-new', () => {
+  it('creates from the footer with empty search text', async () => {
+    const onCreateNew = vi.fn();
+    mount(<GridSelect options={[]} onCreateNew={onCreateNew} />);
+    openPicker();
+    await settle(50);
+    act(() => document.querySelector<HTMLElement>('.grid-select-create-new')!.click());
+    expect(onCreateNew).toHaveBeenCalledWith('');
+  });
+
   it('renders a footer action and sends its search text when clicked', async () => {
     const onCreateNew = vi.fn();
     mount(
@@ -161,6 +170,23 @@ describe('GridSelect create-new', () => {
 
 describe('RemoteSelect create-new', () => {
   const fetchOptions = async () => [];
+
+  it('creates from the footer with empty search text', async () => {
+    const onCreateNew = vi.fn();
+    mount(
+      <RemoteSelect
+        queryKey={['remote-create-empty']}
+        fetchOptions={fetchOptions}
+        onCreateNew={onCreateNew}
+      />,
+      true,
+    );
+    await settle();
+    openPicker();
+    await settle(50);
+    act(() => document.querySelector<HTMLElement>('.grid-select-create-new')!.click());
+    expect(onCreateNew).toHaveBeenCalledWith('');
+  });
 
   it('renders a footer action and sends the remote search text when clicked', async () => {
     const onCreateNew = vi.fn();

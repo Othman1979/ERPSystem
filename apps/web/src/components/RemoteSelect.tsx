@@ -64,7 +64,6 @@ export function RemoteSelect({
 
   const createNew = () => {
     const typedText = search.trim();
-    if (!typedText) return;
     setOpen(false);
     setSearch('');
     onCreateNew?.(typedText);

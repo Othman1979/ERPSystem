@@ -56,7 +56,6 @@ export function GridSelect({
 
   const createNew = () => {
     const typedText = search.trim();
-    if (!typedText) return;
     setOpen(false);
     setSearch('');
     onRemoteSearch?.('');
