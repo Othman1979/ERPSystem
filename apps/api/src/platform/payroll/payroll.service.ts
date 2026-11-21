@@ -979,7 +979,7 @@ export class PayrollService {
       });
       if (!draft) throw DomainError.notFound('PayrollRun', id.toString());
       if (draft.status !== 'DRAFT') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only draft runs can be posted');
-      const taxes = new Map(draft.lines.map((line) => [line.employeeId, line.incomeTax.toString()]));
+      const taxes = new Map(draft.lines.filter((line) => line.taxManual).map((line) => [line.employeeId, line.incomeTax.toString()]));
       await this.computeRun(tx, tenantId, companyId, id, draft.period, taxes);
       const run = await tx.payrollRun.findFirst({
         where: { id },

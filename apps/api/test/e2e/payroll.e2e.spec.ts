@@ -1233,12 +1233,35 @@ describe('Payroll PY1–PY3', () => {
       .set(h.auth(tokenA)).set('X-Company-Id', companyAId), 200, 'reset manual tax');
     const restored = h.ok(await get(tokenA, `payroll/runs/${draft.id}`, companyAId), 200, 'read restored tax') as {
       incomeTaxTotal: string;
+      lines: Array<{ id: string; employeeId: string; incomeTax: string; taxManual: boolean }>;
+    };
+    const restoredPy7 = restored.lines.find((line) => line.employeeId === py7.id)!;
+    expect(restoredPy7).toEqual(expect.objectContaining({ incomeTax: '4630.34', taxManual: false }));
+    h.ok(await h.api().patch(`/api/v1/payroll/runs/${draft.id}/lines/${restoredPy7.id}/income-tax`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ incomeTax: '4000.000' }), 200, 'reapply manual tax');
+    const readyToPost = h.ok(await act(tokenA, `payroll/runs/${draft.id}/recompute`, {}, companyAId), 201, 'recompute before late movement') as {
       lines: Array<{ employeeId: string; incomeTax: string; taxManual: boolean }>;
     };
-    expect(restored.lines.find((line) => line.employeeId === py7.id))
-      .toEqual(expect.objectContaining({ incomeTax: '4630.34', taxManual: false }));
-    const posted = await act(tokenA, `payroll/runs/${draft.id}/post`, {}, companyAId);
-    h.ok(posted, 201, 'post automatic-tax run');
+    expect(readyToPost.lines.find((line) => line.employeeId === py5.id))
+      .toEqual(expect.objectContaining({ incomeTax: '212.833', taxManual: false }));
+    expect(readyToPost.lines.find((line) => line.employeeId === py7.id))
+      .toEqual(expect.objectContaining({ incomeTax: '4000', taxManual: true }));
+    await post(tokenA, 'payroll/movements', {
+      employeeId: py5.id,
+      payElementId: bonus.id,
+      movementDate: '2040-01-20',
+      amount: '100.000',
+      description: 'Late tax bonus',
+    }, 'late tax bonus', companyAId);
+    h.ok(await act(tokenA, `payroll/runs/${draft.id}/post`, {}, companyAId), 201, 'post automatic-tax run');
+    const postedRun = h.ok(await get(tokenA, `payroll/runs/${draft.id}`, companyAId), 200, 'read posted tax run') as {
+      incomeTaxTotal: string;
+      lines: Array<{ employeeId: string; taxableIncome: string; incomeTax: string; taxManual: boolean }>;
+    };
+    expect(postedRun.lines.find((line) => line.employeeId === py5.id))
+      .toEqual(expect.objectContaining({ taxableIncome: '2533.333', incomeTax: '237.833', taxManual: false }));
+    expect(postedRun.lines.find((line) => line.employeeId === py7.id))
+      .toEqual(expect.objectContaining({ incomeTax: '4000', taxManual: true }));
     const credits = await boot.db.query(
       `SELECT CAST(COALESCE(SUM(l.credit), 0) AS CHAR) AS tax_credit
          FROM journal_entries j
@@ -1247,6 +1270,6 @@ describe('Payroll PY1–PY3', () => {
           AND j.source_id = ? AND l.account_id = ?`,
       [tenantId, companyAId, draft.id, accounts['2108']],
     ) as Array<{ tax_credit: string }>;
-    expect(new Decimal(credits[0]?.tax_credit ?? '0').eq(restored.incomeTaxTotal)).toBe(true);
+    expect(new Decimal(credits[0]?.tax_credit ?? '0').eq(postedRun.incomeTaxTotal)).toBe(true);
   });
 });
