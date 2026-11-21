@@ -24,6 +24,7 @@ import { promisify } from 'node:util';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
 import { addMember } from './support/members.js';
+import { withDocumentEditLock } from './support/document-locks.js';
 import { statementBody } from './support/statements.js';
 import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
@@ -505,17 +506,20 @@ describe('cost centres (ADR-024 §1)', () => {
     });
     expect(kept.status).toBe(201);
     expect((await as(A).patch('/company', { costCentersEnabled: false })).status).toBe(200);
-    const resaved = await api()
-      .put(`/api/v1/sales-invoices/${kept.body.id}`)
-      .set(auth(A.token))
-      .send({
+    const resaved = await withDocumentEditLock(BASE, A.token, 'SALES_INVOICE', kept.body.id, (lockToken) =>
+      api()
+        .put(`/api/v1/sales-invoices/${kept.body.id}`)
+        .set(auth(A.token))
+        .set('X-Edit-Lock', lockToken)
+        .send({
         invoiceDate: '2025-06-09',
         customerId,
         warehouseId,
         paymentType: 'CREDIT',
         costCenterId: cc.SALES,
         lines: [{ itemId, qty: '1', unitPrice: '12.000' }],
-      });
+        }),
+    );
     expect(resaved.status).toBe(200);
     expect((await as(A).get(`/sales-invoices/${kept.body.id}`)).body.costCenterId).toBe(cc.SALES);
     expect((await as(A).del(`/sales-invoices/${kept.body.id}`)).status).toBe(200);
@@ -542,17 +546,20 @@ describe('cost centres (ADR-024 §1)', () => {
     refused(await as(A).post(`/sales-invoices/${inv.body.id}/post`), 400, 'COST_CENTER_REQUIRED');
     expect((await as(A).get(`/sales-invoices/${inv.body.id}`)).body.status).toBe('DRAFT');
     // With the header centre it posts.
-    const fixed = await api()
-      .put(`/api/v1/sales-invoices/${inv.body.id}`)
-      .set(auth(A.token))
-      .send({
+    const fixed = await withDocumentEditLock(BASE, A.token, 'SALES_INVOICE', inv.body.id, (lockToken) =>
+      api()
+        .put(`/api/v1/sales-invoices/${inv.body.id}`)
+        .set(auth(A.token))
+        .set('X-Edit-Lock', lockToken)
+        .send({
         invoiceDate: '2025-06-11',
         customerId,
         warehouseId,
         paymentType: 'CREDIT',
         costCenterId: cc.SALES,
         lines: [{ itemId, qty: '1', unitPrice: '10.000' }],
-      });
+        }),
+    );
     expect(fixed.status).toBe(200);
     expect((await as(A).post(`/sales-invoices/${inv.body.id}/post`)).status).toBe(201);
     expect((await as(A).patch(`/accounts/${A.acc['4101']}`, { costCenterRequired: false })).status).toBe(200);

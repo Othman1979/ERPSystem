@@ -1683,6 +1683,27 @@ export interface UpdateCostCenterDto {
   isActive?: boolean;
 }
 
+export interface DocumentLockLeaseDto {
+  acquiredAt: string;
+  expiresAt: string;
+}
+
+export interface DocumentLockForceReleaseDto {
+  released: boolean;
+}
+
+export interface DocumentLockHolderDto {
+  userName: string;
+  acquiredAt: string;
+  expiresAt: string;
+  mine: boolean;
+}
+
+export interface DocumentLockStatusDto {
+  /** @nullable */
+  holder: DocumentLockHolderDto | null;
+}
+
 export interface UserRolePermissionDto {
   permissionCode: string;
 }
@@ -1956,6 +1977,7 @@ export const CustomRolePermission = {
   purchasereturn: 'purchase.return',
   purchase_requestmanage: 'purchase_request.manage',
   treasurymanage: 'treasury.manage',
+  documentunlock: 'document.unlock',
   payrollview: 'payroll.view',
   payrollmanage: 'payroll.manage',
   payrollpost: 'payroll.post',
@@ -1986,7 +2008,7 @@ export interface TenantRoleDto {
 export interface SaveTenantRoleDto {
   /** @pattern ^[A-Z0-9_-]{2,50}$ */
   code: string;
-  /** @maxItems 30 */
+  /** @maxItems 31 */
   permissions: CustomRolePermission[];
   /**
      * @minLength 1
@@ -9947,6 +9969,8 @@ export const ErrorCode = {
   CURSOR_INVALID: 'CURSOR_INVALID',
   ALL_BRANCHES_REQUIRED: 'ALL_BRANCHES_REQUIRED',
   PROCUREMENT_LEVEL_REQUIRED: 'PROCUREMENT_LEVEL_REQUIRED',
+  DOCUMENT_LOCKED: 'DOCUMENT_LOCKED',
+  DOCUMENT_LOCK_REQUIRED: 'DOCUMENT_LOCK_REQUIRED',
   PURCHASE_DIRECT_REQUIRED: 'PURCHASE_DIRECT_REQUIRED',
   APPROVAL_SELF_NOT_ALLOWED: 'APPROVAL_SELF_NOT_ALLOWED',
   APPROVAL_LIMIT_EXCEEDED: 'APPROVAL_LIMIT_EXCEEDED',
@@ -15342,6 +15366,206 @@ export const costCentersControllerRemove = async (id: string, options?: Paramete
   {
     ...options,
     method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type documentLocksControllerAcquireResponse201 = {
+  data: DocumentLockLeaseDto
+  status: 201
+}
+
+export type documentLocksControllerAcquireResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 201>
+}
+
+export type documentLocksControllerAcquireResponseSuccess = (documentLocksControllerAcquireResponse201) & {
+  headers: Headers;
+};
+export type documentLocksControllerAcquireResponseError = (documentLocksControllerAcquireResponseDefault) & {
+  headers: Headers;
+};
+
+export const getDocumentLocksControllerAcquireUrl = (docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string,) => {
+
+
+
+
+  return `/api/v1/document-locks/${docType}/${id}/acquire`
+}
+
+export const documentLocksControllerAcquire = async (docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string, options?: Parameters<typeof apiFetch>[1]): Promise<documentLocksControllerAcquireResponseSuccess> => {
+
+  return apiFetch<documentLocksControllerAcquireResponseSuccess>(getDocumentLocksControllerAcquireUrl(docType,id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type documentLocksControllerHeartbeatResponse200 = {
+  data: DocumentLockLeaseDto
+  status: 200
+}
+
+export type documentLocksControllerHeartbeatResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type documentLocksControllerHeartbeatResponseSuccess = (documentLocksControllerHeartbeatResponse200) & {
+  headers: Headers;
+};
+export type documentLocksControllerHeartbeatResponseError = (documentLocksControllerHeartbeatResponseDefault) & {
+  headers: Headers;
+};
+
+export const getDocumentLocksControllerHeartbeatUrl = (docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string,) => {
+
+
+
+
+  return `/api/v1/document-locks/${docType}/${id}/heartbeat`
+}
+
+export const documentLocksControllerHeartbeat = async (docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string, options?: Parameters<typeof apiFetch>[1]): Promise<documentLocksControllerHeartbeatResponseSuccess> => {
+
+  return apiFetch<documentLocksControllerHeartbeatResponseSuccess>(getDocumentLocksControllerHeartbeatUrl(docType,id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type documentLocksControllerReleaseResponse204 = {
+  data: void
+  status: 204
+}
+
+export type documentLocksControllerReleaseResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 204>
+}
+
+export type documentLocksControllerReleaseResponseSuccess = (documentLocksControllerReleaseResponse204) & {
+  headers: Headers;
+};
+export type documentLocksControllerReleaseResponseError = (documentLocksControllerReleaseResponseDefault) & {
+  headers: Headers;
+};
+
+export const getDocumentLocksControllerReleaseUrl = (docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string,) => {
+
+
+
+
+  return `/api/v1/document-locks/${docType}/${id}`
+}
+
+export const documentLocksControllerRelease = async (docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string, options?: Parameters<typeof apiFetch>[1]): Promise<documentLocksControllerReleaseResponseSuccess> => {
+
+  return apiFetch<documentLocksControllerReleaseResponseSuccess>(getDocumentLocksControllerReleaseUrl(docType,id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type documentLocksControllerStatusResponse200 = {
+  data: DocumentLockStatusDto
+  status: 200
+}
+
+export type documentLocksControllerStatusResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type documentLocksControllerStatusResponseSuccess = (documentLocksControllerStatusResponse200) & {
+  headers: Headers;
+};
+export type documentLocksControllerStatusResponseError = (documentLocksControllerStatusResponseDefault) & {
+  headers: Headers;
+};
+
+export const getDocumentLocksControllerStatusUrl = (docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string,) => {
+
+
+
+
+  return `/api/v1/document-locks/${docType}/${id}`
+}
+
+export const documentLocksControllerStatus = async (docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string, options?: Parameters<typeof apiFetch>[1]): Promise<documentLocksControllerStatusResponseSuccess> => {
+
+  return apiFetch<documentLocksControllerStatusResponseSuccess>(getDocumentLocksControllerStatusUrl(docType,id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type documentLocksControllerForceReleaseResponse200 = {
+  data: DocumentLockForceReleaseDto
+  status: 200
+}
+
+export type documentLocksControllerForceReleaseResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type documentLocksControllerForceReleaseResponseSuccess = (documentLocksControllerForceReleaseResponse200) & {
+  headers: Headers;
+};
+export type documentLocksControllerForceReleaseResponseError = (documentLocksControllerForceReleaseResponseDefault) & {
+  headers: Headers;
+};
+
+export const getDocumentLocksControllerForceReleaseUrl = (docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string,) => {
+
+
+
+
+  return `/api/v1/document-locks/${docType}/${id}/force-release`
+}
+
+export const documentLocksControllerForceRelease = async (docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string, options?: Parameters<typeof apiFetch>[1]): Promise<documentLocksControllerForceReleaseResponseSuccess> => {
+
+  return apiFetch<documentLocksControllerForceReleaseResponseSuccess>(getDocumentLocksControllerForceReleaseUrl(docType,id),
+  {
+    ...options,
+    method: 'POST'
 
 
   }

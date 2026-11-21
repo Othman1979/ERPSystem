@@ -10,6 +10,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import request from 'supertest';
 import { testDatabaseUrl } from './support/test-db.js';
+import { withDocumentEditLock } from './support/document-locks.js';
 
 const API_PORT = 3199;
 const BASE = `http://127.0.0.1:${API_PORT}`;
@@ -413,16 +414,19 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
       });
     expect(created.status).toBe(201);
 
-    const upd = await api()
-      .put(`/api/v1/sales-invoices/${created.body.id}`)
-      .set(auth(token))
-      .send({
+    const upd = await withDocumentEditLock(BASE, token, 'SALES_INVOICE', created.body.id, (lockToken) =>
+      api()
+        .put(`/api/v1/sales-invoices/${created.body.id}`)
+        .set(auth(token))
+        .set('X-Edit-Lock', lockToken)
+        .send({
         invoiceDate: '2025-03-21',
         customerId,
         warehouseId,
         paymentType: 'CREDIT',
         lines: [{ itemId: serviceItemId, qty: '2', unitPrice: '50.00' }],
-      });
+        }),
+    );
     expect(upd.status).toBe(200);
     expect(Number(upd.body.grandTotal)).toBeCloseTo(116);
 
@@ -433,16 +437,19 @@ describe('Phase 5 — parties, invoices, returns, goods notes, treasury', () => 
 
     // Posted invoice cannot be updated.
     const siId = g.__siId as string;
-    const bad = await api()
-      .put(`/api/v1/sales-invoices/${siId}`)
-      .set(auth(token))
-      .send({
+    const bad = await withDocumentEditLock(BASE, token, 'SALES_INVOICE', siId, (lockToken) =>
+      api()
+        .put(`/api/v1/sales-invoices/${siId}`)
+        .set(auth(token))
+        .set('X-Edit-Lock', lockToken)
+        .send({
         invoiceDate: '2025-03-21',
         customerId,
         warehouseId,
         paymentType: 'CREDIT',
         lines: [{ itemId: serviceItemId, qty: '1', unitPrice: '1.00' }],
-      });
+        }),
+    );
     expect(bad.status).toBe(409);
   });
 

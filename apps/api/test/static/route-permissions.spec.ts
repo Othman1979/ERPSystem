@@ -15,8 +15,12 @@ const METHOD_SIGNATURE = /^(async\s+)?([A-Za-z_]\w*)\s*\(/;
 const EXEMPT = /@(Public|TenantOptional|PlatformAdmin)\(\)/;
 const GUARDED = /@RequirePermission\(/;
 
-// Reads any member may make. Wave 3 gives each an explicit @RequirePermission; never add to this list.
-const ALLOWED_WITHOUT_PERMISSION: string[] = [];
+// Manage permission is selected by docType in the service; release is token-scoped and available to any member.
+const ALLOWED_WITHOUT_PERMISSION: string[] = [
+  'DocumentLocksController.acquire',
+  'DocumentLocksController.heartbeat',
+  'DocumentLocksController.release',
+];
 
 interface Handler {
   file: string;

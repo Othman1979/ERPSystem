@@ -26,6 +26,7 @@ import { Decimal } from 'decimal.js';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
 import { webPayloads } from './support/web-payloads.js';
+import { withDocumentEditLock } from './support/document-locks.js';
 import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 const API_PORT = 3621;
@@ -110,8 +111,10 @@ describe('Trade review fixes — stock and documents', () => {
     if (res.status !== 201) throw new Error(`create ${kind} → ${res.status} ${JSON.stringify(res.body)}`);
     return res.body as { id: string; lines?: { id: string; qty: string; unitPrice?: string; netAmount: string; taxAmount: string }[] };
   }
-  async function post(kind: string, id: string) {
-    return api().post(`/api/v1/${kind}/${id}/post`).set(auth(token)).set('Idempotency-Key', key());
+  async function post(kind: string, id: string, editLockToken?: string) {
+    const req = api().post(`/api/v1/${kind}/${id}/post`).set(auth(token)).set('Idempotency-Key', key());
+    if (editLockToken) req.set('X-Edit-Lock', editLockToken);
+    return req;
   }
   async function createAndPost(kind: string, body: object) {
     const doc = await create(kind, body);
@@ -264,10 +267,17 @@ describe('Trade review fixes — stock and documents', () => {
       // posted invoice is never rewritten.
       const g = await grn();
       const draft = await create('purchase-invoices', body(g.id, 'draft'));
-      const [put, posted] = await Promise.all([
-        api().put(`/api/v1/purchase-invoices/${draft.id}`).set(auth(token)).send(body(g.id, 'saved')),
-        post('purchase-invoices', draft.id),
-      ]);
+      const [put, posted] = await withDocumentEditLock(
+        BASE,
+        token,
+        'PURCHASE_INVOICE',
+        draft.id,
+        (lockToken) =>
+          Promise.all([
+            api().put(`/api/v1/purchase-invoices/${draft.id}`).set(auth(token)).set('X-Edit-Lock', lockToken).send(body(g.id, 'saved')),
+            post('purchase-invoices', draft.id, lockToken),
+          ]),
+      );
       expect([200, 409]).toContain(put.status);
       expect(posted.status).toBe(201);
       const after = await api().get(`/api/v1/purchase-invoices/${draft.id}`).set(auth(token));

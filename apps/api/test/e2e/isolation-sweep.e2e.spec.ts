@@ -45,6 +45,7 @@ const UNCOVERED: Record<string, string> = {
   'GET /api/v1/einvoice/submissions/{id}': 'needs JoFotara settings (covered by einvoice.e2e isolation)',
   'POST /api/v1/einvoice/submissions/{id}/resend': 'needs JoFotara settings (covered by einvoice.e2e isolation)',
   'POST /api/v1/bank-statements/{id}/import': 'multipart upload: the file check runs before the lookup, the sweep sends JSON',
+  'DELETE /api/v1/document-locks/{docType}/{id}': 'release is intentionally idempotent and only deletes the caller’s own lock (covered by golden-posted-edit lock isolation/lifecycle tests)',
 };
 
 type Op = { method: string; path: string; query: string[] };
@@ -343,6 +344,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
   function paramsFor(p: string): Record<string, string> | null {
     const seg = p.replace('/api/v1/', '').split('/')[0];
     const byResource: Record<string, string | undefined> = {
+      'document-locks': id.journal,
       accounts: id.account,
       'fiscal-years': id.fiscalYear,
       'fiscal-periods': id.fiscalPeriod,
@@ -386,6 +388,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     const values: Record<string, string> = {};
     for (const [, name] of p.matchAll(/\{(\w+)\}/g)) {
       if (p.startsWith('/api/v1/admin/')) values[name] = name === 'code' ? 'TRIAL' : id.tenant;
+      else if (name === 'docType' && p.startsWith('/api/v1/document-locks/')) values[name] = 'JOURNAL_ENTRY';
       else if (name === 'membershipId') values[name] = id.membership;
       else if (name === 'lineId' && p.includes('/payroll/')) values[name] = id.payrollLine;
       else if (name === 'lineId') values[name] = id.stockCountLine;
@@ -482,6 +485,9 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
         : o.path.endsWith('/payroll/employees/{id}/statement') ? '?from=2026-01-01&to=2026-01-31' : '';
       const url = fill(o.path, values) + suffix;
       const req = api()[o.method.toLowerCase() as 'get'](url).set(auth(b)).set(idem());
+      if (o.path.startsWith('/api/v1/document-locks/')) {
+        req.set('X-Edit-Lock', 'ffffffff-ffff-4fff-8fff-ffffffffffff');
+      }
       const res = o.method === 'GET' || o.method === 'DELETE' ? await req : await req.send(bodyFor(o.path));
       exercised += 1;
       // 400 is not a pass: it would mean a check fired before the tenant lookup was tried.

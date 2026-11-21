@@ -28,6 +28,7 @@ import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 import { ChequesService } from './cheques.service.js';
 import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
+import { DocumentLocksService } from '../document-locks/document-locks.service.js';
 
 type VoucherKind = 'receipt' | 'payment';
 
@@ -90,6 +91,7 @@ export class VouchersService implements OnModuleInit {
     private readonly costCenterUsage: CostCenterUsageRegistry,
     private readonly yearClosingDrafts: YearClosingDraftRegistry,
     private readonly cheques: ChequesService,
+    private readonly documentLocks: DocumentLocksService,
   ) {}
 
   onModuleInit(): void {
@@ -660,6 +662,7 @@ export class VouchersService implements OnModuleInit {
       db.$transaction(async (tx) => {
         const v = await this.lockVoucher(tx, tenantId, kind, id);
         assertBranchAllowed(v.branchId);
+        await this.documentLocks.assertNotLockedByOther(tx, kind === 'receipt' ? 'RECEIPT' : 'PAYMENT', id);
         if (v.reversedAt) throw new DomainError(ErrorCode.CONFLICT, 'The voucher is reversed');
         if (!v.partyId || !v.partyType) {
           throw new DomainError(ErrorCode.VALIDATION, 'Only vouchers with a party can be allocated');
@@ -698,9 +701,20 @@ export class VouchersService implements OnModuleInit {
   async cancelAllocation(id: bigint) {
     const { tenantId, db } = this.support.tenant();
     const userId = this.support.userId();
+    const reference = await db.allocation.findFirst({
+      where: { id },
+      select: { receiptId: true, paymentId: true },
+    });
+    if (!reference) throw DomainError.notFound('Allocation', id.toString());
+    const kind: VoucherKind = reference.receiptId ? 'receipt' : 'payment';
+    const voucherId = reference.receiptId ?? reference.paymentId;
+    if (!voucherId) throw DomainError.notFound('Allocation', id.toString());
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
+        const voucher = await this.lockVoucher(tx, tenantId, kind, voucherId);
+        assertBranchAllowed(voucher.branchId);
+        await this.documentLocks.assertNotLockedByOther(tx, kind === 'receipt' ? 'RECEIPT' : 'PAYMENT', voucherId);
         // Lock first, so the read below sees the latest state: two cancels of
         // the same allocation must not both decrement paid_amount.
         await tx.$queryRaw`SELECT id FROM allocations WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
@@ -747,6 +761,7 @@ export class VouchersService implements OnModuleInit {
       db.$transaction(async (tx) => {
         const v = await this.lockVoucher(tx, tenantId, kind, id);
         assertBranchAllowed(v.branchId);
+        await this.documentLocks.assertNotLockedByOther(tx, kind === 'receipt' ? 'RECEIPT' : 'PAYMENT', id);
         if (v.reversedAt) throw new DomainError(ErrorCode.CONFLICT, 'The voucher is already reversed');
         if ((await this.activeAllocated(tx, kind, id)).gt(0)) {
           throw new DomainError(
@@ -790,6 +805,7 @@ export class VouchersService implements OnModuleInit {
       db.$transaction(async (tx) => {
         const v = await this.lockVoucher(tx, tenantId, kind, id);
         assertBranchAllowed(v.branchId);
+        await this.documentLocks.requireHeld(tx, kind === 'receipt' ? 'RECEIPT' : 'PAYMENT', id);
         if (v.reversedAt) throw new DomainError(ErrorCode.CONFLICT, 'A reversed voucher cannot be edited');
         // Cancelled allocations count too: historical aging replays them at their old amounts.
         const allocations = await tx.allocation.count({ where: kind === 'receipt' ? { receiptId: id } : { paymentId: id } });

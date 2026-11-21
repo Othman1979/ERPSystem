@@ -71,6 +71,7 @@ import type { BillPurchaseOrderDto } from './dto/purchases.dto.js';
 import { clearedThrough } from '../shared/receipt-clearing.js';
 import { isStocked, ItemKindValue, assertNotRecipe } from '../../common/inventory/item-kind.js';
 import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
+import { DocumentLocksService } from '../document-locks/document-locks.service.js';
 
 const SOURCE = 'PURCHASE_INVOICE';
 
@@ -115,6 +116,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     private readonly costCenterUsage: CostCenterUsageRegistry,
     private readonly orders: PurchaseOrderReceiptsService,
     private readonly yearClosingDrafts: YearClosingDraftRegistry,
+    private readonly documentLocks: DocumentLocksService,
   ) {}
 
   onModuleInit(): void {
@@ -634,6 +636,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
       }
       assertBranchAllowed(locked.branch_id === null ? null : BigInt(locked.branch_id));
+      await this.documentLocks.requireHeld(tx, 'PURCHASE_INVOICE', id);
       // Share-lock the header centre before the row that references it (ADR-024 §1.4).
       if (costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, costCenterId);
       const receivedGrnId = await this.checkDraftGrn(tx, tenantId, id, dto, lines);
@@ -685,6 +688,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be deleted');
       }
       assertBranchAllowed(inv.branch_id === null ? null : BigInt(inv.branch_id));
+      await this.documentLocks.assertNotLockedByOther(tx, 'PURCHASE_INVOICE', id);
       await tx.purchaseInvoice.delete({ where: { id } });
     }, POSTING_TX_OPTIONS);
     return { deleted: true };
@@ -710,6 +714,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         // sees what was committed before both locks (see assertGrnBillable).
         const [head] = await tx.$queryRaw<{ received_grn_id: bigint | null }[]>`
           SELECT received_grn_id FROM purchase_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
+        await this.documentLocks.assertNotLockedByOther(tx, 'PURCHASE_INVOICE', id);
         const lockedGrn =
           head?.received_grn_id != null ? await this.goodsNotes.lockForBilling(tx, BigInt(head.received_grn_id)) : null;
         const draft = await tx.purchaseInvoice.findFirst({
@@ -915,6 +920,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       return db.$transaction(async (tx) => {
         const { order, received } = await this.lockReceiptBillingWithOrder(tx, tenantId, companyId, orderId, grnIds);
         await tx.$queryRaw`SELECT id FROM purchase_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
+        await this.documentLocks.assertNotLockedByOther(tx, 'PURCHASE_INVOICE', id);
         const draft = await tx.purchaseInvoice.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' }, include: { receipts: { orderBy: { id: 'asc' } } } } },
@@ -1102,6 +1108,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
            WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         if (!inv) throw DomainError.notFound('PurchaseInvoice', id.toString());
         assertBranchAllowed(inv.branch_id === null ? null : BigInt(inv.branch_id));
+        await this.documentLocks.assertNotLockedByOther(tx, 'PURCHASE_INVOICE', id);
         if (inv.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only a draft invoice has a price to approve', {
             status: inv.status,
