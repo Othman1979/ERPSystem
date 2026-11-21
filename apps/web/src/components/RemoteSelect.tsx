@@ -61,8 +61,6 @@ export function RemoteSelect({
   const current = [chosen, selected].find((o) => o !== undefined && o.value === value);
   const options = current && !found.some((o) => o.value === current.value) ? [current, ...found] : found;
   const loading = pending || query.isFetching;
-  const hasMatchingOption = (text: string) =>
-    options.some((option) => option.label.toLocaleLowerCase().includes(text.toLocaleLowerCase()));
 
   const createNew = () => {
     const typedText = search.trim();
@@ -83,7 +81,7 @@ export function RemoteSelect({
           onCreateNew &&
           !loading &&
           typedText &&
-          !hasMatchingOption(typedText)
+          found.length === 0
         ) {
           e.preventDefault();
           e.stopPropagation();
@@ -139,7 +137,7 @@ export function RemoteSelect({
             onCreateNew &&
             !loading &&
             typedText &&
-            !hasMatchingOption(typedText)
+            found.length === 0
           ) {
             e.preventDefault();
             e.stopPropagation();

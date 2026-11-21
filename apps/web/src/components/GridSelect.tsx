@@ -48,9 +48,11 @@ export function GridSelect({
   // Set (capture phase) when this Enter should navigate, not open the list.
   const passEnter = useRef(false);
   const hasMatchingOption = (text: string) =>
-    (props.options ?? []).some((option) =>
-      String(option.label ?? option.value ?? '').toLocaleLowerCase().includes(text.toLocaleLowerCase()),
-    );
+    onRemoteSearch
+      ? (props.options ?? []).some((option) => option.value !== props.value)
+      : (props.options ?? []).some((option) =>
+          String(option.label ?? option.value ?? '').toLocaleLowerCase().includes(text.toLocaleLowerCase()),
+        );
 
   const createNew = () => {
     const typedText = search.trim();

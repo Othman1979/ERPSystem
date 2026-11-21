@@ -93,6 +93,40 @@ describe('GridSelect create-new', () => {
     expect(onCreateNew).toHaveBeenCalledWith('Receivable');
   });
 
+  it('does not create when a remote search returned a label that does not match the text', async () => {
+    const onCreateNew = vi.fn();
+    const onRemoteSearch = vi.fn();
+    mount(
+      <GridSelect
+        options={[{ value: 'party-1', label: 'C-1 — Existing customer' }]}
+        onRemoteSearch={onRemoteSearch}
+        onCreateNew={onCreateNew}
+      />,
+    );
+    const input = openPicker();
+    typeSearch('0791234567');
+    await settle(50);
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+    expect(onCreateNew).not.toHaveBeenCalled();
+  });
+
+  it('ignores the current option when a remote search has no results', async () => {
+    const onCreateNew = vi.fn();
+    mount(
+      <GridSelect
+        options={[{ value: 'selected', label: 'Previously selected' }]}
+        value="selected"
+        onRemoteSearch={() => undefined}
+        onCreateNew={onCreateNew}
+      />,
+    );
+    const input = openPicker();
+    typeSearch('New customer');
+    await settle(50);
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+    expect(onCreateNew).toHaveBeenCalledWith('New customer');
+  });
+
   it('does not create on Enter while searching', async () => {
     const onCreateNew = vi.fn();
     mount(<GridSelect options={[]} searching onCreateNew={onCreateNew} />);
@@ -159,6 +193,8 @@ describe('RemoteSelect create-new', () => {
       <RemoteSelect
         queryKey={['remote-create-enter']}
         fetchOptions={fetchOptions}
+        value="selected"
+        selected={{ value: 'selected', label: 'Previously selected' }}
         onCreateNew={onCreateNew}
         onInputKeyDown={onInputKeyDown}
       />,
@@ -174,6 +210,30 @@ describe('RemoteSelect create-new', () => {
     act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
     expect(onInputKeyDown).toHaveBeenCalled();
     expect(onCreateNew).toHaveBeenCalledWith('Acme');
+  });
+
+  it('does not create when settled server results have unrelated labels', async () => {
+    const onCreateNew = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(['remote-create-match', ''], []);
+    client.setQueryData(['remote-create-match', '0791234567'], [
+      { value: 'party-1', label: 'C-1 — Existing customer' },
+    ]);
+    mount(
+      <RemoteSelect
+        queryKey={['remote-create-match']}
+        fetchOptions={fetchOptions}
+        onCreateNew={onCreateNew}
+      />,
+      true,
+      client,
+    );
+    await settle();
+    const input = openPicker();
+    typeSearch('0791234567');
+    await settle(1000);
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+    expect(onCreateNew).not.toHaveBeenCalled();
   });
 
   it('does not create on Enter while a remote search is loading', async () => {
