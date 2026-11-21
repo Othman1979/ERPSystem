@@ -712,7 +712,9 @@ export function JournalPage() {
               loading={createDraft.isPending || amendEntry.isPending}
               disabled={
                 !partyRules.ready ||
-                (amendTarget !== null && editLock.state.status !== 'held')
+                (amendTarget !== null &&
+                  editLock.state.status !== 'held' &&
+                  editLock.state.status !== 'reconnecting')
               }
               onClick={saveNew}
             >
@@ -761,6 +763,9 @@ export function JournalPage() {
           )
         }
       >
+        {amendTarget && editLock.state.status === 'reconnecting' && (
+          <Alert className="doc-section" type="warning" showIcon message={t('common.documentLockReconnecting')} />
+        )}
         {amendTarget && editLock.state.status === 'lost' && (
           <Alert className="doc-section" type="error" showIcon message={t('common.documentLockLost')} />
         )}

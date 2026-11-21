@@ -13,6 +13,7 @@ export type DocumentLockState =
   | { status: 'idle' }
   | { status: 'acquiring' }
   | { status: 'held' }
+  | { status: 'reconnecting' }
   | { status: 'locked'; userName: string; acquiredAt: string }
   | { status: 'lost' }
   | { status: 'error'; error: unknown };
@@ -56,6 +57,7 @@ export function useDocumentLock(docType: LockDocType, id: string | null | undefi
     let active = true;
     let acquired = false;
     let pageHidden = false;
+    let lost = false;
     let timer: number | undefined;
     setState({ status: 'acquiring' });
 
@@ -74,15 +76,18 @@ export function useDocumentLock(docType: LockDocType, id: string | null | undefi
     const heartbeat = async () => {
       try {
         await documentLocksControllerHeartbeat(docType, id, { headers });
+        if (!active || lost) return;
+        setState({ status: 'held' });
       } catch (error) {
-        if (!active) return;
-        if (timer !== undefined) window.clearInterval(timer);
-        timer = undefined;
-        setState(
-          error instanceof ApiError && error.status === 409
-            ? { status: 'lost' }
-            : { status: 'error', error },
-        );
+        if (!active || lost) return;
+        if (error instanceof ApiError && error.status === 409) {
+          lost = true;
+          if (timer !== undefined) window.clearInterval(timer);
+          timer = undefined;
+          setState({ status: 'lost' });
+        } else {
+          setState({ status: 'reconnecting' });
+        }
       }
     };
 

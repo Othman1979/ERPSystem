@@ -844,7 +844,10 @@ function InvoiceForm({
     lines: !lines.some((l) => l.itemId && l.qty),
   };
   const trySave = () => {
-    if (save.isPending || (!isNew && editLock.state.status !== 'held')) return;
+    if (
+      save.isPending ||
+      (!isNew && editLock.state.status !== 'held' && editLock.state.status !== 'reconnecting')
+    ) return;
     const firstMissing = (['customer', 'warehouse', 'cashAccount'] as const).find((k) => missing[k]);
     if (firstMissing || missing.lines) {
       setTried(true);
@@ -875,7 +878,7 @@ function InvoiceForm({
           type="primary"
           icon={<SaveOutlined />}
           loading={save.isPending}
-          disabled={!isNew && editLock.state.status !== 'held'}
+          disabled={!isNew && editLock.state.status !== 'held' && editLock.state.status !== 'reconnecting'}
           onClick={trySave}
         >
           {isNew ? t('common.saveDraft') : t('common.save')}
@@ -884,6 +887,9 @@ function InvoiceForm({
       }
     >
       {contextHolder}
+      {editLock.state.status === 'reconnecting' && (
+        <Alert className="doc-section" type="warning" showIcon message={t('common.documentLockReconnecting')} />
+      )}
       {editLock.state.status === 'lost' && (
         <Alert className="doc-section" type="error" showIcon message={t('common.documentLockLost')} />
       )}

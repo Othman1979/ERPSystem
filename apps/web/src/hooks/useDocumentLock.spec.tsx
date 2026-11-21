@@ -83,6 +83,29 @@ describe('useDocumentLock', () => {
     expect(current?.state.status).toBe('lost');
   });
 
+  it('reconnects after a transient heartbeat error', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(api, 'documentLocksControllerHeartbeat')
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce({} as never);
+    await act(async () => {
+      mount();
+      await Promise.resolve();
+    });
+    expect(current?.state.status).toBe('held');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(current?.state.status).toBe('reconnecting');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(current?.state.status).toBe('held');
+    expect(api.documentLocksControllerHeartbeat).toHaveBeenCalledTimes(2);
+  });
+
   it('releases on unmount and sends keepalive on pagehide', async () => {
     await act(async () => {
       mount();

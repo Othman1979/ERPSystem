@@ -89,7 +89,7 @@ export function AmendVoucherButton({
   });
 
   const save = () => {
-    if (lock.state.status !== 'held') return;
+    if (lock.state.status !== 'held' && lock.state.status !== 'reconnecting') return;
     if (!date || !amount) {
       api.error(t('treasury.amendRequired'));
       return;
@@ -139,7 +139,9 @@ export function AmendVoucherButton({
         saving={amend.isPending || lock.state.status === 'acquiring'}
         destroyOnHidden
       >
-        {lock.state.status !== 'held' && lock.state.status !== 'lost' ? (
+        {lock.state.status !== 'held' &&
+        lock.state.status !== 'lost' &&
+        lock.state.status !== 'reconnecting' ? (
           <Alert
             type={lock.state.status === 'error' ? 'error' : 'info'}
             showIcon
@@ -148,6 +150,9 @@ export function AmendVoucherButton({
         ) : (
         <EnterNav autoFocusWhen={open}>
           <Form layout="vertical" component="div">
+            {lock.state.status === 'reconnecting' && (
+              <Alert type="warning" showIcon message={t('common.documentLockReconnecting')} />
+            )}
             {lock.state.status === 'lost' && (
               <Alert type="error" showIcon message={t('common.documentLockLost')} />
             )}
