@@ -456,6 +456,9 @@ describe('Payroll PY1–PY3', () => {
     const marchRun = h.ok(await get(tokenA, `payroll/runs/${march.id}`, companyAId), 200, 'read March') as {
       lines: { employeeId: string; items: { amount: string }[] }[];
     };
+    const reverseFebruary = await act(tokenA, `payroll/runs/${feb.id}/reverse`, { date: '2031-03-31' }, companyAId);
+    expect(reverseFebruary.status).toBe(409);
+    expect(reverseFebruary.body.error.code).toBe('PAYROLL_LATER_RUN_POSTED');
     expect(marchRun.lines.find((line) => line.employeeId === employeeA.id)?.items.map((item) => item.amount)).toContain('1');
     const [marchExpense] = (await boot.db.query(
       `SELECT CAST(SUM(l.debit) AS CHAR) AS debit FROM journal_entries j

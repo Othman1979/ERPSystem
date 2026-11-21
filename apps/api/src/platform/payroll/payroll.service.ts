@@ -1033,6 +1033,11 @@ export class PayrollService {
       });
       if (!draft) throw DomainError.notFound('PayrollRun', id.toString());
       if (draft.status !== 'DRAFT') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only draft runs can be posted');
+      const laterRun = await tx.payrollRun.findFirst({
+        where: { companyId, period: { gt: draft.period }, status: { in: ['POSTED', 'PAID'] } },
+        select: { id: true },
+      });
+      if (laterRun) throw new DomainError(ErrorCode.PAYROLL_LATER_RUN_POSTED, 'A later payroll period is already posted');
       const taxes = new Map(draft.lines.filter((line) => line.taxManual).map((line) => [line.employeeId, line.incomeTax.toString()]));
       await this.computeRun(tx, tenantId, companyId, id, draft.period, taxes);
       const run = await tx.payrollRun.findFirst({
@@ -1348,6 +1353,11 @@ export class PayrollService {
       if (run.status !== 'POSTED' && run.status !== 'PAID') {
         throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only posted or paid runs can be reversed');
       }
+      const laterRun = await tx.payrollRun.findFirst({
+        where: { companyId, period: { gt: run.period }, status: { in: ['POSTED', 'PAID'] } },
+        select: { id: true },
+      });
+      if (laterRun) throw new DomainError(ErrorCode.PAYROLL_LATER_RUN_POSTED, 'A later payroll period is already posted');
       if (reversalDate < run.runDate) {
         throw new DomainError(ErrorCode.VALIDATION, 'Payroll reversal date cannot be before the run date');
       }
