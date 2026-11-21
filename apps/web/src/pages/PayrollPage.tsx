@@ -47,7 +47,8 @@ import { useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { formatAmount, formatQty } from '../format/number';
-import { DATE_INPUT_FORMAT, DatePicker } from '../components/DatePicker';
+import { formatDate } from '../format/date';
+import { DatePicker } from '../components/DatePicker';
 import { ExportButtons, saveBlob } from '../components/ExportButtons';
 import { EnterNav } from '../components/EnterNav';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -70,7 +71,7 @@ export function dateOnly(value: DateFormValue): string | undefined {
 
 export function formatPayrollDate(value: DateFormValue): string | undefined {
   const date = dateOnly(value);
-  return date ? dayjs(date).format(DATE_INPUT_FORMAT) : undefined;
+  return date ? formatDate(date) : undefined;
 }
 
 export function defaultPayrollActionDate(runDate?: string | null) {

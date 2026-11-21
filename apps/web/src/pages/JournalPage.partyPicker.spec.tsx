@@ -8,6 +8,7 @@ import { Modal } from 'antd';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@erp/api-client';
 import i18n from '../i18n';
+import { formatDateTime } from '../format/date';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 // jsdom has no matchMedia; antd's responsive hooks ask for it.
@@ -430,7 +431,7 @@ describe('JournalPage entry quick-create and local draft', () => {
     expect(host.textContent).toContain(
       i18n.t('common.documentLockLocked', {
         name: 'Nadia',
-        time: new Date('2031-01-01T10:00:00.000Z').toLocaleString(i18n.language),
+        time: formatDateTime('2031-01-01T10:00:00.000Z'),
       }),
     );
     expect(host.querySelector('[data-cell]')).toBeNull();

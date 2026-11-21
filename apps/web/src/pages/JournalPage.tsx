@@ -25,6 +25,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDateTime } from '../format/date';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
@@ -132,7 +133,7 @@ function VoucherTag({ type }: { type?: VoucherType }) {
 }
 
 export function JournalPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { can, me, companyId } = useAuth();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<JournalControllerListStatus | undefined>(undefined);
@@ -671,7 +672,7 @@ export function JournalPage() {
           showIcon
           message={t('common.documentLockLocked', {
             name: blockedAmendment.userName,
-            time: new Date(blockedAmendment.acquiredAt).toLocaleString(i18n.language),
+            time: formatDateTime(blockedAmendment.acquiredAt),
           })}
           action={
             can(PERMISSIONS.DOCUMENT_UNLOCK) ? (

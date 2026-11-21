@@ -2,6 +2,7 @@ import { EditOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
 import { Alert, Button, Form, Input, InputNumber, message, Modal } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDateTime } from '../../format/date';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError, treasuryControllerAmendPayment, treasuryControllerAmendReceipt } from '@erp/api-client';
@@ -31,7 +32,7 @@ export function AmendVoucherButton({
   voucher: AmendableVoucher;
   onDone: () => void;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { can } = useAuth();
   const [api, contextHolder] = message.useMessage();
   const [open, setOpen] = useState(false);
@@ -105,7 +106,7 @@ export function AmendVoucherButton({
           showIcon
           message={t('common.documentLockLocked', {
             name: lockedBy.userName,
-            time: new Date(lockedBy.acquiredAt).toLocaleString(i18n.language),
+            time: formatDateTime(lockedBy.acquiredAt),
           })}
           action={
             can(PERMISSIONS.DOCUMENT_UNLOCK) ? (

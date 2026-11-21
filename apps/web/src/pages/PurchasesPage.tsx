@@ -21,6 +21,7 @@ import { PartyFormDialog } from '../components/PartyFormDialog';
 import { ItemFormDialog } from '../components/ItemFormDialog';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDateTime } from '../format/date';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { useTranslation } from 'react-i18next';
@@ -387,7 +388,7 @@ function PurchaseInvoicesTab() {
             showIcon
             message={t('common.documentLockLocked', {
               name: lockedNotice.userName,
-              time: new Date(lockedNotice.acquiredAt).toLocaleString(),
+              time: formatDateTime(lockedNotice.acquiredAt),
             })}
             action={
               can(PERMISSIONS.DOCUMENT_UNLOCK) ? (
