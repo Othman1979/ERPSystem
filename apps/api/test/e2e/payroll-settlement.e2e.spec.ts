@@ -426,6 +426,21 @@ describe('Phase 28C payroll settlements', () => {
       .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: '2026-12-30' })).status).toBe(200);
   });
 
+  it('blocks setting a departure date inside an already-posted payroll period', async () => {
+    const company = await createCompany('LATE-DEPARTURE', true);
+    const employeeRecord = await employee(company, 'LATE-DEPARTURE', '2020-01-01', '2026-12-31', '1000.000', false);
+    h.ok(await h.api().patch(`/api/v1/payroll/employees/${employeeRecord.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: null }), 200, 'clear initial departure date');
+    const payroll = await run(company.id, '2026-12');
+    const denied = await h.api().patch(`/api/v1/payroll/employees/${employeeRecord.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: '2026-12-15' });
+    expect(denied.status).toBe(409);
+    expect(denied.body.error.code).toBe('PAYROLL_SETTLEMENT_ACTIVE');
+    h.ok(await act(`payroll/runs/${payroll.id}/reverse`, { date: '2027-01-01' }, company.id), 201, 'reverse departure-period run');
+    h.ok(await h.api().patch(`/api/v1/payroll/employees/${employeeRecord.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: '2026-12-15' }), 200, 'set departure date after reversal');
+  });
+
   it('allocates distinct first settlement numbers in separate fiscal years', async () => {
     const company = await createCompany('SEQ', true);
     h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(token)).set('X-Company-Id', company.id).send({

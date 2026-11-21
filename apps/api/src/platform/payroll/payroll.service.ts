@@ -220,12 +220,16 @@ export class PayrollService {
           select: { id: true },
         });
         if (settlement) throw new DomainError(ErrorCode.PAYROLL_SETTLEMENT_ACTIVE, 'Employee has an active final settlement');
-        if (employee.leaveDate) {
-          const period = `${employee.leaveDate.getUTCFullYear()}-${String(employee.leaveDate.getUTCMonth() + 1).padStart(2, '0')}`;
+        const departurePeriods = [...new Set(
+          [employee.leaveDate, dto.leaveDate ? date(dto.leaveDate) : null]
+            .filter((leaveDate): leaveDate is Date => leaveDate !== null)
+            .map((leaveDate) => `${leaveDate.getUTCFullYear()}-${String(leaveDate.getUTCMonth() + 1).padStart(2, '0')}`),
+        )];
+        if (departurePeriods.length) {
           const departureRun = await tx.payrollRun.findFirst({
             where: {
               companyId,
-              period,
+              period: { in: departurePeriods },
               status: { in: ['POSTED', 'PAID'] },
               lines: { some: { employeeId: id } },
             },
