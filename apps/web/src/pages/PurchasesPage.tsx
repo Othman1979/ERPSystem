@@ -7,6 +7,7 @@ import {
   Radio,
   Input,
   InputNumber,
+  Modal,
   Popconfirm,
   Select,
   Space,
@@ -44,6 +45,7 @@ import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { useRemoteOptions } from '../hooks/useRemoteOptions';
 import { entryDraftStorageKey, useEntryDraft } from '../hooks/useEntryDraft';
+import { documentLockHeaders, useDocumentLock } from '../hooks/useDocumentLock';
 import { useCostCenters } from '../hooks/useCostCenters';
 import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
 import { PrintPdfButton } from '../components/PrintPdfButton';
@@ -105,6 +107,12 @@ type ItemRow = Pick<
   ItemListItemDto,
   'id' | 'code' | 'nameAr' | 'nameEn' | 'itemKind' | 'purchasePrice' | 'taxCategoryId'
 > & { taxRate?: string };
+
+type LockedInvoiceNotice = {
+  userName: string;
+  acquiredAt: string;
+  forceRelease: () => Promise<unknown>;
+};
 
 interface PurchaseInvoiceDraft {
   invoiceDate: string;
@@ -211,6 +219,7 @@ function PurchaseInvoicesTab() {
   const [paymentFilter, setPaymentFilter] = useState<PurchasesControllerListInvoicesPaymentType | undefined>(undefined);
   const [screen, setScreen] = useState<'list' | 'form' | 'view'>('list');
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [lockedNotice, setLockedNotice] = useState<LockedInvoiceNotice | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
   const lookups = usePurchaseLookups();
   useNewFromUrl(() => {
@@ -237,7 +246,8 @@ function PurchaseInvoicesTab() {
       purchasesControllerGetInvoice(invoiceId!, { signal }).then((r) => r.data),
     enabled: (screen === 'view' || screen === 'form') && !!invoiceId,
   });
-  const { me: currentUser, companyId } = useAuth();
+  const { me: currentUser, companyId, can } = useAuth();
+  const lockHeaders = documentLockHeaders();
   useEffect(() => {
     if (screen !== 'view' || !invoiceId || detailLoading || !detail || detail.status === 'DRAFT') return;
     const key = entryDraftStorageKey({
@@ -258,12 +268,16 @@ function PurchaseInvoicesTab() {
   const onError = (err: unknown) =>
     apiMessage.error(
       err instanceof ApiError
-        ? t(`errors.${err.code}`, { defaultValue: err.message })
+        ? t(`errors.${err.code}`, {
+            userName: String(err.details?.userName ?? ''),
+            defaultValue: err.message,
+          })
         : t('errors.INTERNAL'),
     );
 
   const post = useMutation({
-    mutationFn: (id: string) => purchasesControllerPostInvoice(id, { headers: idemHeaders() }),
+    mutationFn: (id: string) =>
+      purchasesControllerPostInvoice(id, { headers: { ...idemHeaders(), ...lockHeaders } }),
     onSuccess: () => {
       apiMessage.success(t('common.done'));
       invalidate();
@@ -271,7 +285,7 @@ function PurchaseInvoicesTab() {
     onError,
   });
   const del = useMutation({
-    mutationFn: (id: string) => purchasesControllerDeleteInvoice(id),
+    mutationFn: (id: string) => purchasesControllerDeleteInvoice(id, { headers: lockHeaders }),
     onSuccess: () => {
       apiMessage.success(t('common.deleted'));
       setScreen('list');
@@ -347,6 +361,10 @@ function PurchaseInvoicesTab() {
         invoice={invoiceId ? detail : undefined}
         loading={detailLoading}
         isNew={!invoiceId}
+        onLockBlocked={(notice) => {
+          setLockedNotice(notice);
+          setScreen('view');
+        }}
         onBack={() => {
           setScreen('list');
           setInvoiceId(null);
@@ -362,18 +380,52 @@ function PurchaseInvoicesTab() {
 
   if (screen === 'view' && invoiceId) {
     return (
-      <PurchaseInvoiceView
-        invoice={detail}
-        loading={detailLoading}
-        onBack={() => {
-          setScreen('list');
-          setInvoiceId(null);
-        }}
-        onEdit={() => setScreen('form')}
-        onPost={(id) => post.mutate(id)}
-        onDelete={(id) => del.mutate(id)}
-        posting={post.isPending}
-      />
+      <div>
+        {lockedNotice && (
+          <Alert
+            type="warning"
+            showIcon
+            message={t('common.documentLockLocked', {
+              name: lockedNotice.userName,
+              time: new Date(lockedNotice.acquiredAt).toLocaleString(),
+            })}
+            action={
+              can(PERMISSIONS.DOCUMENT_UNLOCK) ? (
+                <Button
+                  onClick={() =>
+                    Modal.confirm({
+                      title: t('common.documentLockUnlockConfirm'),
+                      onOk: async () => {
+                        await lockedNotice.forceRelease();
+                        setLockedNotice(null);
+                        setScreen('form');
+                      },
+                    })
+                  }
+                >
+                  {t('common.documentLockUnlock')}
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
+        <PurchaseInvoiceView
+          invoice={detail}
+          loading={detailLoading}
+          onBack={() => {
+            setScreen('list');
+            setInvoiceId(null);
+            setLockedNotice(null);
+          }}
+          onEdit={() => {
+            setLockedNotice(null);
+            setScreen('form');
+          }}
+          onPost={(id) => post.mutate(id)}
+          onDelete={(id) => del.mutate(id)}
+          posting={post.isPending}
+        />
+      </div>
     );
   }
 
@@ -445,6 +497,7 @@ function PurchaseInvoiceForm({
   isNew,
   onBack,
   onSaved,
+  onLockBlocked,
 }: {
   lookups: ReturnType<typeof usePurchaseLookups>;
   invoice?: PurchaseInvoiceDetailDto;
@@ -452,9 +505,20 @@ function PurchaseInvoiceForm({
   isNew: boolean;
   onBack: () => void;
   onSaved: (id: string) => void;
+  onLockBlocked?: (notice: LockedInvoiceNotice) => void;
 }) {
   const { t } = useTranslation();
   const { can, me, companyId } = useAuth();
+  const editLock = useDocumentLock('PURCHASE_INVOICE', isNew ? null : invoice?.id, !isNew && !loading && invoice?.status === 'DRAFT');
+  useEffect(() => {
+    if (editLock.state.status === 'locked' && invoice?.id) {
+      onLockBlocked?.({
+        userName: editLock.state.userName,
+        acquiredAt: editLock.state.acquiredAt,
+        forceRelease: editLock.forceRelease,
+      });
+    }
+  }, [editLock.forceRelease, editLock.state, invoice?.id, onLockBlocked]);
   const queryClient = useQueryClient();
   const [apiMessage, contextHolder] = message.useMessage();
   const [quickCreate, setQuickCreate] = useState<
@@ -651,7 +715,7 @@ function PurchaseInvoiceForm({
       );
       const res = isNew
         ? await purchasesControllerCreateInvoice(payload)
-        : await purchasesControllerUpdateInvoice(invoice!.id, payload);
+        : await purchasesControllerUpdateInvoice(invoice!.id, payload, { headers: editLock.headers });
       return res;
     },
     onSuccess: (res) => {
@@ -662,7 +726,10 @@ function PurchaseInvoiceForm({
     onError: (err) =>
       apiMessage.error(
         err instanceof ApiError
-          ? t(`errors.${err.code}`, { defaultValue: err.message })
+          ? t(`errors.${err.code}`, {
+              userName: String(err.details?.userName ?? ''),
+              defaultValue: err.message,
+            })
           : t('errors.INTERNAL'),
       ),
   });
@@ -676,7 +743,7 @@ function PurchaseInvoiceForm({
     lines: !lines.some((l) => l.itemId && l.qty),
   };
   const trySave = () => {
-    if (save.isPending) return;
+    if (save.isPending || (!isNew && editLock.state.status !== 'held')) return;
     const firstMissing = (['supplier', 'warehouse', 'cashAccount'] as const).find((k) => missing[k]);
     if (firstMissing || missing.lines) {
       setTried(true);
@@ -689,7 +756,12 @@ function PurchaseInvoiceForm({
   useDocShortcuts({ onSave: trySave });
   const requiredError = (gap: boolean) => (tried && gap ? t('common.requiredField') : undefined);
 
-  if (loading) return <Typography.Text>{t('common.loading')}</Typography.Text>;
+  if (loading || (!isNew && editLock.state.status === 'acquiring')) {
+    return <Typography.Text role="status">{loading ? t('common.loading') : t('common.documentLockAcquiring')}</Typography.Text>;
+  }
+  if (editLock.state.status === 'locked') {
+    return <Typography.Text role="status">{t('common.documentLockAcquiring')}</Typography.Text>;
+  }
 
   return (
     <DocLayout
@@ -698,13 +770,25 @@ function PurchaseInvoiceForm({
       status="DRAFT"
       onBack={() => confirmLeave(onBack)}
       actions={
-        <Button type="primary" icon={<SaveOutlined />} loading={save.isPending} onClick={trySave}>
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
+          loading={save.isPending}
+          disabled={!isNew && editLock.state.status !== 'held'}
+          onClick={trySave}
+        >
           {isNew ? t('common.saveDraft') : t('common.save')}
           <span className="doc-kbd">Ctrl+S</span>
         </Button>
       }
     >
       {contextHolder}
+      {editLock.state.status === 'lost' && (
+        <Alert className="doc-section" type="error" showIcon message={t('common.documentLockLost')} />
+      )}
+      {editLock.state.status === 'error' && (
+        <Alert className="doc-section" type="error" showIcon message={t('errors.INTERNAL')} />
+      )}
       <DocFields>
         <DocField
           field="supplier"
@@ -925,6 +1009,7 @@ function PurchaseInvoiceView({
   onDelete: (id: string) => void;
   posting: boolean;
 }) {
+  const lockHeaders = documentLockHeaders();
   const { t } = useTranslation();
   const [apiMessage, contextHolder] = message.useMessage();
   const { modal } = App.useApp();
@@ -944,7 +1029,8 @@ function PurchaseInvoiceView({
   });
   // ADR-026 §2: the approver accepts the price difference of a bill above its order.
   const approvePrice = useMutation({
-    mutationFn: (id: string) => purchasesControllerApprovePrice(id, { headers: idemHeaders() }),
+    mutationFn: (id: string) =>
+      purchasesControllerApprovePrice(id, { headers: { ...idemHeaders(), ...lockHeaders } }),
     onSuccess: (_data, id) => {
       apiMessage.success(t('billing.approvePriceDone'));
       void queryClient.invalidateQueries({ queryKey: ['purchase-invoice', id] });

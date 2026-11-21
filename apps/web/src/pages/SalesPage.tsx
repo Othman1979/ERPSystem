@@ -6,6 +6,7 @@ import {
   Button,
   Input,
   InputNumber,
+  Modal,
   Radio,
   Popconfirm,
   Select,
@@ -53,6 +54,7 @@ import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { useRemoteOptions } from '../hooks/useRemoteOptions';
 import { entryDraftStorageKey, useEntryDraft } from '../hooks/useEntryDraft';
+import { documentLockHeaders, useDocumentLock } from '../hooks/useDocumentLock';
 import { useCostCenters } from '../hooks/useCostCenters';
 import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
 import { PrintPdfButton } from '../components/PrintPdfButton';
@@ -118,6 +120,12 @@ type ItemRow = Pick<
   ItemListItemDto,
   'id' | 'code' | 'nameAr' | 'nameEn' | 'itemKind' | 'salePrice' | 'taxCategoryId'
 > & { taxRate?: string };
+
+type LockedInvoiceNotice = {
+  userName: string;
+  acquiredAt: string;
+  forceRelease: () => Promise<unknown>;
+};
 
 interface SalesInvoiceDraft {
   invoiceDate: string;
@@ -235,6 +243,7 @@ function InvoicesTab() {
   const linkedInvoiceId = params.get('invoiceId');
   const [screen, setScreen] = useState<'list' | 'form' | 'view'>(linkedInvoiceId ? 'view' : 'list');
   const [invoiceId, setInvoiceId] = useState<string | null>(linkedInvoiceId);
+  const [lockedNotice, setLockedNotice] = useState<LockedInvoiceNotice | null>(null);
   useEffect(() => {
     if (!linkedInvoiceId) return;
     setParams(
@@ -247,6 +256,7 @@ function InvoicesTab() {
     );
   }, [linkedInvoiceId, setParams]);
   const { can, me, companyId } = useAuth();
+  const lockHeaders = documentLockHeaders();
   const company = useCompany();
   const [apiMessage, contextHolder] = message.useMessage();
   const lookups = useSalesLookups();
@@ -303,12 +313,16 @@ function InvoicesTab() {
   const onError = (err: unknown) =>
     apiMessage.error(
       err instanceof ApiError
-        ? t(`errors.${err.code}`, { defaultValue: err.message })
+        ? t(`errors.${err.code}`, {
+            userName: String(err.details?.userName ?? ''),
+            defaultValue: err.message,
+          })
         : t('errors.INTERNAL'),
     );
 
   const post = useMutation({
-    mutationFn: (id: string) => salesControllerPostInvoice(id, { headers: idemHeaders() }),
+    mutationFn: (id: string) =>
+      salesControllerPostInvoice(id, { headers: { ...idemHeaders(), ...lockHeaders } }),
     onSuccess: () => {
       apiMessage.success(t('common.done'));
       invalidate();
@@ -316,7 +330,7 @@ function InvoicesTab() {
     onError,
   });
   const del = useMutation({
-    mutationFn: (id: string) => salesControllerDeleteInvoice(id),
+    mutationFn: (id: string) => salesControllerDeleteInvoice(id, { headers: lockHeaders }),
     onSuccess: () => {
       apiMessage.success(t('common.deleted'));
       setScreen('list');
@@ -327,7 +341,8 @@ function InvoicesTab() {
 
   // Approves a draft priced below its order (ADR-027 §4): sales.approve, never by its author.
   const approvePrice = useMutation({
-    mutationFn: (id: string) => salesCycleControllerApproveInvoicePrice(id, { headers: idemHeaders() }),
+    mutationFn: (id: string) =>
+      salesCycleControllerApproveInvoicePrice(id, { headers: { ...idemHeaders(), ...lockHeaders } }),
     onSuccess: () => {
       apiMessage.success(t('salesCycle.priceApproved'));
       void invalidateSalesCycle(queryClient);
@@ -402,6 +417,10 @@ function InvoicesTab() {
         invoice={invoiceId ? detail : undefined}
         loading={detailLoading}
         isNew={!invoiceId}
+        onLockBlocked={(notice) => {
+          setLockedNotice(notice);
+          setScreen('view');
+        }}
         onBack={() => {
           setScreen('list');
           setInvoiceId(null);
@@ -417,24 +436,58 @@ function InvoicesTab() {
 
   if (screen === 'view' && invoiceId) {
     return (
-      <InvoiceView
-        invoice={detail}
-        loading={detailLoading}
-        onBack={() => {
-          setScreen('list');
-          setInvoiceId(null);
-        }}
-        onEdit={() => setScreen('form')}
-        onPost={(id) => post.mutate(id)}
-        onDelete={(id) => del.mutate(id)}
-        posting={post.isPending}
-        onApprovePrice={(id) => approvePrice.mutate(id)}
-        approvingPrice={approvePrice.isPending}
-        canApprovePrice={can(PERMISSIONS.SALES_APPROVE)}
-        userId={me?.user.id}
-        salesPriceLocked={company.data?.salesPriceLocked === true}
-        salesOrderRequired={company.data?.salesOrderRequired === true}
-      />
+      <div>
+        {lockedNotice && (
+          <Alert
+            type="warning"
+            showIcon
+            message={t('common.documentLockLocked', {
+              name: lockedNotice.userName,
+              time: new Date(lockedNotice.acquiredAt).toLocaleString(),
+            })}
+            action={
+              can(PERMISSIONS.DOCUMENT_UNLOCK) ? (
+                <Button
+                  onClick={() =>
+                    Modal.confirm({
+                      title: t('common.documentLockUnlockConfirm'),
+                      onOk: async () => {
+                        await lockedNotice.forceRelease();
+                        setLockedNotice(null);
+                        setScreen('form');
+                      },
+                    })
+                  }
+                >
+                  {t('common.documentLockUnlock')}
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
+        <InvoiceView
+          invoice={detail}
+          loading={detailLoading}
+          onBack={() => {
+            setScreen('list');
+            setInvoiceId(null);
+            setLockedNotice(null);
+          }}
+          onEdit={() => {
+            setLockedNotice(null);
+            setScreen('form');
+          }}
+          onPost={(id) => post.mutate(id)}
+          onDelete={(id) => del.mutate(id)}
+          posting={post.isPending}
+          onApprovePrice={(id) => approvePrice.mutate(id)}
+          approvingPrice={approvePrice.isPending}
+          canApprovePrice={can(PERMISSIONS.SALES_APPROVE)}
+          userId={me?.user.id}
+          salesPriceLocked={company.data?.salesPriceLocked === true}
+          salesOrderRequired={company.data?.salesOrderRequired === true}
+        />
+      </div>
     );
   }
 
@@ -507,6 +560,7 @@ function InvoiceForm({
   isNew,
   onBack,
   onSaved,
+  onLockBlocked,
 }: {
   lookups: ReturnType<typeof useSalesLookups>;
   invoice?: SalesInvoiceDetailDto;
@@ -514,9 +568,20 @@ function InvoiceForm({
   isNew: boolean;
   onBack: () => void;
   onSaved: (id: string) => void;
+  onLockBlocked?: (notice: LockedInvoiceNotice) => void;
 }) {
   const { t } = useTranslation();
   const { can, me, companyId } = useAuth();
+  const editLock = useDocumentLock('SALES_INVOICE', isNew ? null : invoice?.id, !isNew && !loading && invoice?.status === 'DRAFT');
+  useEffect(() => {
+    if (editLock.state.status === 'locked' && invoice?.id) {
+      onLockBlocked?.({
+        userName: editLock.state.userName,
+        acquiredAt: editLock.state.acquiredAt,
+        forceRelease: editLock.forceRelease,
+      });
+    }
+  }, [editLock.forceRelease, editLock.state, invoice?.id, onLockBlocked]);
   const queryClient = useQueryClient();
   const [apiMessage, contextHolder] = message.useMessage();
   const [quickCreate, setQuickCreate] = useState<
@@ -750,7 +815,7 @@ function InvoiceForm({
       );
       const res = isNew
         ? await salesControllerCreateInvoice(payload)
-        : await salesControllerUpdateInvoice(invoice!.id, payload);
+        : await salesControllerUpdateInvoice(invoice!.id, payload, { headers: editLock.headers });
       return res;
     },
     onSuccess: (res) => {
@@ -761,7 +826,10 @@ function InvoiceForm({
     onError: (err) =>
       apiMessage.error(
         err instanceof ApiError
-          ? t(`errors.${err.code}`, { defaultValue: err.message })
+          ? t(`errors.${err.code}`, {
+              userName: String(err.details?.userName ?? ''),
+              defaultValue: err.message,
+            })
           : t('errors.INTERNAL'),
       ),
   });
@@ -775,7 +843,7 @@ function InvoiceForm({
     lines: !lines.some((l) => l.itemId && l.qty),
   };
   const trySave = () => {
-    if (save.isPending) return;
+    if (save.isPending || (!isNew && editLock.state.status !== 'held')) return;
     const firstMissing = (['customer', 'warehouse', 'cashAccount'] as const).find((k) => missing[k]);
     if (firstMissing || missing.lines) {
       setTried(true);
@@ -788,7 +856,12 @@ function InvoiceForm({
   useDocShortcuts({ onSave: trySave });
   const requiredError = (gap: boolean) => (tried && gap ? t('common.requiredField') : undefined);
 
-  if (loading) return <Typography.Text>{t('common.loading')}</Typography.Text>;
+  if (loading || (!isNew && editLock.state.status === 'acquiring')) {
+    return <Typography.Text role="status">{loading ? t('common.loading') : t('common.documentLockAcquiring')}</Typography.Text>;
+  }
+  if (editLock.state.status === 'locked') {
+    return <Typography.Text role="status">{t('common.documentLockAcquiring')}</Typography.Text>;
+  }
 
   return (
     <DocLayout
@@ -797,13 +870,25 @@ function InvoiceForm({
       status="DRAFT"
       onBack={() => confirmLeave(onBack)}
       actions={
-        <Button type="primary" icon={<SaveOutlined />} loading={save.isPending} onClick={trySave}>
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
+          loading={save.isPending}
+          disabled={!isNew && editLock.state.status !== 'held'}
+          onClick={trySave}
+        >
           {isNew ? t('common.saveDraft') : t('common.save')}
           <span className="doc-kbd">Ctrl+S</span>
         </Button>
       }
     >
       {contextHolder}
+      {editLock.state.status === 'lost' && (
+        <Alert className="doc-section" type="error" showIcon message={t('common.documentLockLost')} />
+      )}
+      {editLock.state.status === 'error' && (
+        <Alert className="doc-section" type="error" showIcon message={t('errors.INTERNAL')} />
+      )}
       <DocFields>
         {orderLinked && (
           <DocField label={t('salesCycle.orderNoLabel')}>
