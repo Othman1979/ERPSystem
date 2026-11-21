@@ -546,7 +546,7 @@ export class LeaveService {
         }).days;
       };
       const approvedInYear = approved.reduce((sum, row) => sum.plus(daysInYear(row.startDate, row.endDate)), new Decimal(0));
-      const requestInYear = daysInYear(start, end);
+      const requestInYear = daysInYear(request.startDate, request.endDate);
       if (approvedInYear.plus(requestInYear).gt(new Decimal(request.leaveType.maxDaysPerYear).plus(adjustment._sum.days ?? 0))) {
         throw new DomainError(ErrorCode.LEAVE_LIMIT_EXCEEDED, 'Annual leave-type limit is exceeded');
       }
