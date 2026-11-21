@@ -4,6 +4,7 @@ import { App as AntApp } from 'antd';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
+import { Modal } from 'antd';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 
@@ -20,9 +21,12 @@ window.matchMedia ??= (query: string) =>
     removeEventListener: () => {},
     dispatchEvent: () => false,
   }) as MediaQueryList;
+window.requestAnimationFrame ??= (callback) => window.setTimeout(() => callback(Date.now()), 0);
+window.cancelAnimationFrame ??= (handle) => window.clearTimeout(handle);
 
 const createDraft = vi.fn();
 const listMappings = vi.fn();
+const createAccount = vi.fn();
 const ok = <T,>(data: T) => Promise.resolve({ data, status: 200, headers: new Headers() });
 
 const account = (id: string, code: string, flags: { isControl?: boolean; controlType?: string | null } = {}) => ({
@@ -53,10 +57,13 @@ const ACCOUNTS = [
   account('19', '1109'), // plain flags: a legacy chart maps it as CUSTOMERS_CONTROL in one test
 ];
 const CUSTOMER = { id: '7', code: 'C-7', nameAr: 'cust7', nameEn: 'cust7', partyType: 'CUSTOMER', isActive: true };
+const NEW_ACCOUNT = { ...account('60', '6100'), nameAr: 'new-account', nameEn: 'New account' };
 
 vi.mock('@erp/api-client', async (original) => ({
   ...(await original<typeof import('@erp/api-client')>()),
-  accountingControllerListAccounts: () => ok(ACCOUNTS),
+  accountingControllerListAccounts: () =>
+    ok(createAccount.mock.calls.length ? [...ACCOUNTS, NEW_ACCOUNT] : ACCOUNTS),
+  accountingControllerCreateAccount: (...args: unknown[]) => createAccount(...args),
   accountingControllerListMappings: () => listMappings(),
   journalControllerList: () => ok({ items: [], total: 0, page: 1, pageSize: 25 }),
   partiesControllerList: (params: { partyType?: string }) =>
@@ -66,7 +73,13 @@ vi.mock('@erp/api-client', async (original) => ({
   // The page asks whether cost centres are on (ADR-024 §1): off here, no real request.
   companyControllerGet: () => ok({ costCentersEnabled: false }),
 }));
-
+vi.mock('../auth/AuthContext', () => ({
+  useAuth: () => ({
+    can: () => true,
+    me: { user: { id: 'user-a' }, currentTenant: { tenantId: 'tenant-a' } },
+    companyId: 'company-a',
+  }),
+}));
 const { JournalPage } = await import('./JournalPage');
 
 let root: Root | undefined;
@@ -76,6 +89,9 @@ beforeAll(async () => {
   await i18n.changeLanguage('en');
 });
 beforeEach(() => {
+  localStorage.clear();
+  createAccount.mockReset();
+  createAccount.mockImplementation(() => ok(NEW_ACCOUNT));
   createDraft.mockReset();
   createDraft.mockReturnValue(new Promise(() => {})); // the save itself is not under test
   listMappings.mockReset();
@@ -205,6 +221,77 @@ describe('JournalPage: party picker on control-account lines (D-2)', () => {
     await settle(50);
     expect(createDraft).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain(i18n.t('journal.oneSide', { line: 1 }));
+  });
+});
+
+describe('JournalPage entry quick-create and local draft', () => {
+  it('creates an account from the line picker and places it on that line', async () => {
+    await openNewEntry();
+    const input = field('journal.account', 0)!;
+    act(() => input.focus());
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })));
+    type(input, 'new account');
+    await settle(50);
+    const action = document.querySelector<HTMLElement>(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden):not([class*="-leave"]) .grid-select-create-new',
+    )!;
+    act(() => action.click());
+    const dialog = document.querySelector<HTMLElement>('.ant-modal')!;
+    const codeLabel = [...dialog.querySelectorAll('label')].find((item) =>
+      item.textContent?.includes(i18n.t('accounts.code')),
+    )!;
+    type(codeLabel.closest('.ant-form-item')!.querySelector('input')!, '6100');
+    const nameLabel = [...dialog.querySelectorAll('label')].find((item) =>
+      item.textContent?.includes(i18n.t('accounts.nameAr')),
+    )!;
+    expect(nameLabel.closest('.ant-form-item')!.querySelector('input')!.value).toBe('new account');
+    const typeLabel = [...dialog.querySelectorAll('label')].find((item) =>
+      item.textContent?.includes(i18n.t('accounts.type')),
+    )!;
+    const typeSelect = typeLabel.closest('.ant-form-item')!.querySelector<HTMLElement>('.ant-select-selector')!;
+    act(() => typeSelect.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+    await settle(50);
+    const asset = [...document.querySelectorAll<HTMLElement>('.ant-select-item-option')].find((option) =>
+      option.textContent?.includes(i18n.t('accounts.types.ASSET')),
+    )!;
+    act(() => asset.click());
+    await settle(50);
+    const save = [...dialog.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes(i18n.t('common.save')),
+    )!;
+    act(() => save.click());
+    await settle(50);
+    expect(createAccount).toHaveBeenCalledTimes(1);
+    expect(createAccount.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ code: '6100', nameAr: 'new account' }),
+    );
+    expect(field('journal.account', 0)?.closest('.ant-select')?.textContent).toContain('6100');
+  });
+
+  it('restores entered lines after unmount and remount', async () => {
+    await openNewEntry();
+    await pick(field('journal.account', 0)!, '1101');
+    type(field('journal.debit', 0)!, '11');
+    await settle(600);
+    expect(localStorage.length).toBe(1);
+
+    act(() => root!.unmount());
+    root = undefined;
+    host.remove();
+    document.body.innerHTML = '';
+    const confirm = vi.spyOn(Modal, 'confirm').mockImplementation((options) => {
+      options.onOk?.();
+      return { destroy: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    await openNewEntry();
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('There is an unsaved entry from') }),
+    );
+    confirm.mockRestore();
+    await settle(100);
+    expect(field('journal.account', 0)?.closest('.ant-select')?.textContent).toContain('1101');
+    expect(field('journal.debit', 0)?.value).toBe('11');
   });
 });
 

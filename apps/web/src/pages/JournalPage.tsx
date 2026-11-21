@@ -25,8 +25,13 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../auth/AuthContext';
+import { PERMISSIONS } from '../auth/permissions';
+import { useEntryDraft } from '../hooks/useEntryDraft';
+import { AccountFormDialog } from '../components/AccountFormDialog';
+import { PartyFormDialog } from '../components/PartyFormDialog';
 import {
   emptyLine,
   JournalLinesGrid,
@@ -37,10 +42,11 @@ import {
   costCenterRulesByAccount,
   firstLineProblem,
   lineProblemText,
+  type PartyNeed,
 } from '../components/journalLineChecks';
 import { usePartyColumn } from '../components/usePartyColumn';
 import { costCenterOptions, useCostCenters } from '../hooks/useCostCenters';
-import { selectPostable, useAccounts } from '../hooks/useAccounts';
+import { ACCOUNTS_QUERY_KEY, selectPostable, useAccounts, type AccountRow } from '../hooks/useAccounts';
 import {
   ApiError,
   journalControllerAmend,
@@ -62,6 +68,7 @@ import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
 import {
   enterTo,
+  focusCellEl,
   focusFirstGridCell,
   focusNamedField,
   GridSelect,
@@ -77,6 +84,15 @@ import { amountCell, amountOrBlankCell } from '../format/cells';
 import { formatAmount } from '../format/number';
 
 type JournalEntry = JournalEntryDetailDto;
+
+interface JournalEntryDraft {
+  entryDate: string;
+  voucherType: VoucherType;
+  description: string;
+  lines: JournalLineDraft[];
+  accountLabels: Record<string, string>;
+  partyLabels: Record<string, string>;
+}
 
 /** A line of a draft that has its account chosen (the lines the API receives). */
 type FilledLine = JournalLineDraft & { accountId: string };
@@ -111,6 +127,7 @@ function VoucherTag({ type }: { type?: VoucherType }) {
 
 export function JournalPage() {
   const { t } = useTranslation();
+  const { can, me, companyId } = useAuth();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<JournalControllerListStatus | undefined>(undefined);
   const [typeFilter, setTypeFilter] = useState<JournalControllerListVoucherType | undefined>(undefined);
@@ -127,11 +144,18 @@ export function JournalPage() {
   const [newVoucherType, setNewVoucherType] = useState<VoucherType>('JOURNAL');
   const [newDescription, setNewDescription] = useState('');
   const [lines, setLines] = useState<JournalLineDraft[]>([emptyLine(1), emptyLine(2)]);
+  const [restoredAccountLabels, setRestoredAccountLabels] = useState<Record<string, string>>({});
+  const [restoredPartyLabels, setRestoredPartyLabels] = useState<Record<string, string>>({});
   // Row whose party cell is marked empty after the check before saving.
   const [missingParty, setMissingParty] = useState<number | null>(null);
   // Row whose cost centre cell is marked after the check before saving.
   const [missingCentre, setMissingCentre] = useState<number | null>(null);
   const [gridFocus, setGridFocus] = useState(0);
+  const [quickCreate, setQuickCreate] = useState<
+    | { kind: 'account'; lineKey: number; row: number; typedText: string }
+    | { kind: 'party'; lineKey: number; row: number; need: PartyNeed; typedText: string }
+    | null
+  >(null);
 
   // Server-paged (ADR-022): search (entry number, description), filters, sort and page go to the API.
   const list = usePagedQuery<
@@ -150,6 +174,9 @@ export function JournalPage() {
   const centres = useCostCenters();
 
   const accountOptions = selectPostable(accounts ?? []).map((a) => ({ value: a.id, label: codeAndName(a) }));
+  for (const [id, label] of Object.entries(restoredAccountLabels)) {
+    if (!accountOptions.some((option) => option.value === id)) accountOptions.push({ value: id, label });
+  }
   // Cost centres (ADR-024 §1) only while the company has them on: the column and the check.
   const costCenterColumn = centres.enabled
     ? {
@@ -168,9 +195,71 @@ export function JournalPage() {
   });
 
   // The picker and labels follow the lines on screen: the draft's, or a saved entry's.
-  const { partyColumn, partyName, rules: partyRules } = usePartyColumn(accounts, {
+  const { partyColumn, partyName, rules: partyRules, rememberParty } = usePartyColumn(accounts, {
     shownPartyIds: entryId ? (detail?.lines ?? []).map((l) => l.partyId) : lines.map((l) => l.partyId),
     enabled: screen === 'entry' && !entryId,
+  });
+  const partyColumnWithDraftLabels = {
+    ...partyColumn,
+    options: {
+      CUSTOMER: [...partyColumn.options.CUSTOMER],
+      SUPPLIER: [...partyColumn.options.SUPPLIER],
+      ANY: [...partyColumn.options.ANY],
+    },
+  };
+  for (const [id, label] of Object.entries(restoredPartyLabels)) {
+    for (const need of ['CUSTOMER', 'SUPPLIER', 'ANY'] as const) {
+      if (!partyColumnWithDraftLabels.options[need].some((option) => option.value === id)) {
+        partyColumnWithDraftLabels.options[need].push({ value: id, label });
+      }
+    }
+  }
+  const initialEntryDraft = useRef<JournalEntryDraft>({
+    entryDate: newDate.format('YYYY-MM-DD'),
+    voucherType: 'JOURNAL',
+    description: '',
+    lines: [emptyLine(1), emptyLine(2)],
+    accountLabels: {},
+    partyLabels: {},
+  });
+  const entryDraftValue: JournalEntryDraft = {
+    entryDate: newDate.format('YYYY-MM-DD'),
+    voucherType: newVoucherType,
+    description: newDescription,
+    lines,
+    accountLabels: Object.fromEntries(
+      lines.flatMap((line) => {
+        const account = (accounts ?? []).find((row) => row.id === line.accountId);
+        return account ? [[account.id, codeAndName(account)]] : line.accountId && restoredAccountLabels[line.accountId]
+          ? [[line.accountId, restoredAccountLabels[line.accountId]]]
+          : [];
+      }),
+    ),
+    partyLabels: Object.fromEntries(
+      lines.flatMap((line) => {
+        const label = partyName(line.partyId) ?? (line.partyId ? restoredPartyLabels[line.partyId] : undefined);
+        return line.partyId && label ? [[line.partyId, label]] : [];
+      }),
+    ),
+  };
+  const { clear: clearEntryDraft, confirmLeave } = useEntryDraft({
+    scope: {
+      userId: me?.user.id,
+      tenantId: me?.currentTenant?.tenantId,
+      companyId,
+      screenKey: 'journal:new',
+    },
+    value: entryDraftValue,
+    initialValue: initialEntryDraft.current,
+    enabled: screen === 'entry' && !entryId && !amendTarget,
+    onRestore: (draft) => {
+      setNewDate(dayjs(draft.entryDate));
+      setNewVoucherType(draft.voucherType);
+      setNewDescription(draft.description);
+      setLines(draft.lines);
+      setRestoredAccountLabels(draft.accountLabels);
+      setRestoredPartyLabels(draft.partyLabels);
+    },
   });
 
   const invalidate = () => {
@@ -188,12 +277,24 @@ export function JournalPage() {
   const onError = (err: unknown) => apiMessage.error(errorText(err));
 
   const openNew = (voucherType: VoucherType = 'JOURNAL') => {
+    const date = dayjs();
+    const initialLines = [emptyLine(1), emptyLine(2)];
+    initialEntryDraft.current = {
+      entryDate: date.format('YYYY-MM-DD'),
+      voucherType,
+      description: '',
+      lines: initialLines,
+      accountLabels: {},
+      partyLabels: {},
+    };
     setEntryId(null);
     setAmendTarget(null);
-    setNewDate(dayjs());
+    setNewDate(date);
     setNewVoucherType(voucherType);
     setNewDescription('');
-    setLines([emptyLine(1), emptyLine(2)]);
+    setLines(initialLines);
+    setRestoredAccountLabels({});
+    setRestoredPartyLabels({});
     setMissingParty(null);
     setMissingCentre(null);
     setGridFocus((g) => g + 1);
@@ -256,6 +357,7 @@ export function JournalPage() {
       }),
     onSuccess: (res) => {
       apiMessage.success(t('common.saved'));
+      clearEntryDraft();
       invalidate();
       setEntryId(res.data.id);
     },
@@ -536,7 +638,7 @@ export function JournalPage() {
         }
         docNo={amendTarget ? amendTarget.entryNo : entry?.entryNo}
         status={amendTarget ? amendTarget.status : isNew ? 'DRAFT' : entry?.status}
-        onBack={backToList}
+        onBack={() => confirmLeave(backToList)}
         actions={
           isNew ? (
             <Button
@@ -675,10 +777,21 @@ export function JournalPage() {
             onChange={setLines}
             accountOptions={accountOptions}
             focusSignal={gridFocus}
-            partyColumn={partyColumn}
+            partyColumn={partyColumnWithDraftLabels}
             costCenterColumn={costCenterColumn}
             missingParty={missingParty}
             missingCostCenter={missingCentre}
+            onCreateAccount={
+              can(PERMISSIONS.ACCOUNT_MANAGE)
+                ? (lineKey, row, typedText) => setQuickCreate({ kind: 'account', lineKey, row, typedText })
+                : undefined
+            }
+            onCreateParty={
+              can(PERMISSIONS.PARTIES_MANAGE)
+                ? (lineKey, row, need, typedText) =>
+                    setQuickCreate({ kind: 'party', lineKey, row, need, typedText })
+                : undefined
+            }
           />
         ) : detailLoading ? (
           <div className="doc-section">{t('common.loading')}</div>
@@ -775,6 +888,71 @@ export function JournalPage() {
           />
         </div>
       </Modal>
+      <AccountFormDialog
+        open={quickCreate?.kind === 'account'}
+        initialValues={quickCreate?.kind === 'account' ? { nameAr: quickCreate.typedText } : undefined}
+        onCancel={() => {
+          const row = quickCreate?.kind === 'account' ? quickCreate.row : undefined;
+          setQuickCreate(null);
+          if (row !== undefined) requestAnimationFrame(() => focusCellEl(document.querySelector<HTMLElement>(`[data-cell="${row}-1"]`)));
+        }}
+        onSaved={(created) => {
+          queryClient.setQueryData<AccountRow[]>(ACCOUNTS_QUERY_KEY, (rows = []) => [
+            ...rows.filter((row) => row.id !== created.id),
+            created,
+          ]);
+          void queryClient.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
+          const pending = quickCreate;
+          setQuickCreate(null);
+          if (pending?.kind === 'account') {
+            if (created.isPostable) {
+              setLines((current) =>
+                current.map((line) => (line.key === pending.lineKey ? { ...line, accountId: created.id } : line)),
+              );
+            } else {
+              setLines((current) =>
+                current.map((line) =>
+                  line.key === pending.lineKey
+                    ? { ...line, accountId: undefined, partyId: undefined, partyType: undefined }
+                    : line,
+                ),
+              );
+              apiMessage.warning(t('errors.ACCOUNT_NOT_POSTABLE'));
+            }
+            requestAnimationFrame(() => focusCellEl(document.querySelector<HTMLElement>(`[data-cell="${pending.row}-1"]`)));
+          }
+        }}
+        editing={null}
+      />
+      <PartyFormDialog
+        open={quickCreate?.kind === 'party'}
+        initialValues={
+          quickCreate?.kind === 'party'
+            ? {
+                nameAr: quickCreate.typedText,
+                partyType: quickCreate.need === 'SUPPLIER' ? 'SUPPLIER' : 'CUSTOMER',
+              }
+            : undefined
+        }
+        lockPartyType
+        onCancel={() => {
+          const row = quickCreate?.kind === 'party' ? quickCreate.row : undefined;
+          setQuickCreate(null);
+          if (row !== undefined) requestAnimationFrame(() => focusCellEl(document.querySelector<HTMLElement>(`[data-cell="${row}-5"]`)));
+        }}
+        onSaved={(created) => {
+          rememberParty(created);
+          void queryClient.invalidateQueries({ queryKey: ['parties'] });
+          const pending = quickCreate;
+          setQuickCreate(null);
+          if (pending?.kind === 'party') {
+            setLines((current) =>
+              current.map((line) => (line.key === pending.lineKey ? { ...line, partyId: created.id } : line)),
+            );
+            requestAnimationFrame(() => focusCellEl(document.querySelector<HTMLElement>(`[data-cell="${pending.row}-5"]`)));
+          }
+        }}
+      />
     </div>
   );
 }

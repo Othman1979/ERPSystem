@@ -18,8 +18,10 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../auth/AuthContext';
+import { PERMISSIONS } from '../auth/permissions';
 import {
   ApiError,
   branchesControllerList,
@@ -60,6 +62,7 @@ import {
   type TreasuryControllerListReceiptsSort,
 } from '@erp/api-client';
 import { FormDialog, FormSection } from '../components/FormDialog';
+import { PartyFormDialog } from '../components/PartyFormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
@@ -83,6 +86,7 @@ import { dec, formatAmount, sum } from '../format/number';
 import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 import { useCostCenters } from '../hooks/useCostCenters';
+import { useEntryDraft } from '../hooks/useEntryDraft';
 import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
 
 // ------------------------------------------------------------- types
@@ -96,6 +100,25 @@ type Voucher = ReceiptListItemDto | PaymentListItemDto;
 type VoucherDetail = ReceiptDetailDto | PaymentDetailDto;
 /** An open invoice to allocate against: a sales invoice for a receipt, a purchase invoice for a payment. */
 type OpenInvoice = SalesInvoiceListItemDto | PurchaseInvoiceListItemDto;
+
+interface VoucherEntryDraft {
+  voucherDate: string;
+  partyType: 'CUSTOMER' | 'SUPPLIER';
+  partyId: string | null;
+  partyOption: { value: string; label: string } | null;
+  cashAccountId: string | null;
+  cashAccountLabel: string | null;
+  amount: string | null;
+  referenceNo: string;
+  description: string;
+  method: 'CASH' | 'CHEQUE';
+  chequeNo: string;
+  bankName: string;
+  dueDate: string | null;
+  allocations: { documentId: string; amount: string | null }[];
+  autoAllocate: boolean;
+  costCenterId: string | null;
+}
 
 /** Receipts and payments name their number and date fields differently. */
 const voucherNoOf = (v: Voucher | VoucherDetail) => ('receiptNo' in v ? v.receiptNo : v.paymentNo);
@@ -870,10 +893,13 @@ function VoucherForm({
   onCreated: () => void;
 }) {
   const { t } = useTranslation();
+  const { can, me, companyId } = useAuth();
+  const queryClient = useQueryClient();
   const [apiMessage, contextHolder] = message.useMessage();
   const [voucherDate, setVoucherDate] = useState<Dayjs>(dayjs());
   const [partyType, setPartyType] = useState<'CUSTOMER' | 'SUPPLIER'>('CUSTOMER');
   const [partyId, setPartyId] = useState<string | undefined>();
+  const [quickCreateParty, setQuickCreateParty] = useState<string | null>(null);
   const [cashAccountId, setCashAccountId] = useState<string | undefined>();
   const [amount, setAmount] = useState<string | null>(null);
   const [referenceNo, setReferenceNo] = useState('');
@@ -900,7 +926,93 @@ function VoucherForm({
     key: ['parties', 'pick-voucher', partyType],
     fetch: (q, signal) => pickParties(partyType, q, signal),
   });
+  const [restoredPartyOption, setRestoredPartyOption] = useState<{ value: string; label: string }>();
+  const [restoredCashAccountOption, setRestoredCashAccountOption] = useState<{ value: string; label: string }>();
   const partyOptions = parties.withSelected([partyId]).map((p) => ({ value: p.id, label: codeAndName(p) }));
+  if (restoredPartyOption && !partyOptions.some((option) => option.value === restoredPartyOption.value)) {
+    partyOptions.push(restoredPartyOption);
+  }
+  const partyOption = partyOptions.find((option) => option.value === partyId) ?? null;
+  const cashAccountOptions = [...(byCheque ? lookups.bankAccounts : lookups.cashAccounts)];
+  if (
+    restoredCashAccountOption &&
+    restoredCashAccountOption.value === cashAccountId &&
+    !cashAccountOptions.some((option) => option.value === restoredCashAccountOption.value)
+  ) {
+    cashAccountOptions.push(restoredCashAccountOption);
+  }
+  const cashAccountLabel =
+    cashAccountOptions.find((option) => option.value === cashAccountId)?.label ?? null;
+  const draftValue: VoucherEntryDraft = {
+    voucherDate: voucherDate.format('YYYY-MM-DD'),
+    partyType,
+    partyId: partyId ?? null,
+    partyOption,
+    cashAccountId: cashAccountId ?? null,
+    cashAccountLabel,
+    amount,
+    referenceNo,
+    description,
+    method,
+    chequeNo,
+    bankName,
+    dueDate: dueDate?.format('YYYY-MM-DD') ?? null,
+    allocations,
+    autoAllocate,
+    costCenterId: costCenterId ?? null,
+  };
+  const initialDraft = useRef<VoucherEntryDraft | null>(null);
+  initialDraft.current ??= draftValue;
+  const businessValue = (draft: VoucherEntryDraft) => ({
+    voucherDate: draft.voucherDate,
+    partyType: draft.partyType,
+    partyId: draft.partyId,
+    cashAccountId: draft.cashAccountId,
+    amount: draft.amount,
+    referenceNo: draft.referenceNo,
+    description: draft.description,
+    method: draft.method,
+    chequeNo: draft.chequeNo,
+    bankName: draft.bankName,
+    dueDate: draft.dueDate,
+    allocations: draft.allocations,
+    autoAllocate: draft.autoAllocate,
+    costCenterId: draft.costCenterId,
+  });
+  const { clear: clearEntryDraft, confirmLeave } = useEntryDraft({
+    scope: {
+      userId: me?.user.id,
+      tenantId: me?.currentTenant?.tenantId,
+      companyId,
+      screenKey: kind === 'receipt' ? 'receipt:new' : 'payment:new',
+    },
+    value: draftValue,
+    initialValue: initialDraft.current,
+    dirtyValue: businessValue(draftValue),
+    initialDirtyValue: businessValue(initialDraft.current),
+    onRestore: (draft) => {
+      setVoucherDate(dayjs(draft.voucherDate));
+      setPartyType(draft.partyType);
+      setPartyId(draft.partyId ?? undefined);
+      setRestoredPartyOption(draft.partyOption ?? undefined);
+      setCashAccountId(draft.cashAccountId ?? undefined);
+      setRestoredCashAccountOption(
+        draft.cashAccountId && draft.cashAccountLabel
+          ? { value: draft.cashAccountId, label: draft.cashAccountLabel }
+          : undefined,
+      );
+      setAmount(draft.amount);
+      setReferenceNo(draft.referenceNo);
+      setDescription(draft.description);
+      setMethod(draft.method);
+      setChequeNo(draft.chequeNo);
+      setBankName(draft.bankName);
+      setDueDate(draft.dueDate ? dayjs(draft.dueDate) : null);
+      setAllocations(draft.allocations);
+      setAutoAllocate(draft.autoAllocate);
+      setCostCenterId(draft.costCenterId ?? undefined);
+    },
+  });
 
   // Open invoices for allocations: every open credit invoice of the party, oldest
   // first (the server's order), so a party with more than one page still gets all
@@ -984,6 +1096,7 @@ function VoucherForm({
     },
     onSuccess: () => {
       apiMessage.success(t('common.saved'));
+      clearEntryDraft();
       onCreated();
     },
     onError: (err) =>
@@ -1017,9 +1130,10 @@ function VoucherForm({
   const allocatedSum = sum(allocations.map((a) => a.amount));
 
   return (
+    <>
     <DocLayout
       title={kind === 'receipt' ? t('treasury.newReceipt') : t('treasury.newPayment')}
-      onBack={onClose}
+      onBack={() => confirmLeave(onClose)}
       actions={
         <Button type="primary" icon={<SaveOutlined />} loading={create.isPending} onClick={trySave}>
           {t('common.save')}
@@ -1068,6 +1182,10 @@ function VoucherForm({
               setAllocations([]);
               setAutoAllocate(false);
             }}
+            onCreateNew={
+              can(PERMISSIONS.PARTIES_MANAGE) ? (text) => setQuickCreateParty(text) : undefined
+            }
+            createNewLabel={t('parties.add')}
           />
         </DocField>
         <DocField field="method" label={t('cheques.method')}>
@@ -1121,7 +1239,7 @@ function VoucherForm({
           >
             <GridSelect
                 status={requiredError(missing.cashAccount) ? 'error' : undefined}
-              options={byCheque ? lookups.bankAccounts : lookups.cashAccounts}
+              options={cashAccountOptions}
               value={cashAccountId}
               onChange={setCashAccountId}
             />
@@ -1247,5 +1365,24 @@ function VoucherForm({
       )}
       </EnterNav>
     </DocLayout>
+    <PartyFormDialog
+      open={quickCreateParty !== null}
+      initialValues={quickCreateParty !== null ? { nameAr: quickCreateParty, partyType } : undefined}
+      lockPartyType
+      onCancel={() => {
+        setQuickCreateParty(null);
+        requestAnimationFrame(() => focusNamedField('party'));
+      }}
+      onSaved={(created) => {
+        parties.remember([created]);
+        setPartyId(created.id);
+        void queryClient.invalidateQueries({ queryKey: ['parties'] });
+        setAllocations([]);
+        setAutoAllocate(false);
+        setQuickCreateParty(null);
+        requestAnimationFrame(() => focusNamedField('party'));
+      }}
+    />
+    </>
   );
 }

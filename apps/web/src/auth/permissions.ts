@@ -6,6 +6,8 @@
  */
 export const PERMISSIONS = {
   TENANT_READ: 'tenant.read',
+  ACCOUNT_MANAGE: 'account.manage',
+  PARTIES_MANAGE: 'parties.manage',
   /** Manage items, and with them their bills of materials (ADR-031 §9). */
   ITEM_MANAGE: 'item.manage',
   USER_MANAGE: 'user.manage',

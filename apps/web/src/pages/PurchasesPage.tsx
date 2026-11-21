@@ -16,9 +16,11 @@ import {
   Typography,
   message,
 } from 'antd';
+import { PartyFormDialog } from '../components/PartyFormDialog';
+import { ItemFormDialog } from '../components/ItemFormDialog';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { useTranslation } from 'react-i18next';
 import {
@@ -29,6 +31,7 @@ import {
 } from '../components/InvoiceLinesGrid';
 import {
   enterTo,
+  focusCellEl,
   focusFirstGridCell,
   focusNamedField,
   GridSelect,
@@ -40,6 +43,7 @@ import { ListToolbar } from '../components/ListToolbar';
 import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { useRemoteOptions } from '../hooks/useRemoteOptions';
+import { entryDraftStorageKey, useEntryDraft } from '../hooks/useEntryDraft';
 import { useCostCenters } from '../hooks/useCostCenters';
 import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
 import { PrintPdfButton } from '../components/PrintPdfButton';
@@ -101,6 +105,22 @@ type ItemRow = Pick<
   ItemListItemDto,
   'id' | 'code' | 'nameAr' | 'nameEn' | 'itemKind' | 'purchasePrice' | 'taxCategoryId'
 > & { taxRate?: string };
+
+interface PurchaseInvoiceDraft {
+  invoiceDate: string;
+  dueDate: string | null;
+  supplierId: string | null;
+  supplierOption: { value: string; label: string } | null;
+  supplierInvoiceNo: string | null;
+  supplierInvoiceDate: string | null;
+  warehouseId: string | null;
+  paymentType: 'CASH' | 'CREDIT';
+  cashAccountId: string | null;
+  cashAccountLabel: string | null;
+  costCenterId: string | null;
+  lines: InvoiceLineDraft[];
+  selectedItems: ItemRow[];
+}
 
 const money = (v?: string | null) => formatAmount(v);
 
@@ -217,6 +237,22 @@ function PurchaseInvoicesTab() {
       purchasesControllerGetInvoice(invoiceId!, { signal }).then((r) => r.data),
     enabled: (screen === 'view' || screen === 'form') && !!invoiceId,
   });
+  const { me: currentUser, companyId } = useAuth();
+  useEffect(() => {
+    if (screen !== 'view' || !invoiceId || detailLoading || !detail || detail.status === 'DRAFT') return;
+    const key = entryDraftStorageKey({
+      userId: currentUser?.user.id,
+      tenantId: currentUser?.currentTenant?.tenantId,
+      companyId,
+      screenKey: `purchase-invoice:${invoiceId}`,
+    });
+    if (!key) return;
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Storage may be unavailable in private browsing.
+    }
+  }, [companyId, currentUser?.currentTenant?.tenantId, currentUser?.user.id, detail, detailLoading, invoiceId, screen]);
 
   const invalidate = () => invalidateStockDocument(queryClient, 'purchaseInvoice');
   const onError = (err: unknown) =>
@@ -418,7 +454,16 @@ function PurchaseInvoiceForm({
   onSaved: (id: string) => void;
 }) {
   const { t } = useTranslation();
+  const { can, me, companyId } = useAuth();
+  const queryClient = useQueryClient();
   const [apiMessage, contextHolder] = message.useMessage();
+  const [quickCreate, setQuickCreate] = useState<
+    | { kind: 'party'; typedText: string }
+    | { kind: 'item'; lineKey: number; row: number; typedText: string }
+    | null
+  >(null);
+  const [createdSupplier, setCreatedSupplier] = useState<{ value: string; label: string }>();
+  const [restoredCashAccount, setRestoredCashAccount] = useState<{ value: string; label: string }>();
   // Keyboard entry starts at the first field the user must fill.
   useEffect(() => {
     if (loading) return;
@@ -461,6 +506,13 @@ function PurchaseInvoiceForm({
     value: w.id,
     label: codeAndName(w),
   }));
+  const cashAccountOptions = [...lookups.cashAccountOptions];
+  if (
+    restoredCashAccount &&
+    !cashAccountOptions.some((option) => option.value === restoredCashAccount.value)
+  ) {
+    cashAccountOptions.push(restoredCashAccount);
+  }
 
   // Items are searched on the server; the lines' own items stay labelled and priced.
   const items = useRemoteOptions<ItemRow>({
@@ -496,6 +548,86 @@ function PurchaseInvoiceForm({
   const itemOptions = items
     .withSelected(lines.map((l) => l.itemId))
     .map((row) => itemOption(row, lookups.taxRateById, lookups.defaultTaxId));
+  const selectedItems = items.withSelected(lines.map((line) => line.itemId)).filter((row) =>
+    lines.some((line) => line.itemId === row.id),
+  );
+  const supplierOption =
+    createdSupplier ??
+    (invoice?.supplier ? { value: invoice.supplier.id, label: codeAndName(invoice.supplier) } : null);
+  const draftValue: PurchaseInvoiceDraft = {
+    invoiceDate: invoiceDate.format('YYYY-MM-DD'),
+    dueDate: dueDate?.format('YYYY-MM-DD') ?? null,
+    supplierId: supplierId ?? null,
+    supplierOption: supplierOption ?? null,
+    supplierInvoiceNo: supplierInvoiceNo ?? null,
+    supplierInvoiceDate: supplierInvoiceDate?.format('YYYY-MM-DD') ?? null,
+    warehouseId: warehouseId ?? null,
+    paymentType,
+    cashAccountId: cashAccountId ?? null,
+    cashAccountLabel:
+      cashAccountOptions.find((option) => option.value === cashAccountId)?.label ?? null,
+    costCenterId: costCenterId ?? null,
+    lines,
+    selectedItems,
+  };
+  const initialDraft = useRef<PurchaseInvoiceDraft | null>(null);
+  initialDraft.current ??= draftValue;
+  const initialBusinessValue = {
+    invoiceDate: initialDraft.current.invoiceDate,
+    dueDate: initialDraft.current.dueDate,
+    supplierId: initialDraft.current.supplierId,
+    supplierInvoiceNo: initialDraft.current.supplierInvoiceNo,
+    supplierInvoiceDate: initialDraft.current.supplierInvoiceDate,
+    warehouseId: initialDraft.current.warehouseId,
+    paymentType: initialDraft.current.paymentType,
+    cashAccountId: initialDraft.current.cashAccountId,
+    costCenterId: initialDraft.current.costCenterId,
+    lines: initialDraft.current.lines,
+  };
+  const { clear: clearEntryDraft, confirmLeave } = useEntryDraft({
+    scope: {
+      userId: me?.user.id,
+      tenantId: me?.currentTenant?.tenantId,
+      companyId,
+      screenKey: `purchase-invoice:${isNew ? 'new' : invoice?.id ?? 'pending'}`,
+    },
+    value: draftValue,
+    initialValue: initialDraft.current,
+    dirtyValue: {
+      invoiceDate: draftValue.invoiceDate,
+      dueDate: draftValue.dueDate,
+      supplierId: draftValue.supplierId,
+      supplierInvoiceNo: draftValue.supplierInvoiceNo,
+      supplierInvoiceDate: draftValue.supplierInvoiceDate,
+      warehouseId: draftValue.warehouseId,
+      paymentType: draftValue.paymentType,
+      cashAccountId: draftValue.cashAccountId,
+      costCenterId: draftValue.costCenterId,
+      lines: draftValue.lines,
+    },
+    initialDirtyValue: initialBusinessValue,
+    enabled: !loading && (isNew || invoice?.status === 'DRAFT'),
+    discardWhenDisabled: !loading && !isNew && !!invoice && invoice.status !== 'DRAFT',
+    onRestore: (draft) => {
+      setInvoiceDate(dayjs(draft.invoiceDate));
+      setDueDate(draft.dueDate ? dayjs(draft.dueDate) : null);
+      setSupplierId(draft.supplierId ?? undefined);
+      setCreatedSupplier(draft.supplierOption ?? undefined);
+      setSupplierInvoiceNo(draft.supplierInvoiceNo ?? undefined);
+      setSupplierInvoiceDate(draft.supplierInvoiceDate ? dayjs(draft.supplierInvoiceDate) : null);
+      setWarehouseId(draft.warehouseId ?? undefined);
+      setPaymentType(draft.paymentType);
+      setCashAccountId(draft.cashAccountId ?? undefined);
+      setRestoredCashAccount(
+        draft.cashAccountId && draft.cashAccountLabel
+          ? { value: draft.cashAccountId, label: draft.cashAccountLabel }
+          : undefined,
+      );
+      setCostCenterId(draft.costCenterId ?? undefined);
+      setLines(draft.lines);
+      items.remember(draft.selectedItems);
+    },
+  });
 
   const save = useMutation({
     mutationFn: async () => {
@@ -524,6 +656,7 @@ function PurchaseInvoiceForm({
     },
     onSuccess: (res) => {
       apiMessage.success(t('common.saved'));
+      clearEntryDraft();
       onSaved(res.data.id);
     },
     onError: (err) =>
@@ -563,7 +696,7 @@ function PurchaseInvoiceForm({
       title={isNew ? t('purchases.newInvoice') : t('purchases.invoiceTitle')}
       docNo={invoice?.invoiceNo}
       status="DRAFT"
-      onBack={onBack}
+      onBack={() => confirmLeave(onBack)}
       actions={
         <Button type="primary" icon={<SaveOutlined />} loading={save.isPending} onClick={trySave}>
           {isNew ? t('common.saveDraft') : t('common.save')}
@@ -592,13 +725,20 @@ function PurchaseInvoiceForm({
               )
             }
             selected={
-              invoice?.supplier
+              createdSupplier ??
+              (invoice?.supplier
                 ? { value: invoice.supplier.id, label: codeAndName(invoice.supplier) }
-                : undefined
+                : undefined)
             }
             status={requiredError(missing.supplier) ? 'error' : undefined}
             value={supplierId}
             onChange={setSupplierId}
+            onCreateNew={
+              can(PERMISSIONS.PARTIES_MANAGE)
+                ? (typedText) => setQuickCreate({ kind: 'party', typedText })
+                : undefined
+            }
+            createNewLabel={t('parties.add')}
           />
         </DocField>
         <DocField
@@ -690,7 +830,7 @@ function PurchaseInvoiceForm({
           >
             <GridSelect
               status={requiredError(missing.cashAccount) ? 'error' : undefined}
-              options={lookups.cashAccountOptions}
+              options={cashAccountOptions}
               value={cashAccountId}
               onChange={setCashAccountId}
             />
@@ -703,7 +843,63 @@ function PurchaseInvoiceForm({
         onChange={setLines}
         itemOptions={itemOptions}
         onItemSearch={items.onSearch}
+        onCreateItem={
+          can(PERMISSIONS.ITEM_MANAGE)
+            ? (lineKey, row, typedText) => setQuickCreate({ kind: 'item', lineKey, row, typedText })
+            : undefined
+        }
         priceLabel={t('purchases.unitCost')}
+      />
+      <PartyFormDialog
+        open={quickCreate?.kind === 'party'}
+        initialValues={quickCreate?.kind === 'party' ? { nameAr: quickCreate.typedText, partyType: 'SUPPLIER' } : undefined}
+        lockPartyType
+        onCancel={() => {
+          setQuickCreate(null);
+          requestAnimationFrame(() => focusNamedField('supplier'));
+        }}
+        onSaved={(created) => {
+          setCreatedSupplier({ value: created.id, label: codeAndName(created) });
+          setSupplierId(created.id);
+          void queryClient.invalidateQueries({ queryKey: ['parties'] });
+          setQuickCreate(null);
+          requestAnimationFrame(() => focusNamedField('supplier'));
+        }}
+      />
+      <ItemFormDialog
+        open={quickCreate?.kind === 'item'}
+        initialValues={quickCreate?.kind === 'item' ? { nameAr: quickCreate.typedText } : undefined}
+        onCancel={() => {
+          const row = quickCreate?.kind === 'item' ? quickCreate.row : undefined;
+          setQuickCreate(null);
+          if (row !== undefined) requestAnimationFrame(() => focusCellEl(document.querySelector<HTMLElement>(`[data-cell="${row}-1"]`)));
+        }}
+        onSaved={(created) => {
+          const row: ItemRow = {
+            id: created.id,
+            code: created.code,
+            nameAr: created.nameAr,
+            nameEn: created.nameEn,
+            itemKind: created.itemKind,
+            purchasePrice: created.purchasePrice,
+            taxCategoryId: created.taxCategoryId,
+          };
+          items.remember([row]);
+          void queryClient.invalidateQueries({ queryKey: ['items'] });
+          const pending = quickCreate;
+          setQuickCreate(null);
+          if (pending?.kind === 'item') {
+            const option = itemOption(row, lookups.taxRateById, lookups.defaultTaxId);
+            setLines((current) =>
+              current.map((line) =>
+                line.key === pending.lineKey
+                  ? { ...line, itemId: created.id, ...(line.price == null && option.price != null ? { price: option.price } : {}) }
+                  : line,
+              ),
+            );
+            requestAnimationFrame(() => focusCellEl(document.querySelector<HTMLElement>(`[data-cell="${pending.row}-1"]`)));
+          }
+        }}
       />
     </DocLayout>
   );
