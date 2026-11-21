@@ -345,7 +345,10 @@ export class LeaveService {
       const request = await this.findRequest(tx, id);
       if (!request) throw DomainError.notFound('LeaveRequest', id.toString());
       if (request.status !== 'SUBMITTED') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only submitted leave requests can be approved');
-      if (request.employee.leaveDate) {
+      if (
+        request.employee.leaveDate
+        && (request.leaveType.category === 'ANNUAL' || request.leaveType.payElementId)
+      ) {
         const departureRun = await tx.payrollRun.findFirst({
           where: {
             companyId,
