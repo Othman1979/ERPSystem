@@ -49,6 +49,7 @@ import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { formatAmount, formatQty, toDecimal } from '../format/number';
 import { formatDate } from '../format/date';
+import { entryDescription } from '../i18n/entryDescription';
 import { DatePicker } from '../components/DatePicker';
 import { ExportButtons, saveBlob } from '../components/ExportButtons';
 import { EnterNav } from '../components/EnterNav';
@@ -714,11 +715,7 @@ function ReportsTab() {
         { title: t('payroll.movementDate'), dataIndex: 'date', render: (value: string) => formatPayrollDate(value) },
         { title: t('payroll.documentNo'), dataIndex: 'documentNo' },
         { title: t('payroll.documentType'), dataIndex: 'documentType' },
-        { title: t('payroll.description'), dataIndex: 'description', render: (value: string, row: { documentType: string; date: string; documentNo: string }) =>
-          row.documentType === 'PAYROLL_SETTLEMENT' ? t('payroll.statementSettlement')
-            : row.documentType === 'PAYROLL_SETTLEMENT_PAYMENT' ? t('payroll.statementSettlementPayment')
-              : row.documentType === 'PAYROLL_SETTLEMENT_REVERSAL' ? t('payroll.statementSettlementReversal')
-                : row.documentType === 'PAYROLL_SETTLEMENT_PAYMENT_REVERSAL' ? t('payroll.statementSettlementPaymentReversal') : value },
+        { title: t('payroll.description'), dataIndex: 'description', render: (_value: string, row) => entryDescription(t, row) },
         { title: t('payroll.debit'), dataIndex: 'debit', render: (value: string) => formatAmount(value) },
         { title: t('payroll.credit'), dataIndex: 'credit', render: (value: string) => formatAmount(value) },
         { title: t('payroll.balance'), dataIndex: 'balance', render: (value: string) => formatAmount(value) },

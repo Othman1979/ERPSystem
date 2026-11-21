@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, Table, Typography } from 'antd';
 import { DatePicker } from '../../components/DatePicker';
 import type { ColumnsType } from 'antd/es/table';
-import dayjs, { type Dayjs } from 'dayjs';
+import type { Dayjs } from 'dayjs';
+import { formatDate } from '../../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { consumptionControllerRecipeSalesWithoutBom, type RecipeSalesWithoutBomRowDto } from '@erp/api-client';
@@ -36,7 +37,7 @@ export function RecipeSalesWithoutBomPage() {
       title: t('reports.recipeSales.date'),
       dataIndex: 'invoiceDate',
       width: 120,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('reports.recipeSales.recipe'),

@@ -1,6 +1,7 @@
 import { L, type ReportTable } from '../printing/report-table.js';
 import { blankZero, isoDate, localName, periodMeta } from '../printing/report-meta.js';
 import type { ReportRange, ReportsService } from './reports.service.js';
+import { journalEntryDescription } from './entry-description.js';
 
 /** Description of a statement line whose own text is empty (the server leaves it empty, LEDGER-22). */
 function fallbackDescription(
@@ -85,7 +86,9 @@ function statementRows(
       ...data.rows.map((r) => ({
         date: isoDate(r.entryDate),
         entryNo: r.entryNo ?? '',
-        description: r.description || fallbackDescription(r, t),
+        description: r.descriptionKey
+          ? journalEntryDescription(lang, r)
+          : r.description || fallbackDescription(r, t),
         debit: blankZero(r.debit),
         credit: blankZero(r.credit),
         balance: r.balance,

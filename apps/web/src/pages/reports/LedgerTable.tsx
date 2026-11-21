@@ -1,6 +1,7 @@
 import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
+import { formatDate } from '../../format/date';
+import { entryDescription } from '../../i18n/entryDescription';
 import { useTranslation } from 'react-i18next';
 import { Num } from '../../components/Num';
 import { tableLocale, type ListQueryState } from '../../components/QueryState';
@@ -85,7 +86,7 @@ export function LedgerTable({
       title: t('journal.date'),
       dataIndex: 'entryDate',
       width: 110,
-      render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : ''),
+      render: (v: string) => (v ? formatDate(v) : ''),
     },
     ...(withAccount
       ? [
@@ -96,8 +97,7 @@ export function LedgerTable({
     {
       title: t('common.description'),
       dataIndex: 'description',
-      render: (description: string | null, row: Row) =>
-        row.sourceType === 'YEAR_CLOSING' ? t('fiscal.yearClosing') : description,
+      render: (_description: string | null, row: Row) => entryDescription(t, row),
     },
     { title: t('journal.debit'), dataIndex: 'debit', align: 'right', width: 120, render: sideCell },
     { title: t('journal.credit'), dataIndex: 'credit', align: 'right', width: 120, render: sideCell },

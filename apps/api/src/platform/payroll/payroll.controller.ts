@@ -42,6 +42,7 @@ import {
   PayrollSettingsDto,
 } from './dto/payroll-response.dto.js';
 import { PayrollService } from './payroll.service.js';
+import { journalEntryDescription } from '../journal/entry-description.js';
 
 @ApiTags('payroll')
 @Controller('payroll')
@@ -331,7 +332,14 @@ export class PayrollController {
         { key: 'credit', label: lang === 'ar' ? 'دائن' : 'Credit', kind: 'amount' },
         { key: 'balance', label: lang === 'ar' ? 'الرصيد' : 'Balance', kind: 'amount' },
       ],
-      rows: report.rows,
+      rows: report.rows.map((row) => {
+        const {
+          descriptionKey: _descriptionKey,
+          descriptionParams: _descriptionParams,
+          ...data
+        } = row;
+        return { ...data, description: journalEntryDescription(lang, row) };
+      }),
       meta: [report.employeeName, report.from, report.to, report.openingBalance, report.closingBalance],
     }));
   }

@@ -606,6 +606,8 @@ export class PurchaseReturnsService {
           sourceType: SOURCE,
           sourceId: draft.id,
           description: draft.reason ?? `Purchase return ${returnNo}`,
+          descriptionKey: draft.reason == null ? 'journal.auto.purchaseReturn' : null,
+          descriptionParams: draft.reason == null ? { number: returnNo } : undefined,
           lines: journalLines,
           postedBy: userId ?? null,
           // ADR-024 §1.2: onto every income-statement line (expenses, cost, adjustments).

@@ -18,7 +18,8 @@ import {
   Typography,
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
-import dayjs, { type Dayjs } from 'dayjs';
+import type { Dayjs } from 'dayjs';
+import { formatDate, formatDateTime } from '../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -68,7 +69,7 @@ type TenantRow = AdminTenantListItemDto;
 type Subscription = AdminSubscriptionDto;
 type Plan = AdminPlanListItemDto;
 
-const day = (v: string | null | undefined) => (v ? dayjs(v).format('YYYY-MM-DD') : '—');
+const day = (v: string | null | undefined) => (v ? formatDate(v) : '—');
 
 function StatusTag({ status }: { status: Status }) {
   const { t } = useTranslation();
@@ -484,7 +485,7 @@ function ErrorsTab() {
     },
     onError,
   });
-  const when = (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm');
+  const when = (v: string) => formatDateTime(v);
 
   return (
     <>

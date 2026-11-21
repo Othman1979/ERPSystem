@@ -150,6 +150,8 @@ export class CashTransfersService {
           sourceType: SOURCE,
           sourceId: transfer.id,
           description: dto.description ?? `Cash transfer ${transferNo}`,
+          descriptionKey: dto.description == null ? 'journal.auto.cashTransfer' : null,
+          descriptionParams: dto.description == null ? { number: transferNo } : undefined,
           lines: [
             { accountId: BigInt(dto.toAccountId), debit: amount.toString() },
             { accountId: BigInt(dto.fromAccountId), credit: amount.toString() },

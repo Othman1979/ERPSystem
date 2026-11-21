@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
@@ -172,7 +173,7 @@ function QuotesList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
       sorter: true,
       sortOrder: list.sortOrderOf('quoteDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('sales.customer'),
@@ -185,7 +186,7 @@ function QuotesList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
       width: 170,
       render: (v: string | null, r: SalesCycleQuoteListItemDto) => (
         <Space size={6} wrap>
-          {v ? dayjs(v).format('YYYY-MM-DD') : '—'}
+          {v ? formatDate(v) : '—'}
           {isQuoteExpired(r.status, v, today) && <StatusTag tone="warning">{t('salesCycle.expired')}</StatusTag>}
         </Space>
       ),
@@ -697,7 +698,7 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
           <Alert
             type="warning"
             showIcon
-            message={t('salesCycle.expiredNotice', { date: dayjs(quote.validUntil).format('YYYY-MM-DD') })}
+            message={t('salesCycle.expiredNotice', { date: formatDate(quote.validUntil ?? '') })}
           />
         )}
         {linkedOrder && (
@@ -731,10 +732,10 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
             <DocValue>{quote.warehouse ? codeAndName(quote.warehouse) : '—'}</DocValue>
           </DocField>
           <DocField label={t('salesCycle.quoteDate')}>
-            <DocValue>{dayjs(quote.quoteDate).format('YYYY-MM-DD')}</DocValue>
+            <DocValue>{formatDate(quote.quoteDate)}</DocValue>
           </DocField>
           <DocField label={t('salesCycle.validUntil')}>
-            <DocValue>{quote.validUntil ? dayjs(quote.validUntil).format('YYYY-MM-DD') : '—'}</DocValue>
+            <DocValue>{quote.validUntil ? formatDate(quote.validUntil) : '—'}</DocValue>
           </DocField>
           {quote.costCenter && (
             <DocField label={t('costCenters.documentField')}>

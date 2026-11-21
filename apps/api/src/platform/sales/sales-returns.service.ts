@@ -637,6 +637,8 @@ export class SalesReturnsService {
           sourceType: SOURCE,
           sourceId: draft.id,
           description: draft.reason ?? `Sales return ${returnNo}`,
+          descriptionKey: draft.reason == null ? 'journal.auto.salesReturn' : null,
+          descriptionParams: draft.reason == null ? { number: returnNo } : undefined,
           lines: journalLines,
           postedBy: userId ?? null,
           // ADR-024 §1.2: onto the returns and cost lines (income statement).

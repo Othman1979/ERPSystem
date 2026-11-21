@@ -7,5 +7,6 @@ describe('date formatting', () => {
 
     expect(formatDate(value)).toBe('01/01/2031');
     expect(formatDateTime(value)).toBe('01/01/2031 10:05');
+    expect(formatDate('2027-02-28')).toBe('28/02/2027');
   });
 });

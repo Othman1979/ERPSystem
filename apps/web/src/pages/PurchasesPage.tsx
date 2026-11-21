@@ -21,6 +21,7 @@ import { PartyFormDialog } from '../components/PartyFormDialog';
 import { ItemFormDialog } from '../components/ItemFormDialog';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { useTranslation } from 'react-i18next';
@@ -314,7 +315,7 @@ function PurchaseInvoicesTab() {
       sorter: true,
       sortOrder: list.sortOrderOf('invoiceDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('purchases.supplier'),
@@ -1145,10 +1146,10 @@ function PurchaseInvoiceView({
           </DocValue>
         </DocField>
         <DocField label={t('purchases.invoiceDate')}>
-          <DocValue>{dayjs(invoice.invoiceDate).format('YYYY-MM-DD')}</DocValue>
+          <DocValue>{formatDate(invoice.invoiceDate)}</DocValue>
         </DocField>
         <DocField label={t('purchases.dueDate')}>
-          <DocValue>{invoice.dueDate ? dayjs(invoice.dueDate).format('YYYY-MM-DD') : '—'}</DocValue>
+          <DocValue>{invoice.dueDate ? formatDate(invoice.dueDate) : '—'}</DocValue>
         </DocField>
         {costCenters.enabled && invoice.costCenterId && (
           <DocField label={t('costCenters.documentField')}>
@@ -1272,7 +1273,7 @@ function PurchaseReturnsTab() {
       sorter: true,
       sortOrder: list.sortOrderOf('returnDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('purchases.invoice'),
@@ -1373,7 +1374,7 @@ function PurchaseReturnsTab() {
                   <DocValue>{displayName(view.supplier)}</DocValue>
                 </DocField>
                 <DocField label={t('purchases.date')}>
-                  <DocValue>{dayjs(view.returnDate).format('YYYY-MM-DD')}</DocValue>
+                  <DocValue>{formatDate(view.returnDate)}</DocValue>
                 </DocField>
                 <DocField label={t('purchases.refundType')}>
                   <DocValue>{t(`purchases.${view.refundType}`)}</DocValue>

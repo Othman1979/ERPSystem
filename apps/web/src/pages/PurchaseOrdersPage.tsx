@@ -3,6 +3,7 @@ import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { Alert, Button, Input, InputNumber, Popconfirm, Select, Table, Typography, message } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -260,7 +261,7 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
       sorter: true,
       sortOrder: list.sortOrderOf('orderDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('procurement.supplier'),
@@ -955,10 +956,10 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
           <DocValue>{codeAndName(order.warehouse)}</DocValue>
         </DocField>
         <DocField label={t('procurement.orderDate')}>
-          <DocValue>{dayjs(order.orderDate).format('YYYY-MM-DD')}</DocValue>
+          <DocValue>{formatDate(order.orderDate)}</DocValue>
         </DocField>
         <DocField label={t('procurement.expectedDate')}>
-          <DocValue>{order.expectedDate ? dayjs(order.expectedDate).format('YYYY-MM-DD') : '—'}</DocValue>
+          <DocValue>{order.expectedDate ? formatDate(order.expectedDate) : '—'}</DocValue>
         </DocField>
         {order.request && (
           <DocField label={t('procurement.request')}>
@@ -1096,7 +1097,7 @@ function OrderDocuments({ orderId }: { orderId: string }) {
         (r) => r.data,
       ),
   });
-  const docDate = (v: string) => dayjs(v).format('YYYY-MM-DD');
+  const docDate = (v: string) => formatDate(v);
   const docStatus = (v: string) => (
     <StatusTag tone={v === 'POSTED' ? 'success' : 'neutral'}>
       {v === 'POSTED' ? t('common.posted') : t('common.draft')}
@@ -1138,4 +1139,3 @@ function OrderDocuments({ orderId }: { orderId: string }) {
     </section>
   );
 }
-

@@ -14,6 +14,7 @@ import {
   message,
 } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDateTime } from '../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -31,13 +32,11 @@ import { EnterNav } from '../components/EnterNav';
 
 type Invitation = MyInvitationDto;
 
-const DATE_FORMAT = 'YYYY-MM-DD HH:mm';
-
 /** A date and time kept left to right inside the Arabic layout. */
 function LtrDate({ value }: { value: string }) {
   return (
     <span dir="ltr" style={{ unicodeBidi: 'isolate' }}>
-      {dayjs(value).format(DATE_FORMAT)}
+      {formatDateTime(value)}
     </span>
   );
 }

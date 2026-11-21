@@ -450,6 +450,8 @@ export class ChequesService {
             sourceId: event.id,
             branchId: c.branchId,
             description: `Cheque ${c.chequeNo} ${action}`,
+            descriptionKey: `journal.auto.cheque${action[0]!.toUpperCase()}${action.slice(1)}`,
+            descriptionParams: { number: c.chequeNo },
             lines,
             postedBy: userId,
           });
@@ -541,6 +543,8 @@ export class ChequesService {
             entryId: last.journalEntryId,
             reversalDate: date,
             description: `Undo cheque ${c.chequeNo} ${last.action.toLowerCase()}`,
+            descriptionKey: `journal.auto.chequeUndo${last.action[0]!.toUpperCase()}${last.action.slice(1).toLowerCase()}`,
+            descriptionParams: { number: c.chequeNo },
             postedBy: userId,
           });
           undoEntryId = reversal.id;

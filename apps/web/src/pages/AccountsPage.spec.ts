@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { dec } from '../format/number';
 import { selectCashBank } from '../hooks/useAccounts';
-import { applyBalances, buildTree, type Account } from './AccountsPage';
+import {
+  applyBalances,
+  buildTree,
+  debitBalance,
+  debitBalanceSide,
+  expandedKeysForLevel,
+  type Account,
+} from './AccountsPage';
 
 const acc = (
   id: string,
@@ -57,6 +64,30 @@ describe('applyBalances', () => {
     const tree = buildTree([parent, child]);
     applyBalances(tree, new Map([['11', { debit: dec('10'), credit: dec('0') }]]));
     expect(tree[0].balDebit.toString()).toBe('10');
+  });
+});
+
+describe('account tree expansion and balance display', () => {
+  const tree = buildTree([
+    acc('1', '11', null, 'DEBIT'),
+    acc('2', '11-01', '1', 'DEBIT'),
+    { ...acc('3', '11-01-01', '2', 'DEBIT'), level: 3 },
+  ]);
+
+  it('expands only rows needed for each visible level', () => {
+    expect(expandedKeysForLevel(tree, 1)).toEqual([]);
+    expect(expandedKeysForLevel(tree, 2)).toEqual(['1']);
+    expect(expandedKeysForLevel(tree, 3)).toEqual(['1', '2']);
+    expect(expandedKeysForLevel(tree, 'all')).toEqual(['1', '2']);
+  });
+
+  it('shows an absolute balance with its debit or credit side', () => {
+    applyBalances(tree, new Map([['3', { debit: dec('2'), credit: dec('5') }]]));
+    expect(debitBalance(tree[0]).abs().toString()).toBe('3');
+    expect(debitBalanceSide(tree[0])).toBe('CREDIT');
+    applyBalances(tree, new Map([['3', { debit: dec('5'), credit: dec('2') }]]));
+    expect(debitBalance(tree[0]).abs().toString()).toBe('3');
+    expect(debitBalanceSide(tree[0])).toBe('DEBIT');
   });
 });
 

@@ -42,6 +42,8 @@ import {
 import { costCenterOptions, useCostCenters } from '../hooks/useCostCenters';
 import { amountCell, amountOrBlankCell } from '../format/cells';
 import { formatAmount } from '../format/number';
+import { formatDate } from '../format/date';
+import { entryDescription } from '../i18n/entryDescription';
 import { codeAndName } from '../i18n/displayName';
 import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
@@ -242,7 +244,7 @@ export function OpeningBalancesPage() {
       content: (
         <Space direction="vertical" size={2}>
           <span>
-            {t('journal.date')}: <strong><Num>{entryDate.format('YYYY-MM-DD')}</Num></strong>
+            {t('journal.date')}: <strong><Num>{formatDate(entryDate.format('YYYY-MM-DD'))}</Num></strong>
           </span>
           <span>
             {t('journal.debit')}: <Num>{formatAmount(plug.totalDebit)}</Num> — {t('journal.credit')}:{' '}
@@ -314,12 +316,13 @@ export function OpeningBalancesPage() {
                 sorter: true,
                 sortOrder: list.sortOrderOf('entryDate'),
                 width: 120,
-                render: (v: string) => day(v),
+                render: (v: string) => formatDate(v),
               },
               {
                 title: t('common.description'),
                 dataIndex: 'description',
-                render: (v: string | null) => v ?? '—',
+                render: (_v: string | null, row: JournalEntryListItemDto) =>
+                  entryDescription(t, row) || '—',
               },
               {
                 title: t('common.status'),
@@ -373,10 +376,10 @@ export function OpeningBalancesPage() {
         >
           <DocFields>
             <DocField label={t('journal.date')}>
-              <DocValue>{entry ? day(entry.entryDate) : '—'}</DocValue>
+              <DocValue>{entry ? formatDate(entry.entryDate) : '—'}</DocValue>
             </DocField>
             <DocField label={t('common.description')} wide>
-              <DocValue>{entry?.description ?? '—'}</DocValue>
+              <DocValue>{entry ? entryDescription(t, entry) || '—' : '—'}</DocValue>
             </DocField>
             {entry?.reversalOf && (
               <DocField label={t('journal.reversalOf')}>

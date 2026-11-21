@@ -65,6 +65,8 @@ export interface PostEntryParams {
   isOpening?: boolean;
   isClosing?: boolean;
   description?: string | null;
+  descriptionKey?: string | null;
+  descriptionParams?: Prisma.InputJsonValue;
   lines: JournalLineInput[];
   postedBy?: bigint | null;
   /**
@@ -342,6 +344,8 @@ export class PostingService {
           voucherType: params.voucherType ?? 'JOURNAL',
           status: 'POSTED',
           description: params.description ?? null,
+          descriptionKey: params.descriptionKey ?? null,
+          descriptionParams: params.descriptionParams ?? Prisma.DbNull,
           totalDebit,
           totalCredit,
           reversalOfId: params.reversalOfId ?? null,
@@ -403,6 +407,8 @@ export class PostingService {
       reversalDate: Date;
       isClosing?: boolean;
       description?: string | null;
+      descriptionKey?: string | null;
+      descriptionParams?: Prisma.InputJsonValue;
       postedBy?: bigint | null;
     },
   ) {
@@ -421,6 +427,10 @@ export class PostingService {
       include: { lines: { orderBy: { lineNo: 'asc' } } },
     });
     if (!original) throw DomainError.notFound('JournalEntry', params.entryId.toString());
+    const inheritDescription =
+      params.description === undefined &&
+      params.descriptionKey === undefined &&
+      original.descriptionKey !== null;
     if (original.status !== 'POSTED') {
       throw new DomainError(ErrorCode.ENTRY_NOT_POSTED, 'Only posted entries can be reversed', {
         entryId: original.id.toString(),
@@ -483,7 +493,19 @@ export class PostingService {
       // A reversed opening entry stays in the opening balance (it nets out).
       isOpening: original.isOpening,
       isClosing: params.isClosing ?? original.isClosing,
-      description: params.description ?? null,
+      description:
+        params.description !== undefined
+          ? params.description
+          : inheritDescription
+            ? original.description
+            : null,
+      descriptionKey:
+        params.descriptionKey ?? (inheritDescription ? original.descriptionKey : null),
+      descriptionParams:
+        params.descriptionParams ??
+        (inheritDescription && original.descriptionParams !== null
+          ? (original.descriptionParams as Prisma.InputJsonValue)
+          : undefined),
       lines: swapped,
       postedBy: params.postedBy ?? null,
     });

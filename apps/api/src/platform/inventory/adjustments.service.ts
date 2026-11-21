@@ -392,6 +392,18 @@ export class AdjustmentsService {
             // Opening stock is part of the opening balances in reports (§8.6).
             isOpening: draft.adjustmentType === 'OPENING',
             description: draft.description ?? `Stock adjustment ${draft.adjustmentType}`,
+            descriptionKey:
+              draft.adjustmentType === 'COUNT_ADJUSTMENT' &&
+              draft.description?.startsWith('Stock count ')
+                ? 'journal.auto.stockCount'
+                : draft.description == null
+                  ? `journal.auto.stockAdjustment.${draft.adjustmentType.toLowerCase()}`
+                  : null,
+            descriptionParams:
+              draft.adjustmentType === 'COUNT_ADJUSTMENT' &&
+              draft.description?.startsWith('Stock count ')
+                ? { number: draft.description.slice('Stock count '.length) }
+                : undefined,
             lines: journalLines,
             postedBy: userId ?? null,
           });
@@ -544,6 +556,8 @@ export class AdjustmentsService {
             reversalOfId: original.journalEntryId,
             isOpening: original.adjustmentType === 'OPENING',
             description: `Reversal of adjustment ${original.docNo ?? original.id}`,
+            descriptionKey: 'journal.auto.stockAdjustmentReversal',
+            descriptionParams: { number: original.docNo ?? original.id.toString() },
             lines: journalLines,
             postedBy: userId ?? null,
           });

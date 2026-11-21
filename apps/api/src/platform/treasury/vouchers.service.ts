@@ -348,6 +348,8 @@ export class VouchersService implements OnModuleInit {
           branchId, // ADR-003: the entry carries its voucher's branch
           voucherType: 'RECEIPT_VOUCHER',
           description: dto.description ?? `Receipt ${receiptNo}`,
+          descriptionKey: dto.description == null ? 'journal.auto.receipt' : null,
+          descriptionParams: dto.description == null ? { number: receiptNo } : undefined,
           lines: [
             { accountId: debitAccount, debit: amount.toString() },
             {
@@ -618,6 +620,8 @@ export class VouchersService implements OnModuleInit {
           branchId, // ADR-003: the entry carries its voucher's branch
           voucherType: 'PAYMENT_VOUCHER',
           description: dto.description ?? `Payment ${paymentNo}`,
+          descriptionKey: dto.description == null ? 'journal.auto.payment' : null,
+          descriptionParams: dto.description == null ? { number: paymentNo } : undefined,
           lines: [
             ...debitLines,
             { accountId: creditAccount, credit: amount.toString() },

@@ -1,6 +1,6 @@
 import { EInvoiceStatus as EINVOICE_STATUS, type EInvoiceErrorDto, type EInvoiceStateDto } from '@erp/api-client';
 import { Alert, QRCode, Tag, Tooltip } from 'antd';
-import dayjs from 'dayjs';
+import { formatDateTime } from '../../format/date';
 import { useTranslation } from 'react-i18next';
 import { Num } from '../../components/Num';
 
@@ -90,7 +90,7 @@ export function EInvoiceQrPanel({ einvoice }: { einvoice?: EInvoiceState | null 
         </span>
         {einvoice.completedAt && (
           <span>
-            {t('einvoice.completedAt')}: <Num>{dayjs(einvoice.completedAt).format('YYYY-MM-DD HH:mm')}</Num>
+            {t('einvoice.completedAt')}: <Num>{formatDateTime(einvoice.completedAt)}</Num>
           </span>
         )}
         {einvoice.environment === 'SANDBOX' && (

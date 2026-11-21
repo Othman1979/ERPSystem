@@ -19,6 +19,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
@@ -682,7 +683,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
       sorter: true,
       sortOrder: list.sortOrderOf(dateKey),
       width: 110,
-      render: (_: unknown, v: Voucher) => dayjs(voucherDateOf(v)).format('YYYY-MM-DD'),
+      render: (_: unknown, v: Voucher) => formatDate(voucherDateOf(v)),
     },
     {
       title: t('parties.name'),
@@ -799,7 +800,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
             <>
               <DocFields>
                 <DocField label={t('treasury.date')}>
-                  <DocValue>{dayjs(voucherDateOf(view)).format('YYYY-MM-DD')}</DocValue>
+                  <DocValue>{formatDate(voucherDateOf(view))}</DocValue>
                 </DocField>
                 <DocField label={t('parties.name')}>
                   <DocValue>{view.party ? displayName(view.party) : '—'}</DocValue>

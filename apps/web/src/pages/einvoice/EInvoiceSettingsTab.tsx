@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiOutlined, BankOutlined, SaveOutlined, SendOutlined } from '@ant-design/icons';
 import { Alert, App, Button, ConfigProvider, Form, Input, Radio, Skeleton, Switch, message } from 'antd';
-import dayjs from 'dayjs';
+import { formatDateTime } from '../../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -263,7 +263,7 @@ export function EInvoiceSettingsTab() {
             </Form.Item>
             <Form.Item label={t('einvoice.enabledAt')}>
               <div className="doc-field-value">
-                {data.enabledAt ? <Num>{dayjs(data.enabledAt).format('YYYY-MM-DD HH:mm')}</Num> : '—'}
+                {data.enabledAt ? <Num>{formatDateTime(data.enabledAt)}</Num> : '—'}
               </div>
             </Form.Item>
           </FormSection>
