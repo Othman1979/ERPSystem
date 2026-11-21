@@ -714,7 +714,6 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         // sees what was committed before both locks (see assertGrnBillable).
         const [head] = await tx.$queryRaw<{ received_grn_id: bigint | null }[]>`
           SELECT received_grn_id FROM purchase_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
-        await this.documentLocks.assertNotLockedByOther(tx, 'PURCHASE_INVOICE', id);
         const lockedGrn =
           head?.received_grn_id != null ? await this.goodsNotes.lockForBilling(tx, BigInt(head.received_grn_id)) : null;
         const draft = await tx.purchaseInvoice.findFirst({
@@ -723,10 +722,11 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         });
         if (!draft) throw DomainError.notFound('PurchaseInvoice', id.toString());
         await assertWarehouseBranchAllowed(tx, draft.warehouseId);
+        assertBranchAllowed(draft.branchId);
+        await this.documentLocks.assertNotLockedByOther(tx, 'PURCHASE_INVOICE', id);
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Invoice is not a draft');
         }
-        assertBranchAllowed(draft.branchId);
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Invoice has no lines');
         }
@@ -920,17 +920,17 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       return db.$transaction(async (tx) => {
         const { order, received } = await this.lockReceiptBillingWithOrder(tx, tenantId, companyId, orderId, grnIds);
         await tx.$queryRaw`SELECT id FROM purchase_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
-        await this.documentLocks.assertNotLockedByOther(tx, 'PURCHASE_INVOICE', id);
         const draft = await tx.purchaseInvoice.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' }, include: { receipts: { orderBy: { id: 'asc' } } } } },
         });
         if (!draft) throw DomainError.notFound('PurchaseInvoice', id.toString());
+        assertBranchAllowed(draft.branchId);
+        await assertWarehouseBranchAllowed(tx, draft.warehouseId);
+        await this.documentLocks.assertNotLockedByOther(tx, 'PURCHASE_INVOICE', id);
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Invoice is not a draft');
         }
-        assertBranchAllowed(draft.branchId);
-        await assertWarehouseBranchAllowed(tx, draft.warehouseId);
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Invoice has no lines');
         }

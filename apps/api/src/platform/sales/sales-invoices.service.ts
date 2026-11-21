@@ -1249,17 +1249,17 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         // makes every later read see the latest committed state, so two
         // concurrent requests cannot both post or reverse it.
         await tx.$queryRaw`SELECT id FROM sales_invoices WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
-        await this.documentLocks.assertNotLockedByOther(tx, 'SALES_INVOICE', id);
         const draft = await tx.salesInvoice.findFirst({
           where: { id },
           include: { lines: { orderBy: { lineNo: 'asc' } } },
         });
         if (!draft) throw DomainError.notFound('SalesInvoice', id.toString());
         await assertWarehouseBranchAllowed(tx, draft.warehouseId);
+        assertBranchAllowed(draft.branchId);
+        await this.documentLocks.assertNotLockedByOther(tx, 'SALES_INVOICE', id);
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Invoice is not a draft');
         }
-        assertBranchAllowed(draft.branchId);
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Invoice has no lines');
         }

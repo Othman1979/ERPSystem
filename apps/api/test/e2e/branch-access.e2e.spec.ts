@@ -10,6 +10,7 @@
  * Real MariaDB (erp_test) + built API. Run `pnpm build` before `pnpm test`.
  */
 import 'dotenv/config';
+import { randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import path from 'node:path';
@@ -207,6 +208,27 @@ describe('Branch access (BranchGuard, ADR-003)', () => {
       status: string;
     }[];
     expect(row.status).toBe('DRAFT');
+  });
+
+  it('checks branch access before reporting another holder of a locked invoice', async () => {
+    const inv = await api().post('/api/v1/sales-invoices').set(auth(owner)).set('X-Branch-Id', b2Id).send(invoiceBody());
+    expect(inv.status).toBe(201);
+    const holderToken = randomUUID();
+    const lock = await api()
+      .post(`/api/v1/document-locks/SALES_INVOICE/${inv.body.id}/acquire`)
+      .set(auth(owner))
+      .set('X-Edit-Lock', holderToken);
+    expect(lock.status).toBe(201);
+
+    const res = await api().post(`/api/v1/sales-invoices/${inv.body.id}/post`).set(auth(cashier)).set(idem());
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+
+    const released = await api()
+      .delete(`/api/v1/document-locks/SALES_INVOICE/${inv.body.id}`)
+      .set(auth(owner))
+      .set('X-Edit-Lock', holderToken);
+    expect(released.status).toBe(204);
   });
 
   it('cashier creates and posts on MAIN', async () => {
