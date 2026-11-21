@@ -322,6 +322,16 @@ describe('Phase 28C payroll settlements', () => {
     expect(new Decimal(posted.eosAmount).gt(draft.eosAmount)).toBe(true);
   });
 
+  it('prices a mid-month hire provision using the full monthly wage', async () => {
+    const company = await createCompany('MID-HIRE', true);
+    const newHire = await employee(company, 'MID-HIRE', '2026-06-16', '2027-12-31', '3000.000', false, '300.000');
+    const june = await run(company.id, '2026-06');
+    expect(employeeLine(june, newHire.id)).toEqual(expect.objectContaining({
+      basic: '1500',
+      leaveProvision: '63.8',
+    }));
+  });
+
   it('prorates EN1, encashes annual leave, releases leave provision, and refuses settlement for SSC staff', async () => {
     const company = await createCompany('EN1', true);
     const leaver = await employee(company, 'EN1', '2026-07-01', '2026-09-20', '600.000', true, '40.000');

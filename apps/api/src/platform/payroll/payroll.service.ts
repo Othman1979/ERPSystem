@@ -1230,12 +1230,28 @@ export class PayrollService {
       if (laterRun) throw new DomainError(ErrorCode.PAYROLL_LATER_RUN_POSTED, 'A later payroll period is already posted');
       const taxes = new Map(draft.lines.filter((line) => line.taxManual).map((line) => [line.employeeId, line.incomeTax.toString()]));
       await this.computeRun(tx, tenantId, companyId, id, draft.period, taxes);
+      const { end: periodEnd } = periodBounds(draft.period);
       const run = await tx.payrollRun.findFirst({
         where: { id },
         include: {
           lines: {
             include: {
-              employee: { select: { branchId: true, costCenterId: true, hireDate: true, leaveDate: true } },
+              employee: {
+                select: {
+                  branchId: true,
+                  costCenterId: true,
+                  hireDate: true,
+                  leaveDate: true,
+                  salaries: { where: { effectiveFrom: { lte: periodEnd } }, orderBy: [{ effectiveFrom: 'desc' }] },
+                  recurringElements: {
+                    where: {
+                      validFrom: { lte: periodEnd },
+                      OR: [{ validTo: null }, { validTo: { gte: periodEnd } }],
+                    },
+                    include: { payElement: { select: { isFixedAllowance: true } } },
+                  },
+                },
+              },
               items: {
                 include: {
                   payElement: {
@@ -1259,7 +1275,6 @@ export class PayrollService {
         if (!idForMapping) throw new DomainError(ErrorCode.MAPPING_ACCOUNT_INVALID, `Missing mapping ${key}`);
         return idForMapping;
       };
-      const periodEnd = periodBounds(run.period).end;
       const year = periodEnd.getUTCFullYear();
       const annualLeaveType = await tx.leaveType.findFirst({ where: { category: 'ANNUAL', isActive: true } });
       const employeesWithLines = run.lines.map((line) => line.employeeId);
@@ -1360,12 +1375,13 @@ export class PayrollService {
             .plus(accruedToDate)
             .plus(adjustmentByYear.get(year) ?? 0)
             .minus(taken.get(year) ?? 0);
-          const fixedAllowances = line.items
-            .filter((item) => item.payElement?.isFixedAllowance && item.payrollMovementId === null && item.leaveRequestId === null)
-            .map((item) => item.amount);
+          const fullBasic = latestEffectiveOnDate(line.employee.salaries, periodEnd)?.basicSalary ?? line.basic;
+          const fixedAllowances = line.employee.recurringElements
+            .filter((item) => item.payElement.isFixedAllowance)
+            .map((item) => item.amount ?? new Decimal(0));
           provision = calculateLeaveProvision({
             unusedDays,
-            basic: line.basic,
+            basic: fullBasic,
             fixedAllowances,
             daysPerMonth: currentSettings?.daysPerMonth ?? '30',
           });
