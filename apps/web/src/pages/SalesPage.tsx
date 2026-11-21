@@ -847,7 +847,7 @@ function InvoiceForm({
                 ? (typedText) => setQuickCreate({ kind: 'party', typedText })
                 : undefined
             }
-            createNewLabel={t('parties.add')}
+            createNewLabel={t('parties.new')}
           />
         </DocField>
         <DocField

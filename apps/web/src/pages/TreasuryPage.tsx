@@ -1188,7 +1188,7 @@ function VoucherForm({
             onCreateNew={
               can(PERMISSIONS.PARTIES_MANAGE) ? (text) => setQuickCreateParty(text) : undefined
             }
-            createNewLabel={t('parties.add')}
+            createNewLabel={t('parties.new')}
           />
         </DocField>
         <DocField field="method" label={t('cheques.method')}>

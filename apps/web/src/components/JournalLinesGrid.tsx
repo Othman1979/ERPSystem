@@ -303,7 +303,7 @@ export function JournalLinesGrid({
                         onCreateNew={
                           onCreateParty ? (text) => onCreateParty(l.key, row, kind, text) : undefined
                         }
-                        createNewLabel={t('parties.add')}
+                        createNewLabel={t('parties.new')}
                         style={{ width: '100%' }}
                         size="small"
                       />
