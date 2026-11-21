@@ -686,6 +686,23 @@ describe('Ledger review fixes (2026-11-13) — chart, mappings, fiscal years, re
     expect(refreshedAccounts.find((account) => account.code === '1102')?.isPostable).toBe(false);
   });
 
+  it('auto-allocates a child code when the request code is null', async () => {
+    const accounts = (await api().get('/api/v1/accounts').set(auth(tokenB))).body as AccountRow[];
+    const cashParent = accounts.find((account) => account.code === '1101')!;
+    const child = await api()
+      .post('/api/v1/accounts')
+      .set(auth(tokenB))
+      .send({ code: null, nameAr: 'Null code child', parentId: cashParent.id, accountType: 'ASSET' });
+    expect(child.status).toBe(201);
+    expect((child.body as AccountRow).code).toBe('1101-02');
+
+    const root = await api()
+      .post('/api/v1/accounts')
+      .set(auth(tokenB))
+      .send({ code: null, nameAr: 'Root without code', accountType: 'ASSET' });
+    expectRefused(root, 400, 'VALIDATION');
+  });
+
   it('refuses first children that cannot keep a mapped account usable', async () => {
     const rootCode = `9${Date.now()}`;
     const parentResponse = await api()

@@ -248,7 +248,11 @@ export class AccountsService {
     if (!dto.code && !parent) {
       throw new DomainError(ErrorCode.VALIDATION, 'code is required for a root account');
     }
-    if (parent && dto.code !== undefined && (!dto.code.startsWith(parent.code) || dto.code.length <= parent.code.length)) {
+    if (
+      parent &&
+      typeof dto.code === 'string' &&
+      (!dto.code.startsWith(parent.code) || dto.code.length <= parent.code.length)
+    ) {
       throw new DomainError(
         ErrorCode.VALIDATION,
         'A child account code must start with its parent code and be longer',
