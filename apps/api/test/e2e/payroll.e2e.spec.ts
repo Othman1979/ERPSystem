@@ -1527,6 +1527,11 @@ describe('Leave payroll effects and provision', () => {
     const unpaidType = types.find((type) => type.code === 'UNPAID')!;
     const maternityType = types.find((type) => type.code === 'MATERNITY')!;
     const annualType = types.find((type) => type.code === 'ANNUAL')!;
+    const impossibleHoliday = await act(token, 'payroll/holidays', {
+      date: '2026-02-30', nameAr: 'Invalid date',
+    }, company.id);
+    expect(impossibleHoliday.status).toBe(400);
+    expect(impossibleHoliday.body.error.code).toBe('VALIDATION');
     expect(unpaidType.payElementId).toBeTruthy();
     expect(maternityType.payElementId).toBeTruthy();
     const elements = h.ok(await get(token, 'payroll/elements', company.id), 200, 'leave pay elements') as Array<{
@@ -1550,6 +1555,12 @@ describe('Leave payroll effects and provision', () => {
     expect(invalidUpdateType.status).toBe(400);
     expect(invalidUpdateType.body.error.code).toBe('PAYROLL_ACCOUNT_INVALID');
     const unpaidEmployee = await createEmployee('LV3', '600.000');
+    const impossibleRequest = await act(token, 'payroll/leave-requests', {
+      employeeId: unpaidEmployee.id, leaveTypeId: annualType.id,
+      startDate: '2026-02-30', endDate: '2026-03-01',
+    }, company.id);
+    expect(impossibleRequest.status).toBe(400);
+    expect(impossibleRequest.body.error.code).toBe('VALIDATION');
     const cappedUnpaidEmployee = await createEmployee('LV30', '600.000');
     const maternityEmployee = await createEmployee('LV4', '900.000');
     const nonSscEmployee = await createEmployee('LV4-NONSSC', '900.000', false);

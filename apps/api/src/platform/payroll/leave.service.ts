@@ -5,6 +5,7 @@ import { Decimal } from '../../common/decimal/decimal.utils.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { calendarDate } from '../../common/validation/calendar-date.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { Prisma, type LeaveCategory, type LeaveCountBasis } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -234,7 +235,7 @@ export class LeaveService {
     this.assertManage();
     const { tenantId, companyId, db } = this.context();
     const row = await db.publicHoliday.create({
-      data: { tenantId, companyId, date: asDate(dto.date), nameAr: dto.nameAr, nameEn: dto.nameEn ?? null },
+      data: { tenantId, companyId, date: calendarDate(dto.date, 'date'), nameAr: dto.nameAr, nameEn: dto.nameEn ?? null },
     });
     return { id: row.id.toString(), date: dateString(row.date), nameAr: row.nameAr, nameEn: row.nameEn };
   }
@@ -264,8 +265,8 @@ export class LeaveService {
 
   async createRequest(dto: CreateLeaveRequestDto) {
     const { tenantId, companyId, db, cls } = this.context();
-    const startDate = asDate(dto.startDate);
-    const endDate = asDate(dto.endDate);
+    const startDate = calendarDate(dto.startDate, 'startDate');
+    const endDate = calendarDate(dto.endDate, 'endDate');
     if (endDate < startDate) throw new DomainError(ErrorCode.VALIDATION, 'Leave end date precedes start date');
     return db.$transaction(async (tx) => {
       await this.lockCompany(tx, tenantId, companyId);
