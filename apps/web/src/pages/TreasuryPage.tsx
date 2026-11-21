@@ -102,6 +102,7 @@ type VoucherDetail = ReceiptDetailDto | PaymentDetailDto;
 type OpenInvoice = SalesInvoiceListItemDto | PurchaseInvoiceListItemDto;
 
 interface VoucherEntryDraft {
+  idemKey?: string;
   voucherDate: string;
   partyType: 'CUSTOMER' | 'SUPPLIER';
   partyId: string | null;
@@ -917,7 +918,7 @@ function VoucherForm({
   const costCenters = useCostCenters();
   const [costCenterId, setCostCenterId] = useState<string | undefined>();
   // One key per opened form: a double-click or retry replays, never posts twice.
-  const idemKey = useMemo(() => crypto.randomUUID(), []);
+  const [idemKey, setIdemKey] = useState(() => crypto.randomUUID());
 
   const lookups = useTreasuryLookups();
 
@@ -944,6 +945,7 @@ function VoucherForm({
   const cashAccountLabel =
     cashAccountOptions.find((option) => option.value === cashAccountId)?.label ?? null;
   const draftValue: VoucherEntryDraft = {
+    idemKey,
     voucherDate: voucherDate.format('YYYY-MM-DD'),
     partyType,
     partyId: partyId ?? null,
@@ -991,6 +993,7 @@ function VoucherForm({
     dirtyValue: businessValue(draftValue),
     initialDirtyValue: businessValue(initialDraft.current),
     onRestore: (draft) => {
+      setIdemKey(draft.idemKey || crypto.randomUUID());
       setVoucherDate(dayjs(draft.voucherDate));
       setPartyType(draft.partyType);
       setPartyId(draft.partyId ?? undefined);
