@@ -22,6 +22,7 @@ afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
   client?.clear();
+  window.sessionStorage.removeItem('erp:edit-lock-token');
   vi.restoreAllMocks();
   vi.useRealTimers();
   host?.remove();
@@ -31,6 +32,7 @@ afterEach(() => {
 describe('useDocumentLockStatus', () => {
   it('polls the lock status on the configured interval', async () => {
     vi.useFakeTimers();
+    window.sessionStorage.setItem('erp:edit-lock-token', 'lock-token-42');
     vi.spyOn(api, 'documentLocksControllerStatus').mockResolvedValue({
       data: { holder: null },
     } as never);
@@ -48,6 +50,11 @@ describe('useDocumentLockStatus', () => {
       for (let i = 0; i < 5; i += 1) await Promise.resolve();
     });
     expect(api.documentLocksControllerStatus).toHaveBeenCalledTimes(1);
+    expect(api.documentLocksControllerStatus).toHaveBeenCalledWith(
+      'JOURNAL_ENTRY',
+      '42',
+      expect.objectContaining({ headers: { 'X-Edit-Lock': 'lock-token-42' } }),
+    );
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(LOCK_STATUS_MS);

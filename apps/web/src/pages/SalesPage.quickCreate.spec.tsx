@@ -266,6 +266,9 @@ describe('SalesPage live document locks', () => {
     await renderPage('/sales?invoiceId=invoice-1');
     await settle();
     expect(document.body.textContent).not.toContain('Being edited now by');
+    expect(
+      [...host.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Edit')?.disabled,
+    ).toBe(false);
 
     act(() => root?.unmount());
     root = undefined;
