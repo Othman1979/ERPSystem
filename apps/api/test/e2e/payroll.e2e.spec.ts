@@ -1787,4 +1787,63 @@ describe('Leave payroll effects and provision', () => {
     expect(await postAndReadProvision('2026-11')).toBe('236.2');
     expect(await postAndReadProvision('2026-12')).toBe('140');
   });
+
+  it('tracks EOS provision deltas when the annual leave type is inactive', async () => {
+    const company = h.ok(
+      await h.api().post('/api/v1/companies').set(h.auth(tokenA)).send({ legalNameAr: `EOS baseline ${RUN}` }),
+      201,
+      'create EOS baseline company',
+    ) as { id: string };
+    const branch = (h.ok(await get(tokenA, 'branches', company.id), 200, 'EOS baseline branch') as { id: string }[])[0]!;
+    const costCentre = await post<{ id: string }>(tokenA, 'cost-centers', {
+      code: `EOSB-${RUN}`, nameAr: 'EOS baseline',
+    }, 'EOS baseline cost centre', company.id);
+    h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', company.id).send({
+      code: '2026', startDate: '2026-01-01', endDate: '2026-12-31',
+    }), 201, 'create EOS baseline fiscal year');
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `EOSB-${RUN}`, nameAr: 'EOS baseline employee', hireDate: '2026-01-01',
+      branchId: branch.id, costCenterId: costCentre.id, payMethod: 'CASH', sscCovered: false,
+    }, 'EOS baseline employee', company.id);
+    await post(tokenA, `payroll/employees/${employee.id}/salaries`, {
+      effectiveFrom: '2026-01-01', basicSalary: '1000.000',
+    }, 'EOS baseline salary', company.id);
+    const annual = (h.ok(await get(tokenA, 'payroll/leave-types', company.id), 200, 'EOS baseline leave types') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'ANNUAL')!;
+    h.ok(await h.api().patch(`/api/v1/payroll/leave-types/${annual.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', company.id).send({ isActive: false }), 200, 'deactivate annual leave type');
+
+    const postRun = async (period: string) => {
+      const draft = h.ok(await act(tokenA, 'payroll/runs', { period }, company.id), 201, `${period} EOS baseline run`) as { id: string };
+      await post(tokenA, `payroll/runs/${draft.id}/post`, {}, `post ${period} EOS baseline run`, company.id);
+      return h.ok(await get(tokenA, `payroll/runs/${draft.id}`, company.id), 200, `${period} EOS baseline detail`) as {
+        leaveProvisionEntryId: string | null;
+        lines: Array<{ employeeId: string; eosProvision: string }>;
+      };
+    };
+    const january = await postRun('2026-01');
+    const february = await postRun('2026-02');
+    const januaryLine = january.lines.find((line) => line.employeeId === employee.id)!;
+    const februaryLine = february.lines.find((line) => line.employeeId === employee.id)!;
+    const expectedDelta = new Decimal(februaryLine.eosProvision).minus(januaryLine.eosProvision).toFixed(3);
+    expect(new Decimal(expectedDelta).gt(0)).toBe(true);
+    expect(expectedDelta).not.toBe(februaryLine.eosProvision);
+    expect(january.leaveProvisionEntryId).toBeTruthy();
+    expect(february.leaveProvisionEntryId).toBeTruthy();
+
+    const februaryLines = (await boot.db.query(
+      `SELECT a.code, CAST(l.debit AS CHAR) AS debit, CAST(l.credit AS CHAR) AS credit
+         FROM journal_entries e
+         JOIN journal_lines l ON l.tenant_id = e.tenant_id AND l.journal_entry_id = e.id
+         JOIN accounts a ON a.tenant_id = l.tenant_id AND a.id = l.account_id
+        WHERE e.tenant_id = ? AND e.company_id = ? AND e.id = ? AND a.code IN ('2110', '5208')
+        ORDER BY a.code`,
+      [tenantId, BigInt(company.id), BigInt(february.leaveProvisionEntryId!)],
+    )) as Array<{ code: string; debit: string; credit: string }>;
+    expect(februaryLines.map((line) => [line.code, line.debit, line.credit])).toEqual([
+      ['2110', '0.000', expectedDelta],
+      ['5208', expectedDelta, '0.000'],
+    ]);
+  });
 });

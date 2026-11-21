@@ -1202,7 +1202,16 @@ export class PayrollService {
       const year = periodEnd.getUTCFullYear();
       const annualLeaveType = await tx.leaveType.findFirst({ where: { category: 'ANNUAL', isActive: true } });
       const employeesWithLines = run.lines.map((line) => line.employeeId);
-      const [leaveSettings, annualRequests, leaveAdjustments, priorRuns, leaveHolidays] = annualLeaveType
+      const priorRuns = await tx.payrollRun.findMany({
+        where: {
+          period: { lt: run.period },
+          status: { in: ['POSTED', 'PAID'] },
+          lines: { some: { employeeId: { in: employeesWithLines } } },
+        },
+        include: { lines: { where: { employeeId: { in: employeesWithLines } }, select: { employeeId: true, leaveProvision: true, eosProvision: true } } },
+        orderBy: [{ period: 'desc' }],
+      });
+      const [leaveSettings, annualRequests, leaveAdjustments, leaveHolidays] = annualLeaveType
         ? await Promise.all([
             tx.payrollSettings.findMany({ where: { effectiveFrom: { lte: periodEnd } }, orderBy: [{ effectiveFrom: 'asc' }] }),
             tx.leaveRequest.findMany({
