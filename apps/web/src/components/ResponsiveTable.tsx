@@ -45,7 +45,7 @@ export function ResponsiveTable<T extends object>(props: TableProps<T> & { mobil
     ? rows
     : rows.slice((current - 1) * pageSize, current * pageSize);
   const emptyText = typeof locale?.emptyText === 'function' ? locale.emptyText() : locale?.emptyText;
-  const spinning = typeof loading === 'object' ? loading.spinning ?? true : loading;
+  const spinning = typeof loading === 'object' ? loading.spinning ?? true : Boolean(loading);
 
   const changePage = (nextCurrent: number, nextPageSize: number) => {
     if (paginationConfig.current === undefined) setLocalCurrent(nextCurrent);
