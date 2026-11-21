@@ -271,6 +271,26 @@ describe('payroll page payloads and run actions', () => {
     await until(() => expect(api.postRun).toHaveBeenCalledTimes(1));
   });
 
+  it('does not set manual tax on an unchanged blur, but saves a changed amount', async () => {
+    await mount('/payroll?tab=runs&new=1');
+    await until(() => expect(host?.querySelector('.ant-table .ant-input')).not.toBeNull());
+
+    const taxInput = host!.querySelector<HTMLInputElement>('.ant-table .ant-input')!;
+    act(() => {
+      taxInput.focus();
+      taxInput.blur();
+    });
+    expect(api.setIncomeTax).not.toHaveBeenCalled();
+
+    setInputValue(taxInput, '12.500');
+    act(() => {
+      taxInput.focus();
+      taxInput.blur();
+    });
+    await until(() => expect(api.setIncomeTax).toHaveBeenCalledTimes(1));
+    expect(api.setIncomeTax).toHaveBeenCalledWith(run.id, run.lines[0]!.id, { incomeTax: '12.500' });
+  });
+
   it('resets a manual tax override from the run line', async () => {
     const manualRun = {
       ...run,

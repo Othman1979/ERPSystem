@@ -47,7 +47,7 @@ import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
-import { formatAmount, formatQty } from '../format/number';
+import { formatAmount, formatQty, toDecimal } from '../format/number';
 import { formatDate } from '../format/date';
 import { DatePicker } from '../components/DatePicker';
 import { ExportButtons, saveBlob } from '../components/ExportButtons';
@@ -591,6 +591,7 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
       { title: t('payroll.taxableIncome'), dataIndex: 'taxableIncome', render: (v: string) => formatAmount(v) },
       { title: t('payroll.incomeTax'), dataIndex: 'incomeTax', render: (v: string, row) => available.taxEditable && can(PERMISSIONS.PAYROLL_MANAGE) ? <Space>
         <Input defaultValue={v} onBlur={(e) => {
+        if (toDecimal(e.target.value)?.eq(row.incomeTax)) return;
         const save = payrollControllerSetIncomeTax(data.id, row.id, { incomeTax: e.target.value });
         pendingIncomeTaxSaves.current.add(save);
         void save.then(() => qc.invalidateQueries({ queryKey: ['payroll', 'run', runId] }))
