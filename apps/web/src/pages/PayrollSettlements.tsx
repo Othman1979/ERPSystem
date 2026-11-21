@@ -204,7 +204,7 @@ export function PayrollSettlementsTab() {
         { title: t('payroll.status'), dataIndex: 'status', render: (value: PayrollSettlementDtoStatus) => <Tag>{t(`payroll.${value.toLowerCase()}`)}</Tag> },
         { title: t('payroll.settlementEosAmount'), dataIndex: 'eosAmount', render: (value: string) => formatAmount(value) },
         { title: t('payroll.settlementNet'), dataIndex: 'net', render: (value: string) => formatAmount(value) },
-        { title: '', render: (_: unknown, row: PayrollSettlementDto) => (
+        { title: t('common.actions'), key: 'actions', render: (_: unknown, row: PayrollSettlementDto) => (
           <Button onClick={() => setSelectedId(row.id)}>{t('payroll.viewSettlement')}</Button>
         ) },
       ]}

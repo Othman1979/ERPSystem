@@ -351,7 +351,7 @@ export function ProductionEditor({
       render: (_: unknown, line: ProductionLineForm) => <VarianceCell line={line} />,
     },
     {
-      title: '',
+      title: t('common.actions'), key: 'actions',
       width: 48,
       render: (_: unknown, line: ProductionLineForm) => (
         <Button
@@ -606,7 +606,7 @@ function ShortagePanel({
             ),
           },
           {
-            title: '',
+            title: t('common.actions'), key: 'actions',
             width: 170,
             render: (_: unknown, l: ProductionVoucherLineDetailDto) =>
               l.shortage?.canProduce ? (

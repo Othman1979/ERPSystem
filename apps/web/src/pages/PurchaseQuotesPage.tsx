@@ -655,7 +655,7 @@ function QuoteForm({
               ),
             },
             {
-              title: '',
+              title: t('common.actions'), key: 'actions',
               width: 60,
               render: (_: unknown, l: DraftLine) => (
                 <Button

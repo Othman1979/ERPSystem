@@ -29,12 +29,9 @@ export function StatusTag({ tone = 'neutral', children }: { tone?: StatusTone; c
   );
 }
 
-/**
- * Active / inactive marker for master data. Active is the normal state and
- * shows nothing; only «غير نشط» / "Inactive" is shown (owner decision).
- */
 export function ActiveTag({ active }: { active: boolean }) {
   const { t } = useTranslation();
-  if (active) return null;
-  return <StatusTag tone="neutral">{t('common.inactive')}</StatusTag>;
+  return active
+    ? <Tag className="status-tag" color="green" bordered>{t('common.active')}</Tag>
+    : <StatusTag tone="neutral">{t('common.suspended')}</StatusTag>;
 }

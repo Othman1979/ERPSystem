@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { CompaniesTab } from './settings/CompaniesTab';
 import { useNavigate } from 'react-router';
 import { CompanyProfileForm } from '../components/CompanyProfileForm';
+import { ActiveTag } from '../components/StatusTag';
 import { SalesSettingsForm } from '../components/SalesSettingsForm';
 import { DataExportCard } from '../components/DataExportCard';
 import {
@@ -246,15 +247,10 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
             title: t('common.status'),
             dataIndex: 'isActive',
             width: 90,
-            render: (v: boolean) =>
-              v ? (
-                <Tag color="green">{t('common.active')}</Tag>
-              ) : (
-                <Tag>{t('common.inactive')}</Tag>
-              ),
+            render: (v: boolean) => <ActiveTag active={v} />,
           },
           {
-            title: t('common.actions'),
+            title: t('common.actions'), key: 'actions',
             width: 150,
             render: (_: unknown, row: LookupRow) => (
               <Space>

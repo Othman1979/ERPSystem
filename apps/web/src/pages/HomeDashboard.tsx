@@ -10,7 +10,7 @@ import {
 } from '@erp/api-client';
 import { apiErrorText, queryString } from '../components/ExportButtons';
 import { Num } from '../components/Num';
-import { dec, formatAmount, formatQty } from '../format/number';
+import { dec, formatMoney, formatQty } from '../format/number';
 import { codeAndName } from '../i18n/displayName';
 import { palette } from '../theme';
 
@@ -64,7 +64,7 @@ export function HomeDashboard() {
     <div className="home-stat-sub">
       <div>{t('dashboard.docCounts', { invoices: s.count, returns: s.returnCount })}</div>
       <div>
-        {t('dashboard.inclTax')}: <Num>{formatAmount(s.grand)}</Num>
+        {t('dashboard.inclTax')}: <Num>{formatMoney(s.grand, t)}</Num>
       </div>
     </div>
   );
@@ -78,7 +78,7 @@ export function HomeDashboard() {
         tone={palette.tone.trade}
         title={t('dashboard.salesToday')}
         loading={isLoading}
-        value={<Num>{formatAmount(data?.salesToday.net)}</Num>}
+        value={<Num>{formatMoney(data?.salesToday.net, t)}</Num>}
       >
         {data && salesDetail(data.salesToday)}
       </StatCard>
@@ -87,7 +87,7 @@ export function HomeDashboard() {
         tone={palette.tone.trade}
         title={t('dashboard.salesMonth')}
         loading={isLoading}
-        value={<Num>{formatAmount(data?.salesMonth.net)}</Num>}
+        value={<Num>{formatMoney(data?.salesMonth.net, t)}</Num>}
       >
         {data && salesDetail(data.salesMonth)}
       </StatCard>
@@ -96,12 +96,12 @@ export function HomeDashboard() {
         tone={palette.tone.finance}
         title={t('dashboard.receivables')}
         loading={isLoading}
-        value={<Num>{formatAmount(data?.receivables.total)}</Num>}
+        value={<Num>{formatMoney(data?.receivables.total, t)}</Num>}
       >
         <div className="home-stat-sub">
           {t('dashboard.overdue')}:{' '}
           <Num style={overdue.gt(0) ? { color: palette.danger, fontWeight: 600 } : undefined}>
-            {formatAmount(data?.receivables.overdue)}
+            {formatMoney(data?.receivables.overdue, t)}
           </Num>
         </div>
       </StatCard>

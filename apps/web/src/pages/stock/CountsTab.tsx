@@ -153,7 +153,7 @@ export function CountsTab() {
             render: (v: string) => <CountStatusTag status={v} />,
           },
           {
-            title: t('common.actions'),
+            title: t('common.actions'), key: 'actions',
             width: 200,
             render: (_: unknown, row: CountRow) => (
               <Space>

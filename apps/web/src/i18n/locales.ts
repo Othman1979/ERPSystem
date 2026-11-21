@@ -1,4 +1,7 @@
 export const ar = {
+  currency: {
+    JOD: 'د.أ',
+  },
   app: {
     title: 'ERP Cloud',
     tagline: 'نظام المحاسبة والمستودعات',
@@ -2168,6 +2171,18 @@ export const ar = {
     rowsShown: 'المعروض: {{count}}',
     basicInfo: 'البيانات الأساسية',
     actions: 'إجراءات',
+    suspended: 'موقوف',
+    noResults: 'لا توجد نتائج',
+    emptyCta: {
+      journal: 'أنشئ أول قيد',
+      salesInvoice: 'أنشئ أول فاتورة مبيعات',
+      purchaseInvoice: 'أنشئ أول فاتورة مشتريات',
+      receipt: 'أنشئ أول سند قبض',
+      payment: 'أنشئ أول سند صرف',
+      party: 'أضف أول جهة',
+      item: 'أضف أول صنف',
+      employee: 'أضف أول موظف',
+    },
     edit: 'تعديل',
     description: 'الوصف',
     delete: 'حذف',
@@ -2409,6 +2424,9 @@ export const ar = {
 };
 
 export const en: typeof ar = {
+  currency: {
+    JOD: 'JOD',
+  },
   app: {
     title: 'ERP Cloud',
     tagline: 'Accounting & Inventory System',
@@ -4579,6 +4597,18 @@ export const en: typeof ar = {
     rowsShown: 'Showing {{count}}',
     basicInfo: 'Basic information',
     actions: 'Actions',
+    suspended: 'Inactive',
+    noResults: 'No results',
+    emptyCta: {
+      journal: 'Create your first journal entry',
+      salesInvoice: 'Create your first sales invoice',
+      purchaseInvoice: 'Create your first purchase invoice',
+      receipt: 'Create your first receipt',
+      payment: 'Create your first payment',
+      party: 'Add your first party',
+      item: 'Add your first item',
+      employee: 'Add your first employee',
+    },
     edit: 'Edit',
     description: 'Description',
     delete: 'Delete',

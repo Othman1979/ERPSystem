@@ -14,6 +14,7 @@ import {
   buildPaymentSourceOptions,
   buildSettingsPayload,
   employeeEditDateValues,
+  employeeBranchColumnVisible,
   formatPayrollDate,
   monthToPayrollPeriod,
   PayrollPage,
@@ -173,6 +174,10 @@ const run = {
     net: '100.000',
   }],
 };
+
+it('hides the employee branch column when the company has one branch', () => {
+  expect(employeeBranchColumnVisible(1, [{ branchNameAr: 'الفرع الرئيسي', branchNameEn: 'Main branch' }])).toBe(false);
+});
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;

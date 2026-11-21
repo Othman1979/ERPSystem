@@ -31,7 +31,7 @@ import { LedgerTable, sideCell, type LedgerLine, type LedgerSummary } from './re
 import { TaxSummaryTab } from './reports/TaxSummaryTab';
 import { TradeSummaryTab } from './reports/TradeSummaryTab';
 import { ExportButtons } from '../components/ExportButtons';
-import { formatAmount } from '../format/number';
+import { formatMoney } from '../format/number';
 import { useAccounts } from '../hooks/useAccounts';
 import { useCostCenters } from '../hooks/useCostCenters';
 import { useAuth } from '../auth/AuthContext';
@@ -166,7 +166,7 @@ export function ReportsPage() {
     children: (['Debit', 'Credit'] as const).map((side) => ({
       title: t(side === 'Debit' ? 'journal.debit' : 'journal.credit'),
       dataIndex: `${prefix}${side}`,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       width: 115,
       render: sideCell,
     })),
@@ -237,7 +237,7 @@ export function ReportsPage() {
                   </Table.Summary.Cell>
                   {TB_COLUMNS.map((k, i) => (
                     <Table.Summary.Cell key={k} index={i + 1} align="right">
-                      <Num>{formatAmount(tb.totals[k])}</Num>
+                      <Num>{formatMoney(tb.totals[k], t)}</Num>
                     </Table.Summary.Cell>
                   ))}
                 </Table.Summary.Row>

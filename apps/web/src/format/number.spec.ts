@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dec,
   formatAmount,
+  formatMoney,
   formatPercent,
   formatQty,
   formatUnitCost,
@@ -41,6 +42,14 @@ describe('formatAmount', () => {
     expect(formatAmount('')).toBe('—');
     expect(formatAmount('abc')).toBe('—');
     expect(formatAmount(null, '')).toBe('');
+  });
+});
+
+describe('formatMoney', () => {
+  it('appends the translated JOD currency in Arabic and English', () => {
+    expect(formatMoney('1234.5', (key) => (key === 'currency.JOD' ? 'د.أ' : key))).toBe('1,234.500 د.أ');
+    expect(formatMoney('1234.5', (key) => (key === 'currency.JOD' ? 'JOD' : key))).toBe('1,234.500 JOD');
+    expect(formatMoney(null, (key) => key)).toBe('—');
   });
 });
 

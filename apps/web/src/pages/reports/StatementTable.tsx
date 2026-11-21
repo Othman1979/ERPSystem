@@ -121,7 +121,7 @@ export function StatementTable({
           title: t('reports.amount'),
           key: 'amount',
           width: 150,
-          align: 'right',
+          align: 'right', className: 'num',
           render: (_: unknown, l) =>
             l.kind === 'heading' ? null : (
               <Num style={l.kind === 'result' && dec(l.amount).lt(0) ? { color: palette.danger } : undefined}>

@@ -1,5 +1,6 @@
+import { ActiveTag } from '../components/StatusTag';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Form, Input, Select, Space, Table, Tag, message } from 'antd';
+import { Button, Card, Form, Input, Select, Space, Table, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -142,10 +143,10 @@ export function WarehousesPage() {
             dataIndex: 'isActive',
             width: 90,
             render: (v: boolean) =>
-              v ? <Tag color="green">{t('common.active')}</Tag> : <Tag>{t('common.inactive')}</Tag>,
+              <ActiveTag active={v} />,
           },
           {
-            title: t('common.actions'),
+            title: t('common.actions'), key: 'actions',
             width: 140,
             render: (_: unknown, row: Warehouse) => (
               <Space>

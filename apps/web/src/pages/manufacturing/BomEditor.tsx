@@ -239,7 +239,7 @@ export function BomEditor({
       ),
     },
     {
-      title: '',
+      title: t('common.actions'), key: 'actions',
       width: 48,
       render: (_: unknown, line: BomLineForm) => (
         <Button

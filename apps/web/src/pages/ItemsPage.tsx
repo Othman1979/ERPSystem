@@ -1,3 +1,4 @@
+import { ActiveTag } from '../components/StatusTag';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarcodeOutlined,
@@ -51,6 +52,7 @@ import {
   type WarehouseListItemDto,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { EmptyCta } from '../components/EmptyCta';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { usePagedQuery } from '../hooks/usePagedQuery';
@@ -210,32 +212,31 @@ function ItemsTab() {
     {
       title: t('items.onHand'),
       width: 100,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       render: (_: unknown, r: Item) => stockBadge(r),
     },
     {
       title: t('items.salePrice'),
       dataIndex: 'salePrice',
       width: 100,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       render: amountCell,
     },
     {
       title: t('items.purchasePrice'),
       dataIndex: 'purchasePrice',
       width: 110,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       render: amountCell,
     },
     {
       title: t('common.status'),
       dataIndex: 'isActive',
       width: 90,
-      render: (v: boolean) =>
-        v ? <Tag color="green">{t('common.active')}</Tag> : <Tag>{t('common.inactive')}</Tag>,
+      render: (v: boolean) => <ActiveTag active={v} />,
     },
     {
-      title: t('common.actions'),
+      title: t('common.actions'), key: 'actions',
       width: 120,
       // One visible action per row; the rest live in the "⋯" menu.
       render: (_: unknown, row: Item) => (
@@ -319,7 +320,18 @@ function ItemsTab() {
           size="small"
           loading={isLoading}
           dataSource={items}
-          locale={tableLocale(itemsQuery)}
+          locale={tableLocale(
+            itemsQuery,
+            list.search.trim() || kindFilter
+              ? t('common.noResults')
+              : (
+                  <EmptyCta
+                    description={t('common.emptyCta.item')}
+                    actionLabel={t('items.add')}
+                    onClick={openCreate}
+                  />
+                ),
+          )}
           pagination={list.pagination}
           onChange={list.onTableChange}
           columns={columns}
@@ -511,35 +523,35 @@ function LedgerModal({
             title: t('items.qtyIn'),
             dataIndex: 'qtyIn',
             width: 100,
-            align: 'right' as const,
+            align: 'right' as const, className: 'num',
             render: (v: string) => (dec(v).gt(0) ? <Num>{`${formatQty(v)} ${unit}`}</Num> : '—'),
           },
           {
             title: t('items.qtyOut'),
             dataIndex: 'qtyOut',
             width: 100,
-            align: 'right' as const,
+            align: 'right' as const, className: 'num',
             render: (v: string) => (dec(v).gt(0) ? <Num>{`${formatQty(v)} ${unit}`}</Num> : '—'),
           },
           {
             title: t('items.balance'),
             dataIndex: 'balanceQtyAfter',
             width: 110,
-            align: 'right' as const,
+            align: 'right' as const, className: 'num',
             render: (v: string) => <Num>{`${formatQty(v)} ${unit}`}</Num>,
           },
           {
             title: t('items.unitCost'),
             dataIndex: 'unitCost',
             width: 100,
-            align: 'right' as const,
+            align: 'right' as const, className: 'num',
             render: (v: string, r: LedgerRow) => (r.kind ? '' : unitCostCell(v)),
           },
           {
             title: t('items.wac'),
             dataIndex: 'avgCostAfter',
             width: 100,
-            align: 'right' as const,
+            align: 'right' as const, className: 'num',
             render: (v: string, r: LedgerRow) => (r.kind ? '' : unitCostCell(v)),
           },
         ]}
@@ -730,11 +742,10 @@ function GroupsTab() {
             title: t('common.status'),
             dataIndex: 'isActive',
             width: 90,
-            render: (v: boolean) =>
-              v ? <Tag color="green">{t('common.active')}</Tag> : <Tag>{t('common.inactive')}</Tag>,
+            render: (v: boolean) => <ActiveTag active={v} />,
           },
           {
-            title: t('common.actions'),
+            title: t('common.actions'), key: 'actions',
             width: 140,
             render: (_: unknown, row: Group) => (
               <Space>

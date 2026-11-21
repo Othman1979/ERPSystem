@@ -1,3 +1,4 @@
+import { ActiveTag } from '../components/StatusTag';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   App,
@@ -402,9 +403,9 @@ function PlansTab() {
           {
             title: t('common.status'),
             dataIndex: 'isActive',
-            render: (v: boolean) => (v ? <Tag color="green">{t('common.active')}</Tag> : <Tag>{t('common.inactive')}</Tag>),
+            render: (v: boolean) => (<ActiveTag active={v} />),
           },
-          { title: '', width: 80, render: (_: unknown, p) => <Button size="small" onClick={() => open(p)}>{t('common.edit')}</Button> },
+          { title: t('common.actions'), key: 'actions', width: 80, render: (_: unknown, p) => <Button size="small" onClick={() => open(p)}>{t('common.edit')}</Button> },
         ]}
       />
       <Modal
@@ -527,7 +528,7 @@ function ErrorsTab() {
           { title: t('platform.errorCount'), dataIndex: 'count', align: 'right', width: 80 },
           { title: t('platform.errorLastSeen'), dataIndex: 'lastSeenAt', width: 150, render: when },
           {
-            title: '',
+            title: t('common.actions'), key: 'actions',
             width: 120,
             render: (_: unknown, e) => (
               <Button

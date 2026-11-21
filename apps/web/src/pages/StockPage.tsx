@@ -372,7 +372,7 @@ function AdjustmentsTab() {
             render: (v: string) => statusTag(v, t),
           },
           {
-            title: t('common.actions'),
+            title: t('common.actions'), key: 'actions',
             width: 260,
             render: (_: unknown, row: AdjustmentRow) => (
               <Space>
@@ -637,7 +637,7 @@ function TransfersTab() {
             render: (v: string) => statusTag(v, t),
           },
           {
-            title: t('common.actions'),
+            title: t('common.actions'), key: 'actions',
             width: 260,
             render: (_: unknown, row: TransferRow) => (
               <Space>

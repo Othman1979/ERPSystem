@@ -9,7 +9,7 @@ import { ListToolbar } from '../../components/ListToolbar';
 import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
 import { amountCell } from '../../format/cells';
-import { dec, formatAmount, formatPercent } from '../../format/number';
+import { dec, formatAmount, formatMoney, formatPercent } from '../../format/number';
 import { codeAndName } from '../../i18n/displayName';
 import { palette } from '../../theme';
 import { isoDay, PeriodMeta, PeriodPickers, ScreenPrintButton } from './PeriodFilters';
@@ -43,7 +43,7 @@ export function TaxSummaryTab() {
     title,
     dataIndex: field,
     width: 130,
-    align: 'right' as const,
+    align: 'right' as const, className: 'num',
     render: amountCell,
   });
 
@@ -80,14 +80,14 @@ export function TaxSummaryTab() {
         <div className="report-meta">
           <PeriodMeta from={data.from} to={data.to} />
           <span>
-            {t('reports.outputTax')}: <strong><Num>{formatAmount(data.totals.outputTax)}</Num></strong>
+            {t('reports.outputTax')}: <strong><Num>{formatMoney(data.totals.outputTax, t)}</Num></strong>
           </span>
           <span>
-            {t('reports.inputTax')}: <strong><Num>{formatAmount(data.totals.inputTax)}</Num></strong>
+            {t('reports.inputTax')}: <strong><Num>{formatMoney(data.totals.inputTax, t)}</Num></strong>
           </span>
           <span>
             {payable.lt(0) ? t('reports.taxRefundable') : t('reports.taxPayable')}:{' '}
-            <strong><Num>{formatAmount(payable.abs())}</Num></strong>
+            <strong><Num>{formatMoney(payable.abs(), t)}</Num></strong>
           </span>
           <span>
             <Tooltip title={t('reports.ledgerDifferenceHint')}>
@@ -124,7 +124,7 @@ export function TaxSummaryTab() {
             title: t('reports.rate'),
             dataIndex: 'rate',
             width: 80,
-            align: 'right',
+            align: 'right', className: 'num',
             render: (v: string) => <Num>{`${formatPercent(v)}%`}</Num>,
           },
           {
@@ -155,7 +155,7 @@ export function TaxSummaryTab() {
               {AMOUNT_FIELDS.map((f, i) => (
                 <Table.Summary.Cell key={f} index={i + 3} align="right">
                   <Typography.Text strong>
-                    <Num>{formatAmount(data.totals[f])}</Num>
+                    <Num>{formatMoney(data.totals[f], t)}</Num>
                   </Typography.Text>
                 </Table.Summary.Cell>
               ))}

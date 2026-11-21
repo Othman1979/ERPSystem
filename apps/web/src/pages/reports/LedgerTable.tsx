@@ -4,7 +4,7 @@ import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { Num } from '../../components/Num';
 import { tableLocale, type ListQueryState } from '../../components/QueryState';
-import { dec, formatAmount, type NumericInput } from '../../format/number';
+import { dec, formatAmount, formatMoney, type NumericInput } from '../../format/number';
 
 export interface LedgerLine {
   lineId: string;
@@ -99,12 +99,12 @@ export function LedgerTable({
       render: (description: string | null, row: Row) =>
         row.sourceType === 'YEAR_CLOSING' ? t('fiscal.yearClosing') : description,
     },
-    { title: t('journal.debit'), dataIndex: 'debit', align: 'right', width: 120, render: sideCell },
-    { title: t('journal.credit'), dataIndex: 'credit', align: 'right', width: 120, render: sideCell },
+    { title: t('journal.debit'), dataIndex: 'debit', align: 'right', className: 'num', width: 120, render: sideCell },
+    { title: t('journal.credit'), dataIndex: 'credit', align: 'right', className: 'num', width: 120, render: sideCell },
     {
       title: t('reports.balance'),
       dataIndex: 'balance',
-      align: 'right',
+      align: 'right', className: 'num',
       width: 130,
       render: (v: string) => <Num>{formatAmount(v)}</Num>,
     },
@@ -129,10 +129,10 @@ export function LedgerTable({
                 {t('reports.movementsTotal')}
               </Table.Summary.Cell>
               <Table.Summary.Cell index={1} align="right">
-                <Num>{formatAmount(s.totalDebit)}</Num>
+                <Num>{formatMoney(s.totalDebit, t)}</Num>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={2} align="right">
-                <Num>{formatAmount(s.totalCredit)}</Num>
+                <Num>{formatMoney(s.totalCredit, t)}</Num>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={3} />
             </Table.Summary.Row>
@@ -147,7 +147,7 @@ export function LedgerTable({
                 {sideCell(s.closingCredit)}
               </Table.Summary.Cell>
               <Table.Summary.Cell index={3} align="right">
-                <Num>{formatAmount(s.closingBalance)}</Num>
+                <Num>{formatMoney(s.closingBalance, t)}</Num>
               </Table.Summary.Cell>
             </Table.Summary.Row>
           </>

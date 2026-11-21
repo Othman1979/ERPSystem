@@ -305,7 +305,7 @@ function StatementDetail({
             render: (_: unknown, r) => <Tag color={r.matched ? 'green' : 'default'}>{t(r.matched ? 'bankRec.matched' : 'bankRec.unmatched')}</Tag>,
           },
           {
-            title: '',
+            title: t('common.actions'), key: 'actions',
             width: 200,
             render: (_: unknown, r) =>
               draft && (

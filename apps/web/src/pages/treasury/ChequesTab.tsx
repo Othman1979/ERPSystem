@@ -163,7 +163,7 @@ export function ChequesTab({ bankAccounts }: { bankAccounts: { value: string; la
           },
           { title: t('cheques.party'), key: 'party', render: (_: unknown, c) => name(c.party) },
           { title: t('cheques.voucher'), dataIndex: 'voucherNo', width: 120 },
-          { title: t('cheques.amount'), dataIndex: 'amount', align: 'end', width: 120, render: amountCell },
+          { title: t('cheques.amount'), dataIndex: 'amount', align: 'end', className: 'num', width: 120, render: amountCell },
           {
             title: t('cheques.status'),
             dataIndex: 'status',
@@ -171,7 +171,7 @@ export function ChequesTab({ bankAccounts }: { bankAccounts: { value: string; la
             render: (v: string) => <Tag color={STATUS_COLORS[v]}>{t(`cheques.statuses.${v}`)}</Tag>,
           },
           {
-            title: '',
+            title: t('common.actions'),
             key: 'actions',
             render: (_: unknown, c) => (
               <Space size={4} wrap>

@@ -130,7 +130,7 @@ export function BillOrderModal({ order, open, onClose, onBilled }: BillOrderModa
 
   const columns = [
     {
-      title: '',
+      title: t('common.actions'), key: 'actions',
       width: 40,
       render: (_: unknown, r: BillRow) => (
         <Checkbox

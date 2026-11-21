@@ -11,8 +11,8 @@ import {
   costCentersControllerUpdate,
 } from '@erp/api-client';
 import { FormDialog, FormSection } from '../../components/FormDialog';
-import { tableLocale } from '../../components/QueryState';
 import { ActiveTag } from '../../components/StatusTag';
+import { tableLocale } from '../../components/QueryState';
 import { useAuth } from '../../auth/AuthContext';
 import { PERMISSIONS } from '../../auth/permissions';
 import { COST_CENTERS_QUERY_KEY, useCostCenters } from '../../hooks/useCostCenters';
@@ -169,7 +169,6 @@ export function CostCentersTab() {
             title: t('costCenters.status'),
             dataIndex: 'isActive',
             width: 100,
-            // ADR-020 §8: only the exception is marked; an active centre shows nothing.
             render: (v: boolean) => <ActiveTag active={v} />,
           },
           ...(canManage
