@@ -536,6 +536,14 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     return new Map(rows.map((r) => [r.id, r.invoiceNo]));
   }
 
+  async draftCount(): Promise<number> {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    return db.salesInvoice.count({
+      where: { companyId, status: 'DRAFT', AND: [branchWhere()] },
+    });
+  }
+
   /**
    * One numbered page of invoices (ADR-022): the caller's branches only
    * (ADR-003 §10), newest first unless `sort` says otherwise.

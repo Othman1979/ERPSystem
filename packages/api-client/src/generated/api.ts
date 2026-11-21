@@ -10092,12 +10092,64 @@ export interface DashboardBelowMinimumDto {
   items: DashboardBelowMinimumItemDto[];
 }
 
+export interface DashboardMonthlyDto {
+  month: string;
+  sales: string;
+  expenses: string;
+}
+
+export interface DashboardCashBankDto {
+  accountId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  balance: string;
+}
+
+export interface DashboardReceivablesAgingDto {
+  current: string;
+  d1_30: string;
+  d31_60: string;
+  d61_90: string;
+  d90plus: string;
+}
+
+export interface DashboardChequeDirectionDto {
+  count: number;
+  amount: string;
+}
+
+export interface DashboardChequesDueDto {
+  incoming: DashboardChequeDirectionDto;
+  outgoing: DashboardChequeDirectionDto;
+}
+
+export interface DashboardDraftsDto {
+  journalEntries: number;
+  salesInvoices: number;
+  purchaseInvoices: number;
+  receipts: number;
+  payments: number;
+}
+
 export interface DashboardSummaryDto {
   date: string;
   salesToday: DashboardSalesBlockDto;
   salesMonth: DashboardSalesBlockDto;
   receivables: DashboardReceivablesDto;
   belowMinimum: DashboardBelowMinimumDto;
+  monthly: DashboardMonthlyDto[];
+  /** @nullable */
+  cashBank: DashboardCashBankDto[] | null;
+  /** @nullable */
+  cashBankTotal: string | null;
+  /** @nullable */
+  receivablesAging: DashboardReceivablesAgingDto | null;
+  /** @nullable */
+  chequesDue: DashboardChequesDueDto | null;
+  /** @nullable */
+  drafts: DashboardDraftsDto | null;
 }
 
 export interface ConsumptionCountRefDto {

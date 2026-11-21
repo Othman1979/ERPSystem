@@ -32,10 +32,10 @@ const ADMIN_TAB = 'nav.groupAdmin';
 
 function readFolded(): boolean {
   try {
-    return window.localStorage.getItem(FOLDED_STORAGE_KEY) === '1';
+    return window.localStorage.getItem(FOLDED_STORAGE_KEY) !== '0';
   } catch {
-    // Storage blocked or unreadable: the ribbon opens expanded.
-    return false;
+    // Storage blocked or unreadable: keep the ribbon compact by default.
+    return true;
   }
 }
 
@@ -43,7 +43,7 @@ function writeFolded(folded: boolean): void {
   try {
     window.localStorage.setItem(FOLDED_STORAGE_KEY, folded ? '1' : '0');
   } catch {
-    // Not critical: the ribbon just opens expanded next time.
+    // Not critical: the ribbon keeps the default folded state next time.
   }
 }
 

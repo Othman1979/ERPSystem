@@ -18,6 +18,6 @@ import { DocumentLocksModule } from '../document-locks/document-locks.module.js'
   providers: [JournalService, PostingService, ReportsService],
   // ReportsService: treasury aging reads party control balances, and the
   // Phase 8 statements read account totals (module boundary).
-  exports: [PostingService, ReportsService],
+  exports: [JournalService, PostingService, ReportsService],
 })
 export class JournalModule {}

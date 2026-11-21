@@ -171,12 +171,11 @@ async function openTab(key: string): Promise<void> {
   if (!tab) throw new Error(`no ribbon tab ${key}`);
   await act(async () => tab.click());
 }
-const homeLinks = () => [...container.querySelectorAll('.home-link')].map((b) => b.textContent);
-const quickActions = () => [...container.querySelectorAll('.home-quick button')].map((b) => b.textContent);
 const usersListRequested = () => requested.some((u) => /\/api\/v1\/users(\?|$)/.test(u));
 
 beforeEach(async () => {
   await i18n.changeLanguage('en');
+  window.localStorage.setItem('erp.ribbonFolded', '0');
   requested.length = 0;
   signals.clear();
   stubFetch();
@@ -200,11 +199,9 @@ describe('screens follow the role permissions from GET /me', () => {
     expect(text()).not.toContain(i18n.t('access.title'));
   });
 
-  it('hides Users from the accountant, in the menu and on the home screen', async () => {
+  it('hides Users from the accountant in the menu', async () => {
     session.state = signedIn('ACCOUNTANT', ACCOUNTANT);
     await mount('/');
-    await until(() => expect(homeLinks().length).toBeGreaterThan(0));
-    expect(homeLinks()).not.toContain(i18n.t('nav.users'));
     await openTab('nav.groupAdmin');
     expect(sideMenu()).not.toContain(i18n.t('nav.users'));
     // Everything else of the admin group is still there.
@@ -223,22 +220,23 @@ describe('screens follow the role permissions from GET /me', () => {
     expect(pathname).toBe('/');
   });
 
-  it('offers a viewer neither settings nor the quick "new document" buttons', async () => {
+  it('removes the duplicate home actions and module grid', async () => {
     session.state = signedIn('VIEWER', VIEWER);
     await mount('/');
-    await until(() => expect(homeLinks().length).toBeGreaterThan(0));
-    expect(quickActions()).toEqual([]);
+    await until(() => expect(text()).toContain('A Co'));
+    expect(container.querySelector('.home-quick')).toBeNull();
+    expect(container.querySelector('.home-groups')).toBeNull();
     await openTab('nav.groupAdmin');
     expect(sideMenu()).not.toContain(i18n.t('nav.settings'));
     await openTab('nav.groupReports');
     expect(sideMenu()).toContain(i18n.t('nav.reports'));
   });
 
-  it('offers the accountant the quick buttons the role can use', async () => {
+  it('keeps quick actions on the ribbon home tab', async () => {
     session.state = signedIn('ACCOUNTANT', ACCOUNTANT);
     await mount('/');
-    await until(() => expect(quickActions().length).toBe(5));
-    expect(quickActions()).toContain(i18n.t('sales.newInvoice'));
+    await openTab('nav.home');
+    expect(sideMenu()).toContain(i18n.t('sales.newInvoice'));
   });
 });
 

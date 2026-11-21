@@ -235,9 +235,11 @@ function useSalesOrder(orderId: string | null | undefined) {
 function InvoicesTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<SalesControllerListInvoicesStatus | undefined>(undefined);
-  // A sales order opens its new draft invoice here with ?invoiceId=...; it opens in the view.
   const [params, setParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<SalesControllerListInvoicesStatus | undefined>(
+    () => (params.get('status') === 'DRAFT' ? 'DRAFT' : undefined),
+  );
+  // A sales order opens its new draft invoice here with ?invoiceId=...; it opens in the view.
   const linkedInvoiceId = params.get('invoiceId');
   const [screen, setScreen] = useState<'list' | 'form' | 'view'>(linkedInvoiceId ? 'view' : 'list');
   const [invoiceId, setInvoiceId] = useState<string | null>(linkedInvoiceId);
