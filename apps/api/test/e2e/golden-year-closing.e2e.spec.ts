@@ -214,17 +214,20 @@ async function closingEntry(index: number) {
 
 describe('Phase 18 golden year closing', () => {
   it('requires all-branch scope before reading year-closing data', async () => {
+    const requestId = `year-closing-${yearIds[0]}`;
     const responses = [
-      await h.get(branchRestrictedAccountant, `fiscal-years/${yearIds[0]}/closing-preview`),
-      await h.act(branchRestrictedAccountant, `fiscal-years/${yearIds[0]}/close`),
-      await h.act(branchRestrictedAccountant, `fiscal-years/${yearIds[0]}/open`),
+      await h.get(branchRestrictedAccountant, `fiscal-years/${yearIds[0]}/closing-preview`).set('x-request-id', requestId),
+      await h.act(branchRestrictedAccountant, `fiscal-years/${yearIds[0]}/close`).set('x-request-id', requestId),
+      await h.act(branchRestrictedAccountant, `fiscal-years/${yearIds[0]}/open`).set('x-request-id', requestId),
     ];
 
     for (const response of responses) {
       expect(h.err(response)).toEqual([403, 'BRANCH_NOT_ALLOWED']);
       expect(response.body.details).toBeUndefined();
       expect(response.body.error?.details).toBeUndefined();
-      expect(JSON.stringify(response.body)).not.toContain(yearIds[0]);
+      expect(response.body.error?.requestId).toBe(requestId);
+      const payload = { ...response.body, error: { ...response.body.error, requestId: undefined } };
+      expect(JSON.stringify(payload)).not.toContain(yearIds[0]);
       expect(JSON.stringify(response.body)).not.toContain('JOURNAL_ENTRY');
     }
   });
