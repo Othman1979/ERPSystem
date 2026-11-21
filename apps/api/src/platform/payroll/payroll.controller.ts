@@ -26,13 +26,20 @@ import {
   UpdatePayElementDto,
 } from './dto/payroll.dto.js';
 import {
+  PayrollEmployeeCreatedDto,
   PayrollElementDto,
   PayrollEmployeeDetailDto,
   PayrollEmployeeDto,
+  PayrollEmployeeSalaryCreatedDto,
   PayrollEmployeeStatementDto,
   PayrollMovementDto,
+  PayrollDeletedDto,
+  PayrollRecurringElementListDto,
+  PayrollRecurringElementRecordDto,
+  PayrollRunLineTaxDto,
   PayrollRunDetailDto,
   PayrollRunDto,
+  PayrollSettingsDto,
 } from './dto/payroll-response.dto.js';
 import { PayrollService } from './payroll.service.js';
 
@@ -65,7 +72,7 @@ export class PayrollController {
 
   @Post('employees')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
-  @ApiCreatedResponse()
+  @ApiCreatedResponse({ type: PayrollEmployeeCreatedDto })
   createEmployee(@Body() dto: CreateEmployeeDto) {
     return this.payroll.createEmployee(dto);
   }
@@ -79,25 +86,28 @@ export class PayrollController {
 
   @Post('employees/:id/salaries')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiCreatedResponse({ type: PayrollEmployeeSalaryCreatedDto })
   addSalary(@Param('id') id: string, @Body() dto: CreateSalaryDto) {
     return this.payroll.addSalary(BigInt(id), dto);
   }
 
   @Get('employees/:id/recurring-elements')
   @RequirePermission(PERMISSIONS.PAYROLL_VIEW)
+  @ApiOkResponse({ type: PayrollRecurringElementListDto, isArray: true })
   listRecurring(@Param('id') id: string) {
     return this.payroll.listRecurring(BigInt(id));
   }
 
   @Post('employees/:id/recurring-elements')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiCreatedResponse({ type: PayrollRecurringElementRecordDto })
   createRecurring(@Param('id') id: string, @Body() dto: CreateRecurringElementDto) {
     return this.payroll.createRecurring(BigInt(id), dto);
   }
 
   @Delete('employees/:id/recurring-elements/:rid')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
-  @ApiOkResponse()
+  @ApiOkResponse({ type: PayrollDeletedDto })
   deleteRecurring(@Param('id') id: string, @Param('rid') rid: string) {
     return this.payroll.deleteRecurring(BigInt(id), BigInt(rid));
   }
@@ -111,25 +121,28 @@ export class PayrollController {
 
   @Post('elements')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiCreatedResponse({ type: PayrollElementDto })
   createElement(@Body() dto: CreatePayElementDto) {
     return this.payroll.createElement(dto);
   }
 
   @Patch('elements/:id')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
-  @ApiOkResponse()
+  @ApiOkResponse({ type: PayrollElementDto })
   updateElement(@Param('id') id: string, @Body() dto: UpdatePayElementDto) {
     return this.payroll.updateElement(BigInt(id), dto);
   }
 
   @Get('settings')
   @RequirePermission(PERMISSIONS.PAYROLL_VIEW)
+  @ApiOkResponse({ type: PayrollSettingsDto, isArray: true })
   listSettings() {
     return this.payroll.listSettings();
   }
 
   @Post('settings')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiCreatedResponse({ type: PayrollSettingsDto })
   createSettings(@Body() dto: CreatePayrollSettingsDto) {
     return this.payroll.createSettings(dto);
   }
@@ -179,19 +192,21 @@ export class PayrollController {
 
   @Delete('runs/:id')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
-  @ApiOkResponse()
+  @ApiOkResponse({ type: PayrollDeletedDto })
   deleteRun(@Param('id') id: string) {
     return this.payroll.deleteRun(BigInt(id));
   }
 
   @Post('runs/:id/recompute')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiCreatedResponse({ type: PayrollRunDetailDto })
   recomputeRun(@Param('id') id: string) {
     return this.payroll.recomputeRun(BigInt(id));
   }
 
   @Patch('runs/:id/lines/:lineId/income-tax')
   @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiOkResponse({ type: PayrollRunLineTaxDto })
   setIncomeTax(@Param('id') id: string, @Param('lineId') lineId: string, @Body() dto: SetPayrollTaxDto) {
     return this.payroll.setIncomeTax(BigInt(id), BigInt(lineId), dto.incomeTax);
   }

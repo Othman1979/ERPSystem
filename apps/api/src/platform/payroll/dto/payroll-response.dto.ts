@@ -12,14 +12,47 @@ export class PayrollEmployeeDto {
   @ApiProperty({ type: 'boolean' }) isActive!: boolean;
 }
 
+export class PayrollEmployeeCreatedDto {
+  @ApiProperty({ type: 'string' }) id!: string;
+  @ApiProperty({ type: 'string' }) tenantId!: string;
+  @ApiProperty({ type: 'string' }) companyId!: string;
+  @ApiProperty({ type: 'string' }) code!: string;
+  @ApiProperty({ type: 'string' }) nameAr!: string;
+  @ApiProperty({ type: 'string', nullable: true }) nameEn!: string | null;
+  @ApiProperty({ type: 'string', nullable: true }) nationalId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true }) sscNumber!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' }) hireDate!: string;
+  @ApiProperty({ type: 'string', nullable: true, format: 'date-time' }) leaveDate!: string | null;
+  @ApiProperty({ type: 'string', nullable: true }) branchId!: string | null;
+  @ApiProperty({ type: 'string', nullable: true }) costCenterId!: string | null;
+  @ApiProperty({ type: 'string', enum: ['BANK', 'CASH'] }) payMethod!: string;
+  @ApiProperty({ type: 'string', nullable: true }) iban!: string | null;
+  @ApiProperty({ type: 'boolean' }) sscCovered!: boolean;
+  @ApiProperty({ type: 'boolean' }) sscHazardous!: boolean;
+  @ApiProperty({ type: 'boolean' }) isActive!: boolean;
+  @ApiProperty({ type: 'string', format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' }) updatedAt!: string;
+}
+
 export class PayrollEmployeeSalaryDto {
   @ApiProperty({ type: 'string' }) id!: string;
   @ApiProperty({ type: 'string', format: 'date' }) effectiveFrom!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) basicSalary!: string;
 }
 
+export class PayrollEmployeeSalaryCreatedDto {
+  @ApiProperty({ type: 'string' }) id!: string;
+  @ApiProperty({ type: 'string' }) tenantId!: string;
+  @ApiProperty({ type: 'string' }) employeeId!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' }) effectiveFrom!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) basicSalary!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' }) createdAt!: string;
+}
+
 export class PayrollElementDto {
   @ApiProperty({ type: 'string' }) id!: string;
+  @ApiProperty({ type: 'string' }) tenantId!: string;
+  @ApiProperty({ type: 'string' }) companyId!: string;
   @ApiProperty({ type: 'string' }) code!: string;
   @ApiProperty({ type: 'string' }) nameAr!: string;
   @ApiProperty({ type: 'string', nullable: true }) nameEn!: string | null;
@@ -30,6 +63,28 @@ export class PayrollElementDto {
   @ApiProperty({ type: 'boolean' }) isFixedAllowance!: boolean;
   @ApiProperty({ type: 'string' }) accountId!: string;
   @ApiProperty({ type: 'boolean' }) isActive!: boolean;
+  @ApiProperty({ type: 'string', format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' }) updatedAt!: string;
+}
+
+export class PayrollSettingsDto {
+  @ApiProperty({ type: 'string' }) id!: string;
+  @ApiProperty({ type: 'string' }) tenantId!: string;
+  @ApiProperty({ type: 'string' }) companyId!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' }) effectiveFrom!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) sscEmployeeRate!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) sscEmployerRate!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) sscHazardousExtra!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) sscMinWage!: string;
+  @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) sscMaxWage!: string | null;
+  @ApiProperty({ type: 'string', format: 'decimal' }) hoursPerMonth!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) daysPerMonth!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' }) createdAt!: string;
+}
+
+export class PayrollDeletedDto {
+  @ApiProperty({ type: 'string' }) id!: string;
+  @ApiProperty({ type: 'boolean', enum: [true] }) deleted!: true;
 }
 
 export class PayrollRecurringElementDto {
@@ -37,9 +92,35 @@ export class PayrollRecurringElementDto {
   @ApiProperty({ type: 'string' }) payElementId!: string;
   @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) amount!: string | null;
   @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) quantity!: string | null;
-  @ApiProperty({ type: 'string', format: 'date' }) validFrom!: string;
-  @ApiProperty({ type: 'string', nullable: true, format: 'date' }) validTo!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' }) validFrom!: string;
+  @ApiProperty({ type: 'string', nullable: true, format: 'date-time' }) validTo!: string | null;
   @ApiProperty({ type: PayrollElementDto }) payElement!: PayrollElementDto;
+}
+
+export class PayrollRecurringElementRecordDto {
+  @ApiProperty({ type: 'string' }) id!: string;
+  @ApiProperty({ type: 'string' }) tenantId!: string;
+  @ApiProperty({ type: 'string' }) employeeId!: string;
+  @ApiProperty({ type: 'string' }) payElementId!: string;
+  @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) amount!: string | null;
+  @ApiProperty({ type: 'string', nullable: true, format: 'decimal' }) quantity!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' }) validFrom!: string;
+  @ApiProperty({ type: 'string', nullable: true, format: 'date-time' }) validTo!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ type: 'string', format: 'date-time' }) updatedAt!: string;
+}
+
+export class PayrollRecurringElementListPayElementDto {
+  @ApiProperty({ type: 'string' }) id!: string;
+  @ApiProperty({ type: 'string' }) code!: string;
+  @ApiProperty({ type: 'string' }) nameAr!: string;
+  @ApiProperty({ type: 'string', enum: ['FIXED', 'PER_HOUR', 'PER_DAY'] }) amountType!: string;
+  @ApiProperty({ type: 'string', enum: ['EARNING', 'DEDUCTION'] }) kind!: string;
+  @ApiProperty({ type: 'boolean' }) isFixedAllowance!: boolean;
+}
+
+export class PayrollRecurringElementListDto extends PayrollRecurringElementRecordDto {
+  @ApiProperty({ type: PayrollRecurringElementListPayElementDto }) payElement!: PayrollRecurringElementListPayElementDto;
 }
 
 export class PayrollEmployeeDetailDto {
@@ -102,6 +183,12 @@ export class PayrollLineDto {
   @ApiProperty({ type: 'string', format: 'decimal' }) deductions!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) net!: string;
   @ApiProperty({ type: PayrollLineItemDto, isArray: true }) items!: PayrollLineItemDto[];
+}
+
+export class PayrollRunLineTaxDto {
+  @ApiProperty({ type: 'string' }) id!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) incomeTax!: string;
+  @ApiProperty({ type: 'string', format: 'decimal' }) net!: string;
 }
 
 export class PayrollRunDetailDto extends PayrollRunDto {
