@@ -92,6 +92,7 @@ export class CreatePayElementDto {
   @IsIn(['FIXED', 'PER_HOUR', 'PER_DAY']) amountType!: 'FIXED' | 'PER_HOUR' | 'PER_DAY';
   @Matches(DECIMAL_PATTERN) rateFactor!: string;
   @IsOptional() @IsBoolean() sscSubject?: boolean;
+  @IsOptional() @IsBoolean() isFixedAllowance?: boolean;
   @Matches(ID_PATTERN) accountId!: string;
 }
 

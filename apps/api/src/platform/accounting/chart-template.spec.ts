@@ -98,4 +98,12 @@ describe('chart template', () => {
     expect(defaults.PENALTY).toBe('4201');
     expect(templateAccount('4201')).toMatchObject({ accountType: 'REVENUE', isPostable: true });
   });
+
+  it('flags transport and housing as fixed allowances, but not bonus', () => {
+    const defaults = Object.fromEntries(DEFAULT_PAY_ELEMENTS.map(({ code, isFixedAllowance }) => [code, isFixedAllowance]));
+
+    expect(defaults.TRANSPORT).toBe(true);
+    expect(defaults.HOUSING).toBe(true);
+    expect(defaults.BONUS).toBe(false);
+  });
 });

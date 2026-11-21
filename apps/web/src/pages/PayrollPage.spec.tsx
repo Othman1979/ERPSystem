@@ -32,7 +32,9 @@ const api = vi.hoisted(() => ({
   listElements: vi.fn(),
   listEmployees: vi.fn(),
   listRuns: vi.fn(),
+  payRun: vi.fn(),
   postRun: vi.fn(),
+  reverseRun: vi.fn(),
   setIncomeTax: vi.fn(),
   updateEmployee: vi.fn(),
   costCenters: vi.fn(),
@@ -54,9 +56,9 @@ vi.mock('@erp/api-client', async (importOriginal) => {
     payrollControllerListEmployees: (...args: unknown[]) => api.listEmployees(...args),
     payrollControllerListElements: (...args: unknown[]) => api.listElements(...args),
     payrollControllerListRuns: (...args: unknown[]) => api.listRuns(...args),
-    payrollControllerPayRun: vi.fn(),
+    payrollControllerPayRun: (...args: unknown[]) => api.payRun(...args),
     payrollControllerPostRun: (...args: unknown[]) => api.postRun(...args),
-    payrollControllerReverseRun: vi.fn(),
+    payrollControllerReverseRun: (...args: unknown[]) => api.reverseRun(...args),
     payrollControllerSetIncomeTax: (...args: unknown[]) => api.setIncomeTax(...args),
     payrollControllerUpdateEmployee: (...args: unknown[]) => api.updateEmployee(...args),
     treasuryControllerListBankAccounts: (...args: unknown[]) => api.listBankAccounts(...args),
@@ -94,6 +96,7 @@ const employee = {
 const run = {
   id: 'run-1',
   period: '2026-11',
+  runDate: '2026-11-30',
   status: 'DRAFT',
   runNo: null,
   basicTotal: '100.000',
@@ -177,7 +180,9 @@ beforeEach(async () => {
   api.createRun.mockResolvedValue(response(run));
   api.getRun.mockResolvedValue(response(run));
   api.setIncomeTax.mockResolvedValue(response({}));
+  api.payRun.mockResolvedValue(response({}));
   api.postRun.mockResolvedValue(response({}));
+  api.reverseRun.mockResolvedValue(response({}));
   api.listBankAccounts.mockResolvedValue(response([]));
   api.listCashBoxes.mockResolvedValue(response([]));
   api.listEmployees.mockResolvedValue(response([]));
@@ -199,10 +204,11 @@ afterEach(() => {
 describe('payroll page payloads and run actions', () => {
   it('offers only active fixed earning elements for recurring allowances', async () => {
     api.listElements.mockResolvedValue(response([
-      { id: 'fixed-earning', nameAr: 'بدل النقل', nameEn: 'Transport allowance', kind: 'EARNING', amountType: 'FIXED', isActive: true },
-      { id: 'fixed-deduction', nameAr: 'سداد سلفة', nameEn: 'Advance repayment', kind: 'DEDUCTION', amountType: 'FIXED', isActive: true },
-      { id: 'hourly-earning', nameAr: 'عمل إضافي', nameEn: 'Overtime', kind: 'EARNING', amountType: 'PER_HOUR', isActive: true },
-      { id: 'inactive-earning', nameAr: 'بدل غير نشط', nameEn: 'Inactive allowance', kind: 'EARNING', amountType: 'FIXED', isActive: false },
+      { id: 'fixed-earning', nameAr: 'بدل النقل', nameEn: 'Transport allowance', kind: 'EARNING', amountType: 'FIXED', isFixedAllowance: true, isActive: true },
+      { id: 'bonus', nameAr: 'مكافأة', nameEn: 'Bonus', kind: 'EARNING', amountType: 'FIXED', isFixedAllowance: false, isActive: true },
+      { id: 'fixed-deduction', nameAr: 'سداد سلفة', nameEn: 'Advance repayment', kind: 'DEDUCTION', amountType: 'FIXED', isFixedAllowance: false, isActive: true },
+      { id: 'hourly-earning', nameAr: 'عمل إضافي', nameEn: 'Overtime', kind: 'EARNING', amountType: 'PER_HOUR', isFixedAllowance: false, isActive: true },
+      { id: 'inactive-earning', nameAr: 'بدل غير نشط', nameEn: 'Inactive allowance', kind: 'EARNING', amountType: 'FIXED', isFixedAllowance: true, isActive: false },
     ]));
     await mount('/payroll?tab=employees');
     await until(() => expect(
@@ -224,6 +230,7 @@ describe('payroll page payloads and run actions', () => {
     const options = [...document.querySelectorAll<HTMLElement>('.ant-select-item-option')]
       .map((option) => option.textContent?.trim());
     expect(options).toContain('Transport allowance');
+    expect(options).not.toContain('Bonus');
     expect(options).not.toContain('Advance repayment');
     expect(options).not.toContain('Overtime');
     expect(options).not.toContain('Inactive allowance');
@@ -254,6 +261,60 @@ describe('payroll page payloads and run actions', () => {
       await taxSave.promise;
     });
     await until(() => expect(api.postRun).toHaveBeenCalledTimes(1));
+  });
+
+  it('defaults the payment and reversal date to the run date and sends the selected date', async () => {
+    const postedRun = { ...run, runDate: '2100-12-31', status: 'POSTED' };
+    api.createRun.mockResolvedValue(response({ id: postedRun.id }));
+    api.getRun.mockResolvedValue(response(postedRun));
+    api.listCashBoxes.mockResolvedValue(response([{ id: 'cash-1', name: 'Main cash box' }]));
+    await mount('/payroll?tab=runs&new=1');
+
+    await until(() => expect(api.getRun).toHaveBeenCalledWith(postedRun.id));
+    let actionDateInput: HTMLInputElement | undefined;
+    await until(() => {
+      actionDateInput = [...host!.querySelectorAll<HTMLInputElement>('.ant-picker-input input')]
+        .find((input) => input.value === '31/12/2100');
+      expect(actionDateInput).toBeDefined();
+    });
+
+    act(() => actionDateInput!.click());
+    await until(() => expect(document.querySelector('.ant-picker-dropdown')).not.toBeNull());
+    const datePicker = document.querySelector<HTMLElement>('.ant-picker-dropdown')!;
+    const nextMonth = datePicker.querySelector<HTMLElement>('.ant-picker-header-next-btn');
+    if (!nextMonth) throw new Error('Missing next-month control');
+    act(() => nextMonth.click());
+    await settle();
+    const nextDate = document.querySelector<HTMLElement>('.ant-picker-cell[title="2101-01-01"] .ant-picker-cell-inner');
+    if (!nextDate) throw new Error('Missing January 1, 2101 in date picker');
+    act(() => nextDate.click());
+    await settle();
+    expect(actionDateInput!.value).toBe('01/01/2101');
+
+    const paymentAccount = [...host!.querySelectorAll<HTMLElement>('.ant-select')]
+      .find((select) => select.textContent?.includes(i18n.t('payroll.paymentAccount')));
+    const paymentAccountSelector = paymentAccount?.querySelector<HTMLElement>('.ant-select-selector');
+    if (!paymentAccountSelector) throw new Error('Missing payment account selector');
+    act(() => paymentAccountSelector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+    await until(() => expect(
+      [...document.querySelectorAll('.ant-select-item-option')].some((option) => option.textContent?.includes('Main cash box')),
+    ).toBe(true));
+    const cashOption = [...document.querySelectorAll<HTMLElement>('.ant-select-item-option')]
+      .find((option) => option.textContent?.includes('Main cash box'))!;
+    act(() => cashOption.click());
+    await settle();
+
+    const payButton = [...host!.querySelectorAll('button')]
+      .find((button) => button.textContent?.includes(i18n.t('payroll.pay')))!;
+    act(() => payButton.click());
+    await until(() => expect(api.payRun).toHaveBeenCalledTimes(1));
+    expect(api.payRun.mock.calls[0]?.[1]).toEqual({ date: '2101-01-01', cashBoxId: 'cash-1' });
+
+    const reverseButton = [...host!.querySelectorAll('button')]
+      .find((button) => button.textContent?.includes(i18n.t('payroll.reverse')))!;
+    act(() => reverseButton.click());
+    await until(() => expect(api.reverseRun).toHaveBeenCalledTimes(1));
+    expect(api.reverseRun.mock.calls[0]?.[1]).toEqual({ date: '2101-01-01' });
   });
 
   it('retries a partial employee save as an update', async () => {
@@ -371,11 +432,17 @@ describe('payroll page payloads and run actions', () => {
     })).toMatchObject({ code: 'E1', sscCovered: true, sscHazardous: false });
   });
 
-  it('omits the active state from pay-element create payloads', () => {
-    expect(buildElementPayload({ code: 'E1', nameAr: 'Element', isActive: true }, false))
-      .toEqual({ code: 'E1', nameAr: 'Element' });
-    expect(buildElementPayload({ code: 'E1', nameAr: 'Element', isActive: false }, true))
-      .toEqual({ nameAr: 'Element', isActive: false });
+  it('omits the active state and clears fixed-allowance flags when hidden', () => {
+    expect(buildElementPayload({
+      code: 'E1', nameAr: 'Element', kind: 'EARNING', amountType: 'FIXED', isFixedAllowance: true, isActive: true,
+    }, false)).toEqual({
+      code: 'E1', nameAr: 'Element', kind: 'EARNING', amountType: 'FIXED', isFixedAllowance: true,
+    });
+    expect(buildElementPayload({
+      code: 'E1', nameAr: 'Element', kind: 'DEDUCTION', amountType: 'FIXED', isFixedAllowance: true, isActive: false,
+    }, true)).toEqual({
+      nameAr: 'Element', kind: 'DEDUCTION', amountType: 'FIXED', isFixedAllowance: false, isActive: false,
+    });
   });
 
   it('allows all non-control account types for deductions and keeps earnings expense-only', () => {

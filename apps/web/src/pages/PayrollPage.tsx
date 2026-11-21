@@ -39,7 +39,7 @@ import {
   type AccountDto,
 } from '@erp/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, DatePicker as AntDatePicker, Form, Input, Modal, Select, Space, Switch, Table, Tabs } from 'antd';
+import { App, Button, Checkbox, DatePicker as AntDatePicker, Form, Input, Modal, Select, Space, Switch, Table, Tabs } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -71,6 +71,12 @@ export function dateOnly(value: DateFormValue): string | undefined {
 export function formatPayrollDate(value: DateFormValue): string | undefined {
   const date = dateOnly(value);
   return date ? dayjs(date).format(DATE_INPUT_FORMAT) : undefined;
+}
+
+export function defaultPayrollActionDate(runDate?: string | null) {
+  const today = dayjs().startOf('day');
+  const run = runDate ? dayjs(runDate).startOf('day') : today;
+  return run.isValid() && run.isAfter(today) ? run : today;
 }
 
 export function monthToPayrollPeriod(value: Dayjs | null) {
@@ -108,11 +114,15 @@ export function buildSettingsPayload(values: Record<string, unknown> & { effecti
 }
 
 export function buildElementPayload(values: Record<string, unknown>, editing: boolean) {
+  const payload: Record<string, unknown> = {
+    ...values,
+    isFixedAllowance: values.kind === 'EARNING' && values.amountType === 'FIXED' && Boolean(values.isFixedAllowance),
+  };
   if (editing) {
-    const { code: _code, ...update } = values;
+    const { code: _code, ...update } = payload;
     return update;
   }
-  const { isActive: _isActive, ...create } = values;
+  const { isActive: _isActive, ...create } = payload;
   return create;
 }
 
@@ -201,7 +211,7 @@ function EmployeesTab() {
   const [form] = Form.useForm<EmployeeForm>();
   const recurringElementId = Form.useWatch('payElementId', form);
   const recurringElements = (elements.data as PayrollElementDto[] | undefined)?.filter((element) =>
-    element.isActive && element.kind === 'EARNING' && element.amountType === 'FIXED');
+    element.isActive && element.isFixedAllowance);
   const save = useMutation({
     mutationFn: async (values: EmployeeForm) => {
       const card = buildEmployeePayload(values, Boolean(editing));
@@ -311,6 +321,7 @@ function ElementsTab() {
   const [editing, setEditing] = useState<PayrollElementDto>();
   const [form] = Form.useForm();
   const kind = Form.useWatch('kind', form) as string | undefined;
+  const amountType = Form.useWatch('amountType', form) as string | undefined;
   const accountOptions = (accounts.data ?? []).filter((account) =>
     payElementAccountSelectable(account, kind),
   ).map((account) => ({ value: account.id, label: `${account.code} — ${i18n.language === 'en' ? account.nameEn ?? account.nameAr : account.nameAr}` }));
@@ -340,6 +351,11 @@ function ElementsTab() {
         {(['code', 'nameAr', 'nameEn', 'rateFactor'] as const).map((field) => <Form.Item key={field} name={field} label={t(`payroll.${field}`)} rules={[{ required: field !== 'nameEn' && !(editing && field === 'code') }]}><Input disabled={Boolean(editing && field === 'code')} /></Form.Item>)}
         <Form.Item name="kind" label={t('payroll.kind')} initialValue="EARNING"><Select options={['EARNING', 'DEDUCTION'].map((v) => ({ value: v, label: t(`payroll.${v.toLowerCase()}`) }))} /></Form.Item>
         <Form.Item name="amountType" label={t('payroll.amountType')} initialValue="FIXED"><Select options={['FIXED', 'PER_HOUR', 'PER_DAY'].map((v) => ({ value: v, label: t(`payroll.${v === 'PER_HOUR' ? 'perHour' : v === 'PER_DAY' ? 'perDay' : 'fixed'}`) }))} /></Form.Item>
+        {kind === 'EARNING' && amountType === 'FIXED' && (
+          <Form.Item name="isFixedAllowance" valuePropName="checked" initialValue={false}>
+            <Checkbox>{t('payroll.fixedAllowance')}</Checkbox>
+          </Form.Item>
+        )}
         <Form.Item name="accountId" label={t('payroll.account')} rules={[{ required: true }]}><GridSelect options={accountOptions} /></Form.Item>
         <Form.Item name="sscSubject" label={t('payroll.sscSubject')} valuePropName="checked" initialValue={true}><Switch /></Form.Item>
         {editing && <Form.Item name="isActive" label={t('payroll.active')} valuePropName="checked"><Switch /></Form.Item>}
@@ -465,6 +481,7 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
   const [period, setPeriod] = useState(dayjs().format('YYYY-MM'));
   const [sourceType, setSourceType] = useState<'cash' | 'bank'>('cash');
   const [sourceId, setSourceId] = useState<string>();
+  const [actionDate, setActionDate] = useState<Dayjs>(() => dayjs());
   const cashBoxes = useQuery({ queryKey: ['payroll', 'cashBoxes'], queryFn: async () => (await treasuryControllerListCashBoxes()).data });
   const bankAccounts = useQuery({ queryKey: ['payroll', 'bankAccounts'], queryFn: async () => (await treasuryControllerListBankAccounts()).data });
   const sourceOptions = buildPaymentSourceOptions(
@@ -495,14 +512,17 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
     const options = { headers: { 'Idempotency-Key': crypto.randomUUID() } };
     if (action === 'post') await payrollControllerPostRun(runId, options);
     if (action === 'pay' && sourceId) await payrollControllerPayRun(runId, {
-      date: dateOnly(dayjs())!, ...(sourceType === 'cash' ? { cashBoxId: sourceId } : { bankAccountId: sourceId }),
+      date: dateOnly(actionDate)!, ...(sourceType === 'cash' ? { cashBoxId: sourceId } : { bankAccountId: sourceId }),
     }, options);
-    if (action === 'reverse') await payrollControllerReverseRun(runId, { date: dateOnly(dayjs())! }, options);
+    if (action === 'reverse') await payrollControllerReverseRun(runId, { date: dateOnly(actionDate)! }, options);
     if (action === 'recompute') await (await import('@erp/api-client')).payrollControllerRecomputeRun(runId);
     if (action === 'delete') await payrollControllerDeleteRun(runId);
   }, onSuccess: (_result, action) => { if (action === 'delete') setRunId(undefined); void qc.invalidateQueries({ queryKey: ['payroll'] }); }, onError: () => message.error(t('payroll.saveError')) });
   const data = run.data as (PayrollRunDto & { lines?: Array<{ id: string; employeeName: string; basic: string; earnings: string; gross: string; sscBase: string; sscEmployee: string; sscEmployer: string; incomeTax: string; deductions: string; net: string }> }) | undefined;
   const available = runAvailability(data?.status ?? '');
+  useEffect(() => {
+    setActionDate(defaultPayrollActionDate(data?.runDate));
+  }, [runId, data?.runDate]);
   const printPayslip = async (lineId: string) => {
     const preview = window.open('about:blank', '_blank');
     try {
@@ -521,6 +541,10 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
       <Select style={{ minWidth: 180 }} placeholder={t('payroll.run')} value={runId} onChange={setRunId} options={(runs.data as PayrollRunDto[] | undefined)?.map((r) => ({ value: r.id, label: `${r.period} · ${t(`payroll.${r.status.toLowerCase()}`)}` }))} />
       <Select value={sourceType} onChange={(value) => { setSourceType(value); setSourceId(undefined); }} options={['cash', 'bank'].map((v) => ({ value: v, label: t(`payroll.${v}`) }))} />
       <Select placeholder={t('payroll.paymentAccount')} value={sourceId} onChange={setSourceId} options={sourceOptions} />
+      <Space size={4}>
+        <span>{t('payroll.actionDate')}</span>
+        <DatePicker aria-label={t('payroll.actionDate')} value={actionDate} onChange={(value) => { if (value) setActionDate(value); }} />
+      </Space>
       {can(PERMISSIONS.PAYROLL_MANAGE) && <Button disabled={!runId} onClick={() => mutate.mutate('recompute')}>{t('payroll.recompute')}</Button>}
       {can(PERMISSIONS.PAYROLL_MANAGE) && data?.status === 'DRAFT' && <Button danger disabled={!runId} onClick={() => mutate.mutate('delete')}>{t('payroll.deleteDraft')}</Button>}
       {can(PERMISSIONS.PAYROLL_POST) && <Button disabled={!available.canPost} onClick={() => mutate.mutate('post')}>{t('payroll.post')}</Button>}

@@ -231,7 +231,7 @@ export class PayrollService {
     if (!employee) throw DomainError.notFound('Employee', employeeId.toString());
     return db.employeeRecurringElement.findMany({
       where: { employeeId },
-      include: { payElement: { select: { id: true, code: true, nameAr: true, amountType: true, kind: true } } },
+      include: { payElement: { select: { id: true, code: true, nameAr: true, amountType: true, kind: true, isFixedAllowance: true } } },
       orderBy: [{ validFrom: 'asc' }, { id: 'asc' }],
     });
   }
@@ -245,7 +245,7 @@ export class PayrollService {
       if (!employee) throw DomainError.notFound('Employee', employeeId.toString());
       const element = await tx.payElement.findFirst({ where: { id: BigInt(dto.payElementId), isActive: true } });
       if (!element) throw DomainError.notFound('PayElement', dto.payElementId);
-      if (element.kind !== 'EARNING' || element.amountType !== 'FIXED') {
+      if (!element.isFixedAllowance) {
         throw new DomainError(ErrorCode.VALIDATION, 'Only fixed allowances can recur on the employee card');
       }
       if (dto.amount == null || new Decimal(dto.amount).lt('0') || dto.quantity !== undefined) {
@@ -290,6 +290,9 @@ export class PayrollService {
   async createElement(dto: CreatePayElementDto) {
     this.canManage();
     const { tenantId, companyId, db } = this.context();
+    if (dto.isFixedAllowance === true && (dto.kind !== 'EARNING' || dto.amountType !== 'FIXED')) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Only fixed earning elements can be flagged as allowances');
+    }
     const accountId = BigInt(dto.accountId);
     const account = await db.account.findFirst({ where: { id: accountId } });
     const payable = await db.accountMapping.findFirst({
@@ -323,6 +326,7 @@ export class PayrollService {
         amountType: dto.amountType,
         rateFactor: dto.rateFactor,
         sscSubject: dto.sscSubject ?? true,
+        isFixedAllowance: dto.isFixedAllowance ?? false,
         accountId,
       },
     });
@@ -335,13 +339,31 @@ export class PayrollService {
       await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
       const element = await tx.payElement.findFirst({ where: { id } });
       if (!element) throw DomainError.notFound('PayElement', id.toString());
-      if ((dto.kind !== undefined && dto.kind !== element.kind) || (dto.amountType !== undefined && dto.amountType !== element.amountType)) {
+      const typeChanged =
+        (dto.kind !== undefined && dto.kind !== element.kind) ||
+        (dto.amountType !== undefined && dto.amountType !== element.amountType);
+      const unsettingFixedAllowance = dto.isFixedAllowance === false && element.isFixedAllowance;
+      const kind = dto.kind ?? element.kind;
+      const amountType = dto.amountType ?? element.amountType;
+      const recurring = typeChanged || unsettingFixedAllowance
+        ? await tx.employeeRecurringElement.findFirst({
+          where: { tenantId, payElementId: id },
+          select: { id: true },
+        })
+        : null;
+      if (typeChanged) {
         const movement = await tx.payrollMovement.findFirst({ where: { payElementId: id }, select: { id: true } });
-        const recurring = await tx.employeeRecurringElement.findFirst({ where: { payElementId: id }, select: { id: true } });
         const lineItem = await tx.payrollLineItem.findFirst({ where: { payElementId: id }, select: { id: true } });
         if (movement || recurring || lineItem) {
           throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Used pay element type cannot be changed');
         }
+      }
+      const isFixedAllowance = dto.isFixedAllowance ?? element.isFixedAllowance;
+      if (isFixedAllowance && (kind !== 'EARNING' || amountType !== 'FIXED')) {
+        throw new DomainError(ErrorCode.VALIDATION, 'Only fixed earning elements can be flagged as allowances');
+      }
+      if (unsettingFixedAllowance && recurring) {
+        throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Fixed allowance cannot be unset while recurring rows reference it');
       }
       if (dto.accountId === null) throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Pay element account is not allowed');
       const accountId = dto.accountId === undefined ? element.accountId : BigInt(dto.accountId);
@@ -350,7 +372,6 @@ export class PayrollService {
         where: { tenantId, companyId, mappingKey: 'PAYROLL_PAYABLE' },
         select: { accountId: true },
       });
-      const kind = dto.kind ?? element.kind;
       const validType =
         kind === 'EARNING'
           ? account?.accountType === 'EXPENSE'
@@ -376,6 +397,7 @@ export class PayrollService {
           amountType: dto.amountType,
           rateFactor: dto.rateFactor,
           sscSubject: dto.sscSubject,
+          isFixedAllowance: dto.isFixedAllowance,
           accountId: dto.accountId === undefined ? undefined : accountId,
           isActive: dto.isActive,
         },
@@ -981,6 +1003,9 @@ export class PayrollService {
       const run = await tx.payrollRun.findFirst({ where: { id } });
       if (!run) throw DomainError.notFound('PayrollRun', id.toString());
       if (run.status !== 'POSTED') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only posted runs can be paid');
+      if (payDate < run.runDate) {
+        throw new DomainError(ErrorCode.VALIDATION, 'Payment date must not precede the payroll run date');
+      }
       if (!run.netTotal.gt(0)) throw new DomainError(ErrorCode.VALIDATION, 'Payroll net must be positive to pay');
       const account = dto.cashBoxId
         ? await tx.cashBox.findFirst({ where: { id: BigInt(dto.cashBoxId), isActive: true } })
@@ -1028,10 +1053,10 @@ export class PayrollService {
       if (run.status !== 'POSTED' && run.status !== 'PAID') {
         throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only posted or paid runs can be reversed');
       }
+      if (reversalDate < run.runDate) {
+        throw new DomainError(ErrorCode.VALIDATION, 'Payroll reversal date cannot be before the run date');
+      }
       if (!run.journalEntryId) {
-        if (reversalDate < run.runDate) {
-          throw new DomainError(ErrorCode.VALIDATION, 'Payroll reversal date cannot be before the run date');
-        }
         await this.posting.resolveOpenPeriod(tx, tenantId, companyId, reversalDate);
       }
       if (run.status === 'PAID' && run.paymentEntryId) {
@@ -1247,13 +1272,14 @@ export class PayrollService {
   }
 
   private runDto(run: {
-    id: bigint; period: string; status: string; runNo: string | null; basicTotal: Decimal; earningsTotal: Decimal;
+    id: bigint; period: string; runDate: Date; status: string; runNo: string | null; basicTotal: Decimal; earningsTotal: Decimal;
     grossTotal: Decimal; sscBaseTotal: Decimal; sscEmployeeTotal: Decimal; sscEmployerTotal: Decimal;
     incomeTaxTotal: Decimal; deductionsTotal: Decimal; netTotal: Decimal;
   }) {
     return {
       id: run.id.toString(),
       period: run.period,
+      runDate: run.runDate.toISOString().slice(0, 10),
       status: run.status,
       runNo: run.runNo,
       basicTotal: run.basicTotal.toString(),

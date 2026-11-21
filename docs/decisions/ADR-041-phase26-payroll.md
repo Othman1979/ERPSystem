@@ -28,7 +28,7 @@ Daily payroll amounts are posted immediately as immutable payroll movements rath
 
 An allowed monthly total may be recorded as one movement. Since each voucher is rounded independently, one two-day absence prices to JOD 26.667, while two one-day absence vouchers at JOD 13.333 each total JOD 26.666.
 
-Recurring rows on the employee card are limited to fixed monthly allowances (EARNING + FIXED); all other elements are entered as posted movements.
+Recurring rows on the employee card are limited to pay elements flagged as fixed allowances (EARNING + FIXED, e.g. transport, housing); all other elements are entered as posted movements.
 
 ## Deferred
 End-of-service, leave balances, attendance devices, tax calculation, multi-currency salaries, employee self-service.

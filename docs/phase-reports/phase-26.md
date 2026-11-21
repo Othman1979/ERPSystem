@@ -45,7 +45,7 @@ The run entry debits salaries expense JOD 500.000, transport expense JOD 50.000,
 
 The employee-level PY1 values above remain unchanged. Overtime, absence, and advance repayment are separately posted movements. The payroll run entry debits salaries expense JOD 900.000, transport JOD 50.000, and employer SSC expense JOD 74.961; credits SSC payable JOD 114.414, tax payable JOD 12.500, and payroll payable JOD 898.047. The overtime movement separately posts JOD 26.042 (debit element account, credit payroll payable); the absence movement separately posts JOD 26.667 (debit payroll payable, credit element account); the advance repayment separately debits payroll payable and credits the advance account JOD 25.000.
 
-Recurring rows on the employee card are limited to fixed monthly allowances (EARNING + FIXED); all other elements are entered as posted movements.
+Recurring rows on the employee card are limited to pay elements flagged as fixed allowances (EARNING + FIXED, e.g. transport, housing); all other elements are entered as posted movements.
 
 ## Scope
 

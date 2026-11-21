@@ -121,7 +121,9 @@ describe('Payroll PY1–PY3', () => {
     expect(noEmployees.status).toBe(409);
     expect(noEmployees.body.error.code).toBe('PAYROLL_NO_EMPLOYEES');
 
-    const elements = h.ok(await get(tokenA, 'payroll/elements', companyAId), 200, 'pay elements') as { id: string; code: string }[];
+    const elements = h.ok(await get(tokenA, 'payroll/elements', companyAId), 200, 'pay elements') as {
+      id: string; code: string; isFixedAllowance: boolean;
+    }[];
     const defaultElementAccounts = (await boot.db.query(
       `SELECT element.code, acct.code AS account_code
          FROM pay_elements element
@@ -134,6 +136,11 @@ describe('Payroll PY1–PY3', () => {
     expect(Object.fromEntries(defaultElementAccounts.map(({ code, account_code }) => [code, account_code])))
       .toEqual({ ABSENCE_DAY: '5201', PENALTY: '4201' });
     const elementId = Object.fromEntries(elements.map((item) => [item.code, item.id])) as Record<string, string>;
+    const fixedAllowanceByCode = Object.fromEntries(
+      elements.filter(({ code }) => ['TRANSPORT', 'HOUSING', 'BONUS'].includes(code))
+        .map(({ code, isFixedAllowance }) => [code, isFixedAllowance]),
+    );
+    expect(fixedAllowanceByCode).toEqual({ TRANSPORT: true, HOUSING: true, BONUS: false });
     expect((await act(tokenA, 'payroll/settings', {
       effectiveFrom: '2031-01-01', hoursPerMonth: '0',
     }, companyAId)).status).toBe(400);
@@ -155,10 +162,20 @@ describe('Payroll PY1–PY3', () => {
     }, companyAId);
     expect(payableElement.status).toBe(400);
     expect(payableElement.body.error.code).toBe('PAYROLL_ACCOUNT_INVALID');
-    await post(tokenA, 'payroll/elements', {
+    const deductionAllowance = await act(tokenA, 'payroll/elements', {
+      code: `DEDUCTION-ALLOWANCE-${RUN}`, nameAr: 'Invalid deduction allowance', kind: 'DEDUCTION',
+      amountType: 'FIXED', rateFactor: '1.000000', accountId: accounts['5201'], isFixedAllowance: true,
+    }, companyAId);
+    expect(deductionAllowance.status).toBe(400);
+    expect(deductionAllowance.body.error.code).toBe('VALIDATION');
+    const salaryReduction = await post<{ id: string }>(tokenA, 'payroll/elements', {
       code: `SALARY-REDUCTION-${RUN}`, nameAr: 'Salary reduction', kind: 'DEDUCTION', amountType: 'FIXED',
       rateFactor: '1.000000', accountId: accounts['5201'],
     }, 'salary reduction element', companyAId);
+    const updateDeductionAllowance = await h.api().patch(`/api/v1/payroll/elements/${salaryReduction.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ isFixedAllowance: true });
+    expect(updateDeductionAllowance.status).toBe(400);
+    expect(updateDeductionAllowance.body.error.code).toBe('VALIDATION');
     const employeeA = await post<{ id: string }>(tokenA, 'payroll/employees', {
       code: `A-${RUN}`, nameAr: 'الموظف أ', hireDate: '2031-01-01', payMethod: 'BANK',
     }, 'employee A', companyAId);
@@ -176,12 +193,22 @@ describe('Payroll PY1–PY3', () => {
     const recurring = await post<{ id: string }>(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
       payElementId: elementId.TRANSPORT, amount: '1.000', validFrom: '2032-01-01',
     }, 'future recurring element', companyAId);
+    const unsetFixedAllowance = await h.api().patch(`/api/v1/payroll/elements/${elementId.TRANSPORT}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ isFixedAllowance: false });
+    expect(unsetFixedAllowance.status).toBe(409);
+    expect(unsetFixedAllowance.body.error.code).toBe('INVALID_STATUS_TRANSITION');
     const recurringDeduction = await act(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
       payElementId: elementId.ADVANCE_REPAYMENT, amount: '25.000', validFrom: '2031-01-01',
     }, companyAId);
     expect(recurringDeduction.status).toBe(400);
     expect(recurringDeduction.body.error.code).toBe('VALIDATION');
     expect(recurringDeduction.body.error.message).toBe('Only fixed allowances can recur on the employee card');
+    const recurringBonus = await act(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
+      payElementId: elementId.BONUS, amount: '10.000', validFrom: '2031-01-01',
+    }, companyAId);
+    expect(recurringBonus.status).toBe(400);
+    expect(recurringBonus.body.error.code).toBe('VALIDATION');
+    expect(recurringBonus.body.error.message).toBe('Only fixed allowances can recur on the employee card');
     const recurringHourly = await act(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
       payElementId: elementId.OVERTIME_125, quantity: '1.000', validFrom: '2031-01-01',
     }, companyAId);
@@ -224,6 +251,7 @@ describe('Payroll PY1–PY3', () => {
     const employeeDetail = await get(tokenA, `payroll/employees/${employeeA.id}`, companyAId);
     expect(employeeDetail.body.salaries).toHaveLength(1);
     expect(employeeDetail.body.salaries[0].basicSalary).toBe('500');
+    expect(employeeDetail.body.recurringElements[0].payElement.isFixedAllowance).toBe(true);
 
     await post(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
       payElementId: elementId.TRANSPORT, amount: '50.000', validFrom: '2031-01-01', validTo: '2031-01-31',
@@ -374,9 +402,20 @@ describe('Payroll PY1–PY3', () => {
     expect(lateMovement.status).toBe(409);
     await expectBalanced();
 
+    const paymentBeforeRunDate = await act(tokenA, `payroll/runs/${run.id}/pay`, {
+      bankAccountId, date: '2031-01-30',
+    }, companyAId);
+    expect(paymentBeforeRunDate.status).toBe(400);
+    expect(paymentBeforeRunDate.body.error.code).toBe('VALIDATION');
+    expect(paymentBeforeRunDate.body.error.message).toBe('Payment date must not precede the payroll run date');
     const paid = await act(tokenA, `payroll/runs/${run.id}/pay`, { bankAccountId, date: '2031-01-31' }, companyAId);
     h.ok(paid, 201, 'pay payroll run');
     expect(await accountBalance('2106')).toBe('0.000');
+    const reversalBeforeRunDate = await act(tokenA, `payroll/runs/${run.id}/reverse`, {
+      date: '2031-01-30',
+    }, companyAId);
+    expect(reversalBeforeRunDate.status).toBe(400);
+    expect(reversalBeforeRunDate.body.error.code).toBe('VALIDATION');
     const reversed = await act(tokenA, `payroll/runs/${run.id}/reverse`, { date: '2031-01-31' }, companyAId);
     h.ok(reversed, 201, 'reverse payroll run');
     h.ok(await act(tokenA, `payroll/movements/${advanceMovement.id}/reverse`, {
@@ -537,7 +576,7 @@ describe('Payroll PY1–PY3', () => {
     }, 'type lock salary', companyAId);
     const recurringElement = await post<{ id: string }>(tokenA, 'payroll/elements', {
       code: `REC-${RUN}`, nameAr: 'Recurring lock', kind: 'EARNING', amountType: 'FIXED',
-      rateFactor: '1.000000', accountId: accounts['5201'],
+      rateFactor: '1.000000', accountId: accounts['5201'], isFixedAllowance: true,
     }, 'recurring type lock element', companyAId);
     await post(tokenA, `payroll/employees/${employee.id}/recurring-elements`, {
       payElementId: recurringElement.id, amount: '1.000', validFrom: '2031-04-01',
@@ -566,7 +605,7 @@ describe('Payroll PY1–PY3', () => {
     }, 'recurring race employee', companyAId);
     const element = await post<{ id: string }>(tokenA, 'payroll/elements', {
       code: `RACE-ELEMENT-${RUN}`, nameAr: 'Recurring race element', kind: 'EARNING',
-      amountType: 'FIXED', rateFactor: '1.000000', accountId: accounts['5201'],
+      amountType: 'FIXED', rateFactor: '1.000000', accountId: accounts['5201'], isFixedAllowance: true,
     }, 'recurring race element', companyAId);
 
     const [typeChange, recurringCreate] = await Promise.all([
@@ -580,13 +619,14 @@ describe('Payroll PY1–PY3', () => {
       await get(tokenA, `payroll/employees/${employee.id}/recurring-elements`, companyAId),
       200,
       'read recurring race result',
-    ) as Array<{ amount: string | null; quantity: string | null; payElement: { amountType: string } }>;
+    ) as Array<{ amount: string | null; quantity: string | null; payElement: { amountType: string; isFixedAllowance: boolean } }>;
     const elements = h.ok(await get(tokenA, 'payroll/elements', companyAId), 200, 'read recurring race element') as Array<{
-      id: string; amountType: string;
+      id: string; amountType: string; isFixedAllowance: boolean;
     }>;
     const currentElement = elements.find((candidate) => candidate.id === element.id)!;
     for (const row of recurringRows) {
       expect(row.payElement.amountType).toBe(currentElement.amountType);
+      expect(row.payElement.isFixedAllowance).toBe(true);
       if (currentElement.amountType === 'FIXED') {
         expect(row.amount).not.toBeNull();
         expect(row.quantity).toBeNull();
@@ -595,16 +635,10 @@ describe('Payroll PY1–PY3', () => {
         expect(row.quantity).not.toBeNull();
       }
     }
-    if (recurringRows.length > 0) {
-      expect(recurringCreate.status).toBe(201);
-      expect(typeChange.status).toBe(409);
-      expect(typeChange.body.error.code).toBe('INVALID_STATUS_TRANSITION');
-    } else {
-      expect(recurringCreate.status).toBe(400);
-      expect(recurringCreate.body.error.code).toBe('VALIDATION');
-      expect(typeChange.status).toBe(200);
-      expect(currentElement.amountType).toBe('PER_HOUR');
-    }
+    expect(recurringCreate.status).toBe(201);
+    expect([400, 409]).toContain(typeChange.status);
+    expect(['VALIDATION', 'INVALID_STATUS_TRANSITION']).toContain(typeChange.body.error.code);
+    expect(currentElement.amountType).toBe('FIXED');
   });
 
   it('clears nullable employee fields when the edit payload sends null', async () => {
@@ -905,7 +939,7 @@ describe('Payroll PY1–PY3', () => {
     expect(noPeriod.body.error.code).toBe('PERIOD_CLOSED');
 
     const paid = h.ok(
-      await act(tokenA, `payroll/runs/${draft.id}/pay`, { bankAccountId: bankAccount.id, date: '2033-01-20' }, company.id),
+      await act(tokenA, `payroll/runs/${draft.id}/pay`, { bankAccountId: bankAccount.id, date: '2033-01-31' }, company.id),
       201,
       'pay movement-only run',
     ) as { status: string };
@@ -1007,7 +1041,7 @@ describe('Payroll PY1–PY3', () => {
     const earning = await post<{ id: string }>(tokenA, 'payroll/elements', {
       code: `SIDE-EARN-${RUN}`, nameAr: sharedDescription, nameEn: sharedDescription,
       kind: 'EARNING', amountType: 'FIXED', rateFactor: '1.000000',
-      accountId: accounts['5201'], sscSubject: false,
+      accountId: accounts['5201'], sscSubject: false, isFixedAllowance: true,
     }, 'same-account recurring earning', companyAId);
     const deduction = await post<{ id: string }>(tokenA, 'payroll/elements', {
       code: `SIDE-DEDUCT-${RUN}`, nameAr: sharedDescription, nameEn: sharedDescription,

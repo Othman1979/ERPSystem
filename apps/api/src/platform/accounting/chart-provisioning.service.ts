@@ -90,6 +90,7 @@ export class ChartProvisioningService {
           amountType: element.amountType,
           rateFactor: element.rateFactor,
           sscSubject: element.sscSubject,
+          isFixedAllowance: element.isFixedAllowance,
           accountId,
         },
       });

@@ -3182,6 +3182,8 @@ export class PayElementRow {
   rateFactor!: string;
   @ApiProperty({ type: 'boolean' })
   sscSubject!: boolean;
+  @ApiProperty({ type: 'boolean' })
+  isFixedAllowance!: boolean;
   @ApiProperty({ type: 'string' })
   accountId!: string;
   @ApiProperty({ type: 'boolean' })
