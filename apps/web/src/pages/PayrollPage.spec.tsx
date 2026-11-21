@@ -225,6 +225,9 @@ describe('payroll page payloads and run actions', () => {
   });
 
   it('retries a partial employee save as an update', async () => {
+    const createdEmployee = { ...employee, code: 'EMP-RETRY' };
+    api.createEmployee.mockResolvedValue(response(createdEmployee));
+    api.listEmployees.mockResolvedValue(response([createdEmployee]));
     api.addSalary.mockRejectedValueOnce(new Error('salary save failed'));
     await mount('/payroll?tab=employees');
     await until(() => expect(
@@ -243,8 +246,19 @@ describe('payroll page payloads and run actions', () => {
     };
     setInputValue(inputFor('payroll.code'), 'EMP-RETRY');
     setInputValue(inputFor('payroll.nameAr'), 'Retry employee');
-    setInputValue(inputFor('payroll.hireDate'), '01/01/2026');
-    setInputValue(inputFor('payroll.effectiveFrom'), '01/01/2026');
+    const hireDate = inputFor('payroll.hireDate');
+    const selectToday = async (input: HTMLInputElement) => {
+      act(() => input.click());
+      await until(() => expect(document.querySelectorAll('.ant-picker-dropdown').length).toBeGreaterThan(0));
+      const dropdown = [...document.querySelectorAll('.ant-picker-dropdown')].at(-1);
+      const today = dropdown?.querySelector<HTMLElement>('.ant-picker-cell-today .ant-picker-cell-inner');
+      if (!today) throw new Error('Missing current date in date picker');
+      act(() => today.click());
+      await settle();
+    };
+    await selectToday(hireDate);
+    const salaryEffectiveFrom = inputFor('payroll.effectiveFrom');
+    await selectToday(salaryEffectiveFrom);
     setInputValue(inputFor('payroll.basicSalary'), '100.000');
 
     const payMethodLabel = [...modal.querySelectorAll('label')]
@@ -258,21 +272,41 @@ describe('payroll page payloads and run actions', () => {
     const cashOption = [...document.querySelectorAll<HTMLElement>('.ant-select-item-option')]
       .find((option) => option.textContent?.includes(i18n.t('payroll.cash')))!;
     act(() => cashOption.click());
+    await settle();
+    expect(inputFor('payroll.code').value).toBe('EMP-RETRY');
+    expect(inputFor('payroll.nameAr').value).toBe('Retry employee');
+    expect(hireDate.value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    expect(salaryEffectiveFrom.value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    expect(payMethodSelect.querySelector('.ant-select-selection-item')?.textContent).toBe(i18n.t('payroll.cash'));
 
+    const activeModal = () => [...document.querySelectorAll<HTMLElement>('.ant-modal')]
+      .find((candidate) => candidate.querySelector('.ant-modal-title')?.textContent?.includes(i18n.t('payroll.editEmployee')))!;
+    const saveButton = (dialog: HTMLElement) => dialog.querySelector<HTMLButtonElement>('.form-dialog-footer button')!;
     const save = () => {
-      const button = [...document.querySelectorAll('.ant-modal .form-dialog-footer button')]
-        .find((candidate) => candidate.textContent?.includes(i18n.t('common.save')))!;
-      act(() => button.click());
+      act(() => saveButton(modal).click());
     };
     save();
+    await settle();
+    const validationErrors = [...modal.querySelectorAll('.ant-form-item-explain-error')]
+      .map((error) => error.textContent).filter(Boolean).join(', ');
+    expect(api.createEmployee.mock.calls.length, validationErrors).toBe(1);
     await until(() => expect(api.addSalary).toHaveBeenCalledTimes(1));
     expect(api.createEmployee).toHaveBeenCalledTimes(1);
-    expect(api.listEmployees).toHaveBeenCalledTimes(1);
+    expect(api.listEmployees).toHaveBeenCalledTimes(2);
+    await until(() => expect(
+      document.querySelector('.ant-modal-title')?.textContent,
+    ).toContain(i18n.t('payroll.editEmployee')));
+    await until(() => expect(document.body.textContent).toContain(i18n.t('payroll.saveError')));
 
-    save();
-    await until(() => expect(api.updateEmployee).toHaveBeenCalledTimes(1));
+    const editModal = activeModal();
+    await until(() => expect(saveButton(editModal).classList.contains('ant-btn-loading')).toBe(false));
+    act(() => saveButton(editModal).click());
+    await settle();
+    const retryErrors = [...modal.querySelectorAll('.ant-form-item-explain-error')]
+      .map((error) => error.textContent).filter(Boolean).join(', ');
+    expect(api.updateEmployee.mock.calls.length, `create calls: ${api.createEmployee.mock.calls.length}; ${retryErrors}`).toBe(1);
     expect(api.createEmployee).toHaveBeenCalledTimes(1);
-    expect(api.updateEmployee).toHaveBeenCalledWith(employee.id, expect.objectContaining({ code: 'EMP-RETRY' }));
+    expect(api.updateEmployee).toHaveBeenCalledWith(createdEmployee.id, expect.objectContaining({ code: 'EMP-RETRY' }));
   });
 
   it('updates the URL tab parameter without dropping other query parameters', () => {

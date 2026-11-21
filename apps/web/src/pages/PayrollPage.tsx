@@ -208,9 +208,7 @@ function EmployeesTab() {
       if (editing) {
         await payrollControllerUpdateEmployee(editing.id, card);
       } else {
-        const created = await payrollControllerCreateEmployee(card as never);
-        id = created.data.id;
-        if (id) setEditing(created.data);
+        await payrollControllerCreateEmployee(card as never);
       }
       if (!id) {
         const created = await payrollControllerListEmployees();
@@ -230,7 +228,7 @@ function EmployeesTab() {
       }
     },
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['payroll'] }); setOpen(false); },
-    onError: () => message.error(t('payroll.saveError')),
+    onError: () => { message.error(t('payroll.saveError')); },
   });
   const start = async (employee?: PayrollEmployeeDto) => {
     setEditing(employee);
