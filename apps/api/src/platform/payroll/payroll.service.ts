@@ -397,6 +397,18 @@ export class PayrollService {
       await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
       const element = await tx.payElement.findFirst({ where: { id } });
       if (!element) throw DomainError.notFound('PayElement', id.toString());
+      if (
+        element.code === 'LEAVE_ENCASHMENT'
+        && (
+          dto.isActive === false
+          || (dto.kind !== undefined && dto.kind !== element.kind)
+          || (dto.amountType !== undefined && dto.amountType !== element.amountType)
+          || (dto.taxSubject !== undefined && dto.taxSubject !== element.taxSubject)
+          || (dto.sscSubject !== undefined && dto.sscSubject !== element.sscSubject)
+        )
+      ) {
+        throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'The leave-encashment system element cannot be changed');
+      }
       const typeChanged =
         (dto.kind !== undefined && dto.kind !== element.kind) ||
         (dto.amountType !== undefined && dto.amountType !== element.amountType);
@@ -898,7 +910,7 @@ export class PayrollService {
               })
             : Promise.resolve([]),
           tx.payrollSettings.findMany({ where: { effectiveFrom: { lte: end } }, orderBy: [{ effectiveFrom: 'asc' }] }),
-          tx.payElement.findFirst({ where: { code: 'LEAVE_ENCASHMENT', isActive: true } }),
+          tx.payElement.findFirst({ where: { code: 'LEAVE_ENCASHMENT' } }),
         ])
       : [[], [], [], [], null] as const;
     await tx.payrollLine.deleteMany({ where: { payrollRunId: runId } });
@@ -975,6 +987,9 @@ export class PayrollService {
         unpaidLeaveRanges: unpaidRanges,
       });
       const eosProvision = employee.sscCovered ? new Decimal(0) : calculateEos(lastWage, service.serviceYears);
+      if (leaveDateInPeriod && (!encashmentElement || !encashmentElement.isActive)) {
+        throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'The LEAVE_ENCASHMENT system element is missing or inactive');
+      }
       if (leaveDateInPeriod && annualLeaveType && encashmentElement) {
         const annualSettings = leaveSettings.filter((row) => row.effectiveFrom <= asOfDate);
         const startYear = employee.hireDate.getUTCFullYear();

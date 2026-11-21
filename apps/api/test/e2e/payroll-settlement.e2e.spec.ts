@@ -382,6 +382,10 @@ describe('Phase 28C payroll settlements', () => {
 
   it('prorates from active days before rounding and posts a fully unpaid partial month', async () => {
     const company = await createCompany('PRORATE', true);
+    const encashment = company.elements.find((element) => element.code === 'LEAVE_ENCASHMENT')!;
+    const protectedElement = await h.api().patch(`/api/v1/payroll/elements/${encashment.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ isActive: false });
+    expect(protectedElement.body.error.code).toBe('INVALID_STATUS_TRANSITION');
     const employeeRecord = await employee(company, 'PRORATE', '2026-12-22', '2026-12-31', '3000.000', false);
     const unpaid = (h.ok(await get('payroll/leave-types', company.id), 200, 'proration leave types') as Array<{
       id: string; code: string;
@@ -396,5 +400,18 @@ describe('Phase 28C payroll settlements', () => {
     expect(employeeLine(payroll, employeeRecord.id)).toEqual(expect.objectContaining({
       basic: '1000', deductions: '1000', net: '0',
     }));
+  });
+
+  it('fails a departure run when LEAVE_ENCASHMENT is inactive', async () => {
+    const company = await createCompany('MISSING', true);
+    const employeeRecord = await employee(company, 'MISSING', '2026-01-01', '2026-12-31', '1000.000', false);
+    await boot.db.query(
+      'UPDATE pay_elements SET is_active = 0 WHERE tenant_id = ? AND company_id = ? AND code = ?',
+      [tenantId, BigInt(company.id), 'LEAVE_ENCASHMENT'],
+    );
+    const failedRun = await act('payroll/runs', { period: '2026-12' }, company.id);
+    expect(failedRun.status).toBe(400);
+    expect(failedRun.body.error.code).toBe('PAYROLL_ACCOUNT_INVALID');
+    expect(employeeRecord.id).toBeDefined();
   });
 });
