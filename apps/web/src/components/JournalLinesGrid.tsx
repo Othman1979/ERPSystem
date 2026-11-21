@@ -135,7 +135,7 @@ export function JournalLinesGrid({
   };
 
   const addRow = () => {
-    nextKey.current += 1;
+    nextKey.current = Math.max(nextKey.current, ...linesRef.current.map((line) => line.key)) + 1;
     onChange([...linesRef.current, { key: nextKey.current }]);
   };
 

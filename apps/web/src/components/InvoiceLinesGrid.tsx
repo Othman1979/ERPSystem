@@ -113,7 +113,7 @@ export function InvoiceLinesGrid({
   };
 
   const addRow = () => {
-    nextKey.current += 1;
+    nextKey.current = Math.max(nextKey.current, ...lines.map((line) => line.key)) + 1;
     onChange([...lines, { key: nextKey.current }]);
   };
 
