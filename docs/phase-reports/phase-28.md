@@ -139,21 +139,25 @@ SSC-covered employee hired 01/07/2026 and leaving 20/09/2026, basic JOD 600.000 
 ### 28C acceptance and implementation
 
 - Payroll E2E: **16/16 passed**, including PY1–PY7 and LV1–LV5 with all expected golden values unchanged, plus the leave-period payroll effects. Settlement E2E: **2/2 passed**, covering EOS1, EOS2, EN1, and the refusals for settlement before the leaving-period run is posted, a second active settlement, an SSC-covered employee, and payment before the settlement date. No required golden changed or failed.
-- Settlement and payroll calculator specs: **18/18 passed**, including full-period proration returning exactly 1 in short and long months and the requested February, partial-February, and September-leaver cases. The leave-calculator spec remains covered by the 28B results above and the final full suite.
+- Settlement and payroll calculator specs: **18/18 passed**, including full-period proration returning exactly 1 in short and long months and the requested February, partial-February, and September-leaver cases. The leave-calculator spec also passed in the full root suite.
 - Isolation sweep: **5/5 passed**; OpenAPI lifecycle contract: **14/14 passed**; static idempotency-route check: **3/3 passed**.
 - Chart-template spec: **8/8 passed**. PayrollPage spec: **25/25 passed**, including eligible-employee filtering and settlement post/pay/reverse idempotency headers and date-only forms.
 - API build, API typecheck/lint, web typecheck/lint, and API-client typecheck passed. Prisma client, OpenAPI Prisma models, and API-client generation passed.
 - Settlement list/create, recompute, post, pay, reverse, and draft-delete routes are company-scoped; manage/post permissions, idempotency keys, audit events, DTOs, and bilingual UI/error messages are included. The PayrollPage settlement tab shows eligibility-filtered employee selection, service periods, EOS/tax/provision/net values, and permission-gated lifecycle actions. The existing payslip item renderer displays `LEAVE_ENCASHMENT` without a separate rendering path.
 - No new run/deploy command was added; deploy the migration through the existing migration workflow and build the API before E2E tests.
-- Visual verification was not performed. The single full root `pnpm test` is the final verification step after this report update; its outcome and any failure classification will be recorded in the delivery follow-up.
+- One root `E2E_DB_NAME=erp_phase28c_test pnpm test` run reported **154 suites passed, 2 failed, 1 skipped; 1,825 tests passed, 2 failed, 7 skipped** in the API workspace. The recursive command stopped after the API failure, so the web workspace's suite did not run; the focused PayrollPage spec and web typecheck/lint above passed.
+  - `test/e2e/einvoice.e2e.spec.ts` failed in “a finish under way is not locked by two Cron runs and their recovery: the row ends ACCEPTED”; the worker logged `run failed` with MariaDB `pool is closed`. The focused E2E rerun passed **20/20**.
+  - `test/e2e/phase10-launch.e2e.spec.ts` timed out the proxy login-limit test at Jest's 5-second limit; the focused E2E rerun passed **10/10** (the test took 4.254 seconds).
+  - The branch diff from 28C base `4e57874` contains no EInvoice or Phase 10 paths. These failures are classified as full-suite timing/pool-lifecycle issues unrelated to 28C; their exact concurrency mechanism is unverified. No 28C golden failed.
+- Visual verification was not performed.
 
 ## Phase 28 final report (BUILD_PLAN §22)
 
 1. **Completed outputs:** 28A income-tax withholding, 28B leave balances/requests/payroll deductions and provision, and 28C proration, leave encashment, EOS provisions, and settlement lifecycle are implemented.
 2. **Tables and migrations:** 28A — `20261121133409_phase28a_income_tax`; 28B — `20261121141806_phase28b_leave`; 28C — `20261121154619_phase28c_settlement`. All are under `apps/api/prisma/migrations/`. The 28B/28C company defaults are backfilled for existing companies and provisioned for new companies.
 3. **Endpoints and screens:** payroll tax and leave routes from the preceding sections; 28C `GET|POST /payroll/settlements`, `POST /payroll/settlements/:id/recompute|post|pay|reverse`, and `DELETE /payroll/settlements/:id`; PayrollPage includes payroll, leave, balances/settings, and final-settlement tabs.
-4. **Acceptance tests:** PY1–PY7, LV1–LV5, EOS1, EOS2, EN1 and settlement refusals are unchanged and passed; isolation, OpenAPI, idempotency, calculators, chart-template and PayrollPage results are listed above. The one required full `pnpm test` is pending and will be recorded after it runs.
+4. **Acceptance tests:** PY1–PY7, LV1–LV5, EOS1, EOS2, EN1 and settlement refusals are unchanged and passed; isolation, OpenAPI, idempotency, calculators, chart-template and PayrollPage results are listed above. The one full root `pnpm test` run and its two unrelated, isolated-rerun-passing failures are classified above.
 5. **Operational commands:** no new commands. Build the API before E2E runs; use the standard Prisma migration deployment process.
-6. **Known issues and technical debt:** visual verification was not performed. Any failures from the final full suite will be classified in the follow-up; no 28C design deviation or failed golden is currently known.
+6. **Known issues and technical debt:** the full-suite EInvoice pool-lifecycle and Phase 10 timeout failures are described above; visual verification was not performed. No 28C design deviation or failed golden is known.
 7. **Decisions:** [ADR-043](../decisions/ADR-043-phase28-payroll-completion.md) records 28A, 28B, and the settled 28C implementation rules.
 8. **Next phase:** Phase 28 is complete; no later phase was started. Existing owner follow-ups (Phase 10 items and accountant review of golden scenarios) remain as listed in `CLAUDE.md`.
