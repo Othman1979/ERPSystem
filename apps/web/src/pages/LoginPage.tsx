@@ -1,11 +1,11 @@
 import { Alert, Button, Card, Form, Input, Typography } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ApiError, companyControllerGet, companyControllerLogo } from '@erp/api-client';
+import { ApiError } from '@erp/api-client';
 import { useAuth } from '../auth/AuthContext';
 import { BrandingDisplay } from '../components/CompanyBranding';
 import { EnterNav } from '../components/EnterNav';
-import { readLastBranding, saveLastBranding, shrinkLogo } from '../branding/lastBranding';
+import { readLastBranding } from '../branding/lastBranding';
 
 export function LoginPage({ onSwitchToRegister }: { onSwitchToRegister: () => void }) {
   const { t, i18n } = useTranslation();
@@ -19,15 +19,6 @@ export function LoginPage({ onSwitchToRegister }: { onSwitchToRegister: () => vo
     setError(null);
     try {
       await login(values.email, values.password);
-      try {
-        const company = (await companyControllerGet()).data;
-        const logo = company.logo
-          ? await companyControllerLogo().then((r) => shrinkLogo(`data:${r.data.mimeType};base64,${r.data.base64}`))
-          : null;
-        saveLastBranding({ nameAr: company.legalNameAr, nameEn: company.legalNameEn, logo });
-      } catch {
-        // Login remains successful if optional branding cannot be fetched.
-      }
     } catch (err) {
       setError(
         err instanceof ApiError

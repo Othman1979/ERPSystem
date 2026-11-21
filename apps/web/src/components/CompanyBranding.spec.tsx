@@ -19,6 +19,10 @@ vi.mock('@erp/api-client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@erp/api-client')>()),
   companyControllerLogo: (...args: unknown[]) => state.logo(...args),
 }));
+vi.mock('../branding/lastBranding', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../branding/lastBranding')>()),
+  shrinkLogo: vi.fn(async (logo: string) => logo),
+}));
 
 const { CompanyBranding } = await import('./CompanyBranding');
 let root: Root | undefined;
@@ -43,6 +47,7 @@ afterEach(() => {
   state.companyId = 'company-a';
   state.company = { legalNameAr: 'شركة أ', legalNameEn: 'Company A', logo: null };
   state.logo.mockClear();
+  localStorage.clear();
 });
 
 beforeEach(async () => {
@@ -62,6 +67,25 @@ describe('CompanyBranding', () => {
     await mount();
     expect(host.textContent).toContain('ERP Cloud');
     expect(host.textContent).toContain('شركة أ');
+    expect(JSON.parse(localStorage.getItem('erp.lastBranding') ?? 'null')).toEqual({
+      nameAr: 'شركة أ',
+      nameEn: 'Company A',
+      logo: null,
+    });
+  });
+
+  it('updates the stored name when company data changes', async () => {
+    await mount();
+    state.company = { ...state.company, logo: null, legalNameAr: 'شركة جديدة' };
+    await act(async () => {
+      root!.render(<QueryClientProvider client={client}><CompanyBranding /></QueryClientProvider>);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(JSON.parse(localStorage.getItem('erp.lastBranding') ?? 'null')).toEqual({
+      nameAr: 'شركة جديدة',
+      nameEn: 'Company A',
+      logo: null,
+    });
   });
 
   it('fetches the logo again when the company changes', async () => {
