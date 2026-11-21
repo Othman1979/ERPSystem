@@ -40,7 +40,7 @@ export function CountImportErrors({ rows, onClose }: { rows: SheetRowError[]; on
           { title: t('stockCount.importRow'), dataIndex: 'row', width: 80, align: 'right' },
           { title: t('stockCount.importReason'), render: (_: unknown, r: SheetRowError) => importReasonText(t, r.reason) },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
     </Modal>
   );
 }

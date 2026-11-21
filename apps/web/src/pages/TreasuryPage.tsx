@@ -65,6 +65,7 @@ import {
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PartyFormDialog } from '../components/PartyFormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { PrintPdfButton } from '../components/PrintPdfButton';
@@ -83,6 +84,7 @@ import { AmendVoucherButton } from './treasury/AmendVoucherDialog';
 import { enterTo, focusNamedField, GridSelect } from '../components/GridSelect';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { amountCell } from '../format/cells';
+import { formatDate } from '../format/date';
 import { dec, formatAmount, sum } from '../format/number';
 import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
@@ -359,7 +361,7 @@ function CashBoxesTab() {
         count={shown.length}
         actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newCashBox')}</Button>}
       />
-      <Table rowKey="id" loading={isLoading} dataSource={shown} locale={tableLocale(boxesQuery)} columns={columns} size="small" pagination={false} />
+      <Table rowKey="id" loading={isLoading} dataSource={shown} locale={tableLocale(boxesQuery)} columns={columns} size="small" pagination={false}  scroll={{ x: 'max-content' }}/>
       <FormDialog open={modalOpen} title={editing ? t('treasury.editCashBox') : t('treasury.newCashBox')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
           <FormSection
@@ -518,7 +520,7 @@ function BankAccountsTab() {
         count={shown.length}
         actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('treasury.newBankAccount')}</Button>}
       />
-      <Table rowKey="id" loading={isLoading} dataSource={shown} locale={tableLocale(banksQuery)} columns={columns} size="small" pagination={false} />
+      <Table rowKey="id" loading={isLoading} dataSource={shown} locale={tableLocale(banksQuery)} columns={columns} size="small" pagination={false}  scroll={{ x: 'max-content' }}/>
       <FormDialog open={modalOpen} title={editing ? t('treasury.editBankAccount') : t('treasury.newBankAccount')} onCancel={() => setModalOpen(false)} onSave={() => form.submit()} saving={save.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
           <FormSection
@@ -876,7 +878,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                       ),
                   },
                 ]}
-              />
+               scroll={{ x: 'max-content' }}/>
               )}
             </>
           ) : (
@@ -900,7 +902,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
           </Button>
         }
       />
-      <Table
+      <ResponsiveTable<Voucher>
         rowKey="id"
         loading={vouchersQuery.isLoading}
         dataSource={list.rows}
@@ -910,6 +912,31 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(v) => ({ onClick: () => setViewId(v.id), style: { cursor: 'pointer' } })}
+        mobileCard={{
+          title: (voucher) => voucherNoOf(voucher) ?? `#${voucher.id}`,
+          subtitle: (voucher) => (
+            <>
+              {formatDate(voucherDateOf(voucher))}
+              {voucher.party ? ` · ${displayName(voucher.party)}` : ''}
+            </>
+          ),
+          amount: (voucher) => amountCell(voucher.amount),
+          status: (voucher) =>
+            voucher.reversedAt ? (
+              <Tag color="orange">{t('journal.reversedStatus')}</Tag>
+            ) : (
+              <Tag color="green">{t('journal.postedStatus')}</Tag>
+            ),
+          meta: (voucher) => [
+            ...(voucher.cashAccount ? [<span>{codeAndName(voucher.cashAccount)}</span>] : []),
+            ...(voucher.description ? [<span>{voucher.description}</span>] : []),
+          ],
+          actions: (voucher) => (
+            <Button size="small" onClick={() => setViewId(voucher.id)}>
+              {t('common.view')}
+            </Button>
+          ),
+        }}
       />
     </div>
   );
@@ -1396,7 +1423,7 @@ function VoucherForm({
                 ),
               },
             ]}
-          />
+           scroll={{ x: 'max-content' }}/>
           <div className="doc-section">
             <Button
               size="small"

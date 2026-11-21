@@ -125,7 +125,7 @@ function RequestsTab() {
         <Button onClick={() => action.mutate({ id: row.id, action: 'reject' })}>{t('payroll.rejectLeave')}</Button>
       </Space> : row.status === 'APPROVED' && can(PERMISSIONS.PAYROLL_LEAVE_APPROVE)
         ? <Button danger onClick={() => action.mutate({ id: row.id, action: 'cancel' })}>{t('payroll.cancelLeave')}</Button> : null },
-    ]} />
+    ]}  scroll={{ x: 'max-content' }}/>
     <FormDialog open={formOpen} title={t('payroll.requestLeave')} onCancel={() => setFormOpen(false)} onSave={() => void form.submit()} saving={create.isPending}>
       <EnterNav>
         <Form form={form} layout="vertical" onFinish={(values) => create.mutate(values)}>
@@ -200,7 +200,7 @@ function BalancesTab() {
         ...(['entitlement', 'carryInto', 'adjustments', 'taken', 'available'] as const).map((key) => ({
           title: t(`payroll.${key}`), dataIndex: key, render: (value: string) => formatAmount(value),
         })),
-      ]} />
+      ]}  scroll={{ x: 'max-content' }}/>
     <Table rowKey="id" dataSource={adjustments.data as Array<{ id: string; employeeId: string; year: number; days: string; reason: string }> | undefined}
       columns={[
         { title: t('payroll.employee'), render: (_: unknown, row) => {
@@ -210,7 +210,7 @@ function BalancesTab() {
         { title: t('payroll.year'), dataIndex: 'year' },
         { title: t('payroll.adjustmentDays'), dataIndex: 'days', render: (value: string) => formatAmount(value) },
         { title: t('payroll.leaveReason'), dataIndex: 'reason' },
-      ]} />
+      ]}  scroll={{ x: 'max-content' }}/>
     <FormDialog open={open} title={t('payroll.createAdjustment')} onCancel={() => setOpen(false)} onSave={() => void form.submit()} saving={save.isPending}>
       <EnterNav><Form form={form} layout="vertical" initialValues={{ year: Number(year) }} onFinish={(values) => save.mutate(values)}>
         <Form.Item name="employeeId" label={t('payroll.employee')} rules={[{ required: true }]}><GridSelect options={employeeOptions(employees.data as PayrollEmployeeDto[] | undefined, i18n.language)} /></Form.Item>
@@ -284,7 +284,7 @@ export function LeaveSettingsPanel() {
         { title: t('payroll.nameAr'), dataIndex: 'nameAr' },
         { title: t('payroll.nameEn'), dataIndex: 'nameEn' },
         { title: '', render: (_: unknown, row: { id: string }) => can(PERMISSIONS.PAYROLL_MANAGE) && <Button danger icon={<DeleteOutlined />} onClick={() => deleteHoliday.mutate(row.id)} /> },
-      ]} />
+      ]}  scroll={{ x: 'max-content' }}/>
     </FormSection>
     <FormSection title={t('payroll.leaveTypes')}>
       <Table rowKey="id" dataSource={types.data} columns={[
@@ -293,7 +293,7 @@ export function LeaveSettingsPanel() {
         { title: t('payroll.leaveCategory'), dataIndex: 'category', render: (value: string) => t(`payroll.category${value}`) },
         { title: t('payroll.countBasis'), dataIndex: 'countBasis', render: (value: string) => t(`payroll.${value === 'WORKING_DAYS' ? 'workingDays' : 'calendarBasis'}`) },
         { title: '', render: (_: unknown, row: LeaveTypeResponseDto) => can(PERMISSIONS.PAYROLL_MANAGE) && <Button onClick={() => openType(row)}>{t('payroll.editElement')}</Button> },
-      ]} />
+      ]}  scroll={{ x: 'max-content' }}/>
     </FormSection>
     <FormDialog open={holidayOpen} title={t('payroll.addHoliday')} onCancel={() => setHolidayOpen(false)} onSave={() => void holidayForm.submit()} saving={saveHoliday.isPending}>
       <Form form={holidayForm} layout="vertical" onFinish={(values) => saveHoliday.mutate(values)}>

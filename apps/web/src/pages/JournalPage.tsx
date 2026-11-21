@@ -83,6 +83,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { queryErrorMessage, tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
 import { usePagedQuery } from '../hooks/usePagedQuery';
@@ -91,6 +92,7 @@ import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../co
 import { codeAndName } from '../i18n/displayName';
 import { Num } from '../components/Num';
 import { amountCell, amountOrBlankCell } from '../format/cells';
+import { formatDate } from '../format/date';
 import { formatAmount } from '../format/number';
 
 type JournalEntry = JournalEntryDetailDto;
@@ -554,7 +556,7 @@ export function JournalPage() {
               </Dropdown.Button>
           }
         />
-        <Table
+        <ResponsiveTable<JournalEntryListItemDto>
           rowKey="id"
           loading={list.query.isLoading}
           dataSource={list.rows}
@@ -562,6 +564,40 @@ export function JournalPage() {
           pagination={list.pagination}
           onChange={list.onTableChange}
           onRow={(e) => ({ onClick: () => openEntry(e.id), style: { cursor: 'pointer' } })}
+          mobileCard={{
+            title: (entry) => entry.entryNo ?? '—',
+            subtitle: (entry) => (
+              <>
+                {formatDate(entry.entryDate)}
+                {entry.description ? ` · ${entry.description}` : ''}
+              </>
+            ),
+            amount: (entry) => amountCell(entry.totalDebit),
+            status: (entry) =>
+              entry.status !== 'POSTED' ? (
+                <Tag>{t('journal.draft')}</Tag>
+              ) : entry.reversals?.length ? (
+                <Tag color="orange">{t('journal.reversedStatus')}</Tag>
+              ) : (
+                <Tag color="green">{t('journal.postedStatus')}</Tag>
+              ),
+            meta: (entry) => [<span>{t(VOUCHER_TYPE_LABEL[entry.voucherType])}</span>],
+            actions: (entry) =>
+              entry.status === 'DRAFT' ? (
+                <Space>
+                  <Popconfirm title={t('journal.confirmPost')} onConfirm={() => postEntry.mutate(entry.id)}>
+                    <Button size="small" type="primary">
+                      {t('journal.post')}
+                    </Button>
+                  </Popconfirm>
+                  <Popconfirm title={t('common.confirmDelete')} onConfirm={() => deleteDraft.mutate(entry.id)}>
+                    <Button size="small" danger>
+                      {t('common.delete')}
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ) : null,
+          }}
           columns={[
             {
               title: t('journal.entryNo'),
@@ -929,7 +965,7 @@ export function JournalPage() {
                 </Table.Summary.Cell>
               </Table.Summary.Row>
             )}
-          />
+           scroll={{ x: 'max-content' }}/>
         )}
       </DocLayout>
 

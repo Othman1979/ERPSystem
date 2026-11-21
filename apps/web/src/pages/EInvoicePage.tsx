@@ -422,7 +422,7 @@ function SubmissionDrawer({ id, open, onClose }: { id: string | null; open: bool
                   },
                   { title: t('einvoice.message'), dataIndex: 'message' },
                 ]}
-              />
+               scroll={{ x: 'max-content' }}/>
             </section>
           )}
 
@@ -453,7 +453,7 @@ function SubmissionDrawer({ id, open, onClose }: { id: string | null; open: bool
                 { title: t('einvoice.message'), dataIndex: 'message', render: (v: string | null) => v ?? '—' },
                 { title: t('einvoice.startedAt'), dataIndex: 'startedAt', width: 140, render: dateTime },
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           </section>
 
           {technical.length > 0 && <Collapse size="small" items={technical} />}

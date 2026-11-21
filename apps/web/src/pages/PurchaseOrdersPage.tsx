@@ -40,6 +40,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { ListToolbar } from '../components/ListToolbar';
@@ -57,6 +58,7 @@ import { useNewFromUrl } from '../useNewFromUrl';
 import { idemHeaders } from '../idempotency';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
+import { formatDate } from '../format/date';
 import { dec, formatAmount } from '../format/number';
 import {
   approvalHint,
@@ -316,7 +318,7 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
           )
         }
       />
-      <Table
+      <ResponsiveTable<PurchaseOrderListItemDto>
         rowKey="id"
         loading={list.query.isLoading}
         dataSource={list.rows}
@@ -326,6 +328,16 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => onOpen(r.id), style: { cursor: 'pointer' } })}
+        mobileCard={{
+          title: (order) => order.orderNo ?? t('procurement.draftNo'),
+          subtitle: (order) => `${formatDate(order.orderDate)} · ${displayName(order.supplier) ?? '—'}`,
+          amount: (order) => amountCell(order.grandTotal),
+          status: (order) => (
+            <StatusTag tone={STATUS_TONE[order.status]}>{t(`procurement.statuses.${order.status}`)}</StatusTag>
+          ),
+          meta: (order) =>
+            order.request?.requestNo ? [<span>{t('procurement.requestNo')}: {order.request.requestNo}</span>] : [],
+        }}
       />
     </div>
   );
@@ -1026,7 +1038,7 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
           { title: t('procurement.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
           { title: t('procurement.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       {beyondApproval && <OrderDocuments orderId={order.id} />}
 
@@ -1118,7 +1130,7 @@ function OrderDocuments({ orderId }: { orderId: string }) {
           { title: t('procurement.docDate'), dataIndex: 'noteDate', width: 120, render: docDate },
           { title: t('common.status'), dataIndex: 'status', width: 120, render: docStatus },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <Typography.Text strong style={{ display: 'block', marginTop: 12 }}>
         {t('procurement.purchaseInvoices')}
       </Typography.Text>
@@ -1134,8 +1146,7 @@ function OrderDocuments({ orderId }: { orderId: string }) {
           { title: t('procurement.docDate'), dataIndex: 'invoiceDate', width: 120, render: docDate },
           { title: t('common.status'), dataIndex: 'status', width: 120, render: docStatus },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
     </section>
   );
 }
-

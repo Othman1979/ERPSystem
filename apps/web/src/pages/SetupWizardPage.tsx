@@ -201,7 +201,7 @@ export function SetupWizardPage() {
             { title: t('settings.rate'), dataIndex: 'rate', width: 100, render: (v: string) => `${v}%` },
             { title: '', dataIndex: 'isDefault', width: 90, render: (v?: boolean) => (v ? <Tag color="blue">{t('settings.isDefault')}</Tag> : null) },
           ]}
-        />
+         scroll={{ x: 'max-content' }}/>
         <Button onClick={() => navigate('/settings')}>{t('setup.editInSettings')}</Button>
       </Space>
     </>,

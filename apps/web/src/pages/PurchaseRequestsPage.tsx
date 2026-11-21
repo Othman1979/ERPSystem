@@ -325,7 +325,7 @@ export function PurchaseRequestsPage() {
           pagination={list.pagination}
           onChange={list.onTableChange}
           onRow={(r) => ({ onClick: () => openRequest(r.id), style: { cursor: 'pointer' } })}
-        />
+         scroll={{ x: 'max-content' }}/>
       </div>
     );
   }
@@ -976,7 +976,7 @@ function RequestView({
             render: (v: string | null) => v ?? '—',
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       <Typography.Text strong>{t('procurement.quotes')}</Typography.Text>
       <Table
@@ -990,7 +990,7 @@ function RequestView({
           { title: t('common.status'), dataIndex: 'status', render: (v: PurchaseQuoteStatus) => <StatusLabel status={v} /> },
           { title: t('procurement.total'), dataIndex: 'grandTotal', width: 130, align: 'right' as const, render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       <Typography.Text strong>{t('procurement.orders')}</Typography.Text>
       <Table
@@ -1004,7 +1004,7 @@ function RequestView({
           { title: t('common.status'), dataIndex: 'status', render: (v: PurchaseOrderStatus) => <StatusLabel status={v} /> },
           { title: t('procurement.total'), dataIndex: 'grandTotal', width: 130, align: 'right' as const, render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {t('procurement.noEffectHint')}

@@ -139,7 +139,7 @@ function BalancesTab() {
           { title: t('items.unit'), dataIndex: 'unit', width: 80 },
           { title: t('items.minStock'), dataIndex: 'minStock', width: 100, align: 'right' as const, render: qtyCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
     </>
   );
 }
@@ -409,7 +409,7 @@ function AdjustmentsTab() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <Modal
         title={t('journal.reverseTitle')}
         open={!!reverseTarget}
@@ -674,7 +674,7 @@ function TransfersTab() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <Modal
         title={t('journal.reverseTitle')}
         open={!!reverseTarget}
@@ -779,7 +779,7 @@ function MovementsTab() {
           { title: t('stock.totalCost'), dataIndex: 'totalCost', width: 110, align: 'right' as const, render: amountCell },
           { title: t('stock.balanceAfter'), dataIndex: 'balanceQtyAfter', width: 110, align: 'right' as const, render: qtyCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <LoadMore
         hasMore={read.hasMore}
         loading={read.loadingMore}
@@ -818,7 +818,7 @@ function ValuationTab() {
           { title: t('stock.avgCost'), dataIndex: 'avgCost', width: 110, align: 'right' as const, render: unitCostCell },
           { title: t('stock.value'), dataIndex: 'value', width: 120, align: 'right' as const, render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
     </>
   );
 }

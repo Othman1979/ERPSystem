@@ -286,7 +286,7 @@ export function AccountsPage() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <AccountFormDialog
         open={modalOpen}
         editing={editing}

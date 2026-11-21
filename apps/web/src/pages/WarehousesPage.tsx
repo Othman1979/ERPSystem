@@ -161,7 +161,7 @@ export function WarehousesPage() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <FormDialog
         title={editing ? t('warehouses.edit') : t('warehouses.add')}
         open={modalOpen}

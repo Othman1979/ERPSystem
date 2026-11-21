@@ -341,7 +341,7 @@ export function OpeningBalancesPage() {
                 render: amountCell,
               },
             ]}
-          />
+           scroll={{ x: 'max-content' }}/>
         </Card>
       </div>
     );
@@ -431,7 +431,7 @@ export function OpeningBalancesPage() {
                 </Table.Summary.Cell>
               </Table.Summary.Row>
             )}
-          />
+           scroll={{ x: 'max-content' }}/>
         </DocLayout>
       </div>
     );

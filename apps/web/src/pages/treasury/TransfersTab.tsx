@@ -136,7 +136,7 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
               ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <TransferModal
         open={open}
         cashAccounts={cashAccounts}

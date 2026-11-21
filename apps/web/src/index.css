@@ -956,9 +956,139 @@ textarea:focus-visible,
   margin-inline-start: auto;
 }
 
+.responsive-table {
+  width: 100%;
+  min-width: 0;
+}
+
+.responsive-table-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.responsive-table-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--c-panel);
+  border: 1px solid var(--c-grid-frame);
+  border-radius: var(--radius-md);
+}
+
+.responsive-table-card[role='button'] {
+  cursor: pointer;
+}
+
+.responsive-table-card[role='button']:focus-visible {
+  outline: 2px solid var(--c-ink-600);
+  outline-offset: 2px;
+}
+
+.responsive-table-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.responsive-table-card-title {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.responsive-table-card-status {
+  flex-shrink: 0;
+}
+
+.responsive-table-card-subtitle,
+.responsive-table-card-meta {
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
+.responsive-table-card-amount {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.responsive-table-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.responsive-table-card-actions {
+  padding-top: 8px;
+  border-top: 1px solid var(--c-grid-frame);
+}
+
+.responsive-table-empty {
+  padding: 24px 12px;
+}
+
+.responsive-table-pagination {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
 @media (max-width: 640px) {
   .list-toolbar-search {
     width: 100%;
+  }
+
+  .list-toolbar {
+    align-items: stretch;
+  }
+
+  .list-toolbar > .ant-select,
+  .list-toolbar > .ant-picker,
+  .list-toolbar > .ant-segmented,
+  .list-toolbar > .ant-space,
+  .list-toolbar-actions {
+    flex: 0 0 100%;
+    width: 100%;
+  }
+
+  .list-toolbar > .ant-space {
+    flex-wrap: wrap;
+  }
+
+  .list-toolbar > .ant-space > .ant-space-item,
+  .list-toolbar-actions > * {
+    width: 100%;
+  }
+
+  .list-toolbar > .ant-space .ant-select,
+  .list-toolbar > .ant-space .ant-picker {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .list-toolbar-actions {
+    margin-inline-start: 0;
+  }
+
+  .list-toolbar-actions .ant-btn {
+    width: 100%;
+  }
+
+  .list-toolbar-actions .ant-dropdown-button {
+    display: flex;
+    width: 100%;
+  }
+
+  .list-toolbar-actions .ant-dropdown-button .ant-btn {
+    width: auto;
+  }
+
+  .list-toolbar-actions .ant-dropdown-button .ant-btn:first-child {
+    flex: 1;
   }
 }
 
