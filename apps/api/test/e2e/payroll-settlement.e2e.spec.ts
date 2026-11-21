@@ -486,6 +486,28 @@ describe('Phase 28C payroll settlements', () => {
       .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: '2026-12-15' }), 200, 'set departure date after reversal');
   });
 
+  it('blocks annual leave cancellation and balance adjustments after departure payroll', async () => {
+    const company = await createCompany('LEAVE-GUARD', true);
+    const leaver = await employee(company, 'LEAVE-GUARD', '2020-01-01', '2026-12-31', '1000.000', false);
+    const annual = (h.ok(await get('payroll/leave-types', company.id), 200, 'annual leave type for departure guards') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'ANNUAL')!;
+    const request = await post<{ id: string }>('payroll/leave-requests', {
+      employeeId: leaver.id, leaveTypeId: annual.id, startDate: '2026-12-01', endDate: '2026-12-02',
+    }, company.id, 'create annual leave before departure run');
+    h.ok(await act(`payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve annual leave before departure run');
+    await run(company.id, '2026-12');
+
+    const cancel = await act(`payroll/leave-requests/${request.id}/cancel`, {}, company.id);
+    expect(cancel.status).toBe(409);
+    expect(cancel.body.error.code).toBe('LEAVE_RUN_ALREADY_POSTED');
+    const adjustment = await h.api().post('/api/v1/payroll/leave-adjustments')
+      .set(h.auth(token)).set('X-Company-Id', company.id).set('Idempotency-Key', `leave-adjustment-departure-${RUN}`)
+      .send({ employeeId: leaver.id, leaveTypeId: annual.id, year: '2026', days: '1.00', reason: 'Departure guard test' });
+    expect(adjustment.status).toBe(409);
+    expect(adjustment.body.error.code).toBe('LEAVE_RUN_ALREADY_POSTED');
+  });
+
   it('allocates distinct first settlement numbers in separate fiscal years', async () => {
     const company = await createCompany('SEQ', true);
     h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(token)).set('X-Company-Id', company.id).send({
