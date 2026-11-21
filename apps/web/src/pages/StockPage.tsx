@@ -246,7 +246,7 @@ function AdjustmentsTab() {
     }
     form.submit();
   };
-  useDocShortcuts({ onSave: modalOpen ? submitNew : undefined });
+  useDocShortcuts({ onSave: modalOpen ? submitNew : undefined }, { allowInModal: true });
 
   // A new adjustment opens as a full document page.
   if (modalOpen) {
@@ -519,7 +519,7 @@ function TransfersTab() {
     }
     form.submit();
   };
-  useDocShortcuts({ onSave: modalOpen ? submitNew : undefined });
+  useDocShortcuts({ onSave: modalOpen ? submitNew : undefined }, { allowInModal: true });
 
   // A new transfer opens as a full document page.
   if (modalOpen) {

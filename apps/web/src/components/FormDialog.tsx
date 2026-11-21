@@ -51,7 +51,7 @@ export function FormDialog({
   children: ReactNode;
 }) {
   const { t } = useTranslation();
-  useDocShortcuts({ onSave: open ? () => !saving && onSave() : undefined });
+  useDocShortcuts({ onSave: open ? () => !saving && onSave() : undefined }, { allowInModal: true });
   return (
     <Modal
       open={open}
