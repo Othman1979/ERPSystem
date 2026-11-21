@@ -56,7 +56,6 @@ function dateText(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
-/** A yyyy-mm-dd that names a real day; `toDate` alone rolls 2031-04-31 over to May 1. */
 function money(value: Decimal.Value): string {
   return round3(value).toFixed(3);
 }
