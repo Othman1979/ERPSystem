@@ -592,6 +592,8 @@ describe('Phase 8 — reports', () => {
       paymentType: 'CREDIT',
       lines: [{ itemId: id.i1, qty: '10', unitPrice: '10' }],
     });
+    expect((await get('/api/v1/reports/trial-balance')).balanced).toBe(true);
+    expect((await get('/api/v1/stock/verify')).mismatches).toEqual([]);
 
     const company = await api()
       .post('/api/v1/companies')
