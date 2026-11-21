@@ -390,6 +390,17 @@ describe('Phase 28C payroll settlements', () => {
   it('prorates from active days before rounding and posts a fully unpaid partial month', async () => {
     const company = await createCompany('PRORATE', true);
     const encashment = company.elements.find((element) => element.code === 'LEAVE_ENCASHMENT')!;
+    const taxFlag = await h.api().patch(`/api/v1/payroll/elements/${encashment.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ taxSubject: false });
+    expect(taxFlag.status).toBe(200);
+    const sscFlag = await h.api().patch(`/api/v1/payroll/elements/${encashment.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ sscSubject: true });
+    expect(sscFlag.status).toBe(200);
+    for (const change of [{ kind: 'DEDUCTION' }, { amountType: 'PER_DAY' }]) {
+      const locked = await h.api().patch(`/api/v1/payroll/elements/${encashment.id}`)
+        .set(h.auth(token)).set('X-Company-Id', company.id).send(change);
+      expect(locked.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+    }
     const protectedElement = await h.api().patch(`/api/v1/payroll/elements/${encashment.id}`)
       .set(h.auth(token)).set('X-Company-Id', company.id).send({ isActive: false });
     expect(protectedElement.body.error.code).toBe('INVALID_STATUS_TRANSITION');

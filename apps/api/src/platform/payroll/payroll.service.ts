@@ -414,8 +414,6 @@ export class PayrollService {
           dto.isActive === false
           || (dto.kind !== undefined && dto.kind !== element.kind)
           || (dto.amountType !== undefined && dto.amountType !== element.amountType)
-          || (dto.taxSubject !== undefined && dto.taxSubject !== element.taxSubject)
-          || (dto.sscSubject !== undefined && dto.sscSubject !== element.sscSubject)
         )
       ) {
         throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'The leave-encashment system element cannot be changed');
