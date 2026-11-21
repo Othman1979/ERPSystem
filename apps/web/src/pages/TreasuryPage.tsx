@@ -87,6 +87,7 @@ import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 import { useCostCenters } from '../hooks/useCostCenters';
 import { useEntryDraft } from '../hooks/useEntryDraft';
+import { documentLockHeaders } from '../hooks/useDocumentLock';
 import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
 
 // ------------------------------------------------------------- types
@@ -614,7 +615,9 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
   const reverse = useMutation({
     mutationFn: async (v: { id: string; reversalDate: string }) => {
       const reverseFn = kind === 'receipt' ? treasuryControllerReverseReceipt : treasuryControllerReversePayment;
-      const res = await reverseFn(v.id, { reversalDate: v.reversalDate }, { headers: idemHeaders() });
+      const res = await reverseFn(v.id, { reversalDate: v.reversalDate }, {
+        headers: { ...idemHeaders(), ...documentLockHeaders() },
+      });
       return res.data;
     },
     onSuccess: () => {
@@ -626,7 +629,9 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
   const allocateRest = useMutation({
     mutationFn: async (id: string) => {
       const allocateFn = kind === 'receipt' ? treasuryControllerAllocateReceipt : treasuryControllerAllocatePayment;
-      const res = await allocateFn(id, { auto: true }, { headers: idemHeaders() });
+      const res = await allocateFn(id, { auto: true }, {
+        headers: { ...idemHeaders(), ...documentLockHeaders() },
+      });
       return res.data;
     },
     onSuccess: () => {
@@ -637,7 +642,9 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
   });
   const cancelAllocation = useMutation({
     mutationFn: (allocationId: string) =>
-      treasuryControllerCancelAllocation(allocationId, { headers: idemHeaders() }),
+      treasuryControllerCancelAllocation(allocationId, {
+        headers: { ...idemHeaders(), ...documentLockHeaders() },
+      }),
     onSuccess: () => {
       api.success(t('common.done'));
       invalidate();

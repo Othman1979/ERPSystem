@@ -4,6 +4,7 @@
  * and the small request helpers every scenario uses. Real MariaDB (E2E_DB_NAME).
  */
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import path from 'node:path';
 import { Decimal } from 'decimal.js';
@@ -76,6 +77,68 @@ export function kit(base: string, run: string) {
   const idem = (key = `p14b-${run}-${Math.random().toString(36).slice(2)}`) => ({ 'Idempotency-Key': key });
   const act = (token: string, p: string, body: object = {}, key?: string) =>
     api().post(`/api/v1/${p}`).set(auth(token)).set(idem(key)).send(body);
+  const acquireLock = async (
+    token: string,
+    docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string,
+    holderToken = randomUUID(),
+  ) => {
+    const response = await api()
+      .post(`/api/v1/document-locks/${docType}/${id}/acquire`)
+      .set(auth(token))
+      .set('X-Edit-Lock', holderToken);
+    return { holderToken, response };
+  };
+  const actLocked = async (
+    token: string,
+    docType: 'JOURNAL_ENTRY' | 'RECEIPT' | 'PAYMENT' | 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string,
+    p: string,
+    body: object = {},
+    key?: string,
+  ) => {
+    const { holderToken, response: acquired } = await acquireLock(token, docType, id);
+    if (acquired.status !== 201) {
+      throw new Error(`acquire ${docType} ${id} → ${acquired.status} ${JSON.stringify(acquired.body)}`);
+    }
+    const response = await api()
+      .post(`/api/v1/${p}`)
+      .set(auth(token))
+      .set('X-Edit-Lock', holderToken)
+      .set(idem(key))
+      .send(body);
+    if (response.status < 200 || response.status >= 300) {
+      await api()
+        .delete(`/api/v1/document-locks/${docType}/${id}`)
+        .set(auth(token))
+        .set('X-Edit-Lock', holderToken);
+    }
+    return response;
+  };
+  const updateLocked = async (
+    token: string,
+    docType: 'SALES_INVOICE' | 'PURCHASE_INVOICE',
+    id: string,
+    body: object,
+  ) => {
+    const { holderToken, response: acquired } = await acquireLock(token, docType, id);
+    if (acquired.status !== 201) {
+      throw new Error(`acquire ${docType} ${id} → ${acquired.status} ${JSON.stringify(acquired.body)}`);
+    }
+    const path = docType === 'SALES_INVOICE' ? 'sales-invoices' : 'purchase-invoices';
+    const response = await api()
+      .put(`/api/v1/${path}/${id}`)
+      .set(auth(token))
+      .set('X-Edit-Lock', holderToken)
+      .send(body);
+    if (response.status < 200 || response.status >= 300) {
+      await api()
+        .delete(`/api/v1/document-locks/${docType}/${id}`)
+        .set(auth(token))
+        .set('X-Edit-Lock', holderToken);
+    }
+    return response;
+  };
   const get = (token: string, p: string) => api().get(`/api/v1/${p}`).set(auth(token));
   const patchCompany = (token: string, body: object) => api().patch('/api/v1/company').set(auth(token)).send(body);
   const err = (res: request.Response): [number, string | undefined] => [res.status, res.body?.error?.code];
@@ -84,5 +147,5 @@ export function kit(base: string, run: string) {
     if (res.status !== status) throw new Error(`${what} → ${res.status} ${JSON.stringify(res.body)}`);
     return res.body;
   };
-  return { api, auth, idem, act, get, patchCompany, err, ok };
+  return { api, auth, idem, act, acquireLock, actLocked, updateLocked, get, patchCompany, err, ok };
 }

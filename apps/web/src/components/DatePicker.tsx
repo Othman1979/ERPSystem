@@ -1,8 +1,8 @@
 import { DatePicker as AntDatePicker, type DatePickerProps } from 'antd';
 import type { RangePickerProps } from 'antd/es/date-picker';
+import { DATE_INPUT_FORMAT } from '../format/date';
+export { DATE_INPUT_FORMAT } from '../format/date';
 
-/** How every date field is typed and shown: 20112026 becomes 20/11/2026 as it is typed. */
-export const DATE_INPUT_FORMAT = 'DD/MM/YYYY';
 const MASK = { format: DATE_INPUT_FORMAT, type: 'mask' } as const;
 
 function SinglePicker(props: DatePickerProps) {

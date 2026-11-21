@@ -105,7 +105,7 @@ describe('Golden scenarios S12–S14 — invoices from sales orders (ADR-027)', 
     const inv = await h.get(token, `sales-invoices/${draft.id}`);
     const line = (inv.body.lines as { itemId: string; orderLineId: string; unitPrice: string }[])[0];
     h.ok(
-      await h.api().put(`/api/v1/sales-invoices/${draft.id}`).set(h.auth(token)).send({
+      await h.updateLocked(token, 'SALES_INVOICE', draft.id, {
         invoiceDate: '2026-11-15',
         customerId: customer,
         warehouseId: W,

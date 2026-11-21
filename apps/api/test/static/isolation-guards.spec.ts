@@ -51,6 +51,8 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/platform/admin/admin.service.ts': 'platform console (platform admins only)',
   'src/platform/auth/auth.service.ts': 'sign-in and registration happen before a tenant is chosen',
   'src/platform/auth/token.service.ts': 'refresh tokens belong to users, not tenants',
+  'src/platform/document-locks/document-locks.service.ts':
+    'the platform system client handles cross-module locks; every query uses tenantId from CLS',
   'src/platform/einvoice/einvoice-worker.service.ts': 'claims the outbox across tenants, then sends each in its tenant context',
   'src/platform/export/tenant-export.service.ts': "reads the CLS tenant's own row of the platform tenants table",
   'src/platform/monitoring/error-events.service.ts': 'platform error table across tenants',

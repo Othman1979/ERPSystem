@@ -6,7 +6,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { Modal } from 'antd';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@erp/api-client';
 import i18n from '../i18n';
+import { formatDateTime } from '../format/date';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 // jsdom has no matchMedia; antd's responsive hooks ask for it.
@@ -28,6 +30,10 @@ const createDraft = vi.fn();
 const listMappings = vi.fn();
 const createAccount = vi.fn();
 const costCentersEnabled = vi.hoisted(() => ({ value: false }));
+const lockAcquire = vi.hoisted(() => vi.fn());
+const lockForceRelease = vi.hoisted(() => vi.fn());
+const listEntries = vi.hoisted(() => ({ value: [] as Record<string, unknown>[] }));
+const entryDetail = vi.hoisted(() => ({ value: null as Record<string, unknown> | null }));
 const ok = <T,>(data: T) => Promise.resolve({ data, status: 200, headers: new Headers() });
 
 const account = (id: string, code: string, flags: { isControl?: boolean; controlType?: string | null } = {}) => ({
@@ -67,7 +73,10 @@ vi.mock('@erp/api-client', async (original) => ({
     ok(createAccount.mock.calls.length ? [...ACCOUNTS, NEW_ACCOUNT] : ACCOUNTS),
   accountingControllerCreateAccount: (...args: unknown[]) => createAccount(...args),
   accountingControllerListMappings: () => listMappings(),
-  journalControllerList: () => ok({ items: [], total: 0, page: 1, pageSize: 25 }),
+  journalControllerList: () => ok({ items: listEntries.value, total: listEntries.value.length, page: 1, pageSize: 25 }),
+  journalControllerGet: () => ok(entryDetail.value),
+  documentLocksControllerAcquire: (...args: unknown[]) => lockAcquire(...args),
+  documentLocksControllerForceRelease: (...args: unknown[]) => lockForceRelease(...args),
   costCentersControllerList: () =>
     ok([{ id: 'cc-1', code: 'CC-1', nameAr: 'Centre', nameEn: 'Centre', isActive: true, isPostable: true }]),
   partiesControllerList: (params: { partyType?: string }) =>
@@ -95,6 +104,10 @@ beforeAll(async () => {
 beforeEach(() => {
   localStorage.clear();
   costCentersEnabled.value = false;
+  listEntries.value = [];
+  entryDetail.value = null;
+  lockAcquire.mockReset().mockResolvedValue({});
+  lockForceRelease.mockReset().mockResolvedValue(ok({ released: true }));
   createAccount.mockReset();
   createAccount.mockImplementation(() => ok(NEW_ACCOUNT));
   createDraft.mockReset();
@@ -112,6 +125,10 @@ afterEach(() => {
 const settle = (ms = 400) => act(() => new Promise((r) => setTimeout(r, ms)));
 
 async function openNewEntry() {
+  await openPage('/journal?new=1');
+}
+
+async function openPage(path: string) {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -121,7 +138,7 @@ async function openNewEntry() {
       <QueryClientProvider client={client}>
         <AntApp>
           {/* ?new=1 opens the new-entry form directly (useNewFromUrl). */}
-          <MemoryRouter initialEntries={['/journal?new=1']}>
+          <MemoryRouter initialEntries={[path]}>
             <JournalPage />
           </MemoryRouter>
         </AntApp>
@@ -350,6 +367,94 @@ describe('JournalPage entry quick-create and local draft', () => {
     await settle(100);
     expect(field('journal.account', 0)?.closest('.ant-select')?.textContent).toContain('1101');
     expect(field('journal.debit', 0)?.value).toBe('11');
+  });
+
+  it('shows the lock holder on the saved entry view without rendering the edit form', async () => {
+    const lockedEntry = {
+      id: 'entry-locked',
+      entryNo: 'JV-LOCKED',
+      entryDate: '2031-01-01T00:00:00.000Z',
+      description: 'Locked entry',
+      status: 'POSTED',
+      voucherType: 'JOURNAL',
+      sourceType: 'MANUAL_JOURNAL',
+      totalDebit: '10.000',
+      totalCredit: '10.000',
+      reversals: [],
+      reversalOf: null,
+      lines: [
+        {
+          id: 'line-1',
+          accountId: '11',
+          account: ACCOUNTS[0],
+          debit: '10.000',
+          credit: '0.000',
+          description: null,
+          partyType: null,
+          partyId: null,
+          costCenterId: null,
+        },
+        {
+          id: 'line-2',
+          accountId: '41',
+          account: ACCOUNTS[3],
+          debit: '0.000',
+          credit: '10.000',
+          description: null,
+          partyType: null,
+          partyId: null,
+          costCenterId: null,
+        },
+      ],
+    };
+    listEntries.value = [lockedEntry];
+    entryDetail.value = lockedEntry;
+    lockAcquire.mockRejectedValue(
+      new ApiError(409, 'DOCUMENT_LOCKED', 'locked', {
+        userName: 'Nadia',
+        acquiredAt: '2031-01-01T10:00:00.000Z',
+      }),
+    );
+    await openPage('/journal');
+
+    const row = [...host.querySelectorAll('tr')].find((item) => item.textContent?.includes('JV-LOCKED'));
+    expect(row).toBeDefined();
+    act(() => row!.click());
+    await settle(100);
+    const amend = [...host.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes(i18n.t('journal.amend')),
+    );
+    expect(amend).toBeDefined();
+    act(() => amend!.click());
+    await settle(100);
+
+    expect(host.textContent).toContain(
+      i18n.t('common.documentLockLocked', {
+        name: 'Nadia',
+        time: formatDateTime('2031-01-01T10:00:00.000Z'),
+      }),
+    );
+    expect(host.querySelector('[data-cell]')).toBeNull();
+    expect(host.querySelector('input[aria-label*="Account"]')).toBeNull();
+
+    const unlock = [...host.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes(i18n.t('common.documentLockUnlock')),
+    );
+    expect(unlock).toBeDefined();
+    lockAcquire.mockResolvedValue({});
+    const confirm = vi.spyOn(Modal, 'confirm').mockImplementation((options) => {
+      void options.onOk?.();
+      return { destroy: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    act(() => unlock!.click());
+    await settle(100);
+    confirm.mockRestore();
+    expect(lockForceRelease).toHaveBeenCalledWith(
+      'JOURNAL_ENTRY',
+      'entry-locked',
+      expect.objectContaining({ headers: expect.any(Object) }),
+    );
+    expect(host.querySelector('[data-cell]')).not.toBeNull();
   });
 });
 

@@ -25,11 +25,13 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useRef, useState } from 'react';
+import { formatDateTime } from '../format/date';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { useEntryDraft } from '../hooks/useEntryDraft';
+import { useDocumentLock } from '../hooks/useDocumentLock';
 import { AccountFormDialog } from '../components/AccountFormDialog';
 import { PartyFormDialog } from '../components/PartyFormDialog';
 import {
@@ -141,6 +143,23 @@ export function JournalPage() {
   const [reverseTarget, setReverseTarget] = useState<JournalEntry | null>(null);
   // ADR-039: a posted manual entry opened in the entry form for a direct edit.
   const [amendTarget, setAmendTarget] = useState<JournalEntry | null>(null);
+  const [blockedAmendment, setBlockedAmendment] = useState<{
+    entry: JournalEntry;
+    userName: string;
+    acquiredAt: string;
+  } | null>(null);
+  const lockId = amendTarget?.id ?? blockedAmendment?.entry.id;
+  const editLock = useDocumentLock('JOURNAL_ENTRY', lockId, !!amendTarget);
+  useEffect(() => {
+    if (editLock.state.status !== 'locked' || !amendTarget) return;
+    setBlockedAmendment({
+      entry: amendTarget,
+      userName: editLock.state.userName,
+      acquiredAt: editLock.state.acquiredAt,
+    });
+    setEntryId(amendTarget.id);
+    setAmendTarget(null);
+  }, [amendTarget, editLock.state]);
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
 
@@ -272,7 +291,10 @@ export function JournalPage() {
   // the party checks): say which one. `rowOf` maps it to the row on screen.
   const errorText = (err: unknown, rowOf?: (line: number) => number | undefined): string => {
     if (!(err instanceof ApiError)) return t('errors.INTERNAL');
-    const text = t(`errors.${err.code}`, { defaultValue: err.message });
+    const text = t(`errors.${err.code}`, {
+      userName: String(err.details?.userName ?? ''),
+      defaultValue: err.message,
+    });
     const line = err.details?.line;
     return typeof line === 'number' ? t('journal.lineError', { line: rowOf?.(line) ?? line, error: text }) : text;
   };
@@ -291,6 +313,7 @@ export function JournalPage() {
     };
     setEntryId(null);
     setAmendTarget(null);
+    setBlockedAmendment(null);
     setNewDate(date);
     setNewVoucherType(voucherType);
     setNewDescription('');
@@ -305,6 +328,7 @@ export function JournalPage() {
   useNewFromUrl(() => openNew('JOURNAL'));
 
   const openEntry = (id: string) => {
+    setBlockedAmendment(null);
     setEntryId(id);
     setScreen('entry');
   };
@@ -313,9 +337,11 @@ export function JournalPage() {
     setScreen('list');
     setEntryId(null);
     setAmendTarget(null);
+    setBlockedAmendment(null);
   };
 
   const startAmend = (e: JournalEntry) => {
+    setBlockedAmendment(null);
     setAmendTarget(e);
     // The API's date is midnight UTC: take the calendar day, not the local instant.
     setNewDate(dayjs(e.entryDate.slice(0, 10)));
@@ -382,7 +408,7 @@ export function JournalPage() {
           description: newDescription || undefined,
           lines: sentLines(),
         },
-        { headers: idemHeaders() },
+        { headers: { ...idemHeaders(), ...editLock.headers } },
       ),
     onSuccess: (res) => {
       apiMessage.success(t('journal.amended'));
@@ -420,7 +446,8 @@ export function JournalPage() {
   };
 
   const postEntry = useMutation({
-    mutationFn: (id: string) => journalControllerPost(id, { headers: idemHeaders() }),
+    mutationFn: (id: string) =>
+      journalControllerPost(id, { headers: { ...idemHeaders(), ...editLock.headers } }),
     onSuccess: () => {
       apiMessage.success(t('journal.posted'));
       invalidate();
@@ -439,7 +466,7 @@ export function JournalPage() {
       journalControllerReverse(
         v.id,
         { reversalDate: v.date.format('YYYY-MM-DD') },
-        { headers: idemHeaders() },
+        { headers: { ...idemHeaders(), ...editLock.headers } },
       ),
     onSuccess: () => {
       apiMessage.success(t('journal.reversed'));
@@ -450,7 +477,7 @@ export function JournalPage() {
   });
 
   const deleteDraft = useMutation({
-    mutationFn: (id: string) => journalControllerDeleteDraft(id),
+    mutationFn: (id: string) => journalControllerDeleteDraft(id, { headers: editLock.headers }),
     onSuccess: () => {
       apiMessage.success(t('common.deleted'));
       invalidate();
@@ -623,6 +650,15 @@ export function JournalPage() {
     );
   }
 
+  if (amendTarget && editLock.state.status === 'acquiring') {
+    return (
+      <div>
+        {contextHolder}
+        <Alert type="info" showIcon message={t('common.documentLockAcquiring')} />
+      </div>
+    );
+  }
+
   // ============================ ENTRY VIEW ============================
   const isNew = !entryId;
   const entry = detail ?? null;
@@ -630,6 +666,33 @@ export function JournalPage() {
   return (
     <div>
       {contextHolder}
+      {blockedAmendment && (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('common.documentLockLocked', {
+            name: blockedAmendment.userName,
+            time: formatDateTime(blockedAmendment.acquiredAt),
+          })}
+          action={
+            can(PERMISSIONS.DOCUMENT_UNLOCK) ? (
+              <Button
+                onClick={() =>
+                  Modal.confirm({
+                    title: t('common.documentLockUnlockConfirm'),
+                    onOk: async () => {
+                      await editLock.forceRelease();
+                      startAmend(blockedAmendment.entry);
+                    },
+                  })
+                }
+              >
+                {t('common.documentLockUnlock')}
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
       <DocLayout
         title={
           amendTarget
@@ -647,7 +710,12 @@ export function JournalPage() {
               type="primary"
               icon={<SaveOutlined />}
               loading={createDraft.isPending || amendEntry.isPending}
-              disabled={!partyRules.ready}
+              disabled={
+                !partyRules.ready ||
+                (amendTarget !== null &&
+                  editLock.state.status !== 'held' &&
+                  editLock.state.status !== 'reconnecting')
+              }
               onClick={saveNew}
             >
               {amendTarget ? t('journal.saveAmend') : t('journal.saveDraft')}
@@ -695,6 +763,15 @@ export function JournalPage() {
           )
         }
       >
+        {amendTarget && editLock.state.status === 'reconnecting' && (
+          <Alert className="doc-section" type="warning" showIcon message={t('common.documentLockReconnecting')} />
+        )}
+        {amendTarget && editLock.state.status === 'lost' && (
+          <Alert className="doc-section" type="error" showIcon message={t('common.documentLockLost')} />
+        )}
+        {amendTarget && editLock.state.status === 'error' && (
+          <Alert className="doc-section" type="error" showIcon message={t('errors.INTERNAL')} />
+        )}
         {isNew ? (
           <DocFields>
             <DocField

@@ -105,7 +105,7 @@ describe('Phase 14 part B — invoices from sales orders (ADR-027)', () => {
 
   /** PUT of a draft made from an order: its one line set to `qty` at `price`. */
   function setLine(token: string, invoiceId: string, o: { itemId: string; lineId: string }, qty: string, price = '10', warehouseId = warehouse) {
-    return h.api().put(`/api/v1/sales-invoices/${invoiceId}`).set(h.auth(token)).send({
+    return h.updateLocked(token, 'SALES_INVOICE', invoiceId, {
       invoiceDate: '2026-11-15',
       customerId: customer,
       warehouseId,

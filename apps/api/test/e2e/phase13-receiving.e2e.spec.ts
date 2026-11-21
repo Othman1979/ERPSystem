@@ -29,6 +29,7 @@ import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
 import { Decimal } from '../../src/common/decimal/decimal.utils.js';
 import { addMember } from './support/members.js';
+import { withDocumentEditLock } from './support/document-locks.js';
 import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 const API_PORT = 3713;
@@ -117,8 +118,11 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
   let cashAccount = '';
   let cashCode = '';
 
-  const post = (token: string, p: string, body: object = {}, key?: string) =>
-    api().post(`/api/v1/${p}`).set(auth(token)).set(idem(key)).send(body);
+  const post = (token: string, p: string, body: object = {}, key?: string, editLockToken?: string) => {
+    const req = api().post(`/api/v1/${p}`).set(auth(token)).set(idem(key));
+    if (editLockToken) req.set('X-Edit-Lock', editLockToken);
+    return req.send(body);
+  };
   const get = (token: string, p: string) => api().get(`/api/v1/${p}`).set(auth(token));
   const setLevel = (procurementLevel: string) => api().patch('/api/v1/company').set(auth(owner)).send({ procurementLevel });
   const grant = (membershipId: string, permissions: object[]) =>
@@ -480,15 +484,37 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
       expect(ok.body.priceApprovedAt).not.toBeNull();
       // Edit (adds freight and pays cash): the approval is cleared.
       const full = (await get(acc, `purchase-invoices/${draft.body.id}`)).body;
-      const edited = await api().put(`/api/v1/purchase-invoices/${draft.body.id}`).set(auth(acc)).send({
-        invoiceDate: '2026-11-15', supplierId: s1, warehouseId: W, paymentType: 'CASH', cashAccountId: cashAccount, purchaseOrderId: order.id,
+      const editBody = {
+        invoiceDate: '2026-11-15',
+        supplierId: s1,
+        warehouseId: W,
+        paymentType: 'CASH',
+        cashAccountId: cashAccount,
+        purchaseOrderId: order.id,
         lines: [
           { itemId: item2, qty: '4', unitCost: '10.5', grnLineId: g.lines[0].id, taxCategoryId: full.lines[0].taxCategoryId },
           { itemId: service, qty: '1', unitCost: '2' },
         ],
-      });
+      };
+      expect(
+        (await api().put(`/api/v1/purchase-invoices/${draft.body.id}`).set(auth(acc)).send(editBody)).body.error.code,
+      ).toBe('DOCUMENT_LOCK_REQUIRED');
+      const editLockToken = '7c9e50d8-0f92-4df6-bcb8-5e1e3d615f22';
+      const acquired = await api().post(`/api/v1/document-locks/PURCHASE_INVOICE/${draft.body.id}/acquire`)
+        .set(auth(acc))
+        .set('X-Edit-Lock', editLockToken);
+      expect(acquired.status).toBe(201);
+      const edited = await api().put(`/api/v1/purchase-invoices/${draft.body.id}`)
+        .set(auth(acc))
+        .set('X-Edit-Lock', editLockToken)
+        .send(editBody);
       expect(edited.status).toBe(200);
       expect(edited.body.priceApprovedAt).toBeNull();
+      const [remainingLock] = (await db.query(
+        'SELECT COUNT(*) AS n FROM document_edit_locks WHERE tenant_id = ? AND doc_type = ? AND doc_id = ?',
+        [tenantA, 'PURCHASE_INVOICE', draft.body.id],
+      )) as { n: bigint }[];
+      expect(Number(remainingLock!.n)).toBe(0);
       expect((await post(acc, `purchase-invoices/${draft.body.id}/post`)).body.error.code).toBe('PURCHASE_PRICE_ABOVE_ORDER');
       expect((await post(owner, `purchase-invoices/${draft.body.id}/approve-price`)).status).toBe(201);
       const posted = await post(acc, `purchase-invoices/${draft.body.id}/post`);
@@ -573,10 +599,17 @@ describe('Phase 13 — receiving, billing from receipts, issues (ADR-026)', () =
         invoiceDate: '2026-11-15', supplierId: s1, warehouseId: W, paymentType: 'CREDIT', purchaseOrderId: order.id, description: 'saved',
         lines: [{ itemId: item, qty: '2', unitCost: '1', grnLineId: g.lines[0].id, taxCategoryId: draft.lines[0].taxCategoryId }],
       };
-      const [saved, posted] = await Promise.all([
-        api().put(`/api/v1/purchase-invoices/${draft.id}`).set(auth(owner)).send(body),
-        post(owner, `purchase-invoices/${draft.id}/post`),
-      ]);
+      const [saved, posted] = await withDocumentEditLock(
+        BASE,
+        owner,
+        'PURCHASE_INVOICE',
+        draft.id,
+        (lockToken) =>
+          Promise.all([
+            api().put(`/api/v1/purchase-invoices/${draft.id}`).set(auth(owner)).set('X-Edit-Lock', lockToken).send(body),
+            post(owner, `purchase-invoices/${draft.id}/post`, {}, undefined, lockToken),
+          ]),
+      );
       expect(posted.status).toBe(201);
       expect([200, 409]).toContain(saved.status);
       const final = (await get(owner, `purchase-invoices/${draft.id}`)).body;

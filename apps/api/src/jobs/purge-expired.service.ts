@@ -11,6 +11,8 @@ export interface PurgeExpiredRun {
   idempotencyKeys: number;
   /** Refresh tokens past their expiry that were deleted. */
   refreshTokens: number;
+  /** Document edit locks expired for more than one day that were deleted. */
+  documentEditLocks: number;
   ms: number;
 }
 
@@ -61,7 +63,26 @@ export class PurgeExpiredService {
       return ids.length;
     });
 
-    return { idempotencyKeys, refreshTokens, ms: Date.now() - started };
+    const documentEditLocks = await this.deleteExpiredDocumentLocks(db);
+    return { idempotencyKeys, refreshTokens, documentEditLocks, ms: Date.now() - started };
+  }
+
+  private async deleteExpiredDocumentLocks(db: PrismaService['client']): Promise<number> {
+    const tenants = await db.tenant.findMany({ select: { id: true }, orderBy: { id: 'asc' } });
+    let total = 0;
+    for (const { id: tenantId } of tenants) {
+      for (let batch = 0; batch < MAX_BATCHES; batch++) {
+        const deleted = await db.$executeRaw`
+          DELETE FROM document_edit_locks
+           WHERE tenant_id = ${tenantId}
+             AND expires_at < DATE_SUB(NOW(3), INTERVAL 1 DAY)
+           ORDER BY id
+           LIMIT ${PURGE_BATCH}`;
+        total += deleted;
+        if (deleted < PURGE_BATCH) break;
+      }
+    }
+    return total;
   }
 }
 

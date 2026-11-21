@@ -76,6 +76,7 @@ import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.regis
 import { isRecipe, ItemKindValue } from '../../common/inventory/item-kind.js';
 import { BomService, type StockExplosion } from '../manufacturing/bom.service.js';
 import { YearClosingDraftRegistry, yearClosingDraft, yearClosingDraftText } from '../accounting/year-closing-draft.registry.js';
+import { DocumentLocksService } from '../document-locks/document-locks.service.js';
 
 const SOURCE = 'SALES_INVOICE';
 
@@ -194,9 +195,29 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
     private readonly costCenterUsage: CostCenterUsageRegistry,
     private readonly bom: BomService,
     private readonly yearClosingDrafts: YearClosingDraftRegistry,
+    private readonly documentLocks: DocumentLocksService,
   ) {}
 
   onModuleInit(): void {
+    this.documentLocks.registerTarget('SALES_INVOICE', {
+      lockForEdit: async (tx, docId) => {
+        const { tenantId } = this.support.tenant();
+        const [row] = await tx.$queryRaw<{ branch_id: bigint | null }[]>`
+          SELECT branch_id FROM sales_invoices
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${docId}
+           FOR UPDATE`;
+        if (!row) throw DomainError.notFound('SALES_INVOICE', docId.toString());
+        return { branchId: row.branch_id };
+      },
+      find: async (db, docId) => {
+        const { tenantId } = this.support.tenant();
+        const [row] = await db.$queryRaw<{ branch_id: bigint | null }[]>`
+          SELECT branch_id FROM sales_invoices
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${docId}`;
+        if (!row) throw DomainError.notFound('SALES_INVOICE', docId.toString());
+        return { branchId: row.branch_id };
+      },
+    });
     this.partyUsage.register('sales', (tx, partyId) => this.partyInUse(tx, partyId));
     this.costCenterUsage.register('sales', (tx, id) => this.costCenterInUse(tx, id));
     this.yearClosingDrafts.register('SALES_INVOICE', async (tx, tenantId, companyId, from, to) => {
@@ -882,6 +903,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
       if (!locked || locked.status !== 'DRAFT') {
         throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be modified');
       }
+      await this.documentLocks.requireHeld(tx, 'SALES_INVOICE', id);
       if (inv.salesOrderId !== null) await this.lockDraftOrder(tx, tenantId, inv.salesOrderId, lines);
       // Share-lock the header centre before the row that references it (ADR-024 §1.4).
       if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
@@ -976,14 +998,20 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
   }
 
   async deleteDraft(id: bigint) {
-    const { db } = this.support.tenant();
-    const inv = await db.salesInvoice.findFirst({ where: { id } });
-    if (!inv) throw DomainError.notFound('SalesInvoice', id.toString());
-    if (inv.status !== 'DRAFT') {
-      throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be deleted');
-    }
-    assertBranchAllowed(inv.branchId);
-    await db.salesInvoice.delete({ where: { id } });
+    const { tenantId, db } = this.support.tenant();
+    await db.$transaction(async (tx) => {
+      const [inv] = await tx.$queryRaw<{ status: string; branch_id: bigint | null }[]>`
+        SELECT status, branch_id FROM sales_invoices
+         WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id}
+         FOR UPDATE`;
+      if (!inv) throw DomainError.notFound('SalesInvoice', id.toString());
+      if (inv.status !== 'DRAFT') {
+        throw new DomainError(ErrorCode.CONFLICT, 'Only draft invoices can be deleted');
+      }
+      assertBranchAllowed(inv.branch_id);
+      await this.documentLocks.assertNotLockedByOther(tx, 'SALES_INVOICE', id);
+      await tx.salesInvoice.deleteMany({ where: { id, status: 'DRAFT' } });
+    }, POSTING_TX_OPTIONS);
     return { deleted: true };
   }
 
@@ -1171,6 +1199,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
            WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id} FOR UPDATE`;
         if (!inv) throw DomainError.notFound('SalesInvoice', id.toString());
         assertBranchAllowed(inv.branch_id === null ? null : BigInt(inv.branch_id));
+        await this.documentLocks.assertNotLockedByOther(tx, 'SALES_INVOICE', id);
         if (inv.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only a draft invoice has a price to approve', {
             status: inv.status,
@@ -1245,10 +1274,11 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         });
         if (!draft) throw DomainError.notFound('SalesInvoice', id.toString());
         await assertWarehouseBranchAllowed(tx, draft.warehouseId);
+        assertBranchAllowed(draft.branchId);
+        await this.documentLocks.assertNotLockedByOther(tx, 'SALES_INVOICE', id);
         if (draft.status !== 'DRAFT') {
           throw new DomainError(ErrorCode.CONFLICT, 'Invoice is not a draft');
         }
-        assertBranchAllowed(draft.branchId);
         if (draft.lines.length === 0) {
           throw new DomainError(ErrorCode.VALIDATION, 'Invoice has no lines');
         }

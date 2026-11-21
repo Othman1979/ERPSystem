@@ -119,6 +119,8 @@ export enum ErrorCode {
   // ADR-025 §5: the company's procurement level is below what the document
   // needs (details.required, details.current): FULL for requests and quotes, MEDIUM for orders.
   PROCUREMENT_LEVEL_REQUIRED = 'PROCUREMENT_LEVEL_REQUIRED',
+  DOCUMENT_LOCKED = 'DOCUMENT_LOCKED',
+  DOCUMENT_LOCK_REQUIRED = 'DOCUMENT_LOCK_REQUIRED',
   // ADR-025 §4: at MEDIUM or FULL a purchase invoice (a direct purchase) needs
   // purchase.direct for anyone but an owner.
   PURCHASE_DIRECT_REQUIRED = 'PURCHASE_DIRECT_REQUIRED',

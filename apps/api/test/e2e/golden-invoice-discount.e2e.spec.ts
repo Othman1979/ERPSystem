@@ -451,14 +451,70 @@ describe('Golden scenarios D1–D3 — invoice-level discount (ADR-034)', () => 
       200,
       'preview draft invoice',
     ) as { netTotal: string; taxTotal: string; grandTotal: string };
+    expect(
+      h.err(await h.api().put(`/api/v1/sales-invoices/${draft.id}`).set(h.auth(token)).send(body)),
+    ).toEqual([409, 'DOCUMENT_LOCK_REQUIRED']);
     const updated = h.ok(
-      await h.api().put(`/api/v1/sales-invoices/${draft.id}`).set(h.auth(token)).send(body),
+      await h.updateLocked(token, 'SALES_INVOICE', draft.id, body),
       200,
       'update draft invoice',
     ) as { netTotal: string; taxTotal: string; grandTotal: string };
+    const [remainingLock] = (await boot.db.query(
+      'SELECT COUNT(*) AS n FROM document_edit_locks WHERE tenant_id = ? AND doc_type = ? AND doc_id = ?',
+      [tenantId, 'SALES_INVOICE', draft.id],
+    )) as { n: bigint }[];
+    expect(Number(remainingLock!.n)).toBe(0);
     expect([m3(preview.netTotal), m3(preview.taxTotal), m3(preview.grandTotal)])
       .toEqual([m3(updated.netTotal), m3(updated.taxTotal), m3(updated.grandTotal)]);
     h.ok(await h.patchCompany(token, { pricesIncludeTax: false }), 200, 'restore tax-exclusive prices');
+  });
+
+  it('blocks delete, post, and price approval while another holder owns an invoice lock', async () => {
+    const salesDraft = h.ok(
+      await h.api().post('/api/v1/sales-invoices').set(h.auth(token)).send({
+        invoiceDate: '2025-03-10',
+        customerId,
+        warehouseId,
+        paymentType: 'CREDIT',
+        lines: [{ itemId: service, qty: '1', unitPrice: '10.000' }],
+      }),
+      201,
+      'create sales draft',
+    ) as { id: string };
+    const salesLock = await h.acquireLock(token, 'SALES_INVOICE', salesDraft.id);
+    expect(salesLock.response.status).toBe(201);
+    expect(h.err(await h.api().delete(`/api/v1/sales-invoices/${salesDraft.id}`).set(h.auth(token))))
+      .toEqual([409, 'DOCUMENT_LOCKED']);
+    expect(h.err(await h.act(token, `sales-invoices/${salesDraft.id}/post`)))
+      .toEqual([409, 'DOCUMENT_LOCKED']);
+    expect(h.err(await h.act(token, `sales-invoices/${salesDraft.id}/approve-price`)))
+      .toEqual([409, 'DOCUMENT_LOCKED']);
+    await h.api().delete(`/api/v1/document-locks/SALES_INVOICE/${salesDraft.id}`)
+      .set(h.auth(token))
+      .set('X-Edit-Lock', salesLock.holderToken);
+
+    const purchaseDraft = h.ok(
+      await h.api().post('/api/v1/purchase-invoices').set(h.auth(token)).send({
+        invoiceDate: '2025-03-10',
+        supplierId,
+        warehouseId,
+        paymentType: 'CREDIT',
+        lines: [{ itemId: service, qty: '1', unitCost: '10.000' }],
+      }),
+      201,
+      'create purchase draft',
+    ) as { id: string };
+    const purchaseLock = await h.acquireLock(token, 'PURCHASE_INVOICE', purchaseDraft.id);
+    expect(purchaseLock.response.status).toBe(201);
+    expect(h.err(await h.api().delete(`/api/v1/purchase-invoices/${purchaseDraft.id}`).set(h.auth(token))))
+      .toEqual([409, 'DOCUMENT_LOCKED']);
+    expect(h.err(await h.act(token, `purchase-invoices/${purchaseDraft.id}/post`)))
+      .toEqual([409, 'DOCUMENT_LOCKED']);
+    expect(h.err(await h.act(token, `purchase-invoices/${purchaseDraft.id}/approve-price`)))
+      .toEqual([409, 'DOCUMENT_LOCKED']);
+    await h.api().delete(`/api/v1/document-locks/PURCHASE_INVOICE/${purchaseDraft.id}`)
+      .set(h.auth(token))
+      .set('X-Edit-Lock', purchaseLock.holderToken);
   });
 
   it('rounds each preview line gross before summing the subtotal', async () => {

@@ -159,6 +159,14 @@ enum DocumentStatus {
   POSTED
 }
 
+enum DocumentLockDocType {
+  JOURNAL_ENTRY
+  RECEIPT
+  PAYMENT
+  SALES_INVOICE
+  PURCHASE_INVOICE
+}
+
 /// Physical count status (ADR-030 §5): DRAFT (counting) → SUBMITTED (closed, read-only) → POSTED.
 enum StockCountStatus {
   DRAFT
@@ -367,6 +375,7 @@ model Tenant {
   auditLogs               AuditLog[]
   attachments             Attachment[]
   idempotencyKeys         IdempotencyKey[]
+  documentEditLocks       DocumentEditLock[]
   units                   Unit[]
   taxCategories           TaxCategory[]
   paymentMethods          PaymentMethod[]
@@ -550,6 +559,7 @@ model Company {
 
   cheques         Cheque[]
   memberCompanies MembershipCompany[]
+  documentEditLocks DocumentEditLock[]
   employees       Employee[]
   payElements     PayElement[]
   payrollMovements PayrollMovement[]
@@ -623,6 +633,7 @@ model TenantMembership {
   allowedBranches  MembershipBranch[]
   allowedCompanies MembershipCompany[]
   extraPermissions MemberPermission[]
+  documentEditLocks DocumentEditLock[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, userId])
@@ -809,6 +820,28 @@ model IdempotencyKey {
   // The purge job deletes by expiry (DB-12).
   @@index([expiresAt])
   @@map("idempotency_keys")
+}
+
+model DocumentEditLock {
+  id          BigInt              @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId    BigInt              @map("tenant_id") @db.UnsignedBigInt
+  companyId   BigInt              @map("company_id") @db.UnsignedBigInt
+  docType     DocumentLockDocType @map("doc_type")
+  docId       BigInt              @map("doc_id") @db.UnsignedBigInt
+  userId      BigInt              @map("user_id") @db.UnsignedBigInt
+  holderToken String              @map("holder_token") @db.VarChar(36)
+  acquiredAt  DateTime            @map("acquired_at") @db.DateTime(3)
+  heartbeatAt DateTime            @map("heartbeat_at") @db.DateTime(3)
+  expiresAt   DateTime            @map("expires_at") @db.DateTime(3)
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company    Company          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Cascade)
+  membership TenantMembership @relation(fields: [tenantId, userId], references: [tenantId, userId], onDelete: Cascade)
+
+  @@unique([tenantId, companyId, docType, docId])
+  @@unique([tenantId, id])
+  @@index([tenantId, expiresAt])
+  @@map("document_edit_locks")
 }
 
 // ---------------------------------------------------------------------------

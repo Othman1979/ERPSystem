@@ -7,12 +7,13 @@ import { JournalController } from './journal.controller.js';
 import { JournalService } from './journal.service.js';
 import { PostingService } from './posting.service.js';
 import { ReportsService } from './reports.service.js';
+import { DocumentLocksModule } from '../document-locks/document-locks.module.js';
 
 @Module({
   // Report exports (PDF / XLSX), the party's name on a statement, and the
   // fiscal year holding a report's start (ADR-008 §7).
   // Posting checks and locks the lines' cost centres (ADR-024 §1).
-  imports: [PrintingModule, PartiesModule, forwardRef(() => AccountingModule), CostCentersModule],
+  imports: [PrintingModule, PartiesModule, forwardRef(() => AccountingModule), CostCentersModule, DocumentLocksModule],
   controllers: [JournalController],
   providers: [JournalService, PostingService, ReportsService],
   // ReportsService: treasury aging reads party control balances, and the

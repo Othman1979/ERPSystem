@@ -38,6 +38,7 @@ import { ReportsModule } from './platform/reports/reports.module.js';
 import { ExportModule } from './platform/export/export.module.js';
 import { MonitoringModule } from './platform/monitoring/monitoring.module.js';
 import { TestSupportModule } from './platform/monitoring/test-support.module.js';
+import { DocumentLocksModule } from './platform/document-locks/document-locks.module.js';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { TestSupportModule } from './platform/monitoring/test-support.module.js'
     GoodsNotesModule,
     TreasuryModule,
     PayrollModule,
+    DocumentLocksModule,
     EInvoiceModule,
     ReportsModule,
     ExportModule,
