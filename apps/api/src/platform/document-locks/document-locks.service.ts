@@ -15,38 +15,36 @@ const LOCK_TOKEN_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9
 
 const DOCUMENTS: Record<
   DocumentLockDocType,
-  { table: string; editPermission: string; readPermission: string }
+  { editPermission: string; readPermission: string }
 > = {
   JOURNAL_ENTRY: {
-    table: 'journal_entries',
     editPermission: PERMISSIONS.JOURNAL_POST,
     readPermission: PERMISSIONS.TENANT_READ,
   },
   RECEIPT: {
-    table: 'receipts',
     editPermission: PERMISSIONS.TREASURY_MANAGE,
     readPermission: PERMISSIONS.TENANT_READ,
   },
   PAYMENT: {
-    table: 'payments',
     editPermission: PERMISSIONS.TREASURY_MANAGE,
     readPermission: PERMISSIONS.TENANT_READ,
   },
   SALES_INVOICE: {
-    table: 'sales_invoices',
     editPermission: PERMISSIONS.SALES_MANAGE,
     readPermission: PERMISSIONS.TENANT_READ,
   },
   PURCHASE_INVOICE: {
-    table: 'purchase_invoices',
     editPermission: PERMISSIONS.PURCHASE_MANAGE,
     readPermission: PERMISSIONS.TENANT_READ,
   },
 };
 
-interface DocumentRow {
-  id: bigint;
-  branch_id: bigint | null;
+export interface DocumentLockTarget {
+  lockForEdit(tx: Prisma.TransactionClient, docId: bigint): Promise<{ branchId: bigint | null }>;
+  find(
+    db: PrismaService['client'] | Prisma.TransactionClient,
+    docId: bigint,
+  ): Promise<{ branchId: bigint | null }>;
 }
 
 interface LockRow {
@@ -67,10 +65,17 @@ interface LeaseRow {
 // The platform system client handles this cross-module lookup; every query uses tenantId from CLS.
 @Injectable()
 export class DocumentLocksService {
+  private readonly targets = new Map<DocumentLockDocType, DocumentLockTarget>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
+
+  registerTarget(docType: DocumentLockDocType, target: DocumentLockTarget): void {
+    if (this.targets.has(docType)) throw new Error(`Document lock target already registered for ${docType}`);
+    this.targets.set(docType, target);
+  }
 
   async acquire(docType: DocumentLockDocType, docId: bigint, token?: string) {
     const { tenantId, companyId, userId, permissions } = this.context();
@@ -79,7 +84,7 @@ export class DocumentLocksService {
 
     return this.withRetry(() =>
       this.prisma.client.$transaction(async (tx) => {
-        await this.lockDocument(tx, tenantId, companyId, docType, docId);
+        await this.lockDocument(tx, docType, docId);
         const [row] = await tx.$queryRaw<LockRow[]>`
           SELECT l.id, l.user_id, l.holder_token, l.acquired_at, l.expires_at,
                  (l.expires_at > NOW(3)) AS is_live, u.full_name AS user_name
@@ -133,7 +138,7 @@ export class DocumentLocksService {
     const holderToken = this.requireToken(token);
 
     return this.prisma.client.$transaction(async (tx) => {
-      await this.readDocument(tx, tenantId, companyId, docType, docId);
+      await this.readDocument(tx, docType, docId);
       const updated = await tx.$executeRaw`
         UPDATE document_edit_locks
            SET heartbeat_at = NOW(3), expires_at = DATE_ADD(NOW(3), INTERVAL ${LEASE_SECONDS} SECOND)
@@ -168,7 +173,7 @@ export class DocumentLocksService {
     this.requirePermission(permissions, PERMISSIONS.DOCUMENT_UNLOCK);
 
     return this.prisma.client.$transaction(async (tx) => {
-      await this.lockDocument(tx, tenantId, companyId, docType, docId);
+      await this.lockDocument(tx, docType, docId);
       const [row] = await tx.$queryRaw<LockRow[]>`
         SELECT l.id, l.user_id, l.holder_token, l.acquired_at, l.expires_at,
                (l.expires_at > NOW(3)) AS is_live, u.full_name AS user_name
@@ -201,7 +206,7 @@ export class DocumentLocksService {
     const { tenantId, companyId, userId, permissions, holderToken } = this.context();
     this.requirePermission(permissions, DOCUMENTS[docType].readPermission);
     const token = this.requestToken(holderToken);
-    await this.readDocument(this.prisma.client, tenantId, companyId, docType, docId);
+    await this.readDocument(this.prisma.client, docType, docId);
     const [row] = await this.prisma.client.$queryRaw<LockRow[]>`
       SELECT l.id, l.user_id, l.holder_token, l.acquired_at, l.expires_at,
              (l.expires_at > NOW(3)) AS is_live, u.full_name AS user_name
@@ -269,33 +274,26 @@ export class DocumentLocksService {
 
   private async lockDocument(
     tx: Prisma.TransactionClient,
-    tenantId: bigint,
-    companyId: bigint,
     docType: DocumentLockDocType,
     docId: bigint,
   ): Promise<void> {
-    const table = Prisma.raw(DOCUMENTS[docType].table);
-    const [row] = await tx.$queryRaw<DocumentRow[]>`
-      SELECT id, branch_id FROM ${table}
-       WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id = ${docId}
-       FOR UPDATE`;
-    if (!row) throw DomainError.notFound(docType, docId.toString());
-    assertBranchAllowed(row.branch_id === null ? null : BigInt(row.branch_id));
+    const { branchId } = await this.target(docType).lockForEdit(tx, docId);
+    assertBranchAllowed(branchId);
   }
 
   private async readDocument(
     db: PrismaService['client'] | Prisma.TransactionClient,
-    tenantId: bigint,
-    companyId: bigint,
     docType: DocumentLockDocType,
     docId: bigint,
   ): Promise<void> {
-    const table = Prisma.raw(DOCUMENTS[docType].table);
-    const [row] = await db.$queryRaw<DocumentRow[]>`
-      SELECT id, branch_id FROM ${table}
-       WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id = ${docId}`;
-    if (!row) throw DomainError.notFound(docType, docId.toString());
-    assertBranchAllowed(row.branch_id === null ? null : BigInt(row.branch_id));
+    const { branchId } = await this.target(docType).find(db, docId);
+    assertBranchAllowed(branchId);
+  }
+
+  private target(docType: DocumentLockDocType): DocumentLockTarget {
+    const target = this.targets.get(docType);
+    if (!target) throw new DomainError(ErrorCode.INTERNAL, `Document lock target is not registered for ${docType}`);
+    return target;
   }
 
   private lockedError(row: LockRow): DomainError {

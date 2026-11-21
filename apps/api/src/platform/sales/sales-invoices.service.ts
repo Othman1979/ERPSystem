@@ -199,6 +199,25 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
   ) {}
 
   onModuleInit(): void {
+    this.documentLocks.registerTarget('SALES_INVOICE', {
+      lockForEdit: async (tx, docId) => {
+        const { tenantId } = this.support.tenant();
+        const [row] = await tx.$queryRaw<{ branch_id: bigint | null }[]>`
+          SELECT branch_id FROM sales_invoices
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${docId}
+           FOR UPDATE`;
+        if (!row) throw DomainError.notFound('SALES_INVOICE', docId.toString());
+        return { branchId: row.branch_id };
+      },
+      find: async (db, docId) => {
+        const { tenantId } = this.support.tenant();
+        const [row] = await db.$queryRaw<{ branch_id: bigint | null }[]>`
+          SELECT branch_id FROM sales_invoices
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${docId}`;
+        if (!row) throw DomainError.notFound('SALES_INVOICE', docId.toString());
+        return { branchId: row.branch_id };
+      },
+    });
     this.partyUsage.register('sales', (tx, partyId) => this.partyInUse(tx, partyId));
     this.costCenterUsage.register('sales', (tx, id) => this.costCenterInUse(tx, id));
     this.yearClosingDrafts.register('SALES_INVOICE', async (tx, tenantId, companyId, from, to) => {

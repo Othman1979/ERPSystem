@@ -60,6 +60,25 @@ export class JournalService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
+    this.documentLocks.registerTarget('JOURNAL_ENTRY', {
+      lockForEdit: async (tx, docId) => {
+        const { tenantId } = this.tenant();
+        const [row] = await tx.$queryRaw<{ branch_id: bigint | null }[]>`
+          SELECT branch_id FROM journal_entries
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${docId}
+           FOR UPDATE`;
+        if (!row) throw DomainError.notFound('JOURNAL_ENTRY', docId.toString());
+        return { branchId: row.branch_id };
+      },
+      find: async (db, docId) => {
+        const { tenantId } = this.tenant();
+        const [row] = await db.$queryRaw<{ branch_id: bigint | null }[]>`
+          SELECT branch_id FROM journal_entries
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${docId}`;
+        if (!row) throw DomainError.notFound('JOURNAL_ENTRY', docId.toString());
+        return { branchId: row.branch_id };
+      },
+    });
     this.partyUsage.register('journal', (tx, partyId) => this.partyInUse(tx, partyId));
     this.costCenterUsage.register('journal', (tx, id) => this.costCenterInUse(tx, id));
     this.yearClosingDrafts.register('JOURNAL_ENTRY', async (tx, tenantId, companyId, from, to) => {

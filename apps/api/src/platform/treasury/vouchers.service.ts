@@ -6,7 +6,7 @@ import { findPage } from '../../common/paging/find-page.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
 import type { InvoiceSettlement } from '../shared/invoice-settlement.js';
@@ -95,6 +95,27 @@ export class VouchersService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
+    for (const [docType, table] of [['RECEIPT', 'receipts'], ['PAYMENT', 'payments']] as const) {
+      this.documentLocks.registerTarget(docType, {
+        lockForEdit: async (tx, docId) => {
+          const { tenantId } = this.support.tenant();
+          const [row] = await tx.$queryRaw<{ branch_id: bigint | null }[]>`
+            SELECT branch_id FROM ${Prisma.raw(table)}
+             WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${docId}
+             FOR UPDATE`;
+          if (!row) throw DomainError.notFound(docType, docId.toString());
+          return { branchId: row.branch_id };
+        },
+        find: async (db, docId) => {
+          const { tenantId } = this.support.tenant();
+          const [row] = await db.$queryRaw<{ branch_id: bigint | null }[]>`
+            SELECT branch_id FROM ${Prisma.raw(table)}
+             WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${docId}`;
+          if (!row) throw DomainError.notFound(docType, docId.toString());
+          return { branchId: row.branch_id };
+        },
+      });
+    }
     this.partyUsage.register('treasury', (tx, partyId) => this.partyInUse(tx, partyId));
     this.costCenterUsage.register('treasury', (tx, id) => this.costCenterInUse(tx, id));
     this.yearClosingDrafts.register('RECEIPT', async (tx, tenantId, companyId, from, to) => {
