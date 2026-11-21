@@ -163,6 +163,8 @@ export class PayrollSettlementService {
       const settlement = await tx.payrollSettlement.findFirst({ where: { id } });
       if (!settlement) throw DomainError.notFound('PayrollSettlement', id.toString());
       if (settlement.status !== 'DRAFT') throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only draft settlements can be posted');
+      const values = await this.calculateDraft(tx, companyId, settlement.employeeId);
+      const current = await tx.payrollSettlement.update({ where: { id }, data: values });
       const getAccount = async (mappingKey: string) => {
         const mapping = await tx.accountMapping.findFirst({ where: { mappingKey } });
         if (!mapping) throw new DomainError(ErrorCode.MAPPING_ACCOUNT_INVALID, `Missing ${mappingKey} mapping`);
@@ -174,20 +176,20 @@ export class PayrollSettlementService {
         getAccount('PAYROLL_TAX_PAYABLE'),
         getAccount('PAYROLL_PAYABLE'),
       ]);
-      const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, settlement.settlementDate);
-      const settlementNo = await allocateDocumentNo(tx, tenantId, companyId, 'PAYROLL_SETTLEMENT', settlement.settlementDate);
-      const difference = round3(settlement.eosAmount.minus(settlement.provisionUsed));
+      const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, current.settlementDate);
+      const settlementNo = await allocateDocumentNo(tx, tenantId, companyId, 'PAYROLL_SETTLEMENT', current.settlementDate);
+      const difference = round3(current.eosAmount.minus(current.provisionUsed));
       const lines = [
-        ...(settlement.provisionUsed.gt(0) ? [{ accountId: provision, debit: settlement.provisionUsed }] : []),
+        ...(current.provisionUsed.gt(0) ? [{ accountId: provision, debit: current.provisionUsed }] : []),
         ...(difference.gt(0) ? [{ accountId: eosExpense, debit: difference }] : []),
         ...(difference.lt(0) ? [{ accountId: eosExpense, credit: difference.abs() }] : []),
-        ...(settlement.eosTax.gt(0) ? [{ accountId: tax, credit: settlement.eosTax }] : []),
-        ...(settlement.net.gt(0) ? [{ accountId: payable, credit: settlement.net }] : []),
+        ...(current.eosTax.gt(0) ? [{ accountId: tax, credit: current.eosTax }] : []),
+        ...(current.net.gt(0) ? [{ accountId: payable, credit: current.net }] : []),
       ];
       const entry = await this.posting.postEntry(tx, {
         tenantId,
         companyId,
-        entryDate: settlement.settlementDate,
+        entryDate: current.settlementDate,
         fiscalPeriodId: period.id,
         sourceType: 'PAYROLL_SETTLEMENT',
         sourceId: id,

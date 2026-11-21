@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { Decimal } from 'decimal.js';
 import { bootApi, kit, PASS, stopApi, type Booted } from './support/sales-order-kit.js';
 
 const RUN = Date.now().toString(36);
@@ -255,6 +256,24 @@ describe('Phase 28C payroll settlements', () => {
     ]);
     expect(await settlementAccountBalances(eos2Company.id)).toEqual(balancesBeforeSettlement);
     expect((await get('reports/trial-balance?from=2026-01-01&to=2026-12-31', eos2Company.id)).body.balanced).toBe(true);
+  });
+
+  it('recomputes a stale settlement draft from current salary history when posting', async () => {
+    const company = await createCompany('STALE', true);
+    const leaver = await employee(company, 'STALE', '2020-03-01', '2026-08-31', '1000.000', false);
+    await run(company.id, '2026-08');
+    const draft = await post<{ id: string; eosAmount: string }>('payroll/settlements', {
+      employeeId: leaver.id,
+    }, company.id, 'create stale settlement draft');
+    await post(`payroll/employees/${leaver.id}/salaries`, {
+      effectiveFrom: '2026-01-01', basicSalary: '2000.000',
+    }, company.id, 'add effective salary');
+    const posted = h.ok(await act(`payroll/settlements/${draft.id}/post`, {}, company.id), 200, 'post recomputed settlement') as {
+      lastWage: string; serviceYears: string; eosAmount: string;
+    };
+    expect(posted.lastWage).toBe('2000');
+    expect(new Decimal(posted.eosAmount).eq(new Decimal(posted.serviceYears).mul('2000'))).toBe(true);
+    expect(new Decimal(posted.eosAmount).gt(draft.eosAmount)).toBe(true);
   });
 
   it('prorates EN1, encashes annual leave, releases leave provision, and refuses settlement for SSC staff', async () => {
