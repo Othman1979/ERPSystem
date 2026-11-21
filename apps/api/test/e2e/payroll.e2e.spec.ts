@@ -1697,27 +1697,8 @@ describe('Leave payroll effects and provision', () => {
       };
       return { ...posted, line: posted.lines.find((row) => row.employeeId === employee.id)! };
     };
-    const clippedEmployee = await post<{ id: string }>(token, 'payroll/employees', {
-      code: `LV5-CLIP-${RUN}`, nameAr: 'LV5 clip', hireDate: '2026-01-01', payMethod: 'CASH',
-      branchId: branch.id, costCenterId: costCentre.id,
-    }, 'LV5 clipped employee', company.id);
-    await post(token, `payroll/employees/${clippedEmployee.id}/salaries`, {
-      effectiveFrom: '2026-01-01', basicSalary: '600.000',
-    }, 'LV5 clipped salary', company.id);
-    const annualType = (h.ok(await get(token, 'payroll/leave-types', company.id), 200, 'annual leave type') as Array<{
-      id: string; code: string;
-    }>).find((type) => type.code === 'ANNUAL')!;
-    for (const [startDate, endDate] of [['2026-11-30', '2026-12-02'], ['2026-12-28', '2026-12-31']]) {
-      const request = await post<{ id: string }>(token, 'payroll/leave-requests', {
-        employeeId: clippedEmployee.id, leaveTypeId: annualType.id, startDate, endDate, hospitalised: false,
-      }, 'create clipped annual leave', company.id);
-      h.ok(await act(token, `payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve clipped annual leave');
-    }
-    const november = await postRun('2026-11');
-    expect(november.lines.find((row) => row.employeeId === clippedEmployee.id)?.leaveProvision).toBe('236.2');
     const december = await postRun('2026-12');
     expect(december.line.leaveProvision).toBe('150.613');
-    expect(december.lines.find((row) => row.employeeId === clippedEmployee.id)?.leaveProvision).toBe('140');
     const january = await postRun('2027-01');
     expect(january.line.leaveProvision).toBe('176');
     const [companyRow] = await boot.db.query('SELECT tenant_id FROM companies WHERE id = ?', [BigInt(company.id)]) as Array<{ tenant_id: bigint }>;
@@ -1748,5 +1729,47 @@ describe('Leave payroll effects and provision', () => {
     expect(new Decimal(afterReverse.find((row) => row.code === '5207')?.net ?? 0).toString()).toBe('150.613');
     expect(new Decimal(afterReverse.find((row) => row.code === '2109')?.net ?? 0).toString()).toBe('-150.613');
     expect(await get(token, 'reports/trial-balance?from=2026-01-01&to=2027-12-31', company.id)).toMatchObject({ status: 200, body: { balanced: true } });
+  });
+
+  it('clips annual leave taken at the provision period end', async () => {
+    const token = tokenA;
+    const company = h.ok(
+      await h.api().post('/api/v1/companies').set(h.auth(token)).send({ legalNameAr: `Clipped provision ${RUN}` }),
+      201,
+      'create clipped provision company',
+    ) as { id: string };
+    const branch = (h.ok(await get(token, 'branches', company.id), 200, 'clipped provision branch') as { id: string }[])[0]!;
+    const costCentre = await post<{ id: string }>(token, 'cost-centers', {
+      code: `LPC-${RUN}`, nameAr: 'Clipped leave provision',
+    }, 'clipped provision cost centre', company.id);
+    h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(token)).set('X-Company-Id', company.id).send({
+      code: '2026', startDate: '2026-01-01', endDate: '2026-12-31',
+    }), 201, 'create clipped provision fiscal year');
+    const employee = await post<{ id: string }>(token, 'payroll/employees', {
+      code: `LV5-CLIP-${RUN}`, nameAr: 'LV5 clip', hireDate: '2026-01-01', payMethod: 'CASH',
+      branchId: branch.id, costCenterId: costCentre.id,
+    }, 'clipped provision employee', company.id);
+    await post(token, `payroll/employees/${employee.id}/salaries`, {
+      effectiveFrom: '2026-01-01', basicSalary: '600.000',
+    }, 'clipped provision salary', company.id);
+    const annualType = (h.ok(await get(token, 'payroll/leave-types', company.id), 200, 'clipped annual type') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'ANNUAL')!;
+    for (const [startDate, endDate] of [['2026-11-30', '2026-12-02'], ['2026-12-28', '2026-12-31']]) {
+      const request = await post<{ id: string }>(token, 'payroll/leave-requests', {
+        employeeId: employee.id, leaveTypeId: annualType.id, startDate, endDate, hospitalised: false,
+      }, 'create clipped annual request', company.id);
+      h.ok(await act(token, `payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve clipped annual request');
+    }
+    const postAndReadProvision = async (period: string) => {
+      const draft = h.ok(await act(token, 'payroll/runs', { period }, company.id), 201, `${period} clipped run`) as { id: string };
+      await post(token, `payroll/runs/${draft.id}/post`, {}, `post ${period} clipped run`, company.id);
+      const posted = h.ok(await get(token, `payroll/runs/${draft.id}`, company.id), 200, `${period} clipped detail`) as {
+        lines: Array<{ employeeId: string; leaveProvision: string }>;
+      };
+      return posted.lines.find((line) => line.employeeId === employee.id)!.leaveProvision;
+    };
+    expect(await postAndReadProvision('2026-11')).toBe('236.2');
+    expect(await postAndReadProvision('2026-12')).toBe('140');
   });
 });
