@@ -1,4 +1,6 @@
 import {
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsIn,
@@ -8,14 +10,17 @@ import {
   Matches,
   MaxLength,
   Validate,
+  ValidateNested,
   ValidatorConstraint,
   type ValidationArguments,
   type ValidatorConstraintInterface,
 } from 'class-validator';
-import { ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { Decimal } from '../../../common/decimal/decimal.utils.js';
 import { DATE_PATTERN, ID_PATTERN } from '../../../common/pipes/parse-id.pipe.js';
 import { ExportQueryDto } from '../../printing/dto/export.dto.js';
+import { DEFAULT_PAYROLL_TAX_BRACKETS } from '../../accounting/chart-template.js';
 
 const DECIMAL_PATTERN = /^\d+(?:\.\d{1,6})?$/;
 const DATE_MESSAGE = { message: '$property must be a yyyy-mm-dd date' };
@@ -39,6 +44,9 @@ export class CreateEmployeeDto {
   @IsOptional() @IsString() @MaxLength(50) iban?: string;
   @IsOptional() @IsBoolean() sscCovered?: boolean;
   @IsOptional() @IsBoolean() sscHazardous?: boolean;
+  @ApiPropertyOptional({ type: Boolean }) @IsOptional() @IsBoolean() taxSubject?: boolean;
+  @ApiPropertyOptional({ type: Boolean }) @IsOptional() @IsBoolean() taxDependants?: boolean;
+  @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) taxOtherExemption?: string;
 }
 
 export class UpdateEmployeeDto extends PartialType(OmitType(CreateEmployeeDto, [
@@ -92,6 +100,7 @@ export class CreatePayElementDto {
   @IsIn(['FIXED', 'PER_HOUR', 'PER_DAY']) amountType!: 'FIXED' | 'PER_HOUR' | 'PER_DAY';
   @Matches(DECIMAL_PATTERN) rateFactor!: string;
   @IsOptional() @IsBoolean() sscSubject?: boolean;
+  @ApiPropertyOptional({ type: Boolean }) @IsOptional() @IsBoolean() taxSubject?: boolean;
   @IsOptional() @IsBoolean() isFixedAllowance?: boolean;
   @Matches(ID_PATTERN) accountId!: string;
 }
@@ -114,10 +123,31 @@ class PayrollSettingsRange implements ValidatorConstraintInterface {
       const maximum = dto.sscMaxWage == null ? null : new Decimal(dto.sscMaxWage);
       const hours = dto.hoursPerMonth == null ? new Decimal('240') : new Decimal(dto.hoursPerMonth);
       const days = dto.daysPerMonth == null ? new Decimal('30') : new Decimal(dto.daysPerMonth);
+      const taxAmounts = [dto.taxPersonalExemption, dto.taxDependantsExemption, dto.taxNationalThreshold]
+        .filter((value): value is string => value != null)
+        .map((value) => new Decimal(value));
+      const nationalRate = dto.taxNationalRate == null ? new Decimal('0.01') : new Decimal(dto.taxNationalRate);
+      const brackets = dto.taxBrackets ?? DEFAULT_PAYROLL_TAX_BRACKETS.map(({ upTo, rate }) => ({ upTo, rate }));
+      let previous: Decimal | null = null;
+      let sawUnbounded = false;
+      const validBrackets = brackets.length > 0 && brackets.every((bracket, index) => {
+        const rate = new Decimal(bracket.rate);
+        if (rate.lt(zero) || rate.gt(one) || bracket.upTo === undefined || sawUnbounded) return false;
+        if (bracket.upTo === null) {
+          sawUnbounded = true;
+          return index === brackets.length - 1;
+        }
+        const upper = new Decimal(bracket.upTo);
+        if (upper.lt(zero) || (previous !== null && !upper.gt(previous))) return false;
+        previous = upper;
+        return true;
+      });
       return rates.every((rate) => rate.gte(zero) && rate.lte(one)) &&
         hours.gt(zero) && days.gt(zero) &&
         (!minimum || minimum.gte(zero)) && (!maximum || maximum.gte(zero)) &&
-        (!minimum || !maximum || maximum.gte(minimum));
+        (!minimum || !maximum || maximum.gte(minimum)) &&
+        taxAmounts.every((amount) => amount.gte(zero)) &&
+        nationalRate.gte(zero) && nationalRate.lte(one) && validBrackets;
     } catch {
       return false;
     }
@@ -140,6 +170,20 @@ export class CreatePayrollSettingsDto {
   @IsOptional() @Matches(DECIMAL_PATTERN) sscMaxWage?: string;
   @IsOptional() @Matches(DECIMAL_PATTERN) hoursPerMonth?: string;
   @IsOptional() @Matches(DECIMAL_PATTERN) daysPerMonth?: string;
+  @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) taxPersonalExemption?: string;
+  @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) taxDependantsExemption?: string;
+  @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) taxNationalThreshold?: string;
+  @ApiPropertyOptional({ type: String, format: 'decimal' }) @IsOptional() @Matches(DECIMAL_PATTERN) taxNationalRate?: string;
+  @ApiPropertyOptional({ type: () => PayrollTaxBracketInputDto, isArray: true })
+  @IsOptional() @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => PayrollTaxBracketInputDto)
+  taxBrackets?: PayrollTaxBracketInputDto[];
+}
+
+export class PayrollTaxBracketInputDto {
+  @ApiProperty({ type: String, nullable: true, format: 'decimal' })
+  @IsOptional() @Matches(DECIMAL_PATTERN) upTo?: string | null;
+  @ApiProperty({ type: String, format: 'decimal' })
+  @Matches(DECIMAL_PATTERN) rate!: string;
 }
 
 export class CreatePayrollMovementDto {

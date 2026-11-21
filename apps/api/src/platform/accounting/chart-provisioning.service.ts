@@ -4,6 +4,7 @@ import {
   CHART_TEMPLATE,
   DEFAULT_PAY_ELEMENTS,
   DEFAULT_PAYMENT_METHODS,
+  DEFAULT_PAYROLL_TAX_BRACKETS,
   DEFAULT_TAX_CATEGORIES,
   DEFAULT_UNITS,
   TEMPLATE_MAPPINGS,
@@ -90,6 +91,7 @@ export class ChartProvisioningService {
           amountType: element.amountType,
           rateFactor: element.rateFactor,
           sscSubject: element.sscSubject,
+          taxSubject: element.taxSubject,
           isFixedAllowance: element.isFixedAllowance,
           accountId,
         },
@@ -98,7 +100,7 @@ export class ChartProvisioningService {
 
     // SSC rates follow the SSC FAQ (ssc.gov.jo, 2025-12); settings are dated so
     // later accountant-approved changes do not rewrite prior payroll periods.
-    await tx.payrollSettings.upsert({
+    const payrollSettings = await tx.payrollSettings.upsert({
       where: {
         tenantId_companyId_effectiveFrom: {
           tenantId,
@@ -118,6 +120,14 @@ export class ChartProvisioningService {
         hoursPerMonth: '240.00',
         daysPerMonth: '30.00',
       },
+    });
+    await tx.payrollTaxBracket.createMany({
+      data: DEFAULT_PAYROLL_TAX_BRACKETS.map((bracket) => ({
+        tenantId,
+        payrollSettingsId: payrollSettings.id,
+        ...bracket,
+      })),
+      skipDuplicates: true,
     });
 
     // --- default units / tax categories / payment methods (tenant-level) ---

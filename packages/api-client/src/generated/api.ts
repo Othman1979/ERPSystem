@@ -8495,6 +8495,9 @@ export interface PayrollEmployeeDto {
   /** @nullable */
   currentBasicSalary: string | null;
   sscCovered: boolean;
+  taxSubject: boolean;
+  taxDependants: boolean;
+  taxOtherExemption: string;
   isActive: boolean;
 }
 
@@ -8533,6 +8536,7 @@ export interface PayrollElementDto {
   amountType: PayrollElementDtoAmountType;
   rateFactor: string;
   sscSubject: boolean;
+  taxSubject: boolean;
   isFixedAllowance: boolean;
   accountId: string;
   isActive: boolean;
@@ -8583,6 +8587,9 @@ export interface PayrollEmployeeDetailDto {
   iban: string | null;
   sscCovered: boolean;
   sscHazardous: boolean;
+  taxSubject: boolean;
+  taxDependants: boolean;
+  taxOtherExemption: string;
   isActive: boolean;
   salaries: PayrollEmployeeSalaryDto[];
   recurringElements: PayrollRecurringElementDto[];
@@ -8617,6 +8624,9 @@ export const CreateEmployeeDtoPayMethod = {
 } as const;
 
 export interface CreateEmployeeDto {
+  taxSubject?: boolean;
+  taxDependants?: boolean;
+  taxOtherExemption?: string;
   /** @maxLength 50 */
   code: string;
   /** @maxLength 191 */
@@ -8670,6 +8680,9 @@ export interface PayrollEmployeeCreatedDto {
   iban: string | null;
   sscCovered: boolean;
   sscHazardous: boolean;
+  taxSubject: boolean;
+  taxDependants: boolean;
+  taxOtherExemption: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -8684,6 +8697,9 @@ export const UpdateEmployeeDtoPayMethod = {
 } as const;
 
 export interface UpdateEmployeeDto {
+  taxSubject?: boolean;
+  taxDependants?: boolean;
+  taxOtherExemption?: string;
   /** @maxLength 50 */
   code?: string;
   /** @maxLength 191 */
@@ -8825,6 +8841,7 @@ export const CreatePayElementDtoAmountType = {
 } as const;
 
 export interface CreatePayElementDto {
+  taxSubject?: boolean;
   /** @maxLength 50 */
   code: string;
   /** @maxLength 191 */
@@ -8857,6 +8874,7 @@ export const UpdatePayElementDtoAmountType = {
 } as const;
 
 export interface UpdatePayElementDto {
+  taxSubject?: boolean;
   /** @maxLength 191 */
   nameAr?: string;
   /** @maxLength 191 */
@@ -8868,6 +8886,16 @@ export interface UpdatePayElementDto {
   isFixedAllowance?: boolean;
   accountId?: string;
   isActive?: boolean;
+}
+
+export interface PayrollTaxBracketDto {
+  id: string;
+  tenantId: string;
+  payrollSettingsId: string;
+  seq: number;
+  /** @nullable */
+  upTo: string | null;
+  rate: string;
 }
 
 export interface PayrollSettingsDto {
@@ -8883,10 +8911,27 @@ export interface PayrollSettingsDto {
   sscMaxWage: string | null;
   hoursPerMonth: string;
   daysPerMonth: string;
+  taxPersonalExemption: string;
+  taxDependantsExemption: string;
+  taxNationalThreshold: string;
+  taxNationalRate: string;
+  taxBrackets: PayrollTaxBracketDto[];
   createdAt: string;
 }
 
+export interface PayrollTaxBracketInputDto {
+  /** @nullable */
+  upTo?: string | null;
+  rate: string;
+}
+
 export interface CreatePayrollSettingsDto {
+  taxPersonalExemption?: string;
+  taxDependantsExemption?: string;
+  taxNationalThreshold?: string;
+  taxNationalRate?: string;
+  /** @minItems 1 */
+  taxBrackets?: PayrollTaxBracketInputDto[];
   effectiveFrom: string;
   sscEmployeeRate?: string;
   sscEmployerRate?: string;
@@ -9009,6 +9054,9 @@ export interface PayrollLineDto {
   sscEmployee: string;
   sscEmployer: string;
   incomeTax: string;
+  taxableIncome: string;
+  nationalContribution: string;
+  taxManual: boolean;
   deductions: string;
   net: string;
   items: PayrollLineItemDto[];
@@ -9051,6 +9099,7 @@ export interface PayrollRunLineTaxDto {
   id: string;
   incomeTax: string;
   net: string;
+  taxManual: boolean;
 }
 
 export interface PayrollPaymentDto {
@@ -27988,6 +28037,46 @@ return apiFetch<payrollControllerSetIncomeTaxResponseSuccess>(getPayrollControll
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(setPayrollTaxDto)
+  }
+);}
+
+
+
+export type payrollControllerClearIncomeTaxResponse200 = {
+  data: PayrollRunLineTaxDto
+  status: 200
+}
+
+export type payrollControllerClearIncomeTaxResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type payrollControllerClearIncomeTaxResponseSuccess = (payrollControllerClearIncomeTaxResponse200) & {
+  headers: Headers;
+};
+export type payrollControllerClearIncomeTaxResponseError = (payrollControllerClearIncomeTaxResponseDefault) & {
+  headers: Headers;
+};
+
+export const getPayrollControllerClearIncomeTaxUrl = (id: string,
+    lineId: string,) => {
+
+
+
+
+  return `/api/v1/payroll/runs/${id}/lines/${lineId}/income-tax`
+}
+
+export const payrollControllerClearIncomeTax = async (id: string,
+    lineId: string, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerClearIncomeTaxResponseSuccess> => {
+
+  return apiFetch<payrollControllerClearIncomeTaxResponseSuccess>(getPayrollControllerClearIncomeTaxUrl(id,lineId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
   }
 );}
 

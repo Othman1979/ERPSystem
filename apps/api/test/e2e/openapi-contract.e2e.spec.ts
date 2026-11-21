@@ -45,6 +45,7 @@ const NO_CONTENT = [
   'POST /api/v1/auth/change-password',
   'POST /api/v1/me/invitations/{membershipId}/decline',
   'POST /api/v1/client-errors',
+  'DELETE /api/v1/document-locks/{docType}/{id}',
 ];
 
 const METHODS = ['get', 'put', 'post', 'delete', 'patch'] as const;

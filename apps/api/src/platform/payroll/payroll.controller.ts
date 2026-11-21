@@ -211,6 +211,13 @@ export class PayrollController {
     return this.payroll.setIncomeTax(BigInt(id), BigInt(lineId), dto.incomeTax);
   }
 
+  @Delete('runs/:id/lines/:lineId/income-tax')
+  @RequirePermission(PERMISSIONS.PAYROLL_MANAGE)
+  @ApiOkResponse({ type: PayrollRunLineTaxDto })
+  clearIncomeTax(@Param('id') id: string, @Param('lineId') lineId: string) {
+    return this.payroll.clearIncomeTax(BigInt(id), BigInt(lineId));
+  }
+
   @Post('runs/:id/post')
   @RequirePermission(PERMISSIONS.PAYROLL_POST)
   @RequiresIdempotencyKey()
@@ -297,9 +304,12 @@ export class PayrollController {
       fileName: `payroll-tax-${query.period}`,
       columns: [
         { key: 'employee', label: lang === 'ar' ? 'الموظف' : 'Employee' },
+        { key: 'taxableIncome', label: lang === 'ar' ? 'الدخل الخاضع' : 'Taxable income', kind: 'amount' },
         { key: 'tax', label: lang === 'ar' ? 'المقتطع' : 'Withheld', kind: 'amount' },
       ],
-      rows: report.lines.map((line) => ({ employee: line.employeeName, tax: line.incomeTax })),
+      rows: report.lines.map((line) => ({
+        employee: line.employeeName, taxableIncome: line.taxableIncome, tax: line.incomeTax,
+      })),
       meta: [query.period],
     }));
   }
@@ -352,6 +362,7 @@ export class PayrollController {
           { name: language === 'ar' ? 'الراتب الأساسي' : 'Basic salary', amount: line.basic },
           ...line.items.map((item) => ({ name: item.description, amount: item.amount })),
           { name: language === 'ar' ? 'الإضافات' : 'Earnings', amount: line.earnings },
+          { name: language === 'ar' ? 'الدخل الخاضع للضريبة' : 'Taxable income', amount: line.taxableIncome },
           { name: language === 'ar' ? 'ضمان الموظف' : 'Employee SSC', amount: line.sscEmployee },
           { name: language === 'ar' ? 'ضريبة الدخل' : 'Income tax', amount: line.incomeTax },
           { name: language === 'ar' ? 'الاستقطاعات' : 'Deductions', amount: line.deductions },

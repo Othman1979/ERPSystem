@@ -107,6 +107,7 @@ export const TENANT_MODELS = [
   'EmployeeRecurringElement',
   'PayrollMovement',
   'PayrollSettings',
+  'PayrollTaxBracket',
   'PayrollRun',
   'PayrollLine',
   'PayrollLineItem',
