@@ -361,6 +361,13 @@ export class PayrollService {
         (dto.kind !== undefined && dto.kind !== element.kind) ||
         (dto.amountType !== undefined && dto.amountType !== element.amountType);
       const unsettingFixedAllowance = dto.isFixedAllowance === false && element.isFixedAllowance;
+      const removingFromUse = dto.isActive === false && element.isActive;
+      const leaveTypeReference = typeChanged || removingFromUse
+        ? await tx.leaveType.findFirst({ where: { payElementId: id }, select: { id: true } })
+        : null;
+      if (leaveTypeReference) {
+        throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Pay element is referenced by a leave type');
+      }
       const kind = dto.kind ?? element.kind;
       const amountType = dto.amountType ?? element.amountType;
       const recurring = typeChanged || unsettingFixedAllowance

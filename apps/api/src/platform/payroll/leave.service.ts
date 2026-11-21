@@ -181,7 +181,7 @@ export class LeaveService {
       const type = await tx.leaveType.findFirst({ where: { id }, include: TYPE_INCLUDE });
       if (!type) throw DomainError.notFound('LeaveType', id.toString());
       const payElementId = dto.payElementId === undefined
-        ? undefined
+        ? type.payElementId === null ? undefined : (await this.validatePayElement(tx, type.payElementId.toString()))?.id
         : (await this.validatePayElement(tx, dto.payElementId))?.id ?? null;
       const updated = await tx.leaveType.update({
         where: { id },

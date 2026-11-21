@@ -1529,6 +1529,26 @@ describe('Leave payroll effects and provision', () => {
     const annualType = types.find((type) => type.code === 'ANNUAL')!;
     expect(unpaidType.payElementId).toBeTruthy();
     expect(maternityType.payElementId).toBeTruthy();
+    const elements = h.ok(await get(token, 'payroll/elements', company.id), 200, 'leave pay elements') as Array<{
+      id: string; code: string;
+    }>;
+    const transport = elements.find((element) => element.code === 'TRANSPORT')!;
+    for (const change of [{ kind: 'EARNING' }, { isActive: false }]) {
+      const blocked = await h.api().patch(`/api/v1/payroll/elements/${unpaidType.payElementId}`)
+        .set(h.auth(token)).set('X-Company-Id', company.id).send(change);
+      expect(blocked.status).toBe(409);
+      expect(blocked.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+    }
+    const invalidCreateType = await act(token, 'payroll/leave-types', {
+      code: `BAD-ELEMENT-${RUN}`, nameAr: 'Bad element', category: 'OTHER', countBasis: 'CALENDAR_DAYS',
+      payElementId: transport.id,
+    }, company.id);
+    expect(invalidCreateType.status).toBe(400);
+    expect(invalidCreateType.body.error.code).toBe('PAYROLL_ACCOUNT_INVALID');
+    const invalidUpdateType = await h.api().patch(`/api/v1/payroll/leave-types/${annualType.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ payElementId: transport.id });
+    expect(invalidUpdateType.status).toBe(400);
+    expect(invalidUpdateType.body.error.code).toBe('PAYROLL_ACCOUNT_INVALID');
     const unpaidEmployee = await createEmployee('LV3', '600.000');
     const cappedUnpaidEmployee = await createEmployee('LV30', '600.000');
     const maternityEmployee = await createEmployee('LV4', '900.000');
