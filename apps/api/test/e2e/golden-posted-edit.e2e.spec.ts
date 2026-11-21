@@ -342,6 +342,12 @@ describe('tenant isolation', () => {
 });
 
 describe('document edit locks', () => {
+  it('rejects IDs outside the signed BIGINT range', async () => {
+    for (const id of ['9999999999999999999999999', '9223372036854775808']) {
+      expect((await h.get(token, `document-locks/JOURNAL_ENTRY/${id}`)).status).toBe(400);
+    }
+  });
+
   it('acquires, reports, heartbeats, conflicts across tabs and users, and releases', async () => {
     const entry = await postJournal('2031-08-01', sale('10.000'));
     const first = await h.acquireLock(token, 'JOURNAL_ENTRY', entry.id);
