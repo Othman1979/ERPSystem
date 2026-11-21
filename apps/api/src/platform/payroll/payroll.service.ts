@@ -191,8 +191,26 @@ export class PayrollService {
   async updateEmployee(id: bigint, dto: UpdateEmployeeDto) {
     this.canManage();
     const { companyId, db } = this.context();
-    const employee = await db.employee.findFirst({ where: { id }, select: { id: true, isActive: true } });
+    const employee = await db.employee.findFirst({
+      where: { id },
+      select: { id: true, isActive: true, hireDate: true, leaveDate: true, sscCovered: true },
+    });
     if (!employee) throw DomainError.notFound('Employee', id.toString());
+    const sensitiveChange =
+      (dto.hireDate !== undefined && date(dto.hireDate).getTime() !== employee.hireDate.getTime())
+      || (dto.leaveDate !== undefined && (
+        dto.leaveDate === null
+          ? employee.leaveDate !== null
+          : employee.leaveDate === null || date(dto.leaveDate).getTime() !== employee.leaveDate.getTime()
+      ))
+      || (dto.sscCovered !== undefined && dto.sscCovered !== employee.sscCovered);
+    if (sensitiveChange) {
+      const settlement = await db.payrollSettlement.findFirst({
+        where: { companyId, employeeId: id, status: { in: ['DRAFT', 'POSTED', 'PAID'] } },
+        select: { id: true },
+      });
+      if (settlement) throw new DomainError(ErrorCode.PAYROLL_SETTLEMENT_ACTIVE, 'Employee has an active final settlement');
+    }
     if (employee.isActive && dto.isActive === false) {
       const movements = await db.payrollMovement.findMany({
         where: { companyId, employeeId: id, status: 'POSTED' },
@@ -1227,18 +1245,9 @@ export class PayrollService {
               where: { employeeId: { in: employeesWithLines }, leaveTypeId: annualLeaveType.id, year: { lte: year } },
               select: { employeeId: true, year: true, days: true },
             }),
-            tx.payrollRun.findMany({
-              where: {
-                period: { lt: run.period },
-                status: { in: ['POSTED', 'PAID'] },
-                lines: { some: { employeeId: { in: employeesWithLines } } },
-              },
-              include: { lines: { where: { employeeId: { in: employeesWithLines } }, select: { employeeId: true, leaveProvision: true, eosProvision: true } } },
-              orderBy: [{ period: 'desc' }],
-            }),
             tx.publicHoliday.findMany({ where: { date: { lte: periodEnd } }, select: { date: true } }),
           ])
-        : [[], [], [], [], []] as const;
+        : [[], [], [], []] as const;
       const priorProvision = new Map<bigint, Decimal>();
       const priorEosProvision = new Map<bigint, Decimal>();
       for (const prior of priorRuns) {
@@ -1529,7 +1538,10 @@ export class PayrollService {
     const userId = ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null;
     await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM companies WHERE tenant_id = ${tenantId} AND id = ${companyId} FOR UPDATE`;
-      const run = await tx.payrollRun.findFirst({ where: { id } });
+      const run = await tx.payrollRun.findFirst({
+        where: { id },
+        include: { lines: { select: { employeeId: true } } },
+      });
       if (!run) throw DomainError.notFound('PayrollRun', id.toString());
       if (run.status !== 'POSTED' && run.status !== 'PAID') {
         throw new DomainError(ErrorCode.INVALID_STATUS_TRANSITION, 'Only posted or paid runs can be reversed');
@@ -1539,6 +1551,17 @@ export class PayrollService {
         select: { id: true },
       });
       if (laterRun) throw new DomainError(ErrorCode.PAYROLL_LATER_RUN_POSTED, 'A later payroll period is already posted');
+      const activeSettlement = await tx.payrollSettlement.findFirst({
+        where: {
+          companyId,
+          employeeId: { in: run.lines.map((line) => line.employeeId) },
+          status: { in: ['POSTED', 'PAID'] },
+        },
+        select: { id: true },
+      });
+      if (activeSettlement) {
+        throw new DomainError(ErrorCode.PAYROLL_SETTLEMENT_ACTIVE, 'Payroll run has an active final settlement');
+      }
       if (reversalDate < run.runDate) {
         throw new DomainError(ErrorCode.VALIDATION, 'Payroll reversal date cannot be before the run date');
       }

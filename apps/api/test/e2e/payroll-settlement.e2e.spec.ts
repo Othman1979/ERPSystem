@@ -301,4 +301,45 @@ describe('Phase 28C payroll settlements', () => {
     expect(denied.status).toBe(409);
     expect(denied.body.error.code).toBe('PAYROLL_SETTLEMENT_NOT_ELIGIBLE');
   });
+
+  it('protects employee settlement fields and blocks payroll reversal until settlement reversal', async () => {
+    const company = await createCompany('GUARD', true);
+    h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(token)).set('X-Company-Id', company.id).send({
+      code: '2027', startDate: '2027-01-01', endDate: '2027-12-31',
+    }), 201, 'create settlement guard FY 2027');
+    const leaver = await employee(company, 'GUARD', '2020-01-01', '2026-12-31', '1000.000', false);
+    const payroll = await run(company.id, '2026-12');
+    const settlement = await post<{ id: string }>('payroll/settlements', { employeeId: leaver.id }, company.id, 'create guarded settlement');
+
+    const draftEdit = await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ hireDate: '2019-01-01' });
+    expect(draftEdit.status).toBe(409);
+    expect(draftEdit.body.error.code).toBe('PAYROLL_SETTLEMENT_ACTIVE');
+
+    h.ok(await act(`payroll/settlements/${settlement.id}/post`, {}, company.id), 200, 'post guarded settlement');
+    const postedEdit = await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: '2026-12-30' });
+    expect(postedEdit.status).toBe(409);
+    expect(postedEdit.body.error.code).toBe('PAYROLL_SETTLEMENT_ACTIVE');
+
+    const bank = h.ok(await h.api().post('/api/v1/bank-accounts').set(h.auth(token)).set('X-Company-Id', company.id).send({
+      bankName: 'Settlement guard bank',
+      accountId: company.accounts.find((account) => account.code === '1102')!.id,
+    }), 201, 'create settlement guard bank') as { id: string };
+    h.ok(await act(`payroll/settlements/${settlement.id}/pay`, {
+      paymentDate: '2027-01-01', bankAccountId: bank.id,
+    }, company.id), 200, 'pay guarded settlement');
+    const paidEdit = await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ sscCovered: true });
+    expect(paidEdit.status).toBe(409);
+    expect(paidEdit.body.error.code).toBe('PAYROLL_SETTLEMENT_ACTIVE');
+
+    const blockedReverse = await act(`payroll/runs/${payroll.id}/reverse`, { date: '2027-01-02' }, company.id);
+    expect(blockedReverse.status).toBe(409);
+    expect(blockedReverse.body.error.code).toBe('PAYROLL_SETTLEMENT_ACTIVE');
+    h.ok(await act(`payroll/settlements/${settlement.id}/reverse`, {
+      reversalDate: '2027-01-02',
+    }, company.id), 200, 'reverse guarded settlement');
+    h.ok(await act(`payroll/runs/${payroll.id}/reverse`, { date: '2027-01-03' }, company.id), 201, 'reverse run after settlement');
+  });
 });
