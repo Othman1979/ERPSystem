@@ -1,13 +1,14 @@
 import { BookOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert, Form, Input, Select, Switch, message } from 'antd';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
   accountingControllerCreateAccount,
   accountingControllerUpdateAccount,
   type AccountDto,
+  type AccountCreatedDto,
   type AccountType,
   type CashFlowActivity,
 } from '@erp/api-client';
@@ -17,6 +18,10 @@ import { ACCOUNTS_QUERY_KEY, useAccounts, type AccountRow } from '../hooks/useAc
 import { useCostCenters } from '../hooks/useCostCenters';
 
 const CASH_FLOW_ACTIVITIES: CashFlowActivity[] = ['OPERATING', 'INVESTING', 'FINANCING'];
+
+export function isValidChildAccountCode(code: unknown, parentCode: string): code is string {
+  return typeof code === 'string' && code.startsWith(parentCode) && code.length > parentCode.length;
+}
 
 interface AccountFormValues {
   code?: string;
@@ -33,7 +38,7 @@ export interface AccountFormDialogProps {
   open: boolean;
   editing?: AccountRow | null;
   initialValues?: Partial<AccountFormValues>;
-  onSaved: (created: AccountDto) => void;
+  onSaved: (created: AccountDto | AccountCreatedDto) => void;
   onCancel: () => void;
 }
 
@@ -51,6 +56,8 @@ export function AccountFormDialog({
   const accountsQuery = useAccounts();
   const data = accountsQuery.data;
   const { enabled: costCentersOn } = useCostCenters();
+  const previousParentId = useRef<string | undefined>(undefined);
+  const previousAutoCode = useRef<string | null>(null);
 
   const watchedParentId = Form.useWatch('parentId', form) as string | undefined;
   const watchedAccountType = Form.useWatch('accountType', form) as AccountType | undefined;
@@ -76,9 +83,15 @@ export function AccountFormDialog({
     }
     return `${prefix}${String(max + 1).padStart(2, '0')}`;
   }, [data, selectedParent]);
+  const selectedParentHasChildren = selectedParent
+    ? (data ?? []).some((account) => account.parentId === selectedParent.id)
+    : false;
+  const showLinkMoveNotice = !!selectedParent?.isPostable && !selectedParentHasChildren;
 
   useEffect(() => {
     if (!open) return;
+    previousParentId.current = undefined;
+    previousAutoCode.current = null;
     form.resetFields();
     if (editing) {
       form.setFieldsValue({
@@ -93,6 +106,21 @@ export function AccountFormDialog({
     }
   }, [editing, form, initialValues, open]);
 
+  useEffect(() => {
+    if (!open || editing) return;
+    const currentCode = form.getFieldValue('code') as string | undefined;
+    const parentChanged = watchedParentId !== previousParentId.current;
+    if (watchedParentId && autoCode) {
+      if (parentChanged || currentCode === undefined || currentCode === previousAutoCode.current) {
+        form.setFieldValue('code', autoCode);
+      }
+    } else if (!watchedParentId && previousParentId.current && currentCode === previousAutoCode.current) {
+      form.setFieldValue('code', undefined);
+    }
+    previousParentId.current = watchedParentId;
+    previousAutoCode.current = autoCode;
+  }, [autoCode, editing, form, open, watchedParentId]);
+
   const save = useMutation({
     mutationFn: async (values: AccountFormValues) => {
       const response = editing
@@ -104,7 +132,7 @@ export function AccountFormDialog({
             cashFlowActivity: showCashFlow ? (values.cashFlowActivity ?? null) : undefined,
           })
         : await accountingControllerCreateAccount({
-            code: values.parentId ? undefined : values.code!,
+            code: values.parentId ? (values.code === autoCode ? undefined : values.code) : values.code!,
             nameAr: values.nameAr,
             nameEn: values.nameEn || undefined,
             parentId: values.parentId || undefined,
@@ -117,15 +145,36 @@ export function AccountFormDialog({
     },
     onSuccess: (created) => {
       apiMessage.success(t('common.saved'));
+      if ('movedLinks' in created && Object.values(created.movedLinks).some((count) => count > 0)) {
+        apiMessage.info(t('accounts.linksMoved', { ...created.movedLinks }));
+      }
       void queryClient.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
       onSaved(created);
     },
     onError: (err) => {
-      apiMessage.error(
-        err instanceof ApiError
-          ? t(`errors.${err.code}`, { defaultValue: err.message })
-          : t('errors.INTERNAL'),
-      );
+      if (!(err instanceof ApiError)) {
+        apiMessage.error(t('errors.INTERNAL'));
+        return;
+      }
+      const reason = err.details?.reason;
+      if (reason === 'CODE_PREFIX') {
+        apiMessage.error(
+          t('accounts.errors.codePrefix', { parentCode: String(err.details?.parentCode ?? '') }),
+        );
+        return;
+      }
+      if (err.code === 'ACCOUNT_IN_USE' && reason === 'HAS_LINES') {
+        apiMessage.error(t('accounts.errors.hasLines'));
+        return;
+      }
+      if (err.code === 'ACCOUNT_IN_USE' && reason === 'USED_IN_DOCUMENTS') {
+        const documents = Array.isArray(err.details?.documents)
+          ? err.details.documents.map((document) => t(`accounts.documentTypes.${String(document)}`)).join(', ')
+          : '';
+        apiMessage.error(t('accounts.errors.usedInDocuments', { documents }));
+        return;
+      }
+      apiMessage.error(t(`errors.${err.code}`, { defaultValue: err.message }));
     },
   });
 
@@ -155,6 +204,12 @@ export function AccountFormDialog({
                   {t('accounts.autoCodePreview', { code: autoCode })}
                   <br />
                   {t('accounts.parentNonPostableWarning')}
+                  {showLinkMoveNotice && (
+                    <>
+                      <br />
+                      {t('accounts.firstChildLinkMoveNotice')}
+                    </>
+                  )}
                 </>
               }
             />
@@ -162,11 +217,29 @@ export function AccountFormDialog({
           <FormSection title={t('accounts.details')} icon={<BookOutlined />}>
             {!editing && (
               <>
-                {!watchedParentId && (
-                  <Form.Item name="code" label={t('accounts.code')} rules={[{ required: true }]}>
-                    <Input maxLength={50} />
-                  </Form.Item>
-                )}
+                <Form.Item
+                  name="code"
+                  label={t('accounts.code')}
+                  rules={[
+                    { required: !watchedParentId },
+                    ...(watchedParentId && selectedParent
+                      ? [
+                          {
+                            validator: (_: unknown, value?: string) =>
+                              isValidChildAccountCode(value, selectedParent.code)
+                                ? Promise.resolve()
+                                : Promise.reject(
+                                    new Error(
+                                      t('accounts.errors.codePrefix', { parentCode: selectedParent.code }),
+                                    ),
+                                  ),
+                          },
+                        ]
+                      : []),
+                  ]}
+                >
+                  <Input maxLength={50} />
+                </Form.Item>
                 <Form.Item name="parentId" label={t('accounts.parent')}>
                   <Select allowClear showSearch optionFilterProp="label" options={parentOptions} />
                 </Form.Item>

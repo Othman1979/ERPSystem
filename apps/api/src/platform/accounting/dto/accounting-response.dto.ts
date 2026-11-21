@@ -168,6 +168,26 @@ export class DocumentSequenceDto extends DocumentSequenceRow {}
 /** An account of the chart: every column of `accounts` (AccountsService.list, create, update). */
 export class AccountDto extends AccountRow {}
 
+export class AccountMovedLinksDto {
+  @ApiProperty({ type: 'integer' })
+  mappings!: number;
+
+  @ApiProperty({ type: 'integer' })
+  cashBoxes!: number;
+
+  @ApiProperty({ type: 'integer' })
+  bankAccounts!: number;
+
+  @ApiProperty({ type: 'integer' })
+  payElements!: number;
+}
+
+/** Account created by AccountsService.create, including first-child link moves. */
+export class AccountCreatedDto extends AccountDto {
+  @ApiProperty({ type: () => AccountMovedLinksDto })
+  movedLinks!: AccountMovedLinksDto;
+}
+
 /** The account a mapping points at, as MappingsService.list selects it. */
 export class AccountMappingAccountRefDto extends PickType(AccountRow, ['id', 'code', 'nameAr', 'nameEn'] as const) {}
 

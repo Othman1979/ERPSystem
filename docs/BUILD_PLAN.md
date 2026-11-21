@@ -466,6 +466,8 @@ erp-system/
 
 ### 8.7 شجرة الحسابات الجاهزة (قالب أولي يراجعه محاسب)
 
+تُطبّق قواعد التفرع بأي عمق، نقل روابط الإعدادات، وقيود تحويل الحساب إلى مجموعة الواردة في [ADR-044](decisions/ADR-044-account-tree-levels.md).
+
 ```text
 1      الأصول
 11       الأصول المتداولة
@@ -897,7 +899,7 @@ POST           /api/v1/admin/tenants/:id/subscriptions
 
 ### المرحلة 2 — الإعدادات المالية وشجرة الحسابات (حوالي أسبوعين)
 
-**المخرجات:** currencies (seed)، units، tax_categories، payment_methods، document_sequences، fiscal_years، fiscal_periods، accounts، account_mappings. قالب شجرة الحسابات الجاهزة (8.7) يُنشأ مع الشركة. شاشة شجرة الحسابات (عرض شجري، إضافة، تعديل، تعطيل). شاشة السنوات والفترات.
+**المخرجات:** currencies (seed)، units، tax_categories، payment_methods، document_sequences، fiscal_years، fiscal_periods، accounts، account_mappings. قالب شجرة الحسابات الجاهزة (8.7) يُنشأ مع الشركة. شاشة شجرة الحسابات (عرض شجري، إضافة، تعديل، تعطيل) وفق قواعد [ADR-044](decisions/ADR-044-account-tree-levels.md). شاشة السنوات والفترات.
 
 **اختبارات القبول:**
 - [ ] إنشاء شركة جديدة ينشئ الشجرة الجاهزة وكل مفاتيح account_mappings الإلزامية.

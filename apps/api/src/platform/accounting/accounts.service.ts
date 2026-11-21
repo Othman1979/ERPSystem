@@ -17,6 +17,20 @@ import { currentCompanyFilter, currentCompanySqlFilter } from '../../common/cls/
 
 type TenantDb = ReturnType<PrismaService['forTenant']>;
 
+type MovedLinks = {
+  mappings: number;
+  cashBoxes: number;
+  bankAccounts: number;
+  payElements: number;
+};
+
+const NO_MOVED_LINKS: MovedLinks = {
+  mappings: 0,
+  cashBoxes: 0,
+  bankAccounts: 0,
+  payElements: 0,
+};
+
 /** ADR-024 §1.1: "cost centre required" only on an income-statement account. */
 /** ADR-036 §3: only non-cash balance sheet accounts carry a cash flow section. */
 function assertCashFlowActivityAllowed(accountType: string, controlType: string | null | undefined): void {
@@ -89,38 +103,22 @@ export class AccountsService {
         normalBalance: true,
         isControl: true,
         controlType: true,
+        costCenterRequired: true,
+        cashFlowActivity: true,
       },
     });
     if (!parent) throw DomainError.notFound('Account', parentId.toString());
     return parent;
   }
 
-  /**
-   * A parent that becomes a group must not be a control or cash/bank account,
-   * mapped, or used by any journal line. A used account turned into a group
-   * stranded its balance and stopped the cash box posting (LEDGER-03).
-   * Called inside the transaction, after the parent row is locked.
-   */
+  /** A first child cannot strand a journal balance or an existing document reference. */
   private async assertCanBecomeGroup(
     tx: Prisma.TransactionClient,
-    parent: { id: bigint; code: string; isControl: boolean; controlType: string | null },
+    tenantId: bigint,
+    companyId: bigint,
+    parent: { id: bigint; code: string },
   ): Promise<void> {
-    if (parent.isControl || parent.controlType !== null) {
-      throw new DomainError(
-        ErrorCode.ACCOUNT_IN_USE,
-        `Account ${parent.code} is a control or cash/bank account; it cannot become a group account`,
-        { reason: 'CONTROL', parentId: parent.id.toString() },
-      );
-    }
-    const mappings = await tx.accountMapping.count({ where: { accountId: parent.id } });
-    if (mappings > 0) {
-      throw new DomainError(
-        ErrorCode.ACCOUNT_IN_USE,
-        `Account ${parent.code} is used in account mappings; it cannot become a group account`,
-        { reason: 'MAPPED', parentId: parent.id.toString() },
-      );
-    }
-    const lines = await tx.journalLine.count({ where: { accountId: parent.id } });
+    const lines = await tx.journalLine.count({ where: { tenantId, accountId: parent.id } });
     if (lines > 0) {
       throw new DomainError(
         ErrorCode.ACCOUNT_IN_USE,
@@ -128,6 +126,92 @@ export class AccountsService {
         { reason: 'HAS_LINES', parentId: parent.id.toString() },
       );
     }
+
+    const documentCounts = await Promise.all([
+      tx.payment.count({
+        where: { tenantId, companyId, OR: [{ cashAccountId: parent.id }, { expenseAccountId: parent.id }] },
+      }),
+      tx.receipt.count({ where: { tenantId, companyId, cashAccountId: parent.id } }),
+      tx.salesInvoice.count({ where: { tenantId, companyId, cashAccountId: parent.id } }),
+      tx.salesReturn.count({ where: { tenantId, companyId, cashAccountId: parent.id } }),
+      tx.purchaseInvoice.count({ where: { tenantId, companyId, cashAccountId: parent.id } }),
+      tx.purchaseReturn.count({ where: { tenantId, companyId, cashAccountId: parent.id } }),
+      tx.cashTransfer.count({
+        where: { tenantId, companyId, OR: [{ fromAccountId: parent.id }, { toAccountId: parent.id }] },
+      }),
+      tx.goodsNote.count({ where: { tenantId, companyId, expenseAccountId: parent.id } }),
+      tx.issueRequest.count({ where: { tenantId, companyId, expenseAccountId: parent.id } }),
+      tx.cheque.count({ where: { tenantId, companyId, bankAccountId: parent.id } }),
+    ]);
+    const documents = [
+      'payments',
+      'receipts',
+      'sales_invoices',
+      'sales_returns',
+      'purchase_invoices',
+      'purchase_returns',
+      'cash_transfers',
+      'goods_notes',
+      'issue_requests',
+      'cheques',
+    ].filter((_, index) => documentCounts[index] > 0);
+    if (documents.length > 0) {
+      throw new DomainError(
+        ErrorCode.ACCOUNT_IN_USE,
+        `Account ${parent.code} is referenced by documents`,
+        { reason: 'USED_IN_DOCUMENTS', parentId: parent.id.toString(), documents },
+      );
+    }
+  }
+
+  private async moveConfigurationLinks(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    parent: { id: bigint; code: string },
+    child: { id: bigint; code: string },
+  ): Promise<MovedLinks> {
+    const [mappings, cashBoxes, bankAccounts, payElements] = await Promise.all([
+      tx.accountMapping.updateMany({
+        where: { tenantId, companyId, accountId: parent.id },
+        data: { accountId: child.id },
+      }),
+      tx.cashBox.updateMany({
+        where: { tenantId, companyId, accountId: parent.id },
+        data: { accountId: child.id },
+      }),
+      tx.bankAccount.updateMany({
+        where: { tenantId, companyId, accountId: parent.id },
+        data: { accountId: child.id },
+      }),
+      tx.payElement.updateMany({
+        where: { tenantId, companyId, accountId: parent.id },
+        data: { accountId: child.id },
+      }),
+    ]);
+    const movedLinks = {
+      mappings: mappings.count,
+      cashBoxes: cashBoxes.count,
+      bankAccounts: bankAccounts.count,
+      payElements: payElements.count,
+    };
+    if (Object.values(movedLinks).some((count) => count > 0)) {
+      await this.audit.log(
+        {
+          action: 'account.links_moved',
+          entityType: 'account',
+          entityId: parent.id,
+          before: { accountId: parent.id.toString(), code: parent.code },
+          after: {
+            accountId: child.id.toString(),
+            code: child.code,
+            movedLinks,
+          },
+        },
+        tx,
+      );
+    }
+    return movedLinks;
   }
 
   async create(dto: CreateAccountDto) {
@@ -148,14 +232,17 @@ export class AccountsService {
     if (!dto.code && !parent) {
       throw new DomainError(ErrorCode.VALIDATION, 'code is required for a root account');
     }
-    if (dto.costCenterRequired) assertCostCenterFlagAllowed(dto.accountType);
-    if (dto.cashFlowActivity) assertCashFlowActivityAllowed(dto.accountType, dto.controlType);
-
-    // A contra sub-account may still pass its own normalBalance explicitly.
-    const normalBalance =
-      dto.normalBalance ??
-      parent?.normalBalance ??
-      (dto.accountType === 'ASSET' || dto.accountType === 'EXPENSE' ? 'DEBIT' : 'CREDIT');
+    if (parent && dto.code !== undefined && (!dto.code.startsWith(parent.code) || dto.code.length <= parent.code.length)) {
+      throw new DomainError(
+        ErrorCode.VALIDATION,
+        'A child account code must start with its parent code and be longer',
+        { reason: 'CODE_PREFIX', parentCode: parent.code },
+      );
+    }
+    if (!parent) {
+      if (dto.costCenterRequired) assertCostCenterFlagAllowed(dto.accountType);
+      if (dto.cashFlowActivity) assertCashFlowActivityAllowed(dto.accountType, dto.controlType);
+    }
 
     // Auto-generated child codes (`parent-NN`) are recomputed inside the
     // transaction; a unique-collision retries with the next sequence.
@@ -163,19 +250,72 @@ export class AccountsService {
       try {
         // A deadlock with a posting on the same parent rolls this transaction back; run again,
         // it then sees the committed posting and answers ACCOUNT_IN_USE (not CONFLICT).
-        const account = await retryOnLockConflict(() => db.$transaction(async (tx) => {
+        const result = await retryOnLockConflict(() => db.$transaction(async (tx) => {
+          let currentParent: {
+            id: bigint;
+            code: string;
+            normalBalance: 'DEBIT' | 'CREDIT';
+            isControl: boolean;
+            controlType: Exclude<CreateAccountDto['controlType'], undefined>;
+            costCenterRequired: boolean;
+            cashFlowActivity: Exclude<CreateAccountDto['cashFlowActivity'], undefined>;
+          } | null = null;
+          let firstChild = false;
           if (parent) {
             // Lock the parent first: the usage checks and the INSERT below
             // must see the same state (LEDGER-03).
-            await tx.$queryRaw`SELECT id FROM accounts FORCE INDEX (PRIMARY) WHERE tenant_id = ${tenantId} AND id = ${parent.id} FOR UPDATE`;
-            // Re-read the flags under the lock: they may have changed since loadParent.
-            const current = await tx.account.findFirst({
-              where: { id: parent.id },
-              select: { id: true, code: true, isControl: true, controlType: true },
+            await tx.$queryRaw`SELECT id FROM accounts FORCE INDEX (PRIMARY) WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id = ${parent.id} FOR UPDATE`;
+            currentParent = await tx.account.findFirst({
+              where: { id: parent.id, tenantId, companyId },
+              select: {
+                id: true,
+                code: true,
+                normalBalance: true,
+                isControl: true,
+                controlType: true,
+                costCenterRequired: true,
+                cashFlowActivity: true,
+              },
             });
-            if (!current) throw DomainError.notFound('Account', parent.id.toString());
-            await this.assertCanBecomeGroup(tx, current);
+            if (!currentParent) throw DomainError.notFound('Account', parent.id.toString());
+            if (
+              currentParent.controlType !== null &&
+              dto.controlType !== undefined &&
+              dto.controlType !== currentParent.controlType
+            ) {
+              throw new DomainError(
+                ErrorCode.VALIDATION,
+                'A child account must keep its parent control type',
+                {
+                  parentControlType: currentParent.controlType,
+                  requestedControlType: dto.controlType,
+                },
+              );
+            }
+            const children = await tx.account.count({
+              where: { tenantId, companyId, parentId: currentParent.id },
+            });
+            firstChild = children === 0;
+            if (firstChild) {
+              await this.assertCanBecomeGroup(tx, tenantId, companyId, currentParent);
+            }
           }
+
+          const controlType =
+            dto.controlType === undefined ? (currentParent?.controlType ?? null) : dto.controlType;
+          const isControl = dto.isControl ?? currentParent?.isControl ?? false;
+          const normalBalance =
+            dto.normalBalance ??
+            currentParent?.normalBalance ??
+            (dto.accountType === 'ASSET' || dto.accountType === 'EXPENSE' ? 'DEBIT' : 'CREDIT');
+          const costCenterRequired = dto.costCenterRequired ?? currentParent?.costCenterRequired ?? false;
+          const cashFlowActivity =
+            dto.cashFlowActivity === undefined
+              ? (currentParent?.cashFlowActivity ?? null)
+              : dto.cashFlowActivity;
+          if (costCenterRequired) assertCostCenterFlagAllowed(dto.accountType);
+          if (cashFlowActivity) assertCashFlowActivityAllowed(dto.accountType, controlType);
+
           const code =
             dto.code ??
             (await this.nextChildCode(tx, companyId, parent!.code));
@@ -191,30 +331,34 @@ export class AccountsService {
               accountType: dto.accountType,
               normalBalance,
               isPostable: dto.isPostable ?? true,
-              isControl: dto.isControl ?? false,
-              controlType: dto.controlType ?? null,
-              costCenterRequired: dto.costCenterRequired ?? false,
-              cashFlowActivity: dto.cashFlowActivity ?? null,
+              isControl,
+              controlType,
+              costCenterRequired,
+              cashFlowActivity,
               createdBy: cls.get('userId') ?? null,
             },
           });
+          const movedLinks =
+            parent && firstChild && currentParent
+              ? await this.moveConfigurationLinks(tx, tenantId, companyId, currentParent, created)
+              : NO_MOVED_LINKS;
           // A parent that gains a child can no longer be posted to (§8 rule:
           // الحساب الأب غير قابل للحركة).
-          if (parent) {
+          if (parent && firstChild) {
             await tx.account.updateMany({
               where: { id: parent.id, isPostable: true },
               data: { isPostable: false },
             });
           }
-          return created;
+          return { account: created, movedLinks };
         }));
         await this.audit.log({
           action: 'account.create',
           entityType: 'account',
-          entityId: account.id,
-          after: { code: account.code, nameAr: dto.nameAr },
+          entityId: result.account.id,
+          after: { code: result.account.code, nameAr: dto.nameAr },
         });
-        return account;
+        return { ...result.account, movedLinks: result.movedLinks };
       } catch (err) {
         const errCode = (err as { code?: string }).code;
         if (errCode === 'P2002' && !dto.code) continue;

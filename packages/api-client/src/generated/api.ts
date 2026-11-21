@@ -383,6 +383,43 @@ export interface CreateAccountDto {
   costCenterRequired?: boolean;
 }
 
+export interface AccountMovedLinksDto {
+  mappings: number;
+  cashBoxes: number;
+  bankAccounts: number;
+  payElements: number;
+}
+
+export interface AccountCreatedDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  /** @nullable */
+  parentId: string | null;
+  level: number;
+  accountType: AccountType;
+  normalBalance: NormalBalance;
+  isPostable: boolean;
+  isControl: boolean;
+  controlType: ControlType | null;
+  /** ADR-024 §1.3: a posting line needs a cost centre while centres are enabled. Income-statement accounts (REVENUE, EXPENSE) only. */
+  costCenterRequired: boolean;
+  /** ADR-036 §3: ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default. */
+  cashFlowActivity: CashFlowActivity | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** @nullable */
+  createdBy: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+  movedLinks: AccountMovedLinksDto;
+}
+
 /**
  * Cash flow section (ADR-036 §3); ASSET / LIABILITY / EQUITY non-cash accounts only; null = the type's default.
  * @nullable
@@ -10448,6 +10485,7 @@ export const ErrorCode = {
   PAYROLL_LATER_RUN_POSTED: 'PAYROLL_LATER_RUN_POSTED',
   PAYROLL_NO_EMPLOYEES: 'PAYROLL_NO_EMPLOYEES',
   PAYROLL_SETTLEMENT_EXISTS: 'PAYROLL_SETTLEMENT_EXISTS',
+  PAYROLL_SETTLEMENT_ACTIVE: 'PAYROLL_SETTLEMENT_ACTIVE',
   PAYROLL_SETTLEMENT_NOT_ELIGIBLE: 'PAYROLL_SETTLEMENT_NOT_ELIGIBLE',
   PAYROLL_SETTLEMENT_RUN_REQUIRED: 'PAYROLL_SETTLEMENT_RUN_REQUIRED',
   PAYROLL_SETTINGS_REQUIRED: 'PAYROLL_SETTINGS_REQUIRED',
@@ -12464,6 +12502,10 @@ export type PayrollControllerListMovementsParams = {
   employeeId?: string;
 };
 
+export type PayrollControllerGetRunParams = {
+  lang?: string;
+};
+
 export type PayrollControllerRegisterReportParams = {
   format?: PayrollControllerRegisterReportFormat;
   lang?: PayrollControllerRegisterReportLang;
@@ -13499,7 +13541,7 @@ export const accountingControllerListAccounts = async ( options?: Parameters<typ
 
 
 export type accountingControllerCreateAccountResponse201 = {
-  data: AccountDto
+  data: AccountCreatedDto
   status: 201
 }
 
@@ -28300,17 +28342,26 @@ export type payrollControllerGetRunResponseError = (payrollControllerGetRunRespo
   headers: Headers;
 };
 
-export const getPayrollControllerGetRunUrl = (id: string,) => {
+export const getPayrollControllerGetRunUrl = (id: string,
+    params?: PayrollControllerGetRunParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/payroll/runs/${id}`
+  return stringifiedParams.length > 0 ? `/api/v1/payroll/runs/${id}?${stringifiedParams}` : `/api/v1/payroll/runs/${id}`
 }
 
-export const payrollControllerGetRun = async (id: string, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerGetRunResponseSuccess> => {
+export const payrollControllerGetRun = async (id: string,
+    params?: PayrollControllerGetRunParams, options?: Parameters<typeof apiFetch>[1]): Promise<payrollControllerGetRunResponseSuccess> => {
 
-  return apiFetch<payrollControllerGetRunResponseSuccess>(getPayrollControllerGetRunUrl(id),
+  return apiFetch<payrollControllerGetRunResponseSuccess>(getPayrollControllerGetRunUrl(id,params),
   {
     ...options,
     method: 'GET'

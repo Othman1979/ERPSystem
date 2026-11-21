@@ -12,7 +12,7 @@ export const selectPostable = (rows: AccountRow[]): AccountRow[] => rows.filter(
 
 /** Cash and bank accounts (receipts, payments, cash invoices). */
 export const selectCashBank = (rows: AccountRow[]): AccountRow[] =>
-  rows.filter((a) => a.controlType === 'CASH' || a.controlType === 'BANK');
+  rows.filter((a) => a.isPostable && (a.controlType === 'CASH' || a.controlType === 'BANK'));
 
 /**
  * The chart of accounts, fetched once per 5 minutes (reference-data policy in
