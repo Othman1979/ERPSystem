@@ -525,30 +525,61 @@ export class LeaveService {
         throw new DomainError(ErrorCode.LEAVE_LIMIT_EXCEEDED, 'Sick leave limits are exceeded');
       }
     } else if (request.leaveType.maxDaysPerYear) {
+      const startYear = request.startDate.getUTCFullYear();
+      const endYear = request.endDate.getUTCFullYear();
+      const { start: rangeStart } = yearBounds(startYear);
+      const { end: rangeEnd } = yearBounds(endYear);
+      const approvedForYears = await tx.leaveRequest.findMany({
+        where: {
+          employeeId: request.employeeId,
+          leaveTypeId: request.leaveTypeId,
+          status: 'APPROVED',
+          startDate: { lte: rangeEnd },
+          endDate: { gte: rangeStart },
+        },
+        select: { startDate: true, endDate: true },
+      });
       const settingsRows = await tx.payrollSettings.findMany({
-        where: { effectiveFrom: { lte: yearEnd } },
+        where: { effectiveFrom: { lte: rangeEnd } },
         orderBy: [{ effectiveFrom: 'asc' }],
       });
-      const settings = settingsRows.filter((row) => row.effectiveFrom <= yearEnd).at(-1);
       const holidays = await tx.publicHoliday.findMany({
-        where: { date: { gte: yearStart, lte: yearEnd } },
+        where: { date: { gte: rangeStart, lte: rangeEnd } },
         select: { date: true },
       });
-      const daysInYear = (startDate: Date, endDate: Date) => {
-        const clippedStart = startDate > yearStart ? startDate : yearStart;
-        const clippedEnd = endDate < yearEnd ? endDate : yearEnd;
-        return clippedEnd < clippedStart ? new Decimal(0) : countLeaveDays({
-          startDate: clippedStart,
-          endDate: clippedEnd,
-          countBasis: request.leaveType.countBasis,
-          weeklyRestDays: (settings?.weeklyRestDays ?? '5').split(',').map(Number),
-          holidays: holidays.map((holiday) => holiday.date),
-        }).days;
-      };
-      const approvedInYear = approved.reduce((sum, row) => sum.plus(daysInYear(row.startDate, row.endDate)), new Decimal(0));
-      const requestInYear = daysInYear(request.startDate, request.endDate);
-      if (approvedInYear.plus(requestInYear).gt(new Decimal(request.leaveType.maxDaysPerYear).plus(adjustment._sum.days ?? 0))) {
-        throw new DomainError(ErrorCode.LEAVE_LIMIT_EXCEEDED, 'Annual leave-type limit is exceeded');
+      const adjustments = await tx.leaveBalanceAdjustment.findMany({
+        where: {
+          employeeId: request.employeeId,
+          leaveTypeId: request.leaveTypeId,
+          year: { gte: startYear, lte: endYear },
+        },
+        select: { year: true, days: true },
+      });
+      for (let balanceYear = startYear; balanceYear <= endYear; balanceYear++) {
+        const { start: balanceStart, end: balanceEnd } = yearBounds(balanceYear);
+        const settings = settingsRows.filter((row) => row.effectiveFrom <= balanceEnd).at(-1);
+        const holidayDates = holidays
+          .filter((holiday) => holiday.date >= balanceStart && holiday.date <= balanceEnd)
+          .map((holiday) => holiday.date);
+        const daysInYear = (startDate: Date, endDate: Date) => {
+          const clippedStart = startDate > balanceStart ? startDate : balanceStart;
+          const clippedEnd = endDate < balanceEnd ? endDate : balanceEnd;
+          return clippedEnd < clippedStart ? new Decimal(0) : countLeaveDays({
+            startDate: clippedStart,
+            endDate: clippedEnd,
+            countBasis: request.leaveType.countBasis,
+            weeklyRestDays: (settings?.weeklyRestDays ?? '5').split(',').map(Number),
+            holidays: holidayDates,
+          }).days;
+        };
+        const approvedInYear = approvedForYears.reduce((sum, row) => sum.plus(daysInYear(row.startDate, row.endDate)), new Decimal(0));
+        const requestInYear = daysInYear(request.startDate, request.endDate);
+        const adjustmentInYear = adjustments
+          .filter((row) => row.year === balanceYear)
+          .reduce((sum, row) => sum.plus(row.days), new Decimal(0));
+        if (approvedInYear.plus(requestInYear).gt(new Decimal(request.leaveType.maxDaysPerYear).plus(adjustmentInYear))) {
+          throw new DomainError(ErrorCode.LEAVE_LIMIT_EXCEEDED, 'Annual leave-type limit is exceeded');
+        }
       }
     }
   }
