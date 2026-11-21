@@ -24,6 +24,7 @@ export const YEAR_CLOSING_DRAFT_TYPES = [
   'SALES_ORDER',
   'PRODUCTION_VOUCHER',
   'PAYROLL_RUN',
+  'PAYROLL_SETTLEMENT',
 ] as const;
 
 export type YearClosingDraftType = (typeof YEAR_CLOSING_DRAFT_TYPES)[number];
