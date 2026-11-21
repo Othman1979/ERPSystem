@@ -206,6 +206,15 @@ describe('calculatePayroll', () => {
     expect(result.basic.toString()).toBe('3000');
   });
 
+  it('rounds half-fils from the exact amount-times-active-days product', () => {
+    const result = calculatePayroll({
+      ...base,
+      employee: { ...base.employee, hireDate: new Date('2026-01-17T00:00:00Z'), sscCovered: false },
+      salary: '0.015',
+    })!;
+    expect(result.basic.toString()).toBe('0.008');
+  });
+
   it('clamps covered employees to minimum wage and adds hazardous employer rate', () => {
     const result = calculatePayroll({
       ...base,
