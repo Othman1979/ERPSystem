@@ -844,10 +844,14 @@ export class PayrollService {
         rate: movement.rate?.toString() ?? null,
         payrollMovementId: movement.id,
       }));
-      const leaveInputs: PayrollElementEntry[] = employee.leaveRequests.flatMap((request) => {
+      const leaveInputs: PayrollElementEntry[] = [];
+      let remainingLeaveQuantity = new Decimal(settings.daysPerMonth.toString());
+      const leaveRequests = [...employee.leaveRequests].sort((a, b) =>
+        a.startDate.getTime() - b.startDate.getTime() || a.id.toString().localeCompare(b.id.toString()));
+      for (const request of leaveRequests) {
         const element = request.leaveType.payElement;
-        if (!element || (request.leaveType.category === 'MATERNITY' && !employee.sscCovered)) return [];
-        const quantity = leavePeriodQuantity({
+        if (!element || (request.leaveType.category === 'MATERNITY' && !employee.sscCovered)) continue;
+        const requestQuantity = leavePeriodQuantity({
           requestStart: request.startDate,
           requestEnd: request.endDate,
           periodStart: start,
@@ -857,14 +861,16 @@ export class PayrollService {
           holidays: holidays.map((holiday) => holiday.date),
           daysPerMonth: settings.daysPerMonth,
         });
-        if (!quantity.gt(0)) return [];
-        return [{
+        const quantity = Decimal.min(requestQuantity, remainingLeaveQuantity);
+        if (!quantity.gt(0)) continue;
+        leaveInputs.push({
           element: toElement(element),
           amount: null,
           quantity,
           leaveRequestId: request.id,
-        }];
-      });
+        });
+        remainingLeaveQuantity = remainingLeaveQuantity.minus(quantity);
+      }
       const recurring: PayrollRecurringEntry[] = employee.recurringElements.map((item) => ({
         element: toElement(item.payElement),
         amount: item.amount?.toString() ?? null,

@@ -1530,12 +1530,19 @@ describe('Leave payroll effects and provision', () => {
     expect(unpaidType.payElementId).toBeTruthy();
     expect(maternityType.payElementId).toBeTruthy();
     const unpaidEmployee = await createEmployee('LV3', '600.000');
+    const cappedUnpaidEmployee = await createEmployee('LV30', '600.000');
     const maternityEmployee = await createEmployee('LV4', '900.000');
     const nonSscEmployee = await createEmployee('LV4-NONSSC', '900.000', false);
     const unpaidRequest = await post<{ id: string }>(token, 'payroll/leave-requests', {
       employeeId: unpaidEmployee.id, leaveTypeId: unpaidType.id, startDate: '2026-12-14', endDate: '2026-12-16',
     }, 'LV3 unpaid leave request', company.id);
     h.ok(await act(token, `payroll/leave-requests/${unpaidRequest.id}/approve`, {}, company.id), 200, 'approve LV3 leave');
+    for (const [startDate, endDate] of [['2026-12-01', '2026-12-15'], ['2026-12-16', '2026-12-31']]) {
+      const request = await post<{ id: string }>(token, 'payroll/leave-requests', {
+        employeeId: cappedUnpaidEmployee.id, leaveTypeId: unpaidType.id, startDate, endDate,
+      }, 'create capped unpaid request', company.id);
+      h.ok(await act(token, `payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve capped unpaid request');
+    }
     const maternityRequest = await post<{ id: string; days: string; calendarDays: number }>(token, 'payroll/leave-requests', {
       employeeId: maternityEmployee.id, leaveTypeId: maternityType.id, startDate: '2026-11-15', endDate: '2027-01-23',
     }, 'LV4 cross-year maternity', company.id);
@@ -1562,6 +1569,7 @@ describe('Leave payroll effects and provision', () => {
     expect(lineFor(december, unpaidEmployee.id)).toEqual(expect.objectContaining({
       deductions: '60', sscBase: '540', sscEmployee: '40.5', sscEmployer: '76.95', incomeTax: '0', net: '499.5',
     }));
+    expect(lineFor(december, cappedUnpaidEmployee.id)).toEqual(expect.objectContaining({ deductions: '600', net: '0' }));
     expect(lineFor(december, maternityEmployee.id)).toEqual(expect.objectContaining({
       deductions: '900', sscBase: '0', sscEmployee: '0', sscEmployer: '0', net: '0',
     }));
