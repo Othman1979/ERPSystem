@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { PICKER_FRESH_MS, refetchIfOlderThan } from '../liveRefresh';
 import { SEARCH_DEBOUNCE_MS } from './usePagedQuery';
 import { useDebouncedValue } from './useDebouncedValue';
 
@@ -88,5 +89,6 @@ export function useRemoteOptions<T extends { id: string }>({
     pending,
     loading: query.isFetching,
     query,
+    onOpen: () => refetchIfOlderThan(query, PICKER_FRESH_MS),
   };
 }

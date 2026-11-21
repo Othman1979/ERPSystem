@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 export function GridSelect({
   onEnterSelect,
   onRemoteSearch,
+  onOpen,
   searching = false,
   onCreateNew,
   createNewLabel,
@@ -28,6 +29,8 @@ export function GridSelect({
    * the matches, e.g. with useRemoteOptions.
    */
   onRemoteSearch?: (text: string) => void;
+  /** Refresh stale picker data when the dropdown opens. */
+  onOpen?: () => void;
   /**
    * The matches for the typed text are still on their way (useRemoteOptions'
    * `pending`). The list then shows only the chosen option, as loading, so
@@ -42,6 +45,7 @@ export function GridSelect({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const openRef = useRef(false);
   const [search, setSearch] = useState('');
   // Set (capture phase) when Enter is pressed on the open list; read by onChange.
   const enterPending = useRef(false);
@@ -60,6 +64,13 @@ export function GridSelect({
     setSearch('');
     onRemoteSearch?.('');
     onCreateNew?.(typedText);
+  };
+  const openDropdown = () => {
+    if (!openRef.current) {
+      openRef.current = true;
+      onOpen?.();
+    }
+    setOpen(true);
   };
 
   return (
@@ -134,8 +145,11 @@ export function GridSelect({
         }}
         onDropdownVisibleChange={(v) => {
           if (v && passEnter.current) return; // Enter means "next field" here
-          setOpen(v);
-          if (!v) {
+          props.onDropdownVisibleChange?.(v);
+          if (v) openDropdown();
+          else {
+            openRef.current = false;
+            setOpen(false);
             setSearch('');
             onRemoteSearch?.('');
           }
@@ -143,6 +157,7 @@ export function GridSelect({
         onBlur={(e) => {
           props.onBlur?.(e);
           // A list must never stay open behind the field that has focus.
+          openRef.current = false;
           setOpen(false);
           setSearch('');
           onRemoteSearch?.('');
@@ -154,6 +169,7 @@ export function GridSelect({
           if (viaEnter) {
             // antd refocuses the selector right after onChange; close the
             // dropdown and defer the move so it wins the focus race.
+            openRef.current = false;
             setOpen(false);
             const origin = document.activeElement;
             setTimeout(() => {
@@ -182,13 +198,13 @@ export function GridSelect({
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
             e.stopPropagation();
-            setOpen(true);
+            openDropdown();
           } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
             e.preventDefault();
             e.stopPropagation();
             setSearch(e.key);
             onRemoteSearch?.(e.key);
-            setOpen(true);
+            openDropdown();
           }
         }}
       />

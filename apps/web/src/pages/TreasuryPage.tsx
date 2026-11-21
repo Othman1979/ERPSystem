@@ -14,6 +14,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   message,
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
@@ -88,7 +89,10 @@ import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
 import { useCostCenters } from '../hooks/useCostCenters';
 import { useEntryDraft } from '../hooks/useEntryDraft';
 import { documentLockHeaders } from '../hooks/useDocumentLock';
+import { useDocumentLockStatus } from '../hooks/useDocumentLockStatus';
+import { DocumentLockBanner } from '../components/DocumentLockBanner';
 import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
+import { LIVE_REFRESH_MS, PICKER_FRESH_MS, refetchIfOlderThan } from '../liveRefresh';
 
 // ------------------------------------------------------------- types
 
@@ -178,7 +182,7 @@ function useTreasuryLookups() {
     [accounts.data],
   );
 
-  return { cashAccounts, bankAccounts };
+  return { cashAccounts, bankAccounts, accountsQuery: accounts };
 }
 
 /**
@@ -556,6 +560,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
   const [modalOpen, setModalOpen] = useState(false);
   useNewFromUrl(() => setModalOpen(true));
   const [viewId, setViewId] = useState<string | null>(null);
+  const [amendOpen, setAmendOpen] = useState(false);
   const costCenters = useCostCenters();
   const [api, contextHolder] = message.useMessage();
   const onError = (err: unknown) =>
@@ -588,6 +593,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
       return res.data;
     },
     enabled: !modalOpen && !viewId,
+    refetchInterval: LIVE_REFRESH_MS,
   });
   const vouchersQuery = list.query;
   const { data: view } = useQuery({
@@ -600,8 +606,17 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
           : await treasuryControllerGetPayment(viewId!, { signal });
       return res.data;
     },
-    enabled: !!viewId,
+    enabled: !!viewId && !modalOpen && !amendOpen,
+    refetchInterval: viewId && !modalOpen && !amendOpen ? LIVE_REFRESH_MS : false,
   });
+  const lockDocType = kind === 'receipt' ? 'RECEIPT' : 'PAYMENT';
+  const lockStatus = useDocumentLockStatus(
+    lockDocType,
+    viewId,
+    !!viewId && !modalOpen && !amendOpen,
+  );
+  const lockedByOther = !!lockStatus.data?.holder && !lockStatus.data.holder.mine;
+  const lockActionTooltip = lockedByOther ? t('common.documentLockActionDisabled') : undefined;
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: [kind === 'receipt' ? 'receipts' : 'payments'] });
@@ -725,6 +740,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
     return (
       <>
         {contextHolder}
+        <DocumentLockBanner docType={lockDocType} id={viewId} query={lockStatus} />
         <DocLayout
           title={voucherTitle}
           docNo={(view && voucherNoOf(view)) ?? `#${viewId}`}
@@ -738,9 +754,13 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                   // Refunds the other way (receipt from a supplier, payment to a customer) settle no invoice.
                   view.partyType === (kind === 'receipt' ? 'CUSTOMER' : 'SUPPLIER') &&
                   dec(view.unallocatedAmount).gt(0) && (
-                  <Button loading={allocateRest.isPending} onClick={() => allocateRest.mutate(view.id)}>
-                    {t('treasury.allocateRemaining')}
-                  </Button>
+                  <Tooltip title={lockActionTooltip}>
+                    <span>
+                      <Button disabled={lockedByOther} loading={allocateRest.isPending} onClick={() => allocateRest.mutate(view.id)}>
+                        {t('treasury.allocateRemaining')}
+                      </Button>
+                    </span>
+                  </Tooltip>
                 )}
                 {!view.reversedAt && dec(view.amount).eq(dec(view.unallocatedAmount)) && (
                   <AmendVoucherButton
@@ -753,14 +773,22 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                       description: view.description,
                     }}
                     onDone={invalidate}
+                    onDialogOpenChange={setAmendOpen}
+                    disabled={lockedByOther}
+                    disabledTooltip={lockActionTooltip}
                   />
                 )}
                 {!view.reversedAt && (
-                  <ReverseButton
-                    size="middle"
-                    loading={reverse.isPending}
-                    onReverse={(reversalDate) => reverse.mutate({ id: view.id, reversalDate })}
-                  />
+                  <Tooltip title={lockActionTooltip}>
+                    <span>
+                      <ReverseButton
+                        size="middle"
+                        loading={reverse.isPending}
+                        disabled={lockedByOther}
+                        onReverse={(reversalDate) => reverse.mutate({ id: view.id, reversalDate })}
+                      />
+                    </span>
+                  </Tooltip>
                 )}
                 <PrintPdfButton path={`/${kind === 'receipt' ? 'receipts' : 'payments'}/${view.id}/pdf`} />
               </>
@@ -831,14 +859,19 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                         <Tag>{t('treasury.cancelled')}</Tag>
                       ) : view.reversedAt ? null : (
                         <Popconfirm
+                          disabled={lockedByOther}
                           title={t('treasury.cancelAllocationConfirm')}
                           okText={t('treasury.cancelAllocation')}
                           cancelText={t('common.cancel')}
                           onConfirm={() => cancelAllocation.mutate(a.id)}
                         >
-                          <Button size="small" loading={cancelAllocation.isPending && cancelAllocation.variables === a.id}>
-                            {t('treasury.cancelAllocation')}
-                          </Button>
+                          <Tooltip title={lockActionTooltip}>
+                            <span>
+                              <Button size="small" disabled={lockedByOther} loading={cancelAllocation.isPending && cancelAllocation.variables === a.id}>
+                                {t('treasury.cancelAllocation')}
+                              </Button>
+                            </span>
+                          </Tooltip>
                         </Popconfirm>
                       ),
                   },
@@ -1185,6 +1218,7 @@ function VoucherForm({
             status={requiredError(missing.party) ? 'error' : undefined}
             options={partyOptions}
             onRemoteSearch={parties.onSearch}
+            onOpen={parties.onOpen}
             searching={parties.pending}
             value={partyId}
             onChange={(v) => {
@@ -1250,6 +1284,7 @@ function VoucherForm({
             <GridSelect
                 status={requiredError(missing.cashAccount) ? 'error' : undefined}
               options={cashAccountOptions}
+              onOpen={() => refetchIfOlderThan(lookups.accountsQuery, PICKER_FRESH_MS)}
               value={cashAccountId}
               onChange={setCashAccountId}
             />

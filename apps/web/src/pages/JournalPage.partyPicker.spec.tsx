@@ -32,6 +32,9 @@ const createAccount = vi.fn();
 const costCentersEnabled = vi.hoisted(() => ({ value: false }));
 const lockAcquire = vi.hoisted(() => vi.fn());
 const lockForceRelease = vi.hoisted(() => vi.fn());
+const lockStatus = vi.hoisted(() => ({
+  value: null as null | { userName: string; acquiredAt: string; expiresAt: string; mine: boolean },
+}));
 const listEntries = vi.hoisted(() => ({ value: [] as Record<string, unknown>[] }));
 const entryDetail = vi.hoisted(() => ({ value: null as Record<string, unknown> | null }));
 const ok = <T,>(data: T) => Promise.resolve({ data, status: 200, headers: new Headers() });
@@ -77,6 +80,7 @@ vi.mock('@erp/api-client', async (original) => ({
   journalControllerGet: () => ok(entryDetail.value),
   documentLocksControllerAcquire: (...args: unknown[]) => lockAcquire(...args),
   documentLocksControllerForceRelease: (...args: unknown[]) => lockForceRelease(...args),
+  documentLocksControllerStatus: () => ok({ holder: lockStatus.value }),
   costCentersControllerList: () =>
     ok([{ id: 'cc-1', code: 'CC-1', nameAr: 'Centre', nameEn: 'Centre', isActive: true, isPostable: true }]),
   partiesControllerList: (params: { partyType?: string }) =>
@@ -108,6 +112,7 @@ beforeEach(() => {
   entryDetail.value = null;
   lockAcquire.mockReset().mockResolvedValue({});
   lockForceRelease.mockReset().mockResolvedValue(ok({ released: true }));
+  lockStatus.value = null;
   createAccount.mockReset();
   createAccount.mockImplementation(() => ok(NEW_ACCOUNT));
   createDraft.mockReset();
@@ -415,6 +420,12 @@ describe('JournalPage entry quick-create and local draft', () => {
         acquiredAt: '2031-01-01T10:00:00.000Z',
       }),
     );
+    lockStatus.value = {
+      userName: 'Nadia',
+      acquiredAt: '2031-01-01T10:00:00.000Z',
+      expiresAt: '2031-01-01T10:02:00.000Z',
+      mine: false,
+    };
     await openPage('/journal');
 
     const row = [...host.querySelectorAll('tr')].find((item) => item.textContent?.includes('JV-LOCKED'));
@@ -429,7 +440,7 @@ describe('JournalPage entry quick-create and local draft', () => {
     await settle(100);
 
     expect(host.textContent).toContain(
-      i18n.t('common.documentLockLocked', {
+      i18n.t('common.documentLockActiveEditor', {
         name: 'Nadia',
         time: formatDateTime('2031-01-01T10:00:00.000Z'),
       }),
@@ -441,7 +452,6 @@ describe('JournalPage entry quick-create and local draft', () => {
       button.textContent?.includes(i18n.t('common.documentLockUnlock')),
     );
     expect(unlock).toBeDefined();
-    lockAcquire.mockResolvedValue({});
     const confirm = vi.spyOn(Modal, 'confirm').mockImplementation((options) => {
       void options.onOk?.();
       return { destroy: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -452,9 +462,8 @@ describe('JournalPage entry quick-create and local draft', () => {
     expect(lockForceRelease).toHaveBeenCalledWith(
       'JOURNAL_ENTRY',
       'entry-locked',
-      expect.objectContaining({ headers: expect.any(Object) }),
     );
-    expect(host.querySelector('[data-cell]')).not.toBeNull();
+    expect(host.querySelector('[data-cell]')).toBeNull();
   });
 });
 

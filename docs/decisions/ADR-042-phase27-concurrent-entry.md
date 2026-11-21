@@ -19,10 +19,12 @@ The document is locked for whoever opened it first. A holder is identified by `(
 
 Leases last 120 seconds and the browser renews them every 30 seconds. All expiry comparisons and lease timestamps use MariaDB `NOW(3)`. The application is hosted on Hostinger Web/Cloud, which does not provide inbound WebSockets and has a 120-second request limit. A short database lease and bounded heartbeat requests therefore fit the deployment constraints without a daemon or external coordination service.
 
-### PR C — freshness and presence
+### PR C — freshness and presence (implemented)
 
-The next pull request will poll lock status every 30 seconds and when a page regains focus, show active-editor indicators, and refresh picker data so newly created master records become available across screens.
+Document lists poll every 30 seconds while visible; document details poll only on view screens. Lock status polls every 15 seconds and refreshes when the page regains focus. Remote and grid pickers refresh their options on open when the cached data is older than 10 seconds. The existing focus refresh in `main.tsx` remains in place, and sales e-invoice processing keeps its faster four-second refresh.
 
 ## Consequences
 
-Local drafts are recovery aids, not a replacement for server-side document state or authorization. A browser tab that loses its lease cannot save until it reacquires a lock, and its in-memory draft remains available. Polling is intentionally deferred from the lock foundation so phase 27 can establish safe write semantics before adding presence and picker freshness.
+Local drafts are recovery aids, not a replacement for server-side document state or authorization. A browser tab that loses its lease cannot save until it reacquires a lock, and its in-memory draft remains available.
+
+List rows do not show lock icons. WebSockets are not used; they would require moving the application to a VPS with inbound WebSocket support.

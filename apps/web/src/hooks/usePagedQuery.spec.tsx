@@ -2,8 +2,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../i18n';
+import { LIVE_REFRESH_MS } from '../liveRefresh';
 import { usePagedQuery, type Page, type PageParams } from './usePagedQuery';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -14,12 +15,22 @@ let root: Root | undefined;
 afterEach(() => {
   act(() => root?.unmount());
   root = undefined;
+  vi.useRealTimers();
 });
 
-const settle = () => act(() => new Promise((r) => setTimeout(r, 20)));
+const flush = () => act(async () => {
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+});
+const settle = () =>
+  vi.isFakeTimers()
+    ? flush()
+    : act(() => new Promise((r) => setTimeout(r, 20)));
 
 /** Renders the hook; `answer` decides the server's reply to each request. */
-async function mount(answer: (p: PageParams) => Page<{ id: string }> = (p) => ({ items: [{ id: '1' }], page: p.page, pageSize: p.pageSize, total: 95 })) {
+async function mount(
+  answer: (p: PageParams) => Page<{ id: string }> = (p) => ({ items: [{ id: '1' }], page: p.page, pageSize: p.pageSize, total: 95 }),
+  refetchInterval?: number,
+) {
   const calls: (PageParams & { status?: string })[] = [];
   const current: { hook?: Hook; setStatus?: (s: string | undefined) => void } = {};
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -28,6 +39,7 @@ async function mount(answer: (p: PageParams) => Page<{ id: string }> = (p) => ({
       key: ['things'],
       filters: { status },
       defaultSort: '-date',
+      refetchInterval,
       fetch: async (params) => {
         calls.push(params);
         return answer(params);
@@ -58,6 +70,28 @@ describe('usePagedQuery (ADR-022 §8)', () => {
     await act(async () => current.hook!.onTableChange({ current: 3, pageSize: 20 }, {}, {}));
     await settle();
     expect(last()).toEqual({ page: 3, pageSize: 20 });
+  });
+
+  it('refetches after the configured interval, but not when polling is unset', async () => {
+    vi.useFakeTimers();
+    const polled = await mount(undefined, LIVE_REFRESH_MS);
+    expect(polled.calls).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS - 1);
+    });
+    expect(polled.calls).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(polled.calls).toHaveLength(2);
+    act(() => root?.unmount());
+    root = undefined;
+
+    const notPolled = await mount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(LIVE_REFRESH_MS);
+    });
+    expect(notPolled.calls).toHaveLength(1);
   });
 
   it('a filter change goes back to page 1 without asking for the old page again', async () => {

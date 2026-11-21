@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { SEARCH_DEBOUNCE_MS } from '../hooks/usePagedQuery';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { PICKER_PAGE_SIZE } from '../hooks/useRemoteOptions';
+import { PICKER_FRESH_MS, refetchIfOlderThan } from '../liveRefresh';
 
 export interface RemoteOption {
   value: string;
@@ -125,7 +126,8 @@ export function RemoteSelect({
         onDropdownVisibleChange={(visible) => {
           rest.onDropdownVisibleChange?.(visible);
           setOpen(visible);
-          if (!visible) setSearch('');
+          if (visible) refetchIfOlderThan(query, PICKER_FRESH_MS);
+          else setSearch('');
         }}
         onInputKeyDown={(e) => {
           rest.onInputKeyDown?.(e);

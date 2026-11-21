@@ -11,16 +11,19 @@ import { useTranslation } from 'react-i18next';
 export function ReverseButton({
   onReverse,
   loading,
+  disabled = false,
   size = 'small',
 }: {
   onReverse: (reversalDate: string) => void;
   loading?: boolean;
+  disabled?: boolean;
   size?: 'small' | 'middle';
 }) {
   const { t } = useTranslation();
   const [date, setDate] = useState<Dayjs>(dayjs());
   return (
     <Popconfirm
+      disabled={disabled}
       title={t('treasury.reverseConfirm')}
       description={
         <Space direction="vertical" size={4}>
@@ -39,7 +42,7 @@ export function ReverseButton({
       cancelText={t('common.cancel')}
       onConfirm={() => onReverse(date.format('YYYY-MM-DD'))}
     >
-      <Button size={size} danger loading={loading}>
+      <Button size={size} danger loading={loading} disabled={disabled}>
         {t('treasury.reverse')}
       </Button>
     </Popconfirm>
