@@ -342,4 +342,26 @@ describe('Phase 28C payroll settlements', () => {
     }, company.id), 200, 'reverse guarded settlement');
     h.ok(await act(`payroll/runs/${payroll.id}/reverse`, { date: '2027-01-03' }, company.id), 201, 'reverse run after settlement');
   });
+
+  it('allocates distinct first settlement numbers in separate fiscal years', async () => {
+    const company = await createCompany('SEQ', true);
+    h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(token)).set('X-Company-Id', company.id).send({
+      code: '2027', startDate: '2027-01-01', endDate: '2027-12-31',
+    }), 201, 'create settlement sequence FY 2027');
+    const firstEmployee = await employee(company, 'SEQ26', '2026-01-01', '2026-12-31', '1000.000', false);
+    const secondEmployee = await employee(company, 'SEQ27', '2027-01-01', '2027-01-31', '1000.000', false);
+    await run(company.id, '2026-12');
+    const first = await post<{ id: string }>('payroll/settlements', { employeeId: firstEmployee.id }, company.id, 'create 2026 settlement');
+    const firstPosted = h.ok(await act(`payroll/settlements/${first.id}/post`, {}, company.id), 200, 'post 2026 settlement') as {
+      settlementNo: string;
+    };
+    expect(firstPosted.settlementNo).toBe('FS-2026-000001');
+
+    await run(company.id, '2027-01');
+    const second = await post<{ id: string }>('payroll/settlements', { employeeId: secondEmployee.id }, company.id, 'create 2027 settlement');
+    const secondPosted = h.ok(await act(`payroll/settlements/${second.id}/post`, {}, company.id), 200, 'post 2027 settlement') as {
+      settlementNo: string;
+    };
+    expect(secondPosted.settlementNo).toBe('FS-2027-000001');
+  });
 });
