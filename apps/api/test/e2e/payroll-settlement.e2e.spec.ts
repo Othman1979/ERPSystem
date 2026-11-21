@@ -508,6 +508,15 @@ describe('Phase 28C payroll settlements', () => {
     expect(adjustment.body.error.code).toBe('LEAVE_RUN_ALREADY_POSTED');
   });
 
+  it('includes inactive employees whose departure date is in the payroll period', async () => {
+    const company = await createCompany('INACTIVE-LEAVER', true);
+    const leaver = await employee(company, 'INACTIVE-LEAVER', '2020-01-01', '2026-12-10', '1000.000', false);
+    h.ok(await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ isActive: false }), 200, 'deactivate leaver');
+    const december = await run(company.id, '2026-12');
+    expect(december.lines.some((line) => line.employeeId === leaver.id)).toBe(true);
+  });
+
   it('allocates distinct first settlement numbers in separate fiscal years', async () => {
     const company = await createCompany('SEQ', true);
     h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(token)).set('X-Company-Id', company.id).send({

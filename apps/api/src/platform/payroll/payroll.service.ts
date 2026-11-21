@@ -884,7 +884,12 @@ export class PayrollService {
     if (!settings) throw new DomainError(ErrorCode.PAYROLL_SETTINGS_REQUIRED, 'No payroll settings for period');
 
     const employees = await tx.employee.findMany({
-      where: { isActive: true },
+      where: {
+        OR: [
+          { isActive: true },
+          { isActive: false, leaveDate: { gte: start } },
+        ],
+      },
       include: {
         salaries: { where: { effectiveFrom: { lte: end } }, orderBy: [{ effectiveFrom: 'desc' }] },
         recurringElements: {
