@@ -197,6 +197,38 @@ afterEach(() => {
 });
 
 describe('payroll page payloads and run actions', () => {
+  it('offers only active fixed earning elements for recurring allowances', async () => {
+    api.listElements.mockResolvedValue(response([
+      { id: 'fixed-earning', nameAr: 'بدل النقل', nameEn: 'Transport allowance', kind: 'EARNING', amountType: 'FIXED', isActive: true },
+      { id: 'fixed-deduction', nameAr: 'سداد سلفة', nameEn: 'Advance repayment', kind: 'DEDUCTION', amountType: 'FIXED', isActive: true },
+      { id: 'hourly-earning', nameAr: 'عمل إضافي', nameEn: 'Overtime', kind: 'EARNING', amountType: 'PER_HOUR', isActive: true },
+      { id: 'inactive-earning', nameAr: 'بدل غير نشط', nameEn: 'Inactive allowance', kind: 'EARNING', amountType: 'FIXED', isActive: false },
+    ]));
+    await mount('/payroll?tab=employees');
+    await until(() => expect(
+      [...(host?.querySelectorAll('button') ?? [])].some((button) => button.textContent?.includes(i18n.t('payroll.addEmployee'))),
+    ).toBe(true));
+    const addEmployee = [...host!.querySelectorAll('button')]
+      .find((button) => button.textContent?.includes(i18n.t('payroll.addEmployee')))!;
+    act(() => addEmployee.click());
+    await until(() => expect(document.querySelector('.ant-modal')).not.toBeNull());
+    const modal = document.querySelector<HTMLElement>('.ant-modal')!;
+    const elementLabel = [...modal.querySelectorAll('label')]
+      .find((candidate) => candidate.textContent?.includes(i18n.t('payroll.element')));
+    const elementSelect = elementLabel?.closest('.ant-form-item')?.querySelector<HTMLElement>('.ant-select-selector');
+    if (!elementSelect) throw new Error('Missing recurring pay element selector');
+    act(() => elementSelect.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+    await until(() => expect(
+      [...document.querySelectorAll('.ant-select-item-option')].some((option) => option.textContent?.includes('Transport allowance')),
+    ).toBe(true));
+    const options = [...document.querySelectorAll<HTMLElement>('.ant-select-item-option')]
+      .map((option) => option.textContent?.trim());
+    expect(options).toContain('Transport allowance');
+    expect(options).not.toContain('Advance repayment');
+    expect(options).not.toContain('Overtime');
+    expect(options).not.toContain('Inactive allowance');
+  });
+
   it('waits for a pending income-tax save before posting a run', async () => {
     const taxSave = deferred<ReturnType<typeof response<{ id: string }>>>();
     api.setIncomeTax.mockReturnValue(taxSave.promise);

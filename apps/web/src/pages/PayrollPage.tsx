@@ -59,7 +59,7 @@ type EmployeeForm = {
   branchId?: string | null; costCenterId?: string | null; sscCovered?: boolean; sscHazardous?: boolean;
   nationalId?: string | null; sscNumber?: string | null; leaveDate?: DateFormValue; iban?: string | null; isActive?: boolean;
   salaryEffectiveFrom?: DateFormValue; basicSalary?: string; payElementId?: string; recurringAmount?: string;
-  recurringQuantity?: string; recurringValidFrom?: DateFormValue;
+  recurringValidFrom?: DateFormValue;
 };
 type MovementForm = { employeeId: string; payElementId: string; movementDate?: DateFormValue; quantity?: string; amount?: string; description?: string };
 
@@ -140,7 +140,7 @@ export function buildPaymentSourceOptions(
 }
 
 export function buildEmployeePayload(values: EmployeeForm, editing = false) {
-  const { salaryEffectiveFrom: _salaryDate, basicSalary: _salary, payElementId: _element, recurringAmount: _amount, recurringQuantity: _quantity, recurringValidFrom: _validFrom, ...card } = values;
+  const { salaryEffectiveFrom: _salaryDate, basicSalary: _salary, payElementId: _element, recurringAmount: _amount, recurringValidFrom: _validFrom, ...card } = values;
   const nullable = (value?: string | null) => editing && (value == null || value === '') ? null : value;
   return {
     ...card,
@@ -200,7 +200,8 @@ function EmployeesTab() {
   const [detail, setDetail] = useState<PayrollEmployeeDetailDto>();
   const [form] = Form.useForm<EmployeeForm>();
   const recurringElementId = Form.useWatch('payElementId', form);
-  const recurringElement = (elements.data as PayrollElementDto[] | undefined)?.find((element) => element.id === recurringElementId);
+  const recurringElements = (elements.data as PayrollElementDto[] | undefined)?.filter((element) =>
+    element.isActive && element.kind === 'EARNING' && element.amountType === 'FIXED');
   const save = useMutation({
     mutationFn: async (values: EmployeeForm) => {
       const card = buildEmployeePayload(values, Boolean(editing));
@@ -222,7 +223,7 @@ function EmployeesTab() {
       if (id && values.payElementId && values.recurringValidFrom) {
         await payrollControllerCreateRecurring(id, {
           payElementId: values.payElementId,
-          ...(recurringElement?.amountType === 'FIXED' ? { amount: values.recurringAmount } : { quantity: values.recurringQuantity }),
+          amount: values.recurringAmount,
           validFrom: dateOnly(values.recurringValidFrom)!,
         } as never);
       }
@@ -282,11 +283,9 @@ function EmployeesTab() {
           <Space direction="vertical">{detail?.salaries.map((salary) => <span key={salary.id}>{formatPayrollDate(salary.effectiveFrom)}: {formatAmount(salary.basicSalary)}</span>)}</Space>
         </FormSection>
         <FormSection title={t('payroll.recurring')}>
-          <Form.Item name="payElementId" label={t('payroll.element')}><Select options={(elements.data as PayrollElementDto[] | undefined)?.map((e) => ({ value: e.id, label: i18n.language === 'en' ? e.nameEn ?? e.nameAr : e.nameAr }))} /></Form.Item>
+          <Form.Item name="payElementId" label={t('payroll.element')}><Select options={recurringElements?.map((element) => ({ value: element.id, label: i18n.language === 'en' ? element.nameEn ?? element.nameAr : element.nameAr }))} /></Form.Item>
           <Form.Item name="recurringValidFrom" label={t('payroll.effectiveFrom')} rules={[{ required: Boolean(recurringElementId) }]}><DatePicker /></Form.Item>
-          {recurringElement?.amountType === 'FIXED'
-            ? <Form.Item name="recurringAmount" label={t('payroll.amount')} rules={[{ required: Boolean(recurringElementId) }]}><Input /></Form.Item>
-            : <Form.Item name="recurringQuantity" label={t('payroll.quantity')} rules={[{ required: Boolean(recurringElementId) }]}><Input /></Form.Item>}
+          <Form.Item name="recurringAmount" label={t('payroll.amount')} rules={[{ required: Boolean(recurringElementId) }]}><Input /></Form.Item>
           {detail?.recurringElements.map((recurring) => <Space key={recurring.id}>
             <span>{i18n.language === 'en' ? recurring.payElement.nameEn ?? recurring.payElement.nameAr : recurring.payElement.nameAr} — {recurring.amount !== null ? formatAmount(recurring.amount) : formatQty(recurring.quantity)} · {formatPayrollDate(recurring.validFrom)} – {formatPayrollDate(recurring.validTo) ?? '—'}</span>
             <Button danger title={t('common.delete')} icon={<DeleteOutlined />} onClick={() => void payrollControllerDeleteRecurring(editing!.id, recurring.id)

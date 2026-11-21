@@ -245,13 +245,11 @@ export class PayrollService {
       if (!employee) throw DomainError.notFound('Employee', employeeId.toString());
       const element = await tx.payElement.findFirst({ where: { id: BigInt(dto.payElementId), isActive: true } });
       if (!element) throw DomainError.notFound('PayElement', dto.payElementId);
-      const recurringValue = element.amountType === 'FIXED' ? dto.amount : dto.quantity;
-      if (
-        recurringValue == null ||
-        new Decimal(recurringValue).lt('0') ||
-        (element.amountType === 'FIXED' ? dto.quantity != null : dto.amount != null)
-      ) {
-        throw new DomainError(ErrorCode.VALIDATION, 'Recurring value must match its pay element amount type');
+      if (element.kind !== 'EARNING' || element.amountType !== 'FIXED') {
+        throw new DomainError(ErrorCode.VALIDATION, 'Only fixed allowances can recur on the employee card');
+      }
+      if (dto.amount == null || new Decimal(dto.amount).lt('0') || dto.quantity !== undefined) {
+        throw new DomainError(ErrorCode.VALIDATION, 'Recurring amount must be non-negative and quantity must be absent');
       }
       const validFrom = date(dto.validFrom);
       const validTo = dto.validTo ? date(dto.validTo) : null;

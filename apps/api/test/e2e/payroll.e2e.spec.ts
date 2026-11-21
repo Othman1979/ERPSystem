@@ -176,6 +176,18 @@ describe('Payroll PY1–PY3', () => {
     const recurring = await post<{ id: string }>(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
       payElementId: elementId.TRANSPORT, amount: '1.000', validFrom: '2032-01-01',
     }, 'future recurring element', companyAId);
+    const recurringDeduction = await act(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
+      payElementId: elementId.ADVANCE_REPAYMENT, amount: '25.000', validFrom: '2031-01-01',
+    }, companyAId);
+    expect(recurringDeduction.status).toBe(400);
+    expect(recurringDeduction.body.error.code).toBe('VALIDATION');
+    expect(recurringDeduction.body.error.message).toBe('Only fixed allowances can recur on the employee card');
+    const recurringHourly = await act(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
+      payElementId: elementId.OVERTIME_125, quantity: '1.000', validFrom: '2031-01-01',
+    }, companyAId);
+    expect(recurringHourly.status).toBe(400);
+    expect(recurringHourly.body.error.code).toBe('VALIDATION');
+    expect(recurringHourly.body.error.message).toBe('Only fixed allowances can recur on the employee card');
     const customElement = await post<{ id: string }>(tokenA, 'payroll/elements', {
       code: `EDIT-${RUN}`, nameAr: 'Editable', kind: 'EARNING', amountType: 'FIXED',
       rateFactor: '1.000000', accountId: accounts['5201'],
@@ -197,6 +209,9 @@ describe('Payroll PY1–PY3', () => {
     expect((await act(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
       payElementId: elementId.TRANSPORT, amount: null, validFrom: '2031-01-01',
     }, companyAId)).status).toBe(400);
+    expect((await act(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
+      payElementId: elementId.TRANSPORT, amount: '1.000', quantity: null, validFrom: '2031-01-01',
+    }, companyAId)).status).toBe(400);
     const costCenterDelete = await h.api().delete(`/api/v1/cost-centers/${costCenterId}`).set(h.auth(tokenA)).set('X-Company-Id', companyAId);
     expect(costCenterDelete.status).toBe(409);
     expect(costCenterDelete.body.error.code).toBe('COST_CENTER_IN_USE');
@@ -213,14 +228,16 @@ describe('Payroll PY1–PY3', () => {
     await post(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
       payElementId: elementId.TRANSPORT, amount: '50.000', validFrom: '2031-01-01', validTo: '2031-01-31',
     }, 'transport', companyAId);
-    await post(tokenA, `payroll/employees/${employeeA.id}/recurring-elements`, {
-      payElementId: elementId.ADVANCE_REPAYMENT, amount: '25.000', validFrom: '2031-01-01', validTo: '2031-01-31',
-    }, 'advance repayment', companyAId);
     for (const [date, quantity] of [['2031-01-10', '6'], ['2031-01-11', '4']]) {
       await post(tokenA, 'payroll/movements', {
         employeeId: employeeA.id, payElementId: elementId.OVERTIME_125, movementDate: date, quantity, description: `overtime ${quantity}`,
       }, `overtime ${quantity}`, companyAId);
     }
+    const advanceMovement = await post<{ id: string; amount: string }>(tokenA, 'payroll/movements', {
+      employeeId: employeeA.id, payElementId: elementId.ADVANCE_REPAYMENT, movementDate: '2031-01-31',
+      amount: '25.000', description: 'advance repayment',
+    }, 'advance repayment', companyAId);
+    expect(advanceMovement.amount).toBe('25');
     const absenceMovement = await post<{ id: string; amount: string }>(tokenA, 'payroll/movements', {
       employeeId: employeeB.id, payElementId: elementId.ABSENCE_DAY, movementDate: '2031-01-12',
       quantity: '2', description: 'absence monthly total',
@@ -231,7 +248,7 @@ describe('Payroll PY1–PY3', () => {
       200,
       'list January movements',
     ) as Array<{ id: string }>;
-    expect(januaryMovements).toHaveLength(3);
+    expect(januaryMovements).toHaveLength(4);
     const otherCompanyMovements = h.ok(
       await get(tokenA, 'payroll/movements?period=2031-01', otherCompany.id),
       200,
@@ -255,21 +272,22 @@ describe('Payroll PY1–PY3', () => {
     expect([lineB.basic, lineB.earnings, lineB.gross, lineB.sscBase, lineB.sscEmployee, lineB.sscEmployer, lineB.deductions, lineB.net])
       .toEqual(['400', '0', '400', '0', '0', '0', '26.667', '373.333']);
     const movementItems = lineA.items.filter((item) => item.payrollMovementId !== null);
-    expect(movementItems).toHaveLength(2);
-    expect(movementItems.reduce((total, item) => total.plus(item.amount), new Decimal(0)).toString()).toBe('26.042');
-    expect(lineA.items.filter((item) => item.payrollMovementId === null).map((item) => item.amount).sort()).toEqual(['25', '50']);
+    expect(movementItems).toHaveLength(3);
+    expect(movementItems.reduce((total, item) => total.plus(item.amount), new Decimal(0)).toString()).toBe('51.042');
+    expect(lineA.items.filter((item) => item.payrollMovementId === null).map((item) => item.amount).sort()).toEqual(['50']);
     expect(lineB.items.map((item) => item.amount)).toEqual(['26.667']);
     h.ok(await h.api().patch(`/api/v1/payroll/runs/${run.id}/lines/${lineA.id}/income-tax`).set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ incomeTax: '12.500' }), 200, 'set A tax');
     const updated = h.ok(await get(tokenA, `payroll/runs/${run.id}`, companyAId), 200, 'run detail') as {
       netTotal: string;
-      lines: { id: string; net: string }[];
+      lines: { id: string; incomeTax: string; deductions: string; net: string }[];
       grossTotal: string;
       sscEmployeeTotal: string;
       sscEmployerTotal: string;
       deductionsTotal: string;
     };
     expect(updated.netTotal).toBe('872.422');
-    expect(updated.lines.find((line) => line.id === lineA.id)?.net).toBe('499.089');
+    expect(updated.lines.find((line) => line.id === lineA.id))
+      .toEqual(expect.objectContaining({ incomeTax: '12.5', deductions: '25', net: '499.089' }));
     expect([updated.grossTotal, updated.sscEmployeeTotal, updated.sscEmployerTotal, updated.deductionsTotal])
       .toEqual(['976.042', '39.453', '74.961', '51.667']);
     expect((await get(tokenA, 'payroll/reports/register?period=2031-01', companyAId)).status).toBe(200);
@@ -319,8 +337,21 @@ describe('Payroll PY1–PY3', () => {
     expect(actualJournal.get('5206')).toEqual(['74.961', '0.000']);
     expect(actualJournal.get('2107')).toEqual(['0.000', '114.414']);
     expect(actualJournal.get('2108')).toEqual(['0.000', '12.500']);
-    expect(actualJournal.get('1107')).toEqual(['0.000', '25.000']);
-    expect(actualJournal.get('2106')).toEqual(['0.000', '873.047']);
+    expect(actualJournal.get('1107')).toBeUndefined();
+    expect(actualJournal.get('2106')).toEqual(['0.000', '898.047']);
+    const advanceJournal = (await boot.db.query(
+      `SELECT a.code AS account_code, CAST(l.debit AS CHAR) AS debit, CAST(l.credit AS CHAR) AS credit
+         FROM journal_entries j
+         JOIN journal_lines l ON l.tenant_id = j.tenant_id AND l.journal_entry_id = j.id
+         JOIN accounts a ON a.tenant_id = l.tenant_id AND a.id = l.account_id
+        WHERE j.tenant_id = ? AND j.company_id = ? AND j.source_type = 'PAYROLL_MOVEMENT' AND j.source_id = ?
+        ORDER BY a.code`,
+      [tenantId, companyAId, advanceMovement.id],
+    )) as Array<{ account_code: string; debit: string; credit: string }>;
+    expect(advanceJournal.map((entry) => [entry.account_code, entry.debit, entry.credit])).toEqual([
+      ['1107', '0.000', '25.000'],
+      ['2106', '25.000', '0.000'],
+    ]);
     const absenceJournal = (await boot.db.query(
       `SELECT a.code AS account_code, CAST(l.debit AS CHAR) AS debit, CAST(l.credit AS CHAR) AS credit
          FROM journal_entries j
@@ -348,6 +379,9 @@ describe('Payroll PY1–PY3', () => {
     expect(await accountBalance('2106')).toBe('0.000');
     const reversed = await act(tokenA, `payroll/runs/${run.id}/reverse`, { date: '2031-01-31' }, companyAId);
     h.ok(reversed, 201, 'reverse payroll run');
+    h.ok(await act(tokenA, `payroll/movements/${advanceMovement.id}/reverse`, {
+      date: '2031-01-31',
+    }, companyAId), 201, 'reverse advance repayment movement');
     const [auditUser] = (await boot.db.query('SELECT user_id FROM tenant_memberships WHERE tenant_id = ? ORDER BY id LIMIT 1', [tenantId])) as { user_id: bigint }[];
     const payrollAudits = (await boot.db.query(
       'SELECT action, user_id FROM audit_logs WHERE tenant_id = ? AND entity_type = ? AND entity_id = ? ORDER BY id',
@@ -959,7 +993,7 @@ describe('Payroll PY1–PY3', () => {
     expect(deleted.body).toEqual({ id: draft.id, deleted: true });
   });
 
-  it('posts recurring earnings and deductions on the same account and branch separately', async () => {
+  it('posts a recurring earning and deduction movement on the same account and branch separately', async () => {
     h.ok(
       await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).send({
         code: '2034', startDate: '2034-01-01', endDate: '2034-12-31',
@@ -990,9 +1024,10 @@ describe('Payroll PY1–PY3', () => {
     await post(tokenA, `payroll/employees/${employee.id}/recurring-elements`, {
       payElementId: earning.id, amount: '10.000', validFrom: '2034-01-01',
     }, 'same-account recurring earning assignment', companyAId);
-    await post(tokenA, `payroll/employees/${employee.id}/recurring-elements`, {
-      payElementId: deduction.id, amount: '3.000', validFrom: '2034-01-01',
-    }, 'same-account recurring deduction assignment', companyAId);
+    const deductionMovement = await post<{ id: string }>(tokenA, 'payroll/movements', {
+      employeeId: employee.id, payElementId: deduction.id, movementDate: '2034-01-15',
+      amount: '3.000', description: sharedDescription,
+    }, 'same-account deduction movement', companyAId);
     const run = h.ok(await act(tokenA, 'payroll/runs', { period: '2034-01' }, companyAId), 201, 'create side-grouping run') as {
       id: string;
     };
@@ -1012,6 +1047,19 @@ describe('Payroll PY1–PY3', () => {
     expect(lines.map((line) => [line.account_code, String(line.branch_id), String(line.cost_center_id), line.debit, line.credit]))
       .toEqual([
         ['5201', branches[0]!.id, costCenterId, '10.000', '0.000'],
+      ]);
+    const movementLines = (await boot.db.query(
+      `SELECT a.code AS account_code, l.branch_id, l.cost_center_id,
+              CAST(l.debit AS CHAR) AS debit, CAST(l.credit AS CHAR) AS credit
+         FROM journal_entries j
+         JOIN journal_lines l ON l.tenant_id = j.tenant_id AND l.journal_entry_id = j.id
+         JOIN accounts a ON a.tenant_id = l.tenant_id AND a.id = l.account_id
+        WHERE j.tenant_id = ? AND j.company_id = ? AND j.source_type = 'PAYROLL_MOVEMENT' AND j.source_id = ?
+          AND a.code = '5201'`,
+      [tenantId, companyAId, deductionMovement.id],
+    )) as Array<{ account_code: string; branch_id: bigint; cost_center_id: bigint; debit: string; credit: string }>;
+    expect(movementLines.map((line) => [line.account_code, String(line.branch_id), String(line.cost_center_id), line.debit, line.credit]))
+      .toEqual([
         ['5201', branches[0]!.id, costCenterId, '0.000', '3.000'],
       ]);
   });
