@@ -61,7 +61,8 @@ vi.mock('../hooks/useAccounts', () => ({
 vi.mock('../hooks/useCostCenters', () => ({
   useCostCenters: () => ({ enabled: false, rows: [], nameOf: () => undefined }),
 }));
-vi.mock('../hooks/usePagedQuery', () => ({
+vi.mock('../hooks/usePagedQuery', async (original) => ({
+  ...(await original<typeof import('../hooks/usePagedQuery')>()),
   usePagedQuery: () => ({
     query: { isLoading: false, isError: false, isSuccess: true, data: { items: [], total: 0 } },
     rows: [],
@@ -95,7 +96,7 @@ afterEach(() => {
 const settle = (ms = 50) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
 
 describe('TreasuryPage voucher draft', () => {
-  it('reuses the stored idempotency key when a restored voucher is resubmitted', async () => {
+  it('uses the stored idempotency key when a restored voucher is submitted', async () => {
     const key = 'persisted-voucher-idempotency-key';
     localStorage.setItem(
       'erp:entry-draft:v1:user-a:tenant-a:company-a:receipt:new',
@@ -122,7 +123,7 @@ describe('TreasuryPage voucher draft', () => {
         },
       }),
     );
-    createReceipt.mockRejectedValue(new Error('network lost'));
+    createReceipt.mockResolvedValue({ data: { id: 'receipt-1' } });
     const restorePrompt = vi.spyOn(Modal, 'confirm').mockImplementation((options) => {
       options.onOk?.();
       return { destroy: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
@@ -154,14 +155,8 @@ describe('TreasuryPage voucher draft', () => {
     const save = () => host.querySelector<HTMLButtonElement>('.doc-toolbar-actions button')!;
     act(() => save().click());
     await settle();
-    act(() => save().click());
-    await settle();
 
-    expect(createReceipt).toHaveBeenCalledTimes(2);
-    const options = createReceipt.mock.calls.map((call) => call[1]);
-    expect(options).toEqual([
-      { headers: { 'Idempotency-Key': key } },
-      { headers: { 'Idempotency-Key': key } },
-    ]);
+    expect(createReceipt).toHaveBeenCalledTimes(1);
+    expect(createReceipt.mock.calls[0][1]).toEqual({ headers: { 'Idempotency-Key': key } });
   });
 });

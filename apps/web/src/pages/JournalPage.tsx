@@ -238,7 +238,7 @@ export function JournalPage() {
         const partyType =
           need === 'CUSTOMER' || need === 'SUPPLIER'
             ? need
-            : partyColumn.sideOf(line.partyId) ??
+            : partyColumn.sideOf?.(line.partyId) ??
               (typeof restored === 'string' ? undefined : restored?.partyType);
         return partyType ? [[line.partyId, { label, partyType }]] : [];
       }),

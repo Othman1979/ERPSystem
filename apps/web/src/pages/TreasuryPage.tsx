@@ -918,7 +918,7 @@ function VoucherForm({
   const costCenters = useCostCenters();
   const [costCenterId, setCostCenterId] = useState<string | undefined>();
   // One key per opened form: a double-click or retry replays, never posts twice.
-  const [idemKey, setIdemKey] = useState(() => crypto.randomUUID());
+  const [idemKey, setIdemKey] = useState<string>(() => crypto.randomUUID());
 
   const lookups = useTreasuryLookups();
 
