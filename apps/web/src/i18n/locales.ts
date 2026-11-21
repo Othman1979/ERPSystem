@@ -133,6 +133,7 @@ export const ar = {
     sscHazardousExtra: 'إضافي مخاطر', sscMinWage: 'الحد الأدنى للأجر', sscMaxWage: 'الحد الأعلى للأجر',
     hoursPerMonth: 'ساعات الشهر', daysPerMonth: 'أيام الشهر', saveError: 'تعذر حفظ بيانات الرواتب',
     reports: { title: 'التقارير', register: 'سجل الرواتب', ssc: 'كشف الضمان', 'tax-withheld': 'الضريبة المستقطعة', employeeStatement: 'كشف حساب الموظف' },
+    statementSettlement: 'التسوية النهائية', statementSettlementPayment: 'دفع التسوية النهائية',
   },
   ribbon: {
     label: 'شريط التنقل',
@@ -2518,6 +2519,7 @@ export const en: typeof ar = {
     sscHazardousExtra: 'Hazardous extra rate', sscMinWage: 'Minimum wage', sscMaxWage: 'Maximum wage',
     hoursPerMonth: 'Hours per month', daysPerMonth: 'Days per month', saveError: 'Could not save payroll data',
     reports: { title: 'Reports', register: 'Payroll register', ssc: 'SSC statement', 'tax-withheld': 'Tax withheld', employeeStatement: 'Employee statement' },
+    statementSettlement: 'Final settlement', statementSettlementPayment: 'Final settlement payment',
   },
   ribbon: {
     label: 'Navigation ribbon',

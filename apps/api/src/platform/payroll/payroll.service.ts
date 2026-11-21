@@ -1647,6 +1647,10 @@ export class PayrollService {
         paymentEntry: { include: { reversals: { select: { entryDate: true, createdAt: true } } } },
       },
     });
+    const settlements = await db.payrollSettlement.findMany({
+      where: { employeeId, status: { in: ['POSTED', 'PAID'] } },
+      include: { paymentEntry: { select: { entryDate: true, createdAt: true, entryNo: true } } },
+    });
 
     type StatementEvent = {
       date: Date;
@@ -1729,6 +1733,27 @@ export class PayrollService {
             signed: payment.neg(),
           });
         }
+      }
+    }
+    for (const settlement of settlements) {
+      const settlementNo = settlement.settlementNo ?? settlement.id.toString();
+      addEvent({
+        date: settlement.settlementDate,
+        createdAt: settlement.createdAt,
+        documentNo: settlementNo,
+        documentType: 'PAYROLL_SETTLEMENT',
+        description: 'Final settlement',
+        signed: settlement.net,
+      });
+      if (settlement.status === 'PAID' && settlement.paymentEntry) {
+        addEvent({
+          date: settlement.paymentEntry.entryDate,
+          createdAt: settlement.paymentEntry.createdAt,
+          documentNo: settlement.paymentEntry.entryNo ?? settlementNo,
+          documentType: 'PAYROLL_SETTLEMENT_PAYMENT',
+          description: 'Final settlement payment',
+          signed: settlement.net.neg(),
+        });
       }
     }
     events.sort((a, b) =>

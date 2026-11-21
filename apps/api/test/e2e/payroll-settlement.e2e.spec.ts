@@ -194,7 +194,7 @@ describe('Phase 28C payroll settlements', () => {
       endDate: '2026-05-10',
     }, eos2Company.id, 'create EOS2 unpaid leave');
     h.ok(await act(`payroll/leave-requests/${unpaid.id}/approve`, {}, eos2Company.id), 200, 'approve EOS2 unpaid leave');
-    await run(eos2Company.id, '2026-05');
+    const may = await run(eos2Company.id, '2026-05');
     const july = await run(eos2Company.id, '2026-07');
     expect(employeeLine(july, eos2Employee.id).eosProvision).toBe('19175.343');
     const beforeAugust = await act('payroll/settlements', { employeeId: eos2Employee.id }, eos2Company.id);
@@ -226,9 +226,12 @@ describe('Phase 28C payroll settlements', () => {
     const bank = h.ok(await h.api().post('/api/v1/bank-accounts').set(h.auth(token)).set('X-Company-Id', eos2Company.id).send({
       bankName: 'EOS2 Bank', accountId: bankGl.id,
     }), 201, 'create EOS2 bank') as { id: string };
+    await act(`payroll/runs/${may.id}/pay`, { bankAccountId: bank.id, date: '2026-05-31' }, eos2Company.id);
+    await act(`payroll/runs/${july.id}/pay`, { bankAccountId: bank.id, date: '2026-07-31' }, eos2Company.id);
+    await act(`payroll/runs/${august.id}/pay`, { bankAccountId: bank.id, date: '2026-08-31' }, eos2Company.id);
     const balancesBeforeSettlement = await settlementAccountBalances(eos2Company.id);
     const posted = h.ok(await act(`payroll/settlements/${eos2.id}/post`, {}, eos2Company.id), 200, 'post EOS2 settlement') as {
-      journalEntryId: string;
+      journalEntryId: string; settlementNo: string;
     };
     expect((await journalLines(posted.journalEntryId)).map((line) => [line.code, line.debit, line.credit])).toEqual([
       ['2106', '0.000', '19031.424'],
@@ -246,6 +249,22 @@ describe('Phase 28C payroll settlements', () => {
       ['1102', '0.000', '19031.424'],
       ['2106', '19031.424', '0.000'],
     ]);
+    const statement = h.ok(await get(
+      `payroll/employees/${eos2Employee.id}/statement?from=2026-01-01&to=2026-12-31`,
+      eos2Company.id,
+    ), 200, 'EOS2 employee statement') as {
+      closingBalance: string;
+      rows: Array<{ documentNo: string; documentType: string; date: string; debit: string; credit: string }>;
+    };
+    expect(statement.rows).toContainEqual(expect.objectContaining({
+      documentNo: posted.settlementNo, documentType: 'PAYROLL_SETTLEMENT', date: eos2.settlementDate,
+      debit: '0.000', credit: '19031.424',
+    }));
+    expect(statement.rows).toContainEqual(expect.objectContaining({
+      documentType: 'PAYROLL_SETTLEMENT_PAYMENT', date: eos2.settlementDate,
+      debit: '19031.424', credit: '0.000',
+    }));
+    expect(statement.closingBalance).toBe('0.000');
     const reversed = h.ok(await act(`payroll/settlements/${eos2.id}/reverse`, {
       reversalDate: shiftDate(eos2.settlementDate, 1),
     }, eos2Company.id), 200, 'reverse EOS2 settlement') as {
@@ -297,6 +316,11 @@ describe('Phase 28C payroll settlements', () => {
       incomeTax: '0', net: '463.867', leaveProvision: '0', eosProvision: '0',
     }));
     expect(line.items).toContainEqual(expect.objectContaining({ description: 'Unused leave encashment', amount: '67.2', kind: 'EARNING' }));
+    const arabicRun = h.ok(await get(`payroll/runs/${september.id}?lang=ar`, company.id), 200, 'read Arabic EN1 run') as {
+      lines: Array<{ employeeId: string; items: Array<{ description: string }> }>;
+    };
+    expect(arabicRun.lines.find((row) => row.employeeId === leaver.id)?.items)
+      .toContainEqual(expect.objectContaining({ description: 'بدل إجازات غير مستعملة' }));
     expect(line.items).toContainEqual(expect.objectContaining({ description: 'Transport', amount: '26.667', kind: 'EARNING' }));
     expect(september.leaveProvisionEntryId).toBeTruthy();
     const provisionLines = await journalLines(september.leaveProvisionEntryId!);
@@ -325,6 +349,13 @@ describe('Phase 28C payroll settlements', () => {
     const deniedApproval = await act(`payroll/leave-requests/${leave.id}/approve`, {}, company.id);
     expect(deniedApproval.status).toBe(409);
     expect(deniedApproval.body.error.code).toBe('LEAVE_RUN_ALREADY_POSTED');
+    const otherType = await post<{ id: string }>('payroll/leave-types', {
+      code: `OTHER-${RUN}`, nameAr: 'Other', category: 'OTHER', countBasis: 'CALENDAR_DAYS',
+    }, company.id, 'create other leave type');
+    const otherLeave = await post<{ id: string }>('payroll/leave-requests', {
+      employeeId: leaver.id, leaveTypeId: otherType.id, startDate: '2026-12-05', endDate: '2026-12-06',
+    }, company.id, 'create post-departure-run other leave');
+    expect((await act(`payroll/leave-requests/${otherLeave.id}/approve`, {}, company.id)).status).toBe(200);
     const settlement = await post<{ id: string }>('payroll/settlements', { employeeId: leaver.id }, company.id, 'create guarded settlement');
 
     const draftEdit = await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
