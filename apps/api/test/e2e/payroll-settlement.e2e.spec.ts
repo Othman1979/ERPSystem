@@ -335,7 +335,7 @@ describe('Phase 28C payroll settlements', () => {
   it('clips approved annual leave usage at the departure date for encashment', async () => {
     const company = await createCompany('CLIP-LEAVE', true);
     const baseline = await employee(company, 'CLIP-BASE', '2020-01-01', '2026-12-10', '1000.000', false);
-    const withLeave = await employee(company, 'CLIP-REQUEST', '2020-01-01', '2026-12-10', '1000.000', false);
+    const withLeave = await employee(company, 'CLIP-REQUEST', '2020-01-01', '2027-12-31', '1000.000', false);
     const annual = (h.ok(await get('payroll/leave-types', company.id), 200, 'annual leave type for departure clipping') as Array<{
       id: string; code: string;
     }>).find((type) => type.code === 'ANNUAL')!;
@@ -343,6 +343,8 @@ describe('Phase 28C payroll settlements', () => {
       employeeId: withLeave.id, leaveTypeId: annual.id, startDate: '2026-12-08', endDate: '2026-12-20',
     }, company.id, 'create annual leave crossing departure date');
     h.ok(await act(`payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve annual leave crossing departure date');
+    h.ok(await h.api().patch(`/api/v1/payroll/employees/${withLeave.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: '2026-12-10' }), 200, 'set departure after annual approval');
     const december = await run(company.id, '2026-12');
     const encashment = (employeeId: string) => employeeLine(december, employeeId).items
       .find((item) => item.description === 'Unused leave encashment')!.amount;
@@ -351,7 +353,7 @@ describe('Phase 28C payroll settlements', () => {
 
   it('clips unpaid leave deductions to the active days before departure', async () => {
     const company = await createCompany('CLIP-UNPAID', true);
-    const leaver = await employee(company, 'CLIP-UNPAID', '2020-01-01', '2026-12-10', '3000.000', false);
+    const leaver = await employee(company, 'CLIP-UNPAID', '2020-01-01', '2027-12-31', '3000.000', false);
     const unpaid = (h.ok(await get('payroll/leave-types', company.id), 200, 'unpaid leave type for departure clipping') as Array<{
       id: string; code: string;
     }>).find((type) => type.code === 'UNPAID')!;
@@ -359,6 +361,8 @@ describe('Phase 28C payroll settlements', () => {
       employeeId: leaver.id, leaveTypeId: unpaid.id, startDate: '2026-12-08', endDate: '2026-12-20',
     }, company.id, 'create unpaid leave crossing departure date');
     h.ok(await act(`payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, 'approve unpaid leave crossing departure date');
+    h.ok(await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
+      .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: '2026-12-10' }), 200, 'set departure after unpaid approval');
     const december = await run(company.id, '2026-12');
     expect(employeeLine(december, leaver.id)).toEqual(expect.objectContaining({
       basic: '1000',
@@ -473,6 +477,9 @@ describe('Phase 28C payroll settlements', () => {
 
   it('blocks setting a departure date inside an already-posted payroll period', async () => {
     const company = await createCompany('LATE-DEPARTURE', true);
+    h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(token)).set('X-Company-Id', company.id).send({
+      code: '2027', startDate: '2027-01-01', endDate: '2027-12-31',
+    }), 201, 'create late departure fiscal year');
     const employeeRecord = await employee(company, 'LATE-DEPARTURE', '2020-01-01', '2026-12-31', '1000.000', false);
     h.ok(await h.api().patch(`/api/v1/payroll/employees/${employeeRecord.id}`)
       .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: null }), 200, 'clear initial departure date');
