@@ -471,6 +471,7 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
   const create = useMutation({ mutationFn: () => payrollControllerCreateRun({ period }), onSuccess: (r) => { setRunId(r.data.id); void qc.invalidateQueries({ queryKey: ['payroll', 'runs'] }); }, onError: () => message.error(t('payroll.saveError')) });
   const { mutate: createRun } = create;
   const createdFromQuickAction = useRef(false);
+  const pendingIncomeTaxSaves = useRef(new Set<Promise<unknown>>());
   useEffect(() => {
     if (!createOnLoad) {
       createdFromQuickAction.current = false;
@@ -483,6 +484,10 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
   }, [createOnLoad, can, createRun]);
   const mutate = useMutation({ mutationFn: async (action: string) => {
     if (!runId) return;
+    if (action === 'post' || action === 'pay' || action === 'recompute') {
+      const saves = await Promise.allSettled([...pendingIncomeTaxSaves.current]);
+      if (saves.some((save) => save.status === 'rejected')) throw new Error('Payroll income tax save failed');
+    }
     const options = { headers: { 'Idempotency-Key': crypto.randomUUID() } };
     if (action === 'post') await payrollControllerPostRun(runId, options);
     if (action === 'pay' && sourceId) await payrollControllerPayRun(runId, {
@@ -536,7 +541,13 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
       { title: t('payroll.sscBase'), dataIndex: 'sscBase', render: (v: string) => formatAmount(v) },
       { title: t('payroll.sscEmployeeTotal'), dataIndex: 'sscEmployee', render: (v: string) => formatAmount(v) },
       { title: t('payroll.sscEmployerTotal'), dataIndex: 'sscEmployer', render: (v: string) => formatAmount(v) },
-      { title: t('payroll.incomeTax'), dataIndex: 'incomeTax', render: (v: string, row) => available.taxEditable && can(PERMISSIONS.PAYROLL_MANAGE) ? <Input defaultValue={v} onBlur={(e) => void payrollControllerSetIncomeTax(data.id, row.id, { incomeTax: e.target.value }).then(() => qc.invalidateQueries({ queryKey: ['payroll', 'run', runId] })).catch(() => message.error(t('payroll.saveError')))} /> : formatAmount(v) },
+      { title: t('payroll.incomeTax'), dataIndex: 'incomeTax', render: (v: string, row) => available.taxEditable && can(PERMISSIONS.PAYROLL_MANAGE) ? <Input defaultValue={v} onBlur={(e) => {
+        const save = payrollControllerSetIncomeTax(data.id, row.id, { incomeTax: e.target.value });
+        pendingIncomeTaxSaves.current.add(save);
+        void save.then(() => qc.invalidateQueries({ queryKey: ['payroll', 'run', runId] }))
+          .catch(() => message.error(t('payroll.saveError')))
+          .finally(() => pendingIncomeTaxSaves.current.delete(save));
+      }} /> : formatAmount(v) },
       { title: t('payroll.deductions'), dataIndex: 'deductions', render: (v: string) => formatAmount(v) },
       { title: t('payroll.net'), dataIndex: 'net', render: (v: string) => formatAmount(v) },
       { title: t('payroll.payslip'), render: (_, row) => <Button icon={<FilePdfOutlined />} onClick={() => void printPayslip(row.id)}>{t('payroll.print')}</Button> },

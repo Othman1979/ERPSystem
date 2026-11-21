@@ -1,5 +1,11 @@
 import dayjs from 'dayjs';
-import { describe, expect, it, vi } from 'vitest';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { App as AntApp } from 'antd';
+import { MemoryRouter } from 'react-router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import {
   buildElementPayload,
   buildEmployeePayload,
@@ -9,13 +15,215 @@ import {
   employeeEditDateValues,
   formatPayrollDate,
   monthToPayrollPeriod,
+  PayrollPage,
   PayrollMonthPicker,
   payElementAccountSelectable,
   payrollTabSearchParams,
   runAvailability,
 } from './PayrollPage';
 
+const api = vi.hoisted(() => ({
+  addSalary: vi.fn(),
+  createEmployee: vi.fn(),
+  createRun: vi.fn(),
+  getRun: vi.fn(),
+  listBankAccounts: vi.fn(),
+  listCashBoxes: vi.fn(),
+  listElements: vi.fn(),
+  listEmployees: vi.fn(),
+  listRuns: vi.fn(),
+  postRun: vi.fn(),
+  setIncomeTax: vi.fn(),
+  updateEmployee: vi.fn(),
+  costCenters: vi.fn(),
+}));
+const auth = vi.hoisted(() => ({ can: vi.fn(() => true) }));
+
+vi.mock('../auth/AuthContext', () => ({
+  useAuth: () => ({ can: auth.can, me: { currentMembership: { branches: [] } } }),
+}));
+
+vi.mock('@erp/api-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@erp/api-client')>();
+  return {
+    ...actual,
+    payrollControllerAddSalary: (...args: unknown[]) => api.addSalary(...args),
+    payrollControllerCreateEmployee: (...args: unknown[]) => api.createEmployee(...args),
+    payrollControllerCreateRun: (...args: unknown[]) => api.createRun(...args),
+    payrollControllerGetRun: (...args: unknown[]) => api.getRun(...args),
+    payrollControllerListEmployees: (...args: unknown[]) => api.listEmployees(...args),
+    payrollControllerListElements: (...args: unknown[]) => api.listElements(...args),
+    payrollControllerListRuns: (...args: unknown[]) => api.listRuns(...args),
+    payrollControllerPayRun: vi.fn(),
+    payrollControllerPostRun: (...args: unknown[]) => api.postRun(...args),
+    payrollControllerReverseRun: vi.fn(),
+    payrollControllerSetIncomeTax: (...args: unknown[]) => api.setIncomeTax(...args),
+    payrollControllerUpdateEmployee: (...args: unknown[]) => api.updateEmployee(...args),
+    treasuryControllerListBankAccounts: (...args: unknown[]) => api.listBankAccounts(...args),
+    treasuryControllerListCashBoxes: (...args: unknown[]) => api.listCashBoxes(...args),
+    costCentersControllerList: (...args: unknown[]) => api.costCenters(...args),
+  };
+});
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+window.matchMedia ??= (query: string) =>
+  ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }) as MediaQueryList;
+
+const response = <T,>(data: T) => ({ data, status: 200, headers: new Headers() });
+const employee = {
+  id: 'employee-1',
+  code: 'EMP-1',
+  nameAr: 'Test employee',
+  nameEn: null,
+  hireDate: '2026-01-01',
+  leaveDate: null,
+  payMethod: 'CASH',
+  sscCovered: true,
+  sscHazardous: false,
+  isActive: true,
+};
+const run = {
+  id: 'run-1',
+  period: '2026-11',
+  status: 'DRAFT',
+  runNo: null,
+  basicTotal: '100.000',
+  grossTotal: '100.000',
+  sscBaseTotal: '100.000',
+  sscEmployeeTotal: '0.000',
+  sscEmployerTotal: '0.000',
+  incomeTaxTotal: '0.000',
+  deductionsTotal: '0.000',
+  netTotal: '100.000',
+  lines: [{
+    id: 'line-1',
+    employeeId: employee.id,
+    employeeName: employee.nameAr,
+    basic: '100.000',
+    earnings: '0.000',
+    gross: '100.000',
+    sscBase: '100.000',
+    sscEmployee: '0.000',
+    sscEmployer: '0.000',
+    incomeTax: '0.000',
+    deductions: '0.000',
+    net: '100.000',
+  }],
+};
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+let root: Root | undefined;
+let host: HTMLDivElement | undefined;
+
+const settle = async (ms = 30) => act(async () => new Promise((resolve) => setTimeout(resolve, ms)));
+
+async function until(check: () => void) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try {
+      check();
+      return;
+    } catch {
+      await settle(10);
+    }
+  }
+  check();
+}
+
+async function mount(path: string) {
+  host = document.createElement('div');
+  document.body.appendChild(host);
+  root = createRoot(host);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  await act(async () => {
+    root!.render(
+      <QueryClientProvider client={queryClient}>
+        <AntApp>
+          <MemoryRouter initialEntries={[path]}>
+            <PayrollPage />
+          </MemoryRouter>
+        </AntApp>
+      </QueryClientProvider>,
+    );
+  });
+}
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+  act(() => {
+    setter.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+beforeEach(async () => {
+  vi.resetAllMocks();
+  auth.can.mockReturnValue(true);
+  await i18n.changeLanguage('en');
+  api.listRuns.mockResolvedValue(response([]));
+  api.createRun.mockResolvedValue(response(run));
+  api.getRun.mockResolvedValue(response(run));
+  api.setIncomeTax.mockResolvedValue(response({}));
+  api.postRun.mockResolvedValue(response({}));
+  api.listBankAccounts.mockResolvedValue(response([]));
+  api.listCashBoxes.mockResolvedValue(response([]));
+  api.listEmployees.mockResolvedValue(response([]));
+  api.listElements.mockResolvedValue(response([]));
+  api.costCenters.mockResolvedValue(response([]));
+  api.createEmployee.mockResolvedValue(response(employee));
+  api.addSalary.mockResolvedValue(response({}));
+  api.updateEmployee.mockResolvedValue(response(employee));
+});
+
+afterEach(() => {
+  act(() => root?.unmount());
+  root = undefined;
+  host?.remove();
+  host = undefined;
+  document.body.innerHTML = '';
+});
+
 describe('payroll page payloads and run actions', () => {
+  it('waits for a pending income-tax save before posting a run', async () => {
+    const taxSave = deferred<ReturnType<typeof response<{ id: string }>>>();
+    api.setIncomeTax.mockReturnValue(taxSave.promise);
+    await mount('/payroll?tab=runs&new=1');
+    await until(() => expect(host?.querySelector('.ant-table .ant-input')).not.toBeNull());
+
+    const taxInput = host!.querySelector<HTMLInputElement>('.ant-table .ant-input')!;
+    setInputValue(taxInput, '12.500');
+    act(() => {
+      taxInput.focus();
+      taxInput.blur();
+    });
+    expect(api.setIncomeTax).toHaveBeenCalledWith(run.id, run.lines[0]!.id, { incomeTax: '12.500' });
+
+    const postButton = [...host!.querySelectorAll('button')]
+      .find((button) => button.textContent?.includes(i18n.t('payroll.post')))!;
+    act(() => postButton.click());
+    await settle();
+    expect(api.postRun).not.toHaveBeenCalled();
+
+    await act(async () => {
+      taxSave.resolve(response({ id: run.id }));
+      await taxSave.promise;
+    });
+    await until(() => expect(api.postRun).toHaveBeenCalledTimes(1));
+  });
+
   it('updates the URL tab parameter without dropping other query parameters', () => {
     const next = payrollTabSearchParams(new URLSearchParams('new=1'), 'runs');
     expect(`?${next.toString()}`).toBe('?new=1&tab=runs');
