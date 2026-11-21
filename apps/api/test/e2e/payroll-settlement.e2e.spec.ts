@@ -364,10 +364,11 @@ describe('Phase 28C payroll settlements', () => {
     h.ok(await h.api().patch(`/api/v1/payroll/employees/${leaver.id}`)
       .set(h.auth(token)).set('X-Company-Id', company.id).send({ leaveDate: '2026-12-10' }), 200, 'set departure after unpaid approval');
     const december = await run(company.id, '2026-12');
-    expect(employeeLine(december, leaver.id)).toEqual(expect.objectContaining({
-      basic: '1000',
-      deductions: '300',
-      net: '700',
+    const line = employeeLine(december, leaver.id);
+    expect([line.basic, line.deductions]).toEqual(['1000', '300']);
+    expect(line.items.find((item) => item.description === 'Unpaid leave day')).toEqual(expect.objectContaining({
+      quantity: '3',
+      amount: '300',
     }));
   });
 
