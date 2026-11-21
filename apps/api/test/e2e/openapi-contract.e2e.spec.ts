@@ -401,6 +401,93 @@ describe('Real answers match their declared schemas', () => {
     await call('GET', '/reports/aging', { token, query: { partyType: 'CUSTOMER' } });
   });
 
+  it('payroll settlements: list, draft, recompute, delete, post, pay, reverse', async () => {
+    await call('POST', '/fiscal-years', {
+      token,
+      body: { code: '2026', startDate: '2026-01-01', endDate: '2026-12-31' },
+    });
+    const branches = await call<{ id: string }[]>('GET', '/branches', { token });
+    const centre = await call<{ id: string }>('POST', '/cost-centers', {
+      token,
+      body: { code: `SET-${RUN}`, nameAr: 'Settlement centre' },
+    });
+    const employee = await call<{ id: string }>('POST', '/payroll/employees', {
+      token,
+      body: {
+        code: `SET-${RUN}`,
+        nameAr: 'Settlement employee',
+        hireDate: '2026-01-01',
+        leaveDate: '2026-01-31',
+        payMethod: 'CASH',
+        sscCovered: false,
+        branchId: branches[0]!.id,
+        costCenterId: centre.id,
+      },
+    });
+    await call('POST', '/payroll/employees/{id}/salaries', {
+      token,
+      params: { id: employee.id },
+      body: { effectiveFrom: '2026-01-01', basicSalary: '600.000' },
+    });
+    const run = await call<{ id: string }>('POST', '/payroll/runs', {
+      token,
+      body: { period: '2026-01' },
+    });
+    await call('POST', '/payroll/runs/{id}/post', {
+      token,
+      params: { id: run.id },
+      idempotent: true,
+    });
+    await call('GET', '/payroll/settlements', { token });
+    await call('GET', '/payroll/settlements', { token, query: { employeeId: employee.id } });
+    const draft = await call<{ id: string }>('POST', '/payroll/settlements', {
+      token,
+      body: { employeeId: employee.id },
+    });
+    await call('POST', '/payroll/settlements/{id}/recompute', {
+      token,
+      params: { id: draft.id },
+      status: 200,
+    });
+    await call('DELETE', '/payroll/settlements/{id}', {
+      token,
+      params: { id: draft.id },
+    });
+    const settlement = await call<{ id: string }>('POST', '/payroll/settlements', {
+      token,
+      body: { employeeId: employee.id },
+    });
+    const cashBox = await call<{ id: string }>('POST', '/cash-boxes', {
+      token,
+      body: { code: `SET-${RUN}`, name: 'Settlement cash', accountId: cashAccountId },
+    });
+    await call('POST', '/payroll/settlements/{id}/post', {
+      token,
+      params: { id: settlement.id },
+      idempotent: true,
+      status: 200,
+    });
+    await call('POST', '/payroll/settlements/{id}/pay', {
+      token,
+      params: { id: settlement.id },
+      body: { paymentDate: '2026-01-31', cashBoxId: cashBox.id },
+      idempotent: true,
+      status: 200,
+    });
+    await call('POST', '/payroll/settlements/{id}/reverse', {
+      token,
+      params: { id: settlement.id },
+      body: { reversalDate: '2026-02-01' },
+      idempotent: true,
+      status: 200,
+    });
+    const reversed = await call<{ status: string }[]>('GET', '/payroll/settlements', {
+      token,
+      query: { employeeId: employee.id, status: 'REVERSED' },
+    });
+    expect(reversed).toEqual([expect.objectContaining({ id: settlement.id, status: 'REVERSED' })]);
+  });
+
   it('inventory: balances, verify, stock documents, and the keyset movements and item card', async () => {
     await call('GET', '/stock/balances', { token });
     await call('GET', '/stock/item-balances', { token });
@@ -461,6 +548,7 @@ describe('Real answers match their declared schemas', () => {
     expect(parties.total).toBe(0);
     const invoices = await call<{ items: unknown[] }>('GET', '/sales-invoices', { token: tokenB });
     expect(invoices.items).toEqual([]);
+    expect(await call<unknown[]>('GET', '/payroll/settlements', { token: tokenB })).toEqual([]);
     await call('GET', '/parties/{id}', { token: tokenB, params: { id: customerId }, status: 404 });
   });
 

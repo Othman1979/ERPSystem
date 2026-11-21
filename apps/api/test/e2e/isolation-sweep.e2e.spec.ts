@@ -140,9 +140,13 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     id.paymentMethod = String((await asA('get', '/payment-methods')).body[0].id);
     id.branch = String((await asA('get', '/branches')).body[0].id);
     id.company = String((await asA('get', '/companies')).body[0].id);
+    await create('/cost-centers', { code: 'CC', nameAr: `CC ${MARK}` }, 'costCenter');
     await create(
       '/payroll/employees',
-      { code: `P${RUN}`, nameAr: `Payroll ${MARK}`, hireDate: '2026-01-01', payMethod: 'CASH' },
+      {
+        code: `P${RUN}`, nameAr: `Payroll ${MARK}`, hireDate: '2026-01-01', leaveDate: '2026-12-31',
+        payMethod: 'CASH', sscCovered: false, branchId: id.branch, costCenterId: id.costCenter,
+      },
       'employee',
     );
     const leaveTypes = (await asA('get', '/payroll/leave-types')).body as { id: string; code: string }[];
@@ -159,11 +163,14 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     await create(`/payroll/employees/${id.employee}/recurring-elements`, {
       payElementId: id.transportElement, amount: '1.000', validFrom: '2026-01-01',
     }, 'payrollRecurring');
-    await create(`/payroll/employees/${id.employee}/salaries`, { effectiveFrom: '2026-01-01', basicSalary: '10.000' }, 'payrollSalary');
+    await create(`/payroll/employees/${id.employee}/salaries`, { effectiveFrom: '2026-01-01', basicSalary: '600.000' }, 'payrollSalary');
     await create('/payroll/movements', {
       employeeId: id.employee, payElementId: id.transportElement, movementDate: '2026-01-15', amount: '1.000', description: MARK,
     }, 'payrollMovement');
     await create('/payroll/runs', { period: '2026-01' }, 'payrollRun');
+    await create('/payroll/runs', { period: '2026-12' }, 'settlementPayrollRun');
+    await post(`/payroll/runs/${id.settlementPayrollRun}/post`);
+    await create('/payroll/settlements', { employeeId: id.employee }, 'payrollSettlement');
     const payrollRun = (await asA('get', `/payroll/runs/${id.payrollRun}`)).body as { lines: { id: string }[] };
     id.payrollLine = payrollRun.lines[0]!.id;
     const members = (await asA('get', '/users')).body as { id?: string; membershipId?: string }[];
@@ -184,7 +191,6 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     await create('/parties', { code: 'S', nameAr: `S ${MARK}`, partyType: 'SUPPLIER' }, 'supplier');
     await create('/cash-boxes', { code: 'CB', name: `CB ${MARK}`, accountId: id.account }, 'cashBox');
     await create('/bank-accounts', { bankName: `Bank ${MARK}`, accountId: id.bankAccountGl }, 'bankAccount');
-    await create('/cost-centers', { code: 'CC', nameAr: `CC ${MARK}` }, 'costCenter');
     // Phase 23 (ADR-038): a company role, for the /roles/custom routes.
     await create('/roles/custom', { code: 'CLERK', nameAr: `R ${MARK}`, permissions: ['reports.view'] }, 'tenantRole');
 
@@ -401,6 +407,7 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
       else if (name === 'membershipId') values[name] = id.membership;
       else if (name === 'lineId' && p.includes('/payroll/')) values[name] = id.payrollLine;
       else if (name === 'lineId') values[name] = id.stockCountLine;
+      else if (name === 'id' && seg === 'payroll' && p.includes('/payroll/settlements/')) values[name] = id.payrollSettlement;
       else if (name === 'id' && seg === 'payroll' && p.includes('/leave-requests/')) values[name] = id.leaveRequest;
       else if (name === 'id' && seg === 'payroll' && p.includes('/leave-types/')) values[name] = id.leaveType;
       else if (name === 'id' && seg === 'payroll' && p.includes('/holidays/')) values[name] = id.leaveHoliday;
@@ -420,6 +427,8 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
   /** A valid body for each change, so the request reaches the tenant lookup. */
   function bodyFor(p: string): object {
     if (p.endsWith('/payroll/leave-types/{id}')) return { nameAr: 'Foreign leave type' };
+    if (p.includes('/payroll/settlements/{id}/pay')) return { paymentDate: '2026-12-31', bankAccountId: id.bankAccount };
+    if (p.includes('/payroll/settlements/{id}/reverse')) return { reversalDate: '2026-12-31' };
     if (p.endsWith('/salaries')) return { effectiveFrom: '2026-01-01', basicSalary: '1.000' };
     if (p.endsWith('/recurring-elements')) return { payElementId: id.transportElement, amount: '1.000', validFrom: '2026-01-01' };
     if (p.endsWith('/income-tax')) return { incomeTax: '0.000' };
@@ -600,5 +609,10 @@ describe('Tenant isolation sweep (ADR-010 §10.4)', () => {
     expect(receipt.status).toBe('POSTED');
     const centres = (await asA('get', '/cost-centers')).body as { id: string; nameAr: string; isActive: boolean }[];
     expect(centres.find((c) => c.id === id.costCenter)).toMatchObject({ nameAr: `CC ${MARK}`, isActive: true });
+    const settlements = (await asA('get', '/payroll/settlements')).body as { id: string; status: string; employeeNameAr: string }[];
+    expect(settlements.find((settlement) => settlement.id === id.payrollSettlement)).toMatchObject({
+      status: 'DRAFT',
+      employeeNameAr: `Payroll ${MARK}`,
+    });
   }, 60_000);
 });

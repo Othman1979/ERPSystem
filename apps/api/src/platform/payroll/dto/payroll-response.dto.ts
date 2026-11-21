@@ -177,7 +177,7 @@ export class PayrollEmployeeDetailDto {
 
 export class PayrollRunDto {
   @ApiProperty({ type: 'string' }) id!: string;
-  @ApiProperty({ type: 'string', format: 'date' }) period!: string;
+  @ApiProperty({ type: 'string', pattern: '^\\d{4}-(0[1-9]|1[0-2])$' }) period!: string;
   @ApiProperty({ type: 'string', format: 'date' }) runDate!: string;
   @ApiProperty({ type: 'string', enum: ['DRAFT', 'POSTED', 'PAID', 'REVERSED'] }) status!: string;
   @ApiProperty({ type: 'string', nullable: true }) runNo!: string | null;

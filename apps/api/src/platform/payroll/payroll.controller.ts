@@ -221,7 +221,7 @@ export class PayrollController {
   @Post('runs/:id/post')
   @RequirePermission(PERMISSIONS.PAYROLL_POST)
   @RequiresIdempotencyKey()
-  @ApiOkResponse({ type: PayrollRunDetailDto })
+  @ApiCreatedResponse({ type: PayrollRunDetailDto })
   postRun(@Param('id') id: string) {
     return this.payroll.postRun(BigInt(id));
   }
