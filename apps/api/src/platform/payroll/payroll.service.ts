@@ -1412,11 +1412,11 @@ export class PayrollService {
               annualLeaveSeniorYears: currentSettings?.annualLeaveSeniorYears ?? 5,
               asOfDate: periodEnd,
             });
-            unusedDays = unusedDays
-              .plus(carry)
+            const typeUnused = carry
               .plus(accruedToDate)
               .plus(adjustmentByYear.get(year) ?? 0)
               .minus(taken.get(year) ?? 0);
+            unusedDays = unusedDays.plus(Decimal.max(typeUnused, 0));
           }
           const fullBasic = latestEffectiveOnDate(line.employee.salaries, periodEnd)?.basicSalary ?? line.basic;
           const fixedAllowances = line.employee.recurringElements

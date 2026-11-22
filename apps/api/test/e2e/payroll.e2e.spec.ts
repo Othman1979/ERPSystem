@@ -1962,7 +1962,7 @@ describe('Late leave review regressions', () => {
     expect(updated.body.payElementId).toBeNull();
   });
 
-  it('includes entitlement, requests, and adjustments from every annual leave type in provision', async () => {
+  it('floors each annual leave type separately when calculating the provision', async () => {
     const token = tokenA;
     const company = h.ok(
       await h.api().post('/api/v1/companies').set(h.auth(token)).send({ legalNameAr: `Annual provision ${RUN}` }),
@@ -2003,11 +2003,15 @@ describe('Late leave review regressions', () => {
       expect(request.days).toBe('1');
       h.ok(await act(token, `payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, `approve annual request ${leaveTypeId}`);
     }
+    h.ok(await h.api().post('/api/v1/payroll/leave-adjustments').set(h.auth(token)).set('X-Company-Id', company.id)
+      .set('Idempotency-Key', `annual-adjust-negative-${RUN}`).send({
+        employeeId: employee.id, leaveTypeId: firstType.id, year: '2044', days: '-20.00', reason: 'Annual provision test',
+      }), 201, 'reduce first annual type balance');
     const run = h.ok(await act(token, 'payroll/runs', { period: '2044-12' }, company.id), 201, 'annual provision run') as { id: string };
     await post(token, `payroll/runs/${run.id}/post`, {}, 'post annual provision run', company.id);
     const posted = h.ok(await get(token, `payroll/runs/${run.id}`, company.id), 200, 'annual provision detail') as {
       lines: Array<{ employeeId: string; leaveProvision: string }>;
     };
-    expect(posted.lines.find((line) => line.employeeId === employee.id)?.leaveProvision).toBe('580');
+    expect(posted.lines.find((line) => line.employeeId === employee.id)?.leaveProvision).toBe('300');
   });
 });
