@@ -209,13 +209,19 @@ export class AuthService {
     }
     this.lockout.succeed(dto.email);
 
-    const memberships = await this.membershipsForUser(user.id, ['ACTIVE', 'INVITED']);
+    const { memberships, unavailable } = await this.membershipsForUser(user.id, ['ACTIVE', 'INVITED']);
     const active = memberships.filter((m) => m.status === 'ACTIVE');
     const pendingInvitations = memberships.filter((m) => m.status === 'INVITED').length;
     const wantedTenant = dto.tenantId ? BigInt(dto.tenantId) : null;
+    if (wantedTenant !== null && unavailable.has(wantedTenant)) {
+      throw new DomainError(ErrorCode.TENANT_MAINTENANCE, 'Tenant database is unavailable');
+    }
     const membership = wantedTenant
       ? active.find((m) => m.tenantId === wantedTenant)
       : active[0];
+    if (!membership && wantedTenant === null && unavailable.size > 0) {
+      throw new DomainError(ErrorCode.TENANT_MAINTENANCE, 'Tenant database is unavailable');
+    }
     // Only invitations are waiting: sign in without a company, so the user can
     // see and accept them (GET /me/invitations).
     const withoutTenant = !membership && !wantedTenant && pendingInvitations > 0;
@@ -354,7 +360,11 @@ export class AuthService {
     if (!userId) throw new DomainError(ErrorCode.UNAUTHORIZED, 'Not authenticated');
     const tenantId = BigInt(dto.tenantId);
 
-    const membership = (await this.membershipsForUser(userId, ['ACTIVE'])).find((m) => m.tenantId === tenantId);
+    const resolution = await this.membershipsForUser(userId, ['ACTIVE']);
+    if (resolution.unavailable.has(tenantId)) {
+      throw new DomainError(ErrorCode.TENANT_MAINTENANCE, 'Tenant database is unavailable');
+    }
+    const membership = resolution.memberships.find((m) => m.tenantId === tenantId);
     if (!membership) {
       throw new DomainError(ErrorCode.FORBIDDEN, 'No active membership for this tenant');
     }
@@ -382,7 +392,7 @@ export class AuthService {
     const tenantId = cls.get('tenantId');
     if (!userId) throw new DomainError(ErrorCode.UNAUTHORIZED, 'Not authenticated');
 
-    const [user, allMemberships] = await Promise.all([
+    const [user, membershipResult] = await Promise.all([
       // systemPrisma: users is platform-global; membership scoping done manually.
       this.prisma.control().user.findUnique({
         where: { id: userId },
@@ -398,8 +408,8 @@ export class AuthService {
       this.membershipsForUser(userId, ['ACTIVE', 'INVITED']),
     ]);
     if (!user) throw new DomainError(ErrorCode.UNAUTHORIZED, 'User not found');
-    const memberships = allMemberships.filter((m) => m.status === 'ACTIVE');
-    const pendingInvitations = allMemberships.filter((m) => m.status === 'INVITED').length;
+    const memberships = membershipResult.memberships.filter((m) => m.status === 'ACTIVE');
+    const pendingInvitations = membershipResult.memberships.filter((m) => m.status === 'INVITED').length;
 
     const current = memberships.find((m) => m.tenantId === tenantId) ?? null;
     // Branches this member may switch between (ADR-003): assigned ones, or all
@@ -516,7 +526,7 @@ export class AuthService {
     const userId = cls.get('userId');
     if (!userId) throw new DomainError(ErrorCode.UNAUTHORIZED, 'Not authenticated');
 
-    const memberships = await this.membershipsForUser(userId, ['ACTIVE']);
+    const { memberships } = await this.membershipsForUser(userId, ['ACTIVE']);
     return memberships.map((m) => ({
       tenantId: m.tenant.id.toString(),
       name: m.tenant.name,
@@ -525,17 +535,33 @@ export class AuthService {
     }));
   }
 
-  private async membershipsForUser(userId: bigint, statuses: ('ACTIVE' | 'INVITED')[]): Promise<AuthMembership[]> {
+  private async membershipsForUser(
+    userId: bigint,
+    statuses: ('ACTIVE' | 'INVITED')[],
+  ): Promise<{ memberships: AuthMembership[]; unavailable: Set<bigint> }> {
     const control = this.prisma.control();
     const links = await control.userTenant.findMany({
       where: { userId },
       select: { tenantId: true, createdAt: true },
       orderBy: [{ createdAt: 'asc' }, { tenantId: 'asc' }],
     });
-    const groups = await Promise.all(
-      links.map(async ({ tenantId }) => {
+    const unavailable = new Set<bigint>();
+    const rows: Omit<AuthMembership, 'tenant' | 'role'>[] = [];
+    for (const { tenantId } of links) {
+      try {
         await this.prisma.router.resolve(tenantId);
-        return this.prisma.forTenant(tenantId).tenantMembership.findMany({
+      } catch (error) {
+        if (
+          error instanceof DomainError &&
+          (error.code === ErrorCode.TENANT_MAINTENANCE || error.code === ErrorCode.TENANT_DB_NOT_FOUND)
+        ) {
+          unavailable.add(tenantId);
+          continue;
+        }
+        throw error;
+      }
+      rows.push(
+        ...(await this.prisma.forTenant(tenantId).tenantMembership.findMany({
           where: { userId, status: { in: statuses } },
           select: {
             id: true,
@@ -547,12 +573,11 @@ export class AuthService {
             defaultBranchId: true,
           },
           orderBy: { id: 'asc' },
-        });
-      }),
-    );
-    const rows = groups.flat();
+        })),
+      );
+    }
     if (this.prisma.tenancyMode !== 'isolated') rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    if (rows.length === 0) return [];
+    if (rows.length === 0) return { memberships: [], unavailable };
 
     const [tenants, roles] = await Promise.all([
       control.tenant.findMany({
@@ -571,12 +596,13 @@ export class AuthService {
     ]);
     const tenantById = new Map(tenants.map((tenant) => [tenant.id, tenant]));
     const roleById = new Map(roles.map((role) => [role.id, role]));
-    return rows.map((membership) => {
+    const memberships = rows.map((membership) => {
       const tenant = tenantById.get(membership.tenantId);
       const role = roleById.get(membership.roleId);
       if (!tenant || !role) throw new DomainError(ErrorCode.INTERNAL, 'Tenant membership references missing control data');
       return { ...membership, tenant, role };
     });
+    return { memberships, unavailable };
   }
 
   private async issueSession(

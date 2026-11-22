@@ -38,6 +38,9 @@ let routingPrisma: PrismaService | undefined;
 let tokenA = '';
 let tokenB = '';
 let idA = '';
+let idB = '';
+let userBId = '';
+let emailB = '';
 let partyA = '';
 let itemA = '';
 
@@ -188,6 +191,9 @@ beforeAll(async () => {
   const a = await provisionTenant(0, `Tenant A ${RUN}`, `owner-a-${RUN}@test.dev`);
   const b = await provisionTenant(1, `Tenant B ${RUN}`, `owner-b-${RUN}@test.dev`);
   idA = a.tenantId.toString();
+  idB = b.tenantId.toString();
+  userBId = b.userId.toString();
+  emailB = `owner-b-${RUN}@test.dev`;
 
   server = spawn('node', ['dist/main.js'], {
     cwd: API_DIR,
@@ -252,8 +258,43 @@ describe('isolated tenant database routing', () => {
     expect((await request(BASE).get(`/api/v1/parties/${partyA}`).set(authB)).status).toBe(404);
     expect((await request(BASE).get(`/api/v1/items/${itemA}`).set(authB)).status).toBe(404);
 
+    const userId = BigInt(userBId);
+    const tenantId = BigInt(idA);
+    const ownerRole = await tenantA!.client.role.findUniqueOrThrow({ where: { code: 'OWNER' }, select: { id: true } });
+    await tenantA!.client.user.create({
+      data: { id: userId, email: emailB, fullName: `Tenant B ${RUN}`, passwordHash: '!' },
+    });
+    await tenantA!.client.tenantMembership.create({
+      data: { tenantId, userId, roleId: ownerRole.id, status: 'ACTIVE' },
+    });
+    await control!.client.userTenant.create({ data: { tenantId, userId } });
+
     await control!.client.tenantDatabase.update({ where: { tenantId: BigInt(idA) }, data: { state: 'MIGRATING' } });
     await new Promise((resolve) => setTimeout(resolve, 10));
+    const loginBWithAUnavailable = await request(BASE)
+      .post('/api/v1/auth/login')
+      .send({ email: emailB, password: PASSWORD, tenantId: idB });
+    expect(loginBWithAUnavailable.status).toBe(200);
+    expect(loginBWithAUnavailable.body.tenants.map((tenant: { tenantId: string }) => tenant.tenantId)).toEqual([idB]);
+    const loginWithoutTenant = await request(BASE)
+      .post('/api/v1/auth/login')
+      .send({ email: emailB, password: PASSWORD });
+    expect(loginWithoutTenant.status).toBe(200);
+    expect(loginWithoutTenant.body.tenants.map((tenant: { tenantId: string }) => tenant.tenantId)).toEqual([idB]);
+    const listedTenants = await request(BASE).get('/api/v1/me/tenants').set({
+      Authorization: `Bearer ${loginBWithAUnavailable.body.accessToken as string}`,
+    });
+    expect(listedTenants.body.map((tenant: { tenantId: string }) => tenant.tenantId)).toEqual([idB]);
+    const switchToA = await request(BASE)
+      .post('/api/v1/me/switch-tenant')
+      .set({ Authorization: `Bearer ${loginBWithAUnavailable.body.accessToken as string}` })
+      .send({ tenantId: idA });
+    expect([switchToA.status, switchToA.body.error.code]).toEqual([503, 'TENANT_MAINTENANCE']);
+    const loginAUnavailable = await request(BASE)
+      .post('/api/v1/auth/login')
+      .send({ email: emailB, password: PASSWORD, tenantId: idA });
+    expect([loginAUnavailable.status, loginAUnavailable.body.error.code]).toEqual([503, 'TENANT_MAINTENANCE']);
+
     const maintenance = await request(BASE).get('/api/v1/items').set(authA);
     expect(maintenance.status).toBe(503);
     expect(maintenance.body.error.code).toBe('TENANT_MAINTENANCE');
