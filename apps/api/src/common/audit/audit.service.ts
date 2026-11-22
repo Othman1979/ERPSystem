@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ClsServiceManager, CLS_REQ } from 'nestjs-cls';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { DomainError } from '../errors/domain.error.js';
+import { ErrorCode } from '../errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { RequestContext } from '../cls/cls.types.js';
 
@@ -29,6 +31,8 @@ export interface AuditEntry {
  */
 @Injectable()
 export class AuditService {
+  private readonly logger = new Logger(AuditService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async log(entry: AuditEntry, tx?: Prisma.TransactionClient): Promise<void> {
@@ -62,7 +66,20 @@ export class AuditService {
       await this.prisma.control().auditLog.create({ data });
       return;
     }
-    await this.prisma.router.resolve(data.tenantId);
+    try {
+      await this.prisma.router.resolve(data.tenantId);
+    } catch (error) {
+      if (
+        error instanceof DomainError &&
+        (error.code === ErrorCode.TENANT_MAINTENANCE || error.code === ErrorCode.TENANT_DB_NOT_FOUND)
+      ) {
+        // ADR-045: tenant DB unavailable; audit kept in control (29C reconciles)
+        this.logger.warn('Tenant database unavailable; storing audit row in control database');
+        await this.prisma.control().auditLog.create({ data });
+        return;
+      }
+      throw error;
+    }
     await this.prisma.forTenant(data.tenantId).auditLog.create({ data });
   }
 }
