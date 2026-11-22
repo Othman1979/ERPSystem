@@ -551,6 +551,13 @@ export class LeaveService {
             annualLeaveDaysSenior: yearSettings?.annualLeaveDaysSenior ?? '21',
             annualLeaveSeniorYears: yearSettings?.annualLeaveSeniorYears ?? 5,
           });
+          const baselineCarryInto = carryIntoYear({ year: balanceYear, startYear, entitlements, taken });
+          const baselineAvailable = availableLeaveBalance({
+            carryInto: baselineCarryInto,
+            entitlement,
+            adjustments: adjustmentByYear.get(balanceYear) ?? 0,
+            taken: taken.get(balanceYear) ?? 0,
+          });
           const carryInto = carryIntoYear({ year: balanceYear, startYear, entitlements, taken: projectedTaken });
           const laterAvailable = availableLeaveBalance({
             carryInto,
@@ -558,7 +565,7 @@ export class LeaveService {
             adjustments: adjustmentByYear.get(balanceYear) ?? 0,
             taken: projectedTaken.get(balanceYear) ?? 0,
           });
-          if (laterAvailable.lt(0)) {
+          if (laterAvailable.lt(0) && laterAvailable.lt(baselineAvailable)) {
             throw new DomainError(ErrorCode.LEAVE_BALANCE_INSUFFICIENT, 'Annual leave exceeds the available balance');
           }
         }

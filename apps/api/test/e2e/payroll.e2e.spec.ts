@@ -1921,6 +1921,51 @@ describe('Late leave review regressions', () => {
     expect(denied.body.error.code).toBe('LEAVE_BALANCE_INSUFFICIENT');
   });
 
+  it('allows a backdated approval that leaves a pre-existing later-year deficit unchanged', async () => {
+    for (const year of [2041, 2042, 2043]) {
+      h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({
+        code: `FY${year}`, startDate: `${year}-01-01`, endDate: `${year}-12-31`,
+      }), 201, `create unchanged deficit FY ${year}`);
+    }
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `LV-UNCHANGED-DEFICIT-${RUN}`, nameAr: 'Unchanged deficit', hireDate: '2041-01-01', payMethod: 'CASH',
+    }, 'unchanged deficit employee', companyAId);
+    const annual = (h.ok(await get(tokenA, 'payroll/leave-types', companyAId), 200, 'unchanged deficit leave types') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'ANNUAL')!;
+    const later = await post<{ id: string; days: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: employee.id, leaveTypeId: annual.id,
+      startDate: '2043-02-01', endDate: '2043-02-23',
+    }, 'create later leave before adjustment', companyAId);
+    expect(later.days).toBe('20');
+    h.ok(await act(tokenA, `payroll/leave-requests/${later.id}/approve`, {}, companyAId), 200, 'approve later leave before adjustment');
+    h.ok(await h.api().post('/api/v1/payroll/leave-adjustments').set(h.auth(tokenA)).set('X-Company-Id', companyAId)
+      .set('Idempotency-Key', `later-year-negative-adjustment-${RUN}`).send({
+        employeeId: employee.id, leaveTypeId: annual.id, year: '2043', days: '-10.00', reason: 'Post-approval balance reduction',
+      }), 201, 'reduce later-year balance');
+    const balances = () => get(tokenA, `payroll/leave-balances?year=2043&employeeId=${employee.id}`, companyAId);
+    const beforeBalances = h.ok(await balances(), 200, 'later-year balance before backdated approval') as Array<{
+      leaveTypeId: string; carryInto: string; available: string;
+    }>;
+    const before = beforeBalances.find((balance) => balance.leaveTypeId === annual.id)!;
+    expect(new Decimal(before.carryInto).eq(14)).toBe(true);
+    expect(new Decimal(before.available).lt(0)).toBe(true);
+
+    const earlier = await post<{ id: string; days: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: employee.id, leaveTypeId: annual.id,
+      startDate: '2042-02-01', endDate: '2042-02-07',
+    }, 'create earlier leave covered by carry', companyAId);
+    expect(new Decimal(earlier.days).gt(0)).toBe(true);
+    expect(new Decimal(earlier.days).lte(14)).toBe(true);
+    const approved = await act(tokenA, `payroll/leave-requests/${earlier.id}/approve`, {}, companyAId);
+    expect(approved.status).toBe(200);
+
+    const afterBalances = h.ok(await balances(), 200, 'later-year balance after backdated approval') as typeof beforeBalances;
+    const after = afterBalances.find((balance) => balance.leaveTypeId === annual.id)!;
+    expect(after.carryInto).toBe(before.carryInto);
+    expect(after.available).toBe(before.available);
+  });
+
   it('rejects changing a leave type to sick when it has cross-year requests', async () => {
     const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
       code: `LV-YEAR-EDIT-${RUN}`, nameAr: 'Year boundary edit', hireDate: '2031-01-01', payMethod: 'CASH',
