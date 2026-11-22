@@ -6,12 +6,15 @@ import { ErrorCode } from '../common/errors/error-codes.js';
 
 /**
  * Models whose rows belong to a tenant (docs/BUILD_PLAN.md §5.3).
- * Control models (Tenant, User, Plan, Subscription, Role, RolePermission,
- * Currency, Country, RefreshToken, ErrorEvent, TenantDatabase, UserTenant) are intentionally excluded.
+ * Platform models (Tenant, User, Plan, Role, RolePermission, Currency,
+ * Country, RefreshToken, ErrorEvent, TenantDatabase, UserTenant) are excluded.
+ * Subscription stays here so shared-mode tenant clients scope it by tenantId;
+ * its authoritative rows are read explicitly from control().
  */
 export const TENANT_MODELS = [
   'Company',
   'Branch',
+  'Subscription',
   'TenantMembership',
   'MembershipBranch',
   'MembershipCompany',

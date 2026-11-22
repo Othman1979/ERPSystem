@@ -150,7 +150,16 @@ export class TenantExportService {
     for (const wb of WORKBOOKS) {
       const book = new ExcelJS.Workbook();
       for (const model of wb.models) {
-        const rows = await models[delegate(model)].findMany({ orderBy: { id: 'asc' } });
+        let rows: Row[];
+        if (model === 'Subscription') {
+          // systemPrisma: subscriptions are stored in control and filtered to the CLS tenant.
+          rows = (await this.prisma.control().subscription.findMany({
+            where: { tenantId },
+            orderBy: { id: 'asc' },
+          })) as unknown as Row[];
+        } else {
+          rows = await models[delegate(model)].findMany({ orderBy: { id: 'asc' } });
+        }
         counts[model] = rows.length;
         addSheet(book, model, rows, DROPPED_COLUMNS[model] ?? []);
       }

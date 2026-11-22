@@ -19,7 +19,6 @@ import { API_DIR, RAW_CALL, rawSql, read, sourceFiles, tenantTables, usesSystemP
  * a new tenant table (member_permissions, ADR-024 §3) is scoped from the start.
  */
 const PLATFORM_MODELS_WITH_TENANT_ID: Record<string, string> = {
-  Subscription: 'billing subscription rows are control-plane records',
   RefreshToken: "a user's session; the tenant is the one the token was issued for",
   ErrorEvent: 'platform error monitor; the tenant is context of the fault (nullable)',
   TenantDatabase: 'tenant database routing metadata belongs to the control plane',
