@@ -280,6 +280,7 @@ export function calculatePayroll(input: PayrollCalculationInput): PayrollCalcula
   let sscEmployee = new Decimal(0);
   let sscEmployer = new Decimal(0);
   if (input.employee.sscCovered) {
+    sscBase = Decimal.max(sscBase, 0);
     if (sscBase.gt(0)) sscBase = Decimal.max(sscBase, new Decimal(input.settings.minimumWage));
     if (input.settings.maximumWage !== null) sscBase = Decimal.min(sscBase, new Decimal(input.settings.maximumWage));
     sscBase = round3(sscBase);
