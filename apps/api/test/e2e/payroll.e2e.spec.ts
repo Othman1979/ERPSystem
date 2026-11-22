@@ -1936,6 +1936,15 @@ describe('Late leave review regressions', () => {
       .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ category: 'SICK' });
     expect(updated.status).toBe(400);
     expect(updated.body.error.code).toBe('LEAVE_REQUEST_SPANS_YEAR');
+
+    await boot.db.query(
+      'UPDATE leave_types SET category = ? WHERE tenant_id = ? AND id = ?',
+      ['ANNUAL', tenantId, BigInt(leaveType.id)],
+    );
+    const renamed = await h.api().patch(`/api/v1/payroll/leave-types/${leaveType.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ nameAr: 'Renamed annual type' });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.category).toBe('ANNUAL');
   });
 
   it('accepts null to unlink a leave type pay element', async () => {

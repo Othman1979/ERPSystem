@@ -181,7 +181,11 @@ export class LeaveService {
       await this.lockCompany(tx, tenantId, companyId);
       const type = await tx.leaveType.findFirst({ where: { id }, include: TYPE_INCLUDE });
       if (!type) throw DomainError.notFound('LeaveType', id.toString());
-      if (['ANNUAL', 'SICK'].includes(dto.category ?? type.category)) {
+      if (
+        dto.category !== undefined
+        && dto.category !== type.category
+        && ['ANNUAL', 'SICK'].includes(dto.category)
+      ) {
         const requests = await tx.leaveRequest.findMany({
           where: { leaveTypeId: id, status: { in: ['SUBMITTED', 'APPROVED'] } },
           select: { startDate: true, endDate: true },
