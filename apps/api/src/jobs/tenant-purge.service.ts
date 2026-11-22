@@ -41,6 +41,7 @@ export interface PurgePlan {
  * systemPrisma: a platform job across tables; every statement on a tenant
  * table filters on tenant_id.
  */
+// ADR-045 29C: the tenant-purge job remains on the control database.
 @Injectable()
 export class TenantPurgeService {
   constructor(

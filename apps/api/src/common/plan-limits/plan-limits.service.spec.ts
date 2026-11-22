@@ -2,6 +2,7 @@ import { ClsServiceManager } from 'nestjs-cls';
 import type { RequestContext } from '../cls/cls.types.js';
 import { ErrorCode } from '../errors/error-codes.js';
 import type { Plan, Prisma } from '../../generated/prisma/client.js';
+import type { PrismaService } from '../../prisma/prisma.service.js';
 import { PlanLimitsService } from './plan-limits.service.js';
 
 const cls = ClsServiceManager.getClsService<RequestContext>();
@@ -9,6 +10,7 @@ const cls = ClsServiceManager.getClsService<RequestContext>();
 function transaction(plan: Plan) {
   const branchCalls: unknown[] = [];
   const invoiceCalls: unknown[] = [];
+  let tenantReads = 0;
   const branchCount = async (args: unknown) => {
     branchCalls.push(args);
     expect(cls.get('companyId')).toBeUndefined();
@@ -21,21 +23,31 @@ function transaction(plan: Plan) {
   };
   const tx = {
     $queryRaw: async () => [],
-    tenant: { findUnique: async () => ({ plan }) },
+    tenant: {
+      findUnique: async () => {
+        tenantReads += 1;
+        return { plan };
+      },
+    },
     tenantMembership: { count: async () => 0 },
     branch: { count: branchCount },
     warehouse: { count: async () => 0 },
     salesInvoice: { count: invoiceCount },
   } as unknown as Prisma.TransactionClient;
-  return { tx, branchCalls, invoiceCalls };
+  return { tx, branchCalls, invoiceCalls, tenantReads: () => tenantReads };
 }
 
 describe('PlanLimitsService tenant-wide counts', () => {
-  const limits = new PlanLimitsService();
-
   it('counts branches from all companies while a request company is selected', async () => {
     const plan = { code: 'BASIC', maxUsers: 5, maxBranches: 2, maxWarehouses: 2, maxInvoicesPerMonth: 50 } as Plan;
     const { tx, branchCalls } = transaction(plan);
+    const prisma = {
+      tenancyMode: 'shared',
+      control: () => {
+        throw new Error('Shared mode must keep plan reads in the transaction');
+      },
+    } as unknown as PrismaService;
+    const limits = new PlanLimitsService(prisma);
 
     await cls.run({ ifNested: 'override' }, async () => {
       cls.set('tenantId', 7n);
@@ -53,6 +65,13 @@ describe('PlanLimitsService tenant-wide counts', () => {
   it('counts monthly invoices across all companies', async () => {
     const plan = { code: 'BASIC', maxUsers: 5, maxBranches: 2, maxWarehouses: 2, maxInvoicesPerMonth: 2 } as Plan;
     const { tx, invoiceCalls } = transaction(plan);
+    const prisma = {
+      tenancyMode: 'shared',
+      control: () => {
+        throw new Error('Shared mode must keep plan reads in the transaction');
+      },
+    } as unknown as PrismaService;
+    const limits = new PlanLimitsService(prisma);
     const invoiceDate = new Date('2025-03-15T12:00:00.000Z');
 
     await cls.run({ ifNested: 'override' }, async () => {
@@ -77,5 +96,36 @@ describe('PlanLimitsService tenant-wide counts', () => {
         },
       },
     ]);
+  });
+
+  it('reads plan data from control in isolated mode', async () => {
+    const plan = { code: 'BASIC', maxUsers: 5, maxBranches: 2, maxWarehouses: 2, maxInvoicesPerMonth: 50 } as Plan;
+    const { tx, tenantReads } = transaction(plan);
+    let controlReads = 0;
+    const prisma = {
+      tenancyMode: 'isolated',
+      control: () => ({
+        tenant: {
+          findUnique: async () => {
+            controlReads += 1;
+            return { plan };
+          },
+        },
+      }),
+    } as unknown as PrismaService;
+    const limits = new PlanLimitsService(prisma);
+
+    await cls.run({ ifNested: 'override' }, async () => {
+      cls.set('tenantId', 7n);
+      cls.set('companyId', 101n);
+
+      await expect(limits.assertBranchSlotAvailable(tx)).rejects.toMatchObject({
+        code: ErrorCode.PLAN_LIMIT_EXCEEDED,
+        details: { limit: 2, used: 2 },
+      });
+    });
+
+    expect(controlReads).toBe(1);
+    expect(tenantReads()).toBe(0);
   });
 });

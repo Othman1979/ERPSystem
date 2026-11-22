@@ -38,6 +38,7 @@ const wire = (e: ErrorRow) => ({
  * console's list. systemPrisma: a platform table across tenants (allowed in
  * `platform`); the console endpoints are platform-admin only.
  */
+// ADR-045 29C: monitoring reads and writes remain on the control database.
 @Injectable()
 export class MonitoringService {
   constructor(

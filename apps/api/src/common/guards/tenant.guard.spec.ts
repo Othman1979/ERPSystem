@@ -26,13 +26,25 @@ const OWNER_MEMBERSHIP: FakeMembership = { roleCode: 'OWNER', rolePermissions: [
 /** A guard wired to a fake system client that holds one active membership and one tenant. */
 function setup(tenant: FakeTenant, member: FakeMembership = OWNER_MEMBERSHIP) {
   const tenantQueries: unknown[] = [];
+  const tenantDb = {
+    tenantMembership: {
+      findFirst: async () => ({
+        id: 5n,
+        roleId: 9n,
+        customRoleId: null,
+        extraPermissions: member.extraPermissions,
+      }),
+    },
+    tenantRole: { findUnique: async () => null },
+  };
   const prisma = {
-    client: {
-      tenantMembership: {
-        findFirst: async () => ({
-          id: 5n,
-          role: { code: member.roleCode, permissions: member.rolePermissions.map((permissionCode) => ({ permissionCode })) },
-          extraPermissions: member.extraPermissions,
+    router: { resolve: async () => undefined },
+    forTenant: () => tenantDb,
+    control: () => ({
+      role: {
+        findUnique: async () => ({
+          code: member.roleCode,
+          permissions: member.rolePermissions.map((permissionCode) => ({ permissionCode })),
         }),
       },
       tenant: {
@@ -41,7 +53,7 @@ function setup(tenant: FakeTenant, member: FakeMembership = OWNER_MEMBERSHIP) {
           return tenant;
         },
       },
-    },
+    }),
   };
   const reflector = { getAllAndOverride: () => false };
   const guard = new TenantGuard(reflector as unknown as Reflector, prisma as unknown as PrismaService);

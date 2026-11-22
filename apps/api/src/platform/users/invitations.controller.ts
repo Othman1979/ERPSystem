@@ -25,13 +25,13 @@ export class InvitationsController {
   @ApiOkResponse({ type: MyInvitationAcceptedDto })
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   accept(@Param('membershipId') id: string, @Body() dto: AcceptInvitationDto) {
-    return this.invitations.accept(BigInt(id), dto.code);
+    return this.invitations.accept(id, dto.code);
   }
 
   @Post(':membershipId/decline')
   @HttpCode(204)
   @ApiNoContentResponse()
   async decline(@Param('membershipId') id: string): Promise<void> {
-    await this.invitations.decline(BigInt(id));
+    await this.invitations.decline(id);
   }
 }

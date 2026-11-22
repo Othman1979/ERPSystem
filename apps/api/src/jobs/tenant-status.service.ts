@@ -48,6 +48,7 @@ const addDays = (day: string, days: number) =>
  *
  * systemPrisma: a platform job across all tenants (allowed in `jobs`).
  */
+// ADR-045 29C: the tenant-status job remains on the control database.
 @Injectable()
 export class TenantStatusService {
   constructor(

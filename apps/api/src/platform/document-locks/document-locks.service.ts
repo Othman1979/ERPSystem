@@ -62,7 +62,7 @@ interface LeaseRow {
   expires_at: Date;
 }
 
-// The platform system client handles this cross-module lookup; every query uses tenantId from CLS.
+// Joined tables are tenant-local, so raw lock queries use the resolved tenant client.
 @Injectable()
 export class DocumentLocksService {
   private readonly targets = new Map<DocumentLockDocType, DocumentLockTarget>();
@@ -81,9 +81,10 @@ export class DocumentLocksService {
     const { tenantId, companyId, userId, permissions } = this.context();
     this.requirePermission(permissions, DOCUMENTS[docType].editPermission);
     const holderToken = this.requireToken(token);
+    const prisma = await this.tenantClient(tenantId);
 
     return this.withRetry(() =>
-      this.prisma.client.$transaction(async (tx) => {
+      prisma.$transaction(async (tx) => {
         await this.lockDocument(tx, docType, docId);
         const [row] = await tx.$queryRaw<LockRow[]>`
           SELECT l.id, l.user_id, l.holder_token, l.acquired_at, l.expires_at,
@@ -136,8 +137,9 @@ export class DocumentLocksService {
     const { tenantId, companyId, userId, permissions } = this.context();
     this.requirePermission(permissions, DOCUMENTS[docType].editPermission);
     const holderToken = this.requireToken(token);
+    const prisma = await this.tenantClient(tenantId);
 
-    return this.prisma.client.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx) => {
       await this.readDocument(tx, docType, docId);
       const updated = await tx.$executeRaw`
         UPDATE document_edit_locks
@@ -163,7 +165,8 @@ export class DocumentLocksService {
     const { tenantId, companyId, userId } = this.context();
     const holderToken = token && this.validToken(token) ? token : null;
     if (!holderToken) return;
-    await this.prisma.client.documentEditLock.deleteMany({
+    const prisma = await this.tenantClient(tenantId);
+    await prisma.documentEditLock.deleteMany({
       where: { tenantId, companyId, docType, docId, userId, holderToken },
     });
   }
@@ -171,8 +174,9 @@ export class DocumentLocksService {
   async forceRelease(docType: DocumentLockDocType, docId: bigint) {
     const { tenantId, companyId, permissions } = this.context();
     this.requirePermission(permissions, PERMISSIONS.DOCUMENT_UNLOCK);
+    const prisma = await this.tenantClient(tenantId);
 
-    return this.prisma.client.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx) => {
       await this.lockDocument(tx, docType, docId);
       const [row] = await tx.$queryRaw<LockRow[]>`
         SELECT l.id, l.user_id, l.holder_token, l.acquired_at, l.expires_at,
@@ -206,8 +210,9 @@ export class DocumentLocksService {
     const { tenantId, companyId, userId, permissions, holderToken } = this.context();
     this.requirePermission(permissions, DOCUMENTS[docType].readPermission);
     const token = this.requestToken(holderToken);
-    await this.readDocument(this.prisma.client, docType, docId);
-    const [row] = await this.prisma.client.$queryRaw<LockRow[]>`
+    const prisma = await this.tenantClient(tenantId);
+    await this.readDocument(prisma, docType, docId);
+    const [row] = await prisma.$queryRaw<LockRow[]>`
       SELECT l.id, l.user_id, l.holder_token, l.acquired_at, l.expires_at,
              (l.expires_at > NOW(3)) AS is_live, u.full_name AS user_name
         FROM document_edit_locks l
@@ -294,6 +299,11 @@ export class DocumentLocksService {
     const target = this.targets.get(docType);
     if (!target) throw new DomainError(ErrorCode.INTERNAL, `Document lock target is not registered for ${docType}`);
     return target;
+  }
+
+  private async tenantClient(tenantId: bigint) {
+    await this.prisma.router.resolve(tenantId);
+    return this.prisma.forTenant(tenantId);
   }
 
   private lockedError(row: LockRow): DomainError {

@@ -43,6 +43,11 @@ beforeAll(async () => {
     DATABASE_URL: testDatabaseUrl(),
     DB_POOL_SIZE: 2,
     DB_POOL_ACQUIRE_TIMEOUT_MS: 10_000,
+    TENANCY_MODE: 'shared',
+    TENANT_DB_POOL_SIZE: 3,
+    TENANT_DB_IDLE_MS: 600_000,
+    TENANT_DB_MAX_POOLS: 50,
+    TENANT_DB_STATE_TTL_MS: 30_000,
   });
   prisma = new PrismaService(config);
   const tenant = await prisma.client.tenant.create({

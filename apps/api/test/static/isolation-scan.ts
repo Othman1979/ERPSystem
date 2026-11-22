@@ -75,14 +75,16 @@ export function rawSql(source: string): { line: number; sql: string; literal: bo
 }
 
 /**
- * Whether a file uses the unrestricted client: `.client` on any variable
- * typed PrismaService (whatever its name), or `client` destructured from one.
+ * Whether a file uses the unrestricted client: `.client` or `.control()` on
+ * any variable typed PrismaService (whatever its name), or `client`
+ * destructured from one.
  */
 export function usesSystemPrisma(source: string): boolean {
   const names = [...source.matchAll(/(\w+)\s*:\s*PrismaService\b/g)].map((m) => m[1]);
   return names.some(
     (n) =>
       new RegExp(`\\b${n}\\s*(\\.|\\?\\.)\\s*client\\b`).test(source) ||
+      new RegExp(`\\b${n}\\s*(\\.|\\?\\.)\\s*control\\s*\\(\\s*\\)`).test(source) ||
       new RegExp(`\\b${n}\\s*\\[\\s*['"]client['"]\\s*\\]`).test(source) ||
       new RegExp(`\\{[^}]*\\bclient\\b[^}]*\\}\\s*=\\s*(this\\.)?${n}\\b`).test(source),
   );

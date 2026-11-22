@@ -11,7 +11,7 @@ function countingPrisma(): { prisma: PrismaService; calls: () => number } {
       throw new Error('write failed');
     },
   };
-  return { prisma: { client } as unknown as PrismaService, calls: () => calls };
+  return { prisma: { control: () => client } as unknown as PrismaService, calls: () => calls };
 }
 
 describe('HealthController probe cache', () => {

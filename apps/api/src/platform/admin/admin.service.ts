@@ -18,6 +18,7 @@ import {
  * Platform administration — cross-tenant operations reserved for
  * User.isPlatformAdmin. All queries use the system client consciously.
  */
+// ADR-045 29C: platform administration remains on the control database.
 @Injectable()
 export class AdminService {
   constructor(

@@ -23,14 +23,18 @@ import { InviteUserDto, UpdateMembershipDto, UpdatePurchasePermissionsDto } from
 import { issueInvitationCode } from './invitation-code.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 
-const membershipInclude = {
-  user: { select: { id: true, email: true, fullName: true, isActive: true } },
-  role: { select: { code: true, nameAr: true, nameEn: true } },
+const tenantMembershipInclude = {
   customRole: { select: { id: true, code: true, nameAr: true, nameEn: true } },
   defaultBranch: { select: { id: true, code: true, nameAr: true } },
   allowedBranches: { include: { branch: { select: { id: true, code: true, nameAr: true } } } },
   allowedCompanies: { select: { companyId: true } },
   extraPermissions: { select: { permissionCode: true, amountLimit: true } },
+} as const;
+
+const membershipInclude = {
+  user: { select: { id: true, email: true, fullName: true, isActive: true } },
+  role: { select: { code: true, nameAr: true, nameEn: true } },
+  ...tenantMembershipInclude,
 } as const;
 
 function serialize(m: {
@@ -76,6 +80,11 @@ function serialize(m: {
   };
 }
 
+type TenantMembershipForSerialization = Omit<Parameters<typeof serialize>[0], 'user' | 'role'> & {
+  userId: bigint;
+  roleId: bigint;
+};
+
 /** A stored grant compared by value: its code and its limit as a 3-decimal string. */
 const limitText = (limit: MemberPermissionGrant['amountLimit']) => (limit ? limit.toFixed(3) : null);
 
@@ -94,17 +103,49 @@ export class UsersService {
     return this.prisma.forTenant(tenantId);
   }
 
+  private async serializeTenantRows<T extends TenantMembershipForSerialization>(rows: T[]) {
+    const control = this.prisma.control();
+    const [users, roles] = await Promise.all([
+      control.user.findMany({
+        where: { id: { in: [...new Set(rows.map((row) => row.userId))] } },
+        select: { id: true, email: true, fullName: true, isActive: true },
+      }),
+      control.role.findMany({
+        where: { id: { in: [...new Set(rows.map((row) => row.roleId))] } },
+        select: { id: true, code: true, nameAr: true, nameEn: true },
+      }),
+    ]);
+    const userById = new Map(users.map((user) => [user.id, user]));
+    const roleById = new Map(roles.map((role) => [role.id, role]));
+    return rows.map((row) => {
+      const user = userById.get(row.userId);
+      const role = roleById.get(row.roleId);
+      if (!user || !role) throw new DomainError(ErrorCode.INTERNAL, 'Tenant membership references missing control data');
+      return serialize({ ...row, user, role });
+    });
+  }
+
   async list() {
-    const rows = await this.tenant().tenantMembership.findMany({
-      include: membershipInclude,
+    const prisma = this.tenant();
+    if (this.prisma.tenancyMode !== 'isolated') {
+      const rows = await prisma.tenantMembership.findMany({
+        include: membershipInclude,
+        orderBy: { id: 'asc' },
+      });
+      return rows.map(serialize);
+    }
+    const rows = await prisma.tenantMembership.findMany({
+      include: tenantMembershipInclude,
       orderBy: { id: 'asc' },
     });
-    return rows.map(serialize);
+    return this.serializeTenantRows(rows);
   }
 
   /** See UsersController.purchaseDirectGaps (ADR-025 §4): oldest member first. */
   async purchaseDirectGaps() {
-    const rows = await this.tenant().tenantMembership.findMany({
+    const prisma = this.tenant();
+    if (this.prisma.tenancyMode !== 'isolated') {
+      const rows = await prisma.tenantMembership.findMany({
       where: {
         status: 'ACTIVE',
         role: { code: { not: OWNER_ROLE } },
@@ -117,13 +158,47 @@ export class UsersService {
       },
       select: { id: true, user: { select: { fullName: true, email: true } }, role: { select: { code: true, nameAr: true, nameEn: true } } },
       orderBy: { id: 'asc' },
+      });
+      return rows.map((m) => ({ fullName: m.user.fullName, email: m.user.email, role: m.role }));
+    }
+
+    const rows = await prisma.tenantMembership.findMany({
+      where: { status: 'ACTIVE', extraPermissions: { none: { permissionCode: PERMISSIONS.PURCHASE_DIRECT } } },
+      select: {
+        id: true,
+        userId: true,
+        roleId: true,
+        customRoleId: true,
+        customRole: { select: { permissions: { select: { permissionCode: true } } } },
+      },
+      orderBy: { id: 'asc' },
     });
-    return rows.map((m) => ({ fullName: m.user.fullName, email: m.user.email, role: m.role }));
+    const roles = await this.prisma.control().role.findMany({
+      where: { id: { in: [...new Set(rows.map((row) => row.roleId))] } },
+      select: { id: true, code: true, nameAr: true, nameEn: true, permissions: { select: { permissionCode: true } } },
+    });
+    const roleById = new Map(roles.map((role) => [role.id, role]));
+    const matching = rows.filter((row) => {
+      const role = roleById.get(row.roleId);
+      if (!role || role.code === OWNER_ROLE) return false;
+      const permissions =
+        row.customRoleId !== null ? row.customRole?.permissions.map((p) => p.permissionCode) ?? [] : role.permissions.map((p) => p.permissionCode);
+      return permissions.some((code) => code === PERMISSIONS.PURCHASE_MANAGE || code === PERMISSIONS.PURCHASE_POST);
+    });
+    const users = await this.prisma.control().user.findMany({
+      where: { id: { in: [...new Set(matching.map((row) => row.userId))] } },
+      select: { id: true, fullName: true, email: true },
+    });
+    const userById = new Map(users.map((user) => [user.id, user]));
+    return matching.flatMap((row) => {
+      const user = userById.get(row.userId);
+      const role = roleById.get(row.roleId);
+      return user && role ? [{ fullName: user.fullName, email: user.email, role: { code: role.code, nameAr: role.nameAr, nameEn: role.nameEn } }] : [];
+    });
   }
 
   async roles() {
-    // Role/RolePermission are platform-global reference data.
-    return this.prisma.client.role.findMany({
+    return this.prisma.control().role.findMany({
       where: { isSystem: true },
       include: { permissions: { select: { permissionCode: true } } },
       orderBy: { id: 'asc' },
@@ -136,9 +211,10 @@ export class UsersService {
     if (!selfId) return undefined;
     const self = await this.tenant().tenantMembership.findFirst({
       where: { id: selfId },
-      select: { role: { select: { code: true } } },
+      select: { roleId: true },
     });
-    return self?.role.code;
+    if (!self) return undefined;
+    return (await this.prisma.control().role.findUnique({ where: { id: self.roleId }, select: { code: true } }))?.code;
   }
 
   /**
@@ -147,8 +223,11 @@ export class UsersService {
    * ACTIVE membership and a generated temporary password, returned once here.
    */
   async invite(dto: InviteUserDto) {
+    if (this.prisma.tenancyMode === 'isolated') {
+      throw new DomainError(ErrorCode.TENANCY_ISOLATED_NOT_READY, 'Invitation creation is not available in isolated mode yet');
+    }
     const prisma = this.tenant();
-    const role = await this.prisma.client.role.findUnique({ where: { code: dto.roleCode } });
+    const role = await this.prisma.control().role.findUnique({ where: { code: dto.roleCode } });
     if (!role) throw DomainError.notFound('Role', dto.roleCode);
     if (role.code === 'OWNER' && (await this.callerRoleCode()) !== 'OWNER') {
       throw new DomainError(ErrorCode.FORBIDDEN, 'Only an owner can grant the owner role');
@@ -173,7 +252,7 @@ export class UsersService {
 
     // Hash before the transaction: it holds the tenant lock (plan limit).
     // systemPrisma: users is a platform-global table.
-    const knownUser = await this.prisma.client.user.findUnique({ where: { email: dto.email } });
+    const knownUser = await this.prisma.control().user.findUnique({ where: { email: dto.email } });
     let temporaryPassword: string | undefined;
     let newUser: Prisma.UserCreateInput | undefined;
     if (!knownUser) {
@@ -229,6 +308,10 @@ export class UsersService {
         },
         include: membershipInclude,
       });
+      await tx.userTenant.createMany({
+        data: [{ userId: user.id, tenantId }],
+        skipDuplicates: true,
+      });
       return { membership, createdUser, status, acceptanceCode: issued?.code, codeExpiresAt: issued?.data.inviteCodeExpiresAt };
     });
 
@@ -274,10 +357,10 @@ export class UsersService {
 
   async update(membershipId: bigint, dto: UpdateMembershipDto) {
     const prisma = this.tenant();
-    const membership = await prisma.tenantMembership.findFirst({
-      where: { id: membershipId },
-      include: { role: true },
-    });
+    const membership =
+      this.prisma.tenancyMode === 'isolated'
+        ? await this.membershipWithSystemRole(prisma, membershipId)
+        : await prisma.tenantMembership.findFirst({ where: { id: membershipId }, include: { role: true } });
     if (!membership) throw DomainError.notFound('Membership', membershipId.toString());
     // Only the invitee accepts an invitation (or the inviter cancels it, see suspend()).
     if (membership.status === 'INVITED' && dto.status !== undefined) {
@@ -308,7 +391,7 @@ export class UsersService {
     let removesOwner = false;
     let newRoleId: bigint | undefined;
     if (dto.roleCode !== undefined) {
-      const role = await this.prisma.client.role.findUnique({ where: { code: dto.roleCode } });
+      const role = await this.prisma.control().role.findUnique({ where: { code: dto.roleCode } });
       if (!role) throw DomainError.notFound('Role', dto.roleCode);
       removesOwner ||= activeOwner && role.code !== 'OWNER';
       data.roleId = role.id;
@@ -439,6 +522,13 @@ export class UsersService {
       after: dto,
     });
 
+    if (this.prisma.tenancyMode === 'isolated') {
+      const refreshed = await prisma.tenantMembership.findFirstOrThrow({
+        where: { id: membershipId },
+        include: tenantMembershipInclude,
+      });
+      return (await this.serializeTenantRows([refreshed]))[0];
+    }
     const refreshed = await prisma.tenantMembership.findFirstOrThrow({
       where: { id: membershipId },
       include: membershipInclude,
@@ -486,11 +576,16 @@ export class UsersService {
       const membership =
         locked.length === 0
           ? null
-          : await tx.tenantMembership.findFirst({ where: { id: membershipId }, select: { status: true, role: { select: { code: true } } } });
+          : await tx.tenantMembership.findFirst({ where: { id: membershipId }, select: { roleId: true } });
       if (!membership) throw DomainError.notFound('Membership', membershipId.toString());
+      const role =
+        this.prisma.tenancyMode === 'isolated'
+          ? await this.prisma.control().role.findUnique({ where: { id: membership.roleId }, select: { code: true } })
+          : await tx.role.findUnique({ where: { id: membership.roleId }, select: { code: true } });
+      if (!role) throw new DomainError(ErrorCode.INTERNAL, 'Tenant membership role is missing');
       // Decided on the role as of the lock. Any status may hold grants: an
       // invitee's are ready when they accept, a suspended member cannot sign in.
-      if (membership.role.code === OWNER_ROLE) {
+      if (role.code === OWNER_ROLE) {
         throw new DomainError(ErrorCode.VALIDATION, 'An owner holds every purchase permission already', {
           field: 'membershipId',
         });
@@ -550,6 +645,13 @@ export class UsersService {
       });
     }
 
+    if (this.prisma.tenancyMode === 'isolated') {
+      const refreshed = await prisma.tenantMembership.findFirstOrThrow({
+        where: { id: membershipId },
+        include: tenantMembershipInclude,
+      });
+      return (await this.serializeTenantRows([refreshed]))[0];
+    }
     const refreshed = await prisma.tenantMembership.findFirstOrThrow({
       where: { id: membershipId },
       include: membershipInclude,
@@ -570,9 +672,11 @@ export class UsersService {
     if (!tenantId) throw new DomainError(ErrorCode.FORBIDDEN, 'No tenant selected');
     const membership = await prisma.tenantMembership.findFirst({
       where: { id: membershipId },
-      include: { role: { select: { code: true } } },
+      select: { id: true, userId: true, status: true, roleId: true },
     });
     if (!membership) throw DomainError.notFound('Membership', membershipId.toString());
+    const role = await this.prisma.control().role.findUnique({ where: { id: membership.roleId }, select: { code: true } });
+    if (!role) throw new DomainError(ErrorCode.INTERNAL, 'Tenant membership role is missing');
     const targetUserId = membership.userId;
 
     // An invited person has not joined this company: it may not take over their
@@ -593,7 +697,7 @@ export class UsersService {
 
     // systemPrisma: users and memberships of other tenants are platform-wide; the
     // reads only decide whether a reset is allowed, and no other tenant's data is returned.
-    const target = await this.prisma.client.user.findUnique({
+    const target = await this.prisma.control().user.findUnique({
       where: { id: targetUserId },
       select: { isPlatformAdmin: true },
     });
@@ -605,7 +709,7 @@ export class UsersService {
     }
     // Users are global: a reset here would change the password for their other
     // companies too, which would let one company take over another's account.
-    const otherTenants = await this.prisma.client.tenantMembership.count({
+    const otherTenants = await this.prisma.control().userTenant.count({
       where: { userId: targetUserId, tenantId: { not: tenantId } },
     });
     if (otherTenants > 0) {
@@ -614,7 +718,7 @@ export class UsersService {
         'This user also belongs to another company; their password cannot be reset from here',
       );
     }
-    if (membership.role.code === 'OWNER') {
+    if (role.code === 'OWNER') {
       if ((await this.callerRoleCode()) !== 'OWNER') {
         throw new DomainError(
           ErrorCode.PASSWORD_RESET_NOT_ALLOWED,
@@ -627,8 +731,8 @@ export class UsersService {
     const passwordHash = await this.passwords.hash(temporaryPassword);
     const now = new Date();
     // systemPrisma: users and refresh_tokens are platform-wide tables.
-    await this.prisma.client.$transaction([
-      ...temporaryPasswordWrites(this.prisma.client, targetUserId, passwordHash, now),
+    await this.prisma.control().$transaction([
+      ...temporaryPasswordWrites(this.prisma.control(), targetUserId, passwordHash, now),
     ]);
 
     await this.audit.log({
@@ -660,7 +764,7 @@ export class UsersService {
     // Revoke refresh tokens issued for this user in this tenant.
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId')!;
     // systemPrisma: refresh_tokens is platform-global; scoped explicitly.
-    await this.prisma.client.refreshToken.updateMany({
+    await this.prisma.control().refreshToken.updateMany({
       where: {
         userId: current.userId,
         tenantId,
@@ -678,12 +782,26 @@ export class UsersService {
 
   /** Deletes a pending invitation of the current tenant (membership_branches cascade). */
   private async cancelInvitation(membershipId: bigint) {
-    await this.tenant().$transaction(async (tx) => {
+    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
+    if (!tenantId) throw new DomainError(ErrorCode.FORBIDDEN, 'No tenant selected');
+    const userId = await this.tenant().$transaction(async (tx) => {
+      const membership = await tx.tenantMembership.findFirst({
+        where: { id: membershipId, status: 'INVITED' },
+        select: { userId: true },
+      });
+      if (!membership) throw DomainError.notFound('Invitation', membershipId.toString());
       const removed = await tx.tenantMembership.deleteMany({
         where: { id: membershipId, status: 'INVITED' },
       });
       if (removed.count === 0) throw DomainError.notFound('Invitation', membershipId.toString());
+      if (this.prisma.tenancyMode !== 'isolated') {
+        await tx.userTenant.deleteMany({ where: { userId: membership.userId, tenantId } });
+      }
+      return membership.userId;
     });
+    if (this.prisma.tenancyMode === 'isolated') {
+      await this.prisma.control().userTenant.deleteMany({ where: { userId, tenantId } });
+    }
 
     await this.audit.log({
       action: 'user.invite_cancel',
@@ -691,5 +809,16 @@ export class UsersService {
       entityId: membershipId,
     });
     return { membershipId: membershipId.toString(), cancelled: true as const };
+  }
+
+  private async membershipWithSystemRole(prisma: ReturnType<PrismaService['forTenant']>, membershipId: bigint) {
+    const membership = await prisma.tenantMembership.findFirst({
+      where: { id: membershipId },
+      select: { id: true, status: true, roleId: true, customRoleId: true },
+    });
+    if (!membership) return null;
+    const role = await this.prisma.control().role.findUnique({ where: { id: membership.roleId } });
+    if (!role) throw new DomainError(ErrorCode.INTERNAL, 'Tenant membership role is missing');
+    return { ...membership, role };
   }
 }

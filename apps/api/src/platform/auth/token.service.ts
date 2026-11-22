@@ -68,7 +68,7 @@ export class TokenService {
     const ttlDays = this.config.get('REFRESH_TOKEN_TTL_DAYS', { infer: true });
 
     // systemPrisma: refresh_tokens is a platform-global table.
-    await this.prisma.client.refreshToken.create({
+    await this.prisma.control().refreshToken.create({
       data: {
         userId,
         tenantId,
@@ -108,7 +108,7 @@ export class TokenService {
   } | null> {
     const tokenHash = hashToken(rawToken);
     // systemPrisma: refresh_tokens is platform-global.
-    const existing = await this.prisma.client.refreshToken.findUnique({
+    const existing = await this.prisma.control().refreshToken.findUnique({
       where: { tokenHash },
     });
     if (!existing || existing.expiresAt < new Date()) return null;
@@ -116,12 +116,12 @@ export class TokenService {
     // PLAT-16: a missing or inactive user ends the session before any rotation.
     // The token is revoked so a later retry fails at once.
     // systemPrisma: users is a platform-global table.
-    const user = await this.prisma.client.user.findUnique({
+    const user = await this.prisma.control().user.findUnique({
       where: { id: existing.userId },
       select: { id: true, email: true, isActive: true },
     });
     if (!user?.isActive) {
-      await this.prisma.client.refreshToken.updateMany({
+      await this.prisma.control().refreshToken.updateMany({
         where: { id: existing.id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
@@ -131,7 +131,7 @@ export class TokenService {
     const newRefresh = randomBytes(48).toString('base64url');
     const ttlDays = this.config.get('REFRESH_TOKEN_TTL_DAYS', { infer: true });
 
-    const rotated = await this.prisma.client.$transaction(async (tx) => {
+    const rotated = await this.prisma.control().$transaction(async (tx) => {
       const now = new Date();
       const claim = await tx.refreshToken.updateMany({
         where: { id: existing.id, revokedAt: null },
@@ -159,7 +159,7 @@ export class TokenService {
     if (!rotated) {
       // Lost the claim: read the committed revocation to tell a concurrent
       // rotation (grace) from real reuse.
-      const current = await this.prisma.client.refreshToken.findUnique({
+      const current = await this.prisma.control().refreshToken.findUnique({
         where: { id: existing.id },
         select: { revokedAt: true, replacedById: true },
       });
@@ -169,7 +169,7 @@ export class TokenService {
         Date.now() - current.revokedAt.getTime() < ROTATION_GRACE_MS;
       if (!inGrace) {
         // Token reuse detected — revoke the whole family.
-        await this.prisma.client.refreshToken.updateMany({
+        await this.prisma.control().refreshToken.updateMany({
           where: { familyId: existing.familyId, revokedAt: null },
           data: { revokedAt: new Date() },
         });
@@ -193,7 +193,7 @@ export class TokenService {
   }
 
   async revokeToken(rawToken: string): Promise<void> {
-    await this.prisma.client.refreshToken.updateMany({
+    await this.prisma.control().refreshToken.updateMany({
       where: { tokenHash: hashToken(rawToken), revokedAt: null },
       data: { revokedAt: new Date() },
     });
@@ -202,7 +202,7 @@ export class TokenService {
   /** Ends one session: every live refresh token of its family. Returns the count. */
   async revokeFamily(familyId: string, userId: bigint): Promise<number> {
     // systemPrisma: refresh_tokens is platform-global.
-    const result = await this.prisma.client.refreshToken.updateMany({
+    const result = await this.prisma.control().refreshToken.updateMany({
       where: { familyId, userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
@@ -212,7 +212,7 @@ export class TokenService {
   /** Ends every session of the user (logout-all). Returns the count. */
   async revokeAllForUser(userId: bigint): Promise<number> {
     // systemPrisma: refresh_tokens is platform-global.
-    const result = await this.prisma.client.refreshToken.updateMany({
+    const result = await this.prisma.control().refreshToken.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });

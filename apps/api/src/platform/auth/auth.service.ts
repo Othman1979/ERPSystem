@@ -15,6 +15,23 @@ import { LoginLockoutService } from './login-lockout.service.js';
 import { PasswordService } from './password.service.js';
 import { hashToken, TokenService } from './token.service.js';
 
+interface AuthMembership {
+  id: bigint;
+  tenantId: bigint;
+  userId: bigint;
+  status: string;
+  roleId: bigint;
+  customRoleId: bigint | null;
+  defaultBranchId: bigint | null;
+  role: { code: string; nameAr: string; nameEn: string | null };
+  tenant: {
+    id: bigint;
+    name: string;
+    status: string;
+    plan: { code: string; nameAr: string; nameEn: string | null } | null;
+  };
+}
+
 export interface AuthMeta {
   userAgent?: string;
   ip?: string;
@@ -49,9 +66,12 @@ export class AuthService {
    * (docs/BUILD_PLAN.md §13.4 / Phase 1).
    */
   async register(dto: RegisterDto, meta: AuthMeta) {
+    if (this.prisma.tenancyMode === 'isolated') {
+      throw new DomainError(ErrorCode.TENANCY_ISOLATED_NOT_READY, 'Sign-up is not available in isolated mode yet');
+    }
     const passwordHash = await this.passwords.hash(dto.password);
 
-    const result = await this.prisma.client.$transaction(async (tx) => {
+    const result = await this.prisma.control().$transaction(async (tx) => {
       // systemPrisma inside tx: registration creates the tenant itself, so no
       // tenant context exists yet — all rows are written with explicit ids.
       const plan = await tx.plan.findFirst({ where: { code: 'TRIAL', isActive: true } });
@@ -110,6 +130,10 @@ export class AuthService {
           defaultBranchId: branch.id,
         },
       });
+      await tx.userTenant.createMany({
+        data: [{ userId: user.id, tenantId: tenant.id }],
+        skipDuplicates: true,
+      });
       await tx.subscription.create({
         data: {
           tenantId: tenant.id,
@@ -160,15 +184,8 @@ export class AuthService {
     }
 
     // systemPrisma: login precedes any tenant context.
-    const user = await this.prisma.client.user.findUnique({
+    const user = await this.prisma.control().user.findUnique({
       where: { email: dto.email },
-      include: {
-        memberships: {
-          where: { status: { in: ['ACTIVE', 'INVITED'] } },
-          include: { tenant: { select: { id: true, name: true, status: true } } },
-          orderBy: { id: 'asc' },
-        },
-      },
     });
 
     // PLAT-16: an unknown email is verified too, so both paths cost the same.
@@ -192,12 +209,19 @@ export class AuthService {
     }
     this.lockout.succeed(dto.email);
 
-    const active = user.memberships.filter((m) => m.status === 'ACTIVE');
-    const pendingInvitations = user.memberships.filter((m) => m.status === 'INVITED').length;
+    const { memberships, unavailable } = await this.membershipsForUser(user.id, ['ACTIVE', 'INVITED']);
+    const active = memberships.filter((m) => m.status === 'ACTIVE');
+    const pendingInvitations = memberships.filter((m) => m.status === 'INVITED').length;
     const wantedTenant = dto.tenantId ? BigInt(dto.tenantId) : null;
+    if (wantedTenant !== null && unavailable.has(wantedTenant)) {
+      throw new DomainError(ErrorCode.TENANT_MAINTENANCE, 'Tenant database is unavailable');
+    }
     const membership = wantedTenant
       ? active.find((m) => m.tenantId === wantedTenant)
       : active[0];
+    if (!membership && wantedTenant === null && unavailable.size > 0) {
+      throw new DomainError(ErrorCode.TENANT_MAINTENANCE, 'Tenant database is unavailable');
+    }
     // Only invitations are waiting: sign in without a company, so the user can
     // see and accept them (GET /me/invitations).
     const withoutTenant = !membership && !wantedTenant && pendingInvitations > 0;
@@ -205,7 +229,7 @@ export class AuthService {
       throw new DomainError(ErrorCode.FORBIDDEN, 'No active membership for this tenant');
     }
 
-    await this.prisma.client.user.update({
+    await this.prisma.control().user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
@@ -257,7 +281,7 @@ export class AuthService {
     rawRefreshCookie: string | undefined,
   ): Promise<void> {
     // systemPrisma: users and refresh_tokens are platform-wide tables.
-    const user = await this.prisma.client.user.findUnique({
+    const user = await this.prisma.control().user.findUnique({
       where: { id: userId },
       select: { id: true, passwordHash: true },
     });
@@ -274,7 +298,7 @@ export class AuthService {
     const newHash = await this.passwords.hash(dto.newPassword);
     const now = new Date();
 
-    await this.prisma.client.$transaction(async (tx) => {
+    await this.prisma.control().$transaction(async (tx) => {
       // The family of the refresh cookie that made this request: that session stays signed in.
       const current = rawRefreshCookie
         ? await tx.refreshToken.findFirst({
@@ -336,16 +360,18 @@ export class AuthService {
     if (!userId) throw new DomainError(ErrorCode.UNAUTHORIZED, 'Not authenticated');
     const tenantId = BigInt(dto.tenantId);
 
-    // systemPrisma: membership check precedes trusting the new tenant.
-    const membership = await this.prisma.client.tenantMembership.findFirst({
-      where: { tenantId, userId, status: 'ACTIVE' },
-      include: { user: { select: { email: true } } },
-    });
+    const resolution = await this.membershipsForUser(userId, ['ACTIVE']);
+    if (resolution.unavailable.has(tenantId)) {
+      throw new DomainError(ErrorCode.TENANT_MAINTENANCE, 'Tenant database is unavailable');
+    }
+    const membership = resolution.memberships.find((m) => m.tenantId === tenantId);
     if (!membership) {
       throw new DomainError(ErrorCode.FORBIDDEN, 'No active membership for this tenant');
     }
+    const user = await this.prisma.control().user.findUnique({ where: { id: userId }, select: { email: true } });
+    if (!user) throw new DomainError(ErrorCode.UNAUTHORIZED, 'User not found');
 
-    const tokens = await this.issueSession(userId, membership.user.email, tenantId, meta);
+    const tokens = await this.issueSession(userId, user.email, tenantId, meta);
     cls.set('tenantId', tenantId);
     // PLAT-22: switching company ends the session it leaves.
     const previousFamily = cls.get('familyId');
@@ -366,9 +392,9 @@ export class AuthService {
     const tenantId = cls.get('tenantId');
     if (!userId) throw new DomainError(ErrorCode.UNAUTHORIZED, 'Not authenticated');
 
-    const [user, memberships, pendingInvitations] = await Promise.all([
+    const [user, membershipResult] = await Promise.all([
       // systemPrisma: users is platform-global; membership scoping done manually.
-      this.prisma.client.user.findUnique({
+      this.prisma.control().user.findUnique({
         where: { id: userId },
         select: {
           id: true,
@@ -379,25 +405,11 @@ export class AuthService {
           mustChangePassword: true,
         },
       }),
-      this.prisma.client.tenantMembership.findMany({
-        where: { userId, status: 'ACTIVE' },
-        include: {
-          role: { select: { code: true, nameAr: true, nameEn: true } },
-          tenant: {
-            select: {
-              id: true,
-              name: true,
-              status: true,
-              plan: { select: { code: true, nameAr: true, nameEn: true } },
-            },
-          },
-        },
-        orderBy: { id: 'asc' },
-      }),
-      // systemPrisma: memberships of this user only (count, no tenant data).
-      this.prisma.client.tenantMembership.count({ where: { userId, status: 'INVITED' } }),
+      this.membershipsForUser(userId, ['ACTIVE', 'INVITED']),
     ]);
     if (!user) throw new DomainError(ErrorCode.UNAUTHORIZED, 'User not found');
+    const memberships = membershipResult.memberships.filter((m) => m.status === 'ACTIVE');
+    const pendingInvitations = membershipResult.memberships.filter((m) => m.status === 'INVITED').length;
 
     const current = memberships.find((m) => m.tenantId === tenantId) ?? null;
     // Branches this member may switch between (ADR-003): assigned ones, or all
@@ -448,7 +460,7 @@ export class AuthService {
               where: { tenantRoleId: current.customRoleId },
               select: { permissionCode: true },
             })
-          : this.prisma.client.rolePermission.findMany({
+          : this.prisma.control().rolePermission.findMany({
               where: { roleId: current.roleId },
               select: { permissionCode: true },
             }),
@@ -514,20 +526,83 @@ export class AuthService {
     const userId = cls.get('userId');
     if (!userId) throw new DomainError(ErrorCode.UNAUTHORIZED, 'Not authenticated');
 
-    const memberships = await this.prisma.client.tenantMembership.findMany({
-      where: { userId, status: 'ACTIVE' },
-      include: {
-        role: { select: { code: true } },
-        tenant: { select: { id: true, name: true, status: true } },
-      },
-      orderBy: { id: 'asc' },
-    });
+    const { memberships } = await this.membershipsForUser(userId, ['ACTIVE']);
     return memberships.map((m) => ({
       tenantId: m.tenant.id.toString(),
       name: m.tenant.name,
       status: m.tenant.status,
       roleCode: m.role.code,
     }));
+  }
+
+  private async membershipsForUser(
+    userId: bigint,
+    statuses: ('ACTIVE' | 'INVITED')[],
+  ): Promise<{ memberships: AuthMembership[]; unavailable: Set<bigint> }> {
+    const control = this.prisma.control();
+    const links = await control.userTenant.findMany({
+      where: { userId },
+      select: { tenantId: true, createdAt: true },
+      orderBy: [{ createdAt: 'asc' }, { tenantId: 'asc' }],
+    });
+    const unavailable = new Set<bigint>();
+    const rows: Omit<AuthMembership, 'tenant' | 'role'>[] = [];
+    for (const { tenantId } of links) {
+      try {
+        await this.prisma.router.resolve(tenantId);
+      } catch (error) {
+        if (
+          error instanceof DomainError &&
+          (error.code === ErrorCode.TENANT_MAINTENANCE || error.code === ErrorCode.TENANT_DB_NOT_FOUND)
+        ) {
+          unavailable.add(tenantId);
+          continue;
+        }
+        throw error;
+      }
+      rows.push(
+        ...(await this.prisma.forTenant(tenantId).tenantMembership.findMany({
+          where: { userId, status: { in: statuses } },
+          select: {
+            id: true,
+            tenantId: true,
+            userId: true,
+            status: true,
+            roleId: true,
+            customRoleId: true,
+            defaultBranchId: true,
+          },
+          orderBy: { id: 'asc' },
+        })),
+      );
+    }
+    if (this.prisma.tenancyMode !== 'isolated') rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    if (rows.length === 0) return { memberships: [], unavailable };
+
+    const [tenants, roles] = await Promise.all([
+      control.tenant.findMany({
+        where: { id: { in: [...new Set(rows.map((m) => m.tenantId))] } },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          plan: { select: { code: true, nameAr: true, nameEn: true } },
+        },
+      }),
+      control.role.findMany({
+        where: { id: { in: [...new Set(rows.map((m) => m.roleId))] } },
+        select: { id: true, code: true, nameAr: true, nameEn: true },
+      }),
+    ]);
+    const tenantById = new Map(tenants.map((tenant) => [tenant.id, tenant]));
+    const roleById = new Map(roles.map((role) => [role.id, role]));
+    const memberships = rows.map((membership) => {
+      const tenant = tenantById.get(membership.tenantId);
+      const role = roleById.get(membership.roleId);
+      if (!tenant || !role) throw new DomainError(ErrorCode.INTERNAL, 'Tenant membership references missing control data');
+      return { ...membership, tenant, role };
+    });
+    return { memberships, unavailable };
   }
 
   private async issueSession(

@@ -4,6 +4,9 @@ import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '../generated/prisma/client.js';
 import mariadb, { type Pool, type PoolConfig } from 'mariadb';
 import type { Env } from '../common/config/env.validation.js';
+import { ClsServiceManager } from 'nestjs-cls';
+import type { RequestContext } from '../common/cls/cls.types.js';
+import { createTenantDbConnection, TenantDbRouter } from './tenant-db-router.js';
 import { tenantScopedPrisma } from './tenant-prisma.js';
 import { POSTING_TX_OPTIONS } from './transaction-options.js';
 
@@ -89,13 +92,15 @@ export function parseDatabaseUrl(url: string, limits: PoolLimits = DEFAULT_POOL_
  * `class X extends PrismaClient` loses the instance type under NodeNext.
  * Composition keeps full type safety.
  *
- * `client` is the UNRESTRICTED (system) client. Business modules must use
- * `forTenant()`; direct `client` usage is reserved for the platform module
- * and scheduled jobs and must carry a justification comment (BUILD_PLAN §5.3).
+ * `client` is the unrestricted control-database client. Use `control()` for
+ * control models and `forTenant()` for tenant-owned data.
  */
 @Injectable()
 export class PrismaService implements OnModuleDestroy {
+  /** Unrestricted control-database client, retained for 29C control paths. */
   readonly client: PrismaClient;
+  readonly tenancyMode: Env['TENANCY_MODE'];
+  readonly router: TenantDbRouter;
   private readonly pool: Pool;
 
   constructor(config: ConfigService<Env, true>) {
@@ -112,14 +117,41 @@ export class PrismaService implements OnModuleDestroy {
       adapter: new PrismaMariaDb(this.pool),
       transactionOptions: POSTING_TX_OPTIONS,
     });
+    this.tenancyMode = config.get('TENANCY_MODE', { infer: true });
+    this.router = new TenantDbRouter(
+      this.client,
+      {
+        mode: this.tenancyMode,
+        poolSize: config.get('TENANT_DB_POOL_SIZE', { infer: true }),
+        idleMs: config.get('TENANT_DB_IDLE_MS', { infer: true }),
+        maxPools: config.get('TENANT_DB_MAX_POOLS', { infer: true }),
+        stateTtlMs: config.get('TENANT_DB_STATE_TTL_MS', { infer: true }),
+        secretKey: config.get('TENANT_DB_SECRET_KEY', { infer: true }),
+        acquireTimeoutMs: config.get('DB_POOL_ACQUIRE_TIMEOUT_MS', { infer: true }),
+        connectTimeoutMs: CONNECT_TIMEOUT_MS,
+        collation: CONNECTION_COLLATION,
+        initSql: [SESSION_CHARSET_SQL, SESSION_INIT_SQL],
+      },
+      createTenantDbConnection,
+    );
+  }
+
+  control(): PrismaClient {
+    return this.client;
   }
 
   /** Tenant-scoped client: auto-injects tenant_id from arg or CLS context. */
   forTenant(tenantId?: bigint): PrismaClient {
-    return tenantScopedPrisma(this.client, tenantId);
+    if (this.tenancyMode === 'shared') return tenantScopedPrisma(this.client, tenantId);
+    const resolvedTenantId = tenantId ?? ClsServiceManager.getClsService<RequestContext>().get('tenantId');
+    if (resolvedTenantId === undefined || resolvedTenantId === null) {
+      return tenantScopedPrisma(this.client, tenantId);
+    }
+    return tenantScopedPrisma(this.router.client(resolvedTenantId), resolvedTenantId);
   }
 
   async onModuleDestroy(): Promise<void> {
+    await this.router.close();
     await this.client.$disconnect();
     // The adapter does not own the pool we gave it: end it too, or its open
     // connections keep the process alive (one-shot Cron jobs never exit).

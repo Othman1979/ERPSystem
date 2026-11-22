@@ -224,10 +224,15 @@ describe('Sign-in, registration and session hardening (erp_test)', () => {
     const tenantB = await tenantIdOf(regB.body.accessToken as string);
 
     // A's owner also works in B as a viewer (SQL, not an invitation flow).
+    const ownerAId = await userIdOf(ownerA);
     await db.query(
       `INSERT INTO tenant_memberships (tenant_id, user_id, role_id, status, created_at, updated_at)
        VALUES (?, ?, (SELECT id FROM roles WHERE code = 'VIEWER'), 'ACTIVE', NOW(3), NOW(3))`,
-      [tenantB, await userIdOf(ownerA)],
+      [tenantB, ownerAId],
+    );
+    await db.query(
+      'INSERT INTO user_tenants (user_id, tenant_id, created_at) VALUES (?, ?, NOW(3))',
+      [ownerAId, tenantB],
     );
 
     const switched = await api()
@@ -284,6 +289,10 @@ describe('Sign-in, registration and session hardening (erp_test)', () => {
       `INSERT INTO tenant_memberships (tenant_id, user_id, role_id, status, created_at, updated_at)
        VALUES (?, ?, (SELECT id FROM roles WHERE code = 'VIEWER'), 'INVITED', NOW(3), NOW(3))`,
       [tenantB, userId],
+    );
+    await db.query(
+      'INSERT INTO user_tenants (user_id, tenant_id, created_at) VALUES (?, ?, NOW(3))',
+      [userId, tenantB],
     );
 
     const signIn = await login(email, PASS);

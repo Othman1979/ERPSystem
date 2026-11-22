@@ -14,6 +14,13 @@ describe('validateEnv', () => {
     expect(env.CORS_ORIGIN).toBe('http://localhost:5173');
     expect(env.NODE_ENV).toBe('development');
     expect(env.TRUST_PROXY).toBe('loopback');
+    expect([
+      env.TENANCY_MODE,
+      env.TENANT_DB_POOL_SIZE,
+      env.TENANT_DB_IDLE_MS,
+      env.TENANT_DB_MAX_POOLS,
+      env.TENANT_DB_STATE_TTL_MS,
+    ]).toEqual(['shared', 3, 600_000, 50, 30_000]);
   });
 
   it('rejects missing DATABASE_URL', () => {
@@ -123,6 +130,38 @@ describe('production rules (ADR-010 §10.1)', () => {
     expect(validateEnv({ ...good, TRUST_PROXY: 'loopback, 10.0.0.0/8' }).TRUST_PROXY).toBe('loopback, 10.0.0.0/8');
     expect(validateEnv({ ...good, TRUST_PROXY: '1' }).TRUST_PROXY).toBe('1');
     expect(validateEnv({ ...good, TRUST_PROXY: 'false' }).TRUST_PROXY).toBe('false');
+  });
+});
+
+describe('tenant database configuration (ADR-045)', () => {
+  const base = {
+    DATABASE_URL: 'mysql://root@localhost:3306/db',
+    JWT_ACCESS_SECRET: 'test-secret-at-least-16-chars',
+  };
+  const sealingKey = Buffer.alloc(32, 7).toString('base64');
+
+  it('accepts shared mode without a tenant database key', () => {
+    expect(validateEnv(base).TENANT_DB_SECRET_KEY).toBeUndefined();
+  });
+
+  it('requires a valid sealing key only in isolated mode', () => {
+    expect(() => validateEnv({ ...base, TENANCY_MODE: 'isolated' })).toThrow(/TENANT_DB_SECRET_KEY/);
+    expect(() => validateEnv({ ...base, TENANCY_MODE: 'isolated', TENANT_DB_SECRET_KEY: Buffer.alloc(16).toString('base64') })).toThrow(
+      /TENANT_DB_SECRET_KEY/,
+    );
+    expect(validateEnv({ ...base, TENANCY_MODE: 'isolated', TENANT_DB_SECRET_KEY: sealingKey }).TENANCY_MODE).toBe('isolated');
+    expect(validateEnv({ ...base, TENANT_DB_SECRET_KEY: 'not-a-sealing-key' }).TENANCY_MODE).toBe('shared');
+  });
+
+  it.each([
+    ['TENANT_DB_POOL_SIZE', 0],
+    ['TENANT_DB_POOL_SIZE', 21],
+    ['TENANT_DB_MAX_POOLS', 0],
+    ['TENANT_DB_MAX_POOLS', 501],
+    ['TENANT_DB_IDLE_MS', 0],
+    ['TENANT_DB_STATE_TTL_MS', 0],
+  ])('rejects out-of-range %s=%s', (name, value) => {
+    expect(() => validateEnv({ ...base, [name]: value })).toThrow(new RegExp(`${name}:`));
   });
 });
 

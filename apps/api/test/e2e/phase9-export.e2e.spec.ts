@@ -107,6 +107,7 @@ describe('Phase 9.4 — company data export', () => {
   let accountant = '';
   let accountantMembership = '';
   let tenantA = '';
+  let tenantB = '';
   let files: Record<string, Uint8Array> = {};
 
   it('setup: tenant A with data, a logo and an accountant; tenant B', async () => {
@@ -120,6 +121,7 @@ describe('Phase 9.4 — company data export', () => {
       .post('/api/v1/auth/register')
       .send({ tenantName: `EX B ${RUN}`, ownerName: 'Owner B', email: `exb-${RUN}@test.dev`, password: PASS });
     tokenB = regB.body.accessToken;
+    tenantB = String((await api().get('/api/v1/me').set(auth(tokenB))).body.currentTenant.tenantId);
 
     await api().post('/api/v1/fiscal-years').set(auth(token)).send({ code: '2025', startDate: '2025-01-01', endDate: '2025-12-31' });
     const party = await api().post('/api/v1/parties').set(auth(token)).send({ code: `C-EXP-${RUN}`, nameAr: 'عميل التصدير', partyType: 'CUSTOMER' });
@@ -186,6 +188,13 @@ describe('Phase 9.4 — company data export', () => {
     expect(grants.rows.map((r) => [r[col('membershipId')], r[col('permissionCode')], r[col('amountLimit')]])).toEqual([
       [accountantMembership, 'purchase.approve', 1234.5],
     ]);
+  });
+
+  it("exports only tenant A's subscriptions from the control database", async () => {
+    const subscriptions = (await sheet(files, '01-company.xlsx', 'Subscription'))!;
+    const tenantIds = subscriptions.rows.map((row) => row[subscriptions.header.indexOf('tenantId')]);
+    expect(tenantIds).toContain(tenantA);
+    expect(tenantIds).not.toContain(tenantB);
   });
 
   it('carries no secrets or technical keys', async () => {

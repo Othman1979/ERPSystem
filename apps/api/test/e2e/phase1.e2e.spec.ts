@@ -83,6 +83,13 @@ describe('Phase 1 — platform & tenant isolation (erp_test)', () => {
   let tenantB = '';
   let cashierToken = '';
 
+  it('backfills the shared UserTenant index for every membership', async () => {
+    const [counts] = await db.query<{ user_tenants: bigint; tenant_memberships: bigint }[]>(
+      'SELECT (SELECT COUNT(*) FROM user_tenants) AS user_tenants, (SELECT COUNT(*) FROM tenant_memberships) AS tenant_memberships',
+    );
+    expect(String(counts!.user_tenants)).toBe(String(counts!.tenant_memberships));
+  });
+
   it('registers two independent tenants', async () => {
     const regA = await api()
       .post('/api/v1/auth/register')

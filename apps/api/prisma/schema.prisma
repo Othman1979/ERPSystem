@@ -28,6 +28,13 @@ enum TenantStatus {
   CANCELLED
 }
 
+enum TenantDatabaseState {
+  PROVISIONING
+  ACTIVE
+  MIGRATING
+  RETIRED
+}
+
 enum SubscriptionStatus {
   ACTIVE
   PAST_DUE
@@ -352,6 +359,7 @@ model User {
   memberships   TenantMembership[]
   refreshTokens RefreshToken[]
   auditLogs     AuditLog[]
+  tenantLinks   UserTenant[]
 
   @@map("users")
 }
@@ -380,6 +388,37 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+model TenantDatabase {
+  tenantId      BigInt              @id @map("tenant_id") @db.UnsignedBigInt
+  host          String              @db.VarChar(191)
+  port          Int                 @default(3306)
+  databaseName  String              @map("database_name") @db.VarChar(64)
+  dbUser        String              @map("db_user") @db.VarChar(64)
+  passwordSealed String             @map("password_sealed") @db.Text
+  schemaVersion String?             @map("schema_version") @db.VarChar(255)
+  state         TenantDatabaseState @default(PROVISIONING)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([host, port, databaseName])
+  @@map("tenant_databases")
+}
+
+model UserTenant {
+  userId    BigInt   @map("user_id") @db.UnsignedBigInt
+  tenantId  BigInt   @map("tenant_id") @db.UnsignedBigInt
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([userId, tenantId])
+  @@index([tenantId])
+  @@map("user_tenants")
+}
+
 // ---------------------------------------------------------------------------
 // Tenant-scoped tables
 // ---------------------------------------------------------------------------
@@ -396,6 +435,8 @@ model Tenant {
   updatedAt       DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
 
   plan                    Plan?                    @relation(fields: [planId], references: [id])
+  tenantDatabase          TenantDatabase?
+  userTenants             UserTenant[]
   subscriptions           Subscription[]
   companies               Company[]
   branches                Branch[]

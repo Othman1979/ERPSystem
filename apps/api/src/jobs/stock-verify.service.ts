@@ -19,6 +19,7 @@ export interface StockVerifyRun {
  * recorded as a JOB error, so the hourly error digest alerts it (ADR-010
  * §10.3). Mismatch lists hold ids and amounts only.
  */
+// ADR-045 29C: the stock-verification job remains on the control database.
 @Injectable()
 export class StockVerifyService {
   constructor(
