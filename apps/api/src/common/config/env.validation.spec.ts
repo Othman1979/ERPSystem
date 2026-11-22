@@ -39,8 +39,23 @@ describe('validateEnv', () => {
       DB_PROVISIONER: '',
       TENANT_DB_ADMIN_URL: '',
       TENANT_DB_HOST: '',
+      TENANT_DB_PASSWORD: '',
     });
-    expect([env.DB_PROVISIONER, env.TENANT_DB_ADMIN_URL, env.TENANT_DB_HOST]).toEqual([undefined, undefined, undefined]);
+    expect([env.DB_PROVISIONER, env.TENANT_DB_ADMIN_URL, env.TENANT_DB_HOST, env.TENANT_DB_PASSWORD]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it('accepts the temporary database pool password setting', () => {
+    const password = 'temporary-pool-password';
+    expect(validateEnv({
+      DATABASE_URL: 'mysql://root@localhost:3306/db',
+      JWT_ACCESS_SECRET: 'test-secret-at-least-16-chars',
+      TENANT_DB_PASSWORD: password,
+    }).TENANT_DB_PASSWORD).toBe(password);
   });
 
   it('rejects invalid NODE_ENV', () => {

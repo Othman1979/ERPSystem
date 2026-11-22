@@ -18,6 +18,7 @@ export const envSchema = z.object({
   TENANT_DB_MAX_POOLS: z.coerce.number().int().min(1).max(500).default(50),
   TENANT_DB_STATE_TTL_MS: z.coerce.number().int().positive().default(30_000),
   TENANT_DB_SECRET_KEY: z.string().optional(),
+  TENANT_DB_PASSWORD: z.preprocess((value) => value === '' ? undefined : value, z.string().optional()),
   DB_PROVISIONER: z.preprocess((value) => value === '' ? undefined : value, z.enum(['create', 'pool']).optional()),
   TENANT_DB_ADMIN_URL: z.preprocess((value) => value === '' ? undefined : value, z.string().url().optional()),
   TENANT_DB_HOST: z.preprocess((value) => value === '' ? undefined : value, z.string().min(1).optional()),

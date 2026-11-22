@@ -21,7 +21,7 @@ export class TenantDbPoolService {
   async add(databaseName: string, dbUser: string, host?: string, port?: number): Promise<{ added: true; schemaVersion: string }> {
     validateDatabaseIdentifier(databaseName);
     validateDatabaseIdentifier(dbUser);
-    const password = process.env.TENANT_DB_PASSWORD;
+    const password = this.config.get('TENANT_DB_PASSWORD', { infer: true });
     if (!password) throw new Error('TENANT_DB_PASSWORD is required');
     const base = new URL(this.config.get('DATABASE_URL', { infer: true }));
     const routeHost = host ?? this.config.get('TENANT_DB_HOST', { infer: true }) ?? base.hostname;
