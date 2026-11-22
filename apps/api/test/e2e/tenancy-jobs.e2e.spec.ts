@@ -94,9 +94,9 @@ function job(args: string[], extra: Record<string, string> = {}): string {
   });
 }
 
-function jobAllowingFailure(args: string[]): string {
+function jobAllowingFailure(args: string[], extra: Record<string, string> = {}): string {
   try {
-    return job(args);
+    return job(args, extra);
   } catch (error) {
     const stdout = (error as { stdout?: string | Buffer }).stdout;
     return Buffer.isBuffer(stdout) ? stdout.toString('utf8') : stdout ?? '';
@@ -384,6 +384,23 @@ describe('isolated tenant jobs', () => {
     ) as { ok: boolean; checks: Array<{ name: string; ok: boolean }> };
     expect(verified.ok).toBe(true);
     expect(verified.checks.every((check) => check.ok)).toBe(true);
+
+    job(['db-pool-fill', '--count', '1'], { TENANT_DB_POOL_TARGET: '1' });
+    const freePoolDatabase = await control!.tenantDbPool.findFirstOrThrow({ where: { claimedByTenantId: null } });
+    scratchDatabases.add(freePoolDatabase.databaseName);
+    extraUsers.add(freePoolDatabase.dbUser);
+    for (const databaseName of [tenants[0]!.databaseName, freePoolDatabase.databaseName]) {
+      const protectedTarget = JSON.parse(
+        jobAllowingFailure(['backup-verify', backup.folder], {
+          BACKUP_DIR: backupDir,
+          BACKUP_VERIFY_DATABASE_URL: connectionUrl(adminUrl, databaseName),
+        }),
+      ) as { ok: boolean; checks: Array<{ name: string; detail: string }> };
+      expect(protectedTarget.ok).toBe(false);
+      expect(protectedTarget.checks.find((check) => check.name === 'restore')?.detail).toContain(
+        'tenant or pool database',
+      );
+    }
 
     const unavailable = tenants[1]!;
     await control!.tenantDatabase.update({ where: { tenantId: unavailable.id }, data: { state: 'RETIRED' } });

@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { unzipSync } from 'fflate';
 import mariadb, { type Connection } from 'mariadb';
 import type { Env } from '../../common/config/env.validation.js';
+import { PrismaService } from '../../prisma/prisma.service.js';
 import { expectedSchemaVersion } from '../../prisma/schema-version.js';
 import { onAbort } from '../abort-cleanup.js';
 import { PRIVATE_DIR, sweepStale, VERIFY_SCRATCH_PREFIX } from './backup.service.js';
@@ -62,7 +63,10 @@ const SCRATCH_NAME = /restore|verify/i;
  */
 @Injectable()
 export class BackupVerifyService {
-  constructor(private readonly config: ConfigService<Env, true>) {}
+  constructor(
+    private readonly config: ConfigService<Env, true>,
+    private readonly prisma: PrismaService,
+  ) {}
 
   async run(which: string, keep = false, tenantId?: bigint): Promise<VerifyResult> {
     const root = path.resolve(this.config.get('BACKUP_DIR', { infer: true }));
@@ -113,12 +117,31 @@ export class BackupVerifyService {
       return result(null, false);
     }
     const target = dbTarget(url);
-    if (!SCRATCH_NAME.test(target.database)) {
-      add('restore', false, `refused: "${target.database}" is not named as a scratch database (restore / verify)`);
-      return result(null, false);
-    }
     if (sameDatabase(target, dbTarget(this.config.get('DATABASE_URL', { infer: true })))) {
       add('restore', false, 'refused: BACKUP_VERIFY_DATABASE_URL is the live database');
+      return result(null, false);
+    }
+    const control = this.prisma.control();
+    const [tenantDatabases, poolDatabases] = await Promise.all([
+      control.tenantDatabase.findMany({ select: { host: true, port: true, databaseName: true } }),
+      control.tenantDbPool.findMany({ select: { host: true, port: true, databaseName: true } }),
+    ]);
+    if (
+      [...tenantDatabases, ...poolDatabases].some((database) =>
+        sameDatabase(target, {
+          host: database.host,
+          port: database.port,
+          database: database.databaseName,
+          user: target.user,
+          password: target.password,
+        }),
+      )
+    ) {
+      add('restore', false, 'refused: BACKUP_VERIFY_DATABASE_URL is a tenant or pool database');
+      return result(null, false);
+    }
+    if (!SCRATCH_NAME.test(target.database)) {
+      add('restore', false, `refused: "${target.database}" is not named as a scratch database (restore / verify)`);
       return result(null, false);
     }
 
