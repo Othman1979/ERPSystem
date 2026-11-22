@@ -291,6 +291,12 @@ describe('payroll page payloads and run actions', () => {
     });
   });
 
+  it('sends null when clearing a leave type pay element', () => {
+    expect(leaveTypeUpdatePayload({ code: 'UNPAID', payElementId: undefined })).toEqual({
+      payElementId: null,
+    });
+  });
+
   it('shows leave requests and gates approval actions by permission', async () => {
     api.listLeaveTypes.mockResolvedValue(response([{
       id: 'leave-type-1', code: 'ANNUAL', nameAr: 'سنوية', nameEn: 'Annual', category: 'ANNUAL',
