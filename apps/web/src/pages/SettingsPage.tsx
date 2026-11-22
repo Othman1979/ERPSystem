@@ -268,7 +268,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <FormDialog
         title={editing ? t('settings.edit') : `${t('settings.add')} — ${title}`}
         open={modalOpen}

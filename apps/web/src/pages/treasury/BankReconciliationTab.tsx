@@ -3,6 +3,7 @@ import { CheckOutlined, DeleteOutlined, FileExcelOutlined, PlusOutlined, Thunder
 import { Button, Card, Descriptions, Input, InputNumber, Popconfirm, Select, Space, Table, Tag, Upload, message } from 'antd';
 import { DatePicker } from '../../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -79,8 +80,8 @@ export function BankReconciliationTab() {
         rowClassName={(r) => (r.id === selected ? 'ant-table-row-selected' : '')}
         columns={[
           { title: t('bankRec.bankAccount'), dataIndex: 'bankName' },
-          { title: t('bankRec.startDate'), dataIndex: 'startDate', width: 110 },
-          { title: t('bankRec.endDate'), dataIndex: 'endDate', width: 110 },
+          { title: t('bankRec.startDate'), dataIndex: 'startDate', width: 110, render: formatDate },
+          { title: t('bankRec.endDate'), dataIndex: 'endDate', width: 110, render: formatDate },
           { title: t('bankRec.openingBalance'), dataIndex: 'openingBalance', align: 'right' as const, render: amountCell },
           { title: t('bankRec.closingBalance'), dataIndex: 'closingBalance', align: 'right' as const, render: amountCell },
           { title: t('bankRec.lines'), dataIndex: 'lineCount', width: 70 },
@@ -91,7 +92,7 @@ export function BankReconciliationTab() {
             render: (s: string) => <Tag color={s === 'RECONCILED' ? 'green' : 'gold'}>{t(`bankRec.status_${s}`)}</Tag>,
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       {selected && <StatementDetail id={selected} onChanged={refresh} onDeleted={() => { setSelected(undefined); refresh(); }} onError={onError} />}
     </Space>
   );
@@ -220,7 +221,7 @@ function StatementDetail({
   const draft = data.status === 'DRAFT';
   const s = data.summary;
   const bookColumns = [
-    { title: t('bankRec.date'), dataIndex: 'entryDate', width: 110 },
+    { title: t('bankRec.date'), dataIndex: 'entryDate', width: 110, render: formatDate },
     { title: t('bankRec.entryNo'), dataIndex: 'entryNo', width: 120 },
     { title: t('bankRec.reference'), dataIndex: 'reference', width: 120 },
     { title: t('bankRec.description'), dataIndex: 'description' },
@@ -232,7 +233,10 @@ function StatementDetail({
   const lineTotal = matchLine ? dec(matchLine.deposit).minus(dec(matchLine.withdrawal)) : dec(0);
 
   return (
-    <Card size="small" title={`${data.bankName} — ${data.startDate} / ${data.endDate}`}>
+    <Card
+      size="small"
+      title={`${data.bankName} — ${formatDate(data.startDate)} / ${formatDate(data.endDate)}`}
+    >
       {holder}
       <Descriptions size="small" column={{ xs: 1, md: 3 }} bordered>
         <Descriptions.Item label={t('bankRec.openingBalance')}>{amountCell(data.openingBalance)}</Descriptions.Item>
@@ -290,11 +294,11 @@ function StatementDetail({
         dataSource={data.lines}
         expandable={{
           rowExpandable: (r) => r.matches.length > 0,
-          expandedRowRender: (r) => <Table<BankBookLineDto> rowKey="id" size="small" pagination={false} dataSource={r.matches} columns={bookColumns} />,
+          expandedRowRender: (r) => <Table<BankBookLineDto> rowKey="id" size="small" pagination={false} dataSource={r.matches} columns={bookColumns}  scroll={{ x: 'max-content' }}/>,
         }}
         columns={[
           { title: '#', dataIndex: 'lineNo', width: 50 },
-          { title: t('bankRec.date'), dataIndex: 'lineDate', width: 110 },
+          { title: t('bankRec.date'), dataIndex: 'lineDate', width: 110, render: formatDate },
           { title: t('bankRec.description'), dataIndex: 'description' },
           { title: t('bankRec.reference'), dataIndex: 'reference', width: 120 },
           { title: t('bankRec.deposit'), dataIndex: 'deposit', align: 'right' as const, width: 120, render: amountCell },
@@ -324,7 +328,7 @@ function StatementDetail({
               ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       {draft && matchLine && (
         <Card size="small" style={{ marginTop: 12 }} title={t('bankRec.matchTitle', { lineNo: matchLine.lineNo })}>
@@ -337,7 +341,7 @@ function StatementDetail({
             dataSource={candidatesQuery.data ?? []}
             rowSelection={{ selectedRowKeys: picked, onChange: (keys) => setPicked(keys.map(String)) }}
             columns={bookColumns}
-          />
+           scroll={{ x: 'max-content' }}/>
           <Space style={{ marginTop: 8 }}>
             <Button type="primary" disabled={picked.length === 0 || !pickedTotal.equals(lineTotal)} loading={match.isPending} onClick={() => match.mutate()}>
               {t('bankRec.confirmMatch')}
@@ -356,7 +360,7 @@ function StatementDetail({
           pagination={false}
           dataSource={[...data.outstandingDeposits, ...data.outstandingPayments]}
           columns={bookColumns}
-        />
+         scroll={{ x: 'max-content' }}/>
       )}
     </Card>
   );

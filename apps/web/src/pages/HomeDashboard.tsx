@@ -6,16 +6,126 @@ import { Link } from 'react-router';
 import {
   ApiError,
   reportsControllerDashboardSummary,
+  type DashboardSummaryDto,
   type DashboardSalesBlockDto,
 } from '@erp/api-client';
+import { PERMISSIONS } from '../auth/permissions';
+import { useAuth } from '../auth/AuthContext';
 import { apiErrorText, queryString } from '../components/ExportButtons';
 import { Num } from '../components/Num';
-import { dec, formatMoney, formatQty } from '../format/number';
+import { dec, formatAmount, formatMoney, formatQty } from '../format/number';
 import { codeAndName } from '../i18n/displayName';
 import { palette } from '../theme';
+import { isReportTabAvailable } from './reports/reportAccess';
 
 /** Items listed on the card; the rest are counted. */
 const SHOWN_ITEMS = 3;
+
+type MonthlyPoint = DashboardSummaryDto['monthly'][number];
+type CashBankAccount = NonNullable<DashboardSummaryDto['cashBank']>[number];
+
+export function MonthlyBars({ monthly }: { monthly: MonthlyPoint[] }) {
+  const { t, i18n } = useTranslation();
+  const max = monthly.reduce((largest, row) => {
+    const sales = dec(row.sales).abs();
+    const expenses = dec(row.expenses).abs();
+    return sales.gt(largest) ? (expenses.gt(sales) ? expenses : sales) : expenses.gt(largest) ? expenses : largest;
+  }, dec(0));
+  const height = (amount: string) =>
+    max.gt(0) ? Math.max(2, Math.min(100, dec(amount).abs().div(max).times(100).toNumber())) : 2;
+  const monthLabel = (month: string) => {
+    const [year, monthNumber] = month.split('-').map(Number);
+    return new Intl.DateTimeFormat(i18n.language, { month: 'short', year: '2-digit' }).format(
+      new Date(year, monthNumber - 1, 1),
+    );
+  };
+
+  return (
+    <div>
+      <div className="home-monthly-legend">
+        <span className="home-legend-item">
+          <span className="home-legend-dot home-legend-sales" />
+          {t('dashboard.monthlySales')}
+        </span>
+        <span className="home-legend-item">
+          <span className="home-legend-dot home-legend-expenses" />
+          {t('dashboard.monthlyExpenses')}
+        </span>
+      </div>
+      <div className="home-monthly-bars">
+        {monthly.map((row) => (
+          <div className="home-monthly-month" key={row.month}>
+            <div className="home-monthly-pair">
+              <span
+                className="home-monthly-bar home-monthly-bar-sales"
+                style={{ height: `${height(row.sales)}%` }}
+                title={`${t('dashboard.monthlySales')}: ${formatAmount(row.sales)}`}
+              />
+              <span
+                className="home-monthly-bar home-monthly-bar-expenses"
+                style={{ height: `${height(row.expenses)}%` }}
+                title={`${t('dashboard.monthlyExpenses')}: ${formatAmount(row.expenses)}`}
+              />
+            </div>
+            <span>{monthLabel(row.month)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DashboardPanel({ title, to, children }: { title: string; to?: string; children: ReactNode }) {
+  return (
+    <section className="home-panel">
+      <h3 className="home-panel-title">{to ? <Link to={to}>{title}</Link> : title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function CashBankPanel({
+  accounts,
+  total,
+  canOpenStatement,
+}: {
+  accounts: CashBankAccount[];
+  total: string;
+  canOpenStatement: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <DashboardPanel title={t('dashboard.cashBank')}>
+      <div className="home-cash-rows">
+        {accounts.map((account) => {
+          const content = (
+            <>
+              <span>{codeAndName(account)}</span>
+              <Num>{formatAmount(account.balance)}</Num>
+            </>
+          );
+          return canOpenStatement ? (
+            <Link
+              key={account.accountId}
+              className="home-cash-row"
+              to={`/reports?tab=gl&accountId=${encodeURIComponent(account.accountId)}`}
+            >
+              {content}
+            </Link>
+          ) : (
+            <div key={account.accountId} className="home-cash-row">
+              {content}
+            </div>
+          );
+        })}
+      </div>
+      <div className="home-cash-total">
+        <span>{t('dashboard.cashBankTotal')}</span>
+        <Num>{formatAmount(total)}</Num>
+      </div>
+    </DashboardPanel>
+  );
+}
 
 function StatCard({
   to,
@@ -49,6 +159,9 @@ function StatCard({
 /** Short dashboard on the home screen (Phase 8): today's and the month's sales, receivables, low stock. */
 export function HomeDashboard() {
   const { t } = useTranslation();
+  const { can, allBranches } = useAuth();
+  const canReadModules = can(PERMISSIONS.TENANT_READ);
+  const canOpenCashBankStatement = isReportTabAvailable('gl', allBranches);
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: ({ signal }) => reportsControllerDashboardSummary({}, { signal }).then((r) => r.data),
@@ -70,6 +183,7 @@ export function HomeDashboard() {
   );
   const below = data?.belowMinimum;
   const overdue = dec(data?.receivables.overdue);
+  const chequesDue = data?.chequesDue;
 
   return (
     <div className="home-stats">
@@ -129,6 +243,77 @@ export function HomeDashboard() {
           </ul>
         )}
       </StatCard>
+      {data && (
+        <div className="home-panels">
+          <DashboardPanel title={t('dashboard.monthlySalesVsExpenses')}>
+            <MonthlyBars monthly={data.monthly} />
+          </DashboardPanel>
+          {canReadModules && data.cashBank && data.cashBankTotal !== null && (
+            <CashBankPanel
+              accounts={data.cashBank}
+              total={data.cashBankTotal}
+              canOpenStatement={canOpenCashBankStatement}
+            />
+          )}
+          {canReadModules && data.receivablesAging && (
+            <DashboardPanel title={t('dashboard.receivablesAging')} to="/reports?tab=aging">
+              <div className="home-aging-rows">
+                {(
+                  [
+                    ['dashboard.agingCurrent', data.receivablesAging.current],
+                    ['dashboard.aging1to30', data.receivablesAging.d1_30],
+                    ['dashboard.aging31to60', data.receivablesAging.d31_60],
+                    ['dashboard.aging61to90', data.receivablesAging.d61_90],
+                    ['dashboard.aging90plus', data.receivablesAging.d90plus],
+                  ] as const
+                ).map(([label, amount]) => (
+                  <div className="home-aging-row" key={label}>
+                    <span>{t(label)}</span>
+                    <Num>{formatAmount(amount)}</Num>
+                  </div>
+                ))}
+              </div>
+            </DashboardPanel>
+          )}
+          {canReadModules && chequesDue && (
+            <DashboardPanel title={t('dashboard.chequesDue')} to="/treasury?tab=cheques">
+              <div className="home-cheque-rows">
+                {(['incoming', 'outgoing'] as const).map((direction) => (
+                  <div className="home-cheque-row" key={direction}>
+                    <span>{t(`dashboard.${direction}`)}</span>
+                    <span>
+                      {t('dashboard.countAmount', {
+                        count: chequesDue[direction].count,
+                        amount: formatAmount(chequesDue[direction].amount),
+                      })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </DashboardPanel>
+          )}
+          {canReadModules && data.drafts && (
+            <DashboardPanel title={t('dashboard.pendingDrafts')}>
+              <div className="home-draft-rows">
+                {(
+                  [
+                    ['dashboard.journalDrafts', data.drafts.journalEntries, '/journal?status=DRAFT'],
+                    ['dashboard.salesInvoiceDrafts', data.drafts.salesInvoices, '/sales?status=DRAFT'],
+                    ['dashboard.purchaseInvoiceDrafts', data.drafts.purchaseInvoices, '/purchases?status=DRAFT'],
+                    ['dashboard.receiptDrafts', data.drafts.receipts, '/treasury?tab=receipts'],
+                    ['dashboard.paymentDrafts', data.drafts.payments, '/treasury?tab=payments'],
+                  ] as const
+                ).map(([label, count, to]) => (
+                  <Link className="home-draft-row" key={label} to={to}>
+                    <span>{t(label)}</span>
+                    <span>{count}</span>
+                  </Link>
+                ))}
+              </div>
+            </DashboardPanel>
+          )}
+        </div>
+      )}
     </div>
   );
 }

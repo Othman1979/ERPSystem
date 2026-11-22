@@ -12,7 +12,8 @@ import {
   message,
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
-import dayjs, { type Dayjs } from 'dayjs';
+import type { Dayjs } from 'dayjs';
+import { formatDate, formatDateTime } from '../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -43,7 +44,7 @@ type FiscalPeriod = FiscalPeriodDto;
 type FiscalYear = FiscalYearListItemDto;
 
 function fmtDate(v: string): string {
-  return v ? v.slice(0, 10) : '';
+  return v ? formatDate(v) : '';
 }
 
 function draftHref(type: string, id: string): string | undefined {
@@ -243,7 +244,7 @@ export function FiscalPage() {
             },
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <FormDialog
         title={t('fiscal.add')}
         open={modalOpen}
@@ -344,7 +345,7 @@ export function FiscalPage() {
                     render: (value: string) => <Num>{formatAmount(value)}</Num>,
                   },
                 ]}
-              />
+               scroll={{ x: 'max-content' }}/>
             ) : (
               <p>{t('fiscal.noClosingLines')}</p>
             )}
@@ -373,7 +374,7 @@ export function FiscalPage() {
                   },
                   { title: t('fiscal.draftDate'), dataIndex: 'date', render: fmtDate },
                 ]}
-              />
+               scroll={{ x: 'max-content' }}/>
             ) : (
               <p>{t('fiscal.noDraftDocuments')}</p>
             )}
@@ -445,7 +446,7 @@ function YearDetailPanel({
                 {
                   title: t('fiscal.closedAt'),
                   dataIndex: 'closedAt',
-                  render: (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '—'),
+                  render: (v: string | null) => (v ? formatDateTime(v) : '—'),
                   width: 150,
                 },
                 {
@@ -463,7 +464,7 @@ function YearDetailPanel({
                     ),
                 },
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           ),
         },
         {
@@ -486,7 +487,7 @@ function YearDetailPanel({
                 { title: t('fiscal.prefix'), dataIndex: 'prefix' },
                 { title: t('fiscal.nextNumber'), dataIndex: 'nextNumber', width: 110 },
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           ),
         },
       ]}

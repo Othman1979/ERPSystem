@@ -1,7 +1,7 @@
 import { EyeInvisibleOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Popconfirm, Select, Space, Table, Tag } from 'antd';
-import dayjs from 'dayjs';
+import { formatDate } from '../../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -124,7 +124,7 @@ export function CountsTab() {
             sorter: true,
             sortOrder: list.sortOrderOf('date'),
             width: 110,
-            render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '—'),
+            render: (v: string) => (v ? formatDate(v) : '—'),
           },
           {
             title: t('stock.warehouse'),

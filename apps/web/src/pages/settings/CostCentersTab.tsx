@@ -215,7 +215,7 @@ export function CostCentersTab() {
               ]
             : []),
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <FormDialog
         title={dialogTitle}
         open={dialog !== null}

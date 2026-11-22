@@ -80,7 +80,7 @@ describe('ConsumptionTable (ADR-032 §3)', () => {
     const el = render(report([row({})]));
     const cells = [...el.querySelectorAll('tbody td')].map((td) => td.textContent?.trim());
     expect(cells).toContain('FLOUR');
-    expect(cells).toContain('Flour (دقيق)');
+    expect(cells).toContain('Flour');
     // Opening 10, receipts 5, closing 4, actual 11, then recipes 6, direct 2, other 1, recorded 9.
     for (const v of ['10', '5', '4', '11', '6', '2', '1', '9']) expect(cells).toContain(v);
   });

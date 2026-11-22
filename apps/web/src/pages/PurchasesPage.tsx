@@ -21,9 +21,11 @@ import { PartyFormDialog } from '../components/PartyFormDialog';
 import { ItemFormDialog } from '../components/ItemFormDialog';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 import {
   emptyInvoiceLine,
   InvoiceLinesGrid,
@@ -38,6 +40,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { ListToolbar } from '../components/ListToolbar';
@@ -214,7 +217,10 @@ function usePurchaseLookups() {
 function PurchaseInvoicesTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<PurchasesControllerListInvoicesStatus | undefined>(undefined);
+  const [searchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<PurchasesControllerListInvoicesStatus | undefined>(
+    () => (searchParams.get('status') === 'DRAFT' ? 'DRAFT' : undefined),
+  );
   const [paymentFilter, setPaymentFilter] = useState<PurchasesControllerListInvoicesPaymentType | undefined>(undefined);
   const [screen, setScreen] = useState<'list' | 'form' | 'view'>('list');
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
@@ -315,7 +321,7 @@ function PurchaseInvoicesTab() {
       sorter: true,
       sortOrder: list.sortOrderOf('invoiceDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('purchases.supplier'),
@@ -444,7 +450,7 @@ function PurchaseInvoicesTab() {
           </Button>
         }
       />
-      <Table
+      <ResponsiveTable<PurchaseInvoiceListItemDto>
         rowKey="id"
         loading={list.query.isLoading}
         dataSource={list.rows}
@@ -468,6 +474,20 @@ function PurchaseInvoicesTab() {
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => { setInvoiceId(r.id); setScreen('view'); }, style: { cursor: 'pointer' } })}
+        mobileCard={{
+          title: (invoice) => invoice.invoiceNo ?? `#${invoice.id}`,
+          subtitle: (invoice) => `${formatDate(invoice.invoiceDate)} · ${displayName(invoice.supplier) ?? '—'}`,
+          amount: (invoice) => amountCell(invoice.grandTotal),
+          status: (invoice) => (
+            <Tag color={invoice.status === 'POSTED' ? 'green' : 'default'}>
+              {t(`common.${invoice.status === 'POSTED' ? 'posted' : 'draft'}`)}
+            </Tag>
+          ),
+          meta: (invoice) => [
+            <span>{t(`purchases.${invoice.paymentType}`)}</span>,
+            <span>{t('purchases.paid')}: {amountCell(invoice.paidAmount)}</span>,
+          ],
+        }}
       />
     </div>
   );
@@ -1160,10 +1180,10 @@ function PurchaseInvoiceView({
           </DocValue>
         </DocField>
         <DocField label={t('purchases.invoiceDate')}>
-          <DocValue>{dayjs(invoice.invoiceDate).format('YYYY-MM-DD')}</DocValue>
+          <DocValue>{formatDate(invoice.invoiceDate)}</DocValue>
         </DocField>
         <DocField label={t('purchases.dueDate')}>
-          <DocValue>{invoice.dueDate ? dayjs(invoice.dueDate).format('YYYY-MM-DD') : '—'}</DocValue>
+          <DocValue>{invoice.dueDate ? formatDate(invoice.dueDate) : '—'}</DocValue>
         </DocField>
         {costCenters.enabled && invoice.costCenterId && (
           <DocField label={t('costCenters.documentField')}>
@@ -1208,7 +1228,7 @@ function PurchaseInvoiceView({
           { title: t('purchases.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, className: 'num', render: amountCell },
           { title: t('purchases.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, className: 'num', render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
     </DocLayout>
   );
 }
@@ -1287,7 +1307,7 @@ function PurchaseReturnsTab() {
       sorter: true,
       sortOrder: list.sortOrderOf('returnDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('purchases.invoice'),
@@ -1388,7 +1408,7 @@ function PurchaseReturnsTab() {
                   <DocValue>{displayName(view.supplier)}</DocValue>
                 </DocField>
                 <DocField label={t('purchases.date')}>
-                  <DocValue>{dayjs(view.returnDate).format('YYYY-MM-DD')}</DocValue>
+                  <DocValue>{formatDate(view.returnDate)}</DocValue>
                 </DocField>
                 <DocField label={t('purchases.refundType')}>
                   <DocValue>{t(`purchases.${view.refundType}`)}</DocValue>
@@ -1422,7 +1442,7 @@ function PurchaseReturnsTab() {
                   { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'right' as const, className: 'num', render: qtyCell },
                   { title: t('purchases.total'), dataIndex: 'lineTotal', width: 120, align: 'right' as const, className: 'num', render: amountCell },
                 ]}
-              />
+               scroll={{ x: 'max-content' }}/>
             </>
           ) : (
             <div className="doc-section">{t('common.loading')}</div>
@@ -1464,6 +1484,7 @@ function PurchaseReturnsTab() {
         locale={tableLocale(list.query)}
         columns={columns}
         size="small"
+        scroll={{ x: 'max-content' }}
         pagination={list.pagination}
         onChange={list.onTableChange}
       />
@@ -1694,7 +1715,7 @@ function PurchaseReturnForm({
               render: amountCell,
             },
           ]}
-        />
+         scroll={{ x: 'max-content' }}/>
       )}
     </DocLayout>
   );

@@ -52,7 +52,9 @@ import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { formatAmount, formatQty, toDecimal } from '../format/number';
 import { formatDate } from '../format/date';
+import { entryDescription } from '../i18n/entryDescription';
 import { DatePicker } from '../components/DatePicker';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { ExportButtons, saveBlob } from '../components/ExportButtons';
 import { EnterNav } from '../components/EnterNav';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -293,23 +295,48 @@ function EmployeesTab() {
     } else { setDetail(undefined); form.resetFields(); }
     setOpen(true);
   };
+  const branchVisible = employeeBranchColumnVisible(
+    me?.currentMembership?.branches.map((branch) => branch.nameAr) ?? [],
+    employees.data as PayrollEmployeeDto[] | undefined,
+  );
   return <>
     <Space style={{ marginBottom: 12 }}>{can(PERMISSIONS.PAYROLL_MANAGE) && <Button type="primary" icon={<PlusOutlined />} onClick={() => void start()}>{t('payroll.addEmployee')}</Button>}</Space>
-    <Table rowKey="id" loading={employees.isLoading} dataSource={employees.data as PayrollEmployeeDto[] | undefined} locale={tableLocale(employees, can(PERMISSIONS.PAYROLL_MANAGE) ? <EmptyCta description={t('common.emptyCta.employee')} actionLabel={t('payroll.addEmployee')} onClick={() => void start()} /> : t('common.noResults'))} onRow={(row) => ({ onDoubleClick: () => void start(row) })} columns={[
+    <ResponsiveTable<PayrollEmployeeDto>
+      rowKey="id"
+      loading={employees.isLoading}
+      dataSource={employees.data as PayrollEmployeeDto[] | undefined}
+      locale={tableLocale(employees, can(PERMISSIONS.PAYROLL_MANAGE) ? <EmptyCta description={t('common.emptyCta.employee')} actionLabel={t('payroll.addEmployee')} onClick={() => void start()} /> : t('common.noResults'))}
+      onRow={(row) => ({ onDoubleClick: () => void start(row) })}
+      mobileCard={{
+        title: (row) => row.code,
+        subtitle: (row) =>
+          `${i18n.language === 'en' ? row.nameEn ?? row.nameAr : row.nameAr}${branchVisible && (row.branchNameAr || row.branchNameEn) ? ` · ${i18n.language === 'en' ? row.branchNameEn ?? row.branchNameAr : row.branchNameAr}` : ''}`,
+        amount: (row) => formatAmount(row.currentBasicSalary),
+        status: (row) => <ActiveTag active={row.isActive} />,
+        meta: (row) => [
+          <span>{t('payroll.sscCovered')}: {row.sscCovered ? t('common.yes') : t('common.no')}</span>,
+        ],
+        actions: (row) =>
+          can(PERMISSIONS.PAYROLL_MANAGE) && (
+            <Button onClick={() => void start(row)}>{t('payroll.editEmployee')}</Button>
+          ),
+      }}
+      columns={[
       { title: t('payroll.code'), dataIndex: 'code' },
       { title: t('payroll.employee'), render: (_, row: PayrollEmployeeDto) => i18n.language === 'en' ? row.nameEn ?? row.nameAr : row.nameAr },
-      ...(employeeBranchColumnVisible(me?.currentMembership?.branches.map((branch) => branch.nameAr) ?? [], employees.data as PayrollEmployeeDto[] | undefined)
+      ...(branchVisible
         ? [{
             title: t('payroll.branch'),
             render: (_: unknown, row: PayrollEmployeeDto) =>
-              (i18n.language === 'en' ? row.branchNameEn ?? row.branchNameAr : row.branchNameAr) ?? '—',
+              (i18n.language === 'en' ? row.branchNameEn ?? row.branchNameAr : row.branchNameAr) || '—',
           }]
         : []),
       { title: t('payroll.basicSalary'), dataIndex: 'currentBasicSalary', render: (v: string | null) => formatAmount(v) , className: 'num'},
       { title: t('payroll.sscCovered'), dataIndex: 'sscCovered', render: (v: boolean) => v ? t('common.yes') : t('common.no') },
       { title: t('payroll.active'), dataIndex: 'isActive', render: (v: boolean) => <ActiveTag active={v} /> },
       { title: t('common.actions'), key: 'actions', render: (_, row) => can(PERMISSIONS.PAYROLL_MANAGE) && <Button onClick={() => void start(row)}>{t('payroll.editEmployee')}</Button> },
-    ]} />
+      ]}
+    />
     <FormDialog open={open} title={editing ? t('payroll.editEmployee') : t('payroll.addEmployee')} onCancel={() => setOpen(false)} onSave={() => void form.submit()} saving={save.isPending}>
       <Form form={form} layout="vertical" onFinish={(values) => save.mutate(values)}>
         <FormSection title={t('payroll.employee')}>
@@ -390,7 +417,7 @@ function ElementsTab() {
       } },
       { title: t('payroll.active'), dataIndex: 'isActive', render: (v: boolean) => <ActiveTag active={v} /> },
       { title: t('common.actions'), key: 'actions', render: (_, row) => can(PERMISSIONS.PAYROLL_MANAGE) && <Button onClick={() => { setEditing(row); form.setFieldsValue(row); setOpen(true); }}>{t('payroll.editElement')}</Button> },
-    ]} />
+    ]} scroll={{ x: 'max-content' }} />
     <FormDialog open={open} title={editing ? t('payroll.editElement') : t('payroll.addElement')} onCancel={() => setOpen(false)} onSave={() => void form.submit()} saving={save.isPending}>
       <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}><FormSection title={t('payroll.element')}>
         {(['code', 'nameAr', 'nameEn', 'rateFactor'] as const).map((field) => <Form.Item key={field} name={field} label={t(`payroll.${field}`)} rules={[{ required: field !== 'nameEn' && !(editing && field === 'code') }]}><Input disabled={Boolean(editing && field === 'code')} /></Form.Item>)}
@@ -478,7 +505,7 @@ function MovementsTab() {
         setReversing(row);
         reverseForm.setFieldsValue({ date: dayjs() });
       }}>{t('payroll.reverseMovement')}</Button> },
-    ]} />
+    ]}  scroll={{ x: 'max-content' }}/>
     <FormDialog open={open} title={t('payroll.newMovement')} onCancel={() => setOpen(false)} onSave={() => void form.submit()} saving={save.isPending} destroyOnHidden>
       <Form form={form} layout="vertical" onFinish={(values) => save.mutate(values)}>
         <FormSection title={t('payroll.newMovement')}>
@@ -632,7 +659,7 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
       { title: t('payroll.deductions'), dataIndex: 'deductions', render: (v: string) => formatAmount(v) , className: 'num'},
       { title: t('payroll.net'), dataIndex: 'net', render: (v: string) => formatAmount(v) , className: 'num'},
       { title: t('payroll.payslip'), render: (_, row) => <Button icon={<FilePdfOutlined />} onClick={() => void printPayslip(row.id)}>{t('payroll.print')}</Button> },
-    ]} />}
+    ]}  scroll={{ x: 'max-content' }}/>}
   </>;
 }
 
@@ -691,7 +718,7 @@ function SettingsTab() {
       { title: t('payroll.taxBrackets'), render: (_: unknown, row: Record<string, unknown>) =>
         (row.taxBrackets as Array<{ upTo: string | null; rate: string }> | undefined)
           ?.map((bracket) => `${bracket.upTo ?? '∞'}: ${bracket.rate}`).join(', ') ?? '—' },
-    ]} />
+    ]}  scroll={{ x: 'max-content' }}/>
     <LeaveSettingsPanel />
   </>;
 }
@@ -734,15 +761,11 @@ function ReportsTab() {
         { title: t('payroll.movementDate'), dataIndex: 'date', render: (value: string) => formatPayrollDate(value) },
         { title: t('payroll.documentNo'), dataIndex: 'documentNo' },
         { title: t('payroll.documentType'), dataIndex: 'documentType' },
-        { title: t('payroll.description'), dataIndex: 'description', render: (value: string, row: { documentType: string; date: string; documentNo: string }) =>
-          row.documentType === 'PAYROLL_SETTLEMENT' ? t('payroll.statementSettlement')
-            : row.documentType === 'PAYROLL_SETTLEMENT_PAYMENT' ? t('payroll.statementSettlementPayment')
-              : row.documentType === 'PAYROLL_SETTLEMENT_REVERSAL' ? t('payroll.statementSettlementReversal')
-                : row.documentType === 'PAYROLL_SETTLEMENT_PAYMENT_REVERSAL' ? t('payroll.statementSettlementPaymentReversal') : value },
-        { title: t('payroll.debit'), dataIndex: 'debit', render: (value: string) => formatAmount(value) , className: 'num'},
-        { title: t('payroll.credit'), dataIndex: 'credit', render: (value: string) => formatAmount(value) , className: 'num'},
-        { title: t('payroll.balance'), dataIndex: 'balance', render: (value: string) => formatAmount(value) , className: 'num'},
-      ]} />}
+        { title: t('payroll.description'), dataIndex: 'description', render: (_value: string, row) => entryDescription(t, row) },
+        { title: t('payroll.debit'), dataIndex: 'debit', render: (value: string) => formatAmount(value), className: 'num' },
+        { title: t('payroll.credit'), dataIndex: 'credit', render: (value: string) => formatAmount(value), className: 'num' },
+        { title: t('payroll.balance'), dataIndex: 'balance', render: (value: string) => formatAmount(value), className: 'num' },
+      ]} scroll={{ x: 'max-content' }} />}
     </FormSection>
   </>;
 }

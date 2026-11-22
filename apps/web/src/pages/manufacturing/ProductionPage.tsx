@@ -4,6 +4,7 @@ import { Alert, Button, Popconfirm, Select, Space, Table, Typography, message } 
 import { DatePicker } from '../../components/DatePicker';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import { formatDate, formatDateTime } from '../../format/date';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -127,7 +128,7 @@ function VouchersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: 
       title: t('manufacturing.prod.date'),
       dataIndex: 'voucherDate',
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('manufacturing.prod.product'),
@@ -216,7 +217,7 @@ function VouchersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: 
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => onOpen(r.id), style: { cursor: 'pointer' } })}
-      />
+       scroll={{ x: 'max-content' }}/>
     </div>
   );
 }
@@ -381,7 +382,7 @@ function VoucherView({
           <DocValue>{`v${voucher.bom.versionNo}`}</DocValue>
         </DocField>
         <DocField label={t('manufacturing.prod.date')}>
-          <DocValue>{dayjs(voucher.voucherDate).format('YYYY-MM-DD')}</DocValue>
+          <DocValue>{formatDate(voucher.voucherDate)}</DocValue>
         </DocField>
         <DocField label={t('manufacturing.prod.materialsWarehouse')}>
           <DocValue>{codeAndName(voucher.materialsWarehouse)}</DocValue>
@@ -415,7 +416,7 @@ function VoucherView({
           <DocValue>{voucher.journalEntry?.entryNo ?? '—'}</DocValue>
         </DocField>
         <DocField label={t('manufacturing.prod.postedAt')}>
-          <DocValue>{voucher.postedAt ? dayjs(voucher.postedAt).format('YYYY-MM-DD HH:mm') : '—'}</DocValue>
+          <DocValue>{voucher.postedAt ? formatDateTime(voucher.postedAt) : '—'}</DocValue>
         </DocField>
       </DocFields>
       <Typography.Title level={5} style={{ marginTop: 16 }}>

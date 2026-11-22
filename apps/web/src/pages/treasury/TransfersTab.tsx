@@ -3,6 +3,7 @@ import { PlusOutlined, SwapOutlined } from '@ant-design/icons';
 import { Button, Form, Input, InputNumber, Table, Tag, message } from 'antd';
 import { DatePicker } from '../../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../../format/date';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -99,7 +100,7 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
             sorter: true,
             sortOrder: list.sortOrderOf('transferDate'),
             width: 110,
-            render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+            render: (v: string) => formatDate(v),
           },
           { title: t('treasury.fromAccount'), render: (_: unknown, r: Transfer) => codeAndName(r.fromAccount) },
           { title: t('treasury.toAccount'), render: (_: unknown, r: Transfer) => codeAndName(r.toAccount) },
@@ -136,7 +137,7 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
               ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <TransferModal
         open={open}
         cashAccounts={cashAccounts}

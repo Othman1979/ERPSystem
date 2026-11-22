@@ -277,6 +277,7 @@ export class AdjustmentsService {
     id: bigint,
     companyId: bigint,
     userId: bigint | undefined,
+    generatedDescription?: { key: string; params: Prisma.InputJsonValue },
   ): Promise<{ id: bigint; docNo: string }> {
         const { tenantId } = this.tenant();
         const draft = await tx.stockAdjustment.findFirst({
@@ -392,6 +393,10 @@ export class AdjustmentsService {
             // Opening stock is part of the opening balances in reports (§8.6).
             isOpening: draft.adjustmentType === 'OPENING',
             description: draft.description ?? `Stock adjustment ${draft.adjustmentType}`,
+            descriptionKey:
+              generatedDescription?.key ??
+              (draft.description == null ? `journal.auto.stockAdjustment.${draft.adjustmentType.toLowerCase()}` : null),
+            descriptionParams: generatedDescription?.params,
             lines: journalLines,
             postedBy: userId ?? null,
           });
@@ -544,6 +549,8 @@ export class AdjustmentsService {
             reversalOfId: original.journalEntryId,
             isOpening: original.adjustmentType === 'OPENING',
             description: `Reversal of adjustment ${original.docNo ?? original.id}`,
+            descriptionKey: 'journal.auto.stockAdjustmentReversal',
+            descriptionParams: { number: original.docNo ?? original.id.toString() },
             lines: journalLines,
             postedBy: userId ?? null,
           });

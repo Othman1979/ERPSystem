@@ -110,10 +110,10 @@ describe('Balance shows credit balances with a suffix, red only on the wrong sid
 });
 
 describe('StatusTag and ActiveTag (UI-04, UI-13)', () => {
-  it('shows nothing for an active record and «غير نشط» for an inactive one', async () => {
+  it('labels active and suspended records', async () => {
     await i18n.changeLanguage('ar');
-    expect(renderToStaticMarkup(<ActiveTag active />)).toBe('');
-    expect(renderToStaticMarkup(<ActiveTag active={false} />)).toContain('غير نشط');
+    expect(renderToStaticMarkup(<ActiveTag active />)).toContain('نشط');
+    expect(renderToStaticMarkup(<ActiveTag active={false} />)).toContain('موقوف');
   });
 
   it('maps tones onto antd status colours', () => {

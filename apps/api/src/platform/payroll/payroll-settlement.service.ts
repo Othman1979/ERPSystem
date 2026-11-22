@@ -194,6 +194,8 @@ export class PayrollSettlementService {
         sourceType: 'PAYROLL_SETTLEMENT',
         sourceId: id,
         description: `Final settlement ${settlementNo}`,
+        descriptionKey: 'journal.auto.finalSettlement',
+        descriptionParams: { number: settlementNo },
         lines,
         postedBy: userId,
       });
@@ -233,6 +235,8 @@ export class PayrollSettlementService {
         sourceType: 'PAYROLL_SETTLEMENT_PAYMENT',
         sourceId: id,
         description: `Final settlement payment ${settlement.settlementNo ?? id}`,
+        descriptionKey: 'journal.auto.finalSettlementPayment',
+        descriptionParams: { number: settlement.settlementNo ?? id.toString() },
         lines: [
           { accountId: payable.accountId, debit: settlement.net },
           { accountId: account.accountId, credit: settlement.net },

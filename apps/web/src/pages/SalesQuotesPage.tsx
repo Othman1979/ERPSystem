@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
@@ -50,6 +51,7 @@ import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../co
 import { GridSelect, focusNamedField } from '../components/GridSelect';
 import { ListToolbar } from '../components/ListToolbar';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { ReasonModal } from '../components/ReasonModal';
 import { PICKER_PAGE_SIZE, RemoteSelect } from '../components/RemoteSelect';
@@ -172,7 +174,7 @@ function QuotesList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
       sorter: true,
       sortOrder: list.sortOrderOf('quoteDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('sales.customer'),
@@ -185,7 +187,7 @@ function QuotesList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
       width: 170,
       render: (v: string | null, r: SalesCycleQuoteListItemDto) => (
         <Space size={6} wrap>
-          {v ? dayjs(v).format('YYYY-MM-DD') : '—'}
+          {v ? formatDate(v) : '—'}
           {isQuoteExpired(r.status, v, today) && <StatusTag tone="warning">{t('salesCycle.expired')}</StatusTag>}
         </Space>
       ),
@@ -245,7 +247,7 @@ function QuotesList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
           )
         }
       />
-      <Table
+      <ResponsiveTable<SalesCycleQuoteListItemDto>
         rowKey="id"
         loading={list.query.isLoading}
         dataSource={list.rows}
@@ -255,6 +257,13 @@ function QuotesList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => onOpen(r.id), style: { cursor: 'pointer' } })}
+        mobileCard={{
+          title: (quote) => quote.quoteNo ?? t('procurement.draftNo'),
+          subtitle: (quote) => `${formatDate(quote.quoteDate)} · ${displayName(quote.customer) ?? '—'}`,
+          amount: (quote) => amountCell(quote.grandTotal),
+          status: (quote) => <QuoteStatusTag status={quote.status} />,
+          meta: (quote) => (quote.validUntil ? [<span>{t('salesCycle.validUntil')}: {formatDate(quote.validUntil)}</span>] : []),
+        }}
       />
     </div>
   );
@@ -697,7 +706,7 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
           <Alert
             type="warning"
             showIcon
-            message={t('salesCycle.expiredNotice', { date: dayjs(quote.validUntil).format('YYYY-MM-DD') })}
+            message={t('salesCycle.expiredNotice', { date: formatDate(quote.validUntil ?? '') })}
           />
         )}
         {linkedOrder && (
@@ -731,10 +740,10 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
             <DocValue>{quote.warehouse ? codeAndName(quote.warehouse) : '—'}</DocValue>
           </DocField>
           <DocField label={t('salesCycle.quoteDate')}>
-            <DocValue>{dayjs(quote.quoteDate).format('YYYY-MM-DD')}</DocValue>
+            <DocValue>{formatDate(quote.quoteDate)}</DocValue>
           </DocField>
           <DocField label={t('salesCycle.validUntil')}>
-            <DocValue>{quote.validUntil ? dayjs(quote.validUntil).format('YYYY-MM-DD') : '—'}</DocValue>
+            <DocValue>{quote.validUntil ? formatDate(quote.validUntil) : '—'}</DocValue>
           </DocField>
           {quote.costCenter && (
             <DocField label={t('costCenters.documentField')}>
@@ -775,7 +784,7 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
             { title: t('procurement.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
             { title: t('procurement.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
           ]}
-        />
+         scroll={{ x: 'max-content' }}/>
 
         {reasonAction && (
           <ReasonModal

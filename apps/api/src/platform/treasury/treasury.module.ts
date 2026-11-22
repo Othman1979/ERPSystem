@@ -23,6 +23,6 @@ import { DocumentLocksModule } from '../document-locks/document-locks.module.js'
   controllers: [TreasuryController, BankReconciliationController, ChequesController],
   providers: [ChequesService, BankReconciliationService, CashAccountsService, VouchersService, CashTransfersService, TreasuryReportsService],
   // The dashboard reads receivables from the aging totals (module boundary).
-  exports: [TreasuryReportsService],
+  exports: [ChequesService, TreasuryReportsService, VouchersService],
 })
 export class TreasuryModule {}

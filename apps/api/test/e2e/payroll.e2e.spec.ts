@@ -287,6 +287,7 @@ describe('Payroll PY1–PY3', () => {
     expect((await get(tokenB, `payroll/employees/${employeeA.id}/statement?from=2031-01-01&to=2031-01-31`)).status).toBe(404);
     const run = h.ok(await act(tokenA, 'payroll/runs', { period: '2031-01' }, companyAId), 201, 'create and compute run') as {
       id: string;
+      period: string;
       lines: {
         id: string; employeeId: string; basic: string; earnings: string; gross: string; sscBase: string;
         sscEmployee: string; sscEmployer: string; incomeTax: string; deductions: string; net: string;
@@ -344,6 +345,18 @@ describe('Payroll PY1–PY3', () => {
 
     const posted = await act(tokenA, `payroll/runs/${run.id}/post`, {}, companyAId);
     h.ok(posted, 201, 'post payroll run');
+    const [postedJournal] = (await boot.db.query(
+      `SELECT id FROM journal_entries
+        WHERE tenant_id = ? AND company_id = ? AND source_type = 'PAYROLL_RUN' AND source_id = ?`,
+      [tenantId, companyAId, run.id],
+    )) as { id: bigint }[];
+    const journalEntry = h.ok(
+      await get(tokenA, `journal-entries/${postedJournal!.id}`, companyAId),
+      200,
+      'read posted payroll journal entry',
+    ) as { descriptionKey: string | null; descriptionParams: unknown };
+    expect(journalEntry.descriptionKey).toBe('journal.auto.payroll');
+    expect(journalEntry.descriptionParams).toEqual({ period: run.period });
     const lockedElementType = await h.api().patch(`/api/v1/payroll/elements/${elementId.TRANSPORT}`)
       .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ kind: 'DEDUCTION' });
     expect(lockedElementType.status).toBe(409);

@@ -424,6 +424,14 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     return new Map(rows.map((r) => [r.id, r.invoiceNo]));
   }
 
+  async draftCount(): Promise<number> {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    return db.purchaseInvoice.count({
+      where: { companyId, status: 'DRAFT', AND: [branchWhere()] },
+    });
+  }
+
   /**
    * Numbered page of invoices (ADR-022), newest first unless `sort` says otherwise.
    * `q` matches the invoice number, the supplier's invoice number and the supplier's
@@ -884,6 +892,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           sourceType: SOURCE,
           sourceId: draft.id,
           description: draft.description ?? `Purchase invoice ${invoiceNo}`,
+          descriptionKey: draft.description == null ? 'journal.auto.purchaseInvoice' : null,
+          descriptionParams: draft.description == null ? { number: invoiceNo } : undefined,
           lines: journalLines,
           postedBy: userId ?? null,
           // ADR-024 §1.2: onto every income-statement line (expenses, cost, adjustments).
@@ -1084,6 +1094,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           sourceType: SOURCE,
           sourceId: draft.id,
           description: draft.description ?? `Purchase invoice ${invoiceNo}`,
+          descriptionKey: draft.description == null ? 'journal.auto.purchaseInvoice' : null,
+          descriptionParams: draft.description == null ? { number: invoiceNo } : undefined,
           lines: journalLines,
           postedBy: userId ?? null,
           // ADR-024 §1.2: onto every income-statement line (expenses, cost, adjustments).

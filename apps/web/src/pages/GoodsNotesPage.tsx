@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -464,7 +465,7 @@ export function GoodsNotesSection({
               sorter: true,
               sortOrder: list.sortOrderOf('date'),
               width: 110,
-              render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+              render: (v: string) => formatDate(v),
             },
             {
               title: t('stock.warehouse'),
@@ -515,7 +516,7 @@ export function GoodsNotesSection({
               ),
             },
           ]}
-        />
+         scroll={{ x: 'max-content' }}/>
       </div>
     );
   }
@@ -725,7 +726,7 @@ export function GoodsNotesSection({
                 </DocValue>
               </DocField>
               <DocField label={t('goods.date')}>
-                <DocValue>{dayjs(entry.noteDate).format('YYYY-MM-DD')}</DocValue>
+                <DocValue>{formatDate(entry.noteDate)}</DocValue>
               </DocField>
               <DocField label={t('stock.warehouse')}>
                 <DocValue>{entry.warehouse ? codeAndName(entry.warehouse) : '—'}</DocValue>
@@ -799,7 +800,7 @@ export function GoodsNotesSection({
                       },
                     ]),
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           </>
         ) : (
           <Table
@@ -830,7 +831,7 @@ export function GoodsNotesSection({
                 render: unitCostCell,
               },
             ]}
-          />
+           scroll={{ x: 'max-content' }}/>
         )}
       </DocLayout>
     </div>

@@ -488,6 +488,84 @@ export class DashboardBelowMinimumDto {
   items!: DashboardBelowMinimumItemDto[];
 }
 
+export class DashboardMonthlyDto {
+  @ApiProperty({ type: 'string', example: '2026-03' })
+  month!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  sales!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  expenses!: string;
+}
+
+export class DashboardCashBankDto {
+  @ApiProperty({ type: 'string' })
+  accountId!: string;
+
+  @ApiProperty({ type: 'string' })
+  code!: string;
+
+  @ApiProperty({ type: 'string' })
+  nameAr!: string;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  nameEn!: string | null;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  balance!: string;
+}
+
+export class DashboardReceivablesAgingDto {
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  current!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  d1_30!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  d31_60!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  d61_90!: string;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  d90plus!: string;
+}
+
+export class DashboardChequeDirectionDto {
+  @ApiProperty({ type: 'integer' })
+  count!: number;
+
+  @ApiProperty({ type: 'string', format: 'decimal' })
+  amount!: string;
+}
+
+export class DashboardChequesDueDto {
+  @ApiProperty({ type: () => DashboardChequeDirectionDto })
+  incoming!: DashboardChequeDirectionDto;
+
+  @ApiProperty({ type: () => DashboardChequeDirectionDto })
+  outgoing!: DashboardChequeDirectionDto;
+}
+
+export class DashboardDraftsDto {
+  @ApiProperty({ type: 'integer' })
+  journalEntries!: number;
+
+  @ApiProperty({ type: 'integer' })
+  salesInvoices!: number;
+
+  @ApiProperty({ type: 'integer' })
+  purchaseInvoices!: number;
+
+  @ApiProperty({ type: 'integer' })
+  receipts!: number;
+
+  @ApiProperty({ type: 'integer' })
+  payments!: number;
+}
+
 /** The dashboard summary (DashboardService.summary). */
 export class DashboardSummaryDto {
   @ApiProperty({ type: 'string', format: 'date' })
@@ -504,6 +582,24 @@ export class DashboardSummaryDto {
 
   @ApiProperty({ type: () => DashboardBelowMinimumDto })
   belowMinimum!: DashboardBelowMinimumDto;
+
+  @ApiProperty({ type: () => DashboardMonthlyDto, isArray: true })
+  monthly!: DashboardMonthlyDto[];
+
+  @ApiProperty({ type: () => DashboardCashBankDto, isArray: true, nullable: true })
+  cashBank!: DashboardCashBankDto[] | null;
+
+  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
+  cashBankTotal!: string | null;
+
+  @ApiProperty({ type: () => DashboardReceivablesAgingDto, nullable: true })
+  receivablesAging!: DashboardReceivablesAgingDto | null;
+
+  @ApiProperty({ type: () => DashboardChequesDueDto, nullable: true })
+  chequesDue!: DashboardChequesDueDto | null;
+
+  @ApiProperty({ type: () => DashboardDraftsDto, nullable: true })
+  drafts!: DashboardDraftsDto | null;
 }
 
 /** One account's cash effect, Cr − Dr over the period (ADR-036). */

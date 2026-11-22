@@ -261,6 +261,9 @@ export class PayrollEmployeeStatementRowDto {
   @ApiProperty({ type: 'string' }) documentNo!: string;
   @ApiProperty({ type: 'string' }) documentType!: string;
   @ApiProperty({ type: 'string' }) description!: string;
+  @ApiProperty({ type: 'string', nullable: true }) descriptionKey!: string | null;
+  @ApiProperty({ type: 'object', nullable: true, additionalProperties: true })
+  descriptionParams!: unknown;
   @ApiProperty({ type: 'string', format: 'decimal' }) debit!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) credit!: string;
   @ApiProperty({ type: 'string', format: 'decimal' }) balance!: string;

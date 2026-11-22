@@ -208,7 +208,7 @@ export function PayrollSettlementsTab() {
           <Button onClick={() => setSelectedId(row.id)}>{t('payroll.viewSettlement')}</Button>
         ) },
       ]}
-    />
+     scroll={{ x: 'max-content' }}/>
     {selected && <>
       <Descriptions
         bordered

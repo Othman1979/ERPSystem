@@ -29,7 +29,8 @@ import {
   message,
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
-import dayjs, { type Dayjs } from 'dayjs';
+import type { Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -53,6 +54,7 @@ import {
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyCta } from '../components/EmptyCta';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { usePagedQuery } from '../hooks/usePagedQuery';
@@ -181,6 +183,45 @@ function ItemsTab() {
     );
   };
 
+  const itemActions = (row: Item) => (
+    <Space size={4}>
+      <Button size="small" onClick={() => openEdit(row)}>
+        {t('common.edit')}
+      </Button>
+      <Dropdown
+        trigger={['click']}
+        menu={{
+          items: [
+            ...(holdsStock(row.itemKind)
+              ? [{ key: 'ledger', icon: <ProfileOutlined />, label: t('items.ledger') }]
+              : []),
+            { key: 'barcode', icon: <BarcodeOutlined />, label: t('items.barcode') },
+            ...(row.isActive
+              ? [
+                  { type: 'divider' as const },
+                  { key: 'deactivate', danger: true, label: t('common.deactivate') },
+                ]
+              : []),
+          ],
+          onClick: ({ key }) => {
+            if (key === 'ledger') setLedgerItem(row);
+            else if (key === 'barcode') setBarcodeItem(row);
+            else if (key === 'deactivate')
+              modal.confirm({
+                title: t('items.deactivateConfirm', { name: displayName(row) }),
+                okText: t('common.deactivate'),
+                okButtonProps: { danger: true },
+                cancelText: t('common.cancel'),
+                onOk: () => deactivate.mutateAsync(row.id),
+              });
+          },
+        }}
+      >
+        <Button size="small" icon={<MoreOutlined />} aria-label={t('common.more')} />
+      </Dropdown>
+    </Space>
+  );
+
   const columns = [
     {
       title: t('items.code'),
@@ -239,44 +280,7 @@ function ItemsTab() {
       title: t('common.actions'), key: 'actions',
       width: 120,
       // One visible action per row; the rest live in the "⋯" menu.
-      render: (_: unknown, row: Item) => (
-        <Space size={4}>
-          <Button size="small" onClick={() => openEdit(row)}>
-            {t('common.edit')}
-          </Button>
-          <Dropdown
-            trigger={['click']}
-            menu={{
-              items: [
-                ...(holdsStock(row.itemKind)
-                  ? [{ key: 'ledger', icon: <ProfileOutlined />, label: t('items.ledger') }]
-                  : []),
-                { key: 'barcode', icon: <BarcodeOutlined />, label: t('items.barcode') },
-                ...(row.isActive
-                  ? [
-                      { type: 'divider' as const },
-                      { key: 'deactivate', danger: true, label: t('common.deactivate') },
-                    ]
-                  : []),
-              ],
-              onClick: ({ key }) => {
-                if (key === 'ledger') setLedgerItem(row);
-                else if (key === 'barcode') setBarcodeItem(row);
-                else if (key === 'deactivate')
-                  modal.confirm({
-                    title: t('items.deactivateConfirm', { name: displayName(row) }),
-                    okText: t('common.deactivate'),
-                    okButtonProps: { danger: true },
-                    cancelText: t('common.cancel'),
-                    onOk: () => deactivate.mutateAsync(row.id),
-                  });
-              },
-            }}
-          >
-            <Button size="small" icon={<MoreOutlined />} aria-label={t('common.more')} />
-          </Dropdown>
-        </Space>
-      ),
+      render: (_: unknown, row: Item) => itemActions(row),
     },
   ];
 
@@ -315,7 +319,7 @@ function ItemsTab() {
         }
       />
       {view === 'table' ? (
-        <Table
+        <ResponsiveTable<Item>
           rowKey="id"
           size="small"
           loading={isLoading}
@@ -335,6 +339,19 @@ function ItemsTab() {
           pagination={list.pagination}
           onChange={list.onTableChange}
           columns={columns}
+          mobileCard={{
+            title: (item) => displayName(item),
+            subtitle: (item) =>
+              `${item.code}${item.baseUnit ? ` · ${item.baseUnit.code}` : ''}${item.itemGroup ? ` · ${displayName(item.itemGroup)}` : ''}`,
+            amount: (item) => amountCell(item.salePrice),
+            status: (item) => <ActiveTag active={item.isActive} />,
+            meta: (item) => [
+              <KindTag kind={item.itemKind} />,
+              <span>{t('items.onHand')}: {stockBadge(item)}</span>,
+              <span>{t('items.purchasePrice')}: {amountCell(item.purchasePrice)}</span>,
+            ],
+            actions: itemActions,
+          }}
         />
       ) : (
         <Row gutter={[12, 12]}>
@@ -504,7 +521,7 @@ function LedgerModal({
             title: t('items.date'),
             dataIndex: 'movementDate',
             width: 110,
-            render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : ''),
+            render: (v: string) => (v ? formatDate(v) : ''),
           },
           {
             title: t('stock.warehouse'),
@@ -774,7 +791,7 @@ function GroupsTab() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <FormDialog
         title={editing ? t('items.editGroup') : t('items.addGroup')}
         open={modalOpen}

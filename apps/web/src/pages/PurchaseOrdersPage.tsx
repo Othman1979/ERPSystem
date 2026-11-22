@@ -3,6 +3,7 @@ import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { Alert, Button, Input, InputNumber, Popconfirm, Select, Table, Typography, message } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -40,6 +41,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { ListToolbar } from '../components/ListToolbar';
@@ -260,7 +262,7 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
       sorter: true,
       sortOrder: list.sortOrderOf('orderDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('procurement.supplier'),
@@ -316,7 +318,7 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
           )
         }
       />
-      <Table
+      <ResponsiveTable<PurchaseOrderListItemDto>
         rowKey="id"
         loading={list.query.isLoading}
         dataSource={list.rows}
@@ -326,6 +328,16 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => onOpen(r.id), style: { cursor: 'pointer' } })}
+        mobileCard={{
+          title: (order) => order.orderNo ?? t('procurement.draftNo'),
+          subtitle: (order) => `${formatDate(order.orderDate)} · ${displayName(order.supplier) ?? '—'}`,
+          amount: (order) => amountCell(order.grandTotal),
+          status: (order) => (
+            <StatusTag tone={STATUS_TONE[order.status]}>{t(`procurement.statuses.${order.status}`)}</StatusTag>
+          ),
+          meta: (order) =>
+            order.request?.requestNo ? [<span>{t('procurement.requestNo')}: {order.request.requestNo}</span>] : [],
+        }}
       />
     </div>
   );
@@ -955,10 +967,10 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
           <DocValue>{codeAndName(order.warehouse)}</DocValue>
         </DocField>
         <DocField label={t('procurement.orderDate')}>
-          <DocValue>{dayjs(order.orderDate).format('YYYY-MM-DD')}</DocValue>
+          <DocValue>{formatDate(order.orderDate)}</DocValue>
         </DocField>
         <DocField label={t('procurement.expectedDate')}>
-          <DocValue>{order.expectedDate ? dayjs(order.expectedDate).format('YYYY-MM-DD') : '—'}</DocValue>
+          <DocValue>{order.expectedDate ? formatDate(order.expectedDate) : '—'}</DocValue>
         </DocField>
         {order.request && (
           <DocField label={t('procurement.request')}>
@@ -1026,7 +1038,7 @@ function OrderView({ order, onBack }: { order: PurchaseOrderDetailDto; onBack: (
           { title: t('procurement.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
           { title: t('procurement.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       {beyondApproval && <OrderDocuments orderId={order.id} />}
 
@@ -1096,7 +1108,7 @@ function OrderDocuments({ orderId }: { orderId: string }) {
         (r) => r.data,
       ),
   });
-  const docDate = (v: string) => dayjs(v).format('YYYY-MM-DD');
+  const docDate = (v: string) => formatDate(v);
   const docStatus = (v: string) => (
     <StatusTag tone={v === 'POSTED' ? 'success' : 'neutral'}>
       {v === 'POSTED' ? t('common.posted') : t('common.draft')}
@@ -1118,7 +1130,7 @@ function OrderDocuments({ orderId }: { orderId: string }) {
           { title: t('procurement.docDate'), dataIndex: 'noteDate', width: 120, render: docDate },
           { title: t('common.status'), dataIndex: 'status', width: 120, render: docStatus },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <Typography.Text strong style={{ display: 'block', marginTop: 12 }}>
         {t('procurement.purchaseInvoices')}
       </Typography.Text>
@@ -1134,8 +1146,7 @@ function OrderDocuments({ orderId }: { orderId: string }) {
           { title: t('procurement.docDate'), dataIndex: 'invoiceDate', width: 120, render: docDate },
           { title: t('common.status'), dataIndex: 'status', width: 120, render: docStatus },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
     </section>
   );
 }
-

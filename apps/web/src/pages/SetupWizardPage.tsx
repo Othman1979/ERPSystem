@@ -3,6 +3,7 @@ import { CheckCircleFilled } from '@ant-design/icons';
 import { Alert, App, Button, Card, Form, Input, Result, Space, Steps, Table, Tag, Typography } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -168,7 +169,9 @@ export function SetupWizardPage() {
           <Space wrap>
             <DatePicker value={fyStart} allowClear={false} onChange={(d) => d && setFyStart(d)} />
             <Typography.Text>
-              {t('setup.yearEnds', { end: fyStart.add(1, 'year').subtract(1, 'day').format('YYYY-MM-DD') })}
+              {t('setup.yearEnds', {
+                end: formatDate(fyStart.add(1, 'year').subtract(1, 'day').format('YYYY-MM-DD')),
+              })}
             </Typography.Text>
             <Button type="primary" loading={createYear.isPending} onClick={() => createYear.mutate()}>
               {t('setup.createYear')}
@@ -201,7 +204,7 @@ export function SetupWizardPage() {
             { title: t('settings.rate'), dataIndex: 'rate', width: 100, render: (v: string) => `${v}%` },
             { title: '', dataIndex: 'isDefault', width: 90, render: (v?: boolean) => (v ? <Tag color="blue">{t('settings.isDefault')}</Tag> : null) },
           ]}
-        />
+         scroll={{ x: 'max-content' }}/>
         <Button onClick={() => navigate('/settings')}>{t('setup.editInSettings')}</Button>
       </Space>
     </>,

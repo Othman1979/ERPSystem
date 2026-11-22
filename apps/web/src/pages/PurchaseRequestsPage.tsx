@@ -13,6 +13,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -236,7 +237,7 @@ export function PurchaseRequestsPage() {
       sorter: true,
       sortOrder: list.sortOrderOf('requestDate'),
       width: 120,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('procurement.neededBy'),
@@ -325,7 +326,7 @@ export function PurchaseRequestsPage() {
           pagination={list.pagination}
           onChange={list.onTableChange}
           onRow={(r) => ({ onClick: () => openRequest(r.id), style: { cursor: 'pointer' } })}
-        />
+         scroll={{ x: 'max-content' }}/>
       </div>
     );
   }
@@ -976,7 +977,7 @@ function RequestView({
             render: (v: string | null) => v ?? '—',
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       <Typography.Text strong>{t('procurement.quotes')}</Typography.Text>
       <Table
@@ -990,7 +991,7 @@ function RequestView({
           { title: t('common.status'), dataIndex: 'status', render: (v: PurchaseQuoteStatus) => <StatusLabel status={v} /> },
           { title: t('procurement.total'), dataIndex: 'grandTotal', width: 130, align: 'right' as const, render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       <Typography.Text strong>{t('procurement.orders')}</Typography.Text>
       <Table
@@ -1004,7 +1005,7 @@ function RequestView({
           { title: t('common.status'), dataIndex: 'status', render: (v: PurchaseOrderStatus) => <StatusLabel status={v} /> },
           { title: t('procurement.total'), dataIndex: 'grandTotal', width: 130, align: 'right' as const, render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {t('procurement.noEffectHint')}

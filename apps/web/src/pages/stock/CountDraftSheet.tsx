@@ -15,7 +15,7 @@ import {
   type InputRef,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
+import { formatDateTime } from '../../format/date';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -273,7 +273,7 @@ export function CountDraftSheet({
       render: (_: unknown, l: StockCountLineDto) =>
         l.countedAt ? (
           <span className="count-meta">
-            {dayjs(l.countedAt).format('YYYY-MM-DD HH:mm')}
+            {formatDateTime(l.countedAt)}
             {userId && l.countedBy === userId ? ` · ${t('stockCount.you')}` : ''}
           </span>
         ) : (

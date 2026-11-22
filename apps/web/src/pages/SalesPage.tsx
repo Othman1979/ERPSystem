@@ -19,6 +19,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { useTranslation } from 'react-i18next';
@@ -48,6 +49,7 @@ import {
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
 import { emptyCtaForList, EmptyCta } from '../components/EmptyCta';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { ListToolbar } from '../components/ListToolbar';
@@ -236,9 +238,11 @@ function useSalesOrder(orderId: string | null | undefined) {
 function InvoicesTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<SalesControllerListInvoicesStatus | undefined>(undefined);
-  // A sales order opens its new draft invoice here with ?invoiceId=...; it opens in the view.
   const [params, setParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<SalesControllerListInvoicesStatus | undefined>(
+    () => (params.get('status') === 'DRAFT' ? 'DRAFT' : undefined),
+  );
+  // A sales order opens its new draft invoice here with ?invoiceId=...; it opens in the view.
   const linkedInvoiceId = params.get('invoiceId');
   const [screen, setScreen] = useState<'list' | 'form' | 'view'>(linkedInvoiceId ? 'view' : 'list');
   const [invoiceId, setInvoiceId] = useState<string | null>(linkedInvoiceId);
@@ -375,7 +379,7 @@ function InvoicesTab() {
       sorter: true,
       sortOrder: list.sortOrderOf('invoiceDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('sales.customer'),
@@ -511,7 +515,7 @@ function InvoicesTab() {
           </Button>
         }
       />
-      <Table
+      <ResponsiveTable<SalesInvoiceListItemDto>
         rowKey="id"
         loading={isLoading}
         dataSource={list.rows}
@@ -535,6 +539,20 @@ function InvoicesTab() {
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => { setInvoiceId(r.id); setScreen('view'); }, style: { cursor: 'pointer' } })}
+        mobileCard={{
+          title: (invoice) => invoice.invoiceNo ?? `#${invoice.id}`,
+          subtitle: (invoice) => `${formatDate(invoice.invoiceDate)} · ${displayName(invoice.customer) ?? '—'}`,
+          amount: (invoice) => amountCell(invoice.grandTotal),
+          status: (invoice) => (
+            <Tag color={invoice.status === 'POSTED' ? 'green' : 'default'}>
+              {t(`common.${invoice.status === 'POSTED' ? 'posted' : 'draft'}`)}
+            </Tag>
+          ),
+          meta: (invoice) => [
+            <span>{t(`sales.${invoice.paymentType}`)}</span>,
+            <span>{t('sales.paid')}: {amountCell(invoice.paidAmount)}</span>,
+          ],
+        }}
       />
     </div>
   );
@@ -1251,10 +1269,10 @@ function InvoiceView({
           </DocValue>
         </DocField>
         <DocField label={t('sales.invoiceDate')}>
-          <DocValue>{dayjs(invoice.invoiceDate).format('YYYY-MM-DD')}</DocValue>
+          <DocValue>{formatDate(invoice.invoiceDate)}</DocValue>
         </DocField>
         <DocField label={t('sales.dueDate')}>
-          <DocValue>{invoice.dueDate ? dayjs(invoice.dueDate).format('YYYY-MM-DD') : '—'}</DocValue>
+          <DocValue>{invoice.dueDate ? formatDate(invoice.dueDate) : '—'}</DocValue>
         </DocField>
         {costCenters.enabled && invoice.costCenterId && (
           <DocField label={t('costCenters.documentField')}>
@@ -1419,7 +1437,7 @@ function ReturnsTab() {
       sorter: true,
       sortOrder: list.sortOrderOf('returnDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('sales.invoice'),
@@ -1517,7 +1535,7 @@ function ReturnsTab() {
                   <DocValue>{displayName(view.customer)}</DocValue>
                 </DocField>
                 <DocField label={t('sales.date')}>
-                  <DocValue>{dayjs(view.returnDate).format('YYYY-MM-DD')}</DocValue>
+                  <DocValue>{formatDate(view.returnDate)}</DocValue>
                 </DocField>
                 <DocField label={t('sales.refundType')}>
                   <DocValue>{t(`sales.${view.refundType}`)}</DocValue>
@@ -1558,7 +1576,7 @@ function ReturnsTab() {
                   { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'right' as const, className: 'num', render: qtyCell },
                   { title: t('sales.total'), dataIndex: 'lineTotal', width: 120, align: 'right' as const, className: 'num', render: amountCell },
                 ]}
-              />
+               scroll={{ x: 'max-content' }}/>
               <EInvoiceQrPanel einvoice={view.einvoice} />
             </>
           ) : (
@@ -1602,6 +1620,7 @@ function ReturnsTab() {
         locale={tableLocale(list.query)}
         columns={columns}
         size="small"
+        scroll={{ x: 'max-content' }}
         pagination={list.pagination}
         onChange={list.onTableChange}
       />
@@ -1833,7 +1852,7 @@ function ReturnForm({
               render: amountCell,
             },
           ]}
-        />
+         scroll={{ x: 'max-content' }}/>
       )}
     </DocLayout>
   );

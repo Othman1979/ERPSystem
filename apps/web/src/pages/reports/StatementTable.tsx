@@ -130,6 +130,6 @@ export function StatementTable({
             ),
         },
       ]}
-    />
+     scroll={{ x: 'max-content' }}/>
   );
 }

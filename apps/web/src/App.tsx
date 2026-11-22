@@ -50,15 +50,12 @@ import {
   APP_GROUPS,
   INVITATIONS_PATH,
   PLATFORM_PATH,
-  QUICK_ACTIONS,
   routeForPath,
   SETUP_PATH,
   SETUP_PERMISSION,
-  type AppGroup,
-  type AppRoute,
 } from './routes';
 import { reportError } from './errorReporting';
-import { installCssVariables, palette, TOPBAR_HEIGHT } from './theme';
+import { installCssVariables, TOPBAR_HEIGHT } from './theme';
 
 // The --c-* custom properties index.css uses, generated from the palette (UI-20).
 installCssVariables();
@@ -127,33 +124,9 @@ class ViewErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundary
   }
 }
 
-/** Home-screen module group: a titled panel listing its screens as links. */
-function HomeGroup({ group, onOpen }: { group: AppGroup; onOpen: (route: AppRoute) => void }) {
-  const { t } = useTranslation();
-  return (
-    <section className="home-group">
-      <div className="home-group-head">
-        <span className="home-group-dot" style={{ background: palette.moduleTone[group.tone].fg }} />
-        {t(group.label)}
-      </div>
-      {group.routes.map((r) => (
-        <button key={r.key} type="button" className="home-link" onClick={() => onOpen(r)}>
-          <span className="home-link-icon" style={{ color: palette.moduleTone[group.tone].fg }}>
-            {r.icon}
-          </span>
-          {t(r.label)}
-        </button>
-      ))}
-    </section>
-  );
-}
-
 function HomeScreen() {
   const { t } = useTranslation();
-  const { me, can, allBranches } = useAuth();
-  // Only what the role can use: the API would refuse the rest with 403.
-  const quickActions = QUICK_ACTIONS.filter((a) => can(a.permission) && (a.key !== 'payrollRun' || allBranches));
-  const groups = allowedGroups(APP_GROUPS, can, useProcurementLevel(), allBranches);
+  const { me, can } = useAuth();
   const canSetUp = can(SETUP_PERMISSION);
   const navigate = useNavigate();
   const company = useCompany();
@@ -189,21 +162,6 @@ function HomeScreen() {
         </div>
       </div>
       <HomeDashboard />
-      {quickActions.length > 0 && (
-        <div className="home-quick">
-          <span className="home-quick-title">{t('dashboard.quickActions')}</span>
-          {quickActions.map((a) => (
-            <Button key={a.key} icon={a.icon} onClick={() => navigate(a.path)}>
-              {t(a.label)}
-            </Button>
-          ))}
-        </div>
-      )}
-      <div className="home-groups">
-        {groups.map((g) => (
-          <HomeGroup key={g.label} group={g} onOpen={(r) => navigate(r.path)} />
-        ))}
-      </div>
     </>
   );
 }

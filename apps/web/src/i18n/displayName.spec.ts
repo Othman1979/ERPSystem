@@ -18,6 +18,10 @@ describe('displayName', () => {
     expect(displayName({ nameAr: 'صنف', nameEn: '   ' }, 'en')).toBe('صنف');
   });
 
+  it('falls back to English when the Arabic name is blank', () => {
+    expect(displayName({ nameAr: '  ', nameEn: 'Cash' }, 'ar')).toBe('Cash');
+  });
+
   it('returns undefined for a missing record', () => {
     expect(displayName(null)).toBeUndefined();
     expect(displayName(undefined)).toBeUndefined();
@@ -27,9 +31,9 @@ describe('displayName', () => {
 describe('bothNames', () => {
   const both = { nameAr: 'الصندوق', nameEn: 'Cash' };
 
-  it('puts the UI language first', () => {
-    expect(bothNames(both, 'ar')).toBe('الصندوق (Cash)');
-    expect(bothNames(both, 'en')).toBe('Cash (الصندوق)');
+  it('shows only the UI language', () => {
+    expect(bothNames(both, 'ar')).toBe('الصندوق');
+    expect(bothNames(both, 'en')).toBe('Cash');
   });
 
   it('shows one name when there is no English name', () => {

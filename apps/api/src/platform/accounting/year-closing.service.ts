@@ -315,7 +315,9 @@ export class YearClosingService {
           sourceType: 'YEAR_CLOSING',
           sourceId: closing.id,
           isClosing: true,
-          description: null,
+          description: 'Year closing',
+          descriptionKey: 'journal.auto.yearClosing',
+          descriptionParams: {},
           lines: computation.lines.map(
             (line): JournalLineInput => ({
               accountId: line.accountId,

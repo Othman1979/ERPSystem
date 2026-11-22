@@ -183,6 +183,16 @@ export class VouchersService implements OnModuleInit {
     return documentType === 'SALES_INVOICE' ? this.sales : this.purchases;
   }
 
+  async draftCounts() {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const [receipts, payments] = await Promise.all([
+      db.receipt.count({ where: { companyId, status: 'DRAFT', AND: [branchWhere()] } }),
+      db.payment.count({ where: { companyId, status: 'DRAFT', AND: [branchWhere()] } }),
+    ]);
+    return { receipts, payments };
+  }
+
   // ------------------------------------------------------------- receipts
 
   /**
@@ -348,6 +358,8 @@ export class VouchersService implements OnModuleInit {
           branchId, // ADR-003: the entry carries its voucher's branch
           voucherType: 'RECEIPT_VOUCHER',
           description: dto.description ?? `Receipt ${receiptNo}`,
+          descriptionKey: dto.description == null ? 'journal.auto.receipt' : null,
+          descriptionParams: dto.description == null ? { number: receiptNo } : undefined,
           lines: [
             { accountId: debitAccount, debit: amount.toString() },
             {
@@ -618,6 +630,8 @@ export class VouchersService implements OnModuleInit {
           branchId, // ADR-003: the entry carries its voucher's branch
           voucherType: 'PAYMENT_VOUCHER',
           description: dto.description ?? `Payment ${paymentNo}`,
+          descriptionKey: dto.description == null ? 'journal.auto.payment' : null,
+          descriptionParams: dto.description == null ? { number: paymentNo } : undefined,
           lines: [
             ...debitLines,
             { accountId: creditAccount, credit: amount.toString() },
@@ -892,13 +906,17 @@ export class VouchersService implements OnModuleInit {
         }
 
         const no = kind === 'receipt' ? (full as { receiptNo: string }).receiptNo : (full as { paymentNo: string }).paymentNo;
-        const description = dto.description ?? full.description;
+        const description = dto.description === undefined ? full.description : dto.description;
+        const hasUserDescription = description !== null && description !== '';
+        const generatedDescription = `${kind === 'receipt' ? 'Receipt' : 'Payment'} ${no}`;
         await this.posting.amendEntry(tx, {
           tenantId,
           companyId,
           entryId: v.journalEntryId,
           entryDate: date,
-          description: description ?? `${kind === 'receipt' ? 'Receipt' : 'Payment'} ${no}`,
+          description: hasUserDescription ? description : generatedDescription,
+          descriptionKey: hasUserDescription ? null : `journal.auto.${kind}`,
+          descriptionParams: hasUserDescription ? null : { number: no },
           lines,
           costCenterId,
           requireCostCenters: true,
@@ -908,7 +926,7 @@ export class VouchersService implements OnModuleInit {
           cashAccountId,
           costCenterId,
           referenceNo: dto.referenceNo ?? full.referenceNo,
-          description: description ?? null,
+          description: hasUserDescription ? description : null,
         };
         if (kind === 'receipt') await tx.receipt.update({ where: { id }, data: { ...data, receiptDate: date } });
         else await tx.payment.update({ where: { id }, data: { ...data, paymentDate: date, expenseAccountId } });
@@ -926,7 +944,13 @@ export class VouchersService implements OnModuleInit {
             costCenterId: full.costCenterId?.toString() ?? null,
             description: full.description,
           },
-          after: { date: dto.voucherDate, amount: amount.toString(), cashAccountId: cashAccountId.toString(), costCenterId: costCenterId?.toString() ?? null, description },
+          after: {
+            date: dto.voucherDate,
+            amount: amount.toString(),
+            cashAccountId: cashAccountId.toString(),
+            costCenterId: costCenterId?.toString() ?? null,
+            description: hasUserDescription ? description : null,
+          },
         }, tx);
       }, POSTING_TX_OPTIONS),
     );

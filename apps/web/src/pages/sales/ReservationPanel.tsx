@@ -90,7 +90,7 @@ export function ReservationPanel({
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
     </section>
   );
 }

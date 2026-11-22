@@ -17,6 +17,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -139,7 +140,7 @@ function BalancesTab() {
           { title: t('items.unit'), dataIndex: 'unit', width: 80 },
           { title: t('items.minStock'), dataIndex: 'minStock', width: 100, align: 'right' as const, render: qtyCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
     </>
   );
 }
@@ -351,7 +352,7 @@ function AdjustmentsTab() {
             sorter: true,
             sortOrder: list.sortOrderOf('date'),
             width: 110,
-            render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '—'),
+            render: (v: string) => (v ? formatDate(v) : '—'),
           },
           {
             title: t('stock.type'),
@@ -409,7 +410,7 @@ function AdjustmentsTab() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <Modal
         title={t('journal.reverseTitle')}
         open={!!reverseTarget}
@@ -617,7 +618,7 @@ function TransfersTab() {
             sorter: true,
             sortOrder: list.sortOrderOf('date'),
             width: 110,
-            render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '—'),
+            render: (v: string) => (v ? formatDate(v) : '—'),
           },
           {
             title: t('stock.from'),
@@ -674,7 +675,7 @@ function TransfersTab() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <Modal
         title={t('journal.reverseTitle')}
         open={!!reverseTarget}
@@ -756,7 +757,7 @@ function MovementsTab() {
             title: t('stock.date'),
             dataIndex: 'movementDate',
             width: 110,
-            render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+            render: (v: string) => formatDate(v),
           },
           {
             title: t('stock.warehouse'),
@@ -779,7 +780,7 @@ function MovementsTab() {
           { title: t('stock.totalCost'), dataIndex: 'totalCost', width: 110, align: 'right' as const, render: amountCell },
           { title: t('stock.balanceAfter'), dataIndex: 'balanceQtyAfter', width: 110, align: 'right' as const, render: qtyCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <LoadMore
         hasMore={read.hasMore}
         loading={read.loadingMore}
@@ -818,7 +819,7 @@ function ValuationTab() {
           { title: t('stock.avgCost'), dataIndex: 'avgCost', width: 110, align: 'right' as const, render: unitCostCell },
           { title: t('stock.value'), dataIndex: 'value', width: 120, align: 'right' as const, render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
     </>
   );
 }

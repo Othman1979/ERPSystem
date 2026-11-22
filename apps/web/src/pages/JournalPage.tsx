@@ -28,6 +28,7 @@ import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { useEntryDraft } from '../hooks/useEntryDraft';
@@ -84,12 +85,15 @@ import {
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyCta } from '../components/EmptyCta';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { queryErrorMessage, tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { LIVE_REFRESH_MS, PICKER_FRESH_MS, refetchIfOlderThan } from '../liveRefresh';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
+import { entryDescription } from '../i18n/entryDescription';
+import { formatDate } from '../format/date';
 import { Num } from '../components/Num';
 import { amountCell, amountOrBlankCell } from '../format/cells';
 import { formatMoney } from '../format/number';
@@ -140,7 +144,10 @@ export function JournalPage() {
   const { t } = useTranslation();
   const { can, me, companyId } = useAuth();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<JournalControllerListStatus | undefined>(undefined);
+  const [searchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<JournalControllerListStatus | undefined>(
+    () => (searchParams.get('status') === 'DRAFT' ? 'DRAFT' : undefined),
+  );
   const [typeFilter, setTypeFilter] = useState<JournalControllerListVoucherType | undefined>(undefined);
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new entry
@@ -555,7 +562,7 @@ export function JournalPage() {
               </Dropdown.Button>
           }
         />
-        <Table
+        <ResponsiveTable<JournalEntryListItemDto>
           rowKey="id"
           loading={list.query.isLoading}
           dataSource={list.rows}
@@ -574,6 +581,40 @@ export function JournalPage() {
           pagination={list.pagination}
           onChange={list.onTableChange}
           onRow={(e) => ({ onClick: () => openEntry(e.id), style: { cursor: 'pointer' } })}
+          mobileCard={{
+            title: (entry) => entry.entryNo ?? '—',
+            subtitle: (entry) => (
+              <>
+                {formatDate(entry.entryDate)}
+                {entryDescription(t, entry) ? ` · ${entryDescription(t, entry)}` : ''}
+              </>
+            ),
+            amount: (entry) => amountCell(entry.totalDebit),
+            status: (entry) =>
+              entry.status !== 'POSTED' ? (
+                <Tag>{t('journal.draft')}</Tag>
+              ) : entry.reversals?.length ? (
+                <Tag color="orange">{t('journal.reversedStatus')}</Tag>
+              ) : (
+                <Tag color="green">{t('journal.postedStatus')}</Tag>
+              ),
+            meta: (entry) => [<span>{t(VOUCHER_TYPE_LABEL[entry.voucherType])}</span>],
+            actions: (entry) =>
+              entry.status === 'DRAFT' ? (
+                <Space>
+                  <Popconfirm title={t('journal.confirmPost')} onConfirm={() => postEntry.mutate(entry.id)}>
+                    <Button size="small" type="primary">
+                      {t('journal.post')}
+                    </Button>
+                  </Popconfirm>
+                  <Popconfirm title={t('common.confirmDelete')} onConfirm={() => deleteDraft.mutate(entry.id)}>
+                    <Button size="small" danger>
+                      {t('common.delete')}
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ) : null,
+          }}
           columns={[
             {
               title: t('journal.entryNo'),
@@ -595,15 +636,16 @@ export function JournalPage() {
               title: t('journal.date'),
               dataIndex: 'entryDate',
               key: 'entryDate',
-              sorter: true,
-              sortOrder: list.sortOrderOf('entryDate'),
-              width: 110,
-              render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
-            },
-            {
-              title: t('common.description'),
-              dataIndex: 'description',
-              render: (v: string | null) => v ?? '—',
+                sorter: true,
+                sortOrder: list.sortOrderOf('entryDate'),
+                width: 110,
+                render: (v: string) => formatDate(v),
+              },
+              {
+                title: t('common.description'),
+                dataIndex: 'description',
+                render: (_v: string | null, e: JournalEntryListItemDto) =>
+                  entryDescription(t, e) || '—',
             },
             {
               title: t('common.status'),
@@ -821,10 +863,10 @@ export function JournalPage() {
               <DocValue>{entry ? <VoucherTag type={entry.voucherType} /> : '—'}</DocValue>
             </DocField>
             <DocField label={t('journal.date')}>
-              <DocValue>{entry ? dayjs(entry.entryDate).format('YYYY-MM-DD') : '—'}</DocValue>
+              <DocValue>{entry ? formatDate(entry.entryDate) : '—'}</DocValue>
             </DocField>
             <DocField label={t('common.description')} wide>
-              <DocValue>{entry?.description ?? '—'}</DocValue>
+              <DocValue>{entry ? entryDescription(t, entry) || '—' : '—'}</DocValue>
             </DocField>
             {entry?.reversalOf && (
               <DocField label={t('journal.reversalOf')}>
@@ -941,7 +983,7 @@ export function JournalPage() {
                 </Table.Summary.Cell>
               </Table.Summary.Row>
             )}
-          />
+           scroll={{ x: 'max-content' }}/>
         )}
       </DocLayout>
 
@@ -959,7 +1001,7 @@ export function JournalPage() {
       >
         <div style={{ marginBottom: 12 }}>
           <Typography.Text type="secondary">
-            {reverseTarget?.entryNo} — {reverseTarget?.description}
+            {reverseTarget?.entryNo} — {reverseTarget ? entryDescription(t, reverseTarget) : ''}
           </Typography.Text>
         </div>
         <div>

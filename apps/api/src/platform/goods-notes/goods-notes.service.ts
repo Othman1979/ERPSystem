@@ -733,6 +733,13 @@ export class GoodsNotesService implements OnModuleInit {
         sourceId: draft.id,
         branchId: draft.branchId,
         description: draft.description ?? `${draft.noteType} ${docNo}`,
+        descriptionKey:
+          draft.description == null
+            ? isGrn
+              ? 'journal.auto.goodsReceipt'
+              : 'journal.auto.goodsIssue'
+            : null,
+        descriptionParams: draft.description == null ? { number: docNo } : undefined,
         lines: journalLines,
         postedBy: userId ?? null,
         // ADR-024 §1.2 / ADR-026 §8: the department onto the income-statement lines.

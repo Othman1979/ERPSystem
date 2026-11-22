@@ -273,6 +273,31 @@ export class ChequesService {
     };
   }
 
+  async dueWithin(from: string, to: string) {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const totals = await Promise.all(
+      (['INCOMING', 'OUTGOING'] as const).map(async (direction) => {
+        const result = await db.cheque.aggregate({
+          where: this.where(companyId, { direction, open: true, dueFrom: from, dueTo: to }),
+          _count: { _all: true },
+          _sum: { amount: true },
+        });
+        return [
+          direction === 'INCOMING' ? 'incoming' : 'outgoing',
+          {
+            count: result._count._all,
+            amount: new Decimal(result._sum.amount?.toString() ?? 0).toFixed(3),
+          },
+        ] as const;
+      }),
+    );
+    return Object.fromEntries(totals) as {
+      incoming: { count: number; amount: string };
+      outgoing: { count: number; amount: string };
+    };
+  }
+
   /** Cheques by due date (oldest first), with the count and total of the whole filter. */
   async list(f: ChequeListFilter, page = 1, pageSize = 50) {
     const { db } = this.support.tenant();
@@ -450,6 +475,8 @@ export class ChequesService {
             sourceId: event.id,
             branchId: c.branchId,
             description: `Cheque ${c.chequeNo} ${action}`,
+            descriptionKey: `journal.auto.cheque${action[0]!.toUpperCase()}${action.slice(1)}`,
+            descriptionParams: { number: c.chequeNo },
             lines,
             postedBy: userId,
           });
@@ -541,6 +568,8 @@ export class ChequesService {
             entryId: last.journalEntryId,
             reversalDate: date,
             description: `Undo cheque ${c.chequeNo} ${last.action.toLowerCase()}`,
+            descriptionKey: `journal.auto.chequeUndo${last.action[0]!.toUpperCase()}${last.action.slice(1).toLowerCase()}`,
+            descriptionParams: { number: c.chequeNo },
             postedBy: userId,
           });
           undoEntryId = reversal.id;

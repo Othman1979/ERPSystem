@@ -80,6 +80,6 @@ export function BalancesTab() {
           <Table.Summary.Cell index={2} />
         </Table.Summary.Row>
       )}
-    />
+     scroll={{ x: 'max-content' }}/>
   );
 }

@@ -2,7 +2,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Popconfirm, Select, Space, Table, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
+import { formatDate } from '../../format/date';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -197,7 +197,7 @@ function BomsList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: () =
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => onOpen(r.id), style: { cursor: 'pointer' } })}
-      />
+       scroll={{ x: 'max-content' }}/>
     </div>
   );
 }
@@ -350,7 +350,7 @@ function BomView({ bom, onBack, onOpen }: { bom: BomDetailDto; onBack: () => voi
           <DocValue>{formatAmount(bom.appliedCostPerUnit)}</DocValue>
         </DocField>
         <DocField label={t('manufacturing.bom.activatedAt')}>
-          <DocValue>{bom.activatedAt ? dayjs(bom.activatedAt).format('YYYY-MM-DD') : '—'}</DocValue>
+          <DocValue>{bom.activatedAt ? formatDate(bom.activatedAt) : '—'}</DocValue>
         </DocField>
         {bom.note && (
           <DocField label={t('manufacturing.note')} wide>

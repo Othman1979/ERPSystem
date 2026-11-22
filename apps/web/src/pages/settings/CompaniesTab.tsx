@@ -117,7 +117,7 @@ export function CompaniesTab() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <FormDialog
         title={dialog?.mode === 'edit' ? t('companies.edit') : t('companies.new')}
         open={dialog !== null}

@@ -13,6 +13,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -250,7 +251,7 @@ export function IssueRequestsPage() {
       sorter: true,
       sortOrder: list.sortOrderOf('requestDate'),
       width: 120,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('stock.warehouse'),
@@ -341,7 +342,7 @@ export function IssueRequestsPage() {
           pagination={list.pagination}
           onChange={list.onTableChange}
           onRow={(r) => ({ onClick: () => openRequest(r.id), style: { cursor: 'pointer' } })}
-        />
+         scroll={{ x: 'max-content' }}/>
       </div>
     );
   }
@@ -748,7 +749,7 @@ function IssueRequestView({
             render: (v: string | null) => v ?? '—',
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {t('issueRequests.noEffectHint')}
@@ -934,7 +935,7 @@ function IssueDialog({ request, onClose }: { request: IssueRequestDetailDto; onC
                   ),
                 },
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           )}
           {overLine && (
             <div role="alert" className="doc-field-error">

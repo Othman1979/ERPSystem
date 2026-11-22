@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Checkbox, Form, Input, Modal, Select, Space, Table, Tag, Timeline, message } from 'antd';
+import { Button, Checkbox, Form, Input, Modal, Select, Space, Tag, Timeline, message } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -18,6 +19,7 @@ import {
 import { DatePicker } from '../../components/DatePicker';
 import { ExportButtons } from '../../components/ExportButtons';
 import { FormDialog } from '../../components/FormDialog';
+import { ResponsiveTable } from '../../components/ResponsiveTable';
 import { tableLocale } from '../../components/QueryState';
 import { amountCell } from '../../format/cells';
 import { formatAmount } from '../../format/number';
@@ -139,7 +141,7 @@ export function ChequesTab({ bankAccounts }: { bankAccounts: { value: string; la
       {listQuery.data && (
         <span>{t('cheques.total', { amount: formatAmount(listQuery.data.totalAmount), count: listQuery.data.total })}</span>
       )}
-      <Table<ChequeDto>
+      <ResponsiveTable<ChequeDto>
         rowKey="id"
         size="small"
         loading={listQuery.isLoading}
@@ -152,8 +154,38 @@ export function ChequesTab({ bankAccounts }: { bankAccounts: { value: string; la
           showSizeChanger: false,
           onChange: setPage,
         }}
+        mobileCard={{
+          title: (cheque) => cheque.chequeNo,
+          subtitle: (cheque) => `${formatDate(cheque.dueDate)} · ${name(cheque.party) || '—'}`,
+          amount: (cheque) => amountCell(cheque.amount),
+          status: (cheque) => (
+            <Tag color={STATUS_COLORS[cheque.status]}>{t(`cheques.statuses.${cheque.status}`)}</Tag>
+          ),
+          meta: (cheque) => [
+            <span>{t(`cheques.${cheque.direction}`)}</span>,
+            <span>{cheque.bankName || name(cheque.bankAccount)}</span>,
+            ...(cheque.voucherNo ? [<span>{t('cheques.voucher')}: {cheque.voucherNo}</span>] : []),
+          ],
+          actions: (cheque) => (
+            <Space size={4} wrap>
+              {stepsFor(cheque).map((s) => (
+                <Button key={s} size="small" onClick={() => setStep({ cheque, step: s })}>
+                  {t(`cheques.${s}`)}
+                </Button>
+              ))}
+              <Button size="small" type="link" onClick={() => setHistoryOf(cheque.id)}>
+                {t('cheques.history')}
+              </Button>
+            </Space>
+          ),
+        }}
         columns={[
-          { title: t('cheques.dueDate'), dataIndex: 'dueDate', width: 110 },
+          {
+            title: t('cheques.dueDate'),
+            dataIndex: 'dueDate',
+            width: 110,
+            render: (v: string | null) => (v ? formatDate(v) : '—'),
+          },
           { title: t('cheques.direction'), dataIndex: 'direction', width: 80, render: (v: string) => t(`cheques.${v}`) },
           { title: t('cheques.chequeNo'), dataIndex: 'chequeNo', width: 120 },
           {

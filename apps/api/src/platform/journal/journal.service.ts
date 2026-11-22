@@ -280,6 +280,20 @@ export class JournalService implements OnModuleInit {
     });
   }
 
+  async draftCount(): Promise<number> {
+    const { tenantId, db } = this.tenant();
+    const companyId = await this.companyId(db);
+    return db.journalEntry.count({
+      where: {
+        tenantId,
+        companyId,
+        status: 'DRAFT',
+        sourceType: { in: ['MANUAL_JOURNAL', 'OPENING_ENTRY'] },
+        AND: [branchWhere()],
+      },
+    });
+  }
+
   /** One entry; another branch's answers 404 like another tenant's (ADR-003 §11). */
   async get(id: bigint) {
     const { db } = this.tenant();

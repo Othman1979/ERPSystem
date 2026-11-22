@@ -3,6 +3,7 @@ import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { Alert, Button, Input, InputNumber, Popconfirm, Select, Space, Table, Typography, message } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router';
@@ -36,6 +37,7 @@ import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../co
 import { GridSelect, focusNamedField } from '../components/GridSelect';
 import { ListToolbar } from '../components/ListToolbar';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { ReasonModal } from '../components/ReasonModal';
 import { PICKER_PAGE_SIZE, RemoteSelect } from '../components/RemoteSelect';
@@ -172,7 +174,7 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
       sorter: true,
       sortOrder: list.sortOrderOf('orderDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('sales.customer'),
@@ -240,7 +242,7 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
           )
         }
       />
-      <Table
+      <ResponsiveTable<SalesCycleOrderListItemDto>
         rowKey="id"
         loading={list.query.isLoading}
         dataSource={list.rows}
@@ -250,6 +252,13 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => onOpen(r.id), style: { cursor: 'pointer' } })}
+        mobileCard={{
+          title: (order) => order.orderNo ?? t('procurement.draftNo'),
+          subtitle: (order) => `${formatDate(order.orderDate)} · ${displayName(order.customer) ?? '—'}`,
+          amount: (order) => amountCell(order.grandTotal),
+          status: (order) => <OrderStatusTag status={order.status} />,
+          meta: (order) => (order.quote?.quoteNo ? [<span>{t('salesCycle.fromQuote')}: {order.quote.quoteNo}</span>] : []),
+        }}
       />
     </div>
   );
@@ -733,10 +742,10 @@ function OrderView({ order, onBack }: { order: SalesCycleOrderDetailDto; onBack:
           <DocValue>{codeAndName(order.warehouse)}</DocValue>
         </DocField>
         <DocField label={t('salesCycle.orderDate')}>
-          <DocValue>{dayjs(order.orderDate).format('YYYY-MM-DD')}</DocValue>
+          <DocValue>{formatDate(order.orderDate)}</DocValue>
         </DocField>
         <DocField label={t('salesCycle.expectedDate')}>
-          <DocValue>{order.expectedDate ? dayjs(order.expectedDate).format('YYYY-MM-DD') : '—'}</DocValue>
+          <DocValue>{order.expectedDate ? formatDate(order.expectedDate) : '—'}</DocValue>
         </DocField>
         {order.quote && (
           <DocField label={t('salesCycle.fromQuote')}>
@@ -800,7 +809,7 @@ function OrderView({ order, onBack }: { order: SalesCycleOrderDetailDto; onBack:
           { title: t('procurement.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
           { title: t('procurement.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       <ReservationPanel warehouseId={order.warehouseId} lines={reservationLines} checkStock={pending} />
 

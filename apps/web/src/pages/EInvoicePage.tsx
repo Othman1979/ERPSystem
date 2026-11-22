@@ -18,7 +18,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import dayjs from 'dayjs';
+import { formatDateTime } from '../format/date';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -67,8 +67,7 @@ const OUTCOME_KEYS: Record<AttemptOutcome, string> = {
   'not-sent': 'einvoice.outcomes.notSent',
 };
 
-const dateTime = (v: string | null | undefined) =>
-  v ? <Num>{dayjs(v).format('YYYY-MM-DD HH:mm')}</Num> : '—';
+const dateTime = (v: string | null | undefined) => (v ? <Num>{formatDateTime(v)}</Num> : '—');
 
 /** A JSON answer reads better indented; anything else is shown as it came. */
 function pretty(body: string): string {
@@ -422,7 +421,7 @@ function SubmissionDrawer({ id, open, onClose }: { id: string | null; open: bool
                   },
                   { title: t('einvoice.message'), dataIndex: 'message' },
                 ]}
-              />
+               scroll={{ x: 'max-content' }}/>
             </section>
           )}
 
@@ -453,7 +452,7 @@ function SubmissionDrawer({ id, open, onClose }: { id: string | null; open: bool
                 { title: t('einvoice.message'), dataIndex: 'message', render: (v: string | null) => v ?? '—' },
                 { title: t('einvoice.startedAt'), dataIndex: 'startedAt', width: 140, render: dateTime },
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           </section>
 
           {technical.length > 0 && <Collapse size="small" items={technical} />}

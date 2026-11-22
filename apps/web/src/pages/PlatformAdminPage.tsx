@@ -19,7 +19,8 @@ import {
   Typography,
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
-import dayjs, { type Dayjs } from 'dayjs';
+import type { Dayjs } from 'dayjs';
+import { formatDate, formatDateTime } from '../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -69,7 +70,7 @@ type TenantRow = AdminTenantListItemDto;
 type Subscription = AdminSubscriptionDto;
 type Plan = AdminPlanListItemDto;
 
-const day = (v: string | null | undefined) => (v ? dayjs(v).format('YYYY-MM-DD') : '—');
+const day = (v: string | null | undefined) => (v ? formatDate(v) : '—');
 
 function StatusTag({ status }: { status: Status }) {
   const { t } = useTranslation();
@@ -167,7 +168,7 @@ function TenantsTab() {
             render: day,
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <TenantDrawer id={openId} onClose={() => setOpenId(null)} />
     </>
   );
@@ -336,7 +337,7 @@ function TenantDrawer({ id, onClose }: { id: string | null; onClose: () => void 
                 { title: t('platform.amount'), dataIndex: 'amount', align: 'right', render: amountCell },
                 { title: t('platform.paymentNotes'), dataIndex: 'notes', render: (v: string | null) => v ?? '—' },
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           </section>
         </Space>
       )}
@@ -407,7 +408,7 @@ function PlansTab() {
           },
           { title: t('common.actions'), key: 'actions', width: 80, render: (_: unknown, p) => <Button size="small" onClick={() => open(p)}>{t('common.edit')}</Button> },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <Modal
         open={!!editing}
         title={editing ? `${t('platform.editPlan')} — ${editing.code}` : ''}
@@ -485,7 +486,7 @@ function ErrorsTab() {
     },
     onError,
   });
-  const when = (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm');
+  const when = (v: string) => formatDateTime(v);
 
   return (
     <>
@@ -544,7 +545,7 @@ function ErrorsTab() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <Drawer open={!!openId} width={720} onClose={() => setOpenId(null)} title={detail ? `${detail.name}: ${detail.message}` : ''}>
         {detail && (
           <>
