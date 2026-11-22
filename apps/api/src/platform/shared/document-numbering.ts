@@ -55,5 +55,6 @@ export async function allocateDocumentNo(
     data: { nextNumber: { increment: 1 } },
   });
 
+  // prefix already contains "{PREFIX}-{YEARCODE}" from provisioning.
   return `${seq.prefix}-${padded}`;
 }
