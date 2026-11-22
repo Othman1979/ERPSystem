@@ -1925,7 +1925,7 @@ describe('Late leave review regressions', () => {
       startDate: '2042-01-05', endDate: '2042-01-15',
     }, 'create backdated first-year leave', companyAId);
     const denied = await act(tokenA, `payroll/leave-requests/${earlier.id}/approve`, {}, companyAId);
-    expect(denied.status).toBe(400);
+    expect(denied.status).toBe(409);
     expect(denied.body.error.code).toBe('LEAVE_BALANCE_INSUFFICIENT');
   });
 
