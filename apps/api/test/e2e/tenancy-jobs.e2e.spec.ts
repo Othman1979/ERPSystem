@@ -73,24 +73,73 @@ function migrate(url: string): void {
   execFileSync('pnpm', ['exec', 'tsx', 'prisma/seed.ts'], { cwd: API_DIR, env, stdio: 'inherit' });
 }
 
+function jobEnvironment(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    DATABASE_URL: connectionUrl(adminUrl, CONTROL_DB),
+    TENANCY_MODE: 'isolated',
+    DB_PROVISIONER: 'create',
+    TENANT_DB_ADMIN_URL: adminUrl,
+    TENANT_DB_HOST: new URL(adminUrl).hostname,
+    TENANT_DB_NAME_PREFIX: TENANT_PREFIX,
+    TENANT_DB_SECRET_KEY: SECRET_KEY,
+    TENANT_DB_STATE_TTL_MS: '1',
+    NODE_ENV: 'test',
+    EINVOICE_WORKER: 'off',
+    ...extra,
+  };
+}
+
 function job(args: string[], extra: Record<string, string> = {}): string {
   return execFileSync('node', ['dist/jobs/cli.js', ...args], {
     cwd: API_DIR,
-    env: {
-      ...process.env,
-      DATABASE_URL: connectionUrl(adminUrl, CONTROL_DB),
-      TENANCY_MODE: 'isolated',
-      DB_PROVISIONER: 'create',
-      TENANT_DB_ADMIN_URL: adminUrl,
-      TENANT_DB_HOST: new URL(adminUrl).hostname,
-      TENANT_DB_NAME_PREFIX: TENANT_PREFIX,
-      TENANT_DB_SECRET_KEY: SECRET_KEY,
-      TENANT_DB_STATE_TTL_MS: '1',
-      NODE_ENV: 'test',
-      EINVOICE_WORKER: 'off',
-      ...extra,
-    },
+    env: jobEnvironment(extra),
     encoding: 'utf8',
+  });
+}
+
+function spawnJob(args: string[], extra: Record<string, string> = {}): ChildProcess {
+  return spawn('node', ['dist/jobs/cli.js', ...args], {
+    cwd: API_DIR,
+    env: jobEnvironment(extra),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+function waitForOutput(child: ChildProcess, text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let output = '';
+    const timeout = setTimeout(() => {
+      cleanup();
+      child.kill('SIGKILL');
+      reject(new Error(`Timed out waiting for job output "${text}": ${output}`));
+    }, 15_000);
+    function cleanup() {
+      clearTimeout(timeout);
+      child.stdout?.off('data', onOutput);
+      child.stderr?.off('data', onOutput);
+      child.off('exit', onExit);
+      child.off('error', onError);
+    }
+    function onOutput(chunk: Buffer | string) {
+      output += chunk.toString();
+      if (output.includes(text)) {
+        cleanup();
+        resolve();
+      }
+    }
+    function onExit() {
+      cleanup();
+      reject(new Error(`Job exited before output "${text}": ${output}`));
+    }
+    function onError(error: Error) {
+      cleanup();
+      reject(error);
+    }
+    child.stdout?.on('data', onOutput);
+    child.stderr?.on('data', onOutput);
+    child.once('exit', onExit);
+    child.once('error', onError);
   });
 }
 
@@ -422,6 +471,33 @@ describe('isolated tenant jobs', () => {
       where: { id: tenants[1]!.companyId },
       data: { legalNameAr: `Still B ${RUN}` },
     });
+    const interruptedRestore = spawnJob(
+      ['backup-restore-tenant', backup.folder, tenants[0]!.id.toString(), '--confirm', tenants[0]!.name],
+      { BACKUP_DIR: backupDir, TENANT_DB_STATE_TTL_MS: '60000' },
+    );
+    let interruptedOutput = '';
+    interruptedRestore.stdout?.on('data', (chunk) => (interruptedOutput += chunk.toString()));
+    interruptedRestore.stderr?.on('data', (chunk) => (interruptedOutput += chunk.toString()));
+    try {
+      await waitForOutput(interruptedRestore, 'Waiting ');
+      const interruptedExit = once(interruptedRestore, 'exit');
+      expect(interruptedRestore.kill('SIGTERM')).toBe(true);
+      const [exitCode, exitSignal] = (await interruptedExit) as [number | null, NodeJS.Signals | null];
+      expect(exitCode).not.toBe(0);
+      expect(exitSignal).toBeNull();
+      expect(interruptedOutput).toContain('SIGTERM');
+      expect((await control!.tenantDatabase.findUniqueOrThrow({ where: { tenantId: tenants[0]!.id } })).state).toBe(
+        'ACTIVE',
+      );
+      expect(
+        (await tenants[0]!.db.company.findUniqueOrThrow({ where: { id: tenants[0]!.companyId } })).legalNameAr,
+      ).toBe(`Changed ${RUN}`);
+    } finally {
+      if (interruptedRestore.exitCode === null && interruptedRestore.signalCode === null) {
+        interruptedRestore.kill('SIGKILL');
+        await once(interruptedRestore, 'exit').catch(() => undefined);
+      }
+    }
     const restore = job(
       ['backup-restore-tenant', backup.folder, tenants[0]!.id.toString(), '--confirm', tenants[0]!.name],
       { BACKUP_DIR: backupDir },

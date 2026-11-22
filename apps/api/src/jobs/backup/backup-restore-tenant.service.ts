@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { expectedSchemaVersion } from '../../prisma/schema-version.js';
 import { TenantDatabaseProvisioner } from '../../platform/tenancy/database-provisioner.service.js';
 import { migrateDatabase } from '../../platform/tenancy/migrate-runner.js';
+import { onAbort } from '../abort-cleanup.js';
 import { backupKey, createDecryptStream, keyProblem } from './backup-crypto.js';
 import {
   encryptionOf,
@@ -78,15 +79,35 @@ export class BackupRestoreTenantService {
       encryption && key
         ? await createDecryptStream(dumpPath, key, logicalName)
         : await openPlainDump(dumpPath);
-    await control.tenantDatabase.update({ where: { tenantId }, data: { state: 'RESTORING' } });
-    await this.prisma.router.invalidate(tenantId);
+    const previousState = database.state;
+    let dropped = false;
+    const setStateAndInvalidate = async (state: typeof previousState) => {
+      try {
+        await control.tenantDatabase.update({ where: { tenantId }, data: { state } });
+      } catch {
+        this.logger.error(`Could not restore tenant ${tenantId} state after a failed restore`);
+      }
+      try {
+        await this.prisma.router.invalidate(tenantId);
+      } catch {
+        this.logger.error(`Could not invalidate tenant ${tenantId} router after a failed restore`);
+      }
+    };
     try {
+      await control.tenantDatabase.update({ where: { tenantId }, data: { state: 'RESTORING' } });
+      await this.prisma.router.invalidate(tenantId);
       const drainMs = this.config.get('TENANT_DB_STATE_TTL_MS', { infer: true }) + 5_000;
-      this.logger.log(`Waiting ${drainMs}ms for cached tenant requests to drain before restore`);
-      await new Promise<void>((resolve) => setTimeout(resolve, drainMs));
+      console.error(`Waiting ${drainMs}ms for cached tenant requests to drain before restore`);
+      const unregisterAbort = onAbort(() => setStateAndInvalidate(previousState));
+      try {
+        await this.waitForDrain(drainMs);
+      } finally {
+        unregisterAbort();
+      }
       await withOptionFile(
         target,
         async (options) => {
+          dropped = true;
           await dropTenantDatabaseTables(url);
           const { done, stdin } = runTool(
             mysql,
@@ -136,9 +157,39 @@ export class BackupRestoreTenantService {
         },
       });
       return { tenantId: tenantId.toString(), backup: manifest.name, schemaVersion: version };
+    } catch (error) {
+      await setStateAndInvalidate(dropped ? 'RESTORING' : previousState);
+      throw error;
     } finally {
       dump.destroy();
     }
+  }
+
+  private waitForDrain(drainMs: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => finish(), drainMs);
+      function cleanup() {
+        clearTimeout(timer);
+        process.off('SIGINT', onSigint);
+        process.off('SIGTERM', onSigterm);
+      }
+      function finish(error?: Error) {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) reject(error);
+        else resolve();
+      }
+      function onSigint() {
+        finish(new Error('Tenant restore interrupted by SIGINT'));
+      }
+      function onSigterm() {
+        finish(new Error('Tenant restore interrupted by SIGTERM'));
+      }
+      process.once('SIGINT', onSigint);
+      process.once('SIGTERM', onSigterm);
+    });
   }
 }
 
