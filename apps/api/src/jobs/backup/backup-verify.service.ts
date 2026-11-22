@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { unzipSync } from 'fflate';
 import mariadb, { type Connection } from 'mariadb';
@@ -63,6 +63,8 @@ const SCRATCH_NAME = /restore|verify/i;
  */
 @Injectable()
 export class BackupVerifyService {
+  private readonly logger = new Logger(BackupVerifyService.name);
+
   constructor(
     private readonly config: ConfigService<Env, true>,
     private readonly prisma: PrismaService,
@@ -121,20 +123,12 @@ export class BackupVerifyService {
       add('restore', false, 'refused: BACKUP_VERIFY_DATABASE_URL is the live database');
       return result(null, false);
     }
-    const control = this.prisma.control();
-    const [tenantDatabases, poolDatabases] = await Promise.all([
-      control.tenantDatabase.findMany({ select: { host: true, port: true, databaseName: true } }),
-      control.tenantDbPool.findMany({ select: { host: true, port: true, databaseName: true } }),
-    ]);
     if (
-      [...tenantDatabases, ...poolDatabases].some((database) =>
-        sameDatabase(target, {
-          host: database.host,
-          port: database.port,
-          database: database.databaseName,
-          user: target.user,
-          password: target.password,
-        }),
+      await isRegisteredTenantTarget(
+        this.prisma,
+        this.prisma.tenancyMode,
+        target,
+        (message) => this.logger.warn(message),
       )
     ) {
       add('restore', false, 'refused: BACKUP_VERIFY_DATABASE_URL is a tenant or pool database');
@@ -358,6 +352,35 @@ export class BackupVerifyService {
       ['tenants', 'users', 'journal_entries', 'stock_movements'].map((table) => count(`SELECT COUNT(*) AS n FROM ${table}`)),
     );
     check('rows', true, `tenants ${t}, users ${u}, journal entries ${j}, stock movements ${s}`);
+  }
+}
+
+export async function isRegisteredTenantTarget(
+  prisma: PrismaService,
+  tenancyMode: 'shared' | 'isolated',
+  target: DbTarget,
+  warn: (message: string) => void,
+): Promise<boolean> {
+  if (tenancyMode !== 'isolated') return false;
+
+  try {
+    const control = prisma.control();
+    const [tenantDatabases, poolDatabases] = await Promise.all([
+      control.tenantDatabase.findMany({ select: { host: true, port: true, databaseName: true } }),
+      control.tenantDbPool.findMany({ select: { host: true, port: true, databaseName: true } }),
+    ]);
+    return [...tenantDatabases, ...poolDatabases].some((database) =>
+      sameDatabase(target, {
+        host: database.host,
+        port: database.port,
+        database: database.databaseName,
+        user: target.user,
+        password: target.password,
+      }),
+    );
+  } catch {
+    warn('Could not check tenant and pool database targets before backup verification');
+    return false;
   }
 }
 
