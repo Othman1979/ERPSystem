@@ -101,14 +101,14 @@ export class TenantDatabaseProvisioner {
       statementFailed = true;
       statementError = error;
       if (databaseCreated) {
-        try {
-          await connection.query(`DROP DATABASE IF EXISTS \`${databaseName}\``);
-        } catch {}
-        try {
-          await connection.query(
-            `DROP USER IF EXISTS '${quoteSqlValue(dbUser)}'@'${quoteSqlValue(userHost)}'`,
-          );
-        } catch {}
+        await Promise.resolve()
+          .then(() => connection.query(`DROP DATABASE IF EXISTS \`${databaseName}\``))
+          .catch(() => undefined);
+        await Promise.resolve()
+          .then(() =>
+            connection.query(`DROP USER IF EXISTS '${quoteSqlValue(dbUser)}'@'${quoteSqlValue(userHost)}'`),
+          )
+          .catch(() => undefined);
       }
     }
     try {

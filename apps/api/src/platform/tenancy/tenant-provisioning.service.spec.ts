@@ -84,7 +84,7 @@ describe('TenantProvisioningService', () => {
     };
     const control = {
       tenantDbPool: { findFirst: async () => ({ id: 2n }) },
-      $transaction: async (callback: (tx: typeof tx) => Promise<unknown>) => callback(tx),
+      $transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx),
     };
     const service = new TenantProvisioningService(
       { control: () => control } as never,
