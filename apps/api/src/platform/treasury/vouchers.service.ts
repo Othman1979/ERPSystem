@@ -183,6 +183,16 @@ export class VouchersService implements OnModuleInit {
     return documentType === 'SALES_INVOICE' ? this.sales : this.purchases;
   }
 
+  async draftCounts() {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const [receipts, payments] = await Promise.all([
+      db.receipt.count({ where: { companyId, status: 'DRAFT', AND: [branchWhere()] } }),
+      db.payment.count({ where: { companyId, status: 'DRAFT', AND: [branchWhere()] } }),
+    ]);
+    return { receipts, payments };
+  }
+
   // ------------------------------------------------------------- receipts
 
   /**

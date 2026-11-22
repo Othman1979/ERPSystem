@@ -67,7 +67,7 @@ function keyDown(el: HTMLElement, key: string): void {
 
 beforeEach(async () => {
   await i18n.changeLanguage('en');
-  window.localStorage.removeItem(FOLDED_KEY);
+  window.localStorage.setItem(FOLDED_KEY, '0');
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -199,6 +199,18 @@ describe('links are real anchors', () => {
 });
 
 describe('folding', () => {
+  it('starts folded without a stored preference', () => {
+    window.localStorage.removeItem(FOLDED_KEY);
+    render('/sales');
+    expect(strip()).toBeNull();
+    expect(foldButton().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('keeps a stored expanded preference', () => {
+    render('/sales');
+    expect(strip()).not.toBeNull();
+  });
+
   it('folds the strip, remembers it, and unfolds it again', async () => {
     render('/sales');
     expect(strip()).not.toBeNull();

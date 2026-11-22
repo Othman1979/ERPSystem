@@ -424,6 +424,14 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     return new Map(rows.map((r) => [r.id, r.invoiceNo]));
   }
 
+  async draftCount(): Promise<number> {
+    const { db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    return db.purchaseInvoice.count({
+      where: { companyId, status: 'DRAFT', AND: [branchWhere()] },
+    });
+  }
+
   /**
    * Numbered page of invoices (ADR-022), newest first unless `sort` says otherwise.
    * `q` matches the invoice number, the supplier's invoice number and the supplier's

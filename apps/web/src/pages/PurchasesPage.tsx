@@ -25,6 +25,7 @@ import { formatDate } from '../format/date';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 import {
   emptyInvoiceLine,
   InvoiceLinesGrid,
@@ -214,7 +215,10 @@ function usePurchaseLookups() {
 function PurchaseInvoicesTab() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<PurchasesControllerListInvoicesStatus | undefined>(undefined);
+  const [searchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<PurchasesControllerListInvoicesStatus | undefined>(
+    () => (searchParams.get('status') === 'DRAFT' ? 'DRAFT' : undefined),
+  );
   const [paymentFilter, setPaymentFilter] = useState<PurchasesControllerListInvoicesPaymentType | undefined>(undefined);
   const [screen, setScreen] = useState<'list' | 'form' | 'view'>('list');
   const [invoiceId, setInvoiceId] = useState<string | null>(null);

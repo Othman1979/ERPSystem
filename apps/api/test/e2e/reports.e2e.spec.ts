@@ -580,4 +580,166 @@ describe('Phase 8 — reports', () => {
     expect([ps.rows, ps.closingBalance]).toEqual([[], '0.000']); // LEDGER-24: 3 decimals
     expect(await get('/api/v1/stock/valuation', tokenB)).toEqual({ rows: [], totalValue: '0.000' });
   });
+
+  it('dashboard adds scoped monthly, cash, cheque and draft summaries', async () => {
+    const date = '2026-12-15';
+    const baseline = await get(`/api/v1/dashboard/summary?date=${date}`);
+    await postDoc('sales-invoices', {
+      invoiceDate: date,
+      dueDate: '2027-01-14',
+      customerId: id.c1,
+      warehouseId: id.wh,
+      paymentType: 'CREDIT',
+      lines: [{ itemId: id.i1, qty: '10', unitPrice: '10' }],
+    });
+    expect((await get('/api/v1/reports/trial-balance')).balanced).toBe(true);
+    expect((await get('/api/v1/stock/verify')).mismatches).toEqual([]);
+
+    const company = await api()
+      .post('/api/v1/companies')
+      .set(auth(token))
+      .send({ legalNameAr: 'شركة لوحة ثانية', legalNameEn: 'Dashboard Second Co' });
+    expect(company.status).toBe(201);
+    const secondCompanyId = company.body.id as string;
+    const secondAuth = { ...auth(token), 'X-Company-Id': secondCompanyId };
+    expect(
+      (
+        await api()
+          .post('/api/v1/fiscal-years')
+          .set(secondAuth)
+          .send({ code: '2026', startDate: '2026-01-01', endDate: '2026-12-31' })
+      ).status,
+    ).toBe(201);
+
+    const secondAccounts = (await api().get('/api/v1/accounts').set(secondAuth)).body as Tree[];
+    const secondCodes: Record<string, string> = {};
+    const collect = (rows: Tree[]) =>
+      rows.forEach((row) => {
+        secondCodes[row.code] = row.id;
+        if (row.children) collect(row.children);
+      });
+    collect(secondAccounts);
+    const secondEntry = await api().post('/api/v1/journal-entries').set(secondAuth).send({
+      entryDate: date,
+      lines: [
+        { accountId: secondCodes['1101'], debit: '100.000' },
+        { accountId: secondCodes['4101'], credit: '100.000' },
+      ],
+    });
+    expect(secondEntry.status).toBe(201);
+    expect(
+      (
+        await api()
+          .post(`/api/v1/journal-entries/${secondEntry.body.id}/post`)
+          .set(secondAuth)
+          .set(idem())
+          .send({})
+      ).status,
+    ).toBe(201);
+
+    const expense = await api()
+      .post('/api/v1/payments')
+      .set(auth(token))
+      .set(idem())
+      .send({
+        paymentDate: date,
+        expenseAccountId: acc['5103'],
+        cashAccountId: acc['1102'],
+        amount: '50.000',
+      });
+    expect(expense.status).toBe(201);
+    const outgoingCheque = await api()
+      .post('/api/v1/payments')
+      .set(auth(token))
+      .set(idem())
+      .send({
+        paymentDate: date,
+        partyType: 'SUPPLIER',
+        partyId: id.s1,
+        cashAccountId: acc['1102'],
+        amount: '25.000',
+        cheque: { chequeNo: `DASH-OUT-${RUN}`, dueDate: '2026-12-18' },
+      });
+    expect(outgoingCheque.status).toBe(201);
+    const incoming = await api()
+      .post('/api/v1/receipts')
+      .set(auth(token))
+      .set(idem())
+      .send({
+        receiptDate: date,
+        partyType: 'CUSTOMER',
+        partyId: id.c1,
+        amount: '20.000',
+        cheque: { chequeNo: `DASH-IN-${RUN}`, bankName: 'Dashboard Bank', dueDate: '2026-12-18' },
+      });
+    expect(incoming.status).toBe(201);
+    const draft = await api().post('/api/v1/journal-entries').set(auth(token)).send({
+      entryDate: date,
+      lines: [
+        { accountId: acc['1101'], debit: '1.000' },
+        { accountId: acc['4101'], credit: '1.000' },
+      ],
+    });
+    expect(draft.status).toBe(201);
+
+    const summary = await get(`/api/v1/dashboard/summary?date=${date}`);
+    const month = summary.monthly.find((row: Row) => row.month === '2026-12');
+    const baselineMonth = baseline.monthly.find((row: Row) => row.month === '2026-12');
+    expect([month.sales, month.expenses]).toEqual([
+      m3(new Decimal(baselineMonth.sales).plus(100)),
+      m3(new Decimal(baselineMonth.expenses).plus(150)),
+    ]);
+    expect(summary.cashBankTotal).toBe(m3(new Decimal(baseline.cashBankTotal).minus(50)));
+    expect(
+      summary.cashBank.find((row: Row) => row.accountId === acc['1102']).balance,
+    ).toBe(
+      m3(
+        new Decimal(
+          baseline.cashBank.find((row: Row) => row.accountId === acc['1102']).balance as string,
+        ).minus(50),
+      ),
+    );
+    expect(
+      m3(
+        summary.cashBank.reduce(
+          (total: Decimal, row: Row) => total.plus(row.balance as string),
+          new Decimal(0),
+        ),
+      ),
+    ).toBe(summary.cashBankTotal);
+    expect(summary.receivablesAging).toMatchObject({
+      current: expect.any(String),
+      d1_30: expect.any(String),
+      d31_60: expect.any(String),
+      d61_90: expect.any(String),
+      d90plus: expect.any(String),
+    });
+    expect(summary.chequesDue).toEqual({
+      incoming: { count: 1, amount: '20.000' },
+      outgoing: { count: 1, amount: '25.000' },
+    });
+    expect(summary.drafts.journalEntries).toBe(baseline.drafts.journalEntries + 1);
+    expect(summary.drafts.salesInvoices).toBe(baseline.drafts.salesInvoices);
+    expect(summary.drafts.purchaseInvoices).toBe(baseline.drafts.purchaseInvoices);
+    expect(summary.drafts.receipts).toBe(baseline.drafts.receipts);
+    expect(summary.drafts.payments).toBe(baseline.drafts.payments);
+
+    const otherCompanySummary = await api()
+      .get(`/api/v1/dashboard/summary?date=${date}`)
+      .set(secondAuth);
+    expect(otherCompanySummary.status).toBe(200);
+    expect(otherCompanySummary.body.monthly.find((row: Row) => row.month === '2026-12')).toMatchObject({
+      sales: '100.000',
+      expenses: '0.000',
+    });
+    expect(otherCompanySummary.body.drafts.journalEntries).toBe(0);
+    expect(otherCompanySummary.body.cashBankTotal).toBe('100.000');
+
+    const tenantBSummary = await get(`/api/v1/dashboard/summary?date=${date}`, tokenB);
+    expect(tenantBSummary.monthly.every((row: Row) => row.sales === '0.000' && row.expenses === '0.000')).toBe(true);
+    expect(tenantBSummary.chequesDue).toEqual({
+      incoming: { count: 0, amount: '0.000' },
+      outgoing: { count: 0, amount: '0.000' },
+    });
+  });
 });

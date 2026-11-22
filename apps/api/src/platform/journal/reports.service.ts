@@ -185,6 +185,7 @@ export class ReportsService {
         accountType: true,
         normalBalance: true,
         isPostable: true,
+        controlType: true,
       },
       orderBy: { code: 'asc' },
     });

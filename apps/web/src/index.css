@@ -533,88 +533,12 @@ textarea:focus-visible,
   margin-bottom: 14px;
 }
 
-/* Quick actions: one panel bar of everyday "new document" buttons */
-.home-quick {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  margin-bottom: 16px;
-  background: var(--c-panel);
-  border: 1px solid var(--c-border-strong);
-}
-
-.home-quick-title {
-  font-weight: 600;
-  margin-inline-end: 6px;
-}
-
-/* Module groups as compact titled lists */
-.home-groups {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px;
-  align-items: start;
-}
-
-.home-group {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border-strong);
-}
-
-.home-group-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  font-weight: 600;
-  background: var(--c-grid-head-bg);
-  color: var(--c-grid-head-text);
-  border-bottom: 1px solid var(--c-border-strong);
-}
-
 .home-group-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
 }
 
-.home-link {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 7px 12px;
-  border: 0;
-  border-bottom: 1px solid var(--c-border);
-  background: none;
-  font: inherit;
-  color: var(--c-text);
-  text-align: start;
-  cursor: pointer;
-}
-
-.home-link:last-child {
-  border-bottom: 0;
-}
-
-.home-link:hover,
-.home-link:focus-visible {
-  background: var(--c-grid-row-hover);
-}
-
-/* Inside a framed list the ring sits within the row */
-.home-link:focus-visible {
-  outline-offset: -2px;
-}
-
-.home-link-icon {
-  font-size: 16px;
-  display: inline-flex;
-}
-
-/* Dashboard figures above the quick actions: one framed tile per figure, linking to its report */
 .home-stats {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -699,6 +623,146 @@ textarea:focus-visible,
   margin-bottom: 16px;
   font-size: 12px;
   color: var(--c-text-2);
+}
+
+.home-panels {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 14px;
+}
+
+.home-panel {
+  min-width: 0;
+  padding: 14px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+}
+
+.home-panel-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.home-monthly-legend,
+.home-cash-row,
+.home-draft-row,
+.home-aging-row,
+.home-cheque-row,
+.home-cash-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.home-monthly-legend {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
+.home-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.home-legend-dot,
+.home-monthly-bar {
+  display: inline-block;
+  width: 9px;
+  border-radius: 3px 3px 0 0;
+}
+
+.home-legend-dot {
+  height: 9px;
+  border-radius: 50%;
+}
+
+.home-legend-sales,
+.home-monthly-bar-sales {
+  background: var(--c-ink-600);
+}
+
+.home-legend-expenses,
+.home-monthly-bar-expenses {
+  background: var(--c-warning);
+}
+
+.home-monthly-bars {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  align-items: end;
+}
+
+.home-monthly-month {
+  display: grid;
+  grid-template-rows: 96px auto;
+  gap: 6px;
+  min-width: 0;
+  text-align: center;
+  color: var(--c-text-2);
+  font-size: 11px;
+}
+
+.home-monthly-pair {
+  display: flex;
+  justify-content: center;
+  align-items: end;
+  gap: 4px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.home-monthly-bar {
+  min-height: 2px;
+  max-width: 14px;
+}
+
+.home-cash-rows,
+.home-aging-rows,
+.home-cheque-rows,
+.home-draft-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.home-cash-row,
+.home-draft-row,
+.home-aging-row,
+.home-cheque-row {
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.home-cash-row:last-child,
+.home-draft-row:last-child,
+.home-aging-row:last-child,
+.home-cheque-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.home-cash-row,
+.home-draft-row {
+  color: var(--c-text);
+  text-decoration: none;
+}
+
+.home-cash-row:hover,
+.home-draft-row:hover {
+  color: var(--c-ink-600);
+}
+
+.home-cash-total {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--c-border-strong);
+  font-weight: 600;
 }
 
 /* --------------------------------------------------------------- tables */

@@ -28,6 +28,7 @@ import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { useEntryDraft } from '../hooks/useEntryDraft';
@@ -141,7 +142,10 @@ export function JournalPage() {
   const { t } = useTranslation();
   const { can, me, companyId } = useAuth();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<JournalControllerListStatus | undefined>(undefined);
+  const [searchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<JournalControllerListStatus | undefined>(
+    () => (searchParams.get('status') === 'DRAFT' ? 'DRAFT' : undefined),
+  );
   const [typeFilter, setTypeFilter] = useState<JournalControllerListVoucherType | undefined>(undefined);
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new entry
