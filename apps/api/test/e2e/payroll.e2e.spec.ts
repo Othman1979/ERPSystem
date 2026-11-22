@@ -1863,7 +1863,7 @@ describe('Leave payroll effects and provision', () => {
 
 describe('Late leave review regressions', () => {
   it('includes the fiscal-year code in legacy leave request sequences', async () => {
-    for (const year of [2040, 2041]) {
+    for (const year of [2045, 2046]) {
       h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({
         code: `FY${year}`, startDate: `${year}-01-01`, endDate: `${year}-12-31`,
       }), 201, `create leave FY ${year}`);
@@ -1874,10 +1874,10 @@ describe('Late leave review regressions', () => {
           SET s.prefix = 'LV'
         WHERE s.tenant_id = ? AND s.company_id = ? AND s.document_type = 'LEAVE_REQUEST'
           AND f.code IN (?, ?)`,
-      [tenantId, BigInt(companyAId), 'FY2040', 'FY2041'],
+      [tenantId, BigInt(companyAId), 'FY2045', 'FY2046'],
     );
     const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
-      code: `LV-NUMBERS-${RUN}`, nameAr: 'Leave numbering', hireDate: '2040-01-01', payMethod: 'CASH',
+      code: `LV-NUMBERS-${RUN}`, nameAr: 'Leave numbering', hireDate: '2045-01-01', payMethod: 'CASH',
     }, 'leave numbering employee', companyAId);
     const annual = (h.ok(await get(tokenA, 'payroll/leave-types', companyAId), 200, 'leave numbering types') as Array<{
       id: string; code: string;
@@ -1894,10 +1894,10 @@ describe('Late leave review regressions', () => {
       ) as { requestNo: string };
     };
 
-    const first = await approveYear(2040);
-    const second = await approveYear(2041);
-    expect(first.requestNo).toBe('LV-FY2040-000001');
-    expect(second.requestNo).toBe('LV-FY2041-000001');
+    const first = await approveYear(2045);
+    const second = await approveYear(2046);
+    expect(first.requestNo).toBe('LV-FY2045-000001');
+    expect(second.requestNo).toBe('LV-FY2046-000001');
     expect(first.requestNo).not.toBe(second.requestNo);
   });
 
