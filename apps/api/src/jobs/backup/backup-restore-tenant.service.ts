@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
@@ -20,7 +21,7 @@ import {
   sha256File,
 } from './manifest.js';
 import { dropTenantDatabaseTables } from '../tenant-purge.service.js';
-import { dbTarget, runTool, withOptionFile } from './mysql-tools.js';
+import { dbTarget, runTool, toolVersion, withOptionFile } from './mysql-tools.js';
 
 @Injectable()
 export class BackupRestoreTenantService {
@@ -67,18 +68,23 @@ export class BackupRestoreTenantService {
       if (problem) throw new Error(problem);
     }
     const url = this.databases.databaseUrl(database);
+    const target = dbTarget(url);
+    const mysql = this.config.get('MYSQL_PATH', { infer: true });
+    if (!(await toolVersion(mysql))) throw new Error(`Cannot run ${mysql}`);
+    const logicalName = tenant.file.endsWith('.enc') ? tenant.file.slice(0, -4) : tenant.file;
+    const dump =
+      encryption && key
+        ? await createDecryptStream(dumpPath, key, logicalName)
+        : await openPlainDump(dumpPath);
     await control.tenantDatabase.update({ where: { tenantId }, data: { state: 'MIGRATING' } });
     await this.prisma.router.invalidate(tenantId);
     try {
-      await dropTenantDatabaseTables(url);
-      const target = dbTarget(url);
-      const logicalName = tenant.file.endsWith('.enc') ? tenant.file.slice(0, -4) : tenant.file;
-      const dump = encryption && key ? await createDecryptStream(dumpPath, key, logicalName) : createReadStream(dumpPath);
       await withOptionFile(
         target,
         async (options) => {
+          await dropTenantDatabaseTables(url);
           const { done, stdin } = runTool(
-            this.config.get('MYSQL_PATH', { infer: true }),
+            mysql,
             [`--defaults-extra-file=${options}`, '--default-character-set=utf8mb4', target.database],
             { stdin: true },
           );
@@ -87,7 +93,7 @@ export class BackupRestoreTenantService {
           if (client.status === 'rejected') throw client.reason;
           if (feed.status === 'rejected') throw feed.reason;
         },
-        folder,
+        os.tmpdir(),
       );
       const parsed = new URL(url);
       const connection = await mariadb.createConnection({
@@ -125,9 +131,17 @@ export class BackupRestoreTenantService {
         },
       });
       return { tenantId: tenantId.toString(), backup: manifest.name, schemaVersion: version };
-    } catch (error) {
-      await control.tenantDatabase.update({ where: { tenantId }, data: { state: 'MIGRATING' } }).catch(() => undefined);
-      throw error;
+    } finally {
+      dump.destroy();
     }
   }
+}
+
+async function openPlainDump(file: string) {
+  const stream = createReadStream(file);
+  await new Promise<void>((resolve, reject) => {
+    stream.once('open', () => resolve());
+    stream.once('error', reject);
+  });
+  return stream;
 }
