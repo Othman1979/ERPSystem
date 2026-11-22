@@ -181,6 +181,18 @@ export class LeaveService {
       await this.lockCompany(tx, tenantId, companyId);
       const type = await tx.leaveType.findFirst({ where: { id }, include: TYPE_INCLUDE });
       if (!type) throw DomainError.notFound('LeaveType', id.toString());
+      if (['ANNUAL', 'SICK'].includes(dto.category ?? type.category)) {
+        const requests = await tx.leaveRequest.findMany({
+          where: { leaveTypeId: id, status: { in: ['SUBMITTED', 'APPROVED'] } },
+          select: { startDate: true, endDate: true },
+        });
+        if (requests.some((request) => request.startDate.getUTCFullYear() !== request.endDate.getUTCFullYear())) {
+          throw new DomainError(
+            ErrorCode.LEAVE_REQUEST_SPANS_YEAR,
+            'Annual and sick leave requests must stay within one calendar year',
+          );
+        }
+      }
       const payElementId = dto.payElementId === undefined
         ? type.payElementId === null ? undefined : (await this.validatePayElement(tx, type.payElementId.toString()))?.id
         : (await this.validatePayElement(tx, dto.payElementId))?.id ?? null;
