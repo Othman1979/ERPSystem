@@ -81,6 +81,7 @@ export class BackupRestoreTenantService {
         : await openPlainDump(dumpPath);
     const previousState = database.state;
     let dropped = false;
+    let aborted = false;
     let completed = false;
     let stateChanged = false;
     let lockConnection: Connection | undefined;
@@ -139,6 +140,7 @@ export class BackupRestoreTenantService {
       await invalidate();
     };
     const abortRestore = async () => {
+      aborted = true;
       if (stateChanged && !completed) {
         if (dropped) await keepRestoring();
         else await restorePreviousState();
@@ -170,6 +172,7 @@ export class BackupRestoreTenantService {
       await withOptionFile(
         target,
         async (options) => {
+          if (aborted) throw new Error('Tenant restore interrupted');
           dropped = true;
           await dropTenantDatabaseTables(url);
           const { done, stdin } = runTool(
