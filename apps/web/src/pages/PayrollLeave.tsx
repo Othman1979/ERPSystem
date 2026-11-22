@@ -148,6 +148,7 @@ function RequestsTab() {
 export function leaveTypeUpdatePayload(values: Record<string, unknown>): Record<string, unknown> {
   const payload = { ...values };
   delete payload.code;
+  if ('payElementId' in payload && payload.payElementId === undefined) payload.payElementId = null;
   return payload;
 }
 
