@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export type WinFieldSize = 'date' | 'num' | 'md' | 'full';
 
@@ -57,5 +58,24 @@ export function WinField({
       <span className="win-field-label">{label}</span>
       <span className="win-field-control">{children}</span>
     </label>
+  );
+}
+
+export function ReportCriteria({
+  children,
+  actions,
+}: {
+  children: ReactNode;
+  actions?: ReactNode;
+}) {
+  const { t } = useTranslation();
+  return (
+    <fieldset className="win-group report-criteria">
+      <legend>{t('reports.criteria')}</legend>
+      <div className="report-criteria-row">
+        <div className="report-criteria-fields">{children}</div>
+        {actions && <div className="win-actions">{actions}</div>}
+      </div>
+    </fieldset>
   );
 }

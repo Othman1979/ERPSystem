@@ -65,7 +65,7 @@ export const ar = {
     health: 'حالة النظام',
   },
   payroll: {
-    title: 'الرواتب', newRun: 'إنشاء مسير جديد', employees: 'الموظفون', elements: 'العناصر',
+    title: 'الرواتب', newRun: 'إنشاء مسير جديد', month: 'الشهر', employees: 'الموظفون', elements: 'العناصر',
     leaveTab: 'الإجازات', leaveBalances: 'أرصدة الإجازات', leaveRequests: 'طلبات الإجازة',
     settlementTab: 'التسوية النهائية', createSettlement: 'إنشاء تسوية نهائية', settlementNo: 'رقم التسوية',
     settlementDate: 'تاريخ التسوية', viewSettlement: 'عرض التسوية', postSettlement: 'ترحيل التسوية',
@@ -182,6 +182,7 @@ export const ar = {
     companyName: 'اسم الشركة (اختياري)',
     ownerName: 'اسم المالك',
     changePassword: 'تغيير كلمة المرور',
+    passwordDetails: 'بيانات كلمة المرور',
     currentPassword: 'كلمة المرور الحالية',
     newPassword: 'كلمة المرور الجديدة',
     confirmPassword: 'تأكيد كلمة المرور الجديدة',
@@ -831,6 +832,13 @@ export const ar = {
   },
   company: {
     title: 'بيانات الشركة',
+    groups: {
+      identity: 'الهوية',
+      registration: 'الضريبة والتسجيل',
+      operations: 'إعدادات الشركة',
+      contact: 'العنوان والتواصل',
+      logo: 'الهوية البصرية',
+    },
     legalNameAr: 'الاسم القانوني بالعربية',
     legalNameEn: 'الاسم بالإنجليزية',
     taxNumber: 'الرقم الضريبي',
@@ -1107,6 +1115,10 @@ export const ar = {
     sub_SUSPENDED: 'معلّق',
     sub_CANCELLED: 'ملغى',
     recordPayment: 'تسجيل دفعة',
+    paymentDetails: 'تفاصيل الدفعة',
+    planIdentity: 'بيانات الباقة',
+    planLimits: 'حدود الباقة',
+    planPricing: 'أسعار الباقة',
     recordPaymentHint:
       'الدفع يدوي (تحويل بنكي أو CliQ). تسجيل الدفعة ينشئ فترة اشتراك ويجعل الحساب فعّالاً على الباقة المختارة.',
     period: 'الفترة',
@@ -1136,6 +1148,7 @@ export const ar = {
     editPlan: 'تعديل الباقة',
   },
   reports: {
+    criteria: 'معايير التقرير',
     consumption: {
       title: 'الاستهلاك بين جردين',
       warehouse: 'المستودع',
@@ -1312,6 +1325,10 @@ export const ar = {
     terms: 'الشروط المالية',
   },
   salesCycle: {
+    formGroups: {
+      policy: 'سياسة أوامر البيع',
+      quotes: 'التسعير والعروض',
+    },
     newQuote: 'عرض سعر جديد',
     quoteTitle: 'عرض سعر بيع',
     quoteNo: 'رقم العرض',
@@ -2559,7 +2576,7 @@ export const en: typeof ar = {
     health: 'System Health',
   },
   payroll: {
-    title: 'Payroll', newRun: 'New payroll run', employees: 'Employees', elements: 'Pay elements',
+    title: 'Payroll', newRun: 'New payroll run', month: 'Month', employees: 'Employees', elements: 'Pay elements',
     leaveTab: 'Leave', leaveBalances: 'Leave balances', leaveRequests: 'Leave requests',
     settlementTab: 'Final settlement', createSettlement: 'Create settlement', settlementNo: 'Settlement no.',
     settlementDate: 'Settlement date', viewSettlement: 'View settlement', postSettlement: 'Post settlement',
@@ -2676,6 +2693,7 @@ export const en: typeof ar = {
     companyName: 'Legal name (optional)',
     ownerName: 'Owner name',
     changePassword: 'Change password',
+    passwordDetails: 'Password details',
     currentPassword: 'Current password',
     newPassword: 'New password',
     confirmPassword: 'Confirm new password',
@@ -3326,6 +3344,13 @@ export const en: typeof ar = {
   },
   company: {
     title: 'Company',
+    groups: {
+      identity: 'Identity',
+      registration: 'Tax & registration',
+      operations: 'Company settings',
+      contact: 'Address & contact',
+      logo: 'Branding',
+    },
     legalNameAr: 'Legal name (Arabic)',
     legalNameEn: 'Name (English)',
     taxNumber: 'Tax number',
@@ -3602,6 +3627,10 @@ export const en: typeof ar = {
     sub_SUSPENDED: 'Suspended',
     sub_CANCELLED: 'Cancelled',
     recordPayment: 'Record payment',
+    paymentDetails: 'Payment details',
+    planIdentity: 'Plan details',
+    planLimits: 'Plan limits',
+    planPricing: 'Plan pricing',
     recordPaymentHint:
       'Payments are manual (bank transfer or CliQ). Recording one creates a paid period and makes the tenant active on the chosen plan.',
     period: 'Period',
@@ -3631,6 +3660,7 @@ export const en: typeof ar = {
     editPlan: 'Edit plan',
   },
   reports: {
+    criteria: 'Report criteria',
     consumption: {
       title: 'Consumption between counts',
       warehouse: 'Warehouse',
@@ -3807,6 +3837,10 @@ export const en: typeof ar = {
     terms: 'Credit terms',
   },
   salesCycle: {
+    formGroups: {
+      policy: 'Order policy',
+      quotes: 'Pricing & quotations',
+    },
     newQuote: 'New quotation',
     quoteTitle: 'Sales quotation',
     quoteNo: 'Quotation No',
