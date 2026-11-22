@@ -844,6 +844,10 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
+.col-code {
+  white-space: nowrap;
+}
+
 /* Numeric cells in plain (non-antd) tables: right-aligned in both directions so decimals line up */
 .num-cell {
   text-align: right;
@@ -1506,90 +1510,49 @@ textarea:focus-visible,
   gap: 8px;
 }
 
-.form-section-bar .anticon {
+.form-section {
+  min-inline-size: 0;
+  margin: 0 0 12px;
+  padding: 6px 14px 12px;
+}
+
+.form-section-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-section-title .anticon {
   color: var(--c-text-2);
 }
 
 .form-section-extra {
-  margin-inline-start: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  margin-inline-start: auto;
   font-weight: 400;
 }
 
 .form-section-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px 12px;
-  padding: 10px 14px 14px;
+  padding: 0;
 }
 
 .form-section-grid.cols-2 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  --cols: 2;
 }
 
-.form-section-grid > .span-2 {
-  grid-column: span 2;
-}
-
-/* The grid on a page rather than in a dialog (company profile form) */
-.form-section-grid.is-flush {
-  gap: 12px 16px;
-  padding: 0;
-  margin-bottom: 16px;
-}
-
-.form-section-grid > .span-all {
+.form-section-full-row,
+.form-section-grid > .span-2,
+.form-section-grid > .span-all,
+.form-section-grid > :not(.ant-form-item):not(.win-field) {
   grid-column: 1 / -1;
-}
-
-.form-section-grid .ant-form-item {
-  margin-bottom: 0;
-  min-width: 0;
-}
-
-.form-section-grid .ant-form-item-label {
-  padding-bottom: 3px !important;
-}
-
-.form-section-grid .ant-form-item-label > label {
-  height: auto;
-  font-size: 12px;
-  color: var(--c-text-2);
-}
-
-.form-section-grid .ant-select,
-.form-section-grid .ant-picker,
-.form-section-grid .ant-input-number,
-.form-section-grid .ant-radio-group {
-  width: 100%;
-}
-
-.form-section-grid .ant-radio-group {
-  display: flex;
-}
-
-.form-section-grid .ant-radio-group .ant-radio-button-wrapper {
-  flex: 1;
-  text-align: center;
-}
-
-/* Amounts and quantities line up on the right, as in the grids */
-.form-section-grid .ant-input-number-input {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 640px) {
-  .form-section-grid,
-  .form-section-grid.cols-2 {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .form-section-grid > .span-2 {
-    grid-column: auto;
-  }
 }
 
 /* Thin panel bar titling a sub-section of a document (e.g. voucher allocations) */
@@ -1979,5 +1942,379 @@ textarea:focus-visible,
   }
   .count-tile-value {
     font-size: 18px;
+  }
+}
+
+/* ---- windows-style forms */
+.ant-modal {
+  --win-label: 130px;
+}
+
+.win-panel {
+  width: 100%;
+  max-width: 1040px;
+  margin-inline-start: 0;
+  margin-inline-end: auto;
+  overflow: hidden;
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius);
+}
+
+.win-panel-wide {
+  max-width: 1280px;
+}
+
+.win-panel-body {
+  padding: 12px 14px;
+}
+
+.win-panel-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--c-panel);
+  border-top: 1px solid var(--c-border);
+}
+
+.win-group {
+  min-width: 0;
+  margin: 0 0 12px;
+  padding: 6px 14px 12px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius);
+}
+
+.win-group:last-child {
+  margin-bottom: 0;
+}
+
+.win-group > legend {
+  width: auto;
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+.win-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(var(--win-col-min, 320px), calc((100% - (var(--cols) - 1) * 24px) / var(--cols))), 1fr));
+  gap: 8px 24px;
+}
+
+.win-grid .ant-form-item,
+.win-panel .ant-form-item {
+  min-width: 0;
+  margin: 0 !important;
+}
+
+.win-grid .ant-form-item-row,
+.win-panel .ant-form-item-row {
+  display: grid;
+  grid-template-columns: var(--win-label, 150px) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+}
+
+.win-grid .ant-form-item:not(:has(.ant-form-item-label > label)) .ant-form-item-row,
+.win-panel .ant-form-item:not(:has(.ant-form-item-label > label)) .ant-form-item-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.win-grid .ant-form-item:not(:has(.ant-form-item-label > label)) .ant-form-item-label,
+.win-panel .ant-form-item:not(:has(.ant-form-item-label > label)) .ant-form-item-label {
+  display: none;
+}
+
+.win-grid .ant-form-item-label,
+.win-panel .ant-form-item-label {
+  width: auto;
+  max-width: none;
+  flex: none;
+  min-width: 0;
+  padding: 0 !important;
+  text-align: start;
+}
+
+.win-grid .ant-form-item-label > label,
+.win-panel .ant-form-item-label > label {
+  height: auto;
+  white-space: normal;
+  color: var(--c-text-2);
+  text-align: start;
+}
+
+.win-grid .ant-form-item-label > label::after,
+.win-panel .ant-form-item-label > label::after {
+  display: none;
+}
+
+.win-grid .ant-form-item-control,
+.win-panel .ant-form-item-control {
+  width: auto;
+  max-width: none;
+  flex: none;
+  min-width: 0;
+}
+
+.win-grid .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-panel .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+}
+
+.win-grid .ant-form-item-control-input-content > .ant-picker,
+.win-panel .ant-form-item-control-input-content > .ant-picker,
+.win-field-control > .ant-picker {
+  width: 150px;
+  max-width: 150px;
+}
+
+.win-grid .ant-form-item-control-input-content > :is(.ant-input-textarea, textarea.ant-input),
+.win-panel .ant-form-item-control-input-content > :is(.ant-input-textarea, textarea.ant-input),
+.win-field-control > :is(.ant-input-textarea, textarea.ant-input) {
+  width: 100%;
+  max-width: none;
+}
+
+.win-grid .ant-form-item.win-w-date .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-grid .ant-form-item.win-w-num .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-grid .ant-form-item.win-w-md .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  width: 100%;
+}
+
+.win-grid .ant-form-item.win-w-date .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-date .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  max-width: 150px;
+}
+
+.win-grid .ant-form-item.win-w-num .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-num .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  max-width: 170px;
+}
+
+.win-grid .ant-form-item.win-w-md .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-md .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  width: 100%;
+  max-width: 280px;
+}
+
+.win-grid .ant-form-item.win-w-full .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-full .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  width: 100%;
+  max-width: none;
+}
+
+.win-field {
+  display: grid;
+  grid-template-columns: var(--win-label, 150px) minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  min-width: 0;
+}
+
+.win-field-label {
+  min-width: 0;
+  text-align: start;
+  white-space: normal;
+  color: var(--c-text-2);
+}
+
+.win-field-control {
+  display: block;
+  min-width: 0;
+}
+
+.win-panel .win-w-date :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-date .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  max-width: 150px;
+}
+
+.win-panel .win-w-num :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-num .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  max-width: 170px;
+}
+
+.win-panel .win-w-md :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-md .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  max-width: 280px;
+}
+
+.win-panel .win-w-full :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-full .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  width: 100%;
+  max-width: none;
+}
+
+.win-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.report-criteria-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.report-criteria-fields {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 8px 16px;
+}
+
+.report-criteria .win-field {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+}
+
+.report-criteria .win-field-label {
+  white-space: nowrap;
+}
+
+.report-criteria .win-field-control {
+  flex: 0 1 auto;
+}
+
+.win-report-panels {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+
+.win-report-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.win-report-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-top: 6px;
+  border-top: 1px solid var(--c-border);
+}
+
+.win-report-name {
+  font-weight: 600;
+}
+
+.win-statement-actions {
+  margin-bottom: 8px;
+}
+
+.win-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-bottom: 8px;
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
+.win-bracket-list {
+  display: grid;
+  gap: 8px;
+}
+
+.win-bracket-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.win-bracket-row .win-bracket-item {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.win-bracket-row .ant-form-item-row {
+  grid-template-columns: 170px minmax(0, 1fr);
+}
+
+.win-bracket-row .win-bracket-delete {
+  margin-top: 2px;
+}
+
+@media (max-width: 767px) {
+  .win-panel {
+    max-width: none;
+  }
+
+  .win-panel-body {
+    padding: 10px;
+  }
+
+  .win-grid,
+  .form-section-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .win-grid .ant-form-item-row,
+  .win-panel .ant-form-item-row,
+  .form-section-grid .ant-form-item-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+
+  .win-grid .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-panel .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+    width: 100%;
+    max-width: none;
+  }
+
+  .win-field {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+
+  .report-criteria-row,
+  .report-criteria-fields {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .report-criteria .win-actions {
+    align-self: flex-start;
+  }
+
+  .form-section-bar {
+    align-items: flex-start;
+  }
+
+  .win-panel .win-w-date :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-panel .win-w-num :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-panel .win-w-md :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-panel .win-w-full :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-field.win-w-date .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-field.win-w-num .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-field.win-w-md .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-field.win-w-full .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+    width: 100%;
+    max-width: none;
+  }
+
+  .win-bracket-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
   }
 }

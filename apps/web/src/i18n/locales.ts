@@ -65,7 +65,7 @@ export const ar = {
     health: 'حالة النظام',
   },
   payroll: {
-    title: 'الرواتب', newRun: 'إنشاء مسير جديد', employees: 'الموظفون', elements: 'العناصر',
+    title: 'الرواتب', newRun: 'إنشاء مسير جديد', month: 'الشهر', employees: 'الموظفون', elements: 'العناصر',
     leaveTab: 'الإجازات', leaveBalances: 'أرصدة الإجازات', leaveRequests: 'طلبات الإجازة',
     settlementTab: 'التسوية النهائية', createSettlement: 'إنشاء تسوية نهائية', settlementNo: 'رقم التسوية',
     settlementDate: 'تاريخ التسوية', viewSettlement: 'عرض التسوية', postSettlement: 'ترحيل التسوية',
@@ -135,6 +135,12 @@ export const ar = {
     effectiveFrom: 'ساري من', sscEmployeeRate: 'نسبة الموظف', sscEmployerRate: 'نسبة صاحب العمل',
     sscHazardousExtra: 'إضافي مخاطر', sscMinWage: 'الحد الأدنى للأجر', sscMaxWage: 'الحد الأعلى للأجر',
     hoursPerMonth: 'ساعات الشهر', daysPerMonth: 'أيام الشهر', saveError: 'تعذر حفظ بيانات الرواتب',
+    monthlyReports: 'التقارير الشهرية', statementFilters: 'بيانات الكشف', runCriteria: 'بيانات المسير',
+    groups: {
+      effective: 'تاريخ السريان', ssc: 'الضمان الاجتماعي', workTime: 'وقت العمل',
+      annualLeave: 'الإجازة السنوية', incomeTax: 'ضريبة الدخل', taxBrackets: 'شرائح الضريبة',
+      eosTax: 'ضريبة نهاية الخدمة',
+    },
     reports: { title: 'التقارير', register: 'سجل الرواتب', ssc: 'كشف الضمان', 'tax-withheld': 'الضريبة المستقطعة', employeeStatement: 'كشف حساب الموظف' },
     statementSettlement: 'التسوية النهائية', statementSettlementPayment: 'دفع التسوية النهائية',
     statementSettlementReversal: 'عكس التسوية النهائية', statementSettlementPaymentReversal: 'عكس دفع التسوية النهائية',
@@ -176,6 +182,7 @@ export const ar = {
     companyName: 'اسم الشركة (اختياري)',
     ownerName: 'اسم المالك',
     changePassword: 'تغيير كلمة المرور',
+    passwordDetails: 'بيانات كلمة المرور',
     currentPassword: 'كلمة المرور الحالية',
     newPassword: 'كلمة المرور الجديدة',
     confirmPassword: 'تأكيد كلمة المرور الجديدة',
@@ -852,6 +859,13 @@ export const ar = {
   },
   company: {
     title: 'بيانات الشركة',
+    groups: {
+      identity: 'الهوية',
+      registration: 'الضريبة والتسجيل',
+      operations: 'إعدادات الشركة',
+      contact: 'العنوان والتواصل',
+      logo: 'الهوية البصرية',
+    },
     legalNameAr: 'الاسم القانوني بالعربية',
     legalNameEn: 'الاسم بالإنجليزية',
     taxNumber: 'الرقم الضريبي',
@@ -1128,6 +1142,10 @@ export const ar = {
     sub_SUSPENDED: 'معلّق',
     sub_CANCELLED: 'ملغى',
     recordPayment: 'تسجيل دفعة',
+    paymentDetails: 'تفاصيل الدفعة',
+    planIdentity: 'بيانات الباقة',
+    planLimits: 'حدود الباقة',
+    planPricing: 'أسعار الباقة',
     recordPaymentHint:
       'الدفع يدوي (تحويل بنكي أو CliQ). تسجيل الدفعة ينشئ فترة اشتراك ويجعل الحساب فعّالاً على الباقة المختارة.',
     period: 'الفترة',
@@ -1157,6 +1175,7 @@ export const ar = {
     editPlan: 'تعديل الباقة',
   },
   reports: {
+    criteria: 'معايير التقرير',
     consumption: {
       title: 'الاستهلاك بين جردين',
       warehouse: 'المستودع',
@@ -1333,6 +1352,10 @@ export const ar = {
     terms: 'الشروط المالية',
   },
   salesCycle: {
+    formGroups: {
+      policy: 'سياسة أوامر البيع',
+      quotes: 'التسعير والعروض',
+    },
     newQuote: 'عرض سعر جديد',
     quoteTitle: 'عرض سعر بيع',
     quoteNo: 'رقم العرض',
@@ -2580,7 +2603,7 @@ export const en: typeof ar = {
     health: 'System Health',
   },
   payroll: {
-    title: 'Payroll', newRun: 'New payroll run', employees: 'Employees', elements: 'Pay elements',
+    title: 'Payroll', newRun: 'New payroll run', month: 'Month', employees: 'Employees', elements: 'Pay elements',
     leaveTab: 'Leave', leaveBalances: 'Leave balances', leaveRequests: 'Leave requests',
     settlementTab: 'Final settlement', createSettlement: 'Create settlement', settlementNo: 'Settlement no.',
     settlementDate: 'Settlement date', viewSettlement: 'View settlement', postSettlement: 'Post settlement',
@@ -2650,6 +2673,12 @@ export const en: typeof ar = {
     effectiveFrom: 'Effective from', sscEmployeeRate: 'Employee SSC rate', sscEmployerRate: 'Employer SSC rate',
     sscHazardousExtra: 'Hazardous extra rate', sscMinWage: 'Minimum wage', sscMaxWage: 'Maximum wage',
     hoursPerMonth: 'Hours per month', daysPerMonth: 'Days per month', saveError: 'Could not save payroll data',
+    monthlyReports: 'Monthly reports', statementFilters: 'Statement filters', runCriteria: 'Run details',
+    groups: {
+      effective: 'Effective date', ssc: 'Social security', workTime: 'Working time',
+      annualLeave: 'Annual leave', incomeTax: 'Income tax', taxBrackets: 'Tax brackets',
+      eosTax: 'End-of-service tax',
+    },
     reports: { title: 'Reports', register: 'Payroll register', ssc: 'SSC statement', 'tax-withheld': 'Tax withheld', employeeStatement: 'Employee statement' },
     statementSettlement: 'Final settlement', statementSettlementPayment: 'Final settlement payment',
     statementSettlementReversal: 'Final settlement reversal', statementSettlementPaymentReversal: 'Final settlement payment reversal',
@@ -2691,6 +2720,7 @@ export const en: typeof ar = {
     companyName: 'Legal name (optional)',
     ownerName: 'Owner name',
     changePassword: 'Change password',
+    passwordDetails: 'Password details',
     currentPassword: 'Current password',
     newPassword: 'New password',
     confirmPassword: 'Confirm new password',
@@ -3368,6 +3398,13 @@ export const en: typeof ar = {
   },
   company: {
     title: 'Company',
+    groups: {
+      identity: 'Identity',
+      registration: 'Tax & registration',
+      operations: 'Company settings',
+      contact: 'Address & contact',
+      logo: 'Branding',
+    },
     legalNameAr: 'Legal name (Arabic)',
     legalNameEn: 'Name (English)',
     taxNumber: 'Tax number',
@@ -3644,6 +3681,10 @@ export const en: typeof ar = {
     sub_SUSPENDED: 'Suspended',
     sub_CANCELLED: 'Cancelled',
     recordPayment: 'Record payment',
+    paymentDetails: 'Payment details',
+    planIdentity: 'Plan details',
+    planLimits: 'Plan limits',
+    planPricing: 'Plan pricing',
     recordPaymentHint:
       'Payments are manual (bank transfer or CliQ). Recording one creates a paid period and makes the tenant active on the chosen plan.',
     period: 'Period',
@@ -3673,6 +3714,7 @@ export const en: typeof ar = {
     editPlan: 'Edit plan',
   },
   reports: {
+    criteria: 'Report criteria',
     consumption: {
       title: 'Consumption between counts',
       warehouse: 'Warehouse',
@@ -3849,6 +3891,10 @@ export const en: typeof ar = {
     terms: 'Credit terms',
   },
   salesCycle: {
+    formGroups: {
+      policy: 'Order policy',
+      quotes: 'Pricing & quotations',
+    },
     newQuote: 'New quotation',
     quoteTitle: 'Sales quotation',
     quoteNo: 'Quotation No',

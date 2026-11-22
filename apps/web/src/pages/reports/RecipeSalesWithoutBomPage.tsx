@@ -7,8 +7,8 @@ import { formatDate } from '../../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { consumptionControllerRecipeSalesWithoutBom, type RecipeSalesWithoutBomRowDto } from '@erp/api-client';
-import { ListToolbar } from '../../components/ListToolbar';
 import { PageHeader } from '../../components/PageHeader';
+import { ReportCriteria, WinField } from '../../components/WinForm';
 import { tableLocale } from '../../components/QueryState';
 import { amountCell, qtyCell } from '../../format/cells';
 import { codeAndName } from '../../i18n/displayName';
@@ -58,14 +58,14 @@ export function RecipeSalesWithoutBomPage() {
     <div>
       <PageHeader title={t('reports.recipeSales.title')} />
       <Card>
-        <ListToolbar
-          filters={
-            <>
+        <ReportCriteria>
+              <WinField label={t('reports.from')} size="date">
               <DatePicker placeholder={t('reports.from')} value={from} onChange={setFrom} />
-              <DatePicker placeholder={t('reports.to')} value={to} onChange={setTo} />
-            </>
-          }
-        />
+              </WinField>
+              <WinField label={t('reports.to')} size="date">
+                <DatePicker placeholder={t('reports.to')} value={to} onChange={setTo} />
+              </WinField>
+        </ReportCriteria>
         <div className="report-meta">
           <Typography.Text type="secondary">{t('reports.recipeSales.hint')}</Typography.Text>
         </div>

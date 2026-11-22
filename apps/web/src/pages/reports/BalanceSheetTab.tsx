@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { reportsControllerBalanceSheet } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
-import { ListToolbar } from '../../components/ListToolbar';
+import { ReportCriteria, WinField } from '../../components/WinForm';
 import { Num } from '../../components/Num';
 import { dec, formatAmount } from '../../format/number';
 import { palette } from '../../theme';
@@ -57,16 +57,7 @@ export function BalanceSheetTab() {
 
   return (
     <>
-      <ListToolbar
-        filters={
-          <DatePicker
-            value={asOf}
-            onChange={(d) => d && setAsOf(d)}
-            allowClear={false}
-            prefix={t('reports.asOf')}
-            aria-label={t('reports.asOf')}
-          />
-        }
+      <ReportCriteria
         actions={
           <>
             {data && (
@@ -78,7 +69,16 @@ export function BalanceSheetTab() {
             <ExportButtons path={PATH} params={params} />
           </>
         }
-      />
+      >
+        <WinField label={t('reports.asOf')} size="date">
+          <DatePicker
+            value={asOf}
+            onChange={(d) => d && setAsOf(d)}
+            allowClear={false}
+            aria-label={t('reports.asOf')}
+          />
+        </WinField>
+      </ReportCriteria>
       {data && (
         <div className="report-meta">
           <span>

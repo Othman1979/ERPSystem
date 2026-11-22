@@ -222,10 +222,10 @@ export function ItemFormDialog({
           </FormSection>
 
           <FormSection title={t('items.pricing')} icon={<TagOutlined />}>
-            <Form.Item name="salePrice" label={t('items.salePrice')}>
+            <Form.Item name="salePrice" label={t('items.salePrice')} className="win-w-num">
               <InputNumber<string> stringMode min="0" step="0.001" />
             </Form.Item>
-            <Form.Item name="purchasePrice" label={t('items.purchasePrice')}>
+            <Form.Item name="purchasePrice" label={t('items.purchasePrice')} className="win-w-num">
               <InputNumber<string> stringMode min="0" step="0.001" />
             </Form.Item>
             <Form.Item name="salePriceIncludesTax" label={t('items.priceIncludesTax')} valuePropName="checked">
@@ -237,10 +237,10 @@ export function ItemFormDialog({
             {({ getFieldValue }) =>
               holdsStock(getFieldValue('itemKind')) ? (
                 <FormSection title={t('items.inventory')} icon={<DatabaseOutlined />}>
-                  <Form.Item name="minStock" label={t('items.minStock')}>
+                  <Form.Item name="minStock" label={t('items.minStock')} className="win-w-num">
                     <InputNumber<string> stringMode min="0" step="0.000001" />
                   </Form.Item>
-                  <Form.Item name="maxStock" label={t('items.maxStock')}>
+                  <Form.Item name="maxStock" label={t('items.maxStock')} className="win-w-num">
                     <InputNumber<string> stringMode min="0" step="0.000001" />
                   </Form.Item>
                   <Form.Item name="defaultWarehouseId" label={t('items.defaultWarehouse')}>

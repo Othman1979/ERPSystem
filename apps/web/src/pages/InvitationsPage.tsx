@@ -27,6 +27,7 @@ import {
 } from '@erp/api-client';
 import { useAuth } from '../auth/AuthContext';
 import { PageHeader } from '../components/PageHeader';
+import { FormSection } from '../components/FormDialog';
 import { tableLocale } from '../components/QueryState';
 import { EnterNav } from '../components/EnterNav';
 
@@ -233,6 +234,7 @@ export function InvitationsPage() {
               accepting && accept.mutate({ membershipId: accepting.membershipId, code: code.trim() })
             }
           >
+            <FormSection title={t('invitations.acceptTitle')} cols={1}>
             <Form.Item
               name="code"
               label={t('invitations.codeLabel')}
@@ -246,6 +248,7 @@ export function InvitationsPage() {
                 style={{ fontFamily: CODE_FONT, direction: 'ltr', letterSpacing: 2 }}
               />
             </Form.Item>
+            </FormSection>
           </Form>
         </EnterNav>
       </Modal>

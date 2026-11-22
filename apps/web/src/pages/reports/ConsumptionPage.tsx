@@ -8,8 +8,8 @@ import {
   warehousesControllerList,
 } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
-import { ListToolbar } from '../../components/ListToolbar';
 import { PageHeader } from '../../components/PageHeader';
+import { ReportCriteria, WinField } from '../../components/WinForm';
 import { codeAndName } from '../../i18n/displayName';
 import { ConsumptionTable } from './ConsumptionTable';
 import { countLabel, countsInOrder } from './consumptionRules';
@@ -67,46 +67,43 @@ export function ConsumptionPage() {
     <div>
       <PageHeader title={t('reports.consumption.title')} />
       <Card>
-        <ListToolbar
-          filters={
-            <>
+        <ReportCriteria
+          actions={ready && <ExportButtons path="/stock-reports/consumption" params={params} />}
+        >
+              <WinField label={t('reports.consumption.warehouse')}>
               <Select
                 allowClear
                 showSearch
                 optionFilterProp="label"
                 aria-label={t('reports.consumption.warehouse')}
-                placeholder={t('reports.consumption.warehouse')}
-                style={{ minWidth: 200 }}
                 value={warehouseId}
                 onChange={changeWarehouse}
                 options={(warehouses.data ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
               />
+              </WinField>
+              <WinField label={t('reports.consumption.fromCount')}>
               <Select
                 allowClear
                 aria-label={t('reports.consumption.fromCount')}
-                placeholder={t('reports.consumption.fromCount')}
                 disabled={!warehouseId}
                 loading={counts.isFetching}
-                style={{ minWidth: 220 }}
                 value={fromCountId}
                 onChange={setFromCountId}
                 options={countOptions}
               />
+              </WinField>
+              <WinField label={t('reports.consumption.toCount')}>
               <Select
                 allowClear
                 aria-label={t('reports.consumption.toCount')}
-                placeholder={t('reports.consumption.toCount')}
                 disabled={!warehouseId}
                 loading={counts.isFetching}
-                style={{ minWidth: 220 }}
                 value={toCountId}
                 onChange={setToCountId}
                 options={countOptions}
               />
-            </>
-          }
-          actions={ready && <ExportButtons path="/stock-reports/consumption" params={params} />}
-        />
+              </WinField>
+        </ReportCriteria>
         <div className="report-meta">
           <Typography.Text type="secondary">{t('reports.consumption.note')}</Typography.Text>
         </div>

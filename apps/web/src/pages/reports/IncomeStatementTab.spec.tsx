@@ -127,7 +127,7 @@ describe('IncomeStatementTab', () => {
     renderWithProviders(<IncomeStatementTab />);
     await flush();
 
-    expect(host?.querySelectorAll('.list-toolbar')).toHaveLength(1);
+    expect(host?.querySelectorAll('.report-criteria')).toHaveLength(1);
     expect(host?.querySelectorAll('.ant-segmented-item')).toHaveLength(2);
     const prints = [...(host?.querySelectorAll('button') ?? [])].filter(
       (b) => b.textContent?.trim() === i18n.t('common.print'),

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { reportsControllerIncomeStatement } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
-import { ListToolbar } from '../../components/ListToolbar';
+import { ReportCriteria, WinField } from '../../components/WinForm';
 import { useCostCenters } from '../../hooks/useCostCenters';
 import { displayName } from '../../i18n/displayName';
 import { isoDay, PeriodMeta, PeriodPickers, ScreenPrintButton } from './PeriodFilters';
@@ -39,29 +39,28 @@ export function IncomeStatementTab() {
 
   return (
     <>
-      <ListToolbar
-        filters={
-          <>
-            {costCentersEnabled && (
-              <Segmented<IncomeView>
-                value={view}
-                onChange={setView}
-                options={[
-                  { value: 'plain', label: t('reports.incomeStatement') },
-                  { value: 'byCentre', label: t('costCenters.byCentre') },
-                ]}
-              />
-            )}
-            <PeriodPickers from={from} to={to} onFrom={setFrom} onTo={setTo} resolved={resolved} />
-          </>
-        }
+      <ReportCriteria
         actions={
           <>
             <ScreenPrintButton />
             <ExportButtons path={byCentre ? BY_CENTRE_PATH : PATH} params={params} />
           </>
         }
-      />
+      >
+        {costCentersEnabled && (
+          <WinField label={t('reports.incomeStatement')}>
+            <Segmented<IncomeView>
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'plain', label: t('reports.incomeStatement') },
+                { value: 'byCentre', label: t('costCenters.byCentre') },
+              ]}
+            />
+          </WinField>
+        )}
+        <PeriodPickers from={from} to={to} onFrom={setFrom} onTo={setTo} resolved={resolved} />
+      </ReportCriteria>
       {byCentre ? <IncomeByCostCenterTab {...period} /> : <PlainIncomeStatement {...period} />}
     </>
   );

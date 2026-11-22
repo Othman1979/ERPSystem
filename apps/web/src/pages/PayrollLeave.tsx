@@ -36,6 +36,7 @@ import { EnterNav } from '../components/EnterNav';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { GridSelect } from '../components/GridSelect';
 import { idemHeaders } from '../idempotency';
+import { ReportCriteria, WinField, WinPanel } from '../components/WinForm';
 
 type DateValue = Dayjs | string | null | undefined;
 const dateText = (value: DateValue) => dayjs.isDayjs(value) ? value.format('YYYY-MM-DD') : typeof value === 'string' ? value.slice(0, 10) : undefined;
@@ -106,13 +107,37 @@ function RequestsTab() {
   const rows = requests.data as LeaveRequestResponseDto[] | undefined;
   return <>
     {lastResult && <Alert showIcon type="success" message={t('payroll.requestedDays', { days: lastResult.days })} description={`${datePickerValue(lastResult.startDate)?.format('DD/MM/YYYY')} – ${datePickerValue(lastResult.endDate)?.format('DD/MM/YYYY')} · ${t('payroll.calendarDays')}: ${lastResult.calendarDays}`} closable onClose={() => setLastResult(undefined)} />}
-    <Space wrap style={{ marginBottom: 12 }}>
-      <Select allowClear showSearch optionFilterProp="label" value={employeeId} onChange={setEmployeeId} placeholder={t('payroll.employee')}
-        options={employeeOptions(employees.data as PayrollEmployeeDto[] | undefined, i18n.language)} />
-      <Select allowClear value={status} onChange={setStatus} placeholder={t('payroll.status')} options={['SUBMITTED', 'APPROVED', 'REJECTED', 'CANCELLED'].map((value) => ({ value, label: t(`payroll.${value.toLowerCase()}`) }))} />
-      <Input value={year} onChange={(event) => setYear(event.target.value)} aria-label={t('payroll.year')} />
-      {can(PERMISSIONS.PAYROLL_MANAGE) && <Button type="primary" icon={<PlusOutlined />} onClick={() => setFormOpen(true)}>{t('payroll.requestLeave')}</Button>}
-    </Space>
+    <ReportCriteria
+      actions={
+        can(PERMISSIONS.PAYROLL_MANAGE) && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setFormOpen(true)}>
+            {t('payroll.requestLeave')}
+          </Button>
+        )
+      }
+    >
+      <WinField label={t('payroll.employee')}>
+        <Select
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          value={employeeId}
+          onChange={setEmployeeId}
+          options={employeeOptions(employees.data as PayrollEmployeeDto[] | undefined, i18n.language)}
+        />
+      </WinField>
+      <WinField label={t('payroll.status')}>
+        <Select
+          allowClear
+          value={status}
+          onChange={setStatus}
+          options={['SUBMITTED', 'APPROVED', 'REJECTED', 'CANCELLED'].map((value) => ({ value, label: t(`payroll.${value.toLowerCase()}`) }))}
+        />
+      </WinField>
+      <WinField label={t('payroll.year')} size="num">
+        <Input value={year} onChange={(event) => setYear(event.target.value)} />
+      </WinField>
+    </ReportCriteria>
     <Table rowKey="id" loading={requests.isLoading} dataSource={rows} columns={[
       { title: t('payroll.employee'), render: (_: unknown, row) => i18n.language === 'en' ? row.employeeNameEn ?? row.employeeName : row.employeeName },
       { title: t('payroll.leaveTypes'), render: (_: unknown, row) => i18n.language === 'en' ? row.leaveTypeNameEn ?? row.leaveTypeNameAr : row.leaveTypeNameAr },
@@ -129,6 +154,7 @@ function RequestsTab() {
     <FormDialog open={formOpen} title={t('payroll.requestLeave')} onCancel={() => setFormOpen(false)} onSave={() => void form.submit()} saving={create.isPending}>
       <EnterNav>
         <Form form={form} layout="vertical" onFinish={(values) => create.mutate(values)}>
+          <FormSection title={t('payroll.requestLeave')} cols={2}>
           <Form.Item name="employeeId" label={t('payroll.employee')} rules={[{ required: true }]}>
             <GridSelect options={employeeOptions(employees.data as PayrollEmployeeDto[] | undefined, i18n.language)} />
           </Form.Item>
@@ -138,7 +164,8 @@ function RequestsTab() {
           <Form.Item name="startDate" label={t('payroll.leaveStart')} rules={[{ required: true }]}><DatePicker /></Form.Item>
           <Form.Item name="endDate" label={t('payroll.leaveEnd')} rules={[{ required: true }]}><DatePicker /></Form.Item>
           {selectedType?.category === 'SICK' && <Form.Item name="hospitalised" valuePropName="checked"><Checkbox>{t('payroll.hospitalised')}</Checkbox></Form.Item>}
-          <Form.Item name="notes" label={t('payroll.notes')}><Input.TextArea /></Form.Item>
+          <Form.Item name="notes" label={t('payroll.notes')} className="span-2 win-w-full"><Input.TextArea /></Form.Item>
+          </FormSection>
         </Form>
       </EnterNav>
     </FormDialog>
@@ -188,12 +215,29 @@ function BalancesTab() {
     onError: () => message.error(t('payroll.saveError')),
   });
   return <>
-    <Space wrap style={{ marginBottom: 12 }}>
-      <Input value={year} onChange={(event) => setYear(event.target.value)} aria-label={t('payroll.year')} />
-      <Select allowClear showSearch optionFilterProp="label" value={employeeId} onChange={setEmployeeId} placeholder={t('payroll.employee')}
-        options={employeeOptions(employees.data as PayrollEmployeeDto[] | undefined, i18n.language)} />
-      {can(PERMISSIONS.PAYROLL_MANAGE) && <Button type="primary" onClick={() => setOpen(true)}>{t('payroll.createAdjustment')}</Button>}
-    </Space>
+    <ReportCriteria
+      actions={
+        can(PERMISSIONS.PAYROLL_MANAGE) && (
+          <Button type="primary" onClick={() => setOpen(true)}>
+            {t('payroll.createAdjustment')}
+          </Button>
+        )
+      }
+    >
+      <WinField label={t('payroll.year')} size="num">
+        <Input value={year} onChange={(event) => setYear(event.target.value)} />
+      </WinField>
+      <WinField label={t('payroll.employee')}>
+        <Select
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          value={employeeId}
+          onChange={setEmployeeId}
+          options={employeeOptions(employees.data as PayrollEmployeeDto[] | undefined, i18n.language)}
+        />
+      </WinField>
+    </ReportCriteria>
     <Table rowKey={(row) => `${row.employeeId}-${row.leaveTypeId}`} loading={balances.isLoading}
       dataSource={balances.data as LeaveBalanceResponseDto[] | undefined} columns={[
         { title: t('payroll.employee'), dataIndex: 'employeeName' },
@@ -214,11 +258,13 @@ function BalancesTab() {
       ]}  scroll={{ x: 'max-content' }}/>
     <FormDialog open={open} title={t('payroll.createAdjustment')} onCancel={() => setOpen(false)} onSave={() => void form.submit()} saving={save.isPending}>
       <EnterNav><Form form={form} layout="vertical" initialValues={{ year: Number(year) }} onFinish={(values) => save.mutate(values)}>
+        <FormSection title={t('payroll.createAdjustment')} cols={2}>
         <Form.Item name="employeeId" label={t('payroll.employee')} rules={[{ required: true }]}><GridSelect options={employeeOptions(employees.data as PayrollEmployeeDto[] | undefined, i18n.language)} /></Form.Item>
         <Form.Item name="leaveTypeId" label={t('payroll.leaveTypes')} rules={[{ required: true }]}><GridSelect options={(types.data as LeaveTypeResponseDto[] | undefined)?.map((type) => ({ value: type.id, label: typeName(type, i18n.language) })) ?? []} /></Form.Item>
-        <Form.Item name="year" label={t('payroll.year')} rules={[{ required: true }]}><InputNumber min={1900} max={2200} precision={0} /></Form.Item>
-        <Form.Item name="days" label={t('payroll.adjustmentDays')} rules={[{ required: true }]}><Input /></Form.Item>
+        <Form.Item name="year" label={t('payroll.year')} rules={[{ required: true }]} className="win-w-num"><InputNumber min={1900} max={2200} precision={0} /></Form.Item>
+        <Form.Item name="days" label={t('payroll.adjustmentDays')} rules={[{ required: true }]} className="win-w-num"><Input /></Form.Item>
         <Form.Item name="reason" label={t('payroll.leaveReason')} rules={[{ required: true }]}><Input.TextArea /></Form.Item>
+        </FormSection>
       </Form></EnterNav>
     </FormDialog>
   </>;
@@ -273,12 +319,17 @@ export function LeaveSettingsPanel() {
     setTypeOpen(true);
   };
   return <>
-    <Space style={{ margin: '12px 0' }}>
-      {can(PERMISSIONS.PAYROLL_MANAGE) && <>
-        <Button onClick={() => setHolidayOpen(true)}>{t('payroll.addHoliday')}</Button>
-        <Button type="primary" onClick={() => openType()}>{t('payroll.addLeaveType')}</Button>
-      </>}
-    </Space>
+    <WinPanel
+      title={t('payroll.settings')}
+      footer={
+        can(PERMISSIONS.PAYROLL_MANAGE) && (
+          <div className="win-actions">
+            <Button onClick={() => setHolidayOpen(true)}>{t('payroll.addHoliday')}</Button>
+            <Button type="primary" onClick={() => openType()}>{t('payroll.addLeaveType')}</Button>
+          </div>
+        )
+      }
+    >
     <FormSection title={t('payroll.holidays')}>
       <Table rowKey="id" dataSource={holidays.data} columns={[
         { title: t('payroll.from'), dataIndex: 'date', render: (value: string) => datePickerValue(value)?.format('DD/MM/YYYY') },
@@ -296,15 +347,19 @@ export function LeaveSettingsPanel() {
         { title: t('common.actions'), key: 'actions', render: (_: unknown, row: LeaveTypeResponseDto) => can(PERMISSIONS.PAYROLL_MANAGE) && <Button onClick={() => openType(row)}>{t('payroll.editElement')}</Button> },
       ]} scroll={{ x: 'max-content' }} />
     </FormSection>
+    </WinPanel>
     <FormDialog open={holidayOpen} title={t('payroll.addHoliday')} onCancel={() => setHolidayOpen(false)} onSave={() => void holidayForm.submit()} saving={saveHoliday.isPending}>
       <Form form={holidayForm} layout="vertical" onFinish={(values) => saveHoliday.mutate(values)}>
+        <FormSection title={t('payroll.addHoliday')} cols={2}>
         <Form.Item name="date" label={t('payroll.from')} rules={[{ required: true }]}><DatePicker /></Form.Item>
         <Form.Item name="nameAr" label={t('payroll.nameAr')} rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="nameEn" label={t('payroll.nameEn')}><Input /></Form.Item>
+        </FormSection>
       </Form>
     </FormDialog>
     <FormDialog open={typeOpen} title={t('payroll.leaveTypes')} onCancel={() => setTypeOpen(false)} onSave={() => void typeForm.submit()} saving={saveType.isPending}>
       <Form form={typeForm} layout="vertical" onFinish={(values) => saveType.mutate(values)}>
+        <FormSection title={t('payroll.leaveTypes')} cols={2}>
         <Form.Item name="code" label={t('payroll.code')} rules={[{ required: true }]}><Input disabled={Boolean(editing)} /></Form.Item>
         <Form.Item name="nameAr" label={t('payroll.nameAr')} rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="nameEn" label={t('payroll.nameEn')}><Input /></Form.Item>
@@ -313,8 +368,8 @@ export function LeaveSettingsPanel() {
           { value: 'WORKING_DAYS', label: t('payroll.workingDays') },
           { value: 'CALENDAR_DAYS', label: t('payroll.calendarBasis') },
         ]} /></Form.Item>
-        {(['maxDaysPerYear', 'maxDaysPerRequest', 'hospitalExtraDays'] as const).map((field) => <Form.Item key={field} name={field} label={t(`payroll.${field}`)}><Input /></Form.Item>)}
-        <Form.Item name="minServiceYears" label={t('payroll.minServiceYears')}><InputNumber min={0} precision={0} /></Form.Item>
+        {(['maxDaysPerYear', 'maxDaysPerRequest', 'hospitalExtraDays'] as const).map((field) => <Form.Item key={field} name={field} label={t(`payroll.${field}`)} className="win-w-num"><Input /></Form.Item>)}
+        <Form.Item name="minServiceYears" label={t('payroll.minServiceYears')} className="win-w-num"><InputNumber min={0} precision={0} /></Form.Item>
         <Form.Item name="payElementId" label={t('payroll.element')}>
           <Select allowClear showSearch optionFilterProp="label" options={(elements.data as PayrollElementDto[] | undefined)
             ?.filter((element) => element.kind === 'DEDUCTION' && element.amountType === 'PER_DAY')
@@ -322,6 +377,7 @@ export function LeaveSettingsPanel() {
         </Form.Item>
         <Form.Item name="oncePerEmployment" valuePropName="checked"><Checkbox>{t('payroll.oncePerEmployment')}</Checkbox></Form.Item>
         {editing && <Form.Item name="isActive" valuePropName="checked"><Checkbox>{t('payroll.active')}</Checkbox></Form.Item>}
+        </FormSection>
       </Form>
     </FormDialog>
   </>;

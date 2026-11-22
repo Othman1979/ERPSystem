@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { reportsControllerTaxSummary, type TaxSummaryRowDto } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
-import { ListToolbar } from '../../components/ListToolbar';
+import { ReportCriteria, WinField } from '../../components/WinForm';
 import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
 import { amountCell } from '../../format/cells';
@@ -49,13 +49,17 @@ export function TaxSummaryTab() {
 
   return (
     <>
-      <ListToolbar
-        filters={
+      <ReportCriteria
+        actions={
           <>
+            <ScreenPrintButton />
+            <ExportButtons path={PATH} params={params} />
+          </>
+        }
+      >
+          <WinField label={t('reports.taxPeriod')}>
             <Select
-              placeholder={t('reports.taxPeriod')}
               aria-label={t('reports.taxPeriod')}
-              style={{ minWidth: 200 }}
               value={preset}
               onChange={(v: string) => {
                 const p = presets.find((x) => x.value === v);
@@ -66,16 +70,9 @@ export function TaxSummaryTab() {
               }}
               options={presets.map((p) => ({ value: p.value, label: p.label }))}
             />
-            <PeriodPickers from={from} to={to} onFrom={setFrom} onTo={setTo} resolved={data} />
-          </>
-        }
-        actions={
-          <>
-            <ScreenPrintButton />
-            <ExportButtons path={PATH} params={params} />
-          </>
-        }
-      />
+          </WinField>
+          <PeriodPickers from={from} to={to} onFrom={setFrom} onTo={setTo} resolved={data} />
+      </ReportCriteria>
       {data && (
         <div className="report-meta">
           <PeriodMeta from={data.from} to={data.to} />

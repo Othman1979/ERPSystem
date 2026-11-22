@@ -1,10 +1,11 @@
 import { SaveOutlined } from '@ant-design/icons';
-import { Button, ConfigProvider, Modal } from 'antd';
-import type { ReactNode } from 'react';
+import { Button, ConfigProvider, Form, Modal } from 'antd';
+import { Children, Fragment, isValidElement, type CSSProperties, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { fieldPanelTheme } from '../theme';
 import { useDocShortcuts } from './DocLayout';
 import { EnterNav } from './EnterNav';
+import { WinField } from './WinForm';
 
 // Inline styles so they always win over antd's own; colours are the --c-* tokens.
 const dialogStyles = {
@@ -88,8 +89,7 @@ export function FormDialog({
 }
 
 /**
- * Titled section of a FormDialog: a gray bar, then its Form.Items in a 2–3
- * column grid. Give a Form.Item className "span-2" or "span-all" to widen it.
+ * Titled group box for form fields and full-row content.
  */
 export function FormSection({
   title,
@@ -102,19 +102,46 @@ export function FormSection({
   icon?: ReactNode;
   /** Shown at the end of the bar (e.g. an Active switch). */
   extra?: ReactNode;
-  cols?: 2 | 3;
+  cols?: 1 | 2 | 3;
   children: ReactNode;
 }) {
+  const toGridChildren = (nodes: ReactNode): ReactNode[] => {
+    const gridChildren: ReactNode[] = [];
+    Children.forEach(nodes, (child, index) => {
+      if (isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment) {
+        gridChildren.push(...toGridChildren(child.props.children));
+      } else if (isValidElement(child) && (child.type === Form.Item || child.type === WinField)) {
+        gridChildren.push(child);
+      } else {
+        gridChildren.push(
+          <div
+            key={isValidElement(child) ? child.key ?? index : index}
+            className="form-section-full-row"
+          >
+            {child}
+          </div>,
+        );
+      }
+    });
+    return gridChildren;
+  };
+  const gridChildren = toGridChildren(children);
+
   return (
-    <section className="form-section">
-      <div className="doc-subbar form-section-bar">
-        {icon}
-        <span className="doc-subbar-title">{title}</span>
+    <fieldset className="form-section win-group">
+      <legend className="form-section-bar">
+        <span className="form-section-title">
+          {icon}
+          <span className="doc-subbar-title">{title}</span>
+        </span>
         {extra && <span className="form-section-extra">{extra}</span>}
+      </legend>
+      <div
+        className={`form-section-grid win-grid${cols === 2 ? ' cols-2' : ''}`}
+        style={{ '--cols': cols } as CSSProperties}
+      >
+        {gridChildren}
       </div>
-      <div className={cols === 2 ? 'form-section-grid cols-2' : 'form-section-grid'}>
-        {children}
-      </div>
-    </section>
+    </fieldset>
   );
 }

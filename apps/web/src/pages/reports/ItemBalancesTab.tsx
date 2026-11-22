@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { stockReportsControllerItemBalances, warehousesControllerList } from '@erp/api-client';
 import type { ItemBalanceRowDto } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
-import { ListToolbar } from '../../components/ListToolbar';
+import { ReportCriteria, WinField } from '../../components/WinForm';
 import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
 import { amountCell, qtyCell } from '../../format/cells';
@@ -51,29 +51,27 @@ export function ItemBalancesTab({
 
   return (
     <>
-      <ListToolbar
-        filters={
-          <>
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              placeholder={t('reports.allWarehouses')}
-              style={{ minWidth: 200 }}
-              value={warehouseId}
-              onChange={setWarehouseId}
-              options={(warehouses.data ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
-            />
-            {dateFilters}
-          </>
-        }
+      <ReportCriteria
         actions={
           <>
             {printButton}
             <ExportButtons path="/stock/item-balances" params={params} />
           </>
         }
-      />
+      >
+        <WinField label={t('reports.allWarehouses')}>
+          <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('reports.allWarehouses')}
+              value={warehouseId}
+              onChange={setWarehouseId}
+              options={(warehouses.data ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
+            />
+        </WinField>
+        {dateFilters}
+      </ReportCriteria>
       <div className="report-meta">
         <Typography.Text type="secondary">{t('reports.itemBalancesNote')}</Typography.Text>
       </div>

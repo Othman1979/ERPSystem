@@ -18,7 +18,7 @@ import {
 } from '@erp/api-client';
 import { DatePicker } from '../../components/DatePicker';
 import { ExportButtons } from '../../components/ExportButtons';
-import { FormDialog } from '../../components/FormDialog';
+import { FormDialog, FormSection } from '../../components/FormDialog';
 import { ResponsiveTable } from '../../components/ResponsiveTable';
 import { tableLocale } from '../../components/QueryState';
 import { amountCell } from '../../format/cells';
@@ -289,23 +289,25 @@ function StepDialog({
         initialValues={{ date: initialDate, bankAccountId: cheque.bankAccount?.id }}
         onFinish={(v) => run.mutate(v)}
       >
-        <Form.Item name="date" label={t('cheques.date')} rules={[{ required: true, message: t('common.requiredField') }]}>
-          <DatePicker />
-        </Form.Item>
-        {step === 'deposit' && (
-          <Form.Item
-            name="bankAccountId"
-            label={t('cheques.bankAccount')}
-            rules={[{ required: true, message: t('common.requiredField') }]}
-          >
-            <Select showSearch optionFilterProp="label" options={bankAccounts} />
+        <FormSection title={t(`cheques.${step}`)} cols={1}>
+          <Form.Item name="date" label={t('cheques.date')} rules={[{ required: true, message: t('common.requiredField') }]}>
+            <DatePicker />
           </Form.Item>
-        )}
-        {step !== 'undo' && (
-          <Form.Item name="notes" label={t('cheques.notes')}>
-            <Input maxLength={500} />
-          </Form.Item>
-        )}
+          {step === 'deposit' && (
+            <Form.Item
+              name="bankAccountId"
+              label={t('cheques.bankAccount')}
+              rules={[{ required: true, message: t('common.requiredField') }]}
+            >
+              <Select showSearch optionFilterProp="label" options={bankAccounts} />
+            </Form.Item>
+          )}
+          {step !== 'undo' && (
+            <Form.Item name="notes" label={t('cheques.notes')}>
+              <Input maxLength={500} />
+            </Form.Item>
+          )}
+        </FormSection>
       </Form>
     </FormDialog>
   );

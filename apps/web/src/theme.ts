@@ -174,6 +174,9 @@ export const cssVariables: Record<string, string> = (() => {
   vars['--radius'] = '4px';
   vars['--radius-sm'] = '2px';
   vars['--radius-pill'] = '999px';
+  vars['--win-col-min'] = '320px';
+  vars['--cols'] = '2';
+  vars['--win-label'] = '150px';
   // The only shadow: floating layers (dialogs, menus). Cards sit flat (UI-09).
   vars['--shadow-float'] = `0 6px 16px ${alpha(ink.ink900, 0.12)}, 0 1px 3px ${alpha(ink.ink900, 0.08)}`;
   return vars;

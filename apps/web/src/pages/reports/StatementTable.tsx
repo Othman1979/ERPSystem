@@ -102,6 +102,7 @@ export function StatementTable({
           title: t('accounts.code'),
           key: 'code',
           width: 110,
+          className: 'col-code',
           onCell: spanLabel,
           render: (_: unknown, l) =>
             l.kind === 'account' && l.code ? (
