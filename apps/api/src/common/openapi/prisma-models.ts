@@ -178,6 +178,8 @@ export class TenantDatabaseRow {
   passwordSealed!: string;
   @ApiProperty({ type: 'string', nullable: true })
   schemaVersion!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  pendingCompanyNameAr!: string | null;
   @ApiProperty({ enum: TenantDatabaseState, enumName: 'TenantDatabaseState' })
   state!: TenantDatabaseState;
   @ApiProperty({ type: 'string', format: 'date-time' })

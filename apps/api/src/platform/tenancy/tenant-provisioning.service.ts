@@ -174,6 +174,10 @@ export class TenantProvisioningService {
         if (this.config.get('DB_PROVISIONER', { infer: true }) === 'create') throw new PoolWasEmpty();
         throw new DomainError(ErrorCode.REGISTRATION_UNAVAILABLE, 'No tenant databases are available for registration');
       }
+      await tx.tenantDatabase.update({
+        where: { tenantId: tenant.id },
+        data: { pendingCompanyNameAr: dto.companyNameAr ?? null },
+      });
 
       // The link records the owner so a later resume can recover the user after a process restart.
       // Membership resolution hides it while the tenant database remains PROVISIONING.
@@ -233,7 +237,7 @@ export class TenantProvisioningService {
         const company = await tx.company.create({
           data: {
             tenantId,
-            legalNameAr: tenantName,
+            legalNameAr: database.pendingCompanyNameAr ?? tenantName,
             baseCurrencyId: currency?.id ?? null,
           },
         });
@@ -260,7 +264,7 @@ export class TenantProvisioningService {
       await control.$transaction(async (tx) => {
         await tx.tenantDatabase.update({
           where: { tenantId },
-          data: { state: 'ACTIVE', schemaVersion },
+          data: { state: 'ACTIVE', schemaVersion, pendingCompanyNameAr: null },
         });
         await tx.userTenant.createMany({
           data: [{ userId, tenantId }],

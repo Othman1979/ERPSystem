@@ -396,6 +396,7 @@ model TenantDatabase {
   dbUser        String              @map("db_user") @db.VarChar(64)
   passwordSealed String             @map("password_sealed") @db.Text
   schemaVersion String?             @map("schema_version") @db.VarChar(255)
+  pendingCompanyNameAr String?      @map("pending_company_name_ar") @db.VarChar(255)
   state         TenantDatabaseState @default(PROVISIONING)
   createdAt     DateTime            @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt     DateTime            @updatedAt @map("updated_at") @db.DateTime(3)

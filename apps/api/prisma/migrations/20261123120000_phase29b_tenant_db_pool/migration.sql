@@ -1,3 +1,5 @@
+ALTER TABLE `tenant_databases` ADD COLUMN `pending_company_name_ar` VARCHAR(255) NULL;
+
 -- CreateTable
 CREATE TABLE `tenant_db_pool` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

@@ -187,11 +187,13 @@ afterAll(async () => {
 
 describe('isolated tenant provisioning', () => {
   it('registers separate databases, creates isolated items, and keeps the password mirror unusable', async () => {
+    const companyNameAr = `Company A ${RUN}`;
     const registrations = await Promise.all(
       ownerEmails.map((email, index) =>
         request(BASE).post('/api/v1/auth/register').send({
           tenantName: `Provision ${index === 0 ? 'A' : 'B'} ${RUN}`,
           ownerName: `Owner ${index === 0 ? 'A' : 'B'}`,
+          companyNameAr: index === 0 ? companyNameAr : undefined,
           email,
           password: PASSWORD,
         }),
@@ -227,6 +229,10 @@ describe('isolated tenant provisioning', () => {
       tenantDbs.push({ name: database.databaseName, user: database.dbUser, ...tenantDb });
       const mirroredUser = await tenantDb.client.user.findUniqueOrThrow({ where: { id: user.id } });
       expect(mirroredUser.passwordHash).toBe('!');
+      if (index === 0) {
+        const company = await tenantDb.client.company.findFirstOrThrow({ where: { tenantId: link.tenantId } });
+        expect(company.legalNameAr).toBe(companyNameAr);
+      }
 
       const unit = await tenantDb.client.unit.findFirstOrThrow({ where: { tenantId: link.tenantId } });
       const created = await request(BASE)
@@ -373,6 +379,7 @@ describe('isolated tenant provisioning', () => {
         dbUser: adminUser,
         passwordSealed: sealSecret(adminPassword, SECRET_KEY),
         schemaVersion: expectedSchemaVersion(),
+        pendingCompanyNameAr: `Resumed Company ${RUN}`,
         state: 'PROVISIONING',
         createdAt: new Date(Date.now() - 3 * 60_000),
       },
@@ -382,9 +389,11 @@ describe('isolated tenant provisioning', () => {
     runJob(['provision-resume'], 'create');
     const database = await control!.client.tenantDatabase.findUniqueOrThrow({ where: { tenantId: tenant.id } });
     expect(database.state).toBe('ACTIVE');
+    expect(database.pendingCompanyNameAr).toBeNull();
     const resumed = prismaFor(connectionUrl(adminUrl, databaseName));
     tenantDbs.push({ name: databaseName, user: adminUser, ...resumed });
-    expect(await resumed.client.company.count({ where: { tenantId: tenant.id } })).toBe(1);
+    const company = await resumed.client.company.findFirstOrThrow({ where: { tenantId: tenant.id } });
+    expect(company.legalNameAr).toBe(`Resumed Company ${RUN}`);
     const login = await request(BASE).post('/api/v1/auth/login').send({
       email,
       password,
