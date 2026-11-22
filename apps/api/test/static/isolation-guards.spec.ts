@@ -42,6 +42,7 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/health/health.controller.ts': 'readiness probe: one platform row written and rolled back, no tenant data',
   'src/common/plan-limits/plan-limits.service.ts': 'the tenant row is locked in its tenant transaction; Plan is a control-plane model',
   'src/jobs/backup/backup.service.ts': 'whole-database backup (migrations list, server version)',
+  'src/jobs/backup/backup-verify.service.ts': 'tenant and pool database registry is control-plane routing metadata',
   'src/jobs/backup/backup-restore-tenant.service.ts': 'tenant state and restore audit rows are control-plane data',
   'src/jobs/error-digest.service.ts': 'platform error table across tenants',
   'src/jobs/integrity-check.service.ts': 'read-only orphan and collation checks across tenants (DB-15, DB-18)',

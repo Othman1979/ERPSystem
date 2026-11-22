@@ -123,15 +123,15 @@ export class BackupVerifyService {
       add('restore', false, 'refused: BACKUP_VERIFY_DATABASE_URL is the live database');
       return result(null, false);
     }
-    if (
-      await isRegisteredTenantTarget(
-        this.prisma,
-        this.prisma.tenancyMode,
-        target,
-        (message) => this.logger.warn(message),
-      )
-    ) {
-      add('restore', false, 'refused: BACKUP_VERIFY_DATABASE_URL is a tenant or pool database');
+    // systemPrisma: tenant and pool database registrations are control-plane routing metadata.
+    try {
+      if (await isRegisteredTenantTarget(this.prisma, this.prisma.tenancyMode, target)) {
+        add('restore', false, 'refused: BACKUP_VERIFY_DATABASE_URL is a tenant or pool database');
+        return result(null, false);
+      }
+    } catch {
+      this.logger.warn('Could not check tenant and pool database targets before backup verification');
+      add('restore', false, 'cannot confirm the scratch database is not a tenant or pool database');
       return result(null, false);
     }
     if (!SCRATCH_NAME.test(target.database)) {
@@ -359,29 +359,23 @@ export async function isRegisteredTenantTarget(
   prisma: PrismaService,
   tenancyMode: 'shared' | 'isolated',
   target: DbTarget,
-  warn: (message: string) => void,
 ): Promise<boolean> {
   if (tenancyMode !== 'isolated') return false;
 
-  try {
-    const control = prisma.control();
-    const [tenantDatabases, poolDatabases] = await Promise.all([
-      control.tenantDatabase.findMany({ select: { host: true, port: true, databaseName: true } }),
-      control.tenantDbPool.findMany({ select: { host: true, port: true, databaseName: true } }),
-    ]);
-    return [...tenantDatabases, ...poolDatabases].some((database) =>
-      sameDatabase(target, {
-        host: database.host,
-        port: database.port,
-        database: database.databaseName,
-        user: target.user,
-        password: target.password,
-      }),
-    );
-  } catch {
-    warn('Could not check tenant and pool database targets before backup verification');
-    return false;
-  }
+  const control = prisma.control();
+  const [tenantDatabases, poolDatabases] = await Promise.all([
+    control.tenantDatabase.findMany({ select: { host: true, port: true, databaseName: true } }),
+    control.tenantDbPool.findMany({ select: { host: true, port: true, databaseName: true } }),
+  ]);
+  return [...tenantDatabases, ...poolDatabases].some((database) =>
+    sameDatabase(target, {
+      host: database.host,
+      port: database.port,
+      database: database.databaseName,
+      user: target.user,
+      password: target.password,
+    }),
+  );
 }
 
 export function tenantMigrationVersionMatches(

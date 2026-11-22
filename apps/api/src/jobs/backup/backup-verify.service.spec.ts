@@ -1,10 +1,17 @@
-import type { PrismaService } from '../../prisma/prisma.service.js';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import type { ConfigService } from '@nestjs/config';
 import { jest } from '@jest/globals';
+import type { Env } from '../../common/config/env.validation.js';
+import type { PrismaService } from '../../prisma/prisma.service.js';
 import {
+  BackupVerifyService,
   isRegisteredTenantTarget,
   tenantMigrationVersionMatches,
 } from './backup-verify.service.js';
 import type { DbTarget } from './mysql-tools.js';
+import { MANIFEST_FILE } from './manifest.js';
 
 type DatabaseRow = { host: string; port: number; databaseName: string };
 type LookupArgs = { select: { host: true; port: true; databaseName: true } };
@@ -28,14 +35,31 @@ describe('backup verify tenant target checks', () => {
       })),
     } as unknown as PrismaService;
 
-    await expect(isRegisteredTenantTarget(prisma, 'shared', target, jest.fn())).resolves.toBe(false);
+    await expect(isRegisteredTenantTarget(prisma, 'shared', target)).resolves.toBe(false);
     expect(prisma.control).not.toHaveBeenCalled();
     expect(tenantFindMany).not.toHaveBeenCalled();
     expect(poolFindMany).not.toHaveBeenCalled();
   });
 
-  it('warns and continues when isolated-mode lookups fail', async () => {
+  it('fails closed when isolated-mode lookups fail', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'backup-verify-registry-'));
+    const folder = path.join(root, 'backup');
+    await mkdir(folder);
+    await writeFile(
+      path.join(folder, MANIFEST_FILE),
+      JSON.stringify({
+        format: 2,
+        name: 'backup-test',
+        createdAt: new Date().toISOString(),
+        database: { name: 'source', server: 'localhost' },
+        migrations: { count: 0, last: null },
+        storage: { files: 0 },
+        files: [],
+        encryption: null,
+      }),
+    );
     const prisma = {
+      tenancyMode: 'isolated',
       control: () => ({
         tenantDatabase: {
           findMany: jest.fn(async (_args: LookupArgs): Promise<DatabaseRow[]> => {
@@ -45,10 +69,28 @@ describe('backup verify tenant target checks', () => {
         tenantDbPool: { findMany: jest.fn(async (_args: LookupArgs): Promise<DatabaseRow[]> => []) },
       }),
     } as unknown as PrismaService;
-    const warn = jest.fn();
+    const values: Record<string, string | undefined> = {
+      BACKUP_DIR: root,
+      DATABASE_URL: 'mysql://live:test@localhost:3306/erp_live',
+      BACKUP_VERIFY_DATABASE_URL: 'mysql://verify:test@localhost:3306/erp_verify',
+      BACKUP_ENCRYPTION_KEY: undefined,
+    };
+    const config = {
+      get: (key: string) => values[key],
+    } as unknown as ConfigService<Env, true>;
 
-    await expect(isRegisteredTenantTarget(prisma, 'isolated', target, warn)).resolves.toBe(false);
-    expect(warn).toHaveBeenCalledWith('Could not check tenant and pool database targets before backup verification');
+    try {
+      const result = await new BackupVerifyService(config, prisma).run(folder);
+      expect(result.ok).toBe(false);
+      expect(result.restoredInto).toBeNull();
+      expect(result.checks.find((check) => check.name === 'restore')).toEqual({
+        name: 'restore',
+        ok: false,
+        detail: 'cannot confirm the scratch database is not a tenant or pool database',
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('recognizes tenant and pool targets in isolated mode', async () => {
@@ -65,7 +107,7 @@ describe('backup verify tenant target checks', () => {
       }),
     } as unknown as PrismaService;
 
-    await expect(isRegisteredTenantTarget(prisma, 'isolated', target, jest.fn())).resolves.toBe(true);
+    await expect(isRegisteredTenantTarget(prisma, 'isolated', target)).resolves.toBe(true);
   });
 });
 
