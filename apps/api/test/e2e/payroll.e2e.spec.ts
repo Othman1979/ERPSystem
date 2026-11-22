@@ -1922,28 +1922,35 @@ describe('Late leave review regressions', () => {
   });
 
   it('allows a backdated approval that leaves a pre-existing later-year deficit unchanged', async () => {
+    const company = h.ok(
+      await h.api().post('/api/v1/companies').set(h.auth(tokenA)).send({ legalNameAr: `Unchanged deficit ${RUN}` }),
+      201,
+      'create unchanged deficit company',
+    ) as { id: string };
+    const branch = (h.ok(await get(tokenA, 'branches', company.id), 200, 'unchanged deficit branch') as { id: string }[])[0]!;
     for (const year of [2041, 2042, 2043]) {
-      h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({
+      h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', company.id).send({
         code: `FY${year}`, startDate: `${year}-01-01`, endDate: `${year}-12-31`,
       }), 201, `create unchanged deficit FY ${year}`);
     }
     const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
       code: `LV-UNCHANGED-DEFICIT-${RUN}`, nameAr: 'Unchanged deficit', hireDate: '2041-01-01', payMethod: 'CASH',
-    }, 'unchanged deficit employee', companyAId);
-    const annual = (h.ok(await get(tokenA, 'payroll/leave-types', companyAId), 200, 'unchanged deficit leave types') as Array<{
+      branchId: branch.id,
+    }, 'unchanged deficit employee', company.id);
+    const annual = (h.ok(await get(tokenA, 'payroll/leave-types', company.id), 200, 'unchanged deficit leave types') as Array<{
       id: string; code: string;
     }>).find((type) => type.code === 'ANNUAL')!;
     const later = await post<{ id: string; days: string }>(tokenA, 'payroll/leave-requests', {
       employeeId: employee.id, leaveTypeId: annual.id,
       startDate: '2043-02-01', endDate: '2043-02-23',
-    }, 'create later leave before adjustment', companyAId);
+    }, 'create later leave before adjustment', company.id);
     expect(later.days).toBe('20');
-    h.ok(await act(tokenA, `payroll/leave-requests/${later.id}/approve`, {}, companyAId), 200, 'approve later leave before adjustment');
-    h.ok(await h.api().post('/api/v1/payroll/leave-adjustments').set(h.auth(tokenA)).set('X-Company-Id', companyAId)
+    h.ok(await act(tokenA, `payroll/leave-requests/${later.id}/approve`, {}, company.id), 200, 'approve later leave before adjustment');
+    h.ok(await h.api().post('/api/v1/payroll/leave-adjustments').set(h.auth(tokenA)).set('X-Company-Id', company.id)
       .set('Idempotency-Key', `later-year-negative-adjustment-${RUN}`).send({
         employeeId: employee.id, leaveTypeId: annual.id, year: '2043', days: '-10.00', reason: 'Post-approval balance reduction',
       }), 201, 'reduce later-year balance');
-    const balances = () => get(tokenA, `payroll/leave-balances?year=2043&employeeId=${employee.id}`, companyAId);
+    const balances = () => get(tokenA, `payroll/leave-balances?year=2043&employeeId=${employee.id}`, company.id);
     const beforeBalances = h.ok(await balances(), 200, 'later-year balance before backdated approval') as Array<{
       leaveTypeId: string; carryInto: string; available: string;
     }>;
@@ -1954,10 +1961,10 @@ describe('Late leave review regressions', () => {
     const earlier = await post<{ id: string; days: string }>(tokenA, 'payroll/leave-requests', {
       employeeId: employee.id, leaveTypeId: annual.id,
       startDate: '2042-02-01', endDate: '2042-02-07',
-    }, 'create earlier leave covered by carry', companyAId);
+    }, 'create earlier leave covered by carry', company.id);
     expect(new Decimal(earlier.days).gt(0)).toBe(true);
     expect(new Decimal(earlier.days).lte(14)).toBe(true);
-    const approved = await act(tokenA, `payroll/leave-requests/${earlier.id}/approve`, {}, companyAId);
+    const approved = await act(tokenA, `payroll/leave-requests/${earlier.id}/approve`, {}, company.id);
     expect(approved.status).toBe(200);
 
     const afterBalances = h.ok(await balances(), 200, 'later-year balance after backdated approval') as typeof beforeBalances;
