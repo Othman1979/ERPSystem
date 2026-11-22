@@ -10275,6 +10275,16 @@ export interface AdminTenantPlanRefDto {
   nameEn: string | null;
 }
 
+export type TenantDatabaseState = typeof TenantDatabaseState[keyof typeof TenantDatabaseState];
+
+
+export const TenantDatabaseState = {
+  PROVISIONING: 'PROVISIONING',
+  ACTIVE: 'ACTIVE',
+  MIGRATING: 'MIGRATING',
+  RETIRED: 'RETIRED',
+} as const;
+
 export interface AdminTenantListItemDto {
   id: string;
   name: string;
@@ -10288,10 +10298,15 @@ export interface AdminTenantListItemDto {
   /**
      * Memberships of the tenant (all statuses).
      * @minimum 0
+     * @nullable
      */
-  members: number;
-  /** @minimum 0 */
-  branches: number;
+  members: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  branches: number | null;
+  databaseState: TenantDatabaseState | null;
   createdAt: string;
 }
 
@@ -10373,10 +10388,17 @@ export interface AdminTenantDetailDto {
   /** @nullable */
   plan: AdminPlanDto | null;
   companies: AdminTenantCompanyDto[];
-  /** @minimum 0 */
-  members: number;
-  /** @minimum 0 */
-  branches: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  members: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  branches: number | null;
+  databaseState: TenantDatabaseState | null;
   /** Up to 12, newest first. */
   subscriptions: AdminSubscriptionDto[];
   createdAt: string;
@@ -10584,7 +10606,8 @@ export const ErrorCode = {
   TENANT_MAINTENANCE: 'TENANT_MAINTENANCE',
   TENANT_DB_NOT_FOUND: 'TENANT_DB_NOT_FOUND',
   TENANT_DB_NOT_RESOLVED: 'TENANT_DB_NOT_RESOLVED',
-  TENANCY_ISOLATED_NOT_READY: 'TENANCY_ISOLATED_NOT_READY',
+  REGISTRATION_UNAVAILABLE: 'REGISTRATION_UNAVAILABLE',
+  REGISTRATION_PENDING: 'REGISTRATION_PENDING',
   UNBALANCED_ENTRY: 'UNBALANCED_ENTRY',
   PERIOD_CLOSED: 'PERIOD_CLOSED',
   STOCK_INSUFFICIENT: 'STOCK_INSUFFICIENT',

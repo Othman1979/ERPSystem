@@ -5,6 +5,7 @@ import {
   backupName,
   backupTime,
   encryptionOf,
+  parseBackupManifest,
   PARTIAL_PREFIX,
   resolveBackupFolder,
   selectForRemoval,
@@ -59,6 +60,19 @@ describe('manifest formats (ADR-010 §10.2)', () => {
     expect(encryptionOf({ ...base, format: 2, encryption: enc })).toEqual(enc);
     expect(encryptionOf({ ...base, format: 2, encryption: null })).toBeNull();
     expect(encryptionOf({ ...base, format: 1 })).toBeNull();
+  });
+
+  it('writes and reads format 3 while retaining format 1 and 2 readers', () => {
+    const manifest = {
+      ...base,
+      format: 3 as const,
+      encryption: null,
+      tenantDatabases: [{ tenantId: '7', database: 'tenant_db', file: 'tenant-7.sql.gz', schemaVersion: 'm3' }],
+    };
+    expect(parseBackupManifest(JSON.stringify(manifest))).toEqual(manifest);
+    expect(parseBackupManifest(JSON.stringify({ ...base, format: 1 })).format).toBe(1);
+    expect(parseBackupManifest(JSON.stringify({ ...base, format: 2, encryption: null })).format).toBe(2);
+    expect(encryptionOf(manifest)).toBeNull();
   });
 
   it('resolves latest, a folder name under the root, or a path, and refuses a folder without a manifest', async () => {

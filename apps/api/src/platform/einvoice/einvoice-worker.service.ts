@@ -4,8 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import type { Env } from '../../common/config/env.validation.js';
-import { Prisma } from '../../generated/prisma/client.js';
-import { PrismaService } from '../../prisma/prisma.service.js';
+import { Prisma, type PrismaClient } from '../../generated/prisma/client.js';
+import { TenantFanoutService } from '../../prisma/tenant-fanout.js';
 import { retryWrite } from './einvoice-retry.js';
 import { EInvoiceSenderService, MAX_AUTO_ATTEMPTS } from './einvoice-sender.service.js';
 
@@ -24,12 +24,9 @@ const STALE_BATCH = 200;
  * no SKIP LOCKED), so two API instances never send the same document, then
  * sends each one inside its tenant's context.
  *
- * Uses the system Prisma client on purpose: the job spans tenants
- * (BUILD_PLAN §5.3 "scheduled jobs"). It touches only einvoice_submissions;
- * everything else runs tenant-scoped in the sender. Times are UTC, as Prisma
- * writes them.
+ * In isolated mode each outbox is processed in its tenant database; shared
+ * mode continues to use the control database.
  */
-// ADR-045 29C: the e-invoice worker remains on the control database.
 @Injectable()
 export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly log = new Logger('EInvoiceWorker');
@@ -37,7 +34,7 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
   private running = false;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly fanout: TenantFanoutService,
     private readonly sender: EInvoiceSenderService,
     private readonly cls: ClsService<RequestContext>,
     private readonly config: ConfigService<Env, true>,
@@ -61,9 +58,30 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
   async tick(): Promise<number> {
     if (this.running) return 0;
     this.running = true;
-    let claimedCount = 0;
     try {
-      // system client: cross-tenant outbox maintenance (see class comment).
+      const databases = await this.fanout.databases();
+      if (databases.unavailable.length) {
+        this.log.warn(`tenant databases unavailable: ${databases.unavailable.map(String).join(', ')}`);
+      }
+      let claimedCount = 0;
+      for (const { client } of databases) {
+        try {
+          claimedCount += await this.tickDatabase(client);
+        } catch (err) {
+          this.log.error(`run failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      return claimedCount;
+    } catch (err) {
+      this.log.error(`run failed: ${err instanceof Error ? err.message : String(err)}`);
+      return 0;
+    } finally {
+      this.running = false;
+    }
+  }
+
+  private async tickDatabase(db: PrismaClient): Promise<number> {
+      // The selected database owns this outbox in isolated mode.
       // A row cut off AFTER its XML was saved for sending may have reached
       // JoFotara: UNKNOWN, same XML on a resend. One cut off before that was
       // never sent in this claim: back to the queue.
@@ -73,14 +91,14 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
       // for them would lock every SENDING row on the way, including the one the
       // other worker is finishing, and deadlock with its write. The index on
       // (status, claimed_at) makes the read cheap.
-      const stale = await this.prisma.client.$queryRaw<{ id: bigint }[]>`
+      const stale = await db.$queryRaw<{ id: bigint }[]>`
         SELECT id FROM einvoice_submissions
          WHERE status = 'SENDING' AND claimed_at < UTC_TIMESTAMP(3) - INTERVAL ${STUCK_MINUTES} MINUTE
          ORDER BY id LIMIT ${STALE_BATCH}`;
       if (stale.length > 0) {
         const ids = Prisma.join(stale.map((r) => r.id));
         await retryWrite(
-          () => this.prisma.client.$executeRaw`
+          () => db.$executeRaw`
             UPDATE einvoice_submissions
                SET status = 'UNKNOWN', claim_token = NULL, reuse_xml = TRUE, completed_at = UTC_TIMESTAMP(3),
                    errors = JSON_ARRAY(JSON_OBJECT('code', 'INTERRUPTED', 'source', 'local',
@@ -89,7 +107,7 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
                AND sent_at IS NOT NULL AND sent_at >= claimed_at`,
         );
         await retryWrite(
-          () => this.prisma.client.$executeRaw`
+          () => db.$executeRaw`
             UPDATE einvoice_submissions
                SET status = 'PENDING', claim_token = NULL, next_attempt_at = UTC_TIMESTAMP(3)
              WHERE id IN (${ids}) AND status = 'SENDING' AND claimed_at < UTC_TIMESTAMP(3) - INTERVAL ${STUCK_MINUTES} MINUTE
@@ -101,15 +119,15 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
       // taken by primary key with its conditions checked again. Two workers that
       // read the same ids cannot both take a row: the second finds it SENDING.
       const token = randomUUID();
-      const due = await this.prisma.client.$queryRaw<{ id: bigint }[]>`
+      const due = await db.$queryRaw<{ id: bigint }[]>`
         SELECT id FROM einvoice_submissions
          WHERE (status = 'PENDING' OR (status = 'FAILED' AND attempt_count < ${MAX_AUTO_ATTEMPTS}))
            AND next_attempt_at <= UTC_TIMESTAMP(3)
          ORDER BY id LIMIT ${BATCH}`;
       if (due.length > 0) {
-        // system client: the atomic claim is what keeps two workers apart.
+        // The atomic claim is what keeps two workers apart.
         await retryWrite(
-          () => this.prisma.client.$executeRaw`
+          () => db.$executeRaw`
             UPDATE einvoice_submissions
                SET status = 'SENDING', claim_token = ${token}, claimed_at = UTC_TIMESTAMP(3)
              WHERE id IN (${Prisma.join(due.map((r) => r.id))})
@@ -117,15 +135,15 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
                AND next_attempt_at <= UTC_TIMESTAMP(3)`,
         );
       }
-      const claimed = await this.prisma.client.$queryRaw<{ id: bigint; tenant_id: bigint }[]>`
+      const claimed = await db.$queryRaw<{ id: bigint; tenant_id: bigint }[]>`
         SELECT id, tenant_id FROM einvoice_submissions
          WHERE claim_token = ${token} AND status = 'SENDING' ORDER BY id`;
-      claimedCount = claimed.length;
+      const claimedCount = claimed.length;
 
       for (const row of claimed) {
         // The stuck-row clock starts when THIS row's send starts, not the batch's.
-        // system client: same row, same claim.
-        await this.prisma.client.$executeRaw`
+        // Same database row and claim token.
+        await db.$executeRaw`
           UPDATE einvoice_submissions SET claimed_at = UTC_TIMESTAMP(3)
            WHERE id = ${row.id} AND claim_token = ${token} AND status = 'SENDING'`;
         await this.cls.run(async () => {
@@ -139,11 +157,6 @@ export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShut
           }
         });
       }
-    } catch (err) {
-      this.log.error(`run failed: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      this.running = false;
-    }
-    return claimedCount;
+      return claimedCount;
   }
 }

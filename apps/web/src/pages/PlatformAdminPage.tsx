@@ -158,8 +158,14 @@ function TenantsTab() {
           { title: t('common.status'), dataIndex: 'status', width: 130, render: (s: Status) => <StatusTag status={s} /> },
           { title: t('platform.plan'), dataIndex: 'plan', width: 130, render: (p: PlanRef | null) => (p ? displayName(p) : '—') },
           { title: t('platform.trialEndsAt'), dataIndex: 'trialEndsAt', width: 120, render: day },
-          { title: t('platform.members'), dataIndex: 'members', width: 90, align: 'right' },
-          { title: t('platform.branches'), dataIndex: 'branches', width: 80, align: 'right' },
+          { title: t('platform.members'), dataIndex: 'members', width: 90, align: 'right', render: (v: number | null) => v ?? '—' },
+          { title: t('platform.branches'), dataIndex: 'branches', width: 80, align: 'right', render: (v: number | null) => v ?? '—' },
+          {
+            title: t('platform.databaseState'),
+            dataIndex: 'databaseState',
+            width: 140,
+            render: (state: string | null) => <TenantDatabaseStateTag state={state} />,
+          },
           {
             title: t('platform.createdAt'),
             dataIndex: 'createdAt',
@@ -174,6 +180,12 @@ function TenantsTab() {
       <TenantDrawer id={openId} onClose={() => setOpenId(null)} />
     </>
   );
+}
+
+function TenantDatabaseStateTag({ state }: { state: string | null }) {
+  const { t } = useTranslation();
+  if (!state || state === 'ACTIVE') return null;
+  return <Tag color="orange">{t(`platform.databaseState_${state}`)}</Tag>;
 }
 
 function TenantDrawer({ id, onClose }: { id: string | null; onClose: () => void }) {
@@ -249,8 +261,11 @@ function TenantDrawer({ id, onClose }: { id: string | null; onClose: () => void 
             <Descriptions.Item label={t('platform.plan')}>{tenant.plan ? displayName(tenant.plan) : '—'}</Descriptions.Item>
             <Descriptions.Item label={t('platform.trialEndsAt')}>{day(tenant.trialEndsAt)}</Descriptions.Item>
             <Descriptions.Item label={t('platform.statusChangedAt')}>{day(tenant.statusChangedAt)}</Descriptions.Item>
-            <Descriptions.Item label={t('platform.members')}>{tenant.members}</Descriptions.Item>
-            <Descriptions.Item label={t('platform.branches')}>{tenant.branches}</Descriptions.Item>
+            <Descriptions.Item label={t('platform.members')}>{tenant.members ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label={t('platform.branches')}>{tenant.branches ?? '—'}</Descriptions.Item>
+            <Descriptions.Item label={t('platform.databaseState')}>
+              <TenantDatabaseStateTag state={tenant.databaseState} />
+            </Descriptions.Item>
           </Descriptions>
 
           <section>

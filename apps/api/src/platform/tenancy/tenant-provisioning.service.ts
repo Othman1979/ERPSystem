@@ -57,7 +57,7 @@ export class TenantProvisioningService {
       try {
         step = await this.createRegistrationStep(dto, passwordHash, database);
       } catch (createError) {
-        await this.databases.dropCreatedDatabase(database).catch(() => undefined);
+        await this.databases.dropCreatedDatabase(database.databaseName, database.dbUser).catch(() => undefined);
         throw createError;
       }
     }

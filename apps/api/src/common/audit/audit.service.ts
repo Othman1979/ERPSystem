@@ -73,7 +73,7 @@ export class AuditService {
         error instanceof DomainError &&
         (error.code === ErrorCode.TENANT_MAINTENANCE || error.code === ErrorCode.TENANT_DB_NOT_FOUND)
       ) {
-        // ADR-045: tenant DB unavailable; audit kept in control (29C reconciles)
+        // ADR-045: control audit fallback stays in control; no tenant-facing audit read endpoint exists.
         this.logger.warn('Tenant database unavailable; storing audit row in control database');
         await this.prisma.control().auditLog.create({ data });
         return;

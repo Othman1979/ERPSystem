@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ClsModule } from 'nestjs-cls';
 import { validateEnv } from '../common/config/env.validation.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
+import { TenancyModule } from '../platform/tenancy/tenancy.module.js';
 import { IntegrityCheckService } from './integrity-check.service.js';
 
 /**
@@ -9,7 +11,7 @@ import { IntegrityCheckService } from './integrity-check.service.js';
  * only, no HTTP and no workers (CLAUDE.md: no daemons).
  */
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), PrismaModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), ClsModule.forRoot({ global: true }), PrismaModule, TenancyModule],
   providers: [IntegrityCheckService],
 })
 export class IntegrityCheckModule {}

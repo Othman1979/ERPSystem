@@ -8,14 +8,12 @@ import type { Env } from '../../common/config/env.validation.js';
 import { isInside, overlaps } from '../../common/fs/is-inside.js';
 import { backupKey, createDecryptStream, keyProblem } from './backup-crypto.js';
 import {
-  type BackupManifest,
-  DB_FILE,
   encryptionOf,
+  ENCRYPTED_SUFFIX,
   MANIFEST_FILE,
+  parseBackupManifest,
   resolveBackupFolder,
   sha256File,
-  STORAGE_FILE,
-  storedName,
 } from './manifest.js';
 
 export interface DecryptResult {
@@ -43,11 +41,7 @@ export class BackupDecryptService {
   async run(which: string, outDir: string): Promise<DecryptResult> {
     const root = path.resolve(this.config.get('BACKUP_DIR', { infer: true }));
     const folder = await resolveBackupFolder(which, root);
-    const manifest = JSON.parse(await readFile(path.join(folder, MANIFEST_FILE), 'utf8')) as BackupManifest;
-    const format: unknown = manifest.format; // read as unknown: a file from anywhere may hold any value
-    if (format !== 1 && format !== 2) {
-      throw new Error(`Unknown manifest format ${String(format)}`);
-    }
+    const manifest = parseBackupManifest(await readFile(path.join(folder, MANIFEST_FILE), 'utf8'));
     const enc = encryptionOf(manifest);
     if (!enc) throw new Error(`${folder} is not encrypted: its files can be used as they are`);
 
@@ -78,8 +72,11 @@ export class BackupDecryptService {
     await mkdir(out, { mode: 0o700 });
     const written: string[] = [];
     try {
-      for (const logical of [DB_FILE, STORAGE_FILE]) {
-        const stored = path.join(folder, storedName(logical, true));
+      for (const entry of manifest.files) {
+        const logical = entry.name.endsWith(ENCRYPTED_SUFFIX)
+          ? entry.name.slice(0, -ENCRYPTED_SUFFIX.length)
+          : entry.name;
+        const stored = path.join(folder, entry.name);
         const plain = path.join(out, logical);
         await pipeline(await createDecryptStream(stored, key, logical), createWriteStream(plain, { mode: 0o600 }));
         written.push(logical);

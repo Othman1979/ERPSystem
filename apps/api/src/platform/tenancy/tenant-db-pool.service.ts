@@ -70,7 +70,7 @@ export class TenantDbPoolService {
         const schemaVersion = await migrateDatabase(database.url);
         await this.insert(database, schemaVersion);
       } catch (error) {
-        await this.databases.dropCreatedDatabase(database).catch(() => undefined);
+        await this.databases.dropCreatedDatabase(database.databaseName, database.dbUser).catch(() => undefined);
         throw error;
       }
       created += 1;

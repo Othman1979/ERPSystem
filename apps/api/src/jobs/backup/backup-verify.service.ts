@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { unzipSync } from 'fflate';
 import mariadb, { type Connection } from 'mariadb';
 import type { Env } from '../../common/config/env.validation.js';
+import { expectedSchemaVersion } from '../../prisma/schema-version.js';
 import { onAbort } from '../abort-cleanup.js';
 import { PRIVATE_DIR, sweepStale, VERIFY_SCRATCH_PREFIX } from './backup.service.js';
 import { backupKey, createDecryptStream, decryptFileToBuffer, keyProblem } from './backup-crypto.js';
@@ -16,6 +17,7 @@ import {
   type BackupManifest,
   DB_FILE,
   encryptionOf,
+  parseBackupManifest,
   MANIFEST_FILE,
   resolveBackupFolder,
   sha256File,
@@ -62,7 +64,7 @@ const SCRATCH_NAME = /restore|verify/i;
 export class BackupVerifyService {
   constructor(private readonly config: ConfigService<Env, true>) {}
 
-  async run(which: string, keep = false): Promise<VerifyResult> {
+  async run(which: string, keep = false, tenantId?: bigint): Promise<VerifyResult> {
     const root = path.resolve(this.config.get('BACKUP_DIR', { infer: true }));
     // No lock is taken by a verify, so only the leftovers of old killed runs are swept.
     const swept = await sweepStale(root, new Date(), false);
@@ -78,12 +80,7 @@ export class BackupVerifyService {
       swept,
     });
 
-    const manifest = JSON.parse(await readFile(path.join(folder, MANIFEST_FILE), 'utf8')) as BackupManifest;
-    // 1: plaintext backups made before encryption; 2: current (encryption may be null).
-    const format: unknown = manifest.format; // read as unknown: a file from anywhere may hold any value
-    if (format !== 1 && format !== 2) {
-      throw new Error(`Unknown manifest format ${String(format)}`);
-    }
+    const manifest = parseBackupManifest(await readFile(path.join(folder, MANIFEST_FILE), 'utf8'));
 
     // 1. Checksums: a damaged dump is not loaded at all.
     const damaged: string[] = [];
@@ -150,6 +147,46 @@ export class BackupVerifyService {
         await this.inspect(conn, manifest, loadStorage, add);
       } finally {
         await conn.end();
+      }
+      if (manifest.format === 3) {
+        const selected = tenantId
+          ? manifest.tenantDatabases.filter((entry) => entry.tenantId === tenantId.toString())
+          : manifest.tenantDatabases;
+        if (tenantId && selected.length === 0) {
+          add(`tenant ${tenantId} manifest`, false, 'no dump for this tenant');
+        }
+        for (const tenant of selected) {
+          try {
+            if (path.basename(tenant.file) !== tenant.file) throw new Error('Invalid tenant dump filename');
+            const logical = tenant.file.endsWith('.enc') ? tenant.file.slice(0, -4) : tenant.file;
+            const tenantDump = path.join(folder, tenant.file);
+            await this.empty(target);
+            const tenantStream =
+              enc && key ? await createDecryptStream(tenantDump, key, logical) : createReadStream(tenantDump);
+            await this.load(target, tenantStream, root);
+            const tenantConn = await mariadb.createConnection({
+              host: target.host,
+              port: target.port,
+              user: target.user,
+              password: target.password,
+              database: target.database,
+            });
+            try {
+              await this.inspect(
+                tenantConn,
+                manifest,
+                loadStorage,
+                add,
+                `tenant ${tenant.tenantId}`,
+                expectedSchemaVersion(),
+              );
+            } finally {
+              await tenantConn.end();
+            }
+          } catch (err) {
+            add(`tenant ${tenant.tenantId} restore`, false, firstLine(err));
+          }
+        }
       }
     } catch (err) {
       // A failed load is the restore; a failure after it is the inspection.
@@ -236,7 +273,10 @@ export class BackupVerifyService {
     manifest: BackupManifest,
     loadStorage: () => Promise<Buffer>,
     add: (name: string, ok: boolean, detail: string) => void,
+    label = '',
+    expectedVersion?: string,
   ): Promise<void> {
+    const check = (name: string, ok: boolean, detail: string) => add(label ? `${label} ${name}` : name, ok, detail);
     const count = async (sql: string): Promise<number> => Number(((await conn.query(sql)) as { n: bigint }[])[0].n);
 
     const migrations = (await conn.query(
@@ -244,10 +284,14 @@ export class BackupVerifyService {
        WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`,
     )) as { migration_name: string }[];
     const last = migrations.at(-1)?.migration_name ?? null;
-    add(
+    check(
       'migrations',
-      migrations.length === manifest.migrations.count && last === manifest.migrations.last,
-      `${migrations.length} applied, last ${last ?? 'none'} (backup had ${manifest.migrations.count}, ${manifest.migrations.last ?? 'none'})`,
+      expectedVersion === undefined
+        ? migrations.length === manifest.migrations.count && last === manifest.migrations.last
+        : last === expectedVersion,
+      expectedVersion === undefined
+        ? `${migrations.length} applied, last ${last ?? 'none'} (backup had ${manifest.migrations.count}, ${manifest.migrations.last ?? 'none'})`
+        : `${migrations.length} applied, last ${last ?? 'none'} (expected ${expectedVersion})`,
     );
 
     // Every posted entry balances (the books of every tenant balance).
@@ -259,7 +303,7 @@ export class BackupVerifyService {
         GROUP BY e.tenant_id, e.id
         HAVING SUM(l.debit) <> SUM(l.credit)) x`);
     const posted = await count(`SELECT COUNT(*) AS n FROM journal_entries WHERE status = 'POSTED'`);
-    add('journal', unbalanced === 0, unbalanced ? `${unbalanced} posted entries do not balance` : `${posted} posted entries, all balanced`);
+    check('journal', unbalanced === 0, unbalanced ? `${unbalanced} posted entries do not balance` : `${posted} posted entries, all balanced`);
 
     // stock_balances is a projection of stock_movements (§9.1): both ways.
     const moved = `SELECT tenant_id, warehouse_id, item_id, SUM(qty_in - qty_out) AS q
@@ -273,13 +317,13 @@ export class BackupVerifyService {
         SELECT m.item_id FROM (${moved}) m
         LEFT JOIN stock_balances b ON b.tenant_id = m.tenant_id AND b.warehouse_id = m.warehouse_id AND b.item_id = m.item_id
         WHERE b.tenant_id IS NULL AND m.q <> 0) x`);
-    add('stock', mismatched === 0, mismatched ? `${mismatched} stock balances differ from their movements` : 'balances equal the movements');
+    check('stock', mismatched === 0, mismatched ? `${mismatched} stock balances differ from their movements` : 'balances equal the movements');
 
     // Every file the database points to is in the storage zip.
     const keys = new Set(Object.keys(unzipSync(await loadStorage())));
     const referenced = (await conn.query('SELECT storage_key FROM attachments')) as { storage_key: string }[];
     const missing = referenced.map((r) => r.storage_key).filter((k) => !keys.has(k));
-    add(
+    check(
       'storage',
       missing.length === 0,
       missing.length ? `${missing.length} files missing, e.g. ${missing.slice(0, 3).join(', ')}` : `${referenced.length} referenced, ${keys.size} in the zip`,
@@ -288,6 +332,6 @@ export class BackupVerifyService {
     const [t, u, j, s] = await Promise.all(
       ['tenants', 'users', 'journal_entries', 'stock_movements'].map((table) => count(`SELECT COUNT(*) AS n FROM ${table}`)),
     );
-    add('rows', true, `tenants ${t}, users ${u}, journal entries ${j}, stock movements ${s}`);
+    check('rows', true, `tenants ${t}, users ${u}, journal entries ${j}, stock movements ${s}`);
   }
 }

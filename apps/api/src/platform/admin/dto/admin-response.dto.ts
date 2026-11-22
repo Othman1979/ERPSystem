@@ -4,7 +4,7 @@
  */
 import { ApiProperty, PickType } from '@nestjs/swagger';
 import { PlanRow, SubscriptionRow } from '../../../common/openapi/prisma-models.js';
-import { SubscriptionStatus, TenantStatus } from '../../../generated/prisma/enums.js';
+import { SubscriptionStatus, TenantDatabaseState, TenantStatus } from '../../../generated/prisma/enums.js';
 
 /** The plan of a tenant in the tenant list: code and names only (AdminService.listTenants). */
 export class AdminTenantPlanRefDto extends PickType(PlanRow, ['code', 'nameAr', 'nameEn'] as const) {}
@@ -29,11 +29,14 @@ export class AdminTenantListItemDto {
   @ApiProperty({ type: () => AdminTenantPlanRefDto, nullable: true })
   plan!: AdminTenantPlanRefDto | null;
 
-  @ApiProperty({ type: 'integer', minimum: 0, description: 'Memberships of the tenant (all statuses).' })
-  members!: number;
+  @ApiProperty({ type: 'integer', minimum: 0, nullable: true, description: 'Memberships of the tenant (all statuses).' })
+  members!: number | null;
 
-  @ApiProperty({ type: 'integer', minimum: 0 })
-  branches!: number;
+  @ApiProperty({ type: 'integer', minimum: 0, nullable: true })
+  branches!: number | null;
+
+  @ApiProperty({ enum: TenantDatabaseState, enumName: 'TenantDatabaseState', nullable: true })
+  databaseState!: TenantDatabaseState | null;
 
   @ApiProperty({ type: 'string', format: 'date-time' })
   createdAt!: string;
@@ -86,11 +89,14 @@ export class AdminTenantDetailDto {
   @ApiProperty({ type: () => AdminTenantCompanyDto, isArray: true })
   companies!: AdminTenantCompanyDto[];
 
-  @ApiProperty({ type: 'integer', minimum: 0 })
-  members!: number;
+  @ApiProperty({ type: 'integer', minimum: 0, nullable: true })
+  members!: number | null;
 
-  @ApiProperty({ type: 'integer', minimum: 0 })
-  branches!: number;
+  @ApiProperty({ type: 'integer', minimum: 0, nullable: true })
+  branches!: number | null;
+
+  @ApiProperty({ enum: TenantDatabaseState, enumName: 'TenantDatabaseState', nullable: true })
+  databaseState!: TenantDatabaseState | null;
 
   @ApiProperty({ type: () => AdminSubscriptionDto, isArray: true, description: 'Up to 12, newest first.' })
   subscriptions!: AdminSubscriptionDto[];

@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import type { PrismaClient } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TenantFanoutService } from '../prisma/tenant-fanout.js';
 
 /** Rows per batch: each batch is one short transaction, so no long lock on the tables. */
 export const PURGE_BATCH = 5_000;
@@ -13,6 +15,7 @@ export interface PurgeExpiredRun {
   refreshTokens: number;
   /** Document edit locks expired for more than one day that were deleted. */
   documentEditLocks: number;
+  unavailable?: string[];
   ms: number;
 }
 
@@ -25,17 +28,46 @@ export interface PurgeExpiredRun {
  * them. A token that another token replaced has its replaced_by_id cleared
  * before it is deleted, so no foreign key blocks the delete.
  *
- * systemPrisma: platform-wide cleanup across tenants (allowed in `jobs`).
+ * Refresh tokens are control data; tenant-scoped locks and idempotency keys
+ * are cleaned from each tenant database in isolated mode.
  */
-// ADR-045 29C: the purge-expired job remains on the control database.
 @Injectable()
 export class PurgeExpiredService {
-  constructor(private readonly prisma: PrismaService) {}
+  // systemPrisma: refresh tokens are platform-wide; tenant-local cleanup uses fan-out.
+  constructor(private readonly prisma: PrismaService, private readonly fanout: TenantFanoutService) {}
 
   async run(now = new Date()): Promise<PurgeExpiredRun> {
     const started = Date.now();
-    // systemPrisma: platform-wide cleanup across tenants (allowed in jobs)
-    const db = this.prisma.client;
+    const db = this.prisma.control();
+    if (this.prisma.tenancyMode === 'isolated') {
+      const refreshTokens = await this.deleteRefreshTokens(db, now);
+      const databases = await this.fanout.databases();
+      const { unavailable } = databases;
+      let idempotencyKeys = 0;
+      let documentEditLocks = 0;
+      for (const entry of databases) {
+        if (entry.tenantId === null) continue;
+        idempotencyKeys += await deleteInBatches(async () => {
+          const rows = await entry.client.idempotencyKey.findMany({
+            where: { tenantId: entry.tenantId!, expiresAt: { lt: now } },
+            select: { id: true },
+            take: PURGE_BATCH,
+            orderBy: { id: 'asc' },
+          });
+          const ids = rows.map((row) => row.id);
+          if (ids.length) await entry.client.idempotencyKey.deleteMany({ where: { id: { in: ids }, tenantId: entry.tenantId! } });
+          return ids.length;
+        });
+        documentEditLocks += await this.deleteExpiredLocksForTenant(entry.client, entry.tenantId);
+      }
+      return {
+        idempotencyKeys,
+        refreshTokens,
+        documentEditLocks,
+        unavailable: unavailable.map(String),
+        ms: Date.now() - started,
+      };
+    }
 
     const idempotencyKeys = await deleteInBatches(async () => {
       const rows = await db.idempotencyKey.findMany({
@@ -66,6 +98,37 @@ export class PurgeExpiredService {
 
     const documentEditLocks = await this.deleteExpiredDocumentLocks(db);
     return { idempotencyKeys, refreshTokens, documentEditLocks, ms: Date.now() - started };
+  }
+
+  private async deleteRefreshTokens(db: PrismaClient, now: Date): Promise<number> {
+    return deleteInBatches(async () => {
+      const rows = await db.refreshToken.findMany({
+        where: { expiresAt: { lt: now } },
+        select: { id: true },
+        take: PURGE_BATCH,
+        orderBy: { id: 'asc' },
+      });
+      const ids = rows.map((row) => row.id);
+      if (!ids.length) return 0;
+      await db.refreshToken.updateMany({ where: { replacedById: { in: ids } }, data: { replacedById: null } });
+      await db.refreshToken.deleteMany({ where: { id: { in: ids } } });
+      return ids.length;
+    });
+  }
+
+  private async deleteExpiredLocksForTenant(db: PrismaClient, tenantId: bigint): Promise<number> {
+    let total = 0;
+    for (let batch = 0; batch < MAX_BATCHES; batch++) {
+      const deleted = await db.$executeRaw`
+        DELETE FROM document_edit_locks
+         WHERE tenant_id = ${tenantId}
+           AND expires_at < DATE_SUB(NOW(3), INTERVAL 1 DAY)
+         ORDER BY id
+         LIMIT ${PURGE_BATCH}`;
+      total += deleted;
+      if (deleted < PURGE_BATCH) break;
+    }
+    return total;
   }
 
   private async deleteExpiredDocumentLocks(db: PrismaService['client']): Promise<number> {

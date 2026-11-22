@@ -17,7 +17,7 @@ export interface PasswordReset {
  * when nobody can sign in. The user must change it at next sign-in. Audited
  * with no tenant. systemPrisma: users are platform-wide (allowed in `jobs`).
  */
-// ADR-045 29C: the password-reset job remains on the control database.
+// ADR-045: control database by design (platform-wide data).
 @Injectable()
 export class PasswordResetService {
   constructor(

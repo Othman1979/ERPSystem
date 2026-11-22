@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import type { PrismaClient } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TenantFanoutService } from '../prisma/tenant-fanout.js';
 
 /** One check of the report. `ok` is `count === 0`. */
 export interface IntegrityCheck {
@@ -18,6 +20,12 @@ export interface IntegrityCheckResult {
   checks: IntegrityCheck[];
 }
 
+export interface IsolatedIntegrityCheckRun {
+  ok: boolean;
+  results: IntegrityCheckResult[];
+  unavailable: string[];
+}
+
 type CountRow = { n: bigint }[];
 
 /** The collation every table and text column must use (DB-18). */
@@ -30,8 +38,8 @@ const MAX_UNSIGNED_BIGINT = 18_446_744_073_709_551_615n;
 const DETAIL_LIMIT = 10;
 
 /**
- * Integrity of the data a restore or an old migration may have broken (a job,
- * so it uses the systemPrisma client on purpose: cross-tenant by design).
+ * Integrity of the data a restore or an old migration may have broken; the
+ * job checks each tenant database independently in isolated mode.
  *
  * Polymorphic references (a document type plus an id, a source type plus a
  * source id) have no foreign key in the database, so nothing stops them from
@@ -44,14 +52,31 @@ const DETAIL_LIMIT = 10;
  * `--tenant <id>` limits the orphan checks to one tenant (the collation check is
  * database-wide). Exit code 1 when any check fails.
  */
-// ADR-045 29C: the integrity-check job remains on the control database.
 @Injectable()
 export class IntegrityCheckService {
-  constructor(private readonly prisma: PrismaService) {}
+  // systemPrisma: it enumerates tenant databases and uses control in shared mode.
+  constructor(private readonly prisma: PrismaService, private readonly fanout: TenantFanoutService) {}
 
-  async run(tenantId?: bigint): Promise<IntegrityCheckResult> {
-    // systemPrisma: a job that reads every tenant's rows (or one, when asked).
-    const db = this.prisma.client;
+  async run(tenantId?: bigint): Promise<IntegrityCheckResult | IsolatedIntegrityCheckRun> {
+    if (this.prisma.tenancyMode === 'shared') return this.runDatabase(this.prisma.control(), tenantId);
+    if (tenantId !== undefined) {
+      const exists = await this.prisma.control().tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+      if (!exists) throw new Error(`Unknown tenant ${tenantId.toString()}`);
+    }
+    const databases = await this.fanout.databases({ tenantId });
+    const { unavailable } = databases;
+    const results: IntegrityCheckResult[] = [];
+    for (const entry of databases) {
+      if (entry.tenantId !== null) results.push(await this.runDatabase(entry.client, entry.tenantId));
+    }
+    return {
+      ok: results.every((result) => result.ok) && unavailable.length === 0,
+      results,
+      unavailable: unavailable.map(String),
+    };
+  }
+
+  private async runDatabase(db: PrismaClient, tenantId?: bigint): Promise<IntegrityCheckResult> {
     // One tenant, or all of them: a range keeps the tenant_id index usable
     // (an `? IS NULL OR` filter would scan every tenant on a --tenant run).
     const lo = tenantId ?? 0n;
@@ -296,7 +321,7 @@ export class IntegrityCheckService {
           AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
 
-    checks.push(await this.collation());
+    checks.push(await this.collation(db));
     return {
       ok: checks.every((c) => c.ok),
       tenantId: tenantId === undefined ? null : tenantId.toString(),
@@ -310,8 +335,7 @@ export class IntegrityCheckService {
    * table is excluded (Prisma creates it with the database default), and so are
    * Json columns, which MariaDB keeps in utf8mb4_bin.
    */
-  private async collation(): Promise<IntegrityCheck> {
-    const db = this.prisma.client;
+  private async collation(db: PrismaClient): Promise<IntegrityCheck> {
     const [schema] = await db.$queryRaw<{ collation: string }[]>`
       SELECT CAST(DEFAULT_COLLATION_NAME AS CHAR) AS collation
       FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()`;

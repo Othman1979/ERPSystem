@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import mariadb from 'mariadb';
 import type { Env } from '../common/config/env.validation.js';
+import type { PrismaClient } from '../generated/prisma/client.js';
+import { TenantDatabaseProvisioner } from '../platform/tenancy/database-provisioner.service.js';
+import { migrateDatabase } from '../platform/tenancy/migrate-runner.js';
 import { StorageService } from '../common/storage/storage.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -38,21 +42,22 @@ export interface PurgePlan {
  * tenant's files. Users who belong to no other tenant, and have no history
  * in another company, go too.
  *
- * systemPrisma: a platform job across tables; every statement on a tenant
- * table filters on tenant_id.
+ * Platform job: control rows are removed transactionally after tenant data
+ * is dropped or reset for the configured provisioner.
  */
-// ADR-045 29C: the tenant-purge job remains on the control database.
 @Injectable()
 export class TenantPurgeService {
+  // systemPrisma: the purge coordinates tenant routing state with control-plane records.
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
     private readonly storage: StorageService,
+    private readonly databases: TenantDatabaseProvisioner,
   ) {}
 
   /** Tables holding tenant rows (tenants itself excluded), from the live schema. */
-  private async tenantTables(): Promise<string[]> {
-    const rows = await this.prisma.client.$queryRaw<{ name: string }[]>`
+  private async tenantTables(db: PrismaClient = this.prisma.control()): Promise<string[]> {
+    const rows = await db.$queryRaw<{ name: string }[]>`
       SELECT TABLE_NAME AS name FROM information_schema.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'tenant_id' AND TABLE_NAME <> 'tenants'
        ORDER BY TABLE_NAME`;
@@ -60,8 +65,21 @@ export class TenantPurgeService {
   }
 
   async plan(tenantId: bigint, now = new Date()): Promise<PurgePlan> {
-    const db = this.prisma.client;
-    const tenant = await db.tenant.findUnique({
+    let db: PrismaClient | null = this.prisma.control();
+    if (this.prisma.tenancyMode === 'isolated') {
+      const database = await this.prisma.control().tenantDatabase.findUnique({ where: { tenantId } });
+      db = null;
+      if (database?.state === 'ACTIVE') {
+        try {
+          await this.prisma.router.resolve(tenantId);
+          db = this.prisma.forTenant(tenantId);
+        } catch {
+          db = null;
+        }
+      }
+    }
+    const control = this.prisma.control();
+    const tenant = await control.tenant.findUnique({
       where: { id: tenantId },
       select: { id: true, name: true, status: true, statusChangedAt: true },
     });
@@ -77,12 +95,14 @@ export class TenantPurgeService {
           : null;
 
     const rows: Record<string, number> = {};
-    for (const table of await this.tenantTables()) {
-      const [r] = await db.$queryRawUnsafe<{ n: bigint }[]>(
-        `SELECT COUNT(*) AS n FROM \`${table}\` WHERE tenant_id = ?`,
-        tenantId,
-      );
-      if (Number(r.n) > 0) rows[table] = Number(r.n);
+    if (db) {
+      for (const table of await this.tenantTables(db)) {
+        const [r] = await db.$queryRawUnsafe<{ n: bigint }[]>(
+          `SELECT COUNT(*) AS n FROM \`${table}\` WHERE tenant_id = ?`,
+          tenantId,
+        );
+        if (Number(r.n) > 0) rows[table] = Number(r.n);
+      }
     }
     const users = await this.soleUsers(tenantId);
 
@@ -107,6 +127,14 @@ export class TenantPurgeService {
    * those rows pointing at nobody.
    */
   private soleUsers(tenantId: bigint) {
+    if (this.prisma.tenancyMode === 'isolated') {
+      return this.prisma.control().$queryRaw<{ id: bigint; email: string }[]>`
+        SELECT u.id, u.email FROM users u
+         WHERE u.is_platform_admin = 0
+           AND EXISTS (SELECT 1 FROM user_tenants ut WHERE ut.user_id = u.id AND ut.tenant_id = ${tenantId})
+           AND NOT EXISTS (SELECT 1 FROM user_tenants ut WHERE ut.user_id = u.id AND ut.tenant_id <> ${tenantId})
+         ORDER BY u.id`;
+    }
     return this.prisma.client.$queryRaw<{ id: bigint; email: string }[]>`
       SELECT u.id, u.email FROM users u
        WHERE u.is_platform_admin = 0
@@ -124,6 +152,8 @@ export class TenantPurgeService {
     const plan = await this.plan(tenantId, now);
     if (!plan.eligible) throw new Error(`Refused: ${plan.reason}`);
     if (confirmName !== plan.name) throw new Error('Refused: --confirm must be the exact tenant name');
+
+    if (this.prisma.tenancyMode === 'isolated') return this.runIsolated(tenantId, plan);
 
     const tables = await this.tenantTables();
     const users = await this.soleUsers(tenantId);
@@ -166,5 +196,93 @@ export class TenantPurgeService {
       },
     });
     return plan;
+  }
+
+  private async runIsolated(tenantId: bigint, plan: PurgePlan): Promise<PurgePlan> {
+    const control = this.prisma.control();
+    const database = await control.tenantDatabase.findUnique({ where: { tenantId } });
+    if (!database) throw new Error(`Tenant database ${tenantId} not found`);
+    await control.tenantDatabase.update({ where: { tenantId }, data: { state: 'RETIRED' } });
+    await this.prisma.router.invalidate(tenantId);
+
+    let poolSchemaVersion: string | null = null;
+    if (this.config.get('DB_PROVISIONER', { infer: true }) === 'create') {
+      await this.databases.dropCreatedDatabase(database.databaseName, database.dbUser);
+    } else {
+      const url = this.databases.databaseUrl(database);
+      await dropTenantDatabaseTables(url);
+      poolSchemaVersion = await migrateDatabase(url);
+    }
+
+    const users = await this.soleUsers(tenantId);
+    await control.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 0');
+        try {
+          if (poolSchemaVersion !== null) {
+            await tx.$executeRaw`
+              UPDATE tenant_db_pool SET claimed_by_tenant_id = NULL, claimed_at = NULL, schema_version = ${poolSchemaVersion}
+               WHERE host = ${database.host} AND port = ${database.port} AND database_name = ${database.databaseName}`;
+          }
+          await tx.tenantDatabase.deleteMany({ where: { tenantId } });
+          await tx.userTenant.deleteMany({ where: { tenantId } });
+          await tx.subscription.deleteMany({ where: { tenantId } });
+          await tx.auditLog.deleteMany({ where: { tenantId } });
+          for (const user of users) {
+            await tx.$executeRaw`UPDATE audit_logs SET user_id = NULL WHERE user_id = ${user.id} AND tenant_id IS NULL`;
+            await tx.$executeRaw`UPDATE audit_logs SET entity_id = NULL
+              WHERE entity_type = 'user' AND entity_id = ${user.id.toString()} AND tenant_id IS NULL`;
+            await tx.$executeRaw`UPDATE audit_logs SET after_json = JSON_SET(after_json, '$.email', '[deleted]')
+              WHERE tenant_id IS NULL AND action IN ('auth.login_failed', 'auth.login_locked')
+                AND LOWER(JSON_UNQUOTE(JSON_EXTRACT(after_json, '$.email'))) = LOWER(${user.email})`;
+            await tx.refreshToken.deleteMany({ where: { userId: user.id } });
+            await tx.user.deleteMany({ where: { id: user.id } });
+          }
+          await tx.tenant.deleteMany({ where: { id: tenantId } });
+        } finally {
+          await tx.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 1');
+        }
+      },
+      { timeout: 120_000 },
+    );
+    await this.storage.removeTenant(tenantId);
+    await control.auditLog.create({
+      data: {
+        tenantId: null,
+        userId: null,
+        action: 'job.tenant_purge',
+        entityType: 'tenant',
+        entityId: tenantId.toString(),
+        afterJson: { name: plan.name, cancelledAt: plan.cancelledAt, rows: plan.rows, users: plan.users.length },
+      },
+    });
+    return plan;
+  }
+}
+
+export function dropTableStatement(name: string, type: string): string {
+  if (!TABLE_NAME.test(name)) throw new Error('Invalid table identifier');
+  const quoted = `\`${name}\``;
+  return type === 'VIEW' ? `DROP VIEW IF EXISTS ${quoted}` : `DROP TABLE IF EXISTS ${quoted}`;
+}
+
+export async function dropTenantDatabaseTables(url: string): Promise<void> {
+  const target = new URL(url);
+  const connection = await mariadb.createConnection({
+    host: target.hostname,
+    port: target.port ? Number(target.port) : 3306,
+    user: decodeURIComponent(target.username),
+    password: decodeURIComponent(target.password),
+    database: decodeURIComponent(target.pathname.slice(1)),
+  });
+  try {
+    const tables = (await connection.query(
+      'SELECT TABLE_NAME AS name, TABLE_TYPE AS type FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()',
+    )) as { name: string; type: string }[];
+    await connection.query('SET FOREIGN_KEY_CHECKS = 0');
+    for (const table of tables) await connection.query(dropTableStatement(table.name, table.type));
+    await connection.query('SET FOREIGN_KEY_CHECKS = 1');
+  } finally {
+    await connection.end();
   }
 }

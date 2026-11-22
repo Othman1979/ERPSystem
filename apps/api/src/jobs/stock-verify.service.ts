@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { ClsService } from 'nestjs-cls';
-import type { RequestContext } from '../common/cls/cls.types.js';
 import { StockLedgerService, type VerifyMismatch } from '../platform/inventory/stock-ledger.service.js';
 import { ErrorEventsService } from '../platform/monitoring/error-events.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TenantFanoutService } from '../prisma/tenant-fanout.js';
 
 export interface StockVerifyRun {
   ok: boolean;
   tenants: number;
   failing: { tenantId: string; mismatches: VerifyMismatch[] }[];
+  unavailable?: string[];
 }
 
 /**
@@ -19,36 +19,37 @@ export interface StockVerifyRun {
  * recorded as a JOB error, so the hourly error digest alerts it (ADR-010
  * §10.3). Mismatch lists hold ids and amounts only.
  */
-// ADR-045 29C: the stock-verification job remains on the control database.
 @Injectable()
 export class StockVerifyService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly cls: ClsService<RequestContext>,
+    private readonly fanout: TenantFanoutService,
     private readonly ledger: StockLedgerService,
     private readonly errors: ErrorEventsService,
   ) {}
 
   async run(): Promise<StockVerifyRun> {
-    // systemPrisma: the tenants table is platform-wide; each tenant is then
-    // verified through the tenant-scoped client in its own CLS context.
-    const tenants = await this.prisma.client.tenant.findMany({ select: { id: true }, orderBy: { id: 'asc' } });
     const failing: StockVerifyRun['failing'] = [];
-    for (const t of tenants) {
-      const result = await this.cls.run(async () => {
-        this.cls.set('tenantId', t.id);
-        this.cls.set('jobContext', true); // Cron: every branch (ADR-003 §16)
-        return this.ledger.verify();
-      });
-      if (result.mismatches.length > 0) failing.push({ tenantId: t.id.toString(), mismatches: result.mismatches });
+    const { results, unavailable } = await this.fanout.forEachTenant(async () => this.ledger.verify());
+    for (const { tenantId, result } of results) {
+      if (result.mismatches.length > 0) failing.push({ tenantId: tenantId.toString(), mismatches: result.mismatches });
     }
-    if (failing.length > 0) {
+    if (failing.length > 0 || unavailable.length > 0) {
+      const detail =
+        this.prisma.tenancyMode === 'shared'
+          ? `stock:verify found differences in ${failing.length} tenant(s): ${failing.map((f) => f.tenantId).join(', ')}`
+          : `stock:verify found differences in ${failing.length} tenant(s) and unavailable databases: ${unavailable.join(', ')}`;
       await this.errors.record({
         source: 'JOB',
         path: 'stock-verify',
-        error: new Error(`stock:verify found differences in ${failing.length} tenant(s): ${failing.map((f) => f.tenantId).join(', ')}`),
+        error: new Error(detail),
       });
     }
-    return { ok: failing.length === 0, tenants: tenants.length, failing };
+    return {
+      ok: failing.length === 0 && unavailable.length === 0,
+      tenants: results.length + unavailable.length,
+      failing,
+      ...(this.prisma.tenancyMode === 'isolated' ? { unavailable: unavailable.map(String) } : {}),
+    };
   }
 }

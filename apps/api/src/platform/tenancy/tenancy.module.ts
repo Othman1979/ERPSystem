@@ -6,6 +6,7 @@ import { TenantMirrorService } from './tenant-mirror.service.js';
 import { TenantProvisioningService } from './tenant-provisioning.service.js';
 import { TenantDbPoolService } from './tenant-db-pool.service.js';
 import { TenantMigrationService } from './tenant-migration.service.js';
+import { TenantFanoutService } from '../../prisma/tenant-fanout.js';
 
 @Module({
   imports: [PrismaModule, AccountingModule],
@@ -15,7 +16,15 @@ import { TenantMigrationService } from './tenant-migration.service.js';
     TenantProvisioningService,
     TenantDbPoolService,
     TenantMigrationService,
+    TenantFanoutService,
   ],
-  exports: [TenantDatabaseProvisioner, TenantMirrorService, TenantProvisioningService, TenantDbPoolService, TenantMigrationService],
+  exports: [
+    TenantDatabaseProvisioner,
+    TenantMirrorService,
+    TenantProvisioningService,
+    TenantDbPoolService,
+    TenantMigrationService,
+    TenantFanoutService,
+  ],
 })
 export class TenancyModule {}

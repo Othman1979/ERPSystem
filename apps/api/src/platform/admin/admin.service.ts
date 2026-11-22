@@ -1,11 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AuditService } from '../../common/audit/audit.service.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { findPage, mapPage } from '../../common/paging/find-page.js';
 import { orderByOf, pageWindow } from '../../common/paging/page-query.dto.js';
 import { Prisma } from '../../generated/prisma/client.js';
+import { TenantDatabaseState } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { TenantMirrorService } from '../tenancy/tenant-mirror.service.js';
 import {
   CreateSubscriptionDto,
   ExtendTrialDto,
@@ -18,12 +20,14 @@ import {
  * Platform administration — cross-tenant operations reserved for
  * User.isPlatformAdmin. All queries use the system client consciously.
  */
-// ADR-045 29C: platform administration remains on the control database.
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly mirrors: TenantMirrorService,
   ) {}
 
   /**
@@ -45,19 +49,38 @@ export class AdminService {
       },
       (dir) => ({ id: dir }),
     );
-    const page = await findPage(this.prisma.client, pageWindow(query), {
+    const page = await findPage(this.prisma.control(), pageWindow(query), {
       rows: (tx, window) =>
         tx.tenant.findMany({
           where,
           include: {
             plan: { select: { code: true, nameAr: true, nameEn: true } },
-            _count: { select: { memberships: true, branches: true } },
+            ...(this.prisma.tenancyMode === 'shared'
+              ? { _count: { select: { memberships: true, branches: true } } }
+              : {}),
           },
           orderBy,
           ...window,
         }),
       count: (tx) => tx.tenant.count({ where }),
     });
+    if (this.prisma.tenancyMode === 'isolated') {
+      const stats = await Promise.all(page.items.map((tenant) => this.tenantDatabaseStats(tenant.id)));
+      return mapPage(page, (rows) =>
+        rows.map((t, index) => ({
+          id: t.id.toString(),
+          name: t.name,
+          status: t.status,
+          trialEndsAt: t.trialEndsAt,
+          statusChangedAt: t.statusChangedAt,
+          plan: t.plan,
+          members: stats[index].members,
+          branches: stats[index].branches,
+          databaseState: stats[index].databaseState,
+          createdAt: t.createdAt,
+        })),
+      );
+    }
     return mapPage(page, (rows) =>
       rows.map((t) => ({
         id: t.id.toString(),
@@ -68,22 +91,36 @@ export class AdminService {
         plan: t.plan,
         members: t._count.memberships,
         branches: t._count.branches,
+        databaseState: null,
         createdAt: t.createdAt,
       })),
     );
   }
 
   async getTenant(id: bigint) {
-    const tenant = await this.prisma.client.tenant.findUnique({
+    const tenant = await this.prisma.control().tenant.findUnique({
       where: { id },
       include: {
         plan: true,
         subscriptions: { orderBy: { id: 'desc' }, take: 12 },
-        companies: { select: { id: true, legalNameAr: true, isActive: true } },
-        _count: { select: { memberships: true, branches: true } },
+        ...(this.prisma.tenancyMode === 'shared'
+          ? {
+              companies: { select: { id: true, legalNameAr: true, isActive: true } },
+              _count: { select: { memberships: true, branches: true } },
+            }
+          : {}),
       },
     });
     if (!tenant) throw DomainError.notFound('Tenant', id.toString());
+    const stats =
+      this.prisma.tenancyMode === 'isolated'
+        ? await this.tenantDatabaseStats(id)
+        : {
+            companies: tenant.companies,
+            members: tenant._count.memberships,
+            branches: tenant._count.branches,
+            databaseState: null,
+          };
     return {
       id: tenant.id.toString(),
       name: tenant.name,
@@ -91,9 +128,10 @@ export class AdminService {
       trialEndsAt: tenant.trialEndsAt,
       statusChangedAt: tenant.statusChangedAt,
       plan: tenant.plan,
-      companies: tenant.companies,
-      members: tenant._count.memberships,
-      branches: tenant._count.branches,
+      companies: stats.companies,
+      members: stats.members,
+      branches: stats.branches,
+      databaseState: stats.databaseState,
       subscriptions: tenant.subscriptions,
       createdAt: tenant.createdAt,
     };
@@ -116,6 +154,7 @@ export class AdminService {
       before: { status: before },
       after: { status: dto.status, reason: dto.reason },
     });
+    await this.syncTenantMirror(id);
     return { id: updated.id.toString(), status: updated.status };
   }
 
@@ -137,6 +176,7 @@ export class AdminService {
       entityId: id,
       after: { days: dto.days, trialEndsAt },
     });
+    await this.syncTenantMirror(id);
     return { id: id.toString(), trialEndsAt };
   }
 
@@ -184,6 +224,7 @@ export class AdminService {
       before: { status: tenant.status },
       after: { planCode: dto.planCode, periodEnd, amount: dto.amount ?? null, status: 'ACTIVE' },
     });
+    await this.syncTenantMirror(id);
     return { id: subscription.id.toString(), status: subscription.status };
   }
 
@@ -219,6 +260,68 @@ export class AdminService {
       },
       after: dto,
     });
+    if (this.prisma.tenancyMode === 'isolated') {
+      const databases = await this.prisma.control().tenantDatabase.findMany({
+        where: { state: 'ACTIVE' },
+        select: { tenantId: true },
+        orderBy: { tenantId: 'asc' },
+      });
+      for (const { tenantId } of databases) {
+        try {
+          await this.prisma.router.resolve(tenantId);
+          await this.mirrors.syncPlan(this.prisma.forTenant(tenantId), updated.id);
+        } catch (error) {
+          this.logger.warn(`Could not synchronize plan mirror ${updated.id} for tenant ${tenantId}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
     return { ...updated, id: updated.id.toString() };
+  }
+
+  private async syncTenantMirror(tenantId: bigint): Promise<void> {
+    if (this.prisma.tenancyMode !== 'isolated') return;
+    try {
+      await this.prisma.router.resolve(tenantId);
+      await this.mirrors.syncTenant(this.prisma.forTenant(tenantId), tenantId);
+    } catch (error) {
+      this.logger.warn(`Could not synchronize tenant mirror ${tenantId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async tenantDatabaseStats(tenantId: bigint): Promise<{
+    members: number | null;
+    branches: number | null;
+    companies: { id: bigint; legalNameAr: string; isActive: boolean }[];
+    databaseState: TenantDatabaseState | null;
+  }> {
+    const database = await this.prisma.control().tenantDatabase.findUnique({
+      where: { tenantId },
+      select: { state: true },
+    });
+    const unavailable = {
+      members: null,
+      branches: null,
+      companies: [],
+      databaseState: database?.state ?? null,
+    };
+    if (!database || database.state !== 'ACTIVE') return unavailable;
+    try {
+      await this.prisma.router.resolve(tenantId);
+      const db = this.prisma.forTenant(tenantId);
+      const [members, branches, companies] = await Promise.all([
+        db.tenantMembership.count({ where: { tenantId } }),
+        db.branch.count({ where: { tenantId } }),
+        db.company.findMany({
+          where: { tenantId },
+          select: { id: true, legalNameAr: true, isActive: true },
+        }),
+      ]);
+      return { members, branches, companies, databaseState: database.state };
+    } catch (error) {
+      if (error instanceof DomainError && (error.code === ErrorCode.TENANT_MAINTENANCE || error.code === ErrorCode.TENANT_DB_NOT_FOUND)) {
+        return unavailable;
+      }
+      throw error;
+    }
   }
 }
