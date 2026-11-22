@@ -48,6 +48,9 @@ export class JournalEntryListItemDto extends JournalEntryRow {
 
 /** A journal line with its account (JournalEntryDetailDto.lines). */
 export class JournalEntryLineDto extends JournalLineRow {
+  @ApiProperty({ type: 'string', nullable: true })
+  descriptionKey!: string | null;
+
   @ApiProperty({ type: () => JournalAccountRefDto })
   account!: JournalAccountRefDto;
 }

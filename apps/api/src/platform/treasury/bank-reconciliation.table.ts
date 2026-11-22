@@ -1,4 +1,6 @@
 import { L, type ReportTable } from '../printing/report-table.js';
+import { journalEntryDescription } from '../journal/entry-description.js';
+import { localizedLineDescription } from '../journal/line-description.js';
 import type { BankReconciliationService } from './bank-reconciliation.service.js';
 
 type Detail = Awaited<ReturnType<BankReconciliationService['detail']>>;
@@ -11,7 +13,11 @@ export function bankReconciliationTable(data: Detail, lang: 'ar' | 'en'): Report
     date: line.entryDate,
     entryNo: line.entryNo ?? '',
     reference: line.reference ?? '',
-    description: line.description ?? '',
+    description: line.descriptionKey?.startsWith('journal.line.')
+      ? localizedLineDescription(line.description, lang) ?? ''
+      : line.descriptionKey
+        ? journalEntryDescription(lang, line)
+        : localizedLineDescription(line.description, lang) ?? '',
     amount: line.amount,
   });
   const balance = (kind: string, amount: string) => ({ kind, date: '', entryNo: '', reference: '', description: '', amount });

@@ -953,7 +953,8 @@ export function JournalPage() {
               {
                 title: t('common.description'),
                 dataIndex: 'description',
-                render: (v: string | null) => v ?? '—',
+                render: (_v: string | null, l: JournalEntryLineDto) =>
+                  entryDescription(t, l) || '—',
               },
               {
                 title: t('journal.debit'),

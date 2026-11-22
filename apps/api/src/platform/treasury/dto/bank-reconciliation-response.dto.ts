@@ -24,6 +24,9 @@ export class BankBookLineDto {
   @ApiProperty({ type: 'string' }) sourceType!: string;
   @ApiProperty({ type: 'string', format: 'date' }) entryDate!: string;
   @ApiProperty({ type: 'string', nullable: true }) description!: string | null;
+  @ApiProperty({ type: 'string', nullable: true }) descriptionKey!: string | null;
+  @ApiProperty({ type: 'object', nullable: true, additionalProperties: true })
+  descriptionParams!: Record<string, unknown> | null;
   @ApiProperty({ type: 'string', nullable: true }) reference!: string | null;
   @ApiProperty({ type: 'string', format: 'decimal', description: 'Debit minus credit: deposits positive.' })
   amount!: string;

@@ -8,6 +8,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import { calendarDate } from '../../common/validation/calendar-date.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
+import { lineDescriptionKey } from '../journal/line-description.js';
 import type { UploadedSheet } from '../inventory/count-sheet-import.js';
 import { DocumentSupportService, retryOnLockConflict } from '../shared/document-support.service.js';
 import { readStatementRows } from './bank-statement-import.js';
@@ -38,6 +39,8 @@ interface BookLine {
   sourceType: string;
   entryDate: Date;
   description: string | null;
+  descriptionKey: string | null;
+  descriptionParams: unknown;
   reference: string | null;
   amount: Decimal;
 }
@@ -188,7 +191,18 @@ export class BankReconciliationService {
           : { bankStatementMatch: { is: null } }),
         ...(ids ? { id: { in: ids } } : {}),
       },
-      include: { entry: { select: { id: true, entryNo: true, sourceType: true, description: true } } },
+      include: {
+        entry: {
+          select: {
+            id: true,
+            entryNo: true,
+            sourceType: true,
+            description: true,
+            descriptionKey: true,
+            descriptionParams: true,
+          },
+        },
+      },
       orderBy: [{ entryDate: 'asc' }, { journalEntryId: 'asc' }, { lineNo: 'asc' }],
     });
     const references = await this.references(tx, tenantId, lines.map((line) => line.journalEntryId));
@@ -199,6 +213,8 @@ export class BankReconciliationService {
       sourceType: line.entry.sourceType,
       entryDate: line.entryDate,
       description: line.description ?? line.entry.description,
+      descriptionKey: line.description === null ? line.entry.descriptionKey : lineDescriptionKey(line.description),
+      descriptionParams: line.description === null ? line.entry.descriptionParams : null,
       reference: references.get(line.journalEntryId) ?? null,
       amount: new Decimal(line.debit.toString()).minus(line.credit.toString()),
     }));
@@ -272,6 +288,8 @@ export class BankReconciliationService {
       sourceType: line.sourceType,
       entryDate: dateText(line.entryDate),
       description: line.description,
+      descriptionKey: line.descriptionKey,
+      descriptionParams: line.descriptionParams,
       reference: line.reference,
       amount: money(line.amount),
     };
@@ -318,7 +336,22 @@ export class BankReconciliationService {
         where: { tenantId, statementId: id },
         include: {
           matches: {
-            include: { journalLine: { include: { entry: { select: { id: true, entryNo: true, sourceType: true, description: true } } } } },
+            include: {
+              journalLine: {
+                include: {
+                  entry: {
+                    select: {
+                      id: true,
+                      entryNo: true,
+                      sourceType: true,
+                      description: true,
+                      descriptionKey: true,
+                      descriptionParams: true,
+                    },
+                  },
+                },
+              },
+            },
             orderBy: { id: 'asc' },
           },
         },
@@ -350,6 +383,12 @@ export class BankReconciliationService {
               sourceType: match.journalLine.entry.sourceType,
               entryDate: match.journalLine.entryDate,
               description: match.journalLine.description ?? match.journalLine.entry.description,
+              descriptionKey: match.journalLine.description === null
+                ? match.journalLine.entry.descriptionKey
+                : lineDescriptionKey(match.journalLine.description),
+              descriptionParams: match.journalLine.description === null
+                ? match.journalLine.entry.descriptionParams
+                : null,
               reference: references.get(match.journalLine.journalEntryId) ?? null,
               amount: new Decimal(match.journalLine.debit.toString()).minus(match.journalLine.credit.toString()),
             }),
