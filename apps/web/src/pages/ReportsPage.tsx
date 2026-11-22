@@ -220,7 +220,7 @@ export function ReportsPage() {
                 : { onDoubleClick: () => openStatement(r.accountId), style: { cursor: 'pointer' } }
             }
             columns={[
-              { title: t('accounts.code'), dataIndex: 'code', width: 90 },
+              { title: t('accounts.code'), dataIndex: 'code', width: 90, className: 'col-code' },
               {
                 title: t('common.name'),
                 key: 'name',

@@ -135,7 +135,7 @@ export const ar = {
     effectiveFrom: 'ساري من', sscEmployeeRate: 'نسبة الموظف', sscEmployerRate: 'نسبة صاحب العمل',
     sscHazardousExtra: 'إضافي مخاطر', sscMinWage: 'الحد الأدنى للأجر', sscMaxWage: 'الحد الأعلى للأجر',
     hoursPerMonth: 'ساعات الشهر', daysPerMonth: 'أيام الشهر', saveError: 'تعذر حفظ بيانات الرواتب',
-    monthlyReports: 'التقارير الشهرية', statementFilters: 'بيانات الكشف',
+    monthlyReports: 'التقارير الشهرية', statementFilters: 'بيانات الكشف', runCriteria: 'بيانات المسير',
     groups: {
       effective: 'تاريخ السريان', ssc: 'الضمان الاجتماعي', workTime: 'وقت العمل',
       annualLeave: 'الإجازة السنوية', incomeTax: 'ضريبة الدخل', taxBrackets: 'شرائح الضريبة',
@@ -2646,7 +2646,7 @@ export const en: typeof ar = {
     effectiveFrom: 'Effective from', sscEmployeeRate: 'Employee SSC rate', sscEmployerRate: 'Employer SSC rate',
     sscHazardousExtra: 'Hazardous extra rate', sscMinWage: 'Minimum wage', sscMaxWage: 'Maximum wage',
     hoursPerMonth: 'Hours per month', daysPerMonth: 'Days per month', saveError: 'Could not save payroll data',
-    monthlyReports: 'Monthly reports', statementFilters: 'Statement filters',
+    monthlyReports: 'Monthly reports', statementFilters: 'Statement filters', runCriteria: 'Run details',
     groups: {
       effective: 'Effective date', ssc: 'Social security', workTime: 'Working time',
       annualLeave: 'Annual leave', incomeTax: 'Income tax', taxBrackets: 'Tax brackets',

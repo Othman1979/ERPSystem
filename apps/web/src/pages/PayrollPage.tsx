@@ -610,7 +610,7 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
   };
   return (
     <WinPanel title={t('payroll.runs')} wide>
-      <WinGroup title={t('reports.criteria')} cols={3}>
+      <WinGroup title={t('payroll.runCriteria')} cols={3}>
         <WinField label={t('payroll.month')} size="md">
           <PayrollMonthPicker period={period} onChange={setPeriod} />
         </WinField>

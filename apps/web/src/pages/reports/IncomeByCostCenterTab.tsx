@@ -76,6 +76,7 @@ export function IncomeByCostCenterTab({ from, to, onResolved }: IncomePeriodProp
       title: t('accounts.code'),
       key: 'code',
       width: 110,
+      className: 'col-code',
       onCell: (r) => ({ colSpan: r.kind === 'account' ? 1 : 2 }),
       render: (_: unknown, r: ByCentreRow) => (r.kind === 'account' ? r.code : r.label),
     },

@@ -90,7 +90,7 @@ export function LedgerTable({
     },
     ...(withAccount
       ? [
-          { title: t('accounts.code'), dataIndex: 'accountCode', width: 90 },
+          { title: t('accounts.code'), dataIndex: 'accountCode', width: 90, className: 'col-code' },
           { title: t('common.name'), dataIndex: 'accountName' },
         ]
       : []),

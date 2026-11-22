@@ -844,6 +844,10 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
+.col-code {
+  white-space: nowrap;
+}
+
 /* Numeric cells in plain (non-antd) tables: right-aligned in both directions so decimals line up */
 .num-cell {
   text-align: right;
