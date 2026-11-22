@@ -498,11 +498,34 @@ describe('isolated tenant jobs', () => {
         await once(interruptedRestore, 'exit').catch(() => undefined);
       }
     }
-    const restore = job(
-      ['backup-restore-tenant', backup.folder, tenants[0]!.id.toString(), '--confirm', tenants[0]!.name],
-      { BACKUP_DIR: backupDir },
-    );
-    expect(JSON.parse(restore)).toMatchObject({ tenantId: tenants[0]!.id.toString() });
+    const controlUrl = new URL(connectionUrl(adminUrl, CONTROL_DB));
+    const auditConnection = await mariadb.createConnection({
+      host: controlUrl.hostname,
+      port: controlUrl.port ? Number(controlUrl.port) : 3306,
+      user: decodeURIComponent(controlUrl.username),
+      password: decodeURIComponent(controlUrl.password),
+      database: CONTROL_DB,
+    });
+    const trigger = `fail_restore_audit_${RUN}`;
+    try {
+      await auditConnection.query(
+        `CREATE TRIGGER \`${trigger}\` BEFORE INSERT ON audit_logs FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'forced restore audit failure'`,
+      );
+      const restore = job(
+        ['backup-restore-tenant', backup.folder, tenants[0]!.id.toString(), '--confirm', tenants[0]!.name],
+        { BACKUP_DIR: backupDir },
+      );
+      expect(JSON.parse(restore)).toMatchObject({ tenantId: tenants[0]!.id.toString() });
+      expect((await control!.tenantDatabase.findUniqueOrThrow({ where: { tenantId: tenants[0]!.id } })).state).toBe(
+        'ACTIVE',
+      );
+    } finally {
+      try {
+        await auditConnection.query(`DROP TRIGGER IF EXISTS \`${trigger}\``);
+      } finally {
+        await auditConnection.end();
+      }
+    }
     expect((await tenants[0]!.db.company.findUniqueOrThrow({ where: { id: tenants[0]!.companyId } })).legalNameAr).toBe(beforeA);
     expect((await tenants[1]!.db.company.findUniqueOrThrow({ where: { id: tenants[1]!.companyId } })).legalNameAr).toBe(
       `Still B ${RUN}`,

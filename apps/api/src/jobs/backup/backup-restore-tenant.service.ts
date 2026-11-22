@@ -81,6 +81,7 @@ export class BackupRestoreTenantService {
         : await openPlainDump(dumpPath);
     const previousState = database.state;
     let dropped = false;
+    let completed = false;
     const setStateAndInvalidate = async (state: typeof previousState) => {
       try {
         await control.tenantDatabase.update({ where: { tenantId }, data: { state } });
@@ -146,19 +147,27 @@ export class BackupRestoreTenantService {
         data: { state: 'ACTIVE', schemaVersion: version },
       });
       await this.prisma.router.invalidate(tenantId);
-      await control.auditLog.create({
-        data: {
-          tenantId,
-          userId: null,
-          action: 'job.backup_restore_tenant',
-          entityType: 'tenant',
-          entityId: tenantId.toString(),
-          afterJson: { backup: manifest.name, schemaVersion: version },
-        },
-      });
+      completed = true;
+      try {
+        await control.auditLog.create({
+          data: {
+            tenantId,
+            userId: null,
+            action: 'job.backup_restore_tenant',
+            entityType: 'tenant',
+            entityId: tenantId.toString(),
+            afterJson: { backup: manifest.name, schemaVersion: version },
+          },
+        });
+      } catch (error) {
+        this.logger.error(
+          `Could not write restore audit row for tenant ${tenantId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
       return { tenantId: tenantId.toString(), backup: manifest.name, schemaVersion: version };
     } catch (error) {
-      await setStateAndInvalidate(dropped ? 'RESTORING' : previousState);
+      if (!completed) await setStateAndInvalidate(dropped ? 'RESTORING' : previousState);
       throw error;
     } finally {
       dump.destroy();
