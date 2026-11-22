@@ -342,7 +342,7 @@ export function IssueRequestsPage() {
           pagination={list.pagination}
           onChange={list.onTableChange}
           onRow={(r) => ({ onClick: () => openRequest(r.id), style: { cursor: 'pointer' } })}
-        />
+         scroll={{ x: 'max-content' }}/>
       </div>
     );
   }
@@ -749,7 +749,7 @@ function IssueRequestView({
             render: (v: string | null) => v ?? '—',
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {t('issueRequests.noEffectHint')}
@@ -935,7 +935,7 @@ function IssueDialog({ request, onClose }: { request: IssueRequestDetailDto; onC
                   ),
                 },
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           )}
           {overLine && (
             <div role="alert" className="doc-field-error">

@@ -197,7 +197,7 @@ export function RolesTab() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       <FormDialog
         open={editing !== undefined}

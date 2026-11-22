@@ -244,7 +244,7 @@ export function FiscalPage() {
             },
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <FormDialog
         title={t('fiscal.add')}
         open={modalOpen}
@@ -345,7 +345,7 @@ export function FiscalPage() {
                     render: (value: string) => <Num>{formatAmount(value)}</Num>,
                   },
                 ]}
-              />
+               scroll={{ x: 'max-content' }}/>
             ) : (
               <p>{t('fiscal.noClosingLines')}</p>
             )}
@@ -374,7 +374,7 @@ export function FiscalPage() {
                   },
                   { title: t('fiscal.draftDate'), dataIndex: 'date', render: fmtDate },
                 ]}
-              />
+               scroll={{ x: 'max-content' }}/>
             ) : (
               <p>{t('fiscal.noDraftDocuments')}</p>
             )}
@@ -464,7 +464,7 @@ function YearDetailPanel({
                     ),
                 },
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           ),
         },
         {
@@ -487,7 +487,7 @@ function YearDetailPanel({
                 { title: t('fiscal.prefix'), dataIndex: 'prefix' },
                 { title: t('fiscal.nextNumber'), dataIndex: 'nextNumber', width: 110 },
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           ),
         },
       ]}

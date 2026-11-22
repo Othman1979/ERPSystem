@@ -29,6 +29,7 @@ window.cancelAnimationFrame ??= (handle) => window.clearTimeout(handle);
 const createDraft = vi.fn();
 const listMappings = vi.fn();
 const createAccount = vi.fn();
+const breakpoint = vi.hoisted(() => ({ md: false }));
 const costCentersEnabled = vi.hoisted(() => ({ value: false }));
 const lockAcquire = vi.hoisted(() => vi.fn());
 const lockForceRelease = vi.hoisted(() => vi.fn());
@@ -70,6 +71,13 @@ const ACCOUNTS = [
 const CUSTOMER = { id: '7', code: 'C-7', nameAr: 'cust7', nameEn: 'cust7', partyType: 'CUSTOMER', isActive: true };
 const NEW_ACCOUNT = { ...account('60', '6100'), nameAr: 'new-account', nameEn: 'New account' };
 
+vi.mock('antd', async (importOriginal) => {
+  const antd = await importOriginal<typeof import('antd')>();
+  return {
+    ...antd,
+    Grid: { ...antd.Grid, useBreakpoint: () => ({ md: breakpoint.md }) },
+  };
+});
 vi.mock('@erp/api-client', async (original) => ({
   ...(await original<typeof import('@erp/api-client')>()),
   accountingControllerListAccounts: () =>
@@ -107,6 +115,7 @@ beforeAll(async () => {
 });
 beforeEach(() => {
   localStorage.clear();
+  breakpoint.md = true;
   costCentersEnabled.value = false;
   listEntries.value = [];
   entryDetail.value = null;
@@ -501,5 +510,28 @@ describe('JournalPage: saving waits for the account mappings', () => {
     await settle(50);
     expect(createDraft).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain(i18n.t('journal.partyRequiredCustomer', { line: 1 }));
+  });
+});
+
+describe('JournalPage mobile list', () => {
+  it('renders journal rows as cards below md', async () => {
+    breakpoint.md = false;
+    listEntries.value = [
+      {
+        id: 'entry-mobile',
+        entryNo: 'JE-MOBILE',
+        entryDate: '2026-01-01',
+        description: 'Mobile entry',
+        voucherType: 'JOURNAL',
+        status: 'POSTED',
+        totalDebit: '10.000',
+        reversals: [],
+      },
+    ];
+    await openPage('/journal');
+    const card = host.querySelector('.responsive-table-card');
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toContain('JE-MOBILE');
+    expect(card?.textContent).toContain('Mobile entry');
   });
 });

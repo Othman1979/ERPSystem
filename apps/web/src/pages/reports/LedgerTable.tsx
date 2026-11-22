@@ -153,6 +153,6 @@ export function LedgerTable({
           </>
         ) : null
       }
-    />
+     scroll={{ x: 'max-content' }}/>
   );
 }

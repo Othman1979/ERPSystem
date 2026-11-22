@@ -92,7 +92,7 @@ export function BankReconciliationTab() {
             render: (s: string) => <Tag color={s === 'RECONCILED' ? 'green' : 'gold'}>{t(`bankRec.status_${s}`)}</Tag>,
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       {selected && <StatementDetail id={selected} onChanged={refresh} onDeleted={() => { setSelected(undefined); refresh(); }} onError={onError} />}
     </Space>
   );
@@ -294,7 +294,7 @@ function StatementDetail({
         dataSource={data.lines}
         expandable={{
           rowExpandable: (r) => r.matches.length > 0,
-          expandedRowRender: (r) => <Table<BankBookLineDto> rowKey="id" size="small" pagination={false} dataSource={r.matches} columns={bookColumns} />,
+          expandedRowRender: (r) => <Table<BankBookLineDto> rowKey="id" size="small" pagination={false} dataSource={r.matches} columns={bookColumns}  scroll={{ x: 'max-content' }}/>,
         }}
         columns={[
           { title: '#', dataIndex: 'lineNo', width: 50 },
@@ -328,7 +328,7 @@ function StatementDetail({
               ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       {draft && matchLine && (
         <Card size="small" style={{ marginTop: 12 }} title={t('bankRec.matchTitle', { lineNo: matchLine.lineNo })}>
@@ -341,7 +341,7 @@ function StatementDetail({
             dataSource={candidatesQuery.data ?? []}
             rowSelection={{ selectedRowKeys: picked, onChange: (keys) => setPicked(keys.map(String)) }}
             columns={bookColumns}
-          />
+           scroll={{ x: 'max-content' }}/>
           <Space style={{ marginTop: 8 }}>
             <Button type="primary" disabled={picked.length === 0 || !pickedTotal.equals(lineTotal)} loading={match.isPending} onClick={() => match.mutate()}>
               {t('bankRec.confirmMatch')}
@@ -360,7 +360,7 @@ function StatementDetail({
           pagination={false}
           dataSource={[...data.outstandingDeposits, ...data.outstandingPayments]}
           columns={bookColumns}
-        />
+         scroll={{ x: 'max-content' }}/>
       )}
     </Card>
   );

@@ -37,6 +37,7 @@ import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../co
 import { GridSelect, focusNamedField } from '../components/GridSelect';
 import { ListToolbar } from '../components/ListToolbar';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { ReasonModal } from '../components/ReasonModal';
 import { PICKER_PAGE_SIZE, RemoteSelect } from '../components/RemoteSelect';
@@ -49,6 +50,7 @@ import { useNewFromUrl } from '../useNewFromUrl';
 import { idemHeaders } from '../idempotency';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
+import { formatDate } from '../format/date';
 import { isAuthoredBy } from './procurement/orderPayload';
 import { salesCycleKeys, invalidateSalesCycle } from './sales/cycleQueryKeys';
 import { CustomerFilter } from './sales/CustomerFilter';
@@ -241,7 +243,7 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
           )
         }
       />
-      <Table
+      <ResponsiveTable<SalesCycleOrderListItemDto>
         rowKey="id"
         loading={list.query.isLoading}
         dataSource={list.rows}
@@ -251,6 +253,13 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => onOpen(r.id), style: { cursor: 'pointer' } })}
+        mobileCard={{
+          title: (order) => order.orderNo ?? t('procurement.draftNo'),
+          subtitle: (order) => `${formatDate(order.orderDate)} · ${displayName(order.customer) ?? '—'}`,
+          amount: (order) => amountCell(order.grandTotal),
+          status: (order) => <OrderStatusTag status={order.status} />,
+          meta: (order) => (order.quote?.quoteNo ? [<span>{t('salesCycle.fromQuote')}: {order.quote.quoteNo}</span>] : []),
+        }}
       />
     </div>
   );
@@ -801,7 +810,7 @@ function OrderView({ order, onBack }: { order: SalesCycleOrderDetailDto; onBack:
           { title: t('procurement.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
           { title: t('procurement.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
 
       <ReservationPanel warehouseId={order.warehouseId} lines={reservationLines} checkStock={pending} />
 

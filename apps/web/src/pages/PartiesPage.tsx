@@ -5,7 +5,6 @@ import {
   Popconfirm,
   Select,
   Space,
-  Table,
   Tag,
   message,
 } from 'antd';
@@ -20,6 +19,7 @@ import {
   type PartyDto,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
 import { PartyFormDialog } from '../components/PartyFormDialog';
@@ -81,6 +81,20 @@ export function PartiesPage() {
     onError,
   });
 
+  const actions = (party: Party) => (
+    <Space>
+      <Button size="small" onClick={() => openEdit(party)}>{t('common.edit')}</Button>
+      {party.isActive && (
+        <Popconfirm
+          title={t('parties.deactivateConfirm')}
+          onConfirm={() => deactivate.mutate(party.id)}
+        >
+          <Button size="small" danger>{t('common.deactivate')}</Button>
+        </Popconfirm>
+      )}
+    </Space>
+  );
+
   const columns = [
     {
       title: t('parties.code'),
@@ -121,19 +135,7 @@ export function PartiesPage() {
     {
       title: '',
       width: 170,
-      render: (_: unknown, p: Party) => (
-        <Space>
-          <Button size="small" onClick={() => openEdit(p)}>{t('common.edit')}</Button>
-          {p.isActive && (
-            <Popconfirm
-              title={t('parties.deactivateConfirm')}
-              onConfirm={() => deactivate.mutate(p.id)}
-            >
-              <Button size="small" danger>{t('common.deactivate')}</Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
+      render: (_: unknown, p: Party) => actions(p),
     },
   ];
 
@@ -165,7 +167,7 @@ export function PartiesPage() {
         }
       />
 
-      <Table
+      <ResponsiveTable<Party>
         rowKey="id"
         loading={isLoading}
         dataSource={list.rows}
@@ -174,6 +176,22 @@ export function PartiesPage() {
         size="small"
         pagination={list.pagination}
         onChange={list.onTableChange}
+        mobileCard={{
+          title: (party) => displayName(party),
+          subtitle: (party) => `${t('parties.code')}: ${party.code}`,
+          amount: (party) => amountCell(party.creditLimit),
+          status: (party) => (
+            <Tag color={party.isActive ? 'green' : 'default'}>
+              {party.isActive ? t('common.active') : t('common.inactive')}
+            </Tag>
+          ),
+          meta: (party) => [
+            <span>{t('parties.type')}: {t(`parties.type_${party.partyType}`)}</span>,
+            ...(party.phone ? [<span>{t('parties.phone')}: {party.phone}</span>] : []),
+            ...(party.taxNumber ? [<span>{t('parties.taxNumber')}: {party.taxNumber}</span>] : []),
+          ],
+          actions,
+        }}
       />
 
       <PartyFormDialog

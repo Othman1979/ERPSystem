@@ -40,6 +40,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { ListToolbar } from '../components/ListToolbar';
@@ -95,6 +96,7 @@ import { purchaseInvoiceBody, purchaseInvoiceFormDefaults } from './purchases/in
 import { purchaseReturnBody } from './purchases/returnPayload';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
+import { formatDate } from '../format/date';
 import { dec, formatAmount } from '../format/number';
 import { invalidateStockDocument } from '../stockQueries';
 
@@ -448,7 +450,7 @@ function PurchaseInvoicesTab() {
           </Button>
         }
       />
-      <Table
+      <ResponsiveTable<PurchaseInvoiceListItemDto>
         rowKey="id"
         loading={list.query.isLoading}
         dataSource={list.rows}
@@ -458,6 +460,20 @@ function PurchaseInvoicesTab() {
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => { setInvoiceId(r.id); setScreen('view'); }, style: { cursor: 'pointer' } })}
+        mobileCard={{
+          title: (invoice) => invoice.invoiceNo ?? `#${invoice.id}`,
+          subtitle: (invoice) => `${formatDate(invoice.invoiceDate)} · ${displayName(invoice.supplier) ?? '—'}`,
+          amount: (invoice) => amountCell(invoice.grandTotal),
+          status: (invoice) => (
+            <Tag color={invoice.status === 'POSTED' ? 'green' : 'default'}>
+              {t(`common.${invoice.status === 'POSTED' ? 'posted' : 'draft'}`)}
+            </Tag>
+          ),
+          meta: (invoice) => [
+            <span>{t(`purchases.${invoice.paymentType}`)}</span>,
+            <span>{t('purchases.paid')}: {amountCell(invoice.paidAmount)}</span>,
+          ],
+        }}
       />
     </div>
   );
@@ -1198,7 +1214,7 @@ function PurchaseInvoiceView({
           { title: t('purchases.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
           { title: t('purchases.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
     </DocLayout>
   );
 }
@@ -1412,7 +1428,7 @@ function PurchaseReturnsTab() {
                   { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'right' as const, render: qtyCell },
                   { title: t('purchases.total'), dataIndex: 'lineTotal', width: 120, align: 'right' as const, render: amountCell },
                 ]}
-              />
+               scroll={{ x: 'max-content' }}/>
             </>
           ) : (
             <div className="doc-section">{t('common.loading')}</div>
@@ -1454,6 +1470,7 @@ function PurchaseReturnsTab() {
         locale={tableLocale(list.query)}
         columns={columns}
         size="small"
+        scroll={{ x: 'max-content' }}
         pagination={list.pagination}
         onChange={list.onTableChange}
       />
@@ -1684,7 +1701,7 @@ function PurchaseReturnForm({
               render: amountCell,
             },
           ]}
-        />
+         scroll={{ x: 'max-content' }}/>
       )}
     </DocLayout>
   );

@@ -516,7 +516,7 @@ export function GoodsNotesSection({
               ),
             },
           ]}
-        />
+         scroll={{ x: 'max-content' }}/>
       </div>
     );
   }
@@ -800,7 +800,7 @@ export function GoodsNotesSection({
                       },
                     ]),
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           </>
         ) : (
           <Table
@@ -831,7 +831,7 @@ export function GoodsNotesSection({
                 render: unitCostCell,
               },
             ]}
-          />
+           scroll={{ x: 'max-content' }}/>
         )}
       </DocLayout>
     </div>

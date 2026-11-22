@@ -463,7 +463,7 @@ export function UsersPage() {
                 ),
               },
             ]}
-          />
+           scroll={{ x: 'max-content' }}/>
 
           <PurchasePermissionsDialog
             member={purchaseMember}

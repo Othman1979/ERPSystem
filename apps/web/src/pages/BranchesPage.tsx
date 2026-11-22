@@ -135,7 +135,7 @@ export function BranchesPage() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <FormDialog
         title={editing ? t('branches.edit') : t('branches.add')}
         open={modalOpen}

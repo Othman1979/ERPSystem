@@ -167,7 +167,7 @@ function TenantsTab() {
             render: day,
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <TenantDrawer id={openId} onClose={() => setOpenId(null)} />
     </>
   );
@@ -336,7 +336,7 @@ function TenantDrawer({ id, onClose }: { id: string | null; onClose: () => void 
                 { title: t('platform.amount'), dataIndex: 'amount', align: 'right', render: amountCell },
                 { title: t('platform.paymentNotes'), dataIndex: 'notes', render: (v: string | null) => v ?? '—' },
               ]}
-            />
+             scroll={{ x: 'max-content' }}/>
           </section>
         </Space>
       )}
@@ -407,7 +407,7 @@ function PlansTab() {
           },
           { title: '', width: 80, render: (_: unknown, p) => <Button size="small" onClick={() => open(p)}>{t('common.edit')}</Button> },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <Modal
         open={!!editing}
         title={editing ? `${t('platform.editPlan')} — ${editing.code}` : ''}
@@ -544,7 +544,7 @@ function ErrorsTab() {
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       <Drawer open={!!openId} width={720} onClose={() => setOpenId(null)} title={detail ? `${detail.name}: ${detail.message}` : ''}>
         {detail && (
           <>

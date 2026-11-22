@@ -54,6 +54,7 @@ import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../co
 import { GridSelect } from '../components/GridSelect';
 import { ListToolbar } from '../components/ListToolbar';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { PICKER_PAGE_SIZE, RemoteSelect } from '../components/RemoteSelect';
 import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
@@ -65,6 +66,7 @@ import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
+import { formatDate } from '../format/date';
 import { dec } from '../format/number';
 import {
   convertBody,
@@ -418,7 +420,7 @@ function QuotesTab({ initialRequestId }: { initialRequestId?: string }) {
             ) : undefined
           }
         />
-        <Table
+        <ResponsiveTable<PurchaseQuoteListItemDto>
           rowKey="id"
           loading={list.query.isLoading}
           dataSource={list.rows}
@@ -434,6 +436,15 @@ function QuotesTab({ initialRequestId }: { initialRequestId?: string }) {
             },
             style: { cursor: 'pointer' },
           })}
+          mobileCard={{
+            title: (quote) => quote.quoteNo ?? t('procurement.draftNo'),
+            subtitle: (quote) => `${formatDate(quote.quoteDate)} · ${codeAndName(quote.supplier)}`,
+            amount: (quote) => amountCell(quote.grandTotal),
+            status: (quote) => <QuoteStatus status={quote.status} />,
+            meta: (quote) => [
+              <span>{t('procurement.request')}: {quote.request.requestNo ?? `#${quote.request.id}`}</span>,
+            ],
+          }}
         />
       </div>
     );
@@ -670,7 +681,7 @@ function QuoteForm({
               ),
             },
           ]}
-        />
+         scroll={{ x: 'max-content' }}/>
       </EnterNav>
     </DocLayout>
   );
@@ -824,7 +835,7 @@ function QuoteView({
             { title: t('procurement.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
             { title: t('procurement.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
           ]}
-        />
+         scroll={{ x: 'max-content' }}/>
 
         <Modal
           open={cancelOpen}
@@ -989,7 +1000,7 @@ function QuoteReceive({
               ),
             },
           ]}
-        />
+         scroll={{ x: 'max-content' }}/>
       </EnterNav>
     </DocLayout>
   );
@@ -1190,7 +1201,7 @@ function ComparisonTab({ initialRequestId }: { initialRequestId?: string }) {
                         render: amountCell,
                       },
                     ]}
-                  />
+                   scroll={{ x: 'max-content' }}/>
                 </Radio.Group>
               )}
             </section>

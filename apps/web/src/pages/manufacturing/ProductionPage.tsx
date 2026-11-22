@@ -217,7 +217,7 @@ function VouchersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: 
         pagination={list.pagination}
         onChange={list.onTableChange}
         onRow={(r) => ({ onClick: () => onOpen(r.id), style: { cursor: 'pointer' } })}
-      />
+       scroll={{ x: 'max-content' }}/>
     </div>
   );
 }

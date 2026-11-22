@@ -165,7 +165,7 @@ export function ReceiveOrderModal({ order, open, onClose, onDone }: ReceiveOrder
             ),
           },
         ]}
-      />
+       scroll={{ x: 'max-content' }}/>
       {tried && plan.lines.length === 0 && <Typography.Text type="danger">{t('procurement.receiveNothing')}</Typography.Text>}
       {plan.invalid.size > 0 && <Typography.Text type="danger">{t('procurement.receiveTooMany')}</Typography.Text>}
     </Modal>
