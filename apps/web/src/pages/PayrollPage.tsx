@@ -55,7 +55,7 @@ import { formatDate } from '../format/date';
 import { entryDescription } from '../i18n/entryDescription';
 import { DatePicker } from '../components/DatePicker';
 import { ResponsiveTable } from '../components/ResponsiveTable';
-import { ExportButtons, saveBlob } from '../components/ExportButtons';
+import { apiErrorText, ExportButtons, saveBlob } from '../components/ExportButtons';
 import { WinField, WinGroup, WinPanel } from '../components/WinForm';
 import { EnterNav } from '../components/EnterNav';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -563,7 +563,12 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
     (cashBoxes.data ?? []) as Array<Pick<CashBoxListItemDto, 'id' | 'name'>>,
     (bankAccounts.data ?? []) as Array<Pick<BankAccountListItemDto, 'id' | 'bankName' | 'accountNoMasked' | 'ibanMasked'>>,
   );
-  const create = useMutation({ mutationFn: () => payrollControllerCreateRun({ period }), onSuccess: (r) => { setRunId(r.data.id); void qc.invalidateQueries({ queryKey: ['payroll', 'runs'] }); }, onError: () => message.error(t('payroll.saveError')) });
+  const create = useMutation({
+    mutationFn: () => payrollControllerCreateRun({ period }),
+    onSuccess: (r) => setRunId(r.data.id),
+    onSettled: () => { void qc.invalidateQueries({ queryKey: ['payroll'] }); },
+    onError: (err) => message.error(`${t('payroll.saveError')}: ${apiErrorText(t, err)}`),
+  });
   const { mutate: createRun } = create;
   const createdFromQuickAction = useRef(false);
   const pendingIncomeTaxSaves = useRef(new Set<Promise<unknown>>());
@@ -591,9 +596,10 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
     if (action === 'reverse') await payrollControllerReverseRun(runId, { date: dateOnly(actionDate)! }, options);
     if (action === 'recompute') await (await import('@erp/api-client')).payrollControllerRecomputeRun(runId);
     if (action === 'delete') await payrollControllerDeleteRun(runId);
-  }, onSuccess: (_result, action) => { if (action === 'delete') setRunId(undefined); void qc.invalidateQueries({ queryKey: ['payroll'] }); }, onError: () => message.error(t('payroll.saveError')) });
+  }, onSuccess: (_result, action) => { if (action === 'delete') setRunId(undefined); }, onSettled: () => { void qc.invalidateQueries({ queryKey: ['payroll'] }); }, onError: (err) => message.error(`${t('payroll.saveError')}: ${apiErrorText(t, err)}`) });
   const data = run.data as (PayrollRunDto & { lines?: Array<{ id: string; employeeName: string; basic: string; earnings: string; gross: string; sscBase: string; sscEmployee: string; sscEmployer: string; taxableIncome: string; incomeTax: string; taxManual: boolean; deductions: string; net: string }> }) | undefined;
   const available = runAvailability(data?.status ?? '');
+  const runActionPending = mutate.isPending || create.isPending;
   useEffect(() => {
     setActionDate(defaultPayrollActionDate(data?.runDate));
   }, [runId, data?.runDate]);
@@ -628,22 +634,22 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
         </WinField>
       </WinGroup>
       <div className="win-actions payroll-run-actions">
-        {can(PERMISSIONS.PAYROLL_MANAGE) && <Button type="primary" onClick={() => create.mutate()} loading={create.isPending}>{t('payroll.newRun')}</Button>}
-        {can(PERMISSIONS.PAYROLL_MANAGE) && <Button disabled={!runId} onClick={() => mutate.mutate('recompute')}>{t('payroll.recompute')}</Button>}
-        {can(PERMISSIONS.PAYROLL_MANAGE) && data?.status === 'DRAFT' && <Button danger disabled={!runId} onClick={() => mutate.mutate('delete')}>{t('payroll.deleteDraft')}</Button>}
-        {can(PERMISSIONS.PAYROLL_POST) && <Button disabled={!available.canPost} onClick={() => mutate.mutate('post')}>{t('payroll.post')}</Button>}
-        {can(PERMISSIONS.PAYROLL_POST) && <Button disabled={!available.canPay || !sourceId} onClick={() => mutate.mutate('pay')}>{t('payroll.pay')}</Button>}
-        {can(PERMISSIONS.PAYROLL_POST) && <Button disabled={!available.canReverse} onClick={() => mutate.mutate('reverse')}>{t('payroll.reverse')}</Button>}
+        {can(PERMISSIONS.PAYROLL_MANAGE) && <Button type="primary" onClick={() => create.mutate()} disabled={runActionPending} loading={create.isPending}>{t('payroll.newRun')}</Button>}
+        {can(PERMISSIONS.PAYROLL_MANAGE) && <Button disabled={runActionPending || !runId} loading={mutate.isPending && mutate.variables === 'recompute'} onClick={() => mutate.mutate('recompute')}>{t('payroll.recompute')}</Button>}
+        {can(PERMISSIONS.PAYROLL_MANAGE) && data?.status === 'DRAFT' && <Button danger disabled={runActionPending || !runId} loading={mutate.isPending && mutate.variables === 'delete'} onClick={() => mutate.mutate('delete')}>{t('payroll.deleteDraft')}</Button>}
+        {can(PERMISSIONS.PAYROLL_POST) && <Button disabled={runActionPending || !available.canPost} loading={mutate.isPending && mutate.variables === 'post'} onClick={() => mutate.mutate('post')}>{t('payroll.post')}</Button>}
+        {can(PERMISSIONS.PAYROLL_POST) && <Button disabled={runActionPending || !available.canPay || !sourceId} loading={mutate.isPending && mutate.variables === 'pay'} onClick={() => mutate.mutate('pay')}>{t('payroll.pay')}</Button>}
+        {can(PERMISSIONS.PAYROLL_POST) && <Button disabled={runActionPending || !available.canReverse} loading={mutate.isPending && mutate.variables === 'reverse'} onClick={() => mutate.mutate('reverse')}>{t('payroll.reverse')}</Button>}
       </div>
       {data && <Space wrap style={{ margin: '12px 0' }}>
-      <span>{t('payroll.basicSalary')}: {formatAmount(data.basicTotal)}</span>
-      <span>{t('payroll.gross')}: {formatAmount(data.grossTotal)}</span>
-      <span>{t('payroll.sscBase')}: {formatAmount(data.sscBaseTotal)}</span>
-      <span>{t('payroll.sscEmployeeTotal')}: {formatAmount(data.sscEmployeeTotal)}</span>
-      <span>{t('payroll.sscEmployerTotal')}: {formatAmount(data.sscEmployerTotal)}</span>
-      <span>{t('payroll.incomeTax')}: {formatAmount(data.incomeTaxTotal)}</span>
-      <span>{t('payroll.deductions')}: {formatAmount(data.deductionsTotal)}</span>
-      <span>{t('payroll.net')}: {formatAmount(data.netTotal)}</span>
+        <span>{t('payroll.basicSalary')}: {formatAmount(data.basicTotal)}</span>
+        <span>{t('payroll.gross')}: {formatAmount(data.grossTotal)}</span>
+        <span>{t('payroll.sscBase')}: {formatAmount(data.sscBaseTotal)}</span>
+        <span>{t('payroll.sscEmployeeTotal')}: {formatAmount(data.sscEmployeeTotal)}</span>
+        <span>{t('payroll.sscEmployerTotal')}: {formatAmount(data.sscEmployerTotal)}</span>
+        <span>{t('payroll.incomeTax')}: {formatAmount(data.incomeTaxTotal)}</span>
+        <span>{t('payroll.deductions')}: {formatAmount(data.deductionsTotal)}</span>
+        <span>{t('payroll.net')}: {formatAmount(data.netTotal)}</span>
       </Space>}
     {data && <Table rowKey="id" dataSource={data.lines} columns={[
       { title: t('payroll.employee'), dataIndex: 'employeeName' },
@@ -656,15 +662,19 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
       { title: t('payroll.taxableIncome'), dataIndex: 'taxableIncome', render: (v: string) => formatAmount(v) , className: 'num'},
       { title: t('payroll.incomeTax'), dataIndex: 'incomeTax', render: (v: string, row) => available.taxEditable && can(PERMISSIONS.PAYROLL_MANAGE) ? <Space>
         <Input defaultValue={v} onBlur={(e) => {
+        const currentRun = qc.getQueryData<PayrollRunDto>(['payroll', 'run', runId]);
+        if (mutate.isPending || !runAvailability(currentRun?.status ?? '').taxEditable) return;
         if (toDecimal(e.target.value)?.eq(row.incomeTax)) return;
         const save = payrollControllerSetIncomeTax(data.id, row.id, { incomeTax: e.target.value });
         pendingIncomeTaxSaves.current.add(save);
         void save.then(() => qc.invalidateQueries({ queryKey: ['payroll', 'run', runId] }))
-          .catch(() => message.error(t('payroll.saveError')))
+          .catch((err) => message.error(`${t('payroll.saveError')}: ${apiErrorText(t, err)}`))
           .finally(() => pendingIncomeTaxSaves.current.delete(save));
       }} />
-        {row.taxManual && <><Tag>{t('payroll.manual')}</Tag><Button icon={<ReloadOutlined />} title={t('payroll.resetTax')} onClick={() => {
-          void payrollControllerClearIncomeTax(data.id, row.id).then(() => qc.invalidateQueries({ queryKey: ['payroll', 'run', runId] })).catch(() => message.error(t('payroll.saveError')));
+        {row.taxManual && <><Tag>{t('payroll.manual')}</Tag><Button disabled={runActionPending} icon={<ReloadOutlined />} title={t('payroll.resetTax')} onClick={() => {
+          const currentRun = qc.getQueryData<PayrollRunDto>(['payroll', 'run', runId]);
+          if (mutate.isPending || !runAvailability(currentRun?.status ?? '').taxEditable) return;
+          void payrollControllerClearIncomeTax(data.id, row.id).then(() => qc.invalidateQueries({ queryKey: ['payroll', 'run', runId] })).catch((err) => message.error(`${t('payroll.saveError')}: ${apiErrorText(t, err)}`));
         }} /></>}
       </Space> : <Space>{formatAmount(v)}{row.taxManual && <Tag>{t('payroll.manual')}</Tag>}</Space> , className: 'num'},
       { title: t('payroll.deductions'), dataIndex: 'deductions', render: (v: string) => formatAmount(v) , className: 'num'},
@@ -822,7 +832,17 @@ function ReportsTab() {
   });
   const data = statement.data as {
     employeeName: string; openingBalance: string; closingBalance: string;
-    rows: Array<{ date: string; documentNo: string; documentType: string; description: string; debit: string; credit: string; balance: string }>;
+    rows: Array<{
+      date: string;
+      documentNo: string;
+      documentType: string;
+      description: string;
+      descriptionKey?: string | null;
+      descriptionParams?: unknown;
+      debit: string;
+      credit: string;
+      balance: string;
+    }>;
   } | undefined;
   return (
     <div className="win-report-panels">

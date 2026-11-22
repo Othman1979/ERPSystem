@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { DEFAULT_PAYROLL_TAX_BRACKETS } from '../accounting/chart-template.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
+import { lineDescription } from '../journal/line-description.js';
 import { YearClosingDraftRegistry, yearClosingDraft } from '../accounting/year-closing-draft.registry.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
 import { isIncomeStatement } from '../cost-centers/cost-center-rules.js';
@@ -1451,8 +1452,22 @@ export class PayrollService {
       };
       let recurringDeductionCredits = new Decimal(0);
       for (const line of run.lines) {
-        add(accountId('PAYROLL_SALARIES_EXPENSE'), line.basic, 'debit', line.employee.branchId, line.employee.costCenterId, 'Basic salaries');
-        add(accountId('PAYROLL_SSC_EXPENSE'), line.sscEmployer, 'debit', line.employee.branchId, line.employee.costCenterId, 'Employer social security');
+        add(
+          accountId('PAYROLL_SALARIES_EXPENSE'),
+          line.basic,
+          'debit',
+          line.employee.branchId,
+          line.employee.costCenterId,
+          lineDescription('journal.line.basicSalaries'),
+        );
+        add(
+          accountId('PAYROLL_SSC_EXPENSE'),
+          line.sscEmployer,
+          'debit',
+          line.employee.branchId,
+          line.employee.costCenterId,
+          lineDescription('journal.line.employerSocialSecurity'),
+        );
         for (const item of line.items) {
           if (!item.payElement?.accountId || !item.payElement.account) throw new DomainError(ErrorCode.PAYROLL_ACCOUNT_INVALID, 'Payroll item has no account');
           if (item.payrollMovementId !== null) continue;
@@ -1484,14 +1499,14 @@ export class PayrollService {
             credit: debitExpense ? 0 : amount,
             branchId: line.employee.branchId,
             costCenterId: line.employee.costCenterId,
-            description: 'Leave provision expense',
+            description: lineDescription('journal.line.leaveProvisionExpense'),
           },
           {
             accountId: leaveProvisionAccount,
             debit: debitExpense ? 0 : amount,
             credit: debitExpense ? amount : 0,
             branchId: line.employee.branchId,
-            description: 'Accrued leave provision',
+            description: lineDescription('journal.line.accruedLeaveProvision'),
           },
         );
       }
@@ -1507,19 +1522,33 @@ export class PayrollService {
             credit: debitExpense ? 0 : amount,
             branchId: line.employee.branchId,
             costCenterId: line.employee.costCenterId,
-            description: 'End-of-service provision expense',
+            description: lineDescription('journal.line.endOfServiceProvisionExpense'),
           },
           {
             accountId: eosProvisionAccount,
             debit: debitExpense ? 0 : amount,
             credit: debitExpense ? amount : 0,
             branchId: line.employee.branchId,
-            description: 'End-of-service provision',
+            description: lineDescription('journal.line.endOfServiceProvision'),
           },
         );
       }
-      add(accountId('PAYROLL_SSC_PAYABLE'), run.sscEmployeeTotal.plus(run.sscEmployerTotal), 'credit', null, null, 'Social security payable');
-      add(accountId('PAYROLL_TAX_PAYABLE'), run.incomeTaxTotal, 'credit', null, null, 'Income tax withheld');
+      add(
+        accountId('PAYROLL_SSC_PAYABLE'),
+        run.sscEmployeeTotal.plus(run.sscEmployerTotal),
+        'credit',
+        null,
+        null,
+        lineDescription('journal.line.socialSecurityPayable'),
+      );
+      add(
+        accountId('PAYROLL_TAX_PAYABLE'),
+        run.incomeTaxTotal,
+        'credit',
+        null,
+        null,
+        lineDescription('journal.line.incomeTaxWithheld'),
+      );
       const totalDebits = [...grouped.values()].reduce((sum, line) => sum.plus(line.debit), new Decimal(0));
       const payrollPayable = round3(
         totalDebits
@@ -1533,7 +1562,7 @@ export class PayrollService {
         payrollPayable.lt(0) ? 'debit' : 'credit',
         null,
         null,
-        'Net salaries payable',
+        lineDescription('journal.line.netSalariesPayable'),
       );
       const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, run.runDate);
       const runNo = await allocateDocumentNo(tx, tenantId, companyId, 'PAYROLL_RUN', run.runDate);

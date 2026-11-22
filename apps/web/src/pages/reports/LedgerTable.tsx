@@ -12,6 +12,8 @@ export interface LedgerLine {
   entryNo: string | null;
   entryDate: string;
   description: string | null;
+  descriptionKey?: string | null;
+  descriptionParams?: unknown;
   sourceType?: string;
   debit: string;
   credit: string;

@@ -12,6 +12,7 @@ import { FiscalService } from '../accounting/fiscal.service.js';
 import { EXPORT_LIMITS } from '../printing/printing.service.js';
 import { afterLine, LINE_ORDER, lineCursor, lineState, type StatementPageQuery } from './statement-cursor.js';
 import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { lineDescriptionKey } from './line-description.js';
 
 /** Accounts closed into equity at year end (their opening restarts each year). */
 const NOMINAL_TYPES: ReadonlySet<string> = new Set(['REVENUE', 'EXPENSE']);
@@ -465,7 +466,7 @@ export class ReportsService {
       entryNo: l.entry.entryNo,
       entryDate: l.entry.entryDate,
       description: l.description ?? l.entry.description,
-      descriptionKey: l.description === null ? l.entry.descriptionKey : null,
+      descriptionKey: l.description === null ? l.entry.descriptionKey : lineDescriptionKey(l.description),
       descriptionParams: l.description === null ? l.entry.descriptionParams : null,
       sourceType: l.entry.sourceType,
       postingKind: l.entry.postingKind,
@@ -686,7 +687,7 @@ export class ReportsService {
       sourceType: l.entry.sourceType,
       postingKind: l.entry.postingKind,
       description: l.description ?? l.entry.description,
-      descriptionKey: l.description === null ? l.entry.descriptionKey : null,
+      descriptionKey: l.description === null ? l.entry.descriptionKey : lineDescriptionKey(l.description),
       descriptionParams: l.description === null ? l.entry.descriptionParams : null,
       debit: amt(new Decimal(l.debit.toString())),
       credit: amt(new Decimal(l.credit.toString())),

@@ -487,6 +487,15 @@ describe('Phase 14 part B — invoices from sales orders (ADR-027)', () => {
       expect(posted.status).toBe(201);
       expect(posted.body.invoiceNo).toEqual(expect.any(String));
       expect(posted.body.salesOrderId).toBeNull();
+      const journalEntry = (await h.get(owner, `journal-entries/${posted.body.journalEntry.id}`)).body;
+      expect(journalEntry.lines).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            description: 'Credit sale',
+            descriptionKey: 'journal.line.creditSale',
+          }),
+        ]),
+      );
       expect(await onHand(item)).toBe('3.000000');
       await verified();
     }, T);

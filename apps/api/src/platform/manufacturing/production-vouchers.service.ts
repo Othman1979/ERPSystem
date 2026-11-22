@@ -13,6 +13,7 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
+import { lineDescription } from '../journal/line-description.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import { DocumentSupportService, retryOnLockConflict } from '../shared/document-support.service.js';
 import { stockWriteOffLines } from '../shared/stock-write-off.js';
@@ -507,14 +508,26 @@ export class ProductionVouchersService implements OnModuleInit {
       'PRODUCTION_APPLIED_COST',
     ]);
     const journalLines: JournalLineInput[] = [];
-    if (outputTotal.gt(0)) journalLines.push({ accountId: mapping.INVENTORY, debit: outputTotal.toString(), description: 'Production output' });
-    if (materialsTotal.gt(0)) journalLines.push({ accountId: mapping.INVENTORY, credit: materialsTotal.toString(), description: 'Production materials' });
+    if (outputTotal.gt(0)) {
+      journalLines.push({
+        accountId: mapping.INVENTORY,
+        debit: outputTotal.toString(),
+        description: lineDescription('journal.line.productionOutput'),
+      });
+    }
+    if (materialsTotal.gt(0)) {
+      journalLines.push({
+        accountId: mapping.INVENTORY,
+        credit: materialsTotal.toString(),
+        description: lineDescription('journal.line.productionMaterials'),
+      });
+    }
     if (appliedTotal.gt(0)) {
       // The voucher's cost centre sits on this line only (ADR-031 §7).
       journalLines.push({
         accountId: mapping.PRODUCTION_APPLIED_COST,
         credit: appliedTotal.toString(),
-        description: 'Applied production cost',
+        description: lineDescription('journal.line.appliedProductionCost'),
         costCenterId: draft.costCenterId,
       });
     }
@@ -729,16 +742,28 @@ export class ProductionVouchersService implements OnModuleInit {
       'PRODUCTION_APPLIED_COST',
     ]);
     const journalLines: JournalLineInput[] = [];
-    if (materialsBack.gt(0)) journalLines.push({ accountId: mapping.INVENTORY, debit: materialsBack.toString(), description: 'Production materials back' });
+    if (materialsBack.gt(0)) {
+      journalLines.push({
+        accountId: mapping.INVENTORY,
+        debit: materialsBack.toString(),
+        description: lineDescription('journal.line.productionMaterialsBack'),
+      });
+    }
     if (appliedTotal.gt(0)) {
       journalLines.push({
         accountId: mapping.PRODUCTION_APPLIED_COST,
         debit: appliedTotal.toString(),
-        description: 'Applied production cost reversed',
+        description: lineDescription('journal.line.appliedProductionCostReversed'),
         costCenterId: original.costCenterId,
       });
     }
-    if (outputTotal.gt(0)) journalLines.push({ accountId: mapping.INVENTORY, credit: outputTotal.toString(), description: 'Production output out' });
+    if (outputTotal.gt(0)) {
+      journalLines.push({
+        accountId: mapping.INVENTORY,
+        credit: outputTotal.toString(),
+        description: lineDescription('journal.line.productionOutputOut'),
+      });
+    }
     journalLines.push(...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }));
 
     const docNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, NUMBERING, reversalDate);

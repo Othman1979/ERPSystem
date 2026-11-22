@@ -25,6 +25,7 @@ import {
   type JournalLineInput,
   type NormalizedLine,
 } from './posting.service.js';
+import { lineDescriptionKey } from './line-description.js';
 import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 import { CostCentersService } from '../cost-centers/cost-centers.service.js';
 import { CostCenterUsageRegistry } from '../cost-centers/cost-center-usage.registry.js';
@@ -312,7 +313,13 @@ export class JournalService implements OnModuleInit {
       },
     });
     if (!entry) throw DomainError.notFound('JournalEntry', id.toString());
-    return entry;
+    return {
+      ...entry,
+      lines: entry.lines.map((line) => ({
+        ...line,
+        descriptionKey: lineDescriptionKey(line.description),
+      })),
+    };
   }
 
   /** Creates a DRAFT manual journal. Posting happens via /post. */

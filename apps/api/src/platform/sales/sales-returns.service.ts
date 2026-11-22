@@ -23,6 +23,7 @@ import {
   type SummaryRange,
 } from '../shared/document-summary.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
+import { lineDescription } from '../journal/line-description.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import { EInvoiceOutboxService } from '../einvoice/einvoice-outbox.service.js';
 import type { CreateSalesReturnDto, ListSalesReturnsQueryDto } from './dto/sales.dto.js';
@@ -606,7 +607,7 @@ export class SalesReturnsService {
           journalLines.push({
             accountId: draft.cashAccountId!,
             credit: grand.toString(),
-            description: 'Cash refund',
+            description: lineDescription('journal.line.cashRefund'),
           });
         } else {
           journalLines.push({
@@ -614,7 +615,7 @@ export class SalesReturnsService {
             credit: grand.toString(),
             partyType: 'CUSTOMER',
             partyId: draft.customerId,
-            description: 'Credit note',
+            description: lineDescription('journal.line.creditNote'),
           });
         }
         if (costTotal.gt(0)) {

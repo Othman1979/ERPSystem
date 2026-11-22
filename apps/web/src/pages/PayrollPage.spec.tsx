@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp } from 'antd';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@erp/api-client';
 import i18n from '../i18n';
 import { leaveTypeUpdatePayload } from './PayrollLeave';
 import {
@@ -223,6 +224,21 @@ async function mount(path: string) {
       </QueryClientProvider>,
     );
   });
+}
+
+async function selectPayrollCashBox() {
+  const paymentAccount = [...host!.querySelectorAll<HTMLElement>('.ant-select')]
+    .find((select) => select.textContent?.includes(i18n.t('payroll.paymentAccount')));
+  const selector = paymentAccount?.querySelector<HTMLElement>('.ant-select-selector');
+  if (!selector) throw new Error('Missing payment account selector');
+  act(() => selector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+  await until(() => expect(
+    [...document.querySelectorAll('.ant-select-item-option')].some((option) => option.textContent?.includes('Main cash box')),
+  ).toBe(true));
+  const option = [...document.querySelectorAll<HTMLElement>('.ant-select-item-option')]
+    .find((candidate) => candidate.textContent?.includes('Main cash box'))!;
+  act(() => option.click());
+  await settle();
 }
 
 function setInputValue(input: HTMLInputElement, value: string) {
@@ -578,6 +594,47 @@ describe('payroll page payloads and run actions', () => {
     const reset = host!.querySelector<HTMLButtonElement>(`button[title="${resetTitle}"]`)!;
     act(() => reset.click());
     await until(() => expect(api.clearIncomeTax).toHaveBeenCalledWith(run.id, run.lines[0]!.id));
+  });
+
+  it('ignores a second Pay click while the first request is pending', async () => {
+    const postedRun = { ...run, status: 'POSTED' };
+    const payment = deferred<ReturnType<typeof response<unknown>>>();
+    api.createRun.mockResolvedValue(response({ id: postedRun.id }));
+    api.getRun.mockResolvedValue(response(postedRun));
+    api.listCashBoxes.mockResolvedValue(response([{ id: 'cash-1', name: 'Main cash box' }]));
+    api.payRun.mockReturnValue(payment.promise);
+    await mount('/payroll?tab=runs&new=1');
+    await selectPayrollCashBox();
+
+    const payButton = [...host!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes(i18n.t('payroll.pay')))!;
+    act(() => payButton.click());
+    await until(() => expect(api.payRun).toHaveBeenCalledTimes(1));
+    expect(payButton.disabled).toBe(true);
+    act(() => payButton.click());
+    expect(api.payRun).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      payment.resolve(response({}));
+      await payment.promise;
+    });
+  });
+
+  it('shows the translated API error for a rejected Pay action', async () => {
+    const postedRun = { ...run, status: 'POSTED' };
+    api.createRun.mockResolvedValue(response({ id: postedRun.id }));
+    api.getRun.mockResolvedValue(response(postedRun));
+    api.listCashBoxes.mockResolvedValue(response([{ id: 'cash-1', name: 'Main cash box' }]));
+    api.payRun.mockRejectedValue(new ApiError(409, 'PAYROLL_SETTINGS_REQUIRED', 'Payroll settings missing'));
+    await mount('/payroll?tab=runs&new=1');
+    await selectPayrollCashBox();
+
+    const payButton = [...host!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes(i18n.t('payroll.pay')))!;
+    act(() => payButton.click());
+    const error = `${i18n.t('payroll.saveError')}: ${i18n.t('errors.PAYROLL_SETTINGS_REQUIRED')}`;
+    await until(() => expect(document.body.textContent).toContain(error));
+    expect(api.payRun).toHaveBeenCalledTimes(1);
   });
 
   it('defaults the payment and reversal date to the run date and sends the selected date', async () => {

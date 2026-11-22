@@ -33,6 +33,7 @@ import { tableLocale } from '../../components/QueryState';
 import { amountCell } from '../../format/cells';
 import { dec } from '../../format/number';
 import { idemHeaders } from '../../idempotency';
+import { entryDescription } from '../../i18n/entryDescription';
 
 const DAY = 'YYYY-MM-DD';
 
@@ -233,7 +234,11 @@ function StatementDetail({
     { title: t('bankRec.date'), dataIndex: 'entryDate', width: 110, render: formatDate },
     { title: t('bankRec.entryNo'), dataIndex: 'entryNo', width: 120 },
     { title: t('bankRec.reference'), dataIndex: 'reference', width: 120 },
-    { title: t('bankRec.description'), dataIndex: 'description' },
+    {
+      title: t('bankRec.description'),
+      dataIndex: 'description',
+      render: (_value: string | null, row: BankBookLineDto) => entryDescription(t, row) || '—',
+    },
     { title: t('bankRec.amount'), dataIndex: 'amount', align: 'right' as const, width: 130, render: amountCell },
   ];
   const pickedTotal = (candidatesQuery.data ?? [])
