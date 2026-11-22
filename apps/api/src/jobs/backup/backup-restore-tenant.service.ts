@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import mariadb from 'mariadb';
 import type { Env } from '../../common/config/env.validation.js';
@@ -25,6 +25,8 @@ import { dbTarget, runTool, toolVersion, withOptionFile } from './mysql-tools.js
 
 @Injectable()
 export class BackupRestoreTenantService {
+  private readonly logger = new Logger(BackupRestoreTenantService.name);
+
   // systemPrisma: tenant state and restore audit rows are control-plane data.
   constructor(
     private readonly prisma: PrismaService,
@@ -79,6 +81,9 @@ export class BackupRestoreTenantService {
     await control.tenantDatabase.update({ where: { tenantId }, data: { state: 'RESTORING' } });
     await this.prisma.router.invalidate(tenantId);
     try {
+      const drainMs = this.config.get('TENANT_DB_STATE_TTL_MS', { infer: true }) + 5_000;
+      this.logger.log(`Waiting ${drainMs}ms for cached tenant requests to drain before restore`);
+      await new Promise<void>((resolve) => setTimeout(resolve, drainMs));
       await withOptionFile(
         target,
         async (options) => {
