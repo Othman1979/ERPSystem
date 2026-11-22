@@ -29,6 +29,7 @@ class PoolWasEmpty extends Error {}
 export class TenantProvisioningService {
   // systemPrisma: registration state and user links are control-plane records.
   private readonly logger = new Logger(TenantProvisioningService.name);
+  private lastPoolExhaustedAlertAt = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -48,6 +49,10 @@ export class TenantProvisioningService {
       step = await this.createRegistrationStep(dto, passwordHash);
     } catch (error) {
       if (!(error instanceof PoolWasEmpty)) throw error;
+      if (this.config.get('DB_PROVISIONER', { infer: true }) === 'pool') {
+        await this.alertPoolExhausted();
+        throw new DomainError(ErrorCode.REGISTRATION_UNAVAILABLE, 'No tenant databases are available for registration');
+      }
       const database = await this.databases.createDatabase();
       try {
         step = await this.createRegistrationStep(dto, passwordHash, database);
@@ -126,6 +131,7 @@ export class TenantProvisioningService {
       this.config.get('DB_PROVISIONER', { infer: true }) === 'pool' &&
       !(await control.tenantDbPool.findFirst({ where: { claimedByTenantId: null }, select: { id: true } }))
     ) {
+      await this.alertPoolExhausted();
       throw new DomainError(ErrorCode.REGISTRATION_UNAVAILABLE, 'No tenant databases are available for registration');
     }
     return control.$transaction(async (tx) => {
@@ -172,7 +178,7 @@ export class TenantProvisioningService {
       }
       if (!database) {
         if (this.config.get('DB_PROVISIONER', { infer: true }) === 'create') throw new PoolWasEmpty();
-        throw new DomainError(ErrorCode.REGISTRATION_UNAVAILABLE, 'No tenant databases are available for registration');
+        throw new PoolWasEmpty();
       }
       await tx.tenantDatabase.update({
         where: { tenantId: tenant.id },
@@ -298,6 +304,17 @@ export class TenantProvisioningService {
     if (free >= threshold || !url) return;
     try {
       await postAlertWebhook(url, `ERP Cloud: tenant database pool low (${free} free; threshold ${threshold})`);
+    } catch {
+      // Pool alerts are best-effort and never block registration.
+    }
+  }
+
+  private async alertPoolExhausted(): Promise<void> {
+    const url = this.config.get('ALERT_WEBHOOK_URL', { infer: true });
+    if (!url || Date.now() - this.lastPoolExhaustedAlertAt < 15 * 60_000) return;
+    this.lastPoolExhaustedAlertAt = Date.now();
+    try {
+      await postAlertWebhook(url, 'ERP Cloud: tenant database pool exhausted (0 free)');
     } catch {
       // Pool alerts are best-effort and never block registration.
     }
