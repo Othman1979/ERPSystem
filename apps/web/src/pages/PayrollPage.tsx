@@ -56,6 +56,7 @@ import { entryDescription } from '../i18n/entryDescription';
 import { DatePicker } from '../components/DatePicker';
 import { ResponsiveTable } from '../components/ResponsiveTable';
 import { ExportButtons, saveBlob } from '../components/ExportButtons';
+import { WinField, WinGroup, WinPanel } from '../components/WinForm';
 import { EnterNav } from '../components/EnterNav';
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { GridSelect } from '../components/GridSelect';
@@ -672,7 +673,7 @@ function SettingsTab() {
   const { message } = App.useApp();
   const save = useMutation({ mutationFn: (v: Record<string, unknown> & { effectiveFrom?: DateFormValue }) => payrollControllerCreateSettings(buildSettingsPayload(v) as never), onSuccess: () => { void qc.invalidateQueries({ queryKey: ['payroll', 'settings'] }); form.resetFields(); }, onError: () => message.error(t('payroll.saveError')) });
   return <>
-    {can(PERMISSIONS.PAYROLL_MANAGE) && <EnterNav><Form form={form} layout="vertical" initialValues={{
+    {can(PERMISSIONS.PAYROLL_MANAGE) && <EnterNav><Form form={form} layout="horizontal" colon={false} initialValues={{
       taxPersonalExemption: '9000.000', taxDependantsExemption: '9000.000', taxNationalThreshold: '16666.000',
       annualLeaveDays: '14.00', annualLeaveDaysSenior: '21.00', annualLeaveSeniorYears: 5, weeklyRestDays: [5],
       eosTaxExemption: '15000.000', eosTaxRate: '0.090000', eosNationalThreshold: '200000.000', eosNationalRate: '0.010000',
@@ -682,22 +683,95 @@ function SettingsTab() {
         { upTo: '83333.000', rate: '0.250000' }, { upTo: '', rate: '0.300000' },
       ],
     }} onFinish={(v) => save.mutate(v)}>
-      <Form.Item name="effectiveFrom" label={t('payroll.effectiveFrom')} rules={[{ required: true }]}><DatePicker /></Form.Item>
-      {['sscEmployeeRate', 'sscEmployerRate', 'sscHazardousExtra', 'sscMinWage', 'sscMaxWage', 'hoursPerMonth', 'daysPerMonth'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)}><Input /></Form.Item>)}
-      <Form.Item name="weeklyRestDays" label={t('payroll.weeklyRestDays')} rules={[{ required: true }]}><Select mode="multiple" options={Array.from({ length: 7 }, (_, day) => ({ value: day, label: t(`payroll.weekday${day}`) }))} /></Form.Item>
-      {['annualLeaveDays', 'annualLeaveDaysSenior'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}><Input /></Form.Item>)}
-      <Form.Item name="annualLeaveSeniorYears" label={t('payroll.annualLeaveSeniorYears')} rules={[{ required: true }]}><InputNumber min={0} precision={0} /></Form.Item>
-      {['taxPersonalExemption', 'taxDependantsExemption', 'taxNationalThreshold', 'taxNationalRate'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}><Input /></Form.Item>)}
-      {['eosTaxExemption', 'eosTaxRate', 'eosNationalThreshold', 'eosNationalRate'].map((key) => <Form.Item key={key} name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}><Input /></Form.Item>)}
-      <Form.List name="taxBrackets">{(fields, { add, remove }) => <Space direction="vertical">
-        {fields.map((field, index) => <Space key={field.key}>
-          <Form.Item name={[field.name, 'upTo']} label={index === fields.length - 1 ? t('payroll.bracketTop') : t('payroll.bracketUpTo')}><Input /></Form.Item>
-          <Form.Item name={[field.name, 'rate']} label={t('payroll.bracketRate')} rules={[{ required: true }]}><Input /></Form.Item>
-          <Button danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} />
-        </Space>)}
-        <Button icon={<PlusOutlined />} onClick={() => add({ upTo: '', rate: '' })}>{t('payroll.addBracket')}</Button>
-      </Space>}</Form.List>
-      <Button type="primary" htmlType="submit">{t('payroll.addSetting')}</Button>
+      <WinPanel
+        title={t('payroll.settings')}
+        footer={<Button type="primary" htmlType="submit">{t('payroll.addSetting')}</Button>}
+      >
+        <WinGroup title={t('payroll.groups.effective')} cols={1}>
+          <Form.Item className="win-w-date" name="effectiveFrom" label={t('payroll.effectiveFrom')} rules={[{ required: true }]}>
+            <DatePicker />
+          </Form.Item>
+        </WinGroup>
+        <WinGroup title={t('payroll.groups.ssc')}>
+          {['sscEmployeeRate', 'sscEmployerRate', 'sscHazardousExtra', 'sscMinWage', 'sscMaxWage'].map((key) => (
+            <Form.Item key={key} className="win-w-num" name={key} label={t(`payroll.${key}`)}>
+              <Input />
+            </Form.Item>
+          ))}
+        </WinGroup>
+        <WinGroup title={t('payroll.groups.workTime')}>
+          {['hoursPerMonth', 'daysPerMonth'].map((key) => (
+            <Form.Item key={key} className="win-w-num" name={key} label={t(`payroll.${key}`)}>
+              <Input />
+            </Form.Item>
+          ))}
+          <Form.Item className="win-w-md" name="weeklyRestDays" label={t('payroll.weeklyRestDays')} rules={[{ required: true }]}>
+            <Select mode="multiple" options={Array.from({ length: 7 }, (_, day) => ({ value: day, label: t(`payroll.weekday${day}`) }))} />
+          </Form.Item>
+        </WinGroup>
+        <WinGroup title={t('payroll.groups.annualLeave')}>
+          {['annualLeaveDays', 'annualLeaveDaysSenior'].map((key) => (
+            <Form.Item key={key} className="win-w-num" name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+          ))}
+          <Form.Item className="win-w-num" name="annualLeaveSeniorYears" label={t('payroll.annualLeaveSeniorYears')} rules={[{ required: true }]}>
+            <InputNumber min={0} precision={0} />
+          </Form.Item>
+        </WinGroup>
+        <WinGroup title={t('payroll.groups.incomeTax')}>
+          {['taxPersonalExemption', 'taxDependantsExemption', 'taxNationalThreshold', 'taxNationalRate'].map((key) => (
+            <Form.Item key={key} className="win-w-num" name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+          ))}
+        </WinGroup>
+        <WinGroup title={t('payroll.groups.taxBrackets')} cols={1}>
+          <Form.List name="taxBrackets">{(fields, { add, remove }) => (
+            <div className="win-bracket-list">
+              {fields.map((field, index) => (
+                <div className="win-bracket-row" key={field.key}>
+                  <Form.Item
+                    className="win-w-num win-bracket-item"
+                    name={[field.name, 'upTo']}
+                    label={index === fields.length - 1 ? t('payroll.bracketTop') : t('payroll.bracketUpTo')}
+                  >
+                    <Input />
+                  </Form.Item>
+                  <Form.Item
+                    className="win-w-num win-bracket-item"
+                    name={[field.name, 'rate']}
+                    label={t('payroll.bracketRate')}
+                    rules={[{ required: true }]}
+                  >
+                    <Input />
+                  </Form.Item>
+                  <Button
+                    className="win-bracket-delete"
+                    danger
+                    icon={<DeleteOutlined />}
+                    aria-label={t('common.delete')}
+                    title={t('common.delete')}
+                    onClick={() => remove(field.name)}
+                  />
+                </div>
+              ))}
+              <div className="win-actions">
+                <Button icon={<PlusOutlined />} onClick={() => add({ upTo: '', rate: '' })}>
+                  {t('payroll.addBracket')}
+                </Button>
+              </div>
+            </div>
+          )}</Form.List>
+        </WinGroup>
+        <WinGroup title={t('payroll.groups.eosTax')}>
+          {['eosTaxExemption', 'eosTaxRate', 'eosNationalThreshold', 'eosNationalRate'].map((key) => (
+            <Form.Item key={key} className="win-w-num" name={key} label={t(`payroll.${key}`)} rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+          ))}
+        </WinGroup>
+      </WinPanel>
     </Form></EnterNav>}
     <Table rowKey="id" dataSource={settings.data as Array<Record<string, unknown>> | undefined} columns={[
       ...['effectiveFrom', 'sscEmployeeRate', 'sscEmployerRate', 'sscHazardousExtra', 'sscMinWage', 'sscMaxWage', 'hoursPerMonth', 'daysPerMonth',
@@ -739,35 +813,66 @@ function ReportsTab() {
     employeeName: string; openingBalance: string; closingBalance: string;
     rows: Array<{ date: string; documentNo: string; documentType: string; description: string; debit: string; credit: string; balance: string }>;
   } | undefined;
-  return <>
-    <Space wrap style={{ marginBottom: 12 }}>
-      <PayrollMonthPicker period={period} onChange={setPeriod} />
-      {(['register', 'ssc', 'tax-withheld'] as const).map((report) => <Space key={report}>
-        <strong>{t(`payroll.reports.${report}`)}</strong>
-        <ExportButtons path={`/payroll/reports/${report}`} params={{ period }} />
-      </Space>)}
-    </Space>
-    <FormSection title={t('payroll.reports.employeeStatement')} cols={2}>
-      <Select showSearch optionFilterProp="label" value={employeeId} onChange={setEmployeeId} placeholder={t('payroll.employee')}
-        options={(employees.data as PayrollEmployeeDto[] | undefined)?.map((employee) => ({ value: employee.id, label: `${employee.code} — ${i18n.language === 'en' ? employee.nameEn ?? employee.nameAr : employee.nameAr}` }))} />
-      <DatePicker value={datePickerValue(from)} onChange={(value) => value && setFrom(dateOnly(value)!)} />
-      <DatePicker value={datePickerValue(to)} onChange={(value) => value && setTo(dateOnly(value)!)} />
-      <ExportButtons path="/payroll/reports/employee-statement" params={{ employeeId, from, to }} disabled={!employeeId} />
-      {data && <Space wrap>
-        <span>{t('payroll.openingBalance')}: {formatAmount(data.openingBalance)}</span>
-        <span>{t('payroll.closingBalance')}: {formatAmount(data.closingBalance)}</span>
-      </Space>}
-      {data && <Table rowKey={(row) => `${row.date}-${row.documentNo}-${row.documentType}`} dataSource={data.rows} columns={[
-        { title: t('payroll.movementDate'), dataIndex: 'date', render: (value: string) => formatPayrollDate(value) },
-        { title: t('payroll.documentNo'), dataIndex: 'documentNo' },
-        { title: t('payroll.documentType'), dataIndex: 'documentType' },
-        { title: t('payroll.description'), dataIndex: 'description', render: (_value: string, row) => entryDescription(t, row) },
-        { title: t('payroll.debit'), dataIndex: 'debit', render: (value: string) => formatAmount(value), className: 'num' },
-        { title: t('payroll.credit'), dataIndex: 'credit', render: (value: string) => formatAmount(value), className: 'num' },
-        { title: t('payroll.balance'), dataIndex: 'balance', render: (value: string) => formatAmount(value), className: 'num' },
-      ]} scroll={{ x: 'max-content' }} />}
-    </FormSection>
-  </>;
+  return (
+    <div className="win-report-panels">
+      <WinPanel title={t('payroll.monthlyReports')}>
+        <WinField label={t('reports.month')} size="date">
+          <PayrollMonthPicker period={period} onChange={setPeriod} />
+        </WinField>
+        <div className="win-report-list">
+          {(['register', 'ssc', 'tax-withheld'] as const).map((report) => (
+            <div className="win-report-row" key={report}>
+              <span className="win-report-name">{t(`payroll.reports.${report}`)}</span>
+              <div className="win-actions">
+                <ExportButtons path={`/payroll/reports/${report}`} params={{ period }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </WinPanel>
+      <WinPanel title={t('payroll.reports.employeeStatement')} wide>
+        <WinGroup title={t('payroll.statementFilters')} cols={3}>
+          <WinField label={t('payroll.employee')} size="md">
+            <Select
+              showSearch
+              optionFilterProp="label"
+              value={employeeId}
+              onChange={setEmployeeId}
+              placeholder={t('payroll.employee')}
+              options={(employees.data as PayrollEmployeeDto[] | undefined)?.map((employee) => ({
+                value: employee.id,
+                label: `${employee.code} — ${i18n.language === 'en' ? employee.nameEn ?? employee.nameAr : employee.nameAr}`,
+              }))}
+            />
+          </WinField>
+          <WinField label={t('payroll.from')} size="date">
+            <DatePicker value={datePickerValue(from)} onChange={(value) => value && setFrom(dateOnly(value)!)} />
+          </WinField>
+          <WinField label={t('payroll.to')} size="date">
+            <DatePicker value={datePickerValue(to)} onChange={(value) => value && setTo(dateOnly(value)!)} />
+          </WinField>
+        </WinGroup>
+        <div className="win-actions win-statement-actions">
+          <ExportButtons path="/payroll/reports/employee-statement" params={{ employeeId, from, to }} disabled={!employeeId} />
+        </div>
+        {data && (
+          <div className="win-summary">
+            <span>{t('payroll.openingBalance')}: {formatAmount(data.openingBalance)}</span>
+            <span>{t('payroll.closingBalance')}: {formatAmount(data.closingBalance)}</span>
+          </div>
+        )}
+        {data && <Table rowKey={(row) => `${row.date}-${row.documentNo}-${row.documentType}`} dataSource={data.rows} columns={[
+          { title: t('payroll.movementDate'), dataIndex: 'date', render: (value: string) => formatPayrollDate(value) },
+          { title: t('payroll.documentNo'), dataIndex: 'documentNo' },
+          { title: t('payroll.documentType'), dataIndex: 'documentType' },
+          { title: t('payroll.description'), dataIndex: 'description', render: (_value: string, row) => entryDescription(t, row) },
+          { title: t('payroll.debit'), dataIndex: 'debit', render: (value: string) => formatAmount(value), className: 'num' },
+          { title: t('payroll.credit'), dataIndex: 'credit', render: (value: string) => formatAmount(value), className: 'num' },
+          { title: t('payroll.balance'), dataIndex: 'balance', render: (value: string) => formatAmount(value), className: 'num' },
+        ]} scroll={{ x: 'max-content' }} />}
+      </WinPanel>
+    </div>
+  );
 }
 
 export function PayrollPage() {

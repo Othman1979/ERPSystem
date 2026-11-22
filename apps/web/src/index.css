@@ -1981,3 +1981,257 @@ textarea:focus-visible,
     font-size: 18px;
   }
 }
+
+/* ---- windows-style forms */
+.win-panel {
+  width: 100%;
+  max-width: 1040px;
+  margin-inline-start: 0;
+  margin-inline-end: auto;
+  overflow: hidden;
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius);
+}
+
+.win-panel-wide {
+  max-width: 1280px;
+}
+
+.win-panel-body {
+  padding: 12px 14px;
+}
+
+.win-panel-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--c-panel);
+  border-top: 1px solid var(--c-border);
+}
+
+.win-group {
+  min-width: 0;
+  margin: 0 0 12px;
+  padding: 10px 14px 12px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius);
+}
+
+.win-group:last-child {
+  margin-bottom: 0;
+}
+
+.win-group > legend {
+  padding: 0 6px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+.win-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  gap: 8px 24px;
+}
+
+.win-grid .ant-form-item,
+.win-panel .ant-form-item {
+  min-width: 0;
+  margin: 0;
+}
+
+.win-grid .ant-form-item-row,
+.win-panel .ant-form-item-row {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+}
+
+.win-grid .ant-form-item-label,
+.win-panel .ant-form-item-label {
+  width: auto;
+  max-width: none;
+  flex: none;
+  min-width: 0;
+  padding: 0 !important;
+  text-align: start;
+}
+
+.win-grid .ant-form-item-label > label,
+.win-panel .ant-form-item-label > label {
+  height: auto;
+  white-space: normal;
+  color: var(--c-text-2);
+}
+
+.win-grid .ant-form-item-control,
+.win-panel .ant-form-item-control {
+  width: auto;
+  max-width: none;
+  flex: none;
+  min-width: 0;
+}
+
+.win-grid .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-panel .ant-form-item-control-input-content > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+}
+
+.win-field {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  min-width: 0;
+}
+
+.win-field-label {
+  min-width: 0;
+  text-align: start;
+  white-space: normal;
+  color: var(--c-text-2);
+}
+
+.win-field-control {
+  display: block;
+  min-width: 0;
+}
+
+.win-panel .win-w-date :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-date .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  max-width: 150px;
+}
+
+.win-panel .win-w-num :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-num .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  max-width: 170px;
+}
+
+.win-panel .win-w-md :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-md .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  max-width: 280px;
+}
+
+.win-panel .win-w-full :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+.win-field.win-w-full .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+  max-width: none;
+}
+
+.win-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.win-report-panels {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+
+.win-report-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.win-report-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-top: 6px;
+  border-top: 1px solid var(--c-border);
+}
+
+.win-report-name {
+  font-weight: 600;
+}
+
+.win-statement-actions {
+  margin-bottom: 8px;
+}
+
+.win-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-bottom: 8px;
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
+.win-bracket-list {
+  display: grid;
+  gap: 8px;
+}
+
+.win-bracket-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.win-bracket-row .win-bracket-item {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.win-bracket-row .ant-form-item-row {
+  grid-template-columns: 170px minmax(0, 1fr);
+}
+
+.win-bracket-row .win-bracket-delete {
+  margin-top: 2px;
+}
+
+@media (max-width: 767px) {
+  .win-panel {
+    max-width: none;
+  }
+
+  .win-panel-body {
+    padding: 10px;
+  }
+
+  .win-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .win-grid .ant-form-item-row,
+  .win-panel .ant-form-item-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+
+  .win-field {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+
+  .win-panel .win-w-date :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-panel .win-w-num :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-panel .win-w-md :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-panel .win-w-full :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-field.win-w-date .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-field.win-w-num .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-field.win-w-md .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select),
+  .win-field.win-w-full .win-field-control > :is(.ant-input, .ant-input-number, .ant-picker, .ant-select) {
+    width: 100%;
+    max-width: none;
+  }
+
+  .win-bracket-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
