@@ -201,7 +201,7 @@ export class BackupVerifyService {
                 loadStorage,
                 add,
                 `tenant ${tenant.tenantId}`,
-                expectedSchemaVersion(),
+                tenant.schemaVersion,
               );
             } finally {
               await tenantConn.end();
@@ -297,7 +297,7 @@ export class BackupVerifyService {
     loadStorage: () => Promise<Buffer>,
     add: (name: string, ok: boolean, detail: string) => void,
     label = '',
-    expectedVersion?: string,
+    expectedVersion?: string | null,
   ): Promise<void> {
     const check = (name: string, ok: boolean, detail: string) => add(label ? `${label} ${name}` : name, ok, detail);
     const count = async (sql: string): Promise<number> => Number(((await conn.query(sql)) as { n: bigint }[])[0].n);
@@ -311,10 +311,12 @@ export class BackupVerifyService {
       'migrations',
       expectedVersion === undefined
         ? migrations.length === manifest.migrations.count && last === manifest.migrations.last
-        : last === expectedVersion,
+        : tenantMigrationVersionMatches(last, expectedVersion, expectedSchemaVersion()),
       expectedVersion === undefined
         ? `${migrations.length} applied, last ${last ?? 'none'} (backup had ${manifest.migrations.count}, ${manifest.migrations.last ?? 'none'})`
-        : `${migrations.length} applied, last ${last ?? 'none'} (expected ${expectedVersion})`,
+        : `${migrations.length} applied, last ${last ?? 'none'} (expected ${
+            expectedVersion ?? `no newer than ${expectedSchemaVersion()}`
+          })`,
     );
 
     // Every posted entry balances (the books of every tenant balance).
@@ -357,4 +359,14 @@ export class BackupVerifyService {
     );
     check('rows', true, `tenants ${t}, users ${u}, journal entries ${j}, stock movements ${s}`);
   }
+}
+
+export function tenantMigrationVersionMatches(
+  actual: string | null,
+  manifestVersion: string | null,
+  expectedVersion: string,
+): boolean {
+  return manifestVersion === null
+    ? actual === null || actual <= expectedVersion
+    : actual === manifestVersion;
 }
