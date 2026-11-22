@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { reportsControllerCashFlow, type CashFlowSectionDto } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
-import { ListToolbar } from '../../components/ListToolbar';
+import { ReportCriteria } from '../../components/WinForm';
 import { isoDay, PeriodMeta, PeriodPickers, ScreenPrintButton } from './PeriodFilters';
 import { sectionLines, StatementTable, type StatementLine, type StatementSection } from './StatementTable';
 
@@ -47,8 +47,7 @@ export function CashFlowTab() {
 
   return (
     <>
-      <ListToolbar
-        filters={<PeriodPickers from={from} to={to} onFrom={setFrom} onTo={setTo} resolved={data} />}
+      <ReportCriteria
         actions={
           <>
             {data && (
@@ -60,7 +59,9 @@ export function CashFlowTab() {
             <ExportButtons path={PATH} params={params} />
           </>
         }
-      />
+      >
+        <PeriodPickers from={from} to={to} onFrom={setFrom} onTo={setTo} resolved={data} />
+      </ReportCriteria>
       {data && <PeriodMeta from={data.from} to={data.to} fiscalYear={data.fiscalYear} />}
       <StatementTable lines={lines} loading={isLoading} query={listQuery} />
     </>

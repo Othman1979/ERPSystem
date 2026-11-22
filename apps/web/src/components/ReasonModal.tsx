@@ -1,6 +1,7 @@
-import { Input, Modal, Typography } from 'antd';
+import { Form, Input, Modal } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FormSection } from './FormDialog';
 
 /** Asks for the reason of a rejection or a cancellation; the reason is required. */
 export function ReasonModal({
@@ -33,15 +34,24 @@ export function ReasonModal({
         if (!blank) onConfirm(reason.trim());
       }}
     >
-      <Input.TextArea
-        aria-label={t('procurement.reason')}
-        autoSize={{ minRows: 3, maxRows: 6 }}
-        maxLength={500}
-        value={reason}
-        status={tried && blank ? 'error' : undefined}
-        onChange={(e) => setReason(e.target.value)}
-      />
-      {tried && blank && <Typography.Text type="danger">{t('procurement.reasonRequired')}</Typography.Text>}
+      <Form layout="vertical">
+        <FormSection title={title} cols={1}>
+          <Form.Item
+            label={t('procurement.reason')}
+            required
+            validateStatus={tried && blank ? 'error' : undefined}
+            help={tried && blank ? t('procurement.reasonRequired') : undefined}
+          >
+            <Input.TextArea
+              aria-label={t('procurement.reason')}
+              autoSize={{ minRows: 3, maxRows: 6 }}
+              maxLength={500}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </Form.Item>
+        </FormSection>
+      </Form>
     </Modal>
   );
 }

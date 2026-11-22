@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { journalControllerCostCenterStatement, type CostCenterStatementItemDto } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
-import { ListToolbar } from '../../components/ListToolbar';
+import { ReportCriteria, WinField } from '../../components/WinForm';
 import { LoadMore } from '../../components/LoadMore';
 import { useCostCenters } from '../../hooks/useCostCenters';
 import { useKeysetQuery } from '../../hooks/useKeysetQuery';
@@ -47,23 +47,7 @@ export function CostCenterStatementTab() {
 
   return (
     <>
-      <ListToolbar
-        filters={
-          <>
-            <Select
-              showSearch
-              allowClear
-              optionFilterProp="label"
-              aria-label={t('costCenters.name')}
-              placeholder={t('costCenters.pickCentre')}
-              style={{ minWidth: 260 }}
-              value={costCenterId}
-              onChange={setCostCenterId}
-              options={centres.map((c) => ({ value: c.id, label: codeAndName(c) }))}
-            />
-            <PeriodPickers from={from} to={to} onFrom={setFrom} onTo={setTo} />
-          </>
-        }
+      <ReportCriteria
         actions={
           costCenterId && (
             <>
@@ -75,7 +59,22 @@ export function CostCenterStatementTab() {
             </>
           )
         }
-      />
+      >
+            <WinField label={t('costCenters.name')}>
+            <Select
+              showSearch
+              allowClear
+              optionFilterProp="label"
+              aria-label={t('costCenters.name')}
+              placeholder={t('costCenters.pickCentre')}
+              style={{ minWidth: 260 }}
+              value={costCenterId}
+              onChange={setCostCenterId}
+              options={centres.map((c) => ({ value: c.id, label: codeAndName(c) }))}
+            />
+            </WinField>
+            <PeriodPickers from={from} to={to} onFrom={setFrom} onTo={setTo} />
+      </ReportCriteria>
       <div className="report-meta">
         <span>{t('costCenters.statementHint')}</span>
         {selected && (

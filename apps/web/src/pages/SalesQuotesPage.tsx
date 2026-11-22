@@ -48,6 +48,7 @@ import { PERMISSIONS } from '../auth/permissions';
 import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField';
 import { useCompany } from '../components/CompanyProfileForm';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
+import { FormSection } from '../components/FormDialog';
 import { GridSelect, focusNamedField } from '../components/GridSelect';
 import { ListToolbar } from '../components/ListToolbar';
 import { PageHeader } from '../components/PageHeader';
@@ -808,6 +809,7 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
         >
           <Typography.Paragraph type="secondary">{t('salesCycle.convertWarehouseHint')}</Typography.Paragraph>
           <Form layout="vertical">
+            <FormSection title={t('salesCycle.convertTitle')} cols={1}>
             <Form.Item label={t('sales.warehouse')} required>
               <Select
                 value={convertWarehouse}
@@ -816,6 +818,7 @@ function QuoteView({ quote, onBack, onOpen }: { quote: SalesCycleQuoteDetailDto;
                 options={(warehouses.data ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }))}
               />
             </Form.Item>
+            </FormSection>
           </Form>
         </Modal>
       </EnterNav>

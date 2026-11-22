@@ -3,6 +3,7 @@ import { App, Button, Form, Input } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { ApiError, authControllerChangePassword } from '@erp/api-client';
 import { EnterNav } from './EnterNav';
+import { WinGroup, WinPanel } from './WinForm';
 
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_PASSWORD_LENGTH = 128;
@@ -62,7 +63,17 @@ export function ChangePasswordForm({
         layout="vertical"
         requiredMark={false}
         onFinish={(values) => change.mutate(values)}
+        style={{ maxWidth: 520 }}
       >
+        <WinPanel
+          title={t('auth.changePassword')}
+          footer={
+            <Button type="primary" htmlType="submit" loading={change.isPending}>
+              {submitLabel ?? t('auth.changePassword')}
+            </Button>
+          }
+        >
+        <WinGroup title={t('auth.passwordDetails')} cols={1}>
         <Form.Item name="currentPassword" label={t('auth.currentPassword')} rules={[{ required: true }]}>
           <Input.Password autoComplete="current-password" />
         </Form.Item>
@@ -98,9 +109,8 @@ export function ChangePasswordForm({
         >
           <Input.Password autoComplete="new-password" maxLength={MAX_PASSWORD_LENGTH} />
         </Form.Item>
-        <Button type="primary" htmlType="submit" block loading={change.isPending}>
-          {submitLabel ?? t('auth.changePassword')}
-        </Button>
+        </WinGroup>
+        </WinPanel>
       </Form>
     </EnterNav>
   );

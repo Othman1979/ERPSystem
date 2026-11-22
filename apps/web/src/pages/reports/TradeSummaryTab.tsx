@@ -12,7 +12,7 @@ import {
   type SalesSummaryTotalsDto,
 } from '@erp/api-client';
 import { ExportButtons, queryString } from '../../components/ExportButtons';
-import { ListToolbar } from '../../components/ListToolbar';
+import { ReportCriteria, WinField } from '../../components/WinForm';
 import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
 import { amountCell, qtyCell } from '../../format/cells';
@@ -123,26 +123,25 @@ export function TradeSummaryTab({ kind, initial }: { kind: Kind; initial?: Trade
 
   return (
     <>
-      <ListToolbar
-        filters={
+      <ReportCriteria
+        actions={
           <>
+            {data && <Typography.Text type="secondary">{data.rows.length}</Typography.Text>}
+            <ScreenPrintButton />
+            <ExportButtons path={path} params={params} />
+          </>
+        }
+      >
+          <WinField label={t('reports.groupBy')}>
             <Segmented
               value={groupBy}
               onChange={(v) => setGroupBy(v as TradeGroupBy)}
               options={groups.map((g) => ({ value: g, label: groupLabels[g] }))}
               aria-label={t('reports.groupBy')}
             />
-            <PeriodPickers from={from} to={to} onFrom={setFrom} onTo={setTo} resolved={data} />
-          </>
-        }
-        count={data?.rows.length}
-        actions={
-          <>
-            <ScreenPrintButton />
-            <ExportButtons path={path} params={params} />
-          </>
-        }
-      />
+          </WinField>
+          <PeriodPickers from={from} to={to} onFrom={setFrom} onTo={setTo} resolved={data} />
+      </ReportCriteria>
       {data && (
         <div className="report-meta">
           <PeriodMeta from={data.from} to={data.to} />

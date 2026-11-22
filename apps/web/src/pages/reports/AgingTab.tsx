@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { treasuryControllerAging, type AgingReportRowDto } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
-import { ListToolbar } from '../../components/ListToolbar';
+import { ReportCriteria, WinField } from '../../components/WinForm';
 import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
 import { amountCell } from '../../format/cells';
@@ -35,30 +35,7 @@ export function AgingTab() {
 
   return (
     <>
-      <ListToolbar
-        filters={
-          <>
-            <Segmented
-              value={partyType}
-              onChange={(v) => setPartyType(v as 'CUSTOMER' | 'SUPPLIER')}
-              options={[
-                { value: 'CUSTOMER', label: t('reports.customers') },
-                { value: 'SUPPLIER', label: t('reports.suppliers') },
-              ]}
-            />
-            <DatePicker
-              value={asOf}
-              onChange={(d) => d && setAsOf(d)}
-              allowClear={false}
-              placeholder={t('reports.asOf')}
-              prefix={t('reports.asOf')}
-              aria-label={t('reports.asOf')}
-            />
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {t('reports.agingNote')}
-            </Typography.Text>
-          </>
-        }
+      <ReportCriteria
         actions={
           <>
             <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
@@ -67,7 +44,32 @@ export function AgingTab() {
             <ExportButtons path="/reports/aging" params={{ partyType, asOf: asOfParam }} />
           </>
         }
-      />
+      >
+        <WinField label={t('reports.partyType')}>
+          <Segmented
+            value={partyType}
+            onChange={(v) => setPartyType(v as 'CUSTOMER' | 'SUPPLIER')}
+            options={[
+              { value: 'CUSTOMER', label: t('reports.customers') },
+              { value: 'SUPPLIER', label: t('reports.suppliers') },
+            ]}
+          />
+        </WinField>
+        <WinField label={t('reports.asOf')} size="date">
+          <DatePicker
+              value={asOf}
+              onChange={(d) => d && setAsOf(d)}
+              allowClear={false}
+              placeholder={t('reports.asOf')}
+              aria-label={t('reports.asOf')}
+          />
+        </WinField>
+      </ReportCriteria>
+      <div className="report-meta">
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {t('reports.agingNote')}
+        </Typography.Text>
+      </div>
       <Table
         rowKey="partyId"
         size="small"

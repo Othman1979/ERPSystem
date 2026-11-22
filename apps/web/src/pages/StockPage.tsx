@@ -50,6 +50,7 @@ import { GoodsNotesSection } from './GoodsNotesPage';
 import { CountsTab } from './stock/CountsTab';
 import { itemOptionsOf, useApiMessage, useLookups, useStockItemPicker } from './stock/stockHooks';
 import { PageHeader } from '../components/PageHeader';
+import { FormSection } from '../components/FormDialog';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
 import { LoadMore } from '../components/LoadMore';
@@ -422,7 +423,13 @@ function AdjustmentsTab() {
         }
         confirmLoading={reverse.isPending}
       >
-        <DatePicker value={reverseDate} onChange={setReverseDate} style={{ width: '100%' }} />
+        <Form layout="vertical">
+          <FormSection title={t('journal.reverseTitle')} cols={1}>
+            <Form.Item label={t('stock.date')}>
+              <DatePicker value={reverseDate} onChange={setReverseDate} />
+            </Form.Item>
+          </FormSection>
+        </Form>
       </Modal>
     </>
   );
@@ -687,7 +694,13 @@ function TransfersTab() {
         }
         confirmLoading={reverse.isPending}
       >
-        <DatePicker value={reverseDate} onChange={setReverseDate} style={{ width: '100%' }} />
+        <Form layout="vertical">
+          <FormSection title={t('journal.reverseTitle')} cols={1}>
+            <Form.Item label={t('stock.date')}>
+              <DatePicker value={reverseDate} onChange={setReverseDate} />
+            </Form.Item>
+          </FormSection>
+        </Form>
       </Modal>
     </>
   );

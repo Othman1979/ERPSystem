@@ -19,6 +19,8 @@ import {
   Typography,
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
+import { FormSection } from '../components/FormDialog';
+import { WinPanel } from '../components/WinForm';
 import type { Dayjs } from 'dayjs';
 import { formatDate, formatDateTime } from '../format/date';
 import { useState } from 'react';
@@ -252,32 +254,37 @@ function TenantDrawer({ id, onClose }: { id: string | null; onClose: () => void 
           </Descriptions>
 
           <section>
-            <Typography.Title level={5}>{t('platform.recordPayment')}</Typography.Title>
             <Typography.Paragraph type="secondary">{t('platform.recordPaymentHint')}</Typography.Paragraph>
             <EnterNav>
               <Form form={payment} layout="vertical" onFinish={(v) => recordPayment.mutate(v)}>
-                <Space wrap align="start">
-                  <Form.Item name="planCode" label={t('platform.plan')} rules={[{ required: true }]} initialValue={tenant.plan?.code !== 'TRIAL' ? tenant.plan?.code : undefined}>
-                    <Select
-                      style={{ width: 160 }}
-                      options={(plans ?? [])
-                        .filter((p) => p.isActive && p.code !== 'TRIAL')
-                        .map((p) => ({ value: p.code, label: displayName(p) }))}
-                    />
-                  </Form.Item>
-                  <Form.Item name="period" label={t('platform.period')} rules={[{ required: true }]}>
-                    <DatePicker.RangePicker />
-                  </Form.Item>
-                  <Form.Item name="amount" label={t('platform.amount')}>
-                    <InputNumber<string> stringMode min="0" style={{ width: 130 }} />
-                  </Form.Item>
-                </Space>
-                <Form.Item name="notes" label={t('platform.paymentNotes')}>
-                  <Input maxLength={500} placeholder={t('platform.paymentNotesHint')} />
-                </Form.Item>
-                <Button type="primary" htmlType="submit" loading={recordPayment.isPending}>
-                  {t('platform.recordPayment')}
-                </Button>
+                <WinPanel
+                  title={t('platform.recordPayment')}
+                  footer={
+                    <Button type="primary" htmlType="submit" loading={recordPayment.isPending}>
+                      {t('platform.recordPayment')}
+                    </Button>
+                  }
+                >
+                  <FormSection title={t('platform.paymentDetails')} cols={3}>
+                    <Form.Item name="planCode" label={t('platform.plan')} rules={[{ required: true }]} initialValue={tenant.plan?.code !== 'TRIAL' ? tenant.plan?.code : undefined}>
+                      <Select
+                        style={{ width: 160 }}
+                        options={(plans ?? [])
+                          .filter((p) => p.isActive && p.code !== 'TRIAL')
+                          .map((p) => ({ value: p.code, label: displayName(p) }))}
+                      />
+                    </Form.Item>
+                    <Form.Item name="period" label={t('platform.period')} rules={[{ required: true }]} className="win-w-md">
+                      <DatePicker.RangePicker />
+                    </Form.Item>
+                    <Form.Item name="amount" label={t('platform.amount')} className="win-w-num">
+                      <InputNumber<string> stringMode min="0" style={{ width: 130 }} />
+                    </Form.Item>
+                    <Form.Item name="notes" label={t('platform.paymentNotes')} className="span-2 win-w-full">
+                      <Input maxLength={500} placeholder={t('platform.paymentNotesHint')} />
+                    </Form.Item>
+                  </FormSection>
+                </WinPanel>
               </Form>
             </EnterNav>
           </section>
@@ -419,32 +426,32 @@ function PlansTab() {
       >
         <EnterNav>
           <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-            <Space wrap>
+            <FormSection title={t('platform.planIdentity')} cols={2}>
               <Form.Item name="nameAr" label={t('settings.nameAr')} rules={[{ required: true }]}>
                 <Input maxLength={191} />
               </Form.Item>
               <Form.Item name="nameEn" label={t('settings.nameEn')}>
                 <Input maxLength={191} />
               </Form.Item>
-            </Space>
-            <Space wrap>
+            </FormSection>
+            <FormSection title={t('platform.planLimits')} cols={2}>
               {(['maxUsers', 'maxBranches', 'maxWarehouses', 'maxInvoicesPerMonth'] as const).map((k) => (
-                <Form.Item key={k} name={k} label={t(`platform.${k === 'maxInvoicesPerMonth' ? 'maxInvoices' : k}`)} rules={[{ required: true }]}>
+                <Form.Item key={k} name={k} label={t(`platform.${k === 'maxInvoicesPerMonth' ? 'maxInvoices' : k}`)} rules={[{ required: true }]} className="win-w-num">
                   <InputNumber min={1} precision={0} style={{ width: 120 }} />
                 </Form.Item>
               ))}
-            </Space>
-            <Space wrap>
-              <Form.Item name="priceMonthly" label={t('platform.priceMonthly')}>
+            </FormSection>
+            <FormSection title={t('platform.planPricing')} cols={2}>
+              <Form.Item name="priceMonthly" label={t('platform.priceMonthly')} className="win-w-num">
                 <InputNumber<string> stringMode min="0" style={{ width: 140 }} />
               </Form.Item>
-              <Form.Item name="priceYearly" label={t('platform.priceYearly')}>
+              <Form.Item name="priceYearly" label={t('platform.priceYearly')} className="win-w-num">
                 <InputNumber<string> stringMode min="0" style={{ width: 140 }} />
               </Form.Item>
               <Form.Item name="isActive" label={t('common.active')} valuePropName="checked">
                 <Switch />
               </Form.Item>
-            </Space>
+            </FormSection>
           </Form>
         </EnterNav>
       </Modal>

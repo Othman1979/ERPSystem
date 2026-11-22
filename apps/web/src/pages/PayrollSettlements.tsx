@@ -22,8 +22,9 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { DatePicker } from '../components/DatePicker';
-import { FormDialog } from '../components/FormDialog';
+import { FormDialog, FormSection } from '../components/FormDialog';
 import { GridSelect } from '../components/GridSelect';
+import { ReportCriteria, WinField } from '../components/WinForm';
 import { formatAmount } from '../format/number';
 import { idemHeaders } from '../idempotency';
 
@@ -170,29 +171,29 @@ export function PayrollSettlementsTab() {
     .map((value) => ({ value, label: t(`payroll.${value.toLowerCase()}`) }));
 
   return <>
-    <Space wrap style={{ marginBottom: 12 }}>
-      <Select
-        allowClear
-        showSearch
-        optionFilterProp="label"
-        value={employeeId}
-        onChange={setEmployeeId}
-        placeholder={t('payroll.employee')}
-        options={employeeOptions(employees.data, i18n.language)}
-      />
-      <Select
-        allowClear
-        value={status}
-        onChange={setStatus}
-        placeholder={t('payroll.status')}
-        options={statusOptions}
-      />
-      {can(PERMISSIONS.PAYROLL_MANAGE) && (
-        <Button type="primary" onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>
-          {t('payroll.createSettlement')}
-        </Button>
-      )}
-    </Space>
+    <ReportCriteria
+      actions={
+        can(PERMISSIONS.PAYROLL_MANAGE) && (
+          <Button type="primary" onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>
+            {t('payroll.createSettlement')}
+          </Button>
+        )
+      }
+    >
+      <WinField label={t('payroll.employee')}>
+        <Select
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          value={employeeId}
+          onChange={setEmployeeId}
+          options={employeeOptions(employees.data, i18n.language)}
+        />
+      </WinField>
+      <WinField label={t('payroll.status')}>
+        <Select allowClear value={status} onChange={setStatus} options={statusOptions} />
+      </WinField>
+    </ReportCriteria>
     <Table
       rowKey="id"
       loading={settlements.isLoading}
@@ -260,9 +261,11 @@ export function PayrollSettlementsTab() {
       saving={create.isPending}
     >
       <Form form={createForm} layout="vertical" onFinish={(values) => create.mutate(values)}>
+        <FormSection title={t('payroll.createSettlement')} cols={1}>
         <Form.Item name="employeeId" label={t('payroll.employee')} rules={[{ required: true }]}>
           <GridSelect options={employeeOptions(eligibleEmployees, i18n.language)} />
         </Form.Item>
+        </FormSection>
       </Form>
     </FormDialog>
     <FormDialog
@@ -274,7 +277,8 @@ export function PayrollSettlementsTab() {
       width={620}
     >
       <Form form={paymentForm} layout="vertical" onFinish={(values) => selected && pay.mutate({ id: selected.id, values })}>
-        <Form.Item name="paymentDate" label={t('payroll.settlementPaymentDate')} rules={[{ required: true }]}>
+        <FormSection title={t('payroll.paySettlement')} cols={1}>
+        <Form.Item name="paymentDate" label={t('payroll.settlementPaymentDate')} rules={[{ required: true }]} className="win-w-date">
           <DatePicker />
         </Form.Item>
         <Form.Item name="sourceType" label={t('payroll.paymentSourceType')} rules={[{ required: true }]}>
@@ -289,6 +293,7 @@ export function PayrollSettlementsTab() {
         <Form.Item name="sourceId" label={t('payroll.paymentAccount')} rules={[{ required: true }]}>
           <Select options={sourceOptions} />
         </Form.Item>
+        </FormSection>
       </Form>
     </FormDialog>
     <FormDialog
@@ -299,9 +304,11 @@ export function PayrollSettlementsTab() {
       saving={reverse.isPending}
     >
       <Form form={reverseForm} layout="vertical" onFinish={(values) => selected && reverse.mutate({ id: selected.id, values })}>
-        <Form.Item name="reversalDate" label={t('payroll.settlementReversalDate')} rules={[{ required: true }]}>
+        <FormSection title={t('payroll.reverseSettlement')} cols={1}>
+        <Form.Item name="reversalDate" label={t('payroll.settlementReversalDate')} rules={[{ required: true }]} className="win-w-date">
           <DatePicker />
         </Form.Item>
+        </FormSection>
       </Form>
     </FormDialog>
   </>;

@@ -51,6 +51,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
+import { FormSection } from '../components/FormDialog';
 import { GridSelect } from '../components/GridSelect';
 import { ListToolbar } from '../components/ListToolbar';
 import { PageHeader } from '../components/PageHeader';
@@ -849,6 +850,7 @@ function QuoteView({
           }}
         >
           <Form layout="vertical">
+            <FormSection title={t('procurement.cancelTitle')} cols={1}>
             <Form.Item
               label={t('procurement.reason')}
               required
@@ -862,6 +864,7 @@ function QuoteView({
                 onChange={(e) => setReason(e.target.value)}
               />
             </Form.Item>
+            </FormSection>
           </Form>
         </Modal>
       </EnterNav>

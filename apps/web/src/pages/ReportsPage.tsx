@@ -16,7 +16,7 @@ import {
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
 import { tableLocale } from '../components/QueryState';
-import { ListToolbar } from '../components/ListToolbar';
+import { ReportCriteria, WinField } from '../components/WinForm';
 import { LoadMore } from '../components/LoadMore';
 import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
 import { bothNames, codeAndName } from '../i18n/displayName';
@@ -134,21 +134,26 @@ export function ReportsPage() {
   // Each report shows only the filters it uses; the date range is shared between tabs.
   const dateFilters = (
     <>
-      <Select
-        allowClear
-        aria-label={t('reports.fiscalYear')}
-        placeholder={t('reports.fiscalYear')}
-        style={{ minWidth: 130 }}
-        value={selectedYear?.id}
-        onChange={(id?: string) => {
-          const y = (years ?? []).find((x) => x.id === id);
-          setFrom(y ? dayjs(y.startDate.slice(0, 10)) : null);
-          setTo(y ? dayjs(y.endDate.slice(0, 10)) : null);
-        }}
-        options={(years ?? []).map((y) => ({ value: y.id, label: y.code }))}
-      />
-      <DatePicker placeholder={t('reports.from')} value={from} onChange={setFrom} />
-      <DatePicker placeholder={t('reports.to')} value={to} onChange={setTo} />
+      <WinField label={t('reports.fiscalYear')}>
+        <Select
+          allowClear
+          aria-label={t('reports.fiscalYear')}
+          placeholder={t('reports.fiscalYear')}
+          value={selectedYear?.id}
+          onChange={(id?: string) => {
+            const y = (years ?? []).find((x) => x.id === id);
+            setFrom(y ? dayjs(y.startDate.slice(0, 10)) : null);
+            setTo(y ? dayjs(y.endDate.slice(0, 10)) : null);
+          }}
+          options={(years ?? []).map((y) => ({ value: y.id, label: y.code }))}
+        />
+      </WinField>
+      <WinField label={t('reports.from')} size="date">
+        <DatePicker placeholder={t('reports.from')} value={from} onChange={setFrom} aria-label={t('reports.from')} />
+      </WinField>
+      <WinField label={t('reports.to')} size="date">
+        <DatePicker placeholder={t('reports.to')} value={to} onChange={setTo} aria-label={t('reports.to')} />
+      </WinField>
     </>
   );
   const printButton = (
@@ -174,8 +179,7 @@ export function ReportsPage() {
       label: t('reports.trialBalance'),
       children: (
         <>
-          <ListToolbar
-            filters={dateFilters}
+          <ReportCriteria
             actions={
               <>
                 {tb && (
@@ -183,10 +187,6 @@ export function ReportsPage() {
                     {tb.balanced ? t('reports.balanced') : t('reports.unbalanced')}
                   </Tag>
                 )}
-                <span>
-                  {t('reports.afterClosing')}{' '}
-                  <Switch checked={afterClosing} onChange={setAfterClosing} aria-label={t('reports.afterClosing')} />
-                </span>
                 {printButton}
                 <ExportButtons
                   path="/reports/trial-balance"
@@ -194,7 +194,12 @@ export function ReportsPage() {
                 />
               </>
             }
-          />
+          >
+            {dateFilters}
+            <WinField label={t('reports.afterClosing')}>
+              <Switch checked={afterClosing} onChange={setAfterClosing} aria-label={t('reports.afterClosing')} />
+            </WinField>
+          </ReportCriteria>
           <div className="report-meta">
             <span>{t('reports.openingNote')}</span>
             {tb?.rows.some((r) => r.kind === 'PRIOR_YEARS') && <span>{t('reports.priorYearsNote')}</span>}
@@ -251,10 +256,18 @@ export function ReportsPage() {
       label: t('reports.generalLedger'),
       children: (
         <>
-          <ListToolbar
-            filters={
-              <>
-                <Select
+          <ReportCriteria
+            actions={
+              accountId && (
+                <>
+                  {printButton}
+                  <ExportButtons path="/reports/general-ledger" params={{ accountId, ...range }} />
+                </>
+              )
+            }
+          >
+            <WinField label={t('reports.account')}>
+              <Select
                   showSearch
                   allowClear
                   optionFilterProp="label"
@@ -265,18 +278,9 @@ export function ReportsPage() {
                   onChange={setAccountId}
                   options={accountOptions}
                 />
-                {dateFilters}
-              </>
-            }
-            actions={
-              accountId && (
-                <>
-                  {printButton}
-                  <ExportButtons path="/reports/general-ledger" params={{ accountId, ...range }} />
-                </>
-              )
-            }
-          />
+            </WinField>
+            {dateFilters}
+          </ReportCriteria>
           {!accountId ? (
             <div className="report-empty">{t('reports.selectAccount')}</div>
           ) : (
@@ -311,13 +315,24 @@ export function ReportsPage() {
       label: t('reports.partyStatement'),
       children: (
         <>
-          <ListToolbar
-            filters={
-              <>
+          <ReportCriteria
+            actions={
+              partyType &&
+              partyId && (
+                <>
+                  {printButton}
+                  <ExportButtons
+                    path="/reports/party-statement"
+                    params={{ partyType, partyId, ...range }}
+                  />
+                </>
+              )
+            }
+          >
+                <WinField label={t('reports.partyType')}>
                 <Select
                   allowClear
                   aria-label={t('reports.partyType')}
-                  placeholder={t('reports.partyType')}
                   value={partyType}
                   onChange={(v) => {
                     setPartyType(v);
@@ -328,6 +343,8 @@ export function ReportsPage() {
                     { value: 'SUPPLIER', label: t('reports.supplier') },
                   ]}
                 />
+                </WinField>
+                <WinField label={t('reports.party')}>
                 <RemoteSelect
                   queryKey={['parties', 'pick', partyType ?? '']}
                   enabled={!!partyType}
@@ -349,22 +366,9 @@ export function ReportsPage() {
                   value={partyId}
                   onChange={(v) => setPartyId(v)}
                 />
+                </WinField>
                 {dateFilters}
-              </>
-            }
-            actions={
-              partyType &&
-              partyId && (
-                <>
-                  {printButton}
-                  <ExportButtons
-                    path="/reports/party-statement"
-                    params={{ partyType, partyId, ...range }}
-                  />
-                </>
-              )
-            }
-          />
+          </ReportCriteria>
           {!partyType || !partyId ? (
             <div className="report-empty">{t('reports.selectParty')}</div>
           ) : (

@@ -1,6 +1,7 @@
 import { PrinterOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import { DatePicker } from '../../components/DatePicker';
+import { WinField } from '../../components/WinForm';
 import type { Dayjs } from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import { Num } from '../../components/Num';
@@ -31,22 +32,24 @@ export function PeriodPickers({
   const { t } = useTranslation();
   return (
     <>
-      <DatePicker
-        value={from}
-        onChange={onFrom}
-        allowClear={allowClear}
-        prefix={t('reports.from')}
-        placeholder={resolved?.from ?? ''}
-        aria-label={t('reports.from')}
-      />
-      <DatePicker
-        value={to}
-        onChange={onTo}
-        allowClear={allowClear}
-        prefix={t('reports.to')}
-        placeholder={resolved?.to ?? ''}
-        aria-label={t('reports.to')}
-      />
+      <WinField label={t('reports.from')} size="date">
+        <DatePicker
+          value={from}
+          onChange={onFrom}
+          allowClear={allowClear}
+          placeholder={resolved?.from ?? ''}
+          aria-label={t('reports.from')}
+        />
+      </WinField>
+      <WinField label={t('reports.to')} size="date">
+        <DatePicker
+          value={to}
+          onChange={onTo}
+          allowClear={allowClear}
+          placeholder={resolved?.to ?? ''}
+          aria-label={t('reports.to')}
+        />
+      </WinField>
     </>
   );
 }

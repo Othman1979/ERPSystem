@@ -11,6 +11,7 @@ import {
 } from '@erp/api-client';
 import { useCompany } from './CompanyProfileForm';
 import { EnterNav } from './EnterNav';
+import { WinGroup, WinPanel } from './WinForm';
 
 const RESERVATIONS: readonly SalesReservation[] = ['NONE', 'SOFT', 'HARD'];
 const APPROVALS: readonly SalesOrderApproval[] = ['NONE', 'OVER_CREDIT_LIMIT', 'ALWAYS'];
@@ -61,7 +62,16 @@ export function SalesSettingsForm() {
 
   return (
     <EnterNav>
-      <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)} style={{ maxWidth: 720 }}>
+      <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
+        <WinPanel
+          title={t('salesCycle.settings.title')}
+          footer={
+            <Button type="primary" htmlType="submit" loading={save.isPending}>
+              {t('salesCycle.settings.save')}
+            </Button>
+          }
+        >
+        <WinGroup title={t('salesCycle.formGroups.policy')} cols={2}>
         <Form.Item
           name="salesOrderRequired"
           label={t('salesCycle.settings.orderRequired')}
@@ -89,6 +99,8 @@ export function SalesSettingsForm() {
         >
           <Select options={APPROVALS.map((a) => ({ value: a, label: t(`salesCycle.settings.approvalOptions.${a}`) }))} />
         </Form.Item>
+        </WinGroup>
+        <WinGroup title={t('salesCycle.formGroups.quotes')} cols={2}>
         <Form.Item
           name="salesPriceLocked"
           label={t('salesCycle.settings.priceLocked')}
@@ -103,12 +115,12 @@ export function SalesSettingsForm() {
           extra={t('salesCycle.settings.validityDaysHint')}
           rules={[{ required: true, type: 'number', min: 0, max: 365, message: t('salesCycle.settings.validityDaysHint') }]}
           style={{ maxWidth: 240 }}
+          className="win-w-num"
         >
           <InputNumber min={0} max={365} precision={0} style={{ width: '100%' }} />
         </Form.Item>
-        <Button type="primary" htmlType="submit" loading={save.isPending}>
-          {t('salesCycle.settings.save')}
-        </Button>
+        </WinGroup>
+        </WinPanel>
       </Form>
     </EnterNav>
   );

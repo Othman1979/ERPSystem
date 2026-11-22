@@ -140,7 +140,7 @@ export function AmendVoucherButton({
               <Form.Item label={t('treasury.date')} required>
                 <DatePicker value={date} onChange={(d) => setDate(d)} />
               </Form.Item>
-              <Form.Item label={t('treasury.amount')} required>
+              <Form.Item label={t('treasury.amount')} required className="win-w-num">
                 <InputNumber<string> stringMode min="0" value={amount} onChange={(v) => setAmount(v)} />
               </Form.Item>
               <Form.Item label={t('treasury.referenceNo')}>

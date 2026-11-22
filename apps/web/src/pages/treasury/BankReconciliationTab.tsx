@@ -28,6 +28,7 @@ import {
   type BankStatementListItemDto,
 } from '@erp/api-client';
 import { ExportButtons } from '../../components/ExportButtons';
+import { ReportCriteria, WinField, WinGroup } from '../../components/WinForm';
 import { tableLocale } from '../../components/QueryState';
 import { amountCell } from '../../format/cells';
 import { dec } from '../../format/number';
@@ -58,17 +59,17 @@ export function BankReconciliationTab() {
   return (
     <Space direction="vertical" style={{ width: '100%' }}>
       {holder}
-      <Space wrap>
+      <ReportCriteria>
+        <WinField label={t('bankRec.bankAccount')}>
         <Select
           allowClear
-          style={{ minWidth: 240 }}
-          placeholder={t('bankRec.bankAccount')}
           value={bankAccountId}
           onChange={setBankAccountId}
           options={(banksQuery.data ?? []).map((b) => ({ value: b.id, label: b.bankName }))}
         />
-        {bankAccountId && <NewStatement bankAccountId={bankAccountId} onCreated={(id) => { refresh(); setSelected(id); }} onError={onError} />}
-      </Space>
+        </WinField>
+      </ReportCriteria>
+      {bankAccountId && <NewStatement bankAccountId={bankAccountId} onCreated={(id) => { refresh(); setSelected(id); }} onError={onError} />}
       <Table<BankStatementListItemDto>
         rowKey="id"
         size="small"
@@ -116,14 +117,22 @@ function NewStatement({ bankAccountId, onCreated, onError }: { bankAccountId: st
     onError,
   });
   return (
-    <Space wrap>
-      <DatePicker.RangePicker value={range} onChange={(v) => v?.[0] && v[1] && setRange([v[0], v[1]])} />
-      <InputNumber<string> stringMode addonBefore={t('bankRec.openingBalance')} value={opening} onChange={setOpening} />
-      <InputNumber<string> stringMode addonBefore={t('bankRec.closingBalance')} value={closing} onChange={setClosing} />
-      <Button type="primary" icon={<PlusOutlined />} loading={create.isPending} onClick={() => create.mutate()}>
-        {t('bankRec.newStatement')}
-      </Button>
-    </Space>
+    <WinGroup title={t('bankRec.newStatement')} cols={3}>
+      <WinField label={[t('bankRec.startDate'), t('bankRec.endDate')].join(' / ')} size="md">
+        <DatePicker.RangePicker value={range} onChange={(v) => v?.[0] && v[1] && setRange([v[0], v[1]])} />
+      </WinField>
+      <WinField label={t('bankRec.openingBalance')} size="num">
+        <InputNumber<string> stringMode value={opening} onChange={setOpening} />
+      </WinField>
+      <WinField label={t('bankRec.closingBalance')} size="num">
+        <InputNumber<string> stringMode value={closing} onChange={setClosing} />
+      </WinField>
+      <div className="win-actions">
+        <Button type="primary" icon={<PlusOutlined />} loading={create.isPending} onClick={() => create.mutate()}>
+          {t('bankRec.newStatement')}
+        </Button>
+      </div>
+    </WinGroup>
   );
 }
 

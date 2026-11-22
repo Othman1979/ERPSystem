@@ -296,7 +296,7 @@ function LookupTable({ kind, title }: { kind: LookupKind; title: string }) {
             )}
             {isTax && (
               <>
-                <Form.Item name="rate" label={t('settings.rate')} rules={[{ required: true }]}>
+                <Form.Item name="rate" label={t('settings.rate')} rules={[{ required: true }]} className="win-w-num">
                   <InputNumber<string> stringMode min="0" max="100" step="0.0001" />
                 </Form.Item>
                 <Form.Item name="isDefault" label={t('settings.isDefault')} valuePropName="checked">

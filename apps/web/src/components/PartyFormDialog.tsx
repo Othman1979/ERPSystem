@@ -193,10 +193,10 @@ export function PartyFormDialog({
           </FormSection>
 
           <FormSection title={t('parties.terms')} icon={<WalletOutlined />}>
-            <Form.Item name="creditLimit" label={t('parties.creditLimit')}>
+            <Form.Item name="creditLimit" label={t('parties.creditLimit')} className="win-w-num">
               <InputNumber<string> stringMode min="0" />
             </Form.Item>
-            <Form.Item name="paymentTermsDays" label={t('parties.paymentTerms')}>
+            <Form.Item name="paymentTermsDays" label={t('parties.paymentTerms')} className="win-w-num">
               <InputNumber min={0} max={3650} />
             </Form.Item>
             <Form.Item name="isCashCustomer" label={t('parties.isCashCustomer')} valuePropName="checked">
