@@ -4,7 +4,7 @@
 المطور: شخص واحد. أنت تعمل كمساعده في التنفيذ.
 
 **المرجع الكامل:** `docs/BUILD_PLAN.md`. اقرأ الأقسام المتعلقة بالمرحلة الحالية قبل أي عمل.
-**المرحلة الحالية:** المرحلة 29، قاعدة بيانات لكل مستأجر (29A: التوجيه؛ [ADR-045](docs/decisions/ADR-045-database-per-tenant.md)). المرحلة 28، إكمال الرواتب، مكتملة (28أ ضريبة الدخل، 28ب الإجازات، 28ج نهاية الخدمة والتسوية النهائية) (`docs/phase-reports/phase-28.md`؛ [ADR-043](docs/decisions/ADR-043-phase28-payroll-completion.md)). المرحلة 27، الإدخال المتزامن، منجزة (`docs/phase-reports/phase-27.md`؛ [ADR-042](docs/decisions/ADR-042-phase27-concurrent-entry.md)). المرحلة 26، الرواتب، منجزة (`docs/phase-reports/phase-26.md`؛ [ADR-041](docs/decisions/ADR-041-phase26-payroll.md)). المرحلة 25 (تعدد الشركات) منجزة (`docs/phase-reports/phase-25.md`؛ [ADR-040](docs/decisions/ADR-040-phase25-multi-company.md)). المرحلة 24 (تعديل القيود والسندات المرحّلة) منجزة (`docs/phase-reports/phase-24.md`؛ [ADR-039](docs/decisions/ADR-039-phase24-posted-edit.md)). المرحلة 23 منجزة (`docs/phase-reports/phase-23.md`؛ [ADR-038](docs/decisions/ADR-038-phase23-permissions-editor.md)). نقطة البيع مستثناة من النظام بقرار المالك. المراحل 20–22 منجزة (`docs/phase-reports/phase-20.md` إلى `phase-22.md`؛ الشيكات في ADR-037). معلّق عند المالك: بنود المرحلة 10 المفتوحة، واعتماد المحاسب للسيناريوهات الذهبية.
+**المرحلة الحالية:** المرحلة 29B، تهيئة قواعد بيانات المستأجرين والتسجيل والدعوات والترحيل (`docs/decisions/ADR-045-database-per-tenant.md`). المرحلة 29A (التوجيه) منجزة. المرحلة 28، إكمال الرواتب، مكتملة (28أ ضريبة الدخل، 28ب الإجازات، 28ج نهاية الخدمة والتسوية النهائية) (`docs/phase-reports/phase-28.md`؛ [ADR-043](docs/decisions/ADR-043-phase28-payroll-completion.md)). المرحلة 27، الإدخال المتزامن، منجزة (`docs/phase-reports/phase-27.md`؛ [ADR-042](docs/decisions/ADR-042-phase27-concurrent-entry.md)). المرحلة 26، الرواتب، منجزة (`docs/phase-reports/phase-26.md`؛ [ADR-041](docs/decisions/ADR-041-phase26-payroll.md)). المرحلة 25 (تعدد الشركات) منجزة (`docs/phase-reports/phase-25.md`؛ [ADR-040](docs/decisions/ADR-040-phase25-multi-company.md)). المرحلة 24 (تعديل القيود والسندات المرحّلة) منجزة (`docs/phase-reports/phase-24.md`؛ [ADR-039](docs/decisions/ADR-039-phase24-posted-edit.md)). المرحلة 23 منجزة (`docs/phase-reports/phase-23.md`؛ [ADR-038](docs/decisions/ADR-038-phase23-permissions-editor.md)). نقطة البيع مستثناة من النظام بقرار المالك. المراحل 20–22 منجزة (`docs/phase-reports/phase-20.md` إلى `phase-22.md`؛ الشيكات في ADR-037). معلّق عند المالك: بنود المرحلة 10 المفتوحة، واعتماد المحاسب للسيناريوهات الذهبية.
 
 ---
 
@@ -56,6 +56,11 @@ pnpm --filter api job:stock-verify       # Cron يومي: stock:verify لكل ا
 pnpm --filter api start:web              # تجربة محلية بشكل الإنتاج: الـ API المبني يقدّم الواجهة المبنية على 3002
 pnpm --filter api job:grant-platform-admin <email> [--revoke] # يدوي: مدير المنصة
 pnpm --filter api job:reset-password <email> # يدوي: كلمة مرور مؤقتة وإخراج الجلسات (ADR-012)
+pnpm --filter api job:db-pool-add <database> <user> [--host h] [--port p] # يدوي: إضافة قاعدة فارغة إلى مخزون قواعد المستأجرين، وكلمة المرور من TENANT_DB_PASSWORD
+pnpm --filter api job:db-pool-fill [--count n] # يدوي: تعبئة مخزون القواعد مسبقاً في وضع create
+pnpm --filter api job:db-pool-status # يدوي: عدد القواعد المتاحة والمطالب بها والمتأخرة
+pnpm --filter api job:migrate-all [--tenant id] # نشر isolated: ترحيل التحكم ثم قواعد المستأجرين المتأخرة
+pnpm --filter api job:provision-resume # Cron: استكمال تهيئة المستأجرين المتوقفة بعد دقيقتين
 pnpm --filter api ledger:check               # يدوي، للقراءة فقط: بيانات تخالف قواعد ADR-014؛ قبل migrate deploy
 ```
 

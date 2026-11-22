@@ -15,6 +15,7 @@ import { PreflightService } from './preflight.service.js';
 import { PurgeExpiredService } from './purge-expired.service.js';
 import { TenantPurgeService } from './tenant-purge.service.js';
 import { TenantStatusService } from './tenant-status.service.js';
+import { TenancyModule } from '../platform/tenancy/tenancy.module.js';
 
 /**
  * Scheduled and manual jobs, run as one-shot commands (CLAUDE.md: no
@@ -22,7 +23,7 @@ import { TenantStatusService } from './tenant-status.service.js';
  * worker (that job has its own module, EInvoiceJobsModule).
  */
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), PrismaModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), PrismaModule, TenancyModule],
   providers: [
     TenantStatusService,
     TenantPurgeService,

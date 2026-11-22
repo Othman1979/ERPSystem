@@ -14,6 +14,8 @@ import { ChangePasswordDto, LoginDto, RegisterDto, SwitchTenantDto } from './dto
 import { LoginLockoutService } from './login-lockout.service.js';
 import { PasswordService } from './password.service.js';
 import { hashToken, TokenService } from './token.service.js';
+import { TenantProvisioningService } from '../tenancy/tenant-provisioning.service.js';
+import { TenantMirrorService } from '../tenancy/tenant-mirror.service.js';
 
 interface AuthMembership {
   id: bigint;
@@ -47,6 +49,8 @@ export class AuthService {
     private readonly provisioning: ChartProvisioningService,
     private readonly config: ConfigService<Env, true>,
     private readonly lockout: LoginLockoutService,
+    private readonly tenantProvisioning: TenantProvisioningService,
+    private readonly mirrors: TenantMirrorService,
   ) {}
 
   /**
@@ -67,7 +71,9 @@ export class AuthService {
    */
   async register(dto: RegisterDto, meta: AuthMeta) {
     if (this.prisma.tenancyMode === 'isolated') {
-      throw new DomainError(ErrorCode.TENANCY_ISOLATED_NOT_READY, 'Sign-up is not available in isolated mode yet');
+      const passwordHash = await this.passwords.hash(dto.password);
+      const registration = await this.tenantProvisioning.registerIsolated(dto, meta, passwordHash);
+      return this.issueSession(registration.userId, registration.email, registration.tenantId, meta);
     }
     const passwordHash = await this.passwords.hash(dto.password);
 
@@ -233,6 +239,7 @@ export class AuthService {
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
+    if (membership) await this.mirrors.syncUserForTenant(user.id, membership.tenantId);
 
     const cls = ClsServiceManager.getClsService<RequestContext>();
     if (membership) cls.set('tenantId', membership.tenantId);
@@ -334,6 +341,7 @@ export class AuthService {
         },
       });
     });
+    await this.mirrors.syncUserForLinkedTenants(userId);
   }
 
   async logout(rawToken: string | undefined): Promise<void> {

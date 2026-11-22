@@ -406,6 +406,25 @@ model TenantDatabase {
   @@map("tenant_databases")
 }
 
+model TenantDbPool {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  host               String    @db.VarChar(191)
+  port               Int       @default(3306)
+  databaseName       String    @map("database_name") @db.VarChar(64)
+  dbUser             String    @map("db_user") @db.VarChar(64)
+  passwordSealed     String    @map("password_sealed") @db.Text
+  schemaVersion      String?   @map("schema_version") @db.VarChar(255)
+  claimedByTenantId  BigInt?   @unique @map("claimed_by_tenant_id") @db.UnsignedBigInt
+  claimedAt          DateTime? @map("claimed_at") @db.DateTime(3)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  claimedByTenant Tenant? @relation("TenantDbPoolClaim", fields: [claimedByTenantId], references: [id], onDelete: SetNull)
+
+  @@unique([host, port, databaseName])
+  @@index([schemaVersion])
+  @@map("tenant_db_pool")
+}
+
 model UserTenant {
   userId    BigInt   @map("user_id") @db.UnsignedBigInt
   tenantId  BigInt   @map("tenant_id") @db.UnsignedBigInt
@@ -436,6 +455,7 @@ model Tenant {
 
   plan                    Plan?                    @relation(fields: [planId], references: [id])
   tenantDatabase          TenantDatabase?
+  tenantDbPoolClaim       TenantDbPool? @relation("TenantDbPoolClaim")
   userTenants             UserTenant[]
   subscriptions           Subscription[]
   companies               Company[]

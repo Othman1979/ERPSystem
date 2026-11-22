@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TenantMirrorService } from '../platform/tenancy/tenant-mirror.service.js';
 
 export interface PlatformAdminGrant {
   email: string;
@@ -16,7 +17,10 @@ export interface PlatformAdminGrant {
 // ADR-045 29C: the platform-admin job remains on the control database.
 @Injectable()
 export class PlatformAdminGrantService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mirrors: TenantMirrorService,
+  ) {}
 
   async set(email: string, isPlatformAdmin: boolean): Promise<PlatformAdminGrant> {
     const db = this.prisma.client;
@@ -37,6 +41,7 @@ export class PlatformAdminGrantService {
         },
       }),
     ]);
+    await this.mirrors.syncUserForLinkedTenants(user.id);
     return { email: user.email, isPlatformAdmin, changed: true };
   }
 }

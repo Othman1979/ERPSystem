@@ -59,7 +59,7 @@ export class UsersController {
   @Patch(':membershipId')
   @RequirePermission(PERMISSIONS.USER_MANAGE)
   @ApiOkResponse({ type: UserMembershipDto })
-  update(@Param('membershipId') id: string, @Body() dto: UpdateMembershipDto) {
+  update(@Param('membershipId', ParseIdPipe) id: string, @Body() dto: UpdateMembershipDto) {
     return this.users.update(BigInt(id), dto);
   }
 
@@ -79,7 +79,7 @@ export class UsersController {
   @ApiOkResponse({ type: UserInvitationCodeDto })
   @HttpCode(200)
   @RequirePermission(PERMISSIONS.USER_MANAGE)
-  reissueInvitationCode(@Param('membershipId') id: string) {
+  reissueInvitationCode(@Param('membershipId', ParseIdPipe) id: string) {
     return this.users.reissueInvitationCode(BigInt(id));
   }
 
@@ -88,7 +88,7 @@ export class UsersController {
   @ApiOkResponse({ type: UserTemporaryPasswordDto })
   @HttpCode(200)
   @RequirePermission(PERMISSIONS.USER_MANAGE)
-  resetPassword(@Param('membershipId') id: string) {
+  resetPassword(@Param('membershipId', ParseIdPipe) id: string) {
     return this.users.resetPassword(BigInt(id));
   }
 
@@ -96,7 +96,7 @@ export class UsersController {
   @Delete(':membershipId')
   @ApiOneOfResponse(200, [UserInvitationCancelledDto, UserMembershipDto])
   @RequirePermission(PERMISSIONS.USER_MANAGE)
-  suspend(@Param('membershipId') id: string) {
+  suspend(@Param('membershipId', ParseIdPipe) id: string) {
     return this.users.suspend(BigInt(id));
   }
 }

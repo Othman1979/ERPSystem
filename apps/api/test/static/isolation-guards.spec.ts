@@ -60,6 +60,11 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/platform/monitoring/monitoring.service.ts': 'platform error table (platform admins only)',
   'src/platform/users/invitations.service.ts': "the caller's own invitations across tenants; every query filters on the caller's userId",
   'src/platform/users/users.service.ts': 'users and invitations are platform-wide; memberships are filtered by the tenant',
+  'src/platform/tenancy/database-provisioner.service.ts': 'tenant database metadata and pool claims are control-plane records',
+  'src/platform/tenancy/tenant-db-pool.service.ts': 'owner-managed database capacity is stored in the control plane',
+  'src/platform/tenancy/tenant-migration.service.ts': 'migration state and database URLs are control-plane metadata',
+  'src/platform/tenancy/tenant-mirror.service.ts': 'control records are copied into isolated tenant databases',
+  'src/platform/tenancy/tenant-provisioning.service.ts': 'registration and provisioning state are committed in the control plane',
 };
 
 const JUSTIFIED = /systemPrisma|system client|unrestricted|cross-tenant|across tenants|platform-wide/i;

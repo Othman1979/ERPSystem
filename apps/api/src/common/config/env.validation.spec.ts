@@ -20,11 +20,27 @@ describe('validateEnv', () => {
       env.TENANT_DB_IDLE_MS,
       env.TENANT_DB_MAX_POOLS,
       env.TENANT_DB_STATE_TTL_MS,
-    ]).toEqual(['shared', 3, 600_000, 50, 30_000]);
+      env.DB_PROVISIONER,
+      env.TENANT_DB_NAME_PREFIX,
+      env.TENANT_DB_USER_HOST,
+      env.TENANT_DB_POOL_LOW_WATER,
+      env.TENANT_DB_POOL_TARGET,
+    ]).toEqual(['shared', 3, 600_000, 50, 30_000, undefined, 'erp_t_', '%', 5, 3]);
   });
 
   it('rejects missing DATABASE_URL', () => {
     expect(() => validateEnv({})).toThrow(/DATABASE_URL/);
+  });
+
+  it('treats blank optional provisioning values as unset', () => {
+    const env = validateEnv({
+      DATABASE_URL: 'mysql://root@localhost:3306/db',
+      JWT_ACCESS_SECRET: 'test-secret-at-least-16-chars',
+      DB_PROVISIONER: '',
+      TENANT_DB_ADMIN_URL: '',
+      TENANT_DB_HOST: '',
+    });
+    expect([env.DB_PROVISIONER, env.TENANT_DB_ADMIN_URL, env.TENANT_DB_HOST]).toEqual([undefined, undefined, undefined]);
   });
 
   it('rejects invalid NODE_ENV', () => {
@@ -145,11 +161,26 @@ describe('tenant database configuration (ADR-045)', () => {
   });
 
   it('requires a valid sealing key only in isolated mode', () => {
-    expect(() => validateEnv({ ...base, TENANCY_MODE: 'isolated' })).toThrow(/TENANT_DB_SECRET_KEY/);
-    expect(() => validateEnv({ ...base, TENANCY_MODE: 'isolated', TENANT_DB_SECRET_KEY: Buffer.alloc(16).toString('base64') })).toThrow(
+    expect(() => validateEnv({ ...base, TENANCY_MODE: 'isolated', DB_PROVISIONER: 'pool' })).toThrow(/TENANT_DB_SECRET_KEY/);
+    expect(() => validateEnv({ ...base, TENANCY_MODE: 'isolated', DB_PROVISIONER: 'pool', TENANT_DB_SECRET_KEY: Buffer.alloc(16).toString('base64') })).toThrow(
       /TENANT_DB_SECRET_KEY/,
     );
-    expect(validateEnv({ ...base, TENANCY_MODE: 'isolated', TENANT_DB_SECRET_KEY: sealingKey }).TENANCY_MODE).toBe('isolated');
+    expect(
+      validateEnv({ ...base, TENANCY_MODE: 'isolated', DB_PROVISIONER: 'pool', TENANT_DB_SECRET_KEY: sealingKey }).TENANCY_MODE,
+    ).toBe('isolated');
+    expect(() => validateEnv({ ...base, TENANCY_MODE: 'isolated', TENANT_DB_SECRET_KEY: sealingKey })).toThrow(/DB_PROVISIONER/);
+    expect(() => validateEnv({ ...base, TENANCY_MODE: 'isolated', DB_PROVISIONER: 'create', TENANT_DB_SECRET_KEY: sealingKey })).toThrow(
+      /TENANT_DB_ADMIN_URL/,
+    );
+    expect(
+      validateEnv({
+        ...base,
+        TENANCY_MODE: 'isolated',
+        DB_PROVISIONER: 'create',
+        TENANT_DB_ADMIN_URL: 'mysql://admin:secret@localhost:3306/mysql',
+        TENANT_DB_SECRET_KEY: sealingKey,
+      }).DB_PROVISIONER,
+    ).toBe('create');
     expect(validateEnv({ ...base, TENANT_DB_SECRET_KEY: 'not-a-sealing-key' }).TENANCY_MODE).toBe('shared');
   });
 
@@ -160,6 +191,9 @@ describe('tenant database configuration (ADR-045)', () => {
     ['TENANT_DB_MAX_POOLS', 501],
     ['TENANT_DB_IDLE_MS', 0],
     ['TENANT_DB_STATE_TTL_MS', 0],
+    ['TENANT_DB_POOL_LOW_WATER', -1],
+    ['TENANT_DB_POOL_TARGET', 0],
+    ['TENANT_DB_NAME_PREFIX', 'Bad-Prefix'],
   ])('rejects out-of-range %s=%s', (name, value) => {
     expect(() => validateEnv({ ...base, [name]: value })).toThrow(new RegExp(`${name}:`));
   });

@@ -6,9 +6,10 @@ import { TenantRolesController } from './tenant-roles.controller.js';
 import { TenantRolesService } from './tenant-roles.service.js';
 import { UsersController } from './users.controller.js';
 import { UsersService } from './users.service.js';
+import { TenancyModule } from '../tenancy/tenancy.module.js';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, TenancyModule],
   controllers: [UsersController, InvitationsController, TenantRolesController],
   providers: [UsersService, InvitationsService, TenantRolesService],
 })

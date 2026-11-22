@@ -186,6 +186,30 @@ export class TenantDatabaseRow {
   updatedAt!: string;
 }
 
+/** Scalar columns of the Prisma model `TenantDbPool`, as JSON. */
+export class TenantDbPoolRow {
+  @ApiProperty({ type: 'string' })
+  id!: string;
+  @ApiProperty({ type: 'string' })
+  host!: string;
+  @ApiProperty({ type: 'integer' })
+  port!: number;
+  @ApiProperty({ type: 'string' })
+  databaseName!: string;
+  @ApiProperty({ type: 'string' })
+  dbUser!: string;
+  @ApiProperty({ type: 'string' })
+  passwordSealed!: string;
+  @ApiProperty({ type: 'string', nullable: true })
+  schemaVersion!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  claimedByTenantId!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time', nullable: true })
+  claimedAt!: string | null;
+  @ApiProperty({ type: 'string', format: 'date-time' })
+  createdAt!: string;
+}
+
 /** Scalar columns of the Prisma model `UserTenant`, as JSON. */
 export class UserTenantRow {
   @ApiProperty({ type: 'string' })

@@ -177,3 +177,9 @@ tool is built.
 | 29A | `TENANCY_MODE`, `TenantDbRouter`, the `tenant_databases` and `user_tenants` tables, and the routing of request paths (login, `TenantGuard`, the `prisma.client` users on request paths). Default `shared`, with no behaviour change. |
 | 29B | Mirror sync, provisioners (`create` and `pool`), the sign-up and invitation steps with `provision-resume`, `migrate-all`, version gating and `TENANT_MAINTENANCE`. |
 | 29C | Per-tenant jobs, backup, restore, purge, platform-admin aggregation, and e2e in `isolated` mode. |
+
+## 29B amendments
+
+- Both `create` and `pool` provisioning use the control database's `tenant_db_pool`; pool passwords are supplied to `db-pool-add` only through `TENANT_DB_PASSWORD`, never argv.
+- A tenant schema version is the last successfully applied migration name. Only schemas behind the control migration set are gated; null or behind versions enter maintenance, while ahead versions remain usable.
+- In isolated deployments the migration order is: deploy code, run `migrate-all`, then restart the API.

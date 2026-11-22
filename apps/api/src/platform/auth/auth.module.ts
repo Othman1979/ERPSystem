@@ -8,10 +8,12 @@ import { AuthService } from './auth.service.js';
 import { LoginLockoutService } from './login-lockout.service.js';
 import { PasswordService } from './password.service.js';
 import { TokenService } from './token.service.js';
+import { TenancyModule } from '../tenancy/tenancy.module.js';
 
 @Module({
   imports: [
     AccountingModule,
+    TenancyModule,
     JwtModule.registerAsync({
       global: true,
       inject: [ConfigService],

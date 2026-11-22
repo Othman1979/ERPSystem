@@ -46,6 +46,12 @@ describe('IdParamPipe: numeric route ids', () => {
     expect(pipe.transform('7', param('lineId'))).toBe('7');
   });
 
+  it('accepts tenant-qualified membership ids for invitation routes', () => {
+    expect(pipe.transform('42:7', param('membershipId'))).toBe('42:7');
+    expectInvalid(() => pipe.transform('42:7', param('itemId')));
+    expectInvalid(() => pipe.transform('9223372036854775808:7', param('membershipId')));
+  });
+
   it('checks every name ending in Id, not only id', () => {
     expectInvalid(() => pipe.transform('x1', param('membershipId')));
   });

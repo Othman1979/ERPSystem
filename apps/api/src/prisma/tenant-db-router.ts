@@ -5,6 +5,7 @@ import { openSecret } from '../common/crypto/secret-box.js';
 import { DomainError } from '../common/errors/domain.error.js';
 import { ErrorCode } from '../common/errors/error-codes.js';
 import mariadb, { type Pool, type PoolConfig } from 'mariadb';
+import { expectedSchemaVersion, isSchemaBehind } from './schema-version.js';
 import { POSTING_TX_OPTIONS } from './transaction-options.js';
 
 export interface TenantDbRouterOptions {
@@ -164,6 +165,10 @@ export class TenantDbRouter {
     if (database.state !== 'ACTIVE') {
       await this.dropEntry(tenantId);
       throw new DomainError(ErrorCode.TENANT_MAINTENANCE, 'Tenant database is not active');
+    }
+    if (isSchemaBehind(database.schemaVersion, expectedSchemaVersion())) {
+      await this.dropEntry(tenantId);
+      throw new DomainError(ErrorCode.TENANT_MAINTENANCE, 'Tenant database schema is behind');
     }
 
     const fingerprint = connectionFingerprint(database);
