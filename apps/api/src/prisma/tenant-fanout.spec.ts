@@ -57,7 +57,10 @@ describe('TenantFanoutService', () => {
   });
 
   it('reports missing databases from forEachTenant and keeps processing other tenants', async () => {
-    const control = { tenant: { findMany: async () => [{ id: 1n }, { id: 2n }] } };
+    const control = {
+      tenant: { findMany: async () => [{ id: 1n }, { id: 2n }] },
+      tenantDatabase: { findMany: async () => [] },
+    };
     const router = {
       resolve: async (tenantId: bigint) => {
         if (tenantId === 1n) throw new DomainError(ErrorCode.TENANT_DB_NOT_FOUND, 'missing');
@@ -74,5 +77,28 @@ describe('TenantFanoutService', () => {
     const result = await fanout.forEachTenant(async (client) => client);
     expect(result.unavailable).toEqual([1n]);
     expect(result.results).toEqual([{ tenantId: 2n, result: { id: 2n } }]);
+  });
+
+  it('skips restoring databases during tenant fan-out', async () => {
+    const control = {
+      tenant: { findMany: async () => [{ id: 1n }, { id: 2n }] },
+      tenantDatabase: { findMany: async () => [{ tenantId: 1n }] },
+    };
+    const resolved: bigint[] = [];
+    const prisma = {
+      tenancyMode: 'isolated',
+      control: () => control,
+      forTenant: (tenantId: bigint) => ({ id: tenantId }),
+      router: { resolve: async (tenantId: bigint) => void resolved.push(tenantId) },
+    };
+    const fanout = new TenantFanoutService(
+      prisma as never,
+      { run: async (fn: () => Promise<unknown>) => fn(), set: jest.fn() } as never,
+    );
+
+    const result = await fanout.forEachTenant(async (client) => client);
+    expect(resolved).toEqual([2n]);
+    expect(result.results.map(({ tenantId }) => tenantId)).toEqual([2n]);
+    expect(result.unavailable).toEqual([]);
   });
 });

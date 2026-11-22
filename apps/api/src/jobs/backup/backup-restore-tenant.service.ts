@@ -56,7 +56,7 @@ export class BackupRestoreTenantService {
       control.tenantDatabase.findUnique({ where: { tenantId } }),
     ]);
     if (!tenantRow || !database) throw new Error(`Tenant ${tenantId} is not provisioned`);
-    if (database.state !== 'ACTIVE' && database.state !== 'MIGRATING') {
+    if (database.state !== 'ACTIVE' && database.state !== 'MIGRATING' && database.state !== 'RESTORING') {
       throw new Error(`Tenant database state ${database.state} is not restorable`);
     }
     if (tenantRow.name !== confirmName) throw new Error('Refused: --confirm must be the exact tenant name');
@@ -76,7 +76,7 @@ export class BackupRestoreTenantService {
       encryption && key
         ? await createDecryptStream(dumpPath, key, logicalName)
         : await openPlainDump(dumpPath);
-    await control.tenantDatabase.update({ where: { tenantId }, data: { state: 'MIGRATING' } });
+    await control.tenantDatabase.update({ where: { tenantId }, data: { state: 'RESTORING' } });
     await this.prisma.router.invalidate(tenantId);
     try {
       await withOptionFile(

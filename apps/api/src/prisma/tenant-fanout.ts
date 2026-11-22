@@ -60,13 +60,25 @@ export class TenantFanoutService {
   async forEachTenant<T>(
     fn: (client: PrismaClient, tenantId: bigint) => Promise<T>,
   ): Promise<{ results: TenantJobResult<T>[]; unavailable: bigint[] }> {
-    const tenants = await this.prisma.control().tenant.findMany({
+    const control = this.prisma.control();
+    const tenants = await control.tenant.findMany({
       select: { id: true },
       orderBy: { id: 'asc' },
     });
+    const restoring = new Set(
+      this.prisma.tenancyMode === 'isolated'
+        ? (
+            await control.tenantDatabase.findMany({
+              where: { state: 'RESTORING' },
+              select: { tenantId: true },
+            })
+          ).map(({ tenantId }) => tenantId)
+        : [],
+    );
     const results: TenantJobResult<T>[] = [];
     const unavailable: bigint[] = [];
     for (const { id: tenantId } of tenants) {
+      if (restoring.has(tenantId)) continue;
       if (this.prisma.tenancyMode === 'isolated') {
         try {
           await this.prisma.router.resolve(tenantId);

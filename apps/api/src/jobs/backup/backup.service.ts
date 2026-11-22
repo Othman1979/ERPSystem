@@ -153,7 +153,7 @@ export class BackupService {
       const isolated = this.prisma.tenancyMode === 'isolated';
       if (isolated) {
         const rows = await this.prisma.control().tenantDatabase.findMany({
-          where: { state: { notIn: ['RETIRED', 'PROVISIONING'] } },
+          where: { state: { notIn: ['RETIRED', 'PROVISIONING', 'RESTORING'] } },
           orderBy: { tenantId: 'asc' },
         });
         for (const row of rows) {

@@ -10283,6 +10283,7 @@ export const TenantDatabaseState = {
   ACTIVE: 'ACTIVE',
   MIGRATING: 'MIGRATING',
   RETIRED: 'RETIRED',
+  RESTORING: 'RESTORING',
 } as const;
 
 export interface AdminTenantListItemDto {
