@@ -1550,6 +1550,8 @@ export class PayrollService {
             sourceType: 'PAYROLL_RUN',
             sourceId: run.id,
             description: `Payroll ${run.period}`,
+            descriptionKey: 'journal.auto.payroll',
+            descriptionParams: { period: run.period },
             lines: journalLines,
             requireCostCenters: true,
             postedBy: ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null,
@@ -1564,6 +1566,8 @@ export class PayrollService {
             sourceType: 'PAYROLL_LEAVE_PROVISION',
             sourceId: run.id,
             description: `Leave provision ${run.period}`,
+            descriptionKey: 'journal.auto.leaveProvision',
+            descriptionParams: { period: run.period },
             lines: leaveProvisionLines,
             requireCostCenters: true,
             postedBy: ClsServiceManager.getClsService<RequestContext>().get('userId') ?? null,
@@ -1610,6 +1614,8 @@ export class PayrollService {
         sourceType: 'PAYROLL_PAYMENT',
         sourceId: run.id,
         description: `Payroll payment ${run.period}`,
+        descriptionKey: 'journal.auto.payrollPayment',
+        descriptionParams: { period: run.period },
         lines: [
           { accountId: payable.accountId, debit: run.netTotal },
           { accountId: account.accountId, credit: run.netTotal },
@@ -1709,9 +1715,33 @@ export class PayrollService {
     const settlements = await db.payrollSettlement.findMany({
       where: { employeeId, status: { in: ['POSTED', 'PAID', 'REVERSED'] } },
       include: {
-        paymentEntry: { select: { entryDate: true, createdAt: true, entryNo: true } },
-        reversalEntry: { select: { entryDate: true, createdAt: true, entryNo: true } },
-        paymentReversalEntry: { select: { entryDate: true, createdAt: true, entryNo: true } },
+        paymentEntry: {
+          select: {
+            entryDate: true,
+            createdAt: true,
+            entryNo: true,
+            descriptionKey: true,
+            descriptionParams: true,
+          },
+        },
+        reversalEntry: {
+          select: {
+            entryDate: true,
+            createdAt: true,
+            entryNo: true,
+            descriptionKey: true,
+            descriptionParams: true,
+          },
+        },
+        paymentReversalEntry: {
+          select: {
+            entryDate: true,
+            createdAt: true,
+            entryNo: true,
+            descriptionKey: true,
+            descriptionParams: true,
+          },
+        },
       },
     });
 
@@ -1722,11 +1752,22 @@ export class PayrollService {
       documentNo: string;
       documentType: string;
       description: string;
+      descriptionKey: string | null;
+      descriptionParams: unknown;
       signed: Decimal;
     };
     const events: StatementEvent[] = [];
     let order = 0;
-    const addEvent = (event: Omit<StatementEvent, 'order'>) => events.push({ ...event, order: order++ });
+    const addEvent = (
+      event: Omit<StatementEvent, 'order' | 'descriptionKey' | 'descriptionParams'> &
+        Partial<Pick<StatementEvent, 'descriptionKey' | 'descriptionParams'>>,
+    ) =>
+      events.push({
+        descriptionKey: null,
+        descriptionParams: null,
+        ...event,
+        order: order++,
+      });
     for (const movement of movements) {
       const signed = movement.payElement.kind === 'EARNING' ? movement.amount : movement.amount.neg();
       addEvent({
@@ -1762,6 +1803,8 @@ export class PayrollService {
         documentNo: run.runNo ?? run.id.toString(),
         documentType: 'PAYROLL_RUN',
         description: `Payroll ${run.period}`,
+        descriptionKey: run.journalEntry?.descriptionKey ?? 'journal.auto.payroll',
+        descriptionParams: run.journalEntry?.descriptionParams ?? { period: run.period },
         signed: runBalance,
       });
       const runReversal = run.journalEntry?.reversals[0];
@@ -1772,6 +1815,8 @@ export class PayrollService {
           documentNo: run.runNo ?? run.id.toString(),
           documentType: 'PAYROLL_RUN_REVERSAL',
           description: `Payroll ${run.period}`,
+          descriptionKey: 'journal.auto.payroll',
+          descriptionParams: { period: run.period },
           signed: runBalance.neg(),
         });
       }
@@ -1783,6 +1828,8 @@ export class PayrollService {
           documentNo: run.paymentEntry.entryNo ?? run.runNo ?? run.id.toString(),
           documentType: 'PAYROLL_PAYMENT',
           description: `Payroll payment ${run.period}`,
+          descriptionKey: run.paymentEntry.descriptionKey ?? 'journal.auto.payrollPayment',
+          descriptionParams: run.paymentEntry.descriptionParams ?? { period: run.period },
           signed: payment,
         });
         const paymentReversal = run.paymentEntry.reversals[0];
@@ -1793,6 +1840,8 @@ export class PayrollService {
             documentNo: run.paymentEntry.entryNo ?? run.runNo ?? run.id.toString(),
             documentType: 'PAYROLL_PAYMENT_REVERSAL',
             description: `Payroll payment ${run.period}`,
+            descriptionKey: 'journal.auto.payrollPayment',
+            descriptionParams: { period: run.period },
             signed: payment.neg(),
           });
         }
@@ -1806,6 +1855,8 @@ export class PayrollService {
         documentNo: settlementNo,
         documentType: 'PAYROLL_SETTLEMENT',
         description: 'Final settlement',
+        descriptionKey: 'journal.auto.finalSettlement',
+        descriptionParams: { number: settlementNo },
         signed: settlement.net,
       });
       if ((settlement.status === 'PAID' || settlement.status === 'REVERSED') && settlement.paymentEntry) {
@@ -1815,6 +1866,8 @@ export class PayrollService {
           documentNo: settlement.paymentEntry.entryNo ?? settlementNo,
           documentType: 'PAYROLL_SETTLEMENT_PAYMENT',
           description: 'Final settlement payment',
+          descriptionKey: 'journal.auto.finalSettlementPayment',
+          descriptionParams: { number: settlementNo },
           signed: settlement.net.neg(),
         });
       }
@@ -1825,6 +1878,11 @@ export class PayrollService {
           documentNo: settlement.paymentReversalEntry.entryNo ?? settlementNo,
           documentType: 'PAYROLL_SETTLEMENT_PAYMENT_REVERSAL',
           description: 'Final settlement payment',
+          descriptionKey:
+            settlement.paymentReversalEntry.descriptionKey ?? 'journal.auto.finalSettlementPayment',
+          descriptionParams: settlement.paymentReversalEntry.descriptionParams ?? {
+            number: settlementNo,
+          },
           signed: settlement.net,
         });
       }
@@ -1835,6 +1893,8 @@ export class PayrollService {
           documentNo: settlement.reversalEntry.entryNo ?? settlementNo,
           documentType: 'PAYROLL_SETTLEMENT_REVERSAL',
           description: 'Final settlement',
+          descriptionKey: settlement.reversalEntry.descriptionKey ?? 'journal.auto.finalSettlement',
+          descriptionParams: settlement.reversalEntry.descriptionParams ?? { number: settlementNo },
           signed: settlement.net.neg(),
         });
       }
@@ -1865,6 +1925,8 @@ export class PayrollService {
           documentNo: event.documentNo,
           documentType: event.documentType,
           description: event.description,
+          descriptionKey: event.descriptionKey,
+          descriptionParams: event.descriptionParams,
           debit: event.signed.lt(0) ? money(amount) : '0.000',
           credit: event.signed.gt(0) ? money(amount) : '0.000',
           balance: money(balance),

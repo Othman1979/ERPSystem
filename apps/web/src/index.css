@@ -1708,6 +1708,10 @@ textarea:focus-visible,
   margin: 0;
 }
 
+.account-group-row > td {
+  font-weight: 600;
+}
+
 @media (max-width: 640px) {
   .count-toolbar {
     padding: 10px;

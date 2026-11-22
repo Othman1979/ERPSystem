@@ -15,7 +15,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import dayjs from 'dayjs';
+import { formatDateTime } from '../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -91,7 +91,6 @@ export function PurchasePermissionTags({ member }: { member: Membership }) {
   );
 }
 
-const DATE_FORMAT = 'YYYY-MM-DD HH:mm';
 const CODE_FONT = "Consolas, 'Cascadia Mono', 'Courier New', monospace";
 
 export function UsersPage() {
@@ -563,7 +562,7 @@ export function UsersPage() {
               <Typography.Text type="secondary">
                 {t('users.codeExpires', {
                   // First-strong isolate: the date keeps its left-to-right order inside an Arabic sentence.
-                  date: issuedCode ? `⁨${dayjs(issuedCode.expiresAt).format(DATE_FORMAT)}⁩` : '',
+                  date: issuedCode ? `⁨${formatDateTime(issuedCode.expiresAt)}⁩` : '',
                 })}
               </Typography.Text>
             </p>

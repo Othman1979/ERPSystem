@@ -18,7 +18,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import dayjs from 'dayjs';
+import { formatDateTime } from '../format/date';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -67,8 +67,7 @@ const OUTCOME_KEYS: Record<AttemptOutcome, string> = {
   'not-sent': 'einvoice.outcomes.notSent',
 };
 
-const dateTime = (v: string | null | undefined) =>
-  v ? <Num>{dayjs(v).format('YYYY-MM-DD HH:mm')}</Num> : '—';
+const dateTime = (v: string | null | undefined) => (v ? <Num>{formatDateTime(v)}</Num> : '—');
 
 /** A JSON answer reads better indented; anything else is shown as it came. */
 function pretty(body: string): string {

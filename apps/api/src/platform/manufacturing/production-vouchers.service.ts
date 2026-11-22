@@ -532,6 +532,8 @@ export class ProductionVouchersService implements OnModuleInit {
         sourceType: SOURCE,
         sourceId: draft.id,
         description: draft.description ?? `Production ${docNo}`,
+        descriptionKey: draft.description == null ? 'journal.auto.production' : null,
+        descriptionParams: draft.description == null ? { number: docNo } : undefined,
         lines: journalLines,
         postedBy: userId ?? null,
       });
@@ -753,6 +755,8 @@ export class ProductionVouchersService implements OnModuleInit {
         postingKind: 'REVERSAL',
         reversalOfId: original.journalEntryId,
         description: `Reversal of production ${original.docNo ?? original.id}`,
+        descriptionKey: 'journal.auto.productionReversal',
+        descriptionParams: { number: original.docNo ?? original.id.toString() },
         lines: journalLines,
         postedBy: userId ?? null,
       });

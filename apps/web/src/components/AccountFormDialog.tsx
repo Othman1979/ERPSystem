@@ -207,7 +207,11 @@ export function AccountFormDialog({
 
   const parentOptions = (data ?? [])
     .filter((account) => account.isActive && account.id !== editing?.id)
-    .map((account) => ({ value: account.id, label: codeAndName(account) }));
+    .map((account) => ({
+      value: account.id,
+      label: codeAndName(account),
+      searchText: `${account.code} ${account.nameAr} ${account.nameEn ?? ''}`.toLocaleLowerCase(),
+    }));
 
   return (
     <>
@@ -268,7 +272,16 @@ export function AccountFormDialog({
                   <Input maxLength={50} />
                 </Form.Item>
                 <Form.Item name="parentId" label={t('accounts.parent')}>
-                  <Select allowClear showSearch optionFilterProp="label" options={parentOptions} />
+                  <Select
+                    allowClear
+                    showSearch
+                    filterOption={(input, option) =>
+                      (
+                        option as unknown as { searchText?: string } | undefined
+                      )?.searchText?.includes(input.toLocaleLowerCase()) ?? false
+                    }
+                    options={parentOptions}
+                  />
                 </Form.Item>
                 <Form.Item name="accountType" label={t('accounts.type')} rules={[{ required: true }]}>
                   <Select

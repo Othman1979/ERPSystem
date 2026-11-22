@@ -13,6 +13,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -236,7 +237,7 @@ export function PurchaseRequestsPage() {
       sorter: true,
       sortOrder: list.sortOrderOf('requestDate'),
       width: 120,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('procurement.neededBy'),

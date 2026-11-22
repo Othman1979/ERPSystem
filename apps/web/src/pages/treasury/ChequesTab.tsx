@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Checkbox, Form, Input, Modal, Select, Space, Table, Tag, Timeline, message } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -153,7 +154,12 @@ export function ChequesTab({ bankAccounts }: { bankAccounts: { value: string; la
           onChange: setPage,
         }}
         columns={[
-          { title: t('cheques.dueDate'), dataIndex: 'dueDate', width: 110 },
+          {
+            title: t('cheques.dueDate'),
+            dataIndex: 'dueDate',
+            width: 110,
+            render: (v: string | null) => (v ? formatDate(v) : '—'),
+          },
           { title: t('cheques.direction'), dataIndex: 'direction', width: 80, render: (v: string) => t(`cheques.${v}`) },
           { title: t('cheques.chequeNo'), dataIndex: 'chequeNo', width: 120 },
           {

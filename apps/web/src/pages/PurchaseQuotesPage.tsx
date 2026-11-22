@@ -18,6 +18,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useSearchParams } from 'react-router';
@@ -84,7 +85,7 @@ type MessageApi = ReturnType<typeof message.useMessage>[0];
 
 /** The request picker's label: its number and its date. */
 function requestLabel(r: { id: string; requestNo: string | null; requestDate: string }): string {
-  return `${r.requestNo ?? `#${r.id}`} — ${dayjs(r.requestDate).format('YYYY-MM-DD')}`;
+  return `${r.requestNo ?? `#${r.id}`} — ${formatDate(r.requestDate)}`;
 }
 
 /** The request picker's option for a loaded request, if there is one. */
@@ -301,7 +302,7 @@ function QuotesTab({ initialRequestId }: { initialRequestId?: string }) {
       sorter: true,
       sortOrder: list.sortOrderOf('quoteDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('procurement.supplier'),
@@ -776,10 +777,10 @@ function QuoteView({
             <DocValue>{displayName(quote.supplier) ?? '—'}</DocValue>
           </DocField>
           <DocField label={t('procurement.quoteDate')}>
-            <DocValue>{dayjs(quote.quoteDate).format('YYYY-MM-DD')}</DocValue>
+            <DocValue>{formatDate(quote.quoteDate)}</DocValue>
           </DocField>
           <DocField label={t('procurement.validUntil')}>
-            <DocValue>{quote.validUntil ? dayjs(quote.validUntil).format('YYYY-MM-DD') : '—'}</DocValue>
+            <DocValue>{quote.validUntil ? formatDate(quote.validUntil) : '—'}</DocValue>
           </DocField>
           <DocField label={t('procurement.supplierRef')}>
             <DocValue>{quote.supplierRef ?? '—'}</DocValue>

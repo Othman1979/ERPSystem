@@ -89,6 +89,8 @@ import { usePagedQuery } from '../hooks/usePagedQuery';
 import { LIVE_REFRESH_MS, PICKER_FRESH_MS, refetchIfOlderThan } from '../liveRefresh';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { codeAndName } from '../i18n/displayName';
+import { entryDescription } from '../i18n/entryDescription';
+import { formatDate } from '../format/date';
 import { Num } from '../components/Num';
 import { amountCell, amountOrBlankCell } from '../format/cells';
 import { formatAmount } from '../format/number';
@@ -583,15 +585,16 @@ export function JournalPage() {
               title: t('journal.date'),
               dataIndex: 'entryDate',
               key: 'entryDate',
-              sorter: true,
-              sortOrder: list.sortOrderOf('entryDate'),
-              width: 110,
-              render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
-            },
-            {
-              title: t('common.description'),
-              dataIndex: 'description',
-              render: (v: string | null) => v ?? '—',
+                sorter: true,
+                sortOrder: list.sortOrderOf('entryDate'),
+                width: 110,
+                render: (v: string) => formatDate(v),
+              },
+              {
+                title: t('common.description'),
+                dataIndex: 'description',
+                render: (_v: string | null, e: JournalEntryListItemDto) =>
+                  entryDescription(t, e) || '—',
             },
             {
               title: t('common.status'),
@@ -809,10 +812,10 @@ export function JournalPage() {
               <DocValue>{entry ? <VoucherTag type={entry.voucherType} /> : '—'}</DocValue>
             </DocField>
             <DocField label={t('journal.date')}>
-              <DocValue>{entry ? dayjs(entry.entryDate).format('YYYY-MM-DD') : '—'}</DocValue>
+              <DocValue>{entry ? formatDate(entry.entryDate) : '—'}</DocValue>
             </DocField>
             <DocField label={t('common.description')} wide>
-              <DocValue>{entry?.description ?? '—'}</DocValue>
+              <DocValue>{entry ? entryDescription(t, entry) || '—' : '—'}</DocValue>
             </DocField>
             {entry?.reversalOf && (
               <DocField label={t('journal.reversalOf')}>
@@ -947,7 +950,7 @@ export function JournalPage() {
       >
         <div style={{ marginBottom: 12 }}>
           <Typography.Text type="secondary">
-            {reverseTarget?.entryNo} — {reverseTarget?.description}
+            {reverseTarget?.entryNo} — {reverseTarget ? entryDescription(t, reverseTarget) : ''}
           </Typography.Text>
         </div>
         <div>

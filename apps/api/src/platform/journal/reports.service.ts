@@ -440,7 +440,16 @@ export class ReportsService {
 
   private static readonly LEDGER_LINE_INCLUDE = {
     entry: {
-      select: { id: true, entryNo: true, entryDate: true, description: true, sourceType: true, postingKind: true },
+      select: {
+        id: true,
+        entryNo: true,
+        entryDate: true,
+        description: true,
+        descriptionKey: true,
+        descriptionParams: true,
+        sourceType: true,
+        postingKind: true,
+      },
     },
   } as const;
 
@@ -455,6 +464,8 @@ export class ReportsService {
       entryNo: l.entry.entryNo,
       entryDate: l.entry.entryDate,
       description: l.description ?? l.entry.description,
+      descriptionKey: l.description === null ? l.entry.descriptionKey : null,
+      descriptionParams: l.description === null ? l.entry.descriptionParams : null,
       sourceType: l.entry.sourceType,
       postingKind: l.entry.postingKind,
       partyType: l.partyType,
@@ -674,6 +685,8 @@ export class ReportsService {
       sourceType: l.entry.sourceType,
       postingKind: l.entry.postingKind,
       description: l.description ?? l.entry.description,
+      descriptionKey: l.description === null ? l.entry.descriptionKey : null,
+      descriptionParams: l.description === null ? l.entry.descriptionParams : null,
       debit: amt(new Decimal(l.debit.toString())),
       credit: amt(new Decimal(l.credit.toString())),
       balance: amt(balance),

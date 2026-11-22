@@ -1139,6 +1139,8 @@ model JournalEntry {
   voucherType    JournalVoucherType @default(JOURNAL) @map("voucher_type")
   status         JournalEntryStatus @default(DRAFT)
   description    String?            @db.VarChar(500)
+  descriptionKey String?            @map("description_key") @db.VarChar(100)
+  descriptionParams Json?            @map("description_params")
   totalDebit     Decimal            @default(0) @map("total_debit") @db.Decimal(18, 3)
   totalCredit    Decimal            @default(0) @map("total_credit") @db.Decimal(18, 3)
   reversalOfId   BigInt?            @map("reversal_of_id") @db.UnsignedBigInt

@@ -17,6 +17,7 @@ import {
 } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -351,7 +352,7 @@ function AdjustmentsTab() {
             sorter: true,
             sortOrder: list.sortOrderOf('date'),
             width: 110,
-            render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '—'),
+            render: (v: string) => (v ? formatDate(v) : '—'),
           },
           {
             title: t('stock.type'),
@@ -617,7 +618,7 @@ function TransfersTab() {
             sorter: true,
             sortOrder: list.sortOrderOf('date'),
             width: 110,
-            render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD') : '—'),
+            render: (v: string) => (v ? formatDate(v) : '—'),
           },
           {
             title: t('stock.from'),
@@ -756,7 +757,7 @@ function MovementsTab() {
             title: t('stock.date'),
             dataIndex: 'movementDate',
             width: 110,
-            render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+            render: (v: string) => formatDate(v),
           },
           {
             title: t('stock.warehouse'),

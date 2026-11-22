@@ -169,13 +169,29 @@ describe('E2 — a posted cheque receipt is edited with its cheque', () => {
       h.err(await h.act(token, `receipts/${receipt.id}/amend`, { voucherDate: '2031-03-03', amount: '650.000' })),
     ).toEqual([409, 'DOCUMENT_LOCK_REQUIRED']);
     const edited = h.ok(
-      await h.actLocked(token, 'RECEIPT', receipt.id, `receipts/${receipt.id}/amend`, { voucherDate: '2031-03-03', amount: '650.000' }),
+      await h.actLocked(token, 'RECEIPT', receipt.id, `receipts/${receipt.id}/amend`, {
+        voucherDate: '2031-03-03',
+        amount: '650.000',
+        description: 'Receipt from Ali',
+      }),
       201,
       'amend receipt',
     ) as { receiptNo: string; amount: string; receiptDate: string };
     expect(edited.receiptNo).toBe(receipt.receiptNo);
     expect(m3(edited.amount)).toBe('650.000');
     expect(edited.receiptDate.slice(0, 10)).toBe('2031-03-03');
+    const [receiptEntry] = (await boot.db.query(
+      'SELECT journal_entry_id AS id FROM receipts WHERE tenant_id = ? AND id = ?',
+      [tenantId, receipt.id],
+    )) as { id: bigint }[];
+    const notedEntry = h.ok(
+      await h.get(token, `journal-entries/${receiptEntry!.id}`),
+      200,
+      'amended receipt entry',
+    ) as { description: string; descriptionKey: string | null; descriptionParams: unknown };
+    expect(notedEntry.description).toBe('Receipt from Ali');
+    expect(notedEntry.descriptionKey).toBeNull();
+    expect(notedEntry.descriptionParams).toBeNull();
     expect(await balance('1106')).toBe('650.000');
     expect(await balance('1103', customerId)).toBe('900.000');
     const [receiptLock] = (await boot.db.query(
@@ -183,6 +199,24 @@ describe('E2 — a posted cheque receipt is edited with its cheque', () => {
       [tenantId, 'RECEIPT', receipt.id],
     )) as { n: bigint }[];
     expect(Number(receiptLock!.n)).toBe(0);
+
+    h.ok(
+      await h.actLocked(token, 'RECEIPT', receipt.id, `receipts/${receipt.id}/amend`, {
+        voucherDate: '2031-03-03',
+        amount: '650.000',
+        description: '',
+      }),
+      201,
+      'remove receipt note',
+    );
+    const restoredEntry = h.ok(
+      await h.get(token, `journal-entries/${receiptEntry!.id}`),
+      200,
+      'receipt entry after note removal',
+    ) as { description: string; descriptionKey: string | null; descriptionParams: { number: string } };
+    expect(restoredEntry.description).toBe(`Receipt ${receipt.receiptNo}`);
+    expect(restoredEntry.descriptionKey).toBe('journal.auto.receipt');
+    expect(restoredEntry.descriptionParams).toEqual({ number: receipt.receiptNo });
 
     const page = h.ok(await h.get(token, `cheques?q=E-100-${RUN}`), 200, 'cheques') as { items: { id: string; amount: string }[] };
     expect(m3(page.items[0]!.amount)).toBe('650.000');

@@ -3,6 +3,7 @@ import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { Alert, Button, Input, InputNumber, Popconfirm, Select, Space, Table, Typography, message } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
+import { formatDate } from '../format/date';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router';
@@ -172,7 +173,7 @@ function OrdersList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: ()
       sorter: true,
       sortOrder: list.sortOrderOf('orderDate'),
       width: 110,
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD'),
+      render: (v: string) => formatDate(v),
     },
     {
       title: t('sales.customer'),
@@ -733,10 +734,10 @@ function OrderView({ order, onBack }: { order: SalesCycleOrderDetailDto; onBack:
           <DocValue>{codeAndName(order.warehouse)}</DocValue>
         </DocField>
         <DocField label={t('salesCycle.orderDate')}>
-          <DocValue>{dayjs(order.orderDate).format('YYYY-MM-DD')}</DocValue>
+          <DocValue>{formatDate(order.orderDate)}</DocValue>
         </DocField>
         <DocField label={t('salesCycle.expectedDate')}>
-          <DocValue>{order.expectedDate ? dayjs(order.expectedDate).format('YYYY-MM-DD') : '—'}</DocValue>
+          <DocValue>{order.expectedDate ? formatDate(order.expectedDate) : '—'}</DocValue>
         </DocField>
         {order.quote && (
           <DocField label={t('salesCycle.fromQuote')}>

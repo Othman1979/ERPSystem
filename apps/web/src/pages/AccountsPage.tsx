@@ -3,12 +3,14 @@ import {
   Button,
   Card,
   Popconfirm,
+  Segmented,
   Space,
   Table,
   Tag,
   message,
 } from 'antd';
 import { useMemo, useState } from 'react';
+import type { Key } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import {
@@ -62,6 +64,30 @@ export function buildTree(accounts: Account[]): TreeNode[] {
   return roots;
 }
 
+export function expandedKeysForLevel(nodes: TreeNode[], level: 1 | 2 | 3 | 'all'): string[] {
+  const keys: string[] = [];
+  const visit = (rows: TreeNode[]) => {
+    for (const node of rows) {
+      if (node.children?.length && (level === 'all' || node.level < level)) keys.push(node.id);
+      if (node.children) visit(node.children);
+    }
+  };
+  visit(nodes);
+  return keys;
+}
+
+export function expandedKeysForSearch(nodes: TreeNode[]): string[] {
+  return expandedKeysForLevel(nodes, 'all');
+}
+
+export function debitBalance(node: TreeNode) {
+  return node.balDebit.minus(node.balCredit);
+}
+
+export function debitBalanceSide(node: TreeNode): 'DEBIT' | 'CREDIT' {
+  return debitBalance(node).isNegative() ? 'CREDIT' : 'DEBIT';
+}
+
 const ZERO = { debit: dec(0), credit: dec(0) };
 
 /** Attach rolled-up posted totals to every node (own + descendants). */
@@ -103,6 +129,8 @@ export function AccountsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
   const [search, setSearch] = useState('');
+  const [expandLevel, setExpandLevel] = useState<1 | 2 | 3 | 'all'>('all');
+  const [expandedKeys, setExpandedKeys] = useState<Key[] | null>(null);
   const [apiMessage, contextHolder] = message.useMessage();
 
   const accountsQuery = useAccounts();
@@ -178,9 +206,24 @@ export function AccountsPage() {
         onSearch={setSearch}
         count={shownCount}
         actions={
-          <Button type="primary" onClick={openCreate}>
-            {t('accounts.add')}
-          </Button>
+          <Space wrap>
+            <Segmented<string | number>
+              value={expandLevel}
+              onChange={(value) => {
+                setExpandLevel(value as 1 | 2 | 3 | 'all');
+                setExpandedKeys(null);
+              }}
+              options={[
+                { label: t('accounts.level1'), value: 1 },
+                { label: t('accounts.level2'), value: 2 },
+                { label: t('accounts.level3'), value: 3 },
+                { label: t('accounts.allLevels'), value: 'all' },
+              ]}
+            />
+            <Button type="primary" onClick={openCreate}>
+              {t('accounts.add')}
+            </Button>
+          </Space>
         }
       />
       <Table
@@ -189,7 +232,13 @@ export function AccountsPage() {
         dataSource={shownTree}
         locale={tableLocale(accountsQuery)}
         pagination={false}
-        expandable={{ defaultExpandAllRows: true }}
+        expandable={{
+          expandedRowKeys: search.trim()
+            ? expandedKeysForSearch(shownTree)
+            : expandedKeys ?? expandedKeysForLevel(shownTree, expandLevel),
+          onExpandedRowsChange: (keys) => setExpandedKeys([...keys]),
+        }}
+        rowClassName={(account) => (account.isPostable ? '' : 'account-group-row')}
         columns={[
           {
             title: t('accounts.code'),
@@ -221,7 +270,11 @@ export function AccountsPage() {
             title: t('accounts.postable'),
             dataIndex: 'isPostable',
             width: 100,
-            render: (v: boolean) => (v ? t('common.active') : '—'),
+            render: (v: boolean) => (
+              <Tag color={v ? 'blue' : 'default'}>
+                {v ? t('accounts.postable') : t('accounts.group')}
+              </Tag>
+            ),
           },
           {
             title: t('accounts.debit'),
@@ -243,11 +296,14 @@ export function AccountsPage() {
             align: 'right',
             render: (_: unknown, a: Account) => {
               if (trialError) return '—';
-              const bal = (a as TreeNode).balBalance;
+              const debitSide = debitBalance(a as TreeNode);
               return (
-                <Num style={{ color: bal.isNegative() ? palette.danger : undefined }}>
-                  {formatAmount(bal)}
-                </Num>
+                <Space size={4}>
+                  <Num>{formatAmount(debitSide.abs())}</Num>
+                  <Tag color={debitBalanceSide(a as TreeNode) === 'CREDIT' ? 'orange' : 'blue'}>
+                    {t(`accounts.${debitBalanceSide(a as TreeNode).toLowerCase()}Tag`)}
+                  </Tag>
+                </Space>
               );
             },
           },

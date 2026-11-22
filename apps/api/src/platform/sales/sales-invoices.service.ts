@@ -1518,6 +1518,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           sourceType: SOURCE,
           sourceId: draft.id,
           description: draft.description ?? `Sales invoice ${invoiceNo}`,
+          descriptionKey: draft.description == null ? 'journal.auto.salesInvoice' : null,
+          descriptionParams: draft.description == null ? { number: invoiceNo } : undefined,
           lines: journalLines,
           postedBy: userId ?? null,
           // ADR-024 §1.2: onto the revenue and cost lines (income statement).

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Modal, Popconfirm, Space, Spin, Tag, Tooltip } from 'antd';
-import dayjs from 'dayjs';
+import { formatDate } from '../../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -180,7 +180,7 @@ export function CountDocument({ id, onBack }: { id: string; onBack: () => void }
       >
         <DocFields>
           <DocField label={t('stock.date')}>
-            <DocValue>{dayjs(detail.countDate).format('YYYY-MM-DD')}</DocValue>
+            <DocValue>{formatDate(detail.countDate)}</DocValue>
           </DocField>
           <DocField label={t('stock.warehouse')}>
             <DocValue>{codeAndName(detail.warehouse)}</DocValue>

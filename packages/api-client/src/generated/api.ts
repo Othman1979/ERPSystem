@@ -1020,6 +1020,8 @@ export interface JournalEntryReversalRefDto {
   entryNo: string | null;
 }
 
+export type JournalEntryListItemDtoDescriptionParams = { [key: string]: unknown } | unknown[] | string | number | boolean | null;
+
 export interface JournalEntryListItemDto {
   id: string;
   tenantId: string;
@@ -1039,6 +1041,9 @@ export interface JournalEntryListItemDto {
   status: JournalEntryStatus;
   /** @nullable */
   description: string | null;
+  /** @nullable */
+  descriptionKey: string | null;
+  descriptionParams: JournalEntryListItemDtoDescriptionParams;
   totalDebit: string;
   totalCredit: string;
   /** @nullable */
@@ -1179,6 +1184,8 @@ export interface JournalEntryReversalDto {
   status: JournalEntryStatus;
 }
 
+export type JournalEntryDetailDtoDescriptionParams = { [key: string]: unknown } | unknown[] | string | number | boolean | null;
+
 export interface JournalEntryDetailDto {
   id: string;
   tenantId: string;
@@ -1198,6 +1205,9 @@ export interface JournalEntryDetailDto {
   status: JournalEntryStatus;
   /** @nullable */
   description: string | null;
+  /** @nullable */
+  descriptionKey: string | null;
+  descriptionParams: JournalEntryDetailDtoDescriptionParams;
   totalDebit: string;
   totalCredit: string;
   /** @nullable */
@@ -1334,6 +1344,11 @@ export interface TrialBalanceDto {
   balanced: boolean;
 }
 
+/**
+ * @nullable
+ */
+export type GeneralLedgerItemDtoDescriptionParams = { [key: string]: unknown } | null;
+
 export interface GeneralLedgerItemDto {
   lineId: string;
   entryId: string;
@@ -1345,6 +1360,10 @@ export interface GeneralLedgerItemDto {
      * @nullable
      */
   description: string | null;
+  /** @nullable */
+  descriptionKey: string | null;
+  /** @nullable */
+  descriptionParams: GeneralLedgerItemDtoDescriptionParams;
   sourceType: string;
   postingKind: JournalPostingKind;
   partyType: JournalPartyType | null;
@@ -1391,6 +1410,11 @@ export interface GeneralLedgerPageDto {
   account: GeneralLedgerAccountDto;
 }
 
+/**
+ * @nullable
+ */
+export type PartyStatementItemDtoDescriptionParams = { [key: string]: unknown } | null;
+
 export interface PartyStatementItemDto {
   lineId: string;
   entryId: string;
@@ -1405,6 +1429,10 @@ export interface PartyStatementItemDto {
   postingKind: JournalPostingKind;
   /** @nullable */
   description: string | null;
+  /** @nullable */
+  descriptionKey: string | null;
+  /** @nullable */
+  descriptionParams: PartyStatementItemDtoDescriptionParams;
   debit: string;
   credit: string;
   /** Running balance after this line. */
@@ -1427,6 +1455,11 @@ export interface PartyStatementPageDto {
   partyId: string;
 }
 
+/**
+ * @nullable
+ */
+export type CostCenterStatementItemDtoDescriptionParams = { [key: string]: unknown } | null;
+
 export interface CostCenterStatementItemDto {
   lineId: string;
   entryId: string;
@@ -1441,6 +1474,10 @@ export interface CostCenterStatementItemDto {
   postingKind: JournalPostingKind;
   /** @nullable */
   description: string | null;
+  /** @nullable */
+  descriptionKey: string | null;
+  /** @nullable */
+  descriptionParams: CostCenterStatementItemDtoDescriptionParams;
   debit: string;
   credit: string;
   /** Running balance after this line. */
@@ -8639,11 +8676,20 @@ export interface PayrollEmployeeDetailDto {
   recurringElements: PayrollRecurringElementDto[];
 }
 
+/**
+ * @nullable
+ */
+export type PayrollEmployeeStatementRowDtoDescriptionParams = { [key: string]: unknown } | null;
+
 export interface PayrollEmployeeStatementRowDto {
   date: string;
   documentNo: string;
   documentType: string;
   description: string;
+  /** @nullable */
+  descriptionKey: string | null;
+  /** @nullable */
+  descriptionParams: PayrollEmployeeStatementRowDtoDescriptionParams;
   debit: string;
   credit: string;
   balance: string;

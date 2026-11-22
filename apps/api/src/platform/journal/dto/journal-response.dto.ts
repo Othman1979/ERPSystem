@@ -111,6 +111,12 @@ export class GeneralLedgerItemDto {
   @ApiProperty({ type: 'string', nullable: true, description: 'Line description, or the entry description when the line has none.' })
   description!: string | null;
 
+  @ApiProperty({ type: 'string', nullable: true })
+  descriptionKey!: string | null;
+
+  @ApiProperty({ type: 'object', nullable: true, additionalProperties: true })
+  descriptionParams!: Record<string, unknown> | null;
+
   @ApiProperty({ type: 'string' })
   sourceType!: string;
 
@@ -177,6 +183,12 @@ export class PartyStatementItemDto {
 
   @ApiProperty({ type: 'string', nullable: true })
   description!: string | null;
+
+  @ApiProperty({ type: 'string', nullable: true })
+  descriptionKey!: string | null;
+
+  @ApiProperty({ type: 'object', nullable: true, additionalProperties: true })
+  descriptionParams!: Record<string, unknown> | null;
 
   @ApiProperty({ type: 'string', format: 'decimal' })
   debit!: string;

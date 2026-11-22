@@ -798,6 +798,10 @@ export class JournalEntryRow {
   status!: JournalEntryStatus;
   @ApiProperty({ type: 'string', nullable: true })
   description!: string | null;
+  @ApiProperty({ type: 'string', nullable: true })
+  descriptionKey!: string | null;
+  @ApiProperty({ oneOf: ANY_JSON, nullable: true })
+  descriptionParams!: unknown;
   @ApiProperty({ type: 'string', format: 'decimal' })
   totalDebit!: string;
   @ApiProperty({ type: 'string', format: 'decimal' })
