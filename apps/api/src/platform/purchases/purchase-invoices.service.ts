@@ -48,6 +48,7 @@ import {
   type SettlementState,
 } from '../shared/invoice-settlement.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
+import { lineDescription } from '../journal/line-description.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type {
   CreatePurchaseInvoiceDto,
@@ -848,9 +849,17 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           }
           const difference = stockNet.minus(grn.cleared);
           if (difference.gt(0)) {
-            journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, debit: difference.toString(), description: 'Invoice vs goods received' });
+            journalLines.push({
+              accountId: mapping.INVENTORY_ADJUSTMENT,
+              debit: difference.toString(),
+              description: lineDescription('journal.line.invoiceVsGoodsReceived'),
+            });
           } else if (difference.lt(0)) {
-            journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, credit: difference.abs().toString(), description: 'Invoice vs goods received' });
+            journalLines.push({
+              accountId: mapping.INVENTORY_ADJUSTMENT,
+              credit: difference.abs().toString(),
+              description: lineDescription('journal.line.invoiceVsGoodsReceived'),
+            });
           }
         } else if (stockNet.gt(0)) {
           journalLines.push({ accountId: mapping.INVENTORY, debit: stockNet.toString() });
@@ -868,7 +877,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           journalLines.push({
             accountId: draft.cashAccountId!,
             credit: grand.toString(),
-            description: 'Cash purchase',
+            description: lineDescription('journal.line.cashPurchase'),
           });
         } else {
           journalLines.push({
@@ -876,7 +885,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
             credit: grand.toString(),
             partyType: 'SUPPLIER',
             partyId: draft.supplierId,
-            description: 'Credit purchase',
+            description: lineDescription('journal.line.creditPurchase'),
           });
         }
 
@@ -1062,9 +1071,17 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         // ADR-016 §2: the price difference (positive: dearer than received) to INVENTORY_ADJUSTMENT.
         const difference = stockNet.minus(cleared);
         if (difference.gt(0)) {
-          journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, debit: difference.toString(), description: 'Invoice vs goods received' });
+          journalLines.push({
+            accountId: mapping.INVENTORY_ADJUSTMENT,
+            debit: difference.toString(),
+            description: lineDescription('journal.line.invoiceVsGoodsReceived'),
+          });
         } else if (difference.lt(0)) {
-          journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, credit: difference.abs().toString(), description: 'Invoice vs goods received' });
+          journalLines.push({
+            accountId: mapping.INVENTORY_ADJUSTMENT,
+            credit: difference.abs().toString(),
+            description: lineDescription('journal.line.invoiceVsGoodsReceived'),
+          });
         }
         if (serviceNet.gt(0)) {
           journalLines.push({ accountId: mapping.PURCHASES, debit: serviceNet.toString() });
@@ -1073,14 +1090,18 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           journalLines.push({ accountId: mapping.INPUT_TAX, debit: draft.taxTotal.toString() });
         }
         if (draft.paymentType === 'CASH') {
-          journalLines.push({ accountId: draft.cashAccountId!, credit: draft.grandTotal.toString(), description: 'Cash purchase' });
+          journalLines.push({
+            accountId: draft.cashAccountId!,
+            credit: draft.grandTotal.toString(),
+            description: lineDescription('journal.line.cashPurchase'),
+          });
         } else {
           journalLines.push({
             accountId: mapping.SUPPLIERS_CONTROL,
             credit: draft.grandTotal.toString(),
             partyType: 'SUPPLIER',
             partyId: draft.supplierId,
-            description: 'Credit purchase',
+            description: lineDescription('journal.line.creditPurchase'),
           });
         }
 

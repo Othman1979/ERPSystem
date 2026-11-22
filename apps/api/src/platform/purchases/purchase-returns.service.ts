@@ -22,6 +22,7 @@ import {
   type SummaryRange,
 } from '../shared/document-summary.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
+import { lineDescription } from '../journal/line-description.js';
 import { StockLedgerService } from '../inventory/stock-ledger.service.js';
 import type { CreatePurchaseReturnDto, ListPurchaseReturnsQueryDto } from './dto/purchases.dto.js';
 import { POSTING_TX_OPTIONS } from '../../prisma/transaction-options.js';
@@ -564,7 +565,7 @@ export class PurchaseReturnsService {
           journalLines.push({
             accountId: draft.cashAccountId!,
             debit: grand.toString(),
-            description: 'Cash refund from supplier',
+            description: lineDescription('journal.line.cashRefundFromSupplier'),
           });
         } else {
           journalLines.push({
@@ -572,7 +573,7 @@ export class PurchaseReturnsService {
             debit: grand.toString(),
             partyType: 'SUPPLIER',
             partyId: draft.supplierId,
-            description: 'Purchase return (credit note)',
+            description: lineDescription('journal.line.purchaseReturnCreditNote'),
           });
         }
         if (stockNet.gt(0)) {
@@ -580,9 +581,17 @@ export class PurchaseReturnsService {
         }
         // Return of a billed GRN: the line's price difference reversed.
         if (variance.gt(0)) {
-          journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, credit: variance.toString(), description: 'Invoice vs goods received' });
+          journalLines.push({
+            accountId: mapping.INVENTORY_ADJUSTMENT,
+            credit: variance.toString(),
+            description: lineDescription('journal.line.invoiceVsGoodsReceived'),
+          });
         } else if (variance.lt(0)) {
-          journalLines.push({ accountId: mapping.INVENTORY_ADJUSTMENT, debit: variance.abs().toString(), description: 'Invoice vs goods received' });
+          journalLines.push({
+            accountId: mapping.INVENTORY_ADJUSTMENT,
+            debit: variance.abs().toString(),
+            description: lineDescription('journal.line.invoiceVsGoodsReceived'),
+          });
         }
         if (serviceNet.gt(0)) {
           journalLines.push({ accountId: mapping.PURCHASES, credit: serviceNet.toString() });

@@ -1,4 +1,5 @@
 import { Decimal } from '../../common/decimal/decimal.utils.js';
+import { lineDescription } from '../journal/line-description.js';
 import type { JournalLineInput } from '../journal/posting.service.js';
 
 /**
@@ -15,7 +16,7 @@ export function stockWriteOffLines(
   const amount = new Decimal(writeOff);
   if (amount.isZero()) return [];
   const value = amount.abs().toString();
-  const description = 'Stock revaluation (ADR-018)';
+  const description = lineDescription('journal.line.stockRevaluation');
   return amount.gt(0)
     ? [
         { accountId: accounts.adjustment, debit: value, description },

@@ -48,6 +48,7 @@ import {
   type SettlementState,
 } from '../shared/invoice-settlement.js';
 import { PostingService, type JournalLineInput } from '../journal/posting.service.js';
+import { lineDescription } from '../journal/line-description.js';
 import { assertCanApprove, isAuthor, readApprover } from '../../common/procurement/approval.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { lockCompanySales, lockOrderLines, lockSalesOrder, type LockedOrderLine } from './sales-cycle.locks.js';
@@ -1482,7 +1483,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           journalLines.push({
             accountId: draft.cashAccountId!,
             debit: grand.toString(),
-            description: 'Cash sale',
+            description: lineDescription('journal.line.cashSale'),
           });
         } else {
           journalLines.push({
@@ -1490,7 +1491,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
             debit: grand.toString(),
             partyType: 'CUSTOMER',
             partyId: draft.customerId,
-            description: 'Credit sale',
+            description: lineDescription('journal.line.creditSale'),
           });
         }
         if (net.gt(0)) {

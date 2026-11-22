@@ -1166,6 +1166,8 @@ export interface JournalEntryLineDto {
   /** Copy of the entry's date (LEDGER-19): an entry's date never changes once its lines exist, so statements can seek on the line indexes below. Written with the lines (PostingService, draft creation in JournalService). */
   entryDate: string;
   createdAt: string;
+  /** @nullable */
+  descriptionKey: string | null;
   account: JournalAccountRefDto;
 }
 
@@ -8276,6 +8278,11 @@ export interface CreateBankStatementDto {
   bankAccountId: string;
 }
 
+/**
+ * @nullable
+ */
+export type BankBookLineDtoDescriptionParams = { [key: string]: unknown } | null;
+
 export interface BankBookLineDto {
   id: string;
   journalEntryId: string;
@@ -8285,6 +8292,10 @@ export interface BankBookLineDto {
   entryDate: string;
   /** @nullable */
   description: string | null;
+  /** @nullable */
+  descriptionKey: string | null;
+  /** @nullable */
+  descriptionParams: BankBookLineDtoDescriptionParams;
   /** @nullable */
   reference: string | null;
   /** Debit minus credit: deposits positive. */

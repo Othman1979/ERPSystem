@@ -416,7 +416,8 @@ export function OpeningBalancesPage() {
               {
                 title: t('common.description'),
                 dataIndex: 'description',
-                render: (v: string | null) => v ?? '—',
+                render: (_v: string | null, l: JournalEntryLineDto) =>
+                  entryDescription(t, l) || '—',
               },
               { title: t('journal.debit'), dataIndex: 'debit', width: 130, align: 'right', className: 'num', render: amountOrBlankCell },
               { title: t('journal.credit'), dataIndex: 'credit', width: 130, align: 'right', className: 'num', render: amountOrBlankCell },
