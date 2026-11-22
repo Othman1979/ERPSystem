@@ -1862,20 +1862,12 @@ describe('Leave payroll effects and provision', () => {
 });
 
 describe('Late leave review regressions', () => {
-  it('includes the fiscal-year code in legacy leave request sequences', async () => {
+  it('uses fiscal-year-prefixed leave request sequences', async () => {
     for (const year of [2045, 2046]) {
       h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({
         code: `FY${year}`, startDate: `${year}-01-01`, endDate: `${year}-12-31`,
       }), 201, `create leave FY ${year}`);
     }
-    await boot.db.query(
-      `UPDATE document_sequences s
-         JOIN fiscal_years f ON f.tenant_id = s.tenant_id AND f.id = s.fiscal_year_id
-          SET s.prefix = 'LV'
-        WHERE s.tenant_id = ? AND s.company_id = ? AND s.document_type = 'LEAVE_REQUEST'
-          AND f.code IN (?, ?)`,
-      [tenantId, BigInt(companyAId), 'FY2045', 'FY2046'],
-    );
     const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
       code: `LV-NUMBERS-${RUN}`, nameAr: 'Leave numbering', hireDate: '2045-01-01', payMethod: 'CASH',
     }, 'leave numbering employee', companyAId);

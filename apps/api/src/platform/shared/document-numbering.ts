@@ -55,9 +55,5 @@ export async function allocateDocumentNo(
     data: { nextNumber: { increment: 1 } },
   });
 
-  // Legacy leave sequences were seeded with "LV" rather than a fiscal-year prefix.
-  const prefix = documentType === 'LEAVE_REQUEST' && seq.prefix === 'LV'
-    ? `${seq.prefix}-${fiscalYear.code}`
-    : seq.prefix;
-  return `${prefix}-${padded}`;
+  return `${seq.prefix}-${padded}`;
 }
