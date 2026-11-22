@@ -164,6 +164,17 @@ describe('calculatePayroll', () => {
     expect([zero.sscBase.toString(), zero.sscEmployee.toString(), zero.sscEmployer.toString()]).toEqual(['0', '0', '0']);
   });
 
+  it('does not calculate negative SSC contributions when deductions exceed subject pay', () => {
+    const deduction = { ...daily, id: 30n, code: 'SSC_DEDUCTION', sscSubject: true, taxSubject: false };
+    const result = calculatePayroll({
+      ...base,
+      salary: '100.000',
+      inputs: [{ element: deduction, amount: '200.000', quantity: null, payrollMovementId: 999n }],
+    })!;
+    expect([result.sscBase.toString(), result.sscEmployee.toString(), result.sscEmployer.toString()])
+      .toEqual(['0', '0', '0']);
+  });
+
   it('uses six-place hourly/daily rates and applies element factors', () => {
     const result = calculatePayroll({
       ...base,

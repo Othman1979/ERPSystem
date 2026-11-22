@@ -181,6 +181,22 @@ export class LeaveService {
       await this.lockCompany(tx, tenantId, companyId);
       const type = await tx.leaveType.findFirst({ where: { id }, include: TYPE_INCLUDE });
       if (!type) throw DomainError.notFound('LeaveType', id.toString());
+      if (
+        dto.category !== undefined
+        && dto.category !== type.category
+        && ['ANNUAL', 'SICK'].includes(dto.category)
+      ) {
+        const requests = await tx.leaveRequest.findMany({
+          where: { leaveTypeId: id, status: { in: ['SUBMITTED', 'APPROVED'] } },
+          select: { startDate: true, endDate: true },
+        });
+        if (requests.some((request) => request.startDate.getUTCFullYear() !== request.endDate.getUTCFullYear())) {
+          throw new DomainError(
+            ErrorCode.LEAVE_REQUEST_SPANS_YEAR,
+            'Annual and sick leave requests must stay within one calendar year',
+          );
+        }
+      }
       const payElementId = dto.payElementId === undefined
         ? type.payElementId === null ? undefined : (await this.validatePayElement(tx, type.payElementId.toString()))?.id
         : (await this.validatePayElement(tx, dto.payElementId))?.id ?? null;
@@ -459,19 +475,23 @@ export class LeaveService {
           employeeId: request.employeeId,
           leaveTypeId: request.leaveTypeId,
           status: 'APPROVED',
-          startDate: { lte: end },
         },
         select: { startDate: true, days: true },
       });
+      const laterApprovedYears = [...new Set(
+        approved.map((row) => row.startDate.getUTCFullYear()).filter((approvedYear) => approvedYear > year),
+      )].sort((a, b) => a - b);
+      const lastBalanceYear = laterApprovedYears.at(-1) ?? year;
+      const lastBalanceEnd = yearBounds(lastBalanceYear).end;
       const settingsRows = await tx.payrollSettings.findMany({
-        where: { effectiveFrom: { lte: end } },
+        where: { effectiveFrom: { lte: lastBalanceEnd } },
         orderBy: [{ effectiveFrom: 'asc' }],
       });
       const adjustments = await tx.leaveBalanceAdjustment.findMany({
         where: {
           employeeId: request.employeeId,
           leaveTypeId: request.leaveTypeId,
-          year: { lte: year },
+          year: { lte: lastBalanceYear },
         },
         select: { year: true, days: true },
       });
@@ -480,7 +500,7 @@ export class LeaveService {
       const startYear = request.employee.hireDate.getUTCFullYear();
       const entitlements = new Map<number, Decimal>();
       const taken = new Map<number, Decimal>();
-      for (let balanceYear = startYear; balanceYear <= year; balanceYear++) {
+      for (let balanceYear = startYear; balanceYear <= lastBalanceYear; balanceYear++) {
         const yearEnd = yearBounds(balanceYear).end;
         const yearSettings = settingsRows.filter((setting) => setting.effectiveFrom <= yearEnd).at(-1);
         const entitlement = annualLeaveEntitlement({
@@ -516,6 +536,39 @@ export class LeaveService {
       });
       if (days.gt(available)) {
         throw new DomainError(ErrorCode.LEAVE_BALANCE_INSUFFICIENT, 'Annual leave exceeds the available balance');
+      }
+      if (laterApprovedYears.length) {
+        const projectedTaken = new Map(taken);
+        projectedTaken.set(year, (projectedTaken.get(year) ?? new Decimal(0)).plus(days));
+        for (const balanceYear of laterApprovedYears) {
+          const yearEnd = yearBounds(balanceYear).end;
+          const yearSettings = settingsRows.filter((setting) => setting.effectiveFrom <= yearEnd).at(-1);
+          const entitlement = annualLeaveEntitlement({
+            year: balanceYear,
+            hireDate: request.employee.hireDate,
+            leaveDate: request.employee.leaveDate,
+            annualLeaveDays: yearSettings?.annualLeaveDays ?? '14',
+            annualLeaveDaysSenior: yearSettings?.annualLeaveDaysSenior ?? '21',
+            annualLeaveSeniorYears: yearSettings?.annualLeaveSeniorYears ?? 5,
+          });
+          const baselineCarryInto = carryIntoYear({ year: balanceYear, startYear, entitlements, taken });
+          const baselineAvailable = availableLeaveBalance({
+            carryInto: baselineCarryInto,
+            entitlement,
+            adjustments: adjustmentByYear.get(balanceYear) ?? 0,
+            taken: taken.get(balanceYear) ?? 0,
+          });
+          const carryInto = carryIntoYear({ year: balanceYear, startYear, entitlements, taken: projectedTaken });
+          const laterAvailable = availableLeaveBalance({
+            carryInto,
+            entitlement,
+            adjustments: adjustmentByYear.get(balanceYear) ?? 0,
+            taken: projectedTaken.get(balanceYear) ?? 0,
+          });
+          if (laterAvailable.lt(0) && laterAvailable.lt(baselineAvailable)) {
+            throw new DomainError(ErrorCode.LEAVE_BALANCE_INSUFFICIENT, 'Annual leave exceeds the available balance');
+          }
+        }
       }
       return;
     }

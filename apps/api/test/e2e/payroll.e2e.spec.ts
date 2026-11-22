@@ -1860,3 +1860,210 @@ describe('Leave payroll effects and provision', () => {
     ]);
   });
 });
+
+describe('Late leave review regressions', () => {
+  it('uses fiscal-year-prefixed leave request sequences', async () => {
+    for (const year of [2045, 2046]) {
+      h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({
+        code: `FY${year}`, startDate: `${year}-01-01`, endDate: `${year}-12-31`,
+      }), 201, `create leave FY ${year}`);
+    }
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `LV-NUMBERS-${RUN}`, nameAr: 'Leave numbering', hireDate: '2045-01-01', payMethod: 'CASH',
+    }, 'leave numbering employee', companyAId);
+    const annual = (h.ok(await get(tokenA, 'payroll/leave-types', companyAId), 200, 'leave numbering types') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'ANNUAL')!;
+    const approveYear = async (year: number) => {
+      const request = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
+        employeeId: employee.id, leaveTypeId: annual.id,
+        startDate: `${year}-01-02`, endDate: `${year}-01-02`,
+      }, `create leave request ${year}`, companyAId);
+      return h.ok(
+        await act(tokenA, `payroll/leave-requests/${request.id}/approve`, {}, companyAId),
+        200,
+        `approve leave request ${year}`,
+      ) as { requestNo: string };
+    };
+
+    const first = await approveYear(2045);
+    const second = await approveYear(2046);
+    expect(first.requestNo).toBe('LV-FY2045-000001');
+    expect(second.requestNo).toBe('LV-FY2046-000001');
+    expect(first.requestNo).not.toBe(second.requestNo);
+  });
+
+  it('rejects a backdated annual approval that would overdraw a later year', async () => {
+    for (const year of [2042, 2043]) {
+      h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({
+        code: `FY${year}`, startDate: `${year}-01-01`, endDate: `${year}-12-31`,
+      }), 201, `create leave FY ${year}`);
+    }
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `LV-BACKDATE-${RUN}`, nameAr: 'Backdated leave', hireDate: '2042-01-01', payMethod: 'CASH',
+    }, 'backdated leave employee', companyAId);
+    const annual = (h.ok(await get(tokenA, 'payroll/leave-types', companyAId), 200, 'backdated leave types') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'ANNUAL')!;
+    const later = await post<{ id: string; days: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: employee.id, leaveTypeId: annual.id,
+      startDate: '2043-02-01', endDate: '2043-02-23',
+    }, 'create later-year leave', companyAId);
+    expect(later.days).toBe('20');
+    h.ok(await act(tokenA, `payroll/leave-requests/${later.id}/approve`, {}, companyAId), 200, 'approve later-year leave');
+
+    const earlier = await post<{ id: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: employee.id, leaveTypeId: annual.id,
+      startDate: '2042-01-05', endDate: '2042-01-15',
+    }, 'create backdated first-year leave', companyAId);
+    const denied = await act(tokenA, `payroll/leave-requests/${earlier.id}/approve`, {}, companyAId);
+    expect(denied.status).toBe(409);
+    expect(denied.body.error.code).toBe('LEAVE_BALANCE_INSUFFICIENT');
+  });
+
+  it('allows a backdated approval that leaves a pre-existing later-year deficit unchanged', async () => {
+    const company = h.ok(
+      await h.api().post('/api/v1/companies').set(h.auth(tokenA)).send({ legalNameAr: `Unchanged deficit ${RUN}` }),
+      201,
+      'create unchanged deficit company',
+    ) as { id: string };
+    const branch = (h.ok(await get(tokenA, 'branches', company.id), 200, 'unchanged deficit branch') as { id: string }[])[0]!;
+    for (const year of [2041, 2042, 2043]) {
+      h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(tokenA)).set('X-Company-Id', company.id).send({
+        code: `FY${year}`, startDate: `${year}-01-01`, endDate: `${year}-12-31`,
+      }), 201, `create unchanged deficit FY ${year}`);
+    }
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `LV-UNCHANGED-DEFICIT-${RUN}`, nameAr: 'Unchanged deficit', hireDate: '2041-01-01', payMethod: 'CASH',
+      branchId: branch.id,
+    }, 'unchanged deficit employee', company.id);
+    const annual = (h.ok(await get(tokenA, 'payroll/leave-types', company.id), 200, 'unchanged deficit leave types') as Array<{
+      id: string; code: string;
+    }>).find((type) => type.code === 'ANNUAL')!;
+    const later = await post<{ id: string; days: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: employee.id, leaveTypeId: annual.id,
+      startDate: '2043-02-01', endDate: '2043-02-23',
+    }, 'create later leave before adjustment', company.id);
+    expect(later.days).toBe('20');
+    h.ok(await act(tokenA, `payroll/leave-requests/${later.id}/approve`, {}, company.id), 200, 'approve later leave before adjustment');
+    h.ok(await h.api().post('/api/v1/payroll/leave-adjustments').set(h.auth(tokenA)).set('X-Company-Id', company.id)
+      .set('Idempotency-Key', `later-year-negative-adjustment-${RUN}`).send({
+        employeeId: employee.id, leaveTypeId: annual.id, year: '2043', days: '-10.00', reason: 'Post-approval balance reduction',
+      }), 201, 'reduce later-year balance');
+    const balances = () => get(tokenA, `payroll/leave-balances?year=2043&employeeId=${employee.id}`, company.id);
+    const beforeBalances = h.ok(await balances(), 200, 'later-year balance before backdated approval') as Array<{
+      leaveTypeId: string; carryInto: string; available: string;
+    }>;
+    const before = beforeBalances.find((balance) => balance.leaveTypeId === annual.id)!;
+    expect(new Decimal(before.carryInto).eq(14)).toBe(true);
+    expect(new Decimal(before.available).lt(0)).toBe(true);
+
+    const earlier = await post<{ id: string; days: string }>(tokenA, 'payroll/leave-requests', {
+      employeeId: employee.id, leaveTypeId: annual.id,
+      startDate: '2042-02-01', endDate: '2042-02-07',
+    }, 'create earlier leave covered by carry', company.id);
+    expect(new Decimal(earlier.days).gt(0)).toBe(true);
+    expect(new Decimal(earlier.days).lte(14)).toBe(true);
+    const approved = await act(tokenA, `payroll/leave-requests/${earlier.id}/approve`, {}, company.id);
+    expect(approved.status).toBe(200);
+
+    const afterBalances = h.ok(await balances(), 200, 'later-year balance after backdated approval') as typeof beforeBalances;
+    const after = afterBalances.find((balance) => balance.leaveTypeId === annual.id)!;
+    expect(after.carryInto).toBe(before.carryInto);
+    expect(after.available).toBe(before.available);
+  });
+
+  it('rejects changing a leave type to sick when it has cross-year requests', async () => {
+    const employee = await post<{ id: string }>(tokenA, 'payroll/employees', {
+      code: `LV-YEAR-EDIT-${RUN}`, nameAr: 'Year boundary edit', hireDate: '2031-01-01', payMethod: 'CASH',
+    }, 'year boundary employee', companyAId);
+    const leaveType = await post<{ id: string }>(tokenA, 'payroll/leave-types', {
+      code: `YEAR-EDIT-${RUN}`, nameAr: 'Year edit', category: 'OTHER', countBasis: 'CALENDAR_DAYS',
+    }, 'year edit leave type', companyAId);
+    await post(tokenA, 'payroll/leave-requests', {
+      employeeId: employee.id, leaveTypeId: leaveType.id,
+      startDate: '2031-12-31', endDate: '2032-01-01',
+    }, 'cross-year request for category edit', companyAId);
+    const updated = await h.api().patch(`/api/v1/payroll/leave-types/${leaveType.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ category: 'SICK' });
+    expect(updated.status).toBe(400);
+    expect(updated.body.error.code).toBe('LEAVE_REQUEST_SPANS_YEAR');
+
+    await boot.db.query(
+      'UPDATE leave_types SET category = ? WHERE tenant_id = ? AND id = ?',
+      ['ANNUAL', tenantId, BigInt(leaveType.id)],
+    );
+    const renamed = await h.api().patch(`/api/v1/payroll/leave-types/${leaveType.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ nameAr: 'Renamed annual type' });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.category).toBe('ANNUAL');
+  });
+
+  it('accepts null to unlink a leave type pay element', async () => {
+    const elements = h.ok(await get(tokenA, 'payroll/elements', companyAId), 200, 'pay elements') as Array<{
+      id: string; code: string;
+    }>;
+    const payElement = elements.find((element) => element.code === 'UNPAID_LEAVE_DAY')!;
+    const leaveType = await post<{ id: string }>(tokenA, 'payroll/leave-types', {
+      code: `UNLINK-${RUN}`, nameAr: 'Unlink element', category: 'OTHER', countBasis: 'CALENDAR_DAYS',
+      payElementId: payElement.id,
+    }, 'leave type with pay element', companyAId);
+    const updated = await h.api().patch(`/api/v1/payroll/leave-types/${leaveType.id}`)
+      .set(h.auth(tokenA)).set('X-Company-Id', companyAId).send({ payElementId: null });
+    expect(updated.status).toBe(200);
+    expect(updated.body.payElementId).toBeNull();
+  });
+
+  it('floors each annual leave type separately when calculating the provision', async () => {
+    const token = tokenA;
+    const company = h.ok(
+      await h.api().post('/api/v1/companies').set(h.auth(token)).send({ legalNameAr: `Annual provision ${RUN}` }),
+      201,
+      'annual provision company',
+    ) as { id: string };
+    const branch = (h.ok(await get(token, 'branches', company.id), 200, 'annual provision branch') as { id: string }[])[0]!;
+    const costCenter = await post<{ id: string }>(token, 'cost-centers', {
+      code: `ANNUAL-${RUN}`, nameAr: 'Annual provision',
+    }, 'annual provision cost center', company.id);
+    h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(token)).set('X-Company-Id', company.id).send({
+      code: 'FY2044', startDate: '2044-01-01', endDate: '2044-12-31',
+    }), 201, 'create annual provision fiscal year');
+    const employee = await post<{ id: string }>(token, 'payroll/employees', {
+      code: `ANNUAL-${RUN}`, nameAr: 'Annual provision employee', hireDate: '2044-01-01', payMethod: 'CASH',
+      branchId: branch.id, costCenterId: costCenter.id, sscCovered: false,
+    }, 'annual provision employee', company.id);
+    await post(token, `payroll/employees/${employee.id}/salaries`, {
+      effectiveFrom: '2044-01-01', basicSalary: '600.000',
+    }, 'annual provision salary', company.id);
+    const annualTypes = h.ok(await get(token, 'payroll/leave-types', company.id), 200, 'annual leave types') as Array<{
+      id: string; code: string;
+    }>;
+    const firstType = annualTypes.find((type) => type.code === 'ANNUAL')!;
+    const secondType = await post<{ id: string }>(token, 'payroll/leave-types', {
+      code: `ANNUAL2-${RUN}`, nameAr: 'Annual second', category: 'ANNUAL', countBasis: 'WORKING_DAYS',
+    }, 'second annual leave type', company.id);
+    for (const [leaveTypeId, year, days] of [[firstType.id, '2044', '1.00'], [secondType.id, '2044', '2.00']] as const) {
+      h.ok(await h.api().post('/api/v1/payroll/leave-adjustments').set(h.auth(token)).set('X-Company-Id', company.id)
+        .set('Idempotency-Key', `annual-adjust-${leaveTypeId}-${RUN}`).send({
+          employeeId: employee.id, leaveTypeId, year, days, reason: 'Annual provision test',
+        }), 201, `adjust ${leaveTypeId}`);
+    }
+    for (const [leaveTypeId, date] of [[firstType.id, '2044-01-03'], [secondType.id, '2044-01-04']] as const) {
+      const request = await post<{ id: string; days: string }>(token, 'payroll/leave-requests', {
+        employeeId: employee.id, leaveTypeId, startDate: date, endDate: date,
+      }, `create annual request ${leaveTypeId}`, company.id);
+      expect(request.days).toBe('1');
+      h.ok(await act(token, `payroll/leave-requests/${request.id}/approve`, {}, company.id), 200, `approve annual request ${leaveTypeId}`);
+    }
+    h.ok(await h.api().post('/api/v1/payroll/leave-adjustments').set(h.auth(token)).set('X-Company-Id', company.id)
+      .set('Idempotency-Key', `annual-adjust-negative-${RUN}`).send({
+        employeeId: employee.id, leaveTypeId: firstType.id, year: '2044', days: '-20.00', reason: 'Annual provision test',
+      }), 201, 'reduce first annual type balance');
+    const run = h.ok(await act(token, 'payroll/runs', { period: '2044-12' }, company.id), 201, 'annual provision run') as { id: string };
+    await post(token, `payroll/runs/${run.id}/post`, {}, 'post annual provision run', company.id);
+    const posted = h.ok(await get(token, `payroll/runs/${run.id}`, company.id), 200, 'annual provision detail') as {
+      lines: Array<{ employeeId: string; leaveProvision: string }>;
+    };
+    expect(posted.lines.find((line) => line.employeeId === employee.id)?.leaveProvision).toBe('300');
+  });
+});

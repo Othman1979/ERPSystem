@@ -1312,7 +1312,7 @@ export class PayrollService {
         return idForMapping;
       };
       const year = periodEnd.getUTCFullYear();
-      const annualLeaveType = await tx.leaveType.findFirst({ where: { category: 'ANNUAL', isActive: true } });
+      const annualLeaveTypes = await tx.leaveType.findMany({ where: { category: 'ANNUAL', isActive: true } });
       const employeesWithLines = run.lines.map((line) => line.employeeId);
       const priorRuns = await tx.payrollRun.findMany({
         where: {
@@ -1323,21 +1323,21 @@ export class PayrollService {
         include: { lines: { where: { employeeId: { in: employeesWithLines } }, select: { employeeId: true, leaveProvision: true, eosProvision: true } } },
         orderBy: [{ period: 'desc' }],
       });
-      const [leaveSettings, annualRequests, leaveAdjustments, leaveHolidays] = annualLeaveType
+      const [leaveSettings, annualRequests, leaveAdjustments, leaveHolidays] = annualLeaveTypes.length
         ? await Promise.all([
             tx.payrollSettings.findMany({ where: { effectiveFrom: { lte: periodEnd } }, orderBy: [{ effectiveFrom: 'asc' }] }),
             tx.leaveRequest.findMany({
               where: {
                 employeeId: { in: employeesWithLines },
-                leaveTypeId: annualLeaveType.id,
+                leaveTypeId: { in: annualLeaveTypes.map((type) => type.id) },
                 status: 'APPROVED',
                 startDate: { lte: periodEnd },
               },
-              select: { employeeId: true, startDate: true, endDate: true, days: true },
+              select: { employeeId: true, leaveTypeId: true, startDate: true, endDate: true, days: true },
             }),
             tx.leaveBalanceAdjustment.findMany({
-              where: { employeeId: { in: employeesWithLines }, leaveTypeId: annualLeaveType.id, year: { lte: year } },
-              select: { employeeId: true, year: true, days: true },
+              where: { employeeId: { in: employeesWithLines }, leaveTypeId: { in: annualLeaveTypes.map((type) => type.id) }, year: { lte: year } },
+              select: { employeeId: true, leaveTypeId: true, year: true, days: true },
             }),
             tx.publicHoliday.findMany({ where: { date: { lte: periodEnd } }, select: { date: true } }),
           ])
@@ -1352,68 +1352,72 @@ export class PayrollService {
       }
       for (const line of run.lines) {
         let provision = new Decimal(0);
-        if (annualLeaveType && !(line.employee.leaveDate && line.employee.leaveDate <= periodEnd)) {
+        if (annualLeaveTypes.length && !(line.employee.leaveDate && line.employee.leaveDate <= periodEnd)) {
           const startYear = line.employee.hireDate.getUTCFullYear();
-          const entitlements = new Map<number, Decimal>();
-          const taken = new Map<number, Decimal>();
-          const adjustmentByYear = new Map<number, Decimal>();
-          for (const adjustment of leaveAdjustments) {
-            if (adjustment.employeeId === line.employeeId) {
-              adjustmentByYear.set(adjustment.year, (adjustmentByYear.get(adjustment.year) ?? new Decimal(0)).plus(adjustment.days));
-            }
-          }
-          for (const request of annualRequests) {
-            if (request.employeeId === line.employeeId) {
-              const requestYear = request.startDate.getUTCFullYear();
-              const yearStart = new Date(Date.UTC(requestYear, 0, 1));
-              const startDate = request.startDate > yearStart ? request.startDate : yearStart;
-              const cutoff = line.employee.leaveDate && line.employee.leaveDate < periodEnd
-                ? line.employee.leaveDate
-                : periodEnd;
-              const endDate = request.endDate < cutoff ? request.endDate : cutoff;
-              if (endDate >= startDate) {
-                const settings = leaveSettings.filter((setting) => setting.effectiveFrom <= endDate).at(-1);
-                const days = request.endDate <= cutoff
-                  ? request.days
-                  : countLeaveDays({
-                      startDate,
-                      endDate,
-                      countBasis: annualLeaveType.countBasis,
-                      weeklyRestDays: (settings?.weeklyRestDays ?? '5').split(',').map(Number),
-                      holidays: leaveHolidays.map((holiday) => holiday.date),
-                    }).days;
-                taken.set(requestYear, (taken.get(requestYear) ?? new Decimal(0)).plus(days));
+          const currentSettings = leaveSettings.filter((setting) => setting.effectiveFrom <= periodEnd).at(-1);
+          let unusedDays = new Decimal(0);
+          for (const annualLeaveType of annualLeaveTypes) {
+            const entitlements = new Map<number, Decimal>();
+            const taken = new Map<number, Decimal>();
+            const adjustmentByYear = new Map<number, Decimal>();
+            for (const adjustment of leaveAdjustments) {
+              if (adjustment.employeeId === line.employeeId && adjustment.leaveTypeId === annualLeaveType.id) {
+                adjustmentByYear.set(adjustment.year, (adjustmentByYear.get(adjustment.year) ?? new Decimal(0)).plus(adjustment.days));
               }
             }
-          }
-          for (let balanceYear = startYear; balanceYear < year; balanceYear++) {
-            const yearEnd = periodBounds(`${balanceYear}-12`).end;
-            const yearSettings = leaveSettings.filter((setting) => setting.effectiveFrom <= yearEnd).at(-1);
-            entitlements.set(balanceYear, annualLeaveEntitlement({
-              year: balanceYear,
+            for (const request of annualRequests) {
+              if (request.employeeId === line.employeeId && request.leaveTypeId === annualLeaveType.id) {
+                const requestYear = request.startDate.getUTCFullYear();
+                const yearStart = new Date(Date.UTC(requestYear, 0, 1));
+                const startDate = request.startDate > yearStart ? request.startDate : yearStart;
+                const cutoff = line.employee.leaveDate && line.employee.leaveDate < periodEnd
+                  ? line.employee.leaveDate
+                  : periodEnd;
+                const endDate = request.endDate < cutoff ? request.endDate : cutoff;
+                if (endDate >= startDate) {
+                  const settings = leaveSettings.filter((setting) => setting.effectiveFrom <= endDate).at(-1);
+                  const days = request.endDate <= cutoff
+                    ? request.days
+                    : countLeaveDays({
+                        startDate,
+                        endDate,
+                        countBasis: annualLeaveType.countBasis,
+                        weeklyRestDays: (settings?.weeklyRestDays ?? '5').split(',').map(Number),
+                        holidays: leaveHolidays.map((holiday) => holiday.date),
+                      }).days;
+                  taken.set(requestYear, (taken.get(requestYear) ?? new Decimal(0)).plus(days));
+                }
+              }
+            }
+            for (let balanceYear = startYear; balanceYear < year; balanceYear++) {
+              const yearEnd = periodBounds(`${balanceYear}-12`).end;
+              const yearSettings = leaveSettings.filter((setting) => setting.effectiveFrom <= yearEnd).at(-1);
+              entitlements.set(balanceYear, annualLeaveEntitlement({
+                year: balanceYear,
+                hireDate: line.employee.hireDate,
+                leaveDate: line.employee.leaveDate,
+                annualLeaveDays: yearSettings?.annualLeaveDays ?? '14',
+                annualLeaveDaysSenior: yearSettings?.annualLeaveDaysSenior ?? '21',
+                annualLeaveSeniorYears: yearSettings?.annualLeaveSeniorYears ?? 5,
+                adjustments: adjustmentByYear.get(balanceYear) ?? 0,
+              }));
+            }
+            const carry = carryIntoYear({ year, startYear, entitlements, taken });
+            const accruedToDate = annualLeaveEntitlement({
+              year,
               hireDate: line.employee.hireDate,
               leaveDate: line.employee.leaveDate,
-              annualLeaveDays: yearSettings?.annualLeaveDays ?? '14',
-              annualLeaveDaysSenior: yearSettings?.annualLeaveDaysSenior ?? '21',
-              annualLeaveSeniorYears: yearSettings?.annualLeaveSeniorYears ?? 5,
-              adjustments: adjustmentByYear.get(balanceYear) ?? 0,
-            }));
+              annualLeaveDays: currentSettings?.annualLeaveDays ?? '14',
+              annualLeaveDaysSenior: currentSettings?.annualLeaveDaysSenior ?? '21',
+              annualLeaveSeniorYears: currentSettings?.annualLeaveSeniorYears ?? 5,
+              asOfDate: periodEnd,
+            });
+            const typeUnused = carry
+              .plus(accruedToDate)
+              .plus(adjustmentByYear.get(year) ?? 0)
+              .minus(taken.get(year) ?? 0);
+            unusedDays = unusedDays.plus(Decimal.max(typeUnused, 0));
           }
-          const currentSettings = leaveSettings.filter((setting) => setting.effectiveFrom <= periodEnd).at(-1);
-          const carry = carryIntoYear({ year, startYear, entitlements, taken });
-          const accruedToDate = annualLeaveEntitlement({
-            year,
-            hireDate: line.employee.hireDate,
-            leaveDate: line.employee.leaveDate,
-            annualLeaveDays: currentSettings?.annualLeaveDays ?? '14',
-            annualLeaveDaysSenior: currentSettings?.annualLeaveDaysSenior ?? '21',
-            annualLeaveSeniorYears: currentSettings?.annualLeaveSeniorYears ?? 5,
-            asOfDate: periodEnd,
-          });
-          const unusedDays = carry
-            .plus(accruedToDate)
-            .plus(adjustmentByYear.get(year) ?? 0)
-            .minus(taken.get(year) ?? 0);
           const fullBasic = latestEffectiveOnDate(line.employee.salaries, periodEnd)?.basicSalary ?? line.basic;
           const fixedAllowances = line.employee.recurringElements
             .filter((item) => item.payElement.isFixedAllowance)
