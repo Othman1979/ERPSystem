@@ -70,7 +70,7 @@ export class HealthController {
     if (this.last && Date.now() - this.last.at < PROBE_CACHE_MS) return Promise.resolve(this.last.result);
     this.inFlight ??= probeDatabase(
       // systemPrisma: a connectivity and write probe, no table of a tenant and no tenant id.
-      this.prisma.client,
+      this.prisma.control(),
       PROBE_TIMEOUT_MS,
     )
       .then((result) => {

@@ -6,11 +6,10 @@ import { ErrorCode } from '../common/errors/error-codes.js';
 
 /**
  * Models whose rows belong to a tenant (docs/BUILD_PLAN.md §5.3).
- * Platform/global models (Tenant, User, Plan, Role, RolePermission, Currency,
- * RefreshToken) are intentionally excluded.
+ * Control models (Tenant, User, Plan, Subscription, Role, RolePermission,
+ * Currency, Country, RefreshToken, ErrorEvent, TenantDatabase, UserTenant) are intentionally excluded.
  */
 export const TENANT_MODELS = [
-  'Subscription',
   'Company',
   'Branch',
   'TenantMembership',

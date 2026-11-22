@@ -139,6 +139,7 @@ export class TenantExportService {
     if (cls.get('roleCode') !== 'OWNER') {
       throw new DomainError(ErrorCode.FORBIDDEN, 'Only the owner can export the company data');
     }
+    await this.prisma.router.resolve(tenantId);
     const db = this.prisma.forTenant(tenantId);
     // Dynamic model access by name; every model listed is tenant-scoped.
     const models = db as unknown as Record<string, { findMany: (args: object) => Promise<Row[]> }>;
@@ -195,7 +196,7 @@ export class TenantExportService {
 
     // systemPrisma: `tenants` is the platform's table (not tenant-scoped); read by
     // the CLS tenant's own id only, for the README.
-    const tenant = await this.prisma.client.tenant.findUnique({ where: { id: tenantId }, select: { name: true, status: true } });
+    const tenant = await this.prisma.control().tenant.findUnique({ where: { id: tenantId }, select: { name: true, status: true } });
     const now = new Date();
     files['README.txt'] = strToU8(readme(tenant?.name ?? '', tenant?.status ?? '', now, counts));
 

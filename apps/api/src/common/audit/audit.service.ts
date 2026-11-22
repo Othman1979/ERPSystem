@@ -58,7 +58,11 @@ export class AuditService {
       await tx.auditLog.create({ data });
       return;
     }
-    // systemPrisma: audit writes span tenants/platform events by design.
-    await this.prisma.client.auditLog.create({ data });
+    if (data.tenantId === null) {
+      await this.prisma.control().auditLog.create({ data });
+      return;
+    }
+    await this.prisma.router.resolve(data.tenantId);
+    await this.prisma.forTenant(data.tenantId).auditLog.create({ data });
   }
 }

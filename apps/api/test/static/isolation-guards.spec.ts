@@ -19,8 +19,11 @@ import { API_DIR, RAW_CALL, rawSql, read, sourceFiles, tenantTables, usesSystemP
  * a new tenant table (member_permissions, ADR-024 §3) is scoped from the start.
  */
 const PLATFORM_MODELS_WITH_TENANT_ID: Record<string, string> = {
+  Subscription: 'billing subscription rows are control-plane records',
   RefreshToken: "a user's session; the tenant is the one the token was issued for",
   ErrorEvent: 'platform error monitor; the tenant is context of the fault (nullable)',
+  TenantDatabase: 'tenant database routing metadata belongs to the control plane',
+  UserTenant: 'the platform index of a user’s tenant memberships',
 };
 
 /** Models of schema.prisma that declare a tenantId field. */
@@ -38,6 +41,7 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/common/guards/auth.guard.ts': 'resolves the signed-in user before any tenant is known',
   'src/common/guards/tenant.guard.ts': "reads the user's membership and the tenant's status to set the tenant",
   'src/health/health.controller.ts': 'readiness probe: one platform row written and rolled back, no tenant data',
+  'src/common/plan-limits/plan-limits.service.ts': 'the tenant row is locked in its tenant transaction; Plan is a control-plane model',
   'src/jobs/backup/backup.service.ts': 'whole-database backup (migrations list, server version)',
   'src/jobs/error-digest.service.ts': 'platform error table across tenants',
   'src/jobs/integrity-check.service.ts': 'read-only orphan and collation checks across tenants (DB-15, DB-18)',
@@ -51,8 +55,6 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/platform/admin/admin.service.ts': 'platform console (platform admins only)',
   'src/platform/auth/auth.service.ts': 'sign-in and registration happen before a tenant is chosen',
   'src/platform/auth/token.service.ts': 'refresh tokens belong to users, not tenants',
-  'src/platform/document-locks/document-locks.service.ts':
-    'the platform system client handles cross-module locks; every query uses tenantId from CLS',
   'src/platform/einvoice/einvoice-worker.service.ts': 'claims the outbox across tenants, then sends each in its tenant context',
   'src/platform/export/tenant-export.service.ts': "reads the CLS tenant's own row of the platform tenants table",
   'src/platform/monitoring/error-events.service.ts': 'platform error table across tenants',
@@ -99,7 +101,7 @@ describe('Tenant isolation — static guards (ADR-010 §10.4)', () => {
     const unscoped = modelsWithTenantId().filter(
       (m) => !(TENANT_MODELS as readonly string[]).includes(m) && !(m in PLATFORM_MODELS_WITH_TENANT_ID),
     );
-    expect(unscoped).toEqual([]); // a new tenant table: add it to TENANT_MODELS (src/prisma/tenant-prisma.ts)
+    expect(unscoped).toEqual([]); // new models are tenant-scoped or listed as reviewed control-plane exceptions
     expect(Object.keys(PLATFORM_MODELS_WITH_TENANT_ID).filter((m) => !modelsWithTenantId().includes(m))).toEqual([]);
   });
 
@@ -135,6 +137,7 @@ describe('Tenant isolation — static guards (ADR-010 §10.4)', () => {
     expect(usesSystemPrisma(svc('return this.db.client.party.findMany();'))).toBe(true);
     expect(usesSystemPrisma(svc('const { client } = this.db; return client;'))).toBe(true);
     expect(usesSystemPrisma(svc("return this.db['client'];"))).toBe(true);
+    expect(usesSystemPrisma(svc('return this.db.control().party.findMany();'))).toBe(true);
     expect(usesSystemPrisma(svc('return this.db.forTenant(t).party.findMany();'))).toBe(false);
   });
 

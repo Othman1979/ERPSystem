@@ -6,15 +6,14 @@ import { AuditService } from './audit.service.js';
 /** A fake system client that records every audit_log create it receives. */
 function setup() {
   const written: Array<{ data: { tenantId: unknown } }> = [];
+  const create = async (args: { data: { tenantId: unknown } }) => {
+    written.push(args);
+    return args;
+  };
   const prisma = {
-    client: {
-      auditLog: {
-        create: async (args: { data: { tenantId: unknown } }) => {
-          written.push(args);
-          return args;
-        },
-      },
-    },
+    router: { resolve: async () => undefined },
+    forTenant: () => ({ auditLog: { create } }),
+    control: () => ({ auditLog: { create } }),
   };
   const service = new AuditService(prisma as unknown as PrismaService);
   return { service, written };

@@ -58,7 +58,7 @@ export class AuthGuard implements CanActivate {
 
     const userId = BigInt(payload.sub);
     // systemPrisma: users is a platform-global table (no tenant scope).
-    const user = await this.prisma.client.user.findUnique({
+    const user = await this.prisma.control().user.findUnique({
       where: { id: userId },
       select: {
         id: true,

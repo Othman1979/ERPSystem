@@ -5,6 +5,7 @@ import { withAllCompanies } from '../cls/current-company.js';
 import { DomainError } from '../errors/domain.error.js';
 import { ErrorCode } from '../errors/error-codes.js';
 import type { Plan, Prisma } from '../../generated/prisma/client.js';
+import { PrismaService } from '../../prisma/prisma.service.js';
 
 /**
  * Enforces subscription plan limits (docs/BUILD_PLAN.md §13.1).
@@ -12,13 +13,24 @@ import type { Plan, Prisma } from '../../generated/prisma/client.js';
  */
 @Injectable()
 export class PlanLimitsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private async planForTenant(tenantId: bigint, tx: Prisma.TransactionClient): Promise<Plan | null> {
+    const tenant =
+      this.prisma.tenancyMode === 'shared'
+        ? await tx.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } })
+        // systemPrisma: Plan is a control-plane model; tenant row locking remains in the tenant transaction.
+        : await this.prisma.control().tenant.findUnique({ where: { id: tenantId }, select: { plan: true } });
+    return tenant?.plan ?? null;
+  }
+
   /**
-   * Locks the tenant row, then reads its plan and counts `model` rows, all in
-   * the caller's transaction (PLAT-04). Concurrent creations of the same
-   * tenant queue on the lock, so the count-then-insert cannot overshoot the
-   * limit. The lock MUST be the transaction's first statement: under
-   * REPEATABLE READ the count's snapshot is taken at the first plain read, so
-   * it then sees every row committed by the previous holder of the lock.
+   * Locks the tenant row, then reads its plan and counts `model` rows
+   * (PLAT-04). Concurrent creations of the same tenant queue on the lock, so
+   * the count-then-insert cannot overshoot the limit. The lock MUST be the
+   * transaction's first statement: under REPEATABLE READ the count's snapshot
+   * is taken at the first plain read, so it then sees every row committed by
+   * the previous holder of the lock.
    */
   private async assertSlot(
     tx: Prisma.TransactionClient,
@@ -29,8 +41,7 @@ export class PlanLimitsService {
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
     if (!tenantId) return;
     await tx.$queryRaw`SELECT id FROM tenants WHERE id = ${tenantId} FOR UPDATE`;
-    const plan = (await tx.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } }))
-      ?.plan;
+    const plan = await this.planForTenant(tenantId, tx);
     if (!plan) return; // no plan → trial defaults handled at registration
     // Explicit tenantId: counts include INVITED/SUSPENDED memberships and
     // disabled branches.
@@ -76,15 +87,14 @@ export class PlanLimitsService {
    * shared lock on that row, and an exclusive lock taken mid-posting would
    * deadlock with concurrent postings that hold item locks (PLAT-04).
    *
-   * The plan is read through the caller's `tx`, never another client: a
-   * second pool connection taken while the posting transaction holds one
-   * deadlocks the pool once DB_POOL_SIZE postings run at once (each holds a
-   * connection and waits for another), and they all fail with 503.
+   * Shared mode reads the plan through the caller's `tx` to avoid taking a
+   * second connection from the same pool while the posting transaction holds
+   * one. Isolated mode reads this control model through the control client.
    */
   async assertMonthlyInvoiceQuota(tx: Prisma.TransactionClient, invoiceDate: Date): Promise<void> {
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
     if (!tenantId) return;
-    const plan = (await tx.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } }))?.plan;
+    const plan = await this.planForTenant(tenantId, tx);
     if (!plan) return;
     const monthStart = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth(), 1));
     const nextMonth = new Date(Date.UTC(invoiceDate.getUTCFullYear(), invoiceDate.getUTCMonth() + 1, 1));

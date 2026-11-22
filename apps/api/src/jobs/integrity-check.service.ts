@@ -44,6 +44,7 @@ const DETAIL_LIMIT = 10;
  * `--tenant <id>` limits the orphan checks to one tenant (the collation check is
  * database-wide). Exit code 1 when any check fails.
  */
+// ADR-045 29C: the integrity-check job remains on the control database.
 @Injectable()
 export class IntegrityCheckService {
   constructor(private readonly prisma: PrismaService) {}

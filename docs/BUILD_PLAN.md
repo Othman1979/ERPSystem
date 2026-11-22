@@ -174,6 +174,8 @@ erp-system/
 
 **Shared Database + Shared Schema + `tenant_id`**.
 
+This model is amended by ADR-045 (`TENANCY_MODE=shared|isolated`).
+
 في الـ MVP: **مستأجر واحد = شركة واحدة**. يُنشأ سجل `companies` واحد مع كل مستأجر، وتحمل الجداول التشغيلية `tenant_id` و`company_id`. تعدد الشركات لاحقاً لا يحتاج تغيير الجداول.
 
 ### 5.2 سياق المستأجر

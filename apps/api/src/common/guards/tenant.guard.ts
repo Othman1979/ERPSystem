@@ -32,8 +32,8 @@ function isExpiredTrial(tenant: { status: string; trialEndsAt: Date | null }): b
  * permissions into CLS, and enforces read-only mode for SUSPENDED/CANCELLED
  * tenants (docs/BUILD_PLAN.md §13.2).
  *
- * Uses the system client for lookups because tenantId is not yet trusted —
- * the membership row itself is the authorization proof.
+ * Resolves the tenant database before reading membership; systemPrisma reads
+ * the role and tenant status from control-plane records.
  */
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -58,14 +58,14 @@ export class TenantGuard implements CanActivate {
       throw new DomainError(ErrorCode.UNAUTHORIZED, 'No tenant selected');
     }
 
-    // systemPrisma: resolving the membership IS the tenant check. Its purchase
-    // permissions (member_permissions) come through the composite FK
-    // [tenantId, membershipId], so they are this tenant's rows only.
-    const membership = await this.prisma.client.tenantMembership.findFirst({
+    await this.prisma.router.resolve(tenantId);
+    const tenantDb = this.prisma.forTenant(tenantId);
+    const membership = await tenantDb.tenantMembership.findFirst({
       where: { tenantId, userId, status: 'ACTIVE' },
-      include: {
-        role: { include: { permissions: true } },
-        customRole: { select: { permissions: { select: { permissionCode: true } } } },
+      select: {
+        id: true,
+        roleId: true,
+        customRoleId: true,
         extraPermissions: { select: { permissionCode: true, amountLimit: true } },
       },
     });
@@ -73,10 +73,23 @@ export class TenantGuard implements CanActivate {
       throw new DomainError(ErrorCode.FORBIDDEN, 'No active membership for this tenant');
     }
 
-    const tenant = await this.prisma.client.tenant.findUnique({
-      where: { id: tenantId },
-      select: { status: true, trialEndsAt: true },
-    });
+    const [role, customRole, tenant] = await Promise.all([
+      this.prisma.control().role.findUnique({
+        where: { id: membership.roleId },
+        include: { permissions: true },
+      }),
+      membership.customRoleId
+        ? tenantDb.tenantRole.findUnique({
+            where: { id: membership.customRoleId },
+            select: { permissions: { select: { permissionCode: true } } },
+          })
+        : Promise.resolve(null),
+      this.prisma.control().tenant.findUnique({
+        where: { id: tenantId },
+        select: { status: true, trialEndsAt: true },
+      }),
+    ]);
+    if (!role) throw new DomainError(ErrorCode.INTERNAL, 'Tenant membership role is missing');
     if (!tenant) {
       throw new DomainError(ErrorCode.NOT_FOUND, 'Tenant not found');
     }
@@ -96,14 +109,14 @@ export class TenantGuard implements CanActivate {
     }
 
     cls.set('membershipId', membership.id);
-    cls.set('roleCode', membership.role.code);
     // The role's permissions, plus the member's purchase permissions (ADR-024 §3.4).
-    const extra = effectiveMemberPermissions(membership.role.code, membership.extraPermissions);
+    const extra = effectiveMemberPermissions(role.code, membership.extraPermissions);
     cls.set(
       'permissions',
       // A tenant role (ADR-038) replaces the system role's permissions; never an owner's.
-      new Set([...((membership.role.code !== 'OWNER' && membership.customRole) || membership.role).permissions.map((p) => p.permissionCode), ...extra.codes]),
+      new Set([...((role.code !== 'OWNER' && customRole) || role).permissions.map((p) => p.permissionCode), ...extra.codes]),
     );
+    cls.set('roleCode', role.code);
     return true;
   }
 }

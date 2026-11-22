@@ -12,6 +12,12 @@ export const envSchema = z.object({
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
   // How long a query waits for a free connection before it fails.
   DB_POOL_ACQUIRE_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(10_000),
+  TENANCY_MODE: z.enum(['shared', 'isolated']).default('shared'),
+  TENANT_DB_POOL_SIZE: z.coerce.number().int().min(1).max(20).default(3),
+  TENANT_DB_IDLE_MS: z.coerce.number().int().positive().default(600_000),
+  TENANT_DB_MAX_POOLS: z.coerce.number().int().min(1).max(500).default(50),
+  TENANT_DB_STATE_TTL_MS: z.coerce.number().int().positive().default(30_000),
+  TENANT_DB_SECRET_KEY: z.string().optional(),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   JWT_ACCESS_SECRET: z.string().min(16),
@@ -74,6 +80,14 @@ export const envSchema = z.object({
   // (JEST_WORKER_ID) it is refused unless this is 'true': a server copied with
   // NODE_ENV=test must not start with those routes open.
   ALLOW_TEST_ENV: z.enum(['true', 'false']).default('false'),
+}).superRefine((env, ctx) => {
+  if (env.TENANCY_MODE === 'isolated' && !isSealingKey(env.TENANT_DB_SECRET_KEY)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['TENANT_DB_SECRET_KEY'],
+      message: 'is required in isolated mode: 32 random bytes, base64',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

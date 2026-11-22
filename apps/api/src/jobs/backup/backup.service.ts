@@ -89,6 +89,7 @@ export async function sweepStale(root: string, now: Date, partials: boolean): Pr
  * behind; then old backups are rotated out.
  * systemPrisma: the whole database across tenants (allowed in `jobs`).
  */
+// ADR-045 29C: backup remains on the control database.
 @Injectable()
 export class BackupService {
   constructor(

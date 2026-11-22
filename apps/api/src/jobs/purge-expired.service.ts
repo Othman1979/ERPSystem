@@ -27,6 +27,7 @@ export interface PurgeExpiredRun {
  *
  * systemPrisma: platform-wide cleanup across tenants (allowed in `jobs`).
  */
+// ADR-045 29C: the purge-expired job remains on the control database.
 @Injectable()
 export class PurgeExpiredService {
   constructor(private readonly prisma: PrismaService) {}

@@ -181,7 +181,12 @@ describe('purge-tenant', () => {
       "INSERT INTO tenant_memberships (tenant_id, user_id, role_id, status, created_at, updated_at) VALUES (?, ?, ?, 'ACTIVE', NOW(3), NOW(3))",
       [tenantA, String(decl.id), String(accountant.id)],
     );
+    await db.query(
+      'INSERT INTO user_tenants (user_id, tenant_id, created_at) VALUES (?, ?, NOW(3))',
+      [String(decl.id), tenantA],
+    );
     await db.query('DELETE FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?', [tenantB, String(decl.id)]);
+    await db.query('DELETE FROM user_tenants WHERE tenant_id = ? AND user_id = ?', [tenantB, String(decl.id)]);
     await db.query("INSERT INTO audit_logs (tenant_id, user_id, action, entity_type, entity_id) VALUES (?, ?, 'user.invite_decline', 'membership', ?)", [
       tenantB,
       String(decl.id),

@@ -29,6 +29,7 @@ const STALE_BATCH = 200;
  * everything else runs tenant-scoped in the sender. Times are UTC, as Prisma
  * writes them.
  */
+// ADR-045 29C: the e-invoice worker remains on the control database.
 @Injectable()
 export class EInvoiceWorker implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly log = new Logger('EInvoiceWorker');

@@ -277,6 +277,7 @@ function gigabytes(bytes: number): string {
  * is kept.
  * systemPrisma: platform-wide checks, no tenant (allowed in `jobs`).
  */
+// ADR-045 29C: preflight remains on the control database.
 @Injectable()
 export class PreflightService {
   constructor(
