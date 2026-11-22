@@ -74,4 +74,31 @@ describe('TenantDatabaseProvisioner', () => {
     await expect(service.createDatabase(connectionFactory)).rejects.toThrow(/Invalid tenant database identifier/);
     expect(connected).toBe(false);
   });
+
+  it('drops the database and user on the same connection when GRANT fails, then rethrows the original error', async () => {
+    const statements: string[] = [];
+    const grantError = new Error('grant failed');
+    const query: SqlConnection['query'] = async (sql) => {
+      statements.push(sql);
+      if (sql.startsWith('GRANT ')) throw grantError;
+      return undefined;
+    };
+    const connectionFactory: SqlConnectionFactory = async () => ({ query, end: async () => undefined });
+    const values: Record<string, unknown> = {
+      TENANT_DB_ADMIN_URL: 'mysql://admin:secret@admin.example.test:3307/mysql',
+      TENANT_DB_NAME_PREFIX: 'erp_t_',
+      TENANT_DB_USER_HOST: '%',
+      TENANT_DB_SECRET_KEY: key,
+    };
+    const service = new TenantDatabaseProvisioner({ control: () => ({}) } as never, {
+      get: (name: keyof typeof values) => values[name],
+    } as never);
+
+    await expect(service.createDatabase(connectionFactory)).rejects.toBe(grantError);
+
+    expect(statements).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^DROP DATABASE IF EXISTS `erp_t_[a-f0-9]{12}`$/),
+      expect.stringMatching(/^DROP USER IF EXISTS 'erp_t_[a-f0-9]{12}'@'%'/),
+    ]));
+  });
 });

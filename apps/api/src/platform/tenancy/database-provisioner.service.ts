@@ -89,13 +89,34 @@ export class TenantDatabaseProvisioner {
       database: admin.pathname.replace(/^\//, '') || 'mysql',
       connectTimeout: 10_000,
     });
+    let databaseCreated = false;
+    let statementFailed = false;
+    let statementError: unknown;
     try {
       for (const statement of statements) {
         await connection.query(statement.sql, statement.values);
+        if (statement.sql.startsWith('CREATE DATABASE ')) databaseCreated = true;
       }
-    } finally {
-      await connection.end();
+    } catch (error) {
+      statementFailed = true;
+      statementError = error;
+      if (databaseCreated) {
+        try {
+          await connection.query(`DROP DATABASE IF EXISTS \`${databaseName}\``);
+        } catch {}
+        try {
+          await connection.query(
+            `DROP USER IF EXISTS '${quoteSqlValue(dbUser)}'@'${quoteSqlValue(userHost)}'`,
+          );
+        } catch {}
+      }
     }
+    try {
+      await connection.end();
+    } catch (error) {
+      if (!statementFailed) throw error;
+    }
+    if (statementFailed) throw statementError;
 
     const host = this.config.get('TENANT_DB_HOST', { infer: true }) ?? admin.hostname;
     const routeUrl = new URL(adminUrl);
