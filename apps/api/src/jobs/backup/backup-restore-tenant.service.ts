@@ -6,7 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import mariadb from 'mariadb';
+import mariadb, { type Connection } from 'mariadb';
 import type { Env } from '../../common/config/env.validation.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { expectedSchemaVersion } from '../../prisma/schema-version.js';
@@ -82,29 +82,91 @@ export class BackupRestoreTenantService {
     const previousState = database.state;
     let dropped = false;
     let completed = false;
-    const setStateAndInvalidate = async (state: typeof previousState) => {
-      try {
-        await control.tenantDatabase.update({ where: { tenantId }, data: { state } });
-      } catch {
-        this.logger.error(`Could not restore tenant ${tenantId} state after a failed restore`);
-      }
+    let stateChanged = false;
+    let lockConnection: Connection | undefined;
+    let lockAcquired = false;
+    let lockCleanup: Promise<void> | undefined;
+    let unregisterAbort: (() => void) | undefined;
+    const lockName = `erp_tenant_restore_${tenantId}`;
+    const releaseLock = async () => {
+      if (lockCleanup) return lockCleanup;
+      lockCleanup = (async () => {
+        const connection = lockConnection;
+        lockConnection = undefined;
+        if (!connection) return;
+        if (lockAcquired) {
+          try {
+            await connection.query('SELECT RELEASE_LOCK(?)', [lockName]);
+          } catch {
+            this.logger.error(`Could not release restore lock for tenant ${tenantId}`);
+          }
+        }
+        try {
+          await connection.end();
+        } catch {
+          this.logger.error(`Could not close restore lock connection for tenant ${tenantId}`);
+        }
+      })();
+      return lockCleanup;
+    };
+    const invalidate = async () => {
       try {
         await this.prisma.router.invalidate(tenantId);
       } catch {
         this.logger.error(`Could not invalidate tenant ${tenantId} router after a failed restore`);
       }
     };
+    const restorePreviousState = async () => {
+      try {
+        await control.tenantDatabase.updateMany({
+          where: { tenantId, state: 'RESTORING' },
+          data: { state: previousState },
+        });
+      } catch {
+        this.logger.error(`Could not restore tenant ${tenantId} state after a failed restore`);
+      }
+      await invalidate();
+    };
+    const keepRestoring = async () => {
+      try {
+        await control.tenantDatabase.updateMany({
+          where: { tenantId, state: 'ACTIVE' },
+          data: { state: 'RESTORING' },
+        });
+      } catch {
+        this.logger.error(`Could not keep tenant ${tenantId} in RESTORING after a failed restore`);
+      }
+      await invalidate();
+    };
+    const abortRestore = async () => {
+      if (stateChanged && !completed) {
+        if (dropped) await keepRestoring();
+        else await restorePreviousState();
+      }
+      dump.destroy();
+      await releaseLock();
+    };
     try {
+      const controlTarget = dbTarget(this.config.get('DATABASE_URL', { infer: true }));
+      lockConnection = await mariadb.createConnection({
+        host: controlTarget.host,
+        port: controlTarget.port,
+        user: controlTarget.user,
+        password: controlTarget.password,
+        database: controlTarget.database,
+      });
+      const lockRows = (await lockConnection.query('SELECT GET_LOCK(?, 0) AS acquired', [lockName])) as {
+        acquired: number | string | null;
+      }[];
+      if (Number(lockRows[0]?.acquired) !== 1) throw new Error('another restore of this tenant is running');
+      lockAcquired = true;
       await control.tenantDatabase.update({ where: { tenantId }, data: { state: 'RESTORING' } });
+      stateChanged = true;
+      unregisterAbort = onAbort(abortRestore);
       await this.prisma.router.invalidate(tenantId);
       const drainMs = this.config.get('TENANT_DB_STATE_TTL_MS', { infer: true }) + 5_000;
       console.error(`Waiting ${drainMs}ms for cached tenant requests to drain before restore`);
-      const unregisterAbort = onAbort(() => setStateAndInvalidate(previousState));
-      try {
-        await this.waitForDrain(drainMs);
-      } finally {
-        unregisterAbort();
-      }
+      await this.waitForDrain(drainMs);
       await withOptionFile(
         target,
         async (options) => {
@@ -167,10 +229,15 @@ export class BackupRestoreTenantService {
       }
       return { tenantId: tenantId.toString(), backup: manifest.name, schemaVersion: version };
     } catch (error) {
-      if (!completed) await setStateAndInvalidate(dropped ? 'RESTORING' : previousState);
+      if (!completed && stateChanged) {
+        if (dropped) await keepRestoring();
+        else await restorePreviousState();
+      }
       throw error;
     } finally {
       dump.destroy();
+      await releaseLock();
+      unregisterAbort?.();
     }
   }
 

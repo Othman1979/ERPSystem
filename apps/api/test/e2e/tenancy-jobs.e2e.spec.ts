@@ -498,6 +498,32 @@ describe('isolated tenant jobs', () => {
         await once(interruptedRestore, 'exit').catch(() => undefined);
       }
     }
+    const restoreLockName = `erp_tenant_restore_${tenants[0]!.id}`;
+    const heldLockConnection = await adminPool!.getConnection();
+    let restoreLockHeld = false;
+    try {
+      const lockRows = (await heldLockConnection.query('SELECT GET_LOCK(?, 0) AS acquired', [
+        restoreLockName,
+      ])) as { acquired: number | string | null }[];
+      restoreLockHeld = Number(lockRows[0]?.acquired) === 1;
+      expect(restoreLockHeld).toBe(true);
+      const refused = jobFailure(
+        ['backup-restore-tenant', backup.folder, tenants[0]!.id.toString(), '--confirm', tenants[0]!.name],
+        { BACKUP_DIR: backupDir },
+      );
+      expect(refused).toContain('another restore of this tenant is running');
+      expect((await control!.tenantDatabase.findUniqueOrThrow({ where: { tenantId: tenants[0]!.id } })).state).toBe(
+        'ACTIVE',
+      );
+    } finally {
+      try {
+        if (restoreLockHeld) {
+          await heldLockConnection.query('SELECT RELEASE_LOCK(?)', [restoreLockName]);
+        }
+      } finally {
+        heldLockConnection.release();
+      }
+    }
     const controlUrl = new URL(connectionUrl(adminUrl, CONTROL_DB));
     const auditConnection = await mariadb.createConnection({
       host: controlUrl.hostname,
