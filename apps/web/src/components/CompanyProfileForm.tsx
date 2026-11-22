@@ -7,6 +7,7 @@ import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { PROCUREMENT_LEVELS } from '../auth/procurementLevel';
 import { displayName } from '../i18n/displayName';
+import { clearLastBranding } from '../branding/lastBranding';
 import {
   ApiError,
   type CompanyDto,
@@ -21,10 +22,11 @@ import {
 import { EnterNav } from './EnterNav';
 
 /** The tenant's company profile (one query shared by the wizard, settings and home). */
-export function useCompany() {
+export function useCompany(enabled = true) {
   return useQuery({
     queryKey: ['company'],
     queryFn: ({ signal }) => companyControllerGet({ signal }).then((r) => r.data),
+    enabled,
   });
 }
 
@@ -104,7 +106,10 @@ export function CompanyProfileForm({
   });
   const removeLogo = useMutation({
     mutationFn: () => companyControllerRemoveLogo(),
-    onSuccess: refresh,
+    onSuccess: () => {
+      clearLastBranding();
+      refresh();
+    },
     onError,
   });
 

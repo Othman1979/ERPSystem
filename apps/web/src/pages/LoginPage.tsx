@@ -3,11 +3,14 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@erp/api-client';
 import { useAuth } from '../auth/AuthContext';
+import { BrandingDisplay } from '../components/CompanyBranding';
 import { EnterNav } from '../components/EnterNav';
+import { readLastBranding } from '../branding/lastBranding';
 
 export function LoginPage({ onSwitchToRegister }: { onSwitchToRegister: () => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { login } = useAuth();
+  const [branding] = useState(readLastBranding);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -30,6 +33,12 @@ export function LoginPage({ onSwitchToRegister }: { onSwitchToRegister: () => vo
   return (
     <div style={{ maxWidth: 420, margin: '8vh auto' }}>
       <Card>
+        <div className="login-branding">
+          <BrandingDisplay
+            logo={branding?.logo}
+            name={branding ? ((i18n.language === 'en' && branding.nameEn) || branding.nameAr) : undefined}
+          />
+        </div>
         <Typography.Title level={3} style={{ textAlign: 'center' }}>
           {t('auth.loginTitle')}
         </Typography.Title>

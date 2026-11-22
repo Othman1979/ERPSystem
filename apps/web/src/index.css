@@ -150,6 +150,48 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
+.branding-display {
+  color: var(--c-on-ink);
+  min-width: 0;
+}
+
+.branding-display-compact {
+  flex: 0 0 auto;
+}
+
+.branding-display-compact .branding-logo {
+  max-width: 72px;
+}
+
+.branding-logo {
+  display: block;
+  width: auto;
+  height: 28px;
+  max-width: 140px;
+  object-fit: contain;
+}
+
+.branding-fallback,
+.branding-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branding-name {
+  max-width: 220px;
+}
+
+.login-branding {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.login-branding .branding-display {
+  color: var(--c-text-1);
+}
+
 .topbar-breadcrumb,
 .topbar-breadcrumb li,
 .topbar-breadcrumb .ant-breadcrumb-separator {
@@ -168,6 +210,7 @@ textarea:focus-visible,
   text-overflow: ellipsis;
   min-width: 0;
   flex: 1;
+  flex-shrink: 1;
 }
 
 .topbar-user {
