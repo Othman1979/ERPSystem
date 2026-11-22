@@ -223,6 +223,10 @@ export class TenantPurgeService {
             await tx.$executeRaw`
               UPDATE tenant_db_pool SET claimed_by_tenant_id = NULL, claimed_at = NULL, schema_version = ${poolSchemaVersion}
                WHERE host = ${database.host} AND port = ${database.port} AND database_name = ${database.databaseName}`;
+          } else {
+            await tx.tenantDbPool.deleteMany({
+              where: { host: database.host, port: database.port, databaseName: database.databaseName },
+            });
           }
           await tx.tenantDatabase.deleteMany({ where: { tenantId } });
           await tx.userTenant.deleteMany({ where: { tenantId } });

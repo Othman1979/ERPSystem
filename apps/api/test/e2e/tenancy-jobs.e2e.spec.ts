@@ -103,6 +103,16 @@ function jobAllowingFailure(args: string[]): string {
   }
 }
 
+function jobFailure(args: string[], extra: Record<string, string> = {}): string {
+  try {
+    job(args, extra);
+  } catch (error) {
+    const stderr = (error as { stderr?: string | Buffer }).stderr;
+    return Buffer.isBuffer(stderr) ? stderr.toString('utf8') : stderr ?? String(error);
+  }
+  throw new Error('Expected job to fail');
+}
+
 async function waitForHealth(): Promise<void> {
   const until = Date.now() + 60_000;
   while (Date.now() < until) {
@@ -375,6 +385,18 @@ describe('isolated tenant jobs', () => {
     expect(verified.ok).toBe(true);
     expect(verified.checks.every((check) => check.ok)).toBe(true);
 
+    const unavailable = tenants[1]!;
+    await control!.tenantDatabase.update({ where: { tenantId: unavailable.id }, data: { state: 'RETIRED' } });
+    const refused = jobFailure(
+      ['backup-restore-tenant', backup.folder, unavailable.id.toString(), '--confirm', unavailable.name],
+      { BACKUP_DIR: backupDir },
+    );
+    expect(refused).toContain('Tenant database state RETIRED is not restorable');
+    expect((await control!.tenantDatabase.findUniqueOrThrow({ where: { tenantId: unavailable.id } })).state).toBe(
+      'RETIRED',
+    );
+    await control!.tenantDatabase.update({ where: { tenantId: unavailable.id }, data: { state: 'ACTIVE' } });
+
     await tenants[0]!.db.company.update({
       where: { id: tenants[0]!.companyId },
       data: { legalNameAr: `Changed ${RUN}` },
@@ -395,8 +417,45 @@ describe('isolated tenant jobs', () => {
     expect(beforeB).not.toBe(`Still B ${RUN}`);
   }, 180_000);
 
-  it('resumes create-mode purge after the database was marked RETIRED', async () => {
-    const target = tenants[0]!;
+  it('resumes create-mode purge for a tenant claimed from a filled pool and deletes its pool row', async () => {
+    job(['db-pool-fill', '--count', '1'], { TENANT_DB_POOL_TARGET: '1' });
+    const poolDatabase = await control!.tenantDbPool.findFirstOrThrow({
+      where: { claimedByTenantId: null, databaseName: { startsWith: TENANT_PREFIX } },
+    });
+    const email = `jobs-create-pool-${RUN}@test.dev`;
+    const registered = await request(BASE).post('/api/v1/auth/register').send({
+      tenantName: `Jobs Create Pool ${RUN}`,
+      ownerName: 'Create Pool Owner',
+      email,
+      password: PASSWORD,
+    });
+    expect(registered.status).toBe(201);
+    const user = await control!.user.findUniqueOrThrow({ where: { email } });
+    const tenantId = (await control!.userTenant.findFirstOrThrow({ where: { userId: user.id } })).tenantId;
+    const tenant = await control!.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+    const database = await control!.tenantDatabase.findUniqueOrThrow({ where: { tenantId } });
+    expect(database.databaseName).toBe(poolDatabase.databaseName);
+    const url = new URL(connectionUrl(adminUrl, database.databaseName));
+    url.hostname = database.host;
+    url.port = String(database.port);
+    url.username = database.dbUser;
+    url.password = openSecret(database.passwordSealed, SECRET_KEY);
+    const client = prismaFor(url.toString());
+    const company = await client.db.company.findFirstOrThrow({ where: { tenantId } });
+    const branch = await client.db.branch.findFirstOrThrow({ where: { tenantId, companyId: company.id } });
+    const target: TenantFixture = {
+      id: tenantId,
+      name: tenant.name,
+      userId: user.id,
+      token: registered.body.accessToken as string,
+      db: client.db,
+      pool: client.pool,
+      databaseName: database.databaseName,
+      dbUser: database.dbUser,
+      companyId: company.id,
+      branchId: branch.id,
+    };
+    tenants.push(target);
     await control!.tenant.update({
       where: { id: target.id },
       data: { status: 'CANCELLED', statusChangedAt: new Date(Date.now() - 91 * 86_400_000) },
@@ -406,6 +465,7 @@ describe('isolated tenant jobs', () => {
     expect(await control!.tenant.findUnique({ where: { id: target.id } })).toBeNull();
     expect(await control!.tenantDatabase.findUnique({ where: { tenantId: target.id } })).toBeNull();
     expect(await control!.userTenant.findFirst({ where: { tenantId: target.id } })).toBeNull();
+    expect(await control!.tenantDbPool.findFirst({ where: { databaseName: target.databaseName } })).toBeNull();
     const [{ count }] = (await adminPool!.query(
       'SELECT COUNT(*) AS count FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?',
       [target.databaseName],

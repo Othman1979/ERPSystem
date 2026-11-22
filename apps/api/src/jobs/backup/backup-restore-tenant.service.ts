@@ -45,7 +45,8 @@ export class BackupRestoreTenantService {
     const file = manifest.files.find((entry) => entry.name === tenant.file);
     if (!file) throw new Error('Tenant dump is missing from the manifest file list');
     const dumpPath = path.join(folder, tenant.file);
-    if (!(await stat(dumpPath)).size || (await stat(dumpPath)).size !== file.bytes || (await sha256File(dumpPath)) !== file.sha256) {
+    const dumpStat = await stat(dumpPath);
+    if (!dumpStat.size || dumpStat.size !== file.bytes || (await sha256File(dumpPath)) !== file.sha256) {
       throw new Error('Tenant dump checksum does not match the manifest');
     }
     const control = this.prisma.control();
@@ -54,6 +55,9 @@ export class BackupRestoreTenantService {
       control.tenantDatabase.findUnique({ where: { tenantId } }),
     ]);
     if (!tenantRow || !database) throw new Error(`Tenant ${tenantId} is not provisioned`);
+    if (database.state !== 'ACTIVE' && database.state !== 'MIGRATING') {
+      throw new Error(`Tenant database state ${database.state} is not restorable`);
+    }
     if (tenantRow.name !== confirmName) throw new Error('Refused: --confirm must be the exact tenant name');
 
     const encryption = encryptionOf(manifest);
