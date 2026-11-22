@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import { PrismaClient } from '../generated/prisma/client.js';
 import { sealSecret } from '../common/crypto/secret-box.js';
 import { ErrorCode } from '../common/errors/error-codes.js';
+import { expectedSchemaVersion } from './schema-version.js';
 import {
   TenantDbRouter,
   type TenantDbFactory,
@@ -24,14 +25,14 @@ const options: TenantDbRouterOptions = {
   initSql: ['SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci'],
 };
 
-const createDatabase = (tenantId: bigint, state = 'ACTIVE') => ({
+const createDatabase = (tenantId: bigint, state = 'ACTIVE', schemaVersion = expectedSchemaVersion()) => ({
   tenantId,
   host: 'tenant-db.local',
   port: 3306,
   databaseName: `tenant_${tenantId}`,
   dbUser: 'tenant_user',
   passwordSealed: sealSecret('tenant-db-password', TENANT_DB_SECRET_KEY),
-  schemaVersion: null,
+  schemaVersion,
   state,
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -89,6 +90,15 @@ describe('TenantDbRouter', () => {
   it('reports a missing tenant database', async () => {
     const { router } = track(setup());
     await expect(router.resolve(1n)).rejects.toMatchObject({ code: ErrorCode.TENANT_DB_NOT_FOUND });
+  });
+
+  it('gates a behind schema and allows a schema ahead of the current migrations', async () => {
+    const { databases, router } = track(setup());
+    databases.set(1n, createDatabase(1n, 'ACTIVE', `${expectedSchemaVersion().slice(0, -1)}0`));
+    await expect(router.resolve(1n)).rejects.toMatchObject({ code: ErrorCode.TENANT_MAINTENANCE });
+
+    databases.set(2n, createDatabase(2n, 'ACTIVE', `${expectedSchemaVersion()}z`));
+    await expect(router.resolve(2n)).resolves.toBeUndefined();
   });
 
   it('rejects non-active databases and closes a cached pool', async () => {

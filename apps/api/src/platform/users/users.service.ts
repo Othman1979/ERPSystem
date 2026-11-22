@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
@@ -22,6 +22,7 @@ import {
 import { InviteUserDto, UpdateMembershipDto, UpdatePurchasePermissionsDto } from './dto/users.dto.js';
 import { issueInvitationCode } from './invitation-code.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { TenantMirrorService } from '../tenancy/tenant-mirror.service.js';
 
 const tenantMembershipInclude = {
   customRole: { select: { id: true, code: true, nameAr: true, nameEn: true } },
@@ -90,11 +91,14 @@ const limitText = (limit: MemberPermissionGrant['amountLimit']) => (limit ? limi
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwords: PasswordService,
     private readonly planLimits: PlanLimitsService,
     private readonly audit: AuditService,
+    private readonly mirrors: TenantMirrorService,
   ) {}
 
   private tenant() {
@@ -223,9 +227,6 @@ export class UsersService {
    * ACTIVE membership and a generated temporary password, returned once here.
    */
   async invite(dto: InviteUserDto) {
-    if (this.prisma.tenancyMode === 'isolated') {
-      throw new DomainError(ErrorCode.TENANCY_ISOLATED_NOT_READY, 'Invitation creation is not available in isolated mode yet');
-    }
     const prisma = this.tenant();
     const role = await this.prisma.control().role.findUnique({ where: { code: dto.roleCode } });
     if (!role) throw DomainError.notFound('Role', dto.roleCode);
@@ -250,6 +251,13 @@ export class UsersService {
       if (!branch) throw DomainError.notFound('Branch', defaultBranchId);
     }
 
+    const cls = ClsServiceManager.getClsService<RequestContext>();
+    const tenantId = cls.get('tenantId')!;
+    const invitedBy = cls.get('userId');
+    if (this.prisma.tenancyMode === 'isolated') {
+      return this.inviteIsolated(dto, role.id, branchIds, tenantId, invitedBy);
+    }
+
     // Hash before the transaction: it holds the tenant lock (plan limit).
     // systemPrisma: users is a platform-global table.
     const knownUser = await this.prisma.control().user.findUnique({ where: { email: dto.email } });
@@ -266,9 +274,6 @@ export class UsersService {
       };
     }
 
-    const cls = ClsServiceManager.getClsService<RequestContext>();
-    const tenantId = cls.get('tenantId')!;
-    const invitedBy = cls.get('userId');
     const { membership, createdUser, status, acceptanceCode, codeExpiresAt } = await prisma.$transaction(async (tx) => {
       // First statement: locks the tenant row so concurrent invites cannot overshoot the plan (PLAT-04).
       await this.planLimits.assertUserSlotAvailable(tx);
@@ -327,6 +332,103 @@ export class UsersService {
       ...(createdUser && temporaryPassword ? { temporaryPassword } : {}),
       // Shown once: the admin gives it to the person directly.
       ...(acceptanceCode ? { acceptanceCode, acceptanceCodeExpiresAt: codeExpiresAt } : {}),
+    };
+  }
+
+  private async inviteIsolated(
+    dto: InviteUserDto,
+    roleId: bigint,
+    branchIds: bigint[],
+    tenantId: bigint,
+    invitedBy: bigint | undefined,
+  ) {
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await this.passwords.hash(temporaryPassword);
+    const control = this.prisma.control();
+    const userResult = await control.$transaction(async (tx) => {
+      let user = await tx.user.findUnique({ where: { email: dto.email } });
+      const createdUser = user === null;
+      if (!user) {
+        user = await tx.user.create({
+          data: {
+            email: dto.email,
+            fullName: dto.fullName ?? dto.email.split('@')[0]!,
+            passwordHash,
+            mustChangePassword: true,
+          },
+        });
+      }
+      await tx.userTenant.createMany({
+        data: [{ userId: user.id, tenantId }],
+        skipDuplicates: true,
+      });
+      return { user, createdUser };
+    });
+
+    let membership: Prisma.TenantMembershipGetPayload<{ include: typeof membershipInclude }>;
+    const issued = issueInvitationCode();
+    try {
+      await this.prisma.router.resolve(tenantId);
+      membership = await this.prisma.forTenant(tenantId).$transaction(async (tx) => {
+        await this.planLimits.assertUserSlotAvailable(tx);
+        await this.mirrors.syncUser(tx, userResult.user.id);
+        const existingMembership = await tx.tenantMembership.findFirst({
+          where: { tenantId, userId: userResult.user.id },
+        });
+        if (existingMembership) {
+          throw new DomainError(ErrorCode.CONFLICT, 'User is already a member of this tenant');
+        }
+        return tx.tenantMembership.create({
+          data: {
+            tenantId,
+            userId: userResult.user.id,
+            roleId,
+            status: 'INVITED',
+            ...issued.data,
+            defaultBranchId: dto.defaultBranchId ? BigInt(dto.defaultBranchId) : null,
+            invitedBy,
+            allowedBranches: { create: branchIds.map((branchId) => ({ branchId })) },
+          },
+          include: membershipInclude,
+        });
+      });
+    } catch (error) {
+      let membershipExists = false;
+      let membershipCheckComplete = false;
+      try {
+        membershipExists = Boolean(
+          await this.prisma.forTenant(tenantId).tenantMembership.findFirst({
+            where: { tenantId, userId: userResult.user.id },
+            select: { id: true },
+          }),
+        );
+        membershipCheckComplete = true;
+      } catch {
+        this.logger.warn(`Could not check invitation compensation for tenant ${tenantId}`);
+      }
+      if (membershipCheckComplete && !membershipExists) {
+        await control.userTenant.deleteMany({ where: { userId: userResult.user.id, tenantId } }).catch(() => undefined);
+        if (userResult.createdUser) {
+          const remainingLinks = await control.userTenant.count({ where: { userId: userResult.user.id } }).catch(() => 1);
+          if (remainingLinks === 0) {
+            await control.user.deleteMany({ where: { id: userResult.user.id } }).catch(() => undefined);
+          }
+        }
+      }
+      throw error;
+    }
+
+    await this.audit.log({
+      action: 'user.invite',
+      entityType: 'tenant_membership',
+      entityId: membership.id,
+      after: { email: dto.email, roleCode: dto.roleCode, status: 'INVITED' },
+    });
+    return {
+      ...serialize(membership),
+      ...(userResult.createdUser ? { temporaryPassword } : {}),
+      acceptanceCode: issued.code,
+      acceptanceCodeExpiresAt: issued.data.inviteCodeExpiresAt,
     };
   }
 
@@ -734,6 +836,7 @@ export class UsersService {
     await this.prisma.control().$transaction([
       ...temporaryPasswordWrites(this.prisma.control(), targetUserId, passwordHash, now),
     ]);
+    await this.mirrors.syncUserForLinkedTenants(targetUserId);
 
     await this.audit.log({
       action: 'user.password_reset',

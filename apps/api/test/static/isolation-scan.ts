@@ -34,7 +34,7 @@ export function tenantTables(): Set<string> {
 }
 
 /** Every raw SQL call of a file, parsed or not (the guard checks both counts match). */
-export const RAW_CALL = /\$(queryRaw|executeRaw)(Unsafe)?\b/g;
+export const RAW_CALL = /\$(queryRaw|executeRaw)(Unsafe)?(?=\s*(?:<|`|\())/g;
 
 /** Index of the closing quote, skipping escaped ones (\`). */
 function closing(source: string, quote: string, from: number): number {

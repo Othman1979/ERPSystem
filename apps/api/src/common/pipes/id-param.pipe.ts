@@ -5,7 +5,8 @@ import { ErrorCode } from '../errors/error-codes.js';
 /**
  * Route params that look like ids: `id`, or a name ending in `Id`
  * (`membershipId`, `lineId`, `itemId`). Every such param in the controllers is
- * a numeric id that the controller passes to BigInt().
+ * a numeric id that the controller passes to BigInt(). Invitation IDs may be
+ * tenant-qualified as `tenantId:membershipId`; their controller parses both.
  */
 const ID_PARAM_NAME = /^(id|[a-z][A-Za-z0-9]*Id)$/;
 
@@ -28,6 +29,13 @@ export class IdParamPipe implements PipeTransform {
     if (metadata.type !== 'param' || typeof value !== 'string') return value;
     if (!metadata.data || !ID_PARAM_NAME.test(metadata.data)) return value;
 
+    if (
+      metadata.data === 'membershipId' &&
+      value.split(':').length === 2 &&
+      value.split(':').every((part) => DECIMAL_ID.test(part) && BigInt(part) <= MAX_ID)
+    ) {
+      return value;
+    }
     if (!DECIMAL_ID.test(value) || BigInt(value) > MAX_ID) {
       throw new DomainError(ErrorCode.VALIDATION, 'Invalid id', { id: value.slice(0, 32) });
     }

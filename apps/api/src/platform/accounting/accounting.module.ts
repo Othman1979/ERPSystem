@@ -14,9 +14,10 @@ import { SettingsController } from './settings.controller.js';
 import { SettingsService } from './settings.service.js';
 import { YearClosingService } from './year-closing.service.js';
 import { YearClosingDraftRegistry } from './year-closing-draft.registry.js';
+import { CommonModule } from '../../common/common.module.js';
 
 @Module({
-  imports: [forwardRef(() => JournalModule)],
+  imports: [CommonModule, forwardRef(() => JournalModule)],
   controllers: [AccountingController, FiscalController, SettingsController, CompanyController, CompaniesController],
   providers: [
     CompaniesService,

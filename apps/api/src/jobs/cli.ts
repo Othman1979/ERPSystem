@@ -20,6 +20,9 @@ import { StockVerifyJobsModule } from './stock-verify-jobs.module.js';
 import { StockVerifyService } from './stock-verify.service.js';
 import { TenantPurgeService } from './tenant-purge.service.js';
 import { TenantStatusService } from './tenant-status.service.js';
+import { TenantDbPoolService } from '../platform/tenancy/tenant-db-pool.service.js';
+import { TenantMigrationService } from '../platform/tenancy/tenant-migration.service.js';
+import { TenantProvisioningService } from '../platform/tenancy/tenant-provisioning.service.js';
 
 /**
  * One-shot job runner: `node dist/jobs/cli.js <job> [args]`.
@@ -135,6 +138,67 @@ const JOBS: Record<string, Job> = {
       const id = at < 0 ? undefined : args[at + 1];
       if (at >= 0 && (!id || !/^\d+$/.test(id))) throw new Error('Usage: integrity-check [--tenant <tenantId>]');
       return app.get(IntegrityCheckService).run(id === undefined ? undefined : BigInt(id));
+    },
+  },
+  'db-pool-add': {
+    module: JobsModule,
+    run: async (app, args) => {
+      const hostAt = args.indexOf('--host');
+      const portAt = args.indexOf('--port');
+      const hostText = hostAt >= 0 ? args[hostAt + 1] : undefined;
+      const portText = portAt >= 0 ? args[portAt + 1] : undefined;
+      const values = new Set<number>();
+      if (hostAt >= 0) values.add(hostAt + 1);
+      if (portAt >= 0) values.add(portAt + 1);
+      const operands = args.filter((arg, index) => !arg.startsWith('--') && !values.has(index));
+      const database = operands[0];
+      const user = operands[1];
+      if (
+        operands.length !== 2 ||
+        !database ||
+        !user ||
+        (hostAt >= 0 && (!hostText || hostText.startsWith('--'))) ||
+        (portAt >= 0 && (!portText || portText.startsWith('--')))
+      ) {
+        throw new Error('Usage: db-pool-add <database> <user> [--host h] [--port p]');
+      }
+      if (portAt >= 0 && (!portText || !/^\d+$/.test(portText) || Number(portText) < 1 || Number(portText) > 65_535)) {
+        throw new Error('Usage: db-pool-add <database> <user> [--host h] [--port p]');
+      }
+      return app.get(TenantDbPoolService).add(
+        database,
+        user,
+        hostText,
+        portText ? Number(portText) : undefined,
+      );
+    },
+  },
+  'db-pool-fill': {
+    module: JobsModule,
+    run: async (app, args) => {
+      const at = args.indexOf('--count');
+      const countText = at >= 0 ? args[at + 1] : undefined;
+      if (at >= 0 && (!countText || !/^\d+$/.test(countText) || Number(countText) < 1)) {
+        throw new Error('Usage: db-pool-fill [--count n]');
+      }
+      return app.get(TenantDbPoolService).fill(countText ? Number(countText) : undefined);
+    },
+  },
+  'db-pool-status': { module: JobsModule, run: (app) => app.get(TenantDbPoolService).status() },
+  'migrate-all': {
+    module: JobsModule,
+    run: async (app, args) => {
+      const at = args.indexOf('--tenant');
+      const id = at < 0 ? undefined : args[at + 1];
+      if (at >= 0 && (!id || !/^\d+$/.test(id))) throw new Error('Usage: migrate-all [--tenant id]');
+      return app.get(TenantMigrationService).run(id === undefined ? undefined : BigInt(id));
+    },
+  },
+  'provision-resume': {
+    module: JobsModule,
+    run: async (app) => {
+      const result = await app.get(TenantProvisioningService).resumePending();
+      return { ...result, ok: result.failed === 0 };
     },
   },
 };

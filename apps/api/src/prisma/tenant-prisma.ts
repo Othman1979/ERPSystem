@@ -7,7 +7,8 @@ import { ErrorCode } from '../common/errors/error-codes.js';
 /**
  * Models whose rows belong to a tenant (docs/BUILD_PLAN.md §5.3).
  * Platform models (Tenant, User, Plan, Role, RolePermission, Currency,
- * Country, RefreshToken, ErrorEvent, TenantDatabase, UserTenant) are excluded.
+ * Country, RefreshToken, ErrorEvent, TenantDatabase, TenantDbPool, UserTenant)
+ * are excluded.
  * Subscription stays here so shared-mode tenant clients scope it by tenantId;
  * its authoritative rows are read explicitly from control().
  */

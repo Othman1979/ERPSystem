@@ -15,6 +15,7 @@ import { sealSecret } from '../../src/common/crypto/secret-box.js';
 import type { RequestContext } from '../../src/common/cls/cls.types.js';
 import { AuditService } from '../../src/common/audit/audit.service.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
+import { expectedSchemaVersion } from '../../src/prisma/schema-version.js';
 import { CompaniesService } from '../../src/platform/accounting/companies.service.js';
 import { ChartProvisioningService } from '../../src/platform/accounting/chart-provisioning.service.js';
 import { PasswordService } from '../../src/platform/auth/password.service.js';
@@ -137,6 +138,7 @@ async function provisionTenant(index: number, name: string, email: string): Prom
       databaseName: dbName,
       dbUser: decodeURIComponent(parsed.username),
       passwordSealed: sealSecret(decodeURIComponent(parsed.password), SECRET_KEY),
+      schemaVersion: expectedSchemaVersion(),
       state: 'ACTIVE',
     },
   });
@@ -180,6 +182,7 @@ beforeAll(async () => {
       DB_POOL_SIZE: 3,
       DB_POOL_ACQUIRE_TIMEOUT_MS: 10_000,
       TENANCY_MODE: 'isolated',
+      DB_PROVISIONER: 'pool',
       TENANT_DB_POOL_SIZE: 3,
       TENANT_DB_IDLE_MS: 600_000,
       TENANT_DB_MAX_POOLS: 50,
@@ -204,6 +207,7 @@ beforeAll(async () => {
       NODE_ENV: 'test',
       EINVOICE_WORKER: 'off',
       TENANCY_MODE: 'isolated',
+      DB_PROVISIONER: 'pool',
       TENANT_DB_SECRET_KEY: SECRET_KEY,
       TENANT_DB_STATE_TTL_MS: '1',
     },
@@ -299,13 +303,25 @@ describe('isolated tenant database routing', () => {
     expect(maintenance.status).toBe(503);
     expect(maintenance.body.error.code).toBe('TENANT_MAINTENANCE');
     expect((await request(BASE).get('/api/v1/me').set(authB)).status).toBe(200);
+    const beforeRegistration = {
+      users: await control!.client.user.count(),
+      tenants: await control!.client.tenant.count(),
+      subscriptions: await control!.client.subscription.count(),
+    };
     const signup = await request(BASE).post('/api/v1/auth/register').send({
       tenantName: 'Not ready',
       ownerName: 'New owner',
       email: `isolated-${RUN}@test.dev`,
       password: PASSWORD,
     });
-    expect(signup.status).toBe(409);
-    expect(signup.body.error.code).toBe('TENANCY_ISOLATED_NOT_READY');
+    expect(signup.status).toBe(503);
+    expect(signup.body.error.code).toBe('REGISTRATION_UNAVAILABLE');
+    expect(await control!.client.user.findUnique({ where: { email: `isolated-${RUN}@test.dev` } })).toBeNull();
+    expect(await control!.client.tenant.findFirst({ where: { name: 'Not ready' } })).toBeNull();
+    expect({
+      users: await control!.client.user.count(),
+      tenants: await control!.client.tenant.count(),
+      subscriptions: await control!.client.subscription.count(),
+    }).toEqual(beforeRegistration);
   });
 });

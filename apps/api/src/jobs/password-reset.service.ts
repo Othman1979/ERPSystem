@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PasswordService } from '../platform/auth/password.service.js';
 import { generateTemporaryPassword, temporaryPasswordWrites } from '../platform/auth/temporary-password.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TenantMirrorService } from '../platform/tenancy/tenant-mirror.service.js';
 
 export interface PasswordReset {
   email: string;
@@ -22,6 +23,7 @@ export class PasswordResetService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwords: PasswordService,
+    private readonly mirrors: TenantMirrorService,
   ) {}
 
   async run(email: string): Promise<PasswordReset> {
@@ -45,6 +47,7 @@ export class PasswordResetService {
         },
       }),
     ]);
+    await this.mirrors.syncUserForLinkedTenants(user.id);
     return { email: user.email, temporaryPassword, sessionsRevoked: revoked.count };
   }
 }

@@ -3,6 +3,7 @@ import { appendFile, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { postAlertWebhook } from '../common/alert-webhook.js';
 import type { Env } from '../common/config/env.validation.js';
 import { errorLine, type FallbackLine, readFallbackLog } from '../platform/monitoring/error-events.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -16,7 +17,6 @@ const STALE_OPEN_DAYS = 30;
 const LISTED = 10;
 /** Kinds listed from the fallback file in one alert. */
 const FALLBACK_LISTED = 5;
-const WEBHOOK_TIMEOUT_MS = 10_000;
 /** Longest alert text (Discord's limit is 2000 characters). */
 const TEXT_MAX = 1_900;
 
@@ -115,21 +115,8 @@ export class ErrorDigestService {
     if (!url) return { ...base, sent: false, reason: 'ALERT_WEBHOOK_URL is not set' };
 
     const text = this.compose(pending, fallback.lines, file, dbError);
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // `text` for Slack / Mattermost / Telegram, `content` for Discord.
-        body: JSON.stringify({ text, content: text }),
-        signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
-      });
-    } catch (err) {
-      // The URL is a secret: the message names the failure, not the address
-      // (the CLI prints messages only; the recorder ignores `cause`).
-      throw new Error(`Alert webhook unreachable: ${err instanceof Error ? err.name : 'error'}`, { cause: err });
-    }
-    if (!res.ok) throw new Error(`Alert webhook answered ${res.status}`);
+    // The URL is a secret; the shared helper reports only the failure kind.
+    await postAlertWebhook(url, text);
 
     // Marked only when the database answered: pending came from it.
     let reason: string | null = null;
