@@ -41,7 +41,7 @@ import {
 } from '../components/journalLineChecks';
 import { costCenterOptions, useCostCenters } from '../hooks/useCostCenters';
 import { amountCell, amountOrBlankCell } from '../format/cells';
-import { formatAmount } from '../format/number';
+import { formatAmount, formatMoney } from '../format/number';
 import { formatDate } from '../format/date';
 import { entryDescription } from '../i18n/entryDescription';
 import { codeAndName } from '../i18n/displayName';
@@ -340,7 +340,7 @@ export function OpeningBalancesPage() {
                 title: t('journal.debit'),
                 dataIndex: 'totalDebit',
                 width: 140,
-                align: 'right',
+                align: 'right', className: 'num',
                 render: amountCell,
               },
             ]}
@@ -418,8 +418,8 @@ export function OpeningBalancesPage() {
                 dataIndex: 'description',
                 render: (v: string | null) => v ?? '—',
               },
-              { title: t('journal.debit'), dataIndex: 'debit', width: 130, align: 'right', render: amountOrBlankCell },
-              { title: t('journal.credit'), dataIndex: 'credit', width: 130, align: 'right', render: amountOrBlankCell },
+              { title: t('journal.debit'), dataIndex: 'debit', width: 130, align: 'right', className: 'num', render: amountOrBlankCell },
+              { title: t('journal.credit'), dataIndex: 'credit', width: 130, align: 'right', className: 'num', render: amountOrBlankCell },
             ]}
             summary={() => (
               <Table.Summary.Row style={{ fontWeight: 600 }}>
@@ -427,10 +427,10 @@ export function OpeningBalancesPage() {
                   {t('journal.total')}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">
-                  {entry ? <Num>{formatAmount(entry.totalDebit)}</Num> : ''}
+                  {entry ? <Num>{formatMoney(entry.totalDebit, t)}</Num> : ''}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={2} align="right">
-                  {entry ? <Num>{formatAmount(entry.totalCredit)}</Num> : ''}
+                  {entry ? <Num>{formatMoney(entry.totalCredit, t)}</Num> : ''}
                 </Table.Summary.Cell>
               </Table.Summary.Row>
             )}

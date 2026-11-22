@@ -807,6 +807,14 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
+.num {
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: end;
+  white-space: nowrap;
+}
+
 /* List tables: neutral blue-gray header bar, framed body */
 .ant-table-wrapper .ant-table-container {
   border: 1px solid var(--c-grid-frame);
@@ -1038,7 +1046,7 @@ textarea:focus-visible,
   padding: 12px;
   background: var(--c-panel);
   border: 1px solid var(--c-grid-frame);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius);
 }
 
 .responsive-table-card[role='button'] {

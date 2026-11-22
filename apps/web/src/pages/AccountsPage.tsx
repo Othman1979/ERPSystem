@@ -1,3 +1,4 @@
+import { ActiveTag } from '../components/StatusTag';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -279,21 +280,21 @@ export function AccountsPage() {
           {
             title: t('accounts.debit'),
             width: 110,
-            align: 'right',
+            align: 'right', className: 'num',
             render: (_: unknown, a: Account) =>
               trialError ? '—' : amountCell((a as TreeNode).balDebit),
           },
           {
             title: t('accounts.credit'),
             width: 110,
-            align: 'right',
+            align: 'right', className: 'num',
             render: (_: unknown, a: Account) =>
               trialError ? '—' : amountCell((a as TreeNode).balCredit),
           },
           {
             title: t('accounts.balance'),
             width: 120,
-            align: 'right',
+            align: 'right', className: 'num',
             render: (_: unknown, a: Account) => {
               if (trialError) return '—';
               const debitSide = debitBalance(a as TreeNode);
@@ -311,15 +312,10 @@ export function AccountsPage() {
             title: t('common.status'),
             dataIndex: 'isActive',
             width: 90,
-            render: (v: boolean) =>
-              v ? (
-                <Tag color="green">{t('common.active')}</Tag>
-              ) : (
-                <Tag>{t('common.inactive')}</Tag>
-              ),
+            render: (v: boolean) => <ActiveTag active={v} />,
           },
           {
-            title: t('common.actions'),
+            title: t('common.actions'), key: 'actions',
             width: 230,
             render: (_: unknown, a: Account) => (
               <Space>

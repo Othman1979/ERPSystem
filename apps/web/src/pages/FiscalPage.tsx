@@ -216,7 +216,7 @@ export function FiscalPage() {
             render: (_: unknown, y: FiscalYear) => y._count.periods,
           },
           {
-            title: '',
+            title: t('common.actions'), key: 'actions',
             width: 150,
             render: (_: unknown, y: FiscalYear) => {
               const closedByYear = Boolean(y.activeClosing);
@@ -450,7 +450,7 @@ function YearDetailPanel({
                   width: 150,
                 },
                 {
-                  title: t('common.actions'),
+                  title: t('common.actions'), key: 'actions',
                   width: 110,
                   render: (_: unknown, p: FiscalPeriod) =>
                     p.status === 'OPEN' ? (

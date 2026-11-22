@@ -10,7 +10,7 @@ import { ListToolbar } from '../../components/ListToolbar';
 import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
 import { amountCell, qtyCell } from '../../format/cells';
-import { formatAmount } from '../../format/number';
+import { formatMoney } from '../../format/number';
 import { bothNames, codeAndName } from '../../i18n/displayName';
 
 /**
@@ -44,8 +44,8 @@ export function ItemBalancesTab({
   const pair = (key: 'opening' | 'in' | 'out' | 'closing', title: string) => ({
     title,
     children: [
-      { title: t('reports.qty'), dataIndex: `${key}Qty`, align: 'right' as const, width: 90, render: qtyCell },
-      { title: t('reports.value'), dataIndex: `${key}Value`, align: 'right' as const, width: 110, render: amountCell },
+      { title: t('reports.qty'), dataIndex: `${key}Qty`, align: 'right' as const, className: 'num', width: 90, render: qtyCell },
+      { title: t('reports.value'), dataIndex: `${key}Value`, align: 'right' as const, className: 'num', width: 110, render: amountCell },
     ],
   });
 
@@ -103,7 +103,7 @@ export function ItemBalancesTab({
               {(['openingValue', 'inValue', 'outValue', 'closingValue'] as const).map((k, i) => [
                 <Table.Summary.Cell key={`${k}-q`} index={1 + i * 2} />,
                 <Table.Summary.Cell key={k} index={2 + i * 2} align="right">
-                  <Num>{formatAmount(data.totals[k])}</Num>
+                  <Num>{formatMoney(data.totals[k], t)}</Num>
                 </Table.Summary.Cell>,
               ])}
             </Table.Summary.Row>

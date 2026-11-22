@@ -9,10 +9,10 @@ import { ApiError } from '@erp/api-client';
 import i18n from '../i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-// jsdom has no matchMedia; antd's responsive hooks ask for it.
-window.matchMedia ??= (query: string) =>
+// These interaction tests exercise the desktop table view.
+window.matchMedia = (query: string) =>
   ({
-    matches: false,
+    matches: query.includes('min-width: 768px'),
     media: query,
     onchange: null,
     addListener: () => {},

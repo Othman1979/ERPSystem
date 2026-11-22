@@ -66,7 +66,6 @@ import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
-import { formatDate } from '../format/date';
 import { dec } from '../format/number';
 import {
   convertBody,
@@ -667,7 +666,7 @@ function QuoteForm({
               ),
             },
             {
-              title: '',
+              title: t('common.actions'), key: 'actions',
               width: 60,
               render: (_: unknown, l: DraftLine) => (
                 <Button

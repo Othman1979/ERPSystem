@@ -3,10 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Num } from './Num';
 
 describe('Num', () => {
-  it('renders the value as an isolated LTR run', () => {
+  it('uses the shared numeric styling for the value', () => {
     const html = renderToStaticMarkup(<Num>-200.000</Num>);
-    expect(html).toContain('dir="ltr"');
-    expect(html).toContain('unicode-bidi:isolate');
+    expect(html).toContain('class="num"');
     expect(html).toContain('-200.000');
   });
 });

@@ -14,6 +14,7 @@ import {
   buildPaymentSourceOptions,
   buildSettingsPayload,
   employeeEditDateValues,
+  employeeBranchColumnVisible,
   formatPayrollDate,
   monthToPayrollPeriod,
   PayrollPage,
@@ -173,6 +174,15 @@ const run = {
     net: '100.000',
   }],
 };
+
+it('hides the employee branch column when the company has one branch', () => {
+  expect(employeeBranchColumnVisible(['الفرع الرئيسي'], [{ branchNameAr: 'الفرع الرئيسي', branchNameEn: 'Main branch' }])).toBe(false);
+});
+
+it('shows the employee branch column when an employee is on another (inactive) branch', () => {
+  expect(employeeBranchColumnVisible(['الفرع الرئيسي'], [{ branchNameAr: 'فرع العقبة', branchNameEn: null }])).toBe(true);
+  expect(employeeBranchColumnVisible(['أ', 'ب'], [{ branchNameAr: null, branchNameEn: null }])).toBe(false);
+});
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;

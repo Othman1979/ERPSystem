@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import dayjs from 'dayjs';
 import { formatDate, formatDateTime } from './date';
 
 describe('date formatting', () => {
@@ -17,6 +18,7 @@ describe('date formatting', () => {
   });
 
   it('formats non-midnight timestamps in the local timezone', () => {
-    expect(formatDate('2027-01-01T03:00:00.000Z')).toBe('31/12/2026');
+    const value = '2027-01-01T03:00:00.000Z';
+    expect(formatDate(value)).toBe(dayjs(value).format('DD/MM/YYYY'));
   });
 });

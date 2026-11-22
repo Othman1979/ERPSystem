@@ -1,3 +1,4 @@
+import { ActiveTag } from '../components/StatusTag';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -7,7 +8,6 @@ import {
   Popconfirm,
   Space,
   Table,
-  Tag,
   Typography,
   message,
 } from 'antd';
@@ -115,10 +115,10 @@ export function BranchesPage() {
             title: t('common.status'),
             dataIndex: 'isActive',
             render: (v: boolean) =>
-              v ? <Tag color="green">{t('common.active')}</Tag> : <Tag>{t('common.inactive')}</Tag>,
+              <ActiveTag active={v} />,
           },
           {
-            title: t('common.actions'),
+            title: t('common.actions'), key: 'actions',
             render: (_: unknown, b: Branch) => (
               <Space>
                 <Button size="small" onClick={() => openEdit(b)}>

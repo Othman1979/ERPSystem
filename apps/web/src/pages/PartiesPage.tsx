@@ -1,3 +1,4 @@
+import { ActiveTag } from '../components/StatusTag';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PlusOutlined } from '@ant-design/icons';
 import {
@@ -19,6 +20,7 @@ import {
   type PartyDto,
 } from '@erp/api-client';
 import { PageHeader } from '../components/PageHeader';
+import { EmptyCta } from '../components/EmptyCta';
 import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
@@ -123,17 +125,17 @@ export function PartiesPage() {
       title: t('parties.creditLimit'),
       dataIndex: 'creditLimit',
       width: 120,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       render: amountCell,
     },
     {
       title: t('common.status'),
       dataIndex: 'isActive',
       width: 100,
-      render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? t('common.active') : t('common.inactive')}</Tag>,
+      render: (v: boolean) => <ActiveTag active={v} />,
     },
     {
-      title: '',
+      title: t('common.actions'), key: 'actions',
       width: 170,
       render: (_: unknown, p: Party) => actions(p),
     },
@@ -171,7 +173,18 @@ export function PartiesPage() {
         rowKey="id"
         loading={isLoading}
         dataSource={list.rows}
-        locale={tableLocale(partiesQuery)}
+        locale={tableLocale(
+          partiesQuery,
+          list.search.trim() || typeFilter
+            ? t('common.noResults')
+            : (
+                <EmptyCta
+                  description={t('common.emptyCta.party')}
+                  actionLabel={t('common.add')}
+                  onClick={openCreate}
+                />
+              ),
+        )}
         columns={columns}
         size="small"
         pagination={list.pagination}
@@ -180,11 +193,7 @@ export function PartiesPage() {
           title: (party) => displayName(party),
           subtitle: (party) => `${t('parties.code')}: ${party.code}`,
           amount: (party) => amountCell(party.creditLimit),
-          status: (party) => (
-            <Tag color={party.isActive ? 'green' : 'default'}>
-              {party.isActive ? t('common.active') : t('common.inactive')}
-            </Tag>
-          ),
+          status: (party) => <ActiveTag active={party.isActive} />,
           meta: (party) => [
             <span>{t('parties.type')}: {t(`parties.type_${party.partyType}`)}</span>,
             ...(party.phone ? [<span>{t('parties.phone')}: {party.phone}</span>] : []),

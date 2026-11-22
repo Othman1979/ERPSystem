@@ -48,6 +48,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { emptyCtaForList, EmptyCta } from '../components/EmptyCta';
 import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
@@ -102,7 +103,6 @@ import {
 import { idemHeaders } from '../idempotency';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
-import { formatDate } from '../format/date';
 import { dec, formatAmount } from '../format/number';
 import { invalidateStockDocument } from '../stockQueries';
 import {
@@ -401,14 +401,14 @@ function InvoicesTab() {
       sorter: true,
       sortOrder: list.sortOrderOf('grandTotal'),
       width: 120,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       render: amountCell,
     },
     {
       title: t('sales.paid'),
       dataIndex: 'paidAmount',
       width: 110,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       render: amountCell,
     },
     {
@@ -519,7 +519,21 @@ function InvoicesTab() {
         rowKey="id"
         loading={isLoading}
         dataSource={list.rows}
-        locale={tableLocale(invoicesQuery)}
+        locale={tableLocale(
+          invoicesQuery,
+          emptyCtaForList(
+            Boolean(list.search.trim() || statusFilter || paymentFilter),
+            t('common.noResults'),
+            <EmptyCta
+              description={t('common.emptyCta.salesInvoice')}
+              actionLabel={t('sales.newInvoice')}
+              onClick={() => {
+                setInvoiceId(null);
+                setScreen('form');
+              }}
+            />,
+          ),
+        )}
         columns={columns}
         size="small"
         pagination={list.pagination}
@@ -1327,18 +1341,18 @@ function InvoiceView({
               </Space>
             ),
           },
-          { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'right' as const, render: qtyCell },
-          { title: t('sales.unitPrice'), dataIndex: 'unitPrice', width: 110, align: 'right' as const, render: unitCostCell },
+          { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'right' as const, className: 'num', render: qtyCell },
+          { title: t('sales.unitPrice'), dataIndex: 'unitPrice', width: 110, align: 'right' as const, className: 'num', render: unitCostCell },
           { title: t('sales.discountPct'), dataIndex: 'discountPct', width: 90, align: 'right' as const },
-          { title: t('sales.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, render: amountCell },
-          { title: t('sales.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
-          { title: t('sales.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
+          { title: t('sales.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, className: 'num', render: amountCell },
+          { title: t('sales.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, className: 'num', render: amountCell },
+          { title: t('sales.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, className: 'num', render: amountCell },
           // The cost of a posted line (ADR-032 §12): a draft has none yet.
           ...(isDraft
             ? []
             : [
-                { title: t('sales.recipe.unitCost'), dataIndex: 'unitCost', width: 110, align: 'right' as const, render: unitCostCell },
-                { title: t('sales.recipe.lineCost'), dataIndex: 'costTotal', width: 110, align: 'right' as const, render: amountCell },
+                { title: t('sales.recipe.unitCost'), dataIndex: 'unitCost', width: 110, align: 'right' as const, className: 'num', render: unitCostCell },
+                { title: t('sales.recipe.lineCost'), dataIndex: 'costTotal', width: 110, align: 'right' as const, className: 'num', render: amountCell },
               ]),
         ]}
       />
@@ -1448,7 +1462,7 @@ function ReturnsTab() {
       sorter: true,
       sortOrder: list.sortOrderOf('grandTotal'),
       width: 120,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       render: amountCell,
     },
     {
@@ -1460,7 +1474,7 @@ function ReturnsTab() {
       ),
     },
     {
-      title: '',
+      title: t('common.actions'), key: 'actions',
       width: 200,
       render: (_: unknown, r: SalesReturnListItemDto) => (
         <Space>
@@ -1559,8 +1573,8 @@ function ReturnsTab() {
                     render: (_: unknown, l: ReturnLine) =>
                       l.item ? codeAndName(l.item) : l.itemId,
                   },
-                  { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'right' as const, render: qtyCell },
-                  { title: t('sales.total'), dataIndex: 'lineTotal', width: 120, align: 'right' as const, render: amountCell },
+                  { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'right' as const, className: 'num', render: qtyCell },
+                  { title: t('sales.total'), dataIndex: 'lineTotal', width: 120, align: 'right' as const, className: 'num', render: amountCell },
                 ]}
                scroll={{ x: 'max-content' }}/>
               <EInvoiceQrPanel einvoice={view.einvoice} />
@@ -1812,7 +1826,7 @@ function ReturnForm({
               title: t('stock.qty'),
               dataIndex: 'qtyBase',
               width: 100,
-              align: 'right' as const,
+              align: 'right' as const, className: 'num',
               render: qtyCell,
             },
             {
@@ -1834,7 +1848,7 @@ function ReturnForm({
               title: t('sales.total'),
               dataIndex: 'lineTotal',
               width: 110,
-              align: 'right' as const,
+              align: 'right' as const, className: 'num',
               render: amountCell,
             },
           ]}

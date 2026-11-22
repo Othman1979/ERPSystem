@@ -1,3 +1,4 @@
+import { ActiveTag } from '../components/StatusTag';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BankOutlined, PlusOutlined, SaveOutlined, WalletOutlined } from '@ant-design/icons';
 import {
@@ -66,6 +67,7 @@ import {
 import { FormDialog, FormSection } from '../components/FormDialog';
 import { PartyFormDialog } from '../components/PartyFormDialog';
 import { PageHeader } from '../components/PageHeader';
+import { EmptyCta } from '../components/EmptyCta';
 import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
@@ -85,7 +87,6 @@ import { AmendVoucherButton } from './treasury/AmendVoucherDialog';
 import { enterTo, focusNamedField, GridSelect } from '../components/GridSelect';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { amountCell } from '../format/cells';
-import { formatDate } from '../format/date';
 import { dec, formatAmount, sum } from '../format/number';
 import { usePagedQuery, type Page } from '../hooks/usePagedQuery';
 import { PICKER_PAGE_SIZE, useRemoteOptions } from '../hooks/useRemoteOptions';
@@ -333,10 +334,10 @@ function CashBoxesTab() {
       title: t('common.status'),
       dataIndex: 'isActive',
       width: 100,
-      render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? t('common.active') : t('common.inactive')}</Tag>,
+      render: (v: boolean) => <ActiveTag active={v} />,
     },
     {
-      title: '',
+      title: t('common.actions'), key: 'actions',
       width: 170,
       render: (_: unknown, b: CashBox) => (
         <Space>
@@ -492,10 +493,10 @@ function BankAccountsTab() {
       title: t('common.status'),
       dataIndex: 'isActive',
       width: 100,
-      render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? t('common.active') : t('common.inactive')}</Tag>,
+      render: (v: boolean) => <ActiveTag active={v} />,
     },
     {
-      title: '',
+      title: t('common.actions'), key: 'actions',
       width: 170,
       render: (_: unknown, b: BankAccount) => (
         <Space>
@@ -702,7 +703,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
       sorter: true,
       sortOrder: list.sortOrderOf('amount'),
       width: 120,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       render: amountCell,
     },
     { title: t('common.description'), dataIndex: 'description', ellipsis: true },
@@ -717,7 +718,7 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
         ),
     },
     {
-      title: '',
+      title: t('common.actions'), key: 'actions',
       width: 90,
       render: (_: unknown, v: Voucher) => <Button size="small" onClick={() => setViewId(v.id)}>{t('common.view')}</Button>,
     },
@@ -854,9 +855,9 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
                     render: (_: unknown, a: TreasuryAllocationDto) =>
                       `${t(`treasury.doc_${a.documentType}`, { defaultValue: a.documentType })} #${a.documentId}`,
                   },
-                  { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'right' as const, render: amountCell },
+                  { title: t('treasury.amount'), dataIndex: 'amount', width: 120, align: 'right' as const, className: 'num', render: amountCell },
                   {
-                    title: '',
+                    title: t('common.actions'), key: 'actions',
                     render: (_: unknown, a: TreasuryAllocationDto) =>
                       a.cancelledAt ? (
                         <Tag>{t('treasury.cancelled')}</Tag>
@@ -907,7 +908,18 @@ function VouchersTab({ kind }: { kind: 'receipt' | 'payment' }) {
         rowKey="id"
         loading={vouchersQuery.isLoading}
         dataSource={list.rows}
-        locale={tableLocale(vouchersQuery)}
+        locale={tableLocale(
+          vouchersQuery,
+          list.search.trim()
+            ? t('common.noResults')
+            : (
+                <EmptyCta
+                  description={t(kind === 'receipt' ? 'common.emptyCta.receipt' : 'common.emptyCta.payment')}
+                  actionLabel={kind === 'receipt' ? t('treasury.newReceipt') : t('treasury.newPayment')}
+                  onClick={() => setModalOpen(true)}
+                />
+              ),
+        )}
         columns={columns}
         size="small"
         pagination={list.pagination}
@@ -1411,7 +1423,7 @@ function VoucherForm({
                 ),
               },
               {
-                title: '',
+                title: t('common.actions'), key: 'actions',
                 width: 50,
                 render: (_: unknown, _a: unknown, idx: number) => (
                   <Button

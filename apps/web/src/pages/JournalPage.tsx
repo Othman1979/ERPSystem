@@ -84,6 +84,7 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { EmptyCta } from '../components/EmptyCta';
 import { ResponsiveTable } from '../components/ResponsiveTable';
 import { queryErrorMessage, tableLocale } from '../components/QueryState';
 import { ListToolbar } from '../components/ListToolbar';
@@ -95,8 +96,7 @@ import { entryDescription } from '../i18n/entryDescription';
 import { formatDate } from '../format/date';
 import { Num } from '../components/Num';
 import { amountCell, amountOrBlankCell } from '../format/cells';
-import { formatDate } from '../format/date';
-import { formatAmount } from '../format/number';
+import { formatMoney } from '../format/number';
 
 type JournalEntry = JournalEntryDetailDto;
 
@@ -566,7 +566,18 @@ export function JournalPage() {
           rowKey="id"
           loading={list.query.isLoading}
           dataSource={list.rows}
-          locale={tableLocale(list.query)}
+          locale={tableLocale(
+            list.query,
+            list.search.trim() || statusFilter || typeFilter
+              ? t('common.noResults')
+              : (
+                  <EmptyCta
+                    description={t('common.emptyCta.journal')}
+                    actionLabel={t('journal.newEntry')}
+                    onClick={() => openNew()}
+                  />
+                ),
+          )}
           pagination={list.pagination}
           onChange={list.onTableChange}
           onRow={(e) => ({ onClick: () => openEntry(e.id), style: { cursor: 'pointer' } })}
@@ -575,7 +586,7 @@ export function JournalPage() {
             subtitle: (entry) => (
               <>
                 {formatDate(entry.entryDate)}
-                {entry.description ? ` · ${entry.description}` : ''}
+                {entryDescription(t, entry) ? ` · ${entryDescription(t, entry)}` : ''}
               </>
             ),
             amount: (entry) => amountCell(entry.totalDebit),
@@ -654,11 +665,11 @@ export function JournalPage() {
               title: t('journal.debit'),
               dataIndex: 'totalDebit',
               width: 110,
-              align: 'right',
+              align: 'right', className: 'num',
               render: amountCell,
             },
             {
-              title: t('common.actions'),
+              title: t('common.actions'), key: 'actions',
               width: 160,
               render: (_: unknown, e: JournalEntryListItemDto) => (
                 <Space onClick={(ev) => ev.stopPropagation()}>
@@ -948,14 +959,14 @@ export function JournalPage() {
                 title: t('journal.debit'),
                 dataIndex: 'debit',
                 width: 130,
-                align: 'right',
+                align: 'right', className: 'num',
                 render: amountOrBlankCell,
               },
               {
                 title: t('journal.credit'),
                 dataIndex: 'credit',
                 width: 130,
-                align: 'right',
+                align: 'right', className: 'num',
                 render: amountOrBlankCell,
               },
             ]}
@@ -965,10 +976,10 @@ export function JournalPage() {
                   {t('journal.total')}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={1} align="right">
-                  {entry ? <Num>{formatAmount(entry.totalDebit)}</Num> : ''}
+                  {entry ? <Num>{formatMoney(entry.totalDebit, t)}</Num> : ''}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={2} align="right">
-                  {entry ? <Num>{formatAmount(entry.totalCredit)}</Num> : ''}
+                  {entry ? <Num>{formatMoney(entry.totalCredit, t)}</Num> : ''}
                 </Table.Summary.Cell>
               </Table.Summary.Row>
             )}

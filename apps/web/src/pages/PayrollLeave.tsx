@@ -120,7 +120,7 @@ function RequestsTab() {
       { title: t('payroll.to'), dataIndex: 'endDate', render: (value: string) => datePickerValue(value)?.format('DD/MM/YYYY') },
       { title: t('payroll.leaveDays'), dataIndex: 'days', render: (value: string) => value },
       { title: t('payroll.status'), dataIndex: 'status', render: (value: string) => <Tag>{t(`payroll.${value.toLowerCase()}`)}</Tag> },
-      { title: '', render: (_: unknown, row) => row.status === 'SUBMITTED' && can(PERMISSIONS.PAYROLL_LEAVE_APPROVE) ? <Space>
+      { title: t('common.actions'), key: 'actions', render: (_: unknown, row) => row.status === 'SUBMITTED' && can(PERMISSIONS.PAYROLL_LEAVE_APPROVE) ? <Space>
         <Button onClick={() => action.mutate({ id: row.id, action: 'approve' })}>{t('payroll.approveLeave')}</Button>
         <Button onClick={() => action.mutate({ id: row.id, action: 'reject' })}>{t('payroll.rejectLeave')}</Button>
       </Space> : row.status === 'APPROVED' && can(PERMISSIONS.PAYROLL_LEAVE_APPROVE)
@@ -283,8 +283,8 @@ export function LeaveSettingsPanel() {
         { title: t('payroll.from'), dataIndex: 'date', render: (value: string) => datePickerValue(value)?.format('DD/MM/YYYY') },
         { title: t('payroll.nameAr'), dataIndex: 'nameAr' },
         { title: t('payroll.nameEn'), dataIndex: 'nameEn' },
-        { title: '', render: (_: unknown, row: { id: string }) => can(PERMISSIONS.PAYROLL_MANAGE) && <Button danger icon={<DeleteOutlined />} onClick={() => deleteHoliday.mutate(row.id)} /> },
-      ]}  scroll={{ x: 'max-content' }}/>
+        { title: t('common.actions'), key: 'actions', render: (_: unknown, row: { id: string }) => can(PERMISSIONS.PAYROLL_MANAGE) && <Button danger icon={<DeleteOutlined />} onClick={() => deleteHoliday.mutate(row.id)} /> },
+      ]} scroll={{ x: 'max-content' }} />
     </FormSection>
     <FormSection title={t('payroll.leaveTypes')}>
       <Table rowKey="id" dataSource={types.data} columns={[
@@ -292,8 +292,8 @@ export function LeaveSettingsPanel() {
         { title: t('payroll.leaveTypes'), render: (_: unknown, row: LeaveTypeResponseDto) => typeName(row, i18n.language) },
         { title: t('payroll.leaveCategory'), dataIndex: 'category', render: (value: string) => t(`payroll.category${value}`) },
         { title: t('payroll.countBasis'), dataIndex: 'countBasis', render: (value: string) => t(`payroll.${value === 'WORKING_DAYS' ? 'workingDays' : 'calendarBasis'}`) },
-        { title: '', render: (_: unknown, row: LeaveTypeResponseDto) => can(PERMISSIONS.PAYROLL_MANAGE) && <Button onClick={() => openType(row)}>{t('payroll.editElement')}</Button> },
-      ]}  scroll={{ x: 'max-content' }}/>
+        { title: t('common.actions'), key: 'actions', render: (_: unknown, row: LeaveTypeResponseDto) => can(PERMISSIONS.PAYROLL_MANAGE) && <Button onClick={() => openType(row)}>{t('payroll.editElement')}</Button> },
+      ]} scroll={{ x: 'max-content' }} />
     </FormSection>
     <FormDialog open={holidayOpen} title={t('payroll.addHoliday')} onCancel={() => setHolidayOpen(false)} onSave={() => void holidayForm.submit()} saving={saveHoliday.isPending}>
       <Form form={holidayForm} layout="vertical" onFinish={(values) => saveHoliday.mutate(values)}>

@@ -64,7 +64,6 @@ import { useNewFromUrl } from '../useNewFromUrl';
 import { idemHeaders } from '../idempotency';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
-import { formatDate } from '../format/date';
 import { invalidateSalesCycle, salesCycleKeys } from './sales/cycleQueryKeys';
 import { apiErrorText as errorText } from '../components/ExportButtons';
 import { CustomerFilter } from './sales/CustomerFilter';

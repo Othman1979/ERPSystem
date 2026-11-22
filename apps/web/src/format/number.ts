@@ -1,5 +1,7 @@
 import Decimal from 'decimal.js';
 
+type CurrencyTranslator = (key: 'currency.JOD') => string;
+
 /**
  * Display formatting for money and quantities (BUILD_PLAN §16):
  * Western digits, thousands separators, 3 decimals for the dinar.
@@ -60,6 +62,12 @@ function format(v: NumericInput, min: number, max: number, empty: string): strin
 
 /** Money: always 3 decimals — "1,234.500". */
 export const formatAmount = (v: NumericInput, empty = EMPTY) => format(v, 3, 3, empty);
+
+/** Money with the company's base currency label (JOD). */
+export function formatMoney(v: NumericInput, t: CurrencyTranslator): string {
+  const amount = formatAmount(v);
+  return amount === EMPTY ? amount : `${amount} ${t('currency.JOD')}`;
+}
 
 /** Quantity: up to 6 decimals, trailing zeros trimmed — "134", "1.5", "0.0005". */
 export const formatQty = (v: NumericInput, empty = EMPTY) => format(v, 0, 6, empty);

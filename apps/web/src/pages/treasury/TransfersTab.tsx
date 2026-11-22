@@ -126,7 +126,7 @@ export function TransfersTab({ cashAccounts }: { cashAccounts: { value: string; 
               ),
           },
           {
-            title: '',
+            title: t('common.actions'), key: 'actions',
             width: 90,
             render: (_: unknown, r: Transfer) =>
               r.reversedAt ? null : (

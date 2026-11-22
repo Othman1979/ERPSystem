@@ -59,7 +59,6 @@ import { useNewFromUrl } from '../useNewFromUrl';
 import { idemHeaders } from '../idempotency';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
-import { formatDate } from '../format/date';
 import { dec, formatAmount } from '../format/number';
 import {
   approvalHint,

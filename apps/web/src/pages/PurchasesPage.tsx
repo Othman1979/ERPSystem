@@ -44,6 +44,7 @@ import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
 import { ListToolbar } from '../components/ListToolbar';
+import { EmptyCta } from '../components/EmptyCta';
 import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { LIVE_REFRESH_MS, PICKER_FRESH_MS, refetchIfOlderThan } from '../liveRefresh';
@@ -96,7 +97,6 @@ import { purchaseInvoiceBody, purchaseInvoiceFormDefaults } from './purchases/in
 import { purchaseReturnBody } from './purchases/returnPayload';
 import { codeAndName, displayName } from '../i18n/displayName';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
-import { formatDate } from '../format/date';
 import { dec, formatAmount } from '../format/number';
 import { invalidateStockDocument } from '../stockQueries';
 
@@ -343,14 +343,14 @@ function PurchaseInvoicesTab() {
       sorter: true,
       sortOrder: list.sortOrderOf('grandTotal'),
       width: 120,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       render: amountCell,
     },
     {
       title: t('purchases.paid'),
       dataIndex: 'paidAmount',
       width: 110,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       render: amountCell,
     },
     {
@@ -454,7 +454,21 @@ function PurchaseInvoicesTab() {
         rowKey="id"
         loading={list.query.isLoading}
         dataSource={list.rows}
-        locale={tableLocale(list.query)}
+        locale={tableLocale(
+          list.query,
+          list.search.trim() || statusFilter || paymentFilter
+            ? t('common.noResults')
+            : (
+                <EmptyCta
+                  description={t('common.emptyCta.purchaseInvoice')}
+                  actionLabel={t('purchases.newInvoice')}
+                  onClick={() => {
+                    setInvoiceId(null);
+                    setScreen('form');
+                  }}
+                />
+              ),
+        )}
         columns={columns}
         size="small"
         pagination={list.pagination}
@@ -1207,12 +1221,12 @@ function PurchaseInvoiceView({
             render: (_: unknown, l: InvoiceLine) =>
               l.item ? codeAndName(l.item) : l.itemId,
           },
-          { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'right' as const, render: qtyCell },
-          { title: t('purchases.unitCost'), dataIndex: 'unitCost', width: 110, align: 'right' as const, render: unitCostCell },
+          { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'right' as const, className: 'num', render: qtyCell },
+          { title: t('purchases.unitCost'), dataIndex: 'unitCost', width: 110, align: 'right' as const, className: 'num', render: unitCostCell },
           { title: t('purchases.discountPct'), dataIndex: 'discountPct', width: 90, align: 'right' as const },
-          { title: t('purchases.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, render: amountCell },
-          { title: t('purchases.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, render: amountCell },
-          { title: t('purchases.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, render: amountCell },
+          { title: t('purchases.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, className: 'num', render: amountCell },
+          { title: t('purchases.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, className: 'num', render: amountCell },
+          { title: t('purchases.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, className: 'num', render: amountCell },
         ]}
        scroll={{ x: 'max-content' }}/>
     </DocLayout>
@@ -1318,7 +1332,7 @@ function PurchaseReturnsTab() {
       sorter: true,
       sortOrder: list.sortOrderOf('grandTotal'),
       width: 120,
-      align: 'right' as const,
+      align: 'right' as const, className: 'num',
       render: amountCell,
     },
     {
@@ -1330,7 +1344,7 @@ function PurchaseReturnsTab() {
       ),
     },
     {
-      title: '',
+      title: t('common.actions'), key: 'actions',
       width: 200,
       render: (_: unknown, r: PurchaseReturnListItemDto) => (
         <Space>
@@ -1425,8 +1439,8 @@ function PurchaseReturnsTab() {
                     render: (_: unknown, l: ReturnLine) =>
                       l.item ? codeAndName(l.item) : l.itemId,
                   },
-                  { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'right' as const, render: qtyCell },
-                  { title: t('purchases.total'), dataIndex: 'lineTotal', width: 120, align: 'right' as const, render: amountCell },
+                  { title: t('stock.qty'), dataIndex: 'qtyBase', width: 100, align: 'right' as const, className: 'num', render: qtyCell },
+                  { title: t('purchases.total'), dataIndex: 'lineTotal', width: 120, align: 'right' as const, className: 'num', render: amountCell },
                 ]}
                scroll={{ x: 'max-content' }}/>
             </>
@@ -1675,7 +1689,7 @@ function PurchaseReturnForm({
               title: t('stock.qty'),
               dataIndex: 'qtyBase',
               width: 100,
-              align: 'right' as const,
+              align: 'right' as const, className: 'num',
               render: qtyCell,
             },
             {
@@ -1697,7 +1711,7 @@ function PurchaseReturnForm({
               title: t('purchases.total'),
               dataIndex: 'lineTotal',
               width: 110,
-              align: 'right' as const,
+              align: 'right' as const, className: 'num',
               render: amountCell,
             },
           ]}

@@ -16,7 +16,7 @@ import { ListToolbar } from '../../components/ListToolbar';
 import { tableLocale } from '../../components/QueryState';
 import { Num } from '../../components/Num';
 import { amountCell, qtyCell } from '../../format/cells';
-import { formatAmount, formatQty } from '../../format/number';
+import { formatMoney, formatQty } from '../../format/number';
 import { codeAndName } from '../../i18n/displayName';
 import { isoDay, PeriodMeta, PeriodPickers, ScreenPrintButton } from './PeriodFilters';
 
@@ -93,13 +93,13 @@ export function TradeSummaryTab({ kind, initial }: { kind: Kind; initial?: Trade
     title,
     dataIndex: field,
     width: 130,
-    align: 'right' as const,
+    align: 'right' as const, className: 'num',
     render: amountCell,
   });
   const columns = [
     { title: groupTitles[shown], key: 'group', render: (_: unknown, r: TradeRow) => groupCell(r) },
     ...(byItem
-      ? [{ title: t('reports.qty'), dataIndex: 'qty', width: 110, align: 'right' as const, render: qtyCell }]
+      ? [{ title: t('reports.qty'), dataIndex: 'qty', width: 110, align: 'right' as const, className: 'num', render: qtyCell }]
       : [
           { title: t('reports.invoiceCount'), dataIndex: 'invoiceCount', width: 80, align: 'right' as const },
           { title: t('reports.returnCount'), dataIndex: 'returnCount', width: 80, align: 'right' as const },
@@ -116,8 +116,8 @@ export function TradeSummaryTab({ kind, initial }: { kind: Kind; initial?: Trade
         ...(byItem
           ? [<Num key="qty">{formatQty(totals.qty)}</Num>]
           : [<Num key="ic">{totals.invoiceCount ?? 0}</Num>, <Num key="rc">{totals.returnCount ?? 0}</Num>]),
-        ...(['net', 'tax', 'grand'] as const).map((f) => <Num key={f}>{formatAmount(totals[f])}</Num>),
-        ...(sales ? (['cost', 'margin'] as const).map((f) => <Num key={f}>{formatAmount(totals[f])}</Num>) : []),
+        ...(['net', 'tax', 'grand'] as const).map((f) => <Num key={f}>{formatMoney(totals[f], t)}</Num>),
+        ...(sales ? (['cost', 'margin'] as const).map((f) => <Num key={f}>{formatMoney(totals[f], t)}</Num>) : []),
       ]
     : [];
 

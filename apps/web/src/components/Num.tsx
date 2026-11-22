@@ -7,7 +7,7 @@ import type { CSSProperties, ReactNode } from 'react';
  */
 export function Num({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
-    <span dir="ltr" style={{ unicodeBidi: 'isolate', ...style }}>
+    <span className="num" style={style}>
       {children}
     </span>
   );

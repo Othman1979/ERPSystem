@@ -490,7 +490,7 @@ export function GoodsNotesSection({
                 ),
             },
             {
-              title: '',
+              title: t('common.actions'), key: 'actions',
               width: 200,
               render: (_: unknown, r: GoodsNote) => (
                 <Space onClick={(ev) => ev.stopPropagation()}>

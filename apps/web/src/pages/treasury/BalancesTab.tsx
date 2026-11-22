@@ -10,7 +10,7 @@ import {
 import { Num } from '../../components/Num';
 import { tableLocale } from '../../components/QueryState';
 import { amountCell } from '../../format/cells';
-import { formatAmount } from '../../format/number';
+import { formatMoney } from '../../format/number';
 import { codeAndName } from '../../i18n/displayName';
 import { useAuth } from '../../auth/AuthContext';
 import { LIVE_REFRESH_MS } from '../../liveRefresh';
@@ -54,9 +54,10 @@ export function BalancesTab() {
         },
         { title: t('treasury.name'), dataIndex: 'name' },
         { title: t('treasury.linkedAccount'), render: (_: unknown, r: BalanceRow) => codeAndName(r.account) },
-        { title: t('treasury.balance'), dataIndex: 'balance', width: 150, align: 'right' as const, render: amountCell },
+        { title: t('treasury.balance'), dataIndex: 'balance', width: 150, align: 'right' as const, className: 'num', render: amountCell },
         {
-          title: '',
+          title: t('common.actions'),
+          key: 'actions',
           width: 110,
           render: (_: unknown, r: BalanceRow) =>
             allBranches && (
@@ -73,7 +74,7 @@ export function BalancesTab() {
           </Table.Summary.Cell>
           <Table.Summary.Cell index={1} align="right">
             <Typography.Text strong>
-              <Num>{formatAmount(data?.total)}</Num>
+              <Num>{formatMoney(data?.total, t)}</Num>
             </Typography.Text>
           </Table.Summary.Cell>
           <Table.Summary.Cell index={2} />
