@@ -781,7 +781,7 @@ export const ar = {
       accruedLeaveProvision: 'مخصص إجازات متراكم',
       endOfServiceProvisionExpense: 'مصروف مخصص نهاية الخدمة',
       endOfServiceProvision: 'مخصص نهاية الخدمة المستحق',
-      stockRevaluation: 'إعادة تقييم المخزون (ADR-018)',
+      stockRevaluation: 'إعادة تقييم المخزون',
     },
     newEntry: 'قيد جديد',
     entryNo: 'رقم القيد',

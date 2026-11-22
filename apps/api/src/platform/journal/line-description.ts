@@ -63,7 +63,7 @@ export const LINE_DESCRIPTIONS: Record<string, { ar: string; en: string }> = {
     en: 'End-of-service provision',
   },
   'journal.line.stockRevaluation': {
-    ar: 'إعادة تقييم المخزون (ADR-018)',
+    ar: 'إعادة تقييم المخزون',
     en: 'Stock revaluation (ADR-018)',
   },
 };
