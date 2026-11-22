@@ -1964,14 +1964,21 @@ describe('Late leave review regressions', () => {
 
   it('includes entitlement, requests, and adjustments from every annual leave type in provision', async () => {
     const token = tokenA;
-    const company = { id: companyAId };
+    const company = h.ok(
+      await h.api().post('/api/v1/companies').set(h.auth(token)).send({ legalNameAr: `Annual provision ${RUN}` }),
+      201,
+      'annual provision company',
+    ) as { id: string };
     const branch = (h.ok(await get(token, 'branches', company.id), 200, 'annual provision branch') as { id: string }[])[0]!;
+    const costCenter = await post<{ id: string }>(token, 'cost-centers', {
+      code: `ANNUAL-${RUN}`, nameAr: 'Annual provision',
+    }, 'annual provision cost center', company.id);
     h.ok(await h.api().post('/api/v1/fiscal-years').set(h.auth(token)).set('X-Company-Id', company.id).send({
       code: 'FY2044', startDate: '2044-01-01', endDate: '2044-12-31',
     }), 201, 'create annual provision fiscal year');
     const employee = await post<{ id: string }>(token, 'payroll/employees', {
       code: `ANNUAL-${RUN}`, nameAr: 'Annual provision employee', hireDate: '2044-01-01', payMethod: 'CASH',
-      branchId: branch.id, costCenterId, sscCovered: false,
+      branchId: branch.id, costCenterId: costCenter.id, sscCovered: false,
     }, 'annual provision employee', company.id);
     await post(token, `payroll/employees/${employee.id}/salaries`, {
       effectiveFrom: '2044-01-01', basicSalary: '600.000',
