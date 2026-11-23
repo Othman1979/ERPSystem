@@ -1872,14 +1872,29 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     if (new Set(saleIds.map(String)).size !== saleIds.length) {
       throw new DomainError(ErrorCode.VALIDATION, 'A temporary-receipt sale may appear only once on an invoice');
     }
-    const sales = await db.consignmentSale.findMany({
-      where: { companyId, id: { in: saleIds } },
-    });
+    const sales = await db.$queryRaw<{
+      id: bigint;
+      supplier_id: bigint;
+      warehouse_id: bigint;
+      item_id: bigint;
+      source_branch_id: bigint | null;
+    }[]>`
+      SELECT s.id, s.supplier_id, s.warehouse_id, s.item_id,
+             CASE WHEN s.source_type = 'SALES_INVOICE' THEN si.branch_id ELSE w.branch_id END AS source_branch_id
+        FROM consignment_sales s
+        JOIN warehouses w
+          ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+        LEFT JOIN sales_invoices si
+          ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id
+         AND si.company_id = s.company_id AND si.id = s.source_id
+       WHERE s.tenant_id = ${tenantId} AND s.company_id = ${companyId}
+         AND s.id IN (${Prisma.join(saleIds)})`;
     const saleById = new Map(sales.map((sale) => [sale.id, sale]));
     const lines = dto.lines.map((line) => {
       const sale = saleById.get(BigInt(line.consignmentSaleId!));
       if (!sale) throw DomainError.notFound('ConsignmentSale', line.consignmentSaleId!);
-      if (sale.supplierId !== BigInt(dto.supplierId) || sale.warehouseId !== BigInt(dto.warehouseId!)) {
+      assertBranchAllowed(sale.source_branch_id);
+      if (sale.supplier_id !== BigInt(dto.supplierId) || sale.warehouse_id !== BigInt(dto.warehouseId!)) {
         throw new DomainError(ErrorCode.VALIDATION, 'Supplier and warehouse must match the referenced temporary-receipt sale');
       }
       if (!line.unitPrice || new Decimal(line.unitPrice).lte(0)) {
@@ -1887,7 +1902,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       }
       return {
         ...line,
-        itemId: sale.itemId.toString(),
+        itemId: sale.item_id.toString(),
         itemUnitId: undefined,
         unitCost: line.unitPrice,
       };

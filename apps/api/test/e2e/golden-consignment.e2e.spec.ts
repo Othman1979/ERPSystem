@@ -1375,19 +1375,39 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
     await expectSuccess(aging, 200, 'branch-restricted aging');
     expect((aging.body as { item: { id: string } }[]).some((row) => row.item.id === branchItem.id)).toBe(false);
 
-    const crossBranchDraft = await api().post('/api/v1/purchase-invoices').set(auth(restricted.token)).send({
+    const crossBranchBody = {
       invoiceDate: '2025-05-03',
       supplierId,
       warehouseId: sharedWarehouse.id,
       paymentType: 'CREDIT',
       consignmentSettlement: true,
       lines: [{ consignmentSaleId: String(sale[0]!.id), qty: '1', unitPrice: '10.000', taxCategoryId: taxId }],
-    });
-    expect(crossBranchDraft.status).toBe(201);
-    const crossBranchPost = await post(restricted.token, `purchase-invoices/${crossBranchDraft.body.id}/post`);
+    };
+    const crossBranchCreate = await api()
+      .post('/api/v1/purchase-invoices')
+      .set(auth(restricted.token))
+      .set('X-Branch-Id', branchX)
+      .send(crossBranchBody);
+    expect(crossBranchCreate.status).toBe(403);
+    expect(crossBranchCreate.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+
+    const crossBranchDraft = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/purchase-invoices').set(auth(token)).set('X-Branch-Id', branchX).send(crossBranchBody),
+      201,
+      'create cross-branch settlement draft as all-branch user',
+    );
+    const crossBranchUpdate = await api()
+      .put(`/api/v1/purchase-invoices/${crossBranchDraft.id}`)
+      .set(auth(restricted.token))
+      .set('X-Branch-Id', branchX)
+      .send(crossBranchBody);
+    expect(crossBranchUpdate.status).toBe(403);
+    expect(crossBranchUpdate.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+
+    const crossBranchPost = await post(restricted.token, `purchase-invoices/${crossBranchDraft.id}/post`);
     expect(crossBranchPost.status).toBe(403);
     expect(crossBranchPost.body.error.code).toBe('BRANCH_NOT_ALLOWED');
-    expect((await api().delete(`/api/v1/purchase-invoices/${crossBranchDraft.body.id}`).set(auth(restricted.token))).status).toBe(200);
+    expect((await api().delete(`/api/v1/purchase-invoices/${crossBranchDraft.id}`).set(auth(token))).status).toBe(200);
 
     const linkedSupplier = await expectSuccess<{ id: string }>(
       await api().post('/api/v1/parties').set(auth(token)).send({
