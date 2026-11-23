@@ -410,6 +410,11 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     );
     const staleSupplierPost = await post(token, `goods-notes/${supplierDraft.id}/post`);
     expect(staleSupplierPost.body.error.code).toBe('CONSIGNMENT_WAREHOUSE_NOT_ALLOWED');
+    await expectSuccess(
+      await api().delete(`/api/v1/goods-notes/${supplierDraft.id}`).set(auth(token)),
+      200,
+      'delete stale supplier receipt draft',
+    );
     const changeSupplier = await api().patch(`/api/v1/warehouses/${warehouse}`).set(auth(token)).send({
       consignmentSupplierId: secondSupplier,
     });
