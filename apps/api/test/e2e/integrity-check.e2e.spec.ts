@@ -4,8 +4,7 @@
  *  - an orphan party reference in one tenant fails that tenant's run (exit 1);
  *  - another tenant's run is not affected by it (--tenant isolation);
  *  - a malformed --tenant is a usage error.
- * Real MariaDB (erp_test) + built API. Run `pnpm build` before `pnpm test`.
- * Other suites share erp_test, so every run is scoped with --tenant.
+ * Real MariaDB test schema + built API. Run `pnpm build` before `pnpm test`.
  */
 import 'dotenv/config';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
@@ -125,7 +124,7 @@ afterAll(async () => {
   await db?.end();
 });
 
-describe('Integrity check job — references and collation (erp_test)', () => {
+describe('Integrity check job — references and collation', () => {
   let tenantA = { token: '', tenantId: '' };
   let tenantB = { token: '', tenantId: '' };
 
@@ -159,6 +158,69 @@ describe('Integrity check job — references and collation (erp_test)', () => {
     expect(r.checks.map((c) => c.name)).toEqual(CHECKS);
     for (const c of r.checks) expect(c).toMatchObject({ ok: true, count: 0 });
     expect(check(r, 'collation')).toMatchObject({ ok: true, count: 0 });
+
+    const supplier = await api().post('/api/v1/parties').set(auth(tenantA.token)).send({
+      code: `ICS-${RUN}`,
+      nameAr: 'مورد فحص التكامل',
+      partyType: 'SUPPLIER',
+    });
+    expect(supplier.status).toBe(201);
+    const enabled = await api().patch('/api/v1/company').set(auth(tenantA.token)).send({ consignmentEnabled: true });
+    expect(enabled.status).toBe(200);
+    const warehouse = await api().post('/api/v1/warehouses').set(auth(tenantA.token)).send({
+      code: `ICWH-${RUN}`,
+      nameAr: 'مستودع فحص التكامل',
+      consignmentSupplierId: supplier.body.id,
+    });
+    expect(warehouse.status).toBe(201);
+    const units = await api().get('/api/v1/units').set(auth(tenantA.token));
+    const pieceId = (units.body as { id: string; code: string }[]).find((unit) => unit.code === 'PCS')!.id;
+    const item = await api().post('/api/v1/items').set(auth(tenantA.token)).send({
+      code: `ICIT-${RUN}`,
+      nameAr: 'صنف فحص التكامل',
+      baseUnitId: pieceId,
+    });
+    expect(item.status).toBe(201);
+    const receipt = await api().post('/api/v1/goods-notes').set(auth(tenantA.token)).send({
+      noteDate: new Date().toISOString().slice(0, 10),
+      noteType: 'CONSIGNMENT_IN',
+      warehouseId: warehouse.body.id,
+      lines: [{ itemId: item.body.id, qty: '2' }],
+    });
+    expect(receipt.status).toBe(201);
+    const postedReceipt = await api()
+      .post(`/api/v1/goods-notes/${receipt.body.id}/post`)
+      .set(auth(tenantA.token))
+      .set('Idempotency-Key', `IC-${RUN}-IN`);
+    expect(postedReceipt.status).toBe(201);
+    const supplierReturn = await api().post('/api/v1/goods-notes').set(auth(tenantA.token)).send({
+      noteDate: new Date().toISOString().slice(0, 10),
+      noteType: 'CONSIGNMENT_OUT',
+      warehouseId: warehouse.body.id,
+      lines: [{ itemId: item.body.id, qty: '1' }],
+    });
+    expect(supplierReturn.status).toBe(201);
+    const postedSupplierReturn = await api()
+      .post(`/api/v1/goods-notes/${supplierReturn.body.id}/post`)
+      .set(auth(tenantA.token))
+      .set('Idempotency-Key', `IC-${RUN}-OUT`);
+    expect(postedSupplierReturn.status).toBe(201);
+    for (const [noteType, noteId] of [
+      ['CONSIGNMENT_IN', receipt.body.id],
+      ['CONSIGNMENT_OUT', supplierReturn.body.id],
+    ]) {
+      await db.query(
+        `UPDATE journal_entries SET source_type = ?, source_id = ?
+          WHERE tenant_id = ? AND id = ?`,
+        [noteType, noteId, tenantA.tenantId, draft.body.id],
+      );
+      const consignmentRun = await cli(['--tenant', tenantA.tenantId]);
+      expect(consignmentRun.code).toBe(0);
+      const consignmentReport = report(consignmentRun.stdout);
+      expect(check(consignmentReport, 'journal_entries.source')).toMatchObject({ ok: true, count: 0 });
+      expect(check(consignmentReport, 'stock_movements.source')).toMatchObject({ ok: true, count: 0 });
+      expect(check(consignmentReport, 'stock_movements.source_line')).toMatchObject({ ok: true, count: 0 });
+    }
   }, 60_000);
 
   it('an orphan party reference fails the tenant that has it', async () => {
