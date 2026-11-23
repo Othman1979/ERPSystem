@@ -197,6 +197,7 @@ export class ConsignmentService {
          WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId} AND i.status = 'POSTED'
            AND i.consignment_settlement = 1 AND i.invoice_date >= ${range.gte} AND i.invoice_date <= ${range.lte}
            AND s.supplier_id = ${supplierId}
+           AND ${branchSql(Prisma.raw('i.branch_id'))}
            AND ${branchSql(Prisma.raw('w.branch_id'))} AND ${sourceBranchScope()}
          GROUP BY s.item_id`,
       db.$queryRaw<{ item_id: bigint; qty: Prisma.Decimal }[]>`
@@ -204,12 +205,15 @@ export class ConsignmentService {
           FROM purchase_return_lines l
           JOIN purchase_returns r ON r.tenant_id = l.tenant_id AND r.id = l.return_id
           JOIN purchase_invoice_lines il ON il.tenant_id = l.tenant_id AND il.id = l.original_line_id
+          JOIN purchase_invoices i ON i.tenant_id = il.tenant_id AND i.id = il.invoice_id
           JOIN consignment_sales s ON s.tenant_id = il.tenant_id AND s.id = il.consignment_sale_id
           JOIN warehouses w ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
           LEFT JOIN sales_invoices si ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
          WHERE r.tenant_id = ${tenantId} AND r.company_id = ${companyId} AND r.status = 'POSTED'
+           AND i.company_id = ${companyId} AND i.status = 'POSTED' AND i.consignment_settlement = 1
            AND r.return_date >= ${range.gte} AND r.return_date <= ${range.lte}
            AND s.supplier_id = ${supplierId}
+           AND ${branchSql(Prisma.raw('i.branch_id'))}
            AND ${branchSql(Prisma.raw('w.branch_id'))} AND ${sourceBranchScope()}
          GROUP BY s.item_id`,
     ]);

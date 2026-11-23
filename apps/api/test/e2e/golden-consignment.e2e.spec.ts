@@ -1286,7 +1286,7 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
         noteType: 'CONSIGNMENT_IN',
         warehouseId: sharedWarehouse.id,
         supplierId,
-        lines: [{ itemId: branchItem.id, qty: '2', unitCost: '5.000' }],
+        lines: [{ itemId: branchItem.id, qty: '4', unitCost: '5.000' }],
       }),
       201,
       'create branch-Y receipt',
@@ -1341,6 +1341,68 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
     expect(firstPage.body).toMatchObject({ page: 1, pageSize: 1, total: 2 });
     expect(secondPage.body).toMatchObject({ page: 2, pageSize: 1, total: 2 });
     expect(firstPage.body.items[0].id).not.toBe(secondPage.body.items[0].id);
+    const visibleInvoice = await expectSuccess<{ id: string; lines: { id: string }[] }>(
+      await api().post('/api/v1/sales-invoices').set(auth(token)).set('X-Branch-Id', branchX).send({
+        invoiceDate: '2025-05-02',
+        customerId,
+        warehouseId: sharedWarehouse.id,
+        paymentType: 'CASH',
+        cashAccountId,
+        lines: [{ itemId: branchItem.id, qty: '2', unitPrice: '10.000' }],
+      }),
+      201,
+      'create branch-X sale',
+    );
+    await expectSuccess(await post(token, `sales-invoices/${visibleInvoice.id}/post`), 201, 'post branch-X sale');
+    const visibleSale = (await db.query(
+      `SELECT id FROM consignment_sales
+        WHERE tenant_id = ? AND company_id = ? AND source_type = 'SALES_INVOICE' AND source_line_id = ?`,
+      [tenantId, companyId, visibleInvoice.lines[0]!.id],
+    )) as { id: bigint }[];
+    expect(visibleSale).toHaveLength(1);
+    const visibleSaleId = String(visibleSale[0]!.id);
+    const createBranchYSettlement = async (suffix: string) => {
+      const settlement = await expectSuccess<{ id: string; lines: { id: string }[] }>(
+        await api().post('/api/v1/purchase-invoices').set(auth(token)).set('X-Branch-Id', branchY).send({
+          invoiceDate: '2025-05-03',
+          supplierId,
+          warehouseId: sharedWarehouse.id,
+          paymentType: 'CREDIT',
+          consignmentSettlement: true,
+          lines: [{ consignmentSaleId: visibleSaleId, qty: '1', unitPrice: '10.000', taxCategoryId: taxId }],
+        }),
+        201,
+        `create branch-Y settlement ${suffix}`,
+      );
+      await expectSuccess(
+        await api()
+          .post(`/api/v1/purchase-invoices/${settlement.id}/post`)
+          .set(auth(token))
+          .set('X-Branch-Id', branchY)
+          .set('Idempotency-Key', `TR-${RUN}-branch-settlement-${suffix}`)
+          .send(),
+        201,
+        `post branch-Y settlement ${suffix}`,
+      );
+      return settlement;
+    };
+    await createBranchYSettlement('one');
+    const settlementWithReturn = await createBranchYSettlement('two');
+    const settlementReturn = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/purchase-returns').set(auth(token)).send({
+        returnDate: '2025-05-04',
+        originalInvoiceId: settlementWithReturn.id,
+        refundType: 'CREDIT',
+        lines: [{ originalLineId: settlementWithReturn.lines[0]!.id, qty: '1' }],
+      }),
+      201,
+      'create branch-Y settlement return',
+    );
+    await expectSuccess(
+      await post(token, `purchase-returns/${settlementReturn.id}/post`),
+      201,
+      'post branch-Y settlement return',
+    );
     const restricted = await addMember(BASE, token, {
       email: `tr-branch-${RUN}@test.dev`,
       roleCode: 'OWNER',
@@ -1362,12 +1424,17 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
     expect((openSales.body.items as { id: string }[]).some((row) => row.id === String(sale[0]!.id))).toBe(false);
 
     const statement = await api()
-      .get(`/api/v1/reports/consignment-statement?supplierId=${supplierId}&from=2025-05-01&to=2025-05-02`)
+      .get(`/api/v1/reports/consignment-statement?supplierId=${supplierId}&from=2025-05-01&to=2025-05-05`)
       .set(auth(restricted.token));
     await expectSuccess(statement, 200, 'branch-restricted statement');
-    const statementItem = (statement.body as { item: { id: string }; soldNetOfReturnsQty: string; openQty: string }[])
+    const statementItem = (statement.body as {
+      item: { id: string };
+      soldNetOfReturnsQty: string;
+      invoicedQty: string;
+      openQty: string;
+    }[])
       .find((row) => row.item.id === branchItem.id);
-    expect(statementItem).toMatchObject({ soldNetOfReturnsQty: '0', openQty: '0' });
+    expect(statementItem).toMatchObject({ soldNetOfReturnsQty: '2', invoicedQty: '0', openQty: '2' });
 
     const aging = await api()
       .get(`/api/v1/reports/consignment-aging?supplierId=${supplierId}`)
