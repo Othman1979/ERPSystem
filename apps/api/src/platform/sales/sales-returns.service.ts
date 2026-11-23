@@ -557,20 +557,16 @@ export class SalesReturnsService {
           companyId,
           draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
         );
-        const consignmentReturnValueByLine = new Map<bigint, Decimal>();
         if (consignmentSupplierId !== null) {
           const originalLineIds = [...new Set(draft.lines.map((line) => line.originalLineId))];
           const sales = await tx.$queryRaw<{
             id: bigint;
             source_line_id: bigint;
             qty: Prisma.Decimal;
-            value: Prisma.Decimal;
             returned_qty: Prisma.Decimal;
-            returned_value: Prisma.Decimal;
             invoiced_qty: Prisma.Decimal;
-            invoiced_value: Prisma.Decimal;
           }[]>`
-            SELECT id, source_line_id, qty, value, returned_qty, returned_value, invoiced_qty, invoiced_value
+            SELECT id, source_line_id, qty, returned_qty, invoiced_qty
               FROM consignment_sales
              WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
                AND source_type = 'SALES_INVOICE'
@@ -582,11 +578,8 @@ export class SalesReturnsService {
               {
                 id: sale.id,
                 qty: sale.qty,
-                value: sale.value,
                 returnedQty: sale.returned_qty,
-                returnedValue: sale.returned_value,
                 invoicedQty: sale.invoiced_qty,
-                invoicedValue: sale.invoiced_value,
               },
             ]),
           );
@@ -603,19 +596,9 @@ export class SalesReturnsService {
                 'The returned quantity exceeds the unsold-to-supplier quantity',
               );
             }
-            const openValue = new Decimal(sale.value.toString())
-              .minus(sale.returnedValue.toString())
-              .minus(sale.invoicedValue.toString());
-            const returnValue = line.qtyBase.eq(openQty)
-              ? openValue
-              : round3(openValue.times(line.qtyBase).div(openQty));
-            consignmentReturnValueByLine.set(line.id, returnValue);
             await tx.consignmentSale.update({
               where: { id: sale.id },
-              data: {
-                returnedQty: { increment: line.qtyBase },
-                returnedValue: { increment: returnValue },
-              },
+              data: { returnedQty: { increment: line.qtyBase } },
             });
           }
         }
@@ -631,7 +614,7 @@ export class SalesReturnsService {
             movementDate: returnDate,
             type: 'IN',
             qty: line.qtyBase.toString(),
-            unitCost: line.unitCost?.toString(),
+            unitCost: consignmentSupplierId !== null ? '0' : line.unitCost?.toString(),
             sourceType: SOURCE,
             sourceId: draft.id,
             sourceLineId: line.id,
@@ -640,15 +623,17 @@ export class SalesReturnsService {
           costTotal = costTotal.plus(res.totalCost);
           writeOff = writeOff.plus(res.writeOff);
         }
+        if (consignmentSupplierId !== null && (!costTotal.isZero() || !writeOff.isZero())) {
+          throw new DomainError(ErrorCode.INTERNAL, 'Temporary-warehouse returns must have zero cost');
+        }
 
         const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
           'SALES_RETURNS',
           'OUTPUT_TAX',
-          'COGS',
           'CUSTOMERS_CONTROL',
-          ...(consignmentSupplierId !== null
-            ? (['CONSIGNMENT_PAYABLE'] as const)
-            : (['INVENTORY', 'INVENTORY_ADJUSTMENT'] as const)),
+          ...(consignmentSupplierId === null
+            ? (['COGS', 'INVENTORY', 'INVENTORY_ADJUSTMENT'] as const)
+            : []),
           ...(!invoiceDiscountNetTotal.isZero() ? ['SALES_DISCOUNTS' as const] : []),
         ]);
 
@@ -690,11 +675,8 @@ export class SalesReturnsService {
           });
         }
         if (consignmentSupplierId !== null) {
-          const consignmentReturnValue = sum([...consignmentReturnValueByLine.values()]);
-          costTotal = consignmentReturnValue;
-          if (consignmentReturnValue.gt(0)) {
-            journalLines.push({ accountId: mapping.CONSIGNMENT_PAYABLE, debit: consignmentReturnValue.toString() });
-            journalLines.push({ accountId: mapping.COGS, credit: consignmentReturnValue.toString() });
+          if (!costTotal.isZero() || !writeOff.isZero()) {
+            throw new DomainError(ErrorCode.INTERNAL, 'Temporary-warehouse returns must have zero cost');
           }
         } else {
           if (costTotal.gt(0)) {

@@ -332,7 +332,7 @@ export class PurchaseReturnsService {
         if (consignmentSupplierId !== null && !invoice.consignmentSettlement) {
           throw new DomainError(
             ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
-            'Direct purchase returns cannot use a consignment warehouse',
+            'Direct purchase returns cannot use a temporary warehouse',
           );
         }
       }
@@ -443,7 +443,6 @@ export class PurchaseReturnsService {
                     netAmount: true,
                     qtyBase: true,
                     consignmentSaleId: true,
-                    consignmentClearedValue: true,
                   },
                 },
               },
@@ -471,7 +470,6 @@ export class PurchaseReturnsService {
                 lineNo: true,
                 qtyBase: true,
                 consignmentSaleId: true,
-                consignmentClearedValue: true,
               },
             },
           },
@@ -483,7 +481,7 @@ export class PurchaseReturnsService {
         if (consignmentSupplierId !== null && !original?.consignmentSettlement) {
           throw new DomainError(
             ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
-            'Direct purchase returns cannot use a consignment warehouse',
+            'Direct purchase returns cannot use a temporary warehouse',
           );
         }
         assertBranchAllowed(original?.branchId);
@@ -530,18 +528,19 @@ export class PurchaseReturnsService {
                 draft.lines.map((l) => ({ itemId: l.itemId, warehouseId })),
               );
         assertNoStockWithoutWarehouse(warehouseId, stockItems);
-        let consignmentClearedTotal = new Decimal(0);
+        let salesNetReturn = new Decimal(0);
+        let shortageNetReturn = new Decimal(0);
         if (isConsignmentSettlement) {
           if (warehouseId === null) {
-            throw new DomainError(ErrorCode.VALIDATION, 'A consignment settlement return requires its warehouse');
+            throw new DomainError(ErrorCode.VALIDATION, 'A temporary-receipt settlement return requires its warehouse');
           }
           const supplierId = await this.ledger.consignmentSupplierOf(tx, companyId, warehouseId);
           if (supplierId === null || supplierId !== draft.supplierId) {
-            throw new DomainError(ErrorCode.VALIDATION, 'The return supplier must match the consignment warehouse supplier');
+            throw new DomainError(ErrorCode.VALIDATION, 'The return supplier must match the temporary warehouse supplier');
           }
           const saleIds = draft.lines.map((line) => line.originalLine.consignmentSaleId);
           if (saleIds.some((saleId) => saleId === null)) {
-            throw new DomainError(ErrorCode.VALIDATION, 'Settlement invoice lines must reference a consignment sale');
+            throw new DomainError(ErrorCode.VALIDATION, 'Settlement invoice lines must reference a temporary-receipt sale');
           }
           const uniqueSaleIds = [...new Set(saleIds as bigint[])];
           const sales = await tx.$queryRaw<{
@@ -549,15 +548,10 @@ export class PurchaseReturnsService {
             supplier_id: bigint;
             warehouse_id: bigint;
             item_id: bigint;
-            qty: Prisma.Decimal;
-            value: Prisma.Decimal;
-            returned_qty: Prisma.Decimal;
-            returned_value: Prisma.Decimal;
+            source_type: 'SALES_INVOICE' | 'STOCK_COUNT';
             invoiced_qty: Prisma.Decimal;
-            invoiced_value: Prisma.Decimal;
           }[]>`
-            SELECT id, supplier_id, warehouse_id, item_id, qty, value,
-                   returned_qty, returned_value, invoiced_qty, invoiced_value
+            SELECT id, supplier_id, warehouse_id, item_id, source_type, invoiced_qty
               FROM consignment_sales
              WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
              AND id IN (${Prisma.join(uniqueSaleIds)})
@@ -570,12 +564,8 @@ export class PurchaseReturnsService {
                 supplierId: sale.supplier_id,
                 warehouseId: sale.warehouse_id,
                 itemId: sale.item_id,
-                qty: sale.qty,
-                value: sale.value,
-                returnedQty: sale.returned_qty,
-                returnedValue: sale.returned_value,
+                sourceType: sale.source_type,
                 invoicedQty: sale.invoiced_qty,
-                invoicedValue: sale.invoiced_value,
               },
             ]),
           );
@@ -587,33 +577,22 @@ export class PurchaseReturnsService {
               !sale ||
               sale.supplierId !== draft.supplierId ||
               sale.warehouseId !== warehouseId ||
-              sale.itemId !== line.itemId ||
-              originalLine.consignmentClearedValue === null
+              sale.itemId !== line.itemId
             ) {
-              throw new DomainError(ErrorCode.VALIDATION, 'Settlement return line does not match its consignment sale');
+              throw new DomainError(ErrorCode.VALIDATION, 'Settlement return line does not match its temporary-receipt sale');
             }
-            const invoiceLineValue = new Decimal(originalLine.consignmentClearedValue.toString());
-            const invoiceQty = new Decimal(originalLine.qtyBase.toString());
-            const priorQty = postedByLine.get(line.originalLineId)?.qtyBase ?? new Decimal(0);
-            const returnedAfter = priorQty.plus(line.qtyBase.toString());
-            const clearedBefore = priorQty.eq(invoiceQty)
-              ? invoiceLineValue
-              : round3(invoiceLineValue.times(priorQty).div(invoiceQty));
-            const clearedAfter = returnedAfter.eq(invoiceQty)
-              ? invoiceLineValue
-              : round3(invoiceLineValue.times(returnedAfter).div(invoiceQty));
-            const cleared = clearedAfter.minus(clearedBefore);
-            if (cleared.gt(sale.invoicedValue) || line.qtyBase.gt(sale.invoicedQty)) {
-              throw new DomainError(ErrorCode.VALIDATION, 'Settlement return exceeds the invoiced consignment value or quantity');
+            if (line.qtyBase.gt(sale.invoicedQty)) {
+              throw new DomainError(ErrorCode.VALIDATION, 'Settlement return exceeds the invoiced temporary-receipt quantity');
             }
             await tx.consignmentSale.update({
               where: { id: sale.id },
-              data: {
-                invoicedQty: { decrement: line.qtyBase },
-                invoicedValue: { decrement: cleared },
-              },
+              data: { invoicedQty: { decrement: line.qtyBase } },
             });
-            consignmentClearedTotal = consignmentClearedTotal.plus(cleared);
+            if (sale.sourceType === 'SALES_INVOICE') {
+              salesNetReturn = salesNetReturn.plus(line.netAmount.toString());
+            } else {
+              shortageNetReturn = shortageNetReturn.plus(line.netAmount.toString());
+            }
           }
         }
 
@@ -675,13 +654,9 @@ export class PurchaseReturnsService {
         }
 
         const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
-          'INVENTORY',
-          'INVENTORY_ADJUSTMENT',
-          'PURCHASES',
-          'INPUT_TAX',
-          'SUPPLIERS_CONTROL',
-          'CONSIGNMENT_PAYABLE',
-          'COGS',
+          ...(isConsignmentSettlement
+            ? (['INPUT_TAX', 'SUPPLIERS_CONTROL', 'COGS', 'CONSIGNMENT_SHRINKAGE'] as const)
+            : (['INVENTORY', 'INVENTORY_ADJUSTMENT', 'PURCHASES', 'INPUT_TAX', 'SUPPLIERS_CONTROL', 'COGS'] as const)),
         ]);
 
         const journalLines: JournalLineInput[] = [];
@@ -704,14 +679,14 @@ export class PurchaseReturnsService {
           });
         }
         if (isConsignmentSettlement) {
-          if (consignmentClearedTotal.gt(0)) {
-            journalLines.push({ accountId: mapping.CONSIGNMENT_PAYABLE, credit: consignmentClearedTotal.toString() });
+          if (salesNetReturn.gt(0)) {
+            journalLines.push({ accountId: mapping.COGS, credit: salesNetReturn.toString() });
           }
-          const difference = draft.netTotal.minus(consignmentClearedTotal);
-          if (difference.gt(0)) {
-            journalLines.push({ accountId: mapping.COGS, credit: difference.toString() });
-          } else if (difference.lt(0)) {
-            journalLines.push({ accountId: mapping.COGS, debit: difference.abs().toString() });
+          if (shortageNetReturn.gt(0)) {
+            journalLines.push({ accountId: mapping.CONSIGNMENT_SHRINKAGE, credit: shortageNetReturn.toString() });
+          }
+          if (tax.gt(0)) {
+            journalLines.push({ accountId: mapping.INPUT_TAX, credit: tax.toString() });
           }
         } else if (stockNet.gt(0)) {
           journalLines.push({ accountId: mapping.INVENTORY, credit: stockNet.toString() });
@@ -733,7 +708,7 @@ export class PurchaseReturnsService {
         if (!isConsignmentSettlement && serviceNet.gt(0)) {
           journalLines.push({ accountId: mapping.PURCHASES, credit: serviceNet.toString() });
         }
-        if (tax.gt(0)) {
+        if (!isConsignmentSettlement && tax.gt(0)) {
           journalLines.push({ accountId: mapping.INPUT_TAX, credit: tax.toString() });
         }
         if (!isConsignmentSettlement) {

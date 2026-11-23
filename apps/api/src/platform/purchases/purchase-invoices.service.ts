@@ -640,7 +640,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const pricesIncludeTax = await this.support.pricesIncludeTax(db);
     const headerDto = { ...dto, consignmentSettlement: inv.consignmentSettlement };
     if (dto.consignmentSettlement !== undefined && dto.consignmentSettlement !== inv.consignmentSettlement) {
-      throw new DomainError(ErrorCode.VALIDATION, 'The consignment settlement type cannot be changed');
+      throw new DomainError(ErrorCode.VALIDATION, 'The temporary-receipt settlement type cannot be changed');
     }
     const lines = await this.resolveInvoiceLines(db, tenantId, companyId, headerDto, pricesIncludeTax);
     await this.assertHeader(db, companyId, headerDto, lines);
@@ -780,7 +780,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           if ((await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId)) !== null) {
             throw new DomainError(
               ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
-              'Direct purchase invoices cannot use a consignment warehouse',
+              'Direct purchase invoices cannot use a temporary warehouse',
             );
           }
           const wh = await tx.warehouse.findFirst({
@@ -965,7 +965,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         });
         if (!draft) throw DomainError.notFound('PurchaseInvoice', id.toString());
         if (!draft.consignmentSettlement || !draft.warehouseId) {
-          throw new DomainError(ErrorCode.VALIDATION, 'The invoice is not a consignment settlement');
+          throw new DomainError(ErrorCode.VALIDATION, 'The invoice is not a temporary-receipt settlement');
         }
         assertBranchAllowed(draft.branchId);
         await assertWarehouseBranchAllowed(tx, draft.warehouseId);
@@ -974,11 +974,11 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           throw new DomainError(ErrorCode.CONFLICT, 'Invoice is not a draft');
         }
         if (draft.lines.length === 0 || draft.lines.some((line) => line.consignmentSaleId === null)) {
-          throw new DomainError(ErrorCode.VALIDATION, 'Every settlement invoice line must reference a consignment sale');
+          throw new DomainError(ErrorCode.VALIDATION, 'Every settlement invoice line must reference a temporary-receipt sale');
         }
         const supplierId = await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId);
         if (supplierId === null || supplierId !== draft.supplierId) {
-          throw new DomainError(ErrorCode.VALIDATION, 'The invoice supplier must match the consignment warehouse supplier');
+          throw new DomainError(ErrorCode.VALIDATION, 'The invoice supplier must match the temporary warehouse supplier');
         }
         const saleIds = [...new Set(draft.lines.map((line) => line.consignmentSaleId!))];
         const sales = await tx.$queryRaw<{
@@ -986,15 +986,12 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           supplier_id: bigint;
           warehouse_id: bigint;
           item_id: bigint;
+          source_type: 'SALES_INVOICE' | 'STOCK_COUNT';
           qty: Prisma.Decimal;
-          value: Prisma.Decimal;
           returned_qty: Prisma.Decimal;
-          returned_value: Prisma.Decimal;
           invoiced_qty: Prisma.Decimal;
-          invoiced_value: Prisma.Decimal;
         }[]>`
-          SELECT id, supplier_id, warehouse_id, item_id, qty, value,
-                 returned_qty, returned_value, invoiced_qty, invoiced_value
+          SELECT id, supplier_id, warehouse_id, item_id, source_type, qty, returned_qty, invoiced_qty
           FROM consignment_sales
            WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
              AND id IN (${Prisma.join(saleIds)})
@@ -1007,18 +1004,17 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
               supplierId: sale.supplier_id,
               warehouseId: sale.warehouse_id,
               itemId: sale.item_id,
+              sourceType: sale.source_type,
               qty: sale.qty,
-              value: sale.value,
               returnedQty: sale.returned_qty,
-              returnedValue: sale.returned_value,
               invoicedQty: sale.invoiced_qty,
-              invoicedValue: sale.invoiced_value,
             },
           ]),
         );
         const invoiceDate = new Date(draft.invoiceDate);
         const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, invoiceDate);
-        let clearedTotal = new Decimal(0);
+        let salesNet = new Decimal(0);
+        let shortageNet = new Decimal(0);
         for (const line of draft.lines) {
           const sale = saleById.get(line.consignmentSaleId!);
           if (
@@ -1034,45 +1030,33 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
             .minus(sale.invoicedQty.toString());
           const qty = new Decimal(line.qtyBase.toString());
           if (qty.gt(openQty)) {
-            throw new DomainError(ErrorCode.CONSIGNMENT_OVER_INVOICED, 'Settlement quantity exceeds the open consignment sale quantity');
+            throw new DomainError(ErrorCode.CONSIGNMENT_OVER_INVOICED, 'Settlement quantity exceeds the open temporary-receipt sale quantity');
           }
-          const openValue = new Decimal(sale.value.toString())
-            .minus(sale.returnedValue.toString())
-            .minus(sale.invoicedValue.toString());
-          const cleared = qty.eq(openQty)
-            ? openValue
-            : round3(openValue.times(qty).div(openQty));
-          await tx.purchaseInvoiceLine.update({
-            where: { tenantId_id: { tenantId, id: line.id } },
-            data: { consignmentClearedValue: cleared },
-          });
           await tx.consignmentSale.update({
             where: { id: sale.id },
-            data: {
-              invoicedQty: { increment: qty },
-              invoicedValue: { increment: cleared },
-            },
+            data: { invoicedQty: { increment: qty } },
           });
-          clearedTotal = clearedTotal.plus(cleared);
+          if (sale.sourceType === 'SALES_INVOICE') {
+            salesNet = salesNet.plus(line.netAmount.toString());
+          } else {
+            shortageNet = shortageNet.plus(line.netAmount.toString());
+          }
         }
         const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
-          'CONSIGNMENT_PAYABLE',
           'INPUT_TAX',
           'COGS',
+          'CONSIGNMENT_SHRINKAGE',
           'SUPPLIERS_CONTROL',
         ]);
         const journalLines: JournalLineInput[] = [];
-        if (clearedTotal.gt(0)) {
-          journalLines.push({ accountId: mapping.CONSIGNMENT_PAYABLE, debit: clearedTotal.toString() });
+        if (salesNet.gt(0)) {
+          journalLines.push({ accountId: mapping.COGS, debit: salesNet.toString() });
+        }
+        if (shortageNet.gt(0)) {
+          journalLines.push({ accountId: mapping.CONSIGNMENT_SHRINKAGE, debit: shortageNet.toString() });
         }
         if (draft.taxTotal.gt(0)) {
           journalLines.push({ accountId: mapping.INPUT_TAX, debit: draft.taxTotal.toString() });
-        }
-        const difference = draft.netTotal.minus(clearedTotal);
-        if (difference.gt(0)) {
-          journalLines.push({ accountId: mapping.COGS, debit: difference.toString() });
-        } else if (difference.lt(0)) {
-          journalLines.push({ accountId: mapping.COGS, credit: difference.abs().toString() });
         }
         journalLines.push({
           accountId: mapping.SUPPLIERS_CONTROL,
@@ -1856,7 +1840,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
   ): Promise<ResolvedLine[]> {
     if (!dto.consignmentSettlement) {
       if (dto.lines.some((line) => line.consignmentSaleId)) {
-        throw new DomainError(ErrorCode.VALIDATION, 'consignmentSaleId is only valid on a consignment settlement invoice');
+        throw new DomainError(ErrorCode.VALIDATION, 'consignmentSaleId is only valid on a temporary-receipt settlement invoice');
       }
       return this.resolveLines(
         db,
@@ -1869,15 +1853,15 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     if (!dto.warehouseId || dto.paymentType !== 'CREDIT' || dto.purchaseOrderId || dto.receivedGrnId) {
       throw new DomainError(
         ErrorCode.VALIDATION,
-        'A consignment settlement requires a consignment warehouse, credit payment, and no purchase-order or GRN link',
+        'A temporary-receipt settlement requires a temporary warehouse, credit payment, and no purchase-order or GRN link',
       );
     }
     if (dto.lines.some((line) => !line.consignmentSaleId)) {
-      throw new DomainError(ErrorCode.VALIDATION, 'Every consignment settlement line must reference a consignment sale');
+      throw new DomainError(ErrorCode.VALIDATION, 'Every temporary-receipt settlement line must reference a temporary-receipt sale');
     }
     const saleIds = dto.lines.map((line) => BigInt(line.consignmentSaleId!));
     if (new Set(saleIds.map(String)).size !== saleIds.length) {
-      throw new DomainError(ErrorCode.VALIDATION, 'A consignment sale may appear only once on an invoice');
+      throw new DomainError(ErrorCode.VALIDATION, 'A temporary-receipt sale may appear only once on an invoice');
     }
     const sales = await db.consignmentSale.findMany({
       where: { companyId, id: { in: saleIds } },
@@ -1887,16 +1871,16 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       const sale = saleById.get(BigInt(line.consignmentSaleId!));
       if (!sale) throw DomainError.notFound('ConsignmentSale', line.consignmentSaleId!);
       if (sale.supplierId !== BigInt(dto.supplierId) || sale.warehouseId !== BigInt(dto.warehouseId!)) {
-        throw new DomainError(ErrorCode.VALIDATION, 'Supplier and warehouse must match the referenced consignment sale');
+        throw new DomainError(ErrorCode.VALIDATION, 'Supplier and warehouse must match the referenced temporary-receipt sale');
       }
-      const defaultUnitPrice = sale.qty.isZero()
-        ? '0.000000'
-        : round6(new Decimal(sale.value.toString()).div(sale.qty.toString())).toString();
+      if (!line.unitPrice || new Decimal(line.unitPrice).lte(0)) {
+        throw new DomainError(ErrorCode.VALIDATION, 'A supplier price greater than zero is required for every settlement line');
+      }
       return {
         ...line,
         itemId: sale.itemId.toString(),
         itemUnitId: undefined,
-        unitCost: line.unitPrice ?? line.unitCost ?? defaultUnitPrice,
+        unitCost: line.unitPrice,
       };
     });
     const resolved = await this.resolveLines(db, tenantId, companyId, lines, pricesIncludeTax);
@@ -1922,7 +1906,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     }
     const hasStock = lines.some((l) => isStocked(l.itemKind));
     if (consignmentSettlement && (dto.paymentType !== 'CREDIT' || dto.receivedGrnId || dto.purchaseOrderId)) {
-      throw new DomainError(ErrorCode.VALIDATION, 'Consignment settlement invoices must use credit and cannot bill a GRN or purchase order');
+      throw new DomainError(ErrorCode.VALIDATION, 'Temporary-receipt settlement invoices must use credit and cannot bill a GRN or purchase order');
     }
     if (hasStock) {
       if (!dto.warehouseId) {
@@ -1937,16 +1921,16 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       if (wh.consignmentSupplierId !== null) {
         const company = await db.company.findFirst({ where: { id: companyId }, select: { consignmentEnabled: true } });
         if (!company?.consignmentEnabled) {
-          throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+          throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Temporary receipt is disabled for this company');
         }
         if (!consignmentSettlement) {
-          throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Direct stock purchase invoices cannot use a consignment warehouse');
+          throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Direct stock purchase invoices cannot use a temporary warehouse');
         }
         if (wh.consignmentSupplierId !== BigInt(dto.supplierId)) {
-          throw new DomainError(ErrorCode.VALIDATION, 'The invoice supplier must match the consignment warehouse supplier');
+          throw new DomainError(ErrorCode.VALIDATION, 'The invoice supplier must match the temporary warehouse supplier');
         }
       } else if (consignmentSettlement) {
-        throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Consignment settlement requires a consignment warehouse');
+        throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Temporary-receipt settlement requires a temporary warehouse');
       }
     } else if (dto.warehouseId) {
       const wh = await db.warehouse.findFirst({

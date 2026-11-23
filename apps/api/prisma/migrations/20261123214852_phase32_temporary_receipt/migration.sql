@@ -25,8 +25,7 @@ ALTER TABLE `goods_notes` MODIFY `note_type` ENUM('GRN', 'GIN', 'CONSIGNMENT_IN'
 ALTER TABLE `item_costs` ADD COLUMN `pool_warehouse_id` BIGINT UNSIGNED NOT NULL DEFAULT 0;
 
 -- AlterTable
-ALTER TABLE `purchase_invoice_lines` ADD COLUMN `consignment_cleared_value` DECIMAL(18, 3) NULL,
-    ADD COLUMN `consignment_sale_id` BIGINT UNSIGNED NULL;
+ALTER TABLE `purchase_invoice_lines` ADD COLUMN `consignment_sale_id` BIGINT UNSIGNED NULL;
 
 -- AlterTable
 ALTER TABLE `purchase_invoices` ADD COLUMN `consignment_settlement` BOOLEAN NOT NULL DEFAULT false;
@@ -47,11 +46,8 @@ CREATE TABLE `consignment_sales` (
     `source_line_id` BIGINT UNSIGNED NOT NULL,
     `sale_date` DATE NOT NULL,
     `qty` DECIMAL(18, 6) NOT NULL,
-    `value` DECIMAL(18, 3) NOT NULL,
     `returned_qty` DECIMAL(18, 6) NOT NULL DEFAULT 0,
-    `returned_value` DECIMAL(18, 3) NOT NULL DEFAULT 0,
     `invoiced_qty` DECIMAL(18, 6) NOT NULL DEFAULT 0,
-    `invoiced_value` DECIMAL(18, 3) NOT NULL DEFAULT 0,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     INDEX `consignment_sales_tenant_id_company_id_supplier_id_warehouse_idx`(`tenant_id`, `company_id`, `supplier_id`, `warehouse_id`),
@@ -105,9 +101,8 @@ SELECT p.`tenant_id`, p.`company_id`, p.`id`, a.`code`, a.`name_ar`, a.`name_en`
        p.`level` + 1, a.`account_type`, a.`normal_balance`, 1, 0, 1, NOW(3), NOW(3)
 FROM `accounts` p
 JOIN (
-  SELECT '21' AS `parent_code`, '2111' AS `code`, 'مستحق لموردي الأمانة' AS `name_ar`,
-         'Consignment payable' AS `name_en`, 'LIABILITY' AS `account_type`, 'CREDIT' AS `normal_balance`
-  UNION ALL SELECT '52', '5209', 'عجز بضاعة الأمانة', 'Consignment shrinkage', 'EXPENSE', 'DEBIT'
+  SELECT '52' AS `parent_code`, '5209' AS `code`, 'عجز بضاعة المورد' AS `name_ar`,
+         'Supplier goods shortage' AS `name_en`, 'EXPENSE' AS `account_type`, 'DEBIT' AS `normal_balance`
 ) a ON a.`parent_code` = p.`code`
 WHERE NOT EXISTS (
   SELECT 1 FROM `accounts` c
@@ -119,8 +114,7 @@ INSERT INTO `account_mappings`
 SELECT a.`tenant_id`, a.`company_id`, m.`mapping_key`, a.`id`, NOW(3), NOW(3)
 FROM `accounts` a
 JOIN (
-  SELECT '2111' AS `code`, 'مستحق لموردي الأمانة' AS `name_ar`, 'CONSIGNMENT_PAYABLE' AS `mapping_key`
-  UNION ALL SELECT '5209', 'عجز بضاعة الأمانة', 'CONSIGNMENT_SHRINKAGE'
+  SELECT '5209' AS `code`, 'عجز بضاعة المورد' AS `name_ar`, 'CONSIGNMENT_SHRINKAGE' AS `mapping_key`
 ) m ON m.`code` = a.`code` AND m.`name_ar` = a.`name_ar`
 WHERE NOT EXISTS (
   SELECT 1 FROM `account_mappings` x

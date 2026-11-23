@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
 import { branchSql, branchWhere, hasAllBranches } from '../../common/branch/branch-context.js';
-import { Decimal, round3, round6, sum } from '../../common/decimal/decimal.utils.js';
+import { Decimal, sum } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
@@ -41,7 +41,7 @@ export class ConsignmentService {
     });
     if (!company) throw new DomainError(ErrorCode.INTERNAL, 'Tenant has no active company');
     if (!company.consignmentEnabled) {
-      throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+      throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Temporary receipt is disabled for this company');
     }
     return company.id;
   }
@@ -59,10 +59,10 @@ export class ConsignmentService {
       });
       if (!warehouse) throw DomainError.notFound('Warehouse', query.warehouseId!);
       if (warehouse.consignmentSupplierId === null) {
-        throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Open consignment sales require a consignment warehouse');
+        throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Open temporary-receipt sales require a temporary warehouse');
       }
       if (supplierId !== null && warehouse.consignmentSupplierId !== supplierId) {
-        throw new DomainError(ErrorCode.PARTY_TYPE_MISMATCH, 'Supplier does not match the consignment warehouse');
+        throw new DomainError(ErrorCode.PARTY_TYPE_MISMATCH, 'Supplier does not match the temporary warehouse');
       }
     }
     const filters = [
@@ -91,18 +91,12 @@ export class ConsignmentService {
     const sourceNumbers = await this.sourceNumbers(db, companyId, rows);
     return rows.map((row) => {
       const openQty = new Decimal(row.qty.toString()).minus(row.returnedQty.toString()).minus(row.invoicedQty.toString());
-      const openValue = new Decimal(row.value.toString()).minus(row.returnedValue.toString()).minus(row.invoicedValue.toString());
       return {
         ...row,
         qty: row.qty.toString(),
-        value: row.value.toString(),
         returnedQty: row.returnedQty.toString(),
-        returnedValue: row.returnedValue.toString(),
         invoicedQty: row.invoicedQty.toString(),
-        invoicedValue: row.invoicedValue.toString(),
         openQty: openQty.toString(),
-        openValue: round3(openValue).toString(),
-        unitCost: row.qty.isZero() ? '0.000000' : round6(new Decimal(row.value.toString()).div(row.qty.toString())).toString(),
         sourceNo: sourceNumbers.get(`${row.sourceType}:${row.sourceId}`) ?? null,
       };
     });
@@ -171,9 +165,6 @@ export class ConsignmentService {
       const openQty = sum(itemSales.map((row) =>
         new Decimal(row.qty.toString()).minus(row.returnedQty.toString()).minus(row.invoicedQty.toString()),
       ));
-      const openValue = sum(itemSales.map((row) =>
-        new Decimal(row.value.toString()).minus(row.returnedValue.toString()).minus(row.invoicedValue.toString()),
-      ));
       return {
         item: itemById.get(itemId),
         receivedQty: received.toString(),
@@ -183,7 +174,6 @@ export class ConsignmentService {
         invoicedQty: invoicedQty.toString(),
         onHandQty: (balanceByItem.get(itemId) ?? new Decimal(0)).toString(),
         openQty: openQty.toString(),
-        openValue: round3(openValue).toString(),
       };
     });
     return out.filter((row) => row.item !== undefined);
@@ -221,12 +211,9 @@ export class ConsignmentService {
     return rows.map((row) => {
       const age = Math.max(0, Math.floor((asOf.getTime() - row.saleDate.getTime()) / 86_400_000));
       const openQty = new Decimal(row.qty.toString()).minus(row.returnedQty.toString()).minus(row.invoicedQty.toString());
-      const openValue = new Decimal(row.value.toString()).minus(row.returnedValue.toString()).minus(row.invoicedValue.toString());
       return {
         ...row,
         openQty: openQty.toString(),
-        openValue: round3(openValue).toString(),
-        unitCost: row.qty.isZero() ? '0.000000' : round6(new Decimal(row.value.toString()).div(row.qty.toString())).toString(),
         sourceNo: sourceNumbers.get(`${row.sourceType}:${row.sourceId}`) ?? null,
         ageDays: age,
         ageBucket: age <= 30 ? '0-30' : age <= 60 ? '31-60' : age <= 90 ? '61-90' : '90+',

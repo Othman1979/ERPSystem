@@ -17,6 +17,18 @@ function templateAccount(code: string): TemplateAccount {
 }
 
 describe('chart template', () => {
+  it('maps supplier goods shortage without creating a consignment payable account', () => {
+    expect(templateAccount('5209')).toMatchObject({
+      nameAr: 'عجز بضاعة المورد',
+      nameEn: 'Supplier goods shortage',
+      accountType: 'EXPENSE',
+      parentCode: '52',
+    });
+    expect(TEMPLATE_MAPPINGS.CONSIGNMENT_SHRINKAGE).toBe('5209');
+    expect(CHART_TEMPLATE.some((account) => account.code === '2111')).toBe(false);
+    expect(ACCOUNT_MAPPING_KEYS).not.toContain('CONSIGNMENT_PAYABLE');
+  });
+
   it('maps every mapping key to a template account that satisfies its rule', () => {
     for (const key of ACCOUNT_MAPPING_KEYS) {
       const account = templateAccount(TEMPLATE_MAPPINGS[key]);

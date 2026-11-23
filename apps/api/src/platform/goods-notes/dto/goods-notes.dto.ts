@@ -30,8 +30,8 @@ export class GoodsNoteLineDto {
 
   /**
    * Required for a GRN without a purchase order (receipt cost per base unit);
-   * ignored for a GIN. Refused on a GRN against an order: its cost is the
-   * order's net price (ADR-026 §5).
+   * ignored for a GIN and CONSIGNMENT_IN. Refused on a GRN against an order:
+   * its cost is the order's net price (ADR-026 §5).
    */
   @IsOptional()
   @Matches(UNIT_COST)

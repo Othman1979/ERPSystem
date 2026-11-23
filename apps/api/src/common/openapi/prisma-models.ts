@@ -1197,15 +1197,9 @@ export class ConsignmentSaleRow {
   @ApiProperty({ type: 'string', format: 'decimal' })
   qty!: string;
   @ApiProperty({ type: 'string', format: 'decimal' })
-  value!: string;
-  @ApiProperty({ type: 'string', format: 'decimal' })
   returnedQty!: string;
   @ApiProperty({ type: 'string', format: 'decimal' })
-  returnedValue!: string;
-  @ApiProperty({ type: 'string', format: 'decimal' })
   invoicedQty!: string;
-  @ApiProperty({ type: 'string', format: 'decimal' })
-  invoicedValue!: string;
   @ApiProperty({ type: 'string', format: 'date-time' })
   createdAt!: string;
 }
@@ -1828,8 +1822,6 @@ export class PurchaseInvoiceLineRow {
   lineTotal!: string;
   @ApiProperty({ type: 'string', nullable: true })
   consignmentSaleId!: string | null;
-  @ApiProperty({ type: 'string', format: 'decimal', nullable: true })
-  consignmentClearedValue!: string | null;
   @ApiProperty({ type: 'string', format: 'date-time' })
   createdAt!: string;
 }

@@ -92,7 +92,7 @@ export interface VerifyResult {
 export type VerifyMismatch =
   | { kind: 'QTY'; warehouseId: string; itemId: string; expected: string; actual: string }
   | { kind: 'COST_QTY' | 'COST_VALUE'; companyId: string; itemId: string; poolWarehouseId: string; expected: string; actual: string }
-  | { kind: 'GL_INVENTORY' | 'GL_CONSIGNMENT'; companyId: string; accountCode: string | null; expected: string; actual: string };
+  | { kind: 'GL_INVENTORY'; companyId: string; accountCode: string | null; expected: string; actual: string };
 
 interface CostRow extends CostState {
   id: bigint;
@@ -409,7 +409,7 @@ export class StockLedgerService {
       (await this.warehouseSupplier(tx, tenantId, companyId, input.fromWarehouseId)) !== null ||
       (await this.warehouseSupplier(tx, tenantId, companyId, input.toWarehouseId)) !== null
     ) {
-      throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Transfers cannot use a consignment warehouse');
+      throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Transfers cannot use a temporary warehouse');
     }
     const item = await this.stockItem(tx, tenantId, companyId, input.itemId, input.reversalOfOutId != null);
     const allowNegative = await this.allowNegative(tx, companyId);
@@ -561,7 +561,7 @@ export class StockLedgerService {
     }
     const supplierId = st.warehouseSuppliers.get(warehouseId)!;
     if (supplierId !== null && !(await this.lockConsignmentEnabled(tx, tenantId, companyId))) {
-      throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+      throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Temporary receipt is disabled for this company');
     }
     return supplierId;
   }
@@ -901,39 +901,6 @@ export class StockLedgerService {
         }
       }
 
-      const openSales = await tx.consignmentSale.aggregate({
-        where: { companyId: company.id },
-        _sum: { value: true, returnedValue: true, invoicedValue: true },
-      });
-      const consignmentPayableBalance = new Decimal(openSales._sum.value?.toString() ?? 0)
-        .minus(openSales._sum.returnedValue?.toString() ?? 0)
-        .minus(openSales._sum.invoicedValue?.toString() ?? 0);
-      const consignmentMapping = await tx.accountMapping.findFirst({
-        where: { companyId: company.id, mappingKey: 'CONSIGNMENT_PAYABLE' },
-        select: { accountId: true },
-      });
-      let consignmentGlBalance = new Decimal(0);
-      if (consignmentMapping?.accountId) {
-        const [gl] = await tx.$queryRaw<{ v: unknown }[]>`
-          SELECT COALESCE(SUM(jl.credit - jl.debit), 0) AS v
-            FROM journal_lines jl
-            JOIN journal_entries je ON je.tenant_id = jl.tenant_id AND je.id = jl.journal_entry_id
-           WHERE jl.tenant_id = ${tenantId} AND jl.account_id = ${consignmentMapping.accountId}
-             AND je.company_id = ${company.id} AND je.status = 'POSTED'`;
-        consignmentGlBalance = new Decimal(String(gl.v));
-      }
-      if (!consignmentGlBalance.eq(consignmentPayableBalance)) {
-        const account = consignmentMapping?.accountId
-          ? await tx.account.findFirst({ where: { id: consignmentMapping.accountId }, select: { code: true } })
-          : null;
-        mismatches.push({
-          kind: 'GL_CONSIGNMENT',
-          companyId: company.id.toString(),
-          accountCode: account?.code ?? null,
-          expected: round3(consignmentPayableBalance).toString(),
-          actual: round3(consignmentGlBalance).toString(),
-        });
-      }
     }
 
     return {

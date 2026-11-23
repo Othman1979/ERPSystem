@@ -1,5 +1,5 @@
 /**
- * Golden scenarios CS1–CS8 — BUILD_PLAN §18 and ADR-047.
+ * Golden scenarios TR1–TR8 — BUILD_PLAN §18 and ADR-047.
  * Expected values are kept verbatim from the plan.
  */
 import 'dotenv/config';
@@ -29,7 +29,7 @@ let db: Connection;
 
 const api = () => request(BASE);
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
-const idem = () => ({ 'Idempotency-Key': `cs-${RUN}-${Math.random().toString(36).slice(2)}` });
+const idem = () => ({ 'Idempotency-Key': `tr-${RUN}-${Math.random().toString(36).slice(2)}` });
 const m3 = (value: string | number | Decimal) => new Decimal(value).toFixed(3);
 const d6 = (value: string | number | Decimal) => new Decimal(value).toFixed(6);
 
@@ -73,7 +73,7 @@ afterAll(async () => {
   await db?.end();
 }, 60_000);
 
-describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
+describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
   let token = '';
   let tenantId = 0n;
   let companyId = 0n;
@@ -89,7 +89,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
   let settlementInvoiceId = '';
   let settlementLineId = '';
   let shortageSaleId = '';
-  const companyName = `CS ${RUN}`;
+  const companyName = `TR ${RUN}`;
 
   async function expectSuccess<T = Record<string, unknown>>(res: request.Response, status: number, label: string): Promise<T> {
     if (res.status !== status) throw new Error(`${label}: ${res.status} ${JSON.stringify(res.body)}`);
@@ -195,11 +195,11 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     );
   }
 
-  it('posts the CS1–CS8 golden flow with the specified cost pools and balances', async () => {
+  it('posts the TR1–TR8 golden flow with zero-cost temporary stock and supplier settlements', async () => {
     const registration = await api().post('/api/v1/auth/register').send({
       tenantName: companyName,
       ownerName: 'Owner',
-      email: `cs-${RUN}@test.dev`,
+      email: `tr-${RUN}@test.dev`,
       password: PASS,
     });
     await expectSuccess(registration, 201, 'register');
@@ -242,7 +242,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       200,
       'disable consignment before mapping checks',
     );
-    for (const mappingKey of ['CONSIGNMENT_PAYABLE', 'CONSIGNMENT_SHRINKAGE']) {
+    for (const mappingKey of ['CONSIGNMENT_SHRINKAGE']) {
       const [mapping] = (await db.query(
         `SELECT account_id FROM account_mappings
           WHERE tenant_id = ? AND company_id = ? AND mapping_key = ?`,
@@ -349,23 +349,16 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     collect(accountsResponse.body as typeof accounts);
     cashAccountId = accounts.find((account) => account.controlType === 'CASH')!.id;
 
-    const opening = await createAndPost('stock-adjustments', {
-      adjustmentDate: '2025-02-01',
-      adjustmentType: 'OPENING',
-      warehouseId: ownedWarehouse,
-      lines: [{ itemId, qty: '2', unitCost: '5.000' }],
-    });
-    expect(opening.journalEntryId).toBeDefined();
     const ownedPoolBefore = await costPool(itemId, '0');
-    expect(ownedPoolBefore).toEqual({ qty: '2.000000', value: '10.000', avg: '5.000000' });
     const inventoryBefore = await accountBalance('1104');
+    expect(inventoryBefore).toBe('0.000');
 
     const receiptDraft = await expectSuccess<{ id: string; supplierId: string }>(
       await api().post('/api/v1/goods-notes').set(auth(token)).send({
         noteDate: '2025-02-05',
         noteType: 'CONSIGNMENT_IN',
         warehouseId: warehouse,
-        lines: [{ itemId, qty: '10', unitCost: '20.000' }],
+        lines: [{ itemId, qty: '10', unitCost: '99.999' }],
       }),
       201,
       'create consignment receipt without supplier',
@@ -378,7 +371,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     );
     expect(receipt.journalEntryId).toBeNull();
     expect(await balance(warehouse, itemId)).toBe('10.000000');
-    expect(await costPool(itemId, warehouse)).toEqual({ qty: '10.000000', value: '200.000', avg: '20.000000' });
+    expect(await costPool(itemId, warehouse)).toEqual({ qty: '10.000000', value: '0.000', avg: '0.000000' });
     expect(await costPool(itemId, '0')).toEqual(ownedPoolBefore);
     expect(await accountBalance('1104')).toBe(inventoryBefore);
     const secondSupplier = (await expectSuccess<{ id: string }>(
@@ -388,7 +381,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     )).id;
     const draftOnlyWarehouse = await expectSuccess<{ id: string }>(
       await api().post('/api/v1/warehouses').set(auth(token)).send({
-        code: `CS-DRAFT-${RUN}`,
+        code: `TR-DRAFT-${RUN}`,
         nameAr: 'مستودع إيصال مسودة',
         consignmentSupplierId: supplierId,
       }),
@@ -454,6 +447,23 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       );
     } else {
       expect(transferDraft.body.error.code).toBe('CONSIGNMENT_WAREHOUSE_NOT_ALLOWED');
+    }
+    const transferToTemporary = await api().post('/api/v1/stock-transfers').set(auth(token)).send({
+      transferDate: '2025-02-06',
+      fromWarehouseId: ownedWarehouse,
+      toWarehouseId: warehouse,
+      lines: [{ itemId, qty: '1' }],
+    });
+    if (transferToTemporary.status === 201) {
+      const transferPost = await post(token, `stock-transfers/${transferToTemporary.body.id}/post`);
+      expect(transferPost.body.error.code).toBe('CONSIGNMENT_WAREHOUSE_NOT_ALLOWED');
+      await expectSuccess(
+        await api().delete(`/api/v1/stock-transfers/${transferToTemporary.body.id}`).set(auth(token)),
+        200,
+        'delete transfer into temporary warehouse',
+      );
+    } else {
+      expect(transferToTemporary.body.error.code).toBe('CONSIGNMENT_WAREHOUSE_NOT_ALLOWED');
     }
     const manufacturedItemId = (await expectSuccess<{ id: string }>(
       await api().post('/api/v1/items').set(auth(token)).send({
@@ -564,17 +574,20 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       taxTotal: string;
       grandTotal: string;
     };
-    const openSales = await expectSuccess<Array<{ sourceId: string; sourceNo: string | null; unitCost: string }>>(
+    const openSales = await expectSuccess<Array<{ sourceId: string; sourceNo: string | null; openQty: string }>>(
       await api()
         .get(`/api/v1/consignment/open-sales?supplierId=${supplierId}&warehouseId=${warehouse}`)
         .set(auth(token)),
       200,
       'consignment open sales',
     );
-    expect(openSales.find((row) => row.sourceId === sale.id)).toMatchObject({
+    const tr2Row = openSales.find((row) => row.sourceId === sale.id)!;
+    expect(tr2Row).toMatchObject({
       sourceNo: saleDetails.invoiceNo,
-      unitCost: '20',
     });
+    expect(d6(tr2Row.openQty)).toBe('3.000000');
+    expect(tr2Row).not.toHaveProperty('unitCost');
+    expect(tr2Row).not.toHaveProperty('openValue');
     expect({
       netTotal: m3(saleDetails.netTotal),
       taxTotal: m3(saleDetails.taxTotal),
@@ -584,23 +597,39 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       taxTotal: '16.800',
       grandTotal: '121.800',
     });
-    expect(await journalLines(salePosted.journalEntryId)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: '2111', credit: '60.000' }),
-      expect.objectContaining({ code: '5101', debit: '60.000' }),
-    ]));
+    const saleJournal = await journalLines(salePosted.journalEntryId);
+    expect(saleJournal.some((line) => line.debit === '121.800')).toBe(true);
+    expect(saleJournal.some((line) => line.credit === '105.000')).toBe(true);
+    expect(saleJournal.some((line) => line.credit === '16.800')).toBe(true);
+    expect(saleJournal.some((line) => line.code === '5101' || line.code === '2111')).toBe(false);
     expect(await balance(warehouse, itemId)).toBe('7.000000');
-    expect(await costPool(itemId, warehouse)).toEqual({ qty: '7.000000', value: '140.000', avg: '20.000000' });
+    expect(await costPool(itemId, warehouse)).toEqual({ qty: '7.000000', value: '0.000', avg: '0.000000' });
     expect(await costPool(itemId, '0')).toEqual(ownedPoolBefore);
     const saleRows = (await db.query(
-      `SELECT id, qty, value FROM consignment_sales
+      `SELECT id, qty FROM consignment_sales
         WHERE tenant_id = ? AND company_id = ? AND source_type = 'SALES_INVOICE' AND source_line_id = ?`,
       [tenantId, companyId, saleLineId],
-    )) as { id: bigint; qty: string; value: string }[];
+    )) as { id: bigint; qty: string }[];
     expect(saleRows).toHaveLength(1);
     saleId = String(saleRows[0]!.id);
-    expect({ qty: d6(saleRows[0]!.qty), value: m3(saleRows[0]!.value) }).toEqual({ qty: '3.000000', value: '60.000' });
+    expect(d6(saleRows[0]!.qty)).toBe('3.000000');
 
-    const ownedSale = await createSalesInvoice(ownedWarehouse, itemId, '1', '35.000');
+    await db.query('UPDATE companies SET allow_negative_stock = 1 WHERE tenant_id = ? AND id = ?', [tenantId, companyId]);
+    const tooManySale = await createSalesInvoice(warehouse, itemId, '9', '35.000');
+    const tooManySalePost = await post(token, `sales-invoices/${tooManySale.id}/post`);
+    expect(tooManySalePost.body.error.code).toBe('STOCK_INSUFFICIENT');
+    await expectSuccess(await api().delete(`/api/v1/sales-invoices/${tooManySale.id}`).set(auth(token)), 200, 'delete sale exceeding temporary stock');
+    await db.query('UPDATE companies SET allow_negative_stock = 0 WHERE tenant_id = ? AND id = ?', [tenantId, companyId]);
+
+    const opening = await createAndPost('stock-adjustments', {
+      adjustmentDate: '2025-02-01',
+      adjustmentType: 'OPENING',
+      warehouseId: ownedWarehouse,
+      lines: [{ itemId, qty: '2', unitCost: '5.000' }],
+    });
+    expect(opening.journalEntryId).toBeDefined();
+    expect(await costPool(itemId, '0')).toEqual({ qty: '2.000000', value: '10.000', avg: '5.000000' });
+    const ownedSale = await createSalesInvoice(ownedWarehouse, itemId, '2', '35.000');
     const ownedSalePosted = await expectSuccess<{ id: string }>(
       await post(token, `sales-invoices/${ownedSale.id}/post`),
       201,
@@ -613,7 +642,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       [tenantId, companyId, ownedSale.id, ownedWarehouse],
     )) as { unitCost: string }[];
     expect(d6(ownedMovement[0]!.unitCost)).toBe('5.000000');
-    expect(await costPool(itemId, '0')).toEqual({ qty: '1.000000', value: '5.000', avg: '5.000000' });
+    expect(await costPool(itemId, '0')).toMatchObject({ qty: '0.000000', value: '0.000' });
     expect(ownedSalePosted.id).toBe(ownedSale.id);
 
     const saleReturn = await expectSuccess<{ id: string }>(
@@ -632,19 +661,46 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       201,
       'post sales return',
     );
-    expect(await journalLines(saleReturnPosted.journalEntryId)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: '2111', debit: '20.000' }),
-      expect.objectContaining({ code: '5101', credit: '20.000' }),
+    const saleReturnJournal = await journalLines(saleReturnPosted.journalEntryId);
+    expect(saleReturnJournal).toEqual(expect.arrayContaining([
+      expect.objectContaining({ debit: '35.000' }),
+      expect.objectContaining({ debit: '5.600' }),
+      expect.objectContaining({ credit: '40.600' }),
     ]));
-    let saleRow = (await db.query('SELECT * FROM consignment_sales WHERE tenant_id = ? AND id = ?', [tenantId, saleId])) as {
-      qty: string; value: string; returned_qty: string; returned_value: string; invoiced_qty: string; invoiced_value: string;
+    expect(saleReturnJournal.some((line) => line.code === '5101' || line.code === '2111')).toBe(false);
+    let saleRow = (await db.query('SELECT qty, returned_qty, invoiced_qty FROM consignment_sales WHERE tenant_id = ? AND id = ?', [tenantId, saleId])) as {
+      qty: string; returned_qty: string; invoiced_qty: string;
     }[];
-    expect(saleRow[0]).toMatchObject({ returned_qty: '1.000000', returned_value: '20.000', invoiced_qty: '0.000000', invoiced_value: '0.000' });
+    expect(saleRow[0]).toMatchObject({ returned_qty: '1.000000', invoiced_qty: '0.000000' });
     expect(await balance(warehouse, itemId)).toBe('8.000000');
-    expect(await accountBalance('2111')).toBe('40.000');
 
-    const settlementA = await createSettlement(saleId, '2', '21.000');
-    const settlementB = await createSettlement(saleId, '2', '21.000');
+    const missingSupplierPrice = await api().post('/api/v1/purchase-invoices').set(auth(token)).send({
+      invoiceDate: '2025-02-18',
+      supplierId,
+      warehouseId: warehouse,
+      paymentType: 'CREDIT',
+      consignmentSettlement: true,
+      lines: [{ consignmentSaleId: saleId, qty: '2', taxCategoryId: taxId }],
+    });
+    expect(missingSupplierPrice.status).toBe(400);
+    expect(missingSupplierPrice.body.error.code).toBe('VALIDATION');
+    const zeroSupplierPrice = await api().post('/api/v1/purchase-invoices').set(auth(token)).send({
+      invoiceDate: '2025-02-18',
+      supplierId,
+      warehouseId: warehouse,
+      paymentType: 'CREDIT',
+      consignmentSettlement: true,
+      lines: [{ consignmentSaleId: saleId, qty: '2', unitPrice: '0', taxCategoryId: taxId }],
+    });
+    expect(zeroSupplierPrice.status).toBe(400);
+    expect(zeroSupplierPrice.body.error.code).toBe('VALIDATION');
+
+    const movementsBeforeSettlement = (await db.query(
+      'SELECT COUNT(*) AS n FROM stock_movements WHERE tenant_id = ? AND company_id = ?',
+      [tenantId, companyId],
+    )) as { n: number }[];
+    const settlementA = await createSettlement(saleId, '2', '20.000');
+    const settlementB = await createSettlement(saleId, '2', '20.000');
     const settlementPosts = await Promise.all([
       post(token, `purchase-invoices/${settlementA.id}/post`),
       post(token, `purchase-invoices/${settlementB.id}/post`),
@@ -659,7 +715,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     const rejectedSettlementId = settlementPosts[0]!.status === 201 ? settlementB.id : settlementA.id;
     await expectSuccess(await api().delete(`/api/v1/purchase-invoices/${rejectedSettlementId}`).set(auth(token)), 200, 'delete losing settlement draft');
     const settlement = (await api().get(`/api/v1/purchase-invoices/${settlementInvoiceId}`).set(auth(token))).body as {
-      journalEntryId: string; lines: { id: string; consignmentClearedValue: string }[];
+      journalEntryId: string; lines: { id: string; netAmount: string }[];
       netTotal: string; taxTotal: string; grandTotal: string;
     };
     settlementLineId = settlement.lines[0]!.id;
@@ -667,18 +723,22 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       net: m3(settlement.netTotal),
       tax: m3(settlement.taxTotal),
       grand: m3(settlement.grandTotal),
-      cleared: m3(settlement.lines[0]!.consignmentClearedValue),
-    }).toEqual({ net: '42.000', tax: '6.720', grand: '48.720', cleared: '40.000' });
+      lineNet: m3(settlement.lines[0]!.netAmount),
+    }).toEqual({ net: '40.000', tax: '6.400', grand: '46.400', lineNet: '40.000' });
     expect(await journalLines(settlement.journalEntryId)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: '2111', debit: '40.000' }),
-      expect.objectContaining({ code: '5101', debit: '2.000' }),
-      expect.objectContaining({ code: '1105', debit: '6.720' }),
-      expect.objectContaining({ code: '2101', credit: '48.720', partyId: supplierId }),
+      expect.objectContaining({ code: '5101', debit: '40.000' }),
+      expect.objectContaining({ code: '1105', debit: '6.400' }),
+      expect.objectContaining({ code: '2101', credit: '46.400', partyId: supplierId }),
     ]));
     expect(await balance(warehouse, itemId)).toBe('8.000000');
-    expect(await accountBalance('2111')).toBe('0.000');
-    saleRow = (await db.query('SELECT * FROM consignment_sales WHERE tenant_id = ? AND id = ?', [tenantId, saleId])) as typeof saleRow;
-    expect(saleRow[0]).toMatchObject({ invoiced_qty: '2.000000', invoiced_value: '40.000' });
+    const movementsAfterSettlement = (await db.query(
+      'SELECT COUNT(*) AS n FROM stock_movements WHERE tenant_id = ? AND company_id = ?',
+      [tenantId, companyId],
+    )) as { n: number }[];
+    expect(movementsAfterSettlement[0]!.n).toBe(movementsBeforeSettlement[0]!.n);
+    saleRow = (await db.query('SELECT qty, returned_qty, invoiced_qty FROM consignment_sales WHERE tenant_id = ? AND id = ?', [tenantId, saleId])) as typeof saleRow;
+    expect(saleRow[0]).toMatchObject({ invoiced_qty: '2.000000' });
+    expect(d6(new Decimal(saleRow[0]!.qty).minus(saleRow[0]!.returned_qty).minus(saleRow[0]!.invoiced_qty))).toBe('0.000000');
 
     const overReturn = await expectSuccess<{ id: string }>(
       await api().post('/api/v1/sales-returns').set(auth(token)).send({
@@ -694,7 +754,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     const rejectedReturn = await post(token, `sales-returns/${overReturn.id}/post`);
     expect(rejectedReturn.body.error.code).toBe('CONSIGNMENT_ALREADY_INVOICED');
     await expectSuccess(await api().delete(`/api/v1/sales-returns/${overReturn.id}`).set(auth(token)), 200, 'delete rejected sales return');
-    const anotherSettlement = await createSettlement(saleId, '1', '21.000');
+    const anotherSettlement = await createSettlement(saleId, '1', '20.000');
     const rejectedSettlement = await post(token, `purchase-invoices/${anotherSettlement.id}/post`);
     expect(rejectedSettlement.body.error.code).toBe('CONSIGNMENT_OVER_INVOICED');
     await expectSuccess(await api().delete(`/api/v1/purchase-invoices/${anotherSettlement.id}`).set(auth(token)), 200, 'delete rejected settlement draft');
@@ -715,14 +775,12 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       'post settlement purchase return',
     );
     expect(await journalLines(purchaseReturnPosted.journalEntryId)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: '2101', debit: '24.360', partyId: supplierId }),
-      expect.objectContaining({ code: '2111', credit: '20.000' }),
-      expect.objectContaining({ code: '5101', credit: '1.000' }),
-      expect.objectContaining({ code: '1105', credit: '3.360' }),
+      expect.objectContaining({ code: '2101', debit: '23.200', partyId: supplierId }),
+      expect.objectContaining({ code: '5101', credit: '20.000' }),
+      expect.objectContaining({ code: '1105', credit: '3.200' }),
     ]));
-    saleRow = (await db.query('SELECT * FROM consignment_sales WHERE tenant_id = ? AND id = ?', [tenantId, saleId])) as typeof saleRow;
-    expect(saleRow[0]).toMatchObject({ invoiced_qty: '1.000000', invoiced_value: '20.000' });
-    expect(await accountBalance('2111')).toBe('20.000');
+    saleRow = (await db.query('SELECT qty, returned_qty, invoiced_qty FROM consignment_sales WHERE tenant_id = ? AND id = ?', [tenantId, saleId])) as typeof saleRow;
+    expect(saleRow[0]).toMatchObject({ invoiced_qty: '1.000000' });
 
     const secondSaleReturn = await expectSuccess<{ id: string }>(
       await api().post('/api/v1/sales-returns').set(auth(token)).send({
@@ -737,12 +795,10 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     );
     await expectSuccess(await post(token, `sales-returns/${secondSaleReturn.id}/post`), 201, 'post sales return after settlement return');
     expect(await balance(warehouse, itemId)).toBe('9.000000');
-    saleRow = (await db.query('SELECT * FROM consignment_sales WHERE tenant_id = ? AND id = ?', [tenantId, saleId])) as typeof saleRow;
+    saleRow = (await db.query('SELECT qty, returned_qty, invoiced_qty FROM consignment_sales WHERE tenant_id = ? AND id = ?', [tenantId, saleId])) as typeof saleRow;
     expect(saleRow[0]).toMatchObject({
       returned_qty: '2.000000',
-      returned_value: '40.000',
       invoiced_qty: '1.000000',
-      invoiced_value: '20.000',
     });
 
     const count = await expectSuccess<{ id: string; lines: { id: string; itemId: string }[] }>(
@@ -764,16 +820,15 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     await expectSuccess(await post(token, `stock-counts/${count.id}/submit`), 201, 'submit count');
     await expectSuccess(await post(token, `stock-counts/${count.id}/approve`), 201, 'approve count');
     expect(await balance(warehouse, itemId)).toBe('8.000000');
-    expect(await accountBalance('5209')).toBe('-20.000');
+    expect(await accountBalance('5209')).toBe('0.000');
     const shortages = (await db.query(
-      `SELECT id, qty, value FROM consignment_sales
+      `SELECT id, qty FROM consignment_sales
         WHERE tenant_id = ? AND company_id = ? AND source_type = 'STOCK_COUNT'`,
       [tenantId, companyId],
-    )) as { id: bigint; qty: string; value: string }[];
+    )) as { id: bigint; qty: string }[];
     expect(shortages).toHaveLength(1);
     shortageSaleId = String(shortages[0]!.id);
-    expect({ qty: d6(shortages[0]!.qty), value: m3(shortages[0]!.value) }).toEqual({ qty: '1.000000', value: '20.000' });
-    expect(await accountBalance('2111')).toBe('20.000');
+    expect(d6(shortages[0]!.qty)).toBe('1.000000');
     const countNumbers = (await db.query(
       'SELECT doc_no AS docNo FROM stock_counts WHERE tenant_id = ? AND company_id = ? AND id = ?',
       [tenantId, companyId, count.id],
@@ -812,7 +867,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       200,
       'consignment count consumption',
     );
-    expect(consumption.rows.find((row) => row.itemId === itemId)?.avgCost).toBe('20.000000');
+    expect(consumption.rows.find((row) => row.itemId === itemId)?.avgCost).toBe('0.000000');
 
     const supplierReturn = await createAndPost('goods-notes', {
       noteDate: CURRENT_DATE,
@@ -824,8 +879,8 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     expect(supplierReturn.journalEntryId).toBeNull();
     expect(await balance(warehouse, itemId)).toBe('0.000000');
     expect(await costPool(itemId, warehouse)).toMatchObject({ qty: '0.000000', value: '0.000' });
-    expect(await accountBalance('2111')).toBe('20.000');
-    expect(await accountBalance('1104')).toBe('-5.000');
+    expect(await costPool(itemId, '0')).toMatchObject({ qty: '0.000000', value: '0.000' });
+    expect(await accountBalance('1104')).toBe('0.000');
 
     const itemB = (await expectSuccess<{ id: string }>(
       await api().post('/api/v1/items').set(auth(token)).send({
@@ -860,15 +915,12 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       'delete losing sales draft',
     );
     const winningSaleRow = (await db.query(
-      `SELECT id, qty, value FROM consignment_sales
+      `SELECT id, qty FROM consignment_sales
         WHERE tenant_id = ? AND company_id = ? AND source_type = 'SALES_INVOICE' AND source_line_id = ?`,
       [tenantId, companyId, winningDraft.lines[0]!.id],
-    )) as { id: bigint; qty: string; value: string }[];
+    )) as { id: bigint; qty: string }[];
     expect(winningSaleRow).toHaveLength(1);
-    expect({ qty: d6(winningSaleRow[0]!.qty), value: m3(winningSaleRow[0]!.value) }).toEqual({
-      qty: '5.000000',
-      value: '100.000',
-    });
+    expect(d6(winningSaleRow[0]!.qty)).toBe('5.000000');
     const raceSettlement = await createSettlement(String(winningSaleRow[0]!.id), '5', '20.000', '2025-04-12');
     await expectSuccess(await post(token, `purchase-invoices/${raceSettlement.id}/post`), 201, 'settle concurrency sale');
     await createAndPost('goods-notes', {
@@ -880,11 +932,11 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     });
     expect(await balance(warehouse, itemB)).toBe('0.000000');
 
-    const tenantBName = `CS B ${RUN}`;
+    const tenantBName = `TR B ${RUN}`;
     const tenantBRegistration = await api().post('/api/v1/auth/register').send({
       tenantName: tenantBName,
       ownerName: 'Owner B',
-      email: `cs-b-${RUN}@test.dev`,
+      email: `tr-b-${RUN}@test.dev`,
       password: PASS,
     });
     await expectSuccess(tenantBRegistration, 201, 'register tenant B');
@@ -975,8 +1027,17 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     expect(m3(totals[0]!.debit)).toBe(m3(totals[0]!.credit));
 
     const countSettlement = await createSettlement(shortageSaleId, '1', '20.000');
-    await expectSuccess(await post(token, `purchase-invoices/${countSettlement.id}/post`), 201, 'settle count shortage');
-    expect(await accountBalance('2111')).toBe('0.000');
+    const countSettlementPost = await expectSuccess<{ journalEntryId: string }>(
+      await post(token, `purchase-invoices/${countSettlement.id}/post`),
+      201,
+      'settle count shortage',
+    );
+    expect(await journalLines(countSettlementPost.journalEntryId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: '5209', debit: '20.000' }),
+      expect.objectContaining({ code: '1105', debit: '3.200' }),
+      expect.objectContaining({ code: '2101', credit: '23.200', partyId: supplierId }),
+    ]));
+    expect(await accountBalance('1104')).toBe('0.000');
     const finalTotals = (await db.query(
       `SELECT COALESCE(SUM(l.debit), 0) AS debit, COALESCE(SUM(l.credit), 0) AS credit
          FROM journal_lines l
@@ -1005,7 +1066,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     expect(disabledWarehouseField.body.error.code).toBe('CONSIGNMENT_DISABLED');
   });
 
-  it('allocates settlement value from the remaining open amount without rounding drift', async () => {
+  it('tracks temporary-receipt settlement quantity without storing monetary values', async () => {
     await expectSuccess(
       await api().patch('/api/v1/company').set(auth(token)).send({ consignmentEnabled: true }),
       200,
@@ -1028,21 +1089,18 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       noteType: 'CONSIGNMENT_IN',
       warehouseId: warehouse,
       supplierId,
-      lines: [{ itemId: roundingItemId, qty: '3', unitCost: '3.333333' }],
+      lines: [{ itemId: roundingItemId, qty: '3' }],
     });
     const roundingSale = await createSalesInvoice(warehouse, roundingItemId, '3', '1.000', '2025-04-21');
     await expectSuccess(await post(token, `sales-invoices/${roundingSale.id}/post`), 201, 'post rounding sale');
     const saleRows = (await db.query(
-      `SELECT id, qty, value FROM consignment_sales
+      `SELECT id, qty FROM consignment_sales
         WHERE tenant_id = ? AND company_id = ? AND source_type = 'SALES_INVOICE' AND source_line_id = ?`,
       [tenantId, companyId, roundingSale.lines[0]!.id],
-    )) as { id: bigint; qty: string; value: string }[];
+    )) as { id: bigint; qty: string }[];
     expect(saleRows).toHaveLength(1);
     const roundingSaleId = String(saleRows[0]!.id);
-    expect({ qty: d6(saleRows[0]!.qty), value: m3(saleRows[0]!.value) }).toEqual({
-      qty: '3.000000',
-      value: '10.000',
-    });
+    expect(d6(saleRows[0]!.qty)).toBe('3.000000');
 
     const roundingReturn = await expectSuccess<{ id: string }>(
       await api().post('/api/v1/sales-returns').set(auth(token)).send({
@@ -1060,70 +1118,50 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       201,
       'post rounding sales return',
     );
-    expect(await journalLines(roundingReturnPosted.journalEntryId)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: '2111', debit: '3.333' }),
-      expect.objectContaining({ code: '5101', credit: '3.333' }),
-    ]));
+    const roundingReturnJournal = await journalLines(roundingReturnPosted.journalEntryId);
+    expect(roundingReturnJournal.some((line) => line.code === '5101' || line.code === '2111')).toBe(false);
     const afterReturn = (await db.query(
-      'SELECT qty, value, returned_qty, returned_value, invoiced_qty, invoiced_value FROM consignment_sales WHERE tenant_id = ? AND id = ?',
+      'SELECT qty, returned_qty, invoiced_qty FROM consignment_sales WHERE tenant_id = ? AND id = ?',
       [tenantId, roundingSaleId],
     )) as {
       qty: string;
-      value: string;
       returned_qty: string;
-      returned_value: string;
       invoiced_qty: string;
-      invoiced_value: string;
     }[];
     expect(afterReturn[0]).toMatchObject({
       returned_qty: '1.000000',
-      returned_value: '3.333',
       invoiced_qty: '0.000000',
-      invoiced_value: '0.000',
     });
 
     const firstSettlement = await createSettlement(roundingSaleId, '1', '1.000', '2025-04-23');
     await expectSuccess(await post(token, `purchase-invoices/${firstSettlement.id}/post`), 201, 'post first rounding settlement');
     const firstSettlementDetails = (await api()
       .get(`/api/v1/purchase-invoices/${firstSettlement.id}`)
-      .set(auth(token))).body as { lines: { consignmentClearedValue: string }[] };
-    expect(m3(firstSettlementDetails.lines[0]!.consignmentClearedValue)).toBe('3.334');
+      .set(auth(token))).body as { lines: { netAmount: string }[] };
+    expect(m3(firstSettlementDetails.lines[0]!.netAmount)).toBe('1.000');
 
     const secondSettlement = await createSettlement(roundingSaleId, '1', '1.000', '2025-04-24');
     await expectSuccess(await post(token, `purchase-invoices/${secondSettlement.id}/post`), 201, 'post final rounding settlement');
     const secondSettlementDetails = (await api()
       .get(`/api/v1/purchase-invoices/${secondSettlement.id}`)
-      .set(auth(token))).body as { lines: { consignmentClearedValue: string }[] };
-    expect(m3(secondSettlementDetails.lines[0]!.consignmentClearedValue)).toBe('3.333');
+      .set(auth(token))).body as { lines: { netAmount: string }[] };
+    expect(m3(secondSettlementDetails.lines[0]!.netAmount)).toBe('1.000');
     const finalSale = (await db.query(
-      'SELECT qty, value, returned_qty, returned_value, invoiced_qty, invoiced_value FROM consignment_sales WHERE tenant_id = ? AND id = ?',
+      'SELECT qty, returned_qty, invoiced_qty FROM consignment_sales WHERE tenant_id = ? AND id = ?',
       [tenantId, roundingSaleId],
     )) as {
       qty: string;
-      value: string;
       returned_qty: string;
-      returned_value: string;
       invoiced_qty: string;
-      invoiced_value: string;
     }[];
     const openQty = new Decimal(finalSale[0]!.qty)
       .minus(finalSale[0]!.returned_qty)
       .minus(finalSale[0]!.invoiced_qty);
-    const openValue = new Decimal(finalSale[0]!.value)
-      .minus(finalSale[0]!.returned_value)
-      .minus(finalSale[0]!.invoiced_value);
     expect({
-      returnedValue: m3(finalSale[0]!.returned_value),
-      invoicedValue: m3(finalSale[0]!.invoiced_value),
       openQty: d6(openQty),
-      openValue: m3(openValue),
     }).toEqual({
-      returnedValue: '3.333',
-      invoicedValue: '6.667',
       openQty: '0.000000',
-      openValue: '0.000',
     });
-    expect(openValue.gte(0)).toBe(true);
 
     await createAndPost('goods-notes', {
       noteDate: '2025-04-25',
@@ -1133,7 +1171,6 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       lines: [{ itemId: roundingItemId, qty: '1' }],
     });
     expect(await costPool(roundingItemId, warehouse)).toMatchObject({ qty: '0.000000', value: '0.000' });
-    expect(await accountBalance('2111')).toBe('0.000');
     const verify = await api().get('/api/v1/stock/verify').set(auth(token));
     await expectSuccess(verify, 200, 'stock verification after rounding case');
     expect(verify.body.mismatches).toEqual([]);
@@ -1163,16 +1200,16 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     const branchX = String((await db.query(
       `INSERT INTO branches (tenant_id, company_id, code, name_ar, is_active, created_at, updated_at)
        VALUES (?, ?, ?, ?, 1, ?, ?)`,
-      [tenantId, companyId, `CSX${RUN}`, 'فرع س', now, now],
+      [tenantId, companyId, `TRX${RUN}`, 'فرع س', now, now],
     ) as { insertId: bigint }).insertId);
     const branchY = String((await db.query(
       `INSERT INTO branches (tenant_id, company_id, code, name_ar, is_active, created_at, updated_at)
        VALUES (?, ?, ?, ?, 1, ?, ?)`,
-      [tenantId, companyId, `CSY${RUN}`, 'فرع ص', now, now],
+      [tenantId, companyId, `TRY${RUN}`, 'فرع ص', now, now],
     ) as { insertId: bigint }).insertId);
     const branchWarehouse = await expectSuccess<{ id: string }>(
       await api().post('/api/v1/warehouses').set(auth(token)).send({
-        code: `CSWY${RUN}`,
+        code: `TRWY${RUN}`,
         nameAr: 'مستودع فرع ص',
         branchId: branchY,
         consignmentSupplierId: supplierId,
@@ -1184,7 +1221,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     const pieceId = (units.body as { id: string; code: string }[]).find((unit) => unit.code === 'PCS')!.id;
     const branchItem = await expectSuccess<{ id: string }>(
       await api().post('/api/v1/items').set(auth(token)).send({
-        code: `CSBI${RUN}`,
+        code: `TRBI${RUN}`,
         nameAr: 'صنف فرع ص',
         baseUnitId: pieceId,
         taxCategoryId: taxId,
@@ -1226,7 +1263,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       'post branch-Y sale',
     );
     const restricted = await addMember(BASE, token, {
-      email: `cs-branch-${RUN}@test.dev`,
+      email: `tr-branch-${RUN}@test.dev`,
       roleCode: 'OWNER',
       password: PASS,
       defaultBranchId: branchX,

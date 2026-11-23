@@ -83,9 +83,9 @@ export class WarehousesService {
       const companyId = await this.companyId(db);
       const company = await db.company.findFirst({ where: { id: companyId }, select: { consignmentEnabled: true } });
       if (!company?.consignmentEnabled) {
-        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Temporary receipt is disabled for this company');
       }
-      throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'This document cannot use a consignment warehouse');
+      throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'This document cannot use a temporary warehouse');
     }
     return wh;
   }
@@ -103,7 +103,7 @@ export class WarehousesService {
     if (supplierId !== null) {
       const company = await db.company.findFirst({ where: { id: companyId }, select: { consignmentEnabled: true } });
       if (!company?.consignmentEnabled) {
-        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Temporary receipt is disabled for this company');
       }
       await this.assertConsignmentSupplier(db, companyId, supplierId);
     }
@@ -157,7 +157,7 @@ export class WarehousesService {
     if (dto.consignmentSupplierId !== undefined) {
       const company = await db.company.findFirst({ where: { id: companyId }, select: { consignmentEnabled: true } });
       if (!company?.consignmentEnabled) {
-        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Temporary receipt is disabled for this company');
       }
     }
     if (dto.consignmentSupplierId === undefined && dto.isActive === false) {
@@ -188,7 +188,7 @@ export class WarehousesService {
         if (!warehouse) throw DomainError.notFound('Warehouse', id.toString());
         const movements = await tx.stockMovement.count({ where: { tenantId, companyId, warehouseId: id } });
         if (requestedSupplierId !== warehouse.consignment_supplier_id && movements > 0) {
-          throw new DomainError(ErrorCode.CONFLICT, 'A consignment supplier cannot change after the first stock movement');
+          throw new DomainError(ErrorCode.CONFLICT, 'A temporary-receipt supplier cannot change after the first stock movement');
         }
         if (requestedSupplierId !== warehouse.consignment_supplier_id && requestedSupplierId !== null) {
           await this.assertConsignmentSupplier(tx, companyId, requestedSupplierId);
@@ -220,7 +220,7 @@ export class WarehousesService {
       select: { id: true },
     });
     if (!supplier) {
-      throw new DomainError(ErrorCode.PARTY_TYPE_MISMATCH, 'Consignment warehouse requires an active supplier of this company');
+      throw new DomainError(ErrorCode.PARTY_TYPE_MISMATCH, 'Temporary warehouse requires an active supplier of this company');
     }
   }
 }

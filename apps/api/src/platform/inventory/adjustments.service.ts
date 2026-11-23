@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
-import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
+import { Decimal } from '../../common/decimal/decimal.utils.js';
 import { assertWarehouseBranchAllowed, branchWhere } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -150,11 +150,11 @@ export class AdjustmentsService {
     if (warehouse.consignmentSupplierId !== null) {
       const company = await db.company.findFirst({ where: { id: companyId }, select: { consignmentEnabled: true } });
       if (!company?.consignmentEnabled) {
-        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Temporary receipt is disabled for this company');
       }
       throw new DomainError(
         ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
-        'Manual stock adjustments cannot use a consignment warehouse',
+        'Manual stock adjustments cannot use a temporary warehouse',
       );
     }
 
@@ -299,7 +299,7 @@ export class AdjustmentsService {
         if (consignmentSupplierId !== null && generatedDescription === undefined) {
           throw new DomainError(
             ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
-            'Only stock-count adjustments are allowed in a consignment warehouse',
+            'Only stock-count adjustments are allowed in a temporary warehouse',
           );
         }
         // The entry carries the warehouse's branch (ADR-003; S1 of the wave-3E review).
@@ -361,9 +361,7 @@ export class AdjustmentsService {
           tx,
           tenantId,
           companyId,
-          consignmentSupplierId !== null
-            ? ['CONSIGNMENT_SHRINKAGE', 'CONSIGNMENT_PAYABLE']
-            : ['INVENTORY', 'INVENTORY_ADJUSTMENT', 'OPENING_BALANCE_EQUITY'],
+          ['INVENTORY', 'INVENTORY_ADJUSTMENT', 'OPENING_BALANCE_EQUITY'],
         );
 
         const journalLines: JournalLineInput[] = [];
@@ -375,15 +373,11 @@ export class AdjustmentsService {
 
         if (consignmentSupplierId !== null) {
           for (const a of applied) {
+            if (!a.totalCost.isZero() || !a.writeOff.isZero()) {
+              throw new DomainError(ErrorCode.INTERNAL, 'Temporary-warehouse counts must have zero cost');
+            }
             const isIn = new Decimal(a.line.qtyIn.toString()).gt(0);
             if (isIn) continue;
-            const value = new Decimal(a.totalCost.toString()).plus(a.writeOff.toString());
-            pushPair(
-              mapping.CONSIGNMENT_SHRINKAGE,
-              mapping.CONSIGNMENT_PAYABLE,
-              value,
-              `Consignment stock count ${a.line.itemId}`,
-            );
             await tx.consignmentSale.create({
               data: {
                 tenantId,
@@ -396,7 +390,6 @@ export class AdjustmentsService {
                 sourceLineId: a.line.id,
                 saleDate: adjustmentDate,
                 qty: a.line.qtyOut,
-                value: round3(value),
               },
             });
           }
@@ -486,7 +479,7 @@ export class AdjustmentsService {
         if ((await this.ledger.consignmentSupplierOf(tx, companyId, original.warehouseId)) !== null) {
           throw new DomainError(
             ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
-            'Consignment count adjustments cannot be reversed as owned-stock adjustments',
+            'Temporary-receipt count adjustments cannot be reversed as owned-stock adjustments',
           );
         }
         const branchId = await assertWarehouseBranchAllowed(tx, original.warehouseId);

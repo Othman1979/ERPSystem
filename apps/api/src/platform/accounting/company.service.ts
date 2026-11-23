@@ -113,7 +113,7 @@ export class CompanyService {
   }
 
   private async assertConsignmentMappings(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint) {
-    for (const mappingKey of ['CONSIGNMENT_PAYABLE', 'CONSIGNMENT_SHRINKAGE'] as const) {
+    for (const mappingKey of ['CONSIGNMENT_SHRINKAGE'] as const) {
       let accountId: bigint;
       try {
         accountId = await this.mappings.mappedAccountId(tx, tenantId, companyId, mappingKey);
@@ -121,7 +121,7 @@ export class CompanyService {
         if (error instanceof DomainError && error.code === ErrorCode.MAPPING_ACCOUNT_INVALID) {
           throw new DomainError(
             ErrorCode.MAPPING_ACCOUNT_INVALID,
-            `Map ${mappingKey} in account settings before enabling consignment`,
+            'Map the supplier-goods-shortage account in account settings before enabling temporary receipt tracking',
             { mappingKey },
           );
         }
@@ -134,7 +134,7 @@ export class CompanyService {
       if (!account || mappingAccountValidationError(mappingKey, account)) {
         throw new DomainError(
           ErrorCode.MAPPING_ACCOUNT_INVALID,
-          `Map ${mappingKey} to a valid account in account settings before enabling consignment`,
+          'Map a valid supplier-goods-shortage account in account settings before enabling temporary receipt tracking',
           { mappingKey },
         );
       }
@@ -210,7 +210,7 @@ export class CompanyService {
             select: { id: true },
           });
           if (stock || openSale || draftNote || draftSettlement) {
-            throw new DomainError(ErrorCode.CONSIGNMENT_IN_USE, 'Open consignment stock or documents remain');
+            throw new DomainError(ErrorCode.CONSIGNMENT_IN_USE, 'Temporary-receipt stock or documents remain');
           }
         }
       }

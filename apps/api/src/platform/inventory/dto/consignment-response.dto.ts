@@ -53,31 +53,16 @@ export class ConsignmentOpenSaleResponseDto {
   qty!: string;
 
   @ApiProperty()
-  value!: string;
-
-  @ApiProperty()
   returnedQty!: string;
 
   @ApiProperty()
-  returnedValue!: string;
-
-  @ApiProperty()
   invoicedQty!: string;
-
-  @ApiProperty()
-  invoicedValue!: string;
 
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: string;
 
   @ApiProperty()
   openQty!: string;
-
-  @ApiProperty()
-  openValue!: string;
-
-  @ApiProperty()
-  unitCost!: string;
 
   @ApiProperty({ type: ConsignmentItemResponseDto })
   item!: ConsignmentItemResponseDto;
@@ -107,9 +92,6 @@ export class ConsignmentStatementResponseDto {
 
   @ApiProperty()
   openQty!: string;
-
-  @ApiProperty()
-  openValue!: string;
 }
 
 export class ConsignmentAgingResponseDto extends ConsignmentOpenSaleResponseDto {

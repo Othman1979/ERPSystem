@@ -1343,7 +1343,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
             : await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId);
         const explosions = await this.explodeRecipeLines(tx, companyId, draft.lines);
         if (consignmentSupplierId !== null && explosions.size > 0) {
-          throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Recipe lines are not allowed on consignment sales');
+          throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Recipe lines are not allowed on temporary-warehouse sales');
         }
         const missingLineIds = [...explosions].filter(([, e]) => e.missing).map(([lineId]) => lineId);
         // Lock every (item, warehouse) in the fixed order before any movement: the document's own
@@ -1435,11 +1435,13 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         }
         if (componentRows.length > 0) await tx.salesInvoiceLineComponent.createMany({ data: componentRows });
         if (consignmentSupplierId !== null) {
+          if (!costTotal.isZero() || !writeOff.isZero()) {
+            throw new DomainError(ErrorCode.INTERNAL, 'Temporary-warehouse sales must have zero cost');
+          }
           await tx.consignmentSale.createMany({
             data: draft.lines
               .filter((line) => stockItems.has(line.itemId))
               .map((line) => {
-                const cost = costByLine.get(line.id)!;
                 return {
                   tenantId,
                   companyId,
@@ -1451,7 +1453,6 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
                   sourceLineId: line.id,
                   saleDate: invoiceDate,
                   qty: line.qtyBase,
-                  value: round3(cost.totalCost.plus(cost.writeOff)),
                 };
               }),
           });
@@ -1487,9 +1488,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           'OUTPUT_TAX',
           'COGS',
           'CUSTOMERS_CONTROL',
-          ...(consignmentSupplierId !== null
-            ? (['CONSIGNMENT_PAYABLE'] as const)
-            : (['INVENTORY', 'INVENTORY_ADJUSTMENT'] as const)),
+          ...(consignmentSupplierId === null ? (['INVENTORY', 'INVENTORY_ADJUSTMENT'] as const) : []),
           ...(draft.invoiceDiscountAmount.gt(0) ? ['SALES_DISCOUNTS' as const] : []),
         ]);
 
@@ -1544,10 +1543,8 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           journalLines.push({ accountId: mapping.OUTPUT_TAX, credit: tax.toString() });
         }
         if (consignmentSupplierId !== null) {
-          const payableCost = costTotal.plus(writeOff);
-          if (payableCost.gt(0)) {
-            journalLines.push({ accountId: mapping.COGS, debit: payableCost.toString() });
-            journalLines.push({ accountId: mapping.CONSIGNMENT_PAYABLE, credit: payableCost.toString() });
+          if (!costTotal.isZero() || !writeOff.isZero()) {
+            throw new DomainError(ErrorCode.INTERNAL, 'Temporary-warehouse sales must have zero cost');
           }
         } else {
           if (costTotal.gt(0)) {

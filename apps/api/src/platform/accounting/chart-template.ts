@@ -20,7 +20,6 @@ export const ACCOUNT_MAPPING_KEYS = [
   'RETAINED_EARNINGS',
   'PURCHASES',
   'GOODS_RECEIVED_NOT_INVOICED',
-  'CONSIGNMENT_PAYABLE',
   'CONSIGNMENT_SHRINKAGE',
   'PRODUCTION_APPLIED_COST',
   'CHEQUES_RECEIVABLE',
@@ -100,7 +99,6 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('2102', 'ضريبة المبيعات', 'LIABILITY', { nameEn: 'Output tax', parentCode: '21' }),
   acct('2103', 'مصاريف مستحقة', 'LIABILITY', { nameEn: 'Accrued expenses', parentCode: '21' }),
   acct('2104', 'بضاعة مستلمة غير مفوترة', 'LIABILITY', { nameEn: 'Goods received not invoiced', parentCode: '21' }),
-  acct('2111', 'مستحق لموردي الأمانة', 'LIABILITY', { nameEn: 'Consignment payable', parentCode: '21' }),
   acct('2105', 'شيكات آجلة الدفع', 'LIABILITY', { nameEn: 'Post-dated cheques payable', parentCode: '21' }),
   acct('2106', 'رواتب مستحقة', 'LIABILITY', { nameEn: 'Salaries payable', parentCode: '21' }),
   acct('2107', 'الضمان الاجتماعي المستحق', 'LIABILITY', { nameEn: 'Social security payable', parentCode: '21' }),
@@ -127,7 +125,7 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('5206', 'حصة الشركة في الضمان', 'EXPENSE', { nameEn: 'Employer social security', parentCode: '52' }),
   acct('5207', 'مصروف الإجازات', 'EXPENSE', { nameEn: 'Leave expense', parentCode: '52' }),
   acct('5208', 'مصروف مكافأة نهاية الخدمة', 'EXPENSE', { nameEn: 'End-of-service expense', parentCode: '52' }),
-  acct('5209', 'عجز بضاعة الأمانة', 'EXPENSE', { nameEn: 'Consignment shrinkage', parentCode: '52' }),
+  acct('5209', 'عجز بضاعة المورد', 'EXPENSE', { nameEn: 'Supplier goods shortage', parentCode: '52' }),
 ];
 
 /** mappingKey → template account code (resolved to account ids on provision). */
@@ -147,7 +145,6 @@ export const TEMPLATE_MAPPINGS: Record<AccountMappingKey, string> = {
   RETAINED_EARNINGS: '3102',
   PURCHASES: '5103',
   GOODS_RECEIVED_NOT_INVOICED: '2104',
-  CONSIGNMENT_PAYABLE: '2111',
   CONSIGNMENT_SHRINKAGE: '5209',
   PRODUCTION_APPLIED_COST: '5104',
   CHEQUES_RECEIVABLE: '1106',
@@ -190,7 +187,6 @@ export const MAPPING_RULES: Record<AccountMappingKey, MappingRule> = {
   RETAINED_EARNINGS: { types: ['EQUITY'] },
   PURCHASES: { types: ['EXPENSE'] },
   GOODS_RECEIVED_NOT_INVOICED: { types: ['LIABILITY'] },
-  CONSIGNMENT_PAYABLE: { types: ['LIABILITY'] },
   CONSIGNMENT_SHRINKAGE: { types: ['EXPENSE'] },
   PRODUCTION_APPLIED_COST: { types: ['EXPENSE'] },
   CHEQUES_RECEIVABLE: { types: ['ASSET'] },
@@ -213,7 +209,6 @@ export const LOCKED_AFTER_POSTING: ReadonlySet<AccountMappingKey> = new Set<Acco
   'SUPPLIERS_CONTROL',
   'INVENTORY',
   'GOODS_RECEIVED_NOT_INVOICED',
-  'CONSIGNMENT_PAYABLE',
   'CHEQUES_RECEIVABLE',
   'CHEQUES_PAYABLE',
   'PAYROLL_PAYABLE',

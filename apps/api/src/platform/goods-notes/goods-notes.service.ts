@@ -664,17 +664,17 @@ export class GoodsNotesService implements OnModuleInit {
     if (isConsignment !== (consignmentSupplierId !== null)) {
       throw new DomainError(
         ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
-        'Consignment notes require a consignment warehouse and normal notes require an owned warehouse',
+        'Temporary-receipt notes require a temporary warehouse and normal notes require an owned warehouse',
       );
     }
     if (isConsignment && draft.supplierId !== consignmentSupplierId) {
       throw new DomainError(
         ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
-        'The consignment warehouse supplier changed after this note was created',
+        'The temporary warehouse supplier changed after this note was created',
       );
     }
     if (isConsignment && (locks.order || locks.request)) {
-      throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Consignment notes cannot use purchase orders or issue requests');
+      throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Temporary-receipt notes cannot use purchase orders or issue requests');
     }
 
     // ADR-026 §5/§9: checked again under the order's (or request's) locks.
@@ -708,7 +708,7 @@ export class GoodsNotesService implements OnModuleInit {
         movementDate: noteDate,
         type: isGrn || isConsignmentIn ? 'IN' : 'OUT',
         qty: line.qty.toString(),
-        unitCost: isGrn || isConsignmentIn ? (line.unitCost?.toString() ?? undefined) : undefined,
+        unitCost: isConsignmentIn ? '0' : isGrn ? (line.unitCost?.toString() ?? undefined) : undefined,
         sourceType: isConsignment ? draft.noteType : isGrn ? 'GOODS_RECEIPT' : 'GOODS_ISSUE',
         sourceId: draft.id,
         sourceLineId: line.id,
@@ -797,10 +797,10 @@ export class GoodsNotesService implements OnModuleInit {
     const isGrn = dto.noteType === 'GRN';
     const isConsignment = dto.noteType === 'CONSIGNMENT_IN' || dto.noteType === 'CONSIGNMENT_OUT';
     if (isConsignment && (dto.purchaseOrderId || dto.issueRequestId || dto.expenseAccountId || dto.costCenterId)) {
-      throw new DomainError(ErrorCode.VALIDATION, 'Consignment goods notes take no purchase, issue, expense or cost-centre fields');
+      throw new DomainError(ErrorCode.VALIDATION, 'Temporary-receipt notes take no purchase, issue, expense or cost-centre fields');
     }
     if (!isConsignment && dto.supplierId) {
-      throw new DomainError(ErrorCode.VALIDATION, 'supplierId is only accepted for consignment goods notes');
+      throw new DomainError(ErrorCode.VALIDATION, 'supplierId is only accepted for temporary-receipt goods notes');
     }
     if (isGrn && (dto.expenseAccountId || dto.costCenterId || dto.issueRequestId || dto.lines.some((l) => l.issueRequestLineId))) {
       throw new DomainError(ErrorCode.VALIDATION, 'A goods receipt takes no expense account, cost centre or issue request');
@@ -823,11 +823,8 @@ export class GoodsNotesService implements OnModuleInit {
             field: 'unitCost',
           });
         }
-      } else if ((isGrn || dto.noteType === 'CONSIGNMENT_IN') && !l.unitCost) {
+      } else if (isGrn && !l.unitCost) {
         throw new DomainError(ErrorCode.VALIDATION, 'unitCost is required for GRN lines');
-      }
-      if (dto.noteType === 'CONSIGNMENT_IN' && new Decimal(l.unitCost!).lte(0)) {
-        throw new DomainError(ErrorCode.VALIDATION, 'Consignment receipt unitCost must be > 0');
       }
       if (dto.issueRequestId && !l.issueRequestLineId) {
         throw new DomainError(ErrorCode.VALIDATION, 'Every line of an issue from a request names its request line');
@@ -890,16 +887,16 @@ export class GoodsNotesService implements OnModuleInit {
     if (isConsignment !== (consignmentSupplierId !== null)) {
       throw new DomainError(
         ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
-        'Consignment notes require a consignment warehouse and normal notes require an owned warehouse',
+        'Temporary-receipt notes require a temporary warehouse and normal notes require an owned warehouse',
       );
     }
     if (isConsignment) {
       const supplierId = dto.supplierId ? BigInt(dto.supplierId) : null;
       if (supplierId !== null && supplierId !== consignmentSupplierId) {
-        throw new DomainError(ErrorCode.PARTY_TYPE_MISMATCH, 'Consignment supplier must match its warehouse supplier');
+        throw new DomainError(ErrorCode.PARTY_TYPE_MISMATCH, 'Temporary-receipt supplier must match its warehouse supplier');
       }
       if (locks.order || locks.request) {
-        throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Consignment notes cannot use purchase orders or issue requests');
+        throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Temporary-receipt notes cannot use purchase orders or issue requests');
       }
     }
     // A new note, or another warehouse: that warehouse's branch; same warehouse: the note keeps its branch.
@@ -989,7 +986,7 @@ export class GoodsNotesService implements OnModuleInit {
       lines: dto.lines.map((l) => ({
         itemId: BigInt(l.itemId),
         qty: new Decimal(l.qty),
-        unitCost: dto.noteType === 'GRN' || dto.noteType === 'CONSIGNMENT_IN' ? new Decimal(l.unitCost!) : null,
+        unitCost: dto.noteType === 'GRN' ? new Decimal(l.unitCost!) : null,
         poLineId: null,
         issueRequestLineId: l.issueRequestLineId ? BigInt(l.issueRequestLineId) : null,
       })),

@@ -487,8 +487,8 @@ export class StockVerifyCostMismatchDto {
 
 /** A stock:verify difference between the stock value and the inventory account in the ledger. */
 export class StockVerifyGlMismatchDto {
-  @ApiProperty({ type: 'string', enum: ['GL_INVENTORY', 'GL_CONSIGNMENT'] })
-  kind!: 'GL_INVENTORY' | 'GL_CONSIGNMENT';
+  @ApiProperty({ type: 'string', enum: ['GL_INVENTORY'] })
+  kind!: 'GL_INVENTORY';
 
   @ApiProperty({ type: 'string' })
   companyId!: string;
