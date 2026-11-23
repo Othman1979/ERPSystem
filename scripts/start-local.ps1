@@ -96,11 +96,11 @@ if ((Test-Url $healthUrl) -and (Test-Url $webUrl)) {
 # ---------------------------------------------------------------- Node.js and pnpm
 Step 'Checking Node.js and pnpm'
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  Fail 'Node.js is not installed. Install Node.js 22.18 or newer from https://nodejs.org, then run this again.'
+  Fail 'Node.js is not installed. Install Node.js 24 LTS from https://nodejs.org, then run this again.'
 }
 $nodeVersion = [version]((& node -v).Trim().TrimStart('v'))
-if ($nodeVersion -lt [version]'22.18.0') {
-  Fail "Node.js $nodeVersion is too old. Install Node.js 22.18 or newer from https://nodejs.org, then run this again."
+if ($nodeVersion.Major -ne 24) {
+  Fail "Node.js $nodeVersion is not supported. Install Node.js 24 LTS from https://nodejs.org, then run this again."
 }
 if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
   Write-Host 'pnpm was not found; enabling it with corepack...'

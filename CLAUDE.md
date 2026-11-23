@@ -40,6 +40,9 @@ pnpm --filter api prisma:generate    # prisma generate + بصمة schema.sha256 
 pnpm --filter api prisma db seed
 pnpm --filter api db:create          # ينشئ قاعدة DATABASE_URL إن لم تكن موجودة
 start-local.bat                       # تشغيل محلي بنقرة: يتحقق من Node وMariaDB، يرحّل ويزرع، ويشغّل api وweb
+setup\windows\install.bat             # إعداد خادم Windows على الشبكة المحلية
+setup\windows\update.bat              # تحديث خادم Windows مع نسخة احتياطية وفحص القيود
+setup\windows\trust-client.bat        # توثيق شهادة HTTPS على جهاز عميل Windows
 pnpm api-client:generate # يولد packages/api-client من OpenAPI (OPENAPI_INPUT=<url|file> لمصدر غير :3001)
 pnpm --filter api openapi:models # بعد تغيير schema.prisma: يعيد توليد common/openapi/prisma-models.ts (ADR-023)
 pnpm --filter api job:tenant-status # Cron يومي: دورة حالات الاشتراك (ADR-009)، بعد pnpm build
