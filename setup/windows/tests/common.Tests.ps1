@@ -1,3 +1,60 @@
+Describe 'ConvertTo-WinSwServiceXml' {
+    It 'writes the API command and shared service policy with escaped paths and arguments' {
+        $appDir = 'C:\ERP & Cloud\app\apps\api'
+        $logs = 'C:\ERP & Cloud\data\logs'
+        $arguments = '--max-old-space-size=512 "' + $appDir + '\dist\main.js"'
+        [xml]$xml = ConvertTo-WinSwServiceXml -Id 'ERP-App' -DisplayName 'ERP Cloud API' -Executable 'C:\Program Files\nodejs\node.exe' -Arguments $arguments -WorkingDirectory $appDir -LogDirectory $logs -Dependency 'ERP-MariaDB'
+        $xml.service.id | Should -Be 'ERP-App'
+        $xml.service.name | Should -Be 'ERP Cloud API'
+        $xml.service.description | Should -Be 'ERP Cloud API'
+        $xml.service.executable | Should -Be 'C:\Program Files\nodejs\node.exe'
+        $xml.service.arguments | Should -Be $arguments
+        $xml.service.workingdirectory | Should -Be $appDir
+        $xml.service.serviceaccount.user | Should -Be 'LocalSystem'
+        $xml.service.startmode | Should -Be 'Automatic'
+        $xml.service.depend | Should -Be 'ERP-MariaDB'
+        $xml.service.onfailure.Count | Should -Be 3
+        foreach ($action in $xml.service.onfailure) {
+            $action.action | Should -Be 'restart'
+            $action.delay | Should -Be '10 sec'
+        }
+        $xml.service.resetfailure | Should -Be '1 hour'
+        $xml.service.stoptimeout | Should -Be '15 sec'
+        $xml.service.logpath | Should -Be $logs
+        $xml.service.log.mode | Should -Be 'roll-by-size'
+        $xml.service.log.sizeThreshold | Should -Be '10240'
+        $xml.service.log.keepFiles | Should -Be '5'
+    }
+
+    It 'writes the Caddy command without an API database dependency' {
+        $arguments = 'run --config "C:\ERPData\caddy\Caddyfile"'
+        [xml]$xml = ConvertTo-WinSwServiceXml -Id 'ERP-Caddy' -DisplayName 'ERP Cloud HTTPS proxy' -Executable 'C:\ERPData\bin\caddy.exe' -Arguments $arguments -WorkingDirectory 'C:\ERPData\caddy' -LogDirectory 'C:\ERPData\logs'
+        $xml.service.id | Should -Be 'ERP-Caddy'
+        $xml.service.name | Should -Be 'ERP Cloud HTTPS proxy'
+        $xml.service.executable | Should -Be 'C:\ERPData\bin\caddy.exe'
+        $xml.service.arguments | Should -Be $arguments
+        $xml.SelectSingleNode('/service/depend') | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Update-ErpServiceRegistration' {
+    It 'reapplies the quoted wrapper path, startup mode, account, dependency, and recovery with SCM' {
+        $commands = New-Object 'System.Collections.Generic.List[string]'
+        Mock Invoke-ErpServiceCommand { $commands.Add("$FilePath|$($Arguments -join '|')") }
+        Update-ErpServiceRegistration -Id 'ERP-App' -DisplayName 'ERP Cloud API' -WrapperPath 'C:\ERP Cloud\ERP-App.exe' -Dependency 'ERP-MariaDB'
+        $commands.Count | Should -Be 2
+        $commands[0] | Should -Be 'sc.exe|config|ERP-App|binPath=|"C:\ERP Cloud\ERP-App.exe"|DisplayName=|ERP Cloud API|start=|auto|obj=|LocalSystem|depend=|ERP-MariaDB'
+        $commands[1] | Should -Be 'sc.exe|failure|ERP-App|reset=|3600|actions=|restart/10000/restart/10000/restart/10000'
+    }
+
+    It 'clears stale dependencies for Caddy' {
+        Mock Invoke-ErpServiceCommand {}
+        Update-ErpServiceRegistration -Id 'ERP-Caddy' -DisplayName 'ERP Cloud HTTPS proxy' -WrapperPath 'C:\ERPData\ERP-Caddy.exe'
+        Should -Invoke Invoke-ErpServiceCommand -Exactly 1 -ParameterFilter {
+            $Arguments[0] -eq 'config' -and $Arguments[-2] -eq 'depend=' -and $Arguments[-1] -eq '/'
+        }
+    }
+}
 BeforeAll {
     . (Join-Path $PSScriptRoot '..\lib\common.ps1')
 

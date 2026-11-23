@@ -107,12 +107,15 @@ $url = $info.URL
 if (-not $url) {
     Fail 'URL is missing from INSTALL-INFO.txt. Re-run install.bat first.'
 }
+if (-not (Get-Service -Name 'ERP-App' -ErrorAction SilentlyContinue)) {
+    Fail 'ERP-App is not installed. Run install.bat to migrate a task-based installation first.'
+}
 $pullCompleted = $false
 $appStopped = $false
 
 try {
     Set-ErpJobTasksEnabled -Enabled $false
-    Stop-ErpApp -AppDir $AppDir
+    Stop-ErpApp
     $appStopped = $true
     Invoke-UpdateBackup
     $env:DATABASE_URL = $null
@@ -127,7 +130,7 @@ try {
     Invoke-UpdateCommand -FilePath $pnpmPath -Arguments @('--filter', 'api', 'exec', 'prisma', 'migrate', 'deploy') -WorkingDirectory $AppDir -StepName 'Applying database migrations'
     Invoke-UpdateCommand -FilePath $pnpmPath -Arguments @('--filter', 'api', 'prisma:generate') -WorkingDirectory $AppDir -StepName 'Generating Prisma client'
     Invoke-UpdateCommand -FilePath $pnpmPath -Arguments @('build') -WorkingDirectory $AppDir -StepName 'Building API and web'
-    Start-ErpTask -Name 'App'
+    Start-Service -Name 'ERP-App' -ErrorAction Stop
     $appStopped = $false
     Wait-ForHealth -Url $url
     $preflight = Invoke-LoggedProcess -FilePath $nodeExe -ArgumentLine 'dist/jobs/cli.js preflight' -WorkingDirectory $apiDir -EchoToHost
@@ -141,20 +144,20 @@ try {
     Write-Host "Update failed: $($_.Exception.Message)" -ForegroundColor Red
     if ($pullCompleted) {
         if (-not $appStopped) {
-            Stop-ErpApp -AppDir $AppDir
+            Stop-ErpApp
             $appStopped = $true
         }
         Write-Host 'Scheduled jobs remain disabled. Rollback guidance from deploy.md:'
         Write-Host "  git -C `"$AppDir`" checkout -B main $previousCommit"
         Write-Host "  pnpm --filter api prisma:generate"
         Write-Host '  pnpm build'
-        Write-Host '  Start the App scheduled task and run preflight.'
+        Write-Host '  Start-Service ERP-App; then run preflight.'
         Write-Host '  Migrations are not reversed. If the database schema changed, restore the pre-update backup.'
         Write-Host "  Get-ScheduledTask -TaskPath '\ERP Cloud\' | Where-Object TaskName -like 'Job-*' | Enable-ScheduledTask"
     } else {
         if ($appStopped) {
             try {
-                Start-ErpTask -Name 'App'
+                Start-Service -Name 'ERP-App' -ErrorAction Stop
             } catch {
             }
         }
