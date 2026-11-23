@@ -1446,7 +1446,7 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       .get(`/api/v1/reports/consignment-aging?supplierId=${supplierId}`)
       .set(auth(restricted.token));
     await expectSuccess(aging, 200, 'branch-restricted aging');
-    expect((aging.body as { item: { id: string } }[]).some((row) => row.item.id === branchItem.id)).toBe(false);
+    expect((aging.body as { id: string }[]).some((row) => row.id === String(sale[0]!.id))).toBe(false);
 
     const crossBranchBody = {
       invoiceDate: '2025-05-03',
