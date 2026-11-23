@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
+import { branchSql, branchWhere, hasAllBranches } from '../../common/branch/branch-context.js';
 import { Decimal, round3, round6, sum } from '../../common/decimal/decimal.utils.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -14,6 +15,10 @@ import type {
 } from './dto/consignment.dto.js';
 
 const MAX_ROWS = 500;
+
+function warehouseScope(): { warehouse?: ReturnType<typeof branchWhere> } {
+  return hasAllBranches() ? {} : { warehouse: branchWhere() };
+}
 
 @Injectable()
 export class ConsignmentService {
@@ -45,7 +50,7 @@ export class ConsignmentService {
     if (supplierId !== null) await this.assertSupplier(db, companyId, supplierId);
     if (warehouseId !== null) {
       const warehouse = await db.warehouse.findFirst({
-        where: { companyId, id: warehouseId },
+        where: { companyId, id: warehouseId, ...branchWhere() },
         select: { id: true, consignmentSupplierId: true },
       });
       if (!warehouse) throw DomainError.notFound('Warehouse', query.warehouseId!);
@@ -57,20 +62,25 @@ export class ConsignmentService {
       }
     }
     const filters = [
-      Prisma.sql`company_id = ${companyId}`,
-      Prisma.sql`qty > returned_qty + invoiced_qty`,
-      ...(supplierId === null ? [] : [Prisma.sql`supplier_id = ${supplierId}`]),
-      ...(warehouseId === null ? [] : [Prisma.sql`warehouse_id = ${warehouseId}`]),
+      Prisma.sql`s.company_id = ${companyId}`,
+      Prisma.sql`s.qty > s.returned_qty + s.invoiced_qty`,
+      ...(supplierId === null ? [] : [Prisma.sql`s.supplier_id = ${supplierId}`]),
+      ...(warehouseId === null ? [] : [Prisma.sql`s.warehouse_id = ${warehouseId}`]),
     ];
     const ids = await db.$queryRaw<{ id: bigint }[]>`
-      SELECT id FROM consignment_sales
-       WHERE tenant_id = ${tenantId} AND ${Prisma.join(filters, ' AND ')}
-       ORDER BY sale_date, id LIMIT ${MAX_ROWS + 1}`;
+      SELECT s.id
+        FROM consignment_sales s
+        JOIN warehouses w
+          ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+       WHERE s.tenant_id = ${tenantId}
+         AND ${branchSql(Prisma.raw('w.branch_id'))}
+         AND ${Prisma.join(filters, ' AND ')}
+       ORDER BY s.sale_date, s.id LIMIT ${MAX_ROWS + 1}`;
     if (ids.length > MAX_ROWS) {
       throw new DomainError(ErrorCode.REPORT_TOO_LARGE, 'Narrow the supplier or warehouse filter', { limit: MAX_ROWS });
     }
     const rows = await db.consignmentSale.findMany({
-      where: { id: { in: ids.map((row) => row.id) } },
+      where: { id: { in: ids.map((row) => row.id) }, ...warehouseScope() },
       orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
       include: { item: { select: { id: true, code: true, nameAr: true, nameEn: true } } },
     });
@@ -103,7 +113,7 @@ export class ConsignmentService {
     const range = { gte: new Date(query.from), lte: new Date(query.to) };
     const [sales, movementGroups, balances] = await Promise.all([
       db.consignmentSale.findMany({
-        where: { companyId, supplierId, saleDate: range },
+        where: { companyId, supplierId, saleDate: range, ...warehouseScope() },
         orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
         take: MAX_ROWS + 1,
       }),
@@ -113,7 +123,7 @@ export class ConsignmentService {
           companyId,
           movementDate: range,
           sourceType: { in: ['CONSIGNMENT_IN', 'CONSIGNMENT_OUT'] },
-          warehouse: { consignmentSupplierId: supplierId },
+          warehouse: { consignmentSupplierId: supplierId, ...branchWhere() },
         },
         _sum: { qtyIn: true, qtyOut: true },
         orderBy: [{ itemId: 'asc' }, { sourceType: 'asc' }],
@@ -121,7 +131,7 @@ export class ConsignmentService {
       }),
       db.stockBalance.groupBy({
         by: ['itemId'],
-        where: { warehouse: { companyId, consignmentSupplierId: supplierId } },
+        where: { warehouse: { companyId, consignmentSupplierId: supplierId, ...branchWhere() } },
         _sum: { qtyOnHand: true },
         orderBy: { itemId: 'asc' },
         take: MAX_ROWS + 1,
@@ -182,19 +192,24 @@ export class ConsignmentService {
     if (supplierId !== null) await this.assertSupplier(db, companyId, supplierId);
     const asOf = query.asOf ? new Date(query.asOf) : new Date();
     const filters = [
-      Prisma.sql`company_id = ${companyId}`,
-      Prisma.sql`qty > returned_qty + invoiced_qty`,
-      ...(supplierId === null ? [] : [Prisma.sql`supplier_id = ${supplierId}`]),
+      Prisma.sql`s.company_id = ${companyId}`,
+      Prisma.sql`s.qty > s.returned_qty + s.invoiced_qty`,
+      ...(supplierId === null ? [] : [Prisma.sql`s.supplier_id = ${supplierId}`]),
     ];
     const ids = await db.$queryRaw<{ id: bigint }[]>`
-      SELECT id FROM consignment_sales
-       WHERE tenant_id = ${tenantId} AND ${Prisma.join(filters, ' AND ')}
-       ORDER BY sale_date, id LIMIT ${MAX_ROWS + 1}`;
+      SELECT s.id
+        FROM consignment_sales s
+        JOIN warehouses w
+          ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+       WHERE s.tenant_id = ${tenantId}
+         AND ${branchSql(Prisma.raw('w.branch_id'))}
+         AND ${Prisma.join(filters, ' AND ')}
+       ORDER BY s.sale_date, s.id LIMIT ${MAX_ROWS + 1}`;
     if (ids.length > MAX_ROWS) {
       throw new DomainError(ErrorCode.REPORT_TOO_LARGE, 'Narrow the supplier filter', { limit: MAX_ROWS });
     }
     const rows = await db.consignmentSale.findMany({
-      where: { id: { in: ids.map((row) => row.id) } },
+      where: { id: { in: ids.map((row) => row.id) }, ...warehouseScope() },
       orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
       include: { item: { select: { id: true, code: true, nameAr: true, nameEn: true } } },
     });

@@ -9,6 +9,7 @@ import path from 'node:path';
 import { Decimal } from 'decimal.js';
 import mariadb, { type Connection } from 'mariadb';
 import request from 'supertest';
+import { addMember } from './support/members.js';
 import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 
 const API_PORT = 3791;
@@ -1039,5 +1040,110 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       200,
       'disable unused consignment after rounding case',
     );
+  });
+
+  it('hides consignment sales and report rows from other branches', async () => {
+    await expectSuccess(
+      await api().patch('/api/v1/company').set(auth(token)).send({ consignmentEnabled: true }),
+      200,
+      'enable consignment for branch-scope case',
+    );
+    const now = new Date();
+    const branchX = String((await db.query(
+      `INSERT INTO branches (tenant_id, company_id, code, name_ar, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, ?, ?)`,
+      [tenantId, companyId, `CSX${RUN}`, 'فرع س', now, now],
+    ) as { insertId: bigint }).insertId);
+    const branchY = String((await db.query(
+      `INSERT INTO branches (tenant_id, company_id, code, name_ar, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, ?, ?)`,
+      [tenantId, companyId, `CSY${RUN}`, 'فرع ص', now, now],
+    ) as { insertId: bigint }).insertId);
+    const branchWarehouse = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/warehouses').set(auth(token)).send({
+        code: `CSWY${RUN}`,
+        nameAr: 'مستودع فرع ص',
+        branchId: branchY,
+        consignmentSupplierId: supplierId,
+      }),
+      201,
+      'create branch-Y consignment warehouse',
+    );
+    const units = await api().get('/api/v1/units').set(auth(token));
+    const pieceId = (units.body as { id: string; code: string }[]).find((unit) => unit.code === 'PCS')!.id;
+    const branchItem = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/items').set(auth(token)).send({
+        code: `CSBI${RUN}`,
+        nameAr: 'صنف فرع ص',
+        baseUnitId: pieceId,
+        taxCategoryId: taxId,
+      }),
+      201,
+      'create branch-Y consignment item',
+    );
+    const receipt = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/goods-notes').set(auth(token)).set('X-Branch-Id', branchY).send({
+        noteDate: '2025-05-01',
+        noteType: 'CONSIGNMENT_IN',
+        warehouseId: branchWarehouse.id,
+        supplierId,
+        lines: [{ itemId: branchItem.id, qty: '2', unitCost: '5.000' }],
+      }),
+      201,
+      'create branch-Y receipt',
+    );
+    await expectSuccess(
+      await api().post(`/api/v1/goods-notes/${receipt.id}/post`).set(auth(token)).set('X-Branch-Id', branchY).set(idem()),
+      201,
+      'post branch-Y receipt',
+    );
+    const invoice = await expectSuccess<{ id: string; lines: { id: string }[] }>(
+      await api().post('/api/v1/sales-invoices').set(auth(token)).set('X-Branch-Id', branchY).send({
+        invoiceDate: '2025-05-02',
+        customerId,
+        warehouseId: branchWarehouse.id,
+        paymentType: 'CASH',
+        cashAccountId,
+        lines: [{ itemId: branchItem.id, qty: '1', unitPrice: '10.000' }],
+      }),
+      201,
+      'create branch-Y sale',
+    );
+    await expectSuccess(
+      await api().post(`/api/v1/sales-invoices/${invoice.id}/post`).set(auth(token)).set('X-Branch-Id', branchY).set(idem()),
+      201,
+      'post branch-Y sale',
+    );
+    const restricted = await addMember(BASE, token, {
+      email: `cs-branch-${RUN}@test.dev`,
+      roleCode: 'OWNER',
+      password: PASS,
+      defaultBranchId: branchX,
+      branchIds: [branchX],
+    });
+    const sale = (await db.query(
+      `SELECT id FROM consignment_sales
+        WHERE tenant_id = ? AND company_id = ? AND source_type = 'SALES_INVOICE' AND source_line_id = ?`,
+      [tenantId, companyId, invoice.lines[0]!.id],
+    )) as { id: bigint }[];
+    expect(sale).toHaveLength(1);
+
+    const openSales = await api()
+      .get(`/api/v1/consignment/open-sales?supplierId=${supplierId}`)
+      .set(auth(restricted.token));
+    await expectSuccess(openSales, 200, 'branch-restricted open sales');
+    expect((openSales.body as { id: string }[]).some((row) => row.id === String(sale[0]!.id))).toBe(false);
+
+    const statement = await api()
+      .get(`/api/v1/reports/consignment-statement?supplierId=${supplierId}&from=2025-05-01&to=2025-05-02`)
+      .set(auth(restricted.token));
+    await expectSuccess(statement, 200, 'branch-restricted statement');
+    expect((statement.body as { item: { id: string } }[]).some((row) => row.item.id === branchItem.id)).toBe(false);
+
+    const aging = await api()
+      .get(`/api/v1/reports/consignment-aging?supplierId=${supplierId}`)
+      .set(auth(restricted.token));
+    await expectSuccess(aging, 200, 'branch-restricted aging');
+    expect((aging.body as { item: { id: string } }[]).some((row) => row.item.id === branchItem.id)).toBe(false);
   });
 });
