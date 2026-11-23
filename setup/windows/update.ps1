@@ -112,9 +112,9 @@ $appStopped = $false
 
 try {
     Set-ErpJobTasksEnabled -Enabled $false
-    Invoke-UpdateBackup
     Stop-ErpApp -AppDir $AppDir
     $appStopped = $true
+    Invoke-UpdateBackup
     $env:DATABASE_URL = $null
     Invoke-UpdateCommand -FilePath $pnpmPath -Arguments @('--filter', 'api', 'ledger:check') -WorkingDirectory $AppDir -StepName 'Checking posted ledger data'
     Write-Step 'Fast-forwarding the server clone'
