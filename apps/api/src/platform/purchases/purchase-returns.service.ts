@@ -544,16 +544,41 @@ export class PurchaseReturnsService {
             throw new DomainError(ErrorCode.VALIDATION, 'Settlement invoice lines must reference a consignment sale');
           }
           const uniqueSaleIds = [...new Set(saleIds as bigint[])];
-          await tx.$queryRaw`
-            SELECT id FROM consignment_sales
+          const sales = await tx.$queryRaw<{
+            id: bigint;
+            supplier_id: bigint;
+            warehouse_id: bigint;
+            item_id: bigint;
+            qty: Prisma.Decimal;
+            value: Prisma.Decimal;
+            returned_qty: Prisma.Decimal;
+            returned_value: Prisma.Decimal;
+            invoiced_qty: Prisma.Decimal;
+            invoiced_value: Prisma.Decimal;
+          }[]>`
+            SELECT id, supplier_id, warehouse_id, item_id, qty, value,
+                   returned_qty, returned_value, invoiced_qty, invoiced_value
+              FROM consignment_sales
              WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
-               AND id IN (${Prisma.join(uniqueSaleIds)})
+             AND id IN (${Prisma.join(uniqueSaleIds)})
              ORDER BY id FOR UPDATE`;
-          const sales = await tx.consignmentSale.findMany({
-            where: { companyId, id: { in: uniqueSaleIds } },
-            orderBy: { id: 'asc' },
-          });
-          const saleById = new Map(sales.map((sale) => [sale.id, sale]));
+          const saleById = new Map(
+            sales.map((sale) => [
+              sale.id,
+              {
+                id: sale.id,
+                supplierId: sale.supplier_id,
+                warehouseId: sale.warehouse_id,
+                itemId: sale.item_id,
+                qty: sale.qty,
+                value: sale.value,
+                returnedQty: sale.returned_qty,
+                returnedValue: sale.returned_value,
+                invoicedQty: sale.invoiced_qty,
+                invoicedValue: sale.invoiced_value,
+              },
+            ]),
+          );
           for (const line of draft.lines) {
             const originalLine = line.originalLine;
             const saleId = originalLine.consignmentSaleId;

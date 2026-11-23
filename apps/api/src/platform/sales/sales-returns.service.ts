@@ -560,21 +560,36 @@ export class SalesReturnsService {
         const consignmentReturnValueByLine = new Map<bigint, Decimal>();
         if (consignmentSupplierId !== null) {
           const originalLineIds = [...new Set(draft.lines.map((line) => line.originalLineId))];
-          await tx.$queryRaw`
-            SELECT id FROM consignment_sales
+          const sales = await tx.$queryRaw<{
+            id: bigint;
+            source_line_id: bigint;
+            qty: Prisma.Decimal;
+            value: Prisma.Decimal;
+            returned_qty: Prisma.Decimal;
+            returned_value: Prisma.Decimal;
+            invoiced_qty: Prisma.Decimal;
+            invoiced_value: Prisma.Decimal;
+          }[]>`
+            SELECT id, source_line_id, qty, value, returned_qty, returned_value, invoiced_qty, invoiced_value
+              FROM consignment_sales
              WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
                AND source_type = 'SALES_INVOICE'
                AND source_line_id IN (${Prisma.join(originalLineIds)})
              ORDER BY id FOR UPDATE`;
-          const sales = await tx.consignmentSale.findMany({
-            where: {
-              companyId,
-              sourceType: 'SALES_INVOICE',
-              sourceLineId: { in: originalLineIds },
-            },
-            orderBy: { id: 'asc' },
-          });
-          const saleByLine = new Map(sales.map((sale) => [sale.sourceLineId, sale]));
+          const saleByLine = new Map(
+            sales.map((sale) => [
+              sale.source_line_id,
+              {
+                id: sale.id,
+                qty: sale.qty,
+                value: sale.value,
+                returnedQty: sale.returned_qty,
+                returnedValue: sale.returned_value,
+                invoicedQty: sale.invoiced_qty,
+                invoicedValue: sale.invoiced_value,
+              },
+            ]),
+          );
           for (const line of draft.lines) {
             if (!stockItems.has(line.itemId)) continue;
             const sale = saleByLine.get(line.originalLineId);
