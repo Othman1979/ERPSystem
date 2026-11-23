@@ -3663,6 +3663,13 @@ export interface StockVerifyResultDto {
   inventoryAccountBalance: string | null;
 }
 
+export interface ConsignmentSupplierResponseDto {
+  id: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
 export type ConsignmentSaleSourceType = typeof ConsignmentSaleSourceType[keyof typeof ConsignmentSaleSourceType];
 
 
@@ -3685,6 +3692,7 @@ export interface ConsignmentOpenSaleResponseDto {
   companyId: string;
   warehouseId: string;
   supplierId: string;
+  supplier: ConsignmentSupplierResponseDto;
   itemId: string;
   sourceType: ConsignmentSaleSourceType;
   sourceId: string;
@@ -3727,6 +3735,7 @@ export interface ConsignmentAgingResponseDto {
   companyId: string;
   warehouseId: string;
   supplierId: string;
+  supplier: ConsignmentSupplierResponseDto;
   itemId: string;
   sourceType: ConsignmentSaleSourceType;
   sourceId: string;
