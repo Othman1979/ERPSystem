@@ -15,6 +15,17 @@ export class ConsignmentItemResponseDto {
   nameEn!: string | null;
 }
 
+export class ConsignmentSupplierResponseDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  nameAr!: string;
+
+  @ApiProperty({ type: String, nullable: true })
+  nameEn!: string | null;
+}
+
 export class ConsignmentOpenSaleResponseDto {
   @ApiProperty()
   id!: string;
@@ -69,17 +80,6 @@ export class ConsignmentOpenSaleResponseDto {
 
   @ApiProperty({ type: ConsignmentItemResponseDto })
   item!: ConsignmentItemResponseDto;
-}
-
-export class ConsignmentSupplierResponseDto {
-  @ApiProperty()
-  id!: string;
-
-  @ApiProperty()
-  nameAr!: string;
-
-  @ApiProperty({ type: String, nullable: true })
-  nameEn!: string | null;
 }
 
 export class ConsignmentStatementResponseDto {
