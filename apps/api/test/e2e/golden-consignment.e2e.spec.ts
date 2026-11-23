@@ -574,14 +574,14 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       taxTotal: string;
       grandTotal: string;
     };
-    const openSales = await expectSuccess<Array<{ sourceId: string; sourceNo: string | null; openQty: string }>>(
+    const openSales = await expectSuccess<{ items: { sourceId: string; sourceNo: string | null; openQty: string }[] }>(
       await api()
         .get(`/api/v1/consignment/open-sales?supplierId=${supplierId}&warehouseId=${warehouse}`)
         .set(auth(token)),
       200,
       'consignment open sales',
     );
-    const tr2Row = openSales.find((row) => row.sourceId === sale.id)!;
+    const tr2Row = openSales.items.find((row) => row.sourceId === sale.id)!;
     expect(tr2Row).toMatchObject({
       sourceNo: saleDetails.invoiceNo,
     });
@@ -948,7 +948,7 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
     );
     const tenantBOpen = await api().get('/api/v1/consignment/open-sales').set(auth(tokenB));
     await expectSuccess(tenantBOpen, 200, 'tenant B open sales');
-    expect(tenantBOpen.body).toEqual([]);
+    expect(tenantBOpen.body.items).toEqual([]);
     const crossSupplier = await api()
       .get(`/api/v1/consignment/open-sales?supplierId=${supplierId}`)
       .set(auth(tokenB));
@@ -993,7 +993,7 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       .set(auth(token))
       .set('X-Company-Id', secondCompany.id);
     await expectSuccess(sameTenantOpen, 200, 'same-tenant company open sales');
-    expect(sameTenantOpen.body).toEqual([]);
+    expect(sameTenantOpen.body.items).toEqual([]);
     const sameTenantCrossSupplier = await api()
       .get(`/api/v1/consignment/open-sales?supplierId=${supplierId}&warehouseId=${warehouse}`)
       .set(auth(token))
@@ -1279,7 +1279,7 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       .get(`/api/v1/consignment/open-sales?supplierId=${supplierId}`)
       .set(auth(restricted.token));
     await expectSuccess(openSales, 200, 'branch-restricted open sales');
-    expect((openSales.body as { id: string }[]).some((row) => row.id === String(sale[0]!.id))).toBe(false);
+    expect((openSales.body.items as { id: string }[]).some((row) => row.id === String(sale[0]!.id))).toBe(false);
 
     const statement = await api()
       .get(`/api/v1/reports/consignment-statement?supplierId=${supplierId}&from=2025-05-01&to=2025-05-02`)

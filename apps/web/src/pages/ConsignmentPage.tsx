@@ -113,7 +113,9 @@ function OpenSalesTab() {
   const lookups = useConsignmentLookups();
   const [supplierId, setSupplierId] = useState<string>();
   const [warehouseId, setWarehouseId] = useState<string>();
-  const [selected, setSelected] = useState<Record<string, { qty: string; unitPrice: string }>>({});
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [selected, setSelected] = useState<Record<string, { sale: ConsignmentOpenSaleResponseDto; qty: string; unitPrice: string }>>({});
   const [headerOpen, setHeaderOpen] = useState(false);
   const [invoiceDate, setInvoiceDate] = useState<Dayjs>(dayjs());
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('');
@@ -122,18 +124,15 @@ function OpenSalesTab() {
   const [apiError, contextHolderError] = message.useMessage();
   const queryClient = useQueryClient();
   const openSales = useQuery({
-    queryKey: ['consignment', 'open-sales', supplierId, warehouseId],
+    queryKey: ['consignment', 'open-sales', supplierId, warehouseId, page, pageSize],
     queryFn: ({ signal }) =>
       consignmentControllerOpenSales(
-        { ...(supplierId ? { supplierId } : {}), ...(warehouseId ? { warehouseId } : {}) },
+        { page, pageSize, ...(supplierId ? { supplierId } : {}), ...(warehouseId ? { warehouseId } : {}) },
         { signal },
       ).then((r) => r.data),
   });
-  const rows = openSales.data ?? [];
-  const selectedRows = rows.flatMap((sale) => {
-    const value = selected[sale.id];
-    return value ? [{ sale, ...value }] : [];
-  });
+  const rows = openSales.data?.items ?? [];
+  const selectedRows = Object.values(selected);
   const create = useMutation({
     mutationFn: () =>
       purchasesControllerCreateInvoice(
@@ -197,16 +196,14 @@ function OpenSalesTab() {
   ];
   const rowSelection = {
     selectedRowKeys: Object.keys(selected),
-    onChange: (keys: Key[], selectedRowsNow: ConsignmentOpenSaleResponseDto[]) => {
+    preserveSelectedRowKeys: true,
+    onSelect: (sale: ConsignmentOpenSaleResponseDto, checked: boolean) =>
       setSelected((current) => {
-        const next: typeof current = {};
-        for (const row of selectedRowsNow) {
-          next[row.id] = current[row.id] ?? { qty: row.openQty, unitPrice: '' };
-        }
+        const next = { ...current };
+        if (checked) next[sale.id] = current[sale.id] ?? { sale, qty: sale.openQty, unitPrice: '' };
+        else delete next[sale.id];
         return next;
-      });
-      if (keys.length === 0) setSelected({});
-    },
+      }),
   };
   const startCreate = () => {
     if (!selectedRows.length) {
@@ -255,11 +252,11 @@ function OpenSalesTab() {
       >
         <WinField label={t('purchases.supplier')}>
           <Select allowClear showSearch optionFilterProp="label" value={supplierId} options={lookups.supplierOptions}
-            onChange={(value) => { setSupplierId(value); setSelected({}); setWarehouseId(undefined); }} />
+          onChange={(value) => { setSupplierId(value); setSelected({}); setWarehouseId(undefined); setPage(1); }} />
         </WinField>
         <WinField label={t('stock.warehouse')}>
           <Select allowClear showSearch optionFilterProp="label" value={warehouseId} options={lookups.warehouseOptions}
-            onChange={(value) => { setWarehouseId(value); setSelected({}); }} />
+          onChange={(value) => { setWarehouseId(value); setSelected({}); setPage(1); }} />
         </WinField>
       </ReportCriteria>
       <Table<ConsignmentOpenSaleResponseDto>
@@ -270,7 +267,15 @@ function OpenSalesTab() {
         rowSelection={rowSelection}
         locale={{ emptyText: openSales.isSuccess ? empty : t('common.noResults') }}
         size="small"
-        pagination={{ pageSize: 10 }}
+        pagination={{
+          current: openSales.data?.page ?? page,
+          pageSize: openSales.data?.pageSize ?? pageSize,
+          total: openSales.data?.total ?? 0,
+          onChange: (next, nextSize) => {
+            setPage(nextSize === pageSize ? next : 1);
+            setPageSize(nextSize);
+          },
+        }}
         scroll={{ x: 'max-content' }}
       />
       {supplier && warehouse && (

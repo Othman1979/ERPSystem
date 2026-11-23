@@ -2,6 +2,7 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { RequirePermission } from '../../common/decorators/auth.decorators.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
+import { ApiPagedResponse } from '../../common/openapi/responses.js';
 import {
   ConsignmentAgingQueryDto,
   ConsignmentOpenSalesQueryDto,
@@ -21,7 +22,7 @@ export class ConsignmentController {
 
   @Get('consignment/open-sales')
   @RequirePermission(PERMISSIONS.PURCHASE_MANAGE)
-  @ApiOkResponse({ type: ConsignmentOpenSaleResponseDto, isArray: true, description: 'Open consignment sales available for settlement.' })
+  @ApiPagedResponse(ConsignmentOpenSaleResponseDto, 'Open temporary-receipt sales available for settlement.')
   openSales(@Query() query: ConsignmentOpenSalesQueryDto) {
     return this.consignment.openSales(query);
   }

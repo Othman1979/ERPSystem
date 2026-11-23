@@ -6,6 +6,8 @@ import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
 import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { findPage } from '../../common/paging/find-page.js';
+import { pageWindow } from '../../common/paging/page-query.dto.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { DocumentSupportService } from '../shared/document-support.service.js';
@@ -79,28 +81,42 @@ export class ConsignmentService {
       ...(supplierId === null ? [] : [Prisma.sql`s.supplier_id = ${supplierId}`]),
       ...(warehouseId === null ? [] : [Prisma.sql`s.warehouse_id = ${warehouseId}`]),
     ];
-    const ids = await db.$queryRaw<{ id: bigint }[]>`
-      SELECT s.id
-        FROM consignment_sales s
-        JOIN warehouses w
-          ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
-        LEFT JOIN sales_invoices si
-          ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
-       WHERE s.tenant_id = ${tenantId}
-         AND ${branchSql(Prisma.raw('w.branch_id'))}
-         AND ${sourceBranchScope()}
-         AND ${Prisma.join(filters, ' AND ')}
-       ORDER BY s.sale_date, s.id LIMIT ${MAX_ROWS + 1}`;
-    if (ids.length > MAX_ROWS) {
-      throw new DomainError(ErrorCode.REPORT_TOO_LARGE, 'Narrow the supplier or warehouse filter', { limit: MAX_ROWS });
-    }
+    const matches = Prisma.join(filters, ' AND ');
+    const page = await findPage(db, pageWindow(query), {
+      rows: (tx, { skip, take }) => tx.$queryRaw<{ id: bigint }[]>`
+        SELECT s.id
+          FROM consignment_sales s
+          JOIN warehouses w
+            ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+          LEFT JOIN sales_invoices si
+            ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
+         WHERE s.tenant_id = ${tenantId}
+           AND ${branchSql(Prisma.raw('w.branch_id'))}
+           AND ${sourceBranchScope()}
+           AND ${matches}
+         ORDER BY s.sale_date, s.id LIMIT ${take} OFFSET ${skip}`,
+      count: async (tx) => {
+        const [row] = await tx.$queryRaw<{ total: bigint }[]>`
+          SELECT COUNT(*) AS total
+            FROM consignment_sales s
+            JOIN warehouses w
+              ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+            LEFT JOIN sales_invoices si
+              ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
+           WHERE s.tenant_id = ${tenantId}
+             AND ${branchSql(Prisma.raw('w.branch_id'))}
+             AND ${sourceBranchScope()}
+             AND ${matches}`;
+        return Number(row?.total ?? 0n);
+      },
+    });
     const rows = await db.consignmentSale.findMany({
-      where: { id: { in: ids.map((row) => row.id) }, ...warehouseScope() },
+      where: { id: { in: page.items.map((row) => row.id) }, ...warehouseScope() },
       orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
       include: { item: { select: { id: true, code: true, nameAr: true, nameEn: true } } },
     });
     const sourceNumbers = await this.sourceNumbers(db, companyId, rows);
-    return rows.map((row) => {
+    const items = rows.map((row) => {
       const openQty = new Decimal(row.qty.toString()).minus(row.returnedQty.toString()).minus(row.invoicedQty.toString());
       return {
         ...row,
@@ -111,6 +127,7 @@ export class ConsignmentService {
         sourceNo: sourceNumbers.get(`${row.sourceType}:${row.sourceId}`) ?? null,
       };
     });
+    return { ...page, items };
   }
 
   async statement(query: ConsignmentStatementQueryDto) {

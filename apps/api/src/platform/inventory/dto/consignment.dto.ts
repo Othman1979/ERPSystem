@@ -1,10 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsOptional, IsString, Matches } from 'class-validator';
+import { PageQueryDto } from '../../../common/paging/page-query.dto.js';
 
 const ID = /^\d+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export class ConsignmentOpenSalesQueryDto {
+export class ConsignmentOpenSalesQueryDto extends PageQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
