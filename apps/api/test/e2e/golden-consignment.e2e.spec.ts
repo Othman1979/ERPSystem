@@ -868,14 +868,20 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       'SELECT doc_no AS docNo FROM stock_counts WHERE tenant_id = ? AND company_id = ? AND id = ?',
       [tenantId, companyId, count.id],
     )) as { docNo: string | null }[];
-    const agingRows = await expectSuccess<Array<{ id: string; sourceNo: string | null }>>(
+    const agingRows = await expectSuccess<Array<{
+      id: string;
+      sourceNo: string | null;
+      supplier: { id: string; nameAr: string; nameEn: string | null };
+    }>>(
       await api()
         .get(`/api/v1/reports/consignment-aging?supplierId=${supplierId}`)
         .set(auth(token)),
       200,
       'consignment aging',
     );
-    expect(agingRows.find((row) => row.id === shortageSaleId)?.sourceNo).toBe(countNumbers[0]?.docNo);
+    const shortageAgingRow = agingRows.find((row) => row.id === shortageSaleId);
+    expect(shortageAgingRow?.sourceNo).toBe(countNumbers[0]?.docNo);
+    expect(shortageAgingRow?.supplier).toEqual({ id: supplierId, nameAr: 'مورد', nameEn: null });
 
     const followupCount = await expectSuccess<{ id: string; lines: { id: string; itemId: string }[] }>(
       await api().post('/api/v1/stock-counts').set(auth(token)).send({

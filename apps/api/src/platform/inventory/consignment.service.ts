@@ -302,7 +302,10 @@ export class ConsignmentService {
     const rows = await db.consignmentSale.findMany({
       where: { id: { in: ids.map((row) => row.id) }, ...warehouseScope() },
       orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
-      include: { item: { select: { id: true, code: true, nameAr: true, nameEn: true } } },
+      include: {
+        item: { select: { id: true, code: true, nameAr: true, nameEn: true } },
+        supplier: { select: { id: true, nameAr: true, nameEn: true } },
+      },
     });
     const sourceNumbers = await this.sourceNumbers(db, companyId, rows);
     return rows.map((row) => {
