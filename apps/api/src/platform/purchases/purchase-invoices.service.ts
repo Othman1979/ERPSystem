@@ -1000,7 +1000,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
               ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
             LEFT JOIN sales_invoices si
               ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
-           WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
+           WHERE s.tenant_id = ${tenantId} AND s.company_id = ${companyId}
              AND s.id IN (${Prisma.join(saleIds)})
            ORDER BY s.id FOR UPDATE`;
         const saleById = new Map(
