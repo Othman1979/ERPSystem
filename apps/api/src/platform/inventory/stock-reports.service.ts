@@ -391,7 +391,7 @@ export class StockReportsService {
     if (both.length === 0) return { fromCount: from, toCount: to, rows: [] };
     const itemIds = both.map((l) => l.itemId);
     const warehouse = await db.warehouse.findFirst({
-      where: { companyId, id: warehouseId },
+      where: { companyId, id: warehouseId, ...branchWhere() },
       select: { id: true, consignmentSupplierId: true },
     });
     if (!warehouse) throw DomainError.notFound('Warehouse', warehouseId.toString());
