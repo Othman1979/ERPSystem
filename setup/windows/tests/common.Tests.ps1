@@ -169,6 +169,12 @@ Describe 'Update-MyIniText' {
         $updated | Should -Match 'bind-address=127\.0\.0\.1\r\n\r\n\[client\]'
     }
 
+    It 'recognizes the next section when its header has a trailing comment' {
+        $text = "[mysqld]`r`nport=3306`r`n[client] # comment`r`nport=3307`r`n"
+        $updated = Update-MyIniText -Text $text -DataDirValue 'C:\ERPData\mariadb' -Port 3308
+        $updated | Should -Match 'bind-address=127\.0\.0\.1\r\n\r\n\[client\] # comment\r\nport=3307'
+    }
+
     It 'ends the final mysqld section with a newline' {
         $updated = Update-MyIniText -Text '[mysqld]' -DataDirValue 'C:\ERPData\mariadb' -Port 3308
         $updated.EndsWith("`r`n") | Should -BeTrue

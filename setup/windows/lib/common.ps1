@@ -182,8 +182,8 @@ function Update-MyIniText {
         'bind-address=127.0.0.1'
     )
     $settingPattern = '(?i)^\s*(?:datadir|port|character-set-server|collation-server|bind-address)\s*='
-    $sectionPattern = '(?i)^\s*\[mysqld\]\s*$'
-    $anySectionPattern = '^\s*\[[^\]]+\]\s*$'
+    $sectionPattern = '(?i)^\s*\[mysqld\]\s*(?:[#;].*)?$'
+    $anySectionPattern = '^\s*\[[^\]]+\]\s*(?:[#;].*)?$'
     $sectionStart = -1
     for ($index = 0; $index -lt $lines.Count; $index++) {
         if ($lines[$index] -match $sectionPattern) {
