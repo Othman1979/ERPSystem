@@ -1388,6 +1388,40 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
     expect(crossBranchPost.status).toBe(403);
     expect(crossBranchPost.body.error.code).toBe('BRANCH_NOT_ALLOWED');
     expect((await api().delete(`/api/v1/purchase-invoices/${crossBranchDraft.body.id}`).set(auth(restricted.token))).status).toBe(200);
+
+    const linkedSupplier = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/parties').set(auth(token)).send({
+        code: `LINKED-${RUN}`,
+        nameAr: 'مورد مرتبط بمستودع مؤقت',
+        partyType: 'SUPPLIER',
+      }),
+      201,
+      'create linked supplier',
+    );
+    await expectSuccess(
+      await api().post('/api/v1/warehouses').set(auth(token)).send({
+        code: `LINKED-WH-${RUN}`,
+        nameAr: 'مستودع مورد مرتبط',
+        consignmentSupplierId: linkedSupplier.id,
+      }),
+      201,
+      'create warehouse with linked supplier',
+    );
+    const deactivated = await api().patch(`/api/v1/parties/${linkedSupplier.id}/deactivate`).set(auth(token));
+    await expectSuccess(deactivated, 200, 'deactivate linked warehouse supplier');
+    expect(deactivated.body).toEqual({ deactivated: true });
+
+    const stockVerification = await api().get('/api/v1/stock/verify').set(auth(token));
+    await expectSuccess(stockVerification, 200, 'verify branch-scope stock movements');
+    expect(stockVerification.body.mismatches).toEqual([]);
+    const totals = (await db.query(
+      `SELECT COALESCE(SUM(l.debit), 0) AS debit, COALESCE(SUM(l.credit), 0) AS credit
+         FROM journal_lines l
+         JOIN journal_entries e ON e.tenant_id = l.tenant_id AND e.id = l.journal_entry_id
+        WHERE e.tenant_id = ? AND e.company_id = ? AND e.status = 'POSTED'`,
+      [tenantId, companyId],
+    )) as { debit: string; credit: string }[];
+    expect(m3(totals[0]!.debit)).toBe(m3(totals[0]!.credit));
   });
 
   it('serializes a first stock movement against a consignment supplier change', async () => {
