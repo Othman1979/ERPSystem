@@ -140,7 +140,7 @@ export class ConsignmentService {
     await this.assertSupplier(db, companyId, supplierId);
     if (query.from > query.to) throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to');
     const range = { gte: new Date(query.from), lte: new Date(query.to) };
-    const [saleIds, movementGroups, balances] = await Promise.all([
+    const [saleIds, movementGroups, balances, salesReturnGroups, settlementGroups, settlementReturnGroups] = await Promise.all([
       db.$queryRaw<{ id: bigint }[]>`
         SELECT s.id
           FROM consignment_sales s
@@ -172,6 +172,46 @@ export class ConsignmentService {
         orderBy: { itemId: 'asc' },
         take: MAX_ROWS + 1,
       }),
+      db.$queryRaw<{ item_id: bigint; qty: Prisma.Decimal }[]>`
+        SELECT s.item_id, SUM(l.qty_base) AS qty
+          FROM sales_return_lines l
+          JOIN sales_returns r ON r.tenant_id = l.tenant_id AND r.id = l.return_id
+          JOIN sales_invoice_lines il ON il.tenant_id = l.tenant_id AND il.id = l.original_line_id
+          JOIN consignment_sales s
+            ON s.tenant_id = il.tenant_id AND s.source_type = 'SALES_INVOICE'
+           AND s.source_line_id = il.id AND s.source_id = il.invoice_id
+          JOIN warehouses w ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+          LEFT JOIN sales_invoices si ON si.tenant_id = s.tenant_id AND si.id = s.source_id
+         WHERE r.tenant_id = ${tenantId} AND r.company_id = ${companyId} AND r.status = 'POSTED'
+           AND r.return_date >= ${range.gte} AND r.return_date <= ${range.lte}
+           AND s.supplier_id = ${supplierId}
+           AND ${branchSql(Prisma.raw('w.branch_id'))} AND ${sourceBranchScope()}
+         GROUP BY s.item_id`,
+      db.$queryRaw<{ item_id: bigint; qty: Prisma.Decimal }[]>`
+        SELECT s.item_id, SUM(l.qty_base) AS qty
+          FROM purchase_invoice_lines l
+          JOIN purchase_invoices i ON i.tenant_id = l.tenant_id AND i.id = l.invoice_id
+          JOIN consignment_sales s ON s.tenant_id = l.tenant_id AND s.id = l.consignment_sale_id
+          JOIN warehouses w ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+          LEFT JOIN sales_invoices si ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
+         WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId} AND i.status = 'POSTED'
+           AND i.consignment_settlement = 1 AND i.invoice_date >= ${range.gte} AND i.invoice_date <= ${range.lte}
+           AND s.supplier_id = ${supplierId}
+           AND ${branchSql(Prisma.raw('w.branch_id'))} AND ${sourceBranchScope()}
+         GROUP BY s.item_id`,
+      db.$queryRaw<{ item_id: bigint; qty: Prisma.Decimal }[]>`
+        SELECT s.item_id, SUM(l.qty_base) AS qty
+          FROM purchase_return_lines l
+          JOIN purchase_returns r ON r.tenant_id = l.tenant_id AND r.id = l.return_id
+          JOIN purchase_invoice_lines il ON il.tenant_id = l.tenant_id AND il.id = l.original_line_id
+          JOIN consignment_sales s ON s.tenant_id = il.tenant_id AND s.id = il.consignment_sale_id
+          JOIN warehouses w ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+          LEFT JOIN sales_invoices si ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
+         WHERE r.tenant_id = ${tenantId} AND r.company_id = ${companyId} AND r.status = 'POSTED'
+           AND r.return_date >= ${range.gte} AND r.return_date <= ${range.lte}
+           AND s.supplier_id = ${supplierId}
+           AND ${branchSql(Prisma.raw('w.branch_id'))} AND ${sourceBranchScope()}
+         GROUP BY s.item_id`,
     ]);
     const sales = await db.consignmentSale.findMany({
       where: { companyId, supplierId, saleDate: range, id: { in: saleIds.map((row) => row.id) }, ...warehouseScope() },
@@ -184,6 +224,9 @@ export class ConsignmentService {
       ...sales.map((row) => row.itemId),
       ...movementGroups.map((row) => row.itemId),
       ...balances.map((row) => row.itemId),
+      ...salesReturnGroups.map((row) => row.item_id),
+      ...settlementGroups.map((row) => row.item_id),
+      ...settlementReturnGroups.map((row) => row.item_id),
     ])];
     if (itemIds.length > MAX_ROWS) {
       throw new DomainError(ErrorCode.REPORT_TOO_LARGE, 'Narrow the statement date range', { limit: MAX_ROWS });
@@ -200,18 +243,23 @@ export class ConsignmentService {
       const received = new Decimal(movement('CONSIGNMENT_IN')?._sum.qtyIn?.toString() ?? 0);
       const returnedToSupplier = new Decimal(movement('CONSIGNMENT_OUT')?._sum.qtyOut?.toString() ?? 0);
       const sold = sum(itemSales.filter((row) => row.sourceType === 'SALES_INVOICE').map((row) =>
-        new Decimal(row.qty.toString()).minus(row.returnedQty.toString()),
+        row.qty,
       ));
       const shortage = sum(itemSales.filter((row) => row.sourceType === 'STOCK_COUNT').map((row) => row.qty));
-      const invoicedQty = sum(itemSales.map((row) => row.invoicedQty));
-      const openQty = sum(itemSales.map((row) =>
-        new Decimal(row.qty.toString()).minus(row.returnedQty.toString()).minus(row.invoicedQty.toString()),
-      ));
+      const salesReturns = sum(salesReturnGroups.filter((row) => row.item_id === itemId).map((row) => row.qty));
+      const settlements = sum(settlementGroups.filter((row) => row.item_id === itemId).map((row) => row.qty));
+      const settlementReturns = sum(settlementReturnGroups.filter((row) => row.item_id === itemId).map((row) => row.qty));
+      const invoicedQty = settlements.minus(settlementReturns);
+      const openQty = sum([
+        sum(itemSales.map((row) => row.qty)),
+        salesReturns.negated(),
+        invoicedQty.negated(),
+      ]);
       return {
         item: itemById.get(itemId),
         receivedQty: received.toString(),
         returnedToSupplierQty: returnedToSupplier.toString(),
-        soldNetOfReturnsQty: sold.toString(),
+        soldNetOfReturnsQty: sold.minus(salesReturns).toString(),
         countShortageQty: shortage.toString(),
         invoicedQty: invoicedQty.toString(),
         onHandQty: (balanceByItem.get(itemId) ?? new Decimal(0)).toString(),

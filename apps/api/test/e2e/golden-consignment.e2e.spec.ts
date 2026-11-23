@@ -699,8 +699,8 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       'SELECT COUNT(*) AS n FROM stock_movements WHERE tenant_id = ? AND company_id = ?',
       [tenantId, companyId],
     )) as { n: number }[];
-    const settlementA = await createSettlement(saleId, '2', '20.000');
-    const settlementB = await createSettlement(saleId, '2', '20.000');
+    const settlementA = await createSettlement(saleId, '2', '20.000', '2025-03-02');
+    const settlementB = await createSettlement(saleId, '2', '20.000', '2025-03-02');
     const settlementPosts = await Promise.all([
       post(token, `purchase-invoices/${settlementA.id}/post`),
       post(token, `purchase-invoices/${settlementB.id}/post`),
@@ -730,6 +730,25 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       expect.objectContaining({ code: '1105', debit: '6.400' }),
       expect.objectContaining({ code: '2101', credit: '46.400', partyId: supplierId }),
     ]));
+    const februaryStatement = await expectSuccess<{ item: { id: string }; soldNetOfReturnsQty: string; invoicedQty: string; openQty: string }[]>(
+      await api().get(`/api/v1/reports/consignment-statement?supplierId=${supplierId}&from=2025-02-01&to=2025-02-28`).set(auth(token)),
+      200,
+      'statement for sale period',
+    );
+    expect(februaryStatement.find((row) => row.item.id === itemId)).toMatchObject({
+      soldNetOfReturnsQty: '2',
+      invoicedQty: '0',
+      openQty: '2',
+    });
+    const marchStatement = await expectSuccess<{ item: { id: string }; invoicedQty: string; openQty: string }[]>(
+      await api().get(`/api/v1/reports/consignment-statement?supplierId=${supplierId}&from=2025-03-01&to=2025-03-31`).set(auth(token)),
+      200,
+      'statement for settlement period',
+    );
+    expect(marchStatement.find((row) => row.item.id === itemId)).toMatchObject({
+      invoicedQty: '2',
+      openQty: '-2',
+    });
     expect(await balance(warehouse, itemId)).toBe('8.000000');
     const movementsAfterSettlement = (await db.query(
       'SELECT COUNT(*) AS n FROM stock_movements WHERE tenant_id = ? AND company_id = ?',
@@ -773,7 +792,7 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
     );
     const purchaseReturn = await expectSuccess<{ id: string }>(
       await api().post('/api/v1/purchase-returns').set(auth(token)).send({
-        returnDate: '2025-02-25',
+        returnDate: '2025-03-10',
         originalInvoiceId: settlementInvoiceId,
         refundType: 'CREDIT',
         lines: [{ originalLineId: settlementLineId, qty: '1' }],
