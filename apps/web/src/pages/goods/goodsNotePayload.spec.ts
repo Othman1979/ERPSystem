@@ -35,6 +35,7 @@ describe('goodsNoteBody', () => {
       lines: [{ itemId: 'item-1', qty: '2', unitCost: '1.250000' }],
     });
     expect(receipt.lines).toEqual([{ itemId: 'item-1', qty: '2', unitCost: '1.250000' }]);
+    expect(receipt).not.toHaveProperty('supplierId');
     expect(receipt).not.toHaveProperty('expenseAccountId');
 
     const returned = goodsNoteBody({

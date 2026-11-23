@@ -319,13 +319,22 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     expect(ownedPoolBefore).toEqual({ qty: '2.000000', value: '10.000', avg: '5.000000' });
     const inventoryBefore = await accountBalance('1104');
 
-    const receipt = await createAndPost('goods-notes', {
-      noteDate: '2025-02-05',
-      noteType: 'CONSIGNMENT_IN',
-      warehouseId: warehouse,
-      supplierId,
-      lines: [{ itemId, qty: '10', unitCost: '20.000' }],
-    });
+    const receiptDraft = await expectSuccess<{ id: string; supplierId: string }>(
+      await api().post('/api/v1/goods-notes').set(auth(token)).send({
+        noteDate: '2025-02-05',
+        noteType: 'CONSIGNMENT_IN',
+        warehouseId: warehouse,
+        lines: [{ itemId, qty: '10', unitCost: '20.000' }],
+      }),
+      201,
+      'create consignment receipt without supplier',
+    );
+    expect(receiptDraft.supplierId).toBe(supplierId);
+    const receipt = await expectSuccess<{ journalEntryId: string | null }>(
+      await post(token, `goods-notes/${receiptDraft.id}/post`),
+      201,
+      'post consignment receipt without supplier',
+    );
     expect(receipt.journalEntryId).toBeNull();
     expect(await balance(warehouse, itemId)).toBe('10.000000');
     expect(await costPool(itemId, warehouse)).toEqual({ qty: '10.000000', value: '200.000', avg: '20.000000' });
@@ -336,6 +345,35 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       201,
       'create second supplier',
     )).id;
+    const draftOnlyWarehouse = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/warehouses').set(auth(token)).send({
+        code: `CS-DRAFT-${RUN}`,
+        nameAr: 'مستودع إيصال مسودة',
+        consignmentSupplierId: supplierId,
+      }),
+      201,
+      'create empty consignment warehouse',
+    );
+    const supplierDraft = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/goods-notes').set(auth(token)).send({
+        noteDate: '2025-02-06',
+        noteType: 'CONSIGNMENT_IN',
+        warehouseId: draftOnlyWarehouse.id,
+        supplierId,
+        lines: [{ itemId, qty: '1', unitCost: '20.000' }],
+      }),
+      201,
+      'create supplier-bound receipt draft',
+    );
+    await expectSuccess(
+      await api().patch(`/api/v1/warehouses/${draftOnlyWarehouse.id}`).set(auth(token)).send({
+        consignmentSupplierId: secondSupplier,
+      }),
+      200,
+      'change supplier on empty warehouse',
+    );
+    const staleSupplierPost = await post(token, `goods-notes/${supplierDraft.id}/post`);
+    expect(staleSupplierPost.body.error.code).toBe('CONSIGNMENT_WAREHOUSE_NOT_ALLOWED');
     const changeSupplier = await api().patch(`/api/v1/warehouses/${warehouse}`).set(auth(token)).send({
       consignmentSupplierId: secondSupplier,
     });

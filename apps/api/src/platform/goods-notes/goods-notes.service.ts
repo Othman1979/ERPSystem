@@ -667,6 +667,12 @@ export class GoodsNotesService implements OnModuleInit {
         'Consignment notes require a consignment warehouse and normal notes require an owned warehouse',
       );
     }
+    if (isConsignment && draft.supplierId !== consignmentSupplierId) {
+      throw new DomainError(
+        ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+        'The consignment warehouse supplier changed after this note was created',
+      );
+    }
     if (isConsignment && (locks.order || locks.request)) {
       throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Consignment notes cannot use purchase orders or issue requests');
     }
@@ -889,9 +895,6 @@ export class GoodsNotesService implements OnModuleInit {
     }
     if (isConsignment) {
       const supplierId = dto.supplierId ? BigInt(dto.supplierId) : null;
-      if (dto.noteType === 'CONSIGNMENT_IN' && supplierId !== consignmentSupplierId) {
-        throw new DomainError(ErrorCode.PARTY_TYPE_MISMATCH, 'Consignment receipt supplier must match its warehouse supplier');
-      }
       if (supplierId !== null && supplierId !== consignmentSupplierId) {
         throw new DomainError(ErrorCode.PARTY_TYPE_MISMATCH, 'Consignment supplier must match its warehouse supplier');
       }
