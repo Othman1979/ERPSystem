@@ -456,7 +456,7 @@ try {
     $secretsDir = Join-Path $DataDir 'secrets'
     $logsDir = Join-Path $DataDir 'logs'
     $downloadsDir = Join-Path $DataDir 'downloads'
-    Set-RestrictedAcl -Path $DataDir
+    Set-RestrictedAcl -Path $DataDir -Directory
     foreach ($path in @($secretsDir, $logsDir, $downloadsDir)) {
         New-Item -ItemType Directory -Path $path -Force | Out-Null
     }
@@ -589,6 +589,7 @@ try {
     Write-Step 'Creating the separate server clone'
     $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     Ensure-AppClone -SourceRoot $sourceRoot -Destination $AppDir
+    Set-RestrictedAcl -Path $AppDir -Directory -ReadOnlyUsers
 
     Write-Step 'Installing Node.js 24 and pnpm'
     $nodeExe = Ensure-Node24

@@ -89,3 +89,4 @@ trust-client.bat -Server erp-server -HttpPort 80 -HttpsPort 443
 - خيارات `mariadb-install-db.exe` المستخدمة (`--datadir`, `--service`, `--port`, `--password`) تحتاج اختباراً على نسخة Windows 11.8 نفسها؛ لا تعتمد على التثبيت قبل نجاح تجربة كاملة واستعادة.
 - يثبت إعداد المهام الشهرية باستخدام XML لمشغلات Task Scheduler، ويجب التحقق من تشغيلها تحت SYSTEM في أول شهر.
 - يجب اختبار تثبيت شهادة Caddy في `LocalMachine\Root`، صلاحيات SYSTEM، تشغيل MariaDB كخدمة، وقراءة ملفات `.env` والسجلات على Windows Server المستهدف.
+- يجب أن يتمكن حساب خدمة `ERP-MariaDB` من الكتابة إلى `<DataDir>\mariadb` بعد تطبيق ACLs؛ من المتوقع أن يمنح `mariadb-install-db.exe` الصلاحية، لكن يجب تأكيد ذلك على Windows.

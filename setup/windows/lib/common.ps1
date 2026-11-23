@@ -522,11 +522,30 @@ function Update-ProcessPath {
 }
 
 function Set-RestrictedAcl {
-    param([Parameter(Mandatory = $true)][string]$Path)
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [switch]$Directory,
+        [switch]$ReadOnlyUsers
+    )
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Cannot protect a missing path: $Path"
     }
-    & icacls.exe $Path /inheritance:r /grant:r '*S-1-5-32-544:F' '*S-1-5-18:F' | Out-Null
+    if ($ReadOnlyUsers -and -not $Directory) {
+        throw '-ReadOnlyUsers requires -Directory.'
+    }
+    $arguments = @($Path, '/inheritance:r', '/grant:r')
+    if ($Directory) {
+        $arguments += '*S-1-5-32-544:(OI)(CI)F'
+        $arguments += '*S-1-5-18:(OI)(CI)F'
+        if ($ReadOnlyUsers) {
+            $arguments += '*S-1-5-32-545:(OI)(CI)RX'
+        }
+        $arguments += @('/T', '/C', '/Q')
+    } else {
+        $arguments += '*S-1-5-32-544:F'
+        $arguments += '*S-1-5-18:F'
+    }
+    & icacls.exe @arguments | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "icacls failed to restrict access to $Path."
     }
