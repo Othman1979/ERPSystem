@@ -1296,6 +1296,34 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       201,
       'post branch-Y sale',
     );
+    const secondInvoice = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/sales-invoices').set(auth(token)).set('X-Branch-Id', branchY).send({
+        invoiceDate: '2025-05-02',
+        customerId,
+        warehouseId: sharedWarehouse.id,
+        paymentType: 'CASH',
+        cashAccountId,
+        lines: [{ itemId: branchItem.id, qty: '1', unitPrice: '10.000' }],
+      }),
+      201,
+      'create second branch-Y sale',
+    );
+    await expectSuccess(
+      await api().post(`/api/v1/sales-invoices/${secondInvoice.id}/post`).set(auth(token)).set('X-Branch-Id', branchY).set(idem()),
+      201,
+      'post second branch-Y sale',
+    );
+    const firstPage = await api()
+      .get(`/api/v1/consignment/open-sales?supplierId=${supplierId}&warehouseId=${sharedWarehouse.id}&page=1&pageSize=1`)
+      .set(auth(token));
+    await expectSuccess(firstPage, 200, 'first open-sales page');
+    const secondPage = await api()
+      .get(`/api/v1/consignment/open-sales?supplierId=${supplierId}&warehouseId=${sharedWarehouse.id}&page=2&pageSize=1`)
+      .set(auth(token));
+    await expectSuccess(secondPage, 200, 'second open-sales page');
+    expect(firstPage.body).toMatchObject({ page: 1, pageSize: 1, total: 2 });
+    expect(secondPage.body).toMatchObject({ page: 2, pageSize: 1, total: 2 });
+    expect(firstPage.body.items[0].id).not.toBe(secondPage.body.items[0].id);
     const restricted = await addMember(BASE, token, {
       email: `tr-branch-${RUN}@test.dev`,
       roleCode: 'OWNER',
