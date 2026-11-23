@@ -3708,6 +3708,22 @@ export interface ConsignmentOpenSaleResponseDto {
   item: ConsignmentItemResponseDto;
 }
 
+export interface ConsignmentOpenSaleResponseDtoPage {
+  items: ConsignmentOpenSaleResponseDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
 export interface ConsignmentStatementResponseDto {
   item: ConsignmentItemResponseDto;
   receivedQty: string;
@@ -11609,6 +11625,21 @@ export const StockReportsControllerValuationLang = {
 } as const;
 
 export type ConsignmentControllerOpenSalesParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
+  q?: string;
   supplierId?: string;
   warehouseId?: string;
 };
@@ -19590,7 +19621,7 @@ export const stockReportsControllerVerify = async ( options?: Parameters<typeof 
 
 
 export type consignmentControllerOpenSalesResponse200 = {
-  data: ConsignmentOpenSaleResponseDto[]
+  data: ConsignmentOpenSaleResponseDtoPage
   status: 200
 }
 
