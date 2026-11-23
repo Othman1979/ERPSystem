@@ -283,12 +283,6 @@ function OpenSalesTab() {
         size="small"
         pagination={{ pageSize: 10 }}
         scroll={{ x: 'max-content' }}
-        mobileCard={{
-          title: (row) => codeAndName(row.item),
-          subtitle: (row) => `${formatDate(row.saleDate)} · ${sourceLabel(row, t)}`,
-          amount: (row) => formatAmount(row.openValue),
-          meta: (row) => [<span>{t('consignment.openQty')}: {formatQty(row.openQty)}</span>],
-        }}
       />
       {supplier && warehouse && (
         <Modal
