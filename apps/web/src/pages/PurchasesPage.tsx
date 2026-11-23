@@ -959,7 +959,7 @@ function PurchaseInvoiceForm({
             ? (lineKey, row, typedText) => setQuickCreate({ kind: 'item', lineKey, row, typedText })
             : undefined
         }
-        priceLabel={t('purchases.unitCost')}
+        priceLabel={t(invoice?.consignmentSettlement ? 'consignment.supplierPrice' : 'purchases.unitCost')}
         lockedItems={invoice?.consignmentSettlement === true}
       />
       <PartyFormDialog
@@ -1246,20 +1246,10 @@ function PurchaseInvoiceView({
             render: (_: unknown, l: InvoiceLine) =>
               l.item ? codeAndName(l.item) : l.itemId,
           },
-          ...(invoice.consignmentSettlement && company.data?.consignmentEnabled
-            ? [{
-                title: t('consignment.clearedValue'),
-                dataIndex: 'consignmentClearedValue',
-                width: 130,
-                align: 'right' as const,
-                className: 'num',
-                render: amountCell,
-              }]
-            : []),
           { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'right' as const, className: 'num', render: qtyCell },
-          { title: t('purchases.unitCost'), dataIndex: 'unitCost', width: 110, align: 'right' as const, className: 'num', render: unitCostCell },
+          { title: t(invoice.consignmentSettlement ? 'consignment.supplierPrice' : 'purchases.unitCost'), dataIndex: 'unitCost', width: 110, align: 'right' as const, className: 'num', render: unitCostCell },
           { title: t('purchases.discountPct'), dataIndex: 'discountPct', width: 90, align: 'right' as const },
-          { title: t('purchases.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, className: 'num', render: amountCell },
+          { title: invoice.consignmentSettlement ? t('consignment.clearedValue') : t('purchases.net'), dataIndex: 'netAmount', width: 110, align: 'right' as const, className: 'num', render: amountCell },
           { title: t('purchases.tax'), dataIndex: 'taxAmount', width: 100, align: 'right' as const, className: 'num', render: amountCell },
           { title: t('purchases.total'), dataIndex: 'lineTotal', width: 110, align: 'right' as const, className: 'num', render: amountCell },
         ]}

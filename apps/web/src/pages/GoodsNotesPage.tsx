@@ -65,7 +65,6 @@ import { codeAndName } from '../i18n/displayName';
 import { qtyCell, unitCostCell } from '../format/cells';
 import { invalidateStockDocument } from '../stockQueries';
 import { useCompany } from '../components/CompanyProfileForm';
-import { dec } from '../format/number';
 import { goodsNoteWarehouses, isConsignmentNoteType } from './goods/goodsNoteWarehouses';
 
 type GoodsNote = GoodsNoteListItemDto;
@@ -358,8 +357,7 @@ export function GoodsNotesSection({
         (l) =>
           !l.itemId ||
           (l.qty &&
-            l.unitCost != null &&
-            (newType !== 'CONSIGNMENT_IN' || dec(l.unitCost).gt(0))),
+            (newType !== 'GRN' || l.unitCost != null)),
       ));
 
   // Save stays enabled: a save attempt with gaps marks the missing fields instead.
@@ -802,7 +800,7 @@ export function GoodsNotesSection({
             onChange={setLines}
             itemOptions={itemOptions}
             onItemSearch={items.onSearch}
-            showCost={newType === 'GRN' || newType === 'CONSIGNMENT_IN'}
+            showCost={newType === 'GRN'}
             showDescription
           />
         ) : linkedDraft ? (
@@ -877,13 +875,15 @@ export function GoodsNotesSection({
                 align: 'right' as const,
                 render: qtyCell,
               },
-              {
-                title: t('stock.unitCost'),
-                dataIndex: 'unitCost',
-                width: 110,
-                align: 'right' as const,
-                render: unitCostCell,
-              },
+              ...(entry?.noteType === 'GRN'
+                ? [{
+                    title: t('stock.unitCost'),
+                    dataIndex: 'unitCost',
+                    width: 110,
+                    align: 'right' as const,
+                    render: unitCostCell,
+                  }]
+                : []),
             ]}
            scroll={{ x: 'max-content' }}/>
         )}

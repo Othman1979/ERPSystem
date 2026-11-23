@@ -482,7 +482,6 @@ export const AccountMappingSlotDtoMappingKey = {
   RETAINED_EARNINGS: 'RETAINED_EARNINGS',
   PURCHASES: 'PURCHASES',
   GOODS_RECEIVED_NOT_INVOICED: 'GOODS_RECEIVED_NOT_INVOICED',
-  CONSIGNMENT_PAYABLE: 'CONSIGNMENT_PAYABLE',
   CONSIGNMENT_SHRINKAGE: 'CONSIGNMENT_SHRINKAGE',
   PRODUCTION_APPLIED_COST: 'PRODUCTION_APPLIED_COST',
   CHEQUES_RECEIVABLE: 'CHEQUES_RECEIVABLE',
@@ -3640,7 +3639,6 @@ export type StockVerifyGlMismatchDtoKind = typeof StockVerifyGlMismatchDtoKind[k
 
 export const StockVerifyGlMismatchDtoKind = {
   GL_INVENTORY: 'GL_INVENTORY',
-  GL_CONSIGNMENT: 'GL_CONSIGNMENT',
 } as const;
 
 export interface StockVerifyGlMismatchDto {
@@ -3695,15 +3693,10 @@ export interface ConsignmentOpenSaleResponseDto {
   sourceNo: string | null;
   saleDate: string;
   qty: string;
-  value: string;
   returnedQty: string;
-  returnedValue: string;
   invoicedQty: string;
-  invoicedValue: string;
   createdAt: string;
   openQty: string;
-  openValue: string;
-  unitCost: string;
   item: ConsignmentItemResponseDto;
 }
 
@@ -3716,7 +3709,6 @@ export interface ConsignmentStatementResponseDto {
   invoicedQty: string;
   onHandQty: string;
   openQty: string;
-  openValue: string;
 }
 
 export type ConsignmentAgingResponseDtoAgeBucket = typeof ConsignmentAgingResponseDtoAgeBucket[keyof typeof ConsignmentAgingResponseDtoAgeBucket];
@@ -3743,15 +3735,10 @@ export interface ConsignmentAgingResponseDto {
   sourceNo: string | null;
   saleDate: string;
   qty: string;
-  value: string;
   returnedQty: string;
-  returnedValue: string;
   invoicedQty: string;
-  invoicedValue: string;
   createdAt: string;
   openQty: string;
-  openValue: string;
-  unitCost: string;
   item: ConsignmentItemResponseDto;
   ageDays: number;
   ageBucket: ConsignmentAgingResponseDtoAgeBucket;
@@ -5741,8 +5728,6 @@ export interface PurchaseInvoiceLineViewDto {
   lineTotal: string;
   /** @nullable */
   consignmentSaleId: string | null;
-  /** @nullable */
-  consignmentClearedValue: string | null;
   createdAt: string;
   item: PurchaseInvoiceItemRefDto;
   /** @nullable */
@@ -6473,8 +6458,8 @@ export interface GoodsNoteLineDto {
   qty: string;
   /**
      * Required for a GRN without a purchase order (receipt cost per base unit);
-     * ignored for a GIN. Refused on a GRN against an order: its cost is the
-     * order's net price (ADR-026 §5).
+     * ignored for a GIN and CONSIGNMENT_IN. Refused on a GRN against an order:
+     * its cost is the order's net price (ADR-026 §5).
      */
   unitCost?: string;
   /** ADR-026 §5: the order line this GRN line receives (a GRN with purchaseOrderId only). */

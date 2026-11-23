@@ -4,7 +4,7 @@ import type { CreateGoodsNoteDto, GoodsNoteLineDto } from '@erp/api-client';
 export interface GoodsNoteFormLine {
   itemId: string;
   qty: string;
-  /** Receipt cost per base unit: sent on GRN and consignment receipt lines. */
+  /** Receipt cost per base unit: sent on GRN lines only. */
   unitCost?: string | null;
   /** ADR-026 §5: the order line a GRN line receives (order-linked GRN). */
   poLineId?: string | null;
@@ -37,7 +37,7 @@ export interface GoodsNoteLinks {
  * - a GRN against an order sends the order id and each line's order line, and no
  *   unit cost (the server takes the order's net price);
  * - a GIN against a request sends the request id and each line's request line;
- * - unit cost goes on GRN and consignment receipt lines only;
+ * - unit cost goes on GRN lines only; temporary receipts are always zero cost;
  * - a GIN's expense account and cost centre are omitted when none is chosen on create,
  *   and sent as null on update, because an update replaces the note and null clears them.
  * Lines without an item or a quantity are left out, as the create screen always did.
@@ -48,7 +48,6 @@ export function goodsNoteBody(
   forUpdate = false,
 ): CreateGoodsNoteDto {
   const isGrn = form.noteType === 'GRN';
-  const isReceipt = isGrn || form.noteType === 'CONSIGNMENT_IN';
   const isGin = form.noteType === 'GIN';
   const orderLinked = !!existing?.purchaseOrderId;
   const requestLinked = !!existing?.issueRequestId;
@@ -66,7 +65,7 @@ export function goodsNoteBody(
           if (l.poLineId) line.poLineId = l.poLineId;
         } else if (requestLinked) {
           if (l.issueRequestLineId) line.issueRequestLineId = l.issueRequestLineId;
-        } else if (isReceipt && l.unitCost != null) {
+        } else if (isGrn && l.unitCost != null) {
           line.unitCost = l.unitCost;
         }
         return line;

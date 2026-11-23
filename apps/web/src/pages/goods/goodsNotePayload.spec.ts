@@ -28,13 +28,13 @@ describe('goodsNoteBody', () => {
     expect(body).not.toHaveProperty('costCenterId');
   });
 
-  it('sends a positive receipt cost for a consignment receipt and no cost for a consignment return', () => {
+  it('omits cost for a temporary receipt and temporary return', () => {
     const receipt = goodsNoteBody({
       ...base,
       noteType: 'CONSIGNMENT_IN',
       lines: [{ itemId: 'item-1', qty: '2', unitCost: '1.250000' }],
     });
-    expect(receipt.lines).toEqual([{ itemId: 'item-1', qty: '2', unitCost: '1.250000' }]);
+    expect(receipt.lines).toEqual([{ itemId: 'item-1', qty: '2' }]);
     expect(receipt).not.toHaveProperty('supplierId');
     expect(receipt).not.toHaveProperty('expenseAccountId');
 

@@ -76,7 +76,9 @@ export function purchaseInvoiceBody(
             {
               itemId: l.itemId,
               qty: l.qty,
-              unitCost: l.price ?? '0',
+              ...(invoice?.consignmentSettlement
+                ? { unitPrice: l.price ?? undefined }
+                : { unitCost: l.price ?? '0' }),
               discountPct: l.discountPct ?? undefined,
               consignmentSaleId: l.consignmentSaleId ?? undefined,
             },

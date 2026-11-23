@@ -30,7 +30,7 @@ export function consignmentSettlementBody(input: {
       itemId: sale.itemId,
       consignmentSaleId: sale.id,
       qty,
-      unitCost: unitPrice,
+      unitPrice,
     })),
   };
 }

@@ -27,7 +27,7 @@ import { ResponsiveTable } from '../components/ResponsiveTable';
 import { ReportCriteria, WinField, WinGroup } from '../components/WinForm';
 import { useCompany } from '../components/CompanyProfileForm';
 import { formatDate } from '../format/date';
-import { dec, formatAmount, formatQty, formatUnitCost, sum } from '../format/number';
+import { dec, formatQty, sum } from '../format/number';
 import { codeAndName } from '../i18n/displayName';
 import { consignmentSettlementBody } from './consignmentPayload';
 
@@ -35,10 +35,6 @@ type Supplier = { id: string; code: string; nameAr: string; nameEn: string | nul
 
 const sourceLabel = (row: ConsignmentOpenSaleResponseDto, t: (key: string) => string) =>
   `${t(row.sourceType === 'SALES_INVOICE' ? 'consignment.salesInvoice' : 'consignment.stockCount')} ${row.sourceNo ?? `#${row.sourceId}`}`;
-
-function openSaleUnitCost(row: ConsignmentOpenSaleResponseDto): string {
-  return row.unitCost;
-}
 
 export function ConsignmentPage() {
   const { t } = useTranslation();
@@ -163,13 +159,6 @@ function OpenSalesTab() {
     { title: t('consignment.source'), render: (_: unknown, row) => sourceLabel(row, t) },
     { title: t('consignment.item'), render: (_: unknown, row) => codeAndName(row.item) },
     { title: t('consignment.openQty'), dataIndex: 'openQty', align: 'right', className: 'num', render: (value: string) => formatQty(value) },
-    { title: t('consignment.openValue'), dataIndex: 'openValue', align: 'right', className: 'num', render: (value: string) => formatAmount(value) },
-    {
-      title: t('consignment.unitCost'),
-      align: 'right',
-      className: 'num',
-      render: (_: unknown, row) => formatUnitCost(openSaleUnitCost(row)),
-    },
     {
       title: t('stock.qty'),
       width: 116,
@@ -194,7 +183,7 @@ function OpenSalesTab() {
       render: (_: unknown, row) => selected[row.id] && (
         <InputNumber<string>
           stringMode
-          min="0"
+          min="0.000001"
           value={selected[row.id].unitPrice}
           aria-label={t('consignment.unitPrice')}
           onChange={(unitPrice) =>
@@ -212,7 +201,7 @@ function OpenSalesTab() {
       setSelected((current) => {
         const next: typeof current = {};
         for (const row of selectedRowsNow) {
-          next[row.id] = current[row.id] ?? { qty: row.openQty, unitPrice: openSaleUnitCost(row) };
+          next[row.id] = current[row.id] ?? { qty: row.openQty, unitPrice: '' };
         }
         return next;
       });
@@ -237,7 +226,7 @@ function OpenSalesTab() {
   };
   const submit = () => {
     if (selectedRows.some(({ qty, unitPrice, sale }) =>
-      !dec(qty).gt(0) || dec(qty).gt(sale.openQty) || unitPrice === '',
+      !dec(qty).gt(0) || dec(qty).gt(sale.openQty) || !dec(unitPrice).gt(0),
     )) {
       apiMessage.error(t('consignment.invalidSettlementQty'));
       return;
@@ -273,7 +262,7 @@ function OpenSalesTab() {
             onChange={(value) => { setWarehouseId(value); setSelected({}); }} />
         </WinField>
       </ReportCriteria>
-      <ResponsiveTable<ConsignmentOpenSaleResponseDto>
+      <Table<ConsignmentOpenSaleResponseDto>
         rowKey="id"
         loading={openSales.isLoading}
         dataSource={rows}
@@ -344,7 +333,6 @@ function StatementTab() {
     { title: t('consignment.invoiced'), dataIndex: 'invoicedQty', align: 'right', className: 'num', render: (value: string) => formatQty(value) },
     { title: t('consignment.onHand'), dataIndex: 'onHandQty', align: 'right', className: 'num', render: (value: string) => formatQty(value) },
     { title: t('consignment.openQty'), dataIndex: 'openQty', align: 'right', className: 'num', render: (value: string) => formatQty(value) },
-    { title: t('consignment.openValue'), dataIndex: 'openValue', align: 'right', className: 'num', render: (value: string) => formatAmount(value) },
   ];
   return (
     <div>
@@ -374,7 +362,6 @@ function StatementTab() {
         mobileCard={{
           title: (row) => (row.item ? codeAndName(row.item) : '—'),
           subtitle: (row) => `${t('consignment.openQty')}: ${formatQty(row.openQty)}`,
-          amount: (row) => formatAmount(row.openValue),
           meta: (row) => [<span>{t('consignment.onHand')}: {formatQty(row.onHandQty)}</span>],
         }}
       />
@@ -397,12 +384,11 @@ function AgingTab() {
   });
   const rows = report.data ?? [];
   const totals = useMemo(() => {
-    const buckets = new Map<string, { qty: string; value: string }>();
+    const buckets = new Map<string, { qty: string }>();
     for (const bucket of ['0-30', '31-60', '61-90', '90+']) {
       const group = rows.filter((row) => row.ageBucket === bucket);
       buckets.set(bucket, {
         qty: sum(group.map((row) => row.openQty)).toString(),
-        value: sum(group.map((row) => row.openValue)).toString(),
       });
     }
     return buckets;
@@ -413,7 +399,6 @@ function AgingTab() {
     { title: t('consignment.source'), render: (_: unknown, row) => sourceLabel(row, t) },
     { title: t('consignment.item'), render: (_: unknown, row) => codeAndName(row.item) },
     { title: t('consignment.openQty'), dataIndex: 'openQty', align: 'right', className: 'num', render: (value: string) => formatQty(value) },
-    { title: t('consignment.openValue'), dataIndex: 'openValue', align: 'right', className: 'num', render: (value: string) => formatAmount(value) },
   ];
   return (
     <div>
@@ -436,14 +421,13 @@ function AgingTab() {
         summary={() => (
           <Table.Summary>
             {(['0-30', '31-60', '61-90', '90+'] as const).map((bucket) => {
-              const total = totals.get(bucket) ?? { qty: '0', value: '0' };
+              const total = totals.get(bucket) ?? { qty: '0' };
               return (
                 <Table.Summary.Row key={bucket}>
                   <Table.Summary.Cell index={0} colSpan={4}>
                     {t('consignment.bucketTotal', { bucket: t(`consignment.buckets.${bucket}`) })}
                   </Table.Summary.Cell>
                   <Table.Summary.Cell index={4} align="right">{formatQty(total.qty)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={5} align="right">{formatAmount(total.value)}</Table.Summary.Cell>
                 </Table.Summary.Row>
               );
             })}
@@ -452,16 +436,12 @@ function AgingTab() {
               <Table.Summary.Cell index={4} align="right">
                 {formatQty(sum([...totals.values()].map((value) => value.qty)))}
               </Table.Summary.Cell>
-              <Table.Summary.Cell index={5} align="right">
-                {formatAmount(sum([...totals.values()].map((value) => value.value)))}
-              </Table.Summary.Cell>
             </Table.Summary.Row>
           </Table.Summary>
         )}
         mobileCard={{
           title: (row) => `${t(`consignment.buckets.${row.ageBucket}`)} · ${codeAndName(row.item)}`,
           subtitle: (row) => `${formatDate(row.saleDate)} · ${sourceLabel(row, t)}`,
-          amount: (row) => formatAmount(row.openValue),
           meta: (row) => [<span>{t('consignment.openQty')}: {formatQty(row.openQty)}</span>],
         }}
       />
