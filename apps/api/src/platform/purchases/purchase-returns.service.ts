@@ -464,11 +464,13 @@ export class PurchaseReturnsService {
             purchaseOrderId: true,
             consignmentSettlement: true,
             warehouseId: true,
+            journalEntryId: true,
             lines: {
               select: {
                 id: true,
                 lineNo: true,
                 qtyBase: true,
+                netAmount: true,
                 consignmentSaleId: true,
               },
             },
@@ -653,9 +655,34 @@ export class PurchaseReturnsService {
           }
         }
 
+        let originalCogsAccountId: bigint | null = null;
+        let originalShrinkageAccountId: bigint | null = null;
+        if (isConsignmentSettlement && original?.journalEntryId) {
+          const originalSaleIds = original.lines.flatMap((line) => line.consignmentSaleId === null ? [] : [line.consignmentSaleId]);
+          const originalSales = await tx.consignmentSale.findMany({
+            where: { id: { in: originalSaleIds } },
+            select: { id: true, sourceType: true },
+          });
+          const sourceTypeById = new Map(originalSales.map((sale) => [sale.id, sale.sourceType]));
+          const originalSalesNet = sum(original.lines.filter((line) => sourceTypeById.get(line.consignmentSaleId!) === 'SALES_INVOICE').map((line) => line.netAmount));
+          const originalShortageNet = sum(original.lines.filter((line) => sourceTypeById.get(line.consignmentSaleId!) === 'STOCK_COUNT').map((line) => line.netAmount));
+          const sourceJournalLines = await tx.journalLine.findMany({
+            where: { journalEntryId: original.journalEntryId, lineNo: { in: [1, 2] } },
+            orderBy: { lineNo: 'asc' },
+            select: { accountId: true },
+          });
+          let sourceLineIndex = 0;
+          if (originalSalesNet.gt(0)) originalCogsAccountId = sourceJournalLines[sourceLineIndex++]?.accountId ?? null;
+          if (originalShortageNet.gt(0)) originalShrinkageAccountId = sourceJournalLines[sourceLineIndex]?.accountId ?? null;
+          if ((originalSalesNet.gt(0) && originalCogsAccountId === null) ||
+              (originalShortageNet.gt(0) && originalShrinkageAccountId === null)) {
+            throw new DomainError(ErrorCode.INTERNAL, 'The original settlement expense accounts could not be found');
+          }
+        }
+
         const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
           ...(isConsignmentSettlement
-            ? (['INPUT_TAX', 'SUPPLIERS_CONTROL', 'COGS', 'CONSIGNMENT_SHRINKAGE'] as const)
+            ? (['INPUT_TAX', 'SUPPLIERS_CONTROL'] as const)
             : (['INVENTORY', 'INVENTORY_ADJUSTMENT', 'PURCHASES', 'INPUT_TAX', 'SUPPLIERS_CONTROL', 'COGS'] as const)),
         ]);
 
@@ -680,10 +707,10 @@ export class PurchaseReturnsService {
         }
         if (isConsignmentSettlement) {
           if (salesNetReturn.gt(0)) {
-            journalLines.push({ accountId: mapping.COGS, credit: salesNetReturn.toString() });
+            journalLines.push({ accountId: originalCogsAccountId!, credit: salesNetReturn.toString() });
           }
           if (shortageNetReturn.gt(0)) {
-            journalLines.push({ accountId: mapping.CONSIGNMENT_SHRINKAGE, credit: shortageNetReturn.toString() });
+            journalLines.push({ accountId: originalShrinkageAccountId!, credit: shortageNetReturn.toString() });
           }
           if (tax.gt(0)) {
             journalLines.push({ accountId: mapping.INPUT_TAX, credit: tax.toString() });

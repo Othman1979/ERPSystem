@@ -759,6 +759,18 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
     expect(rejectedSettlement.body.error.code).toBe('CONSIGNMENT_OVER_INVOICED');
     await expectSuccess(await api().delete(`/api/v1/purchase-invoices/${anotherSettlement.id}`).set(auth(token)), 200, 'delete rejected settlement draft');
 
+    const originalCogsMapping = (await db.query(
+      "SELECT account_id FROM account_mappings WHERE tenant_id = ? AND company_id = ? AND mapping_key = 'COGS'",
+      [tenantId, companyId],
+    )) as { account_id: bigint }[];
+    const changedCogsMapping = (await db.query(
+      "SELECT account_id FROM account_mappings WHERE tenant_id = ? AND company_id = ? AND mapping_key = 'CONSIGNMENT_SHRINKAGE'",
+      [tenantId, companyId],
+    )) as { account_id: bigint }[];
+    await db.query(
+      "UPDATE account_mappings SET account_id = ? WHERE tenant_id = ? AND company_id = ? AND mapping_key = 'COGS'",
+      [changedCogsMapping[0]!.account_id, tenantId, companyId],
+    );
     const purchaseReturn = await expectSuccess<{ id: string }>(
       await api().post('/api/v1/purchase-returns').set(auth(token)).send({
         returnDate: '2025-02-25',
@@ -779,6 +791,10 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       expect.objectContaining({ code: '5101', credit: '20.000' }),
       expect.objectContaining({ code: '1105', credit: '3.200' }),
     ]));
+    await db.query(
+      "UPDATE account_mappings SET account_id = ? WHERE tenant_id = ? AND company_id = ? AND mapping_key = 'COGS'",
+      [originalCogsMapping[0]!.account_id, tenantId, companyId],
+    );
     saleRow = (await db.query('SELECT qty, returned_qty, invoiced_qty FROM consignment_sales WHERE tenant_id = ? AND id = ?', [tenantId, saleId])) as typeof saleRow;
     expect(saleRow[0]).toMatchObject({ invoiced_qty: '1.000000' });
 
