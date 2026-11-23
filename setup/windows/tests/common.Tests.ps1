@@ -161,6 +161,35 @@ port=3310
     }
 }
 
+Describe 'Update-MyIniText' {
+    It 'keeps a newline and blank line before the next section' {
+        $text = "[mysqld]`r`nport=3306`r`n[client]`r`nport=3307`r`n"
+        $updated = Update-MyIniText -Text $text -DataDirValue 'C:\ERPData\mariadb' -Port 3308
+        $updated | Should -Match 'bind-address=127\.0\.0\.1\r\n\r\n\[client\]'
+    }
+
+    It 'ends the final mysqld section with a newline' {
+        $updated = Update-MyIniText -Text '[mysqld]' -DataDirValue 'C:\ERPData\mariadb' -Port 3308
+        $updated.EndsWith("`r`n") | Should -BeTrue
+        $updated | Should -Match 'bind-address=127\.0\.0\.1\r\n$'
+    }
+
+    It 'adds mysqld when the file does not have that section' {
+        $updated = Update-MyIniText -Text "[client]`r`nport=3306`r`n" -DataDirValue 'C:\ERPData\mariadb' -Port 3308
+        $updated | Should -Match '\[client\]\r\nport=3306\r\n\r\n\[mysqld\]'
+    }
+
+    It 'replaces existing settings without duplicating keys' {
+        $text = "[mysqld]`r`ndatadir=old`r\nport=3306`r\nport=3307`r\nbind-address=0.0.0.0`r\n"
+        $updated = Update-MyIniText -Text $text -DataDirValue 'C:\ERPData\mariadb' -Port 3308
+        ([regex]::Matches($updated, '(?im)^port=')).Count | Should -Be 1
+        ([regex]::Matches($updated, '(?im)^datadir=')).Count | Should -Be 1
+        ([regex]::Matches($updated, '(?im)^bind-address=')).Count | Should -Be 1
+        $updated | Should -Match 'datadir=C:\\ERPData\\mariadb'
+        $updated | Should -Match 'port=3308'
+    }
+}
+
 Describe 'Native command output suppression' {
     It 'returns only the function value when a native command writes output' {
         function Invoke-TestNativeCommand {

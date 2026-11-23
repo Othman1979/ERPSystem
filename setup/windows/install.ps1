@@ -140,33 +140,15 @@ function Set-MyIniValues {
     if (Test-Path -LiteralPath $Path) {
         $text = [IO.File]::ReadAllText($Path)
     }
-    $settings = @(
-        "datadir=$DataDirValue",
-        "port=$Port",
-        'character-set-server=utf8mb4',
-        'collation-server=utf8mb4_unicode_ci',
-        'bind-address=127.0.0.1'
-    )
-    $sectionPattern = '(?ims)^\[mysqld\]\s*$.*?(?=^\[|\z)'
-    if ($text -match $sectionPattern) {
-        $section = $Matches[0]
-        $lines = @($section -split "`r?`n" | Where-Object { $_ -notmatch '^\s*(datadir|port|character-set-server|collation-server|bind-address)\s*=' })
-        $updated = ($lines + $settings) -join "`r`n"
-        $text = [regex]::Replace($text, $sectionPattern, [System.Text.RegularExpressions.MatchEvaluator]{ $updated }, 1)
-    } else {
-        if ($text -and -not $text.EndsWith("`r`n")) {
-            $text += "`r`n"
-        }
-        $text += "[mysqld]`r`n" + ($settings -join "`r`n") + "`r`n"
-    }
+    $updatedText = Update-MyIniText -Text $text -DataDirValue $DataDirValue -Port $Port
     $hasBom = $false
     if (Test-Path -LiteralPath $Path) {
         $bytes = [IO.File]::ReadAllBytes($Path)
         $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 239 -and $bytes[1] -eq 187 -and $bytes[2] -eq 191
     }
-    $changed = $hasBom -or -not (Test-Path -LiteralPath $Path) -or ([IO.File]::ReadAllText($Path) -ne $text)
+    $changed = $hasBom -or -not (Test-Path -LiteralPath $Path) -or ([IO.File]::ReadAllText($Path) -ne $updatedText)
     if ($changed) {
-        Write-Utf8NoBom -Path $Path -Text $text
+        Write-Utf8NoBom -Path $Path -Text $updatedText
     }
     return $changed
 }

@@ -160,6 +160,91 @@ function Get-MariaDbIniPort {
     return $port
 }
 
+function Update-MyIniText {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory = $true)][string]$DataDirValue,
+        [Parameter(Mandatory = $true)][int]$Port
+    )
+    if ($Text.Length -gt 0 -and [int][char]$Text[0] -eq 0xFEFF) {
+        $Text = $Text.Substring(1)
+    }
+    $normalizedText = [regex]::Replace($Text, '\r\n|\r|\n', "`r`n")
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($line in ($normalizedText -split "`r`n")) {
+        [void]$lines.Add($line)
+    }
+    $settings = @(
+        "datadir=$DataDirValue",
+        "port=$Port",
+        'character-set-server=utf8mb4',
+        'collation-server=utf8mb4_unicode_ci',
+        'bind-address=127.0.0.1'
+    )
+    $settingPattern = '(?i)^\s*(?:datadir|port|character-set-server|collation-server|bind-address)\s*='
+    $sectionPattern = '(?i)^\s*\[mysqld\]\s*$'
+    $anySectionPattern = '^\s*\[[^\]]+\]\s*$'
+    $sectionStart = -1
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match $sectionPattern) {
+            $sectionStart = $index
+            break
+        }
+    }
+    $output = New-Object System.Collections.Generic.List[string]
+    if ($sectionStart -lt 0) {
+        $contentEnd = $lines.Count
+        while ($contentEnd -gt 0 -and [string]::IsNullOrWhiteSpace($lines[$contentEnd - 1])) {
+            $contentEnd--
+        }
+        for ($index = 0; $index -lt $contentEnd; $index++) {
+            [void]$output.Add($lines[$index])
+        }
+        if ($output.Count -gt 0) {
+            [void]$output.Add('')
+        }
+        [void]$output.Add('[mysqld]')
+        foreach ($setting in $settings) {
+            [void]$output.Add($setting)
+        }
+    } else {
+        $nextSection = $lines.Count
+        for ($index = $sectionStart + 1; $index -lt $lines.Count; $index++) {
+            if ($lines[$index] -match $anySectionPattern) {
+                $nextSection = $index
+                break
+            }
+        }
+        for ($index = 0; $index -lt $sectionStart; $index++) {
+            [void]$output.Add($lines[$index])
+        }
+        [void]$output.Add($lines[$sectionStart])
+        $sectionContentEnd = $nextSection
+        while ($sectionContentEnd -gt ($sectionStart + 1) -and [string]::IsNullOrWhiteSpace($lines[$sectionContentEnd - 1])) {
+            $sectionContentEnd--
+        }
+        for ($index = $sectionStart + 1; $index -lt $sectionContentEnd; $index++) {
+            if ($lines[$index] -notmatch $settingPattern) {
+                [void]$output.Add($lines[$index])
+            }
+        }
+        foreach ($setting in $settings) {
+            [void]$output.Add($setting)
+        }
+        if ($nextSection -lt $lines.Count) {
+            [void]$output.Add('')
+            for ($index = $nextSection; $index -lt $lines.Count; $index++) {
+                [void]$output.Add($lines[$index])
+            }
+        }
+    }
+    $result = $output.ToArray() -join "`r`n"
+    if (-not $result.EndsWith("`r`n")) {
+        $result += "`r`n"
+    }
+    return $result
+}
+
 function New-RandomSecret {
     param(
         [Parameter(Mandatory = $true)]
