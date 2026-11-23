@@ -60,3 +60,5 @@
 ## التوثيق
 - [ ] نسخة MariaDB الفعلية (سطر `database` في `preflight`) مكتوبة في ADR-019. (§النشر الأول 12)
 - [ ] نسخة Node (`node -v`) والـ commit المنشور (`git rev-parse --short HEAD`) مسجّلان مع تاريخ النشر.
+
+خادم Windows على الشبكة المحلية: راجع [دليل Windows LAN](windows-lan.md).
