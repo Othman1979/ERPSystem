@@ -236,7 +236,7 @@ describe('Phase 10.2 — backup and restore', () => {
   }, 60_000);
 
   it('refuses a scratch database that is not named as one, or is the live database', async () => {
-    const unnamed = await job(['backup-verify', 'latest'], { BACKUP_VERIFY_DATABASE_URL: urlFor(SOURCE) });
+    const unnamed = await job(['backup-verify', 'latest'], { BACKUP_VERIFY_DATABASE_URL: urlFor(`erp_bk_${RUN}_other`) });
     expect(unnamed.code).toBe(1);
     expect(byName(JSON.parse(unnamed.stdout).checks).restore.detail).toMatch(/not named as a scratch database/);
 

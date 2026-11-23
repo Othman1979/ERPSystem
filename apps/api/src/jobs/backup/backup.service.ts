@@ -11,10 +11,12 @@ import { Zip, ZipPassThrough } from 'fflate';
 import type { Env } from '../../common/config/env.validation.js';
 import { overlaps } from '../../common/fs/is-inside.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { TenantDatabaseProvisioner } from '../../platform/tenancy/database-provisioner.service.js';
 import { onAbort } from '../abort-cleanup.js';
 import { backupKey, createEncryptStream, keyId } from './backup-crypto.js';
 import {
   type BackupManifest,
+  type BackupManifestV3,
   backupName,
   CIPHER,
   DB_FILE,
@@ -25,7 +27,7 @@ import {
   STORAGE_FILE,
   storedName,
 } from './manifest.js';
-import { allOrFirstError, dbTarget, runTool, withOptionFile } from './mysql-tools.js';
+import { allOrFirstError, dbTarget, type DbTarget, runTool, withOptionFile } from './mysql-tools.js';
 
 /** A backup holds every tenant's data: only this account may read it. */
 export const PRIVATE_DIR = 0o700;
@@ -87,14 +89,15 @@ export async function sweepStale(root: string, now: Date, partials: boolean): Pr
  * encrypted with BACKUP_ENCRYPTION_KEY when it is set (production requires
  * it). Only one backup runs at a time. A run that fails leaves nothing
  * behind; then old backups are rotated out.
- * systemPrisma: the whole database across tenants (allowed in `jobs`).
+ * The control database and each eligible tenant database are backed up separately.
  */
-// ADR-045 29C: backup remains on the control database.
 @Injectable()
 export class BackupService {
+  // systemPrisma: backup includes control data and tenant database routing metadata.
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
+    private readonly databases: TenantDatabaseProvisioner,
   ) {}
 
   /** The resolved BACKUP_DIR, refused when it would end up inside the uploads or the public web folder. */
@@ -145,26 +148,49 @@ export class BackupService {
     let storageFiles: number;
     try {
       const database = await this.dumpDatabase(partial, key);
+      const tenantDatabases: BackupManifestV3['tenantDatabases'] = [];
+      const tenantFiles: ManifestFile[] = [];
+      const isolated = this.prisma.tenancyMode === 'isolated';
+      if (isolated) {
+        const rows = await this.prisma.control().tenantDatabase.findMany({
+          where: { state: { notIn: ['RETIRED', 'PROVISIONING', 'RESTORING'] } },
+          orderBy: { tenantId: 'asc' },
+        });
+        for (const row of rows) {
+          const logicalFile = `tenant-${row.tenantId.toString()}.sql.gz`;
+          const target = dbTarget(this.databases.databaseUrl(row));
+          const dump = await this.dumpDatabase(partial, key, target, logicalFile);
+          tenantFiles.push(dump);
+          tenantDatabases.push({
+            tenantId: row.tenantId.toString(),
+            database: row.databaseName,
+            file: dump.name,
+            schemaVersion: row.schemaVersion,
+          });
+        }
+      }
       const storage = await this.zipStorage(partial, key);
-      files = [database, storage.file];
+      files = isolated ? [database, ...tenantFiles, storage.file] : [database, storage.file];
       storageFiles = storage.count;
 
-      const db = this.prisma.client;
+      const db = this.prisma.control();
       const [server] = await db.$queryRaw<{ version: string }[]>`SELECT VERSION() AS version`;
       const migrations = await db.$queryRaw<{ migration_name: string }[]>`
         SELECT migration_name FROM _prisma_migrations
         WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
         ORDER BY migration_name`;
-      const manifest: BackupManifest = {
-        format: 2,
+      const common = {
         name,
         createdAt: now.toISOString(),
         database: { name: dbTarget(this.config.get('DATABASE_URL', { infer: true })).database, server: server.version },
         migrations: { count: migrations.length, last: migrations.at(-1)?.migration_name ?? null },
         storage: { files: storageFiles },
-        encryption: key ? { algorithm: CIPHER, keyId: keyId(key) } : null,
+        encryption: key ? { algorithm: CIPHER, keyId: keyId(key) } as const : null,
         files,
       };
+      const manifest: BackupManifest = isolated
+        ? { format: 3, ...common, tenantDatabases }
+        : { format: 2, ...common };
       await writeFile(path.join(partial, MANIFEST_FILE), JSON.stringify(manifest, null, 2), { mode: PRIVATE_FILE });
       // Only a complete backup gets its real name.
       await rename(partial, folder);
@@ -180,10 +206,14 @@ export class BackupService {
   }
 
   /** mysqldump → gzip → (encrypt) → file, hashing the bytes that reach the disk. */
-  private async dumpDatabase(dir: string, key: Buffer | null): Promise<ManifestFile> {
-    const target = dbTarget(this.config.get('DATABASE_URL', { infer: true }));
+  private async dumpDatabase(
+    dir: string,
+    key: Buffer | null,
+    target: DbTarget = dbTarget(this.config.get('DATABASE_URL', { infer: true })),
+    logicalFile = DB_FILE,
+  ): Promise<ManifestFile> {
     const bin = this.config.get('MYSQLDUMP_PATH', { infer: true });
-    const stored = storedName(DB_FILE, key !== null);
+    const stored = storedName(logicalFile, key !== null);
     return withOptionFile(
       target,
       async (options) => {
@@ -198,7 +228,7 @@ export class BackupService {
           '--no-tablespaces',
           target.database,
         ]);
-        const out = openStoredFile(path.join(dir, stored), key, DB_FILE);
+        const out = openStoredFile(path.join(dir, stored), key, logicalFile);
         await allOrFirstError([done, pipeline(stdout, createGzip(), out.enc, out.tap, out.file)]);
         return { name: stored, ...out.summary() };
       },

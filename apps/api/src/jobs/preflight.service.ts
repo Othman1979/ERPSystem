@@ -6,11 +6,13 @@ import { parseEnv } from 'node:util';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type Env, trustProxySetting } from '../common/config/env.validation.js';
+import { openSecret } from '../common/crypto/secret-box.js';
 import { LOOPBACK_HOSTS } from '../common/net/loopback.js';
 import { overlaps } from '../common/fs/is-inside.js';
 import { probeDatabase } from '../health/db-probe.js';
 import { DEFAULT_POOL_LIMITS, JOB_POOL_SIZE, PrismaService } from '../prisma/prisma.service.js';
 import { SCHEMA_STAMP_FILE, schemaHash } from '../prisma/schema-stamp.js';
+import { expectedSchemaVersion, isSchemaBehind } from '../prisma/schema-version.js';
 import { BackupService, PRIVATE_DIR } from './backup/backup.service.js';
 import { backupTime } from './backup/manifest.js';
 import { firstLine, toolVersion } from './backup/mysql-tools.js';
@@ -277,7 +279,6 @@ function gigabytes(bytes: number): string {
  * is kept.
  * systemPrisma: platform-wide checks, no tenant (allowed in `jobs`).
  */
-// ADR-045 29C: preflight remains on the control database.
 @Injectable()
 export class PreflightService {
   constructor(
@@ -320,7 +321,7 @@ export class PreflightService {
       production && none ? 'warn' : 'info',
     );
 
-    const db = this.prisma.client;
+    const db = this.prisma.control();
     let dbUp = false;
     await attempt('database', async () => {
       const [v] = await db.$queryRaw<{ version: string }[]>`SELECT VERSION() AS version`;
@@ -365,6 +366,48 @@ export class PreflightService {
         }
       });
       await attempt('migrations', () => this.migrations(add));
+      if (this.prisma.tenancyMode === 'isolated') {
+        await attempt('tenant-databases', async () => {
+          const states = await db.$queryRaw<{ state: string; count: bigint }[]>`
+            SELECT state, COUNT(*) AS count FROM tenant_databases GROUP BY state ORDER BY state`;
+          add(
+            'tenant-database-states',
+            true,
+            states.map(({ state, count }) => `${state}=${count.toString()}`).join(', ') || 'no tenant databases',
+            'warn',
+          );
+          const rows = await db.tenantDatabase.findMany({
+            where: { state: { not: 'RETIRED' } },
+            select: { schemaVersion: true, passwordSealed: true },
+          });
+          const expected = expectedSchemaVersion();
+          const behind = rows.filter((row) => isSchemaBehind(row.schemaVersion, expected)).length;
+          add('tenant-schemas', true, `${behind} tenant database(s) behind ${expected}`, behind ? 'warn' : 'info');
+          const free = await db.tenantDbPool.count({ where: { claimedByTenantId: null } });
+          const lowWater = this.config.get('TENANT_DB_POOL_LOW_WATER', { infer: true });
+          add(
+            'tenant-db-pool',
+            true,
+            `${free} free database(s), low-water threshold ${lowWater}`,
+            free < lowWater ? 'warn' : 'info',
+          );
+          const pool = await db.tenantDbPool.findMany({ select: { passwordSealed: true } });
+          const sealed = [...rows.map((row) => row.passwordSealed), ...pool.map((row) => row.passwordSealed)];
+          let failed = 0;
+          for (const password of sealed) {
+            try {
+              openSecret(password, this.config.get('TENANT_DB_SECRET_KEY', { infer: true }));
+            } catch {
+              failed += 1;
+            }
+          }
+          add(
+            'tenant-db-secrets',
+            failed === 0,
+            failed === 0 ? `${sealed.length} sealed password(s) opened` : `${failed} sealed password(s) could not be opened; check TENANT_DB_SECRET_KEY`,
+          );
+        });
+      }
       await attempt('plans', async () => {
         const trial = await db.plan.findFirst({ where: { code: TRIAL_PLAN }, select: { id: true } });
         add('plans', !!trial, trial ? `${TRIAL_PLAN} plan present` : `no ${TRIAL_PLAN} plan: run prisma db seed`);

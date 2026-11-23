@@ -7,6 +7,7 @@ import { EInvoiceSenderService } from './einvoice-sender.service.js';
 import { EInvoiceSettingsService } from './einvoice-settings.service.js';
 import { EInvoiceSubmissionsService } from './einvoice-submissions.service.js';
 import { EInvoiceWorker } from './einvoice-worker.service.js';
+import { TenancyModule } from '../tenancy/tenancy.module.js';
 
 /**
  * Phase 7 — JoFotara (BUILD_PLAN §12, docs/decisions/0005): settings,
@@ -14,7 +15,7 @@ import { EInvoiceWorker } from './einvoice-worker.service.js';
  * follow-up screen. Posting only touches EInvoiceOutboxModule.
  */
 @Module({
-  imports: [SharedModule, SalesModule],
+  imports: [SharedModule, SalesModule, TenancyModule],
   controllers: [EInvoiceController],
   providers: [
     EInvoiceSettingsService,

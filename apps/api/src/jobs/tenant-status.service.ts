@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../common/config/env.validation.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TenantMirrorService } from '../platform/tenancy/tenant-mirror.service.js';
 
 type Status = 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED';
 
@@ -48,12 +49,14 @@ const addDays = (day: string, days: number) =>
  *
  * systemPrisma: a platform job across all tenants (allowed in `jobs`).
  */
-// ADR-045 29C: the tenant-status job remains on the control database.
 @Injectable()
 export class TenantStatusService {
+  private readonly logger = new Logger(TenantStatusService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
+    private readonly mirrors: TenantMirrorService,
   ) {}
 
   async run(now = new Date()): Promise<TenantStatusRun> {
@@ -85,7 +88,17 @@ export class TenantStatusService {
         });
         return true;
       });
-      if (moved) changed.push({ tenantId: t.id.toString(), name: t.name, from: t.status, to, reason });
+      if (moved) {
+        changed.push({ tenantId: t.id.toString(), name: t.name, from: t.status, to, reason });
+        if (this.prisma.tenancyMode === 'isolated') {
+          try {
+            await this.prisma.router.resolve(t.id);
+            await this.mirrors.syncTenant(this.prisma.forTenant(t.id), t.id);
+          } catch (error) {
+            this.logger.warn(`Could not synchronize tenant mirror ${t.id}: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
     };
 
     // Trials that ended: no paid subscription yet (one would have made them ACTIVE).

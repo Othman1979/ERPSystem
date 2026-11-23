@@ -58,7 +58,7 @@ interface PendingError {
  * so it is not alerted twice.
  * systemPrisma: a platform table across tenants (allowed in `jobs`).
  */
-// ADR-045 29C: the error-digest job remains on the control database.
+// ADR-045: control database by design (platform-wide data).
 @Injectable()
 export class ErrorDigestService {
   constructor(

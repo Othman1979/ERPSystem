@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ClsModule } from 'nestjs-cls';
 import { validateEnv } from '../common/config/env.validation.js';
 import { StorageService } from '../common/storage/storage.service.js';
 import { ErrorEventsService } from '../platform/monitoring/error-events.service.js';
@@ -7,6 +8,7 @@ import { PrismaModule } from '../prisma/prisma.module.js';
 import { BackupDecryptService } from './backup/backup-decrypt.service.js';
 import { BackupVerifyService } from './backup/backup-verify.service.js';
 import { BackupService } from './backup/backup.service.js';
+import { BackupRestoreTenantService } from './backup/backup-restore-tenant.service.js';
 import { ErrorDigestService } from './error-digest.service.js';
 import { PasswordService } from '../platform/auth/password.service.js';
 import { PasswordResetService } from './password-reset.service.js';
@@ -23,7 +25,7 @@ import { TenancyModule } from '../platform/tenancy/tenancy.module.js';
  * worker (that job has its own module, EInvoiceJobsModule).
  */
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), PrismaModule, TenancyModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), ClsModule.forRoot({ global: true }), PrismaModule, TenancyModule],
   providers: [
     TenantStatusService,
     TenantPurgeService,
@@ -33,6 +35,7 @@ import { TenancyModule } from '../platform/tenancy/tenancy.module.js';
     PasswordResetService,
     PasswordService,
     BackupService,
+    BackupRestoreTenantService,
     BackupVerifyService,
     BackupDecryptService,
     ErrorDigestService,

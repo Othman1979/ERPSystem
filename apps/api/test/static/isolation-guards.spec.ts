@@ -42,6 +42,8 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/health/health.controller.ts': 'readiness probe: one platform row written and rolled back, no tenant data',
   'src/common/plan-limits/plan-limits.service.ts': 'the tenant row is locked in its tenant transaction; Plan is a control-plane model',
   'src/jobs/backup/backup.service.ts': 'whole-database backup (migrations list, server version)',
+  'src/jobs/backup/backup-verify.service.ts': 'tenant and pool database registry is control-plane routing metadata',
+  'src/jobs/backup/backup-restore-tenant.service.ts': 'tenant state and restore audit rows are control-plane data',
   'src/jobs/error-digest.service.ts': 'platform error table across tenants',
   'src/jobs/integrity-check.service.ts': 'read-only orphan and collation checks across tenants (DB-15, DB-18)',
   'src/jobs/platform-admin-grant.service.ts': 'users are platform-wide',
@@ -50,24 +52,23 @@ const SYSTEM_PRISMA: Record<string, string> = {
   'src/jobs/purge-expired.service.ts': 'expired idempotency keys and refresh tokens across tenants (DB-12)',
   'src/jobs/tenant-purge.service.ts': "deletes one tenant's rows; every statement filters on tenant_id",
   'src/jobs/tenant-status.service.ts': 'subscription lifecycle across tenants',
-  'src/jobs/stock-verify.service.ts': 'lists tenants (platform table), then verifies each in its own tenant context',
   'src/platform/admin/admin.service.ts': 'platform console (platform admins only)',
   'src/platform/auth/auth.service.ts': 'sign-in and registration happen before a tenant is chosen',
   'src/platform/auth/token.service.ts': 'refresh tokens belong to users, not tenants',
-  'src/platform/einvoice/einvoice-worker.service.ts': 'claims the outbox across tenants, then sends each in its tenant context',
   'src/platform/export/tenant-export.service.ts': "reads the CLS tenant's own row of the platform tenants table",
   'src/platform/monitoring/error-events.service.ts': 'platform error table across tenants',
   'src/platform/monitoring/monitoring.service.ts': 'platform error table (platform admins only)',
   'src/platform/users/invitations.service.ts': "the caller's own invitations across tenants; every query filters on the caller's userId",
   'src/platform/users/users.service.ts': 'users and invitations are platform-wide; memberships are filtered by the tenant',
   'src/platform/tenancy/database-provisioner.service.ts': 'tenant database metadata and pool claims are control-plane records',
+  'src/prisma/tenant-fanout.ts': 'tenant database routing metadata belongs to the control plane',
   'src/platform/tenancy/tenant-db-pool.service.ts': 'owner-managed database capacity is stored in the control plane',
   'src/platform/tenancy/tenant-migration.service.ts': 'migration state and database URLs are control-plane metadata',
   'src/platform/tenancy/tenant-mirror.service.ts': 'control records are copied into isolated tenant databases',
   'src/platform/tenancy/tenant-provisioning.service.ts': 'registration and provisioning state are committed in the control plane',
 };
 
-const JUSTIFIED = /systemPrisma|system client|unrestricted|cross-tenant|across tenants|platform-wide/i;
+const JUSTIFIED = /systemPrisma|system client|unrestricted|cross-tenant|across tenants|platform-wide|ADR-045: control database by design/i;
 
 /** Files whose raw SQL on tenant tables is cross-tenant on purpose, and why (reviewed 2026-11-13). */
 const CROSS_TENANT_SQL: Record<string, string> = {

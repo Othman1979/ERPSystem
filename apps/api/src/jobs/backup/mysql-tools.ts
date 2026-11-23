@@ -91,9 +91,8 @@ export function optionFileBody(target: DbTarget, serverTls: boolean): string {
  * Runs `fn` with a private option file holding the credentials, so the
  * password is never on a command line (visible to other users in `ps`) or
  * in the environment. The file is removed afterwards, even when `fn` fails.
- * It is written into `dir`, a folder the caller owns (the partial backup, or
- * BACKUP_DIR), never the system temp folder: that disk may be the full one,
- * and a run killed midway must not leave the password in a shared place.
+ * It is written into the caller-provided protected directory and removed
+ * afterwards, even when `fn` fails.
  */
 export async function withOptionFile<T>(
   target: DbTarget,

@@ -112,6 +112,14 @@ describe('TenantDbRouter', () => {
     expect(connections[0].end).toHaveBeenCalledTimes(1);
   });
 
+  it('returns maintenance while a tenant database is restoring', async () => {
+    const { databases, factory, router } = track(setup());
+    databases.set(1n, createDatabase(1n, 'RESTORING'));
+
+    await expect(router.resolve(1n)).rejects.toMatchObject({ code: ErrorCode.TENANT_MAINTENANCE });
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   it('requires resolution before returning an isolated client', () => {
     const { router } = track(setup());
     expectClientError(router, 1n, ErrorCode.TENANT_DB_NOT_RESOLVED);

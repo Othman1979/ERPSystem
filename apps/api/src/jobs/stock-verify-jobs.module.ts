@@ -7,6 +7,7 @@ import { InventoryModule } from '../platform/inventory/inventory.module.js';
 import { ErrorEventsService } from '../platform/monitoring/error-events.service.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
 import { StockVerifyService } from './stock-verify.service.js';
+import { TenancyModule } from '../platform/tenancy/tenancy.module.js';
 
 /**
  * What the `stock-verify` command needs: the inventory module (stock ledger)
@@ -19,6 +20,7 @@ import { StockVerifyService } from './stock-verify.service.js';
     CommonModule,
     PrismaModule,
     InventoryModule,
+    TenancyModule,
   ],
   providers: [StockVerifyService, ErrorEventsService],
 })

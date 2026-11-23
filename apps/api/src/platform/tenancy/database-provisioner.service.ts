@@ -137,7 +137,7 @@ export class TenantDatabaseProvisioner {
     };
   }
 
-  async dropCreatedDatabase(database: ProvisionedDatabase): Promise<void> {
+  async dropCreatedDatabase(databaseName: string, dbUser: string): Promise<void> {
     const adminUrl = this.config.get('TENANT_DB_ADMIN_URL', { infer: true });
     if (!adminUrl) throw new Error('TENANT_DB_ADMIN_URL is required for create provisioning');
     const admin = new URL(adminUrl);
@@ -151,9 +151,9 @@ export class TenantDatabaseProvisioner {
       connectTimeout: 10_000,
     });
     try {
-      await connection.query(`DROP DATABASE IF EXISTS \`${validateDatabaseIdentifier(database.databaseName)}\``);
+      await connection.query(`DROP DATABASE IF EXISTS \`${validateDatabaseIdentifier(databaseName)}\``);
       await connection.query(
-        `DROP USER IF EXISTS '${quoteSqlValue(validateDatabaseIdentifier(database.dbUser))}'@'${quoteSqlValue(userHost)}'`,
+        `DROP USER IF EXISTS '${quoteSqlValue(validateDatabaseIdentifier(dbUser))}'@'${quoteSqlValue(userHost)}'`,
       );
     } finally {
       await connection.end();

@@ -17,6 +17,7 @@
     "job:reset-password": "node dist/jobs/cli.js reset-password",
     "job:backup": "node dist/jobs/cli.js backup",
     "job:backup-verify": "node dist/jobs/cli.js backup-verify",
+    "job:backup-restore-tenant": "node dist/jobs/cli.js backup-restore-tenant",
     "job:backup-decrypt": "node dist/jobs/cli.js backup-decrypt",
     "job:error-digest": "node dist/jobs/cli.js error-digest",
     "job:integrity-check": "node dist/jobs/cli.js integrity-check",

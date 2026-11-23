@@ -6,6 +6,7 @@ import { runAbortCleanups } from './abort-cleanup.js';
 import { BackupDecryptService } from './backup/backup-decrypt.service.js';
 import { BackupVerifyService } from './backup/backup-verify.service.js';
 import { BackupService } from './backup/backup.service.js';
+import { BackupRestoreTenantService } from './backup/backup-restore-tenant.service.js';
 import { EInvoiceJobsModule } from './einvoice-jobs.module.js';
 import { ErrorDigestService } from './error-digest.service.js';
 import { IntegrityCheckModule } from './integrity-check.module.js';
@@ -119,8 +120,27 @@ const JOBS: Record<string, Job> = {
     module: JobsModule,
     run: async (app, args) => {
       const which = args.find((a) => !a.startsWith('--'));
-      if (!which) throw new Error('Usage: backup-verify <backup folder | latest> [--keep]');
-      return app.get(BackupVerifyService).run(which, args.includes('--keep'));
+      const at = args.indexOf('--tenant');
+      const id = at < 0 ? undefined : args[at + 1];
+      if (!which || (at >= 0 && (!id || !/^\d+$/.test(id)))) {
+        throw new Error('Usage: backup-verify <backup folder | latest> [--keep] [--tenant <id>]');
+      }
+      return app.get(BackupVerifyService).run(which, args.includes('--keep'), id ? BigInt(id) : undefined);
+    },
+  },
+  'backup-restore-tenant': {
+    module: JobsModule,
+    run: async (app, args) => {
+      const confirmAt = args.indexOf('--confirm');
+      const confirmName = confirmAt < 0 ? undefined : args[confirmAt + 1];
+      const operands = args.filter(
+        (arg, index) => !arg.startsWith('--') && !(confirmAt >= 0 && index === confirmAt + 1),
+      );
+      const [which, id] = operands;
+      if (!which || !id || !/^\d+$/.test(id) || !confirmName) {
+        throw new Error('Usage: backup-restore-tenant <folder | latest> <tenantId> --confirm "<tenant name>"');
+      }
+      return app.get(BackupRestoreTenantService).run(which, BigInt(id), confirmName);
     },
   },
   'backup-decrypt': {

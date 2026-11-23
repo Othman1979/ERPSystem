@@ -53,6 +53,12 @@ export class TenantMirrorService {
     await tenantDb.tenant.upsert({ where: { id: tenantId }, create: data, update: data });
   }
 
+  async syncPlan(tenantDb: TenantMirrorClient, planId: bigint): Promise<void> {
+    const plan = await this.prisma.control().plan.findUnique({ where: { id: planId } });
+    if (!plan) throw new Error(`Plan ${planId} not found in control database`);
+    await tenantDb.plan.upsert({ where: { id: planId }, create: plan, update: plan });
+  }
+
   async syncUser(tenantDb: TenantMirrorClient, userId: bigint): Promise<void> {
     const user = await this.prisma.control().user.findUnique({
       where: { id: userId },

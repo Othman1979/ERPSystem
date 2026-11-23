@@ -14,7 +14,7 @@ export interface PlatformAdminGrant {
  * shell (ADR-010 §10.1): the first admin of a fresh installation needs no SQL.
  * Audited with no tenant. systemPrisma: users are platform-wide (allowed in `jobs`).
  */
-// ADR-045 29C: the platform-admin job remains on the control database.
+// ADR-045: control database by design (platform-wide data).
 @Injectable()
 export class PlatformAdminGrantService {
   constructor(

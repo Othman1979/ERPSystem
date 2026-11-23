@@ -183,3 +183,11 @@ tool is built.
 - Both `create` and `pool` provisioning use the control database's `tenant_db_pool`; pool passwords are supplied to `db-pool-add` only through `TENANT_DB_PASSWORD`, never argv.
 - A tenant schema version is the last successfully applied migration name. Only schemas behind the control migration set are gated; null or behind versions enter maintenance, while ahead versions remain usable.
 - In isolated deployments the migration order is: deploy code, run `migrate-all`, then restart the API.
+
+## 29C amendments
+
+- Tenant jobs fan out over tenant databases in isolated mode. Control-plane users, refresh tokens, subscriptions, platform audit rows, and monitoring remain in the control database. Shared mode retains its existing queries and output.
+- Tenant purge keeps the existing cancellation retention and exact-name confirmation. Create mode drops the tenant database and user; pool mode empties and migrates the database, then releases its pool row. Control tenant links, subscriptions, tenant audit rows, and eligible users are removed transactionally; platform audit rows are anonymized.
+- Isolated backups add one dump per non-retired, non-provisioning tenant database to the existing control dump and storage archive. They use manifest V3, with checksums and encryption metadata; shared backups continue to write V2. Readers accept V1, V2, and V3.
+- `backup-restore-tenant <folder|latest> <tenantId> --confirm "<tenant name>"` restores one isolated database, gates it as `MIGRATING`, migrates it to the expected schema, then returns it to `ACTIVE`. Shared mode refuses the command and directs operators to the manual restore procedure.
+- Audit fallback rows stay in control. If a tenant-facing audit read is introduced, it must merge control fallback rows for that tenant with tenant-database audit rows, ordered by `createdAt` with paging applied to the combined result. There is no such tenant-facing read endpoint in this phase.

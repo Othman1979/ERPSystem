@@ -33,6 +33,7 @@ enum TenantDatabaseState {
   ACTIVE
   MIGRATING
   RETIRED
+  RESTORING
 }
 
 enum SubscriptionStatus {

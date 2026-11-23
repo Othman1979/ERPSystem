@@ -130,7 +130,7 @@ function parseFallbackLine(raw: string): FallbackLine | null {
  *
  * systemPrisma: a platform table across tenants (allowed in `platform`).
  */
-// ADR-045 29C: monitoring events remain on the control database.
+// ADR-045: control database by design (platform-wide data).
 @Injectable()
 export class ErrorEventsService {
   private readonly logger = new Logger(ErrorEventsService.name);

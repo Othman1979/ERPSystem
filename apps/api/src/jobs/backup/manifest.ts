@@ -50,11 +50,30 @@ export interface BackupManifestV2 extends ManifestCommon {
   encryption: ManifestEncryption | null;
 }
 
-export type BackupManifest = BackupManifestV1 | BackupManifestV2;
+export interface BackupManifestV3 extends ManifestCommon {
+  format: 3;
+  encryption: ManifestEncryption | null;
+  tenantDatabases: Array<{
+    tenantId: string;
+    database: string;
+    file: string;
+    schemaVersion: string | null;
+  }>;
+}
+
+export type BackupManifest = BackupManifestV1 | BackupManifestV2 | BackupManifestV3;
+
+export function parseBackupManifest(text: string): BackupManifest {
+  const manifest = JSON.parse(text) as { format?: unknown };
+  if (manifest.format !== 1 && manifest.format !== 2 && manifest.format !== 3) {
+    throw new Error(`Unknown manifest format ${String(manifest.format)}`);
+  }
+  return manifest as BackupManifest;
+}
 
 /** The encryption of a backup, or null when its files are plaintext. */
 export function encryptionOf(manifest: BackupManifest): ManifestEncryption | null {
-  return manifest.format === 2 ? manifest.encryption : null;
+  return manifest.format === 1 ? null : manifest.encryption;
 }
 
 /** The name a logical file has in the folder. */
