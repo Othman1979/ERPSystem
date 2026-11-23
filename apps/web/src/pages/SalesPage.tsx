@@ -66,6 +66,7 @@ import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { salesInvoiceBody, salesInvoiceFormDefaults } from './sales/invoicePayload';
+import { warehouseSearchMatches, warehouseSearchText } from './sales/warehouseSearch';
 import { InvoiceDiscountField } from './sales/InvoiceDiscountField';
 import {
   ApiError,
@@ -635,6 +636,7 @@ function InvoiceForm({
 
   const warehouseOptions = lookups.warehouses.map((w) => ({
     value: w.id,
+    searchText: warehouseSearchText(w),
     label: (
       <span>
         {codeAndName(w)}
@@ -963,6 +965,8 @@ function InvoiceForm({
             status={requiredError(missing.warehouse) ? 'error' : undefined}
             disabled={orderLinked}
             options={warehouseOptions}
+            optionFilterProp="searchText"
+            filterOption={(input, option) => warehouseSearchMatches(input, String(option?.searchText ?? ''))}
             value={warehouseId}
             onChange={setWarehouseId}
           />
