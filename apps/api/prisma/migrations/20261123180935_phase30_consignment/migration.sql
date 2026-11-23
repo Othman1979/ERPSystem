@@ -119,9 +119,9 @@ INSERT INTO `account_mappings`
 SELECT a.`tenant_id`, a.`company_id`, m.`mapping_key`, a.`id`, NOW(3), NOW(3)
 FROM `accounts` a
 JOIN (
-  SELECT '2111' AS `code`, 'CONSIGNMENT_PAYABLE' AS `mapping_key`
-  UNION ALL SELECT '5209', 'CONSIGNMENT_SHRINKAGE'
-) m ON m.`code` = a.`code`
+  SELECT '2111' AS `code`, 'مستحق لموردي الأمانة' AS `name_ar`, 'CONSIGNMENT_PAYABLE' AS `mapping_key`
+  UNION ALL SELECT '5209', 'عجز بضاعة الأمانة', 'CONSIGNMENT_SHRINKAGE'
+) m ON m.`code` = a.`code` AND m.`name_ar` = a.`name_ar`
 WHERE NOT EXISTS (
   SELECT 1 FROM `account_mappings` x
   WHERE x.`tenant_id` = a.`tenant_id` AND x.`company_id` = a.`company_id`

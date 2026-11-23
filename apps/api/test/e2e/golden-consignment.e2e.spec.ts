@@ -228,6 +228,38 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     )) as { tenantId: bigint; companyId: bigint }[];
     tenantId = ids[0]!.tenantId;
     companyId = ids[0]!.companyId;
+    await expectSuccess(
+      await api().patch('/api/v1/company').set(auth(token)).send({ consignmentEnabled: false }),
+      200,
+      'disable consignment before mapping checks',
+    );
+    for (const mappingKey of ['CONSIGNMENT_PAYABLE', 'CONSIGNMENT_SHRINKAGE']) {
+      const [mapping] = (await db.query(
+        `SELECT account_id FROM account_mappings
+          WHERE tenant_id = ? AND company_id = ? AND mapping_key = ?`,
+        [tenantId, companyId, mappingKey],
+      )) as { account_id: bigint }[];
+      expect(mapping).toBeDefined();
+      await db.query(
+        `DELETE FROM account_mappings
+          WHERE tenant_id = ? AND company_id = ? AND mapping_key = ?`,
+        [tenantId, companyId, mappingKey],
+      );
+      const refusedEnable = await api().patch('/api/v1/company').set(auth(token)).send({ consignmentEnabled: true });
+      expect(refusedEnable.body.error.code).toBe('MAPPING_ACCOUNT_INVALID');
+      expect(refusedEnable.body.error.message).toMatch(/account settings/i);
+      await db.query(
+        `INSERT INTO account_mappings
+          (tenant_id, company_id, mapping_key, account_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NOW(3), NOW(3))`,
+        [tenantId, companyId, mappingKey, mapping!.account_id],
+      );
+    }
+    await expectSuccess(
+      await api().patch('/api/v1/company').set(auth(token)).send({ consignmentEnabled: true }),
+      200,
+      'enable consignment after restoring mappings',
+    );
 
     const units = await api().get('/api/v1/units').set(auth(token));
     const pieceId = (units.body as { id: string; code: string }[]).find((unit) => unit.code === 'PCS')!.id;

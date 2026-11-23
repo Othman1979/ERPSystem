@@ -8,9 +8,11 @@ import { OWNER_ROLE } from '../../common/permissions/member-permissions.js';
 import { PERMISSIONS } from '../../common/permissions/permissions.js';
 import { ProcurementCycleRegistry } from '../../common/procurement/procurement-level.js';
 import { StorageService } from '../../common/storage/storage.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import type { ProcurementLevel } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { UpdateCompanyDto } from './dto/company.dto.js';
+import { MappingsService, mappingAccountValidationError } from './mappings.service.js';
 import { currentCompanyFilter } from '../../common/cls/current-company.js';
 
 /** The sales cycle settings (ADR-027 §1), owner only. */
@@ -57,6 +59,7 @@ export class CompanyService {
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     private readonly procurementCycle: ProcurementCycleRegistry,
+    private readonly mappings: MappingsService,
   ) {}
 
   private tenant() {
@@ -109,6 +112,35 @@ export class CompanyService {
     };
   }
 
+  private async assertConsignmentMappings(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint) {
+    for (const mappingKey of ['CONSIGNMENT_PAYABLE', 'CONSIGNMENT_SHRINKAGE'] as const) {
+      let accountId: bigint;
+      try {
+        accountId = await this.mappings.mappedAccountId(tx, tenantId, companyId, mappingKey);
+      } catch (error) {
+        if (error instanceof DomainError && error.code === ErrorCode.MAPPING_ACCOUNT_INVALID) {
+          throw new DomainError(
+            ErrorCode.MAPPING_ACCOUNT_INVALID,
+            `Map ${mappingKey} in account settings before enabling consignment`,
+            { mappingKey },
+          );
+        }
+        throw error;
+      }
+      const account = await tx.account.findFirst({
+        where: { tenantId, companyId, id: accountId },
+        select: { isActive: true, isPostable: true, accountType: true, isControl: true, controlType: true },
+      });
+      if (!account || mappingAccountValidationError(mappingKey, account)) {
+        throw new DomainError(
+          ErrorCode.MAPPING_ACCOUNT_INVALID,
+          `Map ${mappingKey} to a valid account in account settings before enabling consignment`,
+          { mappingKey },
+        );
+      }
+    }
+  }
+
   async update(dto: UpdateCompanyDto) {
     const { tenantId, db } = this.tenant();
     const c = await this.company(db);
@@ -154,6 +186,9 @@ export class CompanyService {
           SELECT procurement_level, consignment_enabled FROM companies WHERE tenant_id = ${tenantId} AND id = ${c.id} FOR UPDATE`;
         from = locked.procurement_level;
         if (levelChange) await this.procurementCycle.assertLevelChange(tx, from, dto.procurementLevel!);
+        if (dto.consignmentEnabled === true && !locked.consignment_enabled) {
+          await this.assertConsignmentMappings(tx, tenantId, c.id);
+        }
         if (dto.consignmentEnabled === false && locked.consignment_enabled) {
           const [stock] = await tx.$queryRaw<{ id: bigint }[]>`
             SELECT b.id
