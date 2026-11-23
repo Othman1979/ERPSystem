@@ -387,12 +387,11 @@ function AgingTab() {
   const navigate = useNavigate();
   const lookups = useConsignmentLookups();
   const [supplierId, setSupplierId] = useState<string>();
-  const [asOf, setAsOf] = useState<Dayjs>(dayjs());
   const report = useQuery({
-    queryKey: ['consignment', 'aging', supplierId, asOf.format('YYYY-MM-DD')],
+    queryKey: ['consignment', 'aging', supplierId],
     queryFn: ({ signal }) =>
       consignmentControllerAging(
-        { ...(supplierId ? { supplierId } : {}), asOf: asOf.format('YYYY-MM-DD') },
+        { ...(supplierId ? { supplierId } : {}) },
         { signal },
       ).then((r) => r.data),
   });
@@ -421,9 +420,6 @@ function AgingTab() {
       <ReportCriteria>
         <WinField label={t('purchases.supplier')}>
           <Select allowClear showSearch optionFilterProp="label" value={supplierId} options={lookups.supplierOptions} onChange={setSupplierId} />
-        </WinField>
-        <WinField label={t('consignment.asOf')}>
-          <DatePicker value={asOf} onChange={(value) => value && setAsOf(value)} />
         </WinField>
       </ReportCriteria>
       <ResponsiveTable<ConsignmentAgingResponseDto>

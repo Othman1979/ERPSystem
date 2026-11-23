@@ -8,6 +8,7 @@ import type { RequestContext } from '../../common/cls/cls.types.js';
 import { currentCompanyFilter } from '../../common/cls/current-company.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { DocumentSupportService } from '../shared/document-support.service.js';
 import type {
   ConsignmentAgingQueryDto,
   ConsignmentOpenSalesQueryDto,
@@ -22,7 +23,10 @@ function warehouseScope(): { warehouse?: ReturnType<typeof branchWhere> } {
 
 @Injectable()
 export class ConsignmentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly support: DocumentSupportService,
+  ) {}
 
   private tenant() {
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
@@ -190,7 +194,7 @@ export class ConsignmentService {
     const companyId = await this.companyId(db);
     const supplierId = query.supplierId ? BigInt(query.supplierId) : null;
     if (supplierId !== null) await this.assertSupplier(db, companyId, supplierId);
-    const asOf = query.asOf ? new Date(query.asOf) : new Date();
+    const asOf = new Date(`${await this.support.companyToday(db)}T00:00:00.000Z`);
     const filters = [
       Prisma.sql`s.company_id = ${companyId}`,
       Prisma.sql`s.qty > s.returned_qty + s.invoiced_qty`,

@@ -11627,7 +11627,6 @@ export type ConsignmentControllerStatementParams = {
 
 export type ConsignmentControllerAgingParams = {
   supplierId?: string;
-  asOf?: string;
 };
 
 export type SalesControllerListInvoicesParams = {

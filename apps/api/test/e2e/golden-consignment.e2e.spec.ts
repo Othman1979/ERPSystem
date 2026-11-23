@@ -766,7 +766,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     )) as { docNo: string | null }[];
     const agingRows = await expectSuccess<Array<{ id: string; sourceNo: string | null }>>(
       await api()
-        .get(`/api/v1/reports/consignment-aging?supplierId=${supplierId}&asOf=2025-04-15`)
+        .get(`/api/v1/reports/consignment-aging?supplierId=${supplierId}`)
         .set(auth(token)),
       200,
       'consignment aging',

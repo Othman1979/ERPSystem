@@ -38,9 +38,4 @@ export class ConsignmentAgingQueryDto {
   @IsString()
   @Matches(ID)
   supplierId?: string;
-
-  @IsOptional()
-  @IsDateString({ strict: true })
-  @Matches(DATE)
-  asOf?: string;
 }
