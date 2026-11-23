@@ -9,6 +9,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { CreateWarehouseDto, UpdateWarehouseDto } from './dto/inventory.dto.js';
 import { PlanLimitsService } from '../../common/plan-limits/plan-limits.service.js';
 import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { PartyUsageRegistry } from '../parties/party-usage.registry.js';
 
 @Injectable()
 export class WarehousesService {
@@ -16,7 +17,12 @@ export class WarehousesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly planLimits: PlanLimitsService,
-  ) {}
+    partyUsage: PartyUsageRegistry,
+  ) {
+    partyUsage.register('inventory', async (tx, partyId) =>
+      (await tx.warehouse.findFirst({ where: { consignmentSupplierId: partyId }, select: { id: true } })) ? 'warehouses' : null,
+    );
+  }
 
   private tenant() {
     const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');

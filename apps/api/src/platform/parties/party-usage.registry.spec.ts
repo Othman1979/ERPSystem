@@ -47,5 +47,6 @@ describe('PartyUsageRegistry (DB-15, ADR-021)', () => {
     await registry.usage(tx, 42n);
     expect(seen).toEqual(PARTY_USAGE_OWNERS.map(() => 42n));
     expect(PARTY_USAGE_OWNERS).toContain('procurement'); // ADR-025 §15
+    expect(PARTY_USAGE_OWNERS).toContain('inventory');
   });
 });
