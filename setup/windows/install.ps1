@@ -196,6 +196,7 @@ function Ensure-AppClone {
     if ($LASTEXITCODE -ne 0 -or -not $origin) {
         Fail 'Could not read origin from the setup repository.'
     }
+    $createdClone = $false
     if (-not (Test-Path -LiteralPath (Join-Path $Destination '.git'))) {
         if ((Test-Path -LiteralPath $Destination) -and (Get-ChildItem -LiteralPath $Destination -Force | Select-Object -First 1)) {
             Fail "AppDir exists but is not a Git clone: $Destination"
@@ -205,14 +206,23 @@ function Ensure-AppClone {
         if ($LASTEXITCODE -ne 0) {
             Fail "Could not clone the setup repository into $Destination."
         }
+        $createdClone = $true
     }
     & git -C $Destination remote set-url origin $origin | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Fail 'Could not configure the server clone origin.'
     }
-    & git -C $Destination pull --ff-only origin main | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning 'Could not fast-forward the server clone from origin/main; continuing with its current commit.'
+    if ($createdClone) {
+        & git -C $Destination pull --ff-only origin main | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'Could not fast-forward the fresh server clone from origin/main; continuing with its current commit.'
+        }
+    } else {
+        $currentCommit = (& git -C $Destination rev-parse HEAD).Trim()
+        if ($LASTEXITCODE -ne 0 -or -not $currentCommit) {
+            Fail "Could not read the current commit in $Destination."
+        }
+        Write-Host "Existing server clone kept at $currentCommit; use update.bat to upgrade."
     }
 }
 
