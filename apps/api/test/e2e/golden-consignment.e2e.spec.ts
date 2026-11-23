@@ -773,6 +773,33 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     );
     expect(agingRows.find((row) => row.id === shortageSaleId)?.sourceNo).toBe(countNumbers[0]?.docNo);
 
+    const followupCount = await expectSuccess<{ id: string; lines: { id: string; itemId: string }[] }>(
+      await api().post('/api/v1/stock-counts').set(auth(token)).send({
+        countDate: '2025-04-01',
+        warehouseId: warehouse,
+        scope: 'ITEMS',
+        itemIds: [itemId],
+      }),
+      201,
+      'create follow-up stock count',
+    );
+    const followupLine = followupCount.lines.find((line) => line.itemId === itemId)!;
+    await expectSuccess(
+      await api().put(`/api/v1/stock-counts/${followupCount.id}/lines/${followupLine.id}`).set(auth(token)).send({ countedQty: '8' }),
+      200,
+      'count consignment stock',
+    );
+    await expectSuccess(await post(token, `stock-counts/${followupCount.id}/submit`), 201, 'submit follow-up count');
+    await expectSuccess(await post(token, `stock-counts/${followupCount.id}/approve`), 201, 'approve follow-up count');
+    const consumption = await expectSuccess<{ rows: { itemId: string; avgCost: string }[] }>(
+      await api()
+        .get(`/api/v1/stock-reports/consumption?warehouseId=${warehouse}&fromCountId=${count.id}&toCountId=${followupCount.id}`)
+        .set(auth(token)),
+      200,
+      'consignment count consumption',
+    );
+    expect(consumption.rows.find((row) => row.itemId === itemId)?.avgCost).toBe('20.000000');
+
     const supplierReturn = await createAndPost('goods-notes', {
       noteDate: CURRENT_DATE,
       noteType: 'CONSIGNMENT_OUT',
