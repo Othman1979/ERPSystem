@@ -237,7 +237,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         LEFT JOIN (
           SELECT original_invoice_id, SUM(grand_total) AS credited
             FROM purchase_returns
-           WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
+           WHERE s.tenant_id = ${tenantId} AND s.company_id = ${companyId}
              AND status = 'POSTED' AND refund_type = 'CREDIT' AND return_date <= ${day}
            GROUP BY original_invoice_id
         ) r ON r.original_invoice_id = i.id
@@ -986,16 +986,23 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           supplier_id: bigint;
           warehouse_id: bigint;
           item_id: bigint;
+          source_branch_id: bigint | null;
           source_type: 'SALES_INVOICE' | 'STOCK_COUNT';
           qty: Prisma.Decimal;
           returned_qty: Prisma.Decimal;
           invoiced_qty: Prisma.Decimal;
         }[]>`
-          SELECT id, supplier_id, warehouse_id, item_id, source_type, qty, returned_qty, invoiced_qty
-          FROM consignment_sales
+          SELECT s.id, s.supplier_id, s.warehouse_id, s.item_id, s.source_type,
+                 CASE WHEN s.source_type = 'SALES_INVOICE' THEN si.branch_id ELSE w.branch_id END AS source_branch_id,
+                 s.qty, s.returned_qty, s.invoiced_qty
+            FROM consignment_sales s
+            JOIN warehouses w
+              ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+            LEFT JOIN sales_invoices si
+              ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
            WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
-             AND id IN (${Prisma.join(saleIds)})
-           ORDER BY id FOR UPDATE`;
+             AND s.id IN (${Prisma.join(saleIds)})
+           ORDER BY s.id FOR UPDATE`;
         const saleById = new Map(
           sales.map((sale) => [
             sale.id,
@@ -1004,6 +1011,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
               supplierId: sale.supplier_id,
               warehouseId: sale.warehouse_id,
               itemId: sale.item_id,
+              branchId: sale.source_branch_id,
               sourceType: sale.source_type,
               qty: sale.qty,
               returnedQty: sale.returned_qty,
@@ -1025,6 +1033,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           ) {
             throw new DomainError(ErrorCode.VALIDATION, 'Settlement lines must match the supplier, warehouse, and item of each sale');
           }
+          assertBranchAllowed(sale.branchId);
           const openQty = new Decimal(sale.qty.toString())
             .minus(sale.returnedQty.toString())
             .minus(sale.invoicedQty.toString());

@@ -1207,15 +1207,14 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
        VALUES (?, ?, ?, ?, 1, ?, ?)`,
       [tenantId, companyId, `TRY${RUN}`, 'فرع ص', now, now],
     ) as { insertId: bigint }).insertId);
-    const branchWarehouse = await expectSuccess<{ id: string }>(
+    const sharedWarehouse = await expectSuccess<{ id: string }>(
       await api().post('/api/v1/warehouses').set(auth(token)).send({
         code: `TRWY${RUN}`,
-        nameAr: 'مستودع فرع ص',
-        branchId: branchY,
+        nameAr: 'مستودع مشترك',
         consignmentSupplierId: supplierId,
       }),
       201,
-      'create branch-Y consignment warehouse',
+      'create shared consignment warehouse',
     );
     const units = await api().get('/api/v1/units').set(auth(token));
     const pieceId = (units.body as { id: string; code: string }[]).find((unit) => unit.code === 'PCS')!.id;
@@ -1233,7 +1232,7 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       await api().post('/api/v1/goods-notes').set(auth(token)).set('X-Branch-Id', branchY).send({
         noteDate: '2025-05-01',
         noteType: 'CONSIGNMENT_IN',
-        warehouseId: branchWarehouse.id,
+        warehouseId: sharedWarehouse.id,
         supplierId,
         lines: [{ itemId: branchItem.id, qty: '2', unitCost: '5.000' }],
       }),
@@ -1249,7 +1248,7 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       await api().post('/api/v1/sales-invoices').set(auth(token)).set('X-Branch-Id', branchY).send({
         invoiceDate: '2025-05-02',
         customerId,
-        warehouseId: branchWarehouse.id,
+        warehouseId: sharedWarehouse.id,
         paymentType: 'CASH',
         cashAccountId,
         lines: [{ itemId: branchItem.id, qty: '1', unitPrice: '10.000' }],
@@ -1286,13 +1285,29 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       .get(`/api/v1/reports/consignment-statement?supplierId=${supplierId}&from=2025-05-01&to=2025-05-02`)
       .set(auth(restricted.token));
     await expectSuccess(statement, 200, 'branch-restricted statement');
-    expect((statement.body as { item: { id: string } }[]).some((row) => row.item.id === branchItem.id)).toBe(false);
+    const statementItem = (statement.body as { item: { id: string }; soldNetOfReturnsQty: string; openQty: string }[])
+      .find((row) => row.item.id === branchItem.id);
+    expect(statementItem).toMatchObject({ soldNetOfReturnsQty: '0', openQty: '0' });
 
     const aging = await api()
       .get(`/api/v1/reports/consignment-aging?supplierId=${supplierId}`)
       .set(auth(restricted.token));
     await expectSuccess(aging, 200, 'branch-restricted aging');
     expect((aging.body as { item: { id: string } }[]).some((row) => row.item.id === branchItem.id)).toBe(false);
+
+    const crossBranchDraft = await api().post('/api/v1/purchase-invoices').set(auth(restricted.token)).send({
+      invoiceDate: '2025-05-03',
+      supplierId,
+      warehouseId: sharedWarehouse.id,
+      paymentType: 'CREDIT',
+      consignmentSettlement: true,
+      lines: [{ consignmentSaleId: String(sale[0]!.id), qty: '1', unitPrice: '10.000', taxCategoryId: taxId }],
+    });
+    expect(crossBranchDraft.status).toBe(201);
+    const crossBranchPost = await post(restricted.token, `purchase-invoices/${crossBranchDraft.body.id}/post`);
+    expect(crossBranchPost.status).toBe(403);
+    expect(crossBranchPost.body.error.code).toBe('BRANCH_NOT_ALLOWED');
+    expect((await api().delete(`/api/v1/purchase-invoices/${crossBranchDraft.body.id}`).set(auth(restricted.token))).status).toBe(200);
   });
 
   it('serializes a first stock movement against a consignment supplier change', async () => {

@@ -21,6 +21,14 @@ function warehouseScope(): { warehouse?: ReturnType<typeof branchWhere> } {
   return hasAllBranches() ? {} : { warehouse: branchWhere() };
 }
 
+function sourceBranchScope() {
+  if (hasAllBranches()) return Prisma.sql`TRUE`;
+  return Prisma.sql`(
+    (s.source_type = 'SALES_INVOICE' AND ${branchSql(Prisma.raw('si.branch_id'))})
+    OR (s.source_type = 'STOCK_COUNT' AND ${branchSql(Prisma.raw('w.branch_id'))})
+  )`;
+}
+
 @Injectable()
 export class ConsignmentService {
   constructor(
@@ -76,8 +84,11 @@ export class ConsignmentService {
         FROM consignment_sales s
         JOIN warehouses w
           ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+        LEFT JOIN sales_invoices si
+          ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
        WHERE s.tenant_id = ${tenantId}
          AND ${branchSql(Prisma.raw('w.branch_id'))}
+         AND ${sourceBranchScope()}
          AND ${Prisma.join(filters, ' AND ')}
        ORDER BY s.sale_date, s.id LIMIT ${MAX_ROWS + 1}`;
     if (ids.length > MAX_ROWS) {
@@ -103,18 +114,25 @@ export class ConsignmentService {
   }
 
   async statement(query: ConsignmentStatementQueryDto) {
-    const { db } = this.tenant();
+    const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
     const supplierId = BigInt(query.supplierId);
     await this.assertSupplier(db, companyId, supplierId);
     if (query.from > query.to) throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to');
     const range = { gte: new Date(query.from), lte: new Date(query.to) };
-    const [sales, movementGroups, balances] = await Promise.all([
-      db.consignmentSale.findMany({
-        where: { companyId, supplierId, saleDate: range, ...warehouseScope() },
-        orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
-        take: MAX_ROWS + 1,
-      }),
+    const [saleIds, movementGroups, balances] = await Promise.all([
+      db.$queryRaw<{ id: bigint }[]>`
+        SELECT s.id
+          FROM consignment_sales s
+          JOIN warehouses w
+            ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+          LEFT JOIN sales_invoices si
+            ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
+         WHERE s.tenant_id = ${tenantId} AND s.company_id = ${companyId}
+           AND s.supplier_id = ${supplierId} AND s.sale_date >= ${range.gte} AND s.sale_date <= ${range.lte}
+           AND ${branchSql(Prisma.raw('w.branch_id'))}
+           AND ${sourceBranchScope()}
+         ORDER BY s.sale_date, s.id LIMIT ${MAX_ROWS + 1}`,
       db.stockMovement.groupBy({
         by: ['itemId', 'sourceType'],
         where: {
@@ -135,7 +153,11 @@ export class ConsignmentService {
         take: MAX_ROWS + 1,
       }),
     ]);
-    if (sales.length > MAX_ROWS || movementGroups.length > MAX_ROWS || balances.length > MAX_ROWS) {
+    const sales = await db.consignmentSale.findMany({
+      where: { companyId, supplierId, saleDate: range, id: { in: saleIds.map((row) => row.id) }, ...warehouseScope() },
+      orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
+    });
+    if (saleIds.length > MAX_ROWS || movementGroups.length > MAX_ROWS || balances.length > MAX_ROWS) {
       throw new DomainError(ErrorCode.REPORT_TOO_LARGE, 'Narrow the statement date range', { limit: MAX_ROWS });
     }
     const itemIds = [...new Set([
@@ -195,8 +217,11 @@ export class ConsignmentService {
         FROM consignment_sales s
         JOIN warehouses w
           ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+        LEFT JOIN sales_invoices si
+          ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
        WHERE s.tenant_id = ${tenantId}
          AND ${branchSql(Prisma.raw('w.branch_id'))}
+         AND ${sourceBranchScope()}
          AND ${Prisma.join(filters, ' AND ')}
        ORDER BY s.sale_date, s.id LIMIT ${MAX_ROWS + 1}`;
     if (ids.length > MAX_ROWS) {
