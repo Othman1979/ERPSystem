@@ -15,11 +15,8 @@
 
 ## Schema and migrations
 
-- `20261123180935_phase30_consignment` — company and warehouse settings, pool-aware `item_costs`, consignment sales, purchase invoice settlement fields, goods-note types, and account mappings.
-- `20261123183142_phase30_consignment_sequences` — idempotently adds CIN/COUT number sequences for existing fiscal years.
+- `20261123180935_phase30_consignment` — company and warehouse settings, pool-aware `item_costs`, consignment sales, purchase invoice settlement fields, goods-note types, account mappings, and idempotent CIN/COUT sequences for existing fiscal years.
 - Added `ConsignmentSale` to tenant-scoped Prisma infrastructure, tenant export, and integrity checking.
-
-The follow-up sequence migration was added after the focused E2E test found existing fiscal years without CIN/COUT sequences. The initial migration had already been applied to the dedicated test database, so it was not rewritten.
 
 ## API and operational commands
 
@@ -29,17 +26,18 @@ The follow-up sequence migration was added after the focused E2E test found exis
 
 ## Acceptance and verification
 
-- [x] CS1–CS8 golden E2E: **1/1 passed**; authoritative expected amounts were not changed.
+- [x] Consignment golden E2E: **2/2 passed**, including the CS1–CS8 flow, post-time guards, tenant isolation, and open-value rounding case; authoritative expected amounts were not changed.
 - [x] Tenant and company isolation, separate-connection sales and settlement races, feature disablement, workflow guards, and warehouse supplier immutability are covered by the consignment E2E.
 - [x] Integrity-check E2E: **6/6 passed**, including the consignment sale source check.
 - [x] OpenAPI contract and consignment golden E2E after response-schema and SQL isolation fixes: **2 suites, 15 tests passed**.
 - [x] Static tenant-isolation guard: **7/7 passed**.
 - [x] `pnpm typecheck`, `pnpm lint`, and `pnpm --filter api build` passed.
 - [x] API client regenerated from the built API's OpenAPI document.
-- [x] Final full `pnpm --filter api test` result: **171 suites passed, 1 skipped; 1,935 tests passed, 7 skipped**. After printing its completed summary, Jest remained alive and reported open asynchronous handles; the runner was terminated.
-- [x] `git diff --check` passed before delivery.
+- [x] Final full `pnpm --filter api test` result: **171 suites passed, 1 skipped; 1,937 tests passed, 7 skipped**. After printing its completed summary, Jest remained alive and reported open asynchronous handles; the runner was terminated.
+- [x] Fresh MariaDB test database: all 61 migrations deployed; `item_costs` has tenant, company, and item foreign keys plus the four-column pool unique.
+- [x] `prisma migrate diff --from-migrations … --to-schema … ` on MariaDB 11.8 shows no Phase 30 difference. It lists only `MODIFY … JSON NULL` on five older JSON columns, the known MariaDB JSON-alias false positive ([Prisma issue #29530](https://github.com/prisma/prisma/issues/29530)), which also appears without this phase.
 
 ## Known limits and next phase
 
-- No ADR-047 behavior was intentionally omitted. The only migration-plan deviation is the additive sequence migration described above.
+- No ADR-047 behavior was intentionally omitted.
 - Consignment UI remains out of scope for this backend delivery.

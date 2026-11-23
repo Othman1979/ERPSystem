@@ -265,6 +265,37 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       201,
       'create item',
     )).id;
+    const directPurchaseDraft = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/purchase-invoices').set(auth(token)).send({
+        invoiceDate: '2025-02-03',
+        supplierId,
+        warehouseId: ownedWarehouse,
+        paymentType: 'CREDIT',
+        lines: [{ itemId, qty: '1', unitCost: '20.000', taxCategoryId: taxId }],
+      }),
+      201,
+      'create direct purchase draft before warehouse becomes consignment',
+    );
+    await expectSuccess(
+      await api().patch(`/api/v1/warehouses/${ownedWarehouse}`).set(auth(token)).send({
+        consignmentSupplierId: supplierId,
+      }),
+      200,
+      'change empty warehouse to consignment',
+    );
+    const refusedDirectPurchase = await post(token, `purchase-invoices/${directPurchaseDraft.id}/post`);
+    expect(refusedDirectPurchase.status).toBe(409);
+    expect(refusedDirectPurchase.body.error.code).toBe('CONSIGNMENT_WAREHOUSE_NOT_ALLOWED');
+    await expectSuccess(
+      await api().delete(`/api/v1/purchase-invoices/${directPurchaseDraft.id}`).set(auth(token)),
+      200,
+      'delete refused direct purchase draft',
+    );
+    await expectSuccess(
+      await api().patch(`/api/v1/warehouses/${ownedWarehouse}`).set(auth(token)).send({ consignmentSupplierId: null }),
+      200,
+      'restore the empty warehouse to owned stock',
+    );
     const accountsResponse = await api().get('/api/v1/accounts').set(auth(token));
     const accounts: { id: string; controlType?: string; children?: unknown[] }[] = [];
     const collect = (rows: typeof accounts) => {
@@ -366,6 +397,56 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       voucherDate: '2025-02-06',
     });
     expect(productionOutputGuard.body.error.code).toBe('CONSIGNMENT_WAREHOUSE_NOT_ALLOWED');
+    const productionBom = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/boms').set(auth(token)).send({
+        itemId: manufacturedItemId,
+        outputQty: '1',
+        appliedCostPerUnit: '0',
+        lines: [{ componentItemId: itemId, qty: '1' }],
+      }),
+      201,
+      'create BOM for production post guard',
+    );
+    await expectSuccess(await post(token, `boms/${productionBom.id}/activate`), 201, 'activate production guard BOM');
+    const productionOutputWarehouseNow = new Date();
+    const insertedProductionOutputWarehouse = (await db.query(
+      `INSERT INTO warehouses
+        (tenant_id, company_id, code, name_ar, is_active, consignment_supplier_id, created_at, updated_at)
+       VALUES (?, ?, 'MFG-OUT', 'مستودع إخراج التصنيع', 1, NULL, ?, ?)`,
+      [tenantId, companyId, productionOutputWarehouseNow, productionOutputWarehouseNow],
+    )) as { insertId: bigint };
+    const productionOutputWarehouse = String(insertedProductionOutputWarehouse.insertId);
+    const productionDraft = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/production-vouchers').set(auth(token)).send({
+        itemId: manufacturedItemId,
+        qty: '1',
+        materialsWarehouseId: ownedWarehouse,
+        outputWarehouseId: productionOutputWarehouse,
+        voucherDate: '2025-02-06',
+      }),
+      201,
+      'create production draft on owned warehouses',
+    );
+    await expectSuccess(
+      await api().patch(`/api/v1/warehouses/${productionOutputWarehouse}`).set(auth(token)).send({
+        consignmentSupplierId: supplierId,
+      }),
+      200,
+      'change empty production output warehouse to consignment',
+    );
+    const refusedProductionPost = await post(token, `production-vouchers/${productionDraft.id}/post`);
+    expect(refusedProductionPost.status).toBe(409);
+    expect(refusedProductionPost.body.error.code).toBe('CONSIGNMENT_WAREHOUSE_NOT_ALLOWED');
+    const productionOutputMovements = await db.query(
+      'SELECT id FROM stock_movements WHERE tenant_id = ? AND warehouse_id = ?',
+      [tenantId, productionOutputWarehouse],
+    );
+    expect(productionOutputMovements).toHaveLength(0);
+    await expectSuccess(
+      await api().delete(`/api/v1/production-vouchers/${productionDraft.id}`).set(auth(token)),
+      200,
+      'delete refused production draft',
+    );
     const refuseDisableWithStock = await api().patch('/api/v1/company').set(auth(token)).send({ consignmentEnabled: false });
     expect(refuseDisableWithStock.body.error.code).toBe('CONSIGNMENT_IN_USE');
 
@@ -684,6 +765,16 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       .get(`/api/v1/consignment/open-sales?supplierId=${supplierId}`)
       .set(auth(tokenB));
     expect(crossSupplier.status).toBe(404);
+    const crossStatement = await api()
+      .get(`/api/v1/reports/consignment-statement?supplierId=${supplierId}&from=2025-01-01&to=2025-12-31`)
+      .set(auth(tokenB));
+    expect(crossStatement.status).toBe(404);
+    const crossAging = await api()
+      .get(`/api/v1/reports/consignment-aging?supplierId=${supplierId}`)
+      .set(auth(tokenB));
+    expect(crossAging.status).toBe(404);
+    const crossWarehouse = await api().get(`/api/v1/warehouses/${warehouse}`).set(auth(tokenB));
+    expect(crossWarehouse.status).toBe(404);
     const crossSettlement = await api().post('/api/v1/purchase-invoices').set(auth(tokenB)).send({
       invoiceDate: '2025-04-13',
       supplierId,
@@ -776,5 +867,153 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       consignmentSupplierId: supplierId,
     });
     expect(disabledWarehouseField.body.error.code).toBe('CONSIGNMENT_DISABLED');
+  });
+
+  it('allocates settlement value from the remaining open amount without rounding drift', async () => {
+    await expectSuccess(
+      await api().patch('/api/v1/company').set(auth(token)).send({ consignmentEnabled: true }),
+      200,
+      're-enable consignment for rounding case',
+    );
+    const units = await api().get('/api/v1/units').set(auth(token));
+    const pieceId = (units.body as { id: string; code: string }[]).find((unit) => unit.code === 'PCS')!.id;
+    const roundingItemId = (await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/items').set(auth(token)).send({
+        code: `RND-${RUN}`,
+        nameAr: 'صنف تقريب',
+        baseUnitId: pieceId,
+        taxCategoryId: taxId,
+      }),
+      201,
+      'create rounding item',
+    )).id;
+    await createAndPost('goods-notes', {
+      noteDate: '2025-04-20',
+      noteType: 'CONSIGNMENT_IN',
+      warehouseId: warehouse,
+      supplierId,
+      lines: [{ itemId: roundingItemId, qty: '3', unitCost: '3.333333' }],
+    });
+    const roundingSale = await createSalesInvoice(warehouse, roundingItemId, '3', '1.000', '2025-04-21');
+    await expectSuccess(await post(token, `sales-invoices/${roundingSale.id}/post`), 201, 'post rounding sale');
+    const saleRows = (await db.query(
+      `SELECT id, qty, value FROM consignment_sales
+        WHERE tenant_id = ? AND company_id = ? AND source_type = 'SALES_INVOICE' AND source_line_id = ?`,
+      [tenantId, companyId, roundingSale.lines[0]!.id],
+    )) as { id: bigint; qty: string; value: string }[];
+    expect(saleRows).toHaveLength(1);
+    const roundingSaleId = String(saleRows[0]!.id);
+    expect({ qty: d6(saleRows[0]!.qty), value: m3(saleRows[0]!.value) }).toEqual({
+      qty: '3.000000',
+      value: '10.000',
+    });
+
+    const roundingReturn = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/sales-returns').set(auth(token)).send({
+        returnDate: '2025-04-22',
+        originalInvoiceId: roundingSale.id,
+        refundType: 'CASH',
+        cashAccountId,
+        lines: [{ originalLineId: roundingSale.lines[0]!.id, qty: '1' }],
+      }),
+      201,
+      'create rounding sales return',
+    );
+    const roundingReturnPosted = await expectSuccess<{ journalEntryId: string }>(
+      await post(token, `sales-returns/${roundingReturn.id}/post`),
+      201,
+      'post rounding sales return',
+    );
+    expect(await journalLines(roundingReturnPosted.journalEntryId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: '2111', debit: '3.333' }),
+      expect.objectContaining({ code: '5101', credit: '3.333' }),
+    ]));
+    const afterReturn = (await db.query(
+      'SELECT qty, value, returned_qty, returned_value, invoiced_qty, invoiced_value FROM consignment_sales WHERE tenant_id = ? AND id = ?',
+      [tenantId, roundingSaleId],
+    )) as {
+      qty: string;
+      value: string;
+      returned_qty: string;
+      returned_value: string;
+      invoiced_qty: string;
+      invoiced_value: string;
+    }[];
+    expect(afterReturn[0]).toMatchObject({
+      returned_qty: '1.000000',
+      returned_value: '3.333',
+      invoiced_qty: '0.000000',
+      invoiced_value: '0.000',
+    });
+
+    const firstSettlement = await createSettlement(roundingSaleId, '1', '1.000', '2025-04-23');
+    await expectSuccess(await post(token, `purchase-invoices/${firstSettlement.id}/post`), 201, 'post first rounding settlement');
+    const firstSettlementDetails = (await api()
+      .get(`/api/v1/purchase-invoices/${firstSettlement.id}`)
+      .set(auth(token))).body as { lines: { consignmentClearedValue: string }[] };
+    expect(m3(firstSettlementDetails.lines[0]!.consignmentClearedValue)).toBe('3.334');
+
+    const secondSettlement = await createSettlement(roundingSaleId, '1', '1.000', '2025-04-24');
+    await expectSuccess(await post(token, `purchase-invoices/${secondSettlement.id}/post`), 201, 'post final rounding settlement');
+    const secondSettlementDetails = (await api()
+      .get(`/api/v1/purchase-invoices/${secondSettlement.id}`)
+      .set(auth(token))).body as { lines: { consignmentClearedValue: string }[] };
+    expect(m3(secondSettlementDetails.lines[0]!.consignmentClearedValue)).toBe('3.333');
+    const finalSale = (await db.query(
+      'SELECT qty, value, returned_qty, returned_value, invoiced_qty, invoiced_value FROM consignment_sales WHERE tenant_id = ? AND id = ?',
+      [tenantId, roundingSaleId],
+    )) as {
+      qty: string;
+      value: string;
+      returned_qty: string;
+      returned_value: string;
+      invoiced_qty: string;
+      invoiced_value: string;
+    }[];
+    const openQty = new Decimal(finalSale[0]!.qty)
+      .minus(finalSale[0]!.returned_qty)
+      .minus(finalSale[0]!.invoiced_qty);
+    const openValue = new Decimal(finalSale[0]!.value)
+      .minus(finalSale[0]!.returned_value)
+      .minus(finalSale[0]!.invoiced_value);
+    expect({
+      returnedValue: m3(finalSale[0]!.returned_value),
+      invoicedValue: m3(finalSale[0]!.invoiced_value),
+      openQty: d6(openQty),
+      openValue: m3(openValue),
+    }).toEqual({
+      returnedValue: '3.333',
+      invoicedValue: '6.667',
+      openQty: '0.000000',
+      openValue: '0.000',
+    });
+    expect(openValue.gte(0)).toBe(true);
+
+    await createAndPost('goods-notes', {
+      noteDate: '2025-04-25',
+      noteType: 'CONSIGNMENT_OUT',
+      warehouseId: warehouse,
+      supplierId,
+      lines: [{ itemId: roundingItemId, qty: '1' }],
+    });
+    expect(await costPool(roundingItemId, warehouse)).toMatchObject({ qty: '0.000000', value: '0.000' });
+    expect(await accountBalance('2111')).toBe('0.000');
+    const verify = await api().get('/api/v1/stock/verify').set(auth(token));
+    await expectSuccess(verify, 200, 'stock verification after rounding case');
+    expect(verify.body.mismatches).toEqual([]);
+
+    const totals = (await db.query(
+      `SELECT COALESCE(SUM(l.debit), 0) AS debit, COALESCE(SUM(l.credit), 0) AS credit
+         FROM journal_lines l
+         JOIN journal_entries e ON e.tenant_id = l.tenant_id AND e.id = l.journal_entry_id
+        WHERE e.tenant_id = ? AND e.company_id = ? AND e.status = 'POSTED'`,
+      [tenantId, companyId],
+    )) as { debit: string; credit: string }[];
+    expect(m3(totals[0]!.debit)).toBe(m3(totals[0]!.credit));
+    await expectSuccess(
+      await api().patch('/api/v1/company').set(auth(token)).send({ consignmentEnabled: false }),
+      200,
+      'disable unused consignment after rounding case',
+    );
   });
 });

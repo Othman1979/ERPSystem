@@ -777,6 +777,12 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           throw new DomainError(ErrorCode.VALIDATION, 'warehouseId is required for stocked items');
         }
         if (draft.warehouseId) {
+          if ((await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId)) !== null) {
+            throw new DomainError(
+              ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+              'Direct purchase invoices cannot use a consignment warehouse',
+            );
+          }
           const wh = await tx.warehouse.findFirst({
             where: { id: draft.warehouseId, companyId, isActive: true },
             select: { id: true },
@@ -1035,7 +1041,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
             .minus(sale.invoicedValue.toString());
           const cleared = qty.eq(openQty)
             ? openValue
-            : round3(new Decimal(sale.value.toString()).times(qty).div(sale.qty.toString()));
+            : round3(openValue.times(qty).div(openQty));
           await tx.purchaseInvoiceLine.update({
             where: { tenantId_id: { tenantId, id: line.id } },
             data: { consignmentClearedValue: cleared },

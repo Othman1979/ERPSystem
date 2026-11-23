@@ -71,6 +71,12 @@ CREATE UNIQUE INDEX `parties_tenant_id_company_id_id_key` ON `parties`(`tenant_i
 CREATE UNIQUE INDEX `warehouses_tenant_id_company_id_id_key` ON `warehouses`(`tenant_id`, `company_id`, `id`);
 
 -- AddForeignKey
+ALTER TABLE `item_costs` ADD CONSTRAINT `item_costs_tenant_id_fkey` FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `item_costs` ADD CONSTRAINT `item_costs_tenant_id_company_id_fkey` FOREIGN KEY (`tenant_id`, `company_id`) REFERENCES `companies`(`tenant_id`, `id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE `warehouses` ADD CONSTRAINT `warehouses_tenant_id_company_id_consignment_supplier_id_fkey` FOREIGN KEY (`tenant_id`, `company_id`, `consignment_supplier_id`) REFERENCES `parties`(`tenant_id`, `company_id`, `id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -120,4 +126,20 @@ WHERE NOT EXISTS (
   SELECT 1 FROM `account_mappings` x
   WHERE x.`tenant_id` = a.`tenant_id` AND x.`company_id` = a.`company_id`
     AND x.`mapping_key` = m.`mapping_key`
+);
+
+INSERT INTO `document_sequences`
+  (`tenant_id`, `company_id`, `document_type`, `fiscal_year_id`, `prefix`,
+   `next_number`, `padding`, `created_at`, `updated_at`)
+SELECT fy.`tenant_id`, fy.`company_id`, t.`doc_type`, fy.`id`,
+       CONCAT(t.`prefix`, '-', fy.`code`), 1, 6, NOW(3), NOW(3)
+FROM `fiscal_years` fy
+JOIN (
+  SELECT 'CONSIGNMENT_IN' AS `doc_type`, 'CIN' AS `prefix`
+  UNION ALL SELECT 'CONSIGNMENT_OUT', 'COUT'
+) t
+WHERE NOT EXISTS (
+  SELECT 1 FROM `document_sequences` ds
+  WHERE ds.`tenant_id` = fy.`tenant_id` AND ds.`company_id` = fy.`company_id`
+    AND ds.`document_type` = t.`doc_type` AND ds.`fiscal_year_id` = fy.`id`
 );
