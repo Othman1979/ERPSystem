@@ -199,6 +199,10 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     });
     await expectSuccess(registration, 201, 'register');
     token = registration.body.accessToken as string;
+    await db.query(
+      "UPDATE tenants SET plan_id = (SELECT id FROM plans WHERE code = 'PRO') WHERE name = ?",
+      [companyName],
+    );
 
     const fiscal = await api().post('/api/v1/fiscal-years').set(auth(token)).send({
       code: '2025',
