@@ -230,7 +230,7 @@ function OpenSalesTab() {
     }
     create.mutate();
   };
-  const supplier = lookups.suppliers.find((row) => row.id === selectedRows[0]?.sale.supplierId);
+  const supplier = selectedRows[0]?.sale.supplier ?? lookups.suppliers.find((row) => row.id === selectedRows[0]?.sale.supplierId);
   const warehouse = lookups.warehouses.find((row) => row.id === selectedRows[0]?.sale.warehouseId);
   const empty = (
     <EmptyCta
