@@ -223,6 +223,10 @@ export class CreateWarehouseDto {
 
   @IsOptional()
   @IsString()
+  consignmentSupplierId?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(512)
   address?: string;
 }
@@ -241,6 +245,10 @@ export class UpdateWarehouseDto {
   @IsOptional()
   @IsString()
   branchId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  consignmentSupplierId?: string | null;
 
   @IsOptional()
   @IsString()
@@ -418,5 +426,4 @@ export class BarcodeDto {
   @IsString()
   itemUnitId?: string;
 }
-
 

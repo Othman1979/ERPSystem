@@ -88,6 +88,7 @@ export class CompanyService {
       phone: c.phone,
       pricesIncludeTax: c.pricesIncludeTax,
       costCentersEnabled: c.costCentersEnabled,
+      consignmentEnabled: c.consignmentEnabled,
       procurementLevel: c.procurementLevel,
       salesOrderRequired: c.salesOrderRequired,
       salesReservation: c.salesReservation,
@@ -112,7 +113,12 @@ export class CompanyService {
     const { tenantId, db } = this.tenant();
     const c = await this.company(db);
     const levelChange = dto.procurementLevel !== undefined && dto.procurementLevel !== c.procurementLevel;
-    if (levelChange && !ClsServiceManager.getClsService<RequestContext>().get('permissions')?.has(PERMISSIONS.COMPANY_MANAGE)) {
+    const consignmentChange =
+      dto.consignmentEnabled !== undefined && dto.consignmentEnabled !== c.consignmentEnabled;
+    if (
+      (levelChange || consignmentChange) &&
+      !ClsServiceManager.getClsService<RequestContext>().get('permissions')?.has(PERMISSIONS.COMPANY_MANAGE)
+    ) {
       throw new DomainError(ErrorCode.FORBIDDEN, `Missing permission: ${PERMISSIONS.COMPANY_MANAGE}`);
     }
     // ADR-027 §1: the sales settings are the owner's alone, whatever permissions a member holds.
@@ -129,6 +135,7 @@ export class CompanyService {
       phone: blankToNull(dto.phone),
       ...(dto.pricesIncludeTax !== undefined ? { pricesIncludeTax: dto.pricesIncludeTax } : {}),
       ...(dto.costCentersEnabled !== undefined ? { costCentersEnabled: dto.costCentersEnabled } : {}),
+      ...(dto.consignmentEnabled !== undefined ? { consignmentEnabled: dto.consignmentEnabled } : {}),
       ...(levelChange ? { procurementLevel: dto.procurementLevel } : {}),
       ...(dto.salesOrderRequired !== undefined ? { salesOrderRequired: dto.salesOrderRequired } : {}),
       ...(dto.salesReservation !== undefined ? { salesReservation: dto.salesReservation } : {}),
@@ -138,15 +145,39 @@ export class CompanyService {
     };
     const levelBefore = await db.$transaction(async (tx) => {
       let from = c.procurementLevel;
-      if (levelChange) {
+      if (levelChange || dto.consignmentEnabled !== undefined) {
         // The company row lock orders the open-documents check with the cycle
         // documents created from phase 12 on (ADR-024 §2.2). The level is read
         // by the locking query itself: a concurrent change may have moved it
         // since `c` was read.
-        const [locked] = await tx.$queryRaw<{ procurement_level: ProcurementLevel }[]>`
-          SELECT procurement_level FROM companies WHERE tenant_id = ${tenantId} AND id = ${c.id} FOR UPDATE`;
+        const [locked] = await tx.$queryRaw<{ procurement_level: ProcurementLevel; consignment_enabled: boolean }[]>`
+          SELECT procurement_level, consignment_enabled FROM companies WHERE tenant_id = ${tenantId} AND id = ${c.id} FOR UPDATE`;
         from = locked.procurement_level;
-        await this.procurementCycle.assertLevelChange(tx, from, dto.procurementLevel!);
+        if (levelChange) await this.procurementCycle.assertLevelChange(tx, from, dto.procurementLevel!);
+        if (dto.consignmentEnabled === false && locked.consignment_enabled) {
+          const [stock] = await tx.$queryRaw<{ id: bigint }[]>`
+            SELECT b.id
+              FROM stock_balances b
+              JOIN warehouses w ON w.tenant_id = b.tenant_id AND w.id = b.warehouse_id
+             WHERE b.tenant_id = ${tenantId} AND w.company_id = ${c.id}
+               AND w.consignment_supplier_id IS NOT NULL AND b.qty_on_hand <> 0
+             LIMIT 1`;
+          const [openSale] = await tx.$queryRaw<{ id: bigint }[]>`
+            SELECT id FROM consignment_sales
+             WHERE tenant_id = ${tenantId} AND company_id = ${c.id}
+               AND qty > returned_qty + invoiced_qty LIMIT 1`;
+          const draftNote = await tx.goodsNote.findFirst({
+            where: { companyId: c.id, status: 'DRAFT', noteType: { in: ['CONSIGNMENT_IN', 'CONSIGNMENT_OUT'] } },
+            select: { id: true },
+          });
+          const draftSettlement = await tx.purchaseInvoice.findFirst({
+            where: { companyId: c.id, status: 'DRAFT', consignmentSettlement: true },
+            select: { id: true },
+          });
+          if (stock || openSale || draftNote || draftSettlement) {
+            throw new DomainError(ErrorCode.CONSIGNMENT_IN_USE, 'Open consignment stock or documents remain');
+          }
+        }
       }
       await tx.company.update({ where: { id: c.id }, data });
       return from;
@@ -161,6 +192,7 @@ export class CompanyService {
         address: c.address,
         pricesIncludeTax: c.pricesIncludeTax,
         costCentersEnabled: c.costCentersEnabled,
+        consignmentEnabled: c.consignmentEnabled,
         procurementLevel: levelBefore,
         salesOrderRequired: c.salesOrderRequired,
         salesReservation: c.salesReservation,

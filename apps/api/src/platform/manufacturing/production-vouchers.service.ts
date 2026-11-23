@@ -969,6 +969,10 @@ export class ProductionVouchersService implements OnModuleInit {
       select: { id: true, branchId: true },
     });
     if (!wh) throw DomainError.notFound('Warehouse', warehouseId);
+    const supplierId = await this.ledger.consignmentSupplierOf(tx, companyId, wh.id);
+    if (supplierId !== null) {
+      throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Production vouchers cannot use a consignment warehouse');
+    }
     await assertWarehouseBranchAllowed(tx, wh.id);
     return wh;
   }

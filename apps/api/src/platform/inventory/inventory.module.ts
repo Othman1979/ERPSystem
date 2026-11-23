@@ -7,6 +7,8 @@ import { AdjustmentsService } from './adjustments.service.js';
 import { CatalogController } from './catalog.controller.js';
 import { CatalogService } from './catalog.service.js';
 import { CountsService } from './counts.service.js';
+import { ConsignmentController } from './consignment.controller.js';
+import { ConsignmentService } from './consignment.service.js';
 import { StockDocumentsController } from './stock-documents.controller.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import { StockReportsController } from './stock-reports.controller.js';
@@ -23,6 +25,7 @@ import { InventoryYearClosingDraftRegistrations } from './year-closing-draft-reg
     WarehousesController,
     StockDocumentsController,
     StockReportsController,
+    ConsignmentController,
   ],
   providers: [
     CatalogService,
@@ -31,6 +34,7 @@ import { InventoryYearClosingDraftRegistrations } from './year-closing-draft-reg
     AdjustmentsService,
     TransfersService,
     CountsService,
+    ConsignmentService,
     StockReportsService,
     InventoryYearClosingDraftRegistrations,
   ],

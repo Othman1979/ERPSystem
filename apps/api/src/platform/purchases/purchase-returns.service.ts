@@ -327,6 +327,15 @@ export class PurchaseReturnsService {
       assertBranchAllowed(invoice.branchId);
       const warehouseId = await returnWarehouse(tx, companyId, invoice.warehouseId, dto.warehouseId);
       assertRefundType(invoice.paymentType, dto.refundType);
+      if (warehouseId !== null) {
+        const consignmentSupplierId = await this.ledger.consignmentSupplierOf(tx, companyId, warehouseId);
+        if (consignmentSupplierId !== null && !invoice.consignmentSettlement) {
+          throw new DomainError(
+            ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+            'Direct purchase returns cannot use a consignment warehouse',
+          );
+        }
+      }
       // Drafts reserve their quantity too.
       const prior = await tx.purchaseReturnLine.findMany({
         where: { tenantId, originalLine: { invoiceId: invoice.id } },
@@ -428,7 +437,16 @@ export class PurchaseReturnsService {
           include: {
             lines: {
               orderBy: { lineNo: 'asc' },
-              include: { originalLine: { select: { netAmount: true, qtyBase: true } } },
+              include: {
+                originalLine: {
+                  select: {
+                    netAmount: true,
+                    qtyBase: true,
+                    consignmentSaleId: true,
+                    consignmentClearedValue: true,
+                  },
+                },
+              },
             },
           },
         });
@@ -445,10 +463,29 @@ export class PurchaseReturnsService {
             paymentType: true,
             receivedGrnId: true,
             purchaseOrderId: true,
+            consignmentSettlement: true,
             warehouseId: true,
-            lines: { select: { id: true, lineNo: true, qtyBase: true } },
+            lines: {
+              select: {
+                id: true,
+                lineNo: true,
+                qtyBase: true,
+                consignmentSaleId: true,
+                consignmentClearedValue: true,
+              },
+            },
           },
         });
+        const consignmentSupplierId =
+          draft.warehouseId === null
+            ? null
+            : await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId);
+        if (consignmentSupplierId !== null && !original?.consignmentSettlement) {
+          throw new DomainError(
+            ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+            'Direct purchase returns cannot use a consignment warehouse',
+          );
+        }
         assertBranchAllowed(original?.branchId);
         // Again at posting: a draft saved before the rule may name another warehouse.
         if (original) assertReturnWarehouse(original.warehouseId, draft.warehouseId);
@@ -483,8 +520,9 @@ export class PurchaseReturnsService {
         // Without a warehouse (a service-only invoice's return) nothing moves:
         // classify only, and refuse a stocked item.
         const warehouseId = draft.warehouseId;
+        const isConsignmentSettlement = original?.consignmentSettlement === true;
         const stockItems =
-          warehouseId === null
+          isConsignmentSettlement || warehouseId === null
             ? await this.ledger.stockItemIds(tx, companyId, draft.lines.map((l) => l.itemId))
             : await this.ledger.lockForDocument(
                 tx,
@@ -492,6 +530,67 @@ export class PurchaseReturnsService {
                 draft.lines.map((l) => ({ itemId: l.itemId, warehouseId })),
               );
         assertNoStockWithoutWarehouse(warehouseId, stockItems);
+        let consignmentClearedTotal = new Decimal(0);
+        if (isConsignmentSettlement) {
+          if (warehouseId === null) {
+            throw new DomainError(ErrorCode.VALIDATION, 'A consignment settlement return requires its warehouse');
+          }
+          const supplierId = await this.ledger.consignmentSupplierOf(tx, companyId, warehouseId);
+          if (supplierId === null || supplierId !== draft.supplierId) {
+            throw new DomainError(ErrorCode.VALIDATION, 'The return supplier must match the consignment warehouse supplier');
+          }
+          const saleIds = draft.lines.map((line) => line.originalLine.consignmentSaleId);
+          if (saleIds.some((saleId) => saleId === null)) {
+            throw new DomainError(ErrorCode.VALIDATION, 'Settlement invoice lines must reference a consignment sale');
+          }
+          const uniqueSaleIds = [...new Set(saleIds as bigint[])];
+          await tx.$queryRaw`
+            SELECT id FROM consignment_sales
+             WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
+               AND id IN (${Prisma.join(uniqueSaleIds)})
+             ORDER BY id FOR UPDATE`;
+          const sales = await tx.consignmentSale.findMany({
+            where: { companyId, id: { in: uniqueSaleIds } },
+            orderBy: { id: 'asc' },
+          });
+          const saleById = new Map(sales.map((sale) => [sale.id, sale]));
+          for (const line of draft.lines) {
+            const originalLine = line.originalLine;
+            const saleId = originalLine.consignmentSaleId;
+            const sale = saleId === null ? undefined : saleById.get(saleId);
+            if (
+              !sale ||
+              sale.supplierId !== draft.supplierId ||
+              sale.warehouseId !== warehouseId ||
+              sale.itemId !== line.itemId ||
+              originalLine.consignmentClearedValue === null
+            ) {
+              throw new DomainError(ErrorCode.VALIDATION, 'Settlement return line does not match its consignment sale');
+            }
+            const invoiceLineValue = new Decimal(originalLine.consignmentClearedValue.toString());
+            const invoiceQty = new Decimal(originalLine.qtyBase.toString());
+            const priorQty = postedByLine.get(line.originalLineId)?.qtyBase ?? new Decimal(0);
+            const returnedAfter = priorQty.plus(line.qtyBase.toString());
+            const clearedBefore = priorQty.eq(invoiceQty)
+              ? invoiceLineValue
+              : round3(invoiceLineValue.times(priorQty).div(invoiceQty));
+            const clearedAfter = returnedAfter.eq(invoiceQty)
+              ? invoiceLineValue
+              : round3(invoiceLineValue.times(returnedAfter).div(invoiceQty));
+            const cleared = clearedAfter.minus(clearedBefore);
+            if (cleared.gt(sale.invoicedValue) || line.qtyBase.gt(sale.invoicedQty)) {
+              throw new DomainError(ErrorCode.VALIDATION, 'Settlement return exceeds the invoiced consignment value or quantity');
+            }
+            await tx.consignmentSale.update({
+              where: { id: sale.id },
+              data: {
+                invoicedQty: { decrement: line.qtyBase },
+                invoicedValue: { decrement: cleared },
+              },
+            });
+            consignmentClearedTotal = consignmentClearedTotal.plus(cleared);
+          }
+        }
 
         // An invoice that billed a GRN received no stock itself: its goods
         // entered at the GRN's cost and its price difference was booked to
@@ -507,6 +606,7 @@ export class PurchaseReturnsService {
         let writeOff = new Decimal(0);
         let variance = new Decimal(0);
         for (const line of draft.lines) {
+          if (isConsignmentSettlement) continue;
           if (stockItems.has(line.itemId)) {
             // TRADE-03 (§9.5, ADR-016 §3): the goods leave at the cost they
             // entered at, the value the journal takes off INVENTORY, not at
@@ -555,6 +655,8 @@ export class PurchaseReturnsService {
           'PURCHASES',
           'INPUT_TAX',
           'SUPPLIERS_CONTROL',
+          'CONSIGNMENT_PAYABLE',
+          'COGS',
         ]);
 
         const journalLines: JournalLineInput[] = [];
@@ -576,32 +678,44 @@ export class PurchaseReturnsService {
             description: lineDescription('journal.line.purchaseReturnCreditNote'),
           });
         }
-        if (stockNet.gt(0)) {
+        if (isConsignmentSettlement) {
+          if (consignmentClearedTotal.gt(0)) {
+            journalLines.push({ accountId: mapping.CONSIGNMENT_PAYABLE, credit: consignmentClearedTotal.toString() });
+          }
+          const difference = draft.netTotal.minus(consignmentClearedTotal);
+          if (difference.gt(0)) {
+            journalLines.push({ accountId: mapping.COGS, credit: difference.toString() });
+          } else if (difference.lt(0)) {
+            journalLines.push({ accountId: mapping.COGS, debit: difference.abs().toString() });
+          }
+        } else if (stockNet.gt(0)) {
           journalLines.push({ accountId: mapping.INVENTORY, credit: stockNet.toString() });
         }
         // Return of a billed GRN: the line's price difference reversed.
-        if (variance.gt(0)) {
+        if (!isConsignmentSettlement && variance.gt(0)) {
           journalLines.push({
             accountId: mapping.INVENTORY_ADJUSTMENT,
             credit: variance.toString(),
             description: lineDescription('journal.line.invoiceVsGoodsReceived'),
           });
-        } else if (variance.lt(0)) {
+        } else if (!isConsignmentSettlement && variance.lt(0)) {
           journalLines.push({
             accountId: mapping.INVENTORY_ADJUSTMENT,
             debit: variance.abs().toString(),
             description: lineDescription('journal.line.invoiceVsGoodsReceived'),
           });
         }
-        if (serviceNet.gt(0)) {
+        if (!isConsignmentSettlement && serviceNet.gt(0)) {
           journalLines.push({ accountId: mapping.PURCHASES, credit: serviceNet.toString() });
         }
         if (tax.gt(0)) {
           journalLines.push({ accountId: mapping.INPUT_TAX, credit: tax.toString() });
         }
-        journalLines.push(
-          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
-        );
+        if (!isConsignmentSettlement) {
+          journalLines.push(
+            ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+          );
+        }
 
         const returnNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'PURCHASE_RETURN', returnDate,

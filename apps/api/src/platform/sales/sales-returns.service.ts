@@ -323,6 +323,9 @@ export class SalesReturnsService {
         include: { lines: true },
       });
       if (!invoice) throw DomainError.notFound('SalesInvoice', dto.originalInvoiceId);
+      if (invoice.warehouseId !== null) {
+        await this.ledger.consignmentSupplierOf(tx, companyId, invoice.warehouseId);
+      }
       // Share-lock the header centre before the row that references it (ADR-024 §1.4).
       if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       if (invoice.status !== 'POSTED') {
@@ -457,6 +460,7 @@ export class SalesReturnsService {
           select: {
             branchId: true,
             paymentType: true,
+            warehouseId: true,
             pricesIncludeTax: true,
             invoiceDiscountAmount: true,
             lines: {
@@ -475,6 +479,10 @@ export class SalesReturnsService {
           },
         });
         assertBranchAllowed(original?.branchId);
+        const consignmentSupplierId =
+          original?.warehouseId === null || original?.warehouseId === undefined
+            ? null
+            : await this.ledger.consignmentSupplierOf(tx, companyId, original.warehouseId);
         if (original) assertRefundType(original.paymentType, draft.refundType);
         // TRADE-01: posted returns of the invoice plus this one stay within each line.
         const posted = await tx.salesReturnLine.findMany({
@@ -549,6 +557,53 @@ export class SalesReturnsService {
           companyId,
           draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
         );
+        const consignmentReturnValueByLine = new Map<bigint, Decimal>();
+        if (consignmentSupplierId !== null) {
+          const originalLineIds = [...new Set(draft.lines.map((line) => line.originalLineId))];
+          await tx.$queryRaw`
+            SELECT id FROM consignment_sales
+             WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
+               AND source_type = 'SALES_INVOICE'
+               AND source_line_id IN (${Prisma.join(originalLineIds)})
+             ORDER BY id FOR UPDATE`;
+          const sales = await tx.consignmentSale.findMany({
+            where: {
+              companyId,
+              sourceType: 'SALES_INVOICE',
+              sourceLineId: { in: originalLineIds },
+            },
+            orderBy: { id: 'asc' },
+          });
+          const saleByLine = new Map(sales.map((sale) => [sale.sourceLineId, sale]));
+          for (const line of draft.lines) {
+            if (!stockItems.has(line.itemId)) continue;
+            const sale = saleByLine.get(line.originalLineId);
+            if (!sale) throw DomainError.notFound('ConsignmentSale', line.originalLineId.toString());
+            const openQty = new Decimal(sale.qty.toString())
+              .minus(sale.returnedQty.toString())
+              .minus(sale.invoicedQty.toString());
+            if (line.qtyBase.gt(openQty)) {
+              throw new DomainError(
+                ErrorCode.CONSIGNMENT_ALREADY_INVOICED,
+                'The returned quantity exceeds the unsold-to-supplier quantity',
+              );
+            }
+            const openValue = new Decimal(sale.value.toString())
+              .minus(sale.returnedValue.toString())
+              .minus(sale.invoicedValue.toString());
+            const returnValue = line.qtyBase.eq(openQty)
+              ? openValue
+              : round3(openValue.times(line.qtyBase).div(openQty));
+            consignmentReturnValueByLine.set(line.id, returnValue);
+            await tx.consignmentSale.update({
+              where: { id: sale.id },
+              data: {
+                returnedQty: { increment: line.qtyBase },
+                returnedValue: { increment: returnValue },
+              },
+            });
+          }
+        }
 
         // Stock IN at ORIGINAL unit cost (§8.4, §9.5).
         let costTotal = new Decimal(0);
@@ -575,9 +630,10 @@ export class SalesReturnsService {
           'SALES_RETURNS',
           'OUTPUT_TAX',
           'COGS',
-          'INVENTORY',
-          'INVENTORY_ADJUSTMENT',
           'CUSTOMERS_CONTROL',
+          ...(consignmentSupplierId !== null
+            ? (['CONSIGNMENT_PAYABLE'] as const)
+            : (['INVENTORY', 'INVENTORY_ADJUSTMENT'] as const)),
           ...(!invoiceDiscountNetTotal.isZero() ? ['SALES_DISCOUNTS' as const] : []),
         ]);
 
@@ -618,13 +674,22 @@ export class SalesReturnsService {
             description: lineDescription('journal.line.creditNote'),
           });
         }
-        if (costTotal.gt(0)) {
-          journalLines.push({ accountId: mapping.INVENTORY, debit: costTotal.toString() });
-          journalLines.push({ accountId: mapping.COGS, credit: costTotal.toString() });
+        if (consignmentSupplierId !== null) {
+          const consignmentReturnValue = sum([...consignmentReturnValueByLine.values()]);
+          costTotal = consignmentReturnValue;
+          if (consignmentReturnValue.gt(0)) {
+            journalLines.push({ accountId: mapping.CONSIGNMENT_PAYABLE, debit: consignmentReturnValue.toString() });
+            journalLines.push({ accountId: mapping.COGS, credit: consignmentReturnValue.toString() });
+          }
+        } else {
+          if (costTotal.gt(0)) {
+            journalLines.push({ accountId: mapping.INVENTORY, debit: costTotal.toString() });
+            journalLines.push({ accountId: mapping.COGS, credit: costTotal.toString() });
+          }
+          journalLines.push(
+            ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+          );
         }
-        journalLines.push(
-          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
-        );
 
         const returnNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'SALES_RETURN', returnDate,

@@ -39,6 +39,7 @@ import type {
   GoodsNoteDetailDto,
   GoodsNoteLineWithItemDto,
   GoodsNoteListItemDto,
+  GoodsNoteType,
   GoodsNotesControllerListSort,
   ItemListItemDto,
 } from '@erp/api-client';
@@ -75,6 +76,10 @@ const TYPE_LABEL: Record<NoteType, string> = {
   GIN: 'goods.exitVoucher',
 };
 const TYPE_TAG_COLOR: Record<NoteType, string> = { GRN: 'blue', GIN: 'orange' };
+
+function typeLabelKey(type: GoodsNoteType): string | null {
+  return type === 'GRN' || type === 'GIN' ? TYPE_LABEL[type] : null;
+}
 
 /** Postable expense accounts: the choices of a GIN's expense account (ADR-026 §8). Module-level so the select stays memoised. */
 const selectExpenseAccounts = (rows: AccountRow[]): AccountRow[] =>
@@ -121,9 +126,11 @@ function SourceFields({
   );
 }
 
-function TypeTag({ type }: { type: NoteType }) {
+function TypeTag({ type }: { type: GoodsNoteType }) {
   const { t } = useTranslation();
-  return <Tag color={TYPE_TAG_COLOR[type]}>{t(TYPE_LABEL[type])}</Tag>;
+  const label = typeLabelKey(type);
+  const color = type === 'GRN' || type === 'GIN' ? TYPE_TAG_COLOR[type] : undefined;
+  return <Tag color={color}>{label ? t(label) : type}</Tag>;
 }
 
 export function GoodsNotesPage() {
@@ -456,7 +463,7 @@ export function GoodsNotesSection({
               title: t('goods.noteType'),
               dataIndex: 'noteType',
               width: 130,
-              render: (v: NoteType) => <TypeTag type={v} />,
+              render: (v: GoodsNoteType) => <TypeTag type={v} />,
             },
             {
               title: t('goods.date'),
@@ -524,6 +531,7 @@ export function GoodsNotesSection({
   // ============================ ENTRY VIEW ============================
   const isNew = !entryId;
   const entry = detail ?? null;
+  const entryTypeLabel = entry ? typeLabelKey(entry.noteType) : null;
 
   const warehouseError = tried && !newWarehouseId ? t('common.requiredField') : undefined;
 
@@ -531,7 +539,7 @@ export function GoodsNotesSection({
     <div>
       {contextHolder}
       <DocLayout
-        title={isNew ? t(TYPE_LABEL[newType]) : entry ? t(TYPE_LABEL[entry.noteType]) : '…'}
+        title={isNew ? t(TYPE_LABEL[newType]) : entry ? (entryTypeLabel ? t(entryTypeLabel) : entry.noteType) : '…'}
         docNo={entry?.docNo}
         status={isNew ? 'DRAFT' : entry?.status}
         onBack={backToList}

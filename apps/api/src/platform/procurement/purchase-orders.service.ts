@@ -462,7 +462,7 @@ export class PurchaseOrdersService {
 
   /** The receiving warehouse's branch, which the caller must be allowed (ADR-003, ADR-025 §12). */
   private async warehouseBranch(warehouseId: string): Promise<bigint | null> {
-    const wh = await this.warehouses.activeRef(BigInt(warehouseId));
+    const wh = await this.warehouses.activeOwnedRef(BigInt(warehouseId));
     assertBranchAllowed(wh.branchId);
     return wh.branchId;
   }

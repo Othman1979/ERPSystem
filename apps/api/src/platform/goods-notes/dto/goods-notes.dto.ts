@@ -13,9 +13,9 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-const NOTE_TYPES = ['GRN', 'GIN'] as const;
+const NOTE_TYPES = ['GRN', 'GIN', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT'] as const;
 const DECIMAL = /^\d+(\.\d{1,6})?$/;
-const MONEY = /^\d+(\.\d{1,3})?$/;
+const UNIT_COST = /^\d{1,12}(\.\d{1,6})?$/;
 const INT_STRING = /^\d+$/;
 
 export class GoodsNoteLineDto {
@@ -34,7 +34,7 @@ export class GoodsNoteLineDto {
    * order's net price (ADR-026 §5).
    */
   @IsOptional()
-  @Matches(MONEY)
+  @Matches(UNIT_COST)
   unitCost?: string;
 
   /** ADR-026 §5: the order line this GRN line receives (a GRN with purchaseOrderId only). */
@@ -100,6 +100,11 @@ export class CreateGoodsNoteDto {
   @IsString()
   @Matches(INT_STRING)
   issueRequestId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  supplierId?: string;
 
   @IsArray()
   @ArrayMinSize(1)

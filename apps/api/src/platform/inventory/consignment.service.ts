@@ -1,0 +1,220 @@
+import { Injectable } from '@nestjs/common';
+import { ClsServiceManager } from 'nestjs-cls';
+import { Decimal, round3, round6, sum } from '../../common/decimal/decimal.utils.js';
+import { DomainError } from '../../common/errors/domain.error.js';
+import { ErrorCode } from '../../common/errors/error-codes.js';
+import type { RequestContext } from '../../common/cls/cls.types.js';
+import { currentCompanyFilter } from '../../common/cls/current-company.js';
+import { Prisma } from '../../generated/prisma/client.js';
+import { PrismaService } from '../../prisma/prisma.service.js';
+import type {
+  ConsignmentAgingQueryDto,
+  ConsignmentOpenSalesQueryDto,
+  ConsignmentStatementQueryDto,
+} from './dto/consignment.dto.js';
+
+const MAX_ROWS = 500;
+
+@Injectable()
+export class ConsignmentService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private tenant() {
+    const tenantId = ClsServiceManager.getClsService<RequestContext>().get('tenantId');
+    if (!tenantId) throw new DomainError(ErrorCode.FORBIDDEN, 'No tenant selected');
+    return { tenantId, db: this.prisma.forTenant(tenantId) };
+  }
+
+  private async companyId(db: ReturnType<PrismaService['forTenant']>) {
+    const company = await db.company.findFirst({
+      where: { isActive: true, ...currentCompanyFilter() },
+      select: { id: true, consignmentEnabled: true },
+    });
+    if (!company) throw new DomainError(ErrorCode.INTERNAL, 'Tenant has no active company');
+    if (!company.consignmentEnabled) {
+      throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+    }
+    return company.id;
+  }
+
+  async openSales(query: ConsignmentOpenSalesQueryDto) {
+    const { tenantId, db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const supplierId = query.supplierId ? BigInt(query.supplierId) : null;
+    const warehouseId = query.warehouseId ? BigInt(query.warehouseId) : null;
+    if (supplierId !== null) await this.assertSupplier(db, companyId, supplierId);
+    if (warehouseId !== null) {
+      const warehouse = await db.warehouse.findFirst({
+        where: { companyId, id: warehouseId },
+        select: { id: true, consignmentSupplierId: true },
+      });
+      if (!warehouse) throw DomainError.notFound('Warehouse', query.warehouseId!);
+      if (warehouse.consignmentSupplierId === null) {
+        throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Open consignment sales require a consignment warehouse');
+      }
+      if (supplierId !== null && warehouse.consignmentSupplierId !== supplierId) {
+        throw new DomainError(ErrorCode.PARTY_TYPE_MISMATCH, 'Supplier does not match the consignment warehouse');
+      }
+    }
+    const filters = [
+      Prisma.sql`company_id = ${companyId}`,
+      Prisma.sql`qty > returned_qty + invoiced_qty`,
+      ...(supplierId === null ? [] : [Prisma.sql`supplier_id = ${supplierId}`]),
+      ...(warehouseId === null ? [] : [Prisma.sql`warehouse_id = ${warehouseId}`]),
+    ];
+    const ids = await db.$queryRaw<{ id: bigint }[]>`
+      SELECT id FROM consignment_sales
+       WHERE tenant_id = ${tenantId} AND ${Prisma.join(filters, ' AND ')}
+       ORDER BY sale_date, id LIMIT ${MAX_ROWS + 1}`;
+    if (ids.length > MAX_ROWS) {
+      throw new DomainError(ErrorCode.REPORT_TOO_LARGE, 'Narrow the supplier or warehouse filter', { limit: MAX_ROWS });
+    }
+    const rows = await db.consignmentSale.findMany({
+      where: { id: { in: ids.map((row) => row.id) } },
+      orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
+      include: { item: { select: { id: true, code: true, nameAr: true, nameEn: true } } },
+    });
+    return rows.map((row) => {
+      const openQty = new Decimal(row.qty.toString()).minus(row.returnedQty.toString()).minus(row.invoicedQty.toString());
+      const openValue = new Decimal(row.value.toString()).minus(row.returnedValue.toString()).minus(row.invoicedValue.toString());
+      return {
+        ...row,
+        qty: row.qty.toString(),
+        value: row.value.toString(),
+        returnedQty: row.returnedQty.toString(),
+        returnedValue: row.returnedValue.toString(),
+        invoicedQty: row.invoicedQty.toString(),
+        invoicedValue: row.invoicedValue.toString(),
+        openQty: openQty.toString(),
+        openValue: round3(openValue).toString(),
+        unitCost: row.qty.isZero() ? '0.000000' : round6(new Decimal(row.value.toString()).div(row.qty.toString())).toString(),
+      };
+    });
+  }
+
+  async statement(query: ConsignmentStatementQueryDto) {
+    const { db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const supplierId = BigInt(query.supplierId);
+    await this.assertSupplier(db, companyId, supplierId);
+    if (query.from > query.to) throw new DomainError(ErrorCode.INVALID_DATE_RANGE, 'from must not be after to');
+    const range = { gte: new Date(query.from), lte: new Date(query.to) };
+    const [sales, movementGroups, balances] = await Promise.all([
+      db.consignmentSale.findMany({
+        where: { companyId, supplierId, saleDate: range },
+        orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
+        take: MAX_ROWS + 1,
+      }),
+      db.stockMovement.groupBy({
+        by: ['itemId', 'sourceType'],
+        where: {
+          companyId,
+          movementDate: range,
+          sourceType: { in: ['CONSIGNMENT_IN', 'CONSIGNMENT_OUT'] },
+          warehouse: { consignmentSupplierId: supplierId },
+        },
+        _sum: { qtyIn: true, qtyOut: true },
+        orderBy: [{ itemId: 'asc' }, { sourceType: 'asc' }],
+        take: MAX_ROWS + 1,
+      }),
+      db.stockBalance.groupBy({
+        by: ['itemId'],
+        where: { warehouse: { companyId, consignmentSupplierId: supplierId } },
+        _sum: { qtyOnHand: true },
+        orderBy: { itemId: 'asc' },
+        take: MAX_ROWS + 1,
+      }),
+    ]);
+    if (sales.length > MAX_ROWS || movementGroups.length > MAX_ROWS || balances.length > MAX_ROWS) {
+      throw new DomainError(ErrorCode.REPORT_TOO_LARGE, 'Narrow the statement date range', { limit: MAX_ROWS });
+    }
+    const itemIds = [...new Set([
+      ...sales.map((row) => row.itemId),
+      ...movementGroups.map((row) => row.itemId),
+      ...balances.map((row) => row.itemId),
+    ])];
+    if (itemIds.length > MAX_ROWS) {
+      throw new DomainError(ErrorCode.REPORT_TOO_LARGE, 'Narrow the statement date range', { limit: MAX_ROWS });
+    }
+    const items = await db.item.findMany({
+      where: { companyId, id: { in: itemIds } },
+      select: { id: true, code: true, nameAr: true, nameEn: true },
+    });
+    const itemById = new Map(items.map((item) => [item.id, item]));
+    const balanceByItem = new Map(balances.map((row) => [row.itemId, new Decimal(row._sum?.qtyOnHand?.toString() ?? 0)]));
+    const out = itemIds.map((itemId) => {
+      const itemSales = sales.filter((row) => row.itemId === itemId);
+      const movement = (sourceType: string) => movementGroups.find((row) => row.itemId === itemId && row.sourceType === sourceType);
+      const received = new Decimal(movement('CONSIGNMENT_IN')?._sum.qtyIn?.toString() ?? 0);
+      const returnedToSupplier = new Decimal(movement('CONSIGNMENT_OUT')?._sum.qtyOut?.toString() ?? 0);
+      const sold = sum(itemSales.filter((row) => row.sourceType === 'SALES_INVOICE').map((row) =>
+        new Decimal(row.qty.toString()).minus(row.returnedQty.toString()),
+      ));
+      const shortage = sum(itemSales.filter((row) => row.sourceType === 'STOCK_COUNT').map((row) => row.qty));
+      const invoicedQty = sum(itemSales.map((row) => row.invoicedQty));
+      const openQty = sum(itemSales.map((row) =>
+        new Decimal(row.qty.toString()).minus(row.returnedQty.toString()).minus(row.invoicedQty.toString()),
+      ));
+      const openValue = sum(itemSales.map((row) =>
+        new Decimal(row.value.toString()).minus(row.returnedValue.toString()).minus(row.invoicedValue.toString()),
+      ));
+      return {
+        item: itemById.get(itemId),
+        receivedQty: received.toString(),
+        returnedToSupplierQty: returnedToSupplier.toString(),
+        soldNetOfReturnsQty: sold.toString(),
+        countShortageQty: shortage.toString(),
+        invoicedQty: invoicedQty.toString(),
+        onHandQty: (balanceByItem.get(itemId) ?? new Decimal(0)).toString(),
+        openQty: openQty.toString(),
+        openValue: round3(openValue).toString(),
+      };
+    });
+    return out.filter((row) => row.item !== undefined);
+  }
+
+  async aging(query: ConsignmentAgingQueryDto) {
+    const { tenantId, db } = this.tenant();
+    const companyId = await this.companyId(db);
+    const supplierId = query.supplierId ? BigInt(query.supplierId) : null;
+    if (supplierId !== null) await this.assertSupplier(db, companyId, supplierId);
+    const asOf = query.asOf ? new Date(query.asOf) : new Date();
+    const filters = [
+      Prisma.sql`company_id = ${companyId}`,
+      Prisma.sql`qty > returned_qty + invoiced_qty`,
+      ...(supplierId === null ? [] : [Prisma.sql`supplier_id = ${supplierId}`]),
+    ];
+    const ids = await db.$queryRaw<{ id: bigint }[]>`
+      SELECT id FROM consignment_sales
+       WHERE tenant_id = ${tenantId} AND ${Prisma.join(filters, ' AND ')}
+       ORDER BY sale_date, id LIMIT ${MAX_ROWS + 1}`;
+    if (ids.length > MAX_ROWS) {
+      throw new DomainError(ErrorCode.REPORT_TOO_LARGE, 'Narrow the supplier filter', { limit: MAX_ROWS });
+    }
+    const rows = await db.consignmentSale.findMany({
+      where: { id: { in: ids.map((row) => row.id) } },
+      orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
+      include: { item: { select: { id: true, code: true, nameAr: true, nameEn: true } } },
+    });
+    return rows.map((row) => {
+      const age = Math.max(0, Math.floor((asOf.getTime() - row.saleDate.getTime()) / 86_400_000));
+      const openQty = new Decimal(row.qty.toString()).minus(row.returnedQty.toString()).minus(row.invoicedQty.toString());
+      const openValue = new Decimal(row.value.toString()).minus(row.returnedValue.toString()).minus(row.invoicedValue.toString());
+      return {
+        ...row,
+        openQty: openQty.toString(),
+        openValue: round3(openValue).toString(),
+        ageDays: age,
+        ageBucket: age <= 30 ? '0-30' : age <= 60 ? '31-60' : age <= 90 ? '61-90' : '90+',
+      };
+    });
+  }
+
+  private async assertSupplier(db: ReturnType<PrismaService['forTenant']>, companyId: bigint, supplierId: bigint) {
+    const supplier = await db.party.findFirst({
+      where: { id: supplierId, companyId, partyType: { in: ['SUPPLIER', 'BOTH'] } },
+      select: { id: true },
+    });
+    if (!supplier) throw DomainError.notFound('Supplier', supplierId.toString());
+  }
+}

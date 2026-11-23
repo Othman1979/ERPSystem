@@ -13,6 +13,7 @@ import {
   ItemGroupRow,
   ItemRow,
   ItemUnitRow,
+  PartyRow,
   TaxCategoryRow,
   UnitRow,
   WarehouseRow,
@@ -131,6 +132,8 @@ export class WarehouseCountDto {
   balances!: number;
 }
 
+export class WarehouseConsignmentSupplierDto extends PickType(PartyRow, ['id', 'code', 'nameAr', 'nameEn', 'partyType'] as const) {}
+
 /** A warehouse in the list, with its branch and balance count (WarehousesService.list). */
 export class WarehouseListItemDto extends WarehouseRow {
   @ApiProperty({ type: () => BranchRefDto, nullable: true })
@@ -138,16 +141,25 @@ export class WarehouseListItemDto extends WarehouseRow {
 
   @ApiProperty({ type: () => WarehouseCountDto })
   _count!: WarehouseCountDto;
+
+  @ApiProperty({ type: () => WarehouseConsignmentSupplierDto, nullable: true })
+  consignmentSupplier!: WarehouseConsignmentSupplierDto | null;
 }
 
 /** A warehouse with its full branch (WarehousesService.get). */
 export class WarehouseDetailDto extends WarehouseRow {
   @ApiProperty({ type: () => BranchRow, nullable: true })
   branch!: BranchRow | null;
+
+  @ApiProperty({ type: () => WarehouseConsignmentSupplierDto, nullable: true })
+  consignmentSupplier!: WarehouseConsignmentSupplierDto | null;
 }
 
 /** A warehouse as written: every column of `warehouses` (create and update). */
-export class WarehouseDto extends WarehouseRow {}
+export class WarehouseDto extends WarehouseRow {
+  @ApiProperty({ type: () => WarehouseConsignmentSupplierDto, nullable: true })
+  consignmentSupplier!: WarehouseConsignmentSupplierDto | null;
+}
 
 // ---------------------------------------------------------- stock reports
 
@@ -463,6 +475,9 @@ export class StockVerifyCostMismatchDto {
   @ApiProperty({ type: 'string' })
   itemId!: string;
 
+  @ApiProperty({ type: 'string' })
+  poolWarehouseId!: string;
+
   @ApiProperty({ type: 'string', format: 'decimal' })
   expected!: string;
 
@@ -472,8 +487,8 @@ export class StockVerifyCostMismatchDto {
 
 /** A stock:verify difference between the stock value and the inventory account in the ledger. */
 export class StockVerifyGlMismatchDto {
-  @ApiProperty({ type: 'string', enum: ['GL_INVENTORY'] })
-  kind!: 'GL_INVENTORY';
+  @ApiProperty({ type: 'string', enum: ['GL_INVENTORY', 'GL_CONSIGNMENT'] })
+  kind!: 'GL_INVENTORY' | 'GL_CONSIGNMENT';
 
   @ApiProperty({ type: 'string' })
   companyId!: string;

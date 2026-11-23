@@ -550,7 +550,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     // ADR-026 §7: an invoice on a purchase order; another tenant's or branch's order answers 404.
     const order = dto.purchaseOrderId ? await this.orders.forBilling(BigInt(dto.purchaseOrderId)) : null;
     const pricesIncludeTax = await this.support.pricesIncludeTax(db);
-    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
+    const lines = await this.resolveInvoiceLines(db, tenantId, companyId, dto, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto, lines);
     this.assertReceiptLinksNeedOrder(order, lines);
     if (order) this.assertOrderHeader(order, dto);
@@ -568,7 +568,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           received = await this.lockReceiptBilling(tx, tenantId, companyId, order.id, noteIds);
         } else {
           // ADR-025 §4: at MEDIUM / FULL a direct purchase needs purchase.direct (owners aside).
-          await assertDirectPurchaseAllowed(tx, tenantId, companyId);
+          if (!dto.consignmentSettlement) await assertDirectPurchaseAllowed(tx, tenantId, companyId);
         }
         // Share-lock the header centre before the row that references it (ADR-024 §1.4).
         if (costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, costCenterId);
@@ -588,6 +588,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           supplierInvoiceDate: dto.supplierInvoiceDate ? new Date(dto.supplierInvoiceDate) : null,
           warehouseId: dto.warehouseId ? BigInt(dto.warehouseId) : null,
           paymentType: dto.paymentType,
+          consignmentSettlement: dto.consignmentSettlement ?? false,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
           costCenterId,
           description: dto.description ?? null,
@@ -637,8 +638,12 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     }
     const order = orderId ? await this.orders.forBilling(orderId) : null;
     const pricesIncludeTax = await this.support.pricesIncludeTax(db);
-    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
-    await this.assertHeader(db, companyId, dto, lines);
+    const headerDto = { ...dto, consignmentSettlement: inv.consignmentSettlement };
+    if (dto.consignmentSettlement !== undefined && dto.consignmentSettlement !== inv.consignmentSettlement) {
+      throw new DomainError(ErrorCode.VALIDATION, 'The consignment settlement type cannot be changed');
+    }
+    const lines = await this.resolveInvoiceLines(db, tenantId, companyId, headerDto, pricesIncludeTax);
+    await this.assertHeader(db, companyId, headerDto, lines);
     this.assertReceiptLinksNeedOrder(order, lines);
     if (order) this.assertOrderHeader(order, dto);
     const costCenterId = dto.costCenterId ? BigInt(dto.costCenterId) : (order?.costCenterId ?? null);
@@ -728,8 +733,12 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const companyId = await this.support.companyId(db);
     const userId = this.support.userId();
     // ADR-026 §7: an invoice on a purchase order bills its receipts (set at creation, never changed).
-    const head = await db.purchaseInvoice.findFirst({ where: { id }, select: { purchaseOrderId: true } });
+    const head = await db.purchaseInvoice.findFirst({
+      where: { id },
+      select: { purchaseOrderId: true, consignmentSettlement: true },
+    });
     if (head?.purchaseOrderId) return this.postFromReceipts(id, head.purchaseOrderId);
+    if (head?.consignmentSettlement) return this.postConsignmentSettlement(id);
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
@@ -931,6 +940,183 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       }, POSTING_TX_OPTIONS),
     );
 
+    return this.get(result.id);
+  }
+
+  private async postConsignmentSettlement(id: bigint) {
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const userId = this.support.userId();
+    const result = await this.support.withRetry(() =>
+      db.$transaction(async (tx) => {
+        await tx.$queryRaw`
+          SELECT id FROM purchase_invoices
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id}
+           FOR UPDATE`;
+        const draft = await tx.purchaseInvoice.findFirst({
+          where: { id },
+          include: { lines: { orderBy: { lineNo: 'asc' } } },
+        });
+        if (!draft) throw DomainError.notFound('PurchaseInvoice', id.toString());
+        if (!draft.consignmentSettlement || !draft.warehouseId) {
+          throw new DomainError(ErrorCode.VALIDATION, 'The invoice is not a consignment settlement');
+        }
+        assertBranchAllowed(draft.branchId);
+        await assertWarehouseBranchAllowed(tx, draft.warehouseId);
+        await this.documentLocks.assertNotLockedByOther(tx, 'PURCHASE_INVOICE', id);
+        if (draft.status !== 'DRAFT') {
+          throw new DomainError(ErrorCode.CONFLICT, 'Invoice is not a draft');
+        }
+        if (draft.lines.length === 0 || draft.lines.some((line) => line.consignmentSaleId === null)) {
+          throw new DomainError(ErrorCode.VALIDATION, 'Every settlement invoice line must reference a consignment sale');
+        }
+        const supplierId = await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId);
+        if (supplierId === null || supplierId !== draft.supplierId) {
+          throw new DomainError(ErrorCode.VALIDATION, 'The invoice supplier must match the consignment warehouse supplier');
+        }
+        const saleIds = [...new Set(draft.lines.map((line) => line.consignmentSaleId!))];
+        const sales = await tx.$queryRaw<{
+          id: bigint;
+          supplier_id: bigint;
+          warehouse_id: bigint;
+          item_id: bigint;
+          qty: Prisma.Decimal;
+          value: Prisma.Decimal;
+          returned_qty: Prisma.Decimal;
+          returned_value: Prisma.Decimal;
+          invoiced_qty: Prisma.Decimal;
+          invoiced_value: Prisma.Decimal;
+        }[]>`
+          SELECT id, supplier_id, warehouse_id, item_id, qty, value,
+                 returned_qty, returned_value, invoiced_qty, invoiced_value
+          FROM consignment_sales
+           WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
+             AND id IN (${Prisma.join(saleIds)})
+           ORDER BY id FOR UPDATE`;
+        const saleById = new Map(
+          sales.map((sale) => [
+            sale.id,
+            {
+              id: sale.id,
+              supplierId: sale.supplier_id,
+              warehouseId: sale.warehouse_id,
+              itemId: sale.item_id,
+              qty: sale.qty,
+              value: sale.value,
+              returnedQty: sale.returned_qty,
+              returnedValue: sale.returned_value,
+              invoicedQty: sale.invoiced_qty,
+              invoicedValue: sale.invoiced_value,
+            },
+          ]),
+        );
+        const invoiceDate = new Date(draft.invoiceDate);
+        const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, invoiceDate);
+        let clearedTotal = new Decimal(0);
+        for (const line of draft.lines) {
+          const sale = saleById.get(line.consignmentSaleId!);
+          if (
+            !sale ||
+            sale.supplierId !== draft.supplierId ||
+            sale.warehouseId !== draft.warehouseId ||
+            sale.itemId !== line.itemId
+          ) {
+            throw new DomainError(ErrorCode.VALIDATION, 'Settlement lines must match the supplier, warehouse, and item of each sale');
+          }
+          const openQty = new Decimal(sale.qty.toString())
+            .minus(sale.returnedQty.toString())
+            .minus(sale.invoicedQty.toString());
+          const qty = new Decimal(line.qtyBase.toString());
+          if (qty.gt(openQty)) {
+            throw new DomainError(ErrorCode.CONSIGNMENT_OVER_INVOICED, 'Settlement quantity exceeds the open consignment sale quantity');
+          }
+          const openValue = new Decimal(sale.value.toString())
+            .minus(sale.returnedValue.toString())
+            .minus(sale.invoicedValue.toString());
+          const cleared = qty.eq(openQty)
+            ? openValue
+            : round3(new Decimal(sale.value.toString()).times(qty).div(sale.qty.toString()));
+          await tx.purchaseInvoiceLine.update({
+            where: { tenantId_id: { tenantId, id: line.id } },
+            data: { consignmentClearedValue: cleared },
+          });
+          await tx.consignmentSale.update({
+            where: { id: sale.id },
+            data: {
+              invoicedQty: { increment: qty },
+              invoicedValue: { increment: cleared },
+            },
+          });
+          clearedTotal = clearedTotal.plus(cleared);
+        }
+        const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
+          'CONSIGNMENT_PAYABLE',
+          'INPUT_TAX',
+          'COGS',
+          'SUPPLIERS_CONTROL',
+        ]);
+        const journalLines: JournalLineInput[] = [];
+        if (clearedTotal.gt(0)) {
+          journalLines.push({ accountId: mapping.CONSIGNMENT_PAYABLE, debit: clearedTotal.toString() });
+        }
+        if (draft.taxTotal.gt(0)) {
+          journalLines.push({ accountId: mapping.INPUT_TAX, debit: draft.taxTotal.toString() });
+        }
+        const difference = draft.netTotal.minus(clearedTotal);
+        if (difference.gt(0)) {
+          journalLines.push({ accountId: mapping.COGS, debit: difference.toString() });
+        } else if (difference.lt(0)) {
+          journalLines.push({ accountId: mapping.COGS, credit: difference.abs().toString() });
+        }
+        journalLines.push({
+          accountId: mapping.SUPPLIERS_CONTROL,
+          credit: draft.grandTotal.toString(),
+          partyType: 'SUPPLIER',
+          partyId: draft.supplierId,
+          description: lineDescription('journal.line.creditPurchase'),
+        });
+        const invoiceNo = await this.posting.allocateEntryNo(
+          tx,
+          tenantId,
+          companyId,
+          'PURCHASE_INVOICE',
+          invoiceDate,
+        );
+        const entry = await this.posting.postEntry(tx, {
+          tenantId,
+          companyId,
+          branchId: draft.branchId,
+          entryDate: invoiceDate,
+          fiscalPeriodId: period.id,
+          sourceType: SOURCE,
+          sourceId: draft.id,
+          description: draft.description ?? `Consignment settlement ${invoiceNo}`,
+          descriptionKey: draft.description == null ? 'journal.auto.purchaseInvoice' : null,
+          descriptionParams: draft.description == null ? { number: invoiceNo } : undefined,
+          lines: journalLines,
+          postedBy: userId ?? null,
+          costCenterId: draft.costCenterId,
+          requireCostCenters: true,
+        });
+        await tx.purchaseInvoice.update({
+          where: { id: draft.id },
+          data: {
+            status: 'POSTED',
+            invoiceNo,
+            journalEntryId: entry.id,
+            postedAt: new Date(),
+            postedBy: userId ?? null,
+          },
+        });
+        await this.audit.log({
+          action: 'purchase_invoice.post',
+          entityType: 'purchase_invoice',
+          entityId: draft.id,
+          after: { invoiceNo, consignmentSettlement: true },
+        }, tx);
+        return { id: draft.id };
+      }, POSTING_TX_OPTIONS),
+    );
     return this.get(result.id);
   }
 
@@ -1297,7 +1483,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         itemUnitId: l.itemUnitId,
         qty: l.dto.qty,
         qtyBase: l.amounts.qtyBase,
-        unitCost: l.dto.unitCost,
+        unitCost: l.dto.unitCost ?? l.dto.unitPrice!,
         discountPct: l.dto.discountPct ?? '0',
         discountAmount: l.amounts.discountAmount,
         netAmount: l.amounts.netAmount,
@@ -1305,6 +1491,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         taxRate: l.taxRate,
         taxAmount: l.amounts.taxAmount,
         lineTotal: l.amounts.lineTotal,
+        consignmentSaleId: l.dto.consignmentSaleId ? BigInt(l.dto.consignmentSaleId) : null,
       })),
     });
     if (!lines.some((l) => l.dto.grnLineId)) return;
@@ -1654,12 +1841,72 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     }
   }
 
+  private async resolveInvoiceLines(
+    db: ReturnType<PrismaService['forTenant']>,
+    tenantId: bigint,
+    companyId: bigint,
+    dto: CreatePurchaseInvoiceDto,
+    pricesIncludeTax: boolean,
+  ): Promise<ResolvedLine[]> {
+    if (!dto.consignmentSettlement) {
+      if (dto.lines.some((line) => line.consignmentSaleId)) {
+        throw new DomainError(ErrorCode.VALIDATION, 'consignmentSaleId is only valid on a consignment settlement invoice');
+      }
+      return this.resolveLines(
+        db,
+        tenantId,
+        companyId,
+        dto.lines.map((line) => ({ ...line, unitCost: line.unitCost ?? line.unitPrice! })),
+        pricesIncludeTax,
+      );
+    }
+    if (!dto.warehouseId || dto.paymentType !== 'CREDIT' || dto.purchaseOrderId || dto.receivedGrnId) {
+      throw new DomainError(
+        ErrorCode.VALIDATION,
+        'A consignment settlement requires a consignment warehouse, credit payment, and no purchase-order or GRN link',
+      );
+    }
+    if (dto.lines.some((line) => !line.consignmentSaleId)) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Every consignment settlement line must reference a consignment sale');
+    }
+    const saleIds = dto.lines.map((line) => BigInt(line.consignmentSaleId!));
+    if (new Set(saleIds.map(String)).size !== saleIds.length) {
+      throw new DomainError(ErrorCode.VALIDATION, 'A consignment sale may appear only once on an invoice');
+    }
+    const sales = await db.consignmentSale.findMany({
+      where: { companyId, id: { in: saleIds } },
+    });
+    const saleById = new Map(sales.map((sale) => [sale.id, sale]));
+    const lines = dto.lines.map((line) => {
+      const sale = saleById.get(BigInt(line.consignmentSaleId!));
+      if (!sale) throw DomainError.notFound('ConsignmentSale', line.consignmentSaleId!);
+      if (sale.supplierId !== BigInt(dto.supplierId) || sale.warehouseId !== BigInt(dto.warehouseId!)) {
+        throw new DomainError(ErrorCode.VALIDATION, 'Supplier and warehouse must match the referenced consignment sale');
+      }
+      const defaultUnitPrice = sale.qty.isZero()
+        ? '0.000000'
+        : round6(new Decimal(sale.value.toString()).div(sale.qty.toString())).toString();
+      return {
+        ...line,
+        itemId: sale.itemId.toString(),
+        itemUnitId: undefined,
+        unitCost: line.unitPrice ?? line.unitCost ?? defaultUnitPrice,
+      };
+    });
+    const resolved = await this.resolveLines(db, tenantId, companyId, lines, pricesIncludeTax);
+    return resolved.map((line, index) => ({
+      ...line,
+      dto: { ...line.dto, consignmentSaleId: dto.lines[index]!.consignmentSaleId },
+    }));
+  }
+
   private async assertHeader(
     db: ReturnType<PrismaService['forTenant']>,
     companyId: bigint,
     dto: CreatePurchaseInvoiceDto,
     lines: ResolvedLine[],
   ) {
+    const consignmentSettlement = dto.consignmentSettlement === true;
     const supplier = await db.party.findFirst({
       where: { companyId, id: BigInt(dto.supplierId), isActive: true },
       select: { id: true, partyType: true },
@@ -1668,16 +1915,33 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       throw new DomainError(ErrorCode.VALIDATION, 'Supplier not found or not a supplier');
     }
     const hasStock = lines.some((l) => isStocked(l.itemKind));
+    if (consignmentSettlement && (dto.paymentType !== 'CREDIT' || dto.receivedGrnId || dto.purchaseOrderId)) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Consignment settlement invoices must use credit and cannot bill a GRN or purchase order');
+    }
     if (hasStock) {
       if (!dto.warehouseId) {
         throw new DomainError(ErrorCode.VALIDATION, 'warehouseId is required for stocked items');
       }
       const wh = await db.warehouse.findFirst({
         where: { companyId, id: BigInt(dto.warehouseId), isActive: true },
-        select: { id: true, branchId: true },
+        select: { id: true, branchId: true, consignmentSupplierId: true },
       });
       if (!wh) throw DomainError.notFound('Warehouse', dto.warehouseId);
       assertBranchAllowed(wh.branchId);
+      if (wh.consignmentSupplierId !== null) {
+        const company = await db.company.findFirst({ where: { id: companyId }, select: { consignmentEnabled: true } });
+        if (!company?.consignmentEnabled) {
+          throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+        }
+        if (!consignmentSettlement) {
+          throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Direct stock purchase invoices cannot use a consignment warehouse');
+        }
+        if (wh.consignmentSupplierId !== BigInt(dto.supplierId)) {
+          throw new DomainError(ErrorCode.VALIDATION, 'The invoice supplier must match the consignment warehouse supplier');
+        }
+      } else if (consignmentSettlement) {
+        throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Consignment settlement requires a consignment warehouse');
+      }
     } else if (dto.warehouseId) {
       const wh = await db.warehouse.findFirst({
         where: { companyId, id: BigInt(dto.warehouseId), isActive: true },
@@ -1713,7 +1977,10 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     dtos: PurchaseInvoiceLineDto[],
     pricesIncludeTax = false,
   ): Promise<ResolvedLine[]> {
-    const itemIds = dtos.map((l) => BigInt(l.itemId));
+    if (dtos.some((line) => !line.itemId || !(line.unitCost ?? line.unitPrice))) {
+      throw new DomainError(ErrorCode.VALIDATION, 'itemId and unitCost are required for ordinary purchase invoice lines');
+    }
+    const itemIds = dtos.map((l) => BigInt(l.itemId!));
     const items = await db.item.findMany({
       where: { tenantId, companyId, id: { in: itemIds }, isActive: true },
       include: { taxCategory: { select: { id: true, rate: true } } },
@@ -1731,7 +1998,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const taxIds = [
       ...new Set(
         dtos
-          .map((l) => l.taxCategoryId ?? itemById.get(BigInt(l.itemId))?.taxCategoryId?.toString())
+          .map((l) => l.taxCategoryId ?? itemById.get(BigInt(l.itemId!))?.taxCategoryId?.toString())
           .filter((x): x is string => !!x)
           .map((x) => BigInt(x)),
       ),
@@ -1750,8 +2017,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
 
     const out: ResolvedLine[] = [];
     for (const l of dtos) {
-      const item = itemById.get(BigInt(l.itemId));
-      if (!item) throw DomainError.notFound('Item', l.itemId);
+      const item = itemById.get(BigInt(l.itemId!));
+      if (!item) throw DomainError.notFound('Item', l.itemId!);
       assertNotRecipe(item.itemKind, item.code);
 
       let itemUnitId: bigint | null = null;
@@ -1777,7 +2044,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       const amounts = computeLineAmounts({
         qty: l.qty,
         factorToBase,
-        unitPrice: l.unitCost,
+        unitPrice: l.unitCost ?? l.unitPrice!,
         discountPct: l.discountPct ?? '0',
         taxRate,
         pricesIncludeTax,

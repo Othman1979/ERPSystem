@@ -40,6 +40,7 @@ export class WarehousesService {
       where: { companyId },
       include: {
         branch: { select: { id: true, code: true, nameAr: true } },
+        consignmentSupplier: { select: { id: true, code: true, nameAr: true, nameEn: true, partyType: true } },
         _count: { select: { balances: true } },
       },
       orderBy: { code: 'asc' },
@@ -50,7 +51,10 @@ export class WarehousesService {
     const { db } = this.tenant();
     const wh = await db.warehouse.findFirst({
       where: { id },
-      include: { branch: true },
+      include: {
+        branch: true,
+        consignmentSupplier: { select: { id: true, code: true, nameAr: true, nameEn: true, partyType: true } },
+      },
     });
     if (!wh) throw DomainError.notFound('Warehouse', id.toString());
     return wh;
@@ -60,14 +64,28 @@ export class WarehousesService {
    * An active warehouse of the company with its branch, for another module's
    * document header (module boundary); NOT_FOUND otherwise.
    */
-  async activeRef(id: bigint): Promise<{ id: bigint; branchId: bigint | null }> {
+  async activeRef(id: bigint): Promise<{ id: bigint; branchId: bigint | null; consignmentSupplierId: bigint | null }> {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
     const wh = await db.warehouse.findFirst({
       where: { id, companyId, isActive: true },
-      select: { id: true, branchId: true },
+      select: { id: true, branchId: true, consignmentSupplierId: true },
     });
     if (!wh) throw DomainError.notFound('Warehouse', id.toString());
+    return wh;
+  }
+
+  async activeOwnedRef(id: bigint) {
+    const wh = await this.activeRef(id);
+    if (wh.consignmentSupplierId !== null) {
+      const { db } = this.tenant();
+      const companyId = await this.companyId(db);
+      const company = await db.company.findFirst({ where: { id: companyId }, select: { consignmentEnabled: true } });
+      if (!company?.consignmentEnabled) {
+        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+      }
+      throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'This document cannot use a consignment warehouse');
+    }
     return wh;
   }
 
@@ -80,6 +98,14 @@ export class WarehousesService {
       const branch = await db.branch.findFirst({ where: { id: BigInt(dto.branchId), companyId } });
       if (!branch) throw DomainError.notFound('Branch', dto.branchId);
     }
+    const supplierId = dto.consignmentSupplierId ? BigInt(dto.consignmentSupplierId) : null;
+    if (supplierId !== null) {
+      const company = await db.company.findFirst({ where: { id: companyId }, select: { consignmentEnabled: true } });
+      if (!company?.consignmentEnabled) {
+        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+      }
+      await this.assertConsignmentSupplier(db, companyId, supplierId);
+    }
 
     try {
       // The plan check locks the tenant row, so it and the insert share one transaction.
@@ -90,6 +116,7 @@ export class WarehousesService {
             tenantId,
             companyId,
             branchId: dto.branchId ? BigInt(dto.branchId) : null,
+            consignmentSupplierId: supplierId,
             code: dto.code,
             nameAr: dto.nameAr,
             nameEn: dto.nameEn ?? null,
@@ -104,7 +131,10 @@ export class WarehousesService {
         entityId: wh.id,
         after: { code: dto.code, nameAr: dto.nameAr },
       });
-      return wh;
+      return db.warehouse.findFirstOrThrow({
+        where: { id: wh.id },
+        include: { consignmentSupplier: { select: { id: true, code: true, nameAr: true, nameEn: true, partyType: true } } },
+      });
     } catch (err) {
       if ((err as { code?: string }).code === 'P2002') {
         throw new DomainError(ErrorCode.CONFLICT, 'Warehouse code already exists');
@@ -123,6 +153,20 @@ export class WarehousesService {
       const branch = await db.branch.findFirst({ where: { id: BigInt(dto.branchId), companyId } });
       if (!branch) throw DomainError.notFound('Branch', dto.branchId);
     }
+    if (dto.consignmentSupplierId !== undefined) {
+      const company = await db.company.findFirst({ where: { id: companyId }, select: { consignmentEnabled: true } });
+      if (!company?.consignmentEnabled) {
+        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+      }
+      const supplierId = dto.consignmentSupplierId ? BigInt(dto.consignmentSupplierId) : null;
+      if (supplierId !== existing.consignmentSupplierId) {
+        const movements = await db.stockMovement.count({ where: { warehouseId: id } });
+        if (movements > 0) {
+          throw new DomainError(ErrorCode.CONFLICT, 'A consignment supplier cannot change after the first stock movement');
+        }
+        if (supplierId !== null) await this.assertConsignmentSupplier(db, companyId, supplierId);
+      }
+    }
     if (dto.isActive === false) {
       const movements = await db.stockMovement.count({ where: { warehouseId: id } });
       if (movements > 0) {
@@ -132,14 +176,35 @@ export class WarehousesService {
         );
       }
     }
-    const { branchId, ...rest } = dto;
-    return db.warehouse.update({
+    const { branchId, consignmentSupplierId, ...rest } = dto;
+    await db.warehouse.update({
       where: { id },
       data: {
         ...rest,
         ...(branchId !== undefined ? { branchId: branchId ? BigInt(branchId) : null } : {}),
+        ...(consignmentSupplierId !== undefined
+          ? { consignmentSupplierId: consignmentSupplierId ? BigInt(consignmentSupplierId) : null }
+          : {}),
         updatedBy: cls.get('userId') ?? null,
       },
     });
+    return db.warehouse.findFirstOrThrow({
+      where: { id },
+      include: { consignmentSupplier: { select: { id: true, code: true, nameAr: true, nameEn: true, partyType: true } } },
+    });
+  }
+
+  private async assertConsignmentSupplier(
+    db: ReturnType<PrismaService['forTenant']>,
+    companyId: bigint,
+    supplierId: bigint,
+  ) {
+    const supplier = await db.party.findFirst({
+      where: { id: supplierId, companyId, partyType: { in: ['SUPPLIER', 'BOTH'] }, isActive: true },
+      select: { id: true },
+    });
+    if (!supplier) {
+      throw new DomainError(ErrorCode.PARTY_TYPE_MISMATCH, 'Consignment warehouse requires an active supplier of this company');
+    }
   }
 }

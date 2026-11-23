@@ -65,7 +65,7 @@ const WORKBOOKS: { file: string; models: string[] }[] = [
   {
     file: '08-purchases.xlsx',
     // ADR-026 §7: the invoice line ↔ GRN line links.
-    models: ['PurchaseInvoice', 'PurchaseInvoiceLine', 'PurchaseInvoiceReceipt', 'PurchaseReturn', 'PurchaseReturnLine'],
+    models: ['PurchaseInvoice', 'PurchaseInvoiceLine', 'PurchaseInvoiceReceipt', 'PurchaseReturn', 'PurchaseReturnLine', 'ConsignmentSale'],
   },
   { file: '09-treasury.xlsx', models: ['CashBox', 'BankAccount', 'Receipt', 'Payment', 'Allocation', 'CashTransfer'] },
   { file: '10-einvoice.xlsx', models: ['EInvoiceSubmission'] },

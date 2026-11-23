@@ -167,6 +167,23 @@ export class IntegrityCheckService {
           ) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
     await orphans(
+      'consignment_sales.source',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM consignment_sales x
+        WHERE NOT (
+          (x.source_type = 'SALES_INVOICE' AND EXISTS (
+            SELECT 1 FROM sales_invoice_lines l
+            JOIN sales_invoices d ON d.tenant_id = l.tenant_id AND d.id = l.invoice_id
+            WHERE l.tenant_id = x.tenant_id AND l.id = x.source_line_id
+              AND l.invoice_id = x.source_id AND d.company_id = x.company_id))
+          OR (x.source_type = 'STOCK_COUNT' AND EXISTS (
+            SELECT 1 FROM stock_counts c
+            JOIN stock_adjustment_lines l
+              ON l.tenant_id = c.tenant_id AND l.adjustment_id = c.adjustment_id
+            WHERE c.tenant_id = x.tenant_id AND c.id = x.source_id
+              AND c.company_id = x.company_id AND l.id = x.source_line_id))
+        ) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
+    await orphans(
       'stock_movements.source',
       db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM stock_movements x
         WHERE NOT (

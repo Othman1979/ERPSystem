@@ -1336,8 +1336,15 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         // no ACTIVE version posts at cost 0 and is flagged (ADR-032 §1).
         let costTotal = new Decimal(0);
         let writeOff = new Decimal(0);
-        const costByLine = new Map<bigint, { unitCost: Decimal; totalCost: Decimal }>();
+        const costByLine = new Map<bigint, { unitCost: Decimal; totalCost: Decimal; writeOff: Decimal }>();
+        const consignmentSupplierId =
+          draft.warehouseId === null
+            ? null
+            : await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId);
         const explosions = await this.explodeRecipeLines(tx, companyId, draft.lines);
+        if (consignmentSupplierId !== null && explosions.size > 0) {
+          throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Recipe lines are not allowed on consignment sales');
+        }
         const missingLineIds = [...explosions].filter(([, e]) => e.missing).map(([lineId]) => lineId);
         // Lock every (item, warehouse) in the fixed order before any movement: the document's own
         // pairs and the components of its recipes (ADR-032 §7).
@@ -1369,10 +1376,11 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           const explosion = explosions.get(line.id);
           if (explosion !== undefined) {
             if (explosion.missing || explosion.bomId === null) {
-              costByLine.set(line.id, { unitCost: new Decimal(0), totalCost: new Decimal(0) });
+              costByLine.set(line.id, { unitCost: new Decimal(0), totalCost: new Decimal(0), writeOff: new Decimal(0) });
               continue;
             }
             let lineCost = new Decimal(0);
+            let lineWriteOff = new Decimal(0);
             for (const comp of explosion.components) {
               const res = await this.ledger.applyMovement(tx, companyId, {
                 warehouseId: draft.warehouseId,
@@ -1386,6 +1394,7 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
                 description: `Sales invoice ${draft.id}: recipe component`,
               });
               lineCost = lineCost.plus(res.totalCost);
+              lineWriteOff = lineWriteOff.plus(res.writeOff);
               writeOff = writeOff.plus(res.writeOff);
               componentRows.push({
                 tenantId,
@@ -1400,7 +1409,11 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
               });
             }
             // ADR-032 §8: the line's cost is the sum of its components; its unit cost is that sum per sold unit.
-            costByLine.set(line.id, { unitCost: round6(lineCost.div(new Decimal(line.qtyBase.toString()))), totalCost: round3(lineCost) });
+            costByLine.set(line.id, {
+              unitCost: round6(lineCost.div(new Decimal(line.qtyBase.toString()))),
+              totalCost: round3(lineCost),
+              writeOff: round3(lineWriteOff),
+            });
             costTotal = costTotal.plus(lineCost);
             continue;
           }
@@ -1416,11 +1429,33 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
             sourceLineId: line.id,
             description: `Sales invoice ${draft.id}`,
           });
-          costByLine.set(line.id, { unitCost: res.unitCost, totalCost: res.totalCost });
+          costByLine.set(line.id, { unitCost: res.unitCost, totalCost: res.totalCost, writeOff: res.writeOff });
           costTotal = costTotal.plus(res.totalCost);
           writeOff = writeOff.plus(res.writeOff);
         }
         if (componentRows.length > 0) await tx.salesInvoiceLineComponent.createMany({ data: componentRows });
+        if (consignmentSupplierId !== null) {
+          await tx.consignmentSale.createMany({
+            data: draft.lines
+              .filter((line) => stockItems.has(line.itemId))
+              .map((line) => {
+                const cost = costByLine.get(line.id)!;
+                return {
+                  tenantId,
+                  companyId,
+                  warehouseId: draft.warehouseId!,
+                  supplierId: consignmentSupplierId,
+                  itemId: line.itemId,
+                  sourceType: 'SALES_INVOICE' as const,
+                  sourceId: draft.id,
+                  sourceLineId: line.id,
+                  saleDate: invoiceDate,
+                  qty: line.qtyBase,
+                  value: round3(cost.totalCost.plus(cost.writeOff)),
+                };
+              }),
+          });
+        }
         if (missingLineIds.length > 0) {
           await tx.salesInvoiceLine.updateMany({
             where: { invoiceId: draft.id, id: { in: missingLineIds } },
@@ -1451,9 +1486,10 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
           'SALES',
           'OUTPUT_TAX',
           'COGS',
-          'INVENTORY',
-          'INVENTORY_ADJUSTMENT',
           'CUSTOMERS_CONTROL',
+          ...(consignmentSupplierId !== null
+            ? (['CONSIGNMENT_PAYABLE'] as const)
+            : (['INVENTORY', 'INVENTORY_ADJUSTMENT'] as const)),
           ...(draft.invoiceDiscountAmount.gt(0) ? ['SALES_DISCOUNTS' as const] : []),
         ]);
 
@@ -1507,13 +1543,21 @@ export class SalesInvoicesService implements OnModuleInit, InvoiceSettlement {
         if (tax.gt(0)) {
           journalLines.push({ accountId: mapping.OUTPUT_TAX, credit: tax.toString() });
         }
-        if (costTotal.gt(0)) {
-          journalLines.push({ accountId: mapping.COGS, debit: costTotal.toString() });
-          journalLines.push({ accountId: mapping.INVENTORY, credit: costTotal.toString() });
+        if (consignmentSupplierId !== null) {
+          const payableCost = costTotal.plus(writeOff);
+          if (payableCost.gt(0)) {
+            journalLines.push({ accountId: mapping.COGS, debit: payableCost.toString() });
+            journalLines.push({ accountId: mapping.CONSIGNMENT_PAYABLE, credit: payableCost.toString() });
+          }
+        } else {
+          if (costTotal.gt(0)) {
+            journalLines.push({ accountId: mapping.COGS, debit: costTotal.toString() });
+            journalLines.push({ accountId: mapping.INVENTORY, credit: costTotal.toString() });
+          }
+          journalLines.push(
+            ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+          );
         }
-        journalLines.push(
-          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
-        );
 
         const invoiceNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'SALES_INVOICE', invoiceDate,

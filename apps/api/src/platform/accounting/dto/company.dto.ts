@@ -52,6 +52,10 @@ export class UpdateCompanyDto {
   @IsBoolean()
   costCentersEnabled?: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  consignmentEnabled?: boolean;
+
   /**
    * Purchasing cycle level (ADR-024 §2), needs company.manage. Raised any time;
    * lowered only with no open cycle documents (PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS).
