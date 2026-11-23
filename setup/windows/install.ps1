@@ -600,6 +600,9 @@ try {
     $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     Ensure-AppClone -SourceRoot $sourceRoot -Destination $AppDir
     Set-RestrictedAcl -Path $AppDir -Directory -ReadOnlyUsers
+    if (Test-Path -LiteralPath $envPath) {
+        Set-RestrictedAcl -Path $envPath
+    }
 
     Write-Step 'Installing Node.js 24 and pnpm'
     $nodeExe = Ensure-Node24
