@@ -145,11 +145,12 @@ try {
             $appStopped = $true
         }
         Write-Host 'Scheduled jobs remain disabled. Rollback guidance from deploy.md:'
-        Write-Host "  git -C `"$AppDir`" checkout $previousCommit"
+        Write-Host "  git -C `"$AppDir`" checkout -B main $previousCommit"
         Write-Host "  pnpm --filter api prisma:generate"
         Write-Host '  pnpm build'
         Write-Host '  Start the App scheduled task and run preflight.'
         Write-Host '  Migrations are not reversed. If the database schema changed, restore the pre-update backup.'
+        Write-Host "  Get-ScheduledTask -TaskPath '\ERP Cloud\' | Where-Object TaskName -like 'Job-*' | Enable-ScheduledTask"
     } else {
         if ($appStopped) {
             try {

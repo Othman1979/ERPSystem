@@ -59,6 +59,13 @@ trust-client.bat -Server erp-server -HttpPort 80 -HttpsPort 443
 - شغّل `C:\ERP\app\setup\windows\update.bat` من نسخة الخادم؛ لا تشغّله من مجلد التطوير. يعطّل المهام، يوقف API، يأخذ نسخة احتياطية، يشغّل `ledger:check` بالإصدار الحالي، ثم يسحب ويبني ويطبق migrations ويعيد التشغيل والفحص.
 - بعد `git pull` تكون سكربتات التحديث الجديدة في نسخة الخادم؛ التشغيل التالي لـ `update.bat` يستخدم النسخة الجديدة.
 - إذا فشل قبل سحب الكود، يعيد تفعيل المهام وAPI. إذا فشل بعد السحب، يترك المهام معطلة ويطبع خطوات التراجع. لا تُعكس migrations؛ إذا تغير المخطط، يلزم استعادة نسخة ما قبل التحديث.
+- للتراجع بعد السحب، من `C:\ERP\app` أعد المؤشر إلى الإصدار السابق، ثم أعد التوليد والبناء، وشغّل مهمة App والفحص. بعد نجاح ذلك أعد تفعيل المهام:
+  ```powershell
+  git -C "C:\ERP\app" checkout -B main <previousCommit>
+  pnpm --filter api prisma:generate
+  pnpm build
+  Get-ScheduledTask -TaskPath '\ERP Cloud\' | Where-Object TaskName -like 'Job-*' | Enable-ScheduledTask
+  ```
 - `setup\windows\uninstall.bat` يزيل المهام وقواعد الجدار الناري والاختصار وثقة CA المحلية، لكنه **لا يحذف** مجلد التطبيق أو البيانات.
 - لإزالة خدمة MariaDB أيضاً: `uninstall.bat -RemoveDatabaseService`. يبقى مجلد قاعدة البيانات في `DataDir` ولا يحذف.
 
