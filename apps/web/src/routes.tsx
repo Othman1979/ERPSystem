@@ -60,6 +60,7 @@ export const PAGE_LOADERS = {
   parties: () => import('./pages/PartiesPage').then((m) => m.PartiesPage),
   items: () => import('./pages/ItemsPage').then((m) => m.ItemsPage),
   warehouses: () => import('./pages/WarehousesPage').then((m) => m.WarehousesPage),
+  consignment: () => import('./pages/ConsignmentPage').then((m) => m.ConsignmentPage),
   stock: () => import('./pages/StockPage').then((m) => m.StockPage),
   users: () => import('./pages/UsersPage').then((m) => m.UsersPage),
   branches: () => import('./pages/BranchesPage').then((m) => m.BranchesPage),
@@ -92,6 +93,7 @@ const IssueRequestsPage = lazyPage(PAGE_LOADERS.issueRequests);
 const PartiesPage = lazyPage(PAGE_LOADERS.parties);
 const ItemsPage = lazyPage(PAGE_LOADERS.items);
 const WarehousesPage = lazyPage(PAGE_LOADERS.warehouses);
+const ConsignmentPage = lazyPage(PAGE_LOADERS.consignment);
 const StockPage = lazyPage(PAGE_LOADERS.stock);
 const UsersPage = lazyPage(PAGE_LOADERS.users);
 const BranchesPage = lazyPage(PAGE_LOADERS.branches);
@@ -120,6 +122,10 @@ export interface AppRoute {
    * of a request that fails with 403. Absent: no company permission needed.
    */
   permission?: Permission;
+  /** Any one of these permissions is sufficient for a multi-capability screen. */
+  anyPermissions?: Permission[];
+  /** Company feature flag required to show this screen. */
+  feature?: 'consignment';
   /**
    * Lowest procurement level whose cycle uses the screen (ADR-024 §2.3): below
    * it the entry is hidden and the URL shows "no access". The purchase
@@ -362,6 +368,16 @@ export const APP_GROUPS: AppGroup[] = [
       },
       { key: 'stock', path: '/stock', label: 'nav.stock', icon: <AuditOutlined />, element: <StockPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionMovements' },
       {
+        key: 'consignment',
+        path: '/consignment',
+        label: 'nav.consignment',
+        icon: <ReconciliationOutlined />,
+        element: <ConsignmentPage />,
+        anyPermissions: [PERMISSIONS.PURCHASE_MANAGE, PERMISSIONS.REPORTS_VIEW],
+        feature: 'consignment',
+        section: 'nav.sectionMovements',
+      },
+      {
         key: 'production',
         path: '/production',
         label: 'nav.production',
@@ -453,20 +469,38 @@ export function allowedRoute(
   can: (permission: Permission) => boolean,
   level?: ProcurementLevel,
   allBranches = true,
+  consignmentEnabled = false,
 ): boolean {
-  return (!route.permission || can(route.permission)) && meetsProcurementLevel(level, route.minProcurementLevel) &&
+  return routeIsAvailable(route, can, consignmentEnabled) && meetsProcurementLevel(level, route.minProcurementLevel) &&
     (!route.allBranchesOnly || allBranches);
+}
+
+/** Permission and company feature checks shared by navigation and direct URLs. */
+export function routeIsAvailable(
+  route: AppRoute,
+  can: (permission: Permission) => boolean,
+  consignmentEnabled = false,
+): boolean {
+  const permissionAllowed = route.anyPermissions
+    ? route.anyPermissions.some(can)
+    : !route.permission || can(route.permission);
+  return permissionAllowed && (route.feature !== 'consignment' || consignmentEnabled);
 }
 
 /**
  * True when a role with `can` may open `path` (a module, its nested paths or
  * the setup wizard). Paths that need no company permission (help, legal) are open.
  */
-export function canOpenPath(path: string, can: (permission: Permission) => boolean, level?: ProcurementLevel): boolean {
+export function canOpenPath(
+  path: string,
+  can: (permission: Permission) => boolean,
+  level?: ProcurementLevel,
+  consignmentEnabled = false,
+): boolean {
   const bare = path.split('?')[0];
   if (bare === SETUP_PATH || bare.startsWith(`${SETUP_PATH}/`)) return can(SETUP_PERMISSION);
   const route = routeForPath(bare);
-  return !route || allowedRoute(route, can, level);
+  return !route || allowedRoute(route, can, level, true, consignmentEnabled);
 }
 
 /** `groups` with only the routes the role may open at `level`; groups left empty are dropped. */
@@ -475,9 +509,10 @@ export function allowedGroups(
   can: (permission: Permission) => boolean,
   level?: ProcurementLevel,
   allBranches = true,
+  consignmentEnabled = false,
 ): AppGroup[] {
   return groups
-    .map((g) => ({ ...g, routes: g.routes.filter((r) => allowedRoute(r, can, level, allBranches)) }))
+    .map((g) => ({ ...g, routes: g.routes.filter((r) => allowedRoute(r, can, level, allBranches, consignmentEnabled)) }))
     .filter((g) => g.routes.length > 0);
 }
 

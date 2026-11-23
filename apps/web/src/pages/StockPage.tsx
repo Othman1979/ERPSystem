@@ -155,7 +155,7 @@ function AdjustmentsTab() {
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
   const [form] = Form.useForm();
-  const { whOptions } = useLookups();
+  const { ownedWhOptions: whOptions } = useLookups();
   const items = useStockItemPicker(modalOpen);
 
   // Server-paged (ADR-022): search, sort and page go to the API.
@@ -444,7 +444,7 @@ function TransfersTab() {
   const [reverseDate, setReverseDate] = useState<Dayjs | null>(null);
   const [lines, setLines] = useState<ItemLineDraft[]>([emptyItemLine(1)]);
   const [form] = Form.useForm();
-  const { whOptions } = useLookups();
+  const { ownedWhOptions: whOptions } = useLookups();
   const items = useStockItemPicker(modalOpen);
 
   // Server-paged (ADR-022): search, sort and page go to the API.

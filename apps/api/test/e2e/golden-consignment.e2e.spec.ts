@@ -474,10 +474,22 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
       'post consignment sale',
     );
     const saleDetails = (await api().get(`/api/v1/sales-invoices/${sale.id}`).set(auth(token))).body as {
+      invoiceNo: string;
       netTotal: string;
       taxTotal: string;
       grandTotal: string;
     };
+    const openSales = await expectSuccess<Array<{ sourceId: string; sourceNo: string | null; unitCost: string }>>(
+      await api()
+        .get(`/api/v1/consignment/open-sales?supplierId=${supplierId}&warehouseId=${warehouse}`)
+        .set(auth(token)),
+      200,
+      'consignment open sales',
+    );
+    expect(openSales.find((row) => row.sourceId === sale.id)).toMatchObject({
+      sourceNo: saleDetails.invoiceNo,
+      unitCost: '20',
+    });
     expect({
       netTotal: m3(saleDetails.netTotal),
       taxTotal: m3(saleDetails.taxTotal),
@@ -677,6 +689,18 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     shortageSaleId = String(shortages[0]!.id);
     expect({ qty: d6(shortages[0]!.qty), value: m3(shortages[0]!.value) }).toEqual({ qty: '1.000000', value: '20.000' });
     expect(await accountBalance('2111')).toBe('20.000');
+    const countNumbers = (await db.query(
+      'SELECT doc_no AS docNo FROM stock_counts WHERE tenant_id = ? AND company_id = ? AND id = ?',
+      [tenantId, companyId, count.id],
+    )) as { docNo: string | null }[];
+    const agingRows = await expectSuccess<Array<{ id: string; sourceNo: string | null }>>(
+      await api()
+        .get(`/api/v1/reports/consignment-aging?supplierId=${supplierId}&asOf=2025-04-15`)
+        .set(auth(token)),
+      200,
+      'consignment aging',
+    );
+    expect(agingRows.find((row) => row.id === shortageSaleId)?.sourceNo).toBe(countNumbers[0]?.docNo);
 
     const supplierReturn = await createAndPost('goods-notes', {
       noteDate: CURRENT_DATE,

@@ -402,7 +402,9 @@ function IssueRequestEditor({
     queryKey: ['warehouses'],
     queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
   });
-  const warehouseOptions = (warehouses.data ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }));
+  const warehouseOptions = (warehouses.data ?? [])
+    .filter((w) => w.consignmentSupplierId === null)
+    .map((w) => ({ value: w.id, label: codeAndName(w) }));
 
   // Items are searched on the server (ADR-022 §8). Stock items only: an issue moves stock.
   const items = useRemoteOptions<ItemListItemDto>({

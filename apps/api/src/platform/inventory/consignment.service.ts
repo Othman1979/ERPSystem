@@ -74,6 +74,7 @@ export class ConsignmentService {
       orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
       include: { item: { select: { id: true, code: true, nameAr: true, nameEn: true } } },
     });
+    const sourceNumbers = await this.sourceNumbers(db, companyId, rows);
     return rows.map((row) => {
       const openQty = new Decimal(row.qty.toString()).minus(row.returnedQty.toString()).minus(row.invoicedQty.toString());
       const openValue = new Decimal(row.value.toString()).minus(row.returnedValue.toString()).minus(row.invoicedValue.toString());
@@ -88,6 +89,7 @@ export class ConsignmentService {
         openQty: openQty.toString(),
         openValue: round3(openValue).toString(),
         unitCost: row.qty.isZero() ? '0.000000' : round6(new Decimal(row.value.toString()).div(row.qty.toString())).toString(),
+        sourceNo: sourceNumbers.get(`${row.sourceType}:${row.sourceId}`) ?? null,
       };
     });
   }
@@ -196,6 +198,7 @@ export class ConsignmentService {
       orderBy: [{ saleDate: 'asc' }, { id: 'asc' }],
       include: { item: { select: { id: true, code: true, nameAr: true, nameEn: true } } },
     });
+    const sourceNumbers = await this.sourceNumbers(db, companyId, rows);
     return rows.map((row) => {
       const age = Math.max(0, Math.floor((asOf.getTime() - row.saleDate.getTime()) / 86_400_000));
       const openQty = new Decimal(row.qty.toString()).minus(row.returnedQty.toString()).minus(row.invoicedQty.toString());
@@ -204,10 +207,35 @@ export class ConsignmentService {
         ...row,
         openQty: openQty.toString(),
         openValue: round3(openValue).toString(),
+        unitCost: row.qty.isZero() ? '0.000000' : round6(new Decimal(row.value.toString()).div(row.qty.toString())).toString(),
+        sourceNo: sourceNumbers.get(`${row.sourceType}:${row.sourceId}`) ?? null,
         ageDays: age,
         ageBucket: age <= 30 ? '0-30' : age <= 60 ? '31-60' : age <= 90 ? '61-90' : '90+',
       };
     });
+  }
+
+  private async sourceNumbers(
+    db: ReturnType<PrismaService['forTenant']>,
+    companyId: bigint,
+    rows: Array<{ sourceType: string; sourceId: bigint }>,
+  ) {
+    const invoiceIds = [...new Set(rows.filter((row) => row.sourceType === 'SALES_INVOICE').map((row) => row.sourceId))];
+    const countIds = [...new Set(rows.filter((row) => row.sourceType === 'STOCK_COUNT').map((row) => row.sourceId))];
+    const [invoices, counts] = await Promise.all([
+      db.salesInvoice.findMany({
+        where: { companyId, id: { in: invoiceIds } },
+        select: { id: true, invoiceNo: true },
+      }),
+      db.stockCount.findMany({
+        where: { companyId, id: { in: countIds } },
+        select: { id: true, docNo: true },
+      }),
+    ]);
+    return new Map([
+      ...invoices.map((row) => [`SALES_INVOICE:${row.id}`, row.invoiceNo] as const),
+      ...counts.map((row) => [`STOCK_COUNT:${row.id}`, row.docNo] as const),
+    ]);
   }
 
   private async assertSupplier(db: ReturnType<PrismaService['forTenant']>, companyId: bigint, supplierId: bigint) {

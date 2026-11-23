@@ -43,6 +43,9 @@ export class ConsignmentOpenSaleResponseDto {
   @ApiProperty()
   sourceLineId!: string;
 
+  @ApiProperty({ type: String, nullable: true })
+  sourceNo!: string | null;
+
   @ApiProperty({ type: String, format: 'date' })
   saleDate!: string;
 
@@ -72,6 +75,9 @@ export class ConsignmentOpenSaleResponseDto {
 
   @ApiProperty()
   openValue!: string;
+
+  @ApiProperty()
+  unitCost!: string;
 
   @ApiProperty({ type: ConsignmentItemResponseDto })
   item!: ConsignmentItemResponseDto;

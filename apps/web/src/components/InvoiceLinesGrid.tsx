@@ -28,6 +28,7 @@ export interface InvoiceLineDraft {
   qty?: string | null;
   price?: string | null;
   discountPct?: string | null;
+  consignmentSaleId?: string | null;
 }
 
 export const emptyInvoiceLine = (key: number): InvoiceLineDraft => ({ key });

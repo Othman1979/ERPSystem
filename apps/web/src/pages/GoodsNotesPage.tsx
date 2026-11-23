@@ -64,21 +64,31 @@ import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../co
 import { codeAndName } from '../i18n/displayName';
 import { qtyCell, unitCostCell } from '../format/cells';
 import { invalidateStockDocument } from '../stockQueries';
+import { useCompany } from '../components/CompanyProfileForm';
+import { dec } from '../format/number';
+import { goodsNoteWarehouses, isConsignmentNoteType } from './goods/goodsNoteWarehouses';
 
 type GoodsNote = GoodsNoteListItemDto;
 type Item = ItemListItemDto;
 
-const NOTE_TYPES = ['GRN', 'GIN'] as const;
+const NOTE_TYPES = ['GRN', 'GIN', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT'] as const;
 type NoteType = (typeof NOTE_TYPES)[number];
 
 const TYPE_LABEL: Record<NoteType, string> = {
   GRN: 'goods.entryVoucher',
   GIN: 'goods.exitVoucher',
+  CONSIGNMENT_IN: 'goods.consignmentIn',
+  CONSIGNMENT_OUT: 'goods.consignmentOut',
 };
-const TYPE_TAG_COLOR: Record<NoteType, string> = { GRN: 'blue', GIN: 'orange' };
+const TYPE_TAG_COLOR: Record<NoteType, string> = {
+  GRN: 'blue',
+  GIN: 'orange',
+  CONSIGNMENT_IN: 'purple',
+  CONSIGNMENT_OUT: 'magenta',
+};
 
 function typeLabelKey(type: GoodsNoteType): string | null {
-  return type === 'GRN' || type === 'GIN' ? TYPE_LABEL[type] : null;
+  return type in TYPE_LABEL ? TYPE_LABEL[type as NoteType] : null;
 }
 
 /** Postable expense accounts: the choices of a GIN's expense account (ADR-026 §8). Module-level so the select stays memoised. */
@@ -152,6 +162,11 @@ export function GoodsNotesSection({
 } = {}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const company = useCompany();
+  const consignmentEnabled = company.data?.consignmentEnabled === true;
+  const availableNoteTypes = NOTE_TYPES.filter(
+    (type) => consignmentEnabled || !isConsignmentNoteType(type),
+  );
   const [apiMessage, contextHolder] = message.useMessage();
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new voucher
@@ -217,14 +232,24 @@ export function GoodsNotesSection({
     queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
     enabled: screen === 'entry' && !entryId,
   });
+  useEffect(() => {
+    if (!consignmentEnabled && typeFilter && isConsignmentNoteType(typeFilter)) {
+      setTypeFilter(undefined);
+    }
+    if (!consignmentEnabled && isConsignmentNoteType(newType)) {
+      setNewType('GRN');
+      setNewWarehouseId(undefined);
+    }
+  }, [consignmentEnabled, newType, typeFilter]);
 
   const itemOptions = items
     .withSelected(lines.map((l) => l.itemId))
     .map((i) => ({ value: i.id, label: codeAndName(i) }));
-  const warehouseOptions = (warehouses ?? []).map((w) => ({
+  const warehouseOptions = goodsNoteWarehouses(newType, warehouses ?? [], consignmentEnabled).map((w) => ({
     value: w.id,
     label: codeAndName(w),
   }));
+  const selectedWarehouse = (warehouses ?? []).find((warehouse) => warehouse.id === newWarehouseId);
 
   const invalidate = () => invalidateStockDocument(queryClient, 'goodsNote');
   const onError = (err: unknown) =>
@@ -235,6 +260,7 @@ export function GoodsNotesSection({
     );
 
   const openNew = (type: NoteType) => {
+    if (isConsignmentNoteType(type) && !consignmentEnabled) return;
     setEntryId(null);
     setNewType(type);
     setNewDate(dayjs());
@@ -327,7 +353,14 @@ export function GoodsNotesSection({
     !!newWarehouseId &&
     lines.some((l) => l.itemId && l.qty) &&
     (newType === 'GIN' ||
-      lines.every((l) => !l.itemId || (l.qty && l.unitCost != null)));
+      newType === 'CONSIGNMENT_OUT' ||
+      lines.every(
+        (l) =>
+          !l.itemId ||
+          (l.qty &&
+            l.unitCost != null &&
+            (newType !== 'CONSIGNMENT_IN' || dec(l.unitCost).gt(0))),
+      ));
 
   // Save stays enabled: a save attempt with gaps marks the missing fields instead.
   const [tried, setTried] = useState(false);
@@ -418,7 +451,7 @@ export function GoodsNotesSection({
               placeholder={t('goods.noteType')}
               value={typeFilter}
               onChange={setTypeFilter}
-              options={NOTE_TYPES.map((vt) => ({ value: vt, label: t(TYPE_LABEL[vt]) }))}
+              options={availableNoteTypes.map((vt) => ({ value: vt, label: t(TYPE_LABEL[vt]) }))}
             />
           }
           count={list.total}
@@ -428,7 +461,7 @@ export function GoodsNotesSection({
             icon={<PlusOutlined />}
             onClick={() => openNew('GRN')}
             menu={{
-              items: NOTE_TYPES.map((vt) => ({
+              items: availableNoteTypes.map((vt) => ({
                 key: vt,
                 label: t(TYPE_LABEL[vt]),
               })),
@@ -607,11 +640,14 @@ export function GoodsNotesSection({
             >
               <GridSelect
                 value={newType}
-                onChange={setNewType}
-                options={NOTE_TYPES.map((vt) => ({
+                options={availableNoteTypes.map((vt) => ({
                   value: vt,
                   label: t(TYPE_LABEL[vt]),
                 }))}
+                onChange={(value: NoteType) => {
+                  setNewType(value);
+                  setNewWarehouseId(undefined);
+                }}
               />
             </DocField>
             <DocField
@@ -635,6 +671,11 @@ export function GoodsNotesSection({
                 onChange={setNewWarehouseId}
               />
             </DocField>
+            {isConsignmentNoteType(newType) && selectedWarehouse?.consignmentSupplier && (
+              <DocField label={t('goods.supplier')}>
+                <DocValue>{codeAndName(selectedWarehouse.consignmentSupplier)}</DocValue>
+              </DocField>
+            )}
             <DocField
               field="description"
               label={t('common.description')}
@@ -746,6 +787,11 @@ export function GoodsNotesSection({
                 <DocValue>{entry.description ?? '—'}</DocValue>
               </DocField>
               <SourceFields entry={entry} />
+              {entry.status === 'POSTED' && isConsignmentNoteType(entry.noteType) && (
+                <DocField label={t('goods.journalEntry')}>
+                  <DocValue>{t('goods.noJournalEntry')}</DocValue>
+                </DocField>
+              )}
             </DocFields>
           )
         )}
@@ -756,7 +802,7 @@ export function GoodsNotesSection({
             onChange={setLines}
             itemOptions={itemOptions}
             onItemSearch={items.onSearch}
-            showCost={newType === 'GRN'}
+            showCost={newType === 'GRN' || newType === 'CONSIGNMENT_IN'}
             showDescription
           />
         ) : linkedDraft ? (

@@ -1,7 +1,7 @@
 # Phase 30 — Consignment stock
 
 **Reference:** [ADR-047](../decisions/ADR-047-phase30-consignment.md) and CS1–CS8 in [BUILD_PLAN §18](../BUILD_PLAN.md#18-السيناريوهات-الذهبية).
-**Scope of this delivery:** consignment stock accounting and workflows in the backend. No consignment UI screens were added.
+**Scope of the backend delivery:** consignment stock accounting and workflows. The web interface is documented in the Web UI section below.
 
 ## Completed
 
@@ -11,7 +11,7 @@
 - Added consignment goods notes, sales, returns, stock-count shortages, settlement invoices, and settlement purchase returns, using the existing posting and stock-ledger services.
 - Added workflow guards for transfers, purchasing, production, issue requests, normal goods notes, manual adjustments, and recipe-based sales from consignment warehouses.
 - Added bounded supplier statements and sold-not-invoiced aging reports, English and Arabic error translations, and tenant export/integrity-check support for consignment sales.
-- Added OpenAPI response schemas and regenerated the typed API client. The existing goods-notes page only gained enum compatibility; no consignment UI was introduced.
+- Added OpenAPI response schemas and regenerated the typed API client. The goods-notes page also supports the consignment note types; the complete web UI is documented below.
 
 ## Schema and migrations
 
@@ -35,9 +35,16 @@
 - [x] API client regenerated from the built API's OpenAPI document.
 - [x] Final full `pnpm --filter api test` result: **171 suites passed, 1 skipped; 1,937 tests passed, 7 skipped**. After printing its completed summary, Jest remained alive and reported open asynchronous handles; the runner was terminated.
 - [x] Fresh MariaDB test database: all 61 migrations deployed; `item_costs` has tenant, company, and item foreign keys plus the four-column pool unique.
-- [x] `prisma migrate diff --from-migrations … --to-schema … ` on MariaDB 11.8 shows no Phase 30 difference. It lists only `MODIFY … JSON NULL` on five older JSON columns, the known MariaDB JSON-alias false positive ([Prisma issue #29530](https://github.com/prisma/prisma/issues/29530)), which also appears without this phase.
+- [x] `prisma migrate diff --from-migrations … --to-schema … ` on MariaDB 11.8 shows no Phase 30 difference. It lists only `MODIFY … JSON NULL` on five older JSON columns, the known MariaDB JSON-alias false positive ([Prisma issue #29530](https://github.com/prisma/prisma/issues/29530)) on columns this phase does not touch.
 
 ## Known limits and next phase
 
 - No ADR-047 behavior was intentionally omitted.
-- Consignment UI remains out of scope for this backend delivery.
+
+## Web UI
+
+- Added the company consignment switch and warehouse supplier picker, tag, and supplier label; both are hidden when the feature is disabled.
+- Added consignment receipt and return types to goods notes, with type-specific warehouse filters, derived read-only supplier, positive receipt cost, hidden return cost, and an explicit no-journal message after posting.
+- Added the permission-gated Consignment screen for open sales, settlement draft creation, supplier statements, and ageing. The invoice header is collected before creating a credit settlement draft and navigating to Purchases.
+- Purchases marks settlement invoices, preserves sale links while editing, and shows cleared values on posted lines. Stock adjustments, transfers, production, purchase orders, and issue requests exclude consignment warehouses; sales invoices retain and label them.
+- Extended open-sales and ageing responses with source document numbers and unit cost, then regenerated the typed API client. Source labels show the invoice or stock-count number, with the record ID as a fallback.

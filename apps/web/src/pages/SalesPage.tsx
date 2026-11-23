@@ -578,6 +578,7 @@ function InvoiceForm({
   onLockBlocked?: () => void;
 }) {
   const { t } = useTranslation();
+  const company = useCompany();
   const { can, me, companyId } = useAuth();
   const editLock = useDocumentLock('SALES_INVOICE', isNew ? null : invoice?.id, !isNew && !loading && invoice?.status === 'DRAFT');
   useEffect(() => {
@@ -634,7 +635,14 @@ function InvoiceForm({
 
   const warehouseOptions = lookups.warehouses.map((w) => ({
     value: w.id,
-    label: codeAndName(w),
+    label: (
+      <span>
+        {codeAndName(w)}
+        {company.data?.consignmentEnabled && w.consignmentSupplierId !== null && (
+          <Tag color="purple">{t('consignment.tag')}</Tag>
+        )}
+      </span>
+    ),
   }));
   const cashAccountOptions = [...lookups.cashAccountOptions];
   if (

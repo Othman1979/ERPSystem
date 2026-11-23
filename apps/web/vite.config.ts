@@ -1,3 +1,4 @@
+import { env } from 'node:process';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 import { precompress } from './vite-precompress.js';
@@ -33,7 +34,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: env.API_PROXY_TARGET ?? 'http://localhost:3001',
         changeOrigin: true,
         // Pass the browser's address on, as a production proxy does (ADR-011).
         xfwd: true,

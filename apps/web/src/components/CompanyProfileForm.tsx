@@ -41,7 +41,7 @@ function isRaiseFromSimple(from: string | undefined, to: string | undefined): bo
 type FormValues = Pick<
   CompanyDto,
   'legalNameAr' | 'legalNameEn' | 'taxNumber' | 'commercialRegistration' | 'address' | 'phone' | 'pricesIncludeTax' | 'procurementLevel'
-  | 'costCentersEnabled'
+  | 'costCentersEnabled' | 'consignmentEnabled'
 >;
 
 /**
@@ -93,6 +93,9 @@ export function CompanyProfileForm({
       // A refused lowering (ADR-024 §2.2): the select goes back to the saved level.
       if (err instanceof ApiError && err.code === 'PROCUREMENT_LEVEL_HAS_OPEN_DOCUMENTS' && company.data) {
         form.setFieldsValue({ procurementLevel: company.data.procurementLevel });
+      }
+      if (err instanceof ApiError && err.code === 'CONSIGNMENT_IN_USE' && company.data) {
+        form.setFieldsValue({ consignmentEnabled: company.data.consignmentEnabled });
       }
       onError(err);
     },
@@ -221,6 +224,14 @@ export function CompanyProfileForm({
                   <Switch />
                 </Form.Item>
               )}
+              <Form.Item
+                name="consignmentEnabled"
+                label={t('company.consignmentEnabled')}
+                valuePropName="checked"
+                extra={t('company.consignmentEnabledHint')}
+              >
+                <Switch disabled={!can(PERMISSIONS.COMPANY_MANAGE)} />
+              </Form.Item>
               {withProcurement && (
                 <Form.Item
                   name="procurementLevel"

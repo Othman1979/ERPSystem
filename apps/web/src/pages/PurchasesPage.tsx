@@ -20,6 +20,7 @@ import {
 import { PartyFormDialog } from '../components/PartyFormDialog';
 import { ItemFormDialog } from '../components/ItemFormDialog';
 import { DatePicker } from '../components/DatePicker';
+import { useCompany } from '../components/CompanyProfileForm';
 import dayjs, { type Dayjs } from 'dayjs';
 import { formatDate } from '../format/date';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -216,14 +217,16 @@ function usePurchaseLookups() {
 
 function PurchaseInvoicesTab() {
   const { t } = useTranslation();
+  const company = useCompany();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
+  const requestedInvoiceId = searchParams.get('invoiceId');
   const [statusFilter, setStatusFilter] = useState<PurchasesControllerListInvoicesStatus | undefined>(
     () => (searchParams.get('status') === 'DRAFT' ? 'DRAFT' : undefined),
   );
   const [paymentFilter, setPaymentFilter] = useState<PurchasesControllerListInvoicesPaymentType | undefined>(undefined);
-  const [screen, setScreen] = useState<'list' | 'form' | 'view'>('list');
-  const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [screen, setScreen] = useState<'list' | 'form' | 'view'>(requestedInvoiceId ? 'view' : 'list');
+  const [invoiceId, setInvoiceId] = useState<string | null>(requestedInvoiceId);
   const [apiMessage, contextHolder] = message.useMessage();
   const lookups = usePurchaseLookups();
   useNewFromUrl(() => {
@@ -336,6 +339,12 @@ function PurchaseInvoicesTab() {
         <Tag color={v === 'CASH' ? 'green' : 'blue'}>{t(`purchases.${v}`)}</Tag>
       ),
     },
+    ...(company.data?.consignmentEnabled ? [{
+      title: t('consignment.settlementBadge'),
+      dataIndex: 'consignmentSettlement',
+      width: 150,
+      render: (value: boolean) => value ? <Tag color="purple">{t('consignment.settlementBadge')}</Tag> : null,
+    }] : []),
     {
       title: t('purchases.grandTotal'),
       dataIndex: 'grandTotal',
@@ -562,15 +571,22 @@ function PurchaseInvoiceForm({
         qty: l.qtyBase,
         price: l.unitCost,
         discountPct: l.discountPct,
+        consignmentSaleId: l.consignmentSaleId ?? undefined,
       }));
     }
     return [emptyInvoiceLine(1), emptyInvoiceLine(2)];
   });
 
-  const warehouseOptions = lookups.warehouses.map((w) => ({
+  const warehouseOptions = lookups.warehouses
+    .filter((w) =>
+      invoice?.consignmentSettlement
+        ? w.id === invoice.warehouseId
+        : w.consignmentSupplierId === null,
+    )
+    .map((w) => ({
     value: w.id,
     label: codeAndName(w),
-  }));
+    }));
   const cashAccountOptions = [...lookups.cashAccountOptions];
   if (
     restoredCashAccount &&
@@ -805,7 +821,7 @@ function PurchaseInvoiceForm({
           onKeyDown={enterTo(() => focusNamedField('warehouse'))}
         >
           {/* Searches suppliers on the server by code or name (ADR-022 §8). */}
-          <RemoteSelect
+        <RemoteSelect
             queryKey={['parties', 'pick', 'SUPPLIER']}
             fetchOptions={(q, signal) =>
               partiesControllerList(
@@ -824,6 +840,7 @@ function PurchaseInvoiceForm({
             status={requiredError(missing.supplier) ? 'error' : undefined}
             value={supplierId}
             onChange={setSupplierId}
+            disabled={invoice?.consignmentSettlement === true}
             onCreateNew={
               can(PERMISSIONS.PARTIES_MANAGE)
                 ? (typedText) => setQuickCreate({ kind: 'party', typedText })
@@ -844,6 +861,7 @@ function PurchaseInvoiceForm({
             options={warehouseOptions}
             value={warehouseId}
             onChange={setWarehouseId}
+            disabled={invoice?.consignmentSettlement === true}
           />
         </DocField>
         <DocField
@@ -937,11 +955,12 @@ function PurchaseInvoiceForm({
         onItemSearch={items.onSearch}
         onItemOpen={items.onOpen}
         onCreateItem={
-          can(PERMISSIONS.ITEM_MANAGE)
+          can(PERMISSIONS.ITEM_MANAGE) && invoice?.consignmentSettlement !== true
             ? (lineKey, row, typedText) => setQuickCreate({ kind: 'item', lineKey, row, typedText })
             : undefined
         }
         priceLabel={t('purchases.unitCost')}
+        lockedItems={invoice?.consignmentSettlement === true}
       />
       <PartyFormDialog
         open={quickCreate?.kind === 'party'}
@@ -1024,6 +1043,7 @@ function PurchaseInvoiceView({
 }) {
   const lockHeaders = documentLockHeaders();
   const { t } = useTranslation();
+  const company = useCompany();
   const [apiMessage, contextHolder] = message.useMessage();
   const { modal } = App.useApp();
   const costCenters = useCostCenters();
@@ -1154,6 +1174,11 @@ function PurchaseInvoiceView({
         />
       )}
       <DocFields>
+        {invoice.consignmentSettlement && company.data?.consignmentEnabled && (
+          <DocField label={t('consignment.settlementBadge')}>
+            <DocValue><Tag color="purple">{t('consignment.settlementBadge')}</Tag></DocValue>
+          </DocField>
+        )}
         <DocField label={t('purchases.supplier')}>
           <DocValue>{displayName(invoice.supplier)}</DocValue>
         </DocField>
@@ -1221,6 +1246,16 @@ function PurchaseInvoiceView({
             render: (_: unknown, l: InvoiceLine) =>
               l.item ? codeAndName(l.item) : l.itemId,
           },
+          ...(invoice.consignmentSettlement && company.data?.consignmentEnabled
+            ? [{
+                title: t('consignment.clearedValue'),
+                dataIndex: 'consignmentClearedValue',
+                width: 130,
+                align: 'right' as const,
+                className: 'num',
+                render: amountCell,
+              }]
+            : []),
           { title: t('stock.qty'), dataIndex: 'qtyBase', width: 90, align: 'right' as const, className: 'num', render: qtyCell },
           { title: t('purchases.unitCost'), dataIndex: 'unitCost', width: 110, align: 'right' as const, className: 'num', render: unitCostCell },
           { title: t('purchases.discountPct'), dataIndex: 'discountPct', width: 90, align: 'right' as const },

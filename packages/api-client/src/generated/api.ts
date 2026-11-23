@@ -3691,6 +3691,8 @@ export interface ConsignmentOpenSaleResponseDto {
   sourceType: ConsignmentSaleSourceType;
   sourceId: string;
   sourceLineId: string;
+  /** @nullable */
+  sourceNo: string | null;
   saleDate: string;
   qty: string;
   value: string;
@@ -3701,6 +3703,7 @@ export interface ConsignmentOpenSaleResponseDto {
   createdAt: string;
   openQty: string;
   openValue: string;
+  unitCost: string;
   item: ConsignmentItemResponseDto;
 }
 
@@ -3736,6 +3739,8 @@ export interface ConsignmentAgingResponseDto {
   sourceType: ConsignmentSaleSourceType;
   sourceId: string;
   sourceLineId: string;
+  /** @nullable */
+  sourceNo: string | null;
   saleDate: string;
   qty: string;
   value: string;
@@ -3746,6 +3751,7 @@ export interface ConsignmentAgingResponseDto {
   createdAt: string;
   openQty: string;
   openValue: string;
+  unitCost: string;
   item: ConsignmentItemResponseDto;
   ageDays: number;
   ageBucket: ConsignmentAgingResponseDtoAgeBucket;
@@ -12226,6 +12232,8 @@ export type GoodsNotesControllerListNoteType = typeof GoodsNotesControllerListNo
 export const GoodsNotesControllerListNoteType = {
   GRN: 'GRN',
   GIN: 'GIN',
+  CONSIGNMENT_IN: 'CONSIGNMENT_IN',
+  CONSIGNMENT_OUT: 'CONSIGNMENT_OUT',
 } as const;
 
 export type ProcurementControllerListRequestsParams = {

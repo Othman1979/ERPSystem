@@ -16,7 +16,7 @@ const DOCUMENT_STATUSES = ['DRAFT', 'POSTED'] as const;
 /** A physical count also has SUBMITTED (ADR-030 §5). */
 const COUNT_STATUSES = ['DRAFT', 'SUBMITTED', 'POSTED'] as const;
 const ADJUSTMENT_TYPES = ['OPENING', 'IN', 'OUT', 'COUNT_ADJUSTMENT'] as const;
-const NOTE_TYPES = ['GRN', 'GIN'] as const;
+const NOTE_TYPES = ['GRN', 'GIN', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT'] as const;
 
 
 /** Sort keys of a stock document list: its document date and its number. */
