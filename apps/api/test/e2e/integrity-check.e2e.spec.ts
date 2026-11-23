@@ -19,6 +19,12 @@ const API_PORT = 3661;
 const BASE = `http://127.0.0.1:${API_PORT}`;
 const RUN = Date.now().toString(36);
 const PASS = 'test-password-123';
+const CURRENT_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Amman',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date());
 const API_DIR = path.resolve(import.meta.dirname, '..', '..');
 
 const CHECKS = [
@@ -141,7 +147,7 @@ describe('Integrity check job — references and collation', () => {
       .post('/api/v1/journal-entries')
       .set(auth(tenantA.token))
       .send({
-        entryDate: new Date().toISOString().slice(0, 10),
+        entryDate: CURRENT_DATE,
         description: 'integrity fixture',
         lines: [
           { accountId: cash.id, debit: '10.000' },
@@ -182,7 +188,7 @@ describe('Integrity check job — references and collation', () => {
     });
     expect(item.status).toBe(201);
     const receipt = await api().post('/api/v1/goods-notes').set(auth(tenantA.token)).send({
-      noteDate: new Date().toISOString().slice(0, 10),
+      noteDate: CURRENT_DATE,
       noteType: 'CONSIGNMENT_IN',
       warehouseId: warehouse.body.id,
       lines: [{ itemId: item.body.id, qty: '2' }],
@@ -197,7 +203,7 @@ describe('Integrity check job — references and collation', () => {
       throw new Error(`Post temporary receipt: ${JSON.stringify(postedReceipt.body)}`);
     }
     const supplierReturn = await api().post('/api/v1/goods-notes').set(auth(tenantA.token)).send({
-      noteDate: new Date().toISOString().slice(0, 10),
+      noteDate: CURRENT_DATE,
       noteType: 'CONSIGNMENT_OUT',
       warehouseId: warehouse.body.id,
       lines: [{ itemId: item.body.id, qty: '1' }],
@@ -299,7 +305,7 @@ describe('Integrity check job — references and collation', () => {
       .post('/api/v1/stock-adjustments')
       .set(auth(c.token))
       .send({
-        adjustmentDate: new Date().toISOString().slice(0, 10),
+        adjustmentDate: CURRENT_DATE,
         adjustmentType: 'OPENING',
         warehouseId: wh.body.id,
         lines: [{ itemId: item.body.id, qty: '10', unitCost: '5.000' }],
