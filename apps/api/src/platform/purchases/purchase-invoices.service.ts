@@ -235,11 +235,11 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
              i.grand_total, i.paid_amount, COALESCE(r.credited, 0) AS credited
         FROM purchase_invoices i
         LEFT JOIN (
-          SELECT original_invoice_id, SUM(grand_total) AS credited
-            FROM purchase_returns
-           WHERE s.tenant_id = ${tenantId} AND s.company_id = ${companyId}
-             AND status = 'POSTED' AND refund_type = 'CREDIT' AND return_date <= ${day}
-           GROUP BY original_invoice_id
+          SELECT r.original_invoice_id, SUM(r.grand_total) AS credited
+            FROM purchase_returns r
+           WHERE r.tenant_id = ${tenantId} AND r.company_id = ${companyId}
+             AND r.status = 'POSTED' AND r.refund_type = 'CREDIT' AND r.return_date <= ${day}
+           GROUP BY r.original_invoice_id
         ) r ON r.original_invoice_id = i.id
        WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId}
          AND i.status = 'POSTED' AND i.payment_type = 'CREDIT' AND i.invoice_date <= ${day}
