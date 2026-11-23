@@ -193,14 +193,14 @@ function OpenSalesTab() {
       ),
     },
   ];
-    const rowSelection = {
-      selectedRowKeys: Object.keys(selected),
-      preserveSelectedRowKeys: true,
-      onSelect: (sale: ConsignmentOpenSaleResponseDto, checked: boolean) =>
-        setSelected((current) => updateConsignmentSelection(current, [sale], checked)),
-      onSelectAll: (checked: boolean) =>
-        setSelected((current) => updateConsignmentSelection(current, rows, checked)),
-    };
+  const rowSelection = {
+    selectedRowKeys: Object.keys(selected),
+    preserveSelectedRowKeys: true,
+    onSelect: (sale: ConsignmentOpenSaleResponseDto, checked: boolean) =>
+      setSelected((current) => updateConsignmentSelection(current, [sale], checked)),
+    onSelectAll: (checked: boolean) =>
+      setSelected((current) => updateConsignmentSelection(current, rows, checked)),
+  };
   const startCreate = () => {
     if (!selectedRows.length) {
       apiMessage.warning(t('consignment.selectRows'));
