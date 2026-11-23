@@ -779,7 +779,7 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
 
     const followupCount = await expectSuccess<{ id: string; lines: { id: string; itemId: string }[] }>(
       await api().post('/api/v1/stock-counts').set(auth(token)).send({
-        countDate: '2025-04-01',
+        countDate: CURRENT_DATE,
         warehouseId: warehouse,
         scope: 'ITEMS',
         itemIds: [itemId],
