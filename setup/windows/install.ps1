@@ -914,6 +914,7 @@ try {
     }
     Invoke-JobNow -Job 'backup'
     Invoke-JobNow -Job 'backup-verify' -JobArguments @('latest')
+    Set-ErpJobTasksEnabled -Enabled $true
 
     $shortcut = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'ERP Cloud.url'
     Write-Utf8NoBom -Path $shortcut -Text "[InternetShortcut]`r`nURL=$url`r`n"

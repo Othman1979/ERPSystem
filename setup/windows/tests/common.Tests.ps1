@@ -71,6 +71,21 @@ Describe 'Test-ErpLegacyUpdater' {
     }
 }
 
+Describe 'Set-ErpJobTasksEnabled' {
+    It 'enables existing jobs without enabling legacy App and Caddy tasks' -Skip:($env:OS -ne 'Windows_NT') {
+        Mock Get-ScheduledTask {
+            foreach ($name in @('Job-backup', 'Job-stock-verify', 'App', 'Caddy')) {
+                [pscustomobject]@{ TaskName = $name; State = 'Disabled' }
+            }
+        }
+        Mock Enable-ScheduledTask {}
+        Set-ErpJobTasksEnabled -Enabled $true
+        Should -Invoke Enable-ScheduledTask -Exactly 1 -ParameterFilter { $TaskName -eq 'Job-backup' }
+        Should -Invoke Enable-ScheduledTask -Exactly 1 -ParameterFilter { $TaskName -eq 'Job-stock-verify' }
+        Should -Invoke Enable-ScheduledTask -Exactly 0 -ParameterFilter { $TaskName -in @('App', 'Caddy') }
+    }
+}
+
 BeforeAll {
     . (Join-Path $PSScriptRoot '..\lib\common.ps1')
 
