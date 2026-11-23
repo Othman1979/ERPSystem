@@ -28,7 +28,7 @@ import { useCompany } from '../components/CompanyProfileForm';
 import { formatDate } from '../format/date';
 import { dec, formatQty, sum } from '../format/number';
 import { codeAndName, displayName } from '../i18n/displayName';
-import { consignmentSettlementBody } from './consignmentPayload';
+import { consignmentSettlementBody, updateConsignmentSelection } from './consignmentPayload';
 
 type Supplier = { id: string; code: string; nameAr: string; nameEn: string | null };
 
@@ -193,17 +193,14 @@ function OpenSalesTab() {
       ),
     },
   ];
-  const rowSelection = {
-    selectedRowKeys: Object.keys(selected),
-    preserveSelectedRowKeys: true,
-    onSelect: (sale: ConsignmentOpenSaleResponseDto, checked: boolean) =>
-      setSelected((current) => {
-        const next = { ...current };
-        if (checked) next[sale.id] = current[sale.id] ?? { sale, qty: sale.openQty, unitPrice: '' };
-        else delete next[sale.id];
-        return next;
-      }),
-  };
+    const rowSelection = {
+      selectedRowKeys: Object.keys(selected),
+      preserveSelectedRowKeys: true,
+      onSelect: (sale: ConsignmentOpenSaleResponseDto, checked: boolean) =>
+        setSelected((current) => updateConsignmentSelection(current, [sale], checked)),
+      onSelectAll: (checked: boolean) =>
+        setSelected((current) => updateConsignmentSelection(current, rows, checked)),
+    };
   const startCreate = () => {
     if (!selectedRows.length) {
       apiMessage.warning(t('consignment.selectRows'));

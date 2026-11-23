@@ -6,6 +6,24 @@ export interface SettlementSelection {
   unitPrice: string;
 }
 
+export type ConsignmentSalesSelection = Record<string, SettlementSelection>;
+
+export function updateConsignmentSelection(
+  current: ConsignmentSalesSelection,
+  sales: ConsignmentOpenSaleResponseDto[],
+  selected: boolean,
+): ConsignmentSalesSelection {
+  const next = { ...current };
+  for (const sale of sales) {
+    if (selected) {
+      next[sale.id] = current[sale.id] ?? { sale, qty: sale.openQty, unitPrice: '' };
+    } else {
+      delete next[sale.id];
+    }
+  }
+  return next;
+}
+
 export function consignmentSettlementBody(input: {
   invoiceDate: string;
   supplierInvoiceNo?: string;
