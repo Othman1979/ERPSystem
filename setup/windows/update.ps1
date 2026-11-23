@@ -35,7 +35,7 @@ function Invoke-UpdateCommand {
     Write-Step $StepName
     Push-Location $WorkingDirectory
     try {
-        & $FilePath @Arguments
+        & $FilePath @Arguments | Out-Host
         $code = $LASTEXITCODE
     } finally {
         Pop-Location
@@ -47,7 +47,7 @@ function Invoke-UpdateCommand {
 
 function Invoke-UpdateBackup {
     $runner = Join-Path $PSScriptRoot 'run-job.ps1'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runner -Job backup -AppDir $AppDir -DataDir $DataDir -NodeExe $nodeExe
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runner -Job backup -AppDir $AppDir -DataDir $DataDir -NodeExe $nodeExe | Out-Host
     if ($LASTEXITCODE -ne 0) {
         throw "The pre-update backup failed with exit code $LASTEXITCODE."
     }
@@ -118,7 +118,7 @@ try {
     $env:DATABASE_URL = $null
     Invoke-UpdateCommand -FilePath $pnpmPath -Arguments @('--filter', 'api', 'ledger:check') -WorkingDirectory $AppDir -StepName 'Checking posted ledger data'
     Write-Step 'Fast-forwarding the server clone'
-    & git -C $AppDir pull --ff-only
+    & git -C $AppDir pull --ff-only | Out-Host
     if ($LASTEXITCODE -ne 0) {
         throw "git pull --ff-only failed with exit code $LASTEXITCODE."
     }

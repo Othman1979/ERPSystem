@@ -455,7 +455,7 @@ function Rotate-LogFile {
         if ((Get-Item -LiteralPath $Path).Length -ge $MaximumBytes) {
             $previous = "$Path.1"
             Remove-Item -LiteralPath $previous -Force -ErrorAction SilentlyContinue
-            Move-Item -LiteralPath $Path -Destination $previous -Force
+            Move-Item -LiteralPath $Path -Destination $previous -Force | Out-Null
         }
     }
 }
@@ -659,13 +659,13 @@ function New-TaskMonthlyTriggerXml {
 
 function Start-ErpTask {
     param([Parameter(Mandatory = $true)][string]$Name)
-    Start-ScheduledTask -TaskPath $script:ErpTaskPath -TaskName $Name
+    Start-ScheduledTask -TaskPath $script:ErpTaskPath -TaskName $Name | Out-Null
 }
 
 function Stop-ErpTask {
     param([Parameter(Mandatory = $true)][string]$Name)
     try {
-        Stop-ScheduledTask -TaskPath $script:ErpTaskPath -TaskName $Name -ErrorAction Stop
+        Stop-ScheduledTask -TaskPath $script:ErpTaskPath -TaskName $Name -ErrorAction Stop | Out-Null
     } catch {
     }
 }

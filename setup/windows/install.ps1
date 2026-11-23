@@ -32,7 +32,7 @@ function Invoke-CheckedCommand {
     Write-Step $StepName
     Push-Location $WorkingDirectory
     try {
-        & $FilePath @Arguments
+        & $FilePath @Arguments | Out-Host
         $code = $LASTEXITCODE
     } finally {
         Pop-Location
@@ -194,7 +194,7 @@ function Install-GitIfMissing {
         Fail 'Git is required. Install Git for Windows from https://git-scm.com/download/win, then run setup again.'
     }
     Write-Step 'Installing Git for Windows with winget'
-    & $winget.Source install --id Git.Git -e --silent --accept-package-agreements --accept-source-agreements
+    & $winget.Source install --id Git.Git -e --silent --accept-package-agreements --accept-source-agreements | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Fail 'winget could not install Git. Install Git for Windows manually and run setup again.'
     }
@@ -219,16 +219,16 @@ function Ensure-AppClone {
             Fail "AppDir exists but is not a Git clone: $Destination"
         }
         Write-Step "Cloning the dedicated server copy to $Destination"
-        & git clone $SourceRoot $Destination
+        & git clone $SourceRoot $Destination | Out-Host
         if ($LASTEXITCODE -ne 0) {
             Fail "Could not clone the setup repository into $Destination."
         }
     }
-    & git -C $Destination remote set-url origin $origin
+    & git -C $Destination remote set-url origin $origin | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Fail 'Could not configure the server clone origin.'
     }
-    & git -C $Destination pull --ff-only origin main
+    & git -C $Destination pull --ff-only origin main | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Write-Warning 'Could not fast-forward the server clone from origin/main; continuing with its current commit.'
     }
@@ -388,12 +388,12 @@ function Ensure-MariaDbInstance {
     }
     Set-RestrictedAcl -Path $rootSecretPath
     $iniChanged = Set-MyIniValues -Path $myIni -DataDirValue $dbData -Port $port
-    Set-Service -Name 'ERP-MariaDB' -StartupType Automatic
+    Set-Service -Name 'ERP-MariaDB' -StartupType Automatic | Out-Null
     $service = Get-Service -Name 'ERP-MariaDB'
     if ($iniChanged -and $service.Status -eq 'Running') {
-        Restart-Service -Name 'ERP-MariaDB' -Force
+        Restart-Service -Name 'ERP-MariaDB' -Force | Out-Null
     } elseif ($service.Status -ne 'Running') {
-        Start-Service -Name 'ERP-MariaDB'
+        Start-Service -Name 'ERP-MariaDB' | Out-Null
     }
     $deadline = (Get-Date).AddSeconds(60)
     do {
@@ -457,7 +457,7 @@ function Invoke-JobNow {
         $runnerArguments += '-JobArguments'
         $runnerArguments += $JobArguments
     }
-    & powershell.exe @runnerArguments
+    & powershell.exe @runnerArguments | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Fail "The $Job job failed with exit code $LASTEXITCODE."
     }

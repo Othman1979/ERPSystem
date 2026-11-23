@@ -35,7 +35,7 @@ Stop-ErpCaddy -DataDir $DataDir
 $tasks = Get-ScheduledTask -TaskPath '\ERP Cloud\' -ErrorAction SilentlyContinue
 foreach ($task in $tasks) {
     Stop-ErpTask -Name $task.TaskName
-    Unregister-ScheduledTask -TaskPath '\ERP Cloud\' -TaskName $task.TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskPath '\ERP Cloud\' -TaskName $task.TaskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 }
 
 Write-Step 'Removing ERP Cloud firewall rules and shortcuts'

@@ -38,7 +38,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $apiDir '.env'))) {
 }
 Push-Location $apiDir
 try {
-    & $nodePath 'dist/jobs/cli.js' 'grant-platform-admin' $Email
+    & $nodePath 'dist/jobs/cli.js' 'grant-platform-admin' $Email | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Fail "grant-platform-admin failed with exit code $LASTEXITCODE."
     }

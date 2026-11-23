@@ -160,3 +160,28 @@ port=3310
         Get-MariaDbIniPort -Text "[client]`r`nport=3306`r`n[mysqld]`r`n" | Should -Be 0
     }
 }
+
+Describe 'Native command output suppression' {
+    It 'returns only the function value when a native command writes output' {
+        function Invoke-TestNativeCommand {
+            param(
+                [Parameter(Mandatory = $true)][string]$FilePath,
+                [string[]]$Arguments = @(),
+                [Parameter(Mandatory = $true)][string]$Value
+            )
+            & $FilePath @Arguments | Out-Host
+            if ($LASTEXITCODE -ne 0) {
+                throw "Native command failed with exit code $LASTEXITCODE."
+            }
+            return $Value
+        }
+
+        if (Test-Path -LiteralPath '/bin/echo') {
+            $result = @(Invoke-TestNativeCommand -FilePath '/bin/echo' -Arguments @('noise') -Value 'node.exe')
+        } else {
+            $result = @(Invoke-TestNativeCommand -FilePath $env:ComSpec -Arguments @('/c', 'echo noise') -Value 'node.exe')
+        }
+        $result.Count | Should -Be 1
+        $result[0] | Should -BeExactly 'node.exe'
+    }
+}
