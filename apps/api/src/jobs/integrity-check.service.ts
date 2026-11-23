@@ -156,7 +156,7 @@ export class IntegrityCheckService {
               OR (x.source_type = 'PURCHASE_RETURN' AND EXISTS (SELECT 1 FROM purchase_returns d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'STOCK_ADJUSTMENT' AND EXISTS (SELECT 1 FROM stock_adjustments d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'STOCK_TRANSFER' AND EXISTS (SELECT 1 FROM stock_transfers d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
-              OR (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE') AND EXISTS (SELECT 1 FROM goods_notes d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
+              OR (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT') AND EXISTS (SELECT 1 FROM goods_notes d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'CASH_TRANSFER' AND EXISTS (SELECT 1 FROM cash_transfers d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'RECEIPT' AND EXISTS (SELECT 1 FROM receipts d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'PAYMENT' AND EXISTS (SELECT 1 FROM payments d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
@@ -187,7 +187,7 @@ export class IntegrityCheckService {
       'stock_movements.source',
       db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM stock_movements x
         WHERE NOT (
-          (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE') AND EXISTS (SELECT 1 FROM goods_notes d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
+          (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT') AND EXISTS (SELECT 1 FROM goods_notes d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
           OR (x.source_type = 'STOCK_ADJUSTMENT' AND EXISTS (SELECT 1 FROM stock_adjustments d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
           OR (x.source_type = 'STOCK_TRANSFER' AND EXISTS (SELECT 1 FROM stock_transfers d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
           OR (x.source_type = 'PURCHASE_INVOICE' AND EXISTS (SELECT 1 FROM purchase_invoices d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
@@ -211,10 +211,10 @@ export class IntegrityCheckService {
     await orphans(
       'stock_movements.source_line',
       db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM stock_movements x
-        WHERE x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE', 'STOCK_ADJUSTMENT', 'STOCK_TRANSFER',
+        WHERE x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT', 'STOCK_ADJUSTMENT', 'STOCK_TRANSFER',
                                 'PURCHASE_INVOICE', 'PURCHASE_RETURN', 'SALES_INVOICE', 'SALES_RETURN', 'PRODUCTION')
           AND NOT (
-            (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE') AND EXISTS (
+            (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT') AND EXISTS (
               SELECT 1 FROM goods_note_lines l WHERE l.tenant_id = x.tenant_id AND l.id = x.source_line_id AND l.note_id = x.source_id))
             OR (x.source_type = 'STOCK_ADJUSTMENT' AND EXISTS (
               SELECT 1 FROM stock_adjustment_lines l WHERE l.tenant_id = x.tenant_id AND l.id = x.source_line_id
