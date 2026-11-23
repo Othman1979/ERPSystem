@@ -525,13 +525,17 @@ function Set-RestrictedAcl {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [switch]$Directory,
-        [switch]$ReadOnlyUsers
+        [switch]$ReadOnlyUsers,
+        [switch]$Recurse
     )
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Cannot protect a missing path: $Path"
     }
     if ($ReadOnlyUsers -and -not $Directory) {
         throw '-ReadOnlyUsers requires -Directory.'
+    }
+    if ($Recurse -and -not $Directory) {
+        throw '-Recurse requires -Directory.'
     }
     $arguments = @($Path, '/inheritance:r', '/grant:r')
     if ($Directory) {
@@ -540,7 +544,9 @@ function Set-RestrictedAcl {
         if ($ReadOnlyUsers) {
             $arguments += '*S-1-5-32-545:(OI)(CI)RX'
         }
-        $arguments += @('/T', '/C', '/Q')
+        if ($Recurse) {
+            $arguments += @('/T', '/C', '/Q')
+        }
     } else {
         $arguments += '*S-1-5-32-544:F'
         $arguments += '*S-1-5-18:F'
