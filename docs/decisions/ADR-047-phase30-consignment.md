@@ -58,10 +58,11 @@ CONSIGNMENT_PAYABLE), returned_qty/returned_value (sales returns), invoiced_qty/
 purchase returns). Open qty = qty − returned_qty − invoiced_qty ≥ 0; open value likewise.
 - Settlement: the user picks open rows of one supplier/warehouse; each settlement line references one row
   (`purchase_invoice_lines.consignment_sale_id`), with qty ≤ open qty and a unit price defaulting to the row's unit
-  cost. Cleared value = round3(value × qty / row qty), or the full open value when the line closes the row. Stored on
-  the line (`consignment_cleared_value`). Over-invoicing (also concurrently) is refused with `CONSIGNMENT_OVER_INVOICED`.
+  cost. Cleared value = round3(open value × qty / open qty), or the full open value when the line closes the row.
+  Stored on the line (`consignment_cleared_value`). Over-invoicing (also concurrently) is refused with `CONSIGNMENT_OVER_INVOICED`.
 - Sales return of a consignment line may return only the row's open qty; beyond it `CONSIGNMENT_ALREADY_INVOICED`
-  (record a purchase return on the settlement invoice first). returned_value = the return line's cost.
+  (record a purchase return on the settlement invoice first). returned_value uses the same open-value rule as a
+  settlement, so the row's open value never goes negative.
 - Purchase return of a settlement line lowers invoiced_qty/invoiced_value by round3(line cleared × qty / line qty),
   or the line's remaining cleared value when fully returned.
 - Locks: document row, then stock locks if any, then `consignment_sales` rows FOR UPDATE by id ascending.
