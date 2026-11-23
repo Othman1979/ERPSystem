@@ -209,7 +209,15 @@ export class CompanyService {
             where: { companyId: c.id, status: 'DRAFT', consignmentSettlement: true },
             select: { id: true },
           });
-          if (stock || openSale || draftNote || draftSettlement) {
+          const draftSettlementReturn = await tx.purchaseReturn.findFirst({
+            where: {
+              companyId: c.id,
+              status: 'DRAFT',
+              originalInvoice: { consignmentSettlement: true },
+            },
+            select: { id: true },
+          });
+          if (stock || openSale || draftNote || draftSettlement || draftSettlementReturn) {
             throw new DomainError(ErrorCode.CONSIGNMENT_IN_USE, 'Temporary-receipt stock or documents remain');
           }
         }
