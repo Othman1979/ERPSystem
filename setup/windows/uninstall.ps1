@@ -41,6 +41,7 @@ foreach ($task in $tasks) {
 Write-Step 'Removing ERP Cloud firewall rules and shortcuts'
 Remove-NetFirewallRule -DisplayName 'ERP Cloud HTTPS' -ErrorAction SilentlyContinue
 Remove-NetFirewallRule -DisplayName 'ERP Cloud HTTP' -ErrorAction SilentlyContinue
+Remove-NetFirewallRule -DisplayName 'ERP Cloud API (block LAN)' -ErrorAction SilentlyContinue
 $publicShortcut = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'ERP Cloud.url'
 Remove-Item -LiteralPath $publicShortcut -Force -ErrorAction SilentlyContinue
 

@@ -74,6 +74,7 @@ trust-client.bat -Server erp-server -HttpPort 80 -HttpsPort 443
 |---|---|
 | 443 أو 80 مشغول | يستخدم التثبيت 8443 أو 8080؛ مرّر المنفذين إلى `trust-client.bat` وافتح عنوان HTTPS المطبوع. |
 | لا يمكن للموظفين الاتصال | تحقق من أن ملف الشبكة Private/Domain، ومن عنوان IP والحجز، ومن قواعد الجدار الناري. لا تفتح API أو MariaDB على LAN. |
+| API متاحة مباشرة من LAN | تحقق من قاعدة `ERP Cloud API (block LAN)` على منفذ API المهيأ؛ يسمح ذلك لـ Caddy بالاتصال المحلي ولا يفتح API للشبكة. |
 | تحذير شهادة المتصفح | قارن بصمة SHA-256 مع `INSTALL-INFO.txt`، وتأكد أن العميل استورد `erp-ca.crt`. في Firefox استورد CA في إعداداته عند الحاجة. |
 | API لا تعمل | افحص `C:\ERPData\logs\app.log` ثم نفّذ `preflight` من `C:\ERP\app\apps\api`. |
 | HTTPS لا يعمل | افحص `C:\ERPData\logs\caddy.log`، ثم تحقق من خدمة Caddy والشهادة في `C:\ERPData\caddy\data`. |

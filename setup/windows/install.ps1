@@ -789,11 +789,12 @@ try {
     }
 
     Write-Step 'Opening private/domain firewall ports'
-    foreach ($ruleName in @('ERP Cloud HTTPS', 'ERP Cloud HTTP')) {
+    foreach ($ruleName in @('ERP Cloud HTTPS', 'ERP Cloud HTTP', 'ERP Cloud API (block LAN)')) {
         Remove-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
     }
     New-NetFirewallRule -DisplayName 'ERP Cloud HTTPS' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $HttpsPort -Profile Private,Domain | Out-Null
     New-NetFirewallRule -DisplayName 'ERP Cloud HTTP' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $HttpPort -Profile Private,Domain | Out-Null
+    New-NetFirewallRule -DisplayName 'ERP Cloud API (block LAN)' -Direction Inbound -Action Block -Protocol TCP -LocalPort $ApiPort -Profile Any | Out-Null
     if (Get-NetConnectionProfile -ErrorAction SilentlyContinue | Where-Object { $_.NetworkCategory -eq 'Public' }) {
         Write-Warning 'The active network profile is Public. Windows Firewall rules are limited to Private and Domain networks; change the LAN profile before client access.'
     }
