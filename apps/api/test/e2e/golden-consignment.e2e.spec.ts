@@ -15,7 +15,12 @@ import { testDatabaseUrl, TEST_DB_NAME } from './support/test-db.js';
 const API_PORT = 3791;
 const BASE = `http://127.0.0.1:${API_PORT}`;
 const RUN = Date.now().toString(36);
-const CURRENT_DATE = new Date().toISOString().slice(0, 10);
+const CURRENT_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Amman',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date());
 const CURRENT_YEAR = CURRENT_DATE.slice(0, 4);
 const PASS = 'test-password-123';
 
