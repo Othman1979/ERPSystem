@@ -197,6 +197,33 @@ Describe 'Update-MyIniText' {
     }
 }
 
+Describe 'Get-MariaDB118Metadata' {
+    It 'uses the official archive for the x64 MSI and verifies it against the release metadata' {
+        Mock Invoke-WebRequestContent {
+            @'
+{"releases":{"11.8.9":{"files":[{"file_name":"mariadb-11.8.9-winx64.msi","file_download_url":"https://downloads.mariadb.org/rest-api/mariadb/11.8.9/mariadb-11.8.9-winx64.msi","checksum":{"sha256sum":"372822572baa7f429b9068d583336a9e46b109c12bb0b24eb66dbeb6ad0a563e"}}]}}}
+'@
+        }
+        $metadata = Get-MariaDB118Metadata
+        $metadata.Url | Should -BeExactly 'https://archive.mariadb.org/mariadb-11.8.9/winx64-packages/mariadb-11.8.9-winx64.msi'
+        $metadata.Hash | Should -BeExactly '372822572baa7f429b9068d583336a9e46b109c12bb0b24eb66dbeb6ad0a563e'
+    }
+}
+
+Describe 'Set-RestrictedAcl' {
+    It 'lets existing files inherit the application directory permissions' -Skip:($env:OS -ne 'Windows_NT') {
+        $directory = Join-Path $TestDrive 'app'
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        $file = Join-Path $directory 'package.json'
+        [IO.File]::WriteAllText($file, '{}')
+
+        Set-RestrictedAcl -Path $directory -Directory -ReadOnlyUsers
+
+        $rules = (Get-Acl -LiteralPath $file).GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])
+        $rules | Where-Object { $_.IsInherited -and $_.IdentityReference.Value -eq 'S-1-5-32-545' } | Should -Not -BeNullOrEmpty
+    }
+}
+
 Describe 'Native command output suppression' {
     It 'returns only the function value when a native command writes output' {
         function Invoke-TestNativeCommand {

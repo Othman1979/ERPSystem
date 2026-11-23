@@ -599,7 +599,7 @@ try {
     Write-Step 'Creating the separate server clone'
     $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
     Ensure-AppClone -SourceRoot $sourceRoot -Destination $AppDir
-    Set-RestrictedAcl -Path $AppDir -Directory -ReadOnlyUsers -Recurse
+    Set-RestrictedAcl -Path $AppDir -Directory -ReadOnlyUsers
     if (Test-Path -LiteralPath $envPath) {
         Set-RestrictedAcl -Path $envPath
     }

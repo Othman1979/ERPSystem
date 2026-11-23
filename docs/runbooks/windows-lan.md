@@ -48,7 +48,7 @@ setup\windows\grant-admin.bat owner@example.com
 trust-client.bat -Server erp-server -HttpPort 80 -HttpsPort 443
 ```
 
-إذا لم تحدد الخادم، سيطلبه منك. إذا استخدم الخادم منافذ بديلة، مرّرها صراحة؛ يمكن كتابة منفذ HTTP في `-Server` أيضاً، مثلاً `-Server erp-server:8080`. يعرض السكربت بصمة SHA-256 للشهادة. قارنها مع `CA_SHA256` في `C:\ERPData\INSTALL-INFO.txt` على الخادم، ولا توافق إذا اختلفت. يستورد السكربت الشهادة إلى مخزن المستخدم الحالي وينشئ اختصار سطح مكتب.
+إذا لم تحدد الخادم، سيطلبه منك. إذا استخدم الخادم منافذ بديلة، مرّرها صراحة؛ يمكن كتابة منفذ HTTP في `-Server` أيضاً، مثلاً `-Server erp-server:8080`. يعرض السكربت بصمة SHA-256 للشهادة. قارنها مع `CA_SHA256` في `C:\ERPData\INSTALL-INFO.txt` على الخادم، ولا توافق إذا اختلفت. بعد المطابقة وافق أيضاً على رسالة تأكيد Windows إن ظهرت. يستورد السكربت الشهادة إلى مخزن المستخدم الحالي وينشئ اختصار سطح مكتب.
 
 يمكن التثبيت يدوياً أيضاً: افتح `http://<server>/erp-ca.crt` (أضف `:<HttpPort>` إذا كان HTTP على منفذ بديل)، وقارن بصمة SHA-256 مع `INSTALL-INFO.txt` على الخادم. بعد المطابقة، ثبّت الشهادة للمستخدم الحالي في `Trusted Root Certification Authorities`.
 
@@ -66,7 +66,7 @@ trust-client.bat -Server erp-server -HttpPort 80 -HttpsPort 443
   pnpm build
   Get-ScheduledTask -TaskPath '\ERP Cloud\' | Where-Object TaskName -like 'Job-*' | Enable-ScheduledTask
   ```
-- `setup\windows\uninstall.bat` يزيل المهام وقواعد الجدار الناري والاختصار وثقة CA المحلية، لكنه **لا يحذف** مجلد التطبيق أو البيانات.
+- `setup\windows\uninstall.bat` يزيل المهام وقواعد الجدار الناري واختصار الخادم وثقة CA من مخزن الجهاز ومخزن المستخدم الذي شغّل إلغاء التثبيت، لكنه **لا يحذف** مجلد التطبيق أو البيانات. وافق على رسالة Windows لإزالة شهادة Caddy إن ظهرت. لا يزيل السكربت الثقة من أجهزة الموظفين أو حسابات المستخدمين الأخرى.
 - لإزالة خدمة MariaDB أيضاً: `uninstall.bat -RemoveDatabaseService`. يبقى مجلد قاعدة البيانات في `DataDir` ولا يحذف.
 
 ## النسخ الاحتياطي والأسرار
@@ -92,9 +92,7 @@ trust-client.bat -Server erp-server -HttpPort 80 -HttpsPort 443
 
 تبقى نسخة التطوير منفصلة؛ استخدم `start-local.bat` من مجلد التطوير كما هي. تستخدم أدوات التطوير API على `3001` والواجهة على `5173`، بينما خادم LAN يستخدم API على `3101` وHTTPS على `443` (أو `8443`). لا تنسخ `.env` بين النسختين.
 
-## نقاط تحتاج تأكيداً على Windows فعلي
+## التحقق على Windows Server 2022
 
-- خيارات `mariadb-install-db.exe` المستخدمة (`--datadir`, `--service`, `--port`, `--password`) تحتاج اختباراً على نسخة Windows 11.8 نفسها؛ لا تعتمد على التثبيت قبل نجاح تجربة كاملة واستعادة.
-- يثبت إعداد المهام الشهرية باستخدام XML لمشغلات Task Scheduler، ويجب التحقق من تشغيلها تحت SYSTEM في أول شهر.
-- يجب اختبار تثبيت شهادة Caddy في `LocalMachine\Root`، صلاحيات SYSTEM، تشغيل MariaDB كخدمة، وقراءة ملفات `.env` والسجلات على Windows Server المستهدف.
-- يجب أن يتمكن حساب خدمة `ERP-MariaDB` من الكتابة إلى `<DataDir>\mariadb` بعد تطبيق ACLs؛ من المتوقع أن يمنح `mariadb-install-db.exe` الصلاحية، لكن يجب تأكيد ذلك على Windows.
+- جُرّبت خيارات `mariadb-install-db.exe` (`--datadir`, `--service`, `--port`, `--password`) على MariaDB 11.8.9. تمكّن حساب خدمة `ERP-MariaDB` من الكتابة إلى مجلد البيانات بعد تطبيق الصلاحيات، ونجح اختبار استعادة النسخة الاحتياطية.
+- جُرّب تثبيت شهادة Caddy في مخزن الجهاز ثم مخزن المستخدم الحالي، وتشغيل المهام يدوياً تحت SYSTEM. راقب التشغيل التلقائي للمهام الشهرية في أول شهر؛ لم تنتظر التجربة مواعيدها.

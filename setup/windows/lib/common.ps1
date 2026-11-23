@@ -462,7 +462,7 @@ function Get-MariaDB118Metadata {
     return [pscustomobject]@{
         Version = $releases[0].Name
         FileName = $file[0].file_name
-        Url = $file[0].file_download_url -replace '^http:', 'https:'
+        Url = "https://archive.mariadb.org/mariadb-$($releases[0].Name)/winx64-packages/$($file[0].file_name)"
         ChecksumUrl = $file[0].checksum_url -replace '^http:', 'https:'
         Hash = $file[0].checksum.sha256sum.ToLowerInvariant()
         HashAlgorithm = 'SHA256'
@@ -525,8 +525,7 @@ function Set-RestrictedAcl {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [switch]$Directory,
-        [switch]$ReadOnlyUsers,
-        [switch]$Recurse
+        [switch]$ReadOnlyUsers
     )
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Cannot protect a missing path: $Path"
@@ -534,18 +533,12 @@ function Set-RestrictedAcl {
     if ($ReadOnlyUsers -and -not $Directory) {
         throw '-ReadOnlyUsers requires -Directory.'
     }
-    if ($Recurse -and -not $Directory) {
-        throw '-Recurse requires -Directory.'
-    }
     $arguments = @($Path, '/inheritance:r', '/grant:r')
     if ($Directory) {
         $arguments += '*S-1-5-32-544:(OI)(CI)F'
         $arguments += '*S-1-5-18:(OI)(CI)F'
         if ($ReadOnlyUsers) {
             $arguments += '*S-1-5-32-545:(OI)(CI)RX'
-        }
-        if ($Recurse) {
-            $arguments += @('/T', '/C', '/Q')
         }
     } else {
         $arguments += '*S-1-5-32-544:F'

@@ -51,6 +51,9 @@ if (Test-Path -LiteralPath $rootCa) {
     Get-ChildItem Cert:\LocalMachine\Root |
         Where-Object { $_.Thumbprint -eq $certificate.Thumbprint } |
         Remove-Item -ErrorAction SilentlyContinue
+    Get-ChildItem Cert:\CurrentUser\Root |
+        Where-Object { $_.Thumbprint -eq $certificate.Thumbprint } |
+        Remove-Item -ErrorAction SilentlyContinue
 }
 
 if ($RemoveDatabaseService) {
