@@ -186,10 +186,39 @@ function Install-GitIfMissing {
     }
 }
 
+function Invoke-ErpLegacyUpgradeCheck {
+    param(
+        [Parameter(Mandatory = $true)][string]$AppDir,
+        [Parameter(Mandatory = $true)][string]$DataDir
+    )
+    if (-not (Test-Path -LiteralPath (Join-Path $AppDir 'apps\api\.env') -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $DataDir 'mariadb\my.ini') -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $AppDir 'apps\api\dist\jobs\cli.js') -PathType Leaf)) {
+        return
+    }
+
+    $nodeExe = Get-CommandPath @('node.exe')
+    $pnpmExe = Get-CommandPath @('pnpm.cmd', 'pnpm')
+    if (-not $nodeExe -or -not $pnpmExe) {
+        Fail 'Node.js and pnpm are required on PATH to check the existing installation before migration.'
+    }
+    $runner = Join-Path $AppDir 'setup\windows\run-job.ps1'
+    $backupArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $runner, '-Job', 'backup', '-AppDir', $AppDir, '-DataDir', $DataDir, '-NodeExe', $nodeExe)
+    Invoke-CheckedCommand -FilePath 'powershell.exe' -Arguments $backupArguments -WorkingDirectory $AppDir -StepName 'Backing up the existing database before service migration'
+    $oldDatabaseUrl = $env:DATABASE_URL
+    $env:DATABASE_URL = $null
+    try {
+        Invoke-CheckedCommand -FilePath $pnpmExe -Arguments @('--filter', 'api', 'ledger:check') -WorkingDirectory $AppDir -StepName 'Checking posted ledger data before service migration'
+    } finally {
+        $env:DATABASE_URL = $oldDatabaseUrl
+    }
+}
+
 function Ensure-AppClone {
     param(
         [Parameter(Mandatory = $true)][string]$SourceRoot,
-        [Parameter(Mandatory = $true)][string]$Destination
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string]$DataDir
     )
     Install-GitIfMissing
     $origin = (& git -C $SourceRoot remote get-url origin).Trim()
@@ -225,6 +254,7 @@ function Ensure-AppClone {
         }
     } else {
         if (Test-ErpLegacyUpdater -AppDir $Destination) {
+            Invoke-ErpLegacyUpgradeCheck -AppDir $Destination -DataDir $DataDir
             Write-Step 'Fast-forwarding the task-based server clone to the service installer revision'
             & git -C $Destination fetch --no-tags $SourceRoot HEAD | Out-Host
             if ($LASTEXITCODE -ne 0) {
@@ -617,7 +647,7 @@ try {
 
     Write-Step 'Creating the separate server clone'
     $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    Ensure-AppClone -SourceRoot $sourceRoot -Destination $AppDir
+    Ensure-AppClone -SourceRoot $sourceRoot -Destination $AppDir -DataDir $DataDir
     Set-RestrictedAcl -Path $AppDir -Directory -ReadOnlyUsers
     if (Test-Path -LiteralPath $envPath) {
         Set-RestrictedAcl -Path $envPath
