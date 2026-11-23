@@ -67,6 +67,9 @@ function Ensure-Administrator {
             $arguments += "$value"
         }
     }
+    if (-not ($Parameters.ContainsKey('PauseAtEnd') -and $Parameters['PauseAtEnd'])) {
+        $arguments += '-PauseAtEnd'
+    }
     $quoted = @($arguments | ForEach-Object { ConvertTo-WindowsArgument "$_" })
     $process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList ($quoted -join ' ') -PassThru
     $process.WaitForExit()
@@ -110,6 +113,51 @@ function Get-PreferredPort {
         }
     }
     Fail "No available port found after preferred port $PreferredPort."
+}
+
+function Resolve-InstallPort {
+    param(
+        [Parameter(Mandatory = $true)][bool]$Bound,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Requested,
+        [Parameter(Mandatory = $true)][ValidateRange(0, 65535)][int]$Recorded,
+        [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Preferred,
+        [Parameter(Mandatory = $true)][int[]]$Fallbacks,
+        [scriptblock]$PortTest = { param($candidate) Test-PortFree -Port $candidate }
+    )
+    if ($Bound) {
+        if ($Requested -eq $Recorded -and $Recorded -gt 0) {
+            return $Requested
+        }
+        if (-not (& $PortTest $Requested)) {
+            Fail "Requested port $Requested is already in use."
+        }
+        return $Requested
+    }
+    if ($Recorded -gt 0) {
+        return $Recorded
+    }
+    return Get-PreferredPort -PreferredPort $Preferred -FallbackPorts $Fallbacks -PortTest $PortTest
+}
+
+function Get-MariaDbIniPort {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+    $inMySqlD = $false
+    $port = 0
+    foreach ($line in ($Text -split "`r?`n")) {
+        if ($line -match '^\s*\[([^\]]+)\]\s*$') {
+            $inMySqlD = $Matches[1].Trim().Equals('mysqld', [StringComparison]::OrdinalIgnoreCase)
+            continue
+        }
+        if ($inMySqlD -and $line -match '^\s*port\s*=\s*(\d+)\s*(?:[;#].*)?$') {
+            $candidate = 0
+            if ([int]::TryParse($Matches[1], [ref]$candidate) -and $candidate -ge 1 -and $candidate -le 65535) {
+                $port = $candidate
+            } else {
+                $port = 0
+            }
+        }
+    }
+    return $port
 }
 
 function New-RandomSecret {
@@ -261,6 +309,9 @@ function New-CaddyfileText {
         '    local_certs',
         '    skip_install_trust',
         "    storage file_system $storage",
+        "    http_port $HttpPort",
+        "    https_port $HttpsPort",
+        '    auto_https disable_redirects',
         '}',
         '',
         ($httpsSites -join ', '),
@@ -422,6 +473,101 @@ function Add-LogLine {
     [IO.File]::AppendAllText($Path, $Line + [Environment]::NewLine, $script:Utf8NoBom)
 }
 
+function Invoke-LoggedProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [string]$ArgumentLine = '',
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [string]$LogPath = '',
+        [bool]$StdoutToLog = $true,
+        [bool]$StderrToLog = $true,
+        [switch]$EchoToHost
+    )
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $process.StartInfo.FileName = $FilePath
+    $process.StartInfo.Arguments = $ArgumentLine
+    $process.StartInfo.WorkingDirectory = $WorkingDirectory
+    $process.StartInfo.UseShellExecute = $false
+    $process.StartInfo.CreateNoWindow = $true
+    $process.StartInfo.RedirectStandardOutput = $true
+    $process.StartInfo.RedirectStandardError = $true
+    $stdoutLines = New-Object System.Collections.Generic.List[string]
+    $stderrLines = New-Object System.Collections.Generic.List[string]
+    $capturedLines = New-Object System.Collections.Generic.List[object]
+    $started = $false
+    try {
+        if (-not $process.Start()) {
+            throw "Could not start process: $FilePath"
+        }
+        $started = $true
+        $stdoutRead = $process.StandardOutput.ReadLineAsync()
+        $stderrRead = $process.StandardError.ReadLineAsync()
+        $stdoutEof = $false
+        $stderrEof = $false
+        while (-not ($process.HasExited -and $stdoutEof -and $stderrEof)) {
+            $progressed = $false
+            if (-not $stdoutEof -and $stdoutRead.IsCompleted) {
+                $line = $stdoutRead.GetAwaiter().GetResult()
+                if ($null -eq $line) {
+                    $stdoutEof = $true
+                } else {
+                    if ($LogPath -and $StdoutToLog) {
+                        Add-LogLine -Path $LogPath -Line ("{0:o} {1}" -f (Get-Date), $line)
+                    } elseif (-not $LogPath) {
+                        $stdoutLines.Add($line)
+                        $capturedLines.Add([pscustomobject]@{ Stream = 'stdout'; Line = $line })
+                    }
+                    if ($EchoToHost) {
+                        Write-Host $line
+                    }
+                    $stdoutRead = $process.StandardOutput.ReadLineAsync()
+                }
+                $progressed = $true
+            }
+            if (-not $stderrEof -and $stderrRead.IsCompleted) {
+                $line = $stderrRead.GetAwaiter().GetResult()
+                if ($null -eq $line) {
+                    $stderrEof = $true
+                } else {
+                    if ($LogPath -and $StderrToLog) {
+                        Add-LogLine -Path $LogPath -Line ("{0:o} {1}" -f (Get-Date), $line)
+                    } elseif (-not $LogPath) {
+                        $stderrLines.Add($line)
+                        $capturedLines.Add([pscustomobject]@{ Stream = 'stderr'; Line = $line })
+                    }
+                    if ($EchoToHost) {
+                        Write-Host $line
+                    }
+                    $stderrRead = $process.StandardError.ReadLineAsync()
+                }
+                $progressed = $true
+            }
+            if (-not $progressed) {
+                Start-Sleep -Milliseconds 200
+            }
+        }
+        $process.WaitForExit()
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            StdoutLines = @($stdoutLines.ToArray())
+            StderrLines = @($stderrLines.ToArray())
+            CapturedLines = @($capturedLines.ToArray())
+        }
+    } finally {
+        if ($started) {
+            try {
+                if (-not $process.HasExited) {
+                    $process.Kill()
+                    $process.WaitForExit()
+                }
+            } catch {
+            }
+        }
+        $process.Dispose()
+    }
+}
+
 function Get-TaskXmlEscape {
     param([AllowEmptyString()][string]$Value)
     return [Security.SecurityElement]::Escape($Value)
@@ -445,12 +591,14 @@ function Register-ErpScheduledTask {
         [Parameter(Mandatory = $true)][string]$Arguments,
         [Parameter(Mandatory = $true)][string]$WorkingDirectory,
         [Parameter(Mandatory = $true)][string]$TriggerXml,
+        [ValidateSet('PT0S', 'PT15M', 'PT1H', 'PT4H')][string]$ExecutionTimeLimit = 'PT0S',
         [string]$Description = 'ERP Cloud scheduled task'
     )
     Ensure-ErpTaskFolder
     $commandXml = Get-TaskXmlEscape $Command
     $argumentsXml = Get-TaskXmlEscape $Arguments
     $directoryXml = Get-TaskXmlEscape $WorkingDirectory
+    $executionTimeLimitXml = Get-TaskXmlEscape $ExecutionTimeLimit
     $descriptionXml = Get-TaskXmlEscape $Description
     $xml = @"
 <?xml version="1.0" encoding="UTF-16"?>
@@ -465,7 +613,7 @@ function Register-ErpScheduledTask {
     <AllowHardTerminate>true</AllowHardTerminate>
     <StartWhenAvailable>true</StartWhenAvailable>
     <Enabled>true</Enabled>
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <ExecutionTimeLimit>$executionTimeLimitXml</ExecutionTimeLimit>
     <Priority>7</Priority>
   </Settings>
   <Actions Context="Author"><Exec><Command>$commandXml</Command><Arguments>$argumentsXml</Arguments><WorkingDirectory>$directoryXml</WorkingDirectory></Exec></Actions>

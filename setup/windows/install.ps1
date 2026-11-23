@@ -5,7 +5,8 @@ param(
     [ValidateRange(1, 65535)][int]$HttpsPort = 443,
     [ValidateRange(1, 65535)][int]$HttpPort = 80,
     [ValidateRange(1, 65535)][int]$ApiPort = 3101,
-    [string]$ExtraAddresses = ''
+    [string]$ExtraAddresses = '',
+    [switch]$PauseAtEnd
 )
 
 . (Join-Path $PSScriptRoot 'lib\common.ps1')
@@ -16,6 +17,7 @@ foreach ($key in $PSBoundParameters.Keys) {
     $forwarded[$key] = $PSBoundParameters[$key]
 }
 Ensure-Administrator -ScriptPath $PSCommandPath -Parameters $forwarded
+try {
 if (-not [Environment]::Is64BitOperatingSystem -or -not [Environment]::Is64BitProcess) {
     Fail 'The Windows setup requires a 64-bit PowerShell process on x64 Windows.'
 }
@@ -329,6 +331,7 @@ function Ensure-MariaDbInstance {
     $service = Get-Service -Name 'ERP-MariaDB' -ErrorAction SilentlyContinue
     $rootSecretPath = Join-Path $DataDir 'secrets\mariadb-root.txt'
     $dbData = Join-Path $DataDir 'mariadb'
+    $myIni = Join-Path $dbData 'my.ini'
     if (-not $service) {
         if (Test-Path -LiteralPath $dbData) {
             Fail "MariaDB data directory exists without the ERP-MariaDB service: $dbData. Inspect it before retrying."
@@ -371,13 +374,19 @@ function Ensure-MariaDbInstance {
         if (-not $rootPassword) {
             Fail "MariaDB root password file is empty: $rootSecretPath"
         }
-        $port = $RequestedPort
+        $iniPort = 0
+        if (Test-Path -LiteralPath $myIni) {
+            $iniPort = Get-MariaDbIniPort -Text ([IO.File]::ReadAllText($myIni))
+        }
+        $port = $iniPort
+        if ($port -le 0) {
+            $port = $RequestedPort
+        }
         if ($port -le 0) {
             $port = 3306
         }
     }
     Set-RestrictedAcl -Path $rootSecretPath
-    $myIni = Join-Path $dbData 'my.ini'
     $iniChanged = Set-MyIniValues -Path $myIni -DataDirValue $dbData -Port $port
     Set-Service -Name 'ERP-MariaDB' -StartupType Automatic
     $service = Get-Service -Name 'ERP-MariaDB'
@@ -442,7 +451,7 @@ function Invoke-JobNow {
         [Parameter(Mandatory = $true)][string]$Job,
         [string[]]$JobArguments = @()
     )
-    $runner = Join-Path $PSScriptRoot 'run-job.ps1'
+    $runner = Join-Path $AppDir 'setup\windows\run-job.ps1'
     $runnerArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $runner, '-Job', $Job, '-AppDir', $AppDir, '-DataDir', $DataDir, '-NodeExe', $nodeExe)
     if ($JobArguments.Count -gt 0) {
         $runnerArguments += '-JobArguments'
@@ -551,18 +560,20 @@ try {
     if (-not $PSBoundParameters.ContainsKey('HostName') -and $installInfo.ContainsKey('HostName')) {
         $HostName = $installInfo.HostName
     }
-    if ($existingEnvText) {
-        $HttpsPort = $originUri.Port
-    } elseif (-not $PSBoundParameters.ContainsKey('HttpsPort') -and $installInfo.ContainsKey('HttpsPort')) {
-        $HttpsPort = [int]$installInfo.HttpsPort
-    } elseif (-not $installInfo.ContainsKey('HttpsPort')) {
-        $HttpsPort = Get-PreferredPort -PreferredPort 443 -FallbackPorts @(8443, 8444, 8445)
+    $httpsBound = $PSBoundParameters.ContainsKey('HttpsPort')
+    $recordedHttpsPort = if ($installInfo.ContainsKey('HttpsPort')) { [int]$installInfo.HttpsPort } else { 0 }
+    $requestedHttpsPort = $HttpsPort
+    if ($httpsBound) {
+        $requestedHttpsPort = [int]$PSBoundParameters['HttpsPort']
+    } elseif ($existingEnvText) {
+        $requestedHttpsPort = $originUri.Port
+        $recordedHttpsPort = $originUri.Port
     }
-    if (-not $PSBoundParameters.ContainsKey('HttpPort') -and $installInfo.ContainsKey('HttpPort')) {
-        $HttpPort = [int]$installInfo.HttpPort
-    } elseif (-not $installInfo.ContainsKey('HttpPort')) {
-        $HttpPort = Get-PreferredPort -PreferredPort 80 -FallbackPorts @(8080, 8081, 8082)
-    }
+    $HttpsPort = Resolve-InstallPort -Bound $httpsBound -Requested $requestedHttpsPort -Recorded $recordedHttpsPort -Preferred 443 -Fallbacks @(8443, 8444, 8445)
+
+    $httpBound = $PSBoundParameters.ContainsKey('HttpPort')
+    $recordedHttpPort = if ($installInfo.ContainsKey('HttpPort')) { [int]$installInfo.HttpPort } else { 0 }
+    $HttpPort = Resolve-InstallPort -Bound $httpBound -Requested $HttpPort -Recorded $recordedHttpPort -Preferred 80 -Fallbacks @(8080, 8081, 8082)
     if (-not $existingEnvText -and -not $PSBoundParameters.ContainsKey('ApiPort') -and $installInfo.ContainsKey('ApiPort')) {
         $ApiPort = [int]$installInfo.ApiPort
     }
@@ -706,8 +717,9 @@ try {
     }
     $installCaddy = $true
     if (Test-Path -LiteralPath $caddyPath) {
-        $caddyVersion = (& $caddyPath version 2>$null | Select-Object -First 1)
-        if ("$caddyVersion" -match '^v?2\.11\.9\b') {
+        $caddyResult = Invoke-LoggedProcess -FilePath $caddyPath -ArgumentLine 'version' -WorkingDirectory $caddyDir
+        $caddyVersion = @($caddyResult.StdoutLines | Select-Object -First 1)
+        if ($caddyResult.ExitCode -eq 0 -and "$caddyVersion" -match '^v?2\.11\.9\b') {
             $installCaddy = $false
         }
     }
@@ -735,7 +747,7 @@ try {
     Write-Utf8NoBom -Path $caddyFile -Text $caddyText
 
     $powershellExe = Join-Path $PSHOME 'powershell.exe'
-    $supervisor = Join-Path $PSScriptRoot 'run-supervised.ps1'
+    $supervisor = Join-Path $AppDir 'setup\windows\run-supervised.ps1'
     $nodeScript = Join-Path $AppDir 'apps\api\dist\main.js'
     $nodeArgumentLine = '--max-old-space-size=512 ' + (ConvertTo-WindowsArgument $nodeScript)
     $appArguments = @(
@@ -753,10 +765,10 @@ try {
         '-WorkingDirectory', $caddyConfigDir,
         '-LogPath', (Join-Path $logsDir 'caddy.log')
     )
-    Register-ErpScheduledTask -Name 'App' -Command $powershellExe -Arguments (($appArguments | ForEach-Object { ConvertTo-WindowsArgument "$_" }) -join ' ') -WorkingDirectory $AppDir -TriggerXml (New-TaskStartupTriggerXml) -Description 'ERP Cloud API and built web application'
-    Register-ErpScheduledTask -Name 'Caddy' -Command $powershellExe -Arguments (($caddyArguments | ForEach-Object { ConvertTo-WindowsArgument "$_" }) -join ' ') -WorkingDirectory $DataDir -TriggerXml (New-TaskStartupTriggerXml) -Description 'ERP Cloud internal HTTPS proxy'
+    Register-ErpScheduledTask -Name 'App' -Command $powershellExe -Arguments (($appArguments | ForEach-Object { ConvertTo-WindowsArgument "$_" }) -join ' ') -WorkingDirectory $AppDir -TriggerXml (New-TaskStartupTriggerXml) -ExecutionTimeLimit 'PT0S' -Description 'ERP Cloud API and built web application'
+    Register-ErpScheduledTask -Name 'Caddy' -Command $powershellExe -Arguments (($caddyArguments | ForEach-Object { ConvertTo-WindowsArgument "$_" }) -join ' ') -WorkingDirectory $DataDir -TriggerXml (New-TaskStartupTriggerXml) -ExecutionTimeLimit 'PT0S' -Description 'ERP Cloud internal HTTPS proxy'
 
-    $jobScript = Join-Path $PSScriptRoot 'run-job.ps1'
+    $jobScript = Join-Path $AppDir 'setup\windows\run-job.ps1'
     $jobSpecs = @(
         @{ Name = 'tenant-status'; Time = '00:30'; Trigger = 'daily'; Args = @() },
         @{ Name = 'einvoice-send'; Time = '00:00'; Trigger = 'minute'; Args = @() },
@@ -784,7 +796,13 @@ try {
             $jobArgs += '-JobArguments'
             $jobArgs += $spec.Args
         }
-        Register-ErpScheduledTask -Name "Job-$($spec.Name)" -Command $powershellExe -Arguments (($jobArgs | ForEach-Object { ConvertTo-WindowsArgument "$_" }) -join ' ') -WorkingDirectory (Join-Path $AppDir 'apps\api') -TriggerXml $trigger -Description "ERP Cloud $($spec.Name) job"
+        $executionTimeLimit = 'PT1H'
+        if ($spec.Name -eq 'einvoice-send') {
+            $executionTimeLimit = 'PT15M'
+        } elseif ($spec.Name -in @('backup', 'backup-verify', 'integrity-check')) {
+            $executionTimeLimit = 'PT4H'
+        }
+        Register-ErpScheduledTask -Name "Job-$($spec.Name)" -Command $powershellExe -Arguments (($jobArgs | ForEach-Object { ConvertTo-WindowsArgument "$_" }) -join ' ') -WorkingDirectory (Join-Path $AppDir 'apps\api') -TriggerXml $trigger -ExecutionTimeLimit $executionTimeLimit -Description "ERP Cloud $($spec.Name) job"
     }
 
     Write-Step 'Opening private/domain firewall ports'
@@ -807,15 +825,6 @@ try {
     $rootCa = Join-Path $DataDir 'caddy\data\pki\authorities\local\root.crt'
     $caDeadline = (Get-Date).AddMinutes(2)
     while (-not (Test-Path -LiteralPath $rootCa) -and (Get-Date) -lt $caDeadline) {
-        $previousCertificateCallback = [Net.ServicePointManager]::ServerCertificateValidationCallback
-        $acceptInternalCertificate = [System.Net.Security.RemoteCertificateValidationCallback]{ $true }
-        try {
-            [Net.ServicePointManager]::ServerCertificateValidationCallback = $acceptInternalCertificate
-            Invoke-WebRequest -Uri "$url/" -UseBasicParsing -TimeoutSec 5 | Out-Null
-        } catch {
-        } finally {
-            [Net.ServicePointManager]::ServerCertificateValidationCallback = $previousCertificateCallback
-        }
         Start-Sleep -Seconds 2
     }
     if (-not (Test-Path -LiteralPath $rootCa)) {
@@ -878,14 +887,8 @@ try {
     if (-not $healthy) {
         Fail "Health check did not return HTTP 200 within three minutes: $healthUrl. Check app.log and caddy.log."
     }
-    Push-Location (Join-Path $AppDir 'apps\api')
-    try {
-        $preflight = & $nodeExe 'dist/jobs/cli.js' preflight 2>&1
-        $preflightCode = $LASTEXITCODE
-        $preflight | ForEach-Object { Write-Host "$_" }
-    } finally {
-        Pop-Location
-    }
+    $preflight = Invoke-LoggedProcess -FilePath $nodeExe -ArgumentLine 'dist/jobs/cli.js preflight' -WorkingDirectory (Join-Path $AppDir 'apps\api') -EchoToHost
+    $preflightCode = $preflight.ExitCode
     if ($preflightCode -ne 0) {
         Fail "Preflight failed with exit code $preflightCode. Review its output above."
     }
@@ -904,5 +907,10 @@ try {
     Write-Host "CA SHA-256: $fingerprint"
 } catch {
     Write-Host "$($_.Exception.Message)" -ForegroundColor Red
-    exit 1
+    throw
+}
+} finally {
+    if ($PauseAtEnd) {
+        Read-Host 'Press Enter to close' | Out-Null
+    }
 }

@@ -1,6 +1,7 @@
 param(
     [string]$AppDir = 'C:\ERP\app',
-    [string]$DataDir = 'C:\ERPData'
+    [string]$DataDir = 'C:\ERPData',
+    [switch]$PauseAtEnd
 )
 
 . (Join-Path $PSScriptRoot 'lib\common.ps1')
@@ -68,6 +69,7 @@ function Wait-ForHealth {
     throw "Health check did not return HTTP 200 within three minutes: $Url"
 }
 
+try {
 $info = Read-InstallInfo -Path (Join-Path $DataDir 'INSTALL-INFO.txt')
 if ($AppDir -eq 'C:\ERP\app' -and $info.ContainsKey('AppDir')) {
     $AppDir = $info.AppDir
@@ -128,14 +130,8 @@ try {
     Start-ErpTask -Name 'App'
     $appStopped = $false
     Wait-ForHealth -Url $url
-    Push-Location $apiDir
-    try {
-        $preflight = & $nodeExe 'dist/jobs/cli.js' preflight 2>&1
-        $preflightCode = $LASTEXITCODE
-        $preflight | ForEach-Object { Write-Host "$_" }
-    } finally {
-        Pop-Location
-    }
+    $preflight = Invoke-LoggedProcess -FilePath $nodeExe -ArgumentLine 'dist/jobs/cli.js preflight' -WorkingDirectory $apiDir -EchoToHost
+    $preflightCode = $preflight.ExitCode
     if ($preflightCode -ne 0) {
         throw "Preflight failed with exit code $preflightCode."
     }
@@ -164,5 +160,10 @@ try {
         Set-ErpJobTasksEnabled -Enabled $true
         Write-Host 'The update failed before pulling new code; the App and scheduled jobs were re-enabled.'
     }
-    exit 1
+    throw
+}
+} finally {
+    if ($PauseAtEnd) {
+        Read-Host 'Press Enter to close' | Out-Null
+    }
 }

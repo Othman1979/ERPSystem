@@ -1,7 +1,8 @@
 param(
     [string]$AppDir = 'C:\ERP\app',
     [string]$DataDir = 'C:\ERPData',
-    [switch]$RemoveDatabaseService
+    [switch]$RemoveDatabaseService,
+    [switch]$PauseAtEnd
 )
 
 . (Join-Path $PSScriptRoot 'lib\common.ps1')
@@ -12,6 +13,7 @@ foreach ($key in $PSBoundParameters.Keys) {
 }
 Ensure-Administrator -ScriptPath $PSCommandPath -Parameters $forwarded
 
+try {
 $infoPath = Join-Path $DataDir 'INSTALL-INFO.txt'
 if (Test-Path -LiteralPath $infoPath) {
     foreach ($line in (Get-Content -LiteralPath $infoPath)) {
@@ -68,4 +70,9 @@ Write-Host "AppDir was not deleted: $AppDir"
 Write-Host "DataDir was not deleted: $DataDir"
 if ($RemoveDatabaseService) {
     Write-Host 'ERP-MariaDB service removal was requested; its data directory remains in DataDir.'
+}
+} finally {
+    if ($PauseAtEnd) {
+        Read-Host 'Press Enter to close' | Out-Null
+    }
 }

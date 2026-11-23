@@ -1,13 +1,16 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Email,
     [string]$AppDir = '',
-    [string]$DataDir = 'C:\ERPData'
+    [string]$DataDir = 'C:\ERPData',
+    [switch]$PauseAtEnd
 )
 
 . (Join-Path $PSScriptRoot 'lib\common.ps1')
 $ErrorActionPreference = 'Stop'
-Ensure-Administrator -ScriptPath $PSCommandPath -Parameters @{ Email = $Email; AppDir = $AppDir; DataDir = $DataDir }
+$forwarded = @{ Email = $Email; AppDir = $AppDir; DataDir = $DataDir; PauseAtEnd = $PauseAtEnd }
+Ensure-Administrator -ScriptPath $PSCommandPath -Parameters $forwarded
 
+try {
 $infoPath = Join-Path $DataDir 'INSTALL-INFO.txt'
 if (-not $AppDir -and (Test-Path -LiteralPath $infoPath)) {
     foreach ($line in (Get-Content -LiteralPath $infoPath)) {
@@ -41,4 +44,9 @@ try {
     }
 } finally {
     Pop-Location
+}
+} finally {
+    if ($PauseAtEnd) {
+        Read-Host 'Press Enter to close' | Out-Null
+    }
 }

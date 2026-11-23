@@ -66,6 +66,9 @@ Describe 'New-CaddyfileText' {
         $text | Should -Match 'http://192\.168\.1\.20:8080 \{'
         $text | Should -Match 'reverse_proxy 127\.0\.0\.1:3101'
         $text | Should -Match 'storage file_system "C:/ERP Data/caddy/data"'
+        $text | Should -Match '(?m)^    http_port 8080\r?$'
+        $text | Should -Match '(?m)^    https_port 8443\r?$'
+        $text | Should -Match '(?m)^    auto_https disable_redirects\r?$'
         $text | Should -Match 'root \* "C:/ERP Data/caddy/public"'
         $text | Should -Match 'redir https://erp-server:8443\{uri\} 308'
         $text | Should -Not -Match 'C:\\ERP'
@@ -109,5 +112,51 @@ Describe 'Get-PreferredPort' {
     It 'keeps the preferred port when it is available' {
         $portTest = { param($candidate) return $candidate -eq 443 }
         Get-PreferredPort -PreferredPort 443 -FallbackPorts @(8443) -PortTest $portTest | Should -Be 443
+    }
+}
+
+Describe 'Resolve-InstallPort' {
+    It 'uses an explicitly requested port when it is free' {
+        $portTest = { param($candidate) return $candidate -eq 8443 }
+        Resolve-InstallPort -Bound $true -Requested 8443 -Recorded 0 -Preferred 443 -Fallbacks @(8443, 8444) -PortTest $portTest | Should -Be 8443
+    }
+
+    It 'rejects a bound port when it is occupied by another service' {
+        $portTest = { param($candidate) return $candidate -eq 0 }
+        { Resolve-InstallPort -Bound $true -Requested 8443 -Recorded 0 -Preferred 443 -Fallbacks @(8444) -PortTest $portTest } | Should -Throw '*already in use*'
+    }
+
+    It 'allows the recorded port when the ERP service already holds it' {
+        $portTest = { param($candidate) return $candidate -eq 0 }
+        Resolve-InstallPort -Bound $true -Requested 8443 -Recorded 8443 -Preferred 443 -Fallbacks @(8444) -PortTest $portTest | Should -Be 8443
+    }
+
+    It 'prefers a recorded port when no parameter was bound' {
+        $portTest = { param($candidate) return $candidate -eq 0 }
+        Resolve-InstallPort -Bound $false -Requested 443 -Recorded 8443 -Preferred 443 -Fallbacks @(8444) -PortTest $portTest | Should -Be 8443
+    }
+
+    It 'auto-picks the first available fallback when there is no recorded port' {
+        $portTest = { param($candidate) return $candidate -eq 8444 }
+        Resolve-InstallPort -Bound $false -Requested 443 -Recorded 0 -Preferred 443 -Fallbacks @(8443, 8444) -PortTest $portTest | Should -Be 8444
+    }
+}
+
+Describe 'Get-MariaDbIniPort' {
+    It 'reads the last port from the mysqld section only' {
+        $text = @'
+[client]
+port=3306
+[mysqld]
+port=3308
+port=3309
+[mysqldump]
+port=3310
+'@
+        Get-MariaDbIniPort -Text $text | Should -Be 3309
+    }
+
+    It 'returns zero when the mysqld section has no port' {
+        Get-MariaDbIniPort -Text "[client]`r`nport=3306`r`n[mysqld]`r`n" | Should -Be 0
     }
 }

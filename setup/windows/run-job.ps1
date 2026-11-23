@@ -28,16 +28,17 @@ $env:DATABASE_URL = $null
 $env:DB_POOL_SIZE = '2'
 try {
     Rotate-LogFile -Path $logPath
+    $arguments = @('dist/jobs/cli.js', $Job) + @($JobArguments)
+    $argumentLine = ($arguments | ForEach-Object { ConvertTo-WindowsArgument "$_" }) -join ' '
     if ($Job -eq 'einvoice-send') {
-        & $NodeExe 'dist/jobs/cli.js' $Job @JobArguments 2>> $logPath | Out-Null
-        $exitCode = $LASTEXITCODE
+        $result = Invoke-LoggedProcess -FilePath $NodeExe -ArgumentLine $argumentLine -WorkingDirectory $apiDir -LogPath $logPath -StdoutToLog $false -StderrToLog $true
+        $exitCode = $result.ExitCode
         if ($exitCode -ne 0) {
             Add-LogLine -Path $logPath -Line ("{0:o} einvoice-send failed with exit code {1}" -f (Get-Date), $exitCode)
         }
     } else {
-        & $NodeExe 'dist/jobs/cli.js' $Job @JobArguments 2>&1 |
-            ForEach-Object { Add-LogLine -Path $logPath -Line ("{0:o} {1}" -f (Get-Date), "$_") }
-        $exitCode = $LASTEXITCODE
+        $result = Invoke-LoggedProcess -FilePath $NodeExe -ArgumentLine $argumentLine -WorkingDirectory $apiDir -LogPath $logPath -StdoutToLog $true -StderrToLog $true
+        $exitCode = $result.ExitCode
     }
 } finally {
     $env:DATABASE_URL = $oldDatabaseUrl
