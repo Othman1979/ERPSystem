@@ -31,6 +31,7 @@ const CHECKS = [
   'allocations.document',
   'einvoice_submissions.document',
   'journal_entries.source',
+  'consignment_sales.source',
   'stock_movements.source',
   'stock_movements.source_line',
   'sales_invoice_line_components.movement',
