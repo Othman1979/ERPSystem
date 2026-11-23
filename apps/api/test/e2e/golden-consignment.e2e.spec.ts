@@ -1081,6 +1081,23 @@ describe('Golden scenarios TR1–TR8 (ADR-047)', () => {
       [tenantId, companyId],
     )) as { debit: string; credit: string }[];
     expect(m3(finalTotals[0]!.debit)).toBe(m3(finalTotals[0]!.credit));
+    const draftSettlementReturn = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/purchase-returns').set(auth(token)).send({
+        returnDate: '2025-05-01',
+        originalInvoiceId: settlementInvoiceId,
+        refundType: 'CREDIT',
+        lines: [{ originalLineId: settlementLineId, qty: '1' }],
+      }),
+      201,
+      'create draft settlement return',
+    );
+    const blockedDisable = await api().patch('/api/v1/company').set(auth(token)).send({ consignmentEnabled: false });
+    expect(blockedDisable.body.error.code).toBe('CONSIGNMENT_IN_USE');
+    await expectSuccess(
+      await api().delete(`/api/v1/purchase-returns/${draftSettlementReturn.id}`).set(auth(token)),
+      200,
+      'delete draft settlement return',
+    );
     const disabled = await api().patch('/api/v1/company').set(auth(token)).send({ consignmentEnabled: false });
     await expectSuccess(disabled, 200, 'disable unused consignment');
     const disabledOpenSales = await api().get('/api/v1/consignment/open-sales').set(auth(token));
