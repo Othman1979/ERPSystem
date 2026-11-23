@@ -69,6 +69,7 @@ Describe 'New-CaddyfileText' {
         $text | Should -Match '(?m)^    http_port 8080\r?$'
         $text | Should -Match '(?m)^    https_port 8443\r?$'
         $text | Should -Match '(?m)^    auto_https disable_redirects\r?$'
+        $text | Should -Match '(?m)^    admin off\r?$'
         $text | Should -Match 'root \* "C:/ERP Data/caddy/public"'
         $text | Should -Match 'redir https://erp-server:8443\{uri\} 308'
         $text | Should -Not -Match 'C:\\ERP'

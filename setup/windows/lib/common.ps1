@@ -393,6 +393,7 @@ function New-CaddyfileText {
         '{',
         '    local_certs',
         '    skip_install_trust',
+        '    admin off',
         "    storage file_system $storage",
         "    http_port $HttpPort",
         "    https_port $HttpsPort",
