@@ -593,6 +593,9 @@ export const ar = {
     consignmentSupplier: 'مورد الأمانة',
   },
   consignment: {
+    item: 'الصنف',
+    supplierPrice: 'سعر المورد',
+    selectSupplier: 'اختر المورد لعرض الكشف.',
     tag: 'أمانة',
     settlementBadge: 'تسوية أمانة',
     clearedValue: 'القيمة المصفاة',
@@ -3190,6 +3193,9 @@ export const en: typeof ar = {
     consignmentSupplier: 'Consignment supplier',
   },
   consignment: {
+    item: 'Item',
+    supplierPrice: 'Supplier price',
+    selectSupplier: 'Choose a supplier to see the statement.',
     tag: 'Consignment',
     settlementBadge: 'Consignment settlement',
     clearedValue: 'Cleared value',

@@ -161,7 +161,7 @@ function OpenSalesTab() {
   const columns: TableColumnsType<ConsignmentOpenSaleResponseDto> = [
     { title: t('goods.date'), dataIndex: 'saleDate', width: 110, render: (value: string) => formatDate(value) },
     { title: t('consignment.source'), render: (_: unknown, row) => sourceLabel(row, t) },
-    { title: t('items.title'), render: (_: unknown, row) => codeAndName(row.item) },
+    { title: t('consignment.item'), render: (_: unknown, row) => codeAndName(row.item) },
     { title: t('consignment.openQty'), dataIndex: 'openQty', align: 'right', className: 'num', render: (value: string) => formatQty(value) },
     { title: t('consignment.openValue'), dataIndex: 'openValue', align: 'right', className: 'num', render: (value: string) => formatAmount(value) },
     {
@@ -188,7 +188,7 @@ function OpenSalesTab() {
       ),
     },
     {
-      title: t('purchases.unitCost'),
+      title: t('consignment.supplierPrice'),
       width: 130,
       align: 'right',
       render: (_: unknown, row) => selected[row.id] && (
@@ -342,7 +342,7 @@ function StatementTab() {
     enabled: !!supplierId,
   });
   const columns: TableColumnsType<ConsignmentStatementResponseDto> = [
-    { title: t('items.title'), render: (_: unknown, row) => row.item ? codeAndName(row.item) : '—' },
+    { title: t('consignment.item'), render: (_: unknown, row) => row.item ? codeAndName(row.item) : '—' },
     { title: t('consignment.received'), dataIndex: 'receivedQty', align: 'right', className: 'num', render: (value: string) => formatQty(value) },
     { title: t('consignment.returnedToSupplier'), dataIndex: 'returnedToSupplierQty', align: 'right', className: 'num', render: (value: string) => formatQty(value) },
     { title: t('consignment.soldNet'), dataIndex: 'soldNetOfReturnsQty', align: 'right', className: 'num', render: (value: string) => formatQty(value) },
@@ -375,7 +375,7 @@ function StatementTab() {
         pagination={{ pageSize: 10 }}
         locale={{ emptyText: report.isSuccess
           ? <EmptyCta description={t('consignment.emptyStatement')} actionLabel={t('consignment.openGoodsNotes')} onClick={() => navigate('/goods-notes')} />
-          : t('common.noResults') }}
+          : supplierId ? t('common.noResults') : t('consignment.selectSupplier') }}
         scroll={{ x: 'max-content' }}
         mobileCard={{
           title: (row) => (row.item ? codeAndName(row.item) : '—'),
@@ -418,7 +418,7 @@ function AgingTab() {
     { title: t('consignment.ageBucket'), dataIndex: 'ageBucket', width: 100, render: (value: string) => <Tag>{t(`consignment.buckets.${value}`)}</Tag> },
     { title: t('goods.date'), dataIndex: 'saleDate', width: 110, render: (value: string) => formatDate(value) },
     { title: t('consignment.source'), render: (_: unknown, row) => sourceLabel(row, t) },
-    { title: t('items.title'), render: (_: unknown, row) => codeAndName(row.item) },
+    { title: t('consignment.item'), render: (_: unknown, row) => codeAndName(row.item) },
     { title: t('consignment.openQty'), dataIndex: 'openQty', align: 'right', className: 'num', render: (value: string) => formatQty(value) },
     { title: t('consignment.openValue'), dataIndex: 'openValue', align: 'right', className: 'num', render: (value: string) => formatAmount(value) },
   ];
