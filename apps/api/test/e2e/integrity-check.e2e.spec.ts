@@ -188,11 +188,14 @@ describe('Integrity check job — references and collation', () => {
       lines: [{ itemId: item.body.id, qty: '2' }],
     });
     expect(receipt.status).toBe(201);
+    expect(receipt.body.supplier).toMatchObject({ id: supplier.body.id });
     const postedReceipt = await api()
       .post(`/api/v1/goods-notes/${receipt.body.id}/post`)
       .set(auth(tenantA.token))
       .set('Idempotency-Key', `IC-${RUN}-IN`);
-    expect(postedReceipt.status).toBe(201);
+    if (postedReceipt.status !== 201) {
+      throw new Error(`Post temporary receipt: ${JSON.stringify(postedReceipt.body)}`);
+    }
     const supplierReturn = await api().post('/api/v1/goods-notes').set(auth(tenantA.token)).send({
       noteDate: new Date().toISOString().slice(0, 10),
       noteType: 'CONSIGNMENT_OUT',
