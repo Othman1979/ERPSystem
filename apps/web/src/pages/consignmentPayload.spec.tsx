@@ -11,7 +11,8 @@ describe('consignmentSettlementBody', () => {
       lines: [{
         sale: {
           id: 'sale-1', tenantId: 'tenant-1', companyId: 'company-1', warehouseId: 'warehouse-1',
-          supplierId: 'supplier-1', itemId: 'item-1', sourceType: 'SALES_INVOICE', sourceId: 'invoice-1',
+          supplierId: 'supplier-1', supplier: { id: 'supplier-1', nameAr: 'مورد', nameEn: 'Supplier' },
+          itemId: 'item-1', sourceType: 'SALES_INVOICE', sourceId: 'invoice-1',
           sourceLineId: 'line-1', saleDate: '2026-11-20', qty: '3.000000',
           returnedQty: '0', invoicedQty: '0',
           createdAt: '2026-11-20T00:00:00.000Z', openQty: '3.000000',

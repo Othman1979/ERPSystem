@@ -3,7 +3,6 @@ import { Button, Input, InputNumber, Modal, Select, Table, Tabs, Tag, Typography
 import type { TableColumnsType } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useMemo, useState } from 'react';
-import type { Key } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import {
@@ -28,7 +27,7 @@ import { ReportCriteria, WinField, WinGroup } from '../components/WinForm';
 import { useCompany } from '../components/CompanyProfileForm';
 import { formatDate } from '../format/date';
 import { dec, formatQty, sum } from '../format/number';
-import { codeAndName } from '../i18n/displayName';
+import { codeAndName, displayName } from '../i18n/displayName';
 import { consignmentSettlementBody } from './consignmentPayload';
 
 type Supplier = { id: string; code: string; nameAr: string; nameEn: string | null };
@@ -230,7 +229,7 @@ function OpenSalesTab() {
     }
     create.mutate();
   };
-  const supplier = selectedRows[0]?.sale.supplier ?? lookups.suppliers.find((row) => row.id === selectedRows[0]?.sale.supplierId);
+  const supplier = selectedRows[0]?.sale.supplier;
   const warehouse = lookups.warehouses.find((row) => row.id === selectedRows[0]?.sale.warehouseId);
   const empty = (
     <EmptyCta
@@ -292,7 +291,7 @@ function OpenSalesTab() {
               <DatePicker value={invoiceDate} onChange={(value) => value && setInvoiceDate(value)} />
             </WinField>
             <WinField label={t('purchases.supplier')}>
-              <Typography.Text>{codeAndName(supplier)}</Typography.Text>
+              <Typography.Text>{displayName(supplier)}</Typography.Text>
             </WinField>
             <WinField label={t('stock.warehouse')}>
               <Typography.Text>{codeAndName(warehouse)}</Typography.Text>
