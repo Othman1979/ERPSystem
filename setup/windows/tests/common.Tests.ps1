@@ -55,6 +55,22 @@ Describe 'Update-ErpServiceRegistration' {
         }
     }
 }
+Describe 'Test-ErpLegacyUpdater' {
+    It 'recognizes the updater which attempts to restart the App task' {
+        $setup = Join-Path $TestDrive 'setup\windows'
+        New-Item -ItemType Directory -Path $setup -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $setup 'update.ps1') -Value "    Start-ErpTask -Name 'App'"
+        Test-ErpLegacyUpdater -AppDir $TestDrive | Should -BeTrue
+    }
+
+    It 'leaves a service-aware updater alone' {
+        $setup = Join-Path $TestDrive 'setup\windows'
+        New-Item -ItemType Directory -Path $setup -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $setup 'update.ps1') -Value "    Start-Service -Name 'ERP-App' -ErrorAction Stop"
+        Test-ErpLegacyUpdater -AppDir $TestDrive | Should -BeFalse
+    }
+}
+
 BeforeAll {
     . (Join-Path $PSScriptRoot '..\lib\common.ps1')
 

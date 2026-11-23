@@ -224,6 +224,18 @@ function Ensure-AppClone {
             Write-Warning 'Could not fast-forward the fresh server clone from origin/main; continuing with its current commit.'
         }
     } else {
+        if (Test-ErpLegacyUpdater -AppDir $Destination) {
+            Write-Step 'Fast-forwarding the task-based server clone to the service installer revision'
+            & git -C $Destination fetch --no-tags $SourceRoot HEAD | Out-Host
+            if ($LASTEXITCODE -ne 0) {
+                Fail 'Could not fetch the service installer revision from the setup checkout.'
+            }
+            & git -C $Destination merge --ff-only FETCH_HEAD | Out-Host
+            if ($LASTEXITCODE -ne 0 -or (Test-ErpLegacyUpdater -AppDir $Destination)) {
+                Fail 'Cannot fast-forward the server clone to a service-aware updater. The legacy tasks were not removed.'
+            }
+            return
+        }
         $currentCommit = (& git -C $Destination rev-parse HEAD).Trim()
         if ($LASTEXITCODE -ne 0 -or -not $currentCommit) {
             Fail "Could not read the current commit in $Destination."

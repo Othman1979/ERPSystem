@@ -784,6 +784,12 @@ function Set-ErpJobTasksEnabled {
     }
 }
 
+function Test-ErpLegacyUpdater {
+    param([Parameter(Mandatory = $true)][string]$AppDir)
+    $path = Join-Path $AppDir 'setup\windows\update.ps1'
+    return Select-String -LiteralPath $path -SimpleMatch "Start-ErpTask -Name 'App'" -Quiet
+}
+
 function Stop-ErpApp {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param()
