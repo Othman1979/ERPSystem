@@ -5,6 +5,7 @@ import type { RequestContext } from '../../common/cls/cls.types.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { CreateWarehouseDto, UpdateWarehouseDto } from './dto/inventory.dto.js';
 import { PlanLimitsService } from '../../common/plan-limits/plan-limits.service.js';
 import { currentCompanyFilter } from '../../common/cls/current-company.js';
@@ -144,7 +145,7 @@ export class WarehousesService {
   }
 
   async update(id: bigint, dto: UpdateWarehouseDto) {
-    const { db } = this.tenant();
+    const { tenantId, db } = this.tenant();
     const companyId = await this.companyId(db);
     const cls = ClsServiceManager.getClsService<RequestContext>();
     const existing = await db.warehouse.findFirst({ where: { id, companyId } });
@@ -158,16 +159,8 @@ export class WarehousesService {
       if (!company?.consignmentEnabled) {
         throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
       }
-      const supplierId = dto.consignmentSupplierId ? BigInt(dto.consignmentSupplierId) : null;
-      if (supplierId !== existing.consignmentSupplierId) {
-        const movements = await db.stockMovement.count({ where: { warehouseId: id } });
-        if (movements > 0) {
-          throw new DomainError(ErrorCode.CONFLICT, 'A consignment supplier cannot change after the first stock movement');
-        }
-        if (supplierId !== null) await this.assertConsignmentSupplier(db, companyId, supplierId);
-      }
     }
-    if (dto.isActive === false) {
+    if (dto.consignmentSupplierId === undefined && dto.isActive === false) {
       const movements = await db.stockMovement.count({ where: { warehouseId: id } });
       if (movements > 0) {
         throw new DomainError(
@@ -177,17 +170,40 @@ export class WarehousesService {
       }
     }
     const { branchId, consignmentSupplierId, ...rest } = dto;
-    await db.warehouse.update({
-      where: { id },
-      data: {
-        ...rest,
-        ...(branchId !== undefined ? { branchId: branchId ? BigInt(branchId) : null } : {}),
-        ...(consignmentSupplierId !== undefined
-          ? { consignmentSupplierId: consignmentSupplierId ? BigInt(consignmentSupplierId) : null }
-          : {}),
-        updatedBy: cls.get('userId') ?? null,
-      },
-    });
+    const data = {
+      ...rest,
+      ...(branchId !== undefined ? { branchId: branchId ? BigInt(branchId) : null } : {}),
+      ...(consignmentSupplierId !== undefined
+        ? { consignmentSupplierId: consignmentSupplierId ? BigInt(consignmentSupplierId) : null }
+        : {}),
+      updatedBy: cls.get('userId') ?? null,
+    };
+    if (consignmentSupplierId !== undefined) {
+      const requestedSupplierId = consignmentSupplierId ? BigInt(consignmentSupplierId) : null;
+      await db.$transaction(async (tx) => {
+        const [warehouse] = await tx.$queryRaw<{ consignment_supplier_id: bigint | null }[]>`
+          SELECT consignment_supplier_id FROM warehouses
+           WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id = ${id}
+           FOR UPDATE`;
+        if (!warehouse) throw DomainError.notFound('Warehouse', id.toString());
+        const movements = await tx.stockMovement.count({ where: { tenantId, companyId, warehouseId: id } });
+        if (requestedSupplierId !== warehouse.consignment_supplier_id && movements > 0) {
+          throw new DomainError(ErrorCode.CONFLICT, 'A consignment supplier cannot change after the first stock movement');
+        }
+        if (requestedSupplierId !== warehouse.consignment_supplier_id && requestedSupplierId !== null) {
+          await this.assertConsignmentSupplier(tx, companyId, requestedSupplierId);
+        }
+        if (dto.isActive === false && movements > 0) {
+          throw new DomainError(
+            ErrorCode.CONFLICT,
+            'Cannot deactivate a warehouse that has stock movements',
+          );
+        }
+        await tx.warehouse.update({ where: { id }, data });
+      });
+    } else {
+      await db.warehouse.update({ where: { id }, data });
+    }
     return db.warehouse.findFirstOrThrow({
       where: { id },
       include: { consignmentSupplier: { select: { id: true, code: true, nameAr: true, nameEn: true, partyType: true } } },
@@ -195,7 +211,7 @@ export class WarehousesService {
   }
 
   private async assertConsignmentSupplier(
-    db: ReturnType<PrismaService['forTenant']>,
+    db: Pick<Prisma.TransactionClient, 'party'>,
     companyId: bigint,
     supplierId: bigint,
   ) {

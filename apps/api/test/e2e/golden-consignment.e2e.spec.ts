@@ -1184,4 +1184,48 @@ describe('Golden scenarios CS1–CS8 (ADR-047)', () => {
     await expectSuccess(aging, 200, 'branch-restricted aging');
     expect((aging.body as { item: { id: string } }[]).some((row) => row.item.id === branchItem.id)).toBe(false);
   });
+
+  it('serializes a first stock movement against a consignment supplier change', async () => {
+    const otherSupplier = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/parties').set(auth(token)).send({
+        code: `RACE-${RUN}`,
+        nameAr: 'مورد سباق',
+        partyType: 'SUPPLIER',
+      }),
+      201,
+      'create race supplier',
+    );
+    const raceWarehouse = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/warehouses').set(auth(token)).send({
+        code: `RACE-WH-${RUN}`,
+        nameAr: 'مستودع سباق',
+        consignmentSupplierId: supplierId,
+      }),
+      201,
+      'create race warehouse',
+    );
+    const draft = await expectSuccess<{ id: string }>(
+      await api().post('/api/v1/goods-notes').set(auth(token)).send({
+        noteDate: '2025-05-10',
+        noteType: 'CONSIGNMENT_IN',
+        warehouseId: raceWarehouse.id,
+        lines: [{ itemId, qty: '1', unitCost: '5.000' }],
+      }),
+      201,
+      'create race receipt draft',
+    );
+    const [posted, changed] = await Promise.all([
+      post(token, `goods-notes/${draft.id}/post`),
+      api().patch(`/api/v1/warehouses/${raceWarehouse.id}`).set(auth(token)).send({
+        consignmentSupplierId: otherSupplier.id,
+      }),
+    ]);
+    expect(posted.status === 201).not.toBe(changed.status === 200);
+    if (posted.status === 201) {
+      expect(changed.body.error.code).toBe('CONFLICT');
+    } else {
+      expect(posted.body.error.code).toBe('CONSIGNMENT_WAREHOUSE_NOT_ALLOWED');
+      expect(changed.status).toBe(200);
+    }
+  });
 });

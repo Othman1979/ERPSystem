@@ -552,12 +552,12 @@ export class StockLedgerService {
   ): Promise<bigint | null> {
     const st = this.state(tx);
     if (!st.warehouseSuppliers.has(warehouseId)) {
-      const warehouse = await tx.warehouse.findFirst({
-        where: { tenantId, companyId, id: warehouseId },
-        select: { consignmentSupplierId: true },
-      });
+      const [warehouse] = await tx.$queryRaw<{ consignment_supplier_id: bigint | null }[]>`
+        SELECT consignment_supplier_id FROM warehouses
+         WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id = ${warehouseId}
+         LOCK IN SHARE MODE`;
       if (!warehouse) throw DomainError.notFound('Warehouse', warehouseId.toString());
-      st.warehouseSuppliers.set(warehouseId, warehouse.consignmentSupplierId);
+      st.warehouseSuppliers.set(warehouseId, warehouse.consignment_supplier_id);
     }
     const supplierId = st.warehouseSuppliers.get(warehouseId)!;
     if (supplierId !== null && !(await this.lockConsignmentEnabled(tx, tenantId, companyId))) {
