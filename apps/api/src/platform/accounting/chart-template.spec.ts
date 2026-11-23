@@ -83,6 +83,8 @@ describe('chart template', () => {
     expect(MAPPING_RULES.PRODUCTION_APPLIED_COST.types).toEqual(['EXPENSE']);
     expect(DOCUMENT_TYPE_PREFIXES.PRODUCTION).toBe('MFG');
     expect(DOCUMENT_TYPE_PREFIXES.PAYROLL_MOVEMENT).toBe('PM');
+    expect(DOCUMENT_TYPE_PREFIXES.CONSIGNMENT_IN).toBe('CIN');
+    expect(DOCUMENT_TYPE_PREFIXES.CONSIGNMENT_OUT).toBe('COUT');
   });
 
   it('has a mapping rule for every mapping key', () => {

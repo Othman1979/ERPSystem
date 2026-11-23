@@ -214,6 +214,9 @@ export class CountsService {
         where: { id: BigInt(dto.warehouseId), companyId, isActive: true },
       });
       if (!warehouse) throw DomainError.notFound('Warehouse', dto.warehouseId);
+      if (warehouse.consignmentSupplierId !== null) {
+        await this.ledger.consignmentSupplierOf(tx, companyId, warehouse.id);
+      }
       await assertWarehouseBranchAllowed(tx, warehouse.id);
 
       const stocked = await tx.item.findMany({
@@ -604,6 +607,7 @@ export class CountsService {
           const posted = await this.adjustments.postLocked(tx, created.id, companyId, userId ?? undefined, {
             key: 'journal.auto.stockCount',
             params: { number: count.id.toString() },
+            sourceId: count.id,
           });
           adjustmentId = created.id;
           docNo = posted.docNo;
@@ -634,7 +638,7 @@ export class CountsService {
     const count = await db.stockCount.findFirst({
       where: { id, AND: [{ warehouse: branchWhere() }] },
       include: {
-        warehouse: { select: { code: true, nameAr: true } },
+        warehouse: { select: { code: true, nameAr: true, consignmentSupplierId: true } },
         lines: {
           include: {
             item: {
@@ -686,7 +690,7 @@ export class CountsService {
     const count = await db.stockCount.findFirst({
       where: { id, AND: [{ warehouse: branchWhere() }] },
       include: {
-        warehouse: { select: { code: true, nameAr: true } },
+        warehouse: { select: { code: true, nameAr: true, consignmentSupplierId: true } },
         lines: {
           include: { item: { select: { code: true, nameAr: true, baseUnit: { select: { code: true } } } } },
         },
@@ -698,7 +702,11 @@ export class CountsService {
     }
     const book = await this.bookOfLines(tenantId, db, count);
     const costs = await db.itemCost.findMany({
-      where: { companyId, itemId: { in: count.lines.map((l) => l.itemId) } },
+      where: {
+        companyId,
+        poolWarehouseId: count.warehouse.consignmentSupplierId === null ? 0n : count.warehouseId,
+        itemId: { in: count.lines.map((l) => l.itemId) },
+      },
       select: { itemId: true, avgCost: true },
     });
     const avgCost = new Map(costs.map((c) => [c.itemId, new Decimal(c.avgCost.toString())]));
@@ -907,6 +915,13 @@ export class CountsService {
     await this.lockCount(tx, tenantId, id);
     const count = await tx.stockCount.findFirst({ where: { id, AND: [{ warehouse: branchWhere() }] } });
     if (!count) throw DomainError.notFound('StockCount', id.toString());
+    const warehouse = await tx.warehouse.findFirst({
+      where: { id: count.warehouseId, companyId: count.companyId },
+      select: { consignmentSupplierId: true },
+    });
+    if (warehouse?.consignmentSupplierId !== null && warehouse?.consignmentSupplierId !== undefined) {
+      await this.ledger.consignmentSupplierOf(tx, count.companyId, count.warehouseId);
+    }
     if (count.status !== 'DRAFT') throw invalidStatus(count.status, 'a draft');
     return count;
   }

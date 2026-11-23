@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ClsServiceManager } from 'nestjs-cls';
 import { AuditService } from '../../common/audit/audit.service.js';
 import type { RequestContext } from '../../common/cls/cls.types.js';
-import { Decimal } from '../../common/decimal/decimal.utils.js';
+import { Decimal, round3 } from '../../common/decimal/decimal.utils.js';
 import { assertWarehouseBranchAllowed, branchWhere } from '../../common/branch/branch-context.js';
 import { DomainError } from '../../common/errors/domain.error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
@@ -147,6 +147,16 @@ export class AdjustmentsService {
       where: { id: BigInt(dto.warehouseId), companyId, isActive: true },
     });
     if (!warehouse) throw DomainError.notFound('Warehouse', dto.warehouseId);
+    if (warehouse.consignmentSupplierId !== null) {
+      const company = await db.company.findFirst({ where: { id: companyId }, select: { consignmentEnabled: true } });
+      if (!company?.consignmentEnabled) {
+        throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Consignment is disabled for this company');
+      }
+      throw new DomainError(
+        ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+        'Manual stock adjustments cannot use a consignment warehouse',
+      );
+    }
 
     // Validate items belong to the company and are stocked.
     const itemIds = dto.lines.map((l) => BigInt(l.itemId));
@@ -277,7 +287,7 @@ export class AdjustmentsService {
     id: bigint,
     companyId: bigint,
     userId: bigint | undefined,
-    generatedDescription?: { key: string; params: Prisma.InputJsonValue },
+    generatedDescription?: { key: string; params: Prisma.InputJsonValue; sourceId?: bigint },
   ): Promise<{ id: bigint; docNo: string }> {
         const { tenantId } = this.tenant();
         const draft = await tx.stockAdjustment.findFirst({
@@ -285,6 +295,13 @@ export class AdjustmentsService {
           include: { lines: { orderBy: { lineNo: 'asc' } } },
         });
         if (!draft) throw DomainError.notFound('StockAdjustment', id.toString());
+        const consignmentSupplierId = await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId);
+        if (consignmentSupplierId !== null && generatedDescription === undefined) {
+          throw new DomainError(
+            ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+            'Only stock-count adjustments are allowed in a consignment warehouse',
+          );
+        }
         // The entry carries the warehouse's branch (ADR-003; S1 of the wave-3E review).
         const branchId = await assertWarehouseBranchAllowed(tx, draft.warehouseId);
         if (draft.status !== 'DRAFT') {
@@ -315,6 +332,7 @@ export class AdjustmentsService {
           line: (typeof draft.lines)[number];
           unitCost: Decimal;
           totalCost: Decimal;
+          writeOff: Decimal;
           movementId: bigint;
         }[] = [];
         for (const line of draft.lines) {
@@ -331,7 +349,7 @@ export class AdjustmentsService {
             sourceId: draft.id,
             sourceLineId: line.id,
           });
-          applied.push({ line, unitCost: res.unitCost, totalCost: res.totalCost, movementId: res.movementId });
+          applied.push({ line, unitCost: res.unitCost, totalCost: res.totalCost, writeOff: res.writeOff, movementId: res.movementId });
           writeOff = writeOff.plus(res.writeOff);
         }
 
@@ -339,11 +357,14 @@ export class AdjustmentsService {
         //  OPENING           → Dr INVENTORY / Cr OPENING_BALANCE_EQUITY
         //  IN, COUNT_ADJ +   → Dr INVENTORY / Cr INVENTORY_ADJUSTMENT
         //  OUT, COUNT_ADJ -  → Dr INVENTORY_ADJUSTMENT / Cr INVENTORY
-        const mapping = await this.mappingAccounts(tx, tenantId, companyId, [
-          'INVENTORY',
-          'INVENTORY_ADJUSTMENT',
-          'OPENING_BALANCE_EQUITY',
-        ]);
+        const mapping = await this.mappingAccounts(
+          tx,
+          tenantId,
+          companyId,
+          consignmentSupplierId !== null
+            ? ['CONSIGNMENT_SHRINKAGE', 'CONSIGNMENT_PAYABLE']
+            : ['INVENTORY', 'INVENTORY_ADJUSTMENT', 'OPENING_BALANCE_EQUITY'],
+        );
 
         const journalLines: JournalLineInput[] = [];
         const pushPair = (debitAccount: bigint, creditAccount: bigint, amount: Decimal, desc: string) => {
@@ -352,7 +373,34 @@ export class AdjustmentsService {
           journalLines.push({ accountId: creditAccount, credit: amount.toString(), description: desc });
         };
 
-        if (draft.adjustmentType === 'OPENING') {
+        if (consignmentSupplierId !== null) {
+          for (const a of applied) {
+            const isIn = new Decimal(a.line.qtyIn.toString()).gt(0);
+            if (isIn) continue;
+            const value = new Decimal(a.totalCost.toString()).plus(a.writeOff.toString());
+            pushPair(
+              mapping.CONSIGNMENT_SHRINKAGE,
+              mapping.CONSIGNMENT_PAYABLE,
+              value,
+              `Consignment stock count ${a.line.itemId}`,
+            );
+            await tx.consignmentSale.create({
+              data: {
+                tenantId,
+                companyId,
+                warehouseId: draft.warehouseId,
+                supplierId: consignmentSupplierId,
+                itemId: a.line.itemId,
+                sourceType: 'STOCK_COUNT',
+                sourceId: generatedDescription?.sourceId ?? draft.id,
+                sourceLineId: a.line.id,
+                saleDate: adjustmentDate,
+                qty: a.line.qtyOut,
+                value: round3(value),
+              },
+            });
+          }
+        } else if (draft.adjustmentType === 'OPENING') {
           for (const a of applied) {
             pushPair(mapping.INVENTORY, mapping.OPENING_BALANCE_EQUITY, a.totalCost, `Opening stock ${a.line.itemId}`);
           }
@@ -367,9 +415,11 @@ export class AdjustmentsService {
           }
         }
 
-        journalLines.push(
-          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
-        );
+        if (consignmentSupplierId === null) {
+          journalLines.push(
+            ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+          );
+        }
 
         // Merge duplicate account sides? postEntry validates each line
         // independently — multiple lines on the same account are fine.
@@ -433,6 +483,12 @@ export class AdjustmentsService {
           include: { lines: { orderBy: { lineNo: 'asc' } } },
         });
         if (!original) throw DomainError.notFound('StockAdjustment', id.toString());
+        if ((await this.ledger.consignmentSupplierOf(tx, companyId, original.warehouseId)) !== null) {
+          throw new DomainError(
+            ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+            'Consignment count adjustments cannot be reversed as owned-stock adjustments',
+          );
+        }
         const branchId = await assertWarehouseBranchAllowed(tx, original.warehouseId);
         if (original.status !== 'POSTED') {
           throw new DomainError(ErrorCode.CONFLICT, 'Only posted adjustments can be reversed');
