@@ -136,6 +136,12 @@ describe('Integrity check job — references and collation', () => {
 
   it('a clean tenant passes every check', async () => {
     tenantA = await register('a');
+    const year = CURRENT_DATE.slice(0, 4);
+    const fiscalYear = await api()
+      .post('/api/v1/fiscal-years')
+      .set(auth(tenantA.token))
+      .send({ code: `FY${year}`, startDate: `${year}-01-01`, endDate: `${year}-12-31` });
+    expect(fiscalYear.status).toBe(201);
     const accounts = await api().get('/api/v1/accounts').set(auth(tenantA.token));
     expect(accounts.status).toBe(200);
     const cash = accounts.body.find((a: { code: string; isPostable: boolean }) => a.code === '1101' && a.isPostable);
@@ -289,7 +295,7 @@ describe('Integrity check job — references and collation', () => {
 
   it('a REVALUATION movement (ADR-018) is sound beside its movement, an orphan alone', async () => {
     const c = await register('c');
-    const year = new Date().getUTCFullYear();
+    const year = CURRENT_DATE.slice(0, 4);
     const fy = await api()
       .post('/api/v1/fiscal-years')
       .set(auth(c.token))
