@@ -39,6 +39,7 @@ import type {
   GoodsNoteDetailDto,
   GoodsNoteLineWithItemDto,
   GoodsNoteListItemDto,
+  GoodsNoteType,
   GoodsNotesControllerListSort,
   ItemListItemDto,
 } from '@erp/api-client';
@@ -63,18 +64,31 @@ import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../co
 import { codeAndName } from '../i18n/displayName';
 import { qtyCell, unitCostCell } from '../format/cells';
 import { invalidateStockDocument } from '../stockQueries';
+import { useCompany } from '../components/CompanyProfileForm';
+import { goodsNoteWarehouses, isConsignmentNoteType } from './goods/goodsNoteWarehouses';
 
 type GoodsNote = GoodsNoteListItemDto;
 type Item = ItemListItemDto;
 
-const NOTE_TYPES = ['GRN', 'GIN'] as const;
+const NOTE_TYPES = ['GRN', 'GIN', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT'] as const;
 type NoteType = (typeof NOTE_TYPES)[number];
 
 const TYPE_LABEL: Record<NoteType, string> = {
   GRN: 'goods.entryVoucher',
   GIN: 'goods.exitVoucher',
+  CONSIGNMENT_IN: 'goods.consignmentIn',
+  CONSIGNMENT_OUT: 'goods.consignmentOut',
 };
-const TYPE_TAG_COLOR: Record<NoteType, string> = { GRN: 'blue', GIN: 'orange' };
+const TYPE_TAG_COLOR: Record<NoteType, string> = {
+  GRN: 'blue',
+  GIN: 'orange',
+  CONSIGNMENT_IN: 'purple',
+  CONSIGNMENT_OUT: 'magenta',
+};
+
+function typeLabelKey(type: GoodsNoteType): string | null {
+  return type in TYPE_LABEL ? TYPE_LABEL[type as NoteType] : null;
+}
 
 /** Postable expense accounts: the choices of a GIN's expense account (ADR-026 §8). Module-level so the select stays memoised. */
 const selectExpenseAccounts = (rows: AccountRow[]): AccountRow[] =>
@@ -121,9 +135,11 @@ function SourceFields({
   );
 }
 
-function TypeTag({ type }: { type: NoteType }) {
+function TypeTag({ type }: { type: GoodsNoteType }) {
   const { t } = useTranslation();
-  return <Tag color={TYPE_TAG_COLOR[type]}>{t(TYPE_LABEL[type])}</Tag>;
+  const label = typeLabelKey(type);
+  const color = type === 'GRN' || type === 'GIN' ? TYPE_TAG_COLOR[type] : undefined;
+  return <Tag color={color}>{label ? t(label) : type}</Tag>;
 }
 
 export function GoodsNotesPage() {
@@ -145,6 +161,11 @@ export function GoodsNotesSection({
 } = {}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const company = useCompany();
+  const consignmentEnabled = company.data?.consignmentEnabled === true;
+  const availableNoteTypes = NOTE_TYPES.filter(
+    (type) => consignmentEnabled || !isConsignmentNoteType(type),
+  );
   const [apiMessage, contextHolder] = message.useMessage();
   const [screen, setScreen] = useState<'list' | 'entry'>('list');
   const [entryId, setEntryId] = useState<string | null>(null); // null → new voucher
@@ -210,14 +231,24 @@ export function GoodsNotesSection({
     queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
     enabled: screen === 'entry' && !entryId,
   });
+  useEffect(() => {
+    if (!consignmentEnabled && typeFilter && isConsignmentNoteType(typeFilter)) {
+      setTypeFilter(undefined);
+    }
+    if (!consignmentEnabled && isConsignmentNoteType(newType)) {
+      setNewType('GRN');
+      setNewWarehouseId(undefined);
+    }
+  }, [consignmentEnabled, newType, typeFilter]);
 
   const itemOptions = items
     .withSelected(lines.map((l) => l.itemId))
     .map((i) => ({ value: i.id, label: codeAndName(i) }));
-  const warehouseOptions = (warehouses ?? []).map((w) => ({
+  const warehouseOptions = goodsNoteWarehouses(newType, warehouses ?? [], consignmentEnabled).map((w) => ({
     value: w.id,
     label: codeAndName(w),
   }));
+  const selectedWarehouse = (warehouses ?? []).find((warehouse) => warehouse.id === newWarehouseId);
 
   const invalidate = () => invalidateStockDocument(queryClient, 'goodsNote');
   const onError = (err: unknown) =>
@@ -228,6 +259,7 @@ export function GoodsNotesSection({
     );
 
   const openNew = (type: NoteType) => {
+    if (isConsignmentNoteType(type) && !consignmentEnabled) return;
     setEntryId(null);
     setNewType(type);
     setNewDate(dayjs());
@@ -320,7 +352,13 @@ export function GoodsNotesSection({
     !!newWarehouseId &&
     lines.some((l) => l.itemId && l.qty) &&
     (newType === 'GIN' ||
-      lines.every((l) => !l.itemId || (l.qty && l.unitCost != null)));
+      newType === 'CONSIGNMENT_OUT' ||
+      lines.every(
+        (l) =>
+          !l.itemId ||
+          (l.qty &&
+            (newType !== 'GRN' || l.unitCost != null)),
+      ));
 
   // Save stays enabled: a save attempt with gaps marks the missing fields instead.
   const [tried, setTried] = useState(false);
@@ -411,7 +449,7 @@ export function GoodsNotesSection({
               placeholder={t('goods.noteType')}
               value={typeFilter}
               onChange={setTypeFilter}
-              options={NOTE_TYPES.map((vt) => ({ value: vt, label: t(TYPE_LABEL[vt]) }))}
+              options={availableNoteTypes.map((vt) => ({ value: vt, label: t(TYPE_LABEL[vt]) }))}
             />
           }
           count={list.total}
@@ -421,7 +459,7 @@ export function GoodsNotesSection({
             icon={<PlusOutlined />}
             onClick={() => openNew('GRN')}
             menu={{
-              items: NOTE_TYPES.map((vt) => ({
+              items: availableNoteTypes.map((vt) => ({
                 key: vt,
                 label: t(TYPE_LABEL[vt]),
               })),
@@ -456,7 +494,7 @@ export function GoodsNotesSection({
               title: t('goods.noteType'),
               dataIndex: 'noteType',
               width: 130,
-              render: (v: NoteType) => <TypeTag type={v} />,
+              render: (v: GoodsNoteType) => <TypeTag type={v} />,
             },
             {
               title: t('goods.date'),
@@ -524,6 +562,7 @@ export function GoodsNotesSection({
   // ============================ ENTRY VIEW ============================
   const isNew = !entryId;
   const entry = detail ?? null;
+  const entryTypeLabel = entry ? typeLabelKey(entry.noteType) : null;
 
   const warehouseError = tried && !newWarehouseId ? t('common.requiredField') : undefined;
 
@@ -531,7 +570,7 @@ export function GoodsNotesSection({
     <div>
       {contextHolder}
       <DocLayout
-        title={isNew ? t(TYPE_LABEL[newType]) : entry ? t(TYPE_LABEL[entry.noteType]) : '…'}
+        title={isNew ? t(TYPE_LABEL[newType]) : entry ? (entryTypeLabel ? t(entryTypeLabel) : entry.noteType) : '…'}
         docNo={entry?.docNo}
         status={isNew ? 'DRAFT' : entry?.status}
         onBack={backToList}
@@ -599,11 +638,14 @@ export function GoodsNotesSection({
             >
               <GridSelect
                 value={newType}
-                onChange={setNewType}
-                options={NOTE_TYPES.map((vt) => ({
+                options={availableNoteTypes.map((vt) => ({
                   value: vt,
                   label: t(TYPE_LABEL[vt]),
                 }))}
+                onChange={(value: NoteType) => {
+                  setNewType(value);
+                  setNewWarehouseId(undefined);
+                }}
               />
             </DocField>
             <DocField
@@ -627,6 +669,11 @@ export function GoodsNotesSection({
                 onChange={setNewWarehouseId}
               />
             </DocField>
+            {isConsignmentNoteType(newType) && selectedWarehouse?.consignmentSupplier && (
+              <DocField label={t('goods.supplier')}>
+                <DocValue>{codeAndName(selectedWarehouse.consignmentSupplier)}</DocValue>
+              </DocField>
+            )}
             <DocField
               field="description"
               label={t('common.description')}
@@ -738,6 +785,11 @@ export function GoodsNotesSection({
                 <DocValue>{entry.description ?? '—'}</DocValue>
               </DocField>
               <SourceFields entry={entry} />
+              {entry.status === 'POSTED' && isConsignmentNoteType(entry.noteType) && (
+                <DocField label={t('goods.journalEntry')}>
+                  <DocValue>{t('goods.noJournalEntry')}</DocValue>
+                </DocField>
+              )}
             </DocFields>
           )
         )}
@@ -823,13 +875,15 @@ export function GoodsNotesSection({
                 align: 'right' as const,
                 render: qtyCell,
               },
-              {
-                title: t('stock.unitCost'),
-                dataIndex: 'unitCost',
-                width: 110,
-                align: 'right' as const,
-                render: unitCostCell,
-              },
+              ...(entry?.noteType === 'GRN'
+                ? [{
+                    title: t('stock.unitCost'),
+                    dataIndex: 'unitCost',
+                    width: 110,
+                    align: 'right' as const,
+                    render: unitCostCell,
+                  }]
+                : []),
             ]}
            scroll={{ x: 'max-content' }}/>
         )}

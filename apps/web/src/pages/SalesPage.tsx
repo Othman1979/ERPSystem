@@ -66,6 +66,7 @@ import { CostCenterLabel, CostCenterSelect } from '../components/CostCenterField
 import { PrintPdfButton } from '../components/PrintPdfButton';
 import { useNewFromUrl } from '../useNewFromUrl';
 import { salesInvoiceBody, salesInvoiceFormDefaults } from './sales/invoicePayload';
+import { warehouseSearchMatches, warehouseSearchText } from './sales/warehouseSearch';
 import { InvoiceDiscountField } from './sales/InvoiceDiscountField';
 import {
   ApiError,
@@ -578,6 +579,7 @@ function InvoiceForm({
   onLockBlocked?: () => void;
 }) {
   const { t } = useTranslation();
+  const company = useCompany();
   const { can, me, companyId } = useAuth();
   const editLock = useDocumentLock('SALES_INVOICE', isNew ? null : invoice?.id, !isNew && !loading && invoice?.status === 'DRAFT');
   useEffect(() => {
@@ -634,7 +636,15 @@ function InvoiceForm({
 
   const warehouseOptions = lookups.warehouses.map((w) => ({
     value: w.id,
-    label: codeAndName(w),
+    searchText: warehouseSearchText(w),
+    label: (
+      <span>
+        {codeAndName(w)}
+        {company.data?.consignmentEnabled && w.consignmentSupplierId !== null && (
+          <Tag color="purple">{t('consignment.tag')}</Tag>
+        )}
+      </span>
+    ),
   }));
   const cashAccountOptions = [...lookups.cashAccountOptions];
   if (
@@ -955,6 +965,8 @@ function InvoiceForm({
             status={requiredError(missing.warehouse) ? 'error' : undefined}
             disabled={orderLinked}
             options={warehouseOptions}
+            optionFilterProp="searchText"
+            filterOption={(input, option) => warehouseSearchMatches(input, String(option?.searchText ?? ''))}
             value={warehouseId}
             onChange={setWarehouseId}
           />

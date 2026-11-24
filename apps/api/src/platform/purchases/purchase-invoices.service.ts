@@ -235,11 +235,11 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
              i.grand_total, i.paid_amount, COALESCE(r.credited, 0) AS credited
         FROM purchase_invoices i
         LEFT JOIN (
-          SELECT original_invoice_id, SUM(grand_total) AS credited
-            FROM purchase_returns
-           WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
-             AND status = 'POSTED' AND refund_type = 'CREDIT' AND return_date <= ${day}
-           GROUP BY original_invoice_id
+          SELECT r.original_invoice_id, SUM(r.grand_total) AS credited
+            FROM purchase_returns r
+           WHERE r.tenant_id = ${tenantId} AND r.company_id = ${companyId}
+             AND r.status = 'POSTED' AND r.refund_type = 'CREDIT' AND r.return_date <= ${day}
+           GROUP BY r.original_invoice_id
         ) r ON r.original_invoice_id = i.id
        WHERE i.tenant_id = ${tenantId} AND i.company_id = ${companyId}
          AND i.status = 'POSTED' AND i.payment_type = 'CREDIT' AND i.invoice_date <= ${day}
@@ -550,7 +550,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     // ADR-026 §7: an invoice on a purchase order; another tenant's or branch's order answers 404.
     const order = dto.purchaseOrderId ? await this.orders.forBilling(BigInt(dto.purchaseOrderId)) : null;
     const pricesIncludeTax = await this.support.pricesIncludeTax(db);
-    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
+    const lines = await this.resolveInvoiceLines(db, tenantId, companyId, dto, pricesIncludeTax);
     await this.assertHeader(db, companyId, dto, lines);
     this.assertReceiptLinksNeedOrder(order, lines);
     if (order) this.assertOrderHeader(order, dto);
@@ -568,7 +568,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           received = await this.lockReceiptBilling(tx, tenantId, companyId, order.id, noteIds);
         } else {
           // ADR-025 §4: at MEDIUM / FULL a direct purchase needs purchase.direct (owners aside).
-          await assertDirectPurchaseAllowed(tx, tenantId, companyId);
+          if (!dto.consignmentSettlement) await assertDirectPurchaseAllowed(tx, tenantId, companyId);
         }
         // Share-lock the header centre before the row that references it (ADR-024 §1.4).
         if (costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, costCenterId);
@@ -588,6 +588,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           supplierInvoiceDate: dto.supplierInvoiceDate ? new Date(dto.supplierInvoiceDate) : null,
           warehouseId: dto.warehouseId ? BigInt(dto.warehouseId) : null,
           paymentType: dto.paymentType,
+          consignmentSettlement: dto.consignmentSettlement ?? false,
           cashAccountId: dto.cashAccountId ? BigInt(dto.cashAccountId) : null,
           costCenterId,
           description: dto.description ?? null,
@@ -637,8 +638,12 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     }
     const order = orderId ? await this.orders.forBilling(orderId) : null;
     const pricesIncludeTax = await this.support.pricesIncludeTax(db);
-    const lines = await this.resolveLines(db, tenantId, companyId, dto.lines, pricesIncludeTax);
-    await this.assertHeader(db, companyId, dto, lines);
+    const headerDto = { ...dto, consignmentSettlement: inv.consignmentSettlement };
+    if (dto.consignmentSettlement !== undefined && dto.consignmentSettlement !== inv.consignmentSettlement) {
+      throw new DomainError(ErrorCode.VALIDATION, 'The temporary-receipt settlement type cannot be changed');
+    }
+    const lines = await this.resolveInvoiceLines(db, tenantId, companyId, headerDto, pricesIncludeTax);
+    await this.assertHeader(db, companyId, headerDto, lines);
     this.assertReceiptLinksNeedOrder(order, lines);
     if (order) this.assertOrderHeader(order, dto);
     const costCenterId = dto.costCenterId ? BigInt(dto.costCenterId) : (order?.costCenterId ?? null);
@@ -728,8 +733,12 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const companyId = await this.support.companyId(db);
     const userId = this.support.userId();
     // ADR-026 §7: an invoice on a purchase order bills its receipts (set at creation, never changed).
-    const head = await db.purchaseInvoice.findFirst({ where: { id }, select: { purchaseOrderId: true } });
+    const head = await db.purchaseInvoice.findFirst({
+      where: { id },
+      select: { purchaseOrderId: true, consignmentSettlement: true },
+    });
     if (head?.purchaseOrderId) return this.postFromReceipts(id, head.purchaseOrderId);
+    if (head?.consignmentSettlement) return this.postConsignmentSettlement(id);
 
     const result = await this.support.withRetry(() =>
       db.$transaction(async (tx) => {
@@ -768,6 +777,12 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
           throw new DomainError(ErrorCode.VALIDATION, 'warehouseId is required for stocked items');
         }
         if (draft.warehouseId) {
+          if ((await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId)) !== null) {
+            throw new DomainError(
+              ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+              'Direct purchase invoices cannot use a temporary warehouse',
+            );
+          }
           const wh = await tx.warehouse.findFirst({
             where: { id: draft.warehouseId, companyId, isActive: true },
             select: { id: true },
@@ -931,6 +946,176 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       }, POSTING_TX_OPTIONS),
     );
 
+    return this.get(result.id);
+  }
+
+  private async postConsignmentSettlement(id: bigint) {
+    const { tenantId, db } = this.support.tenant();
+    const companyId = await this.support.companyId(db);
+    const userId = this.support.userId();
+    const result = await this.support.withRetry(() =>
+      db.$transaction(async (tx) => {
+        await tx.$queryRaw`
+          SELECT id FROM purchase_invoices
+           WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id = ${id}
+           FOR UPDATE`;
+        const draft = await tx.purchaseInvoice.findFirst({
+          where: { id },
+          include: { lines: { orderBy: { lineNo: 'asc' } } },
+        });
+        if (!draft) throw DomainError.notFound('PurchaseInvoice', id.toString());
+        if (!draft.consignmentSettlement || !draft.warehouseId) {
+          throw new DomainError(ErrorCode.VALIDATION, 'The invoice is not a temporary-receipt settlement');
+        }
+        assertBranchAllowed(draft.branchId);
+        await assertWarehouseBranchAllowed(tx, draft.warehouseId);
+        await this.documentLocks.assertNotLockedByOther(tx, 'PURCHASE_INVOICE', id);
+        if (draft.status !== 'DRAFT') {
+          throw new DomainError(ErrorCode.CONFLICT, 'Invoice is not a draft');
+        }
+        if (draft.lines.length === 0 || draft.lines.some((line) => line.consignmentSaleId === null)) {
+          throw new DomainError(ErrorCode.VALIDATION, 'Every settlement invoice line must reference a temporary-receipt sale');
+        }
+        const supplierId = await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId);
+        if (supplierId === null || supplierId !== draft.supplierId) {
+          throw new DomainError(ErrorCode.VALIDATION, 'The invoice supplier must match the temporary warehouse supplier');
+        }
+        const saleIds = [...new Set(draft.lines.map((line) => line.consignmentSaleId!))];
+        const sales = await tx.$queryRaw<{
+          id: bigint;
+          supplier_id: bigint;
+          warehouse_id: bigint;
+          item_id: bigint;
+          source_branch_id: bigint | null;
+          source_type: 'SALES_INVOICE' | 'STOCK_COUNT';
+          qty: Prisma.Decimal;
+          returned_qty: Prisma.Decimal;
+          invoiced_qty: Prisma.Decimal;
+        }[]>`
+          SELECT s.id, s.supplier_id, s.warehouse_id, s.item_id, s.source_type,
+                 CASE WHEN s.source_type = 'SALES_INVOICE' THEN si.branch_id ELSE w.branch_id END AS source_branch_id,
+                 s.qty, s.returned_qty, s.invoiced_qty
+            FROM consignment_sales s
+            JOIN warehouses w
+              ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+            LEFT JOIN sales_invoices si
+              ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id AND si.id = s.source_id
+           WHERE s.tenant_id = ${tenantId} AND s.company_id = ${companyId}
+             AND s.id IN (${Prisma.join(saleIds)})
+           ORDER BY s.id FOR UPDATE`;
+        const saleById = new Map(
+          sales.map((sale) => [
+            sale.id,
+            {
+              id: sale.id,
+              supplierId: sale.supplier_id,
+              warehouseId: sale.warehouse_id,
+              itemId: sale.item_id,
+              branchId: sale.source_branch_id,
+              sourceType: sale.source_type,
+              qty: sale.qty,
+              returnedQty: sale.returned_qty,
+              invoicedQty: sale.invoiced_qty,
+            },
+          ]),
+        );
+        const invoiceDate = new Date(draft.invoiceDate);
+        const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, invoiceDate);
+        let salesNet = new Decimal(0);
+        let shortageNet = new Decimal(0);
+        for (const line of draft.lines) {
+          const sale = saleById.get(line.consignmentSaleId!);
+          if (
+            !sale ||
+            sale.supplierId !== draft.supplierId ||
+            sale.warehouseId !== draft.warehouseId ||
+            sale.itemId !== line.itemId
+          ) {
+            throw new DomainError(ErrorCode.VALIDATION, 'Settlement lines must match the supplier, warehouse, and item of each sale');
+          }
+          assertBranchAllowed(sale.branchId);
+          const openQty = new Decimal(sale.qty.toString())
+            .minus(sale.returnedQty.toString())
+            .minus(sale.invoicedQty.toString());
+          const qty = new Decimal(line.qtyBase.toString());
+          if (qty.gt(openQty)) {
+            throw new DomainError(ErrorCode.CONSIGNMENT_OVER_INVOICED, 'Settlement quantity exceeds the open temporary-receipt sale quantity');
+          }
+          await tx.consignmentSale.update({
+            where: { id: sale.id },
+            data: { invoicedQty: { increment: qty } },
+          });
+          if (sale.sourceType === 'SALES_INVOICE') {
+            salesNet = salesNet.plus(line.netAmount.toString());
+          } else {
+            shortageNet = shortageNet.plus(line.netAmount.toString());
+          }
+        }
+        const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
+          'INPUT_TAX',
+          'COGS',
+          'CONSIGNMENT_SHRINKAGE',
+          'SUPPLIERS_CONTROL',
+        ]);
+        const journalLines: JournalLineInput[] = [];
+        if (salesNet.gt(0)) {
+          journalLines.push({ accountId: mapping.COGS, debit: salesNet.toString() });
+        }
+        if (shortageNet.gt(0)) {
+          journalLines.push({ accountId: mapping.CONSIGNMENT_SHRINKAGE, debit: shortageNet.toString() });
+        }
+        if (draft.taxTotal.gt(0)) {
+          journalLines.push({ accountId: mapping.INPUT_TAX, debit: draft.taxTotal.toString() });
+        }
+        journalLines.push({
+          accountId: mapping.SUPPLIERS_CONTROL,
+          credit: draft.grandTotal.toString(),
+          partyType: 'SUPPLIER',
+          partyId: draft.supplierId,
+          description: lineDescription('journal.line.creditPurchase'),
+        });
+        const invoiceNo = await this.posting.allocateEntryNo(
+          tx,
+          tenantId,
+          companyId,
+          'PURCHASE_INVOICE',
+          invoiceDate,
+        );
+        const entry = await this.posting.postEntry(tx, {
+          tenantId,
+          companyId,
+          branchId: draft.branchId,
+          entryDate: invoiceDate,
+          fiscalPeriodId: period.id,
+          sourceType: SOURCE,
+          sourceId: draft.id,
+          description: draft.description ?? `Consignment settlement ${invoiceNo}`,
+          descriptionKey: draft.description == null ? 'journal.auto.purchaseInvoice' : null,
+          descriptionParams: draft.description == null ? { number: invoiceNo } : undefined,
+          lines: journalLines,
+          postedBy: userId ?? null,
+          costCenterId: draft.costCenterId,
+          requireCostCenters: true,
+        });
+        await tx.purchaseInvoice.update({
+          where: { id: draft.id },
+          data: {
+            status: 'POSTED',
+            invoiceNo,
+            journalEntryId: entry.id,
+            postedAt: new Date(),
+            postedBy: userId ?? null,
+          },
+        });
+        await this.audit.log({
+          action: 'purchase_invoice.post',
+          entityType: 'purchase_invoice',
+          entityId: draft.id,
+          after: { invoiceNo, consignmentSettlement: true },
+        }, tx);
+        return { id: draft.id };
+      }, POSTING_TX_OPTIONS),
+    );
     return this.get(result.id);
   }
 
@@ -1297,7 +1482,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         itemUnitId: l.itemUnitId,
         qty: l.dto.qty,
         qtyBase: l.amounts.qtyBase,
-        unitCost: l.dto.unitCost,
+        unitCost: l.dto.unitCost ?? l.dto.unitPrice!,
         discountPct: l.dto.discountPct ?? '0',
         discountAmount: l.amounts.discountAmount,
         netAmount: l.amounts.netAmount,
@@ -1305,6 +1490,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
         taxRate: l.taxRate,
         taxAmount: l.amounts.taxAmount,
         lineTotal: l.amounts.lineTotal,
+        consignmentSaleId: l.dto.consignmentSaleId ? BigInt(l.dto.consignmentSaleId) : null,
       })),
     });
     if (!lines.some((l) => l.dto.grnLineId)) return;
@@ -1654,12 +1840,87 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     }
   }
 
+  private async resolveInvoiceLines(
+    db: ReturnType<PrismaService['forTenant']>,
+    tenantId: bigint,
+    companyId: bigint,
+    dto: CreatePurchaseInvoiceDto,
+    pricesIncludeTax: boolean,
+  ): Promise<ResolvedLine[]> {
+    if (!dto.consignmentSettlement) {
+      if (dto.lines.some((line) => line.consignmentSaleId)) {
+        throw new DomainError(ErrorCode.VALIDATION, 'consignmentSaleId is only valid on a temporary-receipt settlement invoice');
+      }
+      return this.resolveLines(
+        db,
+        tenantId,
+        companyId,
+        dto.lines.map((line) => ({ ...line, unitCost: line.unitCost ?? line.unitPrice! })),
+        pricesIncludeTax,
+      );
+    }
+    if (!dto.warehouseId || dto.paymentType !== 'CREDIT' || dto.purchaseOrderId || dto.receivedGrnId) {
+      throw new DomainError(
+        ErrorCode.VALIDATION,
+        'A temporary-receipt settlement requires a temporary warehouse, credit payment, and no purchase-order or GRN link',
+      );
+    }
+    if (dto.lines.some((line) => !line.consignmentSaleId)) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Every temporary-receipt settlement line must reference a temporary-receipt sale');
+    }
+    const saleIds = dto.lines.map((line) => BigInt(line.consignmentSaleId!));
+    if (new Set(saleIds.map(String)).size !== saleIds.length) {
+      throw new DomainError(ErrorCode.VALIDATION, 'A temporary-receipt sale may appear only once on an invoice');
+    }
+    const sales = await db.$queryRaw<{
+      id: bigint;
+      supplier_id: bigint;
+      warehouse_id: bigint;
+      item_id: bigint;
+      source_branch_id: bigint | null;
+    }[]>`
+      SELECT s.id, s.supplier_id, s.warehouse_id, s.item_id,
+             CASE WHEN s.source_type = 'SALES_INVOICE' THEN si.branch_id ELSE w.branch_id END AS source_branch_id
+        FROM consignment_sales s
+        JOIN warehouses w
+          ON w.tenant_id = s.tenant_id AND w.company_id = s.company_id AND w.id = s.warehouse_id
+        LEFT JOIN sales_invoices si
+          ON s.source_type = 'SALES_INVOICE' AND si.tenant_id = s.tenant_id
+         AND si.company_id = s.company_id AND si.id = s.source_id
+       WHERE s.tenant_id = ${tenantId} AND s.company_id = ${companyId}
+         AND s.id IN (${Prisma.join(saleIds)})`;
+    const saleById = new Map(sales.map((sale) => [sale.id, sale]));
+    const lines = dto.lines.map((line) => {
+      const sale = saleById.get(BigInt(line.consignmentSaleId!));
+      if (!sale) throw DomainError.notFound('ConsignmentSale', line.consignmentSaleId!);
+      assertBranchAllowed(sale.source_branch_id);
+      if (sale.supplier_id !== BigInt(dto.supplierId) || sale.warehouse_id !== BigInt(dto.warehouseId!)) {
+        throw new DomainError(ErrorCode.VALIDATION, 'Supplier and warehouse must match the referenced temporary-receipt sale');
+      }
+      if (!line.unitPrice || new Decimal(line.unitPrice).lte(0)) {
+        throw new DomainError(ErrorCode.VALIDATION, 'A supplier price greater than zero is required for every settlement line');
+      }
+      return {
+        ...line,
+        itemId: sale.item_id.toString(),
+        itemUnitId: undefined,
+        unitCost: line.unitPrice,
+      };
+    });
+    const resolved = await this.resolveLines(db, tenantId, companyId, lines, pricesIncludeTax);
+    return resolved.map((line, index) => ({
+      ...line,
+      dto: { ...line.dto, consignmentSaleId: dto.lines[index]!.consignmentSaleId },
+    }));
+  }
+
   private async assertHeader(
     db: ReturnType<PrismaService['forTenant']>,
     companyId: bigint,
     dto: CreatePurchaseInvoiceDto,
     lines: ResolvedLine[],
   ) {
+    const consignmentSettlement = dto.consignmentSettlement === true;
     const supplier = await db.party.findFirst({
       where: { companyId, id: BigInt(dto.supplierId), isActive: true },
       select: { id: true, partyType: true },
@@ -1668,16 +1929,33 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       throw new DomainError(ErrorCode.VALIDATION, 'Supplier not found or not a supplier');
     }
     const hasStock = lines.some((l) => isStocked(l.itemKind));
+    if (consignmentSettlement && (dto.paymentType !== 'CREDIT' || dto.receivedGrnId || dto.purchaseOrderId)) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Temporary-receipt settlement invoices must use credit and cannot bill a GRN or purchase order');
+    }
     if (hasStock) {
       if (!dto.warehouseId) {
         throw new DomainError(ErrorCode.VALIDATION, 'warehouseId is required for stocked items');
       }
       const wh = await db.warehouse.findFirst({
         where: { companyId, id: BigInt(dto.warehouseId), isActive: true },
-        select: { id: true, branchId: true },
+        select: { id: true, branchId: true, consignmentSupplierId: true },
       });
       if (!wh) throw DomainError.notFound('Warehouse', dto.warehouseId);
       assertBranchAllowed(wh.branchId);
+      if (wh.consignmentSupplierId !== null) {
+        const company = await db.company.findFirst({ where: { id: companyId }, select: { consignmentEnabled: true } });
+        if (!company?.consignmentEnabled) {
+          throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Temporary receipt is disabled for this company');
+        }
+        if (!consignmentSettlement) {
+          throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Direct stock purchase invoices cannot use a temporary warehouse');
+        }
+        if (wh.consignmentSupplierId !== BigInt(dto.supplierId)) {
+          throw new DomainError(ErrorCode.VALIDATION, 'The invoice supplier must match the temporary warehouse supplier');
+        }
+      } else if (consignmentSettlement) {
+        throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Temporary-receipt settlement requires a temporary warehouse');
+      }
     } else if (dto.warehouseId) {
       const wh = await db.warehouse.findFirst({
         where: { companyId, id: BigInt(dto.warehouseId), isActive: true },
@@ -1713,7 +1991,10 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     dtos: PurchaseInvoiceLineDto[],
     pricesIncludeTax = false,
   ): Promise<ResolvedLine[]> {
-    const itemIds = dtos.map((l) => BigInt(l.itemId));
+    if (dtos.some((line) => !line.itemId || !(line.unitCost ?? line.unitPrice))) {
+      throw new DomainError(ErrorCode.VALIDATION, 'itemId and unitCost are required for ordinary purchase invoice lines');
+    }
+    const itemIds = dtos.map((l) => BigInt(l.itemId!));
     const items = await db.item.findMany({
       where: { tenantId, companyId, id: { in: itemIds }, isActive: true },
       include: { taxCategory: { select: { id: true, rate: true } } },
@@ -1731,7 +2012,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
     const taxIds = [
       ...new Set(
         dtos
-          .map((l) => l.taxCategoryId ?? itemById.get(BigInt(l.itemId))?.taxCategoryId?.toString())
+          .map((l) => l.taxCategoryId ?? itemById.get(BigInt(l.itemId!))?.taxCategoryId?.toString())
           .filter((x): x is string => !!x)
           .map((x) => BigInt(x)),
       ),
@@ -1750,8 +2031,8 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
 
     const out: ResolvedLine[] = [];
     for (const l of dtos) {
-      const item = itemById.get(BigInt(l.itemId));
-      if (!item) throw DomainError.notFound('Item', l.itemId);
+      const item = itemById.get(BigInt(l.itemId!));
+      if (!item) throw DomainError.notFound('Item', l.itemId!);
       assertNotRecipe(item.itemKind, item.code);
 
       let itemUnitId: bigint | null = null;
@@ -1777,7 +2058,7 @@ export class PurchaseInvoicesService implements OnModuleInit, InvoiceSettlement 
       const amounts = computeLineAmounts({
         qty: l.qty,
         factorToBase,
-        unitPrice: l.unitCost,
+        unitPrice: l.unitCost ?? l.unitPrice!,
         discountPct: l.discountPct ?? '0',
         taxRate,
         pricesIncludeTax,

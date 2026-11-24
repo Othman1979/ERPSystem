@@ -466,7 +466,7 @@ export class GoodsNotesService implements OnModuleInit {
    */
   async billingSource(tx: Prisma.TransactionClient, id: bigint): Promise<GrnBillingSource | null> {
     const note = await tx.goodsNote.findFirst({ where: { id }, include: { lines: true } });
-    if (!note) return null;
+    if (!note || (note.noteType !== 'GRN' && note.noteType !== 'GIN')) return null;
     const byItem = new Map<bigint, { qty: Decimal; value: Decimal }>();
     for (const l of note.lines) {
       const cur = byItem.get(l.itemId) ?? { qty: new Decimal(0), value: new Decimal(0) };
@@ -501,7 +501,8 @@ export class GoodsNotesService implements OnModuleInit {
       { id: bigint; doc_no: string | null; status: 'DRAFT' | 'POSTED'; note_type: 'GRN' | 'GIN'; purchase_order_id: bigint | null; warehouse_id: bigint }[]
     >`
       SELECT id, doc_no, status, note_type, purchase_order_id, warehouse_id FROM goods_notes
-       WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
+       WHERE tenant_id = ${tenantId} ${currentCompanySqlFilter()} AND id IN (${Prisma.join(ids)})
+         AND note_type IN ('GRN', 'GIN') ORDER BY id FOR UPDATE`;
     const rows = await tx.$queryRaw<
       { id: bigint; note_id: bigint; item_id: bigint; po_line_id: bigint | null; qty: Num; unit_cost: Num | null; billed_qty: Num; cleared_value: Num }[]
     >`
@@ -510,6 +511,7 @@ export class GoodsNotesService implements OnModuleInit {
          AND EXISTS (
            SELECT 1 FROM goods_notes n
             WHERE n.tenant_id = goods_note_lines.tenant_id AND n.id = goods_note_lines.note_id
+              AND n.note_type IN ('GRN', 'GIN')
               ${currentCompanySqlFilter('n')}
          )
        ORDER BY id FOR UPDATE`;
@@ -528,13 +530,17 @@ export class GoodsNotesService implements OnModuleInit {
     const notes = await tx.goodsNote.findMany({
       where:
         'orderId' in where
-          ? { purchaseOrderId: where.orderId, noteType: 'GRN', status: 'POSTED' }
-          : { lines: { some: { id: { in: where.lineIds } } } },
+        ? { purchaseOrderId: where.orderId, noteType: 'GRN', status: 'POSTED' }
+          : { noteType: { in: ['GRN', 'GIN'] }, lines: { some: { id: { in: where.lineIds } } } },
       include: { lines: true },
       orderBy: { id: 'asc' },
     });
+    const billableNotes = notes.filter(
+      (note): note is (typeof notes)[number] & { noteType: 'GRN' | 'GIN' } =>
+        note.noteType === 'GRN' || note.noteType === 'GIN',
+    );
     return this.receiptLines(
-      notes.map((n) => ({
+      billableNotes.map((n) => ({
         id: n.id,
         doc_no: n.docNo,
         status: n.status,
@@ -542,7 +548,7 @@ export class GoodsNotesService implements OnModuleInit {
         purchase_order_id: n.purchaseOrderId,
         warehouse_id: n.warehouseId,
       })),
-      notes.flatMap((n) =>
+      billableNotes.flatMap((n) =>
         n.lines.map((l) => ({
           id: l.id,
           note_id: l.noteId,
@@ -651,6 +657,25 @@ export class GoodsNotesService implements OnModuleInit {
     const noteDate = new Date(draft.noteDate);
     const period = await this.posting.resolveOpenPeriod(tx, tenantId, companyId, noteDate);
     const isGrn = draft.noteType === 'GRN';
+    const isConsignmentIn = draft.noteType === 'CONSIGNMENT_IN';
+    const isConsignmentOut = draft.noteType === 'CONSIGNMENT_OUT';
+    const isConsignment = isConsignmentIn || isConsignmentOut;
+    const consignmentSupplierId = await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId);
+    if (isConsignment !== (consignmentSupplierId !== null)) {
+      throw new DomainError(
+        ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+        'Temporary-receipt notes require a temporary warehouse and normal notes require an owned warehouse',
+      );
+    }
+    if (isConsignment && draft.supplierId !== consignmentSupplierId) {
+      throw new DomainError(
+        ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+        'The temporary warehouse supplier changed after this note was created',
+      );
+    }
+    if (isConsignment && (locks.order || locks.request)) {
+      throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Temporary-receipt notes cannot use purchase orders or issue requests');
+    }
 
     // ADR-026 §5/§9: checked again under the order's (or request's) locks.
     const received = locks.order ? this.checkReceipt(locks.order, draft.warehouseId, draft.lines) : null;
@@ -664,7 +689,7 @@ export class GoodsNotesService implements OnModuleInit {
         });
       }
     }
-    if (!isGrn && !locks.request) await this.assertIssueWithoutRequest(tx, tenantId, locks.level);
+    if (draft.noteType === 'GIN' && !locks.request) await this.assertIssueWithoutRequest(tx, tenantId, locks.level);
     if (draft.expenseAccountId) await assertExpenseAccount(tx, companyId, draft.expenseAccountId);
 
     // Lock every (item, warehouse) in the fixed order before any movement.
@@ -681,10 +706,10 @@ export class GoodsNotesService implements OnModuleInit {
         warehouseId: draft.warehouseId,
         itemId: line.itemId,
         movementDate: noteDate,
-        type: isGrn ? 'IN' : 'OUT',
+        type: isGrn || isConsignmentIn ? 'IN' : 'OUT',
         qty: line.qty.toString(),
-        unitCost: isGrn ? (line.unitCost?.toString() ?? undefined) : undefined,
-        sourceType: isGrn ? 'GOODS_RECEIPT' : 'GOODS_ISSUE',
+        unitCost: isConsignmentIn ? '0' : isGrn ? (line.unitCost?.toString() ?? undefined) : undefined,
+        sourceType: isConsignment ? draft.noteType : isGrn ? 'GOODS_RECEIPT' : 'GOODS_ISSUE',
         sourceId: draft.id,
         sourceLineId: line.id,
         description: `${draft.noteType} ${draft.id}`,
@@ -696,31 +721,32 @@ export class GoodsNotesService implements OnModuleInit {
     if (locks.order && received) await this.orders.recordReceipt(tx, locks.order, received);
     const closedRequest = locks.request && issued ? await this.issueRequests.recordIssue(tx, locks.request, issued) : false;
 
-    const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
-      'INVENTORY',
-      'INVENTORY_ADJUSTMENT',
-      'GOODS_RECEIVED_NOT_INVOICED',
-    ]);
-
     const journalLines: JournalLineInput[] = [];
-    if (totalCost.gt(0)) {
-      if (isGrn) {
-        journalLines.push({ accountId: mapping.INVENTORY, debit: totalCost.toString() });
-        journalLines.push({
-          accountId: mapping.GOODS_RECEIVED_NOT_INVOICED,
-          credit: totalCost.toString(),
-        });
-      } else {
-        // ADR-026 §8: the department's expense account, else the old INVENTORY_ADJUSTMENT.
-        journalLines.push({ accountId: draft.expenseAccountId ?? mapping.INVENTORY_ADJUSTMENT, debit: totalCost.toString() });
-        journalLines.push({ accountId: mapping.INVENTORY, credit: totalCost.toString() });
+    if (!isConsignment) {
+      const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
+        'INVENTORY',
+        'INVENTORY_ADJUSTMENT',
+        'GOODS_RECEIVED_NOT_INVOICED',
+      ]);
+      if (totalCost.gt(0)) {
+        if (isGrn) {
+          journalLines.push({ accountId: mapping.INVENTORY, debit: totalCost.toString() });
+          journalLines.push({
+            accountId: mapping.GOODS_RECEIVED_NOT_INVOICED,
+            credit: totalCost.toString(),
+          });
+        } else {
+          // ADR-026 §8: the department's expense account, else the old INVENTORY_ADJUSTMENT.
+          journalLines.push({ accountId: draft.expenseAccountId ?? mapping.INVENTORY_ADJUSTMENT, debit: totalCost.toString() });
+          journalLines.push({ accountId: mapping.INVENTORY, credit: totalCost.toString() });
+        }
       }
+      journalLines.push(
+        ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+      );
     }
-    journalLines.push(
-      ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
-    );
 
-    const docType = isGrn ? 'GOODS_RECEIPT' : 'GOODS_ISSUE';
+    const docType = isConsignment ? draft.noteType : isGrn ? 'GOODS_RECEIPT' : 'GOODS_ISSUE';
     const docNo = await this.posting.allocateEntryNo(tx, tenantId, companyId, docType, noteDate);
     let entryId: bigint | null = null;
     if (journalLines.length > 0) {
@@ -769,6 +795,13 @@ export class GoodsNotesService implements OnModuleInit {
   /** Body rules that need no database: which fields go with which note. */
   private assertShape(dto: CreateGoodsNoteDto): void {
     const isGrn = dto.noteType === 'GRN';
+    const isConsignment = dto.noteType === 'CONSIGNMENT_IN' || dto.noteType === 'CONSIGNMENT_OUT';
+    if (isConsignment && (dto.purchaseOrderId || dto.issueRequestId || dto.expenseAccountId || dto.costCenterId)) {
+      throw new DomainError(ErrorCode.VALIDATION, 'Temporary-receipt notes take no purchase, issue, expense or cost-centre fields');
+    }
+    if (!isConsignment && dto.supplierId) {
+      throw new DomainError(ErrorCode.VALIDATION, 'supplierId is only accepted for temporary-receipt goods notes');
+    }
     if (isGrn && (dto.expenseAccountId || dto.costCenterId || dto.issueRequestId || dto.lines.some((l) => l.issueRequestLineId))) {
       throw new DomainError(ErrorCode.VALIDATION, 'A goods receipt takes no expense account, cost centre or issue request');
     }
@@ -849,6 +882,23 @@ export class GoodsNotesService implements OnModuleInit {
       select: { id: true, branchId: true },
     });
     if (!warehouse) throw DomainError.notFound('Warehouse', dto.warehouseId);
+    const consignmentSupplierId = await this.ledger.consignmentSupplierOf(tx, companyId, warehouse.id);
+    const isConsignment = dto.noteType === 'CONSIGNMENT_IN' || dto.noteType === 'CONSIGNMENT_OUT';
+    if (isConsignment !== (consignmentSupplierId !== null)) {
+      throw new DomainError(
+        ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+        'Temporary-receipt notes require a temporary warehouse and normal notes require an owned warehouse',
+      );
+    }
+    if (isConsignment) {
+      const supplierId = dto.supplierId ? BigInt(dto.supplierId) : null;
+      if (supplierId !== null && supplierId !== consignmentSupplierId) {
+        throw new DomainError(ErrorCode.PARTY_TYPE_MISMATCH, 'Temporary-receipt supplier must match its warehouse supplier');
+      }
+      if (locks.order || locks.request) {
+        throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Temporary-receipt notes cannot use purchase orders or issue requests');
+      }
+    }
     // A new note, or another warehouse: that warehouse's branch; same warehouse: the note keeps its branch.
     const branchId =
       existing && existing.warehouse_id === warehouse.id && existing.branch_id != null
@@ -930,7 +980,7 @@ export class GoodsNotesService implements OnModuleInit {
     return {
       branchId,
       warehouseId: warehouse.id,
-      supplierId: null,
+      supplierId: consignmentSupplierId,
       expenseAccountId,
       costCenterId,
       lines: dto.lines.map((l) => ({

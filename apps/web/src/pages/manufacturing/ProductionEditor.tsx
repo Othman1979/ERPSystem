@@ -138,7 +138,9 @@ export function ProductionEditor({
     queryKey: ['warehouses'],
     queryFn: ({ signal }) => warehousesControllerList({ signal }).then((r) => r.data),
   });
-  const warehouseOptions = (warehouses.data ?? []).filter((w) => w.isActive).map((w) => ({ value: w.id, label: codeAndName(w) }));
+  const warehouseOptions = (warehouses.data ?? [])
+    .filter((w) => w.isActive && w.consignmentSupplierId === null)
+    .map((w) => ({ value: w.id, label: codeAndName(w) }));
 
   const item = useItemDetail(itemId);
   const productOption = itemId && item.data ? { value: itemId, label: codeAndName(item.data) } : undefined;

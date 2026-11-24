@@ -3,10 +3,13 @@ import { AccountingModule } from '../accounting/accounting.module.js';
 import { JournalModule } from '../journal/journal.module.js';
 import { PrintingModule } from '../printing/printing.module.js';
 import { SharedModule } from '../shared/shared.module.js';
+import { PartiesModule } from '../parties/parties.module.js';
 import { AdjustmentsService } from './adjustments.service.js';
 import { CatalogController } from './catalog.controller.js';
 import { CatalogService } from './catalog.service.js';
 import { CountsService } from './counts.service.js';
+import { ConsignmentController } from './consignment.controller.js';
+import { ConsignmentService } from './consignment.service.js';
 import { StockDocumentsController } from './stock-documents.controller.js';
 import { StockLedgerService } from './stock-ledger.service.js';
 import { StockReportsController } from './stock-reports.controller.js';
@@ -17,12 +20,13 @@ import { WarehousesService } from './warehouses.service.js';
 import { InventoryYearClosingDraftRegistrations } from './year-closing-draft-registrations.service.js';
 
 @Module({
-  imports: [AccountingModule, JournalModule, PrintingModule, SharedModule],
+  imports: [AccountingModule, JournalModule, PrintingModule, SharedModule, PartiesModule],
   controllers: [
     CatalogController,
     WarehousesController,
     StockDocumentsController,
     StockReportsController,
+    ConsignmentController,
   ],
   providers: [
     CatalogService,
@@ -31,6 +35,7 @@ import { InventoryYearClosingDraftRegistrations } from './year-closing-draft-reg
     AdjustmentsService,
     TransfersService,
     CountsService,
+    ConsignmentService,
     StockReportsService,
     InventoryYearClosingDraftRegistrations,
   ],

@@ -482,6 +482,7 @@ export const AccountMappingSlotDtoMappingKey = {
   RETAINED_EARNINGS: 'RETAINED_EARNINGS',
   PURCHASES: 'PURCHASES',
   GOODS_RECEIVED_NOT_INVOICED: 'GOODS_RECEIVED_NOT_INVOICED',
+  CONSIGNMENT_SHRINKAGE: 'CONSIGNMENT_SHRINKAGE',
   PRODUCTION_APPLIED_COST: 'PRODUCTION_APPLIED_COST',
   CHEQUES_RECEIVABLE: 'CHEQUES_RECEIVABLE',
   CHEQUES_PAYABLE: 'CHEQUES_PAYABLE',
@@ -883,6 +884,7 @@ export interface CompanyDto {
   pricesIncludeTax: boolean;
   /** Cost centres shown and enforced (ADR-024 §1). */
   costCentersEnabled: boolean;
+  consignmentEnabled: boolean;
   /** Purchasing cycle level (ADR-024 §2). */
   procurementLevel: ProcurementLevel;
   /** A sales invoice must come from a confirmed order (ADR-027 §1). */
@@ -944,6 +946,7 @@ export interface UpdateCompanyDto {
   pricesIncludeTax?: boolean;
   /** Cost centres shown and enforced (ADR-024 §1.6). Off keeps posted lines and account flags as they are. */
   costCentersEnabled?: boolean;
+  consignmentEnabled?: boolean;
   salesOrderRequired?: boolean;
   /** The invoice price may not go below the order without a price approval (ADR-027 §4). */
   salesPriceLocked?: boolean;
@@ -2421,6 +2424,7 @@ export interface ItemCostRow {
   tenantId: string;
   companyId: string;
   itemId: string;
+  poolWarehouseId: string;
   totalQty: string;
   totalValue: string;
   avgCost: string;
@@ -2648,12 +2652,23 @@ export interface WarehouseCountDto {
   balances: number;
 }
 
+export interface WarehouseConsignmentSupplierDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+  partyType: PartyType;
+}
+
 export interface WarehouseListItemDto {
   id: string;
   tenantId: string;
   companyId: string;
   /** @nullable */
   branchId: string | null;
+  /** @nullable */
+  consignmentSupplierId: string | null;
   code: string;
   nameAr: string;
   /** @nullable */
@@ -2670,6 +2685,8 @@ export interface WarehouseListItemDto {
   /** @nullable */
   branch: BranchRefDto | null;
   _count: WarehouseCountDto;
+  /** @nullable */
+  consignmentSupplier: WarehouseConsignmentSupplierDto | null;
 }
 
 export interface BranchRow {
@@ -2697,6 +2714,8 @@ export interface WarehouseDetailDto {
   companyId: string;
   /** @nullable */
   branchId: string | null;
+  /** @nullable */
+  consignmentSupplierId: string | null;
   code: string;
   nameAr: string;
   /** @nullable */
@@ -2712,6 +2731,8 @@ export interface WarehouseDetailDto {
   updatedBy: string | null;
   /** @nullable */
   branch: BranchRow | null;
+  /** @nullable */
+  consignmentSupplier: WarehouseConsignmentSupplierDto | null;
 }
 
 export interface CreateWarehouseDto {
@@ -2728,6 +2749,7 @@ export interface CreateWarehouseDto {
   /** @maxLength 191 */
   nameEn?: string;
   branchId?: string;
+  consignmentSupplierId?: string;
   /** @maxLength 512 */
   address?: string;
 }
@@ -2738,6 +2760,8 @@ export interface WarehouseDto {
   companyId: string;
   /** @nullable */
   branchId: string | null;
+  /** @nullable */
+  consignmentSupplierId: string | null;
   code: string;
   nameAr: string;
   /** @nullable */
@@ -2751,6 +2775,8 @@ export interface WarehouseDto {
   createdBy: string | null;
   /** @nullable */
   updatedBy: string | null;
+  /** @nullable */
+  consignmentSupplier: WarehouseConsignmentSupplierDto | null;
 }
 
 export interface UpdateWarehouseDto {
@@ -2763,6 +2789,8 @@ export interface UpdateWarehouseDto {
   nameEn?: string | null;
   /** @nullable */
   branchId?: string | null;
+  /** @nullable */
+  consignmentSupplierId?: string | null;
   /**
      * @maxLength 512
      * @nullable
@@ -2883,6 +2911,8 @@ export interface StockDocumentWarehouseDto {
   companyId: string;
   /** @nullable */
   branchId: string | null;
+  /** @nullable */
+  consignmentSupplierId: string | null;
   code: string;
   nameAr: string;
   /** @nullable */
@@ -3599,6 +3629,7 @@ export interface StockVerifyCostMismatchDto {
   kind: StockVerifyCostMismatchDtoKind;
   companyId: string;
   itemId: string;
+  poolWarehouseId: string;
   expected: string;
   actual: string;
 }
@@ -3630,6 +3661,112 @@ export interface StockVerifyResultDto {
      * @nullable
      */
   inventoryAccountBalance: string | null;
+}
+
+export interface ConsignmentSupplierResponseDto {
+  id: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export type ConsignmentSaleSourceType = typeof ConsignmentSaleSourceType[keyof typeof ConsignmentSaleSourceType];
+
+
+export const ConsignmentSaleSourceType = {
+  SALES_INVOICE: 'SALES_INVOICE',
+  STOCK_COUNT: 'STOCK_COUNT',
+} as const;
+
+export interface ConsignmentItemResponseDto {
+  id: string;
+  code: string;
+  nameAr: string;
+  /** @nullable */
+  nameEn: string | null;
+}
+
+export interface ConsignmentOpenSaleResponseDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  warehouseId: string;
+  supplierId: string;
+  supplier: ConsignmentSupplierResponseDto;
+  itemId: string;
+  sourceType: ConsignmentSaleSourceType;
+  sourceId: string;
+  sourceLineId: string;
+  /** @nullable */
+  sourceNo: string | null;
+  saleDate: string;
+  qty: string;
+  returnedQty: string;
+  invoicedQty: string;
+  createdAt: string;
+  openQty: string;
+  item: ConsignmentItemResponseDto;
+}
+
+export interface ConsignmentOpenSaleResponseDtoPage {
+  items: ConsignmentOpenSaleResponseDto[];
+  /**
+     * The page asked for (1-based).
+     * @minimum 1
+     */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /**
+     * Rows matching the filters, over every page.
+     * @minimum 0
+     */
+  total: number;
+}
+
+export interface ConsignmentStatementResponseDto {
+  item: ConsignmentItemResponseDto;
+  receivedQty: string;
+  returnedToSupplierQty: string;
+  soldNetOfReturnsQty: string;
+  countShortageQty: string;
+  invoicedQty: string;
+  onHandQty: string;
+  openQty: string;
+}
+
+export type ConsignmentAgingResponseDtoAgeBucket = typeof ConsignmentAgingResponseDtoAgeBucket[keyof typeof ConsignmentAgingResponseDtoAgeBucket];
+
+
+export const ConsignmentAgingResponseDtoAgeBucket = {
+  '0-30': '0-30',
+  '31-60': '31-60',
+  '61-90': '61-90',
+  '90+': '90+',
+} as const;
+
+export interface ConsignmentAgingResponseDto {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  warehouseId: string;
+  supplierId: string;
+  supplier: ConsignmentSupplierResponseDto;
+  itemId: string;
+  sourceType: ConsignmentSaleSourceType;
+  sourceId: string;
+  sourceLineId: string;
+  /** @nullable */
+  sourceNo: string | null;
+  saleDate: string;
+  qty: string;
+  returnedQty: string;
+  invoicedQty: string;
+  createdAt: string;
+  openQty: string;
+  item: ConsignmentItemResponseDto;
+  ageDays: number;
+  ageBucket: ConsignmentAgingResponseDtoAgeBucket;
 }
 
 export type InvoicePaymentType = typeof InvoicePaymentType[keyof typeof InvoicePaymentType];
@@ -3787,6 +3924,8 @@ export interface WarehouseRow {
   companyId: string;
   /** @nullable */
   branchId: string | null;
+  /** @nullable */
+  consignmentSupplierId: string | null;
   code: string;
   nameAr: string;
   /** @nullable */
@@ -5504,6 +5643,7 @@ export interface PurchaseInvoiceListItemDto {
      * @nullable
      */
   purchaseOrderId: string | null;
+  consignmentSettlement: boolean;
   /**
      * ADR-026 §2: «approve the price difference» for lines above the order price; an edit clears it.
      * @nullable
@@ -5611,6 +5751,8 @@ export interface PurchaseInvoiceLineViewDto {
   taxRate: string;
   taxAmount: string;
   lineTotal: string;
+  /** @nullable */
+  consignmentSaleId: string | null;
   createdAt: string;
   item: PurchaseInvoiceItemRefDto;
   /** @nullable */
@@ -5714,6 +5856,7 @@ export interface PurchaseInvoiceDetailDto {
      * @nullable
      */
   purchaseOrderId: string | null;
+  consignmentSettlement: boolean;
   /**
      * ADR-026 §2: «approve the price difference» for lines above the order price; an edit clears it.
      * @nullable
@@ -5751,11 +5894,13 @@ export interface PurchaseInvoiceDetailDto {
 }
 
 export interface PurchaseInvoiceLineDto {
-  itemId: string;
+  itemId?: string;
+  unitPrice?: string;
+  consignmentSaleId?: string;
   itemUnitId?: string;
   qty: string;
   /** Price per unit, up to 12 integer digits and 6 decimals (an order price, ADR-026 §5; CLAUDE.md unit costs). */
-  unitCost: string;
+  unitCost?: string;
   /** @pattern ^\d+(\.\d{1,4})?$ */
   discountPct?: string;
   taxCategoryId?: string;
@@ -5775,6 +5920,7 @@ export const CreatePurchaseInvoiceDtoPaymentType = {
 } as const;
 
 export interface CreatePurchaseInvoiceDto {
+  consignmentSettlement?: boolean;
   invoiceDate: string;
   dueDate?: string;
   supplierId: string;
@@ -6100,6 +6246,8 @@ export type GoodsNoteType = typeof GoodsNoteType[keyof typeof GoodsNoteType];
 export const GoodsNoteType = {
   GRN: 'GRN',
   GIN: 'GIN',
+  CONSIGNMENT_IN: 'CONSIGNMENT_IN',
+  CONSIGNMENT_OUT: 'CONSIGNMENT_OUT',
 } as const;
 
 export interface GoodsNoteCountDto {
@@ -6335,8 +6483,8 @@ export interface GoodsNoteLineDto {
   qty: string;
   /**
      * Required for a GRN without a purchase order (receipt cost per base unit);
-     * ignored for a GIN. Refused on a GRN against an order: its cost is the
-     * order's net price (ADR-026 §5).
+     * ignored for a GIN and CONSIGNMENT_IN. Refused on a GRN against an order:
+     * its cost is the order's net price (ADR-026 §5).
      */
   unitCost?: string;
   /** ADR-026 §5: the order line this GRN line receives (a GRN with purchaseOrderId only). */
@@ -6351,6 +6499,8 @@ export type CreateGoodsNoteDtoNoteType = typeof CreateGoodsNoteDtoNoteType[keyof
 export const CreateGoodsNoteDtoNoteType = {
   GRN: 'GRN',
   GIN: 'GIN',
+  CONSIGNMENT_IN: 'CONSIGNMENT_IN',
+  CONSIGNMENT_OUT: 'CONSIGNMENT_OUT',
 } as const;
 
 export interface CreateGoodsNoteDto {
@@ -6380,6 +6530,7 @@ export interface CreateGoodsNoteDto {
      * warehouse, every line naming a request line. Set at creation, never changed.
      */
   issueRequestId?: string;
+  supplierId?: string;
   /** @minItems 1 */
   lines: GoodsNoteLineDto[];
 }
@@ -10612,6 +10763,11 @@ export const ErrorCode = {
   UNBALANCED_ENTRY: 'UNBALANCED_ENTRY',
   PERIOD_CLOSED: 'PERIOD_CLOSED',
   STOCK_INSUFFICIENT: 'STOCK_INSUFFICIENT',
+  CONSIGNMENT_DISABLED: 'CONSIGNMENT_DISABLED',
+  CONSIGNMENT_IN_USE: 'CONSIGNMENT_IN_USE',
+  CONSIGNMENT_WAREHOUSE_NOT_ALLOWED: 'CONSIGNMENT_WAREHOUSE_NOT_ALLOWED',
+  CONSIGNMENT_OVER_INVOICED: 'CONSIGNMENT_OVER_INVOICED',
+  CONSIGNMENT_ALREADY_INVOICED: 'CONSIGNMENT_ALREADY_INVOICED',
   BACKDATED_STOCK_POSTING: 'BACKDATED_STOCK_POSTING',
   COMPANY_NOT_ALLOWED: 'COMPANY_NOT_ALLOWED',
   BRANCH_NOT_ALLOWED: 'BRANCH_NOT_ALLOWED',
@@ -11358,6 +11514,8 @@ export const StockReportsControllerMovementsSourceType = {
   REVALUATION: 'REVALUATION',
   SALES_INVOICE: 'SALES_INVOICE',
   SALES_RETURN: 'SALES_RETURN',
+  CONSIGNMENT_IN: 'CONSIGNMENT_IN',
+  CONSIGNMENT_OUT: 'CONSIGNMENT_OUT',
   STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT',
   STOCK_TRANSFER: 'STOCK_TRANSFER',
 } as const;
@@ -11395,6 +11553,8 @@ export const StockReportsControllerItemLedgerSourceType = {
   REVALUATION: 'REVALUATION',
   SALES_INVOICE: 'SALES_INVOICE',
   SALES_RETURN: 'SALES_RETURN',
+  CONSIGNMENT_IN: 'CONSIGNMENT_IN',
+  CONSIGNMENT_OUT: 'CONSIGNMENT_OUT',
   STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT',
   STOCK_TRANSFER: 'STOCK_TRANSFER',
 } as const;
@@ -11463,6 +11623,36 @@ export const StockReportsControllerValuationLang = {
   ar: 'ar',
   en: 'en',
 } as const;
+
+export type ConsignmentControllerOpenSalesParams = {
+  /**
+   * @minimum 1
+   * @maximum 10000
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  pageSize?: number;
+  /**
+   * Free-text search; the list decides which fields it matches.
+   * @maxLength 100
+   */
+  q?: string;
+  supplierId?: string;
+  warehouseId?: string;
+};
+
+export type ConsignmentControllerStatementParams = {
+  supplierId: string;
+  from: string;
+  to: string;
+};
+
+export type ConsignmentControllerAgingParams = {
+  supplierId?: string;
+};
 
 export type SalesControllerListInvoicesParams = {
   /**
@@ -12066,6 +12256,8 @@ export type GoodsNotesControllerListNoteType = typeof GoodsNotesControllerListNo
 export const GoodsNotesControllerListNoteType = {
   GRN: 'GRN',
   GIN: 'GIN',
+  CONSIGNMENT_IN: 'CONSIGNMENT_IN',
+  CONSIGNMENT_OUT: 'CONSIGNMENT_OUT',
 } as const;
 
 export type ProcurementControllerListRequestsParams = {
@@ -19418,6 +19610,141 @@ export const getStockReportsControllerVerifyUrl = () => {
 export const stockReportsControllerVerify = async ( options?: Parameters<typeof apiFetch>[1]): Promise<stockReportsControllerVerifyResponseSuccess> => {
 
   return apiFetch<stockReportsControllerVerifyResponseSuccess>(getStockReportsControllerVerifyUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type consignmentControllerOpenSalesResponse200 = {
+  data: ConsignmentOpenSaleResponseDtoPage
+  status: 200
+}
+
+export type consignmentControllerOpenSalesResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type consignmentControllerOpenSalesResponseSuccess = (consignmentControllerOpenSalesResponse200) & {
+  headers: Headers;
+};
+export type consignmentControllerOpenSalesResponseError = (consignmentControllerOpenSalesResponseDefault) & {
+  headers: Headers;
+};
+
+export const getConsignmentControllerOpenSalesUrl = (params?: ConsignmentControllerOpenSalesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/consignment/open-sales?${stringifiedParams}` : `/api/v1/consignment/open-sales`
+}
+
+export const consignmentControllerOpenSales = async (params?: ConsignmentControllerOpenSalesParams, options?: Parameters<typeof apiFetch>[1]): Promise<consignmentControllerOpenSalesResponseSuccess> => {
+
+  return apiFetch<consignmentControllerOpenSalesResponseSuccess>(getConsignmentControllerOpenSalesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type consignmentControllerStatementResponse200 = {
+  data: ConsignmentStatementResponseDto[]
+  status: 200
+}
+
+export type consignmentControllerStatementResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type consignmentControllerStatementResponseSuccess = (consignmentControllerStatementResponse200) & {
+  headers: Headers;
+};
+export type consignmentControllerStatementResponseError = (consignmentControllerStatementResponseDefault) & {
+  headers: Headers;
+};
+
+export const getConsignmentControllerStatementUrl = (params: ConsignmentControllerStatementParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/reports/consignment-statement?${stringifiedParams}` : `/api/v1/reports/consignment-statement`
+}
+
+export const consignmentControllerStatement = async (params: ConsignmentControllerStatementParams, options?: Parameters<typeof apiFetch>[1]): Promise<consignmentControllerStatementResponseSuccess> => {
+
+  return apiFetch<consignmentControllerStatementResponseSuccess>(getConsignmentControllerStatementUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type consignmentControllerAgingResponse200 = {
+  data: ConsignmentAgingResponseDto[]
+  status: 200
+}
+
+export type consignmentControllerAgingResponseDefault = {
+  data: ErrorResponseDto
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type consignmentControllerAgingResponseSuccess = (consignmentControllerAgingResponse200) & {
+  headers: Headers;
+};
+export type consignmentControllerAgingResponseError = (consignmentControllerAgingResponseDefault) & {
+  headers: Headers;
+};
+
+export const getConsignmentControllerAgingUrl = (params?: ConsignmentControllerAgingParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/reports/consignment-aging?${stringifiedParams}` : `/api/v1/reports/consignment-aging`
+}
+
+export const consignmentControllerAging = async (params?: ConsignmentControllerAgingParams, options?: Parameters<typeof apiFetch>[1]): Promise<consignmentControllerAgingResponseSuccess> => {
+
+  return apiFetch<consignmentControllerAgingResponseSuccess>(getConsignmentControllerAgingUrl(params),
   {
     ...options,
     method: 'GET'

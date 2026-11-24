@@ -49,6 +49,9 @@ export class CompanyDto {
   @ApiProperty({ type: 'boolean', description: 'Cost centres shown and enforced (ADR-024 §1).' })
   costCentersEnabled!: boolean;
 
+  @ApiProperty({ type: 'boolean' })
+  consignmentEnabled!: boolean;
+
   @ApiProperty({ enum: ProcurementLevel, enumName: 'ProcurementLevel', description: 'Purchasing cycle level (ADR-024 §2).' })
   procurementLevel!: ProcurementLevel;
 

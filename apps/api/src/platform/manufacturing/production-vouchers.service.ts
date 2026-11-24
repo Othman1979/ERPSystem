@@ -427,6 +427,14 @@ export class ProductionVouchersService implements OnModuleInit {
     if (draft.lines.length === 0) throw new DomainError(ErrorCode.VALIDATION, 'Production voucher has no lines');
     const branchId = await assertWarehouseBranchAllowed(tx, draft.materialsWarehouseId);
     await assertWarehouseBranchAllowed(tx, draft.outputWarehouseId);
+    for (const warehouseId of new Set([draft.materialsWarehouseId, draft.outputWarehouseId])) {
+      if ((await this.ledger.consignmentSupplierOf(tx, companyId, warehouseId)) !== null) {
+        throw new DomainError(
+          ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+          'Production vouchers cannot use a consignment warehouse',
+        );
+      }
+    }
     // The version the voucher was made with: its applied cost is read now (the snapshot).
     const bom = await tx.bom.findFirst({ where: { id: draft.bomId, companyId }, select: { status: true, appliedCostPerUnit: true } });
     if (!bom || bom.status === 'DRAFT') throw new DomainError(ErrorCode.BOM_NOT_ACTIVE, 'The bill of materials of this voucher is not active');
@@ -969,6 +977,10 @@ export class ProductionVouchersService implements OnModuleInit {
       select: { id: true, branchId: true },
     });
     if (!wh) throw DomainError.notFound('Warehouse', warehouseId);
+    const supplierId = await this.ledger.consignmentSupplierOf(tx, companyId, wh.id);
+    if (supplierId !== null) {
+      throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Production vouchers cannot use a consignment warehouse');
+    }
     await assertWarehouseBranchAllowed(tx, wh.id);
     return wh;
   }

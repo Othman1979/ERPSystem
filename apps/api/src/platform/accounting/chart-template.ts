@@ -20,6 +20,7 @@ export const ACCOUNT_MAPPING_KEYS = [
   'RETAINED_EARNINGS',
   'PURCHASES',
   'GOODS_RECEIVED_NOT_INVOICED',
+  'CONSIGNMENT_SHRINKAGE',
   'PRODUCTION_APPLIED_COST',
   'CHEQUES_RECEIVABLE',
   'CHEQUES_PAYABLE',
@@ -124,6 +125,7 @@ export const CHART_TEMPLATE: TemplateAccount[] = [
   acct('5206', 'حصة الشركة في الضمان', 'EXPENSE', { nameEn: 'Employer social security', parentCode: '52' }),
   acct('5207', 'مصروف الإجازات', 'EXPENSE', { nameEn: 'Leave expense', parentCode: '52' }),
   acct('5208', 'مصروف مكافأة نهاية الخدمة', 'EXPENSE', { nameEn: 'End-of-service expense', parentCode: '52' }),
+  acct('5209', 'عجز بضاعة المورد', 'EXPENSE', { nameEn: 'Supplier goods shortage', parentCode: '52' }),
 ];
 
 /** mappingKey → template account code (resolved to account ids on provision). */
@@ -143,6 +145,7 @@ export const TEMPLATE_MAPPINGS: Record<AccountMappingKey, string> = {
   RETAINED_EARNINGS: '3102',
   PURCHASES: '5103',
   GOODS_RECEIVED_NOT_INVOICED: '2104',
+  CONSIGNMENT_SHRINKAGE: '5209',
   PRODUCTION_APPLIED_COST: '5104',
   CHEQUES_RECEIVABLE: '1106',
   CHEQUES_PAYABLE: '2105',
@@ -184,6 +187,7 @@ export const MAPPING_RULES: Record<AccountMappingKey, MappingRule> = {
   RETAINED_EARNINGS: { types: ['EQUITY'] },
   PURCHASES: { types: ['EXPENSE'] },
   GOODS_RECEIVED_NOT_INVOICED: { types: ['LIABILITY'] },
+  CONSIGNMENT_SHRINKAGE: { types: ['EXPENSE'] },
   PRODUCTION_APPLIED_COST: { types: ['EXPENSE'] },
   CHEQUES_RECEIVABLE: { types: ['ASSET'] },
   CHEQUES_PAYABLE: { types: ['LIABILITY'] },
@@ -406,6 +410,8 @@ export const DOCUMENT_TYPE_PREFIXES: Record<string, string> = {
   OPENING_ENTRY: 'OP',
   GOODS_RECEIPT: 'GRN',
   GOODS_ISSUE: 'GIN',
+  CONSIGNMENT_IN: 'CIN',
+  CONSIGNMENT_OUT: 'COUT',
   RECEIPT: 'RC',
   PAYMENT: 'PY',
   // Phase 12 (ADR-025 §8): numbered at approval (PRQ, PO) or when sent (RFQ). PR is the purchase return.

@@ -1,11 +1,12 @@
 import { ActiveTag } from '../components/StatusTag';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Card, Form, Input, Select, Space, Table, message } from 'antd';
+import { Button, Card, Form, Input, Select, Space, Table, Tag, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ApiError,
   branchesControllerList,
+  partiesControllerList,
   warehousesControllerCreate,
   warehousesControllerList,
   warehousesControllerUpdate,
@@ -16,6 +17,8 @@ import { FormDialog, FormSection } from '../components/FormDialog';
 import { PageHeader } from '../components/PageHeader';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { tableLocale } from '../components/QueryState';
+import { RemoteSelect, PICKER_PAGE_SIZE } from '../components/RemoteSelect';
+import { useCompany } from '../components/CompanyProfileForm';
 import { codeAndName, displayName } from '../i18n/displayName';
 
 type Warehouse = WarehouseListItemDto;
@@ -28,6 +31,8 @@ export function WarehousesPage() {
   const [editing, setEditing] = useState<Warehouse | null>(null);
   const [search, setSearch] = useState('');
   const [form] = Form.useForm();
+  const company = useCompany();
+  const consignmentEnabled = company.data?.consignmentEnabled === true;
 
   const warehousesQuery = useQuery({
     queryKey: ['warehouses'],
@@ -54,6 +59,7 @@ export function WarehousesPage() {
       nameEn?: string;
       branchId?: string;
       address?: string;
+      consignmentSupplierId?: string;
     }): Promise<unknown> => {
       // Update accepts null to clear optional fields; create takes them as omitted (optional, non-null).
       if (editing) {
@@ -62,6 +68,7 @@ export function WarehousesPage() {
           nameEn: v.nameEn || null,
           branchId: v.branchId || null,
           address: v.address || null,
+          ...(consignmentEnabled ? { consignmentSupplierId: v.consignmentSupplierId || null } : {}),
         };
         return warehousesControllerUpdate(editing.id, payload);
       }
@@ -71,6 +78,9 @@ export function WarehousesPage() {
         nameEn: v.nameEn || undefined,
         branchId: v.branchId || undefined,
         address: v.address || undefined,
+        ...(consignmentEnabled && v.consignmentSupplierId
+          ? { consignmentSupplierId: v.consignmentSupplierId }
+          : {}),
       });
     },
     onSuccess: () => {
@@ -101,11 +111,19 @@ export function WarehousesPage() {
       nameEn: row.nameEn,
       branchId: row.branch?.id,
       address: row.address,
+      consignmentSupplierId: row.consignmentSupplierId ?? undefined,
     });
     setModalOpen(true);
   };
 
-  const shown = (warehouses ?? []).filter((w) => matchesSearch(search, w.code, displayName(w)));
+  const shown = (warehouses ?? []).filter((w) =>
+    matchesSearch(
+      search,
+      w.code,
+      displayName(w),
+      consignmentEnabled ? displayName(w.consignmentSupplier) : undefined,
+    ),
+  );
 
   return (
     <div>
@@ -131,7 +149,21 @@ export function WarehousesPage() {
         pagination={false}
         columns={[
           { title: t('warehouses.code'), dataIndex: 'code', width: 110 },
-          { title: t('common.name'), key: 'name', render: (_: unknown, r: Warehouse) => displayName(r) },
+          {
+            title: t('common.name'),
+            key: 'name',
+            render: (_: unknown, r: Warehouse) => (
+              <Space size={6} wrap>
+                <span>{displayName(r)}</span>
+                {consignmentEnabled && r.consignmentSupplier && (
+                  <>
+                    <Tag color="purple">{t('consignment.tag')}</Tag>
+                    <span>{displayName(r.consignmentSupplier)}</span>
+                  </>
+                )}
+              </Space>
+            ),
+          },
           { title: t('warehouses.nameEn'), dataIndex: 'nameEn', render: (v: string | null) => v ?? '—' },
           {
             title: t('warehouses.branch'),
@@ -189,6 +221,36 @@ export function WarehousesPage() {
                 options={(branches ?? []).map((b) => ({ value: b.id, label: codeAndName(b) }))}
               />
             </Form.Item>
+            {consignmentEnabled && (
+              <Form.Item name="consignmentSupplierId" label={t('warehouses.consignmentSupplier')}>
+                <RemoteSelect
+                  queryKey={['parties', 'pick', 'warehouse-consignment-supplier']}
+                  placeholder={t('warehouses.consignmentSupplier')}
+                  selected={
+                    editing?.consignmentSupplier
+                      ? {
+                          value: editing.consignmentSupplier.id,
+                          label: codeAndName(editing.consignmentSupplier),
+                        }
+                      : undefined
+                  }
+                  fetchOptions={async (q, signal) => {
+                    const params = {
+                      pageSize: PICKER_PAGE_SIZE,
+                      ...(q ? { q } : {}),
+                    };
+                    const [suppliers, both] = await Promise.all([
+                      partiesControllerList({ ...params, partyType: 'SUPPLIER' }, { signal }),
+                      partiesControllerList({ ...params, partyType: 'BOTH' }, { signal }),
+                    ]);
+                    return [...suppliers.data.items, ...both.data.items].map((party) => ({
+                      value: party.id,
+                      label: codeAndName(party),
+                    }));
+                  }}
+                />
+              </Form.Item>
+            )}
             <Form.Item name="address" label={t('warehouses.address')} className="span-all">
               <Input.TextArea maxLength={512} rows={2} />
             </Form.Item>

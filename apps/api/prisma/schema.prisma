@@ -486,6 +486,7 @@ model Tenant {
   stockMovements          StockMovement[]
   stockBalances           StockBalance[]
   itemCosts               ItemCost[]
+  consignmentSales        ConsignmentSale[]
   stockAdjustments        StockAdjustment[]
   boms                    Bom[]
   bomLines                BomLine[]
@@ -593,6 +594,7 @@ model Company {
   pricesIncludeTax       Boolean            @default(false) @map("prices_include_tax")
   /// ADR-024 §1: cost centres shown and enforced. Off hides them; posted lines keep theirs.
   costCentersEnabled     Boolean            @default(false) @map("cost_centers_enabled")
+  consignmentEnabled     Boolean            @default(false) @map("consignment_enabled")
   /// Set when the owner finishes the setup wizard (§13.4, ADR-009).
   onboardingCompletedAt  DateTime?          @map("onboarding_completed_at") @db.DateTime(3)
   /// Purchasing cycle level (ADR-024 §2): raised any time, lowered only with no open cycle documents.
@@ -628,6 +630,7 @@ model Company {
   warehouses          Warehouse[]
   stockMovements      StockMovement[]
   itemCosts           ItemCost[]
+  consignmentSales    ConsignmentSale[]
   stockAdjustments    StockAdjustment[]
   boms                Bom[]
   productionVouchers  ProductionVoucher[]
@@ -1419,6 +1422,7 @@ model Item {
   movements              StockMovement[]
   balances               StockBalance[]
   costs                  ItemCost[]
+  consignmentSales       ConsignmentSale[]
   adjustmentLines        StockAdjustmentLine[]
   transferLines          StockTransferLine[]
   countLines             StockCountLine[]
@@ -1504,6 +1508,7 @@ model Warehouse {
   tenantId  BigInt   @map("tenant_id") @db.UnsignedBigInt
   companyId BigInt   @map("company_id") @db.UnsignedBigInt
   branchId  BigInt?  @map("branch_id") @db.UnsignedBigInt
+  consignmentSupplierId BigInt? @map("consignment_supplier_id") @db.UnsignedBigInt
   code      String   @db.VarChar(50)
   nameAr    String   @map("name_ar") @db.VarChar(191)
   nameEn    String?  @map("name_en") @db.VarChar(191)
@@ -1517,6 +1522,7 @@ model Warehouse {
   tenant                        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   company                       Company             @relation(fields: [tenantId, companyId], references: [tenantId, id])
   branch                        Branch?             @relation(fields: [tenantId, branchId], references: [tenantId, id])
+  consignmentSupplier           Party?              @relation("WarehouseConsignmentSupplier", fields: [tenantId, companyId, consignmentSupplierId], references: [tenantId, companyId, id])
   movements                     StockMovement[]
   balances                      StockBalance[]
   adjustments                   StockAdjustment[]
@@ -1526,6 +1532,7 @@ model Warehouse {
   transfersTo                   StockTransfer[]     @relation("TransferTo")
   counts                        StockCount[]
   salesInvoices                 SalesInvoice[]
+  consignmentSales              ConsignmentSale[]
   purchaseInvoices              PurchaseInvoice[]
   salesReturns                  SalesReturn[]
   purchaseReturns               PurchaseReturn[]
@@ -1537,6 +1544,7 @@ model Warehouse {
   salesOrders                   SalesOrder[]
 
   @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, code])
   @@map("warehouses")
 }
@@ -1604,6 +1612,7 @@ model ItemCost {
   tenantId         BigInt    @map("tenant_id") @db.UnsignedBigInt
   companyId        BigInt    @map("company_id") @db.UnsignedBigInt
   itemId           BigInt    @map("item_id") @db.UnsignedBigInt
+  poolWarehouseId  BigInt    @default(0) @map("pool_warehouse_id") @db.UnsignedBigInt
   totalQty         Decimal   @default(0) @map("total_qty") @db.Decimal(18, 6)
   totalValue       Decimal   @default(0) @map("total_value") @db.Decimal(18, 3)
   avgCost          Decimal   @default(0) @map("avg_cost") @db.Decimal(18, 6)
@@ -1615,8 +1624,43 @@ model ItemCost {
   item    Item    @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Cascade)
 
   @@unique([tenantId, id])
-  @@unique([tenantId, companyId, itemId])
+  @@unique([tenantId, companyId, itemId, poolWarehouseId])
   @@map("item_costs")
+}
+
+enum ConsignmentSaleSourceType {
+  SALES_INVOICE
+  STOCK_COUNT
+}
+
+model ConsignmentSale {
+  id            BigInt                   @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId      BigInt                   @map("tenant_id") @db.UnsignedBigInt
+  companyId     BigInt                   @map("company_id") @db.UnsignedBigInt
+  warehouseId   BigInt                   @map("warehouse_id") @db.UnsignedBigInt
+  supplierId    BigInt                   @map("supplier_id") @db.UnsignedBigInt
+  itemId        BigInt                   @map("item_id") @db.UnsignedBigInt
+  sourceType    ConsignmentSaleSourceType @map("source_type")
+  sourceId      BigInt                   @map("source_id") @db.UnsignedBigInt
+  sourceLineId  BigInt                   @map("source_line_id") @db.UnsignedBigInt
+  saleDate      DateTime                 @map("sale_date") @db.Date
+  qty           Decimal                  @db.Decimal(18, 6)
+  returnedQty   Decimal                  @default(0) @map("returned_qty") @db.Decimal(18, 6)
+  invoicedQty   Decimal                  @default(0) @map("invoiced_qty") @db.Decimal(18, 6)
+  createdAt     DateTime                 @default(now()) @map("created_at") @db.DateTime(3)
+
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  company           Company              @relation(fields: [tenantId, companyId], references: [tenantId, id])
+  warehouse         Warehouse            @relation(fields: [tenantId, companyId, warehouseId], references: [tenantId, companyId, id])
+  supplier          Party                @relation("ConsignmentSaleSupplier", fields: [tenantId, companyId, supplierId], references: [tenantId, companyId, id])
+  item              Item                 @relation(fields: [tenantId, companyId, itemId], references: [tenantId, companyId, id])
+  settlementLines   PurchaseInvoiceLine[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, sourceType, sourceLineId])
+  @@index([tenantId, companyId, supplierId, warehouseId])
+  @@index([tenantId, companyId, saleDate])
+  @@map("consignment_sales")
 }
 
 model StockAdjustment {
@@ -1825,6 +1869,8 @@ enum InvoicePaymentType {
 enum GoodsNoteType {
   GRN
   GIN
+  CONSIGNMENT_IN
+  CONSIGNMENT_OUT
 }
 
 model Party {
@@ -1863,12 +1909,15 @@ model Party {
   purchaseQuotes   PurchaseQuote[]
   purchaseOrders   PurchaseOrder[]
   goodsNotes       GoodsNote[]
+  consignmentWarehouses Warehouse[] @relation("WarehouseConsignmentSupplier")
+  consignmentSales ConsignmentSale[] @relation("ConsignmentSaleSupplier")
   salesQuotes      SalesQuote[]
   salesOrders      SalesOrder[]
 
   cheques Cheque[]
 
   @@unique([tenantId, id])
+  @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, code])
   @@index([tenantId, partyType])
   @@map("parties")
@@ -2167,6 +2216,7 @@ model PurchaseInvoice {
   receivedGrnId       BigInt?            @map("received_grn_id") @db.UnsignedBigInt
   /// ADR-026 §7: the purchase order whose posted receipts this invoice bills (set at creation, never changed).
   purchaseOrderId     BigInt?            @map("purchase_order_id") @db.UnsignedBigInt
+  consignmentSettlement Boolean           @default(false) @map("consignment_settlement")
   /// ADR-026 §2: «approve the price difference» for lines above the order price; an edit clears it.
   priceApprovedAt     DateTime?          @map("price_approved_at") @db.DateTime(3)
   priceApprovedBy     BigInt?            @map("price_approved_by") @db.UnsignedBigInt
@@ -2222,6 +2272,7 @@ model PurchaseInvoiceLine {
   taxRate        Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
   taxAmount      Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 3)
   lineTotal      Decimal  @map("line_total") @db.Decimal(18, 3)
+  consignmentSaleId BigInt? @map("consignment_sale_id") @db.UnsignedBigInt
   createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   tenant      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -2231,6 +2282,7 @@ model PurchaseInvoiceLine {
   taxCategory TaxCategory?             @relation(fields: [tenantId, taxCategoryId], references: [tenantId, id])
   returnLines PurchaseReturnLine[]
   receipts    PurchaseInvoiceReceipt[]
+  consignmentSale ConsignmentSale? @relation(fields: [tenantId, consignmentSaleId], references: [tenantId, id])
 
   @@unique([tenantId, id])
   @@unique([tenantId, invoiceId, lineNo])

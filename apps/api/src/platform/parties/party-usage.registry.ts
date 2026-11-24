@@ -19,7 +19,7 @@ export type PartyUsageCheck = (tx: Prisma.TransactionClient, partyId: bigint) =>
  * "unused", so a module that failed to register blocks deletes instead of
  * letting them through.
  */
-export const PARTY_USAGE_OWNERS = ['sales', 'purchases', 'treasury', 'journal', 'procurement', 'goods-notes'] as const;
+export const PARTY_USAGE_OWNERS = ['sales', 'purchases', 'treasury', 'journal', 'procurement', 'goods-notes', 'inventory'] as const;
 export type PartyUsageOwner = (typeof PARTY_USAGE_OWNERS)[number];
 
 /**

@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsIn,
   IsOptional,
@@ -21,9 +22,11 @@ const INT_STRING = /^\d+$/;
 const UNIT_COST = /^\d{1,12}(\.\d{1,6})?$/;
 
 export class PurchaseInvoiceLineDto {
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   @Matches(INT_STRING)
-  itemId!: string;
+  itemId?: string;
 
   @IsOptional()
   @IsString()
@@ -37,7 +40,20 @@ export class PurchaseInvoiceLineDto {
   /** Price per unit, up to 12 integer digits and 6 decimals (an order price, ADR-026 §5; CLAUDE.md unit costs). */
   @IsString()
   @Matches(UNIT_COST)
-  unitCost!: string;
+  @IsOptional()
+  unitCost?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(UNIT_COST)
+  unitPrice?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(INT_STRING)
+  consignmentSaleId?: string;
 
   @IsOptional()
   @Matches(/^\d+(\.\d{1,4})?$/)
@@ -59,6 +75,11 @@ export class PurchaseInvoiceLineDto {
 }
 
 export class CreatePurchaseInvoiceDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  consignmentSettlement?: boolean;
+
   @IsDateString()
   invoiceDate!: string;
 

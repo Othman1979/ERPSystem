@@ -53,9 +53,9 @@ export function GridSelect({
   const passEnter = useRef(false);
   const hasMatchingOption = (text: string) =>
     onRemoteSearch
-      ? (props.options ?? []).some((option) => option.value !== props.value)
-      : (props.options ?? []).some((option) =>
-          String(option.label ?? option.value ?? '').toLocaleLowerCase().includes(text.toLocaleLowerCase()),
+        ? (props.options ?? []).some((option) => option.value !== props.value)
+        : (props.options ?? []).some((option) =>
+          String(option.searchText ?? option.label ?? option.value ?? '').toLocaleLowerCase().includes(text.toLocaleLowerCase()),
         );
 
   const createNew = () => {
@@ -137,7 +137,7 @@ export function GridSelect({
           searching ? (props.options ?? []).filter((o) => o.value === props.value) : props.options
         }
         showSearch
-        {...(onRemoteSearch ? { filterOption: false } : { optionFilterProp: 'label' })}
+        {...(onRemoteSearch ? { filterOption: false } : { optionFilterProp: props.optionFilterProp ?? 'label' })}
         searchValue={search}
         onSearch={(text) => {
           setSearch(text);

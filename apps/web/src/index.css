@@ -189,7 +189,7 @@ textarea:focus-visible,
 }
 
 .login-branding .branding-display {
-  color: var(--c-text-1);
+  color: var(--c-text);
 }
 
 .topbar-breadcrumb,

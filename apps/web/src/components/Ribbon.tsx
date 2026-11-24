@@ -81,6 +81,7 @@ export interface RibbonProps {
   /** The company's procurement level, when known. */
   procurementLevel?: ProcurementLevel;
   allBranches?: boolean;
+  consignmentEnabled?: boolean;
   /** Signed in without a company: only the invitations screen is offered. */
   noCompany: boolean;
   isPlatformAdmin: boolean;
@@ -124,7 +125,16 @@ function RibbonButton({ item, pathname }: { item: RibbonItem; pathname: string }
  * under the top bar, and the buttons of the active tab on a strip below it.
  * Replaces the side menu on screens from 768 px; the phone keeps its drawer.
  */
-export function Ribbon({ can, procurementLevel, allBranches = true, noCompany, isPlatformAdmin, pendingInvitations, compact }: RibbonProps) {
+export function Ribbon({
+  can,
+  procurementLevel,
+  allBranches = true,
+  consignmentEnabled = false,
+  noCompany,
+  isPlatformAdmin,
+  pendingInvitations,
+  compact,
+}: RibbonProps) {
   const { t, i18n } = useTranslation();
   const { pathname } = useLocation();
   const isRtl = i18n.language !== 'en';
@@ -138,7 +148,7 @@ export function Ribbon({ can, procurementLevel, allBranches = true, noCompany, i
       ? APP_GROUPS.map((g) => ({ ...g, routes: g.routes.filter((r) => r.path === INVITATIONS_PATH) })).filter(
           (g) => g.routes.length > 0,
         )
-      : allowedGroups(APP_GROUPS, can, procurementLevel, allBranches);
+      : allowedGroups(APP_GROUPS, can, procurementLevel, allBranches, consignmentEnabled);
 
     const routeItem = (route: AppRoute, tone: ModuleTone, count?: number): RibbonItem => ({
       key: route.key,
@@ -226,7 +236,7 @@ export function Ribbon({ can, procurementLevel, allBranches = true, noCompany, i
 
     return list.filter((tab) => tab.sections.some((s) => s.items.length > 0));
     // Labels depend on the language; t identity changes with it.
-  }, [t, i18n, can, procurementLevel, noCompany, isPlatformAdmin, pendingInvitations]);
+  }, [t, i18n, can, procurementLevel, consignmentEnabled, noCompany, isPlatformAdmin, pendingInvitations]);
 
   // The tabs whose buttons lead to the current page: several for a screen listed twice (parties).
   const pathTabKeys = tabs

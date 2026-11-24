@@ -4,8 +4,7 @@
  *  - an orphan party reference in one tenant fails that tenant's run (exit 1);
  *  - another tenant's run is not affected by it (--tenant isolation);
  *  - a malformed --tenant is a usage error.
- * Real MariaDB (erp_test) + built API. Run `pnpm build` before `pnpm test`.
- * Other suites share erp_test, so every run is scoped with --tenant.
+ * Real MariaDB test schema + built API. Run `pnpm build` before `pnpm test`.
  */
 import 'dotenv/config';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
@@ -20,6 +19,12 @@ const API_PORT = 3661;
 const BASE = `http://127.0.0.1:${API_PORT}`;
 const RUN = Date.now().toString(36);
 const PASS = 'test-password-123';
+const CURRENT_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Amman',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date());
 const API_DIR = path.resolve(import.meta.dirname, '..', '..');
 
 const CHECKS = [
@@ -31,6 +36,7 @@ const CHECKS = [
   'allocations.document',
   'einvoice_submissions.document',
   'journal_entries.source',
+  'consignment_sales.source',
   'stock_movements.source',
   'stock_movements.source_line',
   'sales_invoice_line_components.movement',
@@ -124,12 +130,18 @@ afterAll(async () => {
   await db?.end();
 });
 
-describe('Integrity check job — references and collation (erp_test)', () => {
+describe('Integrity check job — references and collation', () => {
   let tenantA = { token: '', tenantId: '' };
   let tenantB = { token: '', tenantId: '' };
 
   it('a clean tenant passes every check', async () => {
     tenantA = await register('a');
+    const year = CURRENT_DATE.slice(0, 4);
+    const fiscalYear = await api()
+      .post('/api/v1/fiscal-years')
+      .set(auth(tenantA.token))
+      .send({ code: `FY${year}`, startDate: `${year}-01-01`, endDate: `${year}-12-31` });
+    expect(fiscalYear.status).toBe(201);
     const accounts = await api().get('/api/v1/accounts').set(auth(tenantA.token));
     expect(accounts.status).toBe(200);
     const cash = accounts.body.find((a: { code: string; isPostable: boolean }) => a.code === '1101' && a.isPostable);
@@ -141,7 +153,7 @@ describe('Integrity check job — references and collation (erp_test)', () => {
       .post('/api/v1/journal-entries')
       .set(auth(tenantA.token))
       .send({
-        entryDate: new Date().toISOString().slice(0, 10),
+        entryDate: CURRENT_DATE,
         description: 'integrity fixture',
         lines: [
           { accountId: cash.id, debit: '10.000' },
@@ -158,6 +170,72 @@ describe('Integrity check job — references and collation (erp_test)', () => {
     expect(r.checks.map((c) => c.name)).toEqual(CHECKS);
     for (const c of r.checks) expect(c).toMatchObject({ ok: true, count: 0 });
     expect(check(r, 'collation')).toMatchObject({ ok: true, count: 0 });
+
+    const supplier = await api().post('/api/v1/parties').set(auth(tenantA.token)).send({
+      code: `ICS-${RUN}`,
+      nameAr: 'مورد فحص التكامل',
+      partyType: 'SUPPLIER',
+    });
+    expect(supplier.status).toBe(201);
+    const enabled = await api().patch('/api/v1/company').set(auth(tenantA.token)).send({ consignmentEnabled: true });
+    expect(enabled.status).toBe(200);
+    const warehouse = await api().post('/api/v1/warehouses').set(auth(tenantA.token)).send({
+      code: `ICWH-${RUN}`,
+      nameAr: 'مستودع فحص التكامل',
+      consignmentSupplierId: supplier.body.id,
+    });
+    expect(warehouse.status).toBe(201);
+    const units = await api().get('/api/v1/units').set(auth(tenantA.token));
+    const pieceId = (units.body as { id: string; code: string }[]).find((unit) => unit.code === 'PCS')!.id;
+    const item = await api().post('/api/v1/items').set(auth(tenantA.token)).send({
+      code: `ICIT-${RUN}`,
+      nameAr: 'صنف فحص التكامل',
+      baseUnitId: pieceId,
+    });
+    expect(item.status).toBe(201);
+    const receipt = await api().post('/api/v1/goods-notes').set(auth(tenantA.token)).send({
+      noteDate: CURRENT_DATE,
+      noteType: 'CONSIGNMENT_IN',
+      warehouseId: warehouse.body.id,
+      lines: [{ itemId: item.body.id, qty: '2' }],
+    });
+    expect(receipt.status).toBe(201);
+    expect(receipt.body.supplier).toMatchObject({ id: supplier.body.id });
+    const postedReceipt = await api()
+      .post(`/api/v1/goods-notes/${receipt.body.id}/post`)
+      .set(auth(tenantA.token))
+      .set('Idempotency-Key', `IC-${RUN}-IN`);
+    if (postedReceipt.status !== 201) {
+      throw new Error(`Post temporary receipt: ${JSON.stringify(postedReceipt.body)}`);
+    }
+    const supplierReturn = await api().post('/api/v1/goods-notes').set(auth(tenantA.token)).send({
+      noteDate: CURRENT_DATE,
+      noteType: 'CONSIGNMENT_OUT',
+      warehouseId: warehouse.body.id,
+      lines: [{ itemId: item.body.id, qty: '1' }],
+    });
+    expect(supplierReturn.status).toBe(201);
+    const postedSupplierReturn = await api()
+      .post(`/api/v1/goods-notes/${supplierReturn.body.id}/post`)
+      .set(auth(tenantA.token))
+      .set('Idempotency-Key', `IC-${RUN}-OUT`);
+    expect(postedSupplierReturn.status).toBe(201);
+    for (const [noteType, noteId] of [
+      ['CONSIGNMENT_IN', receipt.body.id],
+      ['CONSIGNMENT_OUT', supplierReturn.body.id],
+    ]) {
+      await db.query(
+        `UPDATE journal_entries SET source_type = ?, source_id = ?
+          WHERE tenant_id = ? AND id = ?`,
+        [noteType, noteId, tenantA.tenantId, draft.body.id],
+      );
+      const consignmentRun = await cli(['--tenant', tenantA.tenantId]);
+      expect(consignmentRun.code).toBe(0);
+      const consignmentReport = report(consignmentRun.stdout);
+      expect(check(consignmentReport, 'journal_entries.source')).toMatchObject({ ok: true, count: 0 });
+      expect(check(consignmentReport, 'stock_movements.source')).toMatchObject({ ok: true, count: 0 });
+      expect(check(consignmentReport, 'stock_movements.source_line')).toMatchObject({ ok: true, count: 0 });
+    }
   }, 60_000);
 
   it('an orphan party reference fails the tenant that has it', async () => {
@@ -217,7 +295,7 @@ describe('Integrity check job — references and collation (erp_test)', () => {
 
   it('a REVALUATION movement (ADR-018) is sound beside its movement, an orphan alone', async () => {
     const c = await register('c');
-    const year = new Date().getUTCFullYear();
+    const year = CURRENT_DATE.slice(0, 4);
     const fy = await api()
       .post('/api/v1/fiscal-years')
       .set(auth(c.token))
@@ -233,7 +311,7 @@ describe('Integrity check job — references and collation (erp_test)', () => {
       .post('/api/v1/stock-adjustments')
       .set(auth(c.token))
       .send({
-        adjustmentDate: new Date().toISOString().slice(0, 10),
+        adjustmentDate: CURRENT_DATE,
         adjustmentType: 'OPENING',
         warehouseId: wh.body.id,
         lines: [{ itemId: item.body.id, qty: '10', unitCost: '5.000' }],

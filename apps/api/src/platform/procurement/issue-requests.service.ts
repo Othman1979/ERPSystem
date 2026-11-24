@@ -150,7 +150,7 @@ export class IssueRequestsService {
   async create(dto: CreateIssueRequestDto) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const wh = await this.warehouses.activeRef(BigInt(dto.warehouseId));
+    const wh = await this.warehouses.activeOwnedRef(BigInt(dto.warehouseId));
     assertBranchAllowed(wh.branchId);
     const lines = await this.resolveLines(dto);
     const created = await this.support.withRetry(() =>
@@ -179,7 +179,7 @@ export class IssueRequestsService {
   async update(id: bigint, dto: CreateIssueRequestDto) {
     const { tenantId, db } = this.support.tenant();
     const companyId = await this.support.companyId(db);
-    const wh = await this.warehouses.activeRef(BigInt(dto.warehouseId));
+    const wh = await this.warehouses.activeOwnedRef(BigInt(dto.warehouseId));
     assertBranchAllowed(wh.branchId);
     const lines = await this.resolveLines(dto);
     await this.support.withRetry(() =>

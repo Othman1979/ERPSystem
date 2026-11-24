@@ -327,6 +327,15 @@ export class PurchaseReturnsService {
       assertBranchAllowed(invoice.branchId);
       const warehouseId = await returnWarehouse(tx, companyId, invoice.warehouseId, dto.warehouseId);
       assertRefundType(invoice.paymentType, dto.refundType);
+      if (warehouseId !== null) {
+        const consignmentSupplierId = await this.ledger.consignmentSupplierOf(tx, companyId, warehouseId);
+        if (consignmentSupplierId !== null && !invoice.consignmentSettlement) {
+          throw new DomainError(
+            ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+            'Direct purchase returns cannot use a temporary warehouse',
+          );
+        }
+      }
       // Drafts reserve their quantity too.
       const prior = await tx.purchaseReturnLine.findMany({
         where: { tenantId, originalLine: { invoiceId: invoice.id } },
@@ -428,7 +437,15 @@ export class PurchaseReturnsService {
           include: {
             lines: {
               orderBy: { lineNo: 'asc' },
-              include: { originalLine: { select: { netAmount: true, qtyBase: true } } },
+              include: {
+                originalLine: {
+                  select: {
+                    netAmount: true,
+                    qtyBase: true,
+                    consignmentSaleId: true,
+                  },
+                },
+              },
             },
           },
         });
@@ -445,10 +462,30 @@ export class PurchaseReturnsService {
             paymentType: true,
             receivedGrnId: true,
             purchaseOrderId: true,
+            consignmentSettlement: true,
             warehouseId: true,
-            lines: { select: { id: true, lineNo: true, qtyBase: true } },
+            journalEntryId: true,
+            lines: {
+              select: {
+                id: true,
+                lineNo: true,
+                qtyBase: true,
+                netAmount: true,
+                consignmentSaleId: true,
+              },
+            },
           },
         });
+        const consignmentSupplierId =
+          draft.warehouseId === null
+            ? null
+            : await this.ledger.consignmentSupplierOf(tx, companyId, draft.warehouseId);
+        if (consignmentSupplierId !== null && !original?.consignmentSettlement) {
+          throw new DomainError(
+            ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED,
+            'Direct purchase returns cannot use a temporary warehouse',
+          );
+        }
         assertBranchAllowed(original?.branchId);
         // Again at posting: a draft saved before the rule may name another warehouse.
         if (original) assertReturnWarehouse(original.warehouseId, draft.warehouseId);
@@ -483,8 +520,9 @@ export class PurchaseReturnsService {
         // Without a warehouse (a service-only invoice's return) nothing moves:
         // classify only, and refuse a stocked item.
         const warehouseId = draft.warehouseId;
+        const isConsignmentSettlement = original?.consignmentSettlement === true;
         const stockItems =
-          warehouseId === null
+          isConsignmentSettlement || warehouseId === null
             ? await this.ledger.stockItemIds(tx, companyId, draft.lines.map((l) => l.itemId))
             : await this.ledger.lockForDocument(
                 tx,
@@ -492,6 +530,73 @@ export class PurchaseReturnsService {
                 draft.lines.map((l) => ({ itemId: l.itemId, warehouseId })),
               );
         assertNoStockWithoutWarehouse(warehouseId, stockItems);
+        let salesNetReturn = new Decimal(0);
+        let shortageNetReturn = new Decimal(0);
+        if (isConsignmentSettlement) {
+          if (warehouseId === null) {
+            throw new DomainError(ErrorCode.VALIDATION, 'A temporary-receipt settlement return requires its warehouse');
+          }
+          const supplierId = await this.ledger.consignmentSupplierOf(tx, companyId, warehouseId);
+          if (supplierId === null || supplierId !== draft.supplierId) {
+            throw new DomainError(ErrorCode.VALIDATION, 'The return supplier must match the temporary warehouse supplier');
+          }
+          const saleIds = draft.lines.map((line) => line.originalLine.consignmentSaleId);
+          if (saleIds.some((saleId) => saleId === null)) {
+            throw new DomainError(ErrorCode.VALIDATION, 'Settlement invoice lines must reference a temporary-receipt sale');
+          }
+          const uniqueSaleIds = [...new Set(saleIds as bigint[])];
+          const sales = await tx.$queryRaw<{
+            id: bigint;
+            supplier_id: bigint;
+            warehouse_id: bigint;
+            item_id: bigint;
+            source_type: 'SALES_INVOICE' | 'STOCK_COUNT';
+            invoiced_qty: Prisma.Decimal;
+          }[]>`
+            SELECT id, supplier_id, warehouse_id, item_id, source_type, invoiced_qty
+              FROM consignment_sales
+             WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
+             AND id IN (${Prisma.join(uniqueSaleIds)})
+             ORDER BY id FOR UPDATE`;
+          const saleById = new Map(
+            sales.map((sale) => [
+              sale.id,
+              {
+                id: sale.id,
+                supplierId: sale.supplier_id,
+                warehouseId: sale.warehouse_id,
+                itemId: sale.item_id,
+                sourceType: sale.source_type,
+                invoicedQty: sale.invoiced_qty,
+              },
+            ]),
+          );
+          for (const line of draft.lines) {
+            const originalLine = line.originalLine;
+            const saleId = originalLine.consignmentSaleId;
+            const sale = saleId === null ? undefined : saleById.get(saleId);
+            if (
+              !sale ||
+              sale.supplierId !== draft.supplierId ||
+              sale.warehouseId !== warehouseId ||
+              sale.itemId !== line.itemId
+            ) {
+              throw new DomainError(ErrorCode.VALIDATION, 'Settlement return line does not match its temporary-receipt sale');
+            }
+            if (line.qtyBase.gt(sale.invoicedQty)) {
+              throw new DomainError(ErrorCode.VALIDATION, 'Settlement return exceeds the invoiced temporary-receipt quantity');
+            }
+            await tx.consignmentSale.update({
+              where: { id: sale.id },
+              data: { invoicedQty: { decrement: line.qtyBase } },
+            });
+            if (sale.sourceType === 'SALES_INVOICE') {
+              salesNetReturn = salesNetReturn.plus(line.netAmount.toString());
+            } else {
+              shortageNetReturn = shortageNetReturn.plus(line.netAmount.toString());
+            }
+          }
+        }
 
         // An invoice that billed a GRN received no stock itself: its goods
         // entered at the GRN's cost and its price difference was booked to
@@ -507,6 +612,7 @@ export class PurchaseReturnsService {
         let writeOff = new Decimal(0);
         let variance = new Decimal(0);
         for (const line of draft.lines) {
+          if (isConsignmentSettlement) continue;
           if (stockItems.has(line.itemId)) {
             // TRADE-03 (§9.5, ADR-016 §3): the goods leave at the cost they
             // entered at, the value the journal takes off INVENTORY, not at
@@ -549,12 +655,35 @@ export class PurchaseReturnsService {
           }
         }
 
+        let originalCogsAccountId: bigint | null = null;
+        let originalShrinkageAccountId: bigint | null = null;
+        if (isConsignmentSettlement && original?.journalEntryId) {
+          const originalSaleIds = original.lines.flatMap((line) => line.consignmentSaleId === null ? [] : [line.consignmentSaleId]);
+          const originalSales = await tx.consignmentSale.findMany({
+            where: { id: { in: originalSaleIds } },
+            select: { id: true, sourceType: true },
+          });
+          const sourceTypeById = new Map(originalSales.map((sale) => [sale.id, sale.sourceType]));
+          const originalSalesNet = sum(original.lines.filter((line) => sourceTypeById.get(line.consignmentSaleId!) === 'SALES_INVOICE').map((line) => line.netAmount));
+          const originalShortageNet = sum(original.lines.filter((line) => sourceTypeById.get(line.consignmentSaleId!) === 'STOCK_COUNT').map((line) => line.netAmount));
+          const sourceJournalLines = await tx.journalLine.findMany({
+            where: { journalEntryId: original.journalEntryId, lineNo: { in: [1, 2] } },
+            orderBy: { lineNo: 'asc' },
+            select: { accountId: true },
+          });
+          let sourceLineIndex = 0;
+          if (originalSalesNet.gt(0)) originalCogsAccountId = sourceJournalLines[sourceLineIndex++]?.accountId ?? null;
+          if (originalShortageNet.gt(0)) originalShrinkageAccountId = sourceJournalLines[sourceLineIndex]?.accountId ?? null;
+          if ((originalSalesNet.gt(0) && originalCogsAccountId === null) ||
+              (originalShortageNet.gt(0) && originalShrinkageAccountId === null)) {
+            throw new DomainError(ErrorCode.INTERNAL, 'The original settlement expense accounts could not be found');
+          }
+        }
+
         const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
-          'INVENTORY',
-          'INVENTORY_ADJUSTMENT',
-          'PURCHASES',
-          'INPUT_TAX',
-          'SUPPLIERS_CONTROL',
+          ...(isConsignmentSettlement
+            ? (['INPUT_TAX', 'SUPPLIERS_CONTROL'] as const)
+            : (['INVENTORY', 'INVENTORY_ADJUSTMENT', 'PURCHASES', 'INPUT_TAX', 'SUPPLIERS_CONTROL', 'COGS'] as const)),
         ]);
 
         const journalLines: JournalLineInput[] = [];
@@ -576,32 +705,44 @@ export class PurchaseReturnsService {
             description: lineDescription('journal.line.purchaseReturnCreditNote'),
           });
         }
-        if (stockNet.gt(0)) {
+        if (isConsignmentSettlement) {
+          if (salesNetReturn.gt(0)) {
+            journalLines.push({ accountId: originalCogsAccountId!, credit: salesNetReturn.toString() });
+          }
+          if (shortageNetReturn.gt(0)) {
+            journalLines.push({ accountId: originalShrinkageAccountId!, credit: shortageNetReturn.toString() });
+          }
+          if (tax.gt(0)) {
+            journalLines.push({ accountId: mapping.INPUT_TAX, credit: tax.toString() });
+          }
+        } else if (stockNet.gt(0)) {
           journalLines.push({ accountId: mapping.INVENTORY, credit: stockNet.toString() });
         }
         // Return of a billed GRN: the line's price difference reversed.
-        if (variance.gt(0)) {
+        if (!isConsignmentSettlement && variance.gt(0)) {
           journalLines.push({
             accountId: mapping.INVENTORY_ADJUSTMENT,
             credit: variance.toString(),
             description: lineDescription('journal.line.invoiceVsGoodsReceived'),
           });
-        } else if (variance.lt(0)) {
+        } else if (!isConsignmentSettlement && variance.lt(0)) {
           journalLines.push({
             accountId: mapping.INVENTORY_ADJUSTMENT,
             debit: variance.abs().toString(),
             description: lineDescription('journal.line.invoiceVsGoodsReceived'),
           });
         }
-        if (serviceNet.gt(0)) {
+        if (!isConsignmentSettlement && serviceNet.gt(0)) {
           journalLines.push({ accountId: mapping.PURCHASES, credit: serviceNet.toString() });
         }
-        if (tax.gt(0)) {
+        if (!isConsignmentSettlement && tax.gt(0)) {
           journalLines.push({ accountId: mapping.INPUT_TAX, credit: tax.toString() });
         }
-        journalLines.push(
-          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
-        );
+        if (!isConsignmentSettlement) {
+          journalLines.push(
+            ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+          );
+        }
 
         const returnNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'PURCHASE_RETURN', returnDate,

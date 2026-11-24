@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { meetsProcurementLevel } from './auth/procurementLevel';
-import { ALL_ROUTES, allowedGroups, allowedRoute, APP_GROUPS, canOpenPath, type AppGroup, type AppRoute } from './routes';
+import { ALL_ROUTES, allowedGroups, allowedRoute, APP_GROUPS, canOpenPath, routeIsAvailable, type AppGroup, type AppRoute } from './routes';
+import { PERMISSIONS } from './auth/permissions';
 
 const canAll = () => true;
 const route = (key: string, extra: Partial<AppRoute> = {}): AppRoute => ({
@@ -63,7 +64,7 @@ describe('minProcurementLevel on routes and menu items (ADR-024 §2.3)', () => {
     ]);
     // parties sits in two tabs (sales and purchases): each screen counted once.
     const all = (level: 'SIMPLE' | 'MEDIUM' | 'FULL') => [
-      ...new Set(allowedGroups(APP_GROUPS, canAll, level).flatMap((g) => g.routes.map((r) => r.key))),
+      ...new Set(allowedGroups(APP_GROUPS, canAll, level, true, true).flatMap((g) => g.routes.map((r) => r.key))),
     ];
     const cycle = ['purchaseRequests', 'purchaseQuotes', 'purchaseOrders', 'issueRequests'];
     expect(all('SIMPLE')).toEqual(ALL_ROUTES.map((r) => r.key).filter((k) => !cycle.includes(k)));
@@ -77,5 +78,16 @@ describe('minProcurementLevel on routes and menu items (ADR-024 §2.3)', () => {
     expect(canOpenPath('/purchase-orders/12', canAll, 'MEDIUM')).toBe(true);
     expect(canOpenPath('/purchase-requests', canAll, 'MEDIUM')).toBe(false);
     expect(canOpenPath('/purchase-quotes', canAll, 'FULL')).toBe(true);
+  });
+
+  it('hides consignment navigation and direct access when the company setting is off', () => {
+    const consignment = ALL_ROUTES.find((r) => r.key === 'consignment')!;
+    expect(routeIsAvailable(consignment, canAll, false)).toBe(false);
+    expect(routeIsAvailable(consignment, canAll, true)).toBe(true);
+    expect(routeIsAvailable(consignment, (permission) => permission === PERMISSIONS.PURCHASE_MANAGE, true)).toBe(true);
+    expect(routeIsAvailable(consignment, (permission) => permission === PERMISSIONS.REPORTS_VIEW, true)).toBe(true);
+    expect(routeIsAvailable(consignment, () => false, true)).toBe(false);
+    expect(allowedGroups(APP_GROUPS, canAll, undefined, true, false).flatMap((g) => g.routes).some((r) => r.key === 'consignment')).toBe(false);
+    expect(allowedGroups(APP_GROUPS, canAll, undefined, true, true).flatMap((g) => g.routes).some((r) => r.key === 'consignment')).toBe(true);
   });
 });

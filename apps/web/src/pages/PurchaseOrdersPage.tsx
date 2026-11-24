@@ -556,7 +556,9 @@ function OrderEditor({
   useDocShortcuts({ onSave: saveDraft });
   const requiredError = (gap: boolean) => (tried && gap ? t('common.requiredField') : undefined);
 
-  const warehouseOptions = (warehouses.data ?? []).map((w) => ({ value: w.id, label: codeAndName(w) }));
+  const warehouseOptions = (warehouses.data ?? [])
+    .filter((w) => w.consignmentSupplierId === null || w.consignmentSupplierId === undefined)
+    .map((w) => ({ value: w.id, label: codeAndName(w) }));
 
   return (
     <DocLayout

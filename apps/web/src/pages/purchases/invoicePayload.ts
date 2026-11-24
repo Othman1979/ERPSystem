@@ -7,6 +7,7 @@ export interface PurchaseInvoiceFormLine {
   qty?: string | null;
   price?: string | null;
   discountPct?: string | null;
+  consignmentSaleId?: string | null;
 }
 
 /** What the purchase invoice form holds when the user saves. Dates are 'YYYY-MM-DD'. */
@@ -64,6 +65,7 @@ export function purchaseInvoiceBody(
     supplierInvoiceDate: form.supplierInvoiceDate,
     warehouseId: form.warehouseId,
     paymentType: form.paymentType,
+    consignmentSettlement: invoice?.consignmentSettlement || undefined,
     cashAccountId: form.paymentType === 'CASH' ? form.cashAccountId : undefined,
     costCenterId: form.costCenterId || undefined,
     description: invoice?.description ?? undefined,
@@ -74,8 +76,11 @@ export function purchaseInvoiceBody(
             {
               itemId: l.itemId,
               qty: l.qty,
-              unitCost: l.price ?? '0',
+              ...(invoice?.consignmentSettlement
+                ? { unitPrice: l.price ?? undefined }
+                : { unitCost: l.price ?? '0' }),
               discountPct: l.discountPct ?? undefined,
+              consignmentSaleId: l.consignmentSaleId ?? undefined,
             },
           ]
         : [],

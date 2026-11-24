@@ -323,6 +323,9 @@ export class SalesReturnsService {
         include: { lines: true },
       });
       if (!invoice) throw DomainError.notFound('SalesInvoice', dto.originalInvoiceId);
+      if (invoice.warehouseId !== null) {
+        await this.ledger.consignmentSupplierOf(tx, companyId, invoice.warehouseId);
+      }
       // Share-lock the header centre before the row that references it (ADR-024 §1.4).
       if (dto.costCenterId) await this.costCenters.assertUsable(tx, tenantId, companyId, BigInt(dto.costCenterId));
       if (invoice.status !== 'POSTED') {
@@ -457,6 +460,7 @@ export class SalesReturnsService {
           select: {
             branchId: true,
             paymentType: true,
+            warehouseId: true,
             pricesIncludeTax: true,
             invoiceDiscountAmount: true,
             lines: {
@@ -475,6 +479,10 @@ export class SalesReturnsService {
           },
         });
         assertBranchAllowed(original?.branchId);
+        const consignmentSupplierId =
+          original?.warehouseId === null || original?.warehouseId === undefined
+            ? null
+            : await this.ledger.consignmentSupplierOf(tx, companyId, original.warehouseId);
         if (original) assertRefundType(original.paymentType, draft.refundType);
         // TRADE-01: posted returns of the invoice plus this one stay within each line.
         const posted = await tx.salesReturnLine.findMany({
@@ -549,6 +557,51 @@ export class SalesReturnsService {
           companyId,
           draft.lines.map((l) => ({ itemId: l.itemId, warehouseId: draft.warehouseId })),
         );
+        if (consignmentSupplierId !== null) {
+          const originalLineIds = [...new Set(draft.lines.map((line) => line.originalLineId))];
+          const sales = await tx.$queryRaw<{
+            id: bigint;
+            source_line_id: bigint;
+            qty: Prisma.Decimal;
+            returned_qty: Prisma.Decimal;
+            invoiced_qty: Prisma.Decimal;
+          }[]>`
+            SELECT id, source_line_id, qty, returned_qty, invoiced_qty
+              FROM consignment_sales
+             WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
+               AND source_type = 'SALES_INVOICE'
+               AND source_line_id IN (${Prisma.join(originalLineIds)})
+             ORDER BY id FOR UPDATE`;
+          const saleByLine = new Map(
+            sales.map((sale) => [
+              sale.source_line_id,
+              {
+                id: sale.id,
+                qty: sale.qty,
+                returnedQty: sale.returned_qty,
+                invoicedQty: sale.invoiced_qty,
+              },
+            ]),
+          );
+          for (const line of draft.lines) {
+            if (!stockItems.has(line.itemId)) continue;
+            const sale = saleByLine.get(line.originalLineId);
+            if (!sale) throw DomainError.notFound('ConsignmentSale', line.originalLineId.toString());
+            const openQty = new Decimal(sale.qty.toString())
+              .minus(sale.returnedQty.toString())
+              .minus(sale.invoicedQty.toString());
+            if (line.qtyBase.gt(openQty)) {
+              throw new DomainError(
+                ErrorCode.CONSIGNMENT_ALREADY_INVOICED,
+                'The returned quantity exceeds the unsold-to-supplier quantity',
+              );
+            }
+            await tx.consignmentSale.update({
+              where: { id: sale.id },
+              data: { returnedQty: { increment: line.qtyBase } },
+            });
+          }
+        }
 
         // Stock IN at ORIGINAL unit cost (§8.4, §9.5).
         let costTotal = new Decimal(0);
@@ -561,7 +614,7 @@ export class SalesReturnsService {
             movementDate: returnDate,
             type: 'IN',
             qty: line.qtyBase.toString(),
-            unitCost: line.unitCost?.toString(),
+            unitCost: consignmentSupplierId !== null ? '0' : line.unitCost?.toString(),
             sourceType: SOURCE,
             sourceId: draft.id,
             sourceLineId: line.id,
@@ -570,14 +623,17 @@ export class SalesReturnsService {
           costTotal = costTotal.plus(res.totalCost);
           writeOff = writeOff.plus(res.writeOff);
         }
+        if (consignmentSupplierId !== null && (!costTotal.isZero() || !writeOff.isZero())) {
+          throw new DomainError(ErrorCode.INTERNAL, 'Temporary-warehouse returns must have zero cost');
+        }
 
         const mapping = await this.support.mappingAccounts(tx, tenantId, companyId, [
           'SALES_RETURNS',
           'OUTPUT_TAX',
-          'COGS',
-          'INVENTORY',
-          'INVENTORY_ADJUSTMENT',
           'CUSTOMERS_CONTROL',
+          ...(consignmentSupplierId === null
+            ? (['COGS', 'INVENTORY', 'INVENTORY_ADJUSTMENT'] as const)
+            : []),
           ...(!invoiceDiscountNetTotal.isZero() ? ['SALES_DISCOUNTS' as const] : []),
         ]);
 
@@ -618,13 +674,19 @@ export class SalesReturnsService {
             description: lineDescription('journal.line.creditNote'),
           });
         }
-        if (costTotal.gt(0)) {
-          journalLines.push({ accountId: mapping.INVENTORY, debit: costTotal.toString() });
-          journalLines.push({ accountId: mapping.COGS, credit: costTotal.toString() });
+        if (consignmentSupplierId !== null) {
+          if (!costTotal.isZero() || !writeOff.isZero()) {
+            throw new DomainError(ErrorCode.INTERNAL, 'Temporary-warehouse returns must have zero cost');
+          }
+        } else {
+          if (costTotal.gt(0)) {
+            journalLines.push({ accountId: mapping.INVENTORY, debit: costTotal.toString() });
+            journalLines.push({ accountId: mapping.COGS, credit: costTotal.toString() });
+          }
+          journalLines.push(
+            ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
+          );
         }
-        journalLines.push(
-          ...stockWriteOffLines(writeOff, { inventory: mapping.INVENTORY, adjustment: mapping.INVENTORY_ADJUSTMENT }),
-        );
 
         const returnNo = await this.posting.allocateEntryNo(
           tx, tenantId, companyId, 'SALES_RETURN', returnDate,

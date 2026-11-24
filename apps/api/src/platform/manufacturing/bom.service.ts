@@ -433,7 +433,7 @@ export class BomService {
     const exploded = await this.explodeToStock(db, companyId, bom.itemId, bom.outputQtyBase.toString(), false, bom.id);
     const leafIds = exploded.components.map((c) => c.itemId);
     const [costs, leaves] = await Promise.all([
-      leafIds.length === 0 ? [] : db.itemCost.findMany({ where: { companyId, itemId: { in: leafIds } }, select: { itemId: true, avgCost: true } }),
+      leafIds.length === 0 ? [] : db.itemCost.findMany({ where: { companyId, poolWarehouseId: 0n, itemId: { in: leafIds } }, select: { itemId: true, avgCost: true } }),
       leafIds.length === 0 ? [] : db.item.findMany({ where: { companyId, id: { in: leafIds } }, select: ITEM_REF.select }),
     ]);
     const avgById = new Map(costs.map((c) => [c.itemId, new Decimal(c.avgCost.toString())]));

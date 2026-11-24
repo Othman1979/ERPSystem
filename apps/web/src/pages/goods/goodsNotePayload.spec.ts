@@ -28,6 +28,24 @@ describe('goodsNoteBody', () => {
     expect(body).not.toHaveProperty('costCenterId');
   });
 
+  it('omits cost for a temporary receipt and temporary return', () => {
+    const receipt = goodsNoteBody({
+      ...base,
+      noteType: 'CONSIGNMENT_IN',
+      lines: [{ itemId: 'item-1', qty: '2', unitCost: '1.250000' }],
+    });
+    expect(receipt.lines).toEqual([{ itemId: 'item-1', qty: '2' }]);
+    expect(receipt).not.toHaveProperty('supplierId');
+    expect(receipt).not.toHaveProperty('expenseAccountId');
+
+    const returned = goodsNoteBody({
+      ...base,
+      noteType: 'CONSIGNMENT_OUT',
+      lines: [{ itemId: 'item-1', qty: '1', unitCost: '9.000000' }],
+    });
+    expect(returned.lines).toEqual([{ itemId: 'item-1', qty: '1' }]);
+  });
+
   it('drops lines without an item or quantity', () => {
     const body = goodsNoteBody({
       ...base,

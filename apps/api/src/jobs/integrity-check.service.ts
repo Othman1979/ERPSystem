@@ -156,7 +156,7 @@ export class IntegrityCheckService {
               OR (x.source_type = 'PURCHASE_RETURN' AND EXISTS (SELECT 1 FROM purchase_returns d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'STOCK_ADJUSTMENT' AND EXISTS (SELECT 1 FROM stock_adjustments d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'STOCK_TRANSFER' AND EXISTS (SELECT 1 FROM stock_transfers d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
-              OR (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE') AND EXISTS (SELECT 1 FROM goods_notes d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
+              OR (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT') AND EXISTS (SELECT 1 FROM goods_notes d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'CASH_TRANSFER' AND EXISTS (SELECT 1 FROM cash_transfers d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'RECEIPT' AND EXISTS (SELECT 1 FROM receipts d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
               OR (x.source_type = 'PAYMENT' AND EXISTS (SELECT 1 FROM payments d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
@@ -167,10 +167,27 @@ export class IntegrityCheckService {
           ) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
     );
     await orphans(
+      'consignment_sales.source',
+      db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM consignment_sales x
+        WHERE NOT (
+          (x.source_type = 'SALES_INVOICE' AND EXISTS (
+            SELECT 1 FROM sales_invoice_lines l
+            JOIN sales_invoices d ON d.tenant_id = l.tenant_id AND d.id = l.invoice_id
+            WHERE l.tenant_id = x.tenant_id AND l.id = x.source_line_id
+              AND l.invoice_id = x.source_id AND d.company_id = x.company_id))
+          OR (x.source_type = 'STOCK_COUNT' AND EXISTS (
+            SELECT 1 FROM stock_counts c
+            JOIN stock_adjustment_lines l
+              ON l.tenant_id = c.tenant_id AND l.adjustment_id = c.adjustment_id
+            WHERE c.tenant_id = x.tenant_id AND c.id = x.source_id
+              AND c.company_id = x.company_id AND l.id = x.source_line_id))
+        ) AND x.tenant_id BETWEEN ${lo} AND ${hi}`,
+    );
+    await orphans(
       'stock_movements.source',
       db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM stock_movements x
         WHERE NOT (
-          (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE') AND EXISTS (SELECT 1 FROM goods_notes d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
+          (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT') AND EXISTS (SELECT 1 FROM goods_notes d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
           OR (x.source_type = 'STOCK_ADJUSTMENT' AND EXISTS (SELECT 1 FROM stock_adjustments d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
           OR (x.source_type = 'STOCK_TRANSFER' AND EXISTS (SELECT 1 FROM stock_transfers d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
           OR (x.source_type = 'PURCHASE_INVOICE' AND EXISTS (SELECT 1 FROM purchase_invoices d WHERE d.tenant_id = x.tenant_id AND d.id = x.source_id))
@@ -194,10 +211,10 @@ export class IntegrityCheckService {
     await orphans(
       'stock_movements.source_line',
       db.$queryRaw<CountRow>`SELECT COUNT(*) AS n FROM stock_movements x
-        WHERE x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE', 'STOCK_ADJUSTMENT', 'STOCK_TRANSFER',
+        WHERE x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT', 'STOCK_ADJUSTMENT', 'STOCK_TRANSFER',
                                 'PURCHASE_INVOICE', 'PURCHASE_RETURN', 'SALES_INVOICE', 'SALES_RETURN', 'PRODUCTION')
           AND NOT (
-            (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE') AND EXISTS (
+            (x.source_type IN ('GOODS_RECEIPT', 'GOODS_ISSUE', 'CONSIGNMENT_IN', 'CONSIGNMENT_OUT') AND EXISTS (
               SELECT 1 FROM goods_note_lines l WHERE l.tenant_id = x.tenant_id AND l.id = x.source_line_id AND l.note_id = x.source_id))
             OR (x.source_type = 'STOCK_ADJUSTMENT' AND EXISTS (
               SELECT 1 FROM stock_adjustment_lines l WHERE l.tenant_id = x.tenant_id AND l.id = x.source_line_id

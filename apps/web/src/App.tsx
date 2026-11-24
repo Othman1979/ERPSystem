@@ -48,6 +48,7 @@ import { displayName } from './i18n/displayName';
 import {
   ALL_ROUTES,
   allowedGroups,
+  routeIsAvailable,
   APP_GROUPS,
   INVITATIONS_PATH,
   PLATFORM_PATH,
@@ -185,6 +186,8 @@ function AppShell() {
 
   // Signed in with invitations only (no company yet): the invitations page is the only tenant-free screen (ADR-012 §PLAT-10).
   const noCompany = !me?.currentTenant;
+  const company = useCompany(!noCompany);
+  const consignmentEnabled = company.data?.consignmentEnabled === true;
   const pendingInvitations = me?.pendingInvitations ?? 0;
   // Cycle screens (phases 12–13) show from their procurement level up (ADR-024 §2.3).
   const procurementLevel = useProcurementLevel(!noCompany);
@@ -208,7 +211,7 @@ function AppShell() {
       // Screens the role cannot use are not offered (the API would answer 403).
       ...(noCompany
         ? APP_GROUPS.filter((g) => g.routes.some((r) => r.path === INVITATIONS_PATH))
-        : allowedGroups(APP_GROUPS, can, procurementLevel, allBranches)
+        : allowedGroups(APP_GROUPS, can, procurementLevel, allBranches, consignmentEnabled)
       ).map((g) => ({
         type: 'group' as const,
         key: g.label,
@@ -235,7 +238,7 @@ function AppShell() {
       ];
     },
     // Labels depend on the language; t identity changes with it.
-    [t, isPlatformAdmin, noCompany, pendingInvitations, can, procurementLevel],
+    [t, isPlatformAdmin, noCompany, pendingInvitations, can, procurementLevel, consignmentEnabled],
   );
 
   const menu = (
@@ -426,6 +429,7 @@ function AppShell() {
           can={can}
           procurementLevel={procurementLevel}
           allBranches={allBranches}
+          consignmentEnabled={consignmentEnabled}
           noCompany={noCompany}
           isPlatformAdmin={isPlatformAdmin}
           pendingInvitations={pendingInvitations}
@@ -443,7 +447,7 @@ function AppShell() {
                   path={`${r.path}/*`}
                   element={
                     <ViewErrorBoundary key={r.key}>
-                      {!r.permission || can(r.permission) ? (
+                      {routeIsAvailable(r, can, consignmentEnabled) ? (
                         <ProcurementLevelGate min={r.minProcurementLevel}>{r.element}</ProcurementLevelGate>
                       ) : (
                         <NoAccess />

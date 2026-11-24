@@ -91,7 +91,7 @@ export interface VerifyResult {
 /** One difference stock:verify found. */
 export type VerifyMismatch =
   | { kind: 'QTY'; warehouseId: string; itemId: string; expected: string; actual: string }
-  | { kind: 'COST_QTY' | 'COST_VALUE'; companyId: string; itemId: string; expected: string; actual: string }
+  | { kind: 'COST_QTY' | 'COST_VALUE'; companyId: string; itemId: string; poolWarehouseId: string; expected: string; actual: string }
   | { kind: 'GL_INVENTORY'; companyId: string; accountCode: string | null; expected: string; actual: string };
 
 interface CostRow extends CostState {
@@ -114,7 +114,9 @@ interface ItemInfo {
 interface TxState {
   items: Map<bigint, ItemInfo>;
   allowNegative: Map<bigint, boolean>;
-  /** `${companyId}:${itemId}` → locked item_costs row, kept current by this service. */
+  consignmentEnabled: Map<bigint, boolean>;
+  warehouseSuppliers: Map<bigint, bigint | null>;
+  /** `${companyId}:${itemId}:${poolWarehouseId}` → locked item_costs row. */
   costs: Map<string, CostRow>;
   /** `${warehouseId}:${itemId}` → locked stock_balances row. */
   balances: Map<string, BalanceRow>;
@@ -124,6 +126,11 @@ interface TxState {
 export interface StockKey {
   itemId: bigint;
   warehouseId: bigint;
+}
+
+interface CostKey {
+  itemId: bigint;
+  poolWarehouseId: bigint;
 }
 
 /** Fixed lock order (§10.1 step 12): item_id, then warehouse_id, ascending. */
@@ -171,7 +178,14 @@ export class StockLedgerService {
   private state(tx: Prisma.TransactionClient): TxState {
     let s = this.states.get(tx);
     if (!s) {
-      s = { items: new Map(), allowNegative: new Map(), costs: new Map(), balances: new Map() };
+      s = {
+        items: new Map(),
+        allowNegative: new Map(),
+        consignmentEnabled: new Map(),
+        warehouseSuppliers: new Map(),
+        costs: new Map(),
+        balances: new Map(),
+      };
       this.states.set(tx, s);
     }
     return s;
@@ -180,7 +194,7 @@ export class StockLedgerService {
   /**
    * Locks the projections of every (item, warehouse) a document will move,
    * before its first movement, in one fixed order (§10.1 step 12): the
-   * item_costs rows by item_id, then the stock_balances rows. Every writer of
+   * item_costs rows by item_id and pool, then stock_balances by item/warehouse. Every writer of
    * a stock_balances row holds its item's item_costs lock first, so two
    * documents with the same items in a different line order queue on the
    * first shared item instead of deadlocking. Missing rows are created first,
@@ -207,8 +221,6 @@ export class StockLedgerService {
 
     const stock = itemIds.filter((id) => isStockedItem(st.items.get(id))).sort(ascending);
     const isStock = new Set(stock);
-    await this.lockCosts(tx, tenantId, companyId, stock);
-
     const byWarehouse = new Map<bigint, Set<bigint>>();
     for (const k of keys) {
       if (!isStock.has(k.itemId)) continue;
@@ -216,6 +228,13 @@ export class StockLedgerService {
       set.add(k.itemId);
       byWarehouse.set(k.warehouseId, set);
     }
+    const costKeys: CostKey[] = [];
+    for (const [warehouseId, ids] of byWarehouse) {
+      const supplierId = await this.warehouseSupplier(tx, tenantId, companyId, warehouseId);
+      const poolWarehouseId = supplierId === null ? 0n : warehouseId;
+      for (const itemId of ids) costKeys.push({ itemId, poolWarehouseId });
+    }
+    await this.lockCosts(tx, tenantId, companyId, costKeys);
     for (const warehouseId of [...byWarehouse.keys()].sort(ascending)) {
       await this.lockBalances(tx, tenantId, warehouseId, [...byWarehouse.get(warehouseId)!].sort(ascending));
     }
@@ -283,7 +302,9 @@ export class StockLedgerService {
       input.reversalOfId != null || RETURN_SOURCES.has(input.sourceType),
     );
     const allowNegative = await this.allowNegative(tx, companyId);
-    const cost = await this.costRow(tx, tenantId, companyId, input.itemId);
+    const supplierId = await this.warehouseSupplier(tx, tenantId, companyId, input.warehouseId);
+    const poolWarehouseId = supplierId === null ? 0n : input.warehouseId;
+    const cost = await this.costRow(tx, tenantId, companyId, input.itemId, poolWarehouseId);
     const balance = await this.balanceRow(tx, tenantId, input.warehouseId, input.itemId);
     this.assertNotBackdated(cost, input.movementDate, item.code);
 
@@ -297,7 +318,7 @@ export class StockLedgerService {
       input.type === 'IN' ? balance.qtyOnHand.plus(qty) : balance.qtyOnHand.minus(qty);
 
     // §9.3 negative stock.
-    if (newBalanceQty.lt(0) && !allowNegative) {
+    if (newBalanceQty.lt(0) && (supplierId !== null || !allowNegative)) {
       throw new DomainError(
         ErrorCode.STOCK_INSUFFICIENT,
         `Insufficient stock for ${item.code}: available ${balance.qtyOnHand.toString()}, requested ${qty.toString()}`,
@@ -384,9 +405,15 @@ export class StockLedgerService {
     const { tenantId } = this.tenant();
     const qty = new Decimal(input.qty);
     if (qty.lte(0)) throw new DomainError(ErrorCode.VALIDATION, 'Movement qty must be > 0');
+    if (
+      (await this.warehouseSupplier(tx, tenantId, companyId, input.fromWarehouseId)) !== null ||
+      (await this.warehouseSupplier(tx, tenantId, companyId, input.toWarehouseId)) !== null
+    ) {
+      throw new DomainError(ErrorCode.CONSIGNMENT_WAREHOUSE_NOT_ALLOWED, 'Transfers cannot use a temporary warehouse');
+    }
     const item = await this.stockItem(tx, tenantId, companyId, input.itemId, input.reversalOfOutId != null);
     const allowNegative = await this.allowNegative(tx, companyId);
-    const cost = await this.costRow(tx, tenantId, companyId, input.itemId);
+    const cost = await this.costRow(tx, tenantId, companyId, input.itemId, 0n);
     const from = await this.balanceRow(tx, tenantId, input.fromWarehouseId, input.itemId);
     const to = await this.balanceRow(tx, tenantId, input.toWarehouseId, input.itemId);
     this.assertNotBackdated(cost, input.movementDate, item.code);
@@ -451,6 +478,15 @@ export class StockLedgerService {
     return { outMovementId: out.id, inMovementId: inn.id, unitCost, totalCost };
   }
 
+  async consignmentSupplierOf(
+    tx: Prisma.TransactionClient,
+    companyId: bigint,
+    warehouseId: bigint,
+  ): Promise<bigint | null> {
+    const { tenantId } = this.tenant();
+    return this.warehouseSupplier(tx, tenantId, companyId, warehouseId);
+  }
+
   // ------------------------------------------------------------- internals
 
   /** §9.4 backdating: a stock document may not post before the item's latest movement date. */
@@ -508,10 +544,57 @@ export class StockLedgerService {
     return allow;
   }
 
-  private async costRow(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint, itemId: bigint) {
-    const key = `${companyId}:${itemId}`;
+  private async warehouseSupplier(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    warehouseId: bigint,
+  ): Promise<bigint | null> {
     const st = this.state(tx);
-    if (!st.costs.has(key)) await this.lockCosts(tx, tenantId, companyId, [itemId]);
+    if (!st.warehouseSuppliers.has(warehouseId)) {
+      const [warehouse] = await tx.$queryRaw<{ consignment_supplier_id: bigint | null }[]>`
+        SELECT consignment_supplier_id FROM warehouses
+         WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND id = ${warehouseId}
+         LOCK IN SHARE MODE`;
+      if (!warehouse) throw DomainError.notFound('Warehouse', warehouseId.toString());
+      st.warehouseSuppliers.set(warehouseId, warehouse.consignment_supplier_id);
+    }
+    const supplierId = st.warehouseSuppliers.get(warehouseId)!;
+    if (supplierId !== null && !(await this.lockConsignmentEnabled(tx, tenantId, companyId))) {
+      throw new DomainError(ErrorCode.CONSIGNMENT_DISABLED, 'Temporary receipt is disabled for this company');
+    }
+    return supplierId;
+  }
+
+  private async lockConsignmentEnabled(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+  ): Promise<boolean> {
+    const st = this.state(tx);
+    const cached = st.consignmentEnabled.get(companyId);
+    if (cached !== undefined) return cached;
+    const [company] = await tx.$queryRaw<{ consignment_enabled: boolean }[]>`
+      SELECT consignment_enabled FROM companies
+       WHERE tenant_id = ${tenantId} AND id = ${companyId}
+       LOCK IN SHARE MODE`;
+    const enabled = company?.consignment_enabled ?? false;
+    st.consignmentEnabled.set(companyId, enabled);
+    return enabled;
+  }
+
+  private async costRow(
+    tx: Prisma.TransactionClient,
+    tenantId: bigint,
+    companyId: bigint,
+    itemId: bigint,
+    poolWarehouseId: bigint,
+  ) {
+    const key = `${companyId}:${itemId}:${poolWarehouseId}`;
+    const st = this.state(tx);
+    if (!st.costs.has(key)) {
+      await this.lockCosts(tx, tenantId, companyId, [{ itemId, poolWarehouseId }]);
+    }
     return st.costs.get(key)!;
   }
 
@@ -522,37 +605,46 @@ export class StockLedgerService {
     return st.balances.get(key)!;
   }
 
-  /** Create-if-missing, then SELECT … FOR UPDATE, of the item_costs rows (item_ids ascending). */
-  private async lockCosts(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint, itemIds: bigint[]) {
+  /** Create-if-missing, then SELECT … FOR UPDATE, ordered by item and pool. */
+  private async lockCosts(tx: Prisma.TransactionClient, tenantId: bigint, companyId: bigint, costKeys: CostKey[]) {
     const st = this.state(tx);
-    const ids = itemIds.filter((id) => !st.costs.has(`${companyId}:${id}`)).sort(ascending);
-    if (ids.length === 0) return;
+    const byKey = new Map<string, CostKey>();
+    for (const key of costKeys) {
+      byKey.set(`${companyId}:${key.itemId}:${key.poolWarehouseId}`, key);
+    }
+    const keys = [...byKey.values()]
+      .filter((key) => !st.costs.has(`${companyId}:${key.itemId}:${key.poolWarehouseId}`))
+      .sort((a, b) => ascending(a.itemId, b.itemId) || ascending(a.poolWarehouseId, b.poolWarehouseId));
+    if (keys.length === 0) return;
     // The read first keeps the common case, existing rows, from consuming auto-increment ids.
     const existing = await tx.itemCost.findMany({
-      where: { tenantId, companyId, itemId: { in: ids } },
-      select: { itemId: true },
+      where: { tenantId, companyId, OR: keys.map(({ itemId, poolWarehouseId }) => ({ itemId, poolWarehouseId })) },
+      select: { itemId: true, poolWarehouseId: true },
     });
-    const have = new Set(existing.map((r) => r.itemId));
-    const create = ids.filter((id) => !have.has(id));
+    const keyOf = (itemId: bigint, poolWarehouseId: bigint) => `${itemId}:${poolWarehouseId}`;
+    const have = new Set(existing.map((r) => keyOf(r.itemId, r.poolWarehouseId)));
+    const create = keys.filter((key) => !have.has(keyOf(key.itemId, key.poolWarehouseId)));
     if (create.length > 0) {
       const now = new Date();
       await tx.$executeRaw`
-        INSERT INTO item_costs (tenant_id, company_id, item_id, updated_at)
-        VALUES ${Prisma.join(create.map((id) => Prisma.sql`(${tenantId}, ${companyId}, ${id}, ${now})`))}
+        INSERT INTO item_costs (tenant_id, company_id, item_id, pool_warehouse_id, updated_at)
+        VALUES ${Prisma.join(create.map((key) => Prisma.sql`(${tenantId}, ${companyId}, ${key.itemId}, ${key.poolWarehouseId}, ${now})`))}
         ON DUPLICATE KEY UPDATE id = id
       `;
     }
     const rows = await tx.$queryRaw<
-      { id: bigint; item_id: bigint; total_qty: unknown; total_value: unknown; avg_cost: unknown; last_movement_date: Date | null }[]
+      { id: bigint; item_id: bigint; pool_warehouse_id: bigint; total_qty: unknown; total_value: unknown; avg_cost: unknown; last_movement_date: Date | null }[]
     >`
-      SELECT id, item_id, total_qty, total_value, avg_cost, last_movement_date
+      SELECT id, item_id, pool_warehouse_id, total_qty, total_value, avg_cost, last_movement_date
         FROM item_costs
-       WHERE tenant_id = ${tenantId} AND company_id = ${companyId} AND item_id IN (${Prisma.join(ids)})
-       ORDER BY item_id
+       WHERE tenant_id = ${tenantId} AND company_id = ${companyId}
+         AND (${Prisma.join(keys.map(({ itemId, poolWarehouseId }) =>
+           Prisma.sql`(item_id = ${itemId} AND pool_warehouse_id = ${poolWarehouseId})`), ' OR ')})
+       ORDER BY item_id, pool_warehouse_id
          FOR UPDATE
     `;
     for (const r of rows) {
-      st.costs.set(`${companyId}:${BigInt(r.item_id)}`, {
+      st.costs.set(`${companyId}:${BigInt(r.item_id)}:${BigInt(r.pool_warehouse_id)}`, {
         id: BigInt(r.id),
         totalQty: new Decimal(String(r.total_qty ?? 0)),
         totalValue: new Decimal(String(r.total_value ?? 0)),
@@ -560,7 +652,7 @@ export class StockLedgerService {
         lastMovementDate: r.last_movement_date,
       });
     }
-    if (ids.some((id) => !st.costs.has(`${companyId}:${id}`))) {
+    if (keys.some((key) => !st.costs.has(`${companyId}:${key.itemId}:${key.poolWarehouseId}`))) {
       throw new DomainError(ErrorCode.INTERNAL, 'Stock projection row missing after lock');
     }
   }
@@ -687,6 +779,8 @@ export class StockLedgerService {
           )`;
     const costCompanyFilter =
       companyId === undefined ? Prisma.empty : Prisma.sql`AND c.company_id = ${companyId}`;
+    const costMovementCompanyFilter =
+      companyId === undefined ? Prisma.empty : Prisma.sql`AND m.company_id = ${companyId}`;
 
     const [{ pairs }] = await tx.$queryRaw<{ pairs: bigint }[]>`
       SELECT COUNT(*) AS pairs FROM (
@@ -726,31 +820,47 @@ export class StockLedgerService {
     }
 
     const costRows = await tx.$queryRaw<
-      { company_id: bigint; item_id: bigint; total_qty: unknown; total_value: unknown; q: unknown; v: unknown }[]
+      { company_id: bigint; item_id: bigint; pool_warehouse_id: bigint; total_qty: unknown; total_value: unknown; q: unknown; v: unknown }[]
     >`
-      SELECT c.company_id, c.item_id, c.total_qty, c.total_value, COALESCE(m.q, 0) AS q, COALESCE(m.v, 0) AS v
+      SELECT c.company_id, c.item_id, c.pool_warehouse_id, c.total_qty, c.total_value,
+             COALESCE(m.q, 0) AS q, COALESCE(m.v, 0) AS v
         FROM item_costs c
         LEFT JOIN (
-          SELECT company_id, item_id, SUM(qty_in) - SUM(qty_out) AS q,
-                 SUM(CASE WHEN movement_type = 'IN' THEN total_cost ELSE -total_cost END) AS v
-            FROM stock_movements WHERE tenant_id = ${tenantId} ${movementCompanyFilter}
-           GROUP BY company_id, item_id
-        ) m ON m.company_id = c.company_id AND m.item_id = c.item_id
+          SELECT m.company_id, m.item_id,
+                 CASE WHEN w.consignment_supplier_id IS NULL THEN 0 ELSE m.warehouse_id END AS pool_warehouse_id,
+                 SUM(m.qty_in) - SUM(m.qty_out) AS q,
+                 SUM(CASE WHEN m.movement_type = 'IN' THEN m.total_cost ELSE -m.total_cost END) AS v
+            FROM stock_movements m
+            JOIN warehouses w ON w.tenant_id = m.tenant_id AND w.id = m.warehouse_id
+           WHERE m.tenant_id = ${tenantId} ${costMovementCompanyFilter}
+           GROUP BY m.company_id, m.item_id,
+                    CASE WHEN w.consignment_supplier_id IS NULL THEN 0 ELSE m.warehouse_id END
+        ) m ON m.company_id = c.company_id AND m.item_id = c.item_id AND m.pool_warehouse_id = c.pool_warehouse_id
        WHERE c.tenant_id = ${tenantId} ${costCompanyFilter}
          AND (c.total_qty <> COALESCE(m.q, 0) OR c.total_value <> COALESCE(m.v, 0))
       UNION ALL
-      SELECT m.company_id, m.item_id, 0, 0, m.q, m.v
+      SELECT m.company_id, m.item_id, m.pool_warehouse_id, 0, 0, m.q, m.v
         FROM (
-          SELECT company_id, item_id, SUM(qty_in) - SUM(qty_out) AS q,
-                 SUM(CASE WHEN movement_type = 'IN' THEN total_cost ELSE -total_cost END) AS v
-            FROM stock_movements WHERE tenant_id = ${tenantId} ${movementCompanyFilter}
-           GROUP BY company_id, item_id
+          SELECT m.company_id, m.item_id,
+                 CASE WHEN w.consignment_supplier_id IS NULL THEN 0 ELSE m.warehouse_id END AS pool_warehouse_id,
+                 SUM(m.qty_in) - SUM(m.qty_out) AS q,
+                 SUM(CASE WHEN m.movement_type = 'IN' THEN m.total_cost ELSE -m.total_cost END) AS v
+            FROM stock_movements m
+            JOIN warehouses w ON w.tenant_id = m.tenant_id AND w.id = m.warehouse_id
+           WHERE m.tenant_id = ${tenantId} ${costMovementCompanyFilter}
+           GROUP BY m.company_id, m.item_id,
+                    CASE WHEN w.consignment_supplier_id IS NULL THEN 0 ELSE m.warehouse_id END
         ) m
         LEFT JOIN item_costs c
-          ON c.tenant_id = ${tenantId} AND c.company_id = m.company_id AND c.item_id = m.item_id
+          ON c.tenant_id = ${tenantId} AND c.company_id = m.company_id
+         AND c.item_id = m.item_id AND c.pool_warehouse_id = m.pool_warehouse_id
        WHERE c.id IS NULL AND (m.q <> 0 OR m.v <> 0)`;
     for (const r of costRows) {
-      const base = { companyId: String(r.company_id), itemId: String(r.item_id) };
+      const base = {
+        companyId: String(r.company_id),
+        itemId: String(r.item_id),
+        poolWarehouseId: String(r.pool_warehouse_id),
+      };
       const [q, v, tq, tv] = [r.q, r.v, r.total_qty, r.total_value].map((x) => new Decimal(String(x)));
       if (!q.eq(tq)) mismatches.push({ kind: 'COST_QTY', ...base, expected: q.toString(), actual: tq.toString() });
       if (!v.eq(tv)) mismatches.push({ kind: 'COST_VALUE', ...base, expected: v.toString(), actual: tv.toString() });
@@ -763,7 +873,7 @@ export class StockLedgerService {
     if (company) {
       const [{ v }] = await tx.$queryRaw<{ v: unknown }[]>`
         SELECT COALESCE(SUM(total_value), 0) AS v FROM item_costs
-         WHERE tenant_id = ${tenantId} AND company_id = ${company.id}`;
+         WHERE tenant_id = ${tenantId} AND company_id = ${company.id} AND pool_warehouse_id = 0`;
       stockValue = new Decimal(String(v));
       const mapping = await tx.accountMapping.findFirst({
         where: { companyId: company.id, mappingKey: 'INVENTORY' },
@@ -790,6 +900,7 @@ export class StockLedgerService {
           });
         }
       }
+
     }
 
     return {

@@ -33,10 +33,13 @@ export function useLookups() {
   const whOptions = (warehouses.data ?? [])
     .filter((w) => w.isActive)
     .map((w) => ({ value: w.id, label: codeAndName(w) }));
+  const ownedWhOptions = (warehouses.data ?? [])
+    .filter((w) => w.isActive && w.consignmentSupplierId === null)
+    .map((w) => ({ value: w.id, label: codeAndName(w) }));
   // Report rows only carry the warehouse code; show "code — name" instead.
   const warehouseLabel = (code: string) =>
     codeAndName((warehouses.data ?? []).find((w) => w.code === code)) ?? code;
-  return { warehouses, whOptions, warehouseLabel };
+  return { warehouses, whOptions, ownedWhOptions, warehouseLabel };
 }
 
 /**

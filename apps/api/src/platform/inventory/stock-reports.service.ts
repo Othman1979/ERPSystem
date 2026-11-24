@@ -390,6 +390,12 @@ export class StockReportsService {
     const both = fromLines.filter((l) => l.countedQty !== null && toById.get(l.itemId) != null);
     if (both.length === 0) return { fromCount: from, toCount: to, rows: [] };
     const itemIds = both.map((l) => l.itemId);
+    const warehouse = await db.warehouse.findFirst({
+      where: { companyId, id: warehouseId, ...branchWhere() },
+      select: { id: true, consignmentSupplierId: true },
+    });
+    if (!warehouse) throw DomainError.notFound('Warehouse', warehouseId.toString());
+    const poolWarehouseId = warehouse.consignmentSupplierId === null ? 0n : warehouse.id;
     const agg = await db.$queryRaw<{ itemId: bigint; receipts: string; outAll: string; outSales: string }[]>`
       SELECT m.item_id AS itemId,
              COALESCE(SUM(CASE WHEN m.movement_type = 'IN' THEN m.qty_in ELSE 0 END), 0) AS receipts,
@@ -406,7 +412,7 @@ export class StockReportsService {
     const aggById = new Map(agg.map((r) => [BigInt(r.itemId), r]));
     const [items, costs] = await Promise.all([
       db.item.findMany({ where: { companyId, id: { in: itemIds } }, select: { id: true, code: true, nameAr: true, nameEn: true } }),
-      db.itemCost.findMany({ where: { companyId, itemId: { in: itemIds } }, select: { itemId: true, avgCost: true } }),
+      db.itemCost.findMany({ where: { companyId, poolWarehouseId, itemId: { in: itemIds } }, select: { itemId: true, avgCost: true } }),
     ]);
     const itemById = new Map(items.map((i) => [i.id, i]));
     const avgById = new Map(costs.map((c) => [c.itemId, new Decimal(c.avgCost.toString())]));
@@ -693,8 +699,17 @@ export class StockReportsService {
   async valuation(warehouseId?: string) {
     const { db } = this.tenant();
     const companyId = await this.companyId(db);
+    let poolWarehouseId = 0n;
+    if (warehouseId) {
+      const warehouse = await db.warehouse.findFirst({
+        where: { id: BigInt(warehouseId), companyId, ...branchWhere() },
+        select: { id: true, consignmentSupplierId: true },
+      });
+      if (!warehouse) throw DomainError.notFound('Warehouse', warehouseId);
+      if (warehouse.consignmentSupplierId !== null) poolWarehouseId = warehouse.id;
+    }
     const costs = await db.itemCost.findMany({
-      where: { companyId },
+      where: { companyId, poolWarehouseId },
       include: { item: { select: { id: true, code: true, nameAr: true, nameEn: true } } },
       orderBy: { itemId: 'asc' },
     });
@@ -720,7 +735,16 @@ export class StockReportsService {
       where: {
         ...(warehouseId ? { warehouseId: BigInt(warehouseId) } : {}),
         qtyOnHand: { not: 0 },
-        ...warehouseScope(),
+        ...(warehouseId
+          ? warehouseScope()
+          : {
+              warehouse: {
+                AND: [
+                  ...(hasAllBranches() ? [] : [branchWhere()]),
+                  { consignmentSupplierId: null },
+                ],
+              },
+            }),
       },
       select: { itemId: true, qtyOnHand: true },
     });
