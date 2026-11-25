@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PERMISSIONS, type Permission } from '../auth/permissions';
 import type { ProcurementLevel } from '../auth/procurementLevel';
 import i18n from '../i18n';
-import { Ribbon, type RibbonProps } from './Ribbon';
+import { APP_GROUPS, allowedGroups } from '../routes';
+import { filterRibbonLinksByAllowedRoutes, Ribbon, type RibbonProps } from './Ribbon';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -120,6 +121,32 @@ describe('tabs follow the allowed groups', () => {
     expect(linkLabels()).toContain(t('purchases.invoices'));
   });
 
+  it('hides payroll links and the payroll tab for branch-restricted users', () => {
+    render('/sales', {
+      can: (permission) => permission === PERMISSIONS.PAYROLL_VIEW,
+      allBranches: false,
+    });
+    expect(tabLabels()).not.toContain(t('nav.groupPayroll'));
+    expect(container.querySelector('a[href^="/payroll?tab="]')).toBeNull();
+  });
+
+  it('filters link targets whose route is below the current procurement level', () => {
+    const purchaseOrders = APP_GROUPS.flatMap((group) => group.routes).find((route) => route.key === 'purchaseOrders')!;
+    const sampleLink = APP_GROUPS.flatMap((group) => group.links ?? []).find((link) => link.key === 'purchases-goods-notes')!;
+    const allowedPaths = new Set(
+      allowedGroups(APP_GROUPS, everything, 'SIMPLE', true, true).flatMap((group) =>
+        group.routes.map((route) => route.path),
+      ),
+    );
+    expect(purchaseOrders.minProcurementLevel).toBe('MEDIUM');
+    expect(
+      filterRibbonLinksByAllowedRoutes([{ ...sampleLink, to: purchaseOrders.path }], allowedPaths),
+    ).toEqual([]);
+
+    render('/sales', { procurementLevel: 'SIMPLE' });
+    expect(container.querySelector('a[href="/purchase-orders"]')).toBeNull();
+  });
+
   it('lists the platform console in the admin tab for a platform admin', () => {
     render('/users', { isPlatformAdmin: true });
     expect(linkLabels()).toContain(t('platform.nav'));
@@ -212,7 +239,9 @@ describe('the active tab follows the page', () => {
   });
 
   it('shows consignment links only when the company feature is enabled', () => {
-    render('/stock');
+    render('/stock', {
+      can: (permission) => permission === PERMISSIONS.PURCHASE_MANAGE || permission === PERMISSIONS.REPORTS_VIEW,
+    });
     expect(container.querySelector('a[href="/consignment?tab=open"]')).toBeNull();
     act(() => root.render(
       <MemoryRouter initialEntries={['/stock']}>
@@ -231,6 +260,14 @@ describe('the active tab follows the page', () => {
     expect(container.querySelector('a[href="/consignment?tab=open"]')).not.toBeNull();
     expect(container.querySelector('a[href="/consignment?tab=statement"]')).not.toBeNull();
     expect(container.querySelector('a[href="/consignment?tab=aging"]')).not.toBeNull();
+  });
+
+  it('hides consignment links when the feature is disabled even with permissions', () => {
+    render('/stock', {
+      can: (permission) => permission === PERMISSIONS.PURCHASE_MANAGE || permission === PERMISSIONS.REPORTS_VIEW,
+      consignmentEnabled: false,
+    });
+    expect(container.querySelector('a[href^="/consignment?tab="]')).toBeNull();
   });
 
   it('filters report links by permission', () => {

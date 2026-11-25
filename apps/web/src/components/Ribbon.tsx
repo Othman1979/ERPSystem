@@ -149,6 +149,13 @@ function linkItem(link: RibbonLink, tone: ModuleTone, t: (key: string) => string
   };
 }
 
+export function filterRibbonLinksByAllowedRoutes(
+  links: readonly RibbonLink[],
+  allowedRoutePaths: ReadonlySet<string>,
+): RibbonLink[] {
+  return links.filter((link) => allowedRoutePaths.has(link.to.split('?')[0]));
+}
+
 function RibbonButton({
   item,
   pathname,
@@ -217,6 +224,7 @@ export function Ribbon({
           (g) => g.routes.length > 0,
         )
       : allowedGroups(APP_GROUPS, can, procurementLevel, allBranches, consignmentEnabled);
+    const allowedRoutePaths = new Set(visibleGroups.flatMap((group) => group.routes.map((route) => route.path)));
 
     const routeItem = (route: AppRoute, tone: ModuleTone, count?: number): RibbonItem => ({
       key: route.key,
@@ -236,7 +244,7 @@ export function Ribbon({
         section.items.push(item);
         sections.set(captionKey, section);
       };
-      for (const link of group.links ?? []) {
+      for (const link of filterRibbonLinksByAllowedRoutes(group.links ?? [], allowedRoutePaths)) {
         if (link.permission && !can(link.permission)) continue;
         if (link.companyWide && !allBranches) continue;
         if (link.requires === 'costCenters' && !costCentersEnabled) continue;
