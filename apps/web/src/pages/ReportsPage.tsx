@@ -3,7 +3,7 @@ import { PrinterOutlined } from '@ant-design/icons';
 import { Button, Card, Select, Switch, Table, Tabs, Tag, type TabsProps } from 'antd';
 import { DatePicker } from '../components/DatePicker';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import {
@@ -62,7 +62,7 @@ export function ReportsPage() {
   const { t } = useTranslation();
   const { allBranches } = useAuth();
   // ?tab=sales&from&to&groupBy (dashboard links) opens a report with those filters.
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const linkFilters = {
     from: searchParams.get('from'),
     to: searchParams.get('to'),
@@ -71,12 +71,21 @@ export function ReportsPage() {
   const [from, setFrom] = useState<Dayjs | null>(null);
   const [to, setTo] = useState<Dayjs | null>(null);
   // ?tab=gl&accountId= (account statement shortcuts on accounts and cash boxes).
-  const [accountId, setAccountId] = useState<string | undefined>(searchParams.get('accountId') ?? undefined);
+  const urlAccountId = searchParams.get('accountId') ?? undefined;
+  const [accountId, setAccountId] = useState<string | undefined>(urlAccountId);
   const [tab, setTab] = useUrlTab(REPORT_TAB_KEYS, allBranches ? 'tb' : 'statement');
+  useEffect(() => {
+    if (urlAccountId) setAccountId(urlAccountId);
+  }, [urlAccountId]);
   // Double-clicking a trial balance row opens that account's statement.
   const openStatement = (id: string) => {
     setAccountId(id);
-    setTab('gl');
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set('tab', 'gl');
+      next.set('accountId', id);
+      return next;
+    }, { replace: true });
   };
   const [partyType, setPartyType] = useState<'CUSTOMER' | 'SUPPLIER' | undefined>(undefined);
   const [partyId, setPartyId] = useState<string | undefined>(undefined);
@@ -277,7 +286,15 @@ export function ReportsPage() {
                   placeholder={t('reports.account')}
                   style={{ minWidth: 280 }}
                   value={accountId}
-                  onChange={setAccountId}
+                  onChange={(value: string | undefined) => {
+                    setAccountId(value);
+                    setSearchParams((current) => {
+                      const next = new URLSearchParams(current);
+                      if (value) next.set('accountId', value);
+                      else next.delete('accountId');
+                      return next;
+                    }, { replace: true });
+                  }}
                   options={accountOptions}
                 />
             </WinField>
