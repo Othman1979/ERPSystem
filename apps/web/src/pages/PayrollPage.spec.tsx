@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp } from 'antd';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@erp/api-client';
 import i18n from '../i18n';
@@ -216,14 +216,27 @@ async function mount(path: string) {
   await act(async () => {
     root!.render(
       <QueryClientProvider client={queryClient}>
-        <AntApp>
-          <MemoryRouter initialEntries={[path]}>
-            <PayrollPage />
-          </MemoryRouter>
+      <AntApp>
+        <MemoryRouter initialEntries={[path]}>
+          <PayrollHistoryControls />
+          <PayrollPage />
+        </MemoryRouter>
         </AntApp>
       </QueryClientProvider>,
     );
   });
+}
+
+function PayrollHistoryControls() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="location-search">{location.search}</output>
+      <button data-testid="open-reports" onClick={() => navigate('/payroll?tab=reports')}>Reports</button>
+      <button data-testid="go-back" onClick={() => navigate(-1)}>Back</button>
+    </>
+  );
 }
 
 async function selectPayrollCashBox() {
@@ -300,6 +313,20 @@ afterEach(() => {
 });
 
 describe('payroll page payloads and run actions', () => {
+  it('consumes the quick-action flag so Back does not create another draft run', async () => {
+    await mount('/payroll?tab=runs&new=1');
+
+    await until(() => expect(api.createRun).toHaveBeenCalledTimes(1));
+    await until(() => expect(host?.querySelector('[data-testid="location-search"]')?.textContent).toBe('?tab=runs'));
+
+    act(() => host!.querySelector<HTMLButtonElement>('[data-testid="open-reports"]')!.click());
+    await until(() => expect(host?.querySelector('[data-testid="location-search"]')?.textContent).toBe('?tab=reports'));
+
+    act(() => host!.querySelector<HTMLButtonElement>('[data-testid="go-back"]')!.click());
+    await until(() => expect(host?.querySelector('[data-testid="location-search"]')?.textContent).toBe('?tab=runs'));
+    expect(api.createRun).toHaveBeenCalledTimes(1);
+  });
+
   it('omits the leave type code from edit payloads', () => {
     expect(leaveTypeUpdatePayload({ code: 'ANNUAL', nameAr: 'سنوية', isActive: true })).toEqual({
       nameAr: 'سنوية',
