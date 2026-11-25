@@ -41,6 +41,8 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { useRibbonBreakpoint } from '../hooks/useRibbonBreakpoint';
+import { useUrlTab } from '../hooks/useUrlTab';
 import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
 import { DocField, DocFields, DocLayout, DocValue, useDocShortcuts } from '../components/DocLayout';
@@ -133,22 +135,25 @@ interface PurchaseInvoiceDraft {
 }
 
 const money = (v?: string | null) => formatAmount(v);
+const PURCHASES_TAB_KEYS = ['invoices', 'returns'] as const;
 
 // ------------------------------------------------------------------ page
 
 export function PurchasesPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState('invoices');
+  const { isMobile } = useRibbonBreakpoint();
+  const [tab, setTab] = useUrlTab(PURCHASES_TAB_KEYS, 'invoices');
   return (
     <div>
-      <PageHeader title={t('nav.purchases')} />
+      <PageHeader title={isMobile ? t('nav.purchases') : t(tab === 'invoices' ? 'purchases.invoices' : 'purchases.returns')} />
       <Tabs
-      activeKey={tab}
-      onChange={setTab}
-      items={[
-        { key: 'invoices', label: t('purchases.invoices'), children: <PurchaseInvoicesTab /> },
-        { key: 'returns', label: t('purchases.returns'), children: <PurchaseReturnsTab /> },
-      ]}
+        activeKey={tab}
+        onChange={setTab}
+        renderTabBar={isMobile ? undefined : () => <></>}
+        items={[
+          { key: 'invoices', label: t('purchases.invoices'), children: <PurchaseInvoicesTab /> },
+          { key: 'returns', label: t('purchases.returns'), children: <PurchaseReturnsTab /> },
+        ]}
       />
     </div>
   );

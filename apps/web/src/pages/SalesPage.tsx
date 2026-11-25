@@ -48,6 +48,8 @@ import {
   GridSelect,
 } from '../components/GridSelect';
 import { PageHeader } from '../components/PageHeader';
+import { useRibbonBreakpoint } from '../hooks/useRibbonBreakpoint';
+import { useUrlTab } from '../hooks/useUrlTab';
 import { emptyCtaForList, EmptyCta } from '../components/EmptyCta';
 import { ResponsiveTable } from '../components/ResponsiveTable';
 import { tableLocale } from '../components/QueryState';
@@ -145,22 +147,25 @@ interface SalesInvoiceDraft {
 }
 
 const money = (v?: string | null) => formatAmount(v);
+const SALES_TAB_KEYS = ['invoices', 'returns'] as const;
 
 // ------------------------------------------------------------------ page
 
 export function SalesPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState('invoices');
+  const { isMobile } = useRibbonBreakpoint();
+  const [tab, setTab] = useUrlTab(SALES_TAB_KEYS, 'invoices');
   return (
     <div>
-      <PageHeader title={t('nav.sales')} />
+      <PageHeader title={isMobile ? t('nav.sales') : t(tab === 'invoices' ? 'sales.invoices' : 'sales.returns')} />
       <Tabs
-      activeKey={tab}
-      onChange={setTab}
-      items={[
-        { key: 'invoices', label: t('sales.invoices'), children: <InvoicesTab /> },
-        { key: 'returns', label: t('sales.returns'), children: <ReturnsTab /> },
-      ]}
+        activeKey={tab}
+        onChange={setTab}
+        renderTabBar={isMobile ? undefined : () => <></>}
+        items={[
+          { key: 'invoices', label: t('sales.invoices'), children: <InvoicesTab /> },
+          { key: 'returns', label: t('sales.returns'), children: <ReturnsTab /> },
+        ]}
       />
     </div>
   );

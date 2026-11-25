@@ -35,6 +35,7 @@ import { lazyPage } from './lazyPage';
 import { PERMISSIONS, type Permission } from './auth/permissions';
 import { meetsProcurementLevel, type ProcurementLevel } from './auth/procurementLevel';
 import type { ModuleTone } from './theme';
+import { isReportTabAvailable } from './pages/reports/reportAccess';
 
 /**
  * Each module's page is its own chunk, loaded when first opened (WEB-10).
@@ -146,6 +147,23 @@ export interface AppRoute {
   /** Permission needed to create the document behind newPath; without it the button is not offered. */
   newPermission?: Permission;
   allBranchesOnly?: boolean;
+  /** The page is represented by ribbon view links; keep the route in the mobile menu. */
+  ribbon?: false;
+}
+
+export interface RibbonLink {
+  key: string;
+  /** Path and optional query string, e.g. /reports?tab=tb. */
+  to: string;
+  /** i18n key of the view name. */
+  label: string;
+  icon: ReactNode;
+  /** i18n key of the ribbon section caption. */
+  section: string;
+  permission?: Permission;
+  /** Hide company-wide report tabs for branch-restricted users. */
+  companyWide?: boolean;
+  requires?: 'costCenters' | 'consignment';
 }
 
 export interface AppGroup {
@@ -154,6 +172,7 @@ export interface AppGroup {
   /** Tab colour (theme.ts moduleTone), also the home-screen colour. */
   tone: ModuleTone;
   routes: AppRoute[];
+  links?: RibbonLink[];
 }
 
 /** A "new document" shortcut on the home screen and in the ribbon's home tab. */
@@ -199,20 +218,21 @@ const PARTIES_ROUTE: AppRoute = {
   section: 'nav.sectionPartners',
 };
 
+const reportLink = (tab: string, label: string, icon: ReactNode): RibbonLink => ({
+  key: `report-${tab}`,
+  to: `/reports?tab=${tab}`,
+  label,
+  icon,
+  section: 'nav.sectionReports',
+  permission: PERMISSIONS.REPORTS_VIEW,
+  companyWide: !isReportTabAvailable(tab, false),
+});
+
 /**
  * Every module, in the order of the ribbon's tabs (ADR-029 §3) and of the side menu.
  * A tab is a group; `section` splits its buttons into captioned sub-groups.
  */
 export const APP_GROUPS: AppGroup[] = [
-  {
-    label: 'nav.groupPayroll',
-    tone: 'treasury',
-    routes: [{
-      key: 'payroll', path: '/payroll', label: 'payroll.title', icon: <ScheduleOutlined />, element: <PayrollPage />,
-      permission: PERMISSIONS.PAYROLL_VIEW, allBranchesOnly: true, newPath: '/payroll?tab=runs&new=1',
-      newPermission: PERMISSIONS.PAYROLL_MANAGE,
-    }],
-  },
   {
     label: 'nav.groupAccounting',
     tone: 'accounting',
@@ -241,13 +261,50 @@ export const APP_GROUPS: AppGroup[] = [
         newPermission: PERMISSIONS.JOURNAL_MANAGE,
       },
       { key: 'fiscal', path: '/fiscal', label: 'nav.fiscal', icon: <CalendarOutlined />, element: <FiscalPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionPeriods' },
+      {
+        key: 'reports',
+        path: '/reports',
+        label: 'nav.reports',
+        icon: <BarChartOutlined />,
+        element: <ReportsPage />,
+        permission: PERMISSIONS.REPORTS_VIEW,
+        section: 'nav.sectionReports',
+        ribbon: false,
+      },
+    ],
+    links: [
+      reportLink('tb', 'reports.trialBalance', <BarChartOutlined />),
+      reportLink('is', 'reports.incomeStatement', <BarChartOutlined />),
+      reportLink('bs', 'reports.balanceSheet', <AuditOutlined />),
+      reportLink('cf', 'cashFlow.title', <WalletOutlined />),
+      reportLink('gl', 'reports.generalLedger', <FileSearchOutlined />),
+      { ...reportLink('cc', 'costCenters.statement', <ApartmentOutlined />), requires: 'costCenters' },
+      reportLink('tax', 'reports.taxSummary', <FileProtectOutlined />),
     ],
   },
   {
     label: 'nav.groupTreasury',
     tone: 'treasury',
     routes: [
-      { key: 'treasury', path: '/treasury', label: 'nav.treasury', icon: <WalletOutlined />, element: <TreasuryPage />, permission: PERMISSIONS.TENANT_READ },
+      {
+        key: 'treasury',
+        path: '/treasury',
+        label: 'nav.treasury',
+        icon: <WalletOutlined />,
+        element: <TreasuryPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        ribbon: false,
+      },
+    ],
+    links: [
+      { key: 'treasury-boxes', to: '/treasury?tab=boxes', label: 'treasury.cashBoxes', icon: <WalletOutlined />, section: 'nav.sectionSetup', permission: PERMISSIONS.TENANT_READ },
+      { key: 'treasury-banks', to: '/treasury?tab=banks', label: 'treasury.bankAccounts', icon: <BankOutlined />, section: 'nav.sectionSetup', permission: PERMISSIONS.TENANT_READ },
+      { key: 'treasury-receipts', to: '/treasury?tab=receipts', label: 'treasury.receipts', icon: <ImportOutlined />, section: 'nav.sectionDocuments', permission: PERMISSIONS.TENANT_READ },
+      { key: 'treasury-payments', to: '/treasury?tab=payments', label: 'treasury.payments', icon: <ExportOutlined />, section: 'nav.sectionDocuments', permission: PERMISSIONS.TENANT_READ },
+      { key: 'treasury-transfers', to: '/treasury?tab=transfers', label: 'treasury.transfers', icon: <ReconciliationOutlined />, section: 'nav.sectionDocuments', permission: PERMISSIONS.TENANT_READ },
+      { key: 'treasury-cheques', to: '/treasury?tab=cheques', label: 'cheques.tab', icon: <FileProtectOutlined />, section: 'nav.sectionDocuments', permission: PERMISSIONS.TENANT_READ },
+      { key: 'treasury-balances', to: '/treasury?tab=balances', label: 'treasury.balances', icon: <BarChartOutlined />, section: 'nav.sectionReports', permission: PERMISSIONS.REPORTS_VIEW },
+      { key: 'treasury-reconciliation', to: '/treasury?tab=reconciliation', label: 'bankRec.tab', icon: <ReconciliationOutlined />, section: 'nav.sectionReports', permission: PERMISSIONS.REPORTS_VIEW },
     ],
   },
   {
@@ -264,8 +321,18 @@ export const APP_GROUPS: AppGroup[] = [
         section: 'nav.sectionDocuments',
         newPath: '/sales?new=1',
         newPermission: PERMISSIONS.SALES_MANAGE,
+        ribbon: false,
       },
-      { key: 'einvoice', path: '/einvoice', label: 'nav.einvoice', icon: <FileProtectOutlined />, element: <EInvoicePage />, permission: PERMISSIONS.REPORTS_VIEW, section: 'nav.sectionDocuments' },
+      {
+        key: 'einvoice',
+        path: '/einvoice',
+        label: 'nav.einvoice',
+        icon: <FileProtectOutlined />,
+        element: <EInvoicePage />,
+        permission: PERMISSIONS.REPORTS_VIEW,
+        section: 'nav.sectionDocuments',
+        ribbon: false,
+      },
       // Phase 14 (ADR-027): quotations and sales orders, before the parties.
       {
         key: 'salesQuotes',
@@ -291,6 +358,14 @@ export const APP_GROUPS: AppGroup[] = [
       },
       PARTIES_ROUTE,
     ],
+    links: [
+      { key: 'sales-invoices', to: '/sales?tab=invoices', label: 'sales.invoices', icon: <ShoppingCartOutlined />, section: 'nav.sectionDocuments', permission: PERMISSIONS.TENANT_READ },
+      { key: 'sales-returns', to: '/sales?tab=returns', label: 'sales.returns', icon: <ExportOutlined />, section: 'nav.sectionDocuments', permission: PERMISSIONS.TENANT_READ },
+      { key: 'sales-einvoice', to: '/einvoice', label: 'nav.einvoice', icon: <FileProtectOutlined />, section: 'nav.sectionDocuments', permission: PERMISSIONS.REPORTS_VIEW },
+      reportLink('sales', 'reports.salesSummary', <ShoppingCartOutlined />),
+      reportLink('statement', 'reports.partyStatement', <SolutionOutlined />),
+      reportLink('aging', 'reports.aging', <CalendarOutlined />),
+    ],
   },
   {
     label: 'nav.groupPurchases',
@@ -306,8 +381,18 @@ export const APP_GROUPS: AppGroup[] = [
         section: 'nav.sectionDocuments',
         newPath: '/purchases?new=1',
         newPermission: PERMISSIONS.PURCHASE_MANAGE,
+        ribbon: false,
       },
-      { key: 'goodsNotes', path: '/goods-notes', label: 'nav.goodsNotes', icon: <FileDoneOutlined />, element: <GoodsNotesPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionDocuments' },
+      {
+        key: 'goodsNotes',
+        path: '/goods-notes',
+        label: 'nav.goodsNotes',
+        icon: <FileDoneOutlined />,
+        element: <GoodsNotesPage />,
+        permission: PERMISSIONS.TENANT_READ,
+        section: 'nav.sectionDocuments',
+        ribbon: false,
+      },
       // Phase 12 (ADR-025): requests and quotes at FULL, orders from MEDIUM.
       {
         key: 'purchaseRequests',
@@ -347,13 +432,21 @@ export const APP_GROUPS: AppGroup[] = [
       },
       PARTIES_ROUTE,
     ],
+    links: [
+      { key: 'purchases-invoices', to: '/purchases?tab=invoices', label: 'purchases.invoices', icon: <ShoppingOutlined />, section: 'nav.sectionDocuments', permission: PERMISSIONS.TENANT_READ },
+      { key: 'purchases-returns', to: '/purchases?tab=returns', label: 'purchases.returns', icon: <ImportOutlined />, section: 'nav.sectionDocuments', permission: PERMISSIONS.TENANT_READ },
+      { key: 'purchases-goods-notes', to: '/goods-notes', label: 'nav.goodsNotes', icon: <FileDoneOutlined />, section: 'nav.sectionDocuments', permission: PERMISSIONS.TENANT_READ },
+      reportLink('purchases', 'reports.purchasesSummary', <ShoppingOutlined />),
+      reportLink('statement', 'reports.partyStatement', <SolutionOutlined />),
+      reportLink('aging', 'reports.aging', <CalendarOutlined />),
+    ],
   },
   {
     label: 'nav.groupInventory',
     tone: 'inventory',
     routes: [
-      { key: 'items', path: '/items', label: 'nav.items', icon: <InboxOutlined />, element: <ItemsPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionCatalog' },
-      { key: 'warehouses', path: '/warehouses', label: 'nav.warehouses', icon: <ContainerOutlined />, element: <WarehousesPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionCatalog' },
+      { key: 'items', path: '/items', label: 'nav.items', icon: <InboxOutlined />, element: <ItemsPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionCatalog', ribbon: false },
+      { key: 'warehouses', path: '/warehouses', label: 'nav.warehouses', icon: <ContainerOutlined />, element: <WarehousesPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionCatalog', ribbon: false },
       // Phase 16 (ADR-031 §5, §7): formulas beside the items, and production vouchers beside the stock movements.
       {
         key: 'boms',
@@ -365,8 +458,9 @@ export const APP_GROUPS: AppGroup[] = [
         section: 'nav.sectionCatalog',
         newPath: '/boms?new=1',
         newPermission: PERMISSIONS.ITEM_MANAGE,
+        ribbon: false,
       },
-      { key: 'stock', path: '/stock', label: 'nav.stock', icon: <AuditOutlined />, element: <StockPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionMovements' },
+      { key: 'stock', path: '/stock', label: 'nav.stock', icon: <AuditOutlined />, element: <StockPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionMovements', ribbon: false },
       {
         key: 'consignment',
         path: '/consignment',
@@ -376,6 +470,7 @@ export const APP_GROUPS: AppGroup[] = [
         anyPermissions: [PERMISSIONS.PURCHASE_MANAGE, PERMISSIONS.REPORTS_VIEW],
         feature: 'consignment',
         section: 'nav.sectionMovements',
+        ribbon: false,
       },
       {
         key: 'production',
@@ -401,14 +496,6 @@ export const APP_GROUPS: AppGroup[] = [
         newPath: '/issue-requests?new=1',
         newPermission: PERMISSIONS.PURCHASE_REQUEST_MANAGE,
       },
-    ],
-  },
-  {
-    label: 'nav.groupReports',
-    tone: 'reports',
-    routes: [
-      { key: 'reports', path: '/reports', label: 'nav.reports', icon: <BarChartOutlined />, element: <ReportsPage />, permission: PERMISSIONS.REPORTS_VIEW },
-      // Phase 17 (ADR-032 §3, §1): stock reports that need the recipes.
       {
         key: 'consumption',
         path: '/consumption',
@@ -416,7 +503,7 @@ export const APP_GROUPS: AppGroup[] = [
         icon: <ReconciliationOutlined />,
         element: <ConsumptionPage />,
         permission: PERMISSIONS.REPORTS_VIEW,
-        section: 'nav.sectionStockReports',
+        section: 'nav.sectionReports',
       },
       {
         key: 'recipeSales',
@@ -425,8 +512,44 @@ export const APP_GROUPS: AppGroup[] = [
         icon: <ExperimentOutlined />,
         element: <RecipeSalesWithoutBomPage />,
         permission: PERMISSIONS.REPORTS_VIEW,
-        section: 'nav.sectionStockReports',
+        section: 'nav.sectionReports',
       },
+    ],
+    links: [
+      { key: 'items-items', to: '/items?tab=items', label: 'items.items', icon: <InboxOutlined />, section: 'nav.sectionCatalog', permission: PERMISSIONS.TENANT_READ },
+      { key: 'items-groups', to: '/items?tab=groups', label: 'items.groups', icon: <ApartmentOutlined />, section: 'nav.sectionCatalog', permission: PERMISSIONS.TENANT_READ },
+      { key: 'inventory-warehouses', to: '/warehouses', label: 'nav.warehouses', icon: <ContainerOutlined />, section: 'nav.sectionCatalog', permission: PERMISSIONS.TENANT_READ },
+      { key: 'inventory-boms', to: '/boms', label: 'nav.boms', icon: <ApartmentOutlined />, section: 'nav.sectionCatalog', permission: PERMISSIONS.TENANT_READ },
+      { key: 'stock-balances', to: '/stock?tab=balances', label: 'stock.balances', icon: <AuditOutlined />, section: 'nav.sectionMovements', permission: PERMISSIONS.TENANT_READ },
+      { key: 'stock-adjustments', to: '/stock?tab=adjustments', label: 'stock.adjustments', icon: <DiffOutlined />, section: 'nav.sectionMovements', permission: PERMISSIONS.TENANT_READ },
+      { key: 'stock-transfers', to: '/stock?tab=transfers', label: 'stock.transfers', icon: <ReconciliationOutlined />, section: 'nav.sectionMovements', permission: PERMISSIONS.TENANT_READ },
+      { key: 'stock-counts', to: '/stock?tab=counts', label: 'stock.counts', icon: <FlagOutlined />, section: 'nav.sectionMovements', permission: PERMISSIONS.TENANT_READ },
+      { key: 'stock-vouchers', to: '/stock?tab=vouchers', label: 'stock.vouchers', icon: <FileDoneOutlined />, section: 'nav.sectionMovements', permission: PERMISSIONS.TENANT_READ },
+      { key: 'consignment-open', to: '/consignment?tab=open', label: 'consignment.tabs.open', icon: <ReconciliationOutlined />, section: 'nav.sectionMovements', permission: PERMISSIONS.PURCHASE_MANAGE, requires: 'consignment' },
+      { key: 'consignment-statement', to: '/consignment?tab=statement', label: 'consignment.tabs.statement', icon: <FileSearchOutlined />, section: 'nav.sectionMovements', permission: PERMISSIONS.REPORTS_VIEW, requires: 'consignment' },
+      { key: 'consignment-aging', to: '/consignment?tab=aging', label: 'consignment.tabs.aging', icon: <CalendarOutlined />, section: 'nav.sectionMovements', permission: PERMISSIONS.REPORTS_VIEW, requires: 'consignment' },
+      { key: 'stock-movements', to: '/stock?tab=movements', label: 'stock.movements', icon: <BarChartOutlined />, section: 'nav.sectionReports', permission: PERMISSIONS.REPORTS_VIEW },
+      { key: 'stock-valuation', to: '/stock?tab=valuation', label: 'stock.valuation', icon: <BarChartOutlined />, section: 'nav.sectionReports', permission: PERMISSIONS.REPORTS_VIEW },
+      reportLink('items', 'reports.itemBalances', <InboxOutlined />),
+    ],
+  },
+  {
+    label: 'nav.groupPayroll',
+    tone: 'treasury',
+    routes: [{
+      key: 'payroll', path: '/payroll', label: 'payroll.title', icon: <ScheduleOutlined />, element: <PayrollPage />,
+      permission: PERMISSIONS.PAYROLL_VIEW, allBranchesOnly: true, section: 'nav.sectionOperations',
+      newPath: '/payroll?tab=runs&new=1', newPermission: PERMISSIONS.PAYROLL_MANAGE, ribbon: false,
+    }],
+    links: [
+      { key: 'payroll-employees', to: '/payroll?tab=employees', label: 'payroll.employees', icon: <TeamOutlined />, section: 'nav.sectionSetup', permission: PERMISSIONS.PAYROLL_VIEW },
+      { key: 'payroll-elements', to: '/payroll?tab=elements', label: 'payroll.elements', icon: <SettingOutlined />, section: 'nav.sectionSetup', permission: PERMISSIONS.PAYROLL_VIEW },
+      { key: 'payroll-settings', to: '/payroll?tab=settings', label: 'payroll.settings', icon: <SettingOutlined />, section: 'nav.sectionSetup', permission: PERMISSIONS.PAYROLL_VIEW },
+      { key: 'payroll-movements', to: '/payroll?tab=movements', label: 'payroll.movements', icon: <ProfileOutlined />, section: 'nav.sectionOperations', permission: PERMISSIONS.PAYROLL_VIEW },
+      { key: 'payroll-runs', to: '/payroll?tab=runs', label: 'payroll.runs', icon: <ScheduleOutlined />, section: 'nav.sectionOperations', permission: PERMISSIONS.PAYROLL_VIEW },
+      { key: 'payroll-leave', to: '/payroll?tab=leave', label: 'payroll.leaveTab', icon: <CalendarOutlined />, section: 'nav.sectionOperations', permission: PERMISSIONS.PAYROLL_VIEW },
+      { key: 'payroll-settlements', to: '/payroll?tab=settlements', label: 'payroll.settlementTab', icon: <FileDoneOutlined />, section: 'nav.sectionOperations', permission: PERMISSIONS.PAYROLL_VIEW },
+      { key: 'payroll-reports', to: '/payroll?tab=reports', label: 'payroll.reports.title', icon: <BarChartOutlined />, section: 'nav.sectionReports', permission: PERMISSIONS.PAYROLL_VIEW },
     ],
   },
   {

@@ -37,6 +37,8 @@ import { useCostCenters } from '../hooks/useCostCenters';
 import { useAuth } from '../auth/AuthContext';
 import { useKeysetQuery } from '../hooks/useKeysetQuery';
 import { isReportTabAvailable } from './reports/reportAccess';
+import { useUrlTab } from '../hooks/useUrlTab';
+import { useRibbonBreakpoint } from '../hooks/useRibbonBreakpoint';
 
 /** Opening / movement / closing, each debit and credit (ADR-008). */
 const TB_COLUMNS = [
@@ -50,6 +52,7 @@ const TB_COLUMNS = [
 
 /** Lines per "load more" page of a statement (ADR-022 §4). */
 const STATEMENT_PAGE_LIMIT = 100;
+const REPORT_TAB_KEYS = ['tb', 'is', 'bs', 'cf', 'gl', 'statement', 'cc', 'items', 'aging', 'tax', 'sales', 'purchases'] as const;
 
 /**
  * Company-wide reports (ADR-003 §13–§14): only for a member with access to every
@@ -59,6 +62,7 @@ const STATEMENT_PAGE_LIMIT = 100;
 export function ReportsPage() {
   const { t } = useTranslation();
   const { allBranches } = useAuth();
+  const { isMobile } = useRibbonBreakpoint();
   // ?tab=sales&from&to&groupBy (dashboard links) opens a report with those filters.
   const [searchParams] = useSearchParams();
   const linkFilters = {
@@ -70,7 +74,7 @@ export function ReportsPage() {
   const [to, setTo] = useState<Dayjs | null>(null);
   // ?tab=gl&accountId= (account statement shortcuts on accounts and cash boxes).
   const [accountId, setAccountId] = useState<string | undefined>(searchParams.get('accountId') ?? undefined);
-  const [tab, setTab] = useState(searchParams.get('tab') ?? 'tb');
+  const [tab, setTab] = useUrlTab(REPORT_TAB_KEYS, allBranches ? 'tb' : 'statement');
   // Double-clicking a trial balance row opens that account's statement.
   const openStatement = (id: string) => {
     setAccountId(id);
@@ -435,12 +439,13 @@ export function ReportsPage() {
   // tab (e.g. ?tab=gl from a shortcut) falls back to the first visible one.
   const visibleTabs = (allTabs ?? []).filter((item) => isReportTabAvailable(String(item.key), allBranches));
   const activeTab = visibleTabs.some((item) => item.key === tab) ? tab : String(visibleTabs[0]?.key ?? 'statement');
+  const activeLabel = String(visibleTabs.find((item) => item.key === activeTab)?.label ?? t('reports.title'));
 
   return (
     <div>
-      <PageHeader title={t('reports.title')} />
+      <PageHeader title={isMobile ? t('reports.title') : activeLabel} />
       <Card>
-        <Tabs activeKey={activeTab} onChange={setTab} items={visibleTabs} />
+        <Tabs activeKey={activeTab} onChange={setTab} items={visibleTabs} renderTabBar={isMobile ? undefined : () => <></>} />
         {!allBranches && (
           <div className="report-meta">
             <span>{t('reports.branchScopedNote')}</span>

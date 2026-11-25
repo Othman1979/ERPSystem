@@ -77,8 +77,9 @@ import { EnterNav } from '../components/EnterNav';
 import { ReverseButton } from '../components/ReverseButton';
 import { idemHeaders } from '../idempotency';
 import { useNewFromUrl } from '../useNewFromUrl';
-import { useSearchParams } from 'react-router';
 import { selectCashBank, useAccounts } from '../hooks/useAccounts';
+import { useRibbonBreakpoint } from '../hooks/useRibbonBreakpoint';
+import { useUrlTab } from '../hooks/useUrlTab';
 import { BalancesTab } from './treasury/BalancesTab';
 import { BankReconciliationTab } from './treasury/BankReconciliationTab';
 import { ChequesTab } from './treasury/ChequesTab';
@@ -206,18 +207,30 @@ function pickParties(side: 'CUSTOMER' | 'SUPPLIER', q: string | undefined, signa
 
 // ------------------------------------------------------------- page
 
+const TREASURY_TAB_KEYS = ['boxes', 'banks', 'receipts', 'payments', 'transfers', 'balances', 'cheques', 'reconciliation'] as const;
+const TREASURY_TAB_LABELS: Record<(typeof TREASURY_TAB_KEYS)[number], string> = {
+  boxes: 'treasury.cashBoxes',
+  banks: 'treasury.bankAccounts',
+  receipts: 'treasury.receipts',
+  payments: 'treasury.payments',
+  transfers: 'treasury.transfers',
+  balances: 'treasury.balances',
+  cheques: 'cheques.tab',
+  reconciliation: 'bankRec.tab',
+};
+
 export function TreasuryPage() {
   const { t } = useTranslation();
-  // ?tab=receipts (home quick actions) opens straight on that tab.
-  const [params] = useSearchParams();
-  const [tab, setTab] = useState(() => params.get('tab') ?? 'boxes');
+  const { isMobile } = useRibbonBreakpoint();
+  const [tab, setTab] = useUrlTab(TREASURY_TAB_KEYS, 'boxes');
   const lookups = useTreasuryLookups();
   return (
     <div>
-      <PageHeader title={t('nav.treasury')} />
+      <PageHeader title={isMobile ? t('nav.treasury') : t(TREASURY_TAB_LABELS[tab])} />
       <Tabs
         activeKey={tab}
         onChange={setTab}
+        renderTabBar={isMobile ? undefined : () => <></>}
         destroyOnHidden
         items={[
           { key: 'boxes', label: t('treasury.cashBoxes'), children: <CashBoxesTab /> },

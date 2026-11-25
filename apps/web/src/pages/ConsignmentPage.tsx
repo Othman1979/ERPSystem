@@ -24,6 +24,8 @@ import { EmptyCta } from '../components/EmptyCta';
 import { PageHeader } from '../components/PageHeader';
 import { ResponsiveTable } from '../components/ResponsiveTable';
 import { ReportCriteria, WinField, WinGroup } from '../components/WinForm';
+import { useRibbonBreakpoint } from '../hooks/useRibbonBreakpoint';
+import { useUrlTab } from '../hooks/useUrlTab';
 import { useCompany } from '../components/CompanyProfileForm';
 import { formatDate } from '../format/date';
 import { dec, formatQty, sum } from '../format/number';
@@ -31,6 +33,7 @@ import { codeAndName, displayName } from '../i18n/displayName';
 import { consignmentSettlementBody, updateConsignmentSelection } from './consignmentPayload';
 
 type Supplier = { id: string; code: string; nameAr: string; nameEn: string | null };
+const CONSIGNMENT_TAB_KEYS = ['open', 'statement', 'aging'] as const;
 
 const sourceLabel = (row: ConsignmentOpenSaleResponseDto, t: (key: string) => string) =>
   `${t(row.sourceType === 'SALES_INVOICE' ? 'consignment.salesInvoice' : 'consignment.stockCount')} ${row.sourceNo ?? `#${row.sourceId}`}`;
@@ -39,9 +42,10 @@ export function ConsignmentPage() {
   const { t } = useTranslation();
   const { can } = useAuth();
   const company = useCompany();
+  const { isMobile } = useRibbonBreakpoint();
   const purchaseManage = can(PERMISSIONS.PURCHASE_MANAGE);
   const reportsView = can(PERMISSIONS.REPORTS_VIEW);
-  const [tab, setTab] = useState(purchaseManage ? 'open' : 'statement');
+  const [tab, setTab] = useUrlTab(CONSIGNMENT_TAB_KEYS, purchaseManage ? 'open' : 'statement');
 
   if (company.isLoading) return <Typography.Text role="status">{t('common.loading')}</Typography.Text>;
   if (!company.data?.consignmentEnabled || (!purchaseManage && !reportsView)) return null;
@@ -56,13 +60,15 @@ export function ConsignmentPage() {
       : []),
   ];
   const activeTab = items.some((item) => item.key === tab) ? tab : items[0]?.key;
+  const activeLabel = items.find((item) => item.key === activeTab)?.label ?? t('nav.consignment');
 
   return (
     <div>
-      <PageHeader title={t('nav.consignment')} />
+      <PageHeader title={isMobile ? t('nav.consignment') : activeLabel} />
       <Tabs
         activeKey={activeTab}
         onChange={setTab}
+        renderTabBar={isMobile ? undefined : () => <></>}
         items={items.map((item) => ({
           ...item,
           children:

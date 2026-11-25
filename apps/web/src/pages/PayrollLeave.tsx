@@ -246,7 +246,7 @@ function BalancesTab() {
           title: t(`payroll.${key}`), dataIndex: key, render: (value: string) => formatAmount(value),
         })),
       ]}  scroll={{ x: 'max-content' }}/>
-    <Table rowKey="id" dataSource={adjustments.data as Array<{ id: string; employeeId: string; year: number; days: string; reason: string }> | undefined}
+    <Table rowKey="id" loading={adjustments.isLoading} dataSource={adjustments.data as Array<{ id: string; employeeId: string; year: number; days: string; reason: string }> | undefined}
       columns={[
         { title: t('payroll.employee'), render: (_: unknown, row) => {
           const employee = (employees.data as PayrollEmployeeDto[] | undefined)?.find((item) => item.id === row.employeeId);
@@ -331,7 +331,7 @@ export function LeaveSettingsPanel() {
       }
     >
     <FormSection title={t('payroll.holidays')}>
-      <Table rowKey="id" dataSource={holidays.data} columns={[
+      <Table rowKey="id" loading={holidays.isLoading} dataSource={holidays.data} columns={[
         { title: t('payroll.from'), dataIndex: 'date', render: (value: string) => datePickerValue(value)?.format('DD/MM/YYYY') },
         { title: t('payroll.nameAr'), dataIndex: 'nameAr' },
         { title: t('payroll.nameEn'), dataIndex: 'nameEn' },
@@ -339,7 +339,7 @@ export function LeaveSettingsPanel() {
       ]} scroll={{ x: 'max-content' }} />
     </FormSection>
     <FormSection title={t('payroll.leaveTypes')}>
-      <Table rowKey="id" dataSource={types.data} columns={[
+      <Table rowKey="id" loading={types.isLoading} dataSource={types.data} columns={[
         { title: t('payroll.code'), dataIndex: 'code' },
         { title: t('payroll.leaveTypes'), render: (_: unknown, row: LeaveTypeResponseDto) => typeName(row, i18n.language) },
         { title: t('payroll.leaveCategory'), dataIndex: 'category', render: (value: string) => t(`payroll.category${value}`) },

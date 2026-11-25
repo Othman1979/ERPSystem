@@ -23,6 +23,27 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.global-loading-bar {
+  height: 3px;
+  overflow: hidden;
+}
+
+.global-loading-bar__indicator {
+  display: block;
+  width: 30%;
+  height: 100%;
+  animation: global-loading-bar 1s ease-in-out infinite;
+}
+
+@keyframes global-loading-bar {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(450%);
+  }
+}
+
 ::selection {
   background: var(--c-ink-200);
   color: var(--c-text);

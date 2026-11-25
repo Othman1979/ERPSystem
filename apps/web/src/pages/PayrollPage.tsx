@@ -48,6 +48,9 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
+import { PageHeader } from '../components/PageHeader';
+import { useRibbonBreakpoint } from '../hooks/useRibbonBreakpoint';
+import { useUrlTab } from '../hooks/useUrlTab';
 import { useAuth } from '../auth/AuthContext';
 import { PERMISSIONS } from '../auth/permissions';
 import { formatAmount, formatQty, toDecimal } from '../format/number';
@@ -404,7 +407,7 @@ function ElementsTab() {
   }, onSuccess: () => { void client.invalidateQueries({ queryKey: ['payroll', 'elements'] }); setOpen(false); }, onError: () => message.error(t('payroll.saveError')) });
   return <>
     {can(PERMISSIONS.PAYROLL_MANAGE) && <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(undefined); form.resetFields(); setOpen(true); }}>{t('payroll.addElement')}</Button>}
-    <Table rowKey="id" dataSource={elements.data as PayrollElementDto[] | undefined} onRow={(row) => ({ onDoubleClick: () => { setEditing(row); form.setFieldsValue(row); setOpen(true); } })} columns={[
+    <Table rowKey="id" loading={elements.isLoading} dataSource={elements.data as PayrollElementDto[] | undefined} onRow={(row) => ({ onDoubleClick: () => { setEditing(row); form.setFieldsValue(row); setOpen(true); } })} columns={[
       { title: t('payroll.code'), dataIndex: 'code' },
       { title: t('payroll.element'), render: (_, row: PayrollElementDto) => i18n.language === 'en' ? row.nameEn ?? row.nameAr : row.nameAr },
       { title: t('payroll.kind'), dataIndex: 'kind', render: (v: string) => t(`payroll.${v.toLowerCase()}`) },
@@ -794,7 +797,7 @@ function SettingsTab() {
         </WinGroup>
       </WinPanel>
     </Form></EnterNav>}
-    <Table rowKey="id" dataSource={settings.data as Array<Record<string, unknown>> | undefined} columns={[
+    <Table rowKey="id" loading={settings.isLoading} dataSource={settings.data as Array<Record<string, unknown>> | undefined} columns={[
       ...['effectiveFrom', 'sscEmployeeRate', 'sscEmployerRate', 'sscHazardousExtra', 'sscMinWage', 'sscMaxWage', 'hoursPerMonth', 'daysPerMonth',
         'weeklyRestDays', 'annualLeaveDays', 'annualLeaveDaysSenior', 'annualLeaveSeniorYears',
         'taxPersonalExemption', 'taxDependantsExemption', 'taxNationalThreshold', 'taxNationalRate',
@@ -906,12 +909,14 @@ function ReportsTab() {
   );
 }
 
+const PAYROLL_TAB_KEYS = ['employees', 'elements', 'movements', 'runs', 'settings', 'leave', 'settlements', 'reports'] as const;
+
 export function PayrollPage() {
   const { t } = useTranslation();
-  const [params, setParams] = useSearchParams();
-  const activeKey = params.get('tab') ?? 'employees';
+  const { isMobile } = useRibbonBreakpoint();
+  const [params] = useSearchParams();
+  const [activeKey, changeTab] = useUrlTab(PAYROLL_TAB_KEYS, 'employees', payrollTabSearchParams);
   const createOnLoad = params.get('new') === '1';
-  const changeTab = (tab: string) => setParams(payrollTabSearchParams(params, tab), { replace: true });
   const tabs = useMemo(() => [
     { key: 'employees', label: t('payroll.employees'), children: <EmployeesTab /> },
     { key: 'elements', label: t('payroll.elements'), children: <ElementsTab /> },
@@ -922,5 +927,16 @@ export function PayrollPage() {
     { key: 'settlements', label: t('payroll.settlementTab'), children: <PayrollSettlementsTab /> },
     { key: 'reports', label: t('payroll.reports.title'), children: <ReportsTab /> },
   ], [t, createOnLoad]);
-  return <Tabs activeKey={activeKey} onChange={changeTab} items={tabs} />;
+  const activeLabel = String(tabs.find((item) => item.key === activeKey)?.label ?? t('payroll.title'));
+  return (
+    <>
+      <PageHeader title={isMobile ? t('payroll.title') : activeLabel} />
+      <Tabs
+        activeKey={activeKey}
+        onChange={changeTab}
+        items={tabs}
+        renderTabBar={isMobile ? undefined : () => <></>}
+      />
+    </>
+  );
 }

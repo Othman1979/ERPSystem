@@ -57,6 +57,8 @@ import { LoadMore } from '../components/LoadMore';
 import { RemoteSelect } from '../components/RemoteSelect';
 import { useKeysetQuery } from '../hooks/useKeysetQuery';
 import { usePagedQuery } from '../hooks/usePagedQuery';
+import { useRibbonBreakpoint } from '../hooks/useRibbonBreakpoint';
+import { useUrlTab } from '../hooks/useUrlTab';
 import { PICKER_PAGE_SIZE } from '../hooks/useRemoteOptions';
 import { ExportButtons } from '../components/ExportButtons';
 import {
@@ -72,6 +74,17 @@ import { DocFields, DocLayout, useDocShortcuts } from '../components/DocLayout';
 import { amountCell, qtyCell, unitCostCell } from '../format/cells';
 import { formatAmount } from '../format/number';
 import { invalidateStock } from '../stockQueries';
+
+const STOCK_TAB_KEYS = ['balances', 'adjustments', 'transfers', 'counts', 'vouchers', 'movements', 'valuation'] as const;
+const STOCK_TAB_LABELS: Record<(typeof STOCK_TAB_KEYS)[number], string> = {
+  balances: 'stock.balances',
+  adjustments: 'stock.adjustments',
+  transfers: 'stock.transfers',
+  counts: 'stock.counts',
+  vouchers: 'stock.vouchers',
+  movements: 'stock.movements',
+  valuation: 'stock.valuation',
+};
 
 type AdjustmentRow = StockAdjustmentListItemDto;
 type TransferRow = StockTransferListItemDto;
@@ -839,9 +852,9 @@ function ValuationTab() {
 
 export function StockPage() {
   const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
+  const { isMobile } = useRibbonBreakpoint();
   // ?tab=adjustments: the opening balances screen links to opening stock.
-  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') ?? 'balances');
+  const [activeTab, setActiveTab] = useUrlTab(STOCK_TAB_KEYS, 'balances');
   const [voucherRequest, setVoucherRequest] = useState<'GRN' | 'GIN' | null>(null);
 
   const openVoucher = (type: 'GRN' | 'GIN') => {
@@ -852,7 +865,7 @@ export function StockPage() {
   return (
     <div>
       <PageHeader
-        title={t('stock.title')}
+        title={isMobile ? t('stock.title') : t(STOCK_TAB_LABELS[activeTab])}
         actions={
           <Space>
             <Button onClick={() => openVoucher('GIN')}>{t('goods.exitVoucher')}</Button>
@@ -866,6 +879,7 @@ export function StockPage() {
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
+        renderTabBar={isMobile ? undefined : () => <></>}
         items={[
           { key: 'balances', label: t('stock.balances'), children: <BalancesTab /> },
           { key: 'adjustments', label: t('stock.adjustments'), children: <AdjustmentsTab /> },

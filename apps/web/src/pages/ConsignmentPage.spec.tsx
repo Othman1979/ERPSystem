@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ enabled: false }));
@@ -17,6 +18,6 @@ const { ConsignmentPage } = await import('./ConsignmentPage');
 describe('ConsignmentPage', () => {
   it('hides all temporary-receipt content when the company setting is off', () => {
     state.enabled = false;
-    expect(renderToStaticMarkup(<ConsignmentPage />)).toBe('');
+    expect(renderToStaticMarkup(<MemoryRouter><ConsignmentPage /></MemoryRouter>)).toBe('');
   });
 });

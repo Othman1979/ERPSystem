@@ -85,13 +85,12 @@ describe('tabs follow the allowed groups', () => {
     expect(tabLabels()).toEqual(
       [
         'nav.home',
-        'nav.groupPayroll',
         'nav.groupAccounting',
         'nav.groupTreasury',
         'nav.groupSales',
         'nav.groupPurchases',
         'nav.groupInventory',
-        'nav.groupReports',
+        'nav.groupPayroll',
         'nav.groupAdmin',
         'nav.groupAccount',
       ].map(t),
@@ -102,6 +101,7 @@ describe('tabs follow the allowed groups', () => {
     render('/', { can: (p: Permission) => p === PERMISSIONS.SALES_MANAGE || p === PERMISSIONS.TENANT_READ });
     expect(tabLabels()).toContain(t('nav.groupSales'));
     expect(tabLabels()).not.toContain(t('nav.groupReports'));
+    expect(tabLabels()).not.toContain(t('nav.groupPayroll'));
     // Health needs no permission and branches needs only TENANT_READ; users and settings are hidden.
     await click(tabNamed('nav.groupAdmin'));
     expect(linkLabels()).toEqual([t('nav.branches'), t('nav.health')]);
@@ -117,7 +117,7 @@ describe('tabs follow the allowed groups', () => {
   it('drops the procurement screens below their level, as the side menu did', () => {
     render('/purchases', { procurementLevel: 'SIMPLE' });
     expect(linkLabels()).not.toContain(t('nav.purchaseRequests'));
-    expect(linkLabels()).toContain(t('nav.purchases'));
+    expect(linkLabels()).toContain(t('purchases.invoices'));
   });
 
   it('lists the platform console in the admin tab for a platform admin', () => {
@@ -155,15 +155,108 @@ describe('the active tab follows the page', () => {
   it('marks the current page with aria-current', () => {
     render('/sales');
     const current = links().filter((a) => a.getAttribute('aria-current') === 'page');
-    expect(current.map((a) => a.getAttribute('href'))).toEqual(['/sales']);
+    expect(current.map((a) => a.getAttribute('href'))).toEqual(['/sales?tab=invoices']);
   });
 
   it('switching tabs shows the other strip without navigating', async () => {
     render('/sales');
-    await click(tabNamed('nav.groupReports'));
-    expect(selectedTab()).toBe(t('nav.groupReports'));
-    expect(linkLabels()).toEqual([t('nav.reports'), t('nav.consumption'), t('nav.recipeSales')]);
+    await click(tabNamed('nav.groupInventory'));
+    expect(selectedTab()).toBe(t('nav.groupInventory'));
+    expect(linkLabels()).toContain(t('stock.balances'));
+    expect(linkLabels()).toContain(t('nav.consumption'));
+    expect(linkLabels()).toContain(t('nav.recipeSales'));
     expect(pathname).toBe('/sales');
+  });
+
+  it('shows accounting report views in the accounting tab', async () => {
+    render('/accounts', { costCentersEnabled: true });
+    expect(selectedTab()).toBe(t('nav.groupAccounting'));
+    expect(linkLabels()).toEqual(expect.arrayContaining([
+      t('reports.trialBalance'),
+      t('reports.incomeStatement'),
+      t('reports.balanceSheet'),
+      t('cashFlow.title'),
+      t('reports.generalLedger'),
+      t('costCenters.statement'),
+      t('reports.taxSummary'),
+    ]));
+  });
+
+  it('hides company-wide report links from branch-restricted users', () => {
+    render('/accounts', { allBranches: false });
+    expect(linkLabels()).not.toContain(t('reports.trialBalance'));
+    expect(linkLabels()).not.toContain(t('reports.incomeStatement'));
+    expect(linkLabels()).not.toContain(t('reports.generalLedger'));
+    expect(linkLabels()).not.toContain(t('costCenters.statement'));
+    expect(linkLabels()).toContain(t('reports.taxSummary'));
+  });
+
+  it('shows the cost-center report link only while cost centers are enabled', () => {
+    render('/accounts');
+    expect(container.querySelector('a[href="/reports?tab=cc"]')).toBeNull();
+    act(() => root.render(
+      <MemoryRouter initialEntries={['/accounts']}>
+        <Ribbon
+          can={everything}
+          procurementLevel="FULL"
+          noCompany={false}
+          isPlatformAdmin={false}
+          pendingInvitations={0}
+          compact={false}
+          costCentersEnabled
+        />
+        <LocationProbe />
+      </MemoryRouter>,
+    ));
+    expect(container.querySelector('a[href="/reports?tab=cc"]')).not.toBeNull();
+  });
+
+  it('shows consignment links only when the company feature is enabled', () => {
+    render('/stock');
+    expect(container.querySelector('a[href="/consignment?tab=open"]')).toBeNull();
+    act(() => root.render(
+      <MemoryRouter initialEntries={['/stock']}>
+        <Ribbon
+          can={everything}
+          procurementLevel="FULL"
+          noCompany={false}
+          isPlatformAdmin={false}
+          pendingInvitations={0}
+          compact={false}
+          consignmentEnabled
+        />
+        <LocationProbe />
+      </MemoryRouter>,
+    ));
+    expect(container.querySelector('a[href="/consignment?tab=open"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/consignment?tab=statement"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/consignment?tab=aging"]')).not.toBeNull();
+  });
+
+  it('filters report links by permission', () => {
+    render('/accounts', { can: (permission) => permission === PERMISSIONS.TENANT_READ });
+    expect(links().some((link) => link.getAttribute('href')?.startsWith('/reports?'))).toBe(false);
+  });
+
+  it('selects the Sales tab and report link for a sales-summary deep link', () => {
+    render('/reports?tab=sales');
+    expect(selectedTab()).toBe(t('nav.groupSales'));
+    expect(container.querySelector('a[href="/reports?tab=sales"]')?.getAttribute('aria-current')).toBe('page');
+  });
+
+  it('selects stock balances when the stock URL has no tab', () => {
+    render('/stock');
+    expect(selectedTab()).toBe(t('nav.groupInventory'));
+    expect(container.querySelector('a[href="/stock?tab=balances"]')?.getAttribute('aria-current')).toBe('page');
+  });
+
+  it('keeps new-document actions for sales, purchases, and journal with their page buttons hidden', async () => {
+    render('/sales');
+    expect(container.querySelector('a[href="/sales?new=1"]')).not.toBeNull();
+    await click(tabNamed('nav.groupPurchases'));
+    expect(container.querySelector('a[href="/purchases?new=1"]')).not.toBeNull();
+    await click(tabNamed('nav.groupAccounting'));
+    expect(container.querySelector('a[href="/journal?new=1"]')).not.toBeNull();
   });
 });
 
@@ -171,7 +264,9 @@ describe('links are real anchors', () => {
   it('gives every button an href, so Ctrl+click opens a new tab', () => {
     render('/sales');
     for (const a of links()) expect(a.getAttribute('href')).toMatch(/^\//);
-    expect(links().map((a) => a.getAttribute('href'))).toEqual(expect.arrayContaining(['/sales', '/einvoice', '/parties']));
+    expect(links().map((a) => a.getAttribute('href'))).toEqual(
+      expect.arrayContaining(['/sales?tab=invoices', '/sales?tab=returns', '/einvoice', '/parties']),
+    );
   });
 
   it('gives a "new" button a path that opens the create form', () => {
@@ -188,7 +283,7 @@ describe('links are real anchors', () => {
 
   it('offers no "new" button to a role that cannot create the document (review #55)', () => {
     render('/sales', { can: (p: Permission) => p === PERMISSIONS.TENANT_READ || p === PERMISSIONS.REPORTS_VIEW });
-    expect(container.querySelector('a[href="/sales"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/sales?tab=invoices"]')).not.toBeNull();
     expect(container.querySelector('a[href="/sales?new=1"]')).toBeNull();
   });
 
@@ -245,7 +340,7 @@ describe('folding', () => {
     await click(foldButton());
     await click(tabNamed('nav.groupPurchases'));
     expect(floating()).not.toBeNull();
-    expect(linkLabels()).toContain(t('nav.purchases'));
+    expect(linkLabels()).toContain(t('purchases.invoices'));
 
     keyDown(tabNamed('nav.groupPurchases'), 'Escape');
     expect(floating()).toBeNull();

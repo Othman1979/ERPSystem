@@ -59,6 +59,8 @@ import { tableLocale } from '../components/QueryState';
 import { ListToolbar, matchesSearch } from '../components/ListToolbar';
 import { usePagedQuery } from '../hooks/usePagedQuery';
 import { useKeysetQuery } from '../hooks/useKeysetQuery';
+import { useRibbonBreakpoint } from '../hooks/useRibbonBreakpoint';
+import { useUrlTab } from '../hooks/useUrlTab';
 import { LoadMore } from '../components/LoadMore';
 import { ExportButtons } from '../components/ExportButtons';
 import { FormDialog, FormSection } from '../components/FormDialog';
@@ -286,7 +288,6 @@ function ItemsTab() {
 
   return (
     <div>
-      <PageHeader title={t('items.title')} />
       <Card size="small">
       {contextHolder}
       <ListToolbar
@@ -831,15 +832,22 @@ function GroupsTab() {
 
 export function ItemsPage() {
   const { t } = useTranslation();
-  // No card title: the list below already has its own header (it was shown twice).
+  const { isMobile } = useRibbonBreakpoint();
+  const [tab, setTab] = useUrlTab(['items', 'groups'] as const, 'items');
   return (
-    <Card>
-      <Tabs
-        items={[
+    <div>
+      <PageHeader title={isMobile ? t('items.title') : t(tab === 'items' ? 'items.items' : 'items.groups')} />
+      <Card>
+        <Tabs
+          activeKey={tab}
+          onChange={setTab}
+          renderTabBar={isMobile ? undefined : () => <></>}
+          items={[
           { key: 'items', label: t('items.items'), children: <ItemsTab /> },
           { key: 'groups', label: t('items.groups'), children: <GroupsTab /> },
-        ]}
-      />
-    </Card>
+          ]}
+        />
+      </Card>
+    </div>
   );
 }
