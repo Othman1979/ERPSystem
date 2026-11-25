@@ -36,8 +36,10 @@ import { HomeDashboard } from './pages/HomeDashboard';
 import { LoginPage } from './pages/LoginPage';
 import { useCompany } from './components/CompanyProfileForm';
 import { CompanyBranding } from './components/CompanyBranding';
+import { GlobalLoadingBar } from './components/GlobalLoadingBar';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { Ribbon } from './components/Ribbon';
+import { useCostCenters } from './hooks/useCostCenters';
 import { ServerUnreachable } from './components/ServerUnreachable';
 import { NoAccess } from './components/NoAccess';
 import { ProcurementLevelGate } from './components/ProcurementLevelGate';
@@ -81,9 +83,12 @@ const ChangePasswordRequiredPage = lazyPage(() =>
 /** Shown while a page's chunk loads. */
 function PageSpinner({ full }: { full?: boolean }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', marginTop: full ? '20vh' : 64 }}>
-      <Spin size="large" />
-    </div>
+    <>
+      <GlobalLoadingBar forceVisible />
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: full ? '20vh' : 64 }}>
+        <Spin size="large" />
+      </div>
+    </>
   );
 }
 
@@ -188,6 +193,7 @@ function AppShell() {
   const noCompany = !me?.currentTenant;
   const company = useCompany(!noCompany);
   const consignmentEnabled = company.data?.consignmentEnabled === true;
+  const { enabled: costCentersEnabled } = useCostCenters();
   const pendingInvitations = me?.pendingInvitations ?? 0;
   // Cycle screens (phases 12–13) show from their procurement level up (ADR-024 §2.3).
   const procurementLevel = useProcurementLevel(!noCompany);
@@ -430,12 +436,14 @@ function AppShell() {
           procurementLevel={procurementLevel}
           allBranches={allBranches}
           consignmentEnabled={consignmentEnabled}
+          costCentersEnabled={costCentersEnabled}
           noCompany={noCompany}
           isPlatformAdmin={isPlatformAdmin}
           pendingInvitations={pendingInvitations}
           compact={isTablet}
         />
       )}
+      <GlobalLoadingBar />
       <Layout>
         <Layout.Content className="app-content" style={{ padding: isMobile ? 12 : 24 }}>
           <Suspense fallback={<PageSpinner />}>

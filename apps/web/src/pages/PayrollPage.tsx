@@ -49,6 +49,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
+import { useUrlTab } from '../hooks/useUrlTab';
 import { PERMISSIONS } from '../auth/permissions';
 import { formatAmount, formatQty, toDecimal } from '../format/number';
 import { formatDate } from '../format/date';
@@ -211,6 +212,8 @@ export function payrollTabSearchParams(current: URLSearchParams, tab: string) {
   next.set('tab', tab);
   return next;
 }
+
+const PAYROLL_TAB_KEYS = ['employees', 'elements', 'movements', 'runs', 'settings', 'leave', 'settlements', 'reports'] as const;
 
 function usePayrollData() {
   const employees = useQuery({ queryKey: ['payroll', 'employees'], queryFn: async () => (await payrollControllerListEmployees()).data });
@@ -908,10 +911,9 @@ function ReportsTab() {
 
 export function PayrollPage() {
   const { t } = useTranslation();
-  const [params, setParams] = useSearchParams();
-  const activeKey = params.get('tab') ?? 'employees';
+  const [params] = useSearchParams();
+  const [activeKey, changeTab] = useUrlTab(PAYROLL_TAB_KEYS, 'employees', payrollTabSearchParams);
   const createOnLoad = params.get('new') === '1';
-  const changeTab = (tab: string) => setParams(payrollTabSearchParams(params, tab), { replace: true });
   const tabs = useMemo(() => [
     { key: 'employees', label: t('payroll.employees'), children: <EmployeesTab /> },
     { key: 'elements', label: t('payroll.elements'), children: <ElementsTab /> },

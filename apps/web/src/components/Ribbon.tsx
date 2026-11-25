@@ -21,6 +21,7 @@ import {
   QUICK_ACTIONS,
   type AppGroup,
   type AppRoute,
+  type RibbonLink,
 } from '../routes';
 import type { ModuleTone } from '../theme';
 
@@ -49,9 +50,14 @@ function writeFolded(folded: boolean): void {
 
 /** One button of the strip: a real link, so Ctrl+click opens it in a new tab. */
 interface RibbonItem {
-  /** Unique within its tab: a route key, or a prefixed key for the home and "new" buttons. */
+  /** Unique within its tab: a route/link key, or a prefixed key for a "new" button. */
   key: string;
+  /** The path used to determine whether this item is selected. */
   path: string;
+  /** Full href, including an optional query string. */
+  to: string;
+  /** A view link's target tab; absent for route buttons. */
+  viewTab?: string;
   label: string;
   icon: ReactNode;
   tone: ModuleTone;
@@ -82,6 +88,7 @@ export interface RibbonProps {
   procurementLevel?: ProcurementLevel;
   allBranches?: boolean;
   consignmentEnabled?: boolean;
+  costCentersEnabled?: boolean;
   /** Signed in without a company: only the invitations screen is offered. */
   noCompany: boolean;
   isPlatformAdmin: boolean;
@@ -90,12 +97,61 @@ export interface RibbonProps {
   compact: boolean;
 }
 
-function isSelected(item: RibbonItem, pathname: string): boolean {
-  return !item.isNew && (pathname === item.path || pathname.startsWith(`${item.path}/`));
+function pathMatches(pathname: string, path: string): boolean {
+  return pathname === path || pathname.startsWith(`${path}/`);
 }
 
-function RibbonButton({ item, pathname }: { item: RibbonItem; pathname: string }) {
-  const selected = isSelected(item, pathname);
+function isSelected(
+  item: RibbonItem,
+  pathname: string,
+  search: string,
+  allBranches: boolean,
+  hasSelectedLink: boolean,
+): boolean {
+  if (item.isNew || !pathMatches(pathname, item.path)) return false;
+  if (item.viewTab === undefined) return !hasSelectedLink;
+
+  const currentTab = new URLSearchParams(search).get('tab');
+  const selectedTab = currentTab || (item.path === '/reports' ? (allBranches ? 'tb' : 'statement') : undefined);
+  return item.viewTab === selectedTab;
+}
+
+function linkItem(link: RibbonLink, tone: ModuleTone, t: (key: string) => string): RibbonItem {
+  const [path] = link.to.split('?');
+  const tab = new URLSearchParams(link.to.split('?')[1] ?? '').get('tab') ?? undefined;
+  return {
+    key: link.key,
+    path,
+    to: link.to,
+    viewTab: tab,
+    label: t(link.label),
+    icon: link.icon,
+    tone,
+    isNew: false,
+  };
+}
+
+export function filterRibbonLinksByAllowedRoutes(
+  links: readonly RibbonLink[],
+  allowedRoutePaths: ReadonlySet<string>,
+): RibbonLink[] {
+  return links.filter((link) => allowedRoutePaths.has(link.to.split('?')[0]));
+}
+
+function RibbonButton({
+  item,
+  pathname,
+  search,
+  allBranches,
+  hasSelectedLink,
+}: {
+  item: RibbonItem;
+  pathname: string;
+  search: string;
+  allBranches: boolean;
+  hasSelectedLink: boolean;
+}) {
+  const selected = isSelected(item, pathname, search, allBranches, hasSelectedLink);
   const tile = (
     <span className="ribbon-tile" data-tone={item.tone}>
       {item.icon}
@@ -107,7 +163,7 @@ function RibbonButton({ item, pathname }: { item: RibbonItem; pathname: string }
     </span>
   );
   return (
-    <Link to={item.path} className="ribbon-link" aria-current={selected ? 'page' : undefined}>
+    <Link to={item.to} className="ribbon-link" aria-current={selected ? 'page' : undefined}>
       {item.count ? (
         <Badge count={item.count} size="small" offset={[-4, 4]}>
           {tile}
@@ -130,13 +186,14 @@ export function Ribbon({
   procurementLevel,
   allBranches = true,
   consignmentEnabled = false,
+  costCentersEnabled = false,
   noCompany,
   isPlatformAdmin,
   pendingInvitations,
   compact,
 }: RibbonProps) {
   const { t, i18n } = useTranslation();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const isRtl = i18n.language !== 'en';
   const uid = useId();
   const rootRef = useRef<HTMLElement>(null);
@@ -145,14 +202,16 @@ export function Ribbon({
   // The same filter as the side menu: the role's permissions and procurement level (ADR-024 §2.3).
   const tabs = useMemo<RibbonTab[]>(() => {
     const visibleGroups: AppGroup[] = noCompany
-      ? APP_GROUPS.map((g) => ({ ...g, routes: g.routes.filter((r) => r.path === INVITATIONS_PATH) })).filter(
+      ? APP_GROUPS.map((g) => ({ ...g, routes: g.routes.filter((r) => r.path === INVITATIONS_PATH), links: [] })).filter(
           (g) => g.routes.length > 0,
         )
       : allowedGroups(APP_GROUPS, can, procurementLevel, allBranches, consignmentEnabled);
+    const allowedRoutePaths = new Set(visibleGroups.flatMap((group) => group.routes.map((route) => route.path)));
 
     const routeItem = (route: AppRoute, tone: ModuleTone, count?: number): RibbonItem => ({
       key: route.key,
       path: route.path,
+      to: route.path,
       label: t(route.label),
       icon: route.icon,
       tone,
@@ -169,12 +228,14 @@ export function Ribbon({
       };
       for (const route of group.routes) {
         const count = route.badge === 'pendingInvitations' && pendingInvitations > 0 ? pendingInvitations : undefined;
-        add(route.section ?? group.label, routeItem(route, group.tone, count));
+        if (route.ribbon !== false) add(route.section ?? group.label, routeItem(route, group.tone, count));
         // Offered only to roles that may create the document (the API answers others with 403).
         if (route.newPath && (!route.newPermission || can(route.newPermission))) {
+          const [path] = route.newPath.split('?');
           add(route.section ?? group.label, {
             key: `${route.key}:new`,
-            path: route.newPath,
+            path,
+            to: route.newPath,
             // A document's own name ("New sales invoice") reads better than "New: Sales".
             label: i18n.exists(`ribbon.new.${route.key}`) ? t(`ribbon.new.${route.key}`) : t('ribbon.newOf', { name: t(route.label) }),
             icon: route.icon,
@@ -182,6 +243,13 @@ export function Ribbon({
             isNew: true,
           });
         }
+      }
+      for (const link of filterRibbonLinksByAllowedRoutes(group.links ?? [], allowedRoutePaths)) {
+        if (link.permission && !can(link.permission)) continue;
+        if (link.companyWide && !allBranches) continue;
+        if (link.requires === 'costCenters' && !costCentersEnabled) continue;
+        if (link.requires === 'consignment' && !consignmentEnabled) continue;
+        add(link.section, linkItem(link, group.tone, t));
       }
       return [...sections.values()];
     };
@@ -193,13 +261,14 @@ export function Ribbon({
         {
           key: 'nav.home',
           caption: t('nav.home'),
-          items: [{ key: HOME_TAB, path: '/', label: t('nav.home'), icon: <HomeOutlined />, tone: 'home', isNew: false }],
+          items: [{ key: HOME_TAB, path: '/', to: '/', label: t('nav.home'), icon: <HomeOutlined />, tone: 'home', isNew: false }],
         },
       ];
       // Quick actions: only the new documents this role may create (the API answers the rest with 403).
       const quick = QUICK_ACTIONS.filter((a) => can(a.permission) && (a.key !== 'payrollRun' || allBranches)).map<RibbonItem>((a) => ({
         key: `quick:${a.key}`,
         path: a.path,
+        to: a.path,
         label: t(a.label),
         icon: a.icon,
         tone: a.tone,
@@ -218,6 +287,7 @@ export function Ribbon({
       const platform: RibbonItem = {
         key: 'platform',
         path: PLATFORM_PATH,
+        to: PLATFORM_PATH,
         label: t('platform.nav'),
         icon: <CloudServerOutlined />,
         tone: 'admin',
@@ -236,11 +306,25 @@ export function Ribbon({
 
     return list.filter((tab) => tab.sections.some((s) => s.items.length > 0));
     // Labels depend on the language; t identity changes with it.
-  }, [t, i18n, can, procurementLevel, consignmentEnabled, noCompany, isPlatformAdmin, pendingInvitations]);
+  }, [t, i18n, can, procurementLevel, allBranches, consignmentEnabled, costCentersEnabled, noCompany, isPlatformAdmin, pendingInvitations]);
+
+  const hasSelectedLink = tabs.some((tab) =>
+    tab.sections.some((section) =>
+      section.items.some(
+        (item) =>
+          item.viewTab !== undefined &&
+          isSelected(item, pathname, search, allBranches, false),
+      ),
+    ),
+  );
 
   // The tabs whose buttons lead to the current page: several for a screen listed twice (parties).
   const pathTabKeys = tabs
-    .filter((tab) => tab.sections.some((s) => s.items.some((i) => isSelected(i, pathname))))
+    .filter((tab) =>
+      tab.sections.some((section) =>
+        section.items.some((item) => isSelected(item, pathname, search, allBranches, hasSelectedLink)),
+      ),
+    )
     .map((tab) => tab.key);
   const pathSignature = pathTabKeys.join('\n');
 
@@ -251,7 +335,7 @@ export function Ribbon({
     if (!pathSignature) return;
     const keys = pathSignature.split('\n');
     setActiveKey((previous) => (keys.includes(previous) ? previous : keys[0]));
-  }, [pathname, pathSignature]);
+  }, [pathname, search, pathSignature]);
 
   const current = tabs.find((tab) => tab.key === activeKey) ?? tabs[0];
 
@@ -329,7 +413,14 @@ export function Ribbon({
         <div className="ribbon-group" key={section.key}>
           <div className="ribbon-buttons">
             {section.items.map((item) => (
-              <RibbonButton key={item.key} item={item} pathname={pathname} />
+              <RibbonButton
+                key={item.key}
+                item={item}
+                pathname={pathname}
+                search={search}
+                allBranches={allBranches}
+                hasSelectedLink={hasSelectedLink}
+              />
             ))}
           </div>
           <div className="ribbon-caption">{section.caption}</div>

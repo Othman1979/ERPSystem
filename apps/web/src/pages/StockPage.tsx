@@ -21,6 +21,7 @@ import { formatDate } from '../format/date';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
+import { useUrlTab } from '../hooks/useUrlTab';
 import {
   catalogControllerListItems,
   stockDocumentsControllerCreateAdjustment,
@@ -839,9 +840,10 @@ function ValuationTab() {
 
 export function StockPage() {
   const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
-  // ?tab=adjustments: the opening balances screen links to opening stock.
-  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') ?? 'balances');
+  const [activeTab, setActiveTab] = useUrlTab(
+    ['balances', 'adjustments', 'transfers', 'counts', 'vouchers', 'movements', 'valuation'] as const,
+    'balances',
+  );
   const [voucherRequest, setVoucherRequest] = useState<'GRN' | 'GIN' | null>(null);
 
   const openVoucher = (type: 'GRN' | 'GIN') => {

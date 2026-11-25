@@ -34,6 +34,7 @@ import { ExportButtons } from '../components/ExportButtons';
 import { formatMoney } from '../format/number';
 import { useAccounts } from '../hooks/useAccounts';
 import { useCostCenters } from '../hooks/useCostCenters';
+import { useUrlTab } from '../hooks/useUrlTab';
 import { useAuth } from '../auth/AuthContext';
 import { useKeysetQuery } from '../hooks/useKeysetQuery';
 import { isReportTabAvailable } from './reports/reportAccess';
@@ -50,6 +51,7 @@ const TB_COLUMNS = [
 
 /** Lines per "load more" page of a statement (ADR-022 §4). */
 const STATEMENT_PAGE_LIMIT = 100;
+const REPORT_TAB_KEYS = ['tb', 'is', 'bs', 'cf', 'gl', 'statement', 'cc', 'items', 'aging', 'tax', 'sales', 'purchases'] as const;
 
 /**
  * Company-wide reports (ADR-003 §13–§14): only for a member with access to every
@@ -70,7 +72,7 @@ export function ReportsPage() {
   const [to, setTo] = useState<Dayjs | null>(null);
   // ?tab=gl&accountId= (account statement shortcuts on accounts and cash boxes).
   const [accountId, setAccountId] = useState<string | undefined>(searchParams.get('accountId') ?? undefined);
-  const [tab, setTab] = useState(searchParams.get('tab') ?? 'tb');
+  const [tab, setTab] = useUrlTab(REPORT_TAB_KEYS, allBranches ? 'tb' : 'statement');
   // Double-clicking a trial balance row opens that account's statement.
   const openStatement = (id: string) => {
     setAccountId(id);
