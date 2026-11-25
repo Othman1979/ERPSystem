@@ -45,7 +45,7 @@ client and one `prisma migrate deploy` per database. Each database plays one of 
   - the tenant's own `tenants` row;
   - the `users` rows of its members, with `password_hash` set to an unusable marker and never
     read;
-  - the reference tables (plans, currencies, countries, roles and role permissions), seeded by
+  - the reference tables (plans, currencies, roles and role permissions), seeded by
     migrations.
   - Mirrors are synced from the control database by the services that change them. The sync is
     idempotent and retried, and it covers display data only.

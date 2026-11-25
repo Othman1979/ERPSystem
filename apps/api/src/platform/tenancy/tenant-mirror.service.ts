@@ -13,10 +13,9 @@ export class TenantMirrorService {
 
   async syncReference(tenantDb: TenantMirrorClient): Promise<void> {
     const control = this.prisma.control();
-    const [plans, currencies, countries, roles, permissions] = await Promise.all([
+    const [plans, currencies, roles, permissions] = await Promise.all([
       control.plan.findMany(),
       control.currency.findMany(),
-      control.country.findMany(),
       control.role.findMany(),
       control.rolePermission.findMany(),
     ]);
@@ -25,9 +24,6 @@ export class TenantMirrorService {
     }
     for (const row of currencies) {
       await tenantDb.currency.upsert({ where: { id: row.id }, create: row, update: row });
-    }
-    for (const row of countries) {
-      await tenantDb.country.upsert({ where: { id: row.id }, create: row, update: row });
     }
     for (const row of roles) {
       await tenantDb.role.upsert({ where: { id: row.id }, create: row, update: row });

@@ -188,7 +188,7 @@ This model is amended by ADR-045 (`TENANCY_MODE=shared|isolated`).
 ### 5.3 الحماية التلقائية في Prisma
 
 - يُبنى **Prisma Client Extension** (`tenantScopedPrisma`) يحقن شرط `tenantId` تلقائياً في عمليات `findMany`، `findFirst`، `findUnique`، `count`، `aggregate`، `groupBy`، `update`، `updateMany`، `delete`، `deleteMany`، ويضيفه تلقائياً في `create` و`createMany` و`upsert` للنماذج متعددة المستأجرين.
-- قائمة النماذج متعددة المستأجرين معرّفة في مكان واحد. النماذج العامة (مثل `countries`، `currencies`، `plans`) مستثناة صراحة.
+- قائمة النماذج متعددة المستأجرين معرّفة في مكان واحد. النماذج العامة (مثل `currencies`، `plans`) مستثناة صراحة.
 - إذا استُدعي نموذج متعدد المستأجرين دون سياق مستأجر، يُرمى خطأ ولا يُنفذ الاستعلام.
 - **الاستعلامات الخام (`$queryRaw`) لا تمر عبر الامتداد**، لذا يجب أن تتضمن `tenant_id` يدوياً، ويُراجع كل استعلام خام في الكود.
 - عميل Prisma غير المقيد (`systemPrisma`) يُستخدم فقط في وحدة المنصة والمهام المجدولة، ويُوسم استخدامه بتعليق واضح.
@@ -302,7 +302,6 @@ This model is amended by ADR-045 (`TENANCY_MODE=shared|isolated`).
 | الجدول | الغرض |
 |---|---|
 | `currencies` | العملات (عام)، مع `decimal_places` |
-| `countries` | الدول (عام) |
 | `units` | وحدات القياس (لكل مستأجر) |
 | `tax_categories` | تصنيفات ضريبية لكل مستأجر، مع `rate` و`einvoice_code` |
 | `payment_methods` | طرق الدفع |
