@@ -228,8 +228,6 @@ describe('screens follow the role permissions from GET /me', () => {
     expect(container.querySelector('.home-groups')).toBeNull();
     await openTab('nav.groupAdmin');
     expect(sideMenu()).not.toContain(i18n.t('nav.settings'));
-    await openTab('nav.groupReports');
-    expect(sideMenu()).toContain(i18n.t('nav.reports'));
   });
 
   it('keeps quick actions on the ribbon home tab', async () => {

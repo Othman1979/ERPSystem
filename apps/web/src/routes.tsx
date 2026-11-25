@@ -35,6 +35,7 @@ import { lazyPage } from './lazyPage';
 import { PERMISSIONS, type Permission } from './auth/permissions';
 import { meetsProcurementLevel, type ProcurementLevel } from './auth/procurementLevel';
 import type { ModuleTone } from './theme';
+import { isReportTabAvailable } from './pages/reports/reportAccess';
 
 /**
  * Each module's page is its own chunk, loaded when first opened (WEB-10).
@@ -146,6 +147,23 @@ export interface AppRoute {
   /** Permission needed to create the document behind newPath; without it the button is not offered. */
   newPermission?: Permission;
   allBranchesOnly?: boolean;
+  /** The page is represented by ribbon view links; keep the route in the mobile menu. */
+  ribbon?: false;
+}
+
+export interface RibbonLink {
+  key: string;
+  /** Path and optional query string, e.g. /reports?tab=tb. */
+  to: string;
+  /** i18n key of the view name. */
+  label: string;
+  icon: ReactNode;
+  /** i18n key of the ribbon section caption. */
+  section: string;
+  permission?: Permission;
+  /** Hide company-wide report tabs for branch-restricted users. */
+  companyWide?: boolean;
+  requires?: 'costCenters' | 'consignment';
 }
 
 export interface AppGroup {
@@ -154,6 +172,7 @@ export interface AppGroup {
   /** Tab colour (theme.ts moduleTone), also the home-screen colour. */
   tone: ModuleTone;
   routes: AppRoute[];
+  links?: RibbonLink[];
 }
 
 /** A "new document" shortcut on the home screen and in the ribbon's home tab. */
@@ -199,6 +218,16 @@ const PARTIES_ROUTE: AppRoute = {
   section: 'nav.sectionPartners',
 };
 
+const reportLink = (tab: string, label: string, icon: ReactNode): RibbonLink => ({
+  key: `report-${tab}`,
+  to: `/reports?tab=${tab}`,
+  label,
+  icon,
+  section: 'nav.sectionReports',
+  permission: PERMISSIONS.REPORTS_VIEW,
+  companyWide: !isReportTabAvailable(tab, false),
+});
+
 /**
  * Every module, in the order of the ribbon's tabs (ADR-029 §3) and of the side menu.
  * A tab is a group; `section` splits its buttons into captioned sub-groups.
@@ -212,6 +241,16 @@ export const APP_GROUPS: AppGroup[] = [
       permission: PERMISSIONS.PAYROLL_VIEW, allBranchesOnly: true, newPath: '/payroll?tab=runs&new=1',
       newPermission: PERMISSIONS.PAYROLL_MANAGE,
     }],
+    links: [
+      {
+        key: 'payroll-reports',
+        to: '/payroll?tab=reports',
+        label: 'payroll.reports.title',
+        icon: <BarChartOutlined />,
+        section: 'nav.sectionReports',
+        permission: PERMISSIONS.PAYROLL_VIEW,
+      },
+    ],
   },
   {
     label: 'nav.groupAccounting',
@@ -241,6 +280,25 @@ export const APP_GROUPS: AppGroup[] = [
         newPermission: PERMISSIONS.JOURNAL_MANAGE,
       },
       { key: 'fiscal', path: '/fiscal', label: 'nav.fiscal', icon: <CalendarOutlined />, element: <FiscalPage />, permission: PERMISSIONS.TENANT_READ, section: 'nav.sectionPeriods' },
+      {
+        key: 'reports',
+        path: '/reports',
+        label: 'nav.reports',
+        icon: <BarChartOutlined />,
+        element: <ReportsPage />,
+        permission: PERMISSIONS.REPORTS_VIEW,
+        section: 'nav.sectionReports',
+        ribbon: false,
+      },
+    ],
+    links: [
+      reportLink('tb', 'reports.trialBalance', <BarChartOutlined />),
+      reportLink('is', 'reports.incomeStatement', <BarChartOutlined />),
+      reportLink('bs', 'reports.balanceSheet', <AuditOutlined />),
+      reportLink('cf', 'cashFlow.title', <WalletOutlined />),
+      reportLink('gl', 'reports.generalLedger', <FileSearchOutlined />),
+      { ...reportLink('cc', 'costCenters.statement', <ApartmentOutlined />), requires: 'costCenters' },
+      reportLink('tax', 'reports.taxSummary', <FileProtectOutlined />),
     ],
   },
   {
@@ -290,6 +348,11 @@ export const APP_GROUPS: AppGroup[] = [
         newPermission: PERMISSIONS.SALES_MANAGE,
       },
       PARTIES_ROUTE,
+    ],
+    links: [
+      reportLink('sales', 'reports.salesSummary', <ShoppingCartOutlined />),
+      reportLink('statement', 'reports.partyStatement', <SolutionOutlined />),
+      reportLink('aging', 'reports.aging', <CalendarOutlined />),
     ],
   },
   {
@@ -347,6 +410,11 @@ export const APP_GROUPS: AppGroup[] = [
       },
       PARTIES_ROUTE,
     ],
+    links: [
+      reportLink('purchases', 'reports.purchasesSummary', <ShoppingOutlined />),
+      reportLink('statement', 'reports.partyStatement', <SolutionOutlined />),
+      reportLink('aging', 'reports.aging', <CalendarOutlined />),
+    ],
   },
   {
     label: 'nav.groupInventory',
@@ -401,14 +469,6 @@ export const APP_GROUPS: AppGroup[] = [
         newPath: '/issue-requests?new=1',
         newPermission: PERMISSIONS.PURCHASE_REQUEST_MANAGE,
       },
-    ],
-  },
-  {
-    label: 'nav.groupReports',
-    tone: 'reports',
-    routes: [
-      { key: 'reports', path: '/reports', label: 'nav.reports', icon: <BarChartOutlined />, element: <ReportsPage />, permission: PERMISSIONS.REPORTS_VIEW },
-      // Phase 17 (ADR-032 §3, §1): stock reports that need the recipes.
       {
         key: 'consumption',
         path: '/consumption',
@@ -416,7 +476,7 @@ export const APP_GROUPS: AppGroup[] = [
         icon: <ReconciliationOutlined />,
         element: <ConsumptionPage />,
         permission: PERMISSIONS.REPORTS_VIEW,
-        section: 'nav.sectionStockReports',
+        section: 'nav.sectionReports',
       },
       {
         key: 'recipeSales',
@@ -425,8 +485,13 @@ export const APP_GROUPS: AppGroup[] = [
         icon: <ExperimentOutlined />,
         element: <RecipeSalesWithoutBomPage />,
         permission: PERMISSIONS.REPORTS_VIEW,
-        section: 'nav.sectionStockReports',
+        section: 'nav.sectionReports',
       },
+    ],
+    links: [
+      { key: 'stock-movements', to: '/stock?tab=movements', label: 'stock.movements', icon: <BarChartOutlined />, section: 'nav.sectionReports', permission: PERMISSIONS.REPORTS_VIEW },
+      { key: 'stock-valuation', to: '/stock?tab=valuation', label: 'stock.valuation', icon: <BarChartOutlined />, section: 'nav.sectionReports', permission: PERMISSIONS.REPORTS_VIEW },
+      reportLink('items', 'reports.itemBalances', <InboxOutlined />),
     ],
   },
   {

@@ -91,11 +91,11 @@ describe('tabs follow the allowed groups', () => {
         'nav.groupSales',
         'nav.groupPurchases',
         'nav.groupInventory',
-        'nav.groupReports',
         'nav.groupAdmin',
         'nav.groupAccount',
       ].map(t),
     );
+    expect(tabLabels()).not.toContain(t('nav.groupReports'));
   });
 
   it('hides tabs whose screens the role cannot open, and keeps the rest', async () => {
@@ -160,10 +160,74 @@ describe('the active tab follows the page', () => {
 
   it('switching tabs shows the other strip without navigating', async () => {
     render('/sales');
-    await click(tabNamed('nav.groupReports'));
-    expect(selectedTab()).toBe(t('nav.groupReports'));
-    expect(linkLabels()).toEqual([t('nav.reports'), t('nav.consumption'), t('nav.recipeSales')]);
+    await click(tabNamed('nav.groupAccounting'));
+    expect(selectedTab()).toBe(t('nav.groupAccounting'));
+    expect(linkLabels()).toContain(t('reports.trialBalance'));
     expect(pathname).toBe('/sales');
+  });
+
+  it('places report links inside Accounting, Sales, Purchases, Inventory, and Payroll', async () => {
+    render('/accounts', { costCentersEnabled: true });
+    expect(links().map((link) => link.getAttribute('href'))).toEqual(
+      expect.arrayContaining([
+        '/reports?tab=tb', '/reports?tab=is', '/reports?tab=bs', '/reports?tab=cf',
+        '/reports?tab=gl', '/reports?tab=cc', '/reports?tab=tax',
+      ]),
+    );
+
+    await click(tabNamed('nav.groupSales'));
+    expect(links().map((link) => link.getAttribute('href'))).toEqual(
+      expect.arrayContaining(['/reports?tab=sales', '/reports?tab=statement', '/reports?tab=aging']),
+    );
+    await click(tabNamed('nav.groupPurchases'));
+    expect(links().map((link) => link.getAttribute('href'))).toEqual(
+      expect.arrayContaining(['/reports?tab=purchases', '/reports?tab=statement', '/reports?tab=aging']),
+    );
+    await click(tabNamed('nav.groupInventory'));
+    expect(links().map((link) => link.getAttribute('href'))).toEqual(
+      expect.arrayContaining(['/stock?tab=movements', '/stock?tab=valuation', '/reports?tab=items']),
+    );
+    await click(tabNamed('nav.groupPayroll'));
+    expect(container.querySelector('a[href="/payroll?tab=reports"]')).not.toBeNull();
+  });
+
+  it('keeps statement and aging links for branch-restricted users', async () => {
+    render('/accounts', { allBranches: false });
+    expect(container.querySelector('a[href="/reports?tab=tb"]')).toBeNull();
+    await click(tabNamed('nav.groupSales'));
+    expect(container.querySelector('a[href="/reports?tab=statement"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/reports?tab=aging"]')).not.toBeNull();
+  });
+
+  it('keeps Purchases active when an aging link is opened from that tab', async () => {
+    render('/reports?tab=sales');
+    await click(tabNamed('nav.groupPurchases'));
+    await click(container.querySelector<HTMLAnchorElement>('a[href="/reports?tab=aging"]')!);
+    expect(selectedTab()).toBe(t('nav.groupPurchases'));
+  });
+
+  it('marks a matching report view link instead of its page route button', () => {
+    render('/stock?tab=movements');
+    expect(container.querySelector('a[href="/stock"]')?.getAttribute('aria-current')).toBeNull();
+    expect(container.querySelector('a[href="/stock?tab=movements"]')?.getAttribute('aria-current')).toBe('page');
+  });
+
+  it('hides payroll report links from a role without payroll permission', () => {
+    render('/accounts', {
+      can: (permission) => permission === PERMISSIONS.TENANT_READ || permission === PERMISSIONS.REPORTS_VIEW,
+    });
+    expect(tabLabels()).not.toContain(t('nav.groupPayroll'));
+    expect(container.querySelector('a[href="/payroll?tab=reports"]')).toBeNull();
+  });
+
+  it('hides the cost-center report link when cost centers are disabled', () => {
+    render('/accounts');
+    expect(container.querySelector('a[href="/reports?tab=cc"]')).toBeNull();
+  });
+
+  it('hides report links from a role without report permission', () => {
+    render('/accounts', { can: (permission) => permission === PERMISSIONS.TENANT_READ });
+    expect(links().some((link) => link.getAttribute('href')?.startsWith('/reports?'))).toBe(false);
   });
 });
 
@@ -179,6 +243,15 @@ describe('links are real anchors', () => {
     expect(container.querySelector('a[href="/sales?new=1"]')).not.toBeNull();
     const badge = container.querySelector('a[href="/sales?new=1"] .ribbon-new');
     expect(badge?.textContent).toBe('+');
+  });
+
+  it('keeps new-document buttons for journal, sales, and purchases', async () => {
+    render('/journal');
+    expect(container.querySelector('a[href="/journal?new=1"]')).not.toBeNull();
+    await click(tabNamed('nav.groupSales'));
+    expect(container.querySelector('a[href="/sales?new=1"]')).not.toBeNull();
+    await click(tabNamed('nav.groupPurchases'));
+    expect(container.querySelector('a[href="/purchases?new=1"]')).not.toBeNull();
   });
 
   it('names the document on a "new" button', () => {

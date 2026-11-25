@@ -45,10 +45,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Button, Checkbox, DatePicker as AntDatePicker, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
+import { useUrlTab } from '../hooks/useUrlTab';
 import { PERMISSIONS } from '../auth/permissions';
 import { formatAmount, formatQty, toDecimal } from '../format/number';
 import { formatDate } from '../format/date';
@@ -211,6 +212,8 @@ export function payrollTabSearchParams(current: URLSearchParams, tab: string) {
   next.set('tab', tab);
   return next;
 }
+
+const PAYROLL_TAB_KEYS = ['employees', 'elements', 'movements', 'runs', 'settings', 'leave', 'settlements', 'reports'] as const;
 
 function usePayrollData() {
   const employees = useQuery({ queryKey: ['payroll', 'employees'], queryFn: async () => (await payrollControllerListEmployees()).data });
@@ -544,7 +547,13 @@ function MovementsTab() {
   </>;
 }
 
-function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
+function RunsTab({
+  createOnLoad = false,
+  onCreateHandled,
+}: {
+  createOnLoad?: boolean;
+  onCreateHandled?: () => void;
+}) {
   const { t, i18n } = useTranslation();
   const { message } = App.useApp();
   const { can } = useAuth();
@@ -580,8 +589,9 @@ function RunsTab({ createOnLoad = false }: { createOnLoad?: boolean }) {
     if (createOnLoad && can(PERMISSIONS.PAYROLL_MANAGE) && !createdFromQuickAction.current) {
       createdFromQuickAction.current = true;
       createRun();
+      onCreateHandled?.();
     }
-  }, [createOnLoad, can, createRun]);
+  }, [createOnLoad, can, createRun, onCreateHandled]);
   const mutate = useMutation({ mutationFn: async (action: string) => {
     if (!runId) return;
     if (action === 'post' || action === 'pay' || action === 'recompute') {
@@ -909,18 +919,24 @@ function ReportsTab() {
 export function PayrollPage() {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
-  const activeKey = params.get('tab') ?? 'employees';
+  const [activeKey, changeTab] = useUrlTab(PAYROLL_TAB_KEYS, 'employees', payrollTabSearchParams);
   const createOnLoad = params.get('new') === '1';
-  const changeTab = (tab: string) => setParams(payrollTabSearchParams(params, tab), { replace: true });
+  const onCreateHandled = useCallback(() => {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('new');
+      return next;
+    }, { replace: true });
+  }, [setParams]);
   const tabs = useMemo(() => [
     { key: 'employees', label: t('payroll.employees'), children: <EmployeesTab /> },
     { key: 'elements', label: t('payroll.elements'), children: <ElementsTab /> },
     { key: 'movements', label: t('payroll.movements'), children: <MovementsTab /> },
-    { key: 'runs', label: t('payroll.runs'), children: <RunsTab createOnLoad={createOnLoad} /> },
+    { key: 'runs', label: t('payroll.runs'), children: <RunsTab createOnLoad={createOnLoad} onCreateHandled={onCreateHandled} /> },
     { key: 'settings', label: t('payroll.settings'), children: <SettingsTab /> },
     { key: 'leave', label: t('payroll.leaveTab'), children: <PayrollLeaveTab /> },
     { key: 'settlements', label: t('payroll.settlementTab'), children: <PayrollSettlementsTab /> },
     { key: 'reports', label: t('payroll.reports.title'), children: <ReportsTab /> },
-  ], [t, createOnLoad]);
+  ], [t, createOnLoad, onCreateHandled]);
   return <Tabs activeKey={activeKey} onChange={changeTab} items={tabs} />;
 }
