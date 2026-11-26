@@ -462,7 +462,7 @@ function Get-MariaDB118Metadata {
     return [pscustomobject]@{
         Version = $releases[0].Name
         FileName = $file[0].file_name
-        Url = $file[0].file_download_url -replace '^http:', 'https:'
+        Url = "https://archive.mariadb.org/mariadb-$($releases[0].Name)/winx64-packages/$($file[0].file_name)"
         ChecksumUrl = $file[0].checksum_url -replace '^http:', 'https:'
         Hash = $file[0].checksum.sha256sum.ToLowerInvariant()
         HashAlgorithm = 'SHA256'
@@ -496,7 +496,8 @@ function Save-VerifiedDownload {
         [Parameter(Mandatory = $true)][string]$Uri,
         [Parameter(Mandatory = $true)][string]$Hash,
         [Parameter(Mandatory = $true)][string]$Destination,
-        [ValidateSet('SHA256', 'SHA512')][string]$HashAlgorithm = 'SHA256'
+        [ValidateSet('SHA256', 'SHA512')][string]$HashAlgorithm = 'SHA256',
+        [long]$Size = 0
     )
     $expectedLength = if ($HashAlgorithm -eq 'SHA512') { 128 } else { 64 }
     if ($Hash.Length -ne $expectedLength -or $Hash -notmatch '^[0-9a-fA-F]+$') {
@@ -507,6 +508,10 @@ function Save-VerifiedDownload {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
     }
     Invoke-WebRequest -Uri $Uri -UseBasicParsing -OutFile $Destination -Headers @{ 'User-Agent' = 'ERP-Cloud-Windows-Setup' }
+    if ($Size -gt 0 -and (Get-Item -LiteralPath $Destination).Length -ne $Size) {
+        Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+        throw "Size verification failed for $Uri (expected $Size bytes)."
+    }
     $actual = (Get-FileHash -LiteralPath $Destination -Algorithm $HashAlgorithm).Hash.ToLowerInvariant()
     if ($actual -ne $Hash.ToLowerInvariant()) {
         Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
@@ -525,8 +530,7 @@ function Set-RestrictedAcl {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
         [switch]$Directory,
-        [switch]$ReadOnlyUsers,
-        [switch]$Recurse
+        [switch]$ReadOnlyUsers
     )
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Cannot protect a missing path: $Path"
@@ -534,18 +538,12 @@ function Set-RestrictedAcl {
     if ($ReadOnlyUsers -and -not $Directory) {
         throw '-ReadOnlyUsers requires -Directory.'
     }
-    if ($Recurse -and -not $Directory) {
-        throw '-Recurse requires -Directory.'
-    }
     $arguments = @($Path, '/inheritance:r', '/grant:r')
     if ($Directory) {
         $arguments += '*S-1-5-32-544:(OI)(CI)F'
         $arguments += '*S-1-5-18:(OI)(CI)F'
         if ($ReadOnlyUsers) {
             $arguments += '*S-1-5-32-545:(OI)(CI)RX'
-        }
-        if ($Recurse) {
-            $arguments += @('/T', '/C', '/Q')
         }
     } else {
         $arguments += '*S-1-5-32-544:F'
@@ -733,10 +731,6 @@ function Register-ErpScheduledTask {
     Register-ScheduledTask -TaskPath $script:ErpTaskPath -TaskName $Name -Xml $xml -Force | Out-Null
 }
 
-function New-TaskStartupTriggerXml {
-    return '<BootTrigger><Enabled>true</Enabled><Delay>PT15S</Delay></BootTrigger>'
-}
-
 function New-TaskDailyTriggerXml {
     param([Parameter(Mandatory = $true)][string]$Time)
     $date = Get-Date -Format 'yyyy-MM-dd'
@@ -768,11 +762,6 @@ function New-TaskMonthlyTriggerXml {
     return "<CalendarTrigger><StartBoundary>$start</StartBoundary><Enabled>true</Enabled><ScheduleByMonth><DaysOfMonth><Day>$Day</Day></DaysOfMonth><Months>$months</Months></ScheduleByMonth></CalendarTrigger>"
 }
 
-function Start-ErpTask {
-    param([Parameter(Mandatory = $true)][string]$Name)
-    Start-ScheduledTask -TaskPath $script:ErpTaskPath -TaskName $Name | Out-Null
-}
-
 function Stop-ErpTask {
     param([Parameter(Mandatory = $true)][string]$Name)
     try {
@@ -795,38 +784,146 @@ function Set-ErpJobTasksEnabled {
     }
 }
 
+function Test-ErpLegacyUpdater {
+    param([Parameter(Mandatory = $true)][string]$AppDir)
+    $path = Join-Path $AppDir 'setup\windows\update.ps1'
+    return Select-String -LiteralPath $path -SimpleMatch "Start-ErpTask -Name 'App'" -Quiet
+}
+
 function Stop-ErpApp {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param()
+
+    $service = Get-Service -Name 'ERP-App' -ErrorAction SilentlyContinue
+    if ($service -and $service.Status -ne 'Stopped' -and $PSCmdlet.ShouldProcess('ERP-App', 'Stop service')) {
+        Stop-Service -InputObject $service -ErrorAction Stop
+    }
+}
+
+function Remove-ErpLegacyTask {
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
-        [Parameter(Mandatory = $true)][string]$AppDir,
-        [string]$TaskName = 'App'
+        [Parameter(Mandatory = $true)][ValidateSet('App', 'Caddy')][string]$Name,
+        [Parameter(Mandatory = $true)][string]$ExecutableName,
+        [Parameter(Mandatory = $true)][string]$CommandPath
     )
-    Stop-ErpTask -Name $TaskName
-    Start-Sleep -Seconds 2
-    $root = [IO.Path]::GetFullPath($AppDir).TrimEnd('\')
-    $processes = Get-CimInstance -ClassName Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue
+    if (-not (Get-ScheduledTask -TaskPath $script:ErpTaskPath -TaskName $Name -ErrorAction SilentlyContinue)) {
+        return
+    }
+    if (-not $PSCmdlet.ShouldProcess("$script:ErpTaskPath$Name", 'Remove legacy scheduled task')) {
+        return
+    }
+    Disable-ScheduledTask -TaskPath $script:ErpTaskPath -TaskName $Name | Out-Null
+    Stop-ErpTask -Name $Name
+    Unregister-ScheduledTask -TaskPath $script:ErpTaskPath -TaskName $Name -Confirm:$false
+    $processes = Get-CimInstance -ClassName Win32_Process -Filter "Name='$ExecutableName'"
     foreach ($process in $processes) {
         $commandLine = [string]$process.CommandLine
-        if ($commandLine -and
-            $commandLine.IndexOf($root, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
-            $commandLine -match 'dist[\\/]+main\.js') {
-            Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+        if ($commandLine -and $commandLine.IndexOf($CommandPath, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop
         }
     }
 }
 
-function Stop-ErpCaddy {
+function Get-WinSwMetadata {
+    return @{
+        Url = 'https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW-x64.exe'
+        FileName = 'WinSW-x64.exe'
+        Hash = '05b82d46ad331cc16bdc00de5c6332c1ef818df8ceefcd49c726553209b3a0da'
+        Size = 18243033
+    }
+}
+
+function ConvertTo-WinSwServiceXml {
+    param(
+        [Parameter(Mandatory = $true)][string]$Id,
+        [Parameter(Mandatory = $true)][string]$DisplayName,
+        [Parameter(Mandatory = $true)][string]$Executable,
+        [Parameter(Mandatory = $true)][string]$Arguments,
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [Parameter(Mandatory = $true)][string]$LogDirectory,
+        [string]$Dependency
+    )
+    $escape = { param($Value) [Security.SecurityElement]::Escape($Value) }
+    $dependXml = if ($Dependency) { "<depend>$(& $escape $Dependency)</depend>" }
+    return @"
+<service>
+  <id>$(& $escape $Id)</id>
+  <name>$(& $escape $DisplayName)</name>
+  <description>$(& $escape $DisplayName)</description>
+  <executable>$(& $escape $Executable)</executable>
+  <arguments>$(& $escape $Arguments)</arguments>
+  <workingdirectory>$(& $escape $WorkingDirectory)</workingdirectory>
+  <serviceaccount><user>LocalSystem</user></serviceaccount>
+  <startmode>Automatic</startmode>
+  $dependXml
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="10 sec"/>
+  <resetfailure>1 hour</resetfailure>
+  <stoptimeout>15 sec</stoptimeout>
+  <logpath>$(& $escape $LogDirectory)</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+</service>
+"@
+}
+
+function Invoke-ErpServiceCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+    $argumentLine = ($Arguments | ForEach-Object { ConvertTo-WindowsArgument $_ }) -join ' '
+    $result = Invoke-LoggedProcess -FilePath $FilePath -ArgumentLine $argumentLine -WorkingDirectory $env:SystemRoot -EchoToHost
+    if ($result.ExitCode -ne 0) {
+        throw "$FilePath $($Arguments -join ' ') failed with exit code $($result.ExitCode)."
+    }
+}
+
+function Update-ErpServiceRegistration {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [Parameter(Mandatory = $true)][string]$Id,
+        [Parameter(Mandatory = $true)][string]$DisplayName,
+        [Parameter(Mandatory = $true)][string]$WrapperPath,
+        [string]$Dependency
+    )
+    if (-not $PSCmdlet.ShouldProcess($Id, 'Refresh service registration and failure actions')) {
+        return
+    }
+    $dependencies = if ($Dependency) { $Dependency } else { '/' }
+    Invoke-ErpServiceCommand -FilePath 'sc.exe' -Arguments @(
+        'config', $Id, 'binPath=', (ConvertTo-WindowsArgument $WrapperPath),
+        'DisplayName=', $DisplayName, 'start=', 'auto', 'obj=', 'LocalSystem', 'depend=', $dependencies
+    )
+    Invoke-ErpServiceCommand -FilePath 'sc.exe' -Arguments @(
+        'failure', $Id, 'reset=', '3600', 'actions=', 'restart/10000/restart/10000/restart/10000'
+    )
+}
+
+function Install-ErpWinSwService {
     param(
         [Parameter(Mandatory = $true)][string]$DataDir,
-        [string]$TaskName = 'Caddy'
+        [Parameter(Mandatory = $true)][string]$WrapperSource,
+        [Parameter(Mandatory = $true)][hashtable]$Configuration
     )
-    Stop-ErpTask -Name $TaskName
-    Start-Sleep -Seconds 2
-    $config = [IO.Path]::GetFullPath((Join-Path $DataDir 'caddy\Caddyfile'))
-    $processes = Get-CimInstance -ClassName Win32_Process -Filter "Name='caddy.exe'" -ErrorAction SilentlyContinue
-    foreach ($process in $processes) {
-        $commandLine = [string]$process.CommandLine
-        if ($commandLine -and $commandLine.IndexOf($config, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-            Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
-        }
+    $id = $Configuration.Id
+    $service = Get-Service -Name $id -ErrorAction SilentlyContinue
+    if ($service -and $service.Status -ne 'Stopped') {
+        Stop-Service -InputObject $service -ErrorAction Stop
     }
+    $directory = Join-Path $DataDir "services\$id"
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    $wrapperPath = Join-Path $directory "$id.exe"
+    Copy-Item -LiteralPath $WrapperSource -Destination $wrapperPath -Force
+    Write-Utf8NoBom -Path (Join-Path $directory "$id.xml") -Text (ConvertTo-WinSwServiceXml @Configuration)
+    if ($service) {
+        Update-ErpServiceRegistration -Id $id -DisplayName $Configuration.DisplayName -WrapperPath $wrapperPath -Dependency $Configuration.Dependency
+    } else {
+        Invoke-ErpServiceCommand -FilePath $wrapperPath -Arguments @('install')
+    }
+    Start-Service -Name $id -ErrorAction Stop
 }

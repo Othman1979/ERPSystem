@@ -1,3 +1,91 @@
+Describe 'ConvertTo-WinSwServiceXml' {
+    It 'writes the API command and shared service policy with escaped paths and arguments' {
+        $appDir = 'C:\ERP & Cloud\app\apps\api'
+        $logs = 'C:\ERP & Cloud\data\logs'
+        $arguments = '--max-old-space-size=512 "' + $appDir + '\dist\main.js"'
+        [xml]$xml = ConvertTo-WinSwServiceXml -Id 'ERP-App' -DisplayName 'ERP Cloud API' -Executable 'C:\Program Files\nodejs\node.exe' -Arguments $arguments -WorkingDirectory $appDir -LogDirectory $logs -Dependency 'ERP-MariaDB'
+        $xml.service.id | Should -Be 'ERP-App'
+        $xml.service.name | Should -Be 'ERP Cloud API'
+        $xml.service.description | Should -Be 'ERP Cloud API'
+        $xml.service.executable | Should -Be 'C:\Program Files\nodejs\node.exe'
+        $xml.service.arguments | Should -Be $arguments
+        $xml.service.workingdirectory | Should -Be $appDir
+        $xml.service.serviceaccount.user | Should -Be 'LocalSystem'
+        $xml.service.startmode | Should -Be 'Automatic'
+        $xml.service.depend | Should -Be 'ERP-MariaDB'
+        $xml.service.onfailure.Count | Should -Be 3
+        foreach ($action in $xml.service.onfailure) {
+            $action.action | Should -Be 'restart'
+            $action.delay | Should -Be '10 sec'
+        }
+        $xml.service.resetfailure | Should -Be '1 hour'
+        $xml.service.stoptimeout | Should -Be '15 sec'
+        $xml.service.logpath | Should -Be $logs
+        $xml.service.log.mode | Should -Be 'roll-by-size'
+        $xml.service.log.sizeThreshold | Should -Be '10240'
+        $xml.service.log.keepFiles | Should -Be '5'
+    }
+
+    It 'writes the Caddy command without an API database dependency' {
+        $arguments = 'run --config "C:\ERPData\caddy\Caddyfile"'
+        [xml]$xml = ConvertTo-WinSwServiceXml -Id 'ERP-Caddy' -DisplayName 'ERP Cloud HTTPS proxy' -Executable 'C:\ERPData\bin\caddy.exe' -Arguments $arguments -WorkingDirectory 'C:\ERPData\caddy' -LogDirectory 'C:\ERPData\logs'
+        $xml.service.id | Should -Be 'ERP-Caddy'
+        $xml.service.name | Should -Be 'ERP Cloud HTTPS proxy'
+        $xml.service.executable | Should -Be 'C:\ERPData\bin\caddy.exe'
+        $xml.service.arguments | Should -Be $arguments
+        $xml.SelectSingleNode('/service/depend') | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Update-ErpServiceRegistration' {
+    It 'reapplies the quoted wrapper path, startup mode, account, dependency, and recovery with SCM' {
+        $commands = New-Object 'System.Collections.Generic.List[string]'
+        Mock Invoke-ErpServiceCommand { $commands.Add("$FilePath|$($Arguments -join '|')") }
+        Update-ErpServiceRegistration -Id 'ERP-App' -DisplayName 'ERP Cloud API' -WrapperPath 'C:\ERP Cloud\ERP-App.exe' -Dependency 'ERP-MariaDB'
+        $commands.Count | Should -Be 2
+        $commands[0] | Should -Be 'sc.exe|config|ERP-App|binPath=|"C:\ERP Cloud\ERP-App.exe"|DisplayName=|ERP Cloud API|start=|auto|obj=|LocalSystem|depend=|ERP-MariaDB'
+        $commands[1] | Should -Be 'sc.exe|failure|ERP-App|reset=|3600|actions=|restart/10000/restart/10000/restart/10000'
+    }
+
+    It 'clears stale dependencies for Caddy' {
+        Mock Invoke-ErpServiceCommand {}
+        Update-ErpServiceRegistration -Id 'ERP-Caddy' -DisplayName 'ERP Cloud HTTPS proxy' -WrapperPath 'C:\ERPData\ERP-Caddy.exe'
+        Should -Invoke Invoke-ErpServiceCommand -Exactly 1 -ParameterFilter {
+            $Arguments[0] -eq 'config' -and $Arguments[-2] -eq 'depend=' -and $Arguments[-1] -eq '/'
+        }
+    }
+}
+Describe 'Test-ErpLegacyUpdater' {
+    It 'recognizes the updater which attempts to restart the App task' {
+        $setup = Join-Path $TestDrive 'setup\windows'
+        New-Item -ItemType Directory -Path $setup -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $setup 'update.ps1') -Value "    Start-ErpTask -Name 'App'"
+        Test-ErpLegacyUpdater -AppDir $TestDrive | Should -BeTrue
+    }
+
+    It 'leaves a service-aware updater alone' {
+        $setup = Join-Path $TestDrive 'setup\windows'
+        New-Item -ItemType Directory -Path $setup -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $setup 'update.ps1') -Value "    Start-Service -Name 'ERP-App' -ErrorAction Stop"
+        Test-ErpLegacyUpdater -AppDir $TestDrive | Should -BeFalse
+    }
+}
+
+Describe 'Set-ErpJobTasksEnabled' {
+    It 'enables existing jobs without enabling legacy App and Caddy tasks' -Skip:($env:OS -ne 'Windows_NT') {
+        Mock Get-ScheduledTask {
+            foreach ($name in @('Job-backup', 'Job-stock-verify', 'App', 'Caddy')) {
+                [pscustomobject]@{ TaskName = $name; State = 'Disabled' }
+            }
+        }
+        Mock Enable-ScheduledTask {}
+        Set-ErpJobTasksEnabled -Enabled $true
+        Should -Invoke Enable-ScheduledTask -Exactly 1 -ParameterFilter { $TaskName -eq 'Job-backup' }
+        Should -Invoke Enable-ScheduledTask -Exactly 1 -ParameterFilter { $TaskName -eq 'Job-stock-verify' }
+        Should -Invoke Enable-ScheduledTask -Exactly 0 -ParameterFilter { $TaskName -in @('App', 'Caddy') }
+    }
+}
+
 BeforeAll {
     . (Join-Path $PSScriptRoot '..\lib\common.ps1')
 
@@ -194,6 +282,33 @@ Describe 'Update-MyIniText' {
         ([regex]::Matches($updated, '(?im)^bind-address=')).Count | Should -Be 1
         $updated | Should -Match 'datadir=C:\\ERPData\\mariadb'
         $updated | Should -Match 'port=3308'
+    }
+}
+
+Describe 'Get-MariaDB118Metadata' {
+    It 'uses the official archive for the x64 MSI and verifies it against the release metadata' {
+        Mock Invoke-WebRequestContent {
+            @'
+{"releases":{"11.8.9":{"files":[{"file_name":"mariadb-11.8.9-winx64.msi","file_download_url":"https://downloads.mariadb.org/rest-api/mariadb/11.8.9/mariadb-11.8.9-winx64.msi","checksum":{"sha256sum":"372822572baa7f429b9068d583336a9e46b109c12bb0b24eb66dbeb6ad0a563e"}}]}}}
+'@
+        }
+        $metadata = Get-MariaDB118Metadata
+        $metadata.Url | Should -BeExactly 'https://archive.mariadb.org/mariadb-11.8.9/winx64-packages/mariadb-11.8.9-winx64.msi'
+        $metadata.Hash | Should -BeExactly '372822572baa7f429b9068d583336a9e46b109c12bb0b24eb66dbeb6ad0a563e'
+    }
+}
+
+Describe 'Set-RestrictedAcl' {
+    It 'lets existing files inherit the application directory permissions' -Skip:($env:OS -ne 'Windows_NT') {
+        $directory = Join-Path $TestDrive 'app'
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        $file = Join-Path $directory 'package.json'
+        [IO.File]::WriteAllText($file, '{}')
+
+        Set-RestrictedAcl -Path $directory -Directory -ReadOnlyUsers
+
+        $rules = (Get-Acl -LiteralPath $file).GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])
+        $rules | Where-Object { $_.IsInherited -and $_.IdentityReference.Value -eq 'S-1-5-32-545' } | Should -Not -BeNullOrEmpty
     }
 }
 

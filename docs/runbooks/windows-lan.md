@@ -26,7 +26,16 @@ setup\windows\install.bat
 يثبت Node.js 24 وpnpm، وMariaDB 11.8، وCaddy 2.11.9 بعد التحقق من SHA-256 لـ Node وMariaDB وSHA-512 لـ Caddy. ينشئ `.env` للإنتاج بوضع `shared`، ويبني التطبيق، ويشغّل migrations وseed. يحتفظ `.env` ومفاتيح التشفير وكلمات المرور بصلاحيات مقيدة. لا يُستبدل `.env` الموجود؛ إذا لم يكن `NODE_ENV=production` يتوقف التثبيت.
 يوضع ملف Caddy التنفيذي في `<DataDir>\bin\caddy.exe` وتبقى بيانات CA وملف الإعدادات ضمن `<DataDir>\caddy`.
 
-تدار API وCaddy والمهام من Task Scheduler في المجلد `\ERP Cloud\` وتعمل تحت SYSTEM. يجدد المشرف تشغيل API وCaddy بسجل متداول حجمه 10 MB. مواعيد المهام اليومية والساعة والشهرية مطابقة لـ `deploy.md`؛ المهام الشهرية تستخدم مشغلات CalendarTrigger في XML لليوم الأول والثاني.
+تعمل الخدمتان التاليتان تحت حساب LocalSystem وتبدآن تلقائياً. افتح `services.msc` للتحقق من أن حالتهما `Running` ونوع بدء التشغيل `Automatic`.
+
+| اسم الخدمة | الاسم المعروض | السجلات داخل `<DataDir>\logs` |
+|---|---|---|
+| `ERP-App` | ERP Cloud API | `ERP-App.out.log` و`ERP-App.err.log` و`ERP-App.wrapper.log` |
+| `ERP-Caddy` | ERP Cloud HTTPS proxy | `ERP-Caddy.out.log` و`ERP-Caddy.err.log` و`ERP-Caddy.wrapper.log` |
+
+تعتمد `ERP-App` على `ERP-MariaDB`. يدير WinSW إعادة تشغيل الخدمتين عند الفشل ويدوّر سجلي stdout وstderr بحجم 10 MB مع الاحتفاظ بخمسة ملفات مدوّرة لكل سجل.
+
+للترقية من تثبيت قديم، شغّل `install.bat` من النسخة الجديدة. إذا كان سكربت التحديث في نسخة الخادم لا يزال يعتمد على المهام، ينقل التثبيت نسخة الخادم إلى إصدار المثبّت دون دمج (`fast-forward`) قبل حذف مهمتي `App` و`Caddy` القديمتين. لا يسحب التثبيت المتكرر تحديثات لخادم يستخدم سكربت التحديث الخاص بالخدمات. تبقى مهام `Job-*` تحت SYSTEM في Task Scheduler ضمن `\ERP Cloud\`؛ مواعيد المهام اليومية والساعة والشهرية مطابقة لـ `deploy.md`، وتستخدم المهام الشهرية مشغلات CalendarTrigger في XML لليوم الأول والثاني.
 
 ## أول تشغيل وحساب المالك
 
@@ -48,7 +57,7 @@ setup\windows\grant-admin.bat owner@example.com
 trust-client.bat -Server erp-server -HttpPort 80 -HttpsPort 443
 ```
 
-إذا لم تحدد الخادم، سيطلبه منك. إذا استخدم الخادم منافذ بديلة، مرّرها صراحة؛ يمكن كتابة منفذ HTTP في `-Server` أيضاً، مثلاً `-Server erp-server:8080`. يعرض السكربت بصمة SHA-256 للشهادة. قارنها مع `CA_SHA256` في `C:\ERPData\INSTALL-INFO.txt` على الخادم، ولا توافق إذا اختلفت. يستورد السكربت الشهادة إلى مخزن المستخدم الحالي وينشئ اختصار سطح مكتب.
+إذا لم تحدد الخادم، سيطلبه منك. إذا استخدم الخادم منافذ بديلة، مرّرها صراحة؛ يمكن كتابة منفذ HTTP في `-Server` أيضاً، مثلاً `-Server erp-server:8080`. يعرض السكربت بصمة SHA-256 للشهادة. قارنها مع `CA_SHA256` في `C:\ERPData\INSTALL-INFO.txt` على الخادم، ولا توافق إذا اختلفت. بعد المطابقة وافق أيضاً على رسالة تأكيد Windows إن ظهرت. يستورد السكربت الشهادة إلى مخزن المستخدم الحالي وينشئ اختصار سطح مكتب.
 
 يمكن التثبيت يدوياً أيضاً: افتح `http://<server>/erp-ca.crt` (أضف `:<HttpPort>` إذا كان HTTP على منفذ بديل)، وقارن بصمة SHA-256 مع `INSTALL-INFO.txt` على الخادم. بعد المطابقة، ثبّت الشهادة للمستخدم الحالي في `Trusted Root Certification Authorities`.
 
@@ -58,15 +67,17 @@ trust-client.bat -Server erp-server -HttpPort 80 -HttpsPort 443
 
 - شغّل `C:\ERP\app\setup\windows\update.bat` من نسخة الخادم؛ لا تشغّله من مجلد التطوير. يعطّل المهام، يوقف API، يأخذ نسخة احتياطية، يشغّل `ledger:check` بالإصدار الحالي، ثم يسحب ويبني ويطبق migrations ويعيد التشغيل والفحص.
 - بعد `git pull` تكون سكربتات التحديث الجديدة في نسخة الخادم؛ التشغيل التالي لـ `update.bat` يستخدم النسخة الجديدة.
+- إذا جلب `update.bat` القديم إصدار الخدمات قبل ترحيل المهام، تستمر مهمتا `App` و`Caddy` بالعمل حتى الترحيل. شغّل `install.bat` من النسخة الجديدة قبل تشغيل `update.bat` مرة أخرى.
 - إذا فشل قبل سحب الكود، يعيد تفعيل المهام وAPI. إذا فشل بعد السحب، يترك المهام معطلة ويطبع خطوات التراجع. لا تُعكس migrations؛ إذا تغير المخطط، يلزم استعادة نسخة ما قبل التحديث.
-- للتراجع بعد السحب، من `C:\ERP\app` أعد المؤشر إلى الإصدار السابق، ثم أعد التوليد والبناء، وشغّل مهمة App والفحص. بعد نجاح ذلك أعد تفعيل المهام:
+- للتراجع بعد السحب، من `C:\ERP\app` أعد المؤشر إلى الإصدار السابق، ثم أعد التوليد والبناء، وشغّل خدمة API والفحص. بعد نجاح ذلك أعد تفعيل المهام:
   ```powershell
   git -C "C:\ERP\app" checkout -B main <previousCommit>
   pnpm --filter api prisma:generate
   pnpm build
+  Start-Service ERP-App
   Get-ScheduledTask -TaskPath '\ERP Cloud\' | Where-Object TaskName -like 'Job-*' | Enable-ScheduledTask
   ```
-- `setup\windows\uninstall.bat` يزيل المهام وقواعد الجدار الناري والاختصار وثقة CA المحلية، لكنه **لا يحذف** مجلد التطبيق أو البيانات.
+- `setup\windows\uninstall.bat` يزيل خدمتي API وCaddy ومجلد `<DataDir>\services` والمهام وقواعد الجدار الناري واختصار الخادم وثقة CA من مخزن الجهاز ومخزن المستخدم الذي شغّل إلغاء التثبيت، لكنه **لا يحذف** مجلد التطبيق أو البيانات. وافق على رسالة Windows لإزالة شهادة Caddy إن ظهرت. لا يزيل السكربت الثقة من أجهزة الموظفين أو حسابات المستخدمين الأخرى. إذا وافق مسؤول آخر على طلب UAC لإلغاء التثبيت، فقد تبقى نسخة شهادة CA في حساب المستخدم المسجّل دخوله؛ من ذلك الحساب افتح `certmgr.msc`، ثم احذف شهادة ERP/Caddy المطابقة لبصمة الخادم من `Trusted Root Certification Authorities > Certificates`.
 - لإزالة خدمة MariaDB أيضاً: `uninstall.bat -RemoveDatabaseService`. يبقى مجلد قاعدة البيانات في `DataDir` ولا يحذف.
 
 ## النسخ الاحتياطي والأسرار
@@ -83,8 +94,8 @@ trust-client.bat -Server erp-server -HttpPort 80 -HttpsPort 443
 | لا يمكن للموظفين الاتصال | تحقق من أن ملف الشبكة Private/Domain، ومن عنوان IP والحجز، ومن قواعد الجدار الناري. لا تفتح API أو MariaDB على LAN. |
 | API متاحة مباشرة من LAN | تحقق من قاعدة `ERP Cloud API (block LAN)` على منفذ API المهيأ؛ يسمح ذلك لـ Caddy بالاتصال المحلي ولا يفتح API للشبكة. |
 | تحذير شهادة المتصفح | قارن بصمة SHA-256 مع `INSTALL-INFO.txt`، وتأكد أن العميل استورد `erp-ca.crt`. في Firefox استورد CA في إعداداته عند الحاجة. |
-| API لا تعمل | افحص `C:\ERPData\logs\app.log` ثم نفّذ `preflight` من `C:\ERP\app\apps\api`. |
-| HTTPS لا يعمل | افحص `C:\ERPData\logs\caddy.log`، ثم تحقق من خدمة Caddy والشهادة في `C:\ERPData\caddy\data`. |
+| API لا تعمل | افحص سجلات `ERP-App.*.log` ثم نفّذ `preflight` من `C:\ERP\app\apps\api`. |
+| HTTPS لا يعمل | افحص سجلات `ERP-Caddy.*.log`، ثم تحقق من خدمة `ERP-Caddy` والشهادة في `C:\ERPData\caddy\data`. |
 | مهمة لا تعمل | افتح Task Scheduler ثم `Task Scheduler Library\ERP Cloud`؛ راجع `jobs.log` ورمز آخر تشغيل. |
 | قاعدة البيانات غير متاحة | افحص خدمة `ERP-MariaDB` وسجل MariaDB ومنفذها. لا تشغّل خدمة XAMPP على منفذ ERP. |
 
@@ -92,9 +103,7 @@ trust-client.bat -Server erp-server -HttpPort 80 -HttpsPort 443
 
 تبقى نسخة التطوير منفصلة؛ استخدم `start-local.bat` من مجلد التطوير كما هي. تستخدم أدوات التطوير API على `3001` والواجهة على `5173`، بينما خادم LAN يستخدم API على `3101` وHTTPS على `443` (أو `8443`). لا تنسخ `.env` بين النسختين.
 
-## نقاط تحتاج تأكيداً على Windows فعلي
+## التحقق على Windows Server 2022
 
-- خيارات `mariadb-install-db.exe` المستخدمة (`--datadir`, `--service`, `--port`, `--password`) تحتاج اختباراً على نسخة Windows 11.8 نفسها؛ لا تعتمد على التثبيت قبل نجاح تجربة كاملة واستعادة.
-- يثبت إعداد المهام الشهرية باستخدام XML لمشغلات Task Scheduler، ويجب التحقق من تشغيلها تحت SYSTEM في أول شهر.
-- يجب اختبار تثبيت شهادة Caddy في `LocalMachine\Root`، صلاحيات SYSTEM، تشغيل MariaDB كخدمة، وقراءة ملفات `.env` والسجلات على Windows Server المستهدف.
-- يجب أن يتمكن حساب خدمة `ERP-MariaDB` من الكتابة إلى `<DataDir>\mariadb` بعد تطبيق ACLs؛ من المتوقع أن يمنح `mariadb-install-db.exe` الصلاحية، لكن يجب تأكيد ذلك على Windows.
+- جُرّبت خيارات `mariadb-install-db.exe` (`--datadir`, `--service`, `--port`, `--password`) على MariaDB 11.8.9. تمكّن حساب خدمة `ERP-MariaDB` من الكتابة إلى مجلد البيانات بعد تطبيق الصلاحيات، ونجح اختبار استعادة النسخة الاحتياطية.
+- جُرّب تثبيت شهادة Caddy في مخزن الجهاز ثم مخزن المستخدم الحالي، وتشغيل المهام يدوياً تحت SYSTEM. راقب التشغيل التلقائي للمهام الشهرية في أول شهر؛ لم تنتظر التجربة مواعيدها.

@@ -46,15 +46,13 @@ if ($answer.ToLowerInvariant() -ne 'y') {
     Remove-Item -LiteralPath $caPath -Force -ErrorAction SilentlyContinue
     Fail 'Certificate was not imported because the fingerprint was not confirmed.'
 }
-$existing = Get-ChildItem Cert:\CurrentUser\Root | Where-Object { $_.Thumbprint -eq $certificate.Thumbprint } | Select-Object -First 1
-if (-not $existing) {
-    $certificateDer = Join-Path $env:TEMP ("erp-ca-" + [guid]::NewGuid().ToString('N') + '.cer')
-    try {
-        [IO.File]::WriteAllBytes($certificateDer, $certificate.RawData)
-        Import-Certificate -FilePath $certificateDer -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
-    } finally {
-        Remove-Item -LiteralPath $certificateDer -Force -ErrorAction SilentlyContinue
+try {
+    & certutil.exe -user -addstore Root $caPath | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Fail 'Could not add the certificate to the current-user trusted root store.'
     }
+} finally {
+    Remove-Item -LiteralPath $caPath -Force -ErrorAction SilentlyContinue
 }
 $url = "https://$hostName"
 if ($HttpsPort -ne 443) {
@@ -62,6 +60,5 @@ if ($HttpsPort -ne 443) {
 }
 $shortcut = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'ERP Cloud.url'
 Write-Utf8NoBom -Path $shortcut -Text "[InternetShortcut]`r`nURL=$url`r`n"
-Remove-Item -LiteralPath $caPath -Force -ErrorAction SilentlyContinue
 Write-Host "ERP Cloud is ready: $url"
 Write-Host 'Firefox may require importing the CA in Firefox certificate settings as well.'

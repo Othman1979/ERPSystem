@@ -26,12 +26,26 @@ if (Test-Path -LiteralPath $infoPath) {
     }
 }
 
-Write-Step 'Stopping ERP Cloud scheduled tasks'
-try {
-    Stop-ErpApp -AppDir $AppDir
-} catch {
+Write-Step 'Removing ERP Cloud services'
+Stop-ErpApp
+$servicesDir = Join-Path $DataDir 'services'
+foreach ($id in @('ERP-App', 'ERP-Caddy')) {
+    $service = Get-Service -Name $id -ErrorAction SilentlyContinue
+    if ($service) {
+        if ($service.Status -ne 'Stopped') {
+            Stop-Service -InputObject $service -ErrorAction Stop
+        }
+        $wrapperPath = Join-Path $servicesDir "$id\$id.exe"
+        Invoke-ErpServiceCommand -FilePath $wrapperPath -Arguments @('uninstall')
+    }
 }
-Stop-ErpCaddy -DataDir $DataDir
+if (Test-Path -LiteralPath $servicesDir) {
+    Remove-Item -LiteralPath $servicesDir -Recurse -Force
+}
+
+Write-Step 'Removing ERP Cloud scheduled tasks'
+Remove-ErpLegacyTask -Name 'App' -ExecutableName 'node.exe' -CommandPath (Join-Path $AppDir 'apps\api\dist\main.js')
+Remove-ErpLegacyTask -Name 'Caddy' -ExecutableName 'caddy.exe' -CommandPath (Join-Path $DataDir 'caddy\Caddyfile')
 $tasks = Get-ScheduledTask -TaskPath '\ERP Cloud\' -ErrorAction SilentlyContinue
 foreach ($task in $tasks) {
     Stop-ErpTask -Name $task.TaskName
@@ -51,6 +65,9 @@ if (Test-Path -LiteralPath $rootCa) {
     Get-ChildItem Cert:\LocalMachine\Root |
         Where-Object { $_.Thumbprint -eq $certificate.Thumbprint } |
         Remove-Item -ErrorAction SilentlyContinue
+    Get-ChildItem Cert:\CurrentUser\Root |
+        Where-Object { $_.Thumbprint -eq $certificate.Thumbprint } |
+        Remove-Item -ErrorAction SilentlyContinue
 }
 
 if ($RemoveDatabaseService) {
@@ -66,7 +83,7 @@ if ($RemoveDatabaseService) {
     }
 }
 
-Write-Host 'ERP Cloud tasks, firewall rules, shortcut, and local CA trust were removed.'
+Write-Host 'ERP Cloud services, tasks, firewall rules, shortcut, and local CA trust were removed.'
 Write-Host "AppDir was not deleted: $AppDir"
 Write-Host "DataDir was not deleted: $DataDir"
 if ($RemoveDatabaseService) {

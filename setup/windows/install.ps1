@@ -186,10 +186,39 @@ function Install-GitIfMissing {
     }
 }
 
+function Invoke-ErpLegacyUpgradeCheck {
+    param(
+        [Parameter(Mandatory = $true)][string]$AppDir,
+        [Parameter(Mandatory = $true)][string]$DataDir
+    )
+    if (-not (Test-Path -LiteralPath (Join-Path $AppDir 'apps\api\.env') -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $DataDir 'mariadb\my.ini') -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $AppDir 'apps\api\dist\jobs\cli.js') -PathType Leaf)) {
+        return
+    }
+
+    $nodeExe = Get-CommandPath @('node.exe')
+    $pnpmExe = Get-CommandPath @('pnpm.cmd', 'pnpm')
+    if (-not $nodeExe -or -not $pnpmExe) {
+        Fail 'Node.js and pnpm are required on PATH to check the existing installation before migration.'
+    }
+    $runner = Join-Path $AppDir 'setup\windows\run-job.ps1'
+    $backupArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $runner, '-Job', 'backup', '-AppDir', $AppDir, '-DataDir', $DataDir, '-NodeExe', $nodeExe)
+    Invoke-CheckedCommand -FilePath 'powershell.exe' -Arguments $backupArguments -WorkingDirectory $AppDir -StepName 'Backing up the existing database before service migration'
+    $oldDatabaseUrl = $env:DATABASE_URL
+    $env:DATABASE_URL = $null
+    try {
+        Invoke-CheckedCommand -FilePath $pnpmExe -Arguments @('--filter', 'api', 'ledger:check') -WorkingDirectory $AppDir -StepName 'Checking posted ledger data before service migration'
+    } finally {
+        $env:DATABASE_URL = $oldDatabaseUrl
+    }
+}
+
 function Ensure-AppClone {
     param(
         [Parameter(Mandatory = $true)][string]$SourceRoot,
-        [Parameter(Mandatory = $true)][string]$Destination
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string]$DataDir
     )
     Install-GitIfMissing
     $origin = (& git -C $SourceRoot remote get-url origin).Trim()
@@ -208,6 +237,12 @@ function Ensure-AppClone {
         }
         $createdClone = $true
     }
+    foreach ($relativePath in @('.git\config', '.git\HEAD')) {
+        $gitMetadataPath = Join-Path $Destination $relativePath
+        if ((Test-Path -LiteralPath $gitMetadataPath) -and (Get-Acl -LiteralPath $gitMetadataPath).Access.Count -eq 0) {
+            Set-RestrictedAcl -Path $gitMetadataPath
+        }
+    }
     & git -C $Destination remote set-url origin $origin | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Fail 'Could not configure the server clone origin.'
@@ -218,6 +253,19 @@ function Ensure-AppClone {
             Write-Warning 'Could not fast-forward the fresh server clone from origin/main; continuing with its current commit.'
         }
     } else {
+        if (Test-ErpLegacyUpdater -AppDir $Destination) {
+            Invoke-ErpLegacyUpgradeCheck -AppDir $Destination -DataDir $DataDir
+            Write-Step 'Fast-forwarding the task-based server clone to the service installer revision'
+            & git -C $Destination fetch --no-tags $SourceRoot HEAD | Out-Host
+            if ($LASTEXITCODE -ne 0) {
+                Fail 'Could not fetch the service installer revision from the setup checkout.'
+            }
+            & git -C $Destination merge --ff-only FETCH_HEAD | Out-Host
+            if ($LASTEXITCODE -ne 0 -or (Test-ErpLegacyUpdater -AppDir $Destination)) {
+                Fail 'Cannot fast-forward the server clone to a service-aware updater. The legacy tasks were not removed.'
+            }
+            return
+        }
         $currentCommit = (& git -C $Destination rev-parse HEAD).Trim()
         if ($LASTEXITCODE -ne 0 -or -not $currentCommit) {
             Fail "Could not read the current commit in $Destination."
@@ -592,14 +640,15 @@ try {
     }
     $apiPortFree = Test-PortFree -Port $ApiPort
     $appTaskExists = Get-ScheduledTask -TaskPath '\ERP Cloud\' -TaskName 'App' -ErrorAction SilentlyContinue
-    if (-not $apiPortFree -and (-not $appTaskExists -or $appTaskExists.State -ne 'Running')) {
+    $appService = Get-Service -Name 'ERP-App' -ErrorAction SilentlyContinue
+    if (-not $apiPortFree -and $appTaskExists.State -ne 'Running' -and $appService.Status -ne 'Running') {
         Fail "API port $ApiPort is already in use."
     }
 
     Write-Step 'Creating the separate server clone'
     $sourceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-    Ensure-AppClone -SourceRoot $sourceRoot -Destination $AppDir
-    Set-RestrictedAcl -Path $AppDir -Directory -ReadOnlyUsers -Recurse
+    Ensure-AppClone -SourceRoot $sourceRoot -Destination $AppDir -DataDir $DataDir
+    Set-RestrictedAcl -Path $AppDir -Directory -ReadOnlyUsers
     if (Test-Path -LiteralPath $envPath) {
         Set-RestrictedAcl -Path $envPath
     }
@@ -694,10 +743,15 @@ try {
     }
     Set-RestrictedAcl -Path $keysPath
 
+    Write-Step 'Downloading and verifying WinSW 2.12.0'
+    $winSw = Get-WinSwMetadata
+    $wrapperSource = Save-VerifiedDownload -Uri $winSw.Url -Hash $winSw.Hash -Size $winSw.Size -Destination (Join-Path $downloadsDir $winSw.FileName)
+
     Write-Step 'Building and deploying the application'
-    if ($appTaskExists) {
-        Stop-ErpApp -AppDir $AppDir
-    }
+    $apiDir = Join-Path $AppDir 'apps\api'
+    $nodeScript = Join-Path $apiDir 'dist\main.js'
+    Remove-ErpLegacyTask -Name 'App' -ExecutableName 'node.exe' -CommandPath $nodeScript
+    Stop-ErpApp
     $env:DATABASE_URL = $null
     Invoke-CheckedCommand -FilePath $pnpmExe -Arguments @('install', '--frozen-lockfile', '--prod=false') -WorkingDirectory $AppDir -StepName 'Installing dependencies'
     Invoke-CheckedCommand -FilePath $pnpmExe -Arguments @('--filter', 'api', 'prisma:generate') -WorkingDirectory $AppDir -StepName 'Generating Prisma client'
@@ -707,9 +761,12 @@ try {
 
     $caddyDir = Join-Path $DataDir 'bin'
     $caddyPath = Join-Path $caddyDir 'caddy.exe'
-    $caddyTaskExists = Get-ScheduledTask -TaskPath '\ERP Cloud\' -TaskName 'Caddy' -ErrorAction SilentlyContinue
-    if ($caddyTaskExists) {
-        Stop-ErpCaddy -DataDir $DataDir
+    $caddyConfigDir = Join-Path $DataDir 'caddy'
+    $caddyFile = Join-Path $caddyConfigDir 'Caddyfile'
+    Remove-ErpLegacyTask -Name 'Caddy' -ExecutableName 'caddy.exe' -CommandPath $caddyFile
+    $caddyService = Get-Service -Name 'ERP-Caddy' -ErrorAction SilentlyContinue
+    if ($caddyService -and $caddyService.Status -ne 'Stopped') {
+        Stop-Service -InputObject $caddyService -ErrorAction Stop
     }
     $installCaddy = $true
     if (Test-Path -LiteralPath $caddyPath) {
@@ -735,34 +792,12 @@ try {
         Copy-Item -LiteralPath $extracted.FullName -Destination $caddyPath -Force
         Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
     }
-    $caddyConfigDir = Join-Path $DataDir 'caddy'
     $caddyPublic = Join-Path $caddyConfigDir 'public'
-    $caddyFile = Join-Path $caddyConfigDir 'Caddyfile'
     New-Item -ItemType Directory -Path $caddyPublic -Force | Out-Null
     $caddyText = New-CaddyfileText -HostName $HostName -ExtraAddresses $addresses -HttpsPort $HttpsPort -HttpPort $HttpPort -ApiPort $ApiPort -DataDir $DataDir
     Write-Utf8NoBom -Path $caddyFile -Text $caddyText
 
     $powershellExe = Join-Path $PSHOME 'powershell.exe'
-    $supervisor = Join-Path $AppDir 'setup\windows\run-supervised.ps1'
-    $nodeScript = Join-Path $AppDir 'apps\api\dist\main.js'
-    $nodeArgumentLine = '--max-old-space-size=512 ' + (ConvertTo-WindowsArgument $nodeScript)
-    $appArguments = @(
-        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $supervisor,
-        '-Executable', $nodeExe,
-        '-ArgumentLine', $nodeArgumentLine,
-        '-WorkingDirectory', (Join-Path $AppDir 'apps\api'),
-        '-LogPath', (Join-Path $logsDir 'app.log')
-    )
-    $caddyArgumentLine = 'run --config ' + (ConvertTo-WindowsArgument $caddyFile)
-    $caddyArguments = @(
-        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $supervisor,
-        '-Executable', $caddyPath,
-        '-ArgumentLine', $caddyArgumentLine,
-        '-WorkingDirectory', $caddyConfigDir,
-        '-LogPath', (Join-Path $logsDir 'caddy.log')
-    )
-    Register-ErpScheduledTask -Name 'App' -Command $powershellExe -Arguments (($appArguments | ForEach-Object { ConvertTo-WindowsArgument "$_" }) -join ' ') -WorkingDirectory $AppDir -TriggerXml (New-TaskStartupTriggerXml) -ExecutionTimeLimit 'PT0S' -Description 'ERP Cloud API and built web application'
-    Register-ErpScheduledTask -Name 'Caddy' -Command $powershellExe -Arguments (($caddyArguments | ForEach-Object { ConvertTo-WindowsArgument "$_" }) -join ' ') -WorkingDirectory $DataDir -TriggerXml (New-TaskStartupTriggerXml) -ExecutionTimeLimit 'PT0S' -Description 'ERP Cloud internal HTTPS proxy'
 
     $jobScript = Join-Path $AppDir 'setup\windows\run-job.ps1'
     $jobSpecs = @(
@@ -776,6 +811,9 @@ try {
         @{ Name = 'backup-verify'; Time = '05:00'; Trigger = 'monthly-2'; Args = @('latest') }
     )
     foreach ($spec in $jobSpecs) {
+        if (Get-ScheduledTask -TaskPath '\ERP Cloud\' -TaskName "Job-$($spec.Name)" -ErrorAction SilentlyContinue) {
+            continue
+        }
         if ($spec.Trigger -eq 'daily') {
             $trigger = New-TaskDailyTriggerXml -Time $spec.Time
         } elseif ($spec.Trigger -eq 'hourly') {
@@ -812,9 +850,24 @@ try {
         Write-Warning 'The active network profile is Public. Windows Firewall rules are limited to Private and Domain networks; change the LAN profile before client access.'
     }
 
-    Write-Step 'Starting the API and Caddy tasks'
-    Start-ErpTask -Name 'App'
-    Start-ErpTask -Name 'Caddy'
+    Write-Step 'Installing and starting the ERP-App and ERP-Caddy services'
+    Install-ErpWinSwService -DataDir $DataDir -WrapperSource $wrapperSource -Configuration @{
+        Id = 'ERP-App'
+        DisplayName = 'ERP Cloud API'
+        Executable = $nodeExe
+        Arguments = '--max-old-space-size=512 ' + (ConvertTo-WindowsArgument $nodeScript)
+        WorkingDirectory = $apiDir
+        LogDirectory = $logsDir
+        Dependency = 'ERP-MariaDB'
+    }
+    Install-ErpWinSwService -DataDir $DataDir -WrapperSource $wrapperSource -Configuration @{
+        Id = 'ERP-Caddy'
+        DisplayName = 'ERP Cloud HTTPS proxy'
+        Executable = $caddyPath
+        Arguments = 'run --config ' + (ConvertTo-WindowsArgument $caddyFile)
+        WorkingDirectory = $caddyConfigDir
+        LogDirectory = $logsDir
+    }
     $url = "https://$HostName"
     if ($HttpsPort -ne 443) {
         $url += ":$HttpsPort"
@@ -825,7 +878,7 @@ try {
         Start-Sleep -Seconds 2
     }
     if (-not (Test-Path -LiteralPath $rootCa)) {
-        Fail "Caddy did not create its internal root CA at $rootCa. Check $($logsDir)\caddy.log."
+        Fail "Caddy did not create its internal root CA at $rootCa. Check ERP-Caddy.*.log in $logsDir."
     }
     $publicCa = Join-Path $caddyPublic 'erp-ca.crt'
     Copy-Item -LiteralPath $rootCa -Destination $publicCa -Force
@@ -882,7 +935,7 @@ try {
         Start-Sleep -Seconds 5
     }
     if (-not $healthy) {
-        Fail "Health check did not return HTTP 200 within three minutes: $healthUrl. Check app.log and caddy.log."
+        Fail "Health check did not return HTTP 200 within three minutes: $healthUrl. Check ERP-App.*.log and ERP-Caddy.*.log in $logsDir."
     }
     $preflight = Invoke-LoggedProcess -FilePath $nodeExe -ArgumentLine 'dist/jobs/cli.js preflight' -WorkingDirectory (Join-Path $AppDir 'apps\api') -EchoToHost
     $preflightCode = $preflight.ExitCode
@@ -891,11 +944,13 @@ try {
     }
     Invoke-JobNow -Job 'backup'
     Invoke-JobNow -Job 'backup-verify' -JobArguments @('latest')
+    Set-ErpJobTasksEnabled -Enabled $true
 
     $shortcut = Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'ERP Cloud.url'
     Write-Utf8NoBom -Path $shortcut -Text "[InternetShortcut]`r`nURL=$url`r`n"
     Write-Step 'Installation complete'
     Write-Host "URL: $url"
+    Write-Output 'Windows services: ERP-App and ERP-Caddy (services.msc)'
     Write-Host "Other PCs: run setup\windows\trust-client.bat -Server $HostName"
     Write-Host 'Register the owner account in the browser, then run setup\windows\grant-admin.bat <email>.'
     Write-Host "Offline key record: $keysPath"
