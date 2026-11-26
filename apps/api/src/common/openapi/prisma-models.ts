@@ -88,26 +88,6 @@ export class RolePermissionRow {
   permissionCode!: string;
 }
 
-/** Scalar columns of the Prisma model `Country`, as JSON. */
-export class CountryRow {
-  @ApiProperty({ type: 'string' })
-  id!: string;
-  @ApiProperty({ type: 'string' })
-  code!: string;
-  @ApiProperty({ type: 'string' })
-  nameAr!: string;
-  @ApiProperty({ type: 'string', nullable: true })
-  nameEn!: string | null;
-  @ApiProperty({ type: 'string', nullable: true })
-  phoneCode!: string | null;
-  @ApiProperty({ type: 'boolean' })
-  isActive!: boolean;
-  @ApiProperty({ type: 'string', format: 'date-time' })
-  createdAt!: string;
-  @ApiProperty({ type: 'string', format: 'date-time' })
-  updatedAt!: string;
-}
-
 /** Scalar columns of the Prisma model `User`, as JSON. */
 export class UserRow {
   @ApiProperty({ type: 'string' })
